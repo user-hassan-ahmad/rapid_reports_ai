@@ -1,0 +1,16 @@
+providers = ["python"]
+
+[phases.setup]
+nixPkgs = ["python311", "poetry"]
+
+[phases.install]
+cmds = [
+  "cd backend",
+  "pip install poetry",
+  "poetry config virtualenvs.create false",
+  "poetry install --without dev"
+]
+
+[start]
+cmd = "cd backend && poetry run python -m rapid_reports_ai.main"
+
