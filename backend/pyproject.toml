@@ -29,6 +29,10 @@ dependencies = [
 ]
 
 [tool.poetry]
+name = "rapid-reports-ai"
+version = "0.1.0"
+description = "Rapid Reports AI - AI-powered medical report generation platform"
+authors = ["Your Name <you@example.com>"]
 packages = [{include = "rapid_reports_ai", from = "src"}]
 
 [tool.poetry.scripts]
