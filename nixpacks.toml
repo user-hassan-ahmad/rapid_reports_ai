@@ -11,5 +11,5 @@ cmds = [
 ]
 
 [start]
-cmd = "cd backend && poetry run python -m rapid_reports_ai.main"
+cmd = "cd /app/backend && export PYTHONPATH=/app/backend/src:$PYTHONPATH && poetry run python -m rapid_reports_ai.main"
 
