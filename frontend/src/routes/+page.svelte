@@ -529,7 +529,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 
 	<!-- Main Content Area -->
 	<main class="relative z-10 transition-all duration-300 {sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'} min-h-screen">
-		<AuthGuard>
+		{#if $isAuthenticated}
 			<div class="p-4 md:p-6">
 				<!-- Warning Banner for Missing API Keys -->
 				{#if !loadingApiStatus && !apiKeyStatus.has_at_least_one_model}
@@ -673,7 +673,11 @@ $: if (!isEnhancementContext && sidebarVisible) {
 					{/await}
 				{/if}
 			</div>
-		</AuthGuard>
+		{:else}
+			<div class="p-6 text-center">
+				<p class="text-slate-600">Redirecting to home...</p>
+			</div>
+		{/if}
 	</main>
 
 <!-- Enhancement Sidebar - Rendered at root level like history modal -->
