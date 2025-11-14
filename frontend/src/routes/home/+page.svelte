@@ -20,7 +20,7 @@
 			icon: '⚡',
 			title: 'Lightning Fast Generation',
 			description: 'Generate professional radiology reports in seconds using advanced AI models',
-			details: 'Our AI-powered system transforms your findings into comprehensive radiology reports instantly. With support for multiple AI models including Claude and Qwen, you get accurate, professional reports that save you hours of work.'
+			details: 'Our AI-powered system transforms your findings into comprehensive radiology reports instantly. Get accurate, professional reports that save you hours of work, powered by state-of-the-art artificial intelligence.'
 		},
 		{
 			icon: '🎯',
