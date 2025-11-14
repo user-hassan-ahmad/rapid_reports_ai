@@ -11,8 +11,7 @@ import ReportVersionHistory from './components/ReportVersionHistory.svelte';
 // import SettingsTab from './components/SettingsTab.svelte';
 // import TemplateManagementTab from './components/TemplateManagementTab.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
-	import AuthGuard from '$lib/components/AuthGuard.svelte';
-	import { logout, user, token } from '$lib/stores/auth';
+	import { logout, user, token, isAuthenticated } from '$lib/stores/auth';
 	import bgCircuit from '$lib/assets/background circuit board effect.png';
 	import { marked } from 'marked';
 	import { API_URL } from '$lib/config';
@@ -334,6 +333,12 @@ let shouldAutoLoadEnhancements = false;
 
 	onMount(async () => {
 		if (browser) {
+			// Redirect to home page if not authenticated
+			if (!$isAuthenticated) {
+				goto('/home');
+				return;
+			}
+
 			// Initialize tab from URL hash
 			const hashTab = getTabFromHash();
 			if (hashTab !== activeTab) {
