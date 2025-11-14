@@ -5,9 +5,8 @@ nixPkgs = ["python311", "poetry"]
 
 [phases.install]
 cmds = [
-  "cd backend",
-  "poetry config virtualenvs.create false",
-  "poetry install --without dev"
+  "cd backend && poetry config virtualenvs.create false",
+  "cd backend && poetry install --without dev"
 ]
 
 [start]
