@@ -1,7 +1,6 @@
 {
-  "installCommand": "npm ci",
+  "installCommand": "npm install",
   "buildCommand": "npm run build",
-  "framework": "sveltekit",
-  "outputDirectory": ".svelte-kit"
+  "framework": "sveltekit"
 }
 
