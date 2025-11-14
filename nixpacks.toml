@@ -5,11 +5,11 @@ nixPkgs = ["python311", "poetry"]
 
 [phases.install]
 cmds = [
-  "cd backend && poetry config virtualenvs.in-project true",
-  "cd backend && poetry lock || true",
-  "cd backend && poetry install --no-interaction"
+  "poetry config virtualenvs.in-project true",
+  "poetry lock || true",
+  "poetry install --no-interaction"
 ]
 
 [start]
-cmd = "cd /app/backend && poetry run python -m rapid_reports_ai.main"
+cmd = "poetry run python -m rapid_reports_ai.main"
 
