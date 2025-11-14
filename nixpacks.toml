@@ -6,10 +6,10 @@ nixPkgs = ["python311", "poetry"]
 [phases.install]
 cmds = [
   "cd backend && poetry config virtualenvs.create false",
-  "cd backend && poetry export -f requirements.txt --output requirements.txt --without-hashes",
-  "cd backend && pip install -r requirements.txt"
+  "cd backend && poetry lock || true",
+  "cd backend && poetry install --no-interaction --no-root"
 ]
 
 [start]
-cmd = "cd /app/backend && export PYTHONPATH=/app/backend/src:$PYTHONPATH && python -m rapid_reports_ai.main"
+cmd = "cd /app/backend && export PYTHONPATH=/app/backend/src:$PYTHONPATH && poetry run python -m rapid_reports_ai.main"
 
