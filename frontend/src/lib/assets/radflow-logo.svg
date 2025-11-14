@@ -1,0 +1,33 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#A78BFA;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#60A5FA;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#A78BFA;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Simple R with flowing wave -->
+  <g transform="translate(30, 20)">
+    <!-- R vertical stem -->
+    <path d="M 10 10 L 10 65" 
+          stroke="url(#gradient)" 
+          stroke-width="7" 
+          stroke-linecap="round"/>
+    
+    <!-- R top curve -->
+    <path d="M 10 10 L 32 10 Q 45 10, 45 25 Q 45 40, 32 40 L 10 40" 
+          stroke="url(#gradient)" 
+          stroke-width="7" 
+          fill="none" 
+          stroke-linecap="round" 
+          stroke-linejoin="round"/>
+    
+    <!-- R diagonal leg flowing into wave -->
+    <path d="M 25 40 L 42 65 Q 50 68, 58 65 T 74 65" 
+          stroke="url(#gradient)" 
+          stroke-width="7" 
+          fill="none"
+          stroke-linecap="round"/>
+  </g>
+</svg>

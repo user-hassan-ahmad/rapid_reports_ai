@@ -1,0 +1,88 @@
+"""Database module for Rapid Reports AI"""
+
+from .connection import get_db, SessionLocal, engine
+from .models import Base, Template, User, PasswordResetToken, Report, TemplateVersion, ReportVersion
+from .crud import (
+    # User CRUD
+    create_user,
+    get_user_by_email,
+    get_user_by_id,
+    update_last_login,
+    # Password Reset Token CRUD
+    create_reset_token,
+    get_valid_reset_token,
+    mark_token_used,
+    # Template CRUD
+    create_template,
+    get_template,
+    get_templates,
+    update_template,
+    delete_template,
+    get_all_tags,
+    rename_tag,
+    delete_tag,
+    # Template Version CRUD
+    create_template_version,
+    get_template_versions,
+    get_template_version,
+    restore_template_version,
+    increment_template_usage,
+    get_current_version_id,
+    delete_template_version,
+    toggle_template_pin,
+    # Report CRUD
+    create_report,
+    get_report,
+    get_user_reports,
+    delete_report,
+    create_report_version,
+    get_report_versions,
+    get_report_version,
+    set_current_report_version,
+)
+
+# Export Base so it can be imported from database module
+__all__ = [
+    "get_db",
+    "SessionLocal",
+    "engine",
+    "Base",
+    "Template",
+    "User",
+    "PasswordResetToken",
+    "Report",
+    "TemplateVersion",
+    "ReportVersion",
+    "create_user",
+    "get_user_by_email",
+    "get_user_by_id",
+    "update_last_login",
+    "create_reset_token",
+    "get_valid_reset_token",
+    "mark_token_used",
+    "create_template",
+    "get_template",
+    "get_templates",
+    "update_template",
+    "delete_template",
+    "get_all_tags",
+    "rename_tag",
+    "delete_tag",
+    "create_template_version",
+    "get_template_versions",
+    "get_template_version",
+    "restore_template_version",
+    "increment_template_usage",
+    "get_current_version_id",
+    "delete_template_version",
+    "toggle_template_pin",
+    "create_report",
+    "get_report",
+    "get_user_reports",
+    "delete_report",
+    "create_report_version",
+    "get_report_versions",
+    "get_report_version",
+    "set_current_report_version",
+]
+

@@ -1,0 +1,356 @@
+<script>
+	import { createEventDispatcher, onMount } from 'svelte';
+	import DictationButton from '$lib/components/DictationButton.svelte';
+	import Toast from '$lib/components/Toast.svelte';
+	import ReportResponseViewer from './ReportResponseViewer.svelte';
+
+	let toast;
+
+	export let availableUseCases = [];
+	// Form state - explicitly preserve these when component re-renders
+	export let selectedUseCase = '';
+	export let promptVariables = [];
+	export let variableValues; // No default - prevents Svelte from resetting on re-render
+	export let response = null;
+	export let responseModel = null;
+	export let loading = false;
+	export let reportUpdateLoading = false;
+	export let reportId = null;
+	export let versionHistoryRefreshKey = 0;
+	export let error = null;
+	export let apiKeyStatus = {
+		anthropic_configured: false,
+		groq_configured: false,
+		deepgram_configured: false,
+		has_at_least_one_model: false,
+		using_user_keys: {
+			deepgram: false
+		}
+	};
+	
+	// Export selectedModel as a bindable prop - always uses Claude
+	export let selectedModel = 'claude';
+
+	const dispatch = createEventDispatcher();
+	
+	// Ensure props are never undefined to prevent errors
+	if (typeof variableValues === 'undefined') {
+		variableValues = {};
+	}
+	
+	// Control collapsible state
+	let formExpanded = true;
+	let responseExpanded = false;
+	let hasResponseEver = false;
+	let responseVisible = false;
+	
+	// Track recording state for each variable (for glow effect)
+	let dictationStates = {};
+	
+	// Initialize dictation states for each variable
+	$: if (promptVariables.length > 0) {
+		promptVariables.forEach(variable => {
+			if (!(variable in dictationStates)) {
+				dictationStates[variable] = false;
+			}
+		});
+	}
+	
+	// Check if Claude API key is configured (always uses Claude)
+	$: hasModelKey = apiKeyStatus.anthropic_configured;
+	
+	// Auto-collapse form and expand response when response arrives
+	$: if (response || error) {
+		formExpanded = false;
+		responseExpanded = true;
+		if (response || error) {
+			hasResponseEver = true;
+		}
+	}
+
+$: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
+
+	function onUseCaseChange() {
+		variableValues = {};
+		hasResponseEver = false;
+		responseVisible = false;
+		
+		if (!selectedUseCase) {
+			promptVariables = [];
+			return;
+		}
+
+		// Dispatch event to parent to load prompt details
+		dispatch('useCaseChange');
+	}
+
+	async function handleSubmit() {
+		// Require a use case to be selected
+		if (!selectedUseCase) {
+			error = 'Please select a use case';
+			return;
+		}
+		
+		// Check if Claude API key is configured (always uses Claude)
+		if (!apiKeyStatus.anthropic_configured) {
+			error = 'Anthropic API key not configured. Please set ANTHROPIC_API_KEY environment variable.';
+			return;
+		}
+		
+		// For use cases with variables, check if they're filled
+		if (promptVariables.length > 0) {
+			const hasEmptyFields = promptVariables.some(v => !variableValues[v] || !variableValues[v].trim());
+			if (hasEmptyFields) {
+				error = 'Please fill in all required fields';
+				return;
+			}
+		}
+		
+		loading = true;
+		error = null;
+		response = null;
+		responseModel = null;
+		
+		// Dispatch submit event
+		dispatch('submit');
+	}
+
+	function handleKeyPress(e) {
+		if (e.key === 'Enter' && !e.shiftKey) {
+			e.preventDefault();
+			handleSubmit();
+		}
+	}
+
+	function toggleForm() {
+		formExpanded = !formExpanded;
+	}
+
+	function toggleResponse() {
+		responseExpanded = !responseExpanded;
+	}
+
+	function clearResponse() {
+		response = null;
+		responseModel = null;
+		error = null;
+		responseExpanded = false;
+		formExpanded = true;
+		hasResponseEver = false;
+		responseVisible = false;
+		dispatch('clearResponse');
+	}
+
+	function resetForm() {
+		// Expand form and collapse response
+		formExpanded = true;
+		responseExpanded = false;
+	hasResponseEver = false;
+	responseVisible = false;
+		// Dispatch to parent to handle the full reset
+		dispatch('resetForm');
+		dispatch('historyUpdate', { count: 0 });
+	}
+
+	function copyToClipboard() {
+		if (!response) return;
+		
+		// Copy the plain text version (not markdown)
+		navigator.clipboard.writeText(response)
+			.then(() => {
+				// Show toast notification
+				if (toast) {
+					toast.show('Copied to clipboard!');
+				}
+			})
+			.catch(err => {
+				// Failed to copy
+			});
+	}
+
+	function handleHistoryRestore(detail) {
+		if (!detail || !detail.report) return;
+		response = detail.report.report_content;
+		responseModel = detail.report.model_used;
+		hasResponseEver = true;
+		responseExpanded = true;
+		responseVisible = true;
+		dispatch('historyRestored', detail);
+	}
+</script>
+
+<div class="space-y-4">
+	<div class="flex items-center gap-3 mb-6">
+		<svg class="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+		</svg>
+		<h1 class="text-3xl font-bold text-white bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">Quick Reports</h1>
+	</div>
+	
+	<!-- Form Collapsible Section -->
+	<div class="card-dark">
+		<!-- Header -->
+		<div class="flex items-center justify-between p-4">
+			<h2 class="text-lg font-semibold text-white">Generate Report</h2>
+			
+			<div class="flex items-center gap-3">
+				<!-- Reset Button -->
+				<button
+					onclick={resetForm}
+					class="p-2 text-gray-400 hover:text-orange-400 transition-colors rounded-lg hover:bg-white/5"
+					title="Reset form"
+					aria-label="Reset form"
+				>
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+					</svg>
+				</button>
+				
+				<!-- Collapse Toggle -->
+				<button
+					onclick={toggleForm}
+					class="p-2 text-gray-400 hover:text-purple-400 transition-colors rounded-lg hover:bg-white/5"
+					title="Toggle form"
+					aria-label="Toggle form"
+				>
+					<svg
+						class="w-5 h-5 transform transition-transform {formExpanded ? 'rotate-180' : ''}"
+						fill="none"
+						stroke="currentColor"
+						viewBox="0 0 24 24"
+					>
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+					</svg>
+				</button>
+			</div>
+		</div>
+
+		<!-- Collapsible Content -->
+		<div class={formExpanded ? '' : 'hidden'}>
+			<div class="p-4 pt-0">
+				<form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} class="space-y-4">
+					<!-- Use Case Selector -->
+					<div>
+						<label for="usecase-select" class="block text-sm font-medium text-gray-300 mb-2">
+							Use Case
+						</label>
+						<select
+							id="usecase-select"
+							bind:value={selectedUseCase}
+							onchange={onUseCaseChange}
+							disabled={loading}
+							class="select-dark"
+						>
+							{#each availableUseCases as useCase}
+								<option value={useCase.name}>{useCase.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>
+							{/each}
+						</select>
+					</div>
+					
+					{#if !apiKeyStatus.anthropic_configured && !apiKeyStatus.groq_configured}
+						<p class="text-xs text-yellow-400">
+							⚠️ No API keys configured. Please set ANTHROPIC_API_KEY or GROQ_API_KEY environment variables.
+						</p>
+					{/if}
+					
+					<!-- Variable Input Fields (when use case is selected) -->
+					{#if promptVariables.length > 0}
+						<div class="space-y-3">
+							{#each promptVariables as variable}
+								<div>
+									<label for={variable} class="block text-sm font-medium text-gray-300 mb-1">
+										{variable.replace(/_/g, ' ')}
+									</label>
+									<div class="flex gap-2 dictation-field-wrapper" class:dictating-active={dictationStates[variable]}>
+										<textarea
+											id={variable}
+											bind:value={variableValues[variable]}
+											placeholder={`Enter ${variable.replace(/_/g, ' ').toLowerCase()}...`}
+											disabled={loading}
+											class="input-dark flex-1 resize-none"
+											rows="4"
+										></textarea>
+										<div class="relative group">
+											<DictationButton 
+												bind:bindText={variableValues[variable]} 
+												bind:isRecording={dictationStates[variable]} 
+												disabled={loading || !apiKeyStatus.using_user_keys?.deepgram}
+												disabledReason={!apiKeyStatus.using_user_keys?.deepgram ? 'Add Deepgram API key in Settings to enable dictation' : ''}
+											/>
+											{#if !apiKeyStatus.using_user_keys?.deepgram}
+												<div class="absolute right-full mr-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm text-gray-100 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 shadow-xl">
+													<div class="flex items-center gap-2">
+														<svg class="w-4 h-4 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+														</svg>
+														<span>Add Deepgram API key in Settings to enable dictation</span>
+													</div>
+													<!-- Arrow pointing right -->
+													<div class="absolute left-full top-1/2 -translate-y-1/2 border-4 border-transparent border-l-gray-900"></div>
+												</div>
+											{/if}
+										</div>
+									</div>
+								</div>
+							{/each}
+						</div>
+					{/if}
+					
+					<!-- Send Button - Full Width -->
+					<button
+						type="submit"
+						disabled={loading || !selectedUseCase || (promptVariables.length > 0 && promptVariables.some(v => !variableValues[v] || !variableValues[v].trim())) || !hasModelKey}
+						class="w-full btn-primary px-6 py-3"
+					>
+						{loading ? 'Sending...' : 'Send'}
+					</button>
+				</form>
+			</div>
+		</div>
+	</div>
+		<ReportResponseViewer
+			visible={responseVisible}
+			expanded={responseExpanded}
+			response={response}
+			error={error}
+			model={responseModel}
+			generationLoading={loading}
+			updateLoading={reportUpdateLoading}
+			reportId={reportId}
+			versionHistoryRefreshKey={versionHistoryRefreshKey}
+			on:toggle={toggleResponse}
+			on:openSidebar={() => dispatch('openSidebar')}
+			on:copy={copyToClipboard}
+			on:clear={clearResponse}
+			on:restore={(event) => handleHistoryRestore(event.detail)}
+			on:historyUpdate={(event) => dispatch('historyUpdate', event.detail)}
+		/>
+</div>
+
+<Toast bind:this={toast} />
+
+<style>
+	textarea {
+		font-family: inherit;
+	}
+
+	/* Glow animation for dictation */
+	.dictation-field-wrapper {
+		position: relative;
+	}
+
+	.dictation-field-wrapper.dictating-active textarea {
+		animation: dictationGlow 2s ease-in-out infinite;
+		border-color: rgba(139, 92, 246, 0.5); /* purple-500 */
+		box-shadow: 0 0 20px rgba(139, 92, 246, 0.3), 0 0 40px rgba(139, 92, 246, 0.2);
+	}
+
+	@keyframes dictationGlow {
+		0%, 100% {
+			box-shadow: 0 0 20px rgba(139, 92, 246, 0.3), 0 0 40px rgba(139, 92, 246, 0.2);
+		}
+		50% {
+			box-shadow: 0 0 30px rgba(139, 92, 246, 0.5), 0 0 60px rgba(139, 92, 246, 0.3);
+		}
+	}
+</style>

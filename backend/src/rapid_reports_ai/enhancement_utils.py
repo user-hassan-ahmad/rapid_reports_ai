@@ -1,0 +1,1636 @@
+"""
+Enhancement Utilities using Pydantic AI for structured outputs
+Cleaner, type-safe implementation with automatic validation
+"""
+
+import asyncio
+import re
+import time
+from functools import wraps
+from typing import Any, Dict, List
+from urllib.parse import urlparse
+
+from perplexity import Perplexity
+from pydantic_ai import Agent
+from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.groq import GroqModel, GroqModelSettings
+
+from .enhancement_models import (
+    Finding,
+    FindingsResponse,
+    GuidelineEntry,
+    GuidelinesResponse,
+    KeyPoint,
+    ClassificationSystem,
+    MeasurementProtocol,
+    ImagingCharacteristic,
+    DifferentialDiagnosis,
+    FollowUpImaging,
+    CompletenessAnalysis,
+    AnalysisSummary,
+    ReviewQuestion,
+    SuggestedAction,
+    ConsolidatedFinding,
+    ConsolidationResult,
+    ReportOutput,
+)
+
+# Central Model Configuration Dictionary
+# Maps generic roles to specific model identifiers for easy model swapping
+# Update this dictionary to change models without modifying code throughout the codebase
+MODEL_CONFIG = {
+    # Report Generation Models
+    "PRIMARY_REPORT_GENERATOR": "qwen/qwen3-32b",  # Primary model for report generation (Qwen 32B with thinking)
+    "FALLBACK_REPORT_GENERATOR": "claude-sonnet-4-20250514",  # Fallback model if primary fails after retries (Claude Sonnet 4)
+    
+    # Enhancement Pipeline Models
+    "FINDING_EXTRACTION": "qwen/qwen3-32b",  # Phase 1: Finding extraction and consolidation (with thinking)
+    "FINDING_EXTRACTION_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for finding extraction
+    "QUERY_GENERATION": "llama-3.3-70b-versatile",  # Query generation primary (simple list output, no thinking needed)
+    "QUERY_GENERATION_FALLBACK": "qwen/qwen3-32b",  # Query generation fallback (with thinking)
+    "GUIDELINE_SEARCH": "llama-3.3-70b-versatile",  # Phase 2: Guideline synthesis (primary)
+    "GUIDELINE_SEARCH_FALLBACK": "qwen/qwen3-32b",  # Fallback for guideline synthesis (with thinking)
+    "COMPLETENESS_ANALYZER": "qwen/qwen3-32b",  # Phase 3: Completeness analysis (primary with thinking)
+    "COMPLETENESS_ANALYZER_FALLBACK": "claude-sonnet-4-20250514",  # Fallback for completeness analysis
+}
+
+# Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
+QWEN_EXTRACTION_MODEL = MODEL_CONFIG["FINDING_EXTRACTION"]
+QWEN_ANALYSIS_MODEL = MODEL_CONFIG["COMPLETENESS_ANALYZER"]  # Note: Completeness uses Qwen as primary, Claude as fallback
+LLAMA_GUIDELINE_MODEL = MODEL_CONFIG["GUIDELINE_SEARCH"]
+LLAMA_REPORT_PRIMARY_MODEL = MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"]  # Legacy: was used for fast mode
+LLAMA_REPORT_FALLBACK_MODEL = "llama-3.3-70b-versatile"  # Legacy fallback (not currently used)
+
+
+def with_retry(max_retries=3, base_delay=2.0):
+    """Retry decorator with exponential backoff for rate limits"""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(max_retries):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    error_str = str(e).lower()
+                    
+                    # Check if it's a rate limit error
+                    if "rate" in error_str or "quota" in error_str or "429" in error_str:
+                        if attempt < max_retries - 1:
+                            delay = base_delay * (2 ** attempt)
+                            print(f"Rate limit hit (attempt {attempt + 1}/{max_retries}), retrying in {delay}s...")
+                            await asyncio.sleep(delay)
+                            continue
+                    
+                    # If not a rate limit error, raise immediately
+                    raise
+            
+            raise last_exception
+        return wrapper
+    return decorator
+
+
+def _is_parsing_error(exception: Exception) -> bool:
+    """
+    Detect if error is a parsing/validation issue that won't be fixed by retrying.
+    Returns True for structured output failures where model can't follow the schema.
+    """
+    from pydantic import ValidationError
+    from pydantic_ai.exceptions import ModelHTTPError
+    
+    # Pydantic validation errors - model output doesn't match schema
+    if isinstance(exception, ValidationError):
+        return True
+    
+    # Groq tool_use_failed errors - model can't generate proper function calls
+    if isinstance(exception, ModelHTTPError):
+        if exception.status_code == 400:
+            body_str = str(exception.body).lower()
+            # Check for known parsing error indicators
+            if 'tool_use_failed' in body_str or 'failed to call a function' in body_str:
+                return True
+    
+    return False
+
+
+def _to_plain_object(value: Any, depth: int = 0, max_depth: int = 5) -> Any:
+    """Convert SDK objects into plain Python dict/list structures"""
+    if depth > max_depth:
+        return None
+
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+
+    if isinstance(value, list):
+        return [_to_plain_object(item, depth + 1, max_depth) for item in value]
+
+    if isinstance(value, dict):
+        return {k: _to_plain_object(v, depth + 1, max_depth) for k, v in value.items()}
+
+    if hasattr(value, "to_dict"):
+        try:
+            return _to_plain_object(value.to_dict(), depth + 1, max_depth)
+        except Exception:
+            pass
+
+    if hasattr(value, "__dict__"):
+        return {
+            k: _to_plain_object(v, depth + 1, max_depth)
+            for k, v in vars(value).items()
+            if not k.startswith("_")
+        }
+
+    return str(value)
+
+
+def _log_thinking_parts(result, context: str = ""):
+    """
+    Log thinking parts from Claude's response (backend only - never sent to frontend).
+    Thinking parts are automatically handled by Pydantic AI and not included in structured output.
+    """
+    try:
+        # Access all messages including thinking parts
+        if hasattr(result, 'all_messages') and result.all_messages:
+            thinking_found = False
+            for msg in result.all_messages():
+                # Check for thinking parts in message
+                if hasattr(msg, 'parts'):
+                    for part in msg.parts:
+                        # ThinkingPart or similar thinking content
+                        if hasattr(part, '__class__') and 'thinking' in part.__class__.__name__.lower():
+                            if not thinking_found:
+                                print(f"\n{'='*80}")
+                                print(f"🧠 THINKING PROCESS ({context})")
+                                print(f"{'='*80}")
+                                thinking_found = True
+                            
+                            # Extract thinking content
+                            thinking_content = ""
+                            if hasattr(part, 'content'):
+                                thinking_content = part.content
+                            elif hasattr(part, 'text'):
+                                thinking_content = part.text
+                            else:
+                                thinking_content = str(part)
+                            
+                            # Log truncated thinking (first 1000 chars for readability)
+                            if len(thinking_content) > 1000:
+                                print(f"{thinking_content[:1000]}...")
+                                print(f"\n[Thinking truncated - total length: {len(thinking_content)} chars]")
+                            else:
+                                print(thinking_content)
+                            print(f"{'='*80}\n")
+            
+            if not thinking_found:
+                print(f"ℹ️  No thinking parts found in response ({context})")
+    except Exception as e:
+        # Silently fail - thinking logging is non-critical
+        print(f"⚠️  Could not log thinking parts ({context}): {e}")
+
+
+def _collect_url_candidates(data: Any) -> List[tuple]:
+    """Traverse structure looking for URL, title, snippet tuples"""
+    candidates = []
+
+    if isinstance(data, dict):
+        url = None
+        title = ""
+        snippet = ""
+
+        for key, value in data.items():
+            lower_key = key.lower()
+            if lower_key in {"title", "name", "heading"} and isinstance(value, str):
+                title = value
+            elif lower_key in {"snippet", "description", "summary", "text"} and isinstance(value, str):
+                if not snippet:
+                    snippet = value
+            elif lower_key in {"url", "uri", "link"} and isinstance(value, str):
+                url = value
+            else:
+                candidates.extend(_collect_url_candidates(value))
+
+        if url:
+            candidates.append((url, title, snippet))
+
+    elif isinstance(data, list):
+        for item in data:
+            candidates.extend(_collect_url_candidates(item))
+
+    return candidates
+
+
+def extract_sources(metadata_source, trusted_domains: List[str] | None = None) -> List[dict]:
+    """Extract source URLs from grounding metadata"""
+    plain_metadata = _to_plain_object(metadata_source)
+    if not plain_metadata:
+        return []
+
+    seen_urls = set()
+    sources = []
+
+    for url, title, snippet in _collect_url_candidates(plain_metadata):
+        domain = extract_domain(url)
+        if trusted_domains:
+            if not domain:
+                continue
+            if not any(allowed in domain for allowed in trusted_domains):
+                continue
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        sources.append({
+            "url": url,
+            "title": title or domain or url,
+            "snippet": snippet,
+            "domain": domain
+        })
+
+    return sources
+
+
+def extract_domain(url: str) -> str:
+    """Extract domain from URL"""
+    try:
+        parsed = urlparse(url)
+        return parsed.netloc or url
+    except Exception:
+        return url
+
+
+def build_guideline_markdown(summary: str, key_points: List[Dict[str, Any]]) -> str:
+    """Combine summary text and key points into Markdown-friendly string (DEPRECATED - use build_radiologist_guideline_markdown)"""
+    lines = []
+    if summary:
+        lines.append(summary.strip())
+
+    for point in key_points or []:
+        detail = point.get("detail", "")
+        title = point.get("title", "")
+        if not detail:
+            continue
+        if title:
+            lines.append(f"- **{title}** — {detail}")
+        else:
+            lines.append(f"- {detail}")
+
+    return "\n\n".join(lines).strip()
+
+
+def build_radiologist_guideline_markdown(guideline_entry: GuidelineEntry) -> str:
+    """Build structured markdown from radiologist-focused guideline structure"""
+    sections = []
+    
+    # Diagnostic Overview
+    if guideline_entry.diagnostic_overview:
+        sections.append(guideline_entry.diagnostic_overview.strip())
+    
+    # Classification Systems
+    if guideline_entry.classification_systems:
+        sections.append("**Classification & Grading:**")
+        for system in guideline_entry.classification_systems:
+            sections.append(f"- **{system.name}** — {system.grade_or_category}: {system.criteria}")
+    
+    # Measurement Protocols
+    if guideline_entry.measurement_protocols:
+        sections.append("**Measurement Protocols:**")
+        for measure in guideline_entry.measurement_protocols:
+            sections.append(f"- **{measure.parameter}** — {measure.technique}")
+            if measure.normal_range:
+                sections.append(f"  - Normal: {measure.normal_range}")
+            if measure.threshold:
+                sections.append(f"  - Threshold: {measure.threshold}")
+    
+    # Imaging Characteristics
+    if guideline_entry.imaging_characteristics:
+        sections.append("**Key Imaging Features:**")
+        for char in guideline_entry.imaging_characteristics:
+            sections.append(f"- **{char.feature}** — {char.description} ({char.significance})")
+    
+    # Differential Diagnoses
+    if guideline_entry.differential_diagnoses:
+        sections.append("**Differential Diagnoses (Imaging Features):**")
+        for ddx in guideline_entry.differential_diagnoses:
+            sections.append(f"- **{ddx.diagnosis}** — {ddx.imaging_features}")
+            if ddx.supporting_findings:
+                sections.append(f"  - Supporting: {ddx.supporting_findings}")
+    
+    # Follow-up Imaging
+    if guideline_entry.follow_up_imaging:
+        sections.append("**Follow-up Imaging:**")
+        for followup in guideline_entry.follow_up_imaging:
+            sections.append(f"- **{followup.indication}** — {followup.modality}, {followup.timing}")
+            if followup.technical_specs:
+                sections.append(f"  - Technical: {followup.technical_specs}")
+    
+    return "\n\n".join(sections)
+
+
+
+COMPREHENSIVE_RADIOLOGY_DOMAINS = [
+    # == Core UK Professional & Guideline Bodies ==
+    "rcr.ac.uk",        # The Royal College of Radiologists (Key guidelines, e.g., iRefer)
+    "nice.org.uk",      # National Institute for Health and Care Excellence (All UK guidance)
+    "bir.org.uk",       # British Institute of Radiology
+
+    # == British Sub-Specialty Groups ==
+    "bsgar.org",        # British Society of Gastrointestinal & Abdominal Radiology
+    "bsir.org",         # British Society of Interventional Radiology
+    "bsnr.org.uk",      # British Society of Neuroradiologists
+    "bspr.org.uk",      # British Society of Paediatric Radiology
+    "bssr.org.uk",      # British Society of Skeletal Radiologists
+    "bsti.org.uk",      # British Society of Thoracic Imaging
+    "bsci.org.uk",      # British Society of Cardiovascular Imaging
+    "bsbr.org.uk",      # British Society of Breast Radiology
+    "bshni.org.uk",     # British Society of Head and Neck Imaging
+    "bnms.org.uk",      # British Nuclear Medicine Society
+
+    # == User-Requested Global Resources ==
+    "radiopaedia.org",  # Radiopaedia (Global educational resource)
+    "rsna.org",         # Radiological Society of North America (Major US/Global body)
+
+    # == To Include PubMed Abstracts ==
+    "pubmed.ncbi.nlm.nih.gov",
+]
+
+
+def build_search_query(finding: str) -> str:
+    """Create a single, focused search query for clinically actionable findings (DEPRECATED - use generate_radiology_search_queries)"""
+    finding = finding.strip()
+    if not finding:
+        return "clinical radiology finding UK guidelines"
+
+    # Focus on management and decision-making for actionable findings
+    return f"{finding} UK radiology management guidelines clinical decision making"
+
+
+async def generate_radiology_search_queries(finding: str, api_key: str) -> tuple[List[str], str]:
+    """
+    Generate 2-3 UK-focused radiology search queries using AI with fallback support.
+    Uses Llama as primary (simple list output), falls back to Qwen with thinking if primary fails.
+    
+    Args:
+        finding: The radiological finding to search for
+        api_key: Groq API key
+        
+    Returns:
+        Tuple of (list of 2-3 focused search queries, model_name_used)
+    """
+    import os
+    
+    start_time = time.time()
+    print(f"generate_radiology_search_queries: Starting for finding='{finding}'")
+    
+    # Temporarily set the environment variable
+    old_api_key = os.environ.get('GROQ_API_KEY')
+    os.environ['GROQ_API_KEY'] = api_key
+    
+    system_prompt = (
+        "Generate 3-5 focused search queries for radiology guidelines.\n\n"
+        
+        "REQUIREMENTS:\n"
+        "• ADULT radiology only - always include 'adult' keyword\n"
+        "• Use varied terminology: include synonyms, alternative phrasings, and related terms\n"
+        "• Each query can target ONE aspect OR combine related aspects\n"
+        "• 8-15 words per query - use descriptive phrases\n"
+        
+        "QUERY STRATEGY:\n"
+        "Query 1: Classification/grading systems\n"
+        "Query 2: Measurement techniques with thresholds and protocols\n"
+        "Query 3: Differential diagnoses with distinguishing imaging features\n"
+        "Query 4: Imaging characteristics and technical parameters\n"
+        "Query 5: Follow-up imaging protocols and surveillance (if applicable)\n\n"
+        
+        "EXCLUDE: Pediatric systems, fetal guidelines\n"
+        
+        "FORMAT: ['query1', 'query2', 'query3', 'query4', 'query5']"
+    )
+    
+    # Try primary model first with explicit retry logic (Llama - simple list output, no thinking needed)
+    # Retry at least 3 times regardless of error type before falling back
+    last_exception = None
+    max_retries = 3
+    
+    for attempt in range(max_retries):
+        try:
+            # Create Groq model without thinking (Llama primary - simple list output)
+            model = GroqModel(MODEL_CONFIG["QUERY_GENERATION"])
+            agent = Agent(
+                model,
+                output_type=list[str],
+                system_prompt=system_prompt,
+            )
+            result = await agent.run(
+                f"Generate 3-5 focused search queries for: {finding}",
+                model_settings={"temperature": 0.3, "max_tokens": 300}
+            )
+            
+            queries = result.output
+            
+            # Ensure we have a list
+            if not isinstance(queries, list):
+                queries = [queries]
+            
+            # Limit to 5 queries
+            queries = queries[:5]
+            
+            elapsed = time.time() - start_time
+            model_used = MODEL_CONFIG['QUERY_GENERATION']
+            print(f"generate_radiology_search_queries: ✅ Completed with {model_used} (primary, attempt {attempt + 1}) in {elapsed:.2f}s")
+            for i, q in enumerate(queries, 1):
+                print(f"  Query {i}: {q}")
+            
+            return queries, model_used
+            
+        except Exception as e:
+            last_exception = e
+            if attempt < max_retries - 1:
+                # Retry with exponential backoff
+                delay = 2.0 * (2 ** attempt)
+                print(f"⚠️ Primary model attempt {attempt + 1}/{max_retries} failed ({type(e).__name__}) - retrying in {delay:.1f}s...")
+                print(f"  Error: {str(e)[:200]}")
+                await asyncio.sleep(delay)
+            else:
+                # All retries exhausted
+                print(f"⚠️ Primary model failed after {max_retries} attempts ({type(e).__name__}) - falling back to {MODEL_CONFIG['QUERY_GENERATION_FALLBACK']} (with thinking)")
+                print(f"  Final error: {str(e)[:200]}")
+    
+    # If we get here, all retries failed - fallback to Qwen
+    try:
+        # Fallback to Qwen with thinking
+        groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
+        model = GroqModel(MODEL_CONFIG["QUERY_GENERATION_FALLBACK"])
+        agent = Agent(
+            model,
+            output_type=list[str],
+            system_prompt=system_prompt,
+            model_settings=groq_settings,
+        )
+        result = await agent.run(
+            f"Generate 3-5 focused search queries for: {finding}",
+            model_settings={"temperature": 0.3, "max_tokens": 300}
+        )
+        
+        # Log thinking parts (backend only - not sent to frontend)
+        _log_thinking_parts(result, "Search Query Generation - Qwen (fallback)")
+        
+        queries = result.output
+        if not isinstance(queries, list):
+            queries = [queries]
+        queries = queries[:5]
+        
+        elapsed = time.time() - start_time
+        model_used = MODEL_CONFIG['QUERY_GENERATION_FALLBACK']
+        print(f"generate_radiology_search_queries: ✅ Completed with {model_used} (fallback) in {elapsed:.2f}s")
+        return queries, model_used
+        
+    except Exception as fallback_error:
+        # Both models failed - return simple fallback query
+        print(f"❌ Fallback model also failed: {type(fallback_error).__name__}")
+        import traceback
+        print(traceback.format_exc())
+        fallback_query = f"{finding} UK radiology imaging classification measurement guidelines"
+        print(f"  Falling back to simple query: {fallback_query}")
+        return [fallback_query], "fallback-simple"
+    finally:
+        if old_api_key is not None:
+            os.environ['GROQ_API_KEY'] = old_api_key
+        else:
+            os.environ.pop('GROQ_API_KEY', None)
+
+
+def _result_to_dict(result: Any) -> Dict[str, Any]:
+    """Convert Perplexity result objects into dictionaries"""
+    if isinstance(result, dict):
+        data = dict(result)
+    else:
+        data = {}
+        for field in ("title", "url", "snippet", "text", "content", "score", "date", "published_at"):
+            if hasattr(result, field):
+                data[field] = getattr(result, field)
+        if not data and hasattr(result, "__dict__"):
+            data.update({
+                k: v for k, v in vars(result).items()
+                if not k.startswith("_")
+            })
+        if not data:
+            data["text"] = str(result)
+    return data
+
+
+def normalize_perplexity_results(search_response: Any, queries: List[str]) -> List[Dict[str, Any]]:
+    """Flatten and normalize multi-query Perplexity results"""
+    raw_results = getattr(search_response, "results", None)
+    normalized: List[Dict[str, Any]] = []
+
+    if isinstance(raw_results, list):
+        # Multi-query returns list of lists
+        for query_idx, query_results in enumerate(raw_results):
+            query_text = queries[query_idx] if query_idx < len(queries) else queries[0] if queries else ""
+            if isinstance(query_results, list):
+                for item in query_results:
+                    data = _result_to_dict(item)
+                    data.setdefault("title", data.get("name") or data.get("url") or "")
+                    snippet_text = data.get("text") or data.get("content") or ""
+                    if snippet_text and len(snippet_text) > 320:
+                        snippet_text = snippet_text[:317].rstrip() + "..."
+                    data.setdefault("snippet", snippet_text)
+                    data.setdefault("url", data.get("link") or "")
+                    data["query"] = query_text
+                    data["domain"] = extract_domain(data.get("url", ""))
+                    normalized.append(data)
+            else:
+                data = _result_to_dict(query_results)
+                data["query"] = query_text
+                data["domain"] = extract_domain(data.get("url", ""))
+                normalized.append(data)
+    elif raw_results:
+        # Single list
+        query_text = queries[0] if queries else ""
+        items = raw_results if isinstance(raw_results, list) else [raw_results]
+        for item in items:
+            data = _result_to_dict(item)
+            data["query"] = query_text
+            data["domain"] = extract_domain(data.get("url", ""))
+            normalized.append(data)
+
+    unique_results = []
+    seen_urls = set()
+    for item in normalized:
+        url = item.get("url", "")
+        if url and url in seen_urls:
+            continue
+        if url:
+            seen_urls.add(url)
+        unique_results.append(item)
+
+    return unique_results
+
+
+async def _extract_consolidated_with_model(
+    model_name: str,
+    model_label: str,
+    report_content: str,
+    api_key: str
+) -> ConsolidationResult:
+    """
+    Helper function to extract consolidated findings with a specific model.
+    
+    Args:
+        model_name: Groq model identifier (e.g., "qwen/qwen3-32b")
+        model_label: Human-readable model name for logging
+        report_content: The generated radiology report text
+        api_key: Groq API key
+    
+    Returns:
+        ConsolidationResult with consolidated findings
+    """
+    import os
+    
+    start_time = time.time()
+    print(f"extract_consolidated_findings: Attempting with {model_label}...")
+    
+    old_api_key = os.environ.get('GROQ_API_KEY')
+    os.environ['GROQ_API_KEY'] = api_key
+    
+    try:
+        # Create Groq model with thinking enabled
+        groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
+        model = GroqModel(model_name)
+        
+        agent = Agent(
+            model,
+            output_type=ConsolidationResult,
+            system_prompt=(
+                "You are an expert radiologist extracting findings that require radiological assessment and characterization.\n\n"
+                "TASK: Identify up to 5 distinct findings requiring diagnostic imaging assessment, classification, or follow-up protocols.\n"
+                "If the report is completely normal, return an empty findings list.\n\n"
+                "CRITICAL: Use broad categorical terms only - NO specific descriptors\n"
+                "❌ AVOID: Exact rib numbers (e.g., '6th-9th rib fractures'), specific measurements, detailed anatomical locations\n"
+                "✅ USE: Broad terms (e.g., 'acute rib fractures', 'chronic rib fractures', 'multiple rib fractures')\n\n"
+                "INCLUDE:\n"
+                "- Findings requiring classification/grading systems\n"
+                "- Lesions needing imaging characterization\n"
+                "- Acute injuries (fractures, dislocations)\n"
+                "- Vascular abnormalities (stenosis, aneurysms, thrombus)\n"
+                "- Findings requiring follow-up imaging\n\n"
+                "EXCLUDE:\n"
+                "- Negative or normal findings\n"
+                "- Benign incidental findings with no workup needed\n"
+                "- Age-appropriate degenerative changes\n"
+                "- Technical artifacts\n\n"
+                "GROUPING:\n"
+                "- ONLY group multiple instances of the SAME finding type (e.g., multiple rib fractures → 'multiple rib fractures')\n"
+                "- Keep distinct finding types SEPARATE, even if they are related complications or share a common cause\n"
+                "- Use contextual descriptors (acute, traumatic, etc.) but maintain separate entries for each distinct finding type\n\n"
+                "OUTPUT:\n"
+                "- Use broad categorical terms only\n"
+                "- Return up to 5 findings, prioritizing those needing assessment protocols\n"
+            ),
+            model_settings=groq_settings,
+        )
+        
+        result = await agent.run(
+            f"Extract and consolidate findings from this report:\n\n{report_content}",
+            model_settings={
+                "temperature": 0.2,
+                "max_tokens": 2048,
+            }
+        )
+        
+        # Log thinking parts (backend only - not sent to frontend)
+        _log_thinking_parts(result, f"{model_label} - Finding Extraction")
+        
+        consolidated_result: ConsolidationResult = result.output
+        
+        print(f"  └─ Consolidated into {len(consolidated_result.findings)} findings:")
+        for idx, finding in enumerate(consolidated_result.findings, start=1):
+            print(f"    {idx}. {finding.finding}")
+        
+        elapsed = time.time() - start_time
+        print(f"extract_consolidated_findings: ✅ Completed with {model_label} in {elapsed:.2f}s")
+        return consolidated_result
+        
+    finally:
+        if old_api_key is not None:
+            os.environ['GROQ_API_KEY'] = old_api_key
+        else:
+            os.environ.pop('GROQ_API_KEY', None)
+
+
+@with_retry(max_retries=3, base_delay=2.0)
+async def extract_consolidated_findings(report_content: str, api_key: str) -> ConsolidationResult:
+    """
+    Extract and consolidate radiological findings with intelligent fallback.
+    Uses configured finding extraction model first, falls back to guideline search model on parsing errors or after retry exhaustion.
+
+    Args:
+        report_content: The generated radiology report text
+        api_key: Groq API key
+
+    Returns:
+        ConsolidationResult with 3-5 consolidated findings optimized for guideline searches
+    """
+    try:
+        # Try primary extraction model first
+        return await _extract_consolidated_with_model(
+            MODEL_CONFIG["FINDING_EXTRACTION"],
+            f"{MODEL_CONFIG['FINDING_EXTRACTION']} (Primary)",
+            report_content,
+            api_key
+        )
+    except Exception as e:
+        # Determine why we're falling back
+        if _is_parsing_error(e):
+            print(f"⚠️ Primary extraction model parsing error detected - immediate fallback to {MODEL_CONFIG['FINDING_EXTRACTION_FALLBACK']}")
+            print(f"  Error: {type(e).__name__}: {str(e)[:200]}")
+        else:
+            print(f"⚠️ Primary extraction model failed after retries ({type(e).__name__}) - falling back to {MODEL_CONFIG['FINDING_EXTRACTION_FALLBACK']}")
+            print(f"  Error: {str(e)[:200]}")
+        
+        # Fallback to finding extraction fallback model
+        try:
+            return await _extract_consolidated_with_model(
+                MODEL_CONFIG["FINDING_EXTRACTION_FALLBACK"],
+                f"{MODEL_CONFIG['FINDING_EXTRACTION_FALLBACK']} (fallback)",
+                report_content,
+                api_key
+            )
+        except Exception as fallback_error:
+            # Both models failed - re-raise the original error with context
+            print(f"❌ Llama fallback also failed: {type(fallback_error).__name__}")
+            import traceback
+            print(traceback.format_exc())
+            raise Exception(f"Finding extraction failed with both Qwen and Llama. Original error: {e}") from e
+
+
+@with_retry(max_retries=3, base_delay=2.0)
+async def search_guidelines_for_findings(
+    consolidated_result: ConsolidationResult,
+    report_content: str,
+    api_key: str
+) -> List[dict]:
+    """
+    Search Perplexity and synthesize guidelines for consolidated findings.
+    """
+    if not consolidated_result.findings:
+        return []
+
+    start_time = time.time()
+    print(f"search_guidelines_for_findings: Processing {len(consolidated_result.findings)} consolidated findings")
+
+    import os
+
+    old_api_key = None
+    try:
+        old_api_key = os.environ.get("GROQ_API_KEY")
+        os.environ["GROQ_API_KEY"] = api_key
+
+        # Create Groq model (Llama primary - no thinking needed for complex structured output)
+        groq_model = GroqModel(MODEL_CONFIG["GUIDELINE_SEARCH"])
+
+        # Guidelines synthesis agent - Radiologist-to-radiologist diagnostic perspective
+        guidelines_system_prompt = (
+            "You are a senior UK consultant radiologist providing diagnostic imaging guidance to NHS colleagues.\n\n"
+            
+            "PERSPECTIVE: Radiologist-to-radiologist - focus on imaging characterization that informs diagnostic and management decisions.\n\n"
+            
+            "FOCUS: Highlight significant/impactful information and criteria that support or direct patient care:\n"
+            "• Actionable thresholds and decision points (e.g., size criteria for follow-up, severity grading)\n"
+            "• Clinically relevant imaging features that guide management\n"
+            "• Classification systems that inform treatment decisions\n"
+            "• Measurement protocols with management implications\n"
+            "• Follow-up recommendations based on imaging findings\n\n"
+            
+            "CRITICAL REQUIREMENTS:\n"
+            "• ADULT radiology only (age 16+) - EXCLUDE pediatric systems (SFU, UTD)\n"
+            "• UK guidelines FIRST (RCR, NICE, BIR, British societies) - international sources supplement\n"
+            "• PRIORITIZE reputable sources: professional societies, academic institutions, peer-reviewed guidelines\n"
+            "• DISCARD or de-prioritize low-quality sources: blogs, forums, non-peer-reviewed content\n"
+            "• Use only provided search evidence - weight higher-quality sources more heavily\n\n"
+            
+            "SOURCE QUALITY PRIORITY:\n"
+            "1. UK professional societies (RCR, NICE, BIR, British specialty societies)\n"
+            "2. International professional societies (RSNA, ACR, ECR, etc.)\n"
+            "3. Academic institutions and peer-reviewed sources (Radiopaedia, PubMed)\n"
+            "4. Use lower-quality sources only if no reputable sources available\n\n"
+            
+            "RETURN GuidelineEntry WITH:\n\n"
+            
+            "1. diagnostic_overview (2-3 sentences):\n"
+            "   What this represents on imaging, key features, diagnostic considerations\n\n"
+            
+            "2. classification_systems (0-2):\n"
+            "   Named systems with year (Fleischner 2017, Bosniak 2019, TI-RADS, LI-RADS)\n"
+            "   Include grade/category with imaging criteria. Omit if no criteria/system exists.\n\n"
+            
+            "3. measurement_protocols (2-4):\n"
+            "   Specific techniques with numeric thresholds and units that inform management\n"
+            "   Focus on actionable thresholds (e.g., 'long axis on axial CT, normal < 10mm, abnormal > 15mm triggers follow-up')\n\n"
+            
+            "4. imaging_characteristics (4-6):\n"
+            "   Key features with modality-specific details (CT density, MRI signal, US echogenicity)\n"
+            "   Emphasize features that impact diagnosis or management decisions\n"
+            "   Include technical considerations (phase, windowing) when clinically significant\n\n"
+            
+            "5. differential_diagnoses (2-4):\n"
+            "   Diagnoses WITH distinguishing imaging features\n"
+            "   Focus: 'How to tell them apart on imaging'\n\n"
+            
+            "6. follow_up_imaging (if applicable):\n"
+            "   Modality, timing from UK guidelines, technical parameters\n"
+            "   Focus on recommendations that guide patient management\n\n"
+            
+            "EMPHASIZE: Significant/impactful criteria, actionable thresholds, classification systems that inform care, UK adaptations\n"
+            "PRIORITIZE: Information that supports diagnostic decisions or directs management pathways"
+        )
+
+        guideline_agent = Agent(
+            groq_model,
+            output_type=GuidelineEntry,
+            system_prompt=guidelines_system_prompt,
+        )
+
+        perplexity_client = Perplexity()
+        guidelines_results: List[dict] = []
+        total_sources = 0
+        # Track which models were used
+        query_models_used = set()
+        synthesis_models_used = set()
+
+        for idx, consolidated_finding in enumerate(consolidated_result.findings, start=1):
+            print(f"  └─ Processing consolidated finding {idx}: {consolidated_finding.finding}")
+
+            # Generate 2-3 focused search queries using AI
+            queries, query_model = await generate_radiology_search_queries(consolidated_finding.finding, api_key)
+            query_models_used.add(query_model)
+            print(f"      Generated {len(queries)} queries")
+            for q_idx, q in enumerate(queries, 1):
+                print(f"        Query {q_idx}: {q}")
+
+            try:
+                # Multi-query search with Perplexity
+                search_response = await asyncio.to_thread(
+                    lambda: perplexity_client.search.create(
+                        query=queries,  # List of 3-5 queries
+                        max_results=5,   # 5 per query = 15-25 total results
+                        max_tokens_per_page=1024,
+                        search_language_filter=["en"],
+                        search_domain_filter=COMPREHENSIVE_RADIOLOGY_DOMAINS,
+                    )
+                )
+            except Exception as search_error:
+                print(f"⚠️  Perplexity search error for finding {idx}: {search_error}")
+                continue
+
+            search_results = normalize_perplexity_results(search_response, queries)
+            if not search_results:
+                print(f"⚠️  No search results for finding {idx}")
+                continue
+
+            total_sources += len(search_results)
+            print(f"      Retrieved {len(search_results)} search results")
+
+            # Build evidence context
+            context_lines = []
+            for rank, item in enumerate(search_results[:12], start=1):
+                title = (item.get("title") or "").strip()
+                snippet = (item.get("snippet") or "").strip()
+                if snippet and len(snippet) > 280:
+                    snippet = snippet[:277].rstrip() + "..."
+                url = (item.get("url") or "").strip()
+                query = (item.get("query") or "").strip()
+                context_lines.append(f"[{rank}] Query: {query}\nTitle: {title}\nSummary: {snippet}\nURL: {url}\n")
+
+            evidence_block = "\n".join(context_lines) if context_lines else "No supporting evidence."
+
+            # Guidelines synthesis prompt
+            queries_text = "\n".join(f"  {i}. {q}" for i, q in enumerate(queries, 1))
+            prompt = (
+                f"Consolidated finding: {consolidated_finding.finding}\n"
+                f"Search queries used:\n{queries_text}\n\n"
+                f"SEARCH EVIDENCE:\n{evidence_block}\n\n"
+                "Return a GuidelineEntry JSON object with radiologist-focused diagnostic information."
+            )
+
+            try:
+                # Try primary model first with retry logic
+                @with_retry(max_retries=3, base_delay=2.0)
+                async def _try_synthesis():
+                    result = await guideline_agent.run(
+                        prompt,
+                        model_settings={"temperature": 0.2, "max_tokens": 1600},
+                    )
+                    # Log thinking parts if available (backend only - not sent to frontend)
+                    # Note: Llama primary doesn't use thinking, so no thinking parts to log
+                    # _log_thinking_parts(result, f"Guideline Search - Primary - Finding {idx}")
+                    return result
+                
+                result = await _try_synthesis()
+                synthesis_model = MODEL_CONFIG["GUIDELINE_SEARCH"]
+            except Exception as synthesis_error:
+                # Primary model failed - try fallback
+                if _is_parsing_error(synthesis_error):
+                    print(f"⚠️ Primary model parsing error for finding {idx} - falling back to {MODEL_CONFIG['GUIDELINE_SEARCH_FALLBACK']}")
+                else:
+                    print(f"⚠️ Primary model failed after retries for finding {idx} - falling back to {MODEL_CONFIG['GUIDELINE_SEARCH_FALLBACK']}")
+                
+                try:
+                    # Fallback to Qwen with thinking for guideline synthesis
+                    groq_settings_fallback = GroqModelSettings(groq_reasoning_format='parsed')
+                    fallback_model = GroqModel(MODEL_CONFIG["GUIDELINE_SEARCH_FALLBACK"])
+                    fallback_agent = Agent(
+                        fallback_model,
+                        output_type=GuidelineEntry,
+                        system_prompt=guidelines_system_prompt,
+                        model_settings=groq_settings_fallback,
+                    )
+                    result = await fallback_agent.run(
+                        prompt,
+                        model_settings={"temperature": 0.2, "max_tokens": 1600},
+                    )
+                    
+                    # Log thinking parts if available (backend only - not sent to frontend)
+                    _log_thinking_parts(result, f"Guideline Search - Qwen (fallback) - Finding {idx}")
+                    
+                    synthesis_model = MODEL_CONFIG["GUIDELINE_SEARCH_FALLBACK"]
+                    print(f"      ✅ Guideline synthesis completed with {synthesis_model} (fallback)")
+                except Exception as fallback_error:
+                    print(f"❌ Both primary and fallback models failed for finding {idx}: {fallback_error}")
+                    continue
+
+            synthesis_models_used.add(synthesis_model)
+            guideline_entry: GuidelineEntry = result.output
+            print(f"      Generated guideline: {guideline_entry.diagnostic_overview[:160]}...")
+
+            guideline_entry = guideline_entry.model_copy(
+                update={"finding_number": idx, "finding": consolidated_finding.finding}
+            )
+
+            # Build new radiologist-focused markdown
+            guideline_markdown = build_radiologist_guideline_markdown(guideline_entry)
+
+            # Build sources (organic only - no hardcoded fallbacks)
+            sources = []
+            for item in search_results[:10]:
+                sources.append({
+                    "url": item.get("url", ""),
+                    "title": item.get("title", ""),
+                    "snippet": "",
+                    "domain": item.get("domain", ""),
+                    "query": item.get("query", ""),
+                })
+
+            # Extract unique domains (no fallback)
+            unique_domains = list(dict.fromkeys(
+                source["domain"] for source in sources if source.get("domain")
+            ))
+            discovered_bodies = [
+                {"name": domain, "domain": domain, "reason": "Referenced in search evidence", "priority": "medium"}
+                for domain in unique_domains[:3]
+            ]
+            body_names = unique_domains[:3]
+
+            # Debug logging for structured fields
+            print(f"📊 DEBUG - Guideline for '{consolidated_finding.finding}':")
+            print(f"  classification_systems: {len(guideline_entry.classification_systems)} items")
+            if guideline_entry.classification_systems:
+                for cs in guideline_entry.classification_systems:
+                    print(f"    • {cs.name} - {cs.grade_or_category}")
+            else:
+                print(f"    (empty)")
+            print(f"  measurement_protocols: {len(guideline_entry.measurement_protocols)} items")
+            print(f"  imaging_characteristics: {len(guideline_entry.imaging_characteristics)} items")
+            print(f"  differential_diagnoses: {len(guideline_entry.differential_diagnoses)} items")
+            print(f"  follow_up_imaging: {len(guideline_entry.follow_up_imaging or [])} items")
+            if guideline_entry.follow_up_imaging:
+                for fi in guideline_entry.follow_up_imaging:
+                    print(f"    • {fi.modality} at {fi.timing}")
+            else:
+                print(f"    (empty)")
+            
+            guidelines_results.append({
+                "finding": {
+                    "finding": consolidated_finding.finding,
+                    "guideline_focus": "diagnostic imaging guidance",
+                    "specialty": "general radiology",
+                    "search_query": " | ".join(queries),  # Show all queries used
+                },
+                "discovered_bodies": discovered_bodies,
+                "body_names": body_names,
+                "reasoning": "Synthesized from UK-focused multi-query search evidence",
+                "guideline_summary": guideline_markdown,
+                "diagnostic_overview": guideline_entry.diagnostic_overview,
+                "sources": sources[:5],
+                # New structured fields
+                "classification_systems": [cs.model_dump() for cs in guideline_entry.classification_systems],
+                "measurement_protocols": [mp.model_dump() for mp in guideline_entry.measurement_protocols],
+                "imaging_characteristics": [ic.model_dump() for ic in guideline_entry.imaging_characteristics],
+                "differential_diagnoses": [dd.model_dump() for dd in guideline_entry.differential_diagnoses],
+                "follow_up_imaging": [fi.model_dump() for fi in (guideline_entry.follow_up_imaging or [])],
+            })
+
+        elapsed = time.time() - start_time
+        # Build model summary string
+        query_models_str = ", ".join(sorted(query_models_used)) if query_models_used else "none"
+        synthesis_models_str = ", ".join(sorted(synthesis_models_used)) if synthesis_models_used else "none"
+        models_summary = f"Query: {query_models_str} | Synthesis: {synthesis_models_str}"
+        print(f"search_guidelines_for_findings: Completed with {len(guidelines_results)} guidelines from {total_sources} sources in {elapsed:.2f}s ({models_summary})")
+        return guidelines_results
+
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in guideline search: {e}")
+        print(traceback.format_exc())
+        return []
+    finally:
+        if old_api_key is not None:
+            os.environ['GROQ_API_KEY'] = old_api_key
+        else:
+            os.environ.pop('GROQ_API_KEY', None)
+
+
+async def _analyze_completeness_with_model(
+    model_name: str,
+    model_label: str,
+    report_content: str,
+    guidelines_data: List[dict],
+    anthropic_api_key: str,
+    use_groq: bool = False,
+    groq_api_key: str | None = None
+) -> dict:
+    """
+    Helper function to analyze report completeness with specified model.
+    Supports both Anthropic (Claude) and Groq (Qwen) models.
+    
+    Args:
+        model_name: Model identifier (Anthropic or Groq)
+        model_label: Human-readable model name for logging
+        report_content: The report text
+        guidelines_data: Guidelines found for the report
+        anthropic_api_key: Anthropic API key (if use_groq=False)
+        use_groq: Whether to use Groq API instead of Anthropic
+        groq_api_key: Groq API key (if use_groq=True)
+    
+    Returns:
+        Dictionary with analysis and structured feedback
+    """
+    import os
+    
+    start_time = time.time()
+    print(f"analyze_report_completeness: Attempting with {model_label}...")
+    print(f"  └─ Received {len(guidelines_data)} guideline entries for completeness analysis")
+    
+    if use_groq:
+        old_api_key = os.environ.get('GROQ_API_KEY')
+        os.environ['GROQ_API_KEY'] = groq_api_key
+    else:
+        old_api_key = os.environ.get('ANTHROPIC_API_KEY')
+        os.environ['ANTHROPIC_API_KEY'] = anthropic_api_key
+    
+    try:
+        if use_groq:
+            from pydantic_ai.models.groq import GroqModel, GroqModelSettings
+            # Create Groq model with thinking enabled
+            groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
+            model = GroqModel(model_name)
+        else:
+            model = AnthropicModel(model_name)
+        
+        agent = Agent(
+            model,
+            output_type=CompletenessAnalysis,
+            system_prompt=(
+                "You are an expert radiologist reviewing imaging reports for quality and completeness "
+                "of findings documentation.\n\n"
+                "Your role is to assess whether the radiologist has:\n"
+                "• Systematically documented all imaging findings visible on the study\n"
+                "• Clearly described anatomic locations, measurements, and characteristics\n"
+                "• Provided appropriate differential considerations based on imaging alone\n"
+                "• Communicated findings clearly for clinical application\n\n"
+                "Do NOT evaluate whether clinical information is provided or whether clinical context "
+                "is present in the report. The radiologist interprets the imaging; clinical correlation "
+                "is the ordering clinician's responsibility.\n\n"
+                "Produce structured feedback with three parts:\n"
+                "• Summary – plain-language overview of completeness, clarity, and imaging interpretation quality\n"
+                "• Questions – 2-4 review prompts to verify imaging findings are adequately characterized "
+                "(specific to scan modality and anatomic region)\n"
+                "• Suggested Actions – optional concrete edits when specific wording would improve clarity "
+                "of imaging description. Each suggested action MUST include:\n"
+                "  - id: kebab-case identifier\n"
+                "  - title: concise action label (≤10 words)\n"
+                "  - details: 1-2 sentence explanation\n"
+                "  - patch: EXPLICIT TEXT to add/modify in the report (this is REQUIRED - provide the actual text snippet that should be added or used to replace existing text)\n\n"
+                "IMPORTANT: For suggested_actions, you MUST provide specific, actionable text in the 'patch' field. "
+                "Examples:\n"
+                "- patch: 'The nodule measures 8 mm in diameter'\n"
+                "- patch: 'No aggressive bone lesions or fractures identified'\n"
+                "- patch: 'Recommend follow-up CT in 3 months to assess for interval change'\n\n"
+                "Always provide a summary. Include questions focused on verification of imaging interpretation. "
+                "Only include suggested_actions when specific changes would improve the report's imaging documentation, "
+                "and ALWAYS include the actual text patch for each action."
+            ),
+            model_settings=groq_settings if use_groq else None,
+        )
+        
+        findings_summary = "\n".join(
+            f"- {g['finding']['finding']}: {g.get('guideline_summary', '')[:200]}"
+            for g in guidelines_data[:3]
+        )
+        print(f"  └─ Prepared guideline highlights (truncated):\n{findings_summary[:400] or '- None available.'}")
+        
+        prompt = (
+            f"REPORT:\n{report_content}\n\n"
+            f"GUIDELINE HIGHLIGHTS:\n{findings_summary or '- No guideline highlights available.'}\n\n"
+            "Analyze this report for completeness and provide structured feedback."
+        )
+        
+        result = await agent.run(
+            prompt,
+            model_settings={
+                "max_tokens": 1500,
+                "temperature": 0,
+                "top_p": 1,
+            }
+        )
+        
+        # Log thinking parts (backend only - not sent to frontend)
+        if use_groq:
+            _log_thinking_parts(result, f"{model_label} - Completeness Analysis")
+        
+        completeness: CompletenessAnalysis = result.output
+        
+        elapsed = time.time() - start_time
+        print(f"analyze_report_completeness: ✅ Completed with {model_label} in {elapsed:.2f}s")
+        print(f"  └─ Summary title: {completeness.summary.title}")
+        print(f"  └─ Questions generated: {len(completeness.questions)}")
+        print(f"  └─ Suggested actions generated: {len(completeness.suggested_actions)}")
+        
+        # Convert to format expected by frontend
+        return {
+            "analysis": f"{completeness.summary.title}\n\n{completeness.summary.details}",
+            "structured": {
+                "summary": completeness.summary.model_dump(),
+                "questions": [q.model_dump() for q in completeness.questions],
+                "suggested_actions": [a.model_dump() for a in completeness.suggested_actions],
+            }
+        }
+    finally:
+        if use_groq:
+            if old_api_key is not None:
+                os.environ['GROQ_API_KEY'] = old_api_key
+            else:
+                os.environ.pop('GROQ_API_KEY', None)
+        else:
+            if old_api_key is not None:
+                os.environ['ANTHROPIC_API_KEY'] = old_api_key
+            else:
+                os.environ.pop('ANTHROPIC_API_KEY', None)
+
+
+async def analyze_report_completeness(
+    report_content: str,
+    guidelines_data: List[dict],
+    anthropic_api_key: str | None
+) -> dict:
+    """
+    Analyze report completeness using Claude model with Qwen fallback.
+    
+    Args:
+        report_content: The report text
+        guidelines_data: Guidelines found for the report
+        anthropic_api_key: Anthropic API key
+    
+    Returns:
+        Dictionary with analysis and structured feedback
+    """
+    import os
+    
+    if not anthropic_api_key:
+        return {
+            "analysis": "Completeness analysis unavailable (Anthropic API key not configured).",
+            "structured": {
+                "summary": {"title": "Summary", "details": "API key not configured"},
+                "questions": [],
+                "suggested_actions": []
+            }
+        }
+    
+    # Try Qwen first (primary model) with retry logic
+    try:
+        groq_api_key = os.environ.get('GROQ_API_KEY')
+        if not groq_api_key:
+            # If no Groq key available, fallback to Claude
+            print("⚠️ Groq API key not configured - falling back to Claude for completeness analysis")
+            return await _analyze_completeness_with_model(
+                MODEL_CONFIG["COMPLETENESS_ANALYZER_FALLBACK"],
+                f"{MODEL_CONFIG['COMPLETENESS_ANALYZER_FALLBACK']} (Completeness Analyzer - Fallback)",
+                report_content,
+                guidelines_data,
+                anthropic_api_key,
+                use_groq=False
+            )
+        
+        @with_retry(max_retries=3, base_delay=2.0)
+        async def _try_qwen():
+            return await _analyze_completeness_with_model(
+                MODEL_CONFIG["COMPLETENESS_ANALYZER"],
+                f"{MODEL_CONFIG['COMPLETENESS_ANALYZER']} (Completeness Analyzer)",
+                report_content,
+                guidelines_data,
+                anthropic_api_key,  # Not used when use_groq=True, but kept for signature compatibility
+                use_groq=True,
+                groq_api_key=groq_api_key
+            )
+        
+        return await _try_qwen()
+    except Exception as e:
+        # Qwen failed - determine why and fallback
+        if _is_parsing_error(e):
+            print(f"⚠️ Qwen parsing error detected - immediate fallback to {MODEL_CONFIG['COMPLETENESS_ANALYZER_FALLBACK']}")
+            print(f"  Error: {type(e).__name__}: {str(e)[:200]}")
+        else:
+            print(f"⚠️ Qwen failed after retries ({type(e).__name__}) - falling back to {MODEL_CONFIG['COMPLETENESS_ANALYZER_FALLBACK']}")
+            print(f"  Error: {str(e)[:200]}")
+        
+        # Fallback to Claude
+        try:
+            return await _analyze_completeness_with_model(
+                MODEL_CONFIG["COMPLETENESS_ANALYZER_FALLBACK"],
+                f"{MODEL_CONFIG['COMPLETENESS_ANALYZER_FALLBACK']} (Completeness Analyzer - Fallback)",
+                report_content,
+                guidelines_data,
+                anthropic_api_key,
+                use_groq=False
+            )
+        except Exception as fallback_error:
+            # Both models failed - return graceful error
+            print(f"❌ Both Claude and fallback model failed: {type(fallback_error).__name__}")
+            import traceback
+            print(traceback.format_exc())
+            return {
+                "analysis": "Error analyzing report completeness (both primary and fallback models failed).",
+                "structured": {
+                    "summary": {"title": "Analysis Error", "details": "Unable to analyze report with both Claude and fallback models"},
+                    "questions": [],
+                    "suggested_actions": []
+                }
+            }
+
+
+# ============================================================================
+# Report Generation Functions (Pydantic AI)
+# ============================================================================
+
+
+def _log_model_inputs(model_label: str, system_prompt: str, user_prompt: str):
+    """
+    Log the exact inputs being fed to the model in a user-friendly format.
+    
+    Args:
+        model_label: Human-readable model name
+        system_prompt: System prompt being used
+        user_prompt: User prompt (with variables injected)
+    """
+    print("\n" + "="*80)
+    print(f"📤 MODEL INPUT LOG - {model_label}")
+    print("="*80)
+    
+    print("\n🔧 SYSTEM PROMPT:")
+    print("-" * 80)
+    print(system_prompt)
+    print("-" * 80)
+    
+    print("\n💬 USER PROMPT (with variables injected):")
+    print("-" * 80)
+    print(user_prompt)
+    print("-" * 80)
+    
+    print("\n📊 PROMPT STATISTICS:")
+    print(f"  System prompt length: {len(system_prompt)} characters")
+    print(f"  User prompt length: {len(user_prompt)} characters")
+    print(f"  Total input length: {len(system_prompt) + len(user_prompt)} characters")
+    
+    print("="*80 + "\n")
+
+
+async def _generate_report_with_claude_model(
+    model_name: str,
+    model_label: str,
+    final_prompt: str,
+    system_prompt: str,
+    api_key: str
+) -> ReportOutput:
+    """
+    Helper function to generate report with Claude as fallback.
+    
+    Args:
+        model_name: Anthropic model identifier
+        model_label: Human-readable model name for logging
+        final_prompt: The user prompt (with signature applied)
+        system_prompt: System prompt
+        api_key: Anthropic API key
+    
+    Returns:
+        ReportOutput with report_content and description
+    """
+    import os
+    
+    start_time = time.time()
+    print(f"generate_auto_report: Attempting with {model_label}...")
+    
+    # Log the exact inputs being fed to the model
+    _log_model_inputs(model_label, system_prompt, final_prompt)
+    
+    old_api_key = os.environ.get('ANTHROPIC_API_KEY')
+    os.environ['ANTHROPIC_API_KEY'] = api_key
+    
+    try:
+        pydantic_model = AnthropicModel(model_name)
+        
+        agent = Agent(
+            pydantic_model,
+            output_type=ReportOutput,
+            system_prompt=system_prompt,
+        )
+        
+        result = await agent.run(
+            final_prompt,
+            model_settings={
+                "temperature": 1,
+                "max_tokens": 4096,
+                "anthropic_thinking": {
+                    "type": "enabled",
+                    "budget_tokens": 2048
+                }
+            }
+        )
+        
+        # Log thinking parts (backend only - not sent to frontend)
+        _log_thinking_parts(result, f"{model_label} - Claude")
+        
+        report_output: ReportOutput = result.output
+        
+        elapsed = time.time() - start_time
+        print(f"generate_auto_report: ✅ Completed with {model_label} in {elapsed:.2f}s")
+        print(f"  └─ Report length: {len(report_output.report_content)} chars")
+        print(f"  └─ Description: {report_output.description}")
+        
+        return report_output
+    finally:
+        if old_api_key is not None:
+            os.environ['ANTHROPIC_API_KEY'] = old_api_key
+        else:
+            os.environ.pop('ANTHROPIC_API_KEY', None)
+
+
+async def _generate_report_with_groq_model(
+    model_name: str,
+    model_label: str,
+    final_prompt: str,
+    system_prompt: str,
+    api_key: str
+) -> ReportOutput:
+    """
+    Helper function to generate report with a specific Groq model.
+    
+    Args:
+        model_name: Groq model identifier
+        model_label: Human-readable model name for logging
+        final_prompt: The user prompt (with signature applied)
+        system_prompt: System prompt
+        api_key: Groq API key
+    
+    Returns:
+        ReportOutput with report_content and description
+    """
+    import os
+    
+    start_time = time.time()
+    print(f"generate_auto_report: Attempting with {model_label}...")
+    
+    # Log the exact inputs being fed to the model
+    _log_model_inputs(model_label, system_prompt, final_prompt)
+    
+    old_api_key = os.environ.get('GROQ_API_KEY')
+    os.environ['GROQ_API_KEY'] = api_key
+    
+    try:
+        # Create Groq model with thinking enabled
+        groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
+        pydantic_model = GroqModel(model_name)
+        
+        agent = Agent(
+            pydantic_model,
+            output_type=ReportOutput,
+            system_prompt=system_prompt,
+            model_settings=groq_settings,
+        )
+        
+        result = await agent.run(
+            final_prompt,
+            model_settings={
+                "temperature": 0.3,
+                "max_tokens": 4096,
+            }
+        )
+        
+        # Log thinking parts (backend only - not sent to frontend)
+        _log_thinking_parts(result, f"{model_label} - Groq/Qwen")
+        
+        report_output: ReportOutput = result.output
+        
+        elapsed = time.time() - start_time
+        print(f"generate_auto_report: ✅ Completed with {model_label} in {elapsed:.2f}s")
+        print(f"  └─ Report length: {len(report_output.report_content)} chars")
+        print(f"  └─ Description: {report_output.description}")
+        
+        return report_output
+    finally:
+        if old_api_key is not None:
+            os.environ['GROQ_API_KEY'] = old_api_key
+        else:
+            os.environ.pop('GROQ_API_KEY', None)
+
+
+async def generate_auto_report(
+    model: str,
+    user_prompt: str,
+    system_prompt: str,
+    api_key: str,
+    signature: str | None = None
+) -> ReportOutput:
+    """
+    Generate a radiology report using Qwen as primary model with automatic fallback.
+    Always uses Qwen 32B as primary, falls back to Claude Sonnet 4 if Qwen fails after retries.
+    
+    Args:
+        model: Model identifier (kept for API compatibility)
+        user_prompt: The rendered user prompt with variables
+        system_prompt: System prompt from PromptManager
+        api_key: Anthropic API key for Claude (fallback)
+        signature: Optional user signature to inject
+        
+    Returns:
+        ReportOutput with report_content and description
+    """
+    import os
+    
+    start_time = time.time()
+    print(f"generate_auto_report: Starting with Qwen (primary model)")
+    
+    # Apply signature if provided
+    final_prompt = user_prompt
+    if signature and '{{SIGNATURE}}' in final_prompt:
+        final_prompt = final_prompt.replace('{{SIGNATURE}}', signature)
+    
+    # Try Qwen first (primary model) with retry logic
+    try:
+        # Log the exact inputs being fed to the model
+        _log_model_inputs("Qwen 32B (Primary)", system_prompt, final_prompt)
+        
+        # Wrap Qwen call with retry logic
+        @with_retry(max_retries=3, base_delay=2.0)
+        async def _try_qwen():
+            groq_api_key = os.environ.get('GROQ_API_KEY')
+            if not groq_api_key:
+                raise ValueError("Groq API key not configured. Please set GROQ_API_KEY environment variable.")
+            
+            old_api_key = os.environ.get('GROQ_API_KEY')
+            os.environ['GROQ_API_KEY'] = groq_api_key
+            try:
+                # Create Groq model with thinking enabled
+                groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
+                pydantic_model = GroqModel(MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"])
+                
+                # Create agent with structured output
+                agent = Agent(
+                    pydantic_model,
+                    output_type=ReportOutput,
+                    system_prompt=system_prompt,
+                    model_settings=groq_settings,
+                )
+                
+                # Run agent to get structured output with thinking enabled
+                result = await agent.run(
+                    final_prompt,
+                    model_settings={
+                        "temperature": 0.3,
+                        "max_tokens": 4096,
+                    }
+                )
+                
+                # Log thinking parts (backend only - not sent to frontend)
+                _log_thinking_parts(result, "generate_auto_report - Qwen")
+                
+                return result.output
+            finally:
+                if old_api_key is not None:
+                    os.environ['GROQ_API_KEY'] = old_api_key
+                else:
+                    os.environ.pop('GROQ_API_KEY', None)
+        
+        report_output = await _try_qwen()
+        
+        elapsed = time.time() - start_time
+        print(f"generate_auto_report: ✅ Completed with Qwen (primary) in {elapsed:.2f}s")
+        print(f"  └─ Report length: {len(report_output.report_content)} chars")
+        print(f"  └─ Description: {report_output.description}")
+        
+        return report_output
+                
+    except Exception as e:
+        # Qwen failed - determine why and fallback
+        if _is_parsing_error(e):
+            print(f"⚠️ Qwen parsing error detected - immediate fallback to {MODEL_CONFIG['FALLBACK_REPORT_GENERATOR']}")
+            print(f"  Error: {type(e).__name__}: {str(e)[:200]}")
+        else:
+            print(f"⚠️ Qwen failed after retries ({type(e).__name__}) - falling back to {MODEL_CONFIG['FALLBACK_REPORT_GENERATOR']}")
+            print(f"  Error: {str(e)[:200]}")
+        
+        # Fallback to configured fallback model (Claude Sonnet 4)
+        try:
+            if not api_key:
+                raise Exception(f"Qwen failed and no fallback API key available. Original error: {e}") from e
+            
+            return await _generate_report_with_claude_model(
+                MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"],
+                f"{MODEL_CONFIG['FALLBACK_REPORT_GENERATOR']} (fallback)",
+                final_prompt,
+                system_prompt,
+                api_key
+            )
+        except Exception as fallback_error:
+            # Both models failed - re-raise the original error with context
+            print(f"❌ Fallback model also failed: {type(fallback_error).__name__}")
+            import traceback
+            print(traceback.format_exc())
+            raise Exception(f"Report generation failed with both Qwen and fallback model. Original error: {e}") from e
+
+
+async def generate_templated_report(
+    model: str,
+    user_prompt: str,
+    system_prompt: str,
+    api_key: str,
+    signature: str | None = None
+) -> ReportOutput:
+    """
+    Generate a templated radiology report using Qwen as primary model with automatic fallback.
+    Always uses Qwen 32B as primary, falls back to Claude Sonnet 4 if Qwen fails after retries.
+    
+    Args:
+        model: Model identifier (kept for API compatibility)
+        user_prompt: The task-specific user prompt from TemplateManager
+        system_prompt: The persistent system prompt from TemplateManager
+        api_key: Anthropic API key for Claude (fallback)
+        signature: Optional user signature to inject
+        
+    Returns:
+        ReportOutput with report_content and description
+    """
+    import os
+    
+    start_time = time.time()
+    print(f"generate_templated_report: Starting with Qwen (primary model)")
+    
+    # Apply signature if provided
+    final_prompt = user_prompt
+    if signature and '{{SIGNATURE}}' in final_prompt:
+        final_prompt = final_prompt.replace('{{SIGNATURE}}', signature)
+    
+    # Try Qwen first (primary model) with retry logic
+    try:
+        # Wrap Qwen call with retry logic
+        @with_retry(max_retries=3, base_delay=2.0)
+        async def _try_qwen():
+            groq_api_key = os.environ.get('GROQ_API_KEY')
+            if not groq_api_key:
+                raise ValueError("Groq API key not configured. Please set GROQ_API_KEY environment variable.")
+            
+            old_api_key = os.environ.get('GROQ_API_KEY')
+            os.environ['GROQ_API_KEY'] = groq_api_key
+            try:
+                # Create Groq model with thinking enabled
+                groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
+                pydantic_model = GroqModel(MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"])
+                
+                # Create agent with structured output
+                # Use the separated system and user prompts following best practices
+                agent = Agent(
+                    pydantic_model,
+                    output_type=ReportOutput,
+                    system_prompt=system_prompt,
+                    model_settings=groq_settings,
+                )
+                
+                # Run agent to get structured output with thinking enabled
+                result = await agent.run(
+                    final_prompt,
+                    model_settings={
+                        "temperature": 0.3,
+                        "max_tokens": 4096,
+                    }
+                )
+                
+                # Log thinking parts (backend only - not sent to frontend)
+                _log_thinking_parts(result, "generate_templated_report - Qwen")
+                
+                return result.output
+            finally:
+                if old_api_key is not None:
+                    os.environ['GROQ_API_KEY'] = old_api_key
+                else:
+                    os.environ.pop('GROQ_API_KEY', None)
+        
+        report_output = await _try_qwen()
+        
+        elapsed = time.time() - start_time
+        print(f"generate_templated_report: ✅ Completed with Qwen (primary) in {elapsed:.2f}s")
+        print(f"  └─ Report length: {len(report_output.report_content)} chars")
+        print(f"  └─ Description: {report_output.description}")
+        
+        # DETAILED LOGGING FOR DEBUGGING
+        print(f"\n{'='*80}")
+        print(f"RAW OUTPUT DEBUG - generate_templated_report (Qwen)")
+        print(f"{'='*80}")
+        print(f"Type of report_output: {type(report_output)}")
+        print(f"Type of report_content: {type(report_output.report_content)}")
+        print(f"Newline count in report_content: {report_output.report_content.count(chr(10))}")
+        print(f"Double newline count: {report_output.report_content.count(chr(10)+chr(10))}")
+        print(f"\nFirst 500 chars (repr):")
+        print(repr(report_output.report_content[:500]))
+        print(f"\nFirst 500 chars (raw):")
+        print(report_output.report_content[:500])
+        print(f"{'='*80}\n")
+        
+        return report_output
+        
+    except Exception as e:
+        # Qwen failed - determine why and fallback
+        if _is_parsing_error(e):
+            print(f"⚠️ Qwen parsing error detected - immediate fallback to {MODEL_CONFIG['FALLBACK_REPORT_GENERATOR']}")
+            print(f"  Error: {type(e).__name__}: {str(e)[:200]}")
+        else:
+            print(f"⚠️ Qwen failed after retries ({type(e).__name__}) - falling back to {MODEL_CONFIG['FALLBACK_REPORT_GENERATOR']}")
+            print(f"  Error: {str(e)[:200]}")
+        
+        # Fallback to configured fallback model (Claude Sonnet 4)
+        try:
+            if not api_key:
+                raise Exception(f"Qwen failed and no fallback API key available. Original error: {e}") from e
+            
+            return await _generate_report_with_claude_model(
+                MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"],
+                f"{MODEL_CONFIG['FALLBACK_REPORT_GENERATOR']} (fallback)",
+                final_prompt,
+                system_prompt,
+                api_key
+            )
+        except Exception as fallback_error:
+            # Both models failed - re-raise the original error with context
+            print(f"❌ Fallback model also failed: {type(fallback_error).__name__}")
+            import traceback
+            print(traceback.format_exc())
+            raise Exception(f"Templated report generation failed with both Qwen and fallback model. Original error: {e}") from e
+
