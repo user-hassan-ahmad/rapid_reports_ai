@@ -3,6 +3,7 @@
 	import { marked } from 'marked';
 	import { token } from '$lib/stores/auth';
 	import ReportVersionInline from './ReportVersionInline.svelte';
+	import { API_URL } from '$lib/config';
 
 	const dispatch = createEventDispatcher();
 
@@ -15,8 +16,6 @@
 	export let updateLoading = false;
 	export let reportId = null;
 	export let versionHistoryRefreshKey = 0;
-
-const API_URL = 'http://localhost:8000';
 
 	marked.setOptions({
 		breaks: true,

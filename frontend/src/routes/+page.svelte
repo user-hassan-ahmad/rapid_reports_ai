@@ -15,6 +15,7 @@ import ReportVersionHistory from './components/ReportVersionHistory.svelte';
 	import { logout, user, token } from '$lib/stores/auth';
 	import bgCircuit from '$lib/assets/background circuit board effect.png';
 	import { marked } from 'marked';
+	import { API_URL } from '$lib/config';
 	
 	type UseCaseOption = { name: string; description?: string };
 	type ApiKeyUsage = { deepgram: boolean };
@@ -152,7 +153,6 @@ let shouldAutoLoadEnhancements = false;
 		initialized = true;
 	}
 
-	const API_URL = 'http://localhost:8000';
 	
 	// Load user settings
 	async function loadUserSettings() {

@@ -4,6 +4,7 @@
 	import TemplateManager from './TemplateManager.svelte';
 	import { token } from '$lib/stores/auth';
 	import { getTagColor, getTagColorWithOpacity } from '$lib/utils/tagColors.js';
+	import { API_URL } from '$lib/config';
 	
 	export let selectedModel = 'claude';
 	export let initialEditTemplate = null;
@@ -26,7 +27,6 @@
 	let colorPickerTag = null;
 	let colorPickerValue = '#8b5cf6';
 	let previewTagColors = {}; // Temporary preview colors before saving
-	const API_URL = 'http://localhost:8000';
 
 	// Reactive statement to update preview when color picker value changes
 	$: if (showColorPicker && colorPickerTag && colorPickerValue) {

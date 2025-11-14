@@ -121,6 +121,7 @@ interface CompletenessAnalysis {
 	import { marked } from 'marked';
 	import { onDestroy } from 'svelte';
 	import pilotIcon from '$lib/assets/pilot.png';
+	import { API_URL } from '$lib/config';
 	
 	export let reportId: string | null = null;
 	export let reportContent: string = '';
@@ -128,8 +129,6 @@ interface CompletenessAnalysis {
 	export let autoLoad: boolean = false;
 	export let historyAvailable: boolean = false;
 	export let reportVersion: number = 0; // Increment this to force reload
-	
-	const API_URL = 'http://localhost:8000';
 	
 	let activeTab: 'guidelines' | 'analysis' | 'chat' = 'guidelines';
 	let loading = false;

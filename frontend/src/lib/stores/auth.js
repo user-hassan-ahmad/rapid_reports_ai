@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
+import { API_URL } from '$lib/config';
 
 // Auth state stores
 export const user = writable(null);
@@ -26,7 +27,7 @@ if (browser) {
 
 async function fetchUserData(authToken) {
 	try {
-		const res = await fetch('http://localhost:8000/api/auth/me', {
+		const res = await fetch(`${API_URL}/api/auth/me`, {
 			headers: { 'Authorization': `Bearer ${authToken}` }
 		});
 		

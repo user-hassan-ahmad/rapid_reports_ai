@@ -93,7 +93,12 @@ app = FastAPI(title="Rapid Reports AI API", lifespan=lifespan)
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:4173"],  # Vite dev and preview ports
+    allow_origins=[
+        "http://localhost:5173",  # Vite dev
+        "http://localhost:4173",  # Vite preview
+        "https://rad-flow.uk",  # Custom domain
+    ],
+    allow_origin_regex=r"https://.*\.vercel\.app",  # Vercel preview deployments
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

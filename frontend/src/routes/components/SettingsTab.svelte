@@ -2,6 +2,7 @@
 	import { onMount, createEventDispatcher } from 'svelte';
 	import { token, user } from '$lib/stores/auth';
 	import { streamingMode } from '$lib/stores/dictation';
+	import { API_URL } from '$lib/config';
 	
 	const dispatch = createEventDispatcher();
 	
@@ -25,7 +26,7 @@
 				headers['Authorization'] = `Bearer ${$token}`;
 			}
 			
-			const response = await fetch('http://localhost:8000/api/settings', {
+			const response = await fetch(`${API_URL}/api/settings`, {
 				headers
 			});
 			
@@ -76,7 +77,7 @@
 			};
 			console.log('[SettingsTab] Sending payload:', payload);
 			
-			const response = await fetch('http://localhost:8000/api/settings', {
+			const response = await fetch(`${API_URL}/api/settings`, {
 				method: 'POST',
 				headers,
 				body: JSON.stringify(payload)
@@ -137,7 +138,7 @@
 				deepgram_api_key: ''
 			};
 
-			const response = await fetch('http://localhost:8000/api/settings', {
+			const response = await fetch(`${API_URL}/api/settings`, {
 				method: 'POST',
 				headers,
 				body: JSON.stringify(payload)

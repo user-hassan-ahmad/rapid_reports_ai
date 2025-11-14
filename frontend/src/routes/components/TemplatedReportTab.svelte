@@ -4,6 +4,7 @@
 	import TemplateForm from './TemplateForm.svelte';
 	import { token } from '$lib/stores/auth';
 	import { getTagColor, getTagColorWithOpacity } from '$lib/utils/tagColors.js';
+	import { API_URL } from '$lib/config';
 
 	const dispatch = createEventDispatcher();
 
@@ -97,7 +98,6 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	let selectedTags = [];
 	let allUniqueTags = [];
 	let customTagColors = {};
-	const API_URL = 'http://localhost:8000';
 	
 	// View state
 	let viewMode = 'grid'; // 'grid' or 'kanban'

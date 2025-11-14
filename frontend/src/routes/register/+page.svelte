@@ -4,6 +4,7 @@
 	import { isAuthenticated } from '$lib/stores/auth';
 	import logo from '$lib/assets/radflow-logo.png';
 	import bgCircuit from '$lib/assets/background circuit board effect.png';
+	import { API_URL } from '$lib/config';
 
 	let email = '';
 	let password = '';
@@ -25,7 +26,7 @@
 		message = '';
 
 		try {
-			const res = await fetch('http://localhost:8000/api/auth/register', {
+			const res = await fetch(`${API_URL}/api/auth/register`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ email, password, full_name: fullName })

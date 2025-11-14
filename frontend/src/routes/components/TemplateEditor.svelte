@@ -3,6 +3,7 @@
 	import { token } from '$lib/stores/auth';
 	import { getTagColor, getTagColorWithOpacity } from '$lib/utils/tagColors.js';
 	import VersionHistory from './VersionHistory.svelte';
+	import { API_URL } from '$lib/config';
 
 	export let editingTemplate = null;
 	export let selectedModel = 'claude';
@@ -12,7 +13,6 @@
 	let versionHistoryRefreshKey = 0; // Used to trigger version history refresh
 
 	const dispatch = createEventDispatcher();
-	const API_URL = 'http://localhost:8000';
 
 	let name = '';
 	let description = '';
@@ -244,14 +244,14 @@ Use {{VARIABLE_NAME}} for dynamic content (e.g., {{COMPARISON}}) — these will 
 			let response;
 			if (editingTemplate) {
 				// Update
-				response = await fetch(`http://localhost:8000/api/templates/${editingTemplate.id}`, {
+				response = await fetch(`${API_URL}/api/templates/${editingTemplate.id}`, {
 					method: 'PUT',
 					headers,
 					body: JSON.stringify(payload)
 				});
 			} else {
 				// Create
-				response = await fetch('http://localhost:8000/api/templates', {
+				response = await fetch(`${API_URL}/api/templates`, {
 					method: 'POST',
 					headers,
 					body: JSON.stringify(payload)

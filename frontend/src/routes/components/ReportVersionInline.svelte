@@ -1,11 +1,10 @@
 <script>
 	import { createEventDispatcher, onMount } from 'svelte';
 	import { token } from '$lib/stores/auth';
+	import { API_URL } from '$lib/config';
 
 	export let reportId;
 	export let refreshKey = 0;
-
-	const API_URL = 'http://localhost:8000';
 
 	const dispatch = createEventDispatcher();
 

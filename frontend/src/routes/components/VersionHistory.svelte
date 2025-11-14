@@ -1,6 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { token } from '$lib/stores/auth';
+	import { API_URL } from '$lib/config';
 
 	export let templateId;
 	export let onRestore = () => {};
@@ -11,7 +12,6 @@
 	let error = null;
 	let showVersionDetail = false;
 	let selectedVersion = null;
-	const API_URL = 'http://localhost:8000';
 
 	async function loadVersions() {
 		if (!templateId) return;

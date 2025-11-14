@@ -1,6 +1,7 @@
 <script>
 	import logo from '$lib/assets/radflow-logo.png';
 	import bgCircuit from '$lib/assets/background circuit board effect.png';
+	import { API_URL } from '$lib/config';
 	
 	let email = '';
 	let error = '';
@@ -13,7 +14,7 @@
 		message = '';
 
 		try {
-			const res = await fetch('http://localhost:8000/api/auth/forgot-password', {
+			const res = await fetch(`${API_URL}/api/auth/forgot-password`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ email })

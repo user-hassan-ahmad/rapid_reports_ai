@@ -4,6 +4,7 @@
 	import DictationButton from '$lib/components/DictationButton.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import ReportResponseViewer from './ReportResponseViewer.svelte';
+	import { API_URL } from '$lib/config';
 
 	const dispatch = createEventDispatcher();
 
@@ -163,7 +164,7 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 		}
 		
 		const res = await fetch(
-			`http://localhost:8000/api/templates/${selectedTemplate.id}/generate`,
+			`${API_URL}/api/templates/${selectedTemplate.id}/generate`,
 				{
 					method: 'POST',
 					headers,

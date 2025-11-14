@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import logo from '$lib/assets/radflow-logo.png';
 	import bgCircuit from '$lib/assets/background circuit board effect.png';
+	import { API_URL } from '$lib/config';
 
 	let email = '';
 	let error = '';
@@ -14,7 +15,7 @@
 		message = '';
 
 		try {
-			const res = await fetch('http://localhost:8000/api/auth/resend-verification', {
+			const res = await fetch(`${API_URL}/api/auth/resend-verification`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ email })

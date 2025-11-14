@@ -3,6 +3,7 @@
 	import { token } from '$lib/stores/auth';
 	import { marked } from 'marked';
 	import Toast from '$lib/components/Toast.svelte';
+	import { API_URL } from '$lib/config';
 	
 	const dispatch = createEventDispatcher();
 	
@@ -87,7 +88,7 @@
 				}
 			}
 			
-			const url = `http://localhost:8000/api/reports?${params.toString()}`;
+			const url = `${API_URL}/api/reports?${params.toString()}`;
 			const response = await fetch(url, { headers });
 			
 			if (response.ok) {
@@ -150,7 +151,7 @@
 				headers['Authorization'] = `Bearer ${$token}`;
 			}
 			
-			const response = await fetch(`http://localhost:8000/api/reports/${reportId}`, {
+			const response = await fetch(`${API_URL}/api/reports/${reportId}`, {
 				method: 'DELETE',
 				headers
 			});
@@ -202,7 +203,7 @@
 			
 			// Delete all reports
 			const deletePromises = reports.map(report =>
-				fetch(`http://localhost:8000/api/reports/${report.id}`, {
+				fetch(`${API_URL}/api/reports/${report.id}`, {
 					method: 'DELETE',
 					headers
 				})

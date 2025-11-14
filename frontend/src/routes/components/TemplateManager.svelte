@@ -4,6 +4,7 @@
 	import TemplateEditor from './TemplateEditor.svelte';
 	import { token } from '$lib/stores/auth';
 	import { getTagColor, getTagColorWithOpacity } from '$lib/utils/tagColors.js';
+	import { API_URL } from '$lib/config';
 
 	export let templates = [];
 	export let selectedModel = 'claude';
@@ -21,7 +22,7 @@
 				headers['Authorization'] = `Bearer ${$token}`;
 			}
 			
-			const response = await fetch('http://localhost:8000/api/settings', {
+			const response = await fetch(`${API_URL}/api/settings`, {
 				headers
 			});
 			
@@ -89,7 +90,7 @@
 				headers['Authorization'] = `Bearer ${$token}`;
 			}
 			
-			const response = await fetch(`http://localhost:8000/api/templates/${template.id}`, {
+			const response = await fetch(`${API_URL}/api/templates/${template.id}`, {
 				method: 'DELETE',
 				headers
 			});

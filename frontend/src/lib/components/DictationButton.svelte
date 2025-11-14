@@ -3,6 +3,7 @@
 	import { browser } from '$app/environment';
 	import { streamingMode as streamingModeStore } from '$lib/stores/dictation';
 	import { token } from '$lib/stores/auth';
+	import { API_URL } from '$lib/config';
 
 	export let bindText = ''; // Bound to textarea value
 	export let disabled = false;
@@ -81,7 +82,9 @@
 	 */
 	async function startStreamingMode() {
 		// Initialize WebSocket connection with token if available
-		let wsUrl = 'ws://localhost:8000/api/transcribe';
+		// Convert HTTP/HTTPS URL to WS/WSS
+		const wsUrlBase = API_URL.replace(/^http/, 'ws');
+		let wsUrl = `${wsUrlBase}/api/transcribe`;
 		if ($token) {
 			wsUrl += `?token=${encodeURIComponent($token)}`;
 		}
@@ -233,7 +236,7 @@
 			if ($token) {
 				headers['Authorization'] = `Bearer ${$token}`;
 			}
-			const response = await fetch('http://localhost:8000/api/transcribe/pre-recorded', {
+			const response = await fetch(`${API_URL}/api/transcribe/pre-recorded`, {
 				method: 'POST',
 				headers,
 				body: formData

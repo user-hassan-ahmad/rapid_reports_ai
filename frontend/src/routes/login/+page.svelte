@@ -4,6 +4,7 @@
 	import { login, isAuthenticated } from '$lib/stores/auth';
 	import logo from '$lib/assets/radflow-logo.png';
 	import bgCircuit from '$lib/assets/background circuit board effect.png';
+	import { API_URL } from '$lib/config';
 
 	let email = '';
 	let password = '';
@@ -29,7 +30,7 @@
 			formData.append('username', email);
 			formData.append('password', password);
 
-			const res = await fetch('http://localhost:8000/api/auth/login', {
+			const res = await fetch(`${API_URL}/api/auth/login`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 				body: formData
