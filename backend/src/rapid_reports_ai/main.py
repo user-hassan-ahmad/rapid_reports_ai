@@ -96,7 +96,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",  # Vite dev
         "http://localhost:4173",  # Vite preview
-        "https://rad-flow.uk",  # Custom domain
+        "https://rad-flow.uk",  # Custom domain (backend API)
+        "https://app.rad-flow.uk",  # Custom domain (frontend)
     ],
     allow_origin_regex=r"https://.*\.vercel\.app",  # Vercel preview deployments
     allow_credentials=True,
