@@ -40,8 +40,13 @@
 				error = data.error || 'Registration failed';
 			}
 		} catch (err) {
-			error = 'Failed to connect to server';
-			console.error('Error:', err);
+			console.error('Registration error:', err);
+			const errorMessage = err instanceof Error ? err.message : String(err);
+			if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+				error = `Failed to connect to server. Please check that the API is running at ${API_URL}`;
+			} else {
+				error = `Registration failed: ${errorMessage}`;
+			}
 		} finally {
 			loading = false;
 		}
