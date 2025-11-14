@@ -7,9 +7,9 @@ nixPkgs = ["python311", "poetry"]
 cmds = [
   "cd backend && poetry config virtualenvs.create false",
   "cd backend && poetry lock || true",
-  "cd backend && poetry install --no-interaction --no-root"
+  "cd backend && poetry install --no-interaction"
 ]
 
 [start]
-cmd = "cd /app/backend && export PYTHONPATH=/app/backend/src:$PYTHONPATH && poetry run python -m rapid_reports_ai.main"
+cmd = "cd /app/backend && poetry run python -m rapid_reports_ai.main"
 
