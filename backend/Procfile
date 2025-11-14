@@ -1,2 +1,2 @@
-web: poetry run python -m rapid_reports_ai.main
+web: poetry run uvicorn rapid_reports_ai.main:app --host 0.0.0.0 --port $PORT
 
