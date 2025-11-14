@@ -1,0 +1,2 @@
+web: poetry run python -m rapid_reports_ai.main
+

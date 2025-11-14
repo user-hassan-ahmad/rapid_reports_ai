@@ -1,0 +1,23 @@
+# This file is auto-generated from pyproject.toml
+# Railway can use this as a fallback if Poetry isn't detected
+# To regenerate: poetry export -f requirements.txt --output requirements.txt --without-hashes
+
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+anthropic>=0.39.0
+google-generativeai>=0.3.0
+google-genai>=1.0.0
+python-dotenv>=1.0.0
+pydantic>=2.9.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+alembic>=1.13.0
+passlib[argon2]>=1.7.4
+python-jose[cryptography]>=3.3.0
+python-multipart>=0.0.6
+aiohttp>=3.9.0
+pydantic-ai>=1.14.0,<2.0.0
+groq>=0.9.0
+perplexityai>=0.20.0,<0.21.0
+resend>=2.19.0,<3.0.0
+
