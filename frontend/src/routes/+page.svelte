@@ -331,49 +331,11 @@ let shouldAutoLoadEnhancements = false;
 	}
 
 
-	// Track if redirect has been attempted to prevent multiple redirects
-	let redirectAttempted = false;
-	
-	// Reactive statement: Only redirect if not authenticated after auth check completes
-	// This ensures authenticated users stay on / (main console) even on refresh
-	// Watch for token and authentication state changes
-	$: if (browser && !redirectAttempted) {
-		// If there's no token, redirect immediately
-		if ($token === null) {
-			redirectAttempted = true;
-			if (!$isAuthenticated) {
-				goto('/home');
-			}
-		} else {
-			// Has token - wait for auth verification to complete
-			// The auth store will set $user and $isAuthenticated when verification completes
-			// Give it a moment for async verification, then check authentication status
-			setTimeout(() => {
-				if (!redirectAttempted) {
-					redirectAttempted = true;
-					// Only redirect if auth check completed and user is not authenticated
-					if (!$isAuthenticated) {
-						goto('/home');
-					}
-				}
-			}, 300);
-		}
-	}
-
 	onMount(async () => {
 		if (browser) {
-			// Wait for auth check to complete before proceeding
-			// If there's a token, give time for async verification
-			if ($token) {
-				await new Promise(resolve => setTimeout(resolve, 350));
-			}
+			// Auth check is handled by +layout.ts load function
+			// If we reach here, user is authenticated (load function redirected if not)
 			
-			// Redirect to home page if not authenticated (after auth check)
-			if (!$isAuthenticated) {
-				goto('/home');
-				return;
-			}
-
 			// Initialize tab from URL hash
 			const hashTab = getTabFromHash();
 			if (hashTab !== activeTab) {
