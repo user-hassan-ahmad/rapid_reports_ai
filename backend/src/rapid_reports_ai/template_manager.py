@@ -81,6 +81,7 @@ class TemplateManager:
         
         # System role
         system_parts.append("You are an expert NHS radiologist. Generate professional radiology reports using British English with flowing prose and logical anatomical progression.")
+        system_parts.append("CRITICAL: You MUST use British English spelling and terminology throughout all output.")
         system_parts.append("")
         
         # Output format (persistent requirement)

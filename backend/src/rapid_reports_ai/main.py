@@ -1777,16 +1777,23 @@ async def chat_about_report(
             findings = enhancement_data.get('findings', [])
             guidelines = enhancement_data.get('guidelines', [])
             
+            if findings or guidelines:
+                enhancement_context += "\n\n=== ENHANCEMENT CONTEXT ===\n"
+                enhancement_context += "The following information has been automatically extracted and synthesized from the report above to assist with discussion:\n\n"
+            
             if findings:
-                enhancement_context += "\n\n### Key Findings Identified:\n"
+                enhancement_context += "### Extracted Findings:\n"
+                enhancement_context += "These are the key radiological findings that were automatically identified and consolidated from the report:\n"
                 for finding in findings:
                     enhancement_context += f"- {finding.get('finding', 'N/A')}\n"
+                enhancement_context += "\n"
             
             if guidelines:
-                enhancement_context += "\n\n### Clinical Guidelines Context:\n"
+                enhancement_context += "### Clinical Guidelines:\n"
+                enhancement_context += "For each extracted finding above, relevant UK radiology guidelines have been synthesized from authoritative sources. Use this context when discussing diagnostic criteria, classification systems, measurement protocols, or follow-up recommendations:\n\n"
                 for guideline in guidelines:
                     finding_name = guideline.get('finding', {}).get('finding', 'N/A')
-                    enhancement_context += f"\n**{finding_name}**\n"
+                    enhancement_context += f"**Finding: {finding_name}**\n"
                     
                     # Use diagnostic overview (new structure)
                     overview = guideline.get('diagnostic_overview', '')
@@ -1796,25 +1803,30 @@ async def chat_about_report(
                     # Include classification systems
                     classification_systems = guideline.get('classification_systems', [])
                     if classification_systems:
+                        enhancement_context += "\nClassification Systems:\n"
                         for system in classification_systems[:2]:
-                            enhancement_context += f"- Classification: {system.get('name', '')}: {system.get('grade_or_category', '')}\n"
+                            enhancement_context += f"- {system.get('name', '')}: {system.get('grade_or_category', '')} - {system.get('criteria', '')}\n"
                     
                     # Include key imaging characteristics
                     imaging_chars = guideline.get('imaging_characteristics', [])
                     if imaging_chars:
+                        enhancement_context += "\nKey Imaging Features:\n"
                         for char in imaging_chars[:3]:
-                            enhancement_context += f"- {char.get('feature', '')}: {char.get('description', '')}\n"
+                            enhancement_context += f"- {char.get('feature', '')}: {char.get('description', '')} ({char.get('significance', '')})\n"
                     
                     # Include differential diagnoses
                     differentials = guideline.get('differential_diagnoses', [])
                     if differentials:
+                        enhancement_context += "\nDifferential Diagnoses:\n"
                         for ddx in differentials[:2]:
-                            enhancement_context += f"- DDx: {ddx.get('diagnosis', '')}: {ddx.get('imaging_features', '')}\n"
+                            enhancement_context += f"- {ddx.get('diagnosis', '')}: {ddx.get('imaging_features', '')}\n"
+                    
+                    enhancement_context += "\n"
         
         system_prompt = (
+            "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
             "You are a radiology reporting assistant helping a clinician refine and discuss a radiology report. "
-            "Provide concise, authoritative guidance grounded in evidence-based radiology and clinical practices "
-            "(e.g., RCR, ACR, specialist society guidelines). "
+            "Provide concise, authoritative guidance grounded in evidence-based radiology and clinical practices. "
             "When discussing findings, reference the clinical guidelines context provided below. "
             "If asked about management or next steps, prioritize the guideline recommendations. "
             "If unsure, say so clearly.\n\n"

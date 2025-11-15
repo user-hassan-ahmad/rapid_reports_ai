@@ -731,6 +731,7 @@ async def search_guidelines_for_findings(
 
         # Guidelines synthesis agent - Radiologist-to-radiologist diagnostic perspective
         guidelines_system_prompt = (
+            "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
             "You are a senior UK consultant radiologist providing diagnostic imaging guidance to NHS colleagues.\n\n"
             
             "PERSPECTIVE: Radiologist-to-radiologist - focus on imaging characterization that informs diagnostic and management decisions.\n\n"
@@ -1041,6 +1042,7 @@ async def _analyze_completeness_with_model(
             model,
             output_type=CompletenessAnalysis,
             system_prompt=(
+                "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
                 "You are an expert radiologist reviewing imaging reports for quality and completeness "
                 "of findings documentation.\n\n"
                 "Your role is to assess whether the radiologist has:\n"

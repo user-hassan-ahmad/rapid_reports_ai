@@ -1006,13 +1006,13 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 				<!-- Grid View -->
 				<div class="space-y-6 view-container overflow-y-auto flex-1 scrollbar-thin" style="min-height: 0; padding: 8px; overflow-x: hidden;">
 					{#if pinnedTemplates.length > 0}
-						<!-- Favorites Section -->
+						<!-- Favourites Section -->
 						<div>
 							<div class="flex items-center gap-2 mb-4">
 								<svg class="w-6 h-6 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
 									<path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
 								</svg>
-								<h2 class="text-xl font-semibold text-white">Favorites</h2>
+								<h2 class="text-xl font-semibold text-white">Favourites</h2>
 								<span class="px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 text-xs">
 									{pinnedTemplates.length}
 								</span>

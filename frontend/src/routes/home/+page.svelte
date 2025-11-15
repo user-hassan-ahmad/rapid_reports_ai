@@ -26,7 +26,7 @@
 			icon: '🎯',
 			title: 'Custom Templates',
 			description: 'Create and manage your own report templates with custom variables and instructions',
-			details: 'Build your own library of report templates tailored to your workflow. Define custom variables, set master prompt instructions, and organize templates with tags. Full version history lets you experiment freely and restore previous versions anytime.'
+			details: 'Build your own library of report templates tailored to your workflow. Define custom variables, set master prompt instructions, and organise templates with tags. Full version history lets you experiment freely and restore previous versions anytime.'
 		},
 		{
 			icon: '🤖',
@@ -38,7 +38,7 @@
 			icon: '🎤',
 			title: 'Real-time Dictation',
 			description: 'Medical-grade transcription using Deepgram\'s Nova-3 Medical model',
-			details: 'Speak your findings naturally and watch them transcribed in real-time. Powered by Deepgram\'s specialized Nova-3 Medical model, our dictation feature understands medical terminology and provides accurate transcriptions optimized for radiology workflows.'
+			details: 'Speak your findings naturally and watch them transcribed in real-time. Powered by Deepgram\'s specialised Nova-3 Medical model, our dictation feature understands medical terminology and provides accurate transcriptions optimised for radiology workflows.'
 		},
 		{
 			icon: '📊',
