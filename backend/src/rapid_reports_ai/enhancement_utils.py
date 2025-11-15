@@ -1421,8 +1421,17 @@ async def generate_auto_report(
     
     # Apply signature if provided
     final_prompt = user_prompt
-    if signature and '{{SIGNATURE}}' in final_prompt:
-        final_prompt = final_prompt.replace('{{SIGNATURE}}', signature)
+    if signature:
+        if '{{SIGNATURE}}' in final_prompt:
+            final_prompt = final_prompt.replace('{{SIGNATURE}}', signature)
+            print(f"generate_auto_report: Signature replaced placeholder in prompt")
+        else:
+            # Fallback: append signature if placeholder not found (like template manager does)
+            # This ensures signature is always included even if template doesn't have placeholder
+            final_prompt = final_prompt.rstrip() + "\n\n" + signature
+            print(f"generate_auto_report: Signature appended to prompt (placeholder not found)")
+    else:
+        print(f"generate_auto_report: No signature provided")
     
     # Try Qwen first (primary model) with retry logic
     try:

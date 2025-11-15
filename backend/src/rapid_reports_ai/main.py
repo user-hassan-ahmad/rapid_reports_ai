@@ -386,6 +386,8 @@ async def chat(
     Endpoint to send a message to different AI models using Pydantic AI
     """
     try:
+        # Refresh user object to ensure we have latest signature from database
+        db.refresh(current_user)
         # Load and render prompt if use_case is provided
         user_prompt = request.message
         system_prompt = "You are an expert radiologist. Generate professional radiology reports."
@@ -440,12 +442,17 @@ async def chat(
             }
         
         # Generate report using Claude (with automatic fallback to Qwen if Claude fails)
+        # Debug: Log signature status
+        signature_value = current_user.signature
+        print(f"[DEBUG] Auto report - signature present: {signature_value is not None and signature_value.strip() != ''}")
+        print(f"[DEBUG] Auto report - signature length: {len(signature_value) if signature_value else 0}")
+        
         report_output = await generate_auto_report(
             model="claude",  # Always use Claude (model param kept for API compatibility)
             user_prompt=user_prompt,
             system_prompt=system_prompt,
             api_key=api_key,
-            signature=current_user.signature
+            signature=signature_value
         )
         
         # Build context title: scan type + description
