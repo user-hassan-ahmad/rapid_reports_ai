@@ -11,7 +11,7 @@ const isDevelopment = import.meta.env.DEV;
 
 // For production deployments, use the hardcoded API URL since environment variables aren't being injected
 // For development, use localhost
-export const API_URL = envApiUrl || (isProduction ? 'https://rad-flow.uk' : 'http://localhost:8000');
+export const API_URL = envApiUrl || (isProduction ? 'https://api.rad-flow.uk' : 'http://localhost:8000');
 
 // Debug: Always log API URL to help troubleshoot
 console.log('🔍 API Configuration:', {

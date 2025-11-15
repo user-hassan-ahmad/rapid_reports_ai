@@ -28,7 +28,7 @@ def send_magic_link_email(email: str, token: str, link_type: str = "password_res
     Returns:
         True if sent successfully, False otherwise
     """
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    frontend_url = os.getenv("FRONTEND_URL", "https://rad-flow.uk")
     
     # Determine link URL based on link type
     if link_type == "password_reset":

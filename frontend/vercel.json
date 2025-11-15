@@ -3,7 +3,7 @@
   "buildCommand": "npm run build",
   "framework": "sveltekit",
   "env": {
-    "PUBLIC_API_URL": "https://rad-flow.uk"
+    "PUBLIC_API_URL": "https://api.rad-flow.uk"
   }
 }
 
