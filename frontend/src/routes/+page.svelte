@@ -117,6 +117,57 @@ let isEnhancementContext = activeTab === 'auto' || activeTab === 'templated';
 let currentReportId: string | null = null;
 let shouldAutoLoadEnhancements = false;
 	
+	// Lazy-loaded component modules - keep alive after first load
+	let templatesModule: any = null;
+	let historyModule: any = null;
+	let settingsModule: any = null;
+	let templatesLoading = false;
+	let historyLoading = false;
+	let settingsLoading = false;
+	let templatesError: Error | null = null;
+	let historyError: Error | null = null;
+	let settingsError: Error | null = null;
+	
+	// Lazy load components on first access, then keep them alive
+	$: if (activeTab === 'templates' && !templatesModule && !templatesLoading && !templatesError) {
+		templatesLoading = true;
+		import('./components/TemplateManagementTab.svelte')
+			.then(module => {
+				templatesModule = module;
+				templatesLoading = false;
+			})
+			.catch(err => {
+				templatesError = err;
+				templatesLoading = false;
+			});
+	}
+	
+	$: if (activeTab === 'history' && !historyModule && !historyLoading && !historyError) {
+		historyLoading = true;
+		import('./components/HistoryTab.svelte')
+			.then(module => {
+				historyModule = module;
+				historyLoading = false;
+			})
+			.catch(err => {
+				historyError = err;
+				historyLoading = false;
+			});
+	}
+	
+	$: if (activeTab === 'settings' && !settingsModule && !settingsLoading && !settingsError) {
+		settingsLoading = true;
+		import('./components/SettingsTab.svelte')
+			.then(module => {
+				settingsModule = module;
+				settingsLoading = false;
+			})
+			.catch(err => {
+				settingsError = err;
+				settingsLoading = false;
+			});
+	}
+	
 	// Sync URL hash when activeTab changes (for programmatic tab changes)
 	$: if (browser && !isInitializingFromHash) {
 		updateHash(activeTab);
@@ -608,66 +659,79 @@ $: if (!isEnhancementContext && sidebarVisible) {
 					/>
 				</div>
 				
-				<!-- Lazy-loaded tabs for better initial performance -->
-				{#if activeTab === 'templates'}
-					{#await import('./components/TemplateManagementTab.svelte')}
-						<div class="flex items-center justify-center py-20">
-							<div class="flex flex-col items-center gap-3">
-								<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
-								<p class="text-sm text-gray-400">Loading Templates...</p>
+				<!-- Lazy-loaded tabs - kept alive after first load for instant switching -->
+				<!-- Templates Tab -->
+				{#if templatesModule || templatesLoading || templatesError}
+					<div class={activeTab === 'templates' ? '' : 'hidden'}>
+						{#if templatesLoading}
+							<div class="flex items-center justify-center py-20">
+								<div class="flex flex-col items-center gap-3">
+									<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+									<p class="text-sm text-gray-400">Loading Templates...</p>
+								</div>
 							</div>
-						</div>
-					{:then TemplateModule}
-						<svelte:component 
-							this={TemplateModule.default}
-							initialEditTemplate={templateToEdit}
-							cameFromTab={editSourceTab}
-							on:backToSource={handleBackToSourceTab}
-						/>
-					{:catch error}
-						<div class="text-red-500 p-8 text-center">
-							<p class="font-semibold mb-2">Failed to load Template Management</p>
-							<p class="text-sm text-gray-400">{error.message}</p>
-						</div>
-					{/await}
-				{:else if activeTab === 'history'}
-					{#await import('./components/HistoryTab.svelte')}
-						<div class="flex items-center justify-center py-20">
-							<div class="flex flex-col items-center gap-3">
-								<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
-								<p class="text-sm text-gray-400">Loading History...</p>
+						{:else if templatesError}
+							<div class="text-red-500 p-8 text-center">
+								<p class="font-semibold mb-2">Failed to load Template Management</p>
+								<p class="text-sm text-gray-400">{templatesError.message}</p>
 							</div>
-						</div>
-					{:then HistoryModule}
-						<svelte:component 
-							this={HistoryModule.default}
-							on:viewReport={(e) => historyModalReport = e.detail as HistoryModal}
-						/>
-					{:catch error}
-						<div class="text-red-500 p-8 text-center">
-							<p class="font-semibold mb-2">Failed to load History</p>
-							<p class="text-sm text-gray-400">{error.message}</p>
-						</div>
-					{/await}
-				{:else if activeTab === 'settings'}
-					{#await import('./components/SettingsTab.svelte')}
-						<div class="flex items-center justify-center py-20">
-							<div class="flex flex-col items-center gap-3">
-								<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
-								<p class="text-sm text-gray-400">Loading Settings...</p>
+						{:else if templatesModule}
+							<svelte:component 
+								this={templatesModule.default}
+								initialEditTemplate={templateToEdit}
+								cameFromTab={editSourceTab}
+								on:backToSource={handleBackToSourceTab}
+							/>
+						{/if}
+					</div>
+				{/if}
+				
+				<!-- History Tab -->
+				{#if historyModule || historyLoading || historyError}
+					<div class={activeTab === 'history' ? '' : 'hidden'}>
+						{#if historyLoading}
+							<div class="flex items-center justify-center py-20">
+								<div class="flex flex-col items-center gap-3">
+									<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+									<p class="text-sm text-gray-400">Loading History...</p>
+								</div>
 							</div>
-						</div>
-					{:then SettingsModule}
-						<svelte:component 
-							this={SettingsModule.default}
-							on:settingsUpdated={handleSettingsUpdated}
-						/>
-					{:catch error}
-						<div class="text-red-500 p-8 text-center">
-							<p class="font-semibold mb-2">Failed to load Settings</p>
-							<p class="text-sm text-gray-400">{error.message}</p>
-						</div>
-					{/await}
+						{:else if historyError}
+							<div class="text-red-500 p-8 text-center">
+								<p class="font-semibold mb-2">Failed to load History</p>
+								<p class="text-sm text-gray-400">{historyError.message}</p>
+							</div>
+						{:else if historyModule}
+							<svelte:component 
+								this={historyModule.default}
+								on:viewReport={(e) => historyModalReport = e.detail as HistoryModal}
+							/>
+						{/if}
+					</div>
+				{/if}
+				
+				<!-- Settings Tab -->
+				{#if settingsModule || settingsLoading || settingsError}
+					<div class={activeTab === 'settings' ? '' : 'hidden'}>
+						{#if settingsLoading}
+							<div class="flex items-center justify-center py-20">
+								<div class="flex flex-col items-center gap-3">
+									<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+									<p class="text-sm text-gray-400">Loading Settings...</p>
+								</div>
+							</div>
+						{:else if settingsError}
+							<div class="text-red-500 p-8 text-center">
+								<p class="font-semibold mb-2">Failed to load Settings</p>
+								<p class="text-sm text-gray-400">{settingsError.message}</p>
+							</div>
+						{:else if settingsModule}
+							<svelte:component 
+								this={settingsModule.default}
+								on:settingsUpdated={handleSettingsUpdated}
+							/>
+						{/if}
+					</div>
 				{/if}
 			</div>
 		{:else}
