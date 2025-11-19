@@ -783,7 +783,10 @@ async def filter_compatible_search_results(
         print(f"filter_compatible_search_results: ✅ Filtered {len(search_results)} → {len(filtered_results)} compatible results in {elapsed:.2f}s")
         if len(filtered_results) < len(search_results):
             removed_count = len(search_results) - len(filtered_results)
-            print(f"  └─ Removed {removed_count} incompatible result(s)")
+            removed_indices = [i for i in range(len(search_results)) if i not in compatible_indices]
+            print(f"  └─ Removed {removed_count} incompatible result(s) at indices: {removed_indices}")
+        else:
+            print(f"  └─ All {len(search_results)} results compatible")
         
         return filtered_results
         
@@ -867,6 +870,8 @@ async def validate_guideline_compatibility(
         elapsed = time.time() - start_time
         status = "✅ COMPATIBLE" if is_compatible else "❌ INCOMPATIBLE"
         print(f"validate_guideline_compatibility: {status} in {elapsed:.2f}s")
+        if not is_compatible:
+            print(f"  └─ Guideline does not match finding's clinical entity (anatomy/pathology/imaging mismatch)")
         
         return is_compatible
         
