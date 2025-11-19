@@ -144,6 +144,7 @@ let shouldAutoLoadEnhancements = false;
 		}
 	};
 	let loadingApiStatus = true;
+	let loadingUseCases = true;
 	
 	// Initialize once on first mount - prevents resets on re-render
 	if (!initialized) {
@@ -300,6 +301,7 @@ let shouldAutoLoadEnhancements = false;
 
 	// Load available use cases - model selection is now handled in AutoReportTab
 	async function loadUseCases(onlyIfEmpty = false): Promise<void> {
+		loadingUseCases = true;
 		try {
 			// Default to Claude for initial use case loading
 			const res = await fetch(`${API_URL}/api/use-cases?model=claude`);
@@ -326,6 +328,8 @@ let shouldAutoLoadEnhancements = false;
 			}
 		} catch (err) {
 			// Failed to load use cases
+		} finally {
+			loadingUseCases = false;
 		}
 	}
 
@@ -525,7 +529,15 @@ $: if (!isEnhancementContext && sidebarVisible) {
 
 	<!-- Main Content Area -->
 	<main class="relative z-10 transition-all duration-300 {sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'} min-h-screen">
-		{#if $isAuthenticated}
+		{#if $token && !$isAuthenticated}
+			<!-- Still checking auth status - show loading -->
+			<div class="min-h-screen flex items-center justify-center">
+				<div class="flex flex-col items-center gap-3">
+					<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+					<p class="text-sm text-gray-400">Verifying authentication...</p>
+				</div>
+			</div>
+		{:else if $isAuthenticated}
 			<div class="p-4 md:p-6">
 				<!-- Warning Banner for Missing API Keys -->
 				{#if !loadingApiStatus && !apiKeyStatus.has_at_least_one_model}
@@ -553,58 +565,78 @@ $: if (!isEnhancementContext && sidebarVisible) {
 				
 				<!-- Auto Report Tab - Keep component alive, just hide/show -->
 				<div class={activeTab === 'auto' ? '' : 'hidden'}>
-					<AutoReportTab
-						bind:availableUseCases
-						bind:selectedUseCase
-						bind:promptVariables
-						bind:variableValues
-						bind:response
-						bind:responseModel
-						bind:loading
-						bind:error
-						bind:selectedModel={autoReportSelectedModel}
-						reportId={reportId}
-						reportUpdateLoading={reportUpdateLoading}
-						versionHistoryRefreshKey={versionHistoryRefreshKey}
-						apiKeyStatus={apiKeyStatus}
-						on:useCaseChange={handleUseCaseChange}
-						on:submit={handleSubmit}
-						on:resetForm={handleFormReset}
-						on:openSidebar={() => {
-							console.log('openSidebar event received (auto), reportId:', reportId);
-							sidebarVisible = true;
-						}}
-						on:historyRestored={(e) => handleHistoryRestored(e.detail as RestoredReportDetail)}
-						on:historyUpdate={(e) => handleHistoryUpdate(e.detail as ReportHistoryDetail)}
-					/>
+					{#if loadingApiStatus || loadingUseCases}
+						<!-- Skeleton loader for API status and use cases -->
+						<div class="card-dark space-y-4">
+							<div class="h-8 bg-gray-700/50 rounded animate-pulse w-1/3"></div>
+							<div class="h-10 bg-gray-700/50 rounded animate-pulse"></div>
+							<div class="h-4 bg-gray-700/50 rounded animate-pulse w-1/2"></div>
+							<div class="h-32 bg-gray-700/50 rounded animate-pulse"></div>
+						</div>
+					{:else}
+						<AutoReportTab
+							bind:availableUseCases
+							bind:selectedUseCase
+							bind:promptVariables
+							bind:variableValues
+							bind:response
+							bind:responseModel
+							bind:loading
+							bind:error
+							bind:selectedModel={autoReportSelectedModel}
+							reportId={reportId}
+							reportUpdateLoading={reportUpdateLoading}
+							versionHistoryRefreshKey={versionHistoryRefreshKey}
+							apiKeyStatus={apiKeyStatus}
+							on:useCaseChange={handleUseCaseChange}
+							on:submit={handleSubmit}
+							on:resetForm={handleFormReset}
+							on:openSidebar={() => {
+								console.log('openSidebar event received (auto), reportId:', reportId);
+								sidebarVisible = true;
+							}}
+							on:historyRestored={(e) => handleHistoryRestored(e.detail as RestoredReportDetail)}
+							on:historyUpdate={(e) => handleHistoryUpdate(e.detail as ReportHistoryDetail)}
+						/>
+					{/if}
 				</div>
 				
 				<!-- Templated Report Tab - Keep component alive, just hide/show -->
 				<div class={activeTab === 'templated' ? '' : 'hidden'}>
-					<TemplatedReportTab
-						apiKeyStatus={apiKeyStatus}
-						reportUpdateLoading={reportUpdateLoading}
-						versionHistoryRefreshKey={versionHistoryRefreshKey}
-						templatesRefreshKey={templatesRefreshKey}
-						externalResponseContent={templatedResponseOverride}
-						externalResponseVersion={templatedResponseVersion}
-						on:editTemplate={handleEditTemplate}
-						on:reportGenerated={(e) => {
-							templatedReportId = e.detail.reportId;
-							if (templatedReportId) {
-								versionHistoryRefreshKey += 1;
-								reportVersion += 1;  // Increment to trigger sidebar reload
-							}
-						}}
-						on:openSidebar={() => {
-							console.log('openSidebar event received (templated), templatedReportId:', templatedReportId, 'activeTab:', activeTab);
-							sidebarVisible = true;
-							console.log('sidebarVisible set to:', sidebarVisible);
-						}}
-						on:historyRestored={(e) => handleHistoryRestored(e.detail as RestoredReportDetail)}
-						on:historyUpdate={(e) => handleHistoryUpdate(e.detail as ReportHistoryDetail)}
-						on:reportCleared={handleTemplateCleared}
-					/>
+					{#if loadingApiStatus}
+						<!-- Skeleton loader for API status -->
+						<div class="card-dark space-y-4">
+							<div class="h-8 bg-gray-700/50 rounded animate-pulse w-1/3"></div>
+							<div class="h-10 bg-gray-700/50 rounded animate-pulse"></div>
+							<div class="h-4 bg-gray-700/50 rounded animate-pulse w-1/2"></div>
+							<div class="h-32 bg-gray-700/50 rounded animate-pulse"></div>
+						</div>
+					{:else}
+						<TemplatedReportTab
+							apiKeyStatus={apiKeyStatus}
+							reportUpdateLoading={reportUpdateLoading}
+							versionHistoryRefreshKey={versionHistoryRefreshKey}
+							templatesRefreshKey={templatesRefreshKey}
+							externalResponseContent={templatedResponseOverride}
+							externalResponseVersion={templatedResponseVersion}
+							on:editTemplate={handleEditTemplate}
+							on:reportGenerated={(e) => {
+								templatedReportId = e.detail.reportId;
+								if (templatedReportId) {
+									versionHistoryRefreshKey += 1;
+									reportVersion += 1;  // Increment to trigger sidebar reload
+								}
+							}}
+							on:openSidebar={() => {
+								console.log('openSidebar event received (templated), templatedReportId:', templatedReportId, 'activeTab:', activeTab);
+								sidebarVisible = true;
+								console.log('sidebarVisible set to:', sidebarVisible);
+							}}
+							on:historyRestored={(e) => handleHistoryRestored(e.detail as RestoredReportDetail)}
+							on:historyUpdate={(e) => handleHistoryUpdate(e.detail as ReportHistoryDetail)}
+							on:reportCleared={handleTemplateCleared}
+						/>
+					{/if}
 				</div>
 				
 				<!-- Tab components - all loaded on app initialization -->
