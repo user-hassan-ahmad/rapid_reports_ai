@@ -35,6 +35,7 @@ from .enhancement_models import (
     ReportOutput,
     ProtocolViolation,
     ValidationResult,
+    CompatibleIndicesResponse,
 )
 
 # Central Model Configuration Dictionary
@@ -738,37 +739,91 @@ async def filter_compatible_search_results(
     old_api_key = os.environ.get('GROQ_API_KEY')
     os.environ['GROQ_API_KEY'] = api_key
     
+    # Build batch prompt with all results
+    batch_prompt = (
+        f"Finding: {finding}\n\n"
+        f"Assess {len(search_results)} search results for compatibility.\n\n"
+        "Compatible = ALL three must match: (1) anatomy, (2) pathology, (3) imaging finding.\n"
+        "Incompatible = ANY mismatch in these components. Shared terminology does not imply compatibility.\n\n"
+        "Results:\n"
+    )
+    
+    for i, result in enumerate(search_results):
+        title = (result.get("title") or "")[:150]
+        snippet = (result.get("snippet") or "")[:200]
+        batch_prompt += f"{i}. Title: {title}\n   Summary: {snippet}\n\n"
+    
+    batch_prompt += (
+        "Return a JSON array string containing 0-based indices for compatible results only.\n"
+        "Example: '[0, 2, 5, 7]' means results at indices 0, 2, 5, and 7 are compatible.\n"
+        "Return '[]' if none are compatible. Return ONLY valid JSON array format."
+    )
+    
+    system_prompt = (
+        "Medical expert assessing compatibility. Compatible requires ALL three to match: "
+        "anatomy, pathology, imaging finding. ANY mismatch = incompatible. "
+        "Return a JSON array string with compatible indices (0-based). Example: '[0, 2, 5]' or '[]'."
+    )
+    
+    # Try primary model first with explicit retry logic (Llama - fast)
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # Use fast Groq model for quick classification
+            # Using CompatibleIndicesResponse (string-based) to avoid function calling issues with list[int]
+            model = GroqModel(MODEL_CONFIG["QUERY_GENERATION"])  # Fast Llama model
+            agent = Agent(
+                model,
+                output_type=CompatibleIndicesResponse,
+                system_prompt=system_prompt,
+            )
+            
+            result = await agent.run(
+                batch_prompt,
+                model_settings={"temperature": 0.1, "max_tokens": 200}
+            )
+            
+            # Parse indices from the JSON string
+            compatible_indices = result.output.get_indices()
+            
+            # Filter to valid indices
+            compatible_indices = [idx for idx in compatible_indices if 0 <= idx < len(search_results)]
+            
+            filtered_results = [search_results[i] for i in compatible_indices]
+            
+            elapsed = time.time() - start_time
+            print(f"filter_compatible_search_results: ✅ Filtered {len(search_results)} → {len(filtered_results)} compatible results in {elapsed:.2f}s")
+            if len(filtered_results) < len(search_results):
+                removed_count = len(search_results) - len(filtered_results)
+                removed_indices = [i for i in range(len(search_results)) if i not in compatible_indices]
+                print(f"  └─ Removed {removed_count} incompatible result(s) at indices: {removed_indices}")
+            else:
+                print(f"  └─ All {len(search_results)} results compatible")
+            
+            return filtered_results
+            
+        except Exception as e:
+            if attempt < max_retries - 1:
+                # Retry with exponential backoff
+                delay = 2.0 * (2 ** attempt)
+                print(f"⚠️ Primary model attempt {attempt + 1}/{max_retries} failed ({type(e).__name__}) - retrying in {delay:.1f}s...")
+                print(f"  Error: {str(e)[:200]}")
+                await asyncio.sleep(delay)
+            else:
+                # All retries exhausted
+                print(f"⚠️ Primary model failed after {max_retries} attempts ({type(e).__name__}) - falling back to {MODEL_CONFIG['QUERY_GENERATION_FALLBACK']}")
+                print(f"  Final error: {str(e)[:200]}")
+    
+    # If we get here, all retries failed - fallback to Qwen
     try:
-        # Build batch prompt with all results
-        batch_prompt = (
-            f"Finding: {finding}\n\n"
-            f"Assess {len(search_results)} search results for compatibility.\n\n"
-            "Compatible = ALL three must match: (1) anatomy, (2) pathology, (3) imaging finding.\n"
-            "Incompatible = ANY mismatch in these components. Shared terminology does not imply compatibility.\n\n"
-            "Results:\n"
-        )
-        
-        for i, result in enumerate(search_results):
-            title = (result.get("title") or "")[:150]
-            snippet = (result.get("snippet") or "")[:200]
-            batch_prompt += f"{i}. Title: {title}\n   Summary: {snippet}\n\n"
-        
-        batch_prompt += (
-            "Return a JSON list of indices (0-based) for compatible results only.\n"
-            "Example: [0, 2, 5, 7] means results at indices 0, 2, 5, and 7 are compatible.\n"
-            "Return empty list [] if none are compatible."
-        )
-        
-        # Use fast Groq model for quick classification
-        model = GroqModel(MODEL_CONFIG["QUERY_GENERATION"])  # Fast Llama model
+        # Fallback to Qwen with thinking
+        groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
+        model = GroqModel(MODEL_CONFIG["QUERY_GENERATION_FALLBACK"])
         agent = Agent(
             model,
-            output_type=list[int],
-            system_prompt=(
-                "Medical expert assessing compatibility. Compatible requires ALL three to match: "
-                "anatomy, pathology, imaging finding. ANY mismatch = incompatible. "
-                "Return JSON list of compatible indices (0-based)."
-            ),
+            output_type=CompatibleIndicesResponse,
+            system_prompt=system_prompt,
+            model_settings=groq_settings,
         )
         
         result = await agent.run(
@@ -776,9 +831,11 @@ async def filter_compatible_search_results(
             model_settings={"temperature": 0.1, "max_tokens": 200}
         )
         
-        compatible_indices = result.output
-        if not isinstance(compatible_indices, list):
-            compatible_indices = []
+        # Log thinking parts (backend only - not sent to frontend)
+        _log_thinking_parts(result, "Compatibility Filter - Qwen (fallback)")
+        
+        # Parse indices from the JSON string
+        compatible_indices = result.output.get_indices()
         
         # Filter to valid indices
         compatible_indices = [idx for idx in compatible_indices if 0 <= idx < len(search_results)]
@@ -786,7 +843,7 @@ async def filter_compatible_search_results(
         filtered_results = [search_results[i] for i in compatible_indices]
         
         elapsed = time.time() - start_time
-        print(f"filter_compatible_search_results: ✅ Filtered {len(search_results)} → {len(filtered_results)} compatible results in {elapsed:.2f}s")
+        print(f"filter_compatible_search_results: ✅ Filtered {len(search_results)} → {len(filtered_results)} compatible results in {elapsed:.2f}s (Qwen fallback)")
         if len(filtered_results) < len(search_results):
             removed_count = len(search_results) - len(filtered_results)
             removed_indices = [i for i in range(len(search_results)) if i not in compatible_indices]
@@ -796,9 +853,9 @@ async def filter_compatible_search_results(
         
         return filtered_results
         
-    except Exception as e:
-        # On error, return all results (fail-safe - better to have some results than none)
-        print(f"⚠️  Compatibility filter error: {e}")
+    except Exception as fallback_error:
+        # Both models failed - return all results (fail-safe - better to have some results than none)
+        print(f"⚠️  Compatibility filter error (both models failed): {fallback_error}")
         print(f"  └─ Returning all {len(search_results)} results (fail-safe)")
         import traceback
         print(traceback.format_exc())
@@ -835,34 +892,79 @@ async def validate_guideline_compatibility(
     old_api_key = os.environ.get('GROQ_API_KEY')
     os.environ['GROQ_API_KEY'] = api_key
     
+    # Build validation prompt
+    guideline_summary = (
+        f"Diagnostic Overview: {guideline_entry.diagnostic_overview[:300]}\n"
+    )
+    if guideline_entry.classification_systems:
+        guideline_summary += f"Classification Systems: {', '.join([cs.name for cs in guideline_entry.classification_systems])}\n"
+    if guideline_entry.differential_diagnoses:
+        guideline_summary += f"Differential Diagnoses: {', '.join([dd.diagnosis for dd in guideline_entry.differential_diagnoses])}\n"
+    
+    validation_prompt = (
+        f"Finding: {finding}\n\n"
+        f"Guideline Summary:\n{guideline_summary}\n\n"
+        "Compatible = ALL three must match: (1) anatomy, (2) pathology, (3) imaging finding.\n"
+        "Incompatible = ANY mismatch in these components. Shared terminology does not imply compatibility.\n\n"
+        "Return 'YES' if compatible, 'NO' if incompatible."
+    )
+    
+    system_prompt = (
+        "Medical expert validating compatibility. Compatible requires ALL three to match: "
+        "anatomy, pathology, imaging finding. ANY mismatch = incompatible. "
+        "Return ONLY 'YES' or 'NO'."
+    )
+    
+    # Try primary model first with explicit retry logic (Llama - fast)
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # Use fast Groq model for quick validation
+            model = GroqModel(MODEL_CONFIG["QUERY_GENERATION"])  # Fast Llama model
+            agent = Agent(
+                model,
+                output_type=str,
+                system_prompt=system_prompt,
+            )
+            
+            result = await agent.run(
+                validation_prompt,
+                model_settings={"temperature": 0.1, "max_tokens": 10}
+            )
+            
+            response = str(result.output).strip().upper()
+            is_compatible = response.startswith('YES')
+            
+            elapsed = time.time() - start_time
+            status = "✅ COMPATIBLE" if is_compatible else "❌ INCOMPATIBLE"
+            print(f"validate_guideline_compatibility: {status} in {elapsed:.2f}s")
+            if not is_compatible:
+                print(f"  └─ Guideline does not match finding's clinical entity (anatomy/pathology/imaging mismatch)")
+            
+            return is_compatible
+            
+        except Exception as e:
+            if attempt < max_retries - 1:
+                # Retry with exponential backoff
+                delay = 2.0 * (2 ** attempt)
+                print(f"⚠️ Primary model attempt {attempt + 1}/{max_retries} failed ({type(e).__name__}) - retrying in {delay:.1f}s...")
+                print(f"  Error: {str(e)[:200]}")
+                await asyncio.sleep(delay)
+            else:
+                # All retries exhausted
+                print(f"⚠️ Primary model failed after {max_retries} attempts ({type(e).__name__}) - falling back to {MODEL_CONFIG['QUERY_GENERATION_FALLBACK']}")
+                print(f"  Final error: {str(e)[:200]}")
+    
+    # If we get here, all retries failed - fallback to Qwen
     try:
-        # Build validation prompt
-        guideline_summary = (
-            f"Diagnostic Overview: {guideline_entry.diagnostic_overview[:300]}\n"
-        )
-        if guideline_entry.classification_systems:
-            guideline_summary += f"Classification Systems: {', '.join([cs.name for cs in guideline_entry.classification_systems])}\n"
-        if guideline_entry.differential_diagnoses:
-            guideline_summary += f"Differential Diagnoses: {', '.join([dd.diagnosis for dd in guideline_entry.differential_diagnoses])}\n"
-        
-        validation_prompt = (
-            f"Finding: {finding}\n\n"
-            f"Guideline Summary:\n{guideline_summary}\n\n"
-            "Compatible = ALL three must match: (1) anatomy, (2) pathology, (3) imaging finding.\n"
-            "Incompatible = ANY mismatch in these components. Shared terminology does not imply compatibility.\n\n"
-            "Return 'YES' if compatible, 'NO' if incompatible."
-        )
-        
-        # Use fast Groq model for quick validation
-        model = GroqModel(MODEL_CONFIG["QUERY_GENERATION"])  # Fast Llama model
+        # Fallback to Qwen with thinking
+        groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
+        model = GroqModel(MODEL_CONFIG["QUERY_GENERATION_FALLBACK"])
         agent = Agent(
             model,
             output_type=str,
-            system_prompt=(
-                "Medical expert validating compatibility. Compatible requires ALL three to match: "
-                "anatomy, pathology, imaging finding. ANY mismatch = incompatible. "
-                "Return ONLY 'YES' or 'NO'."
-            ),
+            system_prompt=system_prompt,
+            model_settings=groq_settings,
         )
         
         result = await agent.run(
@@ -870,20 +972,23 @@ async def validate_guideline_compatibility(
             model_settings={"temperature": 0.1, "max_tokens": 10}
         )
         
+        # Log thinking parts (backend only - not sent to frontend)
+        _log_thinking_parts(result, "Guideline Compatibility Validation - Qwen (fallback)")
+        
         response = str(result.output).strip().upper()
         is_compatible = response.startswith('YES')
         
         elapsed = time.time() - start_time
         status = "✅ COMPATIBLE" if is_compatible else "❌ INCOMPATIBLE"
-        print(f"validate_guideline_compatibility: {status} in {elapsed:.2f}s")
+        print(f"validate_guideline_compatibility: {status} in {elapsed:.2f}s (Qwen fallback)")
         if not is_compatible:
             print(f"  └─ Guideline does not match finding's clinical entity (anatomy/pathology/imaging mismatch)")
         
         return is_compatible
         
-    except Exception as e:
-        # On error, return True (fail-safe - better to include guideline than reject it)
-        print(f"⚠️  Guideline validation error: {e}")
+    except Exception as fallback_error:
+        # Both models failed - return True (fail-safe - better to include guideline than reject it)
+        print(f"⚠️  Guideline validation error (both models failed): {fallback_error}")
         print(f"  └─ Returning True (fail-safe - including guideline)")
         import traceback
         print(traceback.format_exc())
@@ -1004,8 +1109,12 @@ async def search_guidelines_for_findings(
             for q_idx, q in enumerate(queries, 1):
                 print(f"        Query {q_idx}: {q}")
 
+            # Try search with fallback strategy: restricted domains -> no domain filter -> no language filter
+            search_results = None
+            fallback_attempt = 0
+            
+            # Attempt 1: Restricted domain filter (preferred - highest quality)
             try:
-                # Multi-query search with Perplexity
                 search_response = await asyncio.to_thread(
                     lambda: perplexity_client.search.create(
                         query=queries,  # List of 3-5 queries
@@ -1015,14 +1124,60 @@ async def search_guidelines_for_findings(
                         search_domain_filter=COMPREHENSIVE_RADIOLOGY_DOMAINS,
                     )
                 )
+                search_results = normalize_perplexity_results(search_response, queries)
+                fallback_attempt = 1
+                if search_results:
+                    print(f"      ✅ Found {len(search_results)} results with restricted domain filter")
             except Exception as search_error:
-                print(f"⚠️  Perplexity search error for finding {idx}: {search_error}")
-                continue
-
-            search_results = normalize_perplexity_results(search_response, queries)
+                print(f"⚠️  Perplexity search error (attempt 1 - restricted domains): {search_error}")
+            
+            # Attempt 2: No domain filter (broader search, still English only)
             if not search_results:
-                print(f"⚠️  No search results for finding {idx}")
+                try:
+                    print(f"      🔄 Retrying without domain filter...")
+                    search_response = await asyncio.to_thread(
+                        lambda: perplexity_client.search.create(
+                            query=queries,
+                            max_results=5,
+                            max_tokens_per_page=1024,
+                            search_language_filter=["en"],
+                            # No search_domain_filter - broader search
+                        )
+                    )
+                    search_results = normalize_perplexity_results(search_response, queries)
+                    fallback_attempt = 2
+                    if search_results:
+                        print(f"      ✅ Found {len(search_results)} results without domain filter")
+                except Exception as search_error:
+                    print(f"⚠️  Perplexity search error (attempt 2 - no domain filter): {search_error}")
+            
+            # Attempt 3: No language filter (broadest search)
+            if not search_results:
+                try:
+                    print(f"      🔄 Retrying without language filter...")
+                    search_response = await asyncio.to_thread(
+                        lambda: perplexity_client.search.create(
+                            query=queries,
+                            max_results=5,
+                            max_tokens_per_page=1024,
+                            # No filters - broadest possible search
+                        )
+                    )
+                    search_results = normalize_perplexity_results(search_response, queries)
+                    fallback_attempt = 3
+                    if search_results:
+                        print(f"      ✅ Found {len(search_results)} results without filters")
+                except Exception as search_error:
+                    print(f"⚠️  Perplexity search error (attempt 3 - no filters): {search_error}")
+            
+            # Final check - if still no results, skip this finding
+            if not search_results:
+                print(f"⚠️  No search results for finding {idx} after {fallback_attempt} attempt(s)")
                 continue
+            
+            # Log which fallback level was used
+            if fallback_attempt > 1:
+                print(f"      ⚠️  Used fallback level {fallback_attempt} (less restrictive filtering)")
 
             # Filter incompatible search results before synthesis
             search_results = await filter_compatible_search_results(

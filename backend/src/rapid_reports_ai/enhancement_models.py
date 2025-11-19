@@ -250,6 +250,30 @@ class CompletenessAnalysis(BaseModel):
 
 
 # ============================================================================
+# Search Result Compatibility Models
+# ============================================================================
+
+class CompatibleIndicesResponse(BaseModel):
+    """Response containing compatible search result indices as JSON string"""
+    indices_json: str = Field(
+        description="JSON array string containing 0-based indices of compatible results. Example: '[0, 2, 5]' or '[]' if none. Return only valid JSON array format."
+    )
+    
+    def get_indices(self) -> List[int]:
+        """Parse the JSON string and return list of integers"""
+        import json
+        try:
+            parsed = json.loads(self.indices_json.strip())
+            if isinstance(parsed, list):
+                return [int(x) for x in parsed if isinstance(x, (int, str)) and str(x).isdigit()]
+            return []
+        except (json.JSONDecodeError, ValueError, TypeError):
+            # Fallback: try to extract numbers from string
+            import re
+            return [int(x) for x in re.findall(r'\d+', self.indices_json)]
+
+
+# ============================================================================
 # Protocol Validation Models
 # ============================================================================
 
