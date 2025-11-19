@@ -1935,6 +1935,24 @@ Return structured violations. If no violations found, return empty violations li
         violation_count = len(validation_result.violations)
         print(f"validate_report_protocol: ✅ Completed in {elapsed:.2f}s - Found {violation_count} violation(s)")
         
+        # Enhanced debugging: Log each violation in detail
+        if violation_count > 0:
+            print(f"\n{'='*80}")
+            print(f"PROTOCOL VIOLATIONS DETECTED ({violation_count} total)")
+            print(f"{'='*80}")
+            for i, violation in enumerate(validation_result.violations, 1):
+                print(f"\nViolation {i}:")
+                print(f"  Type: {violation.violation_type}")
+                print(f"  Location: {violation.location}")
+                print(f"  Issue: {violation.issue}")
+                original_preview = violation.original_text[:200] + "..." if len(violation.original_text) > 200 else violation.original_text
+                print(f"  Original Text: {original_preview}")
+                fix_preview = violation.suggested_fix[:200] + "..." if len(violation.suggested_fix) > 200 else violation.suggested_fix
+                print(f"  Suggested Fix: {fix_preview}")
+            print(f"{'='*80}\n")
+        else:
+            print("✅ No violations found - report passes protocol validation")
+        
         return validation_result
         
     finally:
@@ -1989,18 +2007,26 @@ async def apply_protocol_fixes(
 
 SCAN TYPE: {validation_result.scan_type_checked}
 
-ORIGINAL REPORT:
+ORIGINAL REPORT (PRESERVE THIS EXACT STRUCTURE):
 {report_output.report_content}
 
 VIOLATIONS TO FIX:
 {chr(10).join(violations_text)}
 
-Apply all fixes to correct the protocol violations. Return the complete corrected report with:
-- report_content: The fixed report text
+CRITICAL INSTRUCTIONS:
+- ONLY fix the specific violations listed above
+- PRESERVE the exact report structure, section headers, formatting, and organization
+- Do NOT reorganize sections or change the report layout
+- Do NOT add or remove sections
+- Do NOT change section order
+- Make MINIMAL changes - only correct the protocol violations
+- Keep all other text exactly as written
+- Maintain the same writing style and tone
+
+Return the complete corrected report with:
+- report_content: The fixed report text (with violations corrected but structure preserved)
 - description: Keep the original description unchanged
 - scan_type: Keep the original scan_type unchanged
-
-Ensure all violations are addressed while maintaining report quality and formatting.
 """
         
         # Use lightweight Qwen model for fix application
@@ -2009,7 +2035,7 @@ Ensure all violations are addressed while maintaining report quality and formatt
         agent = Agent(
             pydantic_model,
             output_type=ReportOutput,
-            system_prompt="You are a radiology report editor. Apply protocol fixes to correct violations. Return the complete corrected report maintaining formatting and quality."
+            system_prompt="You are a radiology report editor. Apply ONLY the specific protocol fixes requested. Preserve the exact report structure, formatting, and organization. Make minimal changes - only correct the violations, do not restructure the report."
         )
         
         result = await agent.run(

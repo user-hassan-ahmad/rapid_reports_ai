@@ -1048,11 +1048,20 @@ async def generate_report_from_template(
             
             # Apply fixes if violations found, otherwise use original report
             if validation_result.violations:
-                print(f"⚠️ Found {len(validation_result.violations)} violation(s), applying fixes...")
+                violation_count = len(validation_result.violations)
+                print(f"\n{'='*80}")
+                print(f"⚠️ PROTOCOL VIOLATIONS DETECTED: {violation_count} violation(s)")
+                print(f"{'='*80}")
+                for i, violation in enumerate(validation_result.violations, 1):
+                    print(f"  {i}. [{violation.violation_type}] {violation.location}")
+                    print(f"     Issue: {violation.issue}")
+                print(f"{'='*80}\n")
+                print(f"Applying fixes...")
                 report_output = await apply_protocol_fixes(
                     report_output=report_output,
                     validation_result=validation_result
                 )
+                print(f"✅ Fixes applied successfully")
             else:
                 print("✅ No violations found, using original report")
         except Exception as validation_error:
