@@ -336,8 +336,15 @@ let shouldAutoLoadEnhancements = false;
 
 	onMount(async () => {
 		if (browser) {
+			// Immediate auth check - redirect if no token (prevents any flash)
+			const token = localStorage.getItem('token');
+			if (!token) {
+				goto('/home');
+				return;
+			}
+			
 			// Auth check is handled by +layout.ts load function
-			// If we reach here, user is authenticated (load function redirected if not)
+			// If we reach here, user has a token (may still be verifying)
 			
 			// Initialize tab from URL hash
 			const hashTab = getTabFromHash();
@@ -519,16 +526,18 @@ $: if (!isEnhancementContext && sidebarVisible) {
 		</div>
 	</div>
 
-	<!-- Sidebar -->
-	<Sidebar 
-		{activeTab}
-		bind:isCollapsed={sidebarCollapsed}
-		on:tabChange={handleTabChange}
-		on:logout={handleLogoutFromSidebar}
-	/>
+	<!-- Sidebar - Only show when authenticated or checking auth -->
+	{#if $isAuthenticated || ($token && !$isAuthenticated)}
+		<Sidebar 
+			{activeTab}
+			bind:isCollapsed={sidebarCollapsed}
+			on:tabChange={handleTabChange}
+			on:logout={handleLogoutFromSidebar}
+		/>
+	{/if}
 
 	<!-- Main Content Area -->
-	<main class="relative z-10 transition-all duration-300 {sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'} min-h-screen">
+	<main class="relative z-10 transition-all duration-300 {($isAuthenticated || ($token && !$isAuthenticated)) ? (sidebarCollapsed ? 'md:ml-16' : 'md:ml-64') : ''} min-h-screen">
 		{#if $token && !$isAuthenticated}
 			<!-- Still checking auth status - show loading -->
 			<div class="min-h-screen flex items-center justify-center">
@@ -664,8 +673,12 @@ $: if (!isEnhancementContext && sidebarVisible) {
 				</div>
 			</div>
 		{:else}
-			<div class="p-6 text-center">
-				<p class="text-slate-600">Redirecting to home...</p>
+			<!-- Not authenticated - redirect handled by layout, show nothing to prevent flash -->
+			<div class="min-h-screen flex items-center justify-center">
+				<div class="flex flex-col items-center gap-3">
+					<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+					<p class="text-sm text-gray-400">Redirecting...</p>
+				</div>
 			</div>
 		{/if}
 	</main>
