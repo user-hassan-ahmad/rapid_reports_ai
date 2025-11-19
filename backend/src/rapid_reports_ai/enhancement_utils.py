@@ -704,6 +704,186 @@ async def extract_consolidated_findings(report_content: str, api_key: str) -> Co
             raise Exception(f"Finding extraction failed with both Qwen and Llama. Original error: {e}") from e
 
 
+async def filter_compatible_search_results(
+    search_results: List[Dict[str, Any]],
+    finding: str,
+    api_key: str
+) -> List[Dict[str, Any]]:
+    """
+    Filter search results to ensure they match the clinical premise of the finding.
+    Uses batch processing to check all results in a single API call for efficiency.
+    
+    Args:
+        search_results: List of search result dictionaries from Perplexity
+        finding: The radiological finding text (e.g., "frontotemporal lesions")
+        api_key: Groq API key
+        
+    Returns:
+        Filtered list of compatible search results (same structure as input)
+    """
+    import os
+    
+    if not search_results:
+        return []
+    
+    start_time = time.time()
+    print(f"filter_compatible_search_results: Checking {len(search_results)} results for finding '{finding}'")
+    
+    old_api_key = os.environ.get('GROQ_API_KEY')
+    os.environ['GROQ_API_KEY'] = api_key
+    
+    try:
+        # Build batch prompt with all results
+        batch_prompt = (
+            f"Finding: {finding}\n\n"
+            f"Assess {len(search_results)} search results for compatibility.\n\n"
+            "Compatible = ALL three must match: (1) anatomy, (2) pathology, (3) imaging finding.\n"
+            "Incompatible = ANY mismatch in these components. Shared terminology does not imply compatibility.\n\n"
+            "Results:\n"
+        )
+        
+        for i, result in enumerate(search_results):
+            title = (result.get("title") or "")[:150]
+            snippet = (result.get("snippet") or "")[:200]
+            batch_prompt += f"{i}. Title: {title}\n   Summary: {snippet}\n\n"
+        
+        batch_prompt += (
+            "Return a JSON list of indices (0-based) for compatible results only.\n"
+            "Example: [0, 2, 5, 7] means results at indices 0, 2, 5, and 7 are compatible.\n"
+            "Return empty list [] if none are compatible."
+        )
+        
+        # Use fast Groq model for quick classification
+        model = GroqModel(MODEL_CONFIG["QUERY_GENERATION"])  # Fast Llama model
+        agent = Agent(
+            model,
+            output_type=list[int],
+            system_prompt=(
+                "Medical expert assessing compatibility. Compatible requires ALL three to match: "
+                "anatomy, pathology, imaging finding. ANY mismatch = incompatible. "
+                "Return JSON list of compatible indices (0-based)."
+            ),
+        )
+        
+        result = await agent.run(
+            batch_prompt,
+            model_settings={"temperature": 0.1, "max_tokens": 200}
+        )
+        
+        compatible_indices = result.output
+        if not isinstance(compatible_indices, list):
+            compatible_indices = []
+        
+        # Filter to valid indices
+        compatible_indices = [idx for idx in compatible_indices if 0 <= idx < len(search_results)]
+        
+        filtered_results = [search_results[i] for i in compatible_indices]
+        
+        elapsed = time.time() - start_time
+        print(f"filter_compatible_search_results: ✅ Filtered {len(search_results)} → {len(filtered_results)} compatible results in {elapsed:.2f}s")
+        if len(filtered_results) < len(search_results):
+            removed_count = len(search_results) - len(filtered_results)
+            print(f"  └─ Removed {removed_count} incompatible result(s)")
+        
+        return filtered_results
+        
+    except Exception as e:
+        # On error, return all results (fail-safe - better to have some results than none)
+        print(f"⚠️  Compatibility filter error: {e}")
+        print(f"  └─ Returning all {len(search_results)} results (fail-safe)")
+        import traceback
+        print(traceback.format_exc())
+        return search_results
+    finally:
+        if old_api_key is not None:
+            os.environ['GROQ_API_KEY'] = old_api_key
+        else:
+            os.environ.pop('GROQ_API_KEY', None)
+
+
+async def validate_guideline_compatibility(
+    guideline_entry: GuidelineEntry,
+    finding: str,
+    api_key: str
+) -> bool:
+    """
+    Validate that synthesized guideline matches the clinical premise of the finding.
+    Returns True if compatible, False otherwise.
+    
+    Args:
+        guideline_entry: The synthesized GuidelineEntry from guideline synthesis
+        finding: The original radiological finding text
+        api_key: Groq API key
+        
+    Returns:
+        True if guideline is compatible with finding, False otherwise
+    """
+    import os
+    
+    start_time = time.time()
+    print(f"validate_guideline_compatibility: Validating guideline for finding '{finding}'")
+    
+    old_api_key = os.environ.get('GROQ_API_KEY')
+    os.environ['GROQ_API_KEY'] = api_key
+    
+    try:
+        # Build validation prompt
+        guideline_summary = (
+            f"Diagnostic Overview: {guideline_entry.diagnostic_overview[:300]}\n"
+        )
+        if guideline_entry.classification_systems:
+            guideline_summary += f"Classification Systems: {', '.join([cs.name for cs in guideline_entry.classification_systems])}\n"
+        if guideline_entry.differential_diagnoses:
+            guideline_summary += f"Differential Diagnoses: {', '.join([dd.diagnosis for dd in guideline_entry.differential_diagnoses])}\n"
+        
+        validation_prompt = (
+            f"Finding: {finding}\n\n"
+            f"Guideline Summary:\n{guideline_summary}\n\n"
+            "Compatible = ALL three must match: (1) anatomy, (2) pathology, (3) imaging finding.\n"
+            "Incompatible = ANY mismatch in these components. Shared terminology does not imply compatibility.\n\n"
+            "Return 'YES' if compatible, 'NO' if incompatible."
+        )
+        
+        # Use fast Groq model for quick validation
+        model = GroqModel(MODEL_CONFIG["QUERY_GENERATION"])  # Fast Llama model
+        agent = Agent(
+            model,
+            output_type=str,
+            system_prompt=(
+                "Medical expert validating compatibility. Compatible requires ALL three to match: "
+                "anatomy, pathology, imaging finding. ANY mismatch = incompatible. "
+                "Return ONLY 'YES' or 'NO'."
+            ),
+        )
+        
+        result = await agent.run(
+            validation_prompt,
+            model_settings={"temperature": 0.1, "max_tokens": 10}
+        )
+        
+        response = str(result.output).strip().upper()
+        is_compatible = response.startswith('YES')
+        
+        elapsed = time.time() - start_time
+        status = "✅ COMPATIBLE" if is_compatible else "❌ INCOMPATIBLE"
+        print(f"validate_guideline_compatibility: {status} in {elapsed:.2f}s")
+        
+        return is_compatible
+        
+    except Exception as e:
+        # On error, return True (fail-safe - better to include guideline than reject it)
+        print(f"⚠️  Guideline validation error: {e}")
+        print(f"  └─ Returning True (fail-safe - including guideline)")
+        import traceback
+        print(traceback.format_exc())
+        return True
+    finally:
+        if old_api_key is not None:
+            os.environ['GROQ_API_KEY'] = old_api_key
+        else:
+            os.environ.pop('GROQ_API_KEY', None)
+
+
 @with_retry(max_retries=3, base_delay=2.0)
 async def search_guidelines_for_findings(
     consolidated_result: ConsolidationResult,
@@ -749,6 +929,10 @@ async def search_guidelines_for_findings(
             "• PRIORITIZE reputable sources: professional societies, academic institutions, peer-reviewed guidelines\n"
             "• DISCARD or de-prioritize low-quality sources: blogs, forums, non-peer-reviewed content\n"
             "• Use only provided search evidence - weight higher-quality sources more heavily\n\n"
+            
+            "CRITICAL: Guideline must match ALL three components of the finding: (1) anatomy, (2) pathology, (3) imaging finding. "
+            "ANY mismatch = incompatible. Shared terminology does not imply compatibility. "
+            "Only synthesize information matching the finding's complete definition.\n\n"
             
             "SOURCE QUALITY PRIORITY:\n"
             "1. UK professional societies (RCR, NICE, BIR, British specialty societies)\n"
@@ -829,8 +1013,18 @@ async def search_guidelines_for_findings(
                 print(f"⚠️  No search results for finding {idx}")
                 continue
 
+            # Filter incompatible search results before synthesis
+            search_results = await filter_compatible_search_results(
+                search_results,
+                consolidated_finding.finding,
+                api_key
+            )
+            if not search_results:
+                print(f"⚠️  No compatible search results for finding {idx} after filtering")
+                continue
+
             total_sources += len(search_results)
-            print(f"      Retrieved {len(search_results)} search results")
+            print(f"      Retrieved {len(search_results)} compatible search results")
 
             # Build evidence context
             context_lines = []
@@ -903,6 +1097,16 @@ async def search_guidelines_for_findings(
             synthesis_models_used.add(synthesis_model)
             guideline_entry: GuidelineEntry = result.output
             print(f"      Generated guideline: {guideline_entry.diagnostic_overview[:160]}...")
+
+            # Validate guideline compatibility with finding
+            is_compatible = await validate_guideline_compatibility(
+                guideline_entry,
+                consolidated_finding.finding,
+                api_key
+            )
+            if not is_compatible:
+                print(f"⚠️  Synthesized guideline incompatible with finding {idx}, skipping...")
+                continue
 
             guideline_entry = guideline_entry.model_copy(
                 update={"finding_number": idx, "finding": consolidated_finding.finding}
