@@ -1912,13 +1912,15 @@ Check for violations:
 Return structured violations. If no violations found, return empty violations list with is_valid=True.
 """
         
-        # Use lightweight Qwen model for validation
+        # Use lightweight Qwen model for validation with thinking enabled
+        groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
         pydantic_model = GroqModel(MODEL_CONFIG["PROTOCOL_VALIDATOR"])
         
         agent = Agent(
             pydantic_model,
             output_type=ValidationResult,
-            system_prompt="You are a radiology protocol validator. Find violations against the scan type/protocol. Be precise and only flag actual violations. If no violations exist, return empty violations list."
+            system_prompt="You are a radiology protocol validator. Find violations against the scan type/protocol. Be precise and only flag actual violations. If no violations exist, return empty violations list.",
+            model_settings=groq_settings
         )
         
         result = await agent.run(
@@ -1928,6 +1930,9 @@ Return structured violations. If no violations found, return empty violations li
                 "max_tokens": 2048,
             }
         )
+        
+        # Log thinking parts (backend only - not sent to frontend)
+        _log_thinking_parts(result, "validate_report_protocol - Protocol Validator")
         
         validation_result: ValidationResult = result.output
         
@@ -2029,13 +2034,15 @@ Return the complete corrected report with:
 - scan_type: Keep the original scan_type unchanged
 """
         
-        # Use lightweight Qwen model for fix application
+        # Use lightweight Qwen model for fix application with thinking enabled
+        groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
         pydantic_model = GroqModel(MODEL_CONFIG["PROTOCOL_FIX_APPLIER"])
         
         agent = Agent(
             pydantic_model,
             output_type=ReportOutput,
-            system_prompt="You are a radiology report editor. Apply ONLY the specific protocol fixes requested. Preserve the exact report structure, formatting, and organization. Make minimal changes - only correct the violations, do not restructure the report."
+            system_prompt="You are a radiology report editor. Apply ONLY the specific protocol fixes requested. Preserve the exact report structure, formatting, and organization. Make minimal changes - only correct the violations, do not restructure the report.",
+            model_settings=groq_settings
         )
         
         result = await agent.run(
@@ -2045,6 +2052,9 @@ Return the complete corrected report with:
                 "max_tokens": 4096,
             }
         )
+        
+        # Log thinking parts (backend only - not sent to frontend)
+        _log_thinking_parts(result, "apply_protocol_fixes - Protocol Fix Applier")
         
         fixed_output: ReportOutput = result.output
         
