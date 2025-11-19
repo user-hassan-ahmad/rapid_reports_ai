@@ -71,12 +71,16 @@
 		// Small delay to ensure backend has processed the save
 		await new Promise(resolve => setTimeout(resolve, 100));
 		await loadTemplates();
+		// Dispatch event to parent to trigger refresh in TemplatedReportTab
+		dispatch('templateCreated');
 	}
 
 	async function handleTemplateDeleted() {
 		// Small delay to ensure backend has processed the delete
 		await new Promise(resolve => setTimeout(resolve, 100));
 		await loadTemplates();
+		// Dispatch event to parent to trigger refresh in TemplatedReportTab
+		dispatch('templateDeleted');
 	}
 	
 	function handleEditorStateChange(event) {

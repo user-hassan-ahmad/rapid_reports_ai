@@ -655,6 +655,14 @@ $: if (!isEnhancementContext && sidebarVisible) {
 						initialEditTemplate={templateToEdit}
 						cameFromTab={editSourceTab}
 						on:backToSource={handleBackToSourceTab}
+						on:templateCreated={() => {
+							// Increment refresh key to trigger template reload in TemplatedReportTab
+							templatesRefreshKey += 1;
+						}}
+						on:templateDeleted={() => {
+							// Increment refresh key to trigger template reload in TemplatedReportTab
+							templatesRefreshKey += 1;
+						}}
 					/>
 				</div>
 				
