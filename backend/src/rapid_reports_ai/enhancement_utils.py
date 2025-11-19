@@ -33,6 +33,8 @@ from .enhancement_models import (
     ConsolidatedFinding,
     ConsolidationResult,
     ReportOutput,
+    ProtocolViolation,
+    ValidationResult,
 )
 
 # Central Model Configuration Dictionary
@@ -42,6 +44,10 @@ MODEL_CONFIG = {
     # Report Generation Models
     "PRIMARY_REPORT_GENERATOR": "qwen/qwen3-32b",  # Primary model for report generation (Qwen 32B with thinking)
     "FALLBACK_REPORT_GENERATOR": "claude-sonnet-4-20250514",  # Fallback model if primary fails after retries (Claude Sonnet 4)
+    
+    # Protocol Validation Models
+    "PROTOCOL_VALIDATOR": "qwen/qwen3-32b",  # Validation step: Check for protocol violations (lightweight, fast)
+    "PROTOCOL_FIX_APPLIER": "qwen/qwen3-32b",  # Fix application step: Apply corrections for violations (lightweight, fast)
     
     # Enhancement Pipeline Models
     "FINDING_EXTRACTION": "qwen/qwen3-32b",  # Phase 1: Finding extraction and consolidation (with thinking)
@@ -1853,4 +1859,178 @@ async def generate_templated_report(
             import traceback
             print(traceback.format_exc())
             raise Exception(f"Templated report generation failed with both Qwen and fallback model. Original error: {e}") from e
+
+
+@with_retry(max_retries=3, base_delay=2.0)
+async def validate_report_protocol(
+    report_content: str,
+    scan_type: str,
+    findings: str
+) -> ValidationResult:
+    """
+    Validate radiology report for protocol violations using lightweight Qwen model.
+    Checks for violations like contrast enhancement on non-contrast scans, duplication, etc.
+    
+    Args:
+        report_content: The generated report content to validate
+        scan_type: The extracted scan type and protocol (e.g., "CT head non-contrast")
+        findings: The original findings input
+        
+    Returns:
+        ValidationResult with violations list and validation status
+    """
+    import os
+    
+    start_time = time.time()
+    print(f"validate_report_protocol: Starting validation for scan_type '{scan_type}'")
+    
+    groq_api_key = os.environ.get('GROQ_API_KEY')
+    if not groq_api_key:
+        raise ValueError("Groq API key not configured. Please set GROQ_API_KEY environment variable.")
+    
+    old_api_key = os.environ.get('GROQ_API_KEY')
+    os.environ['GROQ_API_KEY'] = groq_api_key
+    
+    try:
+        # Build validation prompt
+        validation_prompt = f"""Validate this radiology report for protocol violations.
+
+EXTRACTED SCAN TYPE: {scan_type}
+
+REPORT TO VALIDATE:
+{report_content}
+
+ORIGINAL FINDINGS:
+{findings}
+
+Check for violations:
+1. Contrast enhancement mentioned when scan_type contains 'non-contrast', 'non-con', or 'without contrast'
+2. Duplication of findings (same information repeated)
+3. Hallucinated findings not in original input
+4. Protocol incompatibilities (e.g., DWI findings on non-DWI scans, MRI signal characteristics on CT scans, perfusion parameters on non-perfusion scans)
+
+Return structured violations. If no violations found, return empty violations list with is_valid=True.
+"""
+        
+        # Use lightweight Qwen model for validation
+        pydantic_model = GroqModel(MODEL_CONFIG["PROTOCOL_VALIDATOR"])
+        
+        agent = Agent(
+            pydantic_model,
+            output_type=ValidationResult,
+            system_prompt="You are a radiology protocol validator. Find violations against the scan type/protocol. Be precise and only flag actual violations. If no violations exist, return empty violations list."
+        )
+        
+        result = await agent.run(
+            validation_prompt,
+            model_settings={
+                "temperature": 0.3,
+                "max_tokens": 2048,
+            }
+        )
+        
+        validation_result: ValidationResult = result.output
+        
+        elapsed = time.time() - start_time
+        violation_count = len(validation_result.violations)
+        print(f"validate_report_protocol: ✅ Completed in {elapsed:.2f}s - Found {violation_count} violation(s)")
+        
+        return validation_result
+        
+    finally:
+        if old_api_key is not None:
+            os.environ['GROQ_API_KEY'] = old_api_key
+        else:
+            os.environ.pop('GROQ_API_KEY', None)
+
+
+@with_retry(max_retries=3, base_delay=2.0)
+async def apply_protocol_fixes(
+    report_output: ReportOutput,
+    validation_result: ValidationResult
+) -> ReportOutput:
+    """
+    Apply protocol fixes to a report based on validation violations.
+    Uses lightweight Qwen model to correct violations.
+    
+    Args:
+        report_output: The original ReportOutput with violations
+        validation_result: The ValidationResult containing violations to fix
+        
+    Returns:
+        Corrected ReportOutput with fixes applied
+    """
+    import os
+    
+    start_time = time.time()
+    violation_count = len(validation_result.violations)
+    print(f"apply_protocol_fixes: Starting fix application for {violation_count} violation(s)")
+    
+    groq_api_key = os.environ.get('GROQ_API_KEY')
+    if not groq_api_key:
+        raise ValueError("Groq API key not configured. Please set GROQ_API_KEY environment variable.")
+    
+    old_api_key = os.environ.get('GROQ_API_KEY')
+    os.environ['GROQ_API_KEY'] = groq_api_key
+    
+    try:
+        # Build violations summary for prompt
+        violations_text = []
+        for i, violation in enumerate(validation_result.violations, 1):
+            violations_text.append(f"{i}. {violation.violation_type}")
+            violations_text.append(f"   Location: {violation.location}")
+            violations_text.append(f"   Issue: {violation.issue}")
+            violations_text.append(f"   Original text: {violation.original_text}")
+            violations_text.append(f"   Suggested fix: {violation.suggested_fix}")
+            violations_text.append("")
+        
+        # Build fix application prompt
+        fix_prompt = f"""Apply protocol fixes to this radiology report.
+
+SCAN TYPE: {validation_result.scan_type_checked}
+
+ORIGINAL REPORT:
+{report_output.report_content}
+
+VIOLATIONS TO FIX:
+{chr(10).join(violations_text)}
+
+Apply all fixes to correct the protocol violations. Return the complete corrected report with:
+- report_content: The fixed report text
+- description: Keep the original description unchanged
+- scan_type: Keep the original scan_type unchanged
+
+Ensure all violations are addressed while maintaining report quality and formatting.
+"""
+        
+        # Use lightweight Qwen model for fix application
+        pydantic_model = GroqModel(MODEL_CONFIG["PROTOCOL_FIX_APPLIER"])
+        
+        agent = Agent(
+            pydantic_model,
+            output_type=ReportOutput,
+            system_prompt="You are a radiology report editor. Apply protocol fixes to correct violations. Return the complete corrected report maintaining formatting and quality."
+        )
+        
+        result = await agent.run(
+            fix_prompt,
+            model_settings={
+                "temperature": 0.3,
+                "max_tokens": 4096,
+            }
+        )
+        
+        fixed_output: ReportOutput = result.output
+        
+        elapsed = time.time() - start_time
+        print(f"apply_protocol_fixes: ✅ Completed in {elapsed:.2f}s")
+        print(f"  └─ Fixed report length: {len(fixed_output.report_content)} chars")
+        
+        return fixed_output
+        
+    finally:
+        if old_api_key is not None:
+            os.environ['GROQ_API_KEY'] = old_api_key
+        else:
+            os.environ.pop('GROQ_API_KEY', None)
 

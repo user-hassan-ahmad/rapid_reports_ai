@@ -53,6 +53,8 @@ class TemplateManager:
         self,
         template: str,
         variable_values: Dict[str, str],
+        template_name: Optional[str] = None,
+        template_description: Optional[str] = None,
         master_instructions: Optional[str] = None,
         model: str = "claude"
     ) -> Dict[str, str]:
@@ -63,6 +65,8 @@ class TemplateManager:
         Args:
             template: The template content with variables
             variable_values: The values for each variable
+            template_name: Optional template name for scan type extraction
+            template_description: Optional template description for scan type extraction
             master_instructions: Optional custom instructions
             model: The model being used (for compatibility, not used in prompt generation)
             
@@ -85,9 +89,10 @@ class TemplateManager:
         system_parts.append("")
         
         # Output format (persistent requirement)
-        system_parts.append("OUTPUT FORMAT: You must provide structured JSON with two fields:")
+        system_parts.append("OUTPUT FORMAT: You must provide structured JSON with three fields:")
         system_parts.append("- \"report_content\": The complete radiology report text WITH PROPER FORMATTING (use line breaks between sections, maintain paragraph structure)")
         system_parts.append("- \"description\": A brief 5-15 word summary of key findings for the history tab, max 150 characters (e.g., 'resolving subdural haematoma, no new abnormality' - do NOT repeat the scan type)")
+        system_parts.append("- \"scan_type\": Extract the scan type and protocol combined from template name/description and findings context (e.g., 'CT head non-contrast', 'MRI brain with contrast'). Include contrast status ONLY if explicitly mentioned in template name/description or findings.")
         system_parts.append("")
         
         # Core constraints (persistent behavior)
@@ -111,6 +116,17 @@ class TemplateManager:
         
         # Build user prompt (task-specific)
         user_parts = []
+        
+        # Add template context for scan type extraction
+        if template_name or template_description:
+            user_parts.append("=== TEMPLATE CONTEXT ===")
+            if template_name:
+                user_parts.append(f"Template Name: {template_name}")
+            if template_description:
+                user_parts.append(f"Template Description: {template_description}")
+            user_parts.append("")
+            user_parts.append("Extract the scan type and protocol from the template name/description above, combined with findings context below. Include contrast status ONLY if explicitly mentioned in template name/description or findings.")
+            user_parts.append("")
         
         # Add input data (task-specific)
         if findings:
@@ -158,7 +174,8 @@ class TemplateManager:
         user_parts.append("The Findings section should contain the systematic anatomical review with positive findings and relevant negatives.")
         user_parts.append("")
         user_parts.append("Protocol Validation (CRITICAL):")
-        user_parts.append("- Before including ANY finding, verify it is compatible with the scan protocol/type")
+        user_parts.append("- Extract scan_type from template context and findings (include contrast status only if explicitly mentioned)")
+        user_parts.append("- Before including ANY finding, verify it is compatible with the extracted scan_type/protocol")
         user_parts.append("- Do NOT report findings requiring imaging techniques not performed (e.g., contrast enhancement on non-contrast scans, DWI characteristics on non-DWI sequences, perfusion parameters on non-perfusion scans)")
         user_parts.append("- Cross-check each finding: \"Can this be evaluated with this scan type/protocol?\" If no, exclude it")
         user_parts.append("")

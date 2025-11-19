@@ -1008,6 +1008,8 @@ async def generate_report_from_template(
         prompts = tm.build_master_prompt(
             template=template.template_content,
             variable_values=request.variables,
+            template_name=template.name,
+            template_description=template.description,
             master_instructions=template.master_prompt_instructions,
             model=request.model
         )
@@ -1032,6 +1034,31 @@ async def generate_report_from_template(
             api_key=api_key,
             signature=current_user.signature
         )
+        
+        # Always run validation on generated report
+        from .enhancement_utils import validate_report_protocol, apply_protocol_fixes
+        findings = request.variables.get('FINDINGS', '')
+        
+        try:
+            validation_result = await validate_report_protocol(
+                report_content=report_output.report_content,
+                scan_type=report_output.scan_type,
+                findings=findings
+            )
+            
+            # Apply fixes if violations found, otherwise use original report
+            if validation_result.violations:
+                print(f"⚠️ Found {len(validation_result.violations)} violation(s), applying fixes...")
+                report_output = await apply_protocol_fixes(
+                    report_output=report_output,
+                    validation_result=validation_result
+                )
+            else:
+                print("✅ No violations found, using original report")
+        except Exception as validation_error:
+            # If validation fails, log error but continue with original report
+            print(f"⚠️ Validation failed: {validation_error}")
+            print("Continuing with original report output")
         
         # Build context title: template name + description
         context_title = None
@@ -1060,7 +1087,10 @@ async def generate_report_from_template(
                     report_type="templated",
                     report_content=report_output.report_content,
                     model_used=model_display,
-                    input_data={"variables": request.variables},
+                    input_data={
+                        "variables": request.variables,
+                        "extracted_scan_type": report_output.scan_type
+                    },
                     template_id=str(template.id),
                     description=context_title
                 )

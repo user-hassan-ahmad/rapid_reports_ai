@@ -250,6 +250,43 @@ class CompletenessAnalysis(BaseModel):
 
 
 # ============================================================================
+# Protocol Validation Models
+# ============================================================================
+
+class ProtocolViolation(BaseModel):
+    """A single protocol violation found in a radiology report"""
+    violation_type: str = Field(
+        description="Type of violation (e.g., 'contrast_on_noncontrast', 'duplication', 'hallucination', 'protocol_incompatibility')"
+    )
+    location: str = Field(
+        description="Where in report the violation occurs (e.g., 'Findings section, line 3', 'Impression section')"
+    )
+    original_text: str = Field(
+        description="The problematic text that violates the protocol"
+    )
+    issue: str = Field(
+        description="Why this violates the scan protocol/type"
+    )
+    suggested_fix: str = Field(
+        description="How to fix this violation"
+    )
+
+
+class ValidationResult(BaseModel):
+    """Result of protocol validation check"""
+    violations: List[ProtocolViolation] = Field(
+        default_factory=list,
+        description="List of protocol violations found. Empty list if no violations."
+    )
+    is_valid: bool = Field(
+        description="True if no violations found, False if violations exist"
+    )
+    scan_type_checked: str = Field(
+        description="The scan type that was validated against"
+    )
+
+
+# ============================================================================
 # Report Generation Output Model
 # ============================================================================
 
@@ -263,6 +300,11 @@ class ReportOutput(BaseModel):
         min_length=5,
         max_length=250,
         description="Brief summary for history tab (5-15 words describing key findings, max 250 characters)"
+    )
+    scan_type: str = Field(
+        min_length=3,
+        max_length=200,
+        description="Extracted scan type and protocol combined (e.g., 'CT head non-contrast', 'MRI brain with contrast'). Extract from template name/description and findings context. Include contrast status ONLY if explicitly mentioned."
     )
     
     # NO field validators - let Pydantic handle validation exclusively
