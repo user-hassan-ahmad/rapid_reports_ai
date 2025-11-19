@@ -117,17 +117,6 @@ class TemplateManager:
         # Build user prompt (task-specific)
         user_parts = []
         
-        # Add template context for scan type extraction
-        if template_name or template_description:
-            user_parts.append("=== TEMPLATE CONTEXT ===")
-            if template_name:
-                user_parts.append(f"Template Name: {template_name}")
-            if template_description:
-                user_parts.append(f"Template Description: {template_description}")
-            user_parts.append("")
-            user_parts.append("Extract the scan type and protocol from the template name/description above, combined with findings context below. Include contrast status ONLY if explicitly mentioned in template name/description or findings.")
-            user_parts.append("")
-        
         # Add input data (task-specific)
         if findings:
             user_parts.append("=== INPUT ===")
@@ -149,10 +138,23 @@ class TemplateManager:
             user_parts.append(master_instructions)
             user_parts.append("")
         
-        # Add the template structure (task-specific)
+        # Add the template structure (task-specific) - Show template FIRST
         user_parts.append("=== TEMPLATE STRUCTURE ===")
         user_parts.append(rendered_template)
         user_parts.append("")
+        
+        # Add template context for scan type extraction AFTER template structure
+        # This ensures model sees template structure first, then uses context only for scan_type
+        if template_name or template_description:
+            user_parts.append("=== TEMPLATE CONTEXT (for scan_type extraction only) ===")
+            if template_name:
+                user_parts.append(f"Template Name: {template_name}")
+            if template_description:
+                user_parts.append(f"Template Description: {template_description}")
+            user_parts.append("")
+            user_parts.append("Use the template name/description above ONLY to extract scan_type for protocol validation. Do NOT use it to expand or modify report sections.")
+            user_parts.append("Extract the scan type and protocol from the template name/description above, combined with findings context. Include contrast status ONLY if explicitly mentioned in template name/description or findings.")
+            user_parts.append("")
         
         # Add variable summary (excluding FINDINGS and CLINICAL_HISTORY as they're already in structured sections)
         other_vars = {k: v for k, v in variable_values.items() if k not in ['FINDINGS', 'CLINICAL_HISTORY']}
@@ -197,6 +199,15 @@ class TemplateManager:
         user_parts.append("- Limitations: [only if technical limitations exist, otherwise omit]")
         user_parts.append("- Findings: [MANDATORY - systematic anatomical review]")
         user_parts.append("- Impression/Conclusion: [summary section as specified by template]")
+        user_parts.append("")
+        user_parts.append("CRITICAL: If a section is NOT explicitly shown in the template structure above, keep it BRIEF and minimal. Only expand sections that are explicitly shown in the template.")
+        user_parts.append("")
+        user_parts.append("Comparison Section Guidance:")
+        user_parts.append("- If Comparison is NOT in the template, keep it BRIEF (one sentence maximum)")
+        user_parts.append("- Extract comparison info from findings if present (keywords: 'comparison', 'previous', 'prior')")
+        user_parts.append("- Format: 'Compared with previous [modality] [region] [date if available]' OR 'No previous imaging available for comparison'")
+        user_parts.append("- Do NOT expand Comparison section with detailed findings - save details for Findings section")
+        user_parts.append("")
         
         # Add formatting guidance (task-specific)
         user_parts.append("")
