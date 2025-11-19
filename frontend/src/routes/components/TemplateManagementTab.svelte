@@ -67,12 +67,16 @@
 		}
 	}
 
-	function handleTemplateCreated() {
-		loadTemplates();
+	async function handleTemplateCreated() {
+		// Small delay to ensure backend has processed the save
+		await new Promise(resolve => setTimeout(resolve, 100));
+		await loadTemplates();
 	}
 
-	function handleTemplateDeleted() {
-		loadTemplates();
+	async function handleTemplateDeleted() {
+		// Small delay to ensure backend has processed the delete
+		await new Promise(resolve => setTimeout(resolve, 100));
+		await loadTemplates();
 	}
 	
 	function handleEditorStateChange(event) {
@@ -632,10 +636,31 @@
 	{/if}
 
 	{#if loadingTemplates}
-		<div class="flex items-center justify-center py-12">
-			<div class="text-gray-400">Loading templates...</div>
+		<!-- Skeleton loader for templates -->
+		<div class="space-y-4">
+			<!-- Header skeleton -->
+			<div class="flex justify-between items-center mb-6">
+				<div class="h-8 bg-gray-700/50 rounded animate-pulse w-48"></div>
+				<div class="h-10 bg-gray-700/50 rounded animate-pulse w-40"></div>
+			</div>
+			<!-- Template cards skeleton -->
+			{#each Array(3) as _}
+				<div class="card-dark p-6 space-y-4">
+					<div class="h-6 bg-gray-700/50 rounded animate-pulse w-3/4"></div>
+					<div class="h-4 bg-gray-700/50 rounded animate-pulse w-full"></div>
+					<div class="h-4 bg-gray-700/50 rounded animate-pulse w-2/3"></div>
+					<div class="flex gap-2">
+						<div class="h-6 bg-gray-700/50 rounded-full animate-pulse w-20"></div>
+						<div class="h-6 bg-gray-700/50 rounded-full animate-pulse w-24"></div>
+					</div>
+					<div class="flex gap-2 mt-4">
+						<div class="h-9 bg-gray-700/50 rounded animate-pulse w-24"></div>
+						<div class="h-9 bg-gray-700/50 rounded animate-pulse w-24"></div>
+					</div>
+				</div>
+			{/each}
 		</div>
-	{:else if !loadingTemplates}
+	{:else}
 		<TemplateManager 
 			templates={filteredTemplates}
 			{selectedModel} 
