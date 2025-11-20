@@ -455,14 +455,47 @@ async def chat(
             signature=signature_value
         )
         
+        # Always run validation on generated report
+        from .enhancement_utils import validate_report_protocol, apply_protocol_fixes
+        findings = request.variables.get('FINDINGS', '') if request.variables else ''
+        
+        try:
+            validation_result = await validate_report_protocol(
+                report_content=report_output.report_content,
+                scan_type=report_output.scan_type,
+                findings=findings
+            )
+            
+            # Apply fixes if violations found, otherwise use original report
+            if validation_result.violations:
+                violation_count = len(validation_result.violations)
+                print(f"\n{'='*80}")
+                print(f"⚠️ PROTOCOL VIOLATIONS DETECTED: {violation_count} violation(s)")
+                print(f"{'='*80}")
+                for i, violation in enumerate(validation_result.violations, 1):
+                    print(f"  {i}. [{violation.violation_type}] {violation.location}")
+                    print(f"     Issue: {violation.issue}")
+                print(f"{'='*80}\n")
+                print(f"Applying fixes...")
+                report_output = await apply_protocol_fixes(
+                    report_output=report_output,
+                    validation_result=validation_result
+                )
+                print(f"✅ Fixes applied successfully")
+            else:
+                print("✅ No violations found, using original report")
+        except Exception as validation_error:
+            # If validation fails, log error but continue with original report
+            print(f"⚠️ Validation failed: {validation_error}")
+            print("Continuing with original report output")
+        
         # Build context title: scan type + description
         context_title = None
-        if request.variables and 'SCAN_TYPE' in request.variables:
-            scan_type = request.variables.get('SCAN_TYPE', '')
+        if report_output.scan_type:
             if report_output.description:
-                context_title = f"{scan_type} - {report_output.description}"
+                context_title = f"{report_output.scan_type} - {report_output.description}"
             else:
-                context_title = scan_type
+                context_title = report_output.scan_type
         else:
             context_title = report_output.description
         
@@ -483,7 +516,11 @@ async def chat(
                     report_type="auto",
                     report_content=report_output.report_content,
                     model_used=model_display,
-                    input_data={"message": request.message, "variables": request.variables},
+                    input_data={
+                        "message": request.message,
+                        "variables": request.variables,
+                        "extracted_scan_type": report_output.scan_type
+                    },
                     use_case=use_case_name,
                     description=context_title
                 )
