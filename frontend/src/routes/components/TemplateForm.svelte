@@ -221,10 +221,8 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 		error = null;
 		// Clear preserved values to prevent reactive restoration
 		preservedVariableValues = {};
-		// Clear variableValues locally before dispatching to parent
-		// This prevents reactive statements from restoring from preservedVariableValues
-		variableValues = {};
-		// Dispatch to parent to handle the full reset (including clearing variableValues)
+		// Dispatch to parent to handle the full reset (including clearing and re-initializing variableValues)
+		// Don't clear variableValues here - let parent handle it to avoid showing "no variables" message
 		dispatch('resetForm');
 		dispatch('reportCleared');
 		dispatch('historyUpdate', { count: 0 });
