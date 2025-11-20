@@ -41,38 +41,16 @@ export let versionHistoryRefreshKey = 0;
 		variableValues = {};
 	}
 	
-	// Track last template ID to detect when template actually changes (not just object reference)
+	// Track last template ID to detect when template changes (for response state reset)
 	let lastTemplateId = null;
-	let preservedVariableValues = {};
 	
-	// Reactive statement: Watch selectedTemplate to preserve values when template changes
+	// Reset response visibility when template changes
 	$: if (selectedTemplate && selectedTemplate.id) {
 		const currentTemplateId = selectedTemplate.id;
-		
-		// Update lastTemplateId if template changed
 		if (currentTemplateId !== lastTemplateId) {
 			lastTemplateId = currentTemplateId;
 			hasResponseEver = false;
 			responseVisible = false;
-		}
-		
-		// Always preserve current values if they exist
-		if (Object.keys(variableValues || {}).length > 0) {
-			preservedVariableValues[currentTemplateId] = { ...variableValues };
-		}
-	}
-	
-	// Separate reactive statement that watches variableValues directly
-	// If variableValues becomes empty unexpectedly (when we have a template selected and preserved values),
-	// restore them immediately
-	$: if (selectedTemplate && selectedTemplate.id && preservedVariableValues[selectedTemplate.id]) {
-		const currentTemplateId = selectedTemplate.id;
-		const hasValues = variableValues && Object.keys(variableValues).length > 0;
-		const hasPreserved = preservedVariableValues[currentTemplateId] && Object.keys(preservedVariableValues[currentTemplateId]).length > 0;
-		
-		// If variableValues is empty but we have preserved values, restore immediately
-		if (!hasValues && hasPreserved) {
-			variableValues = { ...preservedVariableValues[currentTemplateId] };
 		}
 	}
 	

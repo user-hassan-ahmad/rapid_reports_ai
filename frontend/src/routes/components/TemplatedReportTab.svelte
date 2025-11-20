@@ -55,44 +55,14 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 		loadTemplates();
 	}
 	
-	// If variableValues becomes empty unexpectedly (we have a template selected), restore from preserved values
-	$: {
-		const isEmpty = variableValues && Object.keys(variableValues).length > 0 && 
-			Object.values(variableValues).every(v => v === '');
-		const isCompletelyEmpty = !variableValues || Object.keys(variableValues).length === 0;
-		
-		if (selectedTemplate && selectedTemplate.id && (isEmpty || isCompletelyEmpty)) {
-			const templateId = selectedTemplate.id;
-			// Check if we have preserved values for this template
-			if (variableValuesByTemplate[templateId] && Object.keys(variableValuesByTemplate[templateId]).length > 0) {
-				// Check if preserved values have real content (not just empty strings)
-				const preservedHasRealValues = Object.values(variableValuesByTemplate[templateId]).some(v => v && v.trim().length > 0);
-				if (preservedHasRealValues) {
-					variableValues = { ...variableValuesByTemplate[templateId] };
-				}
-			}
-		}
-	}
-	
 	// Store variableValues per template ID to preserve when switching templates
+	// This is handled intentionally in handleTemplateSelect - no reactive statements needed
 	let variableValuesByTemplate = {};
 	let lastTemplateId = null;
 	
 	// Ensure variableValues is never undefined
 	if (typeof variableValues === 'undefined') {
 		variableValues = {};
-	}
-	
-	// CRITICAL: Always preserve variableValues when they exist, BEFORE any potential resets
-	// This runs on every reactive update to ensure we never lose values
-	$: if (selectedTemplate && selectedTemplate.id && variableValues && Object.keys(variableValues).length > 0) {
-		// Check if values are actually filled (not just empty strings)
-		const hasRealValues = Object.values(variableValues).some(v => v && v.trim().length > 0);
-		if (hasRealValues) {
-			const templateId = selectedTemplate.id;
-			// Always keep preserved values up to date
-			variableValuesByTemplate[templateId] = { ...variableValues };
-		}
 	}
 	let searchQuery = '';
 	let selectedTags = [];
