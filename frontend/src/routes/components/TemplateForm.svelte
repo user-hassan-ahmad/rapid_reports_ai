@@ -219,6 +219,11 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 		response = null;
 		responseModel = null;
 		error = null;
+		// Clear preserved values to prevent reactive restoration
+		preservedVariableValues = {};
+		// Clear variableValues locally before dispatching to parent
+		// This prevents reactive statements from restoring from preservedVariableValues
+		variableValues = {};
 		// Dispatch to parent to handle the full reset (including clearing variableValues)
 		dispatch('resetForm');
 		dispatch('reportCleared');
