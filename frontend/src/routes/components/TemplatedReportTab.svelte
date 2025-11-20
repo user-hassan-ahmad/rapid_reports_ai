@@ -64,6 +64,33 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	if (typeof variableValues === 'undefined') {
 		variableValues = {};
 	}
+	
+	// Initialize variableValues when template is selected but values are empty
+	// This handles cases where template is already selected (e.g., on page load)
+	// This is initialization logic, not preservation logic, so it won't interfere with reset
+	$: if (selectedTemplate && selectedTemplate.id && (!variableValues || Object.keys(variableValues).length === 0)) {
+		const templateId = selectedTemplate.id;
+		
+		// Check if we have preserved values for this template
+		if (variableValuesByTemplate[templateId]) {
+			variableValues = { ...variableValuesByTemplate[templateId] };
+		} else {
+			// Initialize empty values for this template
+			variableValues = {
+				'FINDINGS': '',
+				'CLINICAL_HISTORY': ''
+			};
+			
+			// Add template-specific variables (excluding the hardcoded ones)
+			if (selectedTemplate.variables && Array.isArray(selectedTemplate.variables)) {
+				selectedTemplate.variables.forEach(v => {
+					if (v !== 'FINDINGS' && v !== 'CLINICAL_HISTORY') {
+						variableValues[v] = '';
+					}
+				});
+			}
+		}
+	}
 	let searchQuery = '';
 	let selectedTags = [];
 	let allUniqueTags = [];
@@ -431,16 +458,20 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 		dispatch('reportGenerated', { reportId: null });
 		dispatch('reportCleared');
 		// Re-initialize empty values for current template if one is selected
-		if (selectedTemplate && selectedTemplate.variables && selectedTemplate.variables.length > 0) {
+		// Always initialize FINDINGS and CLINICAL_HISTORY, then add template-specific variables
+		if (selectedTemplate && selectedTemplate.id) {
 			variableValues = {
 				'FINDINGS': '',
 				'CLINICAL_HISTORY': ''
 			};
-			selectedTemplate.variables.forEach(variable => {
-				if (variable !== 'FINDINGS' && variable !== 'CLINICAL_HISTORY') {
-					variableValues[variable] = '';
-				}
-			});
+			// Add template-specific variables (excluding the hardcoded ones)
+			if (selectedTemplate.variables && Array.isArray(selectedTemplate.variables)) {
+				selectedTemplate.variables.forEach(variable => {
+					if (variable !== 'FINDINGS' && variable !== 'CLINICAL_HISTORY') {
+						variableValues[variable] = '';
+					}
+				});
+			}
 		}
 	}
 
