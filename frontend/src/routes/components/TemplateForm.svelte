@@ -62,6 +62,20 @@ export let versionHistoryRefreshKey = 0;
 		}
 	}
 	
+	// Separate reactive statement that watches variableValues directly
+	// If variableValues becomes empty unexpectedly (when we have a template selected and preserved values),
+	// restore them immediately
+	$: if (selectedTemplate && selectedTemplate.id && preservedVariableValues[selectedTemplate.id]) {
+		const currentTemplateId = selectedTemplate.id;
+		const hasValues = variableValues && Object.keys(variableValues).length > 0;
+		const hasPreserved = preservedVariableValues[currentTemplateId] && Object.keys(preservedVariableValues[currentTemplateId]).length > 0;
+		
+		// If variableValues is empty but we have preserved values, restore immediately
+		if (!hasValues && hasPreserved) {
+			variableValues = { ...preservedVariableValues[currentTemplateId] };
+		}
+	}
+	
 	// Check if selected model has API key configured (system environment variables)
 	// Always uses Claude - check if Anthropic API key is configured
 	$: hasModelKey = apiKeyStatus.anthropic_configured;
@@ -196,6 +210,9 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 	}
 
 	function resetForm() {
+		// Clear preserved values FIRST to prevent reactive statement from restoring them
+		preservedVariableValues = {};
+		
 		// Expand form and collapse response
 		formExpanded = true;
 		responseExpanded = false;
@@ -205,9 +222,7 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 		response = null;
 		responseModel = null;
 		error = null;
-		// Clear preserved values
-		preservedVariableValues = {};
-		// Dispatch to parent to handle the full reset (just like AutoReportTab)
+		// Dispatch to parent to handle the full reset (including clearing variableValues)
 		dispatch('resetForm');
 		dispatch('reportCleared');
 		dispatch('historyUpdate', { count: 0 });
