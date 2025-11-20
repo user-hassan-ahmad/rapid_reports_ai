@@ -62,6 +62,27 @@ export let versionHistoryRefreshKey = 0;
 		}
 	}
 	
+	// Initialize variableValues when template is selected (if not already initialized by parent)
+	$: if (selectedTemplate && selectedTemplate.id && (!variableValues || Object.keys(variableValues).length === 0)) {
+		const currentTemplateId = selectedTemplate.id;
+		
+		// Check if we have preserved values first
+		if (preservedVariableValues[currentTemplateId] && Object.keys(preservedVariableValues[currentTemplateId]).length > 0) {
+			variableValues = { ...preservedVariableValues[currentTemplateId] };
+		} else if (selectedTemplate.variables && Array.isArray(selectedTemplate.variables) && selectedTemplate.variables.length > 0) {
+			// Initialize empty values for template variables
+			variableValues = {
+				'FINDINGS': '',
+				'CLINICAL_HISTORY': ''
+			};
+			selectedTemplate.variables.forEach(v => {
+				if (v !== 'FINDINGS' && v !== 'CLINICAL_HISTORY') {
+					variableValues[v] = '';
+				}
+			});
+		}
+	}
+	
 	// Separate reactive statement that watches variableValues directly
 	// If variableValues becomes empty unexpectedly (when we have a template selected and preserved values),
 	// restore them immediately
@@ -71,7 +92,8 @@ export let versionHistoryRefreshKey = 0;
 		const hasPreserved = preservedVariableValues[currentTemplateId] && Object.keys(preservedVariableValues[currentTemplateId]).length > 0;
 		
 		// If variableValues is empty but we have preserved values, restore immediately
-		if (!hasValues && hasPreserved) {
+		// But only if template actually has variables (to avoid restoring when template has no vars)
+		if (!hasValues && hasPreserved && selectedTemplate.variables && selectedTemplate.variables.length > 0) {
 			variableValues = { ...preservedVariableValues[currentTemplateId] };
 		}
 	}
