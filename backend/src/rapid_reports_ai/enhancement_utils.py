@@ -152,46 +152,53 @@ def _to_plain_object(value: Any, depth: int = 0, max_depth: int = 5) -> Any:
     return str(value)
 
 
+def _extract_thinking_content(result) -> str:
+    """
+    Extract thinking/reasoning content from result's all_messages.
+    Returns the full thinking content as a string.
+    """
+    thinking_parts = []
+    try:
+        if hasattr(result, 'all_messages') and result.all_messages:
+            for msg in result.all_messages():
+                if hasattr(msg, 'parts'):
+                    for part in msg.parts:
+                        if hasattr(part, '__class__') and 'thinking' in part.__class__.__name__.lower():
+                            if hasattr(part, 'content'):
+                                thinking_parts.append(part.content)
+                            elif hasattr(part, 'text'):
+                                thinking_parts.append(part.text)
+                            else:
+                                thinking_parts.append(str(part))
+        return "\n\n".join(thinking_parts) if thinking_parts else ""
+    except Exception as e:
+        print(f"⚠️  Could not extract thinking content: {e}")
+        return ""
+
+
 def _log_thinking_parts(result, context: str = ""):
     """
     Log thinking parts from Claude's response (backend only - never sent to frontend).
     Thinking parts are automatically handled by Pydantic AI and not included in structured output.
     """
     try:
-        # Access all messages including thinking parts
-        if hasattr(result, 'all_messages') and result.all_messages:
-            thinking_found = False
-            for msg in result.all_messages():
-                # Check for thinking parts in message
-                if hasattr(msg, 'parts'):
-                    for part in msg.parts:
-                        # ThinkingPart or similar thinking content
-                        if hasattr(part, '__class__') and 'thinking' in part.__class__.__name__.lower():
-                            if not thinking_found:
-                                print(f"\n{'='*80}")
-                                print(f"🧠 THINKING PROCESS ({context})")
-                                print(f"{'='*80}")
-                                thinking_found = True
-                            
-                            # Extract thinking content
-                            thinking_content = ""
-                            if hasattr(part, 'content'):
-                                thinking_content = part.content
-                            elif hasattr(part, 'text'):
-                                thinking_content = part.text
-                            else:
-                                thinking_content = str(part)
-                            
-                            # Log truncated thinking (first 1000 chars for readability)
-                            if len(thinking_content) > 1000:
-                                print(f"{thinking_content[:1000]}...")
-                                print(f"\n[Thinking truncated - total length: {len(thinking_content)} chars]")
-                            else:
-                                print(thinking_content)
-                            print(f"{'='*80}\n")
+        # Extract thinking content
+        thinking_content = _extract_thinking_content(result)
+        
+        if thinking_content:
+            print(f"\n{'='*80}")
+            print(f"🧠 THINKING PROCESS ({context})")
+            print(f"{'='*80}")
             
-            if not thinking_found:
-                print(f"ℹ️  No thinking parts found in response ({context})")
+            # Log truncated thinking (first 1000 chars for readability)
+            if len(thinking_content) > 1000:
+                print(f"{thinking_content[:1000]}...")
+                print(f"\n[Thinking truncated - total length: {len(thinking_content)} chars]")
+            else:
+                print(thinking_content)
+            print(f"{'='*80}\n")
+        else:
+            print(f"ℹ️  No thinking parts found in response ({context})")
     except Exception as e:
         # Silently fail - thinking logging is non-critical
         print(f"⚠️  Could not log thinking parts ({context}): {e}")
@@ -2073,10 +2080,11 @@ async def generate_auto_report_with_reasoning(
                 groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
                 pydantic_model = GroqModel(MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"])
                 
-                # Create agent with structured output (using ReportOutputWithReasoning)
+                # Use ReportOutput (3 fields) instead of ReportOutputWithReasoning (4 fields)
+                # This works reliably with Qwen. We'll extract reasoning from thinking parts.
                 agent = Agent(
                     pydantic_model,
-                    output_type=ReportOutputWithReasoning,
+                    output_type=ReportOutput,  # Use 3-field model that works with Qwen
                     system_prompt=system_prompt,
                     model_settings=groq_settings,
                 )
@@ -2090,10 +2098,22 @@ async def generate_auto_report_with_reasoning(
                     }
                 )
                 
+                # Extract thinking content from thinking parts
+                reasoning_content = _extract_thinking_content(result)
+                
                 # Log thinking parts (backend only - not sent to frontend)
                 _log_thinking_parts(result, "generate_auto_report_with_reasoning - Qwen")
                 
-                return result.output
+                # Construct ReportOutputWithReasoning from ReportOutput + extracted reasoning
+                report_output_base = result.output
+                report_output_with_reasoning = ReportOutputWithReasoning(
+                    reasoning=reasoning_content if reasoning_content else "[No thinking content available]",
+                    report_content=report_output_base.report_content,
+                    description=report_output_base.description,
+                    scan_type=report_output_base.scan_type
+                )
+                
+                return report_output_with_reasoning
             finally:
                 if old_api_key is not None:
                     os.environ['GROQ_API_KEY'] = old_api_key
