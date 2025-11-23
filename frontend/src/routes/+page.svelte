@@ -455,10 +455,12 @@ let shouldAutoLoadEnhancements = false;
 				model: string;
 				use_case: string;
 				variables?: Record<string, string>;
+				use_optimized?: boolean;
 			} = {
 				message: '', // Required by backend, but not used when variables are provided
 				model: autoReportSelectedModel, // Use model selected in AutoReportTab
-				use_case: selectedUseCase
+				use_case: selectedUseCase,
+				use_optimized: true // Hardcoded for testing - uses optimized.json prompt with explicit reasoning step
 			};
 			
 			if (promptVariables.length > 0) {
