@@ -25,13 +25,14 @@ class PromptManager:
         self.prompts_dir = Path(prompts_dir)
         self._prompts_cache = {}
     
-    def load_prompt(self, use_case: str, model: str = "default") -> Dict[str, str]:
+    def load_prompt(self, use_case: str, model: str = "default", use_optimized: bool = False) -> Dict[str, str]:
         """
         Load a prompt for a specific use case and model
         
         Args:
             use_case: The use case (e.g., "radiology_report", "findings_summary")
             model: The model name ("claude", "qwen", or "default")
+            use_optimized: If True, load optimized.json instead of unified.json
         
         Returns:
             Dictionary with template, description, and variables
@@ -47,16 +48,24 @@ class PromptManager:
             
             metadata = self._load_json(metadata_file)
             
-            # Load template - prioritize unified.json for model-agnostic prompts
-            # For radiology_report use case, use unified.json if it exists
-            unified_file = use_case_dir / "unified.json"
-            if unified_file.exists():
-                template_file = unified_file
-            elif model != "default":
-                template_file = use_case_dir / f"{model}.json"
+            # Load template - prioritize optimized.json if requested, then unified.json
+            if use_optimized:
+                optimized_file = use_case_dir / "optimized.json"
+                if optimized_file.exists():
+                    template_file = optimized_file
+                else:
+                    raise FileNotFoundError(f"Optimized template not found for {use_case}")
             else:
-                # Try default model (claude) if no specific model requested
-                template_file = use_case_dir / "claude.json"
+                # Load template - prioritize unified.json for model-agnostic prompts
+                # For radiology_report use case, use unified.json if it exists
+                unified_file = use_case_dir / "unified.json"
+                if unified_file.exists():
+                    template_file = unified_file
+                elif model != "default":
+                    template_file = use_case_dir / f"{model}.json"
+                else:
+                    # Try default model (claude) if no specific model requested
+                    template_file = use_case_dir / "claude.json"
             
             if not template_file.exists():
                 raise FileNotFoundError(f"Template not found for {use_case} with model {model}")

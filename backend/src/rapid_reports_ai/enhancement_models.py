@@ -334,3 +334,25 @@ class ReportOutput(BaseModel):
     # NO field validators - let Pydantic handle validation exclusively
     # This preserves formatting and allows models to generate natural output
 
+
+class ReportOutputWithReasoning(BaseModel):
+    """Output from optimized report generation with explicit reasoning step"""
+    reasoning: str = Field(
+        min_length=50,
+        description="Detailed step-by-step analysis: 1) Identify scan type/protocol. 2) Map findings to anatomy. 3) Cross-reference findings with protocol (explicitly state if any finding is invalid). 4) Plan the report structure."
+    )
+    report_content: str = Field(
+        min_length=50,
+        description="The complete radiology report text with proper formatting"
+    )
+    description: str = Field(
+        min_length=5,
+        max_length=250,
+        description="Brief summary for history tab (5-15 words describing key findings, max 250 characters)"
+    )
+    scan_type: str = Field(
+        min_length=3,
+        max_length=200,
+        description="Extracted scan type and protocol combined (e.g., 'CT head non-contrast', 'MRI brain with contrast'). Extract from template name/description and findings context. Include contrast status ONLY if explicitly mentioned."
+    )
+

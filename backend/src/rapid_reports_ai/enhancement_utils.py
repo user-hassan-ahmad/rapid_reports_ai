@@ -33,6 +33,7 @@ from .enhancement_models import (
     ConsolidatedFinding,
     ConsolidationResult,
     ReportOutput,
+    ReportOutputWithReasoning,
     ProtocolViolation,
     ValidationResult,
     CompatibleIndicesResponse,
@@ -2014,6 +2015,137 @@ async def generate_templated_report(
             import traceback
             print(traceback.format_exc())
             raise Exception(f"Templated report generation failed with both Qwen and fallback model. Original error: {e}") from e
+
+
+async def generate_auto_report_with_reasoning(
+    model: str,
+    user_prompt: str,
+    system_prompt: str,
+    api_key: str,
+    signature: str | None = None
+) -> ReportOutputWithReasoning:
+    """
+    Generate a radiology report using optimized prompt with explicit reasoning step.
+    Uses Qwen as primary model with automatic fallback.
+    
+    This is a parallel implementation to generate_auto_report that uses the optimized.json
+    prompt structure with explicit reasoning field.
+    
+    Args:
+        model: Model identifier (kept for API compatibility)
+        user_prompt: The rendered user prompt with variables
+        system_prompt: System prompt from PromptManager (optimized.json)
+        api_key: Anthropic API key for Claude (fallback)
+        signature: Optional user signature to inject
+        
+    Returns:
+        ReportOutputWithReasoning with reasoning, report_content, description, and scan_type
+    """
+    import os
+    
+    start_time = time.time()
+    print(f"generate_auto_report_with_reasoning: Starting with Qwen (primary model)")
+    
+    # Apply signature if provided
+    final_prompt = user_prompt
+    if signature:
+        if '{{SIGNATURE}}' in final_prompt:
+            final_prompt = final_prompt.replace('{{SIGNATURE}}', signature)
+            print(f"generate_auto_report_with_reasoning: Signature replaced placeholder in prompt")
+        else:
+            final_prompt = final_prompt.rstrip() + "\n\n" + signature
+            print(f"generate_auto_report_with_reasoning: Signature appended to prompt")
+    else:
+        print(f"generate_auto_report_with_reasoning: No signature provided")
+    
+    # Try Qwen first (primary model) with retry logic
+    try:
+        @with_retry(max_retries=3, base_delay=2.0)
+        async def _try_qwen():
+            groq_api_key = os.environ.get('GROQ_API_KEY')
+            if not groq_api_key:
+                raise ValueError("Groq API key not configured. Please set GROQ_API_KEY environment variable.")
+            
+            old_api_key = os.environ.get('GROQ_API_KEY')
+            os.environ['GROQ_API_KEY'] = groq_api_key
+            try:
+                # Create Groq model with thinking enabled
+                groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
+                pydantic_model = GroqModel(MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"])
+                
+                # Create agent with structured output (using ReportOutputWithReasoning)
+                agent = Agent(
+                    pydantic_model,
+                    output_type=ReportOutputWithReasoning,
+                    system_prompt=system_prompt,
+                    model_settings=groq_settings,
+                )
+                
+                # Run agent to get structured output with thinking enabled
+                result = await agent.run(
+                    final_prompt,
+                    model_settings={
+                        "temperature": 0,
+                        "max_tokens": 4096,
+                    }
+                )
+                
+                # Log thinking parts (backend only - not sent to frontend)
+                _log_thinking_parts(result, "generate_auto_report_with_reasoning - Qwen")
+                
+                return result.output
+            finally:
+                if old_api_key is not None:
+                    os.environ['GROQ_API_KEY'] = old_api_key
+                else:
+                    os.environ.pop('GROQ_API_KEY', None)
+        
+        report_output = await _try_qwen()
+        
+        elapsed = time.time() - start_time
+        print(f"generate_auto_report_with_reasoning: ✅ Completed with Qwen (primary) in {elapsed:.2f}s")
+        print(f"  └─ Report length: {len(report_output.report_content)} chars")
+        print(f"  └─ Reasoning length: {len(report_output.reasoning)} chars")
+        print(f"  └─ Description: {report_output.description}")
+        
+        return report_output
+                
+    except Exception as e:
+        # Qwen failed - determine why and fallback
+        if _is_parsing_error(e):
+            print(f"⚠️ Qwen parsing error detected - immediate fallback to {MODEL_CONFIG['FALLBACK_REPORT_GENERATOR']}")
+            print(f"  Error: {type(e).__name__}: {str(e)[:200]}")
+        else:
+            print(f"⚠️ Qwen failed after retries ({type(e).__name__}) - falling back to {MODEL_CONFIG['FALLBACK_REPORT_GENERATOR']}")
+            print(f"  Error: {str(e)[:200]}")
+        
+        # Fallback to Claude (but Claude doesn't support ReportOutputWithReasoning easily)
+        # For now, convert to regular ReportOutput for fallback
+        try:
+            if not api_key:
+                raise Exception(f"Qwen failed and no fallback API key available. Original error: {e}") from e
+            
+            # Use regular ReportOutput for Claude fallback, then convert
+            claude_output = await _generate_report_with_claude_model(
+                MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"],
+                f"{MODEL_CONFIG['FALLBACK_REPORT_GENERATOR']} (fallback)",
+                final_prompt,
+                system_prompt,
+                api_key
+            )
+            
+            # Convert ReportOutput to ReportOutputWithReasoning (with empty reasoning)
+            return ReportOutputWithReasoning(
+                reasoning="[Fallback mode: Reasoning not available with Claude fallback]",
+                report_content=claude_output.report_content,
+                description=claude_output.description,
+                scan_type=claude_output.scan_type
+            )
+        except Exception as fallback_error:
+            print(f"❌ Fallback model also failed: {type(fallback_error).__name__}")
+            import traceback
+            print(traceback.format_exc())
+            raise Exception(f"Report generation failed with both Qwen and fallback model. Original error: {e}") from e
 
 
 @with_retry(max_retries=3, base_delay=2.0)

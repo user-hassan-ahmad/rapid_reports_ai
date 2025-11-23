@@ -298,6 +298,7 @@ class MessageRequest(BaseModel):
     model: str = "claude"  # Always uses Claude (kept for API compatibility, fallback handled automatically)
     use_case: Optional[str] = None  # Use case for prompt templates
     variables: Optional[Dict[str, str]] = Field(default_factory=dict)  # Variables for prompt templates
+    use_optimized: bool = False  # If True, use optimized.json prompt with explicit reasoning step
 
 
 # Pydantic models for Template API
@@ -396,9 +397,9 @@ async def chat(
         if request.use_case:
             try:
                 pm = get_prompt_manager()
-                # Use "default" to load unified.json (model-agnostic prompt)
-                # The PromptManager will prioritize unified.json if it exists
-                prompt_data = pm.load_prompt(request.use_case, "default")
+                # Use "default" to load unified.json (model-agnostic prompt) or optimized.json if use_optimized=True
+                # The PromptManager will prioritize unified.json if it exists, or optimized.json if requested
+                prompt_data = pm.load_prompt(request.use_case, "default", use_optimized=request.use_optimized)
                 
                 # Get the variables needed for this prompt
                 variables = dict(request.variables) if request.variables else {}
@@ -446,14 +447,36 @@ async def chat(
         signature_value = current_user.signature
         print(f"[DEBUG] Auto report - signature present: {signature_value is not None and signature_value.strip() != ''}")
         print(f"[DEBUG] Auto report - signature length: {len(signature_value) if signature_value else 0}")
+        print(f"[DEBUG] Auto report - use_optimized: {request.use_optimized}")
         
-        report_output = await generate_auto_report(
-            model="claude",  # Always use Claude (model param kept for API compatibility)
-            user_prompt=user_prompt,
-            system_prompt=system_prompt,
-            api_key=api_key,
-            signature=signature_value
-        )
+        # Choose generation function based on optimized flag
+        if request.use_optimized:
+            from .enhancement_utils import generate_auto_report_with_reasoning
+            report_output_with_reasoning = await generate_auto_report_with_reasoning(
+                model="claude",  # Always use Claude (model param kept for API compatibility)
+                user_prompt=user_prompt,
+                system_prompt=system_prompt,
+                api_key=api_key,
+                signature=signature_value
+            )
+            # Log reasoning for debugging (not sent to frontend)
+            print(f"[DEBUG] Reasoning length: {len(report_output_with_reasoning.reasoning)} chars")
+            print(f"[DEBUG] Reasoning preview: {report_output_with_reasoning.reasoning[:200]}...")
+            # Convert to ReportOutput for compatibility with rest of pipeline
+            from .enhancement_models import ReportOutput
+            report_output = ReportOutput(
+                report_content=report_output_with_reasoning.report_content,
+                description=report_output_with_reasoning.description,
+                scan_type=report_output_with_reasoning.scan_type
+            )
+        else:
+            report_output = await generate_auto_report(
+                model="claude",  # Always use Claude (model param kept for API compatibility)
+                user_prompt=user_prompt,
+                system_prompt=system_prompt,
+                api_key=api_key,
+                signature=signature_value
+            )
         
         # Always run validation on generated report
         from .enhancement_utils import validate_report_protocol, apply_protocol_fixes
