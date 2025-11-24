@@ -106,6 +106,10 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	// 3D tilt state for cards
 	let cardTilts = new Map();
 	
+	// Pin toggle state for optimistic updates
+	let pinningTemplates = new Set(); // Track which templates are currently being toggled
+	let optimisticPinStates = new Map(); // Map of templateId -> { originalState, pendingState }
+	
 	// Kanban horizontal scroll references
 	let kanbanHeadersContainer;
 	let kanbanCardsContainer;
@@ -682,16 +686,58 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 		return grouped;
 	})();
 	
-	// Toggle pin function
+	// Helper function to revert optimistic updates
+	function revertOptimisticPin(templateId) {
+		const optimisticState = optimisticPinStates.get(templateId);
+		if (optimisticState) {
+			const index = templates.findIndex(t => t.id === templateId);
+			if (index !== -1) {
+				templates[index] = { ...templates[index], is_pinned: optimisticState.originalState };
+				templates = [...templates]; // Trigger reactivity
+			}
+			optimisticPinStates.delete(templateId);
+			
+			console.warn(`Failed to ${optimisticState.pendingState ? 'pin' : 'unpin'} template. Reverted to original state.`);
+		}
+	}
+	
+	// Toggle pin function with optimistic updates
 	async function handleTogglePin(template, e) {
 		e.stopPropagation();
+		
+		// Prevent multiple clicks
+		if (pinningTemplates.has(template.id)) {
+			return;
+		}
+		
+		const templateId = template.id;
+		const currentPinState = template.is_pinned === true;
+		const newPinState = !currentPinState;
+		
+		// Store original state for potential rollback
+		optimisticPinStates.set(templateId, {
+			originalState: currentPinState,
+			pendingState: newPinState
+		});
+		
+		// OPTIMISTIC UPDATE: Immediately update UI
+		const index = templates.findIndex(t => t.id === templateId);
+		if (index !== -1) {
+			templates[index] = { ...templates[index], is_pinned: newPinState };
+			templates = [...templates]; // Trigger reactivity
+		}
+		
+		// Add to loading set (for visual feedback)
+		pinningTemplates.add(templateId);
+		pinningTemplates = new Set(pinningTemplates);
+		
 		try {
 			const headers = { 'Content-Type': 'application/json' };
 			if ($token) {
 				headers['Authorization'] = `Bearer ${$token}`;
 			}
 			
-			const response = await fetch(`${API_URL}/api/templates/${template.id}/toggle-pin`, {
+			const response = await fetch(`${API_URL}/api/templates/${templateId}/toggle-pin`, {
 				method: 'POST',
 				headers
 			});
@@ -699,16 +745,30 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			if (response.ok) {
 				const data = await response.json();
 				if (data.success) {
-					// Update local state
-					const index = templates.findIndex(t => t.id === template.id);
+					// Confirm optimistic update matches server response
+					const index = templates.findIndex(t => t.id === templateId);
 					if (index !== -1) {
 						templates[index] = data.template;
 						templates = [...templates]; // Trigger reactivity
 					}
+					// Clear optimistic state
+					optimisticPinStates.delete(templateId);
+				} else {
+					// Server returned error - revert optimistic update
+					revertOptimisticPin(templateId);
 				}
+			} else {
+				// HTTP error - revert optimistic update
+				revertOptimisticPin(templateId);
 			}
 		} catch (err) {
 			console.error('Failed to toggle pin:', err);
+			// Network error - revert optimistic update
+			revertOptimisticPin(templateId);
+		} finally {
+			// Remove from loading set
+			pinningTemplates.delete(templateId);
+			pinningTemplates = new Set(pinningTemplates);
 		}
 	}
 	
@@ -1072,10 +1132,15 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											<button
 												type="button"
 												onclick={(e) => handleTogglePin(template, e)}
-												class="px-2.5 py-2 rounded-full bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40 transition-all opacity-90 hover:opacity-100 hover:scale-110"
+												disabled={pinningTemplates.has(template.id)}
+												class="px-2.5 py-2 rounded-full bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40 transition-all opacity-90 hover:opacity-100 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative"
 												title="Unpin"
 											>
-												<svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
+												{#if pinningTemplates.has(template.id)}
+													<!-- Subtle pulsing indicator -->
+													<div class="absolute inset-0 rounded-full bg-yellow-400/20 animate-pulse"></div>
+												{/if}
+												<svg class="w-4 h-4 text-yellow-400 relative z-10" fill="currentColor" viewBox="0 0 24 24">
 													<path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
 												</svg>
 											</button>
@@ -1158,14 +1223,21 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											<button
 												type="button"
 												onclick={(e) => handleTogglePin(template, e)}
-												class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 {
+												disabled={pinningTemplates.has(template.id)}
+												class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
 													template.is_pinned === true 
 														? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
 														: 'bg-white/10 hover:bg-white/20 border border-white/20'
 												}"
 												title={template.is_pinned === true ? 'Unpin' : 'Pin'}
 											>
-												<svg class="w-4 h-4 {
+												{#if pinningTemplates.has(template.id)}
+													<!-- Subtle pulsing indicator -->
+													<div class="absolute inset-0 rounded-full {
+														template.is_pinned === true ? 'bg-yellow-400/20' : 'bg-white/20'
+													} animate-pulse"></div>
+												{/if}
+												<svg class="w-4 h-4 relative z-10 {
 													template.is_pinned === true ? 'text-yellow-400' : 'text-gray-400'
 												}" fill={template.is_pinned === true ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
 													{#if template.is_pinned === true}
@@ -1387,14 +1459,21 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											<button
 												type="button"
 												onclick={(e) => handleTogglePin(template, e)}
-												class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 {
+												disabled={pinningTemplates.has(template.id)}
+												class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
 													template.is_pinned === true 
 														? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
 														: 'bg-white/10 hover:bg-white/20 border border-white/20'
 												}"
 												title={template.is_pinned === true ? 'Unpin' : 'Pin'}
 											>
-												<svg class="w-4 h-4 {
+												{#if pinningTemplates.has(template.id)}
+													<!-- Subtle pulsing indicator -->
+													<div class="absolute inset-0 rounded-full {
+														template.is_pinned === true ? 'bg-yellow-400/20' : 'bg-white/20'
+													} animate-pulse"></div>
+												{/if}
+												<svg class="w-4 h-4 relative z-10 {
 													template.is_pinned === true ? 'text-yellow-400' : 'text-gray-400'
 												}" fill={template.is_pinned === true ? 'currentColor' : 'none'} stroke={template.is_pinned === true ? 'none' : 'currentColor'} viewBox="0 0 24 24">
 													{#if template.is_pinned === true}
@@ -1474,14 +1553,21 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											<button
 												type="button"
 												onclick={(e) => handleTogglePin(template, e)}
-												class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 {
+												disabled={pinningTemplates.has(template.id)}
+												class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
 													template.is_pinned === true 
 														? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
 														: 'bg-white/10 hover:bg-white/20 border border-white/20'
 												}"
 												title={template.is_pinned === true ? 'Unpin' : 'Pin'}
 											>
-												<svg class="w-4 h-4 {
+												{#if pinningTemplates.has(template.id)}
+													<!-- Subtle pulsing indicator -->
+													<div class="absolute inset-0 rounded-full {
+														template.is_pinned === true ? 'bg-yellow-400/20' : 'bg-white/20'
+													} animate-pulse"></div>
+												{/if}
+												<svg class="w-4 h-4 relative z-10 {
 													template.is_pinned === true ? 'text-yellow-400' : 'text-gray-400'
 												}" fill={template.is_pinned === true ? 'currentColor' : 'none'} stroke={template.is_pinned === true ? 'none' : 'currentColor'} viewBox="0 0 24 24">
 													{#if template.is_pinned === true}
@@ -1492,13 +1578,13 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 												</svg>
 											</button>
 										</div>
-					</div>
-				{/each}
+									</div>
+											{/each}
 									{:else}
 										<div class="text-center py-8 text-gray-500 text-sm">
 											No pinned templates
-			</div>
-		{/if}
+										</div>
+									{/if}
 								</div>
 							</div>
 							{/if}
@@ -1561,14 +1647,21 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											<button
 												type="button"
 												onclick={(e) => handleTogglePin(template, e)}
-												class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 {
+												disabled={pinningTemplates.has(template.id)}
+												class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
 													template.is_pinned === true 
 														? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
 														: 'bg-white/10 hover:bg-white/20 border border-white/20'
 												}"
 												title={template.is_pinned === true ? 'Unpin' : 'Pin'}
 											>
-												<svg class="w-4 h-4 {
+												{#if pinningTemplates.has(template.id)}
+													<!-- Subtle pulsing indicator -->
+													<div class="absolute inset-0 rounded-full {
+														template.is_pinned === true ? 'bg-yellow-400/20' : 'bg-white/20'
+													} animate-pulse"></div>
+												{/if}
+												<svg class="w-4 h-4 relative z-10 {
 													template.is_pinned === true ? 'text-yellow-400' : 'text-gray-400'
 												}" fill={template.is_pinned === true ? 'currentColor' : 'none'} stroke={template.is_pinned === true ? 'none' : 'currentColor'} viewBox="0 0 24 24">
 													{#if template.is_pinned === true}
@@ -1578,7 +1671,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 													{/if}
 												</svg>
 											</button>
-						</div>
+										</div>
 					</div>
 				{/each}
 									{:else}
@@ -1648,14 +1741,21 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											<button
 												type="button"
 												onclick={(e) => handleTogglePin(template, e)}
-												class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 {
+												disabled={pinningTemplates.has(template.id)}
+												class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
 													template.is_pinned === true 
 														? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
 														: 'bg-white/10 hover:bg-white/20 border border-white/20'
 												}"
 												title={template.is_pinned === true ? 'Unpin' : 'Pin'}
 											>
-												<svg class="w-4 h-4 {
+												{#if pinningTemplates.has(template.id)}
+													<!-- Subtle pulsing indicator -->
+													<div class="absolute inset-0 rounded-full {
+														template.is_pinned === true ? 'bg-yellow-400/20' : 'bg-white/20'
+													} animate-pulse"></div>
+												{/if}
+												<svg class="w-4 h-4 relative z-10 {
 													template.is_pinned === true ? 'text-yellow-400' : 'text-gray-400'
 												}" fill={template.is_pinned === true ? 'currentColor' : 'none'} stroke={template.is_pinned === true ? 'none' : 'currentColor'} viewBox="0 0 24 24">
 													{#if template.is_pinned === true}
@@ -1833,14 +1933,21 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 												<button
 													type="button"
 													onclick={(e) => handleTogglePin(template, e)}
-													class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 {
+													disabled={pinningTemplates.has(template.id)}
+													class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
 														template.is_pinned === true 
 															? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
 															: 'bg-white/10 hover:bg-white/20 border border-white/20'
 													}"
 													title={template.is_pinned === true ? 'Unpin' : 'Pin'}
 												>
-													<svg class="w-4 h-4 {
+													{#if pinningTemplates.has(template.id)}
+														<!-- Subtle pulsing indicator -->
+														<div class="absolute inset-0 rounded-full {
+															template.is_pinned === true ? 'bg-yellow-400/20' : 'bg-white/20'
+														} animate-pulse"></div>
+													{/if}
+													<svg class="w-4 h-4 relative z-10 {
 														template.is_pinned === true ? 'text-yellow-400' : 'text-gray-400'
 													}" fill={template.is_pinned === true ? 'currentColor' : 'none'} stroke={template.is_pinned === true ? 'none' : 'currentColor'} viewBox="0 0 24 24">
 														{#if template.is_pinned === true}
