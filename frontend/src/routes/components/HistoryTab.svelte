@@ -23,6 +23,10 @@
 	let lastStartDate = '';
 	let lastEndDate = '';
 	
+	// Refresh key prop to trigger reload when reports are generated
+	export let refreshKey = 0;
+	let lastRefreshKey = 0;
+	
 	// Configure marked for safe rendering
 	marked.setOptions({
 		breaks: true,
@@ -217,6 +221,12 @@
 		}
 	}
 
+	// Watch for refreshKey changes and reload history when reports are generated
+	$: if (refreshKey !== lastRefreshKey) {
+		lastRefreshKey = refreshKey;
+		loadHistory();
+	}
+	
 	// Track filter changes and reload history
 	$: if (
 		searchTerm !== lastSearchTerm ||

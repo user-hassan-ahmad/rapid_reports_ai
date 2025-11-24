@@ -240,6 +240,7 @@ let shouldAutoLoadEnhancements = false;
 	}
 
 	let templatesRefreshKey = 0;
+	let historyRefreshKey = 0;
 	
 	function handleBackToSourceTab(): void {
 		if (editSourceTab === 'templated') {
@@ -485,6 +486,7 @@ let shouldAutoLoadEnhancements = false;
 				if (reportId) {
 					versionHistoryRefreshKey += 1;
 					reportVersion += 1;  // Increment to trigger sidebar reload
+					historyRefreshKey += 1; // Trigger history reload
 				}
 			} else {
 				error = data.error || 'Failed to get response';
@@ -634,6 +636,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 								if (templatedReportId) {
 									versionHistoryRefreshKey += 1;
 									reportVersion += 1;  // Increment to trigger sidebar reload
+									historyRefreshKey += 1; // Trigger history reload
 								}
 							}}
 							on:openSidebar={() => {
@@ -669,6 +672,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 				<!-- History Tab -->
 				<div class={activeTab === 'history' ? '' : 'hidden'}>
 					<HistoryTab
+						refreshKey={historyRefreshKey}
 						on:viewReport={(e) => historyModalReport = e.detail as HistoryModal}
 					/>
 				</div>
