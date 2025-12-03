@@ -1136,16 +1136,16 @@ $: if ((visible || autoLoad) && completenessPending) {
 														<label class="flex items-start gap-3 cursor-pointer">
 															<input
 																type="checkbox"
-																class="mt-1.5 accent-purple-600 focus:ring-purple-500"
+																class="mt-1.5 accent-purple-600 focus:ring-purple-500 flex-shrink-0"
 																checked={selectedActionIds.includes(action.id)}
 																onchange={() => toggleActionSelection(action)}
 															/>
-															<div class="space-y-2">
-																<p class="text-sm font-semibold text-white">
+															<div class="space-y-2 min-w-0 flex-1">
+																<p class="text-sm font-semibold text-white break-words">
 																	{action.title || 'Suggested action'}
 																</p>
-																<p class="text-sm text-gray-300">{action.details}</p>
-																<pre class="bg-gray-950/70 border border-gray-800 rounded-md text-xs text-gray-200 p-3 overflow-x-auto whitespace-pre-wrap">
+																<p class="text-sm text-gray-300 break-words">{action.details}</p>
+																<pre class="bg-gray-950/70 border border-gray-800 rounded-md text-xs text-gray-200 p-3 overflow-x-auto whitespace-pre-wrap break-words max-w-full">
 {getActionPatch(action)}
 																</pre>
 															</div>
@@ -1154,10 +1154,10 @@ $: if ((visible || autoLoad) && completenessPending) {
 												{:else}
 													<li class="rounded-lg border border-gray-700/60 bg-gray-900/50 p-3">
 														<div class="space-y-2">
-															<p class="text-sm font-semibold text-white">
+															<p class="text-sm font-semibold text-white break-words">
 																{action.title || 'Suggested action'}
 															</p>
-															<p class="text-sm text-gray-300">{action.details}</p>
+															<p class="text-sm text-gray-300 break-words">{action.details}</p>
 															<p class="text-xs text-gray-500 italic">No automatic patch provided.</p>
 														</div>
 													</li>

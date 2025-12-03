@@ -66,31 +66,55 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	}
 	
 	// Initialize variableValues when template is selected but values are empty
-	// This handles cases where template is already selected (e.g., on page load)
-	// This is initialization logic, not preservation logic, so it won't interfere with reset
-	$: if (selectedTemplate && selectedTemplate.id && (!variableValues || Object.keys(variableValues).length === 0)) {
+	// Only initialize if this is a NEW template selection (different ID), not just a reference update
+	// This prevents clearing variables when editing a template and coming back
+	$: if (selectedTemplate && selectedTemplate.id) {
 		const templateId = selectedTemplate.id;
+		const isNewTemplate = lastTemplateId !== templateId;
 		
-		// Check if we have preserved values for this template
-		if (variableValuesByTemplate[templateId]) {
-			variableValues = { ...variableValuesByTemplate[templateId] };
+		// Only initialize if this is a new template (different ID)
+		if (isNewTemplate) {
+			// ALWAYS check preserved values first - restore them if they exist
+			// This ensures we restore values even if variableValues appears empty temporarily
+			if (variableValuesByTemplate[templateId]) {
+				variableValues = { ...variableValuesByTemplate[templateId] };
+				lastTemplateId = templateId;
+			} else if (!variableValues || Object.keys(variableValues).length === 0) {
+				// Only initialize empty values if variableValues is truly empty
+				// AND we don't have preserved values
+				variableValues = {
+					'FINDINGS': '',
+					'CLINICAL_HISTORY': ''
+				};
+				
+				// Add template-specific variables (excluding the hardcoded ones)
+				if (selectedTemplate.variables && Array.isArray(selectedTemplate.variables)) {
+					selectedTemplate.variables.forEach(v => {
+						if (v !== 'FINDINGS' && v !== 'CLINICAL_HISTORY') {
+							variableValues[v] = '';
+						}
+					});
+				}
+				lastTemplateId = templateId;
+			} else {
+				// New template but variableValues already exists - update lastTemplateId
+				lastTemplateId = templateId;
+			}
 		} else {
-			// Initialize empty values for this template
-			variableValues = {
-				'FINDINGS': '',
-				'CLINICAL_HISTORY': ''
-			};
+			// Same template - check if values are empty strings (this shouldn't happen!)
+			const hasEmptyValues = variableValues && Object.keys(variableValues).length > 0 && 
+				Object.values(variableValues).every(v => !v || v.trim() === '');
 			
-			// Add template-specific variables (excluding the hardcoded ones)
-			if (selectedTemplate.variables && Array.isArray(selectedTemplate.variables)) {
-				selectedTemplate.variables.forEach(v => {
-					if (v !== 'FINDINGS' && v !== 'CLINICAL_HISTORY') {
-						variableValues[v] = '';
-					}
-				});
+			if (hasEmptyValues) {
+				// Try to restore from preserved values if they exist
+				if (variableValuesByTemplate[templateId]) {
+					variableValues = { ...variableValuesByTemplate[templateId] };
+				}
 			}
 		}
+		// If same template ID, do nothing - preserve existing variableValues
 	}
+	
 	let searchQuery = '';
 	let selectedTags = [];
 	let allUniqueTags = [];
@@ -322,17 +346,27 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 				if (selectedTemplate && selectedTemplate.id) {
 					const updatedTemplate = templates.find(t => t.id === selectedTemplate.id);
 					if (updatedTemplate) {
-						// Preserve variableValues BEFORE updating template reference
 						const templateId = selectedTemplate.id;
+						
+						// Preserve variableValues BEFORE updating template reference
 						if (variableValues && Object.keys(variableValues).length > 0) {
+							// Check if ANY values are non-empty (not just whitespace)
 							const hasRealValues = Object.values(variableValues).some(v => v && v.trim().length > 0);
 							if (hasRealValues) {
+								variableValuesByTemplate[templateId] = { ...variableValues };
+							} else {
+								// Still preserve them in case they were intentionally cleared
 								variableValuesByTemplate[templateId] = { ...variableValues };
 							}
 						}
 						
-						// Just update the template reference WITHOUT calling handleTemplateSelect
-						// This preserves variableValues because we're not re-initializing
+						// CRITICAL: Set lastTemplateId BEFORE updating selectedTemplate
+						// This ensures the reactive statement sees it's the same template when it runs synchronously
+						if (!lastTemplateId || lastTemplateId !== templateId) {
+							lastTemplateId = templateId;
+						}
+						
+						// Now update template reference - reactive statement will see lastTemplateId matches
 						selectedTemplate = updatedTemplate;
 					}
 				}
@@ -409,6 +443,8 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			}
 			// Just update the template reference, keep variableValues as-is
 			selectedTemplate = template;
+			// Ensure lastTemplateId is set (should already be set, but ensure it for safety)
+			lastTemplateId = templateId;
 			return;
 		}
 		
@@ -1997,6 +2033,16 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			on:editTemplate={(e) => dispatch('editTemplate', e.detail)}
 			on:resetForm={handleFormReset}
 			on:reportGenerated={(e) => {
+				// CRITICAL: Preserve variableValues IMMEDIATELY when report is generated
+				// This must happen before any re-renders or state updates that might clear them
+				if (selectedTemplate && selectedTemplate.id && variableValues && Object.keys(variableValues).length > 0) {
+					const templateId = selectedTemplate.id;
+					const hasRealValues = Object.values(variableValues).some(v => v && v.trim().length > 0);
+					if (hasRealValues) {
+						variableValuesByTemplate[templateId] = { ...variableValues };
+					}
+				}
+				
 				reportId = e.detail.reportId;
 				dispatch('reportGenerated', { reportId: e.detail.reportId });
 			}}

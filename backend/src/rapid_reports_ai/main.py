@@ -199,78 +199,134 @@ async def regenerate_report_with_actions(
 ) -> str:
     """
     Apply enhancement actions to a report using Pydantic AI.
-    Uses configured fallback model (Qwen 32B) for reliable action application.
+    Uses configured primary model (Cerebras GPT-OSS-120B) with Qwen fallback.
     """
     if not actions:
         raise ValueError("No actions provided to apply.")
 
     # Build the prompt for applying actions
-    prompt = build_actions_prompt(report, actions, additional_context)
+    user_prompt = build_actions_prompt(report, actions, additional_context)
     settings = current_user.settings or {}
     
-    # Use Groq API key for action application (uses fallback model)
-    api_key = get_system_api_key('groq', 'GROQ_API_KEY')
-    if not api_key:
-        raise ValueError("Groq API key not configured. Please set GROQ_API_KEY environment variable.")
+    # Import enhancement utilities for model configuration
+    from .enhancement_utils import (
+        MODEL_CONFIG,
+        _get_model_provider,
+        _get_api_key_for_provider,
+        _run_agent_with_model,
+        _is_parsing_error,
+    )
+    from .enhancement_utils import with_retry
     
-    # Use Pydantic AI with string output
-    import os
-    from pydantic_ai import Agent
-    from pydantic_ai.models.groq import GroqModel
+    system_prompt = (
+        "You are a radiology reporting assistant. Apply every requested action to the report. "
+        "Return ONLY the full, final report text. No commentary, no thinking blocks, no tags—just the complete revised report."
+    )
     
+    # Get primary model and provider
+    primary_model = MODEL_CONFIG["ACTION_APPLIER"]
+    primary_provider = _get_model_provider(primary_model)
+    
+    # Try primary model first with retry logic
     try:
-        # Set up Qwen model
-        old_key = os.environ.get('GROQ_API_KEY')
-        os.environ['GROQ_API_KEY'] = api_key
-        try:
-            pydantic_model = GroqModel("qwen/qwen3-32b")
-        finally:
-            if old_key:
-                os.environ['GROQ_API_KEY'] = old_key
+        primary_api_key = _get_api_key_for_provider(primary_provider)
+        
+        @with_retry(max_retries=3, base_delay=2.0)
+        async def _try_primary():
+            # Build model settings with conditional reasoning_effort for Cerebras
+            model_settings = {
+                "temperature": 0.3,
+            }
+            if primary_model == "gpt-oss-120b":
+                model_settings["max_completion_tokens"] = 4096  # Generous token limit for Cerebras
+                model_settings["reasoning_effort"] = "high"
+                print(f"regenerate_report_with_actions: Using Cerebras reasoning_effort=high, max_completion_tokens=4096 for {primary_model}")
             else:
-                os.environ.pop('GROQ_API_KEY', None)
-        
-        # Create agent with string output (Agent[str] for plain text)
-        agent: Agent[None, str] = Agent(
-            pydantic_model,
-            output_type=str,
-            system_prompt=(
-                "You are a radiology reporting assistant. Apply every requested action to the report. "
-                "Return ONLY the full, final report text. No commentary, no thinking blocks, no tags—just the complete revised report."
+                model_settings["max_tokens"] = 4096
+            
+            result = await _run_agent_with_model(
+                model_name=primary_model,
+                output_type=str,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                api_key=primary_api_key,
+                use_thinking=(primary_provider == 'groq'),  # Enable thinking for Groq models
+                model_settings=model_settings
             )
-        )
+            
+            new_content = str(result.output).strip()
+            
+            # Clean up thinking tags if present (for Groq models)
+            if new_content and primary_provider == 'groq':
+                new_content = re.sub(
+                    r'<think>.*?</think>',
+                    '',
+                    new_content,
+                    flags=re.DOTALL | re.IGNORECASE
+                ).strip()
+            
+            if not new_content:
+                raise ValueError(f"{primary_model} returned an empty response when applying actions.")
+            
+            return new_content
         
-        # Run the agent
-        result = await agent.run(
-            prompt,
-            model_settings={
+        return await _try_primary()
+        
+    except Exception as e:
+        # Primary failed - determine why and fallback
+        fallback_model = MODEL_CONFIG["ACTION_APPLIER_FALLBACK"]
+        fallback_provider = _get_model_provider(fallback_model)
+        
+        if _is_parsing_error(e):
+            print(f"⚠️ {primary_model} parsing error detected - immediate fallback to {fallback_model}")
+            print(f"  Error: {type(e).__name__}: {str(e)[:200]}")
+        else:
+            print(f"⚠️ {primary_model} failed after retries ({type(e).__name__}) - falling back to {fallback_model}")
+            print(f"  Error: {str(e)[:200]}")
+        
+        # Fallback to configured fallback model
+        try:
+            fallback_api_key = _get_api_key_for_provider(fallback_provider)
+            
+            # Build model settings for fallback
+            fallback_model_settings = {
                 "temperature": 0.3,
                 "max_tokens": 4096,
             }
-        )
-        
-        # For string output with output_type=str, use result.output
-        new_content = str(result.output).strip()
-        
-        # Clean up Qwen's thinking tags if present
-        if new_content:
-            new_content = re.sub(
-                r'<think>.*?</think>',
-                '',
-                new_content,
-                flags=re.DOTALL | re.IGNORECASE
-            ).strip()
-        
-        if not new_content:
-            raise ValueError("Qwen returned an empty response when applying actions.")
-        
-        return new_content
-        
-    except Exception as e:
-        import traceback
-        print(f"Error applying actions with Qwen: {e}")
-        print(traceback.format_exc())
-        raise ValueError(f"Failed to apply actions using Qwen: {str(e)}")
+            
+            result = await _run_agent_with_model(
+                model_name=fallback_model,
+                output_type=str,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                api_key=fallback_api_key,
+                use_thinking=(fallback_provider == 'groq'),  # Enable thinking for Groq fallback
+                model_settings=fallback_model_settings
+            )
+            
+            new_content = str(result.output).strip()
+            
+            # Clean up thinking tags if present (for Groq models)
+            if new_content and fallback_provider == 'groq':
+                new_content = re.sub(
+                    r'<think>.*?</think>',
+                    '',
+                    new_content,
+                    flags=re.DOTALL | re.IGNORECASE
+                ).strip()
+            
+            if not new_content:
+                raise ValueError(f"{fallback_model} returned an empty response when applying actions.")
+            
+            print(f"regenerate_report_with_actions: ✅ Completed with {fallback_model} (fallback)")
+            return new_content
+            
+        except Exception as fallback_error:
+            # Both models failed - raise error
+            import traceback
+            print(f"❌ Both primary ({primary_model}) and fallback ({fallback_model}) models failed")
+            print(traceback.format_exc())
+            raise ValueError(f"Failed to apply actions using both {primary_model} and {fallback_model}: {str(fallback_error)}")
 
 
 # ============================================================================
@@ -396,8 +452,11 @@ async def chat(
         if request.use_case:
             try:
                 pm = get_prompt_manager()
-                # Use "default" to load unified.json (model-agnostic prompt)
-                prompt_data = pm.load_prompt(request.use_case, "default")
+                # Get primary model from MODEL_CONFIG for auto template selection
+                from .enhancement_utils import MODEL_CONFIG
+                primary_model = MODEL_CONFIG.get("PRIMARY_REPORT_GENERATOR")
+                # Use "default" to load prompt, but pass primary_model to check for gptoss.json
+                prompt_data = pm.load_prompt(request.use_case, "default", primary_model=primary_model)
                 
                 # Get the variables needed for this prompt
                 variables = dict(request.variables) if request.variables else {}
@@ -1040,15 +1099,31 @@ async def generate_report_from_template(
             return {"success": False, "error": "Template not found"}
         
         # Build prompts using TemplateManager (now returns dict with system_prompt and user_prompt)
+        # Get primary model from MODEL_CONFIG for conditional routing
+        from .enhancement_utils import MODEL_CONFIG
+        
         tm = TemplateManager()
-        prompts = tm.build_master_prompt(
-            template=template.template_content,
-            variable_values=request.variables,
-            template_name=template.name,
-            template_description=template.description,
-            master_instructions=template.master_prompt_instructions,
-            model=request.model
-        )
+        primary_model = MODEL_CONFIG.get("PRIMARY_REPORT_GENERATOR")
+        
+        # Conditionally use reasoning method for gpt-oss-120b
+        if primary_model == "gpt-oss-120b":
+            prompts = tm.build_master_prompt_with_reasoning(
+                template=template.template_content,
+                variable_values=request.variables,
+                template_name=template.name,
+                template_description=template.description,
+                master_instructions=template.master_prompt_instructions,
+                model=request.model
+            )
+        else:
+            prompts = tm.build_master_prompt(
+                template=template.template_content,
+                variable_values=request.variables,
+                template_name=template.name,
+                template_description=template.description,
+                master_instructions=template.master_prompt_instructions,
+                model=request.model
+            )
         
         system_prompt = prompts.get('system_prompt', '')
         user_prompt = prompts.get('user_prompt', '')

@@ -14,6 +14,8 @@ from perplexity import Perplexity
 from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.groq import GroqModel, GroqModelSettings
+from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 from .enhancement_models import (
     Finding,
@@ -43,22 +45,30 @@ from .enhancement_models import (
 # Update this dictionary to change models without modifying code throughout the codebase
 MODEL_CONFIG = {
     # Report Generation Models
-    "PRIMARY_REPORT_GENERATOR": "qwen/qwen3-32b",  # Primary model for report generation (Qwen 32B with thinking)
+    "PRIMARY_REPORT_GENERATOR": "gpt-oss-120b",  # Primary model for report generation (Cerebras GPT-OSS-120B)
     "FALLBACK_REPORT_GENERATOR": "claude-sonnet-4-20250514",  # Fallback model if primary fails after retries (Claude Sonnet 4)
     
     # Protocol Validation Models
-    "PROTOCOL_VALIDATOR": "qwen/qwen3-32b",  # Validation step: Check for protocol violations (lightweight, fast)
-    "PROTOCOL_FIX_APPLIER": "qwen/qwen3-32b",  # Fix application step: Apply corrections for violations (lightweight, fast)
+    "PROTOCOL_VALIDATOR": "gpt-oss-120b",  # Validation step: Check for protocol violations (Cerebras GPT-OSS-120B)
+    "PROTOCOL_FIX_APPLIER": "gpt-oss-120b",  # Fix application step: Apply corrections for violations (Cerebras GPT-OSS-120B)
     
     # Enhancement Pipeline Models
-    "FINDING_EXTRACTION": "qwen/qwen3-32b",  # Phase 1: Finding extraction and consolidation (with thinking)
-    "FINDING_EXTRACTION_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for finding extraction
-    "QUERY_GENERATION": "llama-3.3-70b-versatile",  # Query generation primary (simple list output, no thinking needed)
-    "QUERY_GENERATION_FALLBACK": "qwen/qwen3-32b",  # Query generation fallback (with thinking)
-    "GUIDELINE_SEARCH": "llama-3.3-70b-versatile",  # Phase 2: Guideline synthesis (primary)
-    "GUIDELINE_SEARCH_FALLBACK": "qwen/qwen3-32b",  # Fallback for guideline synthesis (with thinking)
-    "COMPLETENESS_ANALYZER": "qwen/qwen3-32b",  # Phase 3: Completeness analysis (primary with thinking)
-    "COMPLETENESS_ANALYZER_FALLBACK": "claude-sonnet-4-20250514",  # Fallback for completeness analysis
+    "FINDING_EXTRACTION": "gpt-oss-120b",  # Phase 1: Finding extraction and consolidation (primary - Cerebras GPT-OSS-120B with high reasoning)
+    "FINDING_EXTRACTION_FALLBACK": "qwen/qwen3-32b",  # Fallback for finding extraction (Qwen with thinking)
+    "QUERY_GENERATION": "gpt-oss-120b",  # Query generation primary (Cerebras GPT-OSS-120B with high reasoning)
+    "QUERY_GENERATION_FALLBACK": "llama-3.3-70b-versatile",  # Query generation fallback (Llama)
+    "GUIDELINE_VALIDATOR": "gpt-oss-120b",  # Guideline compatibility validation (primary - Cerebras GPT-OSS-120B with high reasoning)
+    "GUIDELINE_VALIDATOR_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for guideline validation (Llama)
+    "COMPATIBILITY_FILTER": "gpt-oss-120b",  # Search result compatibility filtering (primary - Cerebras GPT-OSS-120B with high reasoning)
+    "COMPATIBILITY_FILTER_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for compatibility filtering (Llama)
+    "GUIDELINE_SEARCH": "gpt-oss-120b",  # Phase 2: Guideline synthesis (primary - Cerebras)
+    "GUIDELINE_SEARCH_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for guideline synthesis (Llama)
+    "COMPLETENESS_ANALYZER": "gpt-oss-120b",  # Phase 3: Completeness analysis (primary - Cerebras GPT-OSS-120B with high reasoning)
+    "COMPLETENESS_ANALYZER_FALLBACK": "qwen/qwen3-32b",  # Fallback for completeness analysis (Qwen)
+    
+    # Action Application Models
+    "ACTION_APPLIER": "gpt-oss-120b",  # Apply enhancement actions to reports (primary - Cerebras GPT-OSS-120B with high reasoning)
+    "ACTION_APPLIER_FALLBACK": "qwen/qwen3-32b",  # Fallback for action application (Qwen)
 }
 
 # Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
@@ -67,6 +77,80 @@ QWEN_ANALYSIS_MODEL = MODEL_CONFIG["COMPLETENESS_ANALYZER"]  # Note: Completenes
 LLAMA_GUIDELINE_MODEL = MODEL_CONFIG["GUIDELINE_SEARCH"]
 LLAMA_REPORT_PRIMARY_MODEL = MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"]  # Legacy: was used for fast mode
 LLAMA_REPORT_FALLBACK_MODEL = "llama-3.3-70b-versatile"  # Legacy fallback (not currently used)
+
+# Provider Mapping Dictionary
+# Maps model names to their providers for easy model switching
+# To add a new model, just add an entry here mapping model_name -> provider
+MODEL_PROVIDERS = {
+    # Groq models
+    "qwen/qwen3-32b": "groq",
+    "llama-3.3-70b-versatile": "groq",
+    
+    # Anthropic models
+    "claude-sonnet-4-20250514": "anthropic",
+    
+    # Cerebras models
+    "gpt-oss-120b": "cerebras",
+}
+
+
+def _get_model_provider(model_name: str) -> str:
+    """
+    Get the provider for a given model name.
+    
+    Args:
+        model_name: The model identifier (e.g., "qwen/qwen3-32b", "gpt-oss-120b")
+    
+    Returns:
+        Provider string: 'groq', 'anthropic', or 'cerebras'
+    
+    Raises:
+        ValueError: If model is not found in MODEL_PROVIDERS
+    """
+    provider = MODEL_PROVIDERS.get(model_name)
+    if provider is None:
+        available_models = ", ".join(sorted(MODEL_PROVIDERS.keys()))
+        raise ValueError(
+            f"Model '{model_name}' not found in MODEL_PROVIDERS. "
+            f"Available models: {available_models}. "
+            f"To add a new model, add it to MODEL_PROVIDERS dictionary."
+        )
+    return provider
+
+
+def _get_api_key_for_provider(provider: str, fallback_api_key: str = None) -> str:
+    """
+    Get the appropriate API key for a given provider.
+    
+    Args:
+        provider: Provider string ('groq', 'anthropic', or 'cerebras')
+        fallback_api_key: Optional API key to use for Anthropic provider
+    
+    Returns:
+        API key string
+    
+    Raises:
+        ValueError: If API key not found
+    """
+    import os
+    
+    if provider == 'groq':
+        api_key = os.environ.get('GROQ_API_KEY')
+        if not api_key:
+            raise ValueError("Groq API key not configured. Please set GROQ_API_KEY environment variable.")
+        return api_key
+    elif provider == 'anthropic':
+        api_key = fallback_api_key or os.environ.get('ANTHROPIC_API_KEY')
+        if not api_key:
+            raise ValueError("Anthropic API key not configured. Please set ANTHROPIC_API_KEY environment variable or provide as parameter.")
+        return api_key
+    elif provider == 'cerebras':
+        api_key = os.environ.get('CEREBRAS_API_KEY')
+        if not api_key:
+            raise ValueError("Cerebras API key not configured. Please set CEREBRAS_API_KEY environment variable.")
+        return api_key
+    else:
+        raise ValueError(f"Unknown provider: {provider}. Must be 'groq', 'anthropic', or 'cerebras'.")
 
 
 def with_retry(max_retries=3, base_delay=2.0):
@@ -381,11 +465,11 @@ def build_search_query(finding: str) -> str:
 async def generate_radiology_search_queries(finding: str, api_key: str) -> tuple[List[str], str]:
     """
     Generate 2-3 UK-focused radiology search queries using AI with fallback support.
-    Uses Llama as primary (simple list output), falls back to Qwen with thinking if primary fails.
+    Model selection is driven by MODEL_CONFIG - supports any configured model with fallback.
     
     Args:
         finding: The radiological finding to search for
-        api_key: Groq API key
+        api_key: API key (kept for compatibility, actual key determined by provider)
         
     Returns:
         Tuple of (list of 2-3 focused search queries, model_name_used)
@@ -395,12 +479,13 @@ async def generate_radiology_search_queries(finding: str, api_key: str) -> tuple
     start_time = time.time()
     print(f"generate_radiology_search_queries: Starting for finding='{finding}'")
     
-    # Temporarily set the environment variable
-    old_api_key = os.environ.get('GROQ_API_KEY')
-    os.environ['GROQ_API_KEY'] = api_key
-    
     system_prompt = (
         "Generate 3-5 focused search queries for radiology guidelines.\n\n"
+        
+        "CRITICAL - OUTPUT FORMAT:\n"
+        "• Return a list of DIRECT STRING VALUES, not wrapped in objects\n"
+        "• Example: ['query1', 'query2', 'query3'] NOT [{'text': 'query1'}, {'text': 'query2'}]\n"
+        "• Each list item must be a plain string value\n\n"
         
         "REQUIREMENTS:\n"
         "• ADULT radiology only - always include 'adult' keyword\n"
@@ -420,23 +505,38 @@ async def generate_radiology_search_queries(finding: str, api_key: str) -> tuple
         "FORMAT: ['query1', 'query2', 'query3', 'query4', 'query5']"
     )
     
-    # Try primary model first with explicit retry logic (Llama - simple list output, no thinking needed)
-    # Retry at least 3 times regardless of error type before falling back
+    user_prompt = f"Generate 3-5 focused search queries for: {finding}"
+    
+    # Get primary model and provider
+    primary_model = MODEL_CONFIG["QUERY_GENERATION"]
+    primary_provider = _get_model_provider(primary_model)
+    primary_api_key = _get_api_key_for_provider(primary_provider)
+    
+    # Try primary model first with explicit retry logic
     last_exception = None
     max_retries = 3
     
     for attempt in range(max_retries):
         try:
-            # Create Groq model without thinking (Llama primary - simple list output)
-            model = GroqModel(MODEL_CONFIG["QUERY_GENERATION"])
-            agent = Agent(
-                model,
+            # Build model settings with conditional reasoning_effort for Cerebras
+            model_settings = {
+                "temperature": 0.3,
+            }
+            if primary_model == "gpt-oss-120b":
+                model_settings["max_completion_tokens"] = 500  # Generous token limit for Cerebras
+                model_settings["reasoning_effort"] = "high"
+                print(f"generate_radiology_search_queries: Using Cerebras reasoning_effort=high, max_completion_tokens=500 for {primary_model}")
+            else:
+                model_settings["max_tokens"] = 300
+            
+            result = await _run_agent_with_model(
+                model_name=primary_model,
                 output_type=list[str],
                 system_prompt=system_prompt,
-            )
-            result = await agent.run(
-                f"Generate 3-5 focused search queries for: {finding}",
-                model_settings={"temperature": 0.3, "max_tokens": 300}
+                user_prompt=user_prompt,
+                api_key=primary_api_key,
+                use_thinking=False,  # Primary model doesn't use thinking (Cerebras uses reasoning_effort instead)
+                model_settings=model_settings
             )
             
             queries = result.output
@@ -449,12 +549,11 @@ async def generate_radiology_search_queries(finding: str, api_key: str) -> tuple
             queries = queries[:5]
             
             elapsed = time.time() - start_time
-            model_used = MODEL_CONFIG['QUERY_GENERATION']
-            print(f"generate_radiology_search_queries: ✅ Completed with {model_used} (primary, attempt {attempt + 1}) in {elapsed:.2f}s")
+            print(f"generate_radiology_search_queries: ✅ Completed with {primary_model} (primary, attempt {attempt + 1}) in {elapsed:.2f}s")
             for i, q in enumerate(queries, 1):
                 print(f"  Query {i}: {q}")
             
-            return queries, model_used
+            return queries, primary_model
             
         except Exception as e:
             last_exception = e
@@ -466,27 +565,25 @@ async def generate_radiology_search_queries(finding: str, api_key: str) -> tuple
                 await asyncio.sleep(delay)
             else:
                 # All retries exhausted
-                print(f"⚠️ Primary model failed after {max_retries} attempts ({type(e).__name__}) - falling back to {MODEL_CONFIG['QUERY_GENERATION_FALLBACK']} (with thinking)")
+                fallback_model = MODEL_CONFIG['QUERY_GENERATION_FALLBACK']
+                print(f"⚠️ Primary model failed after {max_retries} attempts ({type(e).__name__}) - falling back to {fallback_model}")
                 print(f"  Final error: {str(e)[:200]}")
     
-    # If we get here, all retries failed - fallback to Qwen
+    # If we get here, all retries failed - fallback to fallback model
     try:
-        # Fallback to Qwen with thinking
-        groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
-        model = GroqModel(MODEL_CONFIG["QUERY_GENERATION_FALLBACK"])
-        agent = Agent(
-            model,
+        fallback_model = MODEL_CONFIG["QUERY_GENERATION_FALLBACK"]
+        fallback_provider = _get_model_provider(fallback_model)
+        fallback_api_key = _get_api_key_for_provider(fallback_provider)
+        
+        result = await _run_agent_with_model(
+            model_name=fallback_model,
             output_type=list[str],
             system_prompt=system_prompt,
-            model_settings=groq_settings,
-        )
-        result = await agent.run(
-            f"Generate 3-5 focused search queries for: {finding}",
+            user_prompt=user_prompt,
+            api_key=fallback_api_key,
+            use_thinking=(fallback_provider == 'groq'),  # Enable thinking for Groq fallback
             model_settings={"temperature": 0.3, "max_tokens": 300}
         )
-        
-        # Log thinking parts (backend only - not sent to frontend)
-        _log_thinking_parts(result, "Search Query Generation - Qwen (fallback)")
         
         queries = result.output
         if not isinstance(queries, list):
@@ -494,9 +591,8 @@ async def generate_radiology_search_queries(finding: str, api_key: str) -> tuple
         queries = queries[:5]
         
         elapsed = time.time() - start_time
-        model_used = MODEL_CONFIG['QUERY_GENERATION_FALLBACK']
-        print(f"generate_radiology_search_queries: ✅ Completed with {model_used} (fallback) in {elapsed:.2f}s")
-        return queries, model_used
+        print(f"generate_radiology_search_queries: ✅ Completed with {fallback_model} (fallback) in {elapsed:.2f}s")
+        return queries, fallback_model
         
     except Exception as fallback_error:
         # Both models failed - return simple fallback query
@@ -506,11 +602,6 @@ async def generate_radiology_search_queries(finding: str, api_key: str) -> tuple
         fallback_query = f"{finding} UK radiology imaging classification measurement guidelines"
         print(f"  Falling back to simple query: {fallback_query}")
         return [fallback_query], "fallback-simple"
-    finally:
-        if old_api_key is not None:
-            os.environ['GROQ_API_KEY'] = old_api_key
-        else:
-            os.environ.pop('GROQ_API_KEY', None)
 
 
 def _result_to_dict(result: Any) -> Dict[str, Any]:
@@ -591,10 +682,10 @@ async def _extract_consolidated_with_model(
     Helper function to extract consolidated findings with a specific model.
     
     Args:
-        model_name: Groq model identifier (e.g., "qwen/qwen3-32b")
+        model_name: Model identifier (e.g., "qwen/qwen3-32b", "gpt-oss-120b")
         model_label: Human-readable model name for logging
         report_content: The generated radiology report text
-        api_key: Groq API key
+        api_key: API key for the model provider
     
     Returns:
         ConsolidationResult with consolidated findings
@@ -604,72 +695,76 @@ async def _extract_consolidated_with_model(
     start_time = time.time()
     print(f"extract_consolidated_findings: Attempting with {model_label}...")
     
-    old_api_key = os.environ.get('GROQ_API_KEY')
-    os.environ['GROQ_API_KEY'] = api_key
+    provider = _get_model_provider(model_name)
     
-    try:
-        # Create Groq model with thinking enabled
-        groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
-        model = GroqModel(model_name)
-        
-        agent = Agent(
-            model,
-            output_type=ConsolidationResult,
-            system_prompt=(
-                "You are an expert radiologist extracting findings that require radiological assessment and characterization.\n\n"
-                "TASK: Identify up to 5 distinct findings requiring diagnostic imaging assessment, classification, or follow-up protocols.\n"
-                "If the report is completely normal, return an empty findings list.\n\n"
-                "CRITICAL: Use broad categorical terms only - NO specific descriptors\n"
-                "❌ AVOID: Exact rib numbers (e.g., '6th-9th rib fractures'), specific measurements, detailed anatomical locations\n"
-                "✅ USE: Broad terms (e.g., 'acute rib fractures', 'chronic rib fractures', 'multiple rib fractures')\n\n"
-                "INCLUDE:\n"
-                "- Findings requiring classification/grading systems\n"
-                "- Lesions needing imaging characterization\n"
-                "- Acute injuries (fractures, dislocations)\n"
-                "- Vascular abnormalities (stenosis, aneurysms, thrombus)\n"
-                "- Findings requiring follow-up imaging\n\n"
-                "EXCLUDE:\n"
-                "- Negative or normal findings\n"
-                "- Benign incidental findings with no workup needed\n"
-                "- Age-appropriate degenerative changes\n"
-                "- Technical artifacts\n\n"
-                "GROUPING:\n"
-                "- ONLY group multiple instances of the SAME finding type (e.g., multiple rib fractures → 'multiple rib fractures')\n"
-                "- Keep distinct finding types SEPARATE, even if they are related complications or share a common cause\n"
-                "- Use contextual descriptors (acute, traumatic, etc.) but maintain separate entries for each distinct finding type\n\n"
-                "OUTPUT:\n"
-                "- Use broad categorical terms only\n"
-                "- Return up to 5 findings, prioritizing those needing assessment protocols\n"
-            ),
-            model_settings=groq_settings,
-        )
-        
-        result = await agent.run(
-            f"Extract and consolidate findings from this report:\n\n{report_content}",
-            model_settings={
-                "temperature": 0.2,
-                "max_tokens": 2048,
-            }
-        )
-        
-        # Log thinking parts (backend only - not sent to frontend)
-        _log_thinking_parts(result, f"{model_label} - Finding Extraction")
-        
-        consolidated_result: ConsolidationResult = result.output
-        
-        print(f"  └─ Consolidated into {len(consolidated_result.findings)} findings:")
-        for idx, finding in enumerate(consolidated_result.findings, start=1):
-            print(f"    {idx}. {finding.finding}")
-        
-        elapsed = time.time() - start_time
-        print(f"extract_consolidated_findings: ✅ Completed with {model_label} in {elapsed:.2f}s")
-        return consolidated_result
-        
-    finally:
-        if old_api_key is not None:
-            os.environ['GROQ_API_KEY'] = old_api_key
-        else:
-            os.environ.pop('GROQ_API_KEY', None)
+    system_prompt = (
+        "You are an expert radiologist extracting findings that require radiological assessment and characterization.\n\n"
+        "CRITICAL - OUTPUT FORMAT:\n"
+        "• All string fields (finding, specialty, type, guideline_focus) must be returned as DIRECT STRING VALUES, not wrapped in objects\n"
+        "• Example: finding: 'lung nodule' NOT finding: {'text': 'lung nodule'}\n"
+        "• Example: specialty: 'chest/thoracic' NOT specialty: {'text': 'chest/thoracic'}\n"
+        "• Return plain string values for all text fields\n\n"
+        "TASK: Identify up to 5 distinct findings requiring diagnostic imaging assessment, classification, or follow-up protocols.\n"
+        "If the report is completely normal, return an empty findings list.\n\n"
+        "CRITICAL: Use broad categorical terms only - NO specific descriptors\n"
+        "❌ AVOID: Exact rib numbers (e.g., '6th-9th rib fractures'), specific measurements, detailed anatomical locations\n"
+        "✅ USE: Broad terms (e.g., 'acute rib fractures', 'chronic rib fractures', 'multiple rib fractures')\n\n"
+        "INCLUDE:\n"
+        "- Findings requiring classification/grading systems\n"
+        "- Lesions needing imaging characterization\n"
+        "- Acute injuries (fractures, dislocations)\n"
+        "- Vascular abnormalities (stenosis, aneurysms, thrombus)\n"
+        "- Findings requiring follow-up imaging\n\n"
+        "EXCLUDE:\n"
+        "- Negative or normal findings\n"
+        "- Benign incidental findings with no workup needed\n"
+        "- Age-appropriate degenerative changes\n"
+        "- Technical artifacts\n\n"
+        "GROUPING:\n"
+        "- ONLY group multiple instances of the SAME finding type (e.g., multiple rib fractures → 'multiple rib fractures')\n"
+        "- Keep distinct finding types SEPARATE, even if they are related complications or share a common cause\n"
+        "- Use contextual descriptors (acute, traumatic, etc.) but maintain separate entries for each distinct finding type\n\n"
+        "OUTPUT:\n"
+        "- Use broad categorical terms only\n"
+        "- Return up to 5 findings, prioritizing those needing assessment protocols\n"
+        "- All string fields must be direct string values\n"
+    )
+    
+    user_prompt = f"Extract and consolidate findings from this report:\n\n{report_content}"
+    
+    # Build model settings with conditional reasoning_effort for Cerebras
+    model_settings = {
+        "temperature": 0.2,
+    }
+    if model_name == "gpt-oss-120b":
+        model_settings["max_completion_tokens"] = 2500  # Generous token limit for Cerebras
+        model_settings["reasoning_effort"] = "high"
+        print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=2500 for {model_name}")
+        use_thinking = False  # Cerebras uses reasoning_effort instead
+    else:
+        model_settings["max_tokens"] = 2048
+        # Only enable thinking for Groq models that support reasoning_format (Qwen, not Llama)
+        use_thinking = (provider == 'groq' and 'qwen' in model_name.lower())
+    
+    result = await _run_agent_with_model(
+        model_name=model_name,
+        output_type=ConsolidationResult,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        api_key=api_key,
+        use_thinking=use_thinking,  # Only enable for Qwen models, not Llama or Cerebras
+        model_settings=model_settings
+    )
+    
+    consolidated_result: ConsolidationResult = result.output
+    
+    print(f"  └─ Consolidated into {len(consolidated_result.findings)} findings:")
+    for idx, finding in enumerate(consolidated_result.findings, start=1):
+        print(f"    {idx}. {finding.finding}")
+    
+    elapsed = time.time() - start_time
+    print(f"extract_consolidated_findings: ✅ Completed with {model_label} in {elapsed:.2f}s")
+    return consolidated_result
 
 
 @with_retry(max_retries=3, base_delay=2.0)
@@ -687,11 +782,15 @@ async def extract_consolidated_findings(report_content: str, api_key: str) -> Co
     """
     try:
         # Try primary extraction model first
+        primary_model = MODEL_CONFIG["FINDING_EXTRACTION"]
+        provider = _get_model_provider(primary_model)
+        primary_api_key = _get_api_key_for_provider(provider)
+        
         return await _extract_consolidated_with_model(
-            MODEL_CONFIG["FINDING_EXTRACTION"],
-            f"{MODEL_CONFIG['FINDING_EXTRACTION']} (Primary)",
+            primary_model,
+            f"{primary_model} (Primary)",
             report_content,
-            api_key
+            primary_api_key
         )
     except Exception as e:
         # Determine why we're falling back
@@ -704,11 +803,15 @@ async def extract_consolidated_findings(report_content: str, api_key: str) -> Co
         
         # Fallback to finding extraction fallback model
         try:
+            fallback_model = MODEL_CONFIG["FINDING_EXTRACTION_FALLBACK"]
+            fallback_provider = _get_model_provider(fallback_model)
+            fallback_api_key = _get_api_key_for_provider(fallback_provider)
+            
             return await _extract_consolidated_with_model(
-                MODEL_CONFIG["FINDING_EXTRACTION_FALLBACK"],
-                f"{MODEL_CONFIG['FINDING_EXTRACTION_FALLBACK']} (fallback)",
+                fallback_model,
+                f"{fallback_model} (fallback)",
                 report_content,
-                api_key
+                fallback_api_key
             )
         except Exception as fallback_error:
             # Both models failed - re-raise the original error with context
@@ -726,11 +829,12 @@ async def filter_compatible_search_results(
     """
     Filter search results to ensure they match the clinical premise of the finding.
     Uses batch processing to check all results in a single API call for efficiency.
+    Model selection is driven by MODEL_CONFIG - supports any configured model with fallback.
     
     Args:
         search_results: List of search result dictionaries from Perplexity
         finding: The radiological finding text (e.g., "frontotemporal lesions")
-        api_key: Groq API key
+        api_key: API key (kept for compatibility, actual key determined by provider)
         
     Returns:
         Filtered list of compatible search results (same structure as input)
@@ -743,15 +847,19 @@ async def filter_compatible_search_results(
     start_time = time.time()
     print(f"filter_compatible_search_results: Checking {len(search_results)} results for finding '{finding}'")
     
-    old_api_key = os.environ.get('GROQ_API_KEY')
-    os.environ['GROQ_API_KEY'] = api_key
-    
     # Build batch prompt with all results
     batch_prompt = (
         f"Finding: {finding}\n\n"
-        f"Assess {len(search_results)} search results for compatibility.\n\n"
-        "Compatible = ALL three must match: (1) anatomy, (2) pathology, (3) imaging finding.\n"
-        "Incompatible = ANY mismatch in these components. Shared terminology does not imply compatibility.\n\n"
+        f"Assess {len(search_results)} search results for clinical relevance.\n\n"
+        "Compatible = Results that are clinically relevant to the finding:\n"
+        "- Same or related anatomy (e.g., 'colon' matches 'pancolitis')\n"
+        "- Same or related pathology (e.g., 'colitis' matches 'pancolitis')\n"
+        "- Relevant imaging findings or protocols\n"
+        "Include results that substantially match the clinical entity, even if terminology differs slightly.\n\n"
+        "Incompatible = Clearly unrelated findings:\n"
+        "- Different anatomy (e.g., 'lung' when finding is 'colon')\n"
+        "- Different pathology (e.g., 'fracture' when finding is 'inflammation')\n"
+        "- Unrelated imaging findings\n\n"
         "Results:\n"
     )
     
@@ -767,27 +875,44 @@ async def filter_compatible_search_results(
     )
     
     system_prompt = (
-        "Medical expert assessing compatibility. Compatible requires ALL three to match: "
-        "anatomy, pathology, imaging finding. ANY mismatch = incompatible. "
-        "Return a JSON array string with compatible indices (0-based). Example: '[0, 2, 5]' or '[]'."
+        "Medical expert assessing clinical relevance. Include results that are substantially related to the finding, "
+        "even if terminology or phrasing differs slightly. Only exclude clearly unrelated findings.\n\n"
+        "CRITICAL - OUTPUT FORMAT:\n"
+        "• Return a DIRECT STRING VALUE containing a JSON array, not wrapped in an object\n"
+        "• Example: '[0, 2, 5]' NOT {'text': '[0, 2, 5]'}\n"
+        "• Example: '[]' NOT {'text': '[]'}\n"
+        "• The indices_json field must be a plain string containing valid JSON array format\n"
+        "• Return a JSON array string with compatible indices (0-based). Example: '[0, 2, 5]' or '[]'."
     )
     
-    # Try primary model first with explicit retry logic (Llama - fast)
+    # Get primary model and provider
+    primary_model = MODEL_CONFIG["COMPATIBILITY_FILTER"]
+    primary_provider = _get_model_provider(primary_model)
+    primary_api_key = _get_api_key_for_provider(primary_provider)
+    
+    # Try primary model first with explicit retry logic
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            # Use fast Groq model for quick classification
-            # Using CompatibleIndicesResponse (string-based) to avoid function calling issues with list[int]
-            model = GroqModel(MODEL_CONFIG["QUERY_GENERATION"])  # Fast Llama model
-            agent = Agent(
-                model,
+            # Build model settings with conditional reasoning_effort for Cerebras
+            model_settings = {
+                "temperature": 0.2,  # Slightly higher temperature for less strict filtering
+            }
+            if primary_model == "gpt-oss-120b":
+                model_settings["max_completion_tokens"] = 300  # Generous token limit for JSON array
+                model_settings["reasoning_effort"] = "medium"  # Medium reasoning for binary validation decisions
+                print(f"filter_compatible_search_results: Using Cerebras reasoning_effort=medium, max_completion_tokens=300, temperature=0.2 for {primary_model}")
+            else:
+                model_settings["max_tokens"] = 200
+            
+            result = await _run_agent_with_model(
+                model_name=primary_model,
                 output_type=CompatibleIndicesResponse,
                 system_prompt=system_prompt,
-            )
-            
-            result = await agent.run(
-                batch_prompt,
-                model_settings={"temperature": 0.1, "max_tokens": 200}
+                user_prompt=batch_prompt,
+                api_key=primary_api_key,
+                use_thinking=False,  # Primary model doesn't use thinking (Cerebras uses reasoning_effort instead)
+                model_settings=model_settings
             )
             
             # Parse indices from the JSON string
@@ -818,28 +943,25 @@ async def filter_compatible_search_results(
                 await asyncio.sleep(delay)
             else:
                 # All retries exhausted
-                print(f"⚠️ Primary model failed after {max_retries} attempts ({type(e).__name__}) - falling back to {MODEL_CONFIG['QUERY_GENERATION_FALLBACK']}")
+                fallback_model = MODEL_CONFIG['COMPATIBILITY_FILTER_FALLBACK']
+                print(f"⚠️ Primary model failed after {max_retries} attempts ({type(e).__name__}) - falling back to {fallback_model}")
                 print(f"  Final error: {str(e)[:200]}")
     
-    # If we get here, all retries failed - fallback to Qwen
+    # If we get here, all retries failed - fallback to fallback model
     try:
-        # Fallback to Qwen with thinking
-        groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
-        model = GroqModel(MODEL_CONFIG["QUERY_GENERATION_FALLBACK"])
-        agent = Agent(
-            model,
+        fallback_model = MODEL_CONFIG["COMPATIBILITY_FILTER_FALLBACK"]
+        fallback_provider = _get_model_provider(fallback_model)
+        fallback_api_key = _get_api_key_for_provider(fallback_provider)
+        
+        result = await _run_agent_with_model(
+            model_name=fallback_model,
             output_type=CompatibleIndicesResponse,
             system_prompt=system_prompt,
-            model_settings=groq_settings,
-        )
-        
-        result = await agent.run(
-            batch_prompt,
+            user_prompt=batch_prompt,
+            api_key=fallback_api_key,
+            use_thinking=(fallback_provider == 'groq'),  # Enable thinking for Groq fallback
             model_settings={"temperature": 0.1, "max_tokens": 200}
         )
-        
-        # Log thinking parts (backend only - not sent to frontend)
-        _log_thinking_parts(result, "Compatibility Filter - Qwen (fallback)")
         
         # Parse indices from the JSON string
         compatible_indices = result.output.get_indices()
@@ -850,7 +972,7 @@ async def filter_compatible_search_results(
         filtered_results = [search_results[i] for i in compatible_indices]
         
         elapsed = time.time() - start_time
-        print(f"filter_compatible_search_results: ✅ Filtered {len(search_results)} → {len(filtered_results)} compatible results in {elapsed:.2f}s (Qwen fallback)")
+        print(f"filter_compatible_search_results: ✅ Filtered {len(search_results)} → {len(filtered_results)} compatible results in {elapsed:.2f}s (fallback)")
         if len(filtered_results) < len(search_results):
             removed_count = len(search_results) - len(filtered_results)
             removed_indices = [i for i in range(len(search_results)) if i not in compatible_indices]
@@ -867,11 +989,6 @@ async def filter_compatible_search_results(
         import traceback
         print(traceback.format_exc())
         return search_results
-    finally:
-        if old_api_key is not None:
-            os.environ['GROQ_API_KEY'] = old_api_key
-        else:
-            os.environ.pop('GROQ_API_KEY', None)
 
 
 async def validate_guideline_compatibility(
@@ -882,11 +999,12 @@ async def validate_guideline_compatibility(
     """
     Validate that synthesized guideline matches the clinical premise of the finding.
     Returns True if compatible, False otherwise.
+    Model selection is driven by MODEL_CONFIG - supports any configured model with fallback.
     
     Args:
         guideline_entry: The synthesized GuidelineEntry from guideline synthesis
         finding: The original radiological finding text
-        api_key: Groq API key
+        api_key: API key (kept for compatibility, actual key determined by provider)
         
     Returns:
         True if guideline is compatible with finding, False otherwise
@@ -895,9 +1013,6 @@ async def validate_guideline_compatibility(
     
     start_time = time.time()
     print(f"validate_guideline_compatibility: Validating guideline for finding '{finding}'")
-    
-    old_api_key = os.environ.get('GROQ_API_KEY')
-    os.environ['GROQ_API_KEY'] = api_key
     
     # Build validation prompt
     guideline_summary = (
@@ -911,32 +1026,55 @@ async def validate_guideline_compatibility(
     validation_prompt = (
         f"Finding: {finding}\n\n"
         f"Guideline Summary:\n{guideline_summary}\n\n"
-        "Compatible = ALL three must match: (1) anatomy, (2) pathology, (3) imaging finding.\n"
-        "Incompatible = ANY mismatch in these components. Shared terminology does not imply compatibility.\n\n"
+        "Compatible = Guideline is clinically relevant to the finding:\n"
+        "- Same or related anatomy\n"
+        "- Same or related pathology\n"
+        "- Relevant imaging findings or protocols\n"
+        "Include guidelines that substantially match the clinical entity.\n\n"
+        "Incompatible = Clearly unrelated:\n"
+        "- Different anatomy\n"
+        "- Different pathology\n"
+        "- Unrelated imaging findings\n\n"
         "Return 'YES' if compatible, 'NO' if incompatible."
     )
     
     system_prompt = (
-        "Medical expert validating compatibility. Compatible requires ALL three to match: "
-        "anatomy, pathology, imaging finding. ANY mismatch = incompatible. "
-        "Return ONLY 'YES' or 'NO'."
+        "Medical expert validating clinical relevance. Include guidelines that are substantially related to the finding. "
+        "Only exclude clearly unrelated guidelines.\n\n"
+        "CRITICAL - OUTPUT FORMAT:\n"
+        "• Return a DIRECT STRING VALUE: 'YES' or 'NO', not wrapped in an object\n"
+        "• Example: 'YES' NOT {'text': 'YES'}\n"
+        "• Return ONLY 'YES' or 'NO' as a plain string value"
     )
     
-    # Try primary model first with explicit retry logic (Llama - fast)
+    # Get primary model and provider
+    primary_model = MODEL_CONFIG["GUIDELINE_VALIDATOR"]
+    primary_provider = _get_model_provider(primary_model)
+    primary_api_key = _get_api_key_for_provider(primary_provider)
+    
+    # Try primary model first with explicit retry logic
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            # Use fast Groq model for quick validation
-            model = GroqModel(MODEL_CONFIG["QUERY_GENERATION"])  # Fast Llama model
-            agent = Agent(
-                model,
+            # Build model settings with conditional reasoning_effort for Cerebras
+            model_settings = {
+                "temperature": 0.2,  # Slightly higher temperature for less strict validation
+            }
+            if primary_model == "gpt-oss-120b":
+                model_settings["max_completion_tokens"] = 50  # Small token limit for simple YES/NO
+                model_settings["reasoning_effort"] = "medium"  # Medium reasoning for binary validation decisions
+                print(f"validate_guideline_compatibility: Using Cerebras reasoning_effort=medium, max_completion_tokens=50, temperature=0.2 for {primary_model}")
+            else:
+                model_settings["max_tokens"] = 10
+            
+            result = await _run_agent_with_model(
+                model_name=primary_model,
                 output_type=str,
                 system_prompt=system_prompt,
-            )
-            
-            result = await agent.run(
-                validation_prompt,
-                model_settings={"temperature": 0.1, "max_tokens": 10}
+                user_prompt=validation_prompt,
+                api_key=primary_api_key,
+                use_thinking=False,  # Primary model doesn't use thinking (Cerebras uses reasoning_effort instead)
+                model_settings=model_settings
             )
             
             response = str(result.output).strip().upper()
@@ -959,35 +1097,32 @@ async def validate_guideline_compatibility(
                 await asyncio.sleep(delay)
             else:
                 # All retries exhausted
-                print(f"⚠️ Primary model failed after {max_retries} attempts ({type(e).__name__}) - falling back to {MODEL_CONFIG['QUERY_GENERATION_FALLBACK']}")
+                fallback_model = MODEL_CONFIG['GUIDELINE_VALIDATOR_FALLBACK']
+                print(f"⚠️ Primary model failed after {max_retries} attempts ({type(e).__name__}) - falling back to {fallback_model}")
                 print(f"  Final error: {str(e)[:200]}")
     
-    # If we get here, all retries failed - fallback to Qwen
+    # If we get here, all retries failed - fallback to fallback model
     try:
-        # Fallback to Qwen with thinking
-        groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
-        model = GroqModel(MODEL_CONFIG["QUERY_GENERATION_FALLBACK"])
-        agent = Agent(
-            model,
+        fallback_model = MODEL_CONFIG["GUIDELINE_VALIDATOR_FALLBACK"]
+        fallback_provider = _get_model_provider(fallback_model)
+        fallback_api_key = _get_api_key_for_provider(fallback_provider)
+        
+        result = await _run_agent_with_model(
+            model_name=fallback_model,
             output_type=str,
             system_prompt=system_prompt,
-            model_settings=groq_settings,
-        )
-        
-        result = await agent.run(
-            validation_prompt,
+            user_prompt=validation_prompt,
+            api_key=fallback_api_key,
+            use_thinking=(fallback_provider == 'groq'),  # Enable thinking for Groq fallback
             model_settings={"temperature": 0.1, "max_tokens": 10}
         )
-        
-        # Log thinking parts (backend only - not sent to frontend)
-        _log_thinking_parts(result, "Guideline Compatibility Validation - Qwen (fallback)")
         
         response = str(result.output).strip().upper()
         is_compatible = response.startswith('YES')
         
         elapsed = time.time() - start_time
         status = "✅ COMPATIBLE" if is_compatible else "❌ INCOMPATIBLE"
-        print(f"validate_guideline_compatibility: {status} in {elapsed:.2f}s (Qwen fallback)")
+        print(f"validate_guideline_compatibility: {status} in {elapsed:.2f}s (fallback)")
         if not is_compatible:
             print(f"  └─ Guideline does not match finding's clinical entity (anatomy/pathology/imaging mismatch)")
         
@@ -1000,11 +1135,6 @@ async def validate_guideline_compatibility(
         import traceback
         print(traceback.format_exc())
         return True
-    finally:
-        if old_api_key is not None:
-            os.environ['GROQ_API_KEY'] = old_api_key
-        else:
-            os.environ.pop('GROQ_API_KEY', None)
 
 
 @with_retry(max_retries=3, base_delay=2.0)
@@ -1024,348 +1154,380 @@ async def search_guidelines_for_findings(
 
     import os
 
-    old_api_key = None
-    try:
-        old_api_key = os.environ.get("GROQ_API_KEY")
-        os.environ["GROQ_API_KEY"] = api_key
+    # Get primary model and provider
+    primary_model = MODEL_CONFIG["GUIDELINE_SEARCH"]
+    primary_provider = _get_model_provider(primary_model)
+    primary_api_key = _get_api_key_for_provider(primary_provider)
 
-        # Create Groq model (Llama primary - no thinking needed for complex structured output)
-        groq_model = GroqModel(MODEL_CONFIG["GUIDELINE_SEARCH"])
+    # Guidelines synthesis agent - Radiologist-to-radiologist diagnostic perspective
+    guidelines_system_prompt = (
+        "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
+        "You are a senior UK consultant radiologist providing diagnostic imaging guidance to NHS colleagues.\n\n"
+        
+        "PERSPECTIVE: Radiologist-to-radiologist - focus on imaging characterization that informs diagnostic and management decisions.\n\n"
+        
+        "FOCUS: Highlight significant/impactful information and criteria that support or direct patient care:\n"
+        "• Actionable thresholds and decision points (e.g., size criteria for follow-up, severity grading)\n"
+        "• Clinically relevant imaging features that guide management\n"
+        "• Classification systems that inform treatment decisions\n"
+        "• Measurement protocols with management implications\n"
+        "• Follow-up recommendations based on imaging findings\n\n"
+        
+        "CRITICAL REQUIREMENTS:\n"
+        "• ADULT radiology only (age 16+) - EXCLUDE pediatric systems (SFU, UTD)\n"
+        "• UK guidelines FIRST (RCR, NICE, BIR, British societies) - international sources supplement\n"
+        "• PRIORITIZE reputable sources: professional societies, academic institutions, peer-reviewed guidelines\n"
+        "• DISCARD or de-prioritize low-quality sources: blogs, forums, non-peer-reviewed content\n"
+        "• Use only provided search evidence - weight higher-quality sources more heavily\n\n"
+        
+        "CRITICAL: Guideline must match ALL three components of the finding: (1) anatomy, (2) pathology, (3) imaging finding. "
+        "ANY mismatch = incompatible. Shared terminology does not imply compatibility. "
+        "Only synthesize information matching the finding's complete definition.\n\n"
+        
+        "SOURCE QUALITY PRIORITY:\n"
+        "1. UK professional societies (RCR, NICE, BIR, British specialty societies)\n"
+        "2. International professional societies (RSNA, ACR, ECR, etc.)\n"
+        "3. Academic institutions and peer-reviewed sources (Radiopaedia, PubMed)\n"
+        "4. Use lower-quality sources only if no reputable sources available\n\n"
+        
+        "CRITICAL - OUTPUT FORMAT:\n"
+        "• All string fields (diagnostic_overview, finding) must be DIRECT STRING VALUES, not wrapped in objects\n"
+        "• Example: diagnostic_overview: 'Text here' NOT diagnostic_overview: {'text': 'Text here'}\n"
+        "• All array/list fields (classification_systems, measurement_protocols, imaging_characteristics, differential_diagnoses, follow_up_imaging) must be ARRAYS/LISTS, not single objects\n"
+        "• Example: follow_up_imaging: [{'indication': '...', 'modality': '...', 'timing': '...'}] NOT follow_up_imaging: {'indication': '...', 'modality': '...', 'timing': '...'}\n"
+        "• Example: classification_systems: [{'name': '...', 'grade_or_category': '...', 'criteria': '...'}] NOT classification_systems: {'name': '...', 'grade_or_category': '...', 'criteria': '...'}\n"
+        "• Return arrays even if there is only one item: [{...}] not {...}\n"
+        "• Return empty arrays [] if no items, not null or missing\n\n"
+        
+        "RETURN GuidelineEntry WITH:\n\n"
+        
+        "CRITICAL - ALL REQUIRED FIELDS MUST BE INCLUDED:\n"
+        "• ClassificationSystem: name, grade_or_category, criteria (all 3 required)\n"
+        "• DifferentialDiagnosis: diagnosis, imaging_features, supporting_findings (all 3 required)\n"
+        "• FollowUpImaging: indication, modality, timing (all 3 required)\n"
+        "• MeasurementProtocol: parameter, technique (required); normal_range, threshold (optional)\n"
+        "• ImagingCharacteristic: feature, description, significance (all 3 required)\n"
+        "If any required field is missing, omit the entire object.\n\n"
+        
+        "1. diagnostic_overview (2-3 sentences):\n"
+        "   Direct string value: What this represents on imaging, key features, diagnostic considerations\n\n"
+        
+        "2. classification_systems (0-2 items - MUST be an array):\n"
+        "   ARRAY of ClassificationSystem objects: [{...}, {...}]\n"
+        "   Named systems with year (Fleischner 2017, Bosniak 2019, TI-RADS, LI-RADS)\n"
+        "   Include grade/category with imaging criteria. Return empty array [] if no criteria/system exists.\n\n"
+        
+        "3. measurement_protocols (2-4 items - MUST be an array):\n"
+        "   ARRAY of MeasurementProtocol objects: [{...}, {...}, {...}]\n"
+        "   Specific techniques with numeric thresholds and units that inform management\n"
+        "   Focus on actionable thresholds (e.g., 'long axis on axial CT, normal < 10mm, abnormal > 15mm triggers follow-up')\n\n"
+        
+        "4. imaging_characteristics (4-6 items - MUST be an array):\n"
+        "   ARRAY of ImagingCharacteristic objects: [{...}, {...}, {...}, {...}]\n"
+        "   Key features with modality-specific details (CT density, MRI signal, US echogenicity)\n"
+        "   Emphasize features that impact diagnosis or management decisions\n"
+        "   Include technical considerations (phase, windowing) when clinically significant\n\n"
+        
+        "5. differential_diagnoses (2-4 items - MUST be an array):\n"
+        "   ARRAY of DifferentialDiagnosis objects: [{...}, {...}]\n"
+        "   Diagnoses WITH distinguishing imaging features\n"
+        "   Focus: 'How to tell them apart on imaging'\n\n"
+        
+        "6. follow_up_imaging (if applicable - MUST be an array):\n"
+        "   ARRAY of FollowUpImaging objects: [{...}] or [{...}, {...}]\n"
+        "   Return as array even if only one item: [{...}] NOT {...}\n"
+        "   Return empty array [] if not applicable, not null\n"
+        "   Modality, timing from UK guidelines, technical parameters\n"
+        "   Focus on recommendations that guide patient management\n\n"
+        
+        "EMPHASIZE: Significant/impactful criteria, actionable thresholds, classification systems that inform care, UK adaptations\n"
+        "PRIORITIZE: Information that supports diagnostic decisions or directs management pathways"
+    )
 
-        # Guidelines synthesis agent - Radiologist-to-radiologist diagnostic perspective
-        guidelines_system_prompt = (
-            "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
-            "You are a senior UK consultant radiologist providing diagnostic imaging guidance to NHS colleagues.\n\n"
-            
-            "PERSPECTIVE: Radiologist-to-radiologist - focus on imaging characterization that informs diagnostic and management decisions.\n\n"
-            
-            "FOCUS: Highlight significant/impactful information and criteria that support or direct patient care:\n"
-            "• Actionable thresholds and decision points (e.g., size criteria for follow-up, severity grading)\n"
-            "• Clinically relevant imaging features that guide management\n"
-            "• Classification systems that inform treatment decisions\n"
-            "• Measurement protocols with management implications\n"
-            "• Follow-up recommendations based on imaging findings\n\n"
-            
-            "CRITICAL REQUIREMENTS:\n"
-            "• ADULT radiology only (age 16+) - EXCLUDE pediatric systems (SFU, UTD)\n"
-            "• UK guidelines FIRST (RCR, NICE, BIR, British societies) - international sources supplement\n"
-            "• PRIORITIZE reputable sources: professional societies, academic institutions, peer-reviewed guidelines\n"
-            "• DISCARD or de-prioritize low-quality sources: blogs, forums, non-peer-reviewed content\n"
-            "• Use only provided search evidence - weight higher-quality sources more heavily\n\n"
-            
-            "CRITICAL: Guideline must match ALL three components of the finding: (1) anatomy, (2) pathology, (3) imaging finding. "
-            "ANY mismatch = incompatible. Shared terminology does not imply compatibility. "
-            "Only synthesize information matching the finding's complete definition.\n\n"
-            
-            "SOURCE QUALITY PRIORITY:\n"
-            "1. UK professional societies (RCR, NICE, BIR, British specialty societies)\n"
-            "2. International professional societies (RSNA, ACR, ECR, etc.)\n"
-            "3. Academic institutions and peer-reviewed sources (Radiopaedia, PubMed)\n"
-            "4. Use lower-quality sources only if no reputable sources available\n\n"
-            
-            "RETURN GuidelineEntry WITH:\n\n"
-            
-            "1. diagnostic_overview (2-3 sentences):\n"
-            "   What this represents on imaging, key features, diagnostic considerations\n\n"
-            
-            "2. classification_systems (0-2):\n"
-            "   Named systems with year (Fleischner 2017, Bosniak 2019, TI-RADS, LI-RADS)\n"
-            "   Include grade/category with imaging criteria. Omit if no criteria/system exists.\n\n"
-            
-            "3. measurement_protocols (2-4):\n"
-            "   Specific techniques with numeric thresholds and units that inform management\n"
-            "   Focus on actionable thresholds (e.g., 'long axis on axial CT, normal < 10mm, abnormal > 15mm triggers follow-up')\n\n"
-            
-            "4. imaging_characteristics (4-6):\n"
-            "   Key features with modality-specific details (CT density, MRI signal, US echogenicity)\n"
-            "   Emphasize features that impact diagnosis or management decisions\n"
-            "   Include technical considerations (phase, windowing) when clinically significant\n\n"
-            
-            "5. differential_diagnoses (2-4):\n"
-            "   Diagnoses WITH distinguishing imaging features\n"
-            "   Focus: 'How to tell them apart on imaging'\n\n"
-            
-            "6. follow_up_imaging (if applicable):\n"
-            "   Modality, timing from UK guidelines, technical parameters\n"
-            "   Focus on recommendations that guide patient management\n\n"
-            
-            "EMPHASIZE: Significant/impactful criteria, actionable thresholds, classification systems that inform care, UK adaptations\n"
-            "PRIORITIZE: Information that supports diagnostic decisions or directs management pathways"
-        )
+    perplexity_client = Perplexity()
+    guidelines_results: List[dict] = []
+    total_sources = 0
+    # Track which models were used
+    query_models_used = set()
+    synthesis_models_used = set()
 
-        guideline_agent = Agent(
-            groq_model,
-            output_type=GuidelineEntry,
-            system_prompt=guidelines_system_prompt,
-        )
+    for idx, consolidated_finding in enumerate(consolidated_result.findings, start=1):
+        print(f"  └─ Processing consolidated finding {idx}: {consolidated_finding.finding}")
 
-        perplexity_client = Perplexity()
-        guidelines_results: List[dict] = []
-        total_sources = 0
-        # Track which models were used
-        query_models_used = set()
-        synthesis_models_used = set()
+        # Generate 2-3 focused search queries using AI
+        queries, query_model = await generate_radiology_search_queries(consolidated_finding.finding, api_key)
+        query_models_used.add(query_model)
+        print(f"      Generated {len(queries)} queries")
+        for q_idx, q in enumerate(queries, 1):
+            print(f"        Query {q_idx}: {q}")
 
-        for idx, consolidated_finding in enumerate(consolidated_result.findings, start=1):
-            print(f"  └─ Processing consolidated finding {idx}: {consolidated_finding.finding}")
-
-            # Generate 2-3 focused search queries using AI
-            queries, query_model = await generate_radiology_search_queries(consolidated_finding.finding, api_key)
-            query_models_used.add(query_model)
-            print(f"      Generated {len(queries)} queries")
-            for q_idx, q in enumerate(queries, 1):
-                print(f"        Query {q_idx}: {q}")
-
-            # Try search with fallback strategy: restricted domains -> no domain filter -> no language filter
-            search_results = None
-            fallback_attempt = 0
-            
-            # Attempt 1: Restricted domain filter (preferred - highest quality)
+        # Try search with fallback strategy: restricted domains -> no domain filter -> no language filter
+        search_results = None
+        fallback_attempt = 0
+        
+        # Attempt 1: Restricted domain filter (preferred - highest quality)
+        try:
+            search_response = await asyncio.to_thread(
+                lambda: perplexity_client.search.create(
+                    query=queries,  # List of 3-5 queries
+                    max_results=5,   # 5 per query = 15-25 total results
+                    max_tokens_per_page=1024,
+                    search_language_filter=["en"],
+                    search_domain_filter=COMPREHENSIVE_RADIOLOGY_DOMAINS,
+                )
+            )
+            search_results = normalize_perplexity_results(search_response, queries)
+            fallback_attempt = 1
+            if search_results:
+                print(f"      ✅ Found {len(search_results)} results with restricted domain filter")
+        except Exception as search_error:
+            print(f"⚠️  Perplexity search error (attempt 1 - restricted domains): {search_error}")
+        
+        # Attempt 2: No domain filter (broader search, still English only)
+        if not search_results:
             try:
+                print(f"      🔄 Retrying without domain filter...")
                 search_response = await asyncio.to_thread(
                     lambda: perplexity_client.search.create(
-                        query=queries,  # List of 3-5 queries
-                        max_results=5,   # 5 per query = 15-25 total results
+                        query=queries,
+                        max_results=5,
                         max_tokens_per_page=1024,
                         search_language_filter=["en"],
-                        search_domain_filter=COMPREHENSIVE_RADIOLOGY_DOMAINS,
+                        # No search_domain_filter - broader search
                     )
                 )
                 search_results = normalize_perplexity_results(search_response, queries)
-                fallback_attempt = 1
+                fallback_attempt = 2
                 if search_results:
-                    print(f"      ✅ Found {len(search_results)} results with restricted domain filter")
+                    print(f"      ✅ Found {len(search_results)} results without domain filter")
             except Exception as search_error:
-                print(f"⚠️  Perplexity search error (attempt 1 - restricted domains): {search_error}")
-            
-            # Attempt 2: No domain filter (broader search, still English only)
-            if not search_results:
-                try:
-                    print(f"      🔄 Retrying without domain filter...")
-                    search_response = await asyncio.to_thread(
-                        lambda: perplexity_client.search.create(
-                            query=queries,
-                            max_results=5,
-                            max_tokens_per_page=1024,
-                            search_language_filter=["en"],
-                            # No search_domain_filter - broader search
-                        )
-                    )
-                    search_results = normalize_perplexity_results(search_response, queries)
-                    fallback_attempt = 2
-                    if search_results:
-                        print(f"      ✅ Found {len(search_results)} results without domain filter")
-                except Exception as search_error:
-                    print(f"⚠️  Perplexity search error (attempt 2 - no domain filter): {search_error}")
-            
-            # Attempt 3: No language filter (broadest search)
-            if not search_results:
-                try:
-                    print(f"      🔄 Retrying without language filter...")
-                    search_response = await asyncio.to_thread(
-                        lambda: perplexity_client.search.create(
-                            query=queries,
-                            max_results=5,
-                            max_tokens_per_page=1024,
-                            # No filters - broadest possible search
-                        )
-                    )
-                    search_results = normalize_perplexity_results(search_response, queries)
-                    fallback_attempt = 3
-                    if search_results:
-                        print(f"      ✅ Found {len(search_results)} results without filters")
-                except Exception as search_error:
-                    print(f"⚠️  Perplexity search error (attempt 3 - no filters): {search_error}")
-            
-            # Final check - if still no results, skip this finding
-            if not search_results:
-                print(f"⚠️  No search results for finding {idx} after {fallback_attempt} attempt(s)")
-                continue
-            
-            # Log which fallback level was used
-            if fallback_attempt > 1:
-                print(f"      ⚠️  Used fallback level {fallback_attempt} (less restrictive filtering)")
-
-            # Filter incompatible search results before synthesis
-            search_results = await filter_compatible_search_results(
-                search_results,
-                consolidated_finding.finding,
-                api_key
-            )
-            if not search_results:
-                print(f"⚠️  No compatible search results for finding {idx} after filtering")
-                continue
-
-            total_sources += len(search_results)
-            print(f"      Retrieved {len(search_results)} compatible search results")
-
-            # Build evidence context
-            context_lines = []
-            for rank, item in enumerate(search_results[:12], start=1):
-                title = (item.get("title") or "").strip()
-                snippet = (item.get("snippet") or "").strip()
-                if snippet and len(snippet) > 280:
-                    snippet = snippet[:277].rstrip() + "..."
-                url = (item.get("url") or "").strip()
-                query = (item.get("query") or "").strip()
-                context_lines.append(f"[{rank}] Query: {query}\nTitle: {title}\nSummary: {snippet}\nURL: {url}\n")
-
-            evidence_block = "\n".join(context_lines) if context_lines else "No supporting evidence."
-
-            # Guidelines synthesis prompt
-            queries_text = "\n".join(f"  {i}. {q}" for i, q in enumerate(queries, 1))
-            prompt = (
-                f"Consolidated finding: {consolidated_finding.finding}\n"
-                f"Search queries used:\n{queries_text}\n\n"
-                f"SEARCH EVIDENCE:\n{evidence_block}\n\n"
-                "Return a GuidelineEntry JSON object with radiologist-focused diagnostic information."
-            )
-
+                print(f"⚠️  Perplexity search error (attempt 2 - no domain filter): {search_error}")
+        
+        # Attempt 3: No language filter (broadest search)
+        if not search_results:
             try:
-                # Try primary model first with retry logic
-                @with_retry(max_retries=3, base_delay=2.0)
-                async def _try_synthesis():
-                    result = await guideline_agent.run(
-                        prompt,
-                        model_settings={"temperature": 0.2, "max_tokens": 1600},
+                print(f"      🔄 Retrying without language filter...")
+                search_response = await asyncio.to_thread(
+                    lambda: perplexity_client.search.create(
+                        query=queries,
+                        max_results=5,
+                        max_tokens_per_page=1024,
+                        # No filters - broadest possible search
                     )
-                    # Log thinking parts if available (backend only - not sent to frontend)
-                    # Note: Llama primary doesn't use thinking, so no thinking parts to log
-                    # _log_thinking_parts(result, f"Guideline Search - Primary - Finding {idx}")
-                    return result
-                
-                result = await _try_synthesis()
-                synthesis_model = MODEL_CONFIG["GUIDELINE_SEARCH"]
-            except Exception as synthesis_error:
-                # Primary model failed - try fallback
-                if _is_parsing_error(synthesis_error):
-                    print(f"⚠️ Primary model parsing error for finding {idx} - falling back to {MODEL_CONFIG['GUIDELINE_SEARCH_FALLBACK']}")
+                )
+                search_results = normalize_perplexity_results(search_response, queries)
+                fallback_attempt = 3
+                if search_results:
+                    print(f"      ✅ Found {len(search_results)} results without filters")
+            except Exception as search_error:
+                print(f"⚠️  Perplexity search error (attempt 3 - no filters): {search_error}")
+        
+        # Final check - if still no results, skip this finding
+        if not search_results:
+            print(f"⚠️  No search results for finding {idx} after {fallback_attempt} attempt(s)")
+            continue
+        
+        # Log which fallback level was used
+        if fallback_attempt > 1:
+            print(f"      ⚠️  Used fallback level {fallback_attempt} (less restrictive filtering)")
+
+        # Filter incompatible search results before synthesis
+        search_results = await filter_compatible_search_results(
+            search_results,
+            consolidated_finding.finding,
+            api_key
+        )
+        if not search_results:
+            print(f"⚠️  No compatible search results for finding {idx} after filtering")
+            continue
+
+        total_sources += len(search_results)
+        print(f"      Retrieved {len(search_results)} compatible search results")
+
+        # Build evidence context
+        context_lines = []
+        for rank, item in enumerate(search_results[:12], start=1):
+            title = (item.get("title") or "").strip()
+            snippet = (item.get("snippet") or "").strip()
+            if snippet and len(snippet) > 280:
+                snippet = snippet[:277].rstrip() + "..."
+            url = (item.get("url") or "").strip()
+            query = (item.get("query") or "").strip()
+            context_lines.append(f"[{rank}] Query: {query}\nTitle: {title}\nSummary: {snippet}\nURL: {url}\n")
+
+        evidence_block = "\n".join(context_lines) if context_lines else "No supporting evidence."
+
+        # Guidelines synthesis prompt
+        queries_text = "\n".join(f"  {i}. {q}" for i, q in enumerate(queries, 1))
+        prompt = (
+            f"Consolidated finding: {consolidated_finding.finding}\n"
+            f"Search queries used:\n{queries_text}\n\n"
+            f"SEARCH EVIDENCE:\n{evidence_block}\n\n"
+            "Return a GuidelineEntry JSON object with radiologist-focused diagnostic information."
+        )
+
+        try:
+            # Try primary model first with retry logic
+            @with_retry(max_retries=3, base_delay=2.0)
+            async def _try_synthesis():
+                # Build model settings with conditional reasoning_effort and max_completion_tokens for Cerebras
+                model_settings = {
+                    "temperature": 0.2,
+                }
+                if primary_model == "gpt-oss-120b":
+                    model_settings["max_completion_tokens"] = 5000  # Generous token limit for Cerebras
+                    model_settings["reasoning_effort"] = "medium"
+                    print(f"      └─ Using Cerebras reasoning_effort=medium, max_completion_tokens=5000 for {primary_model}")
                 else:
-                    print(f"⚠️ Primary model failed after retries for finding {idx} - falling back to {MODEL_CONFIG['GUIDELINE_SEARCH_FALLBACK']}")
+                    model_settings["max_tokens"] = 4000  # Generous token limit for other models
                 
-                try:
-                    # Fallback to Qwen with thinking for guideline synthesis
-                    groq_settings_fallback = GroqModelSettings(groq_reasoning_format='parsed')
-                    fallback_model = GroqModel(MODEL_CONFIG["GUIDELINE_SEARCH_FALLBACK"])
-                    fallback_agent = Agent(
-                        fallback_model,
-                        output_type=GuidelineEntry,
-                        system_prompt=guidelines_system_prompt,
-                        model_settings=groq_settings_fallback,
-                    )
-                    result = await fallback_agent.run(
-                        prompt,
-                        model_settings={"temperature": 0.2, "max_tokens": 1600},
-                    )
-                    
-                    # Log thinking parts if available (backend only - not sent to frontend)
-                    _log_thinking_parts(result, f"Guideline Search - Qwen (fallback) - Finding {idx}")
-                    
-                    synthesis_model = MODEL_CONFIG["GUIDELINE_SEARCH_FALLBACK"]
-                    print(f"      ✅ Guideline synthesis completed with {synthesis_model} (fallback)")
-                except Exception as fallback_error:
-                    print(f"❌ Both primary and fallback models failed for finding {idx}: {fallback_error}")
-                    continue
-
-            synthesis_models_used.add(synthesis_model)
-            guideline_entry: GuidelineEntry = result.output
-            print(f"      Generated guideline: {guideline_entry.diagnostic_overview[:160]}...")
-
-            # Validate guideline compatibility with finding
-            is_compatible = await validate_guideline_compatibility(
-                guideline_entry,
-                consolidated_finding.finding,
-                api_key
-            )
-            if not is_compatible:
-                print(f"⚠️  Synthesized guideline incompatible with finding {idx}, skipping...")
+                result = await _run_agent_with_model(
+                    model_name=primary_model,
+                    output_type=GuidelineEntry,
+                    system_prompt=guidelines_system_prompt,
+                    user_prompt=prompt,
+                    api_key=primary_api_key,
+                    use_thinking=(primary_provider == 'groq'),  # Enable thinking for Groq models
+                    model_settings=model_settings
+                )
+                return result
+            
+            result = await _try_synthesis()
+            synthesis_model = primary_model
+        except Exception as synthesis_error:
+            # Log detailed error information for debugging
+            print(f"⚠️ Primary model (Cerebras) error details for finding {idx}:")
+            print(f"  └─ Error type: {type(synthesis_error).__name__}")
+            print(f"  └─ Error message: {str(synthesis_error)}")
+            if hasattr(synthesis_error, 'status_code'):
+                print(f"  └─ Status code: {synthesis_error.status_code}")
+            if hasattr(synthesis_error, 'body'):
+                print(f"  └─ Error body: {synthesis_error.body}")
+            
+            # Primary model failed - try fallback
+            fallback_model = MODEL_CONFIG["GUIDELINE_SEARCH_FALLBACK"]
+            fallback_provider = _get_model_provider(fallback_model)
+            fallback_api_key = _get_api_key_for_provider(fallback_provider)
+            
+            if _is_parsing_error(synthesis_error):
+                print(f"⚠️ Primary model parsing error for finding {idx} - falling back to {fallback_model}")
+            else:
+                print(f"⚠️ Primary model failed after retries for finding {idx} - falling back to {fallback_model}")
+            
+            try:
+                # Build model settings for fallback (Llama)
+                fallback_model_settings = {
+                    "temperature": 0.2,
+                    "max_tokens": 4000  # Generous token limit for Llama fallback
+                }
+                
+                # Only enable thinking for Groq models that support reasoning_format (Qwen, not Llama)
+                use_thinking_fallback = (fallback_provider == 'groq' and 'qwen' in fallback_model.lower())
+                
+                result = await _run_agent_with_model(
+                    model_name=fallback_model,
+                    output_type=GuidelineEntry,
+                    system_prompt=guidelines_system_prompt,
+                    user_prompt=prompt,
+                    api_key=fallback_api_key,
+                    use_thinking=use_thinking_fallback,  # Only enable for Qwen models, not Llama
+                    model_settings=fallback_model_settings
+                )
+                
+                synthesis_model = fallback_model
+                print(f"      ✅ Guideline synthesis completed with {synthesis_model} (fallback)")
+            except Exception as fallback_error:
+                print(f"❌ Both primary and fallback models failed for finding {idx}: {fallback_error}")
                 continue
 
-            guideline_entry = guideline_entry.model_copy(
-                update={"finding_number": idx, "finding": consolidated_finding.finding}
-            )
+        synthesis_models_used.add(synthesis_model)
+        guideline_entry: GuidelineEntry = result.output
+        print(f"      Generated guideline: {guideline_entry.diagnostic_overview[:160]}...")
 
-            # Build new radiologist-focused markdown
-            guideline_markdown = build_radiologist_guideline_markdown(guideline_entry)
+        # Validate guideline compatibility with finding
+        is_compatible = await validate_guideline_compatibility(
+            guideline_entry,
+            consolidated_finding.finding,
+            api_key
+        )
+        if not is_compatible:
+            print(f"⚠️  Synthesized guideline incompatible with finding {idx}, skipping...")
+            continue
 
-            # Build sources (organic only - no hardcoded fallbacks)
-            sources = []
-            for item in search_results[:10]:
-                sources.append({
-                    "url": item.get("url", ""),
-                    "title": item.get("title", ""),
-                    "snippet": "",
-                    "domain": item.get("domain", ""),
-                    "query": item.get("query", ""),
-                })
+        guideline_entry = guideline_entry.model_copy(
+            update={"finding_number": idx, "finding": consolidated_finding.finding}
+        )
 
-            # Extract unique domains (no fallback)
-            unique_domains = list(dict.fromkeys(
-                source["domain"] for source in sources if source.get("domain")
-            ))
-            discovered_bodies = [
-                {"name": domain, "domain": domain, "reason": "Referenced in search evidence", "priority": "medium"}
-                for domain in unique_domains[:3]
-            ]
-            body_names = unique_domains[:3]
+        # Build new radiologist-focused markdown
+        guideline_markdown = build_radiologist_guideline_markdown(guideline_entry)
 
-            # Debug logging for structured fields
-            print(f"📊 DEBUG - Guideline for '{consolidated_finding.finding}':")
-            print(f"  classification_systems: {len(guideline_entry.classification_systems)} items")
-            if guideline_entry.classification_systems:
-                for cs in guideline_entry.classification_systems:
-                    print(f"    • {cs.name} - {cs.grade_or_category}")
-            else:
-                print(f"    (empty)")
-            print(f"  measurement_protocols: {len(guideline_entry.measurement_protocols)} items")
-            print(f"  imaging_characteristics: {len(guideline_entry.imaging_characteristics)} items")
-            print(f"  differential_diagnoses: {len(guideline_entry.differential_diagnoses)} items")
-            print(f"  follow_up_imaging: {len(guideline_entry.follow_up_imaging or [])} items")
-            if guideline_entry.follow_up_imaging:
-                for fi in guideline_entry.follow_up_imaging:
-                    print(f"    • {fi.modality} at {fi.timing}")
-            else:
-                print(f"    (empty)")
-            
-            guidelines_results.append({
-                "finding": {
-                    "finding": consolidated_finding.finding,
-                    "guideline_focus": "diagnostic imaging guidance",
-                    "specialty": "general radiology",
-                    "search_query": " | ".join(queries),  # Show all queries used
-                },
-                "discovered_bodies": discovered_bodies,
-                "body_names": body_names,
-                "reasoning": "Synthesized from UK-focused multi-query search evidence",
-                "guideline_summary": guideline_markdown,
-                "diagnostic_overview": guideline_entry.diagnostic_overview,
-                "sources": sources[:5],
-                # New structured fields
-                "classification_systems": [cs.model_dump() for cs in guideline_entry.classification_systems],
-                "measurement_protocols": [mp.model_dump() for mp in guideline_entry.measurement_protocols],
-                "imaging_characteristics": [ic.model_dump() for ic in guideline_entry.imaging_characteristics],
-                "differential_diagnoses": [dd.model_dump() for dd in guideline_entry.differential_diagnoses],
-                "follow_up_imaging": [fi.model_dump() for fi in (guideline_entry.follow_up_imaging or [])],
+        # Build sources (organic only - no hardcoded fallbacks)
+        sources = []
+        for item in search_results[:10]:
+            sources.append({
+                "url": item.get("url", ""),
+                "title": item.get("title", ""),
+                "snippet": "",
+                "domain": item.get("domain", ""),
+                "query": item.get("query", ""),
             })
 
-        elapsed = time.time() - start_time
-        # Build model summary string
-        query_models_str = ", ".join(sorted(query_models_used)) if query_models_used else "none"
-        synthesis_models_str = ", ".join(sorted(synthesis_models_used)) if synthesis_models_used else "none"
-        models_summary = f"Query: {query_models_str} | Synthesis: {synthesis_models_str}"
-        print(f"search_guidelines_for_findings: Completed with {len(guidelines_results)} guidelines from {total_sources} sources in {elapsed:.2f}s ({models_summary})")
-        return guidelines_results
+        # Extract unique domains (no fallback)
+        unique_domains = list(dict.fromkeys(
+            source["domain"] for source in sources if source.get("domain")
+        ))
+        discovered_bodies = [
+            {"name": domain, "domain": domain, "reason": "Referenced in search evidence", "priority": "medium"}
+            for domain in unique_domains[:3]
+        ]
+        body_names = unique_domains[:3]
 
-    except Exception as e:
-        import traceback
-        print(f"❌ Error in guideline search: {e}")
-        print(traceback.format_exc())
-        return []
-    finally:
-        if old_api_key is not None:
-            os.environ['GROQ_API_KEY'] = old_api_key
+        # Debug logging for structured fields
+        print(f"📊 DEBUG - Guideline for '{consolidated_finding.finding}':")
+        print(f"  classification_systems: {len(guideline_entry.classification_systems)} items")
+        if guideline_entry.classification_systems:
+            for cs in guideline_entry.classification_systems:
+                print(f"    • {cs.name} - {cs.grade_or_category}")
         else:
-            os.environ.pop('GROQ_API_KEY', None)
+            print(f"    (empty)")
+        print(f"  measurement_protocols: {len(guideline_entry.measurement_protocols)} items")
+        print(f"  imaging_characteristics: {len(guideline_entry.imaging_characteristics)} items")
+        print(f"  differential_diagnoses: {len(guideline_entry.differential_diagnoses)} items")
+        print(f"  follow_up_imaging: {len(guideline_entry.follow_up_imaging or [])} items")
+        if guideline_entry.follow_up_imaging:
+            for fi in guideline_entry.follow_up_imaging:
+                print(f"    • {fi.modality} at {fi.timing}")
+        else:
+            print(f"    (empty)")
+        
+        guidelines_results.append({
+            "finding": {
+                "finding": consolidated_finding.finding,
+                "guideline_focus": "diagnostic imaging guidance",
+                "specialty": "general radiology",
+                "search_query": " | ".join(queries),  # Show all queries used
+            },
+            "discovered_bodies": discovered_bodies,
+            "body_names": body_names,
+            "reasoning": "Synthesized from UK-focused multi-query search evidence",
+            "guideline_summary": guideline_markdown,
+            "diagnostic_overview": guideline_entry.diagnostic_overview,
+            "sources": sources[:5],
+            # New structured fields
+            "classification_systems": [cs.model_dump() for cs in guideline_entry.classification_systems],
+            "measurement_protocols": [mp.model_dump() for mp in guideline_entry.measurement_protocols],
+            "imaging_characteristics": [ic.model_dump() for ic in guideline_entry.imaging_characteristics],
+            "differential_diagnoses": [dd.model_dump() for dd in guideline_entry.differential_diagnoses],
+            "follow_up_imaging": [fi.model_dump() for fi in (guideline_entry.follow_up_imaging or [])],
+        })
+
+    elapsed = time.time() - start_time
+    # Build model summary string
+    query_models_str = ", ".join(sorted(query_models_used)) if query_models_used else "none"
+    synthesis_models_str = ", ".join(sorted(synthesis_models_used)) if synthesis_models_used else "none"
+    models_summary = f"Query: {query_models_str} | Synthesis: {synthesis_models_str}"
+    print(f"search_guidelines_for_findings: Completed with {len(guidelines_results)} guidelines from {total_sources} sources in {elapsed:.2f}s ({models_summary})")
+    return guidelines_results
 
 
 async def _analyze_completeness_with_model(
@@ -1373,22 +1535,18 @@ async def _analyze_completeness_with_model(
     model_label: str,
     report_content: str,
     guidelines_data: List[dict],
-    anthropic_api_key: str,
-    use_groq: bool = False,
-    groq_api_key: str | None = None
+    api_key: str
 ) -> dict:
     """
     Helper function to analyze report completeness with specified model.
-    Supports both Anthropic (Claude) and Groq (Qwen) models.
+    Model selection is driven by MODEL_CONFIG - supports any configured model.
     
     Args:
-        model_name: Model identifier (Anthropic or Groq)
+        model_name: Model identifier (e.g., "qwen/qwen3-32b", "claude-sonnet-4-20250514")
         model_label: Human-readable model name for logging
         report_content: The report text
         guidelines_data: Guidelines found for the report
-        anthropic_api_key: Anthropic API key (if use_groq=False)
-        use_groq: Whether to use Groq API instead of Anthropic
-        groq_api_key: Groq API key (if use_groq=True)
+        api_key: API key for the model provider
     
     Returns:
         Dictionary with analysis and structured feedback
@@ -1399,112 +1557,100 @@ async def _analyze_completeness_with_model(
     print(f"analyze_report_completeness: Attempting with {model_label}...")
     print(f"  └─ Received {len(guidelines_data)} guideline entries for completeness analysis")
     
-    if use_groq:
-        old_api_key = os.environ.get('GROQ_API_KEY')
-        os.environ['GROQ_API_KEY'] = groq_api_key
-    else:
-        old_api_key = os.environ.get('ANTHROPIC_API_KEY')
-        os.environ['ANTHROPIC_API_KEY'] = anthropic_api_key
+    provider = _get_model_provider(model_name)
     
-    try:
-        if use_groq:
-            from pydantic_ai.models.groq import GroqModel, GroqModelSettings
-            # Create Groq model with thinking enabled
-            groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
-            model = GroqModel(model_name)
-        else:
-            model = AnthropicModel(model_name)
-        
-        agent = Agent(
-            model,
-            output_type=CompletenessAnalysis,
-            system_prompt=(
-                "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
-                "You are an expert radiologist reviewing imaging reports for quality and completeness "
-                "of findings documentation.\n\n"
-                "Your role is to assess whether the radiologist has:\n"
-                "• Systematically documented all imaging findings visible on the study\n"
-                "• Clearly described anatomic locations, measurements, and characteristics\n"
-                "• Provided appropriate differential considerations based on imaging alone\n"
-                "• Communicated findings clearly for clinical application\n\n"
-                "Do NOT evaluate whether clinical information is provided or whether clinical context "
-                "is present in the report. The radiologist interprets the imaging; clinical correlation "
-                "is the ordering clinician's responsibility.\n\n"
-                "Produce structured feedback with three parts:\n"
-                "• Summary – plain-language overview of completeness, clarity, and imaging interpretation quality\n"
-                "• Questions – 2-4 review prompts to verify imaging findings are adequately characterized "
-                "(specific to scan modality and anatomic region)\n"
-                "• Suggested Actions – optional concrete edits when specific wording would improve clarity "
-                "of imaging description. Each suggested action MUST include:\n"
-                "  - id: kebab-case identifier\n"
-                "  - title: concise action label (≤10 words)\n"
-                "  - details: 1-2 sentence explanation\n"
-                "  - patch: EXPLICIT TEXT to add/modify in the report (this is REQUIRED - provide the actual text snippet that should be added or used to replace existing text)\n\n"
-                "IMPORTANT: For suggested_actions, you MUST provide specific, actionable text in the 'patch' field. "
-                "Examples:\n"
-                "- patch: 'The nodule measures 8 mm in diameter'\n"
-                "- patch: 'No aggressive bone lesions or fractures identified'\n"
-                "- patch: 'Recommend follow-up CT in 3 months to assess for interval change'\n\n"
-                "Always provide a summary. Include questions focused on verification of imaging interpretation. "
-                "Only include suggested_actions when specific changes would improve the report's imaging documentation, "
-                "and ALWAYS include the actual text patch for each action."
-            ),
-            model_settings=groq_settings if use_groq else None,
-        )
-        
-        findings_summary = "\n".join(
-            f"- {g['finding']['finding']}: {g.get('guideline_summary', '')[:200]}"
-            for g in guidelines_data[:3]
-        )
-        print(f"  └─ Prepared guideline highlights (truncated):\n{findings_summary[:400] or '- None available.'}")
-        
-        prompt = (
-            f"REPORT:\n{report_content}\n\n"
-            f"GUIDELINE HIGHLIGHTS:\n{findings_summary or '- No guideline highlights available.'}\n\n"
-            "Analyze this report for completeness and provide structured feedback."
-        )
-        
-        result = await agent.run(
-            prompt,
-            model_settings={
-                "max_tokens": 1500,
-                "temperature": 0,
-                "top_p": 1,
-            }
-        )
-        
-        # Log thinking parts (backend only - not sent to frontend)
-        if use_groq:
-            _log_thinking_parts(result, f"{model_label} - Completeness Analysis")
-        
-        completeness: CompletenessAnalysis = result.output
-        
-        elapsed = time.time() - start_time
-        print(f"analyze_report_completeness: ✅ Completed with {model_label} in {elapsed:.2f}s")
-        print(f"  └─ Summary title: {completeness.summary.title}")
-        print(f"  └─ Questions generated: {len(completeness.questions)}")
-        print(f"  └─ Suggested actions generated: {len(completeness.suggested_actions)}")
-        
-        # Convert to format expected by frontend
-        return {
-            "analysis": f"{completeness.summary.title}\n\n{completeness.summary.details}",
-            "structured": {
-                "summary": completeness.summary.model_dump(),
-                "questions": [q.model_dump() for q in completeness.questions],
-                "suggested_actions": [a.model_dump() for a in completeness.suggested_actions],
-            }
+    system_prompt = (
+        "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
+        "You are an expert radiologist reviewing imaging reports for quality and completeness "
+        "of findings documentation.\n\n"
+        "Your role is to assess whether the radiologist has:\n"
+        "• Systematically documented all imaging findings visible on the study\n"
+        "• Clearly described anatomic locations, measurements, and characteristics\n"
+        "• Provided appropriate differential considerations based on imaging alone\n"
+        "• Communicated findings clearly for clinical application\n\n"
+        "Do NOT evaluate whether clinical information is provided or whether clinical context "
+        "is present in the report. The radiologist interprets the imaging; clinical correlation "
+        "is the ordering clinician's responsibility.\n\n"
+        "CRITICAL - OUTPUT FORMAT:\n"
+        "• All string fields (title, details, id, prompt, patch) must be returned as DIRECT STRING VALUES, not wrapped in objects\n"
+        "• Example: title: 'Report Quality Assessment' NOT title: {'text': 'Report Quality Assessment'}\n"
+        "• Example: prompt: 'Has the full anatomy been documented?' NOT prompt: {'text': 'Has the full anatomy been documented?'}\n"
+        "• Return plain string values for all text fields\n\n"
+        "Produce structured feedback with three parts:\n"
+        "• Summary – plain-language overview of completeness, clarity, and imaging interpretation quality\n"
+        "  - title: Direct string value (≤12 words)\n"
+        "  - details: Direct string value (2-3 sentences)\n"
+        "• Questions – 2-4 review prompts to verify imaging findings are adequately characterized "
+        "(specific to scan modality and anatomic region)\n"
+        "  - id: Direct string value (kebab-case identifier)\n"
+        "  - prompt: Direct string value (plain sentence, no leading numbering)\n"
+        "• Suggested Actions – optional concrete edits when specific wording would improve clarity "
+        "of imaging description. Each suggested action MUST include:\n"
+        "  - id: Direct string value (kebab-case identifier)\n"
+        "  - title: Direct string value (concise action label ≤10 words)\n"
+        "  - details: Direct string value (1-2 sentence explanation)\n"
+        "  - patch: Direct string value (EXPLICIT TEXT to add/modify in the report)\n\n"
+        "IMPORTANT: For suggested_actions, you MUST provide specific, actionable text in the 'patch' field. "
+        "Examples:\n"
+        "- patch: 'The nodule measures 8 mm in diameter'\n"
+        "- patch: 'No aggressive bone lesions or fractures identified'\n"
+        "- patch: 'Recommend follow-up CT in 3 months to assess for interval change'\n\n"
+        "Always provide a summary. Include questions focused on verification of imaging interpretation. "
+        "Only include suggested_actions when specific changes would improve the report's imaging documentation, "
+        "and ALWAYS include the actual text patch for each action."
+    )
+    
+    findings_summary = "\n".join(
+        f"- {g['finding']['finding']}: {g.get('guideline_summary', '')[:200]}"
+        for g in guidelines_data[:3]
+    )
+    print(f"  └─ Prepared guideline highlights (truncated):\n{findings_summary[:400] or '- None available.'}")
+    
+    user_prompt = (
+        f"REPORT:\n{report_content}\n\n"
+        f"GUIDELINE HIGHLIGHTS:\n{findings_summary or '- No guideline highlights available.'}\n\n"
+        "Analyze this report for completeness and provide structured feedback."
+    )
+    
+    # Build model settings with conditional reasoning_effort for Cerebras
+    model_settings = {
+        "temperature": 0,
+        "top_p": 1,
+    }
+    if model_name == "gpt-oss-120b":
+        model_settings["max_completion_tokens"] = 2000  # Generous token limit for Cerebras
+        model_settings["reasoning_effort"] = "high"
+        print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=2000 for {model_name}")
+    else:
+        model_settings["max_tokens"] = 1500
+    
+    result = await _run_agent_with_model(
+        model_name=model_name,
+        output_type=CompletenessAnalysis,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        api_key=api_key,
+        use_thinking=(provider == 'groq'),  # Enable thinking for Groq models
+        model_settings=model_settings
+    )
+    
+    completeness: CompletenessAnalysis = result.output
+    
+    elapsed = time.time() - start_time
+    print(f"analyze_report_completeness: ✅ Completed with {model_label} in {elapsed:.2f}s")
+    print(f"  └─ Summary title: {completeness.summary.title}")
+    print(f"  └─ Questions generated: {len(completeness.questions)}")
+    print(f"  └─ Suggested actions generated: {len(completeness.suggested_actions)}")
+    
+    # Convert to format expected by frontend
+    return {
+        "analysis": f"{completeness.summary.title}\n\n{completeness.summary.details}",
+        "structured": {
+            "summary": completeness.summary.model_dump(),
+            "questions": [q.model_dump() for q in completeness.questions],
+            "suggested_actions": [a.model_dump() for a in completeness.suggested_actions],
         }
-    finally:
-        if use_groq:
-            if old_api_key is not None:
-                os.environ['GROQ_API_KEY'] = old_api_key
-            else:
-                os.environ.pop('GROQ_API_KEY', None)
-        else:
-            if old_api_key is not None:
-                os.environ['ANTHROPIC_API_KEY'] = old_api_key
-            else:
-                os.environ.pop('ANTHROPIC_API_KEY', None)
+    }
 
 
 async def analyze_report_completeness(
@@ -1513,84 +1659,69 @@ async def analyze_report_completeness(
     anthropic_api_key: str | None
 ) -> dict:
     """
-    Analyze report completeness using Claude model with Qwen fallback.
+    Analyze report completeness using configured primary model with automatic fallback.
+    Model selection is driven by MODEL_CONFIG - supports any configured model.
     
     Args:
         report_content: The report text
         guidelines_data: Guidelines found for the report
-        anthropic_api_key: Anthropic API key
+        anthropic_api_key: Anthropic API key (for fallback if primary is Anthropic)
     
     Returns:
         Dictionary with analysis and structured feedback
     """
     import os
     
-    if not anthropic_api_key:
-        return {
-            "analysis": "Completeness analysis unavailable (Anthropic API key not configured).",
-            "structured": {
-                "summary": {"title": "Summary", "details": "API key not configured"},
-                "questions": [],
-                "suggested_actions": []
-            }
-        }
+    # Get primary model and provider
+    primary_model = MODEL_CONFIG["COMPLETENESS_ANALYZER"]
+    primary_provider = _get_model_provider(primary_model)
     
-    # Try Qwen first (primary model) with retry logic
+    # Try primary model first with retry logic
     try:
-        groq_api_key = os.environ.get('GROQ_API_KEY')
-        if not groq_api_key:
-            # If no Groq key available, fallback to Claude
-            print("⚠️ Groq API key not configured - falling back to Claude for completeness analysis")
-            return await _analyze_completeness_with_model(
-                MODEL_CONFIG["COMPLETENESS_ANALYZER_FALLBACK"],
-                f"{MODEL_CONFIG['COMPLETENESS_ANALYZER_FALLBACK']} (Completeness Analyzer - Fallback)",
-                report_content,
-                guidelines_data,
-                anthropic_api_key,
-                use_groq=False
-            )
+        primary_api_key = _get_api_key_for_provider(primary_provider, anthropic_api_key)
         
         @with_retry(max_retries=3, base_delay=2.0)
-        async def _try_qwen():
+        async def _try_primary():
             return await _analyze_completeness_with_model(
-                MODEL_CONFIG["COMPLETENESS_ANALYZER"],
-                f"{MODEL_CONFIG['COMPLETENESS_ANALYZER']} (Completeness Analyzer)",
+                primary_model,
+                f"{primary_model} (Completeness Analyzer)",
                 report_content,
                 guidelines_data,
-                anthropic_api_key,  # Not used when use_groq=True, but kept for signature compatibility
-                use_groq=True,
-                groq_api_key=groq_api_key
+                primary_api_key
             )
         
-        return await _try_qwen()
+        return await _try_primary()
     except Exception as e:
-        # Qwen failed - determine why and fallback
+        # Primary failed - determine why and fallback
+        fallback_model = MODEL_CONFIG["COMPLETENESS_ANALYZER_FALLBACK"]
         if _is_parsing_error(e):
-            print(f"⚠️ Qwen parsing error detected - immediate fallback to {MODEL_CONFIG['COMPLETENESS_ANALYZER_FALLBACK']}")
+            print(f"⚠️ {primary_model} parsing error detected - immediate fallback to {fallback_model}")
             print(f"  Error: {type(e).__name__}: {str(e)[:200]}")
         else:
-            print(f"⚠️ Qwen failed after retries ({type(e).__name__}) - falling back to {MODEL_CONFIG['COMPLETENESS_ANALYZER_FALLBACK']}")
+            print(f"⚠️ {primary_model} failed after retries ({type(e).__name__}) - falling back to {fallback_model}")
             print(f"  Error: {str(e)[:200]}")
         
-        # Fallback to Claude
+        # Fallback to configured fallback model
         try:
+            fallback_provider = _get_model_provider(fallback_model)
+            fallback_api_key = _get_api_key_for_provider(fallback_provider, anthropic_api_key)
+            
             return await _analyze_completeness_with_model(
-                MODEL_CONFIG["COMPLETENESS_ANALYZER_FALLBACK"],
-                f"{MODEL_CONFIG['COMPLETENESS_ANALYZER_FALLBACK']} (Completeness Analyzer - Fallback)",
+                fallback_model,
+                f"{fallback_model} (Completeness Analyzer - Fallback)",
                 report_content,
                 guidelines_data,
-                anthropic_api_key,
-                use_groq=False
+                fallback_api_key
             )
         except Exception as fallback_error:
             # Both models failed - return graceful error
-            print(f"❌ Both Claude and fallback model failed: {type(fallback_error).__name__}")
+            print(f"❌ Both primary and fallback models failed: {type(fallback_error).__name__}")
             import traceback
             print(traceback.format_exc())
             return {
-                "analysis": "Error analyzing report completeness (both primary and fallback models failed).",
+                "analysis": f"Error analyzing report completeness (both {primary_model} and {fallback_model} failed).",
                 "structured": {
-                    "summary": {"title": "Analysis Error", "details": "Unable to analyze report with both Claude and fallback models"},
+                    "summary": {"title": "Analysis Error", "details": f"Unable to analyze report with both {primary_model} and {fallback_model}"},
                     "questions": [],
                     "suggested_actions": []
                 }
@@ -1677,7 +1808,7 @@ async def _generate_report_with_claude_model(
             final_prompt,
             model_settings={
                 "temperature": 1,
-                "max_tokens": 4096,
+                "max_tokens": 6500,
                 "anthropic_thinking": {
                     "type": "enabled",
                     "budget_tokens": 2048
@@ -1701,6 +1832,176 @@ async def _generate_report_with_claude_model(
             os.environ['ANTHROPIC_API_KEY'] = old_api_key
         else:
             os.environ.pop('ANTHROPIC_API_KEY', None)
+
+
+def _create_pydantic_model(model_name: str, api_key: str, use_thinking: bool = False):
+    """
+    Create a pydantic AI model instance based on provider detection.
+    Note: Environment variable management is handled by the caller.
+    
+    Args:
+        model_name: Model identifier (e.g., "qwen/qwen3-32b", "gpt-oss-120b")
+        api_key: API key for the model provider
+        use_thinking: Whether to enable thinking mode (only applies to Groq models)
+    
+    Returns:
+        Pydantic AI model instance (GroqModel, AnthropicModel, or OpenAIModel)
+    """
+    provider = _get_model_provider(model_name)
+    
+    if provider == 'groq':
+        return GroqModel(model_name)
+    elif provider == 'anthropic':
+        return AnthropicModel(model_name)
+    elif provider == 'cerebras':
+        provider_obj = OpenAIProvider(
+            base_url='https://api.cerebras.ai/v1',
+            api_key=api_key,
+        )
+        return OpenAIModel(model_name, provider=provider_obj)
+    else:
+        raise ValueError(f"Unknown provider: {provider}")
+
+
+async def _run_agent_with_model(
+    model_name: str,
+    output_type,
+    system_prompt: str,
+    user_prompt: str,
+    api_key: str,
+    use_thinking: bool = False,
+    model_settings: dict = None
+):
+    """
+    Run an agent with unified model creation and execution.
+    
+    Args:
+        model_name: Model identifier
+        output_type: Pydantic model class for structured output
+        system_prompt: System prompt for the agent
+        user_prompt: User prompt/message
+        api_key: API key for the model provider
+        use_thinking: Whether to enable thinking mode (only for Groq)
+        model_settings: Additional model settings dict
+    
+    Returns:
+        Agent result object
+    """
+    import os
+    
+    provider = _get_model_provider(model_name)
+    
+    # Determine which environment variable to manage
+    env_var_map = {
+        'groq': 'GROQ_API_KEY',
+        'anthropic': 'ANTHROPIC_API_KEY',
+        'cerebras': 'CEREBRAS_API_KEY',
+    }
+    env_var_name = env_var_map[provider]
+    
+    # Save old value and set new API key
+    old_api_key = os.environ.get(env_var_name)
+    os.environ[env_var_name] = api_key
+    
+    try:
+        # Create model
+        pydantic_model = _create_pydantic_model(model_name, api_key, use_thinking)
+        
+        # Create agent settings
+        agent_model_settings = None
+        if provider == 'groq' and use_thinking:
+            agent_model_settings = GroqModelSettings(groq_reasoning_format='parsed')
+        
+        # Create agent
+        agent = Agent(
+            pydantic_model,
+            output_type=output_type,
+            system_prompt=system_prompt,
+            model_settings=agent_model_settings,
+        )
+        
+        # Build final model settings dict
+        final_model_settings = model_settings or {}
+        
+        # Log model settings for Cerebras to verify reasoning_effort is included
+        if provider == 'cerebras':
+            print(f"\n🔧 CEREBRAS MODEL SETTINGS ({model_name}):")
+            print(f"  └─ temperature: {final_model_settings.get('temperature', 'not set')}")
+            if 'max_completion_tokens' in final_model_settings:
+                print(f"  └─ max_completion_tokens: {final_model_settings.get('max_completion_tokens', 'not set')}")
+            else:
+                print(f"  └─ max_tokens: {final_model_settings.get('max_tokens', 'not set')}")
+            reasoning_effort = final_model_settings.get('reasoning_effort')
+            if reasoning_effort:
+                print(f"  └─ reasoning_effort: {reasoning_effort} ✅")
+            else:
+                print(f"  └─ reasoning_effort: NOT SET ⚠️  (check if parameter is supported)")
+        
+        # Run agent with error handling for Cerebras to capture raw output
+        try:
+            result = await agent.run(
+                user_prompt,
+                model_settings=final_model_settings
+            )
+            
+            # Log thinking parts for Groq models
+            if provider == 'groq' and use_thinking:
+                _log_thinking_parts(result, f"{model_name} - {provider}")
+            
+            return result
+        except Exception as e:
+            # For Cerebras, try to capture raw output before validation fails
+            if provider == 'cerebras':
+                print(f"\n{'='*80}")
+                print(f"🔍 CEREBRAS RAW OUTPUT DEBUG ({model_name})")
+                print(f"{'='*80}")
+                print(f"Error type: {type(e).__name__}")
+                print(f"Error message: {str(e)}")
+                
+                # Try to extract raw response from exception if available
+                if hasattr(e, 'args') and e.args:
+                    print(f"Error args: {e.args}")
+                if hasattr(e, '__cause__') and e.__cause__:
+                    print(f"Error cause: {type(e.__cause__).__name__}: {str(e.__cause__)}")
+                if hasattr(e, '__context__') and e.__context__:
+                    print(f"Error context: {type(e.__context__).__name__}: {str(e.__context__)}")
+                
+                # Check for pydantic_ai specific attributes
+                if hasattr(e, 'response'):
+                    print(f"Exception has 'response' attribute: {e.response}")
+                if hasattr(e, 'raw_response'):
+                    print(f"Exception has 'raw_response' attribute: {e.raw_response}")
+                if hasattr(e, 'data'):
+                    print(f"Exception has 'data' attribute: {e.data}")
+                if hasattr(e, 'body'):
+                    print(f"Exception has 'body' attribute: {e.body}")
+                if hasattr(e, 'text'):
+                    print(f"Exception has 'text' attribute: {e.text}")
+                
+                # Print all exception attributes for debugging
+                print(f"\nException attributes: {[attr for attr in dir(e) if not attr.startswith('_')]}")
+                
+                # Check if exception has response data
+                error_str = str(e)
+                print(f"\nFull error string (first 2000 chars):")
+                print(f"{error_str[:2000]}")
+                
+                # Try to access any response data from the exception
+                import traceback
+                tb_str = traceback.format_exc()
+                print(f"\nFull traceback (may contain response data):")
+                print(tb_str[:4000])  # Print first 4000 chars of traceback
+                
+                print(f"{'='*80}\n")
+            
+            # Re-raise the exception
+            raise
+    finally:
+        # Restore environment variable
+        if old_api_key is not None:
+            os.environ[env_var_name] = old_api_key
+        else:
+            os.environ.pop(env_var_name, None)
 
 
 async def _generate_report_with_groq_model(
@@ -1780,14 +2081,15 @@ async def generate_auto_report(
     signature: str | None = None
 ) -> ReportOutput:
     """
-    Generate a radiology report using Qwen as primary model with automatic fallback.
-    Always uses Qwen 32B as primary, falls back to Claude Sonnet 4 if Qwen fails after retries.
+    Generate a radiology report using configured primary model with automatic fallback.
+    Model selection is driven by MODEL_CONFIG - just change PRIMARY_REPORT_GENERATOR
+    to swap models (supports Groq/Qwen, Anthropic/Claude, or Cerebras).
     
     Args:
-        model: Model identifier (kept for API compatibility)
+        model: Model identifier (kept for API compatibility, actual model from MODEL_CONFIG)
         user_prompt: The rendered user prompt with variables
         system_prompt: System prompt from PromptManager
-        api_key: Anthropic API key for Claude (fallback)
+        api_key: API key (provider-specific, will be determined automatically)
         signature: Optional user signature to inject
         
     Returns:
@@ -1796,7 +2098,10 @@ async def generate_auto_report(
     import os
     
     start_time = time.time()
-    print(f"generate_auto_report: Starting with Qwen (primary model)")
+    primary_model = MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
+    provider = _get_model_provider(primary_model)
+    
+    print(f"generate_auto_report: Starting with {primary_model} ({provider})")
     
     # Apply signature if provided
     final_prompt = user_prompt
@@ -1812,78 +2117,77 @@ async def generate_auto_report(
     else:
         print(f"generate_auto_report: No signature provided")
     
-    # Try Qwen first (primary model) with retry logic
+    # Try primary model with retry logic
     try:
         # Log the exact inputs being fed to the model
-        _log_model_inputs("Qwen 32B (Primary)", system_prompt, final_prompt)
+        _log_model_inputs(f"{primary_model} (Primary)", system_prompt, final_prompt)
         
-        # Wrap Qwen call with retry logic
+        # Get API key for primary model
+        primary_api_key = _get_api_key_for_provider(provider, api_key)
+        
+        # Wrap primary model call with retry logic
         @with_retry(max_retries=3, base_delay=2.0)
-        async def _try_qwen():
-            groq_api_key = os.environ.get('GROQ_API_KEY')
-            if not groq_api_key:
-                raise ValueError("Groq API key not configured. Please set GROQ_API_KEY environment variable.")
+        async def _try_primary():
+            # Build model settings with conditional reasoning_effort and max_completion_tokens for Cerebras
+            model_settings = {
+                "temperature": 0,
+            }
+            if primary_model == "gpt-oss-120b":
+                model_settings["max_completion_tokens"] = 6500
+                model_settings["reasoning_effort"] = "high"
+                print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=6500 for {primary_model}")
+            else:
+                model_settings["max_tokens"] = 6500
             
-            old_api_key = os.environ.get('GROQ_API_KEY')
-            os.environ['GROQ_API_KEY'] = groq_api_key
-            try:
-                # Create Groq model with thinking enabled
-                groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
-                pydantic_model = GroqModel(MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"])
-                
-                # Create agent with structured output
-                agent = Agent(
-                    pydantic_model,
-                    output_type=ReportOutput,
-                    system_prompt=system_prompt,
-                    model_settings=groq_settings,
-                )
-                
-                # Run agent to get structured output with thinking enabled
-                result = await agent.run(
-                    final_prompt,
-                    model_settings={
-                        "temperature": 0.3,
-                        "max_tokens": 4096,
-                    }
-                )
-                
-                # Log thinking parts (backend only - not sent to frontend)
-                _log_thinking_parts(result, "generate_auto_report - Qwen")
-                
-                return result.output
-            finally:
-                if old_api_key is not None:
-                    os.environ['GROQ_API_KEY'] = old_api_key
-                else:
-                    os.environ.pop('GROQ_API_KEY', None)
+            result = await _run_agent_with_model(
+                model_name=primary_model,
+                output_type=ReportOutput,
+                system_prompt=system_prompt,
+                user_prompt=final_prompt,
+                api_key=primary_api_key,
+                use_thinking=(provider == 'groq'),  # Enable thinking for Groq models
+                model_settings=model_settings
+            )
+            return result.output
         
-        report_output = await _try_qwen()
+        report_output = await _try_primary()
         
         elapsed = time.time() - start_time
-        print(f"generate_auto_report: ✅ Completed with Qwen (primary) in {elapsed:.2f}s")
+        print(f"generate_auto_report: ✅ Completed with {primary_model} (primary) in {elapsed:.2f}s")
         print(f"  └─ Report length: {len(report_output.report_content)} chars")
         print(f"  └─ Description: {report_output.description}")
+        
+        # DETAILED LOGGING FOR DEBUGGING
+        print(f"\n{'='*80}")
+        print(f"RAW OUTPUT DEBUG - generate_auto_report ({primary_model})")
+        print(f"{'='*80}")
+        print(f"Report length: {len(report_output.report_content)} chars")
+        print(f"Newline count: {report_output.report_content.count(chr(10))}")
+        print(f"Double newline count: {report_output.report_content.count(chr(10)+chr(10))}")
+        print(f"\nFull report content:")
+        print(report_output.report_content)
+        print(f"{'='*80}\n")
         
         return report_output
                 
     except Exception as e:
-        # Qwen failed - determine why and fallback
+        # Primary failed - determine why and fallback
+        fallback_model = MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"]
         if _is_parsing_error(e):
-            print(f"⚠️ Qwen parsing error detected - immediate fallback to {MODEL_CONFIG['FALLBACK_REPORT_GENERATOR']}")
+            print(f"⚠️ {primary_model} parsing error detected - immediate fallback to {fallback_model}")
             print(f"  Error: {type(e).__name__}: {str(e)[:200]}")
         else:
-            print(f"⚠️ Qwen failed after retries ({type(e).__name__}) - falling back to {MODEL_CONFIG['FALLBACK_REPORT_GENERATOR']}")
+            print(f"⚠️ {primary_model} failed after retries ({type(e).__name__}) - falling back to {fallback_model}")
             print(f"  Error: {str(e)[:200]}")
         
         # Fallback to configured fallback model (Claude Sonnet 4)
         try:
             if not api_key:
-                raise Exception(f"Qwen failed and no fallback API key available. Original error: {e}") from e
+                raise Exception(f"{primary_model} failed and no fallback API key available. Original error: {e}") from e
             
             return await _generate_report_with_claude_model(
-                MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"],
-                f"{MODEL_CONFIG['FALLBACK_REPORT_GENERATOR']} (fallback)",
+                fallback_model,
+                f"{fallback_model} (fallback)",
                 final_prompt,
                 system_prompt,
                 api_key
@@ -1893,7 +2197,7 @@ async def generate_auto_report(
             print(f"❌ Fallback model also failed: {type(fallback_error).__name__}")
             import traceback
             print(traceback.format_exc())
-            raise Exception(f"Report generation failed with both Qwen and fallback model. Original error: {e}") from e
+            raise Exception(f"Report generation failed with both {primary_model} and {fallback_model}. Original error: {e}") from e
 
 
 async def generate_templated_report(
@@ -1904,14 +2208,15 @@ async def generate_templated_report(
     signature: str | None = None
 ) -> ReportOutput:
     """
-    Generate a templated radiology report using Qwen as primary model with automatic fallback.
-    Always uses Qwen 32B as primary, falls back to Claude Sonnet 4 if Qwen fails after retries.
+    Generate a templated radiology report using configured primary model with automatic fallback.
+    Model selection is driven by MODEL_CONFIG - just change PRIMARY_REPORT_GENERATOR
+    to swap models (supports Groq/Qwen, Anthropic/Claude, or Cerebras).
     
     Args:
-        model: Model identifier (kept for API compatibility)
+        model: Model identifier (kept for API compatibility, actual model from MODEL_CONFIG)
         user_prompt: The task-specific user prompt from TemplateManager
         system_prompt: The persistent system prompt from TemplateManager
-        api_key: Anthropic API key for Claude (fallback)
+        api_key: API key (provider-specific, will be determined automatically)
         signature: Optional user signature to inject
         
     Returns:
@@ -1920,97 +2225,84 @@ async def generate_templated_report(
     import os
     
     start_time = time.time()
-    print(f"generate_templated_report: Starting with Qwen (primary model)")
+    primary_model = MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
+    provider = _get_model_provider(primary_model)
+    
+    print(f"generate_templated_report: Starting with {primary_model} ({provider})")
     
     # Apply signature if provided
     final_prompt = user_prompt
     if signature and '{{SIGNATURE}}' in final_prompt:
         final_prompt = final_prompt.replace('{{SIGNATURE}}', signature)
     
-    # Try Qwen first (primary model) with retry logic
+    # Try primary model with retry logic
     try:
-        # Wrap Qwen call with retry logic
-        @with_retry(max_retries=3, base_delay=2.0)
-        async def _try_qwen():
-            groq_api_key = os.environ.get('GROQ_API_KEY')
-            if not groq_api_key:
-                raise ValueError("Groq API key not configured. Please set GROQ_API_KEY environment variable.")
-            
-            old_api_key = os.environ.get('GROQ_API_KEY')
-            os.environ['GROQ_API_KEY'] = groq_api_key
-            try:
-                # Create Groq model with thinking enabled
-                groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
-                pydantic_model = GroqModel(MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"])
-                
-                # Create agent with structured output
-                # Use the separated system and user prompts following best practices
-                agent = Agent(
-                    pydantic_model,
-                    output_type=ReportOutput,
-                    system_prompt=system_prompt,
-                    model_settings=groq_settings,
-                )
-                
-                # Run agent to get structured output with thinking enabled
-                result = await agent.run(
-                    final_prompt,
-                    model_settings={
-                        "temperature": 0.3,
-                        "max_tokens": 4096,
-                    }
-                )
-                
-                # Log thinking parts (backend only - not sent to frontend)
-                _log_thinking_parts(result, "generate_templated_report - Qwen")
-                
-                return result.output
-            finally:
-                if old_api_key is not None:
-                    os.environ['GROQ_API_KEY'] = old_api_key
-                else:
-                    os.environ.pop('GROQ_API_KEY', None)
+        # Get API key for primary model
+        primary_api_key = _get_api_key_for_provider(provider, api_key)
         
-        report_output = await _try_qwen()
+        # Wrap primary model call with retry logic
+        @with_retry(max_retries=3, base_delay=2.0)
+        async def _try_primary():
+            # Build model settings with conditional reasoning_effort and max_completion_tokens for Cerebras
+            model_settings = {
+                "temperature": 0,
+            }
+            if primary_model == "gpt-oss-120b":
+                model_settings["max_completion_tokens"] = 6500
+                model_settings["reasoning_effort"] = "high"
+                print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=6500 for {primary_model}")
+            else:
+                model_settings["max_tokens"] = 6500
+            
+            result = await _run_agent_with_model(
+                model_name=primary_model,
+                output_type=ReportOutput,
+                system_prompt=system_prompt,
+                user_prompt=final_prompt,
+                api_key=primary_api_key,
+                use_thinking=(provider == 'groq'),  # Enable thinking for Groq models
+                model_settings=model_settings
+            )
+            return result.output
+        
+        report_output = await _try_primary()
         
         elapsed = time.time() - start_time
-        print(f"generate_templated_report: ✅ Completed with Qwen (primary) in {elapsed:.2f}s")
+        print(f"generate_templated_report: ✅ Completed with {primary_model} (primary) in {elapsed:.2f}s")
         print(f"  └─ Report length: {len(report_output.report_content)} chars")
         print(f"  └─ Description: {report_output.description}")
         
         # DETAILED LOGGING FOR DEBUGGING
         print(f"\n{'='*80}")
-        print(f"RAW OUTPUT DEBUG - generate_templated_report (Qwen)")
+        print(f"RAW OUTPUT DEBUG - generate_templated_report ({primary_model})")
         print(f"{'='*80}")
-        print(f"Type of report_output: {type(report_output)}")
-        print(f"Type of report_content: {type(report_output.report_content)}")
-        print(f"Newline count in report_content: {report_output.report_content.count(chr(10))}")
+        print(f"Report length: {len(report_output.report_content)} chars")
+        print(f"Newline count: {report_output.report_content.count(chr(10))}")
         print(f"Double newline count: {report_output.report_content.count(chr(10)+chr(10))}")
-        print(f"\nFirst 500 chars (repr):")
-        print(repr(report_output.report_content[:500]))
-        print(f"\nFirst 500 chars (raw):")
-        print(report_output.report_content[:500])
+        print(f"\nFull report content:")
+        print(report_output.report_content)
         print(f"{'='*80}\n")
         
         return report_output
         
     except Exception as e:
-        # Qwen failed - determine why and fallback
+        # Primary failed - determine why and fallback
+        fallback_model = MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"]
         if _is_parsing_error(e):
-            print(f"⚠️ Qwen parsing error detected - immediate fallback to {MODEL_CONFIG['FALLBACK_REPORT_GENERATOR']}")
+            print(f"⚠️ {primary_model} parsing error detected - immediate fallback to {fallback_model}")
             print(f"  Error: {type(e).__name__}: {str(e)[:200]}")
         else:
-            print(f"⚠️ Qwen failed after retries ({type(e).__name__}) - falling back to {MODEL_CONFIG['FALLBACK_REPORT_GENERATOR']}")
+            print(f"⚠️ {primary_model} failed after retries ({type(e).__name__}) - falling back to {fallback_model}")
             print(f"  Error: {str(e)[:200]}")
         
         # Fallback to configured fallback model (Claude Sonnet 4)
         try:
             if not api_key:
-                raise Exception(f"Qwen failed and no fallback API key available. Original error: {e}") from e
+                raise Exception(f"{primary_model} failed and no fallback API key available. Original error: {e}") from e
             
             return await _generate_report_with_claude_model(
-                MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"],
-                f"{MODEL_CONFIG['FALLBACK_REPORT_GENERATOR']} (fallback)",
+                fallback_model,
+                f"{fallback_model} (fallback)",
                 final_prompt,
                 system_prompt,
                 api_key
@@ -2020,7 +2312,7 @@ async def generate_templated_report(
             print(f"❌ Fallback model also failed: {type(fallback_error).__name__}")
             import traceback
             print(traceback.format_exc())
-            raise Exception(f"Templated report generation failed with both Qwen and fallback model. Original error: {e}") from e
+            raise Exception(f"Templated report generation failed with both {primary_model} and {fallback_model}. Original error: {e}") from e
 
 @with_retry(max_retries=3, base_delay=2.0)
 async def validate_report_protocol(
@@ -2029,7 +2321,9 @@ async def validate_report_protocol(
     findings: str
 ) -> ValidationResult:
     """
-    Validate radiology report for protocol violations using lightweight Qwen model.
+    Validate radiology report for protocol violations using configured model.
+    Model selection is driven by MODEL_CONFIG - just change PROTOCOL_VALIDATOR
+    to swap models (supports Groq/Qwen, Anthropic/Claude, or Cerebras).
     Checks for violations like contrast enhancement on non-contrast scans, duplication, etc.
     
     Args:
@@ -2045,87 +2339,79 @@ async def validate_report_protocol(
     start_time = time.time()
     print(f"validate_report_protocol: Starting validation for scan_type '{scan_type}'")
     
-    groq_api_key = os.environ.get('GROQ_API_KEY')
-    if not groq_api_key:
-        raise ValueError("Groq API key not configured. Please set GROQ_API_KEY environment variable.")
+    # Get model and provider
+    model_name = MODEL_CONFIG["PROTOCOL_VALIDATOR"]
+    provider = _get_model_provider(model_name)
+    api_key = _get_api_key_for_provider(provider)
     
-    old_api_key = os.environ.get('GROQ_API_KEY')
-    os.environ['GROQ_API_KEY'] = groq_api_key
-    
-    try:
-        # Build validation prompt
-        validation_prompt = f"""Validate this radiology report for protocol violations.
+    # Build validation prompt
+    validation_prompt = f"""Validate this radiology report for protocol violations.
 
 EXTRACTED SCAN TYPE: {scan_type}
 
 REPORT TO VALIDATE:
 {report_content}
 
-ORIGINAL FINDINGS:
+ORIGINAL FINDINGS INPUT:
 {findings}
 
 Check for violations:
 1. Contrast enhancement mentioned when scan_type contains 'non-contrast', 'non-con', or 'without contrast'
-2. Duplication of findings (same information repeated)
-3. Hallucinated findings not in original input
+2. Verbatim duplication between Findings and Impression sections (CRITICAL: Do NOT flag clinically significant measurements in Impression if they're part of actionable conclusions - e.g., size thresholds that trigger management. Only flag verbatim copying of detailed descriptive text from Findings)
+3. Hallucinated PATHOLOGICAL findings not in original input (CRITICAL: Normal findings for structures visible in this scan type are EXPECTED and NOT violations - systematic review of normal anatomy is part of the task)
 4. Protocol incompatibilities (e.g., DWI findings on non-DWI scans, MRI signal characteristics on CT scans, perfusion parameters on non-perfusion scans)
+
+IMPORTANT: Do NOT flag normal findings (e.g., "ventricles normal", "no midline shift", "bones intact", "sinuses clear") as hallucinations - these are part of systematic review. Only flag pathological findings that were not in the original input.
 
 Return structured violations. If no violations found, return empty violations list with is_valid=True.
 """
-        
-        # Use lightweight Qwen model for validation with thinking enabled
-        groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
-        pydantic_model = GroqModel(MODEL_CONFIG["PROTOCOL_VALIDATOR"])
-        
-        agent = Agent(
-            pydantic_model,
-            output_type=ValidationResult,
-            system_prompt="You are a radiology protocol validator. Find violations against the scan type/protocol. Be precise and only flag actual violations. If no violations exist, return empty violations list.",
-            model_settings=groq_settings
-        )
-        
-        result = await agent.run(
-            validation_prompt,
-            model_settings={
-                "temperature": 0.3,
-                "max_tokens": 2048,
-            }
-        )
-        
-        # Log thinking parts (backend only - not sent to frontend)
-        _log_thinking_parts(result, "validate_report_protocol - Protocol Validator")
-        
-        validation_result: ValidationResult = result.output
-        
-        elapsed = time.time() - start_time
-        violation_count = len(validation_result.violations)
-        print(f"validate_report_protocol: ✅ Completed in {elapsed:.2f}s - Found {violation_count} violation(s)")
-        
-        # Enhanced debugging: Log each violation in detail
-        if violation_count > 0:
-            print(f"\n{'='*80}")
-            print(f"PROTOCOL VIOLATIONS DETECTED ({violation_count} total)")
-            print(f"{'='*80}")
-            for i, violation in enumerate(validation_result.violations, 1):
-                print(f"\nViolation {i}:")
-                print(f"  Type: {violation.violation_type}")
-                print(f"  Location: {violation.location}")
-                print(f"  Issue: {violation.issue}")
-                original_preview = violation.original_text[:200] + "..." if len(violation.original_text) > 200 else violation.original_text
-                print(f"  Original Text: {original_preview}")
-                fix_preview = violation.suggested_fix[:200] + "..." if len(violation.suggested_fix) > 200 else violation.suggested_fix
-                print(f"  Suggested Fix: {fix_preview}")
-            print(f"{'='*80}\n")
-        else:
-            print("✅ No violations found - report passes protocol validation")
-        
-        return validation_result
-        
-    finally:
-        if old_api_key is not None:
-            os.environ['GROQ_API_KEY'] = old_api_key
-        else:
-            os.environ.pop('GROQ_API_KEY', None)
+    
+    # Build model settings with conditional reasoning_effort and max_completion_tokens for Cerebras
+    model_settings = {
+        "temperature": 0,
+    }
+    if model_name == "gpt-oss-120b":
+        model_settings["max_completion_tokens"] = 2048
+        model_settings["reasoning_effort"] = "medium"
+        print(f"validate_report_protocol: Using Cerebras reasoning_effort=medium, max_completion_tokens=2048 for {model_name}")
+    else:
+        model_settings["max_tokens"] = 2048
+    
+    result = await _run_agent_with_model(
+        model_name=model_name,
+        output_type=ValidationResult,
+        system_prompt="You are a radiology protocol validator. Find violations against the scan type/protocol. Be precise and only flag actual violations. If no violations exist, return empty violations list.",
+        user_prompt=validation_prompt,
+        api_key=api_key,
+        use_thinking=(provider == 'groq'),  # Enable thinking for Groq models
+        model_settings=model_settings
+    )
+    
+    validation_result: ValidationResult = result.output
+    
+    elapsed = time.time() - start_time
+    violation_count = len(validation_result.violations)
+    print(f"validate_report_protocol: ✅ Completed in {elapsed:.2f}s - Found {violation_count} violation(s)")
+    
+    # Enhanced debugging: Log each violation in detail
+    if violation_count > 0:
+        print(f"\n{'='*80}")
+        print(f"PROTOCOL VIOLATIONS DETECTED ({violation_count} total)")
+        print(f"{'='*80}")
+        for i, violation in enumerate(validation_result.violations, 1):
+            print(f"\nViolation {i}:")
+            print(f"  Type: {violation.violation_type}")
+            print(f"  Location: {violation.location}")
+            print(f"  Issue: {violation.issue}")
+            original_preview = violation.original_text[:200] + "..." if len(violation.original_text) > 200 else violation.original_text
+            print(f"  Original Text: {original_preview}")
+            fix_preview = violation.suggested_fix[:200] + "..." if len(violation.suggested_fix) > 200 else violation.suggested_fix
+            print(f"  Suggested Fix: {fix_preview}")
+        print(f"{'='*80}\n")
+    else:
+        print("✅ No violations found - report passes protocol validation")
+    
+    return validation_result
 
 
 @with_retry(max_retries=3, base_delay=2.0)
@@ -2135,7 +2421,8 @@ async def apply_protocol_fixes(
 ) -> ReportOutput:
     """
     Apply protocol fixes to a report based on validation violations.
-    Uses lightweight Qwen model to correct violations.
+    Model selection is driven by MODEL_CONFIG - just change PROTOCOL_FIX_APPLIER
+    to swap models (supports Groq/Qwen, Anthropic/Claude, or Cerebras).
     
     Args:
         report_output: The original ReportOutput with violations
@@ -2150,26 +2437,23 @@ async def apply_protocol_fixes(
     violation_count = len(validation_result.violations)
     print(f"apply_protocol_fixes: Starting fix application for {violation_count} violation(s)")
     
-    groq_api_key = os.environ.get('GROQ_API_KEY')
-    if not groq_api_key:
-        raise ValueError("Groq API key not configured. Please set GROQ_API_KEY environment variable.")
+    # Get model and provider
+    model_name = MODEL_CONFIG["PROTOCOL_FIX_APPLIER"]
+    provider = _get_model_provider(model_name)
+    api_key = _get_api_key_for_provider(provider)
     
-    old_api_key = os.environ.get('GROQ_API_KEY')
-    os.environ['GROQ_API_KEY'] = groq_api_key
+    # Build violations summary for prompt
+    violations_text = []
+    for i, violation in enumerate(validation_result.violations, 1):
+        violations_text.append(f"{i}. {violation.violation_type}")
+        violations_text.append(f"   Location: {violation.location}")
+        violations_text.append(f"   Issue: {violation.issue}")
+        violations_text.append(f"   Original text: {violation.original_text}")
+        violations_text.append(f"   Suggested fix: {violation.suggested_fix}")
+        violations_text.append("")
     
-    try:
-        # Build violations summary for prompt
-        violations_text = []
-        for i, violation in enumerate(validation_result.violations, 1):
-            violations_text.append(f"{i}. {violation.violation_type}")
-            violations_text.append(f"   Location: {violation.location}")
-            violations_text.append(f"   Issue: {violation.issue}")
-            violations_text.append(f"   Original text: {violation.original_text}")
-            violations_text.append(f"   Suggested fix: {violation.suggested_fix}")
-            violations_text.append("")
-        
-        # Build fix application prompt
-        fix_prompt = f"""Apply protocol fixes to this radiology report.
+    # Build fix application prompt
+    fix_prompt = f"""Apply protocol fixes to this radiology report.
 
 SCAN TYPE: {validation_result.scan_type_checked}
 
@@ -2181,12 +2465,15 @@ VIOLATIONS TO FIX:
 
 CRITICAL INSTRUCTIONS:
 - ONLY fix the specific violations listed above
+- If a hallucinated pathological finding is removed from Findings section, also remove it from Impression section if it appears there
 - PRESERVE the exact report structure, section headers, formatting, and organization
 - Do NOT reorganize sections or change the report layout
 - Do NOT add or remove sections
 - Do NOT change section order
+- PRESERVE the signature block at the end of the report exactly as it appears in the original
+- Do NOT remove or modify the signature block - it must remain unchanged
 - Make MINIMAL changes - only correct the protocol violations
-- Keep all other text exactly as written
+- Keep all other text exactly as written (including signature)
 - Maintain the same writing style and tone
 
 Return the complete corrected report with:
@@ -2194,40 +2481,33 @@ Return the complete corrected report with:
 - description: Keep the original description unchanged
 - scan_type: Keep the original scan_type unchanged
 """
-        
-        # Use lightweight Qwen model for fix application with thinking enabled
-        groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
-        pydantic_model = GroqModel(MODEL_CONFIG["PROTOCOL_FIX_APPLIER"])
-        
-        agent = Agent(
-            pydantic_model,
-            output_type=ReportOutput,
-            system_prompt="You are a radiology report editor. Apply ONLY the specific protocol fixes requested. Preserve the exact report structure, formatting, and organization. Make minimal changes - only correct the violations, do not restructure the report.",
-            model_settings=groq_settings
-        )
-        
-        result = await agent.run(
-            fix_prompt,
-            model_settings={
-                "temperature": 0.3,
-                "max_tokens": 4096,
-            }
-        )
-        
-        # Log thinking parts (backend only - not sent to frontend)
-        _log_thinking_parts(result, "apply_protocol_fixes - Protocol Fix Applier")
-        
-        fixed_output: ReportOutput = result.output
-        
-        elapsed = time.time() - start_time
-        print(f"apply_protocol_fixes: ✅ Completed in {elapsed:.2f}s")
-        print(f"  └─ Fixed report length: {len(fixed_output.report_content)} chars")
-        
-        return fixed_output
-        
-    finally:
-        if old_api_key is not None:
-            os.environ['GROQ_API_KEY'] = old_api_key
-        else:
-            os.environ.pop('GROQ_API_KEY', None)
+    
+    # Build model settings with conditional reasoning_effort and max_completion_tokens for Cerebras
+    model_settings = {
+        "temperature": 0,
+    }
+    if model_name == "gpt-oss-120b":
+        model_settings["max_completion_tokens"] = 4096
+        model_settings["reasoning_effort"] = "medium"
+        print(f"apply_protocol_fixes: Using Cerebras reasoning_effort=medium, max_completion_tokens=4096 for {model_name}")
+    else:
+        model_settings["max_tokens"] = 4096
+    
+    result = await _run_agent_with_model(
+        model_name=model_name,
+        output_type=ReportOutput,
+        system_prompt="You are a radiology report editor. Apply ONLY the specific protocol fixes requested. Preserve the exact report structure, formatting, and organization. Make minimal changes - only correct the violations, do not restructure the report.",
+        user_prompt=fix_prompt,
+        api_key=api_key,
+        use_thinking=(provider == 'groq'),  # Enable thinking for Groq models
+        model_settings=model_settings
+    )
+    
+    fixed_output: ReportOutput = result.output
+    
+    elapsed = time.time() - start_time
+    print(f"apply_protocol_fixes: ✅ Completed in {elapsed:.2f}s")
+    print(f"  └─ Fixed report length: {len(fixed_output.report_content)} chars")
+    
+    return fixed_output
 

@@ -25,13 +25,14 @@ class PromptManager:
         self.prompts_dir = Path(prompts_dir)
         self._prompts_cache = {}
     
-    def load_prompt(self, use_case: str, model: str = "default") -> Dict[str, str]:
+    def load_prompt(self, use_case: str, model: str = "default", primary_model: str = None) -> Dict[str, str]:
         """
         Load a prompt for a specific use case and model
         
         Args:
             use_case: The use case (e.g., "radiology_report", "findings_summary")
             model: The model name ("claude", "qwen", or "default")
+            primary_model: Optional primary model identifier (e.g., "gpt-oss-120b") for auto template selection
         
         Returns:
             Dictionary with template, description, and variables
@@ -47,16 +48,27 @@ class PromptManager:
             
             metadata = self._load_json(metadata_file)
             
-            # Load template - prioritize unified.json for model-agnostic prompts
-            # For radiology_report use case, use unified.json if it exists
-            unified_file = use_case_dir / "unified.json"
-            if unified_file.exists():
-                template_file = unified_file
-            elif model != "default":
-                template_file = use_case_dir / f"{model}.json"
-            else:
-                # Try default model (claude) if no specific model requested
-                template_file = use_case_dir / "claude.json"
+            # Load template - check primary_model first for auto template selection
+            # If primary_model is "gpt-oss-120b", use gptoss.json, otherwise fallback to unified.json
+            template_file = None
+            
+            if primary_model == "gpt-oss-120b":
+                # Check for gptoss.json first when primary model is gpt-oss-120b
+                gptoss_file = use_case_dir / "gptoss.json"
+                if gptoss_file.exists():
+                    template_file = gptoss_file
+                    print(f"load_prompt: Using gptoss.json for primary model {primary_model}")
+            
+            # Fallback to unified.json if gptoss.json not found or primary_model not gpt-oss-120b
+            if template_file is None:
+                unified_file = use_case_dir / "unified.json"
+                if unified_file.exists():
+                    template_file = unified_file
+                elif model != "default":
+                    template_file = use_case_dir / f"{model}.json"
+                else:
+                    # Try default model (claude) if no specific model requested
+                    template_file = use_case_dir / "claude.json"
             
             if not template_file.exists():
                 raise FileNotFoundError(f"Template not found for {use_case} with model {model}")
