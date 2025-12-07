@@ -961,3 +961,77 @@ def set_current_report_version(
     db.commit()
     return result > 0
 
+
+# ============ Validation Status CRUD ============
+
+def update_validation_status(
+    db: Session,
+    report_id: str,
+    status: str,
+    violations_count: Optional[int] = None,
+    error: Optional[str] = None
+) -> bool:
+    """
+    Update validation status for a report.
+    
+    Args:
+        db: Database session
+        report_id: Report UUID string
+        status: One of "pending", "passed", "fixed", "error"
+        violations_count: Number of violations found (if any)
+        error: Error message if status is "error"
+    
+    Returns:
+        True if update successful, False if report not found
+    """
+    try:
+        report_uuid = uuid.UUID(report_id) if isinstance(report_id, str) else report_id
+    except ValueError:
+        return False
+    
+    report = db.query(Report).filter(Report.id == report_uuid).first()
+    if not report:
+        return False
+    
+    from datetime import datetime, timezone
+    
+    # Get current status or initialize
+    current_status = report.validation_status or {}
+    
+    # Update status
+    new_status = {
+        "status": status,
+        "violations_count": violations_count if violations_count is not None else current_status.get("violations_count", 0),
+        "started_at": current_status.get("started_at") or datetime.now(timezone.utc).isoformat(),
+        "completed_at": datetime.now(timezone.utc).isoformat() if status != "pending" else None,
+        "error": error if error else current_status.get("error")
+    }
+    
+    report.validation_status = new_status
+    db.commit()
+    db.refresh(report)
+    return True
+
+
+def get_validation_status(
+    db: Session,
+    report_id: str,
+    user_id: Optional[str] = None
+) -> Optional[dict]:
+    """
+    Get validation status for a report.
+    
+    Args:
+        db: Database session
+        report_id: Report UUID string
+        user_id: Optional user ID to verify ownership
+    
+    Returns:
+        Validation status dict or None if report not found
+    """
+    report = get_report(db, report_id, user_id=user_id)
+    if not report:
+        return None
+    
+    return report.validation_status
+

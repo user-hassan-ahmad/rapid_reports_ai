@@ -6,9 +6,12 @@ Cleaner, type-safe implementation with automatic validation
 import asyncio
 import re
 import time
+from datetime import datetime
 from functools import wraps
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
+from pydantic import BaseModel
+from pydantic_ai import RunContext
 
 from perplexity import Perplexity
 from pydantic_ai import Agent
@@ -38,6 +41,10 @@ from .enhancement_models import (
     ProtocolViolation,
     ValidationResult,
     CompatibleIndicesResponse,
+    Measurement,
+    PriorState,
+    FindingComparison,
+    ComparisonAnalysis,
 )
 
 # Central Model Configuration Dictionary
@@ -65,6 +72,8 @@ MODEL_CONFIG = {
     "GUIDELINE_SEARCH_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for guideline synthesis (Llama)
     "COMPLETENESS_ANALYZER": "gpt-oss-120b",  # Phase 3: Completeness analysis (primary - Cerebras GPT-OSS-120B with high reasoning)
     "COMPLETENESS_ANALYZER_FALLBACK": "qwen/qwen3-32b",  # Fallback for completeness analysis (Qwen)
+    "COMPARISON_ANALYZER": "gpt-oss-120b",  # Interval comparison analysis (primary - Cerebras GPT-OSS-120B with high reasoning)
+    "COMPARISON_ANALYZER_FALLBACK": "qwen/qwen3-32b",  # Fallback for comparison analysis (Qwen)
     
     # Action Application Models
     "ACTION_APPLIER": "gpt-oss-120b",  # Apply enhancement actions to reports (primary - Cerebras GPT-OSS-120B with high reasoning)
@@ -116,6 +125,100 @@ def _get_model_provider(model_name: str) -> str:
             f"To add a new model, add it to MODEL_PROVIDERS dictionary."
         )
     return provider
+
+
+# ============================================================================
+# Comparison Analysis - Measurement Calculation Tool
+# ============================================================================
+
+class MeasurementCalculationInput(BaseModel):
+    prior_value: float
+    prior_unit: str
+    prior_date: Optional[str] = None
+    current_value: float
+    current_unit: str
+    current_date: Optional[str] = None
+
+class MeasurementCalculationResult(BaseModel):
+    absolute_change: float
+    absolute_change_str: str
+    percentage_change: float
+    percentage_change_str: str
+    days_elapsed: Optional[int] = None
+    growth_rate: Optional[str] = None
+    calculation_error: Optional[str] = None
+
+def calculate_measurement_change(input: MeasurementCalculationInput) -> MeasurementCalculationResult:
+    """Tool for precise measurement calculations with unit conversion."""
+    try:
+        # Unit conversion to mm
+        def to_mm(value: float, unit: str) -> float:
+            unit_lower = unit.lower().strip()
+            if unit_lower in ['mm', 'millimeter', 'millimeters']:
+                return value
+            elif unit_lower in ['cm', 'centimeter', 'centimeters']:
+                return value * 10
+            elif unit_lower in ['m', 'meter', 'meters']:
+                return value * 1000
+            return value
+        
+        prior_mm = to_mm(input.prior_value, input.prior_unit)
+        current_mm = to_mm(input.current_value, input.current_unit)
+        absolute_change_mm = current_mm - prior_mm
+        
+        # Display unit selection
+        if input.prior_unit.lower() == input.current_unit.lower():
+            display_unit = input.current_unit
+            absolute_change = input.current_value - input.prior_value
+        else:
+            display_unit = 'mm'
+            absolute_change = absolute_change_mm
+        
+        absolute_change_str = f"{absolute_change:+.1f} {display_unit}"
+        
+        # Percentage calculation
+        if prior_mm == 0:
+            raise ValueError("Cannot calculate percentage from zero")
+        percentage_change = ((current_mm - prior_mm) / prior_mm) * 100
+        percentage_change_str = f"{percentage_change:+.1f}%"
+        
+        # Growth rate calculation
+        days_elapsed = None
+        growth_rate = None
+        
+        if input.prior_date and input.current_date:
+            try:
+                current_dt = datetime.now() if input.current_date.lower() == 'current' else datetime.fromisoformat(input.current_date.replace('Z', '+00:00'))
+                prior_dt = datetime.fromisoformat(input.prior_date.replace('Z', '+00:00'))
+                days_elapsed = (current_dt - prior_dt).days
+                
+                if days_elapsed > 0:
+                    mm_per_day = absolute_change_mm / days_elapsed
+                    if days_elapsed < 400:
+                        rate = mm_per_day * 30
+                        growth_rate = f"{rate:.1f} mm/month"
+                    else:
+                        rate = mm_per_day * 365
+                        growth_rate = f"{rate:.1f} mm/year"
+            except:
+                pass
+        
+        return MeasurementCalculationResult(
+            absolute_change=absolute_change,
+            absolute_change_str=absolute_change_str,
+            percentage_change=percentage_change,
+            percentage_change_str=percentage_change_str,
+            days_elapsed=days_elapsed,
+            growth_rate=growth_rate
+        )
+    except Exception as e:
+        return MeasurementCalculationResult(
+            absolute_change=0,
+            absolute_change_str="Calculation error",
+            percentage_change=0,
+            percentage_change_str="N/A",
+            calculation_error=str(e)
+        )
 
 
 def _get_api_key_for_provider(provider: str, fallback_api_key: str = None) -> str:
@@ -1729,6 +1832,391 @@ async def analyze_report_completeness(
 
 
 # ============================================================================
+# Comparison Analysis Functions
+# ============================================================================
+
+def format_date_uk(date_str: str) -> str:
+    """Convert ISO date (YYYY-MM-DD) to UK format (DD/MM/YYYY)"""
+    if not date_str:
+        return 'unknown date'
+    try:
+        from datetime import datetime
+        dt = datetime.fromisoformat(date_str)
+        return dt.strftime('%d/%m/%Y')
+    except:
+        return date_str  # Return as-is if parsing fails
+
+async def analyze_interval_changes(
+    current_report: str,
+    prior_reports: List[dict],
+    guidelines_data: Optional[List[dict]] = None
+) -> ComparisonAnalysis:
+    """Perform comparison analysis with guideline integration."""
+    import os
+    import time
+    
+    start_time = time.time()
+    
+    sorted_priors = sorted(prior_reports, key=lambda x: x.get('date', '1900-01-01'), reverse=True)
+    
+    priors_text = "\n\n".join([
+        f"PRIOR REPORT {i+1} (Date: {format_date_uk(p.get('date', ''))}"
+        + (f", Scan Type: {p.get('scan_type')}" if p.get('scan_type') else "")
+        + f"):\n{p['text']}"
+        for i, p in enumerate(sorted_priors)
+    ])
+    
+    guidelines_context = ""
+    if guidelines_data:
+        guidelines_context = "\n\nCLINICAL GUIDELINES CONTEXT:\n"
+        for guideline in guidelines_data:
+            finding_name = guideline.get('finding', {}).get('finding', 'N/A')
+            guidelines_context += f"\n{finding_name}:\n"
+            if guideline.get('diagnostic_overview'):
+                guidelines_context += f"{guideline['diagnostic_overview']}\n"
+            if guideline.get('measurement_protocols'):
+                guidelines_context += "\nMeasurement Standards:\n"
+                for protocol in guideline['measurement_protocols']:
+                    guidelines_context += f"- {protocol.get('parameter')}: {protocol.get('technique')}\n"
+    
+    user_prompt = f"""CURRENT REPORT:
+{current_report}
+
+{priors_text}
+{guidelines_context}
+
+TASK: Perform comprehensive interval comparison analysis. Use calculate_measurement_change tool
+when measurements are present. Produce complete revised report with comparison language integrated."""
+    
+    system_prompt = """You are an expert radiologist performing interval comparison analysis.
+
+CRITICAL: You MUST use British English spelling and terminology throughout all output.
+CRITICAL: Use UK date format (DD/MM/YYYY) for all dates in the revised report.
+
+TOOL AVAILABLE: calculate_measurement_change
+
+When you identify measurements in both reports, use this tool for precise calculations.
+Call it with prior_value, prior_unit, current_value, current_unit, and optional dates.
+Returns: absolute_change, percentage_change, growth_rate, days_elapsed
+
+METHODOLOGY:
+
+1. CONTEXT INTEGRATION
+   Use provided clinical guidelines to inform significance assessment
+
+2. FINDING CLASSIFICATION
+   CRITICAL: Only classify actual findings (pathology, abnormalities, lesions, masses, etc.)
+   Do NOT classify normal structures or organs that remain normal as "stable" findings
+   
+   SINGLE PRIOR REPORT:
+   For each actual finding, determine status:
+   - CHANGED: Present in both, significantly changed
+   - STABLE: Present in both, no significant change  
+   - NEW: Only in current report
+   - NOT_MENTIONED: In prior but not current (explain likely reason)
+   
+   MULTIPLE PRIOR REPORTS:
+   When multiple prior reports exist, analyze progression across all timepoints:
+   - Track the finding's appearance/evolution across PRIOR REPORT 1, PRIOR REPORT 2, etc.
+   - Use calculate_measurement_change tool to compute precise changes between each pair of measurements
+   - Calculate growth rates between consecutive scans (e.g., mm/month, %/month)
+   - Identify trends: gradual progression, accelerated growth, stability then change, fluctuating, etc.
+   - Compare current state to most recent prior AND overall trend
+   - Use prior_states list to capture each prior report's state (date, measurement, description)
+   - Use trend field to describe progression pattern with NUMERICAL/STATISTICAL DETAILS:
+     * Include actual measurement values from each prior (e.g., "3.2 cm → 4.1 cm → 5.3 cm")
+     * Include dates for each measurement
+     * Calculate and report percentage changes between timepoints
+     * Calculate growth rates (e.g., "0.57 mm/day", "1.2 cm/month")
+     * Report time intervals between scans
+     * Describe pattern: linear growth, exponential, accelerating, decelerating, stable
+     * Example: "Gradually increasing from 3.2 cm (15/09/2024) to 4.1 cm (22/09/2024, +28% over 7 days, 1.3 mm/day) to 5.3 cm (current, +29% over 15 days, 0.8 mm/day), showing accelerated growth pattern"
+   - Status should compare current to most recent prior, while trend captures multi-timepoint statistical pattern
+   
+   EXCLUDE FROM CLASSIFICATION:
+   - Normal structures/organs that remain normal (e.g., "bladder normal", "prostate normal")
+   - Structures described as "unremarkable", "within normal limits", "no abnormality"
+   - These should not appear in the findings list at all
+   
+   INCLUDE IN CLASSIFICATION:
+   - Pathological findings (masses, nodules, effusions, obstructions, etc.)
+   - Abnormal measurements or sizes
+   - Any structure with actual pathology or abnormality
+
+3. MEASUREMENT EXTRACTION AND TREND CALCULATION
+   CRITICAL: When extracting measurements, follow exact schema requirements:
+   
+   Measurement Object Structure (REQUIRED when measurement exists):
+   {
+     "value": "5.3",           # MUST be a STRING, not a number (e.g., "5.3" not 5.3)
+     "unit": "cm",              # Unit as string (e.g., "cm", "mm", "ml")
+     "raw_text": "5.3 cm"      # REQUIRED: Original phrase from report (e.g., "measuring 5.3 cm")
+   }
+   
+   ALL THREE FIELDS ARE REQUIRED when including a measurement:
+   - value: Convert numeric values to strings (e.g., 5.3 → "5.3", 12 → "12")
+   - unit: Extract unit from report text
+   - raw_text: Include the exact phrase where measurement appears in report
+   
+   Examples:
+   Correct: {"value": "8.5", "unit": "cm", "raw_text": "measuring 8.5 × 7.2 cm"}
+   Wrong: {"value": 8.5, "unit": "cm"}  # Missing raw_text, value is number not string
+   
+   For multiple prior reports with measurements:
+   - Extract measurement from each prior report using Measurement schema
+   - Use calculate_measurement_change tool to compute changes between:
+     * Prior 1 → Prior 2
+     * Prior 2 → Prior 3 (if exists)
+     * Most recent prior → Current
+   - Calculate growth rates: (change_in_size / days_elapsed) for each interval
+   - Synthesize into statistical trend description including:
+     * All measurement values with dates
+     * Percentage changes for each interval
+     * Growth rates (mm/day, cm/month, etc.)
+     * Overall pattern classification (linear, exponential, accelerating, etc.)
+   
+   Example trend output:
+   "Gradually increasing from 3.2 cm (15/09/2024) to 4.1 cm (22/09/2024, +28% over 7 days, 1.3 mm/day) to 5.3 cm (current, +29% over 15 days, 0.8 mm/day). Overall growth rate: 0.95 mm/day over 22 days, showing accelerated growth pattern."
+   
+   PriorState Structure (for multiple priors):
+   {
+     "date": "15/09/2024",      # UK format DD/MM/YYYY
+     "measurement": {            # Optional - only if measurement exists
+       "value": "5.8",           # STRING, not number
+       "unit": "cm",
+       "raw_text": "5.8 × 4.9 cm"
+     },
+     "description": "..."        # Optional description of finding in this prior
+   }
+   
+   FindingComparison Structure:
+   - name: string (e.g., "Right upper lobe nodule")
+   - location: string (e.g., "Right upper lobe, segment 2")
+   - status: one of "changed", "stable", "new", "not_mentioned" (exact match required)
+   - assessment: string (detailed analysis text)
+   - prior_states: List[PriorState] when multiple priors exist (ordered oldest first)
+   - trend: string when multiple priors exist with numerical/statistical details
+   - current_measurement: Measurement object if current report has measurement
+   - prior_measurement: Measurement object if single prior (for backward compatibility)
+   
+   Key Changes Structure:
+   Each item in key_changes must be a dict with:
+   {
+     "original": "text from original report",
+     "revised": "text from revised report", 
+     "reason": "explanation of change"
+   }
+
+4. CLINICAL REASONING
+   Use context-dependent judgment, not arbitrary thresholds
+   Consider finding type, timeframe, and guideline criteria
+
+5. REPORT REVISION
+   CRITICAL: Preserve the exact report structure, formatting style, and organization.
+   
+   COMPARISON SECTION HANDLING:
+   - The Comparison section should be purely factual - list what prior studies are being compared
+   - State dates and scan types only (e.g., "Comparison is made to prior CT chest performed on 15/09/2024")
+   - Do NOT include summary statements, impressions, or clinical interpretation in the Comparison section
+   - Do NOT describe findings or changes in the Comparison section - save that for Findings section
+   - If the report contains "No previous imaging available" or similar, REPLACE it entirely
+   - Use UK date format (DD/MM/YYYY) consistently for all dates
+   
+   STRUCTURE PRESERVATION:
+   - Keep all section headers exactly as they appear (e.g., "Findings:", "Impression:")
+   - Maintain the same section order
+   - Do NOT add or remove sections
+   - Do NOT reorganize content between sections
+   
+   FORMATTING PRESERVATION:
+   - If original uses paragraph format, keep paragraphs (do NOT convert to bullets)
+   - If original uses bullet points, keep bullet points (do NOT convert to paragraphs)
+   - If original uses numbered lists, keep numbered lists
+   - Preserve line breaks and spacing
+   - Match the original writing style (narrative vs. structured)
+   
+   CONTENT INTEGRATION:
+   - Integrate comparison language naturally within existing sentences/paragraphs
+   - Update measurements and descriptions in-place where they appear
+   - Add comparison context without changing the overall structure
+   - Update recommendations in the Impression section, maintaining its format
+
+6. KEY CHANGES
+   Extract 3-5 most important text changes for UI highlighting
+
+OUTPUT: Complete ComparisonAnalysis with findings list, summary, revised_report, and key_changes"""
+    
+    # Get model and API key
+    model_name = MODEL_CONFIG["COMPARISON_ANALYZER"]
+    provider = _get_model_provider(model_name)
+    api_key = _get_api_key_for_provider(provider)
+    
+    model_label = f"{model_name} (Comparison Analyzer)"
+    print(f"analyze_interval_changes: Starting comparison analysis with {model_label}")
+    print(f"  └─ Prior reports: {len(prior_reports)}")
+    print(f"  └─ Guidelines available: {len(guidelines_data) if guidelines_data else 0}")
+    print(f"  └─ Current report length: {len(current_report)} chars")
+    
+    # Create model instance
+    pydantic_model = _create_pydantic_model(model_name, api_key, use_thinking=False)
+    
+    # Create agent with tool
+    comparison_agent = Agent(
+        pydantic_model,
+        output_type=ComparisonAnalysis,
+        system_prompt=system_prompt
+    )
+    
+    @comparison_agent.tool
+    def calculate_measurement_change_tool(
+        ctx: RunContext,
+        prior_value: float,
+        prior_unit: str,
+        current_value: float,
+        current_unit: str,
+        prior_date: Optional[str] = None,
+        current_date: Optional[str] = None
+    ) -> dict:
+        """Calculate precise interval change between measurements."""
+        input_data = MeasurementCalculationInput(
+            prior_value=prior_value,
+            prior_unit=prior_unit,
+            prior_date=prior_date,
+            current_value=current_value,
+            current_unit=current_unit,
+            current_date=current_date
+        )
+        result = calculate_measurement_change(input_data)
+        return {
+            "absolute_change": result.absolute_change_str,
+            "percentage_change": result.percentage_change_str,
+            "growth_rate": result.growth_rate,
+            "days_elapsed": result.days_elapsed,
+            "error": result.calculation_error
+        }
+    
+    # Set up environment variable for API key
+    env_var_map = {
+        'groq': 'GROQ_API_KEY',
+        'anthropic': 'ANTHROPIC_API_KEY',
+        'cerebras': 'CEREBRAS_API_KEY',
+    }
+    env_var_name = env_var_map[provider]
+    old_api_key = os.environ.get(env_var_name)
+    os.environ[env_var_name] = api_key
+    
+    # Retry logic with exponential backoff
+    max_retries = 3
+    import asyncio
+    
+    try:
+        for attempt in range(max_retries):
+            try:
+                # Run agent with model settings - generous token limits for comprehensive analysis
+                model_settings = {"temperature": 0.3}
+                if provider == 'cerebras':
+                    model_settings["reasoning_effort"] = "high"
+                    model_settings["max_tokens"] = 6000  # Increased for detailed trend analysis
+                    print(f"  └─ Using Cerebras reasoning_effort=high, max_tokens=6000 for {model_name}")
+                else:
+                    model_settings["max_tokens"] = 6000  # Increased for detailed trend analysis
+                    print(f"  └─ Using model settings: {model_settings}")
+                
+                result = await comparison_agent.run(user_prompt, model_settings=model_settings)
+                comparison_analysis: ComparisonAnalysis = result.output
+                
+                elapsed = time.time() - start_time
+                print(f"analyze_interval_changes: ✅ Completed with {model_label} in {elapsed:.2f}s")
+                print(f"  └─ Findings analyzed: {len(comparison_analysis.findings)}")
+                print(f"  └─ Changed findings: {len([f for f in comparison_analysis.findings if f.status == 'changed'])}")
+                print(f"  └─ New findings: {len([f for f in comparison_analysis.findings if f.status == 'new'])}")
+                print(f"  └─ Stable findings: {len([f for f in comparison_analysis.findings if f.status == 'stable'])}")
+                print(f"  └─ Revised report length: {len(comparison_analysis.revised_report)} chars")
+                print(f"  └─ Key changes extracted: {len(comparison_analysis.key_changes)}")
+                
+                return comparison_analysis
+            except Exception as e:
+                error_str = str(e).lower()
+                error_type = type(e).__name__
+                is_validation_error = (
+                    "validation" in error_str or 
+                    "retries" in error_str or 
+                    "unexpectedmodelbehavior" in error_str.lower() or
+                    "pydantic" in error_str or
+                    "schema" in error_str
+                )
+                
+                # Detailed error logging
+                print(f"\n{'='*80}")
+                print(f"⚠️ Comparison analysis attempt {attempt + 1}/{max_retries} failed")
+                print(f"{'='*80}")
+                print(f"Error Type: {error_type}")
+                print(f"Error Message: {str(e)}")
+                print(f"Is Validation Error: {is_validation_error}")
+                
+                # Log full error details for validation errors
+                if is_validation_error:
+                    print(f"\n🔍 VALIDATION ERROR DETAILS:")
+                    print(f"  This indicates the model output doesn't match the expected schema.")
+                    print(f"  Possible causes:")
+                    print(f"    - Model produced invalid structure for findings list")
+                    print(f"    - Missing required fields (name, location, status, assessment)")
+                    print(f"    - Invalid status value (must be: changed, stable, new, not_mentioned)")
+                    print(f"    - Invalid structure for key_changes (should be List[dict])")
+                    print(f"    - Invalid structure for prior_states (should be List[PriorState])")
+                    print(f"    - Missing revised_report field")
+                    
+                    # Try to extract more details if available
+                    if hasattr(e, '__cause__') and e.__cause__:
+                        print(f"\n  Underlying cause: {type(e.__cause__).__name__}")
+                        print(f"  Cause message: {str(e.__cause__)[:500]}")
+                    if hasattr(e, 'args') and e.args:
+                        print(f"\n  Error args: {e.args}")
+                
+                # Log context information
+                print(f"\n📊 CONTEXT:")
+                print(f"  Model: {model_name}")
+                print(f"  Provider: {provider}")
+                print(f"  Prior reports count: {len(prior_reports)}")
+                print(f"  Current report length: {len(current_report)} chars")
+                print(f"  User prompt length: {len(user_prompt)} chars")
+                print(f"  System prompt length: {len(system_prompt)} chars")
+                print(f"{'='*80}\n")
+                
+                if attempt < max_retries - 1:
+                    if is_validation_error:
+                        # For validation errors, still retry but with longer delay
+                        delay = 3.0 * (2 ** attempt)  # Slightly longer delay for validation errors
+                        print(f"⚠️ Retrying in {delay:.1f}s (validation error - model may need more time to produce correct schema)...")
+                    else:
+                        # Retry with exponential backoff for other errors
+                        delay = 2.0 * (2 ** attempt)
+                        print(f"⚠️ Retrying in {delay:.1f}s...")
+                    await asyncio.sleep(delay)
+                else:
+                    # All retries exhausted
+                    print(f"\n{'='*80}")
+                    print(f"❌ Comparison analysis failed after {max_retries} attempts")
+                    print(f"{'='*80}")
+                    print(f"Final Error Type: {error_type}")
+                    print(f"Final Error: {str(e)}")
+                    if is_validation_error:
+                        raise Exception(
+                            f"Comparison analysis failed: Model output validation error after {max_retries} retries. "
+                            f"The model may be producing output that doesn't match the expected schema. "
+                            f"Error: {str(e)}"
+                        )
+                    else:
+                        raise Exception(f"Comparison analysis failed after {max_retries} retries: {str(e)}")
+    finally:
+        # Restore environment variable
+        if old_api_key is not None:
+            os.environ[env_var_name] = old_api_key
+        else:
+            os.environ.pop(env_var_name, None)
+
+
+# ============================================================================
 # Report Generation Functions (Pydantic AI)
 # ============================================================================
 
@@ -2510,4 +2998,138 @@ Return the complete corrected report with:
     print(f"  └─ Fixed report length: {len(fixed_output.report_content)} chars")
     
     return fixed_output
+
+
+async def validate_report_async(
+    report_id: str,
+    report_output: ReportOutput,
+    findings: str,
+    scan_type: str
+):
+    """
+    Async background validation function.
+    Runs validation and applies fixes if needed, updating the report in the database.
+    
+    Args:
+        report_id: Report UUID string
+        report_output: ReportOutput object with report_content, scan_type, description
+        findings: Original findings input
+        scan_type: Extracted scan type
+    """
+    from .database.connection import SessionLocal
+    from .database.crud import (
+        get_report,
+        update_validation_status,
+        create_report_version
+    )
+    from sqlalchemy.orm import Session
+    
+    db: Session = SessionLocal()
+    
+    try:
+        # Set status to pending
+        update_validation_status(
+            db=db,
+            report_id=report_id,
+            status="pending",
+            violations_count=0
+        )
+        
+        print(f"\n{'='*80}")
+        print(f"🔄 Background validation started for report {report_id}")
+        print(f"{'='*80}\n")
+        
+        # Run validation
+        validation_result = await validate_report_protocol(
+            report_content=report_output.report_content,
+            scan_type=scan_type,
+            findings=findings
+        )
+        
+        violation_count = len(validation_result.violations)
+        
+        if violation_count > 0:
+            # Violations found - apply fixes
+            print(f"\n{'='*80}")
+            print(f"⚠️ PROTOCOL VIOLATIONS DETECTED: {violation_count} violation(s)")
+            print(f"{'='*80}")
+            for i, violation in enumerate(validation_result.violations, 1):
+                print(f"  {i}. [{violation.violation_type}] {violation.location}")
+                print(f"     Issue: {violation.issue}")
+            print(f"{'='*80}\n")
+            print(f"Applying fixes...")
+            
+            fixed_output = await apply_protocol_fixes(
+                report_output=report_output,
+                validation_result=validation_result
+            )
+            
+            print(f"✅ Fixes applied successfully")
+            
+            # Get report to update
+            report = get_report(db, report_id)
+            if report:
+                # Create version snapshot of original before updating
+                create_report_version(
+                    db=db,
+                    report=report,
+                    actions_applied=None,
+                    notes=f"Protocol validation fixes applied ({violation_count} violation(s))"
+                )
+                
+                # Update report content with fixed version
+                report.report_content = fixed_output.report_content
+                db.commit()
+                db.refresh(report)
+                
+                # Update validation status
+                update_validation_status(
+                    db=db,
+                    report_id=report_id,
+                    status="fixed",
+                    violations_count=violation_count
+                )
+                
+                print(f"✅ Report updated with fixes, version created")
+            else:
+                print(f"⚠️ Report {report_id} not found, cannot update")
+                update_validation_status(
+                    db=db,
+                    report_id=report_id,
+                    status="error",
+                    error="Report not found"
+                )
+        else:
+            # No violations - validation passed
+            print("✅ No violations found, validation passed")
+            update_validation_status(
+                db=db,
+                report_id=report_id,
+                status="passed",
+                violations_count=0
+            )
+            
+    except Exception as e:
+        import traceback
+        error_msg = str(e)
+        print(f"\n{'='*80}")
+        print(f"❌ Background validation failed for report {report_id}")
+        print(f"Error: {error_msg}")
+        print(f"{'='*80}\n")
+        traceback.print_exc()
+        
+        # Update status to error
+        try:
+            update_validation_status(
+                db=db,
+                report_id=report_id,
+                status="error",
+                error=error_msg
+            )
+        except Exception as db_error:
+            print(f"⚠️ Failed to update validation status: {db_error}")
+    
+    finally:
+        # Always close the database session
+        db.close()
 

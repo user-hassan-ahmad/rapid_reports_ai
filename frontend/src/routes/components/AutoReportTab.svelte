@@ -1,8 +1,10 @@
 <script>
 	import { createEventDispatcher, onMount } from 'svelte';
+	import { token } from '$lib/stores/auth';
 	import DictationButton from '$lib/components/DictationButton.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import ReportResponseViewer from './ReportResponseViewer.svelte';
+	import { API_URL } from '$lib/config';
 
 	let toast;
 
@@ -177,6 +179,62 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 		responseVisible = true;
 		dispatch('historyRestored', detail);
 	}
+
+	async function handleReportSave(event) {
+		const newContent = event.detail.content;
+		if (!reportId) return;
+
+		try {
+			reportUpdateLoading = true;
+			const headers = {
+				'Content-Type': 'application/json',
+				...(($token) ? { 'Authorization': `Bearer ${$token}` } : {})
+			};
+
+			const res = await fetch(`${API_URL}/api/reports/${reportId}/update`, {
+				method: 'PUT',
+				headers,
+				body: JSON.stringify({ content: newContent })
+			});
+
+			const data = await res.json();
+
+			if (data.success) {
+				response = data.report.report_content;
+				versionHistoryRefreshKey += 1;
+				// Dispatch event to notify parent (and sidebar) of the update
+				dispatch('historyUpdate', { count: (data.version ? data.version.version_number : 0) });
+				// We need to notify the sidebar to refresh its content/analysis
+				// The sidebar listens to 'reportUpdated' on the parent, but here we are in a child.
+				// We can dispatch a custom event that the parent listens to.
+				// Actually, AutoReportTab dispatches 'historyRestored' which updates the sidebar.
+				// Let's reuse that or dispatch a new one.
+				// Looking at +page.svelte, it passes 'reportId' to Sidebar.
+				// Sidebar has its own 'updateReportContent' but we are bypassing it here.
+				// We should dispatch an event that +page.svelte can use to notify Sidebar or just rely on Sidebar's polling/reactivity if it has any (it doesn't seem to poll for content).
+				
+				// +page.svelte listens to 'historyRestored' from AutoReportTab.
+				// Let's check how +page.svelte handles updates.
+				// It seems +page.svelte doesn't have a direct 'reportUpdated' handler for AutoReportTab other than history restoration.
+				// However, ReportEnhancementSidebar listens to 'reportUpdated' from ITSELF.
+				
+				// If we update the report here, the Sidebar needs to know.
+				// The Sidebar takes 'reportContent' as a prop.
+				// In +page.svelte: <ReportEnhancementSidebar reportContent={response || ''} ... />
+				// 'response' in +page.svelte is bound to 'response' in AutoReportTab.
+				// So updating 'response' here updates 'response' in +page.svelte, which updates 'reportContent' prop in Sidebar.
+				// This should be sufficient for the Sidebar to see the new content!
+				
+				if (toast) toast.show('Report updated successfully');
+			} else {
+				error = data.error || 'Failed to update report';
+			}
+		} catch (err) {
+			error = `Failed to update: ${err.message}`;
+		} finally {
+			reportUpdateLoading = false;
+		}
+	}
 </script>
 
 <div class="space-y-4">
@@ -324,6 +382,7 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 			on:clear={clearResponse}
 			on:restore={(event) => handleHistoryRestore(event.detail)}
 			on:historyUpdate={(event) => dispatch('historyUpdate', event.detail)}
+			on:save={handleReportSave}
 		/>
 </div>
 

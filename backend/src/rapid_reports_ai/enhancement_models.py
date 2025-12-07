@@ -5,7 +5,7 @@ Pure Pydantic validation - no custom field validators or regex processing
 """
 
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 
 # ============================================================================
@@ -354,5 +354,71 @@ class ReportOutputWithReasoning(BaseModel):
         min_length=3,
         max_length=200,
         description="Extracted scan type and protocol combined (e.g., 'CT head non-contrast', 'MRI brain with contrast'). Extract from template name/description and findings context. Include contrast status ONLY if explicitly mentioned."
+    )
+
+
+# ============================================================================
+# Comparison Analysis Models
+# ============================================================================
+
+class Measurement(BaseModel):
+    """Extracted measurement with context"""
+    value: str = Field(description="Numerical value as string (e.g., '3.8')")
+    unit: str = Field(description="Unit of measurement (e.g., 'cm', 'mm')")
+    raw_text: str = Field(description="Original phrase from report")
+
+class PriorState(BaseModel):
+    """State of a finding in a prior report"""
+    date: str = Field(description="Date of prior report (UK format DD/MM/YYYY)")
+    measurement: Optional[Measurement] = None
+    description: Optional[str] = None
+
+class FindingComparison(BaseModel):
+    """A single finding's comparison analysis"""
+    name: str = Field(description="Finding name (e.g., 'Right upper lobe nodule')")
+    location: str = Field(description="Anatomic location details")
+    
+    status: Literal["changed", "stable", "new", "not_mentioned"] = Field(
+        description="Temporal status: compares current to most recent prior. For multiple priors, use trend field."
+    )
+    
+    # Single prior state (for backward compatibility and simple cases)
+    prior_measurement: Optional[Measurement] = None
+    prior_description: Optional[str] = None
+    prior_date: Optional[str] = None
+    
+    # Multiple prior states (for progression tracking across multiple scans)
+    prior_states: List[PriorState] = Field(
+        default_factory=list,
+        description="List of prior report states when multiple priors exist, ordered chronologically (oldest first)"
+    )
+    
+    # Trend analysis for multiple priors
+    trend: Optional[str] = Field(
+        None,
+        description="Progression trend when multiple priors exist. MUST include numerical/statistical details: actual measurement values, percentage changes, growth rates (e.g., mm/month), and time intervals. Example: 'Gradually increasing from 3.2 cm (15/09/2024) to 4.1 cm (22/09/2024) to 5.3 cm (current), representing 28% growth over 37 days (0.57 mm/day average)'"
+    )
+    
+    current_measurement: Optional[Measurement] = None
+    current_description: Optional[str] = None
+    
+    assessment: str = Field(
+        description="Model's contextual analysis of the change and clinical significance, including trend analysis if multiple priors"
+    )
+
+class ComparisonAnalysis(BaseModel):
+    """Complete comparison analysis with revised report"""
+    findings: List[FindingComparison] = Field(
+        description="All findings analyzed with status classification"
+    )
+    summary: str = Field(
+        description="High-level synthesis of changes and clinical implications"
+    )
+    revised_report: str = Field(
+        description="Complete rewritten report with comparison language integrated"
+    )
+    key_changes: List[dict] = Field(
+        default_factory=list,
+        description="Important text changes for UI highlighting: {original, revised, reason}"
     )
 

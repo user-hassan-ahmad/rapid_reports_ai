@@ -111,6 +111,8 @@ interface CompletenessAnalysis {
 		content: string;
 		sources?: string[];
 		error?: boolean;
+		editProposal?: string;
+		applied?: boolean;
 	};
 	
 	const enhancementCache = new Map<string, EnhancementCacheEntry>();
@@ -130,11 +132,17 @@ interface CompletenessAnalysis {
 	export let historyAvailable: boolean = false;
 	export let reportVersion: number = 0; // Increment this to force reload
 	
-	let activeTab: 'guidelines' | 'analysis' | 'chat' = 'guidelines';
+	let activeTab: 'guidelines' | 'analysis' | 'comparison' | 'chat' = 'guidelines';
+	
+	// Hide Analysis tab temporarily - redirect to guidelines if analysis is selected
+	$: if (activeTab === 'analysis') {
+		activeTab = 'guidelines';
+	}
 	let loading = false;
 	let error: string | null = null;
 	let hasLoaded = false;
 	let lastReportId: string | null = null;
+	let isExpanded = false;
 	
 	let findings: Finding[] = [];
 	let guidelinesData: GuidelineEntry[] = [];
@@ -161,6 +169,25 @@ let sectionsExpanded: Record<SectionKey, boolean> = {
 	actions: true
 };
 let guidelinesExpanded: Record<string, boolean> = {};
+
+// Comparison state
+let priorReports: any[] = [];
+let showAddPriorModal = false;
+let editingPriorIndex: number | null = null;
+let newPrior = { text: '', date: '', scan_type: '' };
+let comparing = false;
+let comparisonResult: any = null;
+
+// Date formatting helper
+function formatDateUK(dateStr: string): string {
+	if (!dateStr) return '';
+	try {
+		const [year, month, day] = dateStr.split('-');
+		return `${day}/${month}/${year}`;
+	} catch {
+		return dateStr;
+	}
+}
 
 const COMPLETENESS_POLL_INTERVAL = 5000;
 let completenessPending = false;
@@ -323,6 +350,8 @@ function renderMarkdown(md: string) {
 			hasLoaded = false;
 		}
 		
+		staleAnalysis = false;
+		
 		console.log('loadEnhancements: Starting for reportId:', reportId);
 		loading = true;
 		error = null;
@@ -341,7 +370,8 @@ function renderMarkdown(md: string) {
 			
 			let response: Response;
 			try {
-				response = await fetch(`${API_URL}/api/reports/${reportId}/enhance`, {
+				// Skip completeness analysis since Analysis tab is hidden
+				response = await fetch(`${API_URL}/api/reports/${reportId}/enhance?skip_completeness=true`, {
 					method: 'POST',
 					headers,
 					signal: controller.signal
@@ -485,10 +515,14 @@ function renderMarkdown(md: string) {
 			const data: any = await response.json();
 			
 			if (data.success) {
+				let content = data.response;
+				let editProposal = data.edit_proposal;
+
 				chatMessages.push({
 					role: 'assistant',
-					content: data.response,
-					sources: data.sources || []
+					content: content,
+					sources: data.sources || [],
+					editProposal
 				});
 				chatMessages = [...chatMessages];
 			} else {
@@ -519,7 +553,7 @@ function renderMarkdown(md: string) {
 		await updateReportContent(newContent);
 	}
 	
-	async function updateReportContent(newContent: string) {
+	async function updateReportContent(newContent: string, editSource: 'manual' | 'chat' = 'manual') {
 		if (!reportId) return;
 		
 		try {
@@ -532,14 +566,15 @@ function renderMarkdown(md: string) {
 			const response = await fetch(`${API_URL}/api/reports/${reportId}/update`, {
 				method: 'PUT',
 				headers,
-				body: JSON.stringify({ content: newContent })
+				body: JSON.stringify({ content: newContent, edit_source: editSource })
 			});
 			
 			const data = await response.json();
 			
 			if (data.success) {
-				invalidateCache();
-				hasLoaded = false;
+				// Don't invalidate cache - we want manual refresh
+				// invalidateCache();
+				// hasLoaded = false;
 				dispatch('reportUpdated', { report: data.report });
 			} else {
 				error = data.error || 'Failed to update report';
@@ -666,6 +701,142 @@ $: canApplySelectedActions = selectedActionsWithPatch.length > 0 && !applyAction
 		}
 	}
 	
+	// Comparison functions
+	async function addPriorReport() {
+		if (!newPrior.text.trim() || !newPrior.date) return;
+		
+		if (editingPriorIndex !== null) {
+			// Update existing report
+			priorReports[editingPriorIndex] = {
+				text: newPrior.text,
+				date: newPrior.date,
+				scan_type: newPrior.scan_type || ''
+			};
+			editingPriorIndex = null;
+		} else {
+			// Add new report
+			priorReports = [...priorReports, { 
+				text: newPrior.text, 
+				date: newPrior.date,
+				scan_type: newPrior.scan_type || ''
+			}];
+		}
+		
+		newPrior = { text: '', date: '', scan_type: '' };
+		showAddPriorModal = false;
+	}
+	
+	function editPriorReport(index: number) {
+		const prior = priorReports[index];
+		newPrior = {
+			text: prior.text,
+			date: prior.date,
+			scan_type: prior.scan_type || ''
+		};
+		editingPriorIndex = index;
+		showAddPriorModal = true;
+	}
+	
+	function removePriorReport(index: number) {
+		priorReports = priorReports.filter((_, i) => i !== index);
+		if (editingPriorIndex === index) {
+			editingPriorIndex = null;
+			showAddPriorModal = false;
+		} else if (editingPriorIndex !== null && editingPriorIndex > index) {
+			editingPriorIndex--;
+		}
+	}
+	
+	function cancelEdit() {
+		newPrior = { text: '', date: '', scan_type: '' };
+		editingPriorIndex = null;
+		showAddPriorModal = false;
+	}
+	
+	async function runComparison() {
+		if (!reportId || priorReports.length === 0) {
+			console.log('runComparison: Early return - reportId:', reportId, 'priorReports.length:', priorReports.length);
+			return;
+		}
+		console.log('runComparison: Starting comparison for reportId:', reportId);
+		console.log('runComparison: Prior reports:', priorReports);
+		comparing = true;
+		error = null;
+		try {
+			const response = await fetch(`${API_URL}/api/reports/${reportId}/compare`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${$token}`
+				},
+				body: JSON.stringify({ prior_reports: priorReports })
+			});
+			
+			console.log('runComparison: Response status:', response.status);
+			console.log('runComparison: Response ok:', response.ok);
+			
+			if (!response.ok) {
+				const errorText = await response.text();
+				console.error('runComparison: HTTP error:', response.status, errorText);
+				error = `HTTP ${response.status}: ${errorText}`;
+				return;
+			}
+			
+			const data = await response.json();
+			console.log('runComparison: Response data:', data);
+			console.log('runComparison: data.success:', data.success);
+			console.log('runComparison: data.comparison:', data.comparison);
+			console.log('runComparison: data.comparison type:', typeof data.comparison);
+			if (data.comparison) {
+				console.log('runComparison: data.comparison keys:', Object.keys(data.comparison));
+			}
+			
+			if (data.success && data.comparison) {
+				comparisonResult = data.comparison;
+				console.log('runComparison: Comparison result set:', comparisonResult);
+				console.log('runComparison: comparisonResult type:', typeof comparisonResult);
+				console.log('runComparison: comparisonResult keys:', Object.keys(comparisonResult || {}));
+			} else {
+				error = data.error || 'Comparison analysis failed';
+				console.error('runComparison: API returned error:', error);
+			}
+		} catch (err) {
+			console.error('runComparison: Exception:', err);
+			error = `Failed to compare: ${err instanceof Error ? err.message : String(err)}`;
+		} finally {
+			comparing = false;
+			console.log('runComparison: Finished, comparing:', comparing, 'comparisonResult:', comparisonResult);
+			console.log('runComparison: comparisonResult is null?', comparisonResult === null);
+			console.log('runComparison: comparisonResult is undefined?', comparisonResult === undefined);
+		}
+	}
+	
+	async function applyRevisedReport() {
+		if (!comparisonResult?.revised_report) return;
+		try {
+			const response = await fetch(`${API_URL}/api/reports/${reportId}/apply-comparison`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${$token}`
+				},
+				body: JSON.stringify({ revised_report: comparisonResult.revised_report })
+			});
+			const data = await response.json();
+			if (data.success) {
+				dispatch('reportUpdated', { report: { report_content: data.updated_content } });
+			}
+		} catch (err) {
+			console.error('Apply failed:', err);
+		}
+	}
+	
+	function clearComparison() {
+		comparisonResult = null;
+		priorReports = [];
+		newPrior = { text: '', date: '', scan_type: '' };
+	}
+	
 onDestroy(() => {
 	stopCompletenessPoll();
 });
@@ -677,13 +848,18 @@ onDestroy(() => {
 	
 	// Track last report version to detect changes
 	let lastReportVersion = -1;
+	let staleAnalysis = false;
 	
 	// Reset hasLoaded when reportVersion changes (form resubmitted)
 	$: if (reportVersion !== lastReportVersion) {
 		console.log('ReportEnhancementSidebar: reportVersion changed from', lastReportVersion, 'to', reportVersion);
-		if (reportId) {
-			hasLoaded = false; // Force reload on version change
-			invalidateCache(); // Clear cache for current report to force fresh data
+		if (reportId && lastReportVersion !== -1) {
+			// Don't auto-reload, just mark as stale
+			staleAnalysis = true;
+		} else if (reportId) {
+			// First load for this report ID
+			hasLoaded = false;
+			invalidateCache();
 		}
 		lastReportVersion = reportVersion;
 	}
@@ -700,8 +876,12 @@ onDestroy(() => {
 			error = null;
 			completenessPending = false;
 			appliedActionIds = [];
-			stopCompletenessPoll();
-			resetActionSelections();
+				priorReports = [];
+				comparisonResult = null;
+				showAddPriorModal = false;
+				newPrior = { text: '', date: '', scan_type: '' };
+				stopCompletenessPoll();
+				resetActionSelections();
 		} else {
 			// Switching to a different report - save current state first
 			if (lastReportId) {
@@ -757,7 +937,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 </script>
 
 {#if visible}
-	<div class="fixed right-0 top-0 h-full w-96 bg-gray-900 border-l border-gray-700 shadow-2xl z-[10000] flex flex-col">
+	<div class="fixed right-0 top-0 h-full {isExpanded ? 'w-[50vw]' : 'w-96'} bg-gray-900 border-l border-gray-700 shadow-2xl z-[10000] flex flex-col transition-all duration-300 ease-in-out">
 		<!-- Header -->
 		<div class="p-4 border-b border-gray-700">
 			<div class="flex items-center justify-between mb-4 gap-3">
@@ -767,6 +947,32 @@ $: if ((visible || autoLoad) && completenessPending) {
 					<h2 class="text-2xl font-bold text-white">Copilot</h2>
 				</div>
 				<div class="flex items-center gap-2">
+					<button
+						type="button"
+						onclick={() => isExpanded = !isExpanded}
+						class="p-1 text-gray-400 hover:text-white transition-colors"
+						title={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
+					>
+						{#if isExpanded}
+							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+							</svg>
+						{:else}
+							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+							</svg>
+						{/if}
+					</button>
+					{#if staleAnalysis}
+						<button
+							type="button"
+							onclick={() => loadEnhancements(true)}
+							class="px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-600 hover:bg-purple-700 text-white transition-colors animate-pulse"
+							title="Analysis is outdated. Click to refresh."
+						>
+							Refresh Analysis
+						</button>
+					{/if}
 					<button
 						type="button"
 						onclick={() => dispatch('openVersionHistory')}
@@ -797,11 +1003,19 @@ $: if ((visible || autoLoad) && completenessPending) {
 				>
 					Guidelines
 				</button>
+				<!-- Analysis tab hidden temporarily -->
 				<button
 					onclick={() => activeTab = 'analysis'}
 					class="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors {activeTab === 'analysis' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"
+					style="display: none;"
 				>
 					Analysis
+				</button>
+				<button
+					onclick={() => activeTab = 'comparison'}
+					class="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors {activeTab === 'comparison' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"
+				>
+					Comparison
 				</button>
 				<button
 					onclick={() => activeTab = 'chat'}
@@ -1022,7 +1236,8 @@ $: if ((visible || autoLoad) && completenessPending) {
 					</div>
 				{/if}
 			
-			{:else if activeTab === 'analysis'}
+			<!-- Analysis tab content hidden temporarily -->
+			{:else if false && activeTab === 'analysis'}
 				{#if completenessPending && !completenessAnalysis}
 					<div class="text-gray-400 text-center py-8">
 						Running completeness analysis...
@@ -1180,6 +1395,142 @@ $: if ((visible || autoLoad) && completenessPending) {
 					</div>
 				{/if}
 			
+			{:else if activeTab === 'comparison'}
+				<div class="space-y-4">
+					{#if priorReports.length === 0}
+						<div class="text-center py-8">
+							<p class="text-gray-400 mb-4">Add prior reports to analyse interval changes</p>
+							<button class="btn-primary" onclick={() => showAddPriorModal = true}>
+								+ Add Prior Report
+							</button>
+						</div>
+					{:else}
+						<div class="bg-gray-800/50 rounded-lg p-3 space-y-2">
+							<div class="flex items-center justify-between">
+								<span class="text-sm text-gray-400">{priorReports.length} prior report(s) loaded</span>
+								<button class="btn-sm" onclick={() => showAddPriorModal = true}>+ Add Another</button>
+							</div>
+							<div class="space-y-2">
+								{#each priorReports as prior, idx}
+									<div class="flex items-center justify-between bg-gray-900/50 rounded p-2">
+										<span class="text-sm text-gray-300">
+											{formatDateUK(prior.date)}{prior.scan_type ? ` - ${prior.scan_type}` : ''}
+										</span>
+										<div class="flex gap-2">
+											<button 
+												onclick={() => editPriorReport(idx)}
+												class="text-blue-400 hover:text-blue-300 text-xs px-2 py-1"
+												title="Edit this prior report"
+											>
+												✏️ Edit
+											</button>
+											<button 
+												onclick={() => removePriorReport(idx)}
+												class="text-red-400 hover:text-red-300 text-xs px-2 py-1"
+												title="Remove this prior report"
+											>
+												🗑️ Remove
+											</button>
+										</div>
+									</div>
+								{/each}
+							</div>
+						</div>
+						
+						{#if !comparisonResult}
+							<button class="btn-primary w-full" onclick={runComparison} disabled={comparing}>
+								{comparing ? '⏳ Analysing...' : '🔍 Analyse Interval Changes'}
+							</button>
+						{:else}
+							<!-- Summary -->
+							<div class="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
+								<h3 class="text-sm font-semibold text-blue-300 mb-2">Summary</h3>
+								<p class="text-sm text-gray-300">{comparisonResult.summary}</p>
+							</div>
+							
+							<!-- Key Changes -->
+							{#if comparisonResult.key_changes?.length > 0}
+								<div class="space-y-3 mb-4">
+									<h3 class="text-sm font-semibold text-white">Key Changes</h3>
+									{#each comparisonResult.key_changes as change}
+										<div class="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
+											<div class="text-xs text-gray-400 mb-2">{change.reason}</div>
+											<div class="bg-red-500/10 border border-red-500/30 rounded p-2 mb-2">
+												<div class="text-xs text-red-400 mb-1">Original:</div>
+												<div class="text-sm text-gray-300 line-through">{change.original}</div>
+											</div>
+											<div class="bg-green-500/10 border border-green-500/30 rounded p-2">
+												<div class="text-xs text-green-400 mb-1">Revised:</div>
+												<div class="text-sm text-gray-300">{change.revised}</div>
+											</div>
+										</div>
+									{/each}
+								</div>
+							{/if}
+							
+							<!-- Findings by Status -->
+							{@const changedFindings = comparisonResult.findings.filter(f => f.status === 'changed')}
+							{@const newFindings = comparisonResult.findings.filter(f => f.status === 'new')}
+							{@const stableFindings = comparisonResult.findings.filter(f => f.status === 'stable')}
+							
+							{#if changedFindings.length > 0}
+								<details open class="bg-orange-500/10 border border-orange-500/30 rounded-lg mb-3">
+									<summary class="p-3 cursor-pointer text-sm font-medium text-orange-300">
+										📈 Interval Changes ({changedFindings.length})
+									</summary>
+									<div class="p-3 pt-0 space-y-3">
+										{#each changedFindings as finding}
+											<div class="border-l-2 border-orange-500 pl-3 py-1">
+												<div class="text-sm font-medium text-white">{finding.name}</div>
+												<div class="text-sm text-gray-300 mt-1">{finding.assessment}</div>
+											</div>
+										{/each}
+									</div>
+								</details>
+							{/if}
+							
+							{#if newFindings.length > 0}
+								<details class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg mb-3">
+									<summary class="p-3 cursor-pointer text-sm font-medium text-yellow-300">
+										⭐ New Findings ({newFindings.length})
+									</summary>
+									<div class="p-3 pt-0 space-y-2">
+										{#each newFindings as finding}
+											<div class="text-sm text-gray-300">• {finding.name}</div>
+										{/each}
+									</div>
+								</details>
+							{/if}
+							
+							{#if stableFindings.length > 0}
+								<details class="bg-green-500/10 border border-green-500/30 rounded-lg mb-3">
+									<summary class="p-3 cursor-pointer text-sm font-medium text-green-300">
+										✅ Stable ({stableFindings.length})
+									</summary>
+									<div class="p-3 pt-0">
+										<ul class="text-sm text-gray-300 space-y-1">
+											{#each stableFindings as finding}
+												<li>• {finding.name}</li>
+											{/each}
+										</ul>
+									</div>
+								</details>
+							{/if}
+							
+							<!-- Apply Button -->
+							<button class="btn-primary w-full mb-2" onclick={applyRevisedReport}>
+								✅ Apply Revised Report
+							</button>
+							<p class="text-xs text-gray-500 text-center mb-3">
+								Updates report and creates new version in history
+							</p>
+							<button class="btn-secondary w-full" onclick={clearComparison}>
+								🔄 Start Over
+							</button>
+						{/if}
+					{/if}
+				</div>
+			
 			{:else if activeTab === 'chat'}
 				<div class="flex flex-col h-full">
 					<!-- Messages -->
@@ -1195,6 +1546,36 @@ $: if ((visible || autoLoad) && completenessPending) {
 										<div class="prose prose-invert max-w-none text-sm {msg.error ? 'text-red-300' : 'text-gray-100'}">
 											{@html renderMarkdown(msg.content)}
 										</div>
+										{#if msg.editProposal}
+											<div class="mt-3 pt-3 border-t border-gray-700">
+												<div class="bg-gray-900/50 rounded p-2 mb-2 border border-gray-700/50">
+													<p class="text-xs font-medium text-gray-400 mb-1">Proposed Change:</p>
+													<div class="text-xs text-gray-300 max-h-32 overflow-y-auto whitespace-pre-wrap font-mono bg-black/20 p-2 rounded">
+														{msg.editProposal}
+													</div>
+												</div>
+												<button
+													onclick={() => {
+														updateReportContent(msg.editProposal, 'chat');
+														msg.applied = true;
+													}}
+													disabled={msg.applied}
+													class="w-full px-3 py-1.5 {msg.applied ? 'bg-green-600/50 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'} text-white text-xs font-medium rounded transition-colors flex items-center justify-center gap-2"
+												>
+													{#if msg.applied}
+														<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+														</svg>
+														Applied
+													{:else}
+														<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+														</svg>
+														Apply Change
+													{/if}
+												</button>
+											</div>
+										{/if}
 										{#if msg.sources && msg.sources.length > 0}
 											<div class="mt-2 pt-2 border-t border-gray-700">
 												<p class="text-xs font-medium text-gray-400 mb-1">Sources:</p>
@@ -1250,6 +1631,50 @@ $: if ((visible || autoLoad) && completenessPending) {
 					</div>
 				</div>
 			{/if}
+		</div>
+	</div>
+{/if}
+
+<!-- Add Prior Report Modal -->
+{#if showAddPriorModal}
+	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-[20000]" onclick={cancelEdit}>
+		<div class="bg-gray-900 rounded-lg border border-gray-700 w-[600px] max-h-[80vh] overflow-y-auto" onclick={(e) => e.stopPropagation()}>
+			<div class="p-4 border-b border-gray-700 flex items-center justify-between">
+				<h3 class="text-lg font-semibold text-white">{editingPriorIndex !== null ? 'Edit Prior Report' : 'Add Prior Report'}</h3>
+				<button onclick={cancelEdit} class="text-gray-400 hover:text-white">×</button>
+			</div>
+			<div class="p-4 space-y-4">
+				<div>
+					<label class="block text-sm font-medium text-gray-300 mb-2">Study Date *</label>
+					<input 
+						type="date" 
+						bind:value={newPrior.date} 
+						class="input-dark w-full date-input" 
+						required 
+						style="color-scheme: dark;"
+					/>
+				</div>
+				<div>
+					<label class="block text-sm font-medium text-gray-300 mb-2">Scan Type</label>
+					<input 
+						type="text" 
+						bind:value={newPrior.scan_type} 
+						placeholder="e.g., CT Chest, MRI Brain, etc." 
+						class="input-dark w-full" 
+					/>
+				</div>
+				<div>
+					<label class="block text-sm font-medium text-gray-300 mb-2">Report Text *</label>
+					<textarea bind:value={newPrior.text} placeholder="Paste prior report here..." class="input-dark w-full" rows="12"></textarea>
+					<span class="text-xs text-gray-500">{newPrior.text.length} characters</span>
+				</div>
+			</div>
+			<div class="p-4 border-t border-gray-700 flex gap-3 justify-end">
+				<button class="btn-secondary" onclick={cancelEdit}>Cancel</button>
+				<button class="btn-primary" onclick={addPriorReport} disabled={!newPrior.text.trim() || !newPrior.date}>
+					{editingPriorIndex !== null ? 'Update Report' : 'Add Report'}
+				</button>
+			</div>
 		</div>
 	</div>
 {/if}

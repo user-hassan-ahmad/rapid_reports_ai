@@ -70,7 +70,9 @@
 			return;
 		}
 
-		if (selectedVersionId === version.id && selectedVersion) {
+		if (selectedVersionId === version.id) {
+			selectedVersionId = null;
+			selectedVersion = null;
 			return;
 		}
 
@@ -181,6 +183,11 @@
 								<span class="text-sm font-semibold text-white">Version {version.version_number}</span>
 								{#if version.is_current}
 									<span class="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-200 font-medium uppercase tracking-wide">Current</span>
+								{/if}
+								{#if version.notes === 'Manual content update'}
+									<span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-200 font-medium uppercase tracking-wide">Manual Edit</span>
+								{:else if version.notes === 'Chat edit'}
+									<span class="text-[10px] px-2 py-0.5 rounded-full bg-green-500/30 text-green-200 font-medium uppercase tracking-wide">Chat Edit</span>
 								{/if}
 							</div>
 							<p class="text-xs text-gray-400 mt-1">{formatDate(version.created_at)}</p>

@@ -228,6 +228,48 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 		responseVisible = true;
 		dispatch('historyRestored', detail);
 	}
+
+	async function handleReportSave(event) {
+		const newContent = event.detail.content;
+		if (!reportId) return;
+
+		try {
+			reportUpdateLoading = true;
+			const headers = {
+				'Content-Type': 'application/json',
+				...(($token) ? { 'Authorization': `Bearer ${$token}` } : {})
+			};
+
+			const res = await fetch(`${API_URL}/api/reports/${reportId}/update`, {
+				method: 'PUT',
+				headers,
+				body: JSON.stringify({ content: newContent })
+			});
+
+			const data = await res.json();
+
+			if (data.success) {
+				response = data.report.report_content;
+				versionHistoryRefreshKey += 1;
+				dispatch('historyUpdate', { count: (data.version ? data.version.version_number : 0) });
+				
+				// For templated reports, we also need to notify the parent (TemplatedReportTab)
+				// so it can update its state if needed (e.g. if it tracks content)
+				// TemplatedReportTab listens to 'historyRestored' but not a generic update.
+				// However, since 'response' is bound in TemplatedReportTab, updating it here updates it there.
+				// And +page.svelte binds 'templatedResponseOverride' to TemplatedReportTab.
+				// So the update should propagate up.
+				
+				if (toast) toast.show('Report updated successfully');
+			} else {
+				error = data.error || 'Failed to update report';
+			}
+		} catch (err) {
+			error = `Failed to update: ${err.message}`;
+		} finally {
+			reportUpdateLoading = false;
+		}
+	}
 </script>
 
 <div class="p-6">
@@ -384,7 +426,8 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 				on:copy={copyToClipboard}
 				on:clear={clearResponse}
 				on:restore={(event) => handleHistoryRestore(event.detail)}
-			on:historyUpdate={(event) => dispatch('historyUpdate', event.detail)}
+				on:historyUpdate={(event) => dispatch('historyUpdate', event.detail)}
+				on:save={handleReportSave}
 			/>
 		</div>
 	{/if}

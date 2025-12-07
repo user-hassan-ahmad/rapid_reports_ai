@@ -39,6 +39,9 @@ from .crud import (
     get_report_versions,
     get_report_version,
     set_current_report_version,
+    # Validation Status CRUD
+    update_validation_status,
+    get_validation_status,
 )
 
 # Export Base so it can be imported from database module
@@ -84,5 +87,7 @@ __all__ = [
     "get_report_versions",
     "get_report_version",
     "set_current_report_version",
+    "update_validation_status",
+    "get_validation_status",
 ]
 

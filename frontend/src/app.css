@@ -30,6 +30,13 @@ body {
   @apply focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-black;
 }
 
+.btn-sm {
+  @apply px-2 py-1 text-sm rounded-lg font-medium transition-all duration-300;
+  @apply bg-white/10 text-gray-200 border border-white/20;
+  @apply hover:bg-white/20 hover:border-white/30;
+  @apply hover:text-white;
+}
+
 .btn-danger {
   @apply px-4 py-2 rounded-lg font-medium transition-all duration-300;
   @apply bg-red-600 text-white;
@@ -59,6 +66,21 @@ body {
 
 .input-dark:disabled {
   @apply opacity-50 cursor-not-allowed;
+}
+
+/* Date input styling for dark theme */
+input[type="date"].date-input {
+  color-scheme: dark;
+}
+
+input[type="date"].date-input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+input[type="date"].date-input::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
 }
 
 /* Select Styles */

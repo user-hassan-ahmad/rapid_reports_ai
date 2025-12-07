@@ -233,6 +233,7 @@ class Report(Base):
     input_data = Column(JSON, nullable=True)  # Variables/message used
     report_content = Column(Text, nullable=False)  # Generated report
     description = Column(String(500), nullable=True)  # Brief contextual description for history display
+    validation_status = Column(JSON, nullable=True)  # Async validation status: {status, violations_count, started_at, completed_at, error}
     
     # Foreign keys
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -266,6 +267,7 @@ class Report(Base):
             "input_data": self.input_data,
             "report_content": self.report_content,
             "description": self.description,
+            "validation_status": self.validation_status,
             "created_at": self.created_at.isoformat(),
         }
 

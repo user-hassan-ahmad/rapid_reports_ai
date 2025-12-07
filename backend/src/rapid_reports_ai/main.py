@@ -513,40 +513,6 @@ async def chat(
             signature=signature_value
         )
         
-        # Always run validation on generated report
-        from .enhancement_utils import validate_report_protocol, apply_protocol_fixes
-        findings = request.variables.get('FINDINGS', '') if request.variables else ''
-        
-        try:
-            validation_result = await validate_report_protocol(
-                report_content=report_output.report_content,
-                scan_type=report_output.scan_type,
-                findings=findings
-            )
-            
-            # Apply fixes if violations found, otherwise use original report
-            if validation_result.violations:
-                violation_count = len(validation_result.violations)
-                print(f"\n{'='*80}")
-                print(f"⚠️ PROTOCOL VIOLATIONS DETECTED: {violation_count} violation(s)")
-                print(f"{'='*80}")
-                for i, violation in enumerate(validation_result.violations, 1):
-                    print(f"  {i}. [{violation.violation_type}] {violation.location}")
-                    print(f"     Issue: {violation.issue}")
-                print(f"{'='*80}\n")
-                print(f"Applying fixes...")
-                report_output = await apply_protocol_fixes(
-                    report_output=report_output,
-                    validation_result=validation_result
-                )
-                print(f"✅ Fixes applied successfully")
-            else:
-                print("✅ No violations found, using original report")
-        except Exception as validation_error:
-            # If validation fails, log error but continue with original report
-            print(f"⚠️ Validation failed: {validation_error}")
-            print("Continuing with original report output")
-        
         # Build context title: scan type + description
         context_title = None
         if report_output.scan_type:
@@ -583,6 +549,30 @@ async def chat(
                     description=context_title
                 )
                 report_id = str(saved_report.id)
+                
+                # Queue async background validation
+                from .enhancement_utils import validate_report_async
+                from .database.crud import update_validation_status
+                
+                # Set initial validation status to pending
+                findings = request.variables.get('FINDINGS', '') if request.variables else ''
+                update_validation_status(
+                    db=db,
+                    report_id=report_id,
+                    status="pending",
+                    violations_count=0
+                )
+                
+                # Queue background validation task
+                asyncio.create_task(
+                    validate_report_async(
+                        report_id=report_id,
+                        report_output=report_output,
+                        findings=findings,
+                        scan_type=report_output.scan_type or ""
+                    )
+                )
+                print(f"✅ Report saved, validation queued in background")
             except Exception as e:
                 print(f"Failed to save report: {e}")
         else:
@@ -600,7 +590,8 @@ async def chat(
             "report_id": report_id,
             "response": report_output.report_content,
             "model": model_full_name,
-            "use_case": use_case_name
+            "use_case": use_case_name,
+            "validation_status": "pending" if report_id else None
         }
     
     except Exception as e:
@@ -1146,40 +1137,6 @@ async def generate_report_from_template(
             signature=current_user.signature
         )
         
-        # Always run validation on generated report
-        from .enhancement_utils import validate_report_protocol, apply_protocol_fixes
-        findings = request.variables.get('FINDINGS', '')
-        
-        try:
-            validation_result = await validate_report_protocol(
-                report_content=report_output.report_content,
-                scan_type=report_output.scan_type,
-                findings=findings
-            )
-            
-            # Apply fixes if violations found, otherwise use original report
-            if validation_result.violations:
-                violation_count = len(validation_result.violations)
-                print(f"\n{'='*80}")
-                print(f"⚠️ PROTOCOL VIOLATIONS DETECTED: {violation_count} violation(s)")
-                print(f"{'='*80}")
-                for i, violation in enumerate(validation_result.violations, 1):
-                    print(f"  {i}. [{violation.violation_type}] {violation.location}")
-                    print(f"     Issue: {violation.issue}")
-                print(f"{'='*80}\n")
-                print(f"Applying fixes...")
-                report_output = await apply_protocol_fixes(
-                    report_output=report_output,
-                    validation_result=validation_result
-                )
-                print(f"✅ Fixes applied successfully")
-            else:
-                print("✅ No violations found, using original report")
-        except Exception as validation_error:
-            # If validation fails, log error but continue with original report
-            print(f"⚠️ Validation failed: {validation_error}")
-            print("Continuing with original report output")
-        
         # Build context title: template name + description
         context_title = None
         if template.name:
@@ -1215,6 +1172,30 @@ async def generate_report_from_template(
                     description=context_title
                 )
                 report_id = str(saved_report.id)
+                
+                # Queue async background validation
+                from .enhancement_utils import validate_report_async
+                from .database.crud import update_validation_status
+                
+                # Set initial validation status to pending
+                findings = request.variables.get('FINDINGS', '')
+                update_validation_status(
+                    db=db,
+                    report_id=report_id,
+                    status="pending",
+                    violations_count=0
+                )
+                
+                # Queue background validation task
+                asyncio.create_task(
+                    validate_report_async(
+                        report_id=report_id,
+                        report_output=report_output,
+                        findings=findings,
+                        scan_type=report_output.scan_type or ""
+                    )
+                )
+                print(f"✅ Report saved, validation queued in background")
             except Exception as e:
                 print(f"Failed to save report: {e}")
         else:
@@ -1238,7 +1219,8 @@ async def generate_report_from_template(
             "response": report_output.report_content,
             "model": model_full_name,
             "template_id": str(template.id),
-            "report_id": report_id
+            "report_id": report_id,
+            "validation_status": "pending" if report_id else None
         }
     
     except Exception as e:
@@ -1646,6 +1628,29 @@ async def delete_report_endpoint(
         return {"success": False, "error": str(e)}
 
 
+@app.get("/api/reports/{report_id}/validation-status")
+async def get_validation_status(
+    report_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get validation status for a report"""
+    try:
+        from .database.crud import get_validation_status
+        
+        status = get_validation_status(db, report_id, user_id=str(current_user.id))
+        
+        if status is None:
+            return {"success": False, "error": "Report not found"}
+        
+        return {
+            "success": True,
+            "validation_status": status
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 # ============================================================================
 # REPORT ENHANCEMENT API ENDPOINTS
 # ============================================================================
@@ -1657,6 +1662,7 @@ class ChatMessageRequest(BaseModel):
 
 class UpdateReportRequest(BaseModel):
     content: str
+    edit_source: Optional[str] = None  # 'manual' or 'chat', defaults to 'manual'
 
 
 class ApplyActionItem(BaseModel):
@@ -1676,7 +1682,8 @@ async def enhance_report(
     report_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    test_mode: bool = False  # Add test mode parameter
+    test_mode: bool = False,  # Add test mode parameter
+    skip_completeness: bool = False  # Skip completeness analysis if True
 ):
     """
     Three-phase enhancement: Extract Findings → Search Guidelines → Analyze Completeness
@@ -1748,22 +1755,24 @@ async def enhance_report(
                     ]
                 })
             
-            # Mock completeness analysis
-            completeness_analysis = {
-                "analysis": f"**Report Review for {report_id[:8]}...**\n\nThis is a test analysis. The report has been reviewed for completeness.\n\n**Checklist Questions:**\n- Have all relevant measurements been included?\n- Are follow-up recommendations clear?\n- Have diagnostic criteria been addressed?\n\n**Suggested Additions:**\n- Consider adding specific measurements if applicable\n- Review follow-up intervals based on findings",
-                "structured": {
-                    "checklist": [
-                        "Have all relevant measurements been included?",
-                        "Are follow-up recommendations clear?",
-                        "Have diagnostic criteria been addressed?"
-                    ],
-                    "suggestions": [
-                        "Consider adding specific measurements if applicable",
-                        "Review follow-up intervals based on findings"
-                    ],
-                    "feedback": "Report structure looks good. Consider the checklist items above."
+            # Mock completeness analysis (only if not skipped)
+            completeness_analysis = None
+            if not skip_completeness:
+                completeness_analysis = {
+                    "analysis": f"**Report Review for {report_id[:8]}...**\n\nThis is a test analysis. The report has been reviewed for completeness.\n\n**Checklist Questions:**\n- Have all relevant measurements been included?\n- Are follow-up recommendations clear?\n- Have diagnostic criteria been addressed?\n\n**Suggested Additions:**\n- Consider adding specific measurements if applicable\n- Review follow-up intervals based on findings",
+                    "structured": {
+                        "checklist": [
+                            "Have all relevant measurements been included?",
+                            "Are follow-up recommendations clear?",
+                            "Have diagnostic criteria been addressed?"
+                        ],
+                        "suggestions": [
+                            "Consider adding specific measurements if applicable",
+                            "Review follow-up intervals based on findings"
+                        ],
+                        "feedback": "Report structure looks good. Consider the checklist items above."
+                    }
                 }
-            }
             
             return {
                 "success": True,
@@ -1813,36 +1822,42 @@ async def enhance_report(
         else:
             print("enhance_report: Phase 2 skipped - no findings to search")
         
-        completeness_analysis = COMPLETENESS_RESULTS.get(report_id)
-        completeness_pending = report_id in COMPLETENESS_TASKS
+        completeness_analysis = None
+        completeness_pending = False
+        
+        if not skip_completeness:
+            completeness_analysis = COMPLETENESS_RESULTS.get(report_id)
+            completeness_pending = report_id in COMPLETENESS_TASKS
 
-        if not completeness_analysis and not completeness_pending:
-            if anthropic_api_key:
-                print("enhance_report: Phase 3 - Scheduling Claude completeness analysis...")
-                snapshot = copy.deepcopy(guidelines_data)
-                task = asyncio.create_task(
-                    run_completeness_async(
-                        report_id,
+            if not completeness_analysis and not completeness_pending:
+                if anthropic_api_key:
+                    print("enhance_report: Phase 3 - Scheduling Claude completeness analysis...")
+                    snapshot = copy.deepcopy(guidelines_data)
+                    task = asyncio.create_task(
+                        run_completeness_async(
+                            report_id,
+                            report_content,
+                            snapshot,
+                            anthropic_api_key
+                        )
+                    )
+                    COMPLETENESS_TASKS[report_id] = task
+                    completeness_pending = True
+                else:
+                    print("enhance_report: Phase 3 - Anthropic API key missing, returning fallback analysis")
+                    fallback_result = await analyze_report_completeness(
                         report_content,
-                        snapshot,
+                        guidelines_data,
                         anthropic_api_key
                     )
-                )
-                COMPLETENESS_TASKS[report_id] = task
-                completeness_pending = True
-            else:
-                print("enhance_report: Phase 3 - Anthropic API key missing, returning fallback analysis")
-                fallback_result = await analyze_report_completeness(
-                    report_content,
-                    guidelines_data,
-                    anthropic_api_key
-                )
-                COMPLETENESS_RESULTS[report_id] = fallback_result
-                completeness_analysis = fallback_result
-                completeness_pending = False
+                    COMPLETENESS_RESULTS[report_id] = fallback_result
+                    completeness_analysis = fallback_result
+                    completeness_pending = False
 
-        completeness_analysis = completeness_analysis or COMPLETENESS_RESULTS.get(report_id)
-        completeness_pending = completeness_pending or (report_id in COMPLETENESS_TASKS)
+            completeness_analysis = completeness_analysis or COMPLETENESS_RESULTS.get(report_id)
+            completeness_pending = completeness_pending or (report_id in COMPLETENESS_TASKS)
+        else:
+            print("enhance_report: Skipping completeness analysis (skip_completeness=True)")
 
         # Store enhancement results for chat context
         ENHANCEMENT_RESULTS[report_id] = {
@@ -1855,7 +1870,10 @@ async def enhance_report(
         print(f"enhance_report: ✅ Pipeline complete (Phases 1+2) in {pipeline_time:.2f}s")
         print(f"  ├─ Phase 1 (Extraction): {phase1_time:.2f}s")
         print(f"  ├─ Phase 2 (Guidelines): {phase2_time:.2f}s")
-        print(f"  └─ Phase 3 (Analysis): {'async (running)' if completeness_pending else 'completed'}")
+        if skip_completeness:
+            print(f"  └─ Phase 3 (Analysis): skipped")
+        else:
+            print(f"  └─ Phase 3 (Analysis): {'async (running)' if completeness_pending else 'completed'}")
 
         return {
             "success": True,
@@ -1892,12 +1910,26 @@ async def get_completeness_status(
     }
 
 
+class ChatRequest(BaseModel):
+    message: str
+    history: Optional[List[Dict[str, Any]]] = None
+
+class ComparisonRequest(BaseModel):
+    prior_reports: List[dict]  # [{text: str, date?: str}]
+
+class ApplyComparisonRequest(BaseModel):
+    revised_report: str
+
+class ReportUpdate(BaseModel):
+    """Tool for updating the report content."""
+    content: str = Field(..., description="The ENTIRE text of the updated radiology report. Do NOT provide a diff or snippet. You must provide the FULL report content.")
+
 @app.post("/api/reports/{report_id}/chat")
 async def chat_about_report(
     report_id: str,
-    request: ChatMessageRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Chat interface for iterative refinement powered by Groq Qwen
@@ -1980,6 +2012,11 @@ async def chat_about_report(
             "When discussing findings, reference the clinical guidelines context provided below. "
             "If asked about management or next steps, prioritize the guideline recommendations. "
             "If unsure, say so clearly.\n\n"
+            "### Report Editing Instructions:\n"
+            "If the user explicitly asks you to modify, rewrite, or update the report content, you MUST use the `update_report` tool to provide the full updated report content.\n"
+            "CRITICAL: The `content` argument MUST contain the ENTIRE report text, not just the changed paragraph. Do NOT truncate the report. Do NOT provide a diff.\n"
+            "Do NOT output the report text in the chat message if you are calling the tool.\n"
+            "For general questions or discussion, just reply normally.\n\n"
             f"### Original Report:\n{report.report_content}"
             f"{enhancement_context}"
         )
@@ -2004,34 +2041,173 @@ async def chat_about_report(
             "content": request.message
         })
         
+        # Define tools
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "update_report",
+                    "description": "Updates the full content of the radiology report.",
+                    "parameters": ReportUpdate.model_json_schema()
+                }
+            }
+        ]
+        
+        print(f"\n💬 Chat request received:")
+        print(f"  Model: qwen/qwen3-32b (Groq)")
+        print(f"  User message: {request.message[:100]}...")
+        print(f"  History: {len(request.history) if request.history else 0} messages")
+        
         response = client.chat.completions.create(
             model="qwen/qwen3-32b",
             max_tokens=1500,
             temperature=0.3,
             messages=messages,
-            stop=None  # Ensure no special stop sequences
+            tools=tools,
+            tool_choice="auto",
+            stop=None
         )
         
-        response_text = response.choices[0].message.content
+        print(f"✅ Qwen response received")
         
-        # Filter out Qwen's thinking tokens using <think></think> tags
-        # Qwen3-32B uses XML-like tags to demarcate internal thought processes (CoT)
+        message = response.choices[0].message
+        response_text = message.content
+        tool_calls = message.tool_calls
+        
+        edit_proposal = None
+        
+        if tool_calls:
+            for tool_call in tool_calls:
+                if tool_call.function.name == "update_report":
+                    print(f"\n{'='*80}")
+                    print(f"🔧 Chat tool call detected: update_report")
+                    print(f"{'='*80}")
+                    print(f"User request: {request.message[:200]}")
+                    print(f"Chat history length: {len(request.history) if request.history else 0}")
+                    
+                    # Try GPT OSS first for report generation
+                    try:
+                        from .enhancement_utils import (
+                            MODEL_CONFIG,
+                            _get_model_provider,
+                            _get_api_key_for_provider,
+                            _run_agent_with_model,
+                        )
+                        from .enhancement_models import ReportOutput
+                        import asyncio
+                        import time
+                        
+                        gpt_oss_start = time.time()
+                        model_name = MODEL_CONFIG["ACTION_APPLIER"]
+                        provider = _get_model_provider(model_name)
+                        api_key = _get_api_key_for_provider(provider)
+                        
+                        print(f"📊 Using GPT OSS for report update:")
+                        print(f"  Model: {model_name}")
+                        print(f"  Provider: {provider}")
+                        
+                        system_prompt = (
+                            "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
+                            "You are a radiology reporting assistant. Generate the COMPLETE updated report text "
+                            "incorporating the user's requested changes. Preserve exact structure, formatting style, and organization. "
+                            "Return ONLY the full report text. No commentary, no thinking blocks, no tags—just the complete revised report."
+                        )
+                        
+                        user_prompt = f"""ORIGINAL REPORT:
+{report.report_content}
+{enhancement_context}
+
+USER REQUEST:
+{request.message}
+
+TASK: Generate the complete updated report incorporating the requested changes.
+Maintain the same structure, formatting, and style as the original report."""
+                        
+                        model_settings = {"temperature": 0.3}
+                        if provider == 'cerebras':
+                            model_settings["max_completion_tokens"] = 4096
+                            model_settings["reasoning_effort"] = "high"
+                            print(f"  Settings: reasoning_effort=high, max_completion_tokens=4096")
+                        else:
+                            model_settings["max_tokens"] = 4096
+                            print(f"  Settings: {model_settings}")
+                        
+                        # Call GPT OSS with timeout protection
+                        print(f"⏳ Calling GPT OSS (timeout: 60s)...")
+                        result = await asyncio.wait_for(
+                            _run_agent_with_model(
+                                model_name=model_name,
+                                output_type=ReportOutput,
+                                system_prompt=system_prompt,
+                                user_prompt=user_prompt,
+                                api_key=api_key,
+                                use_thinking=False,
+                                model_settings=model_settings
+                            ),
+                            timeout=60.0  # 60 second timeout
+                        )
+                        
+                        edit_proposal = result.output.report_content
+                        gpt_oss_elapsed = time.time() - gpt_oss_start
+                        
+                        print(f"✅ GPT OSS report update completed in {gpt_oss_elapsed:.2f}s")
+                        print(f"  └─ Updated report length: {len(edit_proposal)} chars")
+                        print(f"{'='*80}\n")
+                        
+                    except asyncio.TimeoutError:
+                        print(f"⏱️ GPT OSS timeout after 60s, falling back to Qwen tool call")
+                        print(f"{'='*80}\n")
+                        # Fallback to Qwen's tool call
+                        try:
+                            args = json.loads(tool_call.function.arguments)
+                            edit_proposal = args.get("content")
+                            if edit_proposal:
+                                print(f"✅ Using Qwen fallback (length: {len(edit_proposal)} chars)")
+                        except json.JSONDecodeError as e:
+                            print(f"❌ Failed to parse Qwen tool call: {e}")
+                            
+                    except Exception as e:
+                        import traceback
+                        print(f"❌ GPT OSS report update failed: {type(e).__name__}")
+                        print(f"  Error: {str(e)[:500]}")
+                        print(f"  Falling back to Qwen tool call...")
+                        traceback.print_exc()
+                        print(f"{'='*80}\n")
+                        # Fallback to Qwen's tool call
+                        try:
+                            args = json.loads(tool_call.function.arguments)
+                            edit_proposal = args.get("content")
+                            if edit_proposal:
+                                print(f"✅ Using Qwen fallback (length: {len(edit_proposal)} chars)")
+                        except json.JSONDecodeError as e:
+                            print(f"❌ Failed to parse Qwen tool call: {e}")
+                else:
+                    # Other tool calls (shouldn't happen, but handle gracefully)
+                    print(f"⚠️ Unexpected tool call: {tool_call.function.name}")
+        
+        # If no tool calls but Qwen might have provided content in response
+        if not edit_proposal and not tool_calls:
+            print(f"💬 Chat response only (no tool calls)")
+            print(f"  Response length: {len(response_text) if response_text else 0} chars")
+        
+        # Filter out Qwen's thinking tokens if present in text response
         if response_text:
-            # Remove everything between <think> and </think> tags
             response_text = re.sub(
                 r'<think>.*?</think>',
                 '',
                 response_text,
                 flags=re.DOTALL | re.IGNORECASE
-            )
-            # Clean up any extra whitespace left behind
-            response_text = response_text.strip()
+            ).strip()
+            
+        if not response_text and edit_proposal:
+            response_text = "I've drafted the changes for you. Please review and apply them below."
         
         sources = []
         
         return {
             "success": True,
             "response": response_text,
+            "edit_proposal": edit_proposal,
             "sources": sources
         }
         
@@ -2095,6 +2271,79 @@ async def apply_report_actions(
     except Exception as e:
         db.rollback()
         return {"success": False, "error": str(e)}
+
+
+@app.post("/api/reports/{report_id}/compare")
+async def compare_with_priors(
+    report_id: str,
+    request: ComparisonRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Compare current report to prior reports with guideline integration."""
+    report = get_report(db, report_id, user_id=str(current_user.id))
+    if not report:
+        return {"success": False, "error": "Report not found"}
+    
+    if not request.prior_reports:
+        return {"success": False, "error": "No prior reports provided"}
+    
+    try:
+        guidelines_data = ENHANCEMENT_RESULTS.get(report_id, {}).get('guidelines', [])
+        
+        from .enhancement_utils import analyze_interval_changes
+        result = await analyze_interval_changes(
+            current_report=report.report_content,
+            prior_reports=request.prior_reports,
+            guidelines_data=guidelines_data
+        )
+        
+        # Cache result
+        ENHANCEMENT_RESULTS[f"{report_id}_comparison"] = result.model_dump()
+        
+        return {
+            "success": True,
+            "comparison": result.model_dump(),
+            "used_guidelines": len(guidelines_data) > 0
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
+@app.post("/api/reports/{report_id}/apply-comparison")
+async def apply_comparison_revision(
+    report_id: str,
+    request: ApplyComparisonRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Apply revised report from comparison analysis directly to database."""
+    report = get_report(db, report_id, user_id=str(current_user.id))
+    if not report:
+        return {"success": False, "error": "Report not found"}
+    
+    # Update report content
+    report.report_content = request.revised_report
+    db.commit()
+    
+    # Create version in history
+    create_report_version(
+        db,
+        report=report,
+        actions_applied=None,
+        notes="Applied comparison analysis with interval changes"
+    )
+    
+    return {
+        "success": True,
+        "updated_content": request.revised_report,
+        "version_created": True
+    }
 
 
 @app.get("/api/reports/{report_id}/versions")
@@ -2214,11 +2463,18 @@ async def update_report_content(
 
         version = None
         try:
+            # Determine notes based on edit source
+            edit_source = request.edit_source or "manual"
+            if edit_source == "chat":
+                notes = "Chat edit"
+            else:
+                notes = "Manual content update"
+            
             version = create_report_version(
                 db,
                 report=report,
                 actions_applied=None,
-                notes="Manual content update"
+                notes=notes
             )
         except Exception as exc:
             print(f"Warning: failed to create report version snapshot for manual update: {exc}")
