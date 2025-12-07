@@ -82,7 +82,45 @@ load_dotenv()
 # Lifespan handler for database initialization
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: create database tables
+    # Startup: run Alembic migrations, then create tables
+    from pathlib import Path
+    from alembic.config import Config
+    from alembic import command
+    
+    try:
+        # Get the backend directory (parent of src)
+        # __file__ is backend/src/rapid_reports_ai/main.py
+        # So we go: parent.parent.parent = backend/
+        backend_dir = Path(__file__).parent.parent.parent
+        alembic_ini_path = backend_dir / "alembic.ini"
+        
+        if not alembic_ini_path.exists():
+            # Try alternative path (in case working directory is different)
+            current_dir = Path.cwd()
+            if (current_dir / "alembic.ini").exists():
+                alembic_ini_path = current_dir / "alembic.ini"
+                backend_dir = current_dir
+            else:
+                raise FileNotFoundError(f"Could not find alembic.ini. Tried: {alembic_ini_path}, {current_dir / 'alembic.ini'}")
+        
+        # Change to backend directory for Alembic to work correctly
+        original_cwd = os.getcwd()
+        os.chdir(str(backend_dir))
+        
+        # Run migrations
+        alembic_cfg = Config(str(alembic_ini_path))
+        print("Running database migrations...")
+        command.upgrade(alembic_cfg, "head")
+        print("✓ Migrations completed successfully!")
+        
+        # Restore original working directory
+        os.chdir(original_cwd)
+    except Exception as e:
+        print(f"⚠️  Migration warning: {e}")
+        print("Continuing with table creation (tables may already exist)...")
+        # Don't fail startup if migrations fail - tables might already exist
+    
+    # Create database tables (fallback for initial setup)
     Base.metadata.create_all(bind=engine)
     yield
     # Shutdown: nothing to do yet
