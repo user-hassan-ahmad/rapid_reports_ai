@@ -63,12 +63,22 @@ def main():
     
     if current_version:
         print("✓ Database already has Alembic version tracked")
-        print("Running normal migration upgrade...")
+        # Check if we're already at head to avoid unnecessary upgrade
         os.chdir(script_dir)
         alembic_cfg = Config("alembic.ini")
-        command.upgrade(alembic_cfg, "head")
-        print("✓ Migration completed!")
-        return
+        from alembic.script import ScriptDirectory
+        script = ScriptDirectory.from_config(alembic_cfg)
+        head_revision = script.get_current_head()
+        
+        if current_version == head_revision:
+            print(f"✓ Database already at head revision ({head_revision}), no migration needed")
+            return
+        else:
+            print(f"Current version: {current_version}, Head: {head_revision}")
+            print("Running migration upgrade to head...")
+            command.upgrade(alembic_cfg, "head")
+            print("✓ Migration completed!")
+            return
     
     # No version tracked - need to determine correct starting point
     print("\nNo Alembic version found. Checking database state...")
@@ -114,10 +124,17 @@ def main():
         command.stamp(alembic_cfg, target_revision)
         print(f"✓ Database stamped to {target_revision}")
         
-        # Now run upgrade to head
-        print("\nRunning upgrade to head...")
-        command.upgrade(alembic_cfg, "head")
-        print("✓ Migration completed!")
+        # Check if we need to upgrade further
+        from alembic.script import ScriptDirectory
+        script = ScriptDirectory.from_config(alembic_cfg)
+        head_revision = script.get_current_head()
+        
+        if target_revision == head_revision:
+            print(f"✓ Database already at head revision ({head_revision}), no upgrade needed")
+        else:
+            print(f"\nRunning upgrade from {target_revision} to {head_revision}...")
+            command.upgrade(alembic_cfg, "head")
+            print("✓ Migration completed!")
     else:
         print("\nRunning full migration from scratch...")
         os.chdir(script_dir)

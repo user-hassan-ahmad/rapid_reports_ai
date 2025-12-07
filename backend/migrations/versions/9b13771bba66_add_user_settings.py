@@ -20,7 +20,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column('users', sa.Column('settings', sa.JSON(), nullable=True))
+    # Check if column already exists (idempotent migration)
+    # This handles cases where the column was created via Base.metadata.create_all()
+    from sqlalchemy import inspect
+    
+    conn = op.get_bind()
+    inspector = inspect(conn)
+    columns = [col['name'] for col in inspector.get_columns('users')]
+    
+    if 'settings' not in columns:
+        op.add_column('users', sa.Column('settings', sa.JSON(), nullable=True))
+    else:
+        print("Column 'settings' already exists in 'users' table, skipping...")
 
 
 def downgrade() -> None:
