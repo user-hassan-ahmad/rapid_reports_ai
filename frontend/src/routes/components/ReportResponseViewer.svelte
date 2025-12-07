@@ -16,6 +16,9 @@
 	export let updateLoading = false;
 	export let reportId = null;
 	export let versionHistoryRefreshKey = 0;
+	
+	// Track previous response to detect manual updates
+	let previousResponse = '';
 
 	marked.setOptions({
 		breaks: true,
@@ -119,6 +122,7 @@
 	let pollInterval = null;
 	let pollTimeout = null;
 	let hideNotificationTimeout = null;
+	let wasGenerating = false; // Track if report was just generated (not updated)
 	const POLL_INTERVAL = 2000; // 2 seconds
 	const POLL_TIMEOUT = 30000; // 30 seconds max
 	const NOTIFICATION_HIDE_DELAY = 5000; // 5 seconds to auto-hide notification
@@ -207,11 +211,34 @@
 		validationStatus = null;
 		stopPolling();
 		clearHideNotificationTimeout();
+		wasGenerating = false; // Reset generation tracking
+		previousResponse = ''; // Reset response tracking
 	}
 
-	// Start polling when reportId is set and response exists
-	$: if (reportId && response && !generationLoading && reportId === lastSummaryReportId) {
-		startPolling();
+	// Track generation completion: only poll when generation transitions from true → false
+	$: {
+		if (generationLoading) {
+			wasGenerating = true; // Mark that we're generating
+		} else if (wasGenerating && !generationLoading && reportId && response && reportId === lastSummaryReportId) {
+			// Generation just completed - start polling for validation status
+			wasGenerating = false; // Reset flag
+			startPolling();
+		}
+	}
+	
+	// Clear validation status when report is updated manually/via chat (response changes but not from generation)
+	$: if (reportId && response && reportId === lastSummaryReportId && !generationLoading && !wasGenerating) {
+		// If response changed but we weren't generating and had a previous response, it's a manual/chat update
+		// This prevents clearing on initial load (when previousResponse is empty)
+		if (previousResponse !== '' && previousResponse !== response) {
+			validationStatus = null;
+			stopPolling();
+			clearHideNotificationTimeout();
+		}
+		// Update previousResponse after checking (but only if we have a response)
+		if (response) {
+			previousResponse = response;
+		}
 	}
 
 	// Stop polling when component unmounts or reportId changes

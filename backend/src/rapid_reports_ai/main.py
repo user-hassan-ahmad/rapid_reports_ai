@@ -2466,6 +2466,11 @@ async def update_report_content(
         
         # Update content
         report.report_content = request.content
+        
+        # Clear validation_status since content changed (manual/chat edits invalidate previous validation)
+        # Validation only applies to the original AI-generated content
+        report.validation_status = None
+        
         db.commit()
         db.refresh(report)
 
