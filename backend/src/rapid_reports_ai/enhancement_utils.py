@@ -2591,9 +2591,9 @@ async def generate_auto_report(
     
     print(f"generate_auto_report: Starting with {primary_model} ({provider})")
     
-    # Apply signature if provided
+    # Apply signature if provided, otherwise remove placeholder
     final_prompt = user_prompt
-    if signature:
+    if signature and signature.strip():
         if '{{SIGNATURE}}' in final_prompt:
             final_prompt = final_prompt.replace('{{SIGNATURE}}', signature)
             print(f"generate_auto_report: Signature replaced placeholder in prompt")
@@ -2603,7 +2603,12 @@ async def generate_auto_report(
             final_prompt = final_prompt.rstrip() + "\n\n" + signature
             print(f"generate_auto_report: Signature appended to prompt (placeholder not found)")
     else:
-        print(f"generate_auto_report: No signature provided")
+        # Remove placeholder if no signature provided to prevent AI from seeing it or hallucinating
+        if '{{SIGNATURE}}' in final_prompt:
+            final_prompt = final_prompt.replace('{{SIGNATURE}}', '').strip()
+            print(f"generate_auto_report: Removed signature placeholder (no signature provided)")
+        else:
+            print(f"generate_auto_report: No signature provided")
     
     # Try primary model with retry logic
     try:
@@ -2718,10 +2723,15 @@ async def generate_templated_report(
     
     print(f"generate_templated_report: Starting with {primary_model} ({provider})")
     
-    # Apply signature if provided
+    # Apply signature if provided, otherwise remove placeholder
     final_prompt = user_prompt
-    if signature and '{{SIGNATURE}}' in final_prompt:
+    if signature and signature.strip() and '{{SIGNATURE}}' in final_prompt:
         final_prompt = final_prompt.replace('{{SIGNATURE}}', signature)
+        print(f"generate_templated_report: Signature replaced placeholder")
+    elif '{{SIGNATURE}}' in final_prompt:
+        # Remove placeholder if no signature provided to prevent AI from seeing it or hallucinating
+        final_prompt = final_prompt.replace('{{SIGNATURE}}', '').strip()
+        print(f"generate_templated_report: Removed signature placeholder (no signature provided)")
     
     # Try primary model with retry logic
     try:
