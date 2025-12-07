@@ -1,6 +1,6 @@
 {
-  "installCommand": "npm install",
-  "buildCommand": "npm run build",
+  "installCommand": "bun install",
+  "buildCommand": "bun run build",
   "framework": "sveltekit",
   "env": {
     "PUBLIC_API_URL": "https://api.rad-flow.uk"

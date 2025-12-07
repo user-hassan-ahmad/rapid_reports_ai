@@ -9,14 +9,12 @@ SvelteKit frontend for the Rapid Reports AI application.
 1. Install dependencies:
 ```bash
 cd frontend
-npm install
-# or
 bun install
 ```
 
 2. Start development server:
 ```bash
-npm run dev
+bun run dev
 ```
 
 The frontend will be available at `http://localhost:5173`
@@ -25,13 +23,13 @@ The frontend will be available at `http://localhost:5173`
 
 ### Available Scripts
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm run check` - Type check with Svelte
-- `npm run lint` - Lint code
-- `npm run format` - Format code with Prettier
-- `npm run test` - Run tests
+- `bun run dev` - Start development server
+- `bun run build` - Build for production
+- `bun run preview` - Preview production build
+- `bun run check` - Type check with Svelte
+- `bun run lint` - Lint code
+- `bun run format` - Format code with Prettier
+- `bun run test` - Run tests
 
 ### Tech Stack
 
@@ -79,8 +77,8 @@ Access in code with `import.meta.env.PUBLIC_API_URL`.
 ## Building for Production
 
 ```bash
-npm run build
-npm run preview
+bun run build
+bun run preview
 ```
 
 The built files will be in the `build` directory.
