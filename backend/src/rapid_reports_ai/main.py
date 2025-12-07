@@ -116,7 +116,10 @@ async def lifespan(app: FastAPI):
         # Restore original working directory
         os.chdir(original_cwd)
     except Exception as e:
+        import traceback
         print(f"⚠️  Migration warning: {e}")
+        print(f"Full traceback:")
+        traceback.print_exc()
         print("Continuing with table creation (tables may already exist)...")
         # Don't fail startup if migrations fail - tables might already exist
     
