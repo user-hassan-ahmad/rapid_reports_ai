@@ -350,8 +350,6 @@ function renderMarkdown(md: string) {
 			hasLoaded = false;
 		}
 		
-		staleAnalysis = false;
-		
 		console.log('loadEnhancements: Starting for reportId:', reportId);
 		loading = true;
 		error = null;
@@ -848,14 +846,17 @@ onDestroy(() => {
 	
 	// Track last report version to detect changes
 	let lastReportVersion = -1;
-	let staleAnalysis = false;
 	
 	// Reset hasLoaded when reportVersion changes (form resubmitted)
 	$: if (reportVersion !== lastReportVersion) {
 		console.log('ReportEnhancementSidebar: reportVersion changed from', lastReportVersion, 'to', reportVersion);
 		if (reportId && lastReportVersion !== -1) {
-			// Don't auto-reload, just mark as stale
-			staleAnalysis = true;
+			// Auto-reload when report version changes
+			hasLoaded = false;
+			invalidateCache();
+			if (visible || autoLoad) {
+				loadEnhancements(true);
+			}
 		} else if (reportId) {
 			// First load for this report ID
 			hasLoaded = false;
@@ -963,16 +964,6 @@ $: if ((visible || autoLoad) && completenessPending) {
 							</svg>
 						{/if}
 					</button>
-					{#if staleAnalysis}
-						<button
-							type="button"
-							onclick={() => loadEnhancements(true)}
-							class="px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-600 hover:bg-purple-700 text-white transition-colors animate-pulse"
-							title="Analysis is outdated. Click to refresh."
-						>
-							Refresh Analysis
-						</button>
-					{/if}
 					<button
 						type="button"
 						onclick={() => dispatch('openVersionHistory')}
