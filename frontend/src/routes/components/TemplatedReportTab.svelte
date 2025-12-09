@@ -313,6 +313,11 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 		allUniqueTags = Array.from(tagsSet).sort();
 	}
 
+	// Update unique tags whenever templates change
+	$: if (templates) {
+		updateUniqueTags();
+	}
+
 	// Reactive tag counts - recalculates whenever templates array changes
 	// Create a tracking value that includes tag data to detect tag changes
 	let tagCounts = {};
