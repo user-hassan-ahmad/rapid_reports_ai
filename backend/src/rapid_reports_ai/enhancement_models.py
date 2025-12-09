@@ -406,6 +406,19 @@ class FindingComparison(BaseModel):
         description="Model's contextual analysis of the change and clinical significance, including trend analysis if multiple priors"
     )
 
+class ComparisonAnalysisStage1(BaseModel):
+    """Stage 1: Comparison analysis without revised report"""
+    findings: List[FindingComparison] = Field(
+        description="All findings analyzed with status classification"
+    )
+    summary: str = Field(
+        description="High-level synthesis of changes and clinical implications"
+    )
+    key_changes: List[dict] = Field(
+        default_factory=list,
+        description="Important text changes for UI highlighting: {original, revised, reason}"
+    )
+
 class ComparisonAnalysis(BaseModel):
     """Complete comparison analysis with revised report"""
     findings: List[FindingComparison] = Field(

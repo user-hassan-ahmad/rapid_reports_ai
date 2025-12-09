@@ -46,6 +46,7 @@ from .enhancement_models import (
     PriorState,
     FindingComparison,
     ComparisonAnalysis,
+    ComparisonAnalysisStage1,
 )
 
 # Central Model Configuration Dictionary
@@ -1857,7 +1858,12 @@ async def analyze_interval_changes(
     prior_reports: List[dict],
     guidelines_data: Optional[List[dict]] = None
 ) -> ComparisonAnalysis:
-    """Perform comparison analysis with guideline integration."""
+    """
+    Perform two-stage comparison analysis with guideline integration.
+    
+    Stage 1: Extract findings, classify changes, generate summary and key changes
+    Stage 2: Generate revised report with proper formatting preservation
+    """
     import os
     import time
     
@@ -1885,25 +1891,33 @@ async def analyze_interval_changes(
                 for protocol in guideline['measurement_protocols']:
                     guidelines_context += f"- {protocol.get('parameter')}: {protocol.get('technique')}\n"
     
-    user_prompt = f"""CURRENT REPORT:
+    # ============================================================================
+    # STAGE 1: Analysis - Extract findings and classify changes
+    # ============================================================================
+    
+    print(f"\n{'='*80}")
+    print(f"🔬 STAGE 1: Comparison Analysis (Findings + Summary)")
+    print(f"{'='*80}")
+    
+    stage1_user_prompt = f"""CURRENT REPORT:
 {current_report}
 
 {priors_text}
 {guidelines_context}
 
-TASK: Perform comprehensive interval comparison analysis. Use calculate_measurement_change tool
-when measurements are present. Produce complete revised report with comparison language integrated."""
+TASK: Analyze interval changes between reports. Extract findings, classify their status, 
+generate summary, and identify key text changes. Use calculate_measurement_change tool for precise measurements."""
     
-    system_prompt = """You are an expert radiologist performing interval comparison analysis.
+    stage1_system_prompt = """You are an expert radiologist performing interval comparison analysis.
 
 CRITICAL: You MUST use British English spelling and terminology throughout all output.
-CRITICAL: Use UK date format (DD/MM/YYYY) for all dates in the revised report.
+CRITICAL: Use UK date format (DD/MM/YYYY) for all dates.
 
 TOOL AVAILABLE: calculate_measurement_change
+Use this tool for precise measurement calculations between prior and current reports.
 
-When you identify measurements in both reports, use this tool for precise calculations.
-Call it with prior_value, prior_unit, current_value, current_unit, and optional dates.
-Returns: absolute_change, percentage_change, growth_rate, days_elapsed
+YOUR TASK: Extract and analyze findings, classify changes, generate summary, identify key changes.
+Do NOT generate the revised report - that will be done separately.
 
 METHODOLOGY:
 
@@ -1914,166 +1928,60 @@ METHODOLOGY:
    CRITICAL: Only classify actual findings (pathology, abnormalities, lesions, masses, etc.)
    Do NOT classify normal structures or organs that remain normal as "stable" findings
    
-   SINGLE PRIOR REPORT:
    For each actual finding, determine status:
    - CHANGED: Present in both, significantly changed
    - STABLE: Present in both, no significant change  
    - NEW: Only in current report
    - NOT_MENTIONED: In prior but not current (explain likely reason)
    
-   MULTIPLE PRIOR REPORTS:
-   When multiple prior reports exist, analyze progression across all timepoints:
-   - Track the finding's appearance/evolution across PRIOR REPORT 1, PRIOR REPORT 2, etc.
-   - Use calculate_measurement_change tool to compute precise changes between each pair of measurements
-   - Calculate growth rates between consecutive scans (e.g., mm/month, %/month)
-   - Identify trends: gradual progression, accelerated growth, stability then change, fluctuating, etc.
-   - Compare current state to most recent prior AND overall trend
-   - Use prior_states list to capture each prior report's state (date, measurement, description)
-   - Use trend field to describe progression pattern with NUMERICAL/STATISTICAL DETAILS:
-     * Include actual measurement values from each prior (e.g., "3.2 cm → 4.1 cm → 5.3 cm")
-     * Include dates for each measurement
-     * Calculate and report percentage changes between timepoints
-     * Calculate growth rates (e.g., "0.57 mm/day", "1.2 cm/month")
-     * Report time intervals between scans
-     * Describe pattern: linear growth, exponential, accelerating, decelerating, stable
-     * Example: "Gradually increasing from 3.2 cm (15/09/2024) to 4.1 cm (22/09/2024, +28% over 7 days, 1.3 mm/day) to 5.3 cm (current, +29% over 15 days, 0.8 mm/day), showing accelerated growth pattern"
-   - Status should compare current to most recent prior, while trend captures multi-timepoint statistical pattern
-   
-   EXCLUDE FROM CLASSIFICATION:
-   - Normal structures/organs that remain normal (e.g., "bladder normal", "prostate normal")
-   - Structures described as "unremarkable", "within normal limits", "no abnormality"
-   - These should not appear in the findings list at all
-   
-   INCLUDE IN CLASSIFICATION:
-   - Pathological findings (masses, nodules, effusions, obstructions, etc.)
-   - Abnormal measurements or sizes
-   - Any structure with actual pathology or abnormality
+   For multiple prior reports:
+   - Track evolution across all timepoints
+   - Use calculate_measurement_change tool for precise calculations
+   - Calculate growth rates and trends
+   - Use prior_states list for multiple priors
+   - Include numerical details in trend field
 
-3. MEASUREMENT EXTRACTION AND TREND CALCULATION
-   CRITICAL: When extracting measurements, follow exact schema requirements:
-   
-   Measurement Object Structure (REQUIRED when measurement exists):
+3. MEASUREMENT EXTRACTION
+   Measurement Object Structure:
    {
-     "value": "5.3",           # MUST be a STRING, not a number (e.g., "5.3" not 5.3)
-     "unit": "cm",              # Unit as string (e.g., "cm", "mm", "ml")
-     "raw_text": "5.3 cm"      # REQUIRED: Original phrase from report (e.g., "measuring 5.3 cm")
+     "value": "5.3",           # STRING (not number)
+     "unit": "cm",
+     "raw_text": "5.3 cm"     # REQUIRED
    }
-   
-   ALL THREE FIELDS ARE REQUIRED when including a measurement:
-   - value: Convert numeric values to strings (e.g., 5.3 → "5.3", 12 → "12")
-   - unit: Extract unit from report text
-   - raw_text: Include the exact phrase where measurement appears in report
-   
-   Examples:
-   Correct: {"value": "8.5", "unit": "cm", "raw_text": "measuring 8.5 × 7.2 cm"}
-   Wrong: {"value": 8.5, "unit": "cm"}  # Missing raw_text, value is number not string
-   
-   For multiple prior reports with measurements:
-   - Extract measurement from each prior report using Measurement schema
-   - Use calculate_measurement_change tool to compute changes between:
-     * Prior 1 → Prior 2
-     * Prior 2 → Prior 3 (if exists)
-     * Most recent prior → Current
-   - Calculate growth rates: (change_in_size / days_elapsed) for each interval
-   - Synthesize into statistical trend description including:
-     * All measurement values with dates
-     * Percentage changes for each interval
-     * Growth rates (mm/day, cm/month, etc.)
-     * Overall pattern classification (linear, exponential, accelerating, etc.)
-   
-   Example trend output:
-   "Gradually increasing from 3.2 cm (15/09/2024) to 4.1 cm (22/09/2024, +28% over 7 days, 1.3 mm/day) to 5.3 cm (current, +29% over 15 days, 0.8 mm/day). Overall growth rate: 0.95 mm/day over 22 days, showing accelerated growth pattern."
-   
-   PriorState Structure (for multiple priors):
-   {
-     "date": "15/09/2024",      # UK format DD/MM/YYYY
-     "measurement": {            # Optional - only if measurement exists
-       "value": "5.8",           # STRING, not number
-       "unit": "cm",
-       "raw_text": "5.8 × 4.9 cm"
-     },
-     "description": "..."        # Optional description of finding in this prior
-   }
-   
-   FindingComparison Structure:
-   - name: string (e.g., "Right upper lobe nodule")
-   - location: string (e.g., "Right upper lobe, segment 2")
-   - status: one of "changed", "stable", "new", "not_mentioned" (exact match required)
-   - assessment: string (detailed analysis text)
-   - prior_states: List[PriorState] when multiple priors exist (ordered oldest first)
-   - trend: string when multiple priors exist with numerical/statistical details
-   - current_measurement: Measurement object if current report has measurement
-   - prior_measurement: Measurement object if single prior (for backward compatibility)
-   
-   Key Changes Structure:
-   Each item in key_changes must be a dict with:
+
+4. KEY CHANGES
+   Identify 3-5 most important text changes that will need to be made.
+   For each change, provide:
    {
      "original": "text from original report",
-     "revised": "text from revised report", 
-     "reason": "explanation of change"
+     "revised": "suggested revised text", 
+     "reason": "explanation"
    }
 
-4. CLINICAL REASONING
-   Use context-dependent judgment, not arbitrary thresholds
-   Consider finding type, timeframe, and guideline criteria
-
-5. REPORT REVISION
-   CRITICAL: Preserve the exact report structure, formatting style, and organization.
-   
-   COMPARISON SECTION HANDLING:
-   - The Comparison section should be purely factual - list what prior studies are being compared
-   - State dates and scan types only (e.g., "Comparison is made to prior CT chest performed on 15/09/2024")
-   - Do NOT include summary statements, impressions, or clinical interpretation in the Comparison section
-   - Do NOT describe findings or changes in the Comparison section - save that for Findings section
-   - If the report contains "No previous imaging available" or similar, REPLACE it entirely
-   - Use UK date format (DD/MM/YYYY) consistently for all dates
-   
-   STRUCTURE PRESERVATION:
-   - Keep all section headers exactly as they appear (e.g., "Findings:", "Impression:")
-   - Maintain the same section order
-   - Do NOT add or remove sections
-   - Do NOT reorganize content between sections
-   
-   FORMATTING PRESERVATION:
-   - If original uses paragraph format, keep paragraphs (do NOT convert to bullets)
-   - If original uses bullet points, keep bullet points (do NOT convert to paragraphs)
-   - If original uses numbered lists, keep numbered lists
-   - Preserve line breaks and spacing
-   - Match the original writing style (narrative vs. structured)
-   
-   CONTENT INTEGRATION:
-   - Integrate comparison language naturally within existing sentences/paragraphs
-   - Update measurements and descriptions in-place where they appear
-   - Add comparison context without changing the overall structure
-   - Update recommendations in the Impression section, maintaining its format
-
-6. KEY CHANGES
-   Extract 3-5 most important text changes for UI highlighting
-
-OUTPUT: Complete ComparisonAnalysis with findings list, summary, revised_report, and key_changes"""
+OUTPUT: ComparisonAnalysisStage1 with findings, summary, and key_changes (NO revised_report field)"""
     
-    # Get model and API key
+    # Get model and API key for Stage 1
     model_name = MODEL_CONFIG["COMPARISON_ANALYZER"]
     provider = _get_model_provider(model_name)
     api_key = _get_api_key_for_provider(provider)
     
-    model_label = f"{model_name} (Comparison Analyzer)"
-    print(f"analyze_interval_changes: Starting comparison analysis with {model_label}")
+    model_label = f"{model_name} (Stage 1: Analysis)"
+    print(f"  └─ Model: {model_label}")
     print(f"  └─ Prior reports: {len(prior_reports)}")
     print(f"  └─ Guidelines available: {len(guidelines_data) if guidelines_data else 0}")
     print(f"  └─ Current report length: {len(current_report)} chars")
     
-    # Create model instance
+    # Create model instance for Stage 1
     pydantic_model = _create_pydantic_model(model_name, api_key, use_thinking=False)
     
-    # Create agent with tool
-    comparison_agent = Agent(
+    # Create Stage 1 agent with tool
+    stage1_agent = Agent(
         pydantic_model,
-        output_type=ComparisonAnalysis,
-        system_prompt=system_prompt
+        output_type=ComparisonAnalysisStage1,
+        system_prompt=stage1_system_prompt
     )
     
-    @comparison_agent.tool
+    @stage1_agent.tool
     def calculate_measurement_change_tool(
         ctx: RunContext,
         prior_value: float,
@@ -2111,109 +2019,193 @@ OUTPUT: Complete ComparisonAnalysis with findings list, summary, revised_report,
     old_api_key = os.environ.get(env_var_name)
     os.environ[env_var_name] = api_key
     
-    # Retry logic with exponential backoff
+    # Execute Stage 1 with retry logic
     max_retries = 3
     import asyncio
+    stage1_result = None
     
     try:
         for attempt in range(max_retries):
             try:
-                # Run agent with model settings - generous token limits for comprehensive analysis
+                # Run Stage 1 agent
                 model_settings = {"temperature": 0.3}
                 if provider == 'cerebras':
                     model_settings["reasoning_effort"] = "high"
-                    model_settings["max_tokens"] = 6000  # Increased for detailed trend analysis
-                    print(f"  └─ Using Cerebras reasoning_effort=high, max_tokens=6000 for {model_name}")
+                    model_settings["max_tokens"] = 4000  # Focused on analysis, not report
+                    print(f"  └─ Using Cerebras reasoning_effort=high, max_tokens=4000")
                 else:
-                    model_settings["max_tokens"] = 6000  # Increased for detailed trend analysis
+                    model_settings["max_tokens"] = 4000
                     print(f"  └─ Using model settings: {model_settings}")
                 
-                result = await comparison_agent.run(user_prompt, model_settings=model_settings)
-                comparison_analysis: ComparisonAnalysis = result.output
+                result = await stage1_agent.run(stage1_user_prompt, model_settings=model_settings)
+                stage1_result: ComparisonAnalysisStage1 = result.output
                 
-                elapsed = time.time() - start_time
-                print(f"analyze_interval_changes: ✅ Completed with {model_label} in {elapsed:.2f}s")
-                print(f"  └─ Findings analyzed: {len(comparison_analysis.findings)}")
-                print(f"  └─ Changed findings: {len([f for f in comparison_analysis.findings if f.status == 'changed'])}")
-                print(f"  └─ New findings: {len([f for f in comparison_analysis.findings if f.status == 'new'])}")
-                print(f"  └─ Stable findings: {len([f for f in comparison_analysis.findings if f.status == 'stable'])}")
-                print(f"  └─ Revised report length: {len(comparison_analysis.revised_report)} chars")
-                print(f"  └─ Key changes extracted: {len(comparison_analysis.key_changes)}")
+                stage1_elapsed = time.time() - start_time
+                print(f"\n✅ Stage 1 completed in {stage1_elapsed:.2f}s")
+                print(f"  └─ Findings analyzed: {len(stage1_result.findings)}")
+                print(f"  └─ Changed: {len([f for f in stage1_result.findings if f.status == 'changed'])}")
+                print(f"  └─ New: {len([f for f in stage1_result.findings if f.status == 'new'])}")
+                print(f"  └─ Stable: {len([f for f in stage1_result.findings if f.status == 'stable'])}")
+                print(f"  └─ Key changes identified: {len(stage1_result.key_changes)}")
+                break  # Success
                 
-                return comparison_analysis
             except Exception as e:
-                error_str = str(e).lower()
-                error_type = type(e).__name__
-                is_validation_error = (
-                    "validation" in error_str or 
-                    "retries" in error_str or 
-                    "unexpectedmodelbehavior" in error_str.lower() or
-                    "pydantic" in error_str or
-                    "schema" in error_str
-                )
-                
-                # Detailed error logging
-                print(f"\n{'='*80}")
-                print(f"⚠️ Comparison analysis attempt {attempt + 1}/{max_retries} failed")
-                print(f"{'='*80}")
-                print(f"Error Type: {error_type}")
-                print(f"Error Message: {str(e)}")
-                print(f"Is Validation Error: {is_validation_error}")
-                
-                # Log full error details for validation errors
-                if is_validation_error:
-                    print(f"\n🔍 VALIDATION ERROR DETAILS:")
-                    print(f"  This indicates the model output doesn't match the expected schema.")
-                    print(f"  Possible causes:")
-                    print(f"    - Model produced invalid structure for findings list")
-                    print(f"    - Missing required fields (name, location, status, assessment)")
-                    print(f"    - Invalid status value (must be: changed, stable, new, not_mentioned)")
-                    print(f"    - Invalid structure for key_changes (should be List[dict])")
-                    print(f"    - Invalid structure for prior_states (should be List[PriorState])")
-                    print(f"    - Missing revised_report field")
-                    
-                    # Try to extract more details if available
-                    if hasattr(e, '__cause__') and e.__cause__:
-                        print(f"\n  Underlying cause: {type(e.__cause__).__name__}")
-                        print(f"  Cause message: {str(e.__cause__)[:500]}")
-                    if hasattr(e, 'args') and e.args:
-                        print(f"\n  Error args: {e.args}")
-                
-                # Log context information
-                print(f"\n📊 CONTEXT:")
-                print(f"  Model: {model_name}")
-                print(f"  Provider: {provider}")
-                print(f"  Prior reports count: {len(prior_reports)}")
-                print(f"  Current report length: {len(current_report)} chars")
-                print(f"  User prompt length: {len(user_prompt)} chars")
-                print(f"  System prompt length: {len(system_prompt)} chars")
-                print(f"{'='*80}\n")
+                print(f"\n⚠️ Stage 1 attempt {attempt + 1}/{max_retries} failed: {type(e).__name__}: {str(e)[:200]}")
                 
                 if attempt < max_retries - 1:
-                    if is_validation_error:
-                        # For validation errors, still retry but with longer delay
-                        delay = 3.0 * (2 ** attempt)  # Slightly longer delay for validation errors
-                        print(f"⚠️ Retrying in {delay:.1f}s (validation error - model may need more time to produce correct schema)...")
-                    else:
-                        # Retry with exponential backoff for other errors
-                        delay = 2.0 * (2 ** attempt)
-                        print(f"⚠️ Retrying in {delay:.1f}s...")
+                    delay = 2.0 * (2 ** attempt)
+                    print(f"⚠️ Retrying in {delay:.1f}s...")
                     await asyncio.sleep(delay)
                 else:
-                    # All retries exhausted
-                    print(f"\n{'='*80}")
-                    print(f"❌ Comparison analysis failed after {max_retries} attempts")
-                    print(f"{'='*80}")
-                    print(f"Final Error Type: {error_type}")
-                    print(f"Final Error: {str(e)}")
-                    if is_validation_error:
-                        raise Exception(
-                            f"Comparison analysis failed: Model output validation error after {max_retries} retries. "
-                            f"The model may be producing output that doesn't match the expected schema. "
-                            f"Error: {str(e)}"
-                        )
-                    else:
-                        raise Exception(f"Comparison analysis failed after {max_retries} retries: {str(e)}")
+                    print(f"❌ Stage 1 failed after {max_retries} attempts")
+                    raise Exception(f"Stage 1 (Analysis) failed after {max_retries} retries: {str(e)}")
+        
+        if not stage1_result:
+            raise Exception("Stage 1 (Analysis) did not produce a result")
+        
+        # ============================================================================
+        # STAGE 2: Report Generation - Generate revised report with formatting preservation
+        # ============================================================================
+        
+        print(f"\n{'='*80}")
+        print(f"📝 STAGE 2: Revised Report Generation")
+        print(f"{'='*80}")
+        
+        # Build compact context for Stage 2
+        findings_context = ", ".join([
+            f"{f.name} ({f.status})"
+            for f in stage1_result.findings[:8]  # Top 8 findings
+        ])
+        
+        stage2_user_prompt = f"""Here is the original radiology report that needs interval comparison integrated:
+
+--- START ORIGINAL REPORT ---
+{current_report}
+--- END ORIGINAL REPORT ---
+
+Context for your revision (do NOT include this in output):
+- Overall summary: {stage1_result.summary[:300]}
+- Key findings: {findings_context}
+- Prior report date(s): {', '.join([format_date_uk(p.get('date', '')) for p in sorted_priors[:2]])}
+
+Your task: Generate the complete updated report with interval comparison language naturally integrated.
+- Update the Comparison section with prior dates (UK format)
+- Integrate interval changes in the Findings section
+- Update Impression as appropriate
+- Preserve exact formatting and structure of the original
+
+Output ONLY the revised report text below (nothing else):"""
+        
+        stage2_system_prompt = """CRITICAL: You MUST use British English spelling and terminology throughout all output.
+
+You are a radiology reporting assistant. Your task is to generate ONLY the complete updated report text.
+
+WHAT TO OUTPUT:
+- The complete revised radiology report (and nothing else)
+- Do NOT include the prior reports
+- Do NOT include analysis summaries
+- Do NOT include metadata or commentary
+- Just the report itself, exactly as it would appear in clinical practice
+
+FORMATTING PRESERVATION (HIGHEST PRIORITY):
+- Preserve exact structure, formatting style, and organization of the original report
+- Keep all section headers exactly as they appear (e.g., "TECHNIQUE:", "FINDINGS:", "IMPRESSION:")
+- If original uses paragraphs, keep paragraphs (do NOT convert to bullets)
+- If original uses bullet points, keep bullet points (do NOT convert to paragraphs)
+- Maintain the same section order and spacing
+- Do NOT add or remove sections
+- Match the original writing style (narrative vs. structured)
+
+COMPARISON INTEGRATION:
+- Update the Comparison section with prior report dates (UK format DD/MM/YYYY)
+- Integrate comparison language naturally within the Findings section
+- Update measurements and descriptions in-place
+- Update recommendations in Impression section as appropriate
+
+OUTPUT FORMAT: Return ONLY the full revised report text. No prior reports, no commentary, no thinking blocks, no tags."""
+        
+        # Use same model for Stage 2
+        stage2_model_label = f"{model_name} (Stage 2: Report)"
+        print(f"  └─ Model: {stage2_model_label}")
+        
+        revised_report = None
+        for attempt in range(max_retries):
+            try:
+                # Run Stage 2 with Pydantic AI using simple string output
+                model_settings = {"temperature": 0.3}
+                if provider == 'cerebras':
+                    model_settings["reasoning_effort"] = "high"
+                    model_settings["max_tokens"] = 4096
+                    print(f"  └─ Using Cerebras reasoning_effort=high, max_tokens=4096")
+                else:
+                    model_settings["max_tokens"] = 4096
+                    print(f"  └─ Using model settings: {model_settings}")
+                
+                result = await _run_agent_with_model(
+                    model_name=model_name,
+                    output_type=str,
+                    system_prompt=stage2_system_prompt,
+                    user_prompt=stage2_user_prompt,
+                    api_key=api_key,
+                    use_thinking=(provider == 'groq'),
+                    model_settings=model_settings
+                )
+                
+                revised_report = str(result.output).strip()
+                
+                # Clean up thinking tags if present
+                if revised_report and provider == 'groq':
+                    revised_report = re.sub(
+                        r'<think>.*?</think>',
+                        '',
+                        revised_report,
+                        flags=re.DOTALL | re.IGNORECASE
+                    ).strip()
+                
+                if not revised_report:
+                    raise ValueError("Stage 2 returned empty report")
+                
+                stage2_elapsed = time.time() - start_time
+                print(f"\n✅ Stage 2 completed in {stage2_elapsed:.2f}s")
+                print(f"  └─ Revised report length: {len(revised_report)} chars")
+                break  # Success
+                
+            except Exception as e:
+                print(f"\n⚠️ Stage 2 attempt {attempt + 1}/{max_retries} failed: {type(e).__name__}: {str(e)[:200]}")
+                
+                if attempt < max_retries - 1:
+                    delay = 2.0 * (2 ** attempt)
+                    print(f"⚠️ Retrying in {delay:.1f}s...")
+                    await asyncio.sleep(delay)
+                else:
+                    print(f"❌ Stage 2 failed after {max_retries} attempts")
+                    raise Exception(f"Stage 2 (Report Generation) failed after {max_retries} retries: {str(e)}")
+        
+        if not revised_report:
+            raise Exception("Stage 2 (Report Generation) did not produce a result")
+        
+        # ============================================================================
+        # COMBINE STAGES: Merge Stage 1 analysis with Stage 2 report
+        # ============================================================================
+        
+        final_result = ComparisonAnalysis(
+            findings=stage1_result.findings,
+            summary=stage1_result.summary,
+            revised_report=revised_report,
+            key_changes=stage1_result.key_changes
+        )
+        
+        total_elapsed = time.time() - start_time
+        print(f"\n{'='*80}")
+        print(f"✅ Two-stage comparison completed in {total_elapsed:.2f}s")
+        print(f"{'='*80}")
+        print(f"  └─ Total findings: {len(final_result.findings)}")
+        print(f"  └─ Key changes: {len(final_result.key_changes)}")
+        print(f"  └─ Revised report: {len(final_result.revised_report)} chars")
+        print(f"{'='*80}\n")
+        
+        return final_result
+        
     finally:
         # Restore environment variable
         if old_api_key is not None:

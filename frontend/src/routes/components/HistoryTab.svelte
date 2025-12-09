@@ -36,7 +36,7 @@
 		return marked.parse(md);
 	}
 
-	function getDateRange(filter) {
+	function getDateRange(filter, customStartDate, customEndDate) {
 		const now = new Date();
 		let start = null;
 		let end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
@@ -53,8 +53,8 @@
 				break;
 			case 'custom':
 				// Use custom dates if provided
-				if (startDate) start = new Date(startDate);
-				if (endDate) end = new Date(endDate);
+				if (customStartDate) start = new Date(customStartDate);
+				if (customEndDate) end = new Date(customEndDate);
 				break;
 			default:
 				return { start: null, end: null };
@@ -64,17 +64,17 @@
 	}
 
 	// Client-side filtering function
-	function filterReports(reports) {
+	function filterReports(reports, typeFilter, search, dateFilterValue, customStartDate, customEndDate) {
 		let filtered = [...reports];
 		
 		// Filter by report type
-		if (reportTypeFilter !== 'all') {
-			filtered = filtered.filter(report => report.report_type === reportTypeFilter);
+		if (typeFilter !== 'all') {
+			filtered = filtered.filter(report => report.report_type === typeFilter);
 		}
 		
 		// Filter by search term (search in description, title, content)
-		if (searchTerm) {
-			const searchLower = searchTerm.toLowerCase();
+		if (search) {
+			const searchLower = search.toLowerCase();
 			filtered = filtered.filter(report => {
 				const description = (report.description || '').toLowerCase();
 				const content = (report.content || '').toLowerCase();
@@ -83,8 +83,8 @@
 		}
 		
 		// Filter by date
-		if (dateFilter !== 'all') {
-			const { start, end } = getDateRange(dateFilter);
+		if (dateFilterValue !== 'all') {
+			const { start, end } = getDateRange(dateFilterValue, customStartDate, customEndDate);
 			if (start || end) {
 				filtered = filtered.filter(report => {
 					const reportDate = new Date(report.created_at);
@@ -98,9 +98,9 @@
 		return filtered;
 	}
 	
-	// Computed filtered reports
+	// Computed filtered reports - explicitly depend on all filter variables
 	let reports = [];
-	$: reports = filterReports(allReports);
+	$: reports = filterReports(allReports, reportTypeFilter, searchTerm, dateFilter, startDate, endDate);
 
 	function handleViewReport(report) {
 		selectedReport = report;
