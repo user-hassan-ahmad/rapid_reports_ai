@@ -3,6 +3,7 @@
 	import { browser } from '$app/environment';
 	import TemplateEditor from './TemplateEditor.svelte';
 	import { token } from '$lib/stores/auth';
+	import { settingsStore } from '$lib/stores/settings';
 	import { getTagColor, getTagColorWithOpacity } from '$lib/utils/tagColors.js';
 	import { API_URL } from '$lib/config';
 
@@ -13,34 +14,10 @@
 	export let initialEditTemplate = null;
 	export let cameFromTab = null;
 
-
-	async function loadUserSettings() {
-		if (!browser) return;
-		try {
-			const headers = { 'Content-Type': 'application/json' };
-			if ($token) {
-				headers['Authorization'] = `Bearer ${$token}`;
-			}
-			
-			const response = await fetch(`${API_URL}/api/settings`, {
-				headers
-			});
-			
-			if (response.ok) {
-				const data = await response.json();
-				if (data.success && data.tag_colors) {
-					customTagColors = data.tag_colors || {};
-				}
-			}
-		} catch (err) {
-			console.error('Failed to load user settings:', err);
-		}
-	}
-
 	onMount(() => {
-		// Only load if not provided as prop or empty
-		if (!customTagColors || Object.keys(customTagColors).length === 0) {
-			loadUserSettings();
+		// Only load settings if customTagColors not provided as prop
+		if ((!customTagColors || Object.keys(customTagColors).length === 0) && !$settingsStore.settings) {
+			settingsStore.loadSettings();
 		}
 	});
 
@@ -101,7 +78,6 @@
 				alert('Failed to delete template: ' + data.error);
 			}
 		} catch (err) {
-			console.error('Failed to delete template:', err);
 			alert('Failed to delete template');
 		}
 	}

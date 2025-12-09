@@ -3,6 +3,8 @@
 	import { browser } from '$app/environment';
 	import TemplateForm from './TemplateForm.svelte';
 	import { token } from '$lib/stores/auth';
+	import { templatesStore } from '$lib/stores/templates';
+	import { settingsStore } from '$lib/stores/settings';
 	import { getTagColor, getTagColorWithOpacity } from '$lib/utils/tagColors.js';
 	import { API_URL } from '$lib/config';
 
@@ -30,8 +32,10 @@ export let externalResponseVersion = 0;
 	// and changes will propagate automatically via two-way binding
 
 	let selectedTemplate = null;
-	let templates = [];
-	let loadingTemplates = false;
+	
+	// Subscribe to templates store
+	$: templates = $templatesStore.templates || [];
+	$: loadingTemplates = $templatesStore.loading || false;
 	
 	// Form state - manage in parent like Quick Reports to preserve across re-renders
 	let variableValues; // No default - prevents Svelte from resetting on re-render
@@ -52,7 +56,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	let lastTemplatesRefreshKey = 0;
 	$: if (browser && templatesRefreshKey > 0 && templatesRefreshKey !== lastTemplatesRefreshKey) {
 		lastTemplatesRefreshKey = templatesRefreshKey;
-		loadTemplates();
+		templatesStore.refreshTemplates();
 	}
 	
 	// Store variableValues per template ID to preserve when switching templates
@@ -118,7 +122,9 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	let searchQuery = '';
 	let selectedTags = [];
 	let allUniqueTags = [];
-	let customTagColors = {};
+	
+	// Subscribe to settings store for tag colors
+	$: customTagColors = ($settingsStore.settings && $settingsStore.settings.tag_colors) || {};
 	
 	// View state
 	let viewMode = 'grid'; // 'grid' or 'kanban'
@@ -295,93 +301,6 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	
 	function handleMouseUp() {
 		isDragging = false;
-	}
-
-	async function loadUserSettings() {
-		try {
-			const headers = { 'Content-Type': 'application/json' };
-			if ($token) {
-				headers['Authorization'] = `Bearer ${$token}`;
-			}
-			
-			const response = await fetch(`${API_URL}/api/settings`, {
-				headers
-			});
-			
-			if (response.ok) {
-				const data = await response.json();
-				if (data.success && data.tag_colors) {
-					customTagColors = data.tag_colors || {};
-				}
-			}
-		} catch (err) {
-			// Silent fail
-		}
-	}
-
-	async function loadTemplates() {
-		loadingTemplates = true;
-		try {
-			const headers = { 'Content-Type': 'application/json' };
-			if ($token) {
-				headers['Authorization'] = `Bearer ${$token}`;
-			}
-			
-			const response = await fetch(`${API_URL}/api/templates`, {
-				headers
-			});
-			
-			if (!response.ok) {
-				templates = [];
-				return;
-			}
-			
-			const data = await response.json();
-			if (data.success) {
-				// Create new array reference to ensure reactivity triggers
-				templates = [...(data.templates || [])];
-				
-				// If we have a selectedTemplate, update it with the latest data from templates array
-				// BUT DON'T call handleTemplateSelect - just update the reference silently to preserve variableValues
-				if (selectedTemplate && selectedTemplate.id) {
-					const updatedTemplate = templates.find(t => t.id === selectedTemplate.id);
-					if (updatedTemplate) {
-						const templateId = selectedTemplate.id;
-						
-						// Preserve variableValues BEFORE updating template reference
-						if (variableValues && Object.keys(variableValues).length > 0) {
-							// Check if ANY values are non-empty (not just whitespace)
-							const hasRealValues = Object.values(variableValues).some(v => v && v.trim().length > 0);
-							if (hasRealValues) {
-								variableValuesByTemplate[templateId] = { ...variableValues };
-							} else {
-								// Still preserve them in case they were intentionally cleared
-								variableValuesByTemplate[templateId] = { ...variableValues };
-							}
-						}
-						
-						// CRITICAL: Set lastTemplateId BEFORE updating selectedTemplate
-						// This ensures the reactive statement sees it's the same template when it runs synchronously
-						if (!lastTemplateId || lastTemplateId !== templateId) {
-							lastTemplateId = templateId;
-						}
-						
-						// Now update template reference - reactive statement will see lastTemplateId matches
-						selectedTemplate = updatedTemplate;
-					}
-				}
-				
-				updateUniqueTags(); // This will trigger reactive tag counts update
-			} else {
-				templates = [];
-				updateUniqueTags(); // Ensure tags update even on error
-			}
-		} catch (err) {
-			templates = [];
-			updateUniqueTags(); // Ensure tags update even on error
-		} finally {
-			loadingTemplates = false;
-		}
 	}
 
 	function updateUniqueTags() {
@@ -732,8 +651,6 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 				templates = [...templates]; // Trigger reactivity
 			}
 			optimisticPinStates.delete(templateId);
-			
-			console.warn(`Failed to ${optimisticState.pendingState ? 'pin' : 'unpin'} template. Reverted to original state.`);
 		}
 	}
 	
@@ -798,7 +715,6 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 				revertOptimisticPin(templateId);
 			}
 		} catch (err) {
-			console.error('Failed to toggle pin:', err);
 			// Network error - revert optimistic update
 			revertOptimisticPin(templateId);
 		} finally {
@@ -836,8 +752,13 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 
 	onMount(async () => {
 		if (browser) {
-		await loadUserSettings();
-		await loadTemplates();
+			// Load stores if empty
+			if (!$settingsStore.settings) {
+				await settingsStore.loadSettings();
+			}
+			if (!$templatesStore.templates || $templatesStore.templates.length === 0) {
+				await templatesStore.loadTemplates();
+			}
 			
 			// Set up global mouse handlers for dragging
 			window.addEventListener('mousemove', handleMouseMove);

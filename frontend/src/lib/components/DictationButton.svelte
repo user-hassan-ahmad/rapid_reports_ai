@@ -124,7 +124,7 @@
 					}
 				}
 			} catch (e) {
-				console.error('Error parsing WebSocket message:', e);
+				// Error parsing WebSocket message
 			}
 		};
 
@@ -258,7 +258,6 @@
 			}
 		} catch (err) {
 			error = (err instanceof Error ? err.message : 'Failed to process audio') || 'Failed to process audio';
-			console.error('Error processing pre-recorded audio:', err);
 		} finally {
 			isProcessing = false;
 			audioChunks = [];

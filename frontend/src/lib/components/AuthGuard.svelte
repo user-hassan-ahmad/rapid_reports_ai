@@ -8,15 +8,12 @@
 	
 	// Redirect if not authenticated
 	onMount(() => {
-		console.log('🛡️ AuthGuard mounted, isAuthenticated:', $isAuthenticated);
 		// Give a small delay to allow auth store to initialize
 		setTimeout(() => {
 			if (!$isAuthenticated) {
-				console.log('❌ Not authenticated, redirecting to /login');
 				checkingAuth = false;
 				goto('/login');
 			} else {
-				console.log('✅ Authenticated, rendering content');
 				checkingAuth = false;
 			}
 		}, 50); // Small delay to allow auth store to sync
@@ -24,7 +21,6 @@
 
 	// Don't render content if not authenticated
 	$: shouldRender = $isAuthenticated && !checkingAuth;
-	$: console.log('🛡️ AuthGuard shouldRender:', shouldRender, 'isAuthenticated:', $isAuthenticated, 'checkingAuth:', checkingAuth);
 </script>
 
 {#if checkingAuth}

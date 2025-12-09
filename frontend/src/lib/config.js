@@ -13,13 +13,3 @@ const isDevelopment = import.meta.env.DEV;
 // For development, use localhost
 export const API_URL = envApiUrl || (isProduction ? 'https://api.rad-flow.uk' : 'http://localhost:8000');
 
-// Debug: Always log API URL to help troubleshoot
-console.log('🔍 API Configuration:', {
-	API_URL,
-	PUBLIC_API_URL: envApiUrl,
-	MODE: import.meta.env.MODE,
-	DEV: isDevelopment,
-	PROD: isProduction,
-	VERCEL_ENV: import.meta.env.VERCEL_ENV
-});
-

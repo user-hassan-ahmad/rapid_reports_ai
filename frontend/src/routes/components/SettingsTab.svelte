@@ -1,6 +1,7 @@
 <script>
 	import { onMount, createEventDispatcher } from 'svelte';
 	import { token, user } from '$lib/stores/auth';
+	import { settingsStore } from '$lib/stores/settings';
 	import { streamingMode } from '$lib/stores/dictation';
 	import { API_URL } from '$lib/config';
 	
@@ -9,7 +10,6 @@
 	let fullName = '';
 	let signature = '';
 	let autoSave;      // Don't initialize - let it be undefined initially
-	let settingsLoading = true;  // Track if we're loading settings
 	let loading = false;
 	let message = '';
 	let messageType = ''; // 'success' or 'error'
@@ -18,37 +18,17 @@
 	let deepgramApiKey = '';
 	let hasDeepgramKey = false;
 	
-	async function loadSettings() {
-		settingsLoading = true;
-		try {
-			const headers = { 'Content-Type': 'application/json' };
-			if ($token) {
-				headers['Authorization'] = `Bearer ${$token}`;
-			}
-			
-			const response = await fetch(`${API_URL}/api/settings`, {
-				headers
-			});
-			
-			if (response.ok) {
-				const data = await response.json();
-				console.log('[SettingsTab] Loaded settings from API:', data);
-				if (data.success) {
-					// Always load from API to get latest values
-					fullName = data.full_name || '';
-					signature = data.signature || '';
-					autoSave = data.auto_save !== undefined ? data.auto_save : true;
-					// Track which keys are configured (but don't load the keys themselves)
-					hasDeepgramKey = data.has_deepgram_key || false;
-					console.log('[SettingsTab] Set values - autoSave:', autoSave);
-				}
-			}
-		} catch (err) {
-			console.error('Failed to load settings:', err);
-			// Set defaults if load fails
-			autoSave = true;
-		} finally {
-			settingsLoading = false;
+	// Subscribe to settings store
+	$: settingsLoading = $settingsStore ? $settingsStore.loading : true;
+	
+	// Update local state from store
+	$: {
+		const settings = $settingsStore.settings;
+		if (settings) {
+			fullName = settings.full_name || '';
+			signature = settings.signature || '';
+			autoSave = settings.auto_save !== undefined ? settings.auto_save : true;
+			hasDeepgramKey = settings.has_deepgram_key || false;
 		}
 	}
 
@@ -57,16 +37,7 @@
 		message = '';
 		messageType = '';
 		
-		console.log('[SettingsTab] Saving settings - autoSave:', autoSave);
-		
 		try {
-			const headers = { 
-				'Content-Type': 'application/json',
-			};
-			if ($token) {
-				headers['Authorization'] = `Bearer ${$token}`;
-			}
-			
 			const payload = {
 				full_name: fullName,
 				signature: signature,
@@ -75,42 +46,29 @@
 				// Omit entirely if empty to avoid deleting existing key
 				deepgram_api_key: deepgramApiKey && deepgramApiKey.trim() ? deepgramApiKey.trim() : undefined
 			};
-			console.log('[SettingsTab] Sending payload:', payload);
 			
-			const response = await fetch(`${API_URL}/api/settings`, {
-				method: 'POST',
-				headers,
-				body: JSON.stringify(payload)
-			});
+			const result = await settingsStore.updateSettings(payload);
 			
-			const data = await response.json();
-			console.log('[SettingsTab] Save response:', data);
-			
-			if (data.success) {
+			if (result.success) {
 				message = 'Settings saved successfully!';
 				messageType = 'success';
-				// Update with the returned values from the save response
-				autoSave = data.auto_save;
-				// Update API key status flag
-				hasDeepgramKey = data.has_deepgram_key || false;
 				// Clear API key field after successful save (don't keep it in memory)
 				deepgramApiKey = '';
-				// Dispatch event to parent to reload settings
+				// Dispatch event to parent
 				dispatch('settingsUpdated', {
-					auto_save: data.auto_save
+					auto_save: autoSave
 				});
 				setTimeout(() => {
 					message = '';
 					messageType = '';
 				}, 3000);
 			} else {
-				message = data.error || 'Failed to save settings';
+				message = result.error || 'Failed to save settings';
 				messageType = 'error';
 			}
 		} catch (err) {
 			message = 'Failed to save settings. Please try again.';
 			messageType = 'error';
-			console.error('Error:', err);
 		} finally {
 			loading = false;
 		}
@@ -126,54 +84,41 @@
 		messageType = '';
 
 		try {
-			const headers = { 
-				'Content-Type': 'application/json',
-			};
-			if ($token) {
-				headers['Authorization'] = `Bearer ${$token}`;
-			}
-
 			// Set the key to empty string to delete it
 			const payload = {
 				deepgram_api_key: ''
 			};
 
-			const response = await fetch(`${API_URL}/api/settings`, {
-				method: 'POST',
-				headers,
-				body: JSON.stringify(payload)
-			});
+			const result = await settingsStore.updateSettings(payload);
 
-			const data = await response.json();
-
-			if (data.success) {
+			if (result.success) {
 				message = `Deepgram API key deleted successfully.`;
 				messageType = 'success';
-				// Update API key status flag
-				hasDeepgramKey = data.has_deepgram_key || false;
-				// Dispatch event to parent to reload settings
+				// Dispatch event to parent
 				dispatch('settingsUpdated', {
-					auto_save: data.auto_save
+					auto_save: autoSave
 				});
 				setTimeout(() => {
 					message = '';
 					messageType = '';
 				}, 3000);
 			} else {
-				message = data.error || `Failed to delete Deepgram API key`;
+				message = result.error || `Failed to delete Deepgram API key`;
 				messageType = 'error';
 			}
 		} catch (err) {
 			message = `Failed to delete Deepgram API key. Please try again.`;
 			messageType = 'error';
-			console.error('Error:', err);
 		} finally {
 			loading = false;
 		}
 	}
 
-	onMount(() => {
-		loadSettings();
+	onMount(async () => {
+		// Load settings if empty
+		if (!$settingsStore.settings) {
+			await settingsStore.loadSettings();
+		}
 	});
 </script>
 

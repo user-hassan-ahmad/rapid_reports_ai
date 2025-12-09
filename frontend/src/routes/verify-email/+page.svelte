@@ -43,7 +43,6 @@
 			}
 		} catch (err) {
 			error = 'Failed to connect to server';
-			console.error('Error:', err);
 		} finally {
 			loading = false;
 		}

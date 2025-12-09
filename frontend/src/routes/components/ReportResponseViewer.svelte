@@ -72,6 +72,7 @@
 		}
 
 		try {
+			/** @type {Record<string, string>} */
 			const headers = { 'Content-Type': 'application/json' };
 			if ($token) {
 				headers['Authorization'] = `Bearer ${$token}`;
@@ -85,7 +86,6 @@
 			historyAvailable = historyCount > 1;
 			dispatch('historyUpdate', { count: historyCount });
 		} catch (err) {
-			console.error('Failed to load history summary', err);
 			historyCount = 0;
 			historyAvailable = false;
 			dispatch('historyUpdate', { count: historyCount });
@@ -131,6 +131,7 @@
 		if (!reportId) return;
 
 		try {
+			/** @type {Record<string, string>} */
 			const headers = { 'Content-Type': 'application/json' };
 			if ($token) {
 				headers['Authorization'] = `Bearer ${$token}`;
@@ -164,7 +165,7 @@
 				}
 			}
 		} catch (err) {
-			console.error('Failed to check validation status:', err);
+			// Failed to check validation status
 		}
 	}
 
@@ -252,6 +253,7 @@
 		if (!reportId) return;
 		
 		try {
+			/** @type {Record<string, string>} */
 			const headers = { 'Content-Type': 'application/json' };
 			if ($token) {
 				headers['Authorization'] = `Bearer ${$token}`;
@@ -266,7 +268,7 @@
 				dispatch('restore', { report: data.report });
 			}
 		} catch (err) {
-			console.error('Failed to reload fixed version:', err);
+			// Failed to reload fixed version
 		}
 	}
 </script>

@@ -136,7 +136,8 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 				model: selectedModel
 			};
 
-		const headers = { 'Content-Type': 'application/json' };
+		/** @type {Record<string, string>} */
+			const headers = { 'Content-Type': 'application/json' };
 		if ($token) {
 			headers['Authorization'] = `Bearer ${$token}`;
 		}

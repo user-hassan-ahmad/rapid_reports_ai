@@ -1,6 +1,7 @@
 <script>
 	import { onMount, createEventDispatcher } from 'svelte';
 	import { token } from '$lib/stores/auth';
+	import { reportsStore } from '$lib/stores/reports';
 	import { marked } from 'marked';
 	import Toast from '$lib/components/Toast.svelte';
 	import { API_URL } from '$lib/config';
@@ -8,8 +9,6 @@
 	const dispatch = createEventDispatcher();
 	
 	let toast;
-	let reports = [];
-	let loading = true;
 	let selectedReport = null;
 	let selectedReports = new Set();
 	let searchTerm = '';
@@ -17,11 +16,10 @@
 	let dateFilter = 'all'; // 'all', 'today', 'week', 'month', 'custom'
 	let startDate = '';
 	let endDate = '';
-	let lastReportTypeFilter = 'all';
-	let lastSearchTerm = '';
-	let lastDateFilter = 'all';
-	let lastStartDate = '';
-	let lastEndDate = '';
+	
+	// Subscribe to reports store
+	$: allReports = $reportsStore.reports || [];
+	$: loading = $reportsStore.loading || false;
 	
 	// Refresh key prop to trigger reload when reports are generated
 	export let refreshKey = 0;
@@ -65,48 +63,44 @@
 		return { start, end };
 	}
 
-	async function loadHistory() {
-		loading = true;
-		try {
-			const headers = { 'Content-Type': 'application/json' };
-			if ($token) {
-				headers['Authorization'] = `Bearer ${$token}`;
-			}
-			
-			const params = new URLSearchParams();
-			if (reportTypeFilter !== 'all') {
-				params.append('report_type', reportTypeFilter);
-			}
-			if (searchTerm) {
-				params.append('search', searchTerm);
-			}
-			
-			// Handle date filtering
-			if (dateFilter !== 'all') {
-				const { start, end } = getDateRange(dateFilter);
-				if (start) {
-					params.append('start_date', start.toISOString());
-				}
-				if (end) {
-					params.append('end_date', end.toISOString());
-				}
-			}
-			
-			const url = `${API_URL}/api/reports?${params.toString()}`;
-			const response = await fetch(url, { headers });
-			
-			if (response.ok) {
-				const data = await response.json();
-				if (data.success) {
-					reports = data.reports || [];
-				}
-			}
-		} catch (err) {
-			console.error('Failed to load history:', err);
-		} finally {
-			loading = false;
+	// Client-side filtering function
+	function filterReports(reports) {
+		let filtered = [...reports];
+		
+		// Filter by report type
+		if (reportTypeFilter !== 'all') {
+			filtered = filtered.filter(report => report.report_type === reportTypeFilter);
 		}
+		
+		// Filter by search term (search in description, title, content)
+		if (searchTerm) {
+			const searchLower = searchTerm.toLowerCase();
+			filtered = filtered.filter(report => {
+				const description = (report.description || '').toLowerCase();
+				const content = (report.content || '').toLowerCase();
+				return description.includes(searchLower) || content.includes(searchLower);
+			});
+		}
+		
+		// Filter by date
+		if (dateFilter !== 'all') {
+			const { start, end } = getDateRange(dateFilter);
+			if (start || end) {
+				filtered = filtered.filter(report => {
+					const reportDate = new Date(report.created_at);
+					if (start && reportDate < start) return false;
+					if (end && reportDate > end) return false;
+					return true;
+				});
+			}
+		}
+		
+		return filtered;
 	}
+	
+	// Computed filtered reports
+	let reports = [];
+	$: reports = filterReports(allReports);
 
 	function handleViewReport(report) {
 		selectedReport = report;
@@ -161,11 +155,11 @@
 			});
 			
 			if (response.ok) {
-				await loadHistory();
+				reportsStore.deleteReport(reportId);
 				selectedReports.delete(reportId);
 			}
 		} catch (err) {
-			console.error('Failed to delete report:', err);
+			// Failed to delete report
 		}
 	}
 
@@ -180,18 +174,19 @@
 			}
 			
 			// Delete each selected report
-			const deletePromises = Array.from(selectedReports).map(reportId =>
-				fetch(`http://localhost:8000/api/reports/${reportId}`, {
+			const reportIds = Array.from(selectedReports);
+			const deletePromises = reportIds.map(reportId =>
+				fetch(`${API_URL}/api/reports/${reportId}`, {
 					method: 'DELETE',
 					headers
 				})
 			);
 			
 			await Promise.all(deletePromises);
+			reportsStore.deleteReports(reportIds);
 			selectedReports.clear();
-			await loadHistory();
 		} catch (err) {
-			console.error('Failed to delete reports:', err);
+			// Failed to delete reports
 		}
 	}
 
@@ -206,46 +201,31 @@
 			}
 			
 			// Delete all reports
-			const deletePromises = reports.map(report =>
-				fetch(`${API_URL}/api/reports/${report.id}`, {
+			const reportIds = reports.map(report => report.id);
+			const deletePromises = reportIds.map(reportId =>
+				fetch(`${API_URL}/api/reports/${reportId}`, {
 					method: 'DELETE',
 					headers
 				})
 			);
 			
 			await Promise.all(deletePromises);
+			reportsStore.deleteReports(reportIds);
 			selectedReports.clear();
-			await loadHistory();
 		} catch (err) {
-			console.error('Failed to delete all reports:', err);
+			// Failed to delete all reports
 		}
 	}
 
-	// Watch for refreshKey changes and reload history when reports are generated
+	// Watch for refreshKey changes and reload reports from store when reports are generated
 	$: if (refreshKey !== lastRefreshKey) {
 		lastRefreshKey = refreshKey;
-		loadHistory();
+		reportsStore.refreshReports();
 	}
 	
-	// Track filter changes and reload history
-	$: if (
-		searchTerm !== lastSearchTerm ||
-		reportTypeFilter !== lastReportTypeFilter ||
-		dateFilter !== lastDateFilter ||
-		startDate !== lastStartDate ||
-		endDate !== lastEndDate
-	) {
-		lastSearchTerm = searchTerm;
-		lastReportTypeFilter = reportTypeFilter;
-		lastDateFilter = dateFilter;
-		lastStartDate = startDate;
-		lastEndDate = endDate;
-		loadHistory();
-	}
-	
-	// Clear selection when reports change (e.g., after deletion or filter change)
+	// Clear selection when filtered reports change (e.g., after deletion or filter change)
 	$: if (reports.length > 0) {
-		// Keep only selected IDs that still exist
+		// Keep only selected IDs that still exist in filtered results
 		selectedReports = new Set(Array.from(selectedReports).filter(id => 
 			reports.some(report => report.id === id)
 		));
@@ -254,7 +234,10 @@
 	}
 
 	onMount(() => {
-		loadHistory();
+		// Load reports if store is empty
+		if (allReports.length === 0) {
+			reportsStore.loadReports();
+		}
 	});
 </script>
 

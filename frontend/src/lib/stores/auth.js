@@ -1,6 +1,7 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 import { API_URL } from '$lib/config';
+import { logger } from '$lib/utils/logger';
 
 // Auth state stores
 export const user = writable(null);
@@ -41,17 +42,14 @@ async function fetchUserData(authToken) {
 		}
 		// Only logout if token is clearly invalid (401/403)
 		if (res.status === 401 || res.status === 403) {
-			console.log('Token invalid or expired, clearing token');
 			// Clear token but don't fully logout (keep them on the page)
 			localStorage.removeItem('token');
 			token.set(null);
 			isAuthenticated.set(false);
-		} else {
-			console.warn('Failed to fetch user data but token may still be valid:', res.status);
-			// Don't logout on other errors - might be temporary server issue
 		}
+		// Don't logout on other errors - might be temporary server issue
 	} catch (err) {
-		console.error('Failed to fetch user:', err);
+		logger.error('Failed to fetch user:', err);
 		// Don't auto-logout on network errors - server might be temporarily unreachable
 		// User can still try to login manually
 	}
@@ -59,15 +57,12 @@ async function fetchUserData(authToken) {
 
 export function login(authToken) {
 	if (!browser) {
-		console.log('⚠️ login() called in SSR context, skipping');
 		return;
 	}
 	
-	console.log('🔐 auth.login() called');
 	localStorage.setItem('token', authToken);
 	token.set(authToken);
 	isAuthenticated.set(true);
-	console.log('✅ isAuthenticated set to true, token stored');
 	fetchUserData(authToken);
 }
 

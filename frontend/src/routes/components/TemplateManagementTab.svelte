@@ -3,6 +3,8 @@
 	import { browser } from '$app/environment';
 	import TemplateManager from './TemplateManager.svelte';
 	import { token } from '$lib/stores/auth';
+	import { templatesStore } from '$lib/stores/templates';
+	import { settingsStore } from '$lib/stores/settings';
 	import { getTagColor, getTagColorWithOpacity } from '$lib/utils/tagColors.js';
 	import { API_URL } from '$lib/config';
 	
@@ -12,8 +14,13 @@
 
 	const dispatch = createEventDispatcher();
 	
-	let templates = [];
-	let loadingTemplates = false;
+	// Subscribe to templates store
+	$: templates = $templatesStore.templates || [];
+	$: loadingTemplates = $templatesStore.loading || false;
+	
+	// Subscribe to settings store for tag colors
+	$: customTagColors = ($settingsStore.settings && $settingsStore.settings.tag_colors) || {};
+	
 	let searchQuery = '';
 	let selectedTags = [];
 	let allUniqueTags = [];
@@ -22,7 +29,6 @@
 	let renamingTag = null;
 	let newTagName = '';
 	let editingColorTag = null;
-	let customTagColors = {};
 	let showColorPicker = false;
 	let colorPickerTag = null;
 	let colorPickerValue = '#8b5cf6';
@@ -33,44 +39,10 @@
 		previewTagColors = { ...customTagColors, [colorPickerTag]: colorPickerValue };
 	}
 
-	async function loadTemplates() {
-		loadingTemplates = true;
-		try {
-			const headers = { 'Content-Type': 'application/json' };
-			if ($token) {
-				headers['Authorization'] = `Bearer ${$token}`;
-			}
-			
-			const response = await fetch(`${API_URL}/api/templates`, {
-				headers
-			});
-			
-			if (!response.ok) {
-				templates = [];
-				return;
-			}
-			
-			const data = await response.json();
-			if (data.success) {
-				// Create new array reference to ensure reactivity triggers
-				templates = [...(data.templates || [])];
-				updateUniqueTags(); // This will trigger reactive tag counts update
-			} else {
-				templates = [];
-				updateUniqueTags(); // Ensure tags update even on error
-			}
-		} catch (err) {
-			templates = [];
-			updateUniqueTags(); // Ensure tags update even on error
-		} finally {
-			loadingTemplates = false;
-		}
-	}
-
 	async function handleTemplateCreated() {
 		// Small delay to ensure backend has processed the save
 		await new Promise(resolve => setTimeout(resolve, 100));
-		await loadTemplates();
+		await templatesStore.refreshTemplates();
 		// Dispatch event to parent to trigger refresh in TemplatedReportTab
 		dispatch('templateCreated');
 	}
@@ -78,7 +50,7 @@
 	async function handleTemplateDeleted() {
 		// Small delay to ensure backend has processed the delete
 		await new Promise(resolve => setTimeout(resolve, 100));
-		await loadTemplates();
+		await templatesStore.refreshTemplates();
 		// Dispatch event to parent to trigger refresh in TemplatedReportTab
 		dispatch('templateDeleted');
 	}
@@ -120,50 +92,11 @@
 		return tagCounts[tag] || 0;
 	}
 
-	async function loadUserSettings() {
-		try {
-			const headers = { 'Content-Type': 'application/json' };
-			if ($token) {
-				headers['Authorization'] = `Bearer ${$token}`;
-			}
-			
-			const response = await fetch(`${API_URL}/api/settings`, {
-				headers
-			});
-			
-			if (response.ok) {
-				const data = await response.json();
-				if (data.success && data.tag_colors) {
-					// Create new object reference to ensure reactivity
-					customTagColors = { ...(data.tag_colors || {}) };
-				} else {
-					// Still create new reference even if empty
-					customTagColors = {};
-				}
-			}
-		} catch (err) {
-			// Silent fail
-		}
-	}
-
 	async function updateTagColor(tag, color) {
 		try {
-			const headers = { 'Content-Type': 'application/json' };
-			if ($token) {
-				headers['Authorization'] = `Bearer ${$token}`;
-			}
-
-			// Get current settings first to ensure we have all existing colors
-			const settingsResponse = await fetch(`${API_URL}/api/settings`, {
-				headers
-			});
-			let currentTagColors = {};
-			if (settingsResponse.ok) {
-				const settingsData = await settingsResponse.json();
-				if (settingsData.success && settingsData.tag_colors) {
-					currentTagColors = { ...settingsData.tag_colors };
-				}
-			}
+			// Get current settings from store
+			const currentSettings = $settingsStore || {};
+			let currentTagColors = { ...(currentSettings.tag_colors || {}) };
 
 			// Find and remove any existing color mapping for this tag (case-insensitive)
 			const tagLower = tag.toLowerCase();
@@ -183,58 +116,23 @@
 				currentTagColors[tag] = color; // Use exact tag name (not the old key)
 			}
 
-			// Save to backend
-			const response = await fetch(`${API_URL}/api/settings`, {
-				method: 'POST',
-				headers,
-				body: JSON.stringify({
-					tag_colors: currentTagColors
-				})
+			// Update via store (which will update API and store)
+			const result = await settingsStore.updateSettings({
+				tag_colors: currentTagColors
 			});
 
-			const data = await response.json();
-
-			if (!data.success) {
-				alert('Failed to update tag color: ' + (data.error || 'Unknown error'));
+			if (!result.success) {
+				alert('Failed to update tag color: ' + (result.error || 'Unknown error'));
 				// Reload settings to revert
-				await loadUserSettings();
+				await settingsStore.refreshSettings();
 				return false;
-			} else {
-			// Update local state from response
-				if (data.tag_colors) {
-					// Create new object to trigger reactivity - use spread operator
-					customTagColors = { ...data.tag_colors };
-				} else {
-					// Fallback: update manually
-					if (color === '' || !color) {
-						// Remove from local state (case-insensitive)
-						const newColors = { ...customTagColors };
-						for (const key of Object.keys(newColors)) {
-							if (key.toLowerCase() === tagLower) {
-								delete newColors[key];
-								break;
-							}
-						}
-						customTagColors = newColors;
-					} else {
-						// Remove old key and add new
-						const newColors = { ...customTagColors };
-						for (const key of Object.keys(newColors)) {
-							if (key.toLowerCase() === tagLower) {
-								delete newColors[key];
-								break;
-							}
-						}
-						newColors[tag] = color;
-						customTagColors = newColors;
-					}
-				}
-				return true;
 			}
+			
+			return true;
 		} catch (err) {
 			alert('Failed to update tag color');
 			// Reload settings to revert
-			await loadUserSettings();
+			await settingsStore.refreshSettings();
 			return false;
 		}
 	}
@@ -290,15 +188,12 @@
 		const success = await updateTagColor(colorPickerTag, colorPickerValue);
 		
 		if (success) {
-			// Reload settings to get the saved color from backend
-			await loadUserSettings();
-			// Force reactivity by creating new object reference
-			customTagColors = { ...customTagColors };
+			// Settings are automatically updated via store subscription
 			previewTagColors = {}; // Clear preview
 			closeColorPicker();
 		} else {
 			// Revert local state on failure
-			await loadUserSettings();
+			await settingsStore.refreshSettings();
 		}
 	}
 
@@ -338,10 +233,10 @@
 			if (data.success) {
 				// Reload settings FIRST to get the updated color mappings from backend
 				// The backend should have already transferred the color mapping
-				await loadUserSettings();
+				await settingsStore.refreshSettings();
 				
 				// Reload templates to get updated tags
-				await loadTemplates();
+				await templatesStore.refreshTemplates();
 				
 				renamingTag = null;
 				newTagName = '';
@@ -377,7 +272,7 @@
 				// Remove from selected tags if it was selected
 				selectedTags = selectedTags.filter(t => t !== tag);
 				// Reload templates to get updated tags
-				await loadTemplates();
+				await templatesStore.refreshTemplates();
 			} else {
 				alert('Failed to delete tag: ' + (data.error || 'Unknown error'));
 			}
@@ -429,8 +324,13 @@
 
 	onMount(async () => {
 		if (browser) {
-			await loadUserSettings();
-			await loadTemplates();
+			// Load stores if empty
+			if (!$settingsStore.settings) {
+				await settingsStore.loadSettings();
+			}
+			if (!$templatesStore.templates || $templatesStore.templates.length === 0) {
+				await templatesStore.loadTemplates();
+			}
 		}
 	});
 </script>

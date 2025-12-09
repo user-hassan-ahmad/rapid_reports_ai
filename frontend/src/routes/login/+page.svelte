@@ -5,6 +5,7 @@
 	import logo from '$lib/assets/radflow-logo.png';
 	import bgCircuit from '$lib/assets/background circuit board effect.png';
 	import { API_URL } from '$lib/config';
+	import { logger } from '$lib/utils/logger';
 
 	let email = '';
 	let password = '';
@@ -39,15 +40,12 @@
 			const data = await res.json();
 
 		if (res.ok && data.success) {
-			console.log('✅ Login successful, token:', data.access_token ? 'received' : 'missing');
 			login(data.access_token);
-			console.log('🔄 Navigating to home page...');
 			// Don't reset loading here - let navigation happen while button shows loading
 			await goto('/');
 			// Navigation will unmount component, so loading will naturally reset
 			return; // Exit early on success
 		} else {
-			console.log('❌ Login failed:', data.error);
 			error = data.error || 'Login failed';
 			
 			// Check if error is about email verification
@@ -57,8 +55,8 @@
 			loading = false; // Only reset on error
 		}
 	} catch (err) {
+		logger.error('Login error:', err);
 		error = 'Failed to connect to server';
-		console.error('Error:', err);
 		loading = false; // Reset on error
 	}
 	}

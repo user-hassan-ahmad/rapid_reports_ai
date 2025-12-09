@@ -1,6 +1,7 @@
 <script>
 	import { createEventDispatcher, onMount } from 'svelte';
 	import { token } from '$lib/stores/auth';
+	import { settingsStore } from '$lib/stores/settings';
 	import { getTagColor, getTagColorWithOpacity } from '$lib/utils/tagColors.js';
 	import VersionHistory from './VersionHistory.svelte';
 	import { API_URL } from '$lib/config';
@@ -25,7 +26,9 @@
 	let templateContent = '';
 	let masterPromptInstructions = '';
 	let variables = [];
-	let customTagColors = {};
+	
+	// Subscribe to settings store for tag colors
+	$: customTagColors = ($settingsStore.settings && $settingsStore.settings.tag_colors) || {};
 
 	// Example template to show in placeholder
 	const examplePlaceholder = `Comparison:
@@ -62,28 +65,6 @@ Use {{VARIABLE_NAME}} for dynamic content (e.g., {{COMPARISON}}) — these will 
 		return matches;
 	}
 
-	// Load user settings for custom tag colors
-	async function loadUserSettings() {
-		try {
-			const headers = { 'Content-Type': 'application/json' };
-			if ($token) {
-				headers['Authorization'] = `Bearer ${$token}`;
-			}
-			
-			const response = await fetch(`${API_URL}/api/settings`, {
-				headers
-			});
-			
-			if (response.ok) {
-				const data = await response.json();
-				if (data.success && data.tag_colors) {
-					customTagColors = data.tag_colors || {};
-				}
-			}
-		} catch (err) {
-			console.error('Failed to load user settings:', err);
-		}
-	}
 
 	// Load existing tags for autocomplete
 	async function loadExistingTags() {
@@ -101,7 +82,7 @@ Use {{VARIABLE_NAME}} for dynamic content (e.g., {{COMPARISON}}) — these will 
 				existingTags = data.tags || [];
 			}
 		} catch (err) {
-			console.error('Failed to load tags:', err);
+			// Failed to load tags
 		}
 	}
 
@@ -135,7 +116,10 @@ Use {{VARIABLE_NAME}} for dynamic content (e.g., {{COMPARISON}}) — these will 
 	}
 
 	onMount(async () => {
-		await loadUserSettings();
+		// Load settings if empty
+		if (!$settingsStore.settings) {
+			await settingsStore.loadSettings();
+		}
 		loadExistingTags();
 	});
 
@@ -278,7 +262,6 @@ Use {{VARIABLE_NAME}} for dynamic content (e.g., {{COMPARISON}}) — these will 
 				alert('Failed to save template: ' + data.error);
 			}
 		} catch (err) {
-			console.error('Failed to save template:', err);
 			alert('Failed to save template');
 		}
 	}
@@ -360,7 +343,7 @@ Use {{VARIABLE_NAME}} for dynamic content (e.g., {{COMPARISON}}) — these will 
 							variables = editingTemplate.variables || [];
 						}
 					} catch (err) {
-						console.error('Failed to reload template:', err);
+						// Failed to reload template
 					}
 				}}
 			/>

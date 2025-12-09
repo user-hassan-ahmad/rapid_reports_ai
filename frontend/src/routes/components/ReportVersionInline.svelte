@@ -5,6 +5,7 @@
 	import DiffMatchPatch from 'diff-match-patch';
 	import { marked } from 'marked';
 	import { htmlDiff } from '@benedicte/html-diff';
+	import { logger } from '$lib/utils/logger';
 
 	export let reportId;
 	export let refreshKey = 0;
@@ -72,7 +73,7 @@
 				comparisonVersion = null;
 			}
 		} catch (err) {
-			console.error('Failed to load report versions', err);
+			logger.error('Failed to load report versions', err);
 			error = err instanceof Error ? err.message : String(err);
 			versions = [];
 			selectedVersionId = null;
@@ -101,7 +102,6 @@
 			}
 			return null;
 		} catch (err) {
-			console.error('Failed to load comparison version', err);
 			return null;
 		} finally {
 			loadingComparison = false;
@@ -147,9 +147,9 @@
 			}
 		}
 
-		if (!silent) {
+			if (!silent) {
 			dispatch('versionSelected', { version: version });
-		}
+			}
 	}
 
 	function toggleDiffView() {
@@ -239,7 +239,6 @@
 			dispatch('restored', { report: data.report, version: data.version });
 			await loadVersions();
 		} catch (err) {
-			console.error('Failed to restore version', err);
 			alert(err instanceof Error ? err.message : 'Failed to restore version.');
 		} finally {
 			restoringVersionId = null;
@@ -280,46 +279,33 @@
 		<div class="space-y-2">
 			{#each versions as version}
 				<div class="rounded-lg border border-white/10 bg-white/5 transition-colors hover:border-purple-500/40">
-					<button
-						type="button"
-						class="w-full flex items-center justify-between px-4 py-3 text-left"
-						onclick={() => selectVersion(version)}
-					>
-						<div>
-							<div class="flex items-center gap-2">
-								<span class="text-sm font-semibold text-white">Version {version.version_number}</span>
-								{#if version.is_current}
-									<span class="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-200 font-medium uppercase tracking-wide">Current</span>
-								{/if}
-								{#if version.notes === 'Manual content update'}
-									<span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-200 font-medium uppercase tracking-wide">Manual Edit</span>
-								{:else if version.notes === 'Chat edit'}
-									<span class="text-[10px] px-2 py-0.5 rounded-full bg-green-500/30 text-green-200 font-medium uppercase tracking-wide">Chat Edit</span>
-								{:else if version.notes === 'Comparison edit'}
-									<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/30 text-amber-200 font-medium uppercase tracking-wide">Comparison Edit</span>
+					<div class="w-full flex items-center justify-between px-4 py-3">
+						<button
+							type="button"
+							class="flex-1 flex items-center justify-between text-left"
+							onclick={() => selectVersion(version)}
+						>
+							<div>
+								<div class="flex items-center gap-2">
+									<span class="text-sm font-semibold text-white">Version {version.version_number}</span>
+									{#if version.is_current}
+										<span class="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-200 font-medium uppercase tracking-wide">Current</span>
+									{/if}
+									{#if version.notes === 'Manual content update'}
+										<span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-200 font-medium uppercase tracking-wide">Manual Edit</span>
+									{:else if version.notes === 'Chat edit'}
+										<span class="text-[10px] px-2 py-0.5 rounded-full bg-green-500/30 text-green-200 font-medium uppercase tracking-wide">Chat Edit</span>
+									{:else if version.notes === 'Comparison edit'}
+										<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/30 text-amber-200 font-medium uppercase tracking-wide">Comparison Edit</span>
+									{/if}
+								</div>
+								<p class="text-xs text-gray-400 mt-1">{formatDate(version.created_at)}</p>
+								{#if version.actions_applied && version.actions_applied.length > 0}
+									<p class="text-[11px] text-gray-500 mt-2 leading-snug">
+										{version.actions_applied.length} action{version.actions_applied.length === 1 ? '' : 's'} applied
+									</p>
 								{/if}
 							</div>
-							<p class="text-xs text-gray-400 mt-1">{formatDate(version.created_at)}</p>
-							{#if version.actions_applied && version.actions_applied.length > 0}
-								<p class="text-[11px] text-gray-500 mt-2 leading-snug">
-									{version.actions_applied.length} action{version.actions_applied.length === 1 ? '' : 's'} applied
-								</p>
-							{/if}
-						</div>
-						<div class="flex items-center gap-2">
-							{#if !version.is_current}
-								<button
-									type="button"
-									onclick={(event) => {
-										event.stopPropagation();
-										restoreVersion(version);
-									}}
-									class="px-3 py-1 text-xs font-medium rounded-md bg-purple-600 hover:bg-purple-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-									disabled={restoringVersionId === version.id}
-								>
-									{restoringVersionId === version.id ? 'Restoring...' : 'Restore'}
-								</button>
-							{/if}
 							<svg
 								class="w-4 h-4 text-gray-400 transition-transform {selectedVersionId === version.id ? 'rotate-180' : ''}"
 								fill="none"
@@ -328,8 +314,21 @@
 							>
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 							</svg>
-						</div>
-					</button>
+						</button>
+						{#if !version.is_current}
+							<button
+								type="button"
+								onclick={(event) => {
+									event.stopPropagation();
+									restoreVersion(version);
+								}}
+								class="ml-2 px-3 py-1 text-xs font-medium rounded-md bg-purple-600 hover:bg-purple-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+								disabled={restoringVersionId === version.id}
+							>
+								{restoringVersionId === version.id ? 'Restoring...' : 'Restore'}
+							</button>
+						{/if}
+					</div>
 					{#if selectedVersionId === version.id && selectedVersion}
 						<div class="px-4 pb-4 space-y-4">
 							{#if selectedVersion.actions_applied && selectedVersion.actions_applied.length > 0}
@@ -406,7 +405,6 @@
 									</div>
 								{/if}
 							</div>
-							{/if}
 						</div>
 					{/if}
 				</div>

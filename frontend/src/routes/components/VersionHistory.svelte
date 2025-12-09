@@ -37,7 +37,6 @@
 			}
 		} catch (err) {
 			error = 'Failed to load versions';
-			console.error(err);
 		} finally {
 			loading = false;
 		}
@@ -70,7 +69,6 @@
 			}
 		} catch (err) {
 			alert('Failed to restore version');
-			console.error(err);
 		}
 	}
 
@@ -99,32 +97,13 @@
 			}
 		} catch (err) {
 			alert('Failed to delete version');
-			console.error(err);
 		}
 	}
 
-	async function viewVersionDetails(version) {
-		try {
-			const headers = { 'Content-Type': 'application/json' };
-			if ($token) {
-				headers['Authorization'] = `Bearer ${$token}`;
-			}
-			
-			const response = await fetch(`${API_URL}/api/templates/${templateId}/versions/${version.id}`, {
-				headers
-			});
-			
-			const data = await response.json();
-			if (data.success) {
-				selectedVersion = data.version;
-				showVersionDetail = true;
-			} else {
-				alert('Failed to load version details: ' + (data.error || 'Unknown error'));
-			}
-		} catch (err) {
-			alert('Failed to load version details');
-			console.error(err);
-		}
+	function viewVersionDetails(version) {
+		// Use version data directly from the versions array - all data is already available
+		selectedVersion = version;
+		showVersionDetail = true;
 	}
 
 	function formatDate(dateString) {

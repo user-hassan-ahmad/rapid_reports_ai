@@ -124,6 +124,7 @@ interface CompletenessAnalysis {
 	import { onDestroy } from 'svelte';
 	import pilotIcon from '$lib/assets/pilot.png';
 	import { API_URL } from '$lib/config';
+	import { logger } from '$lib/utils/logger';
 	
 	export let reportId: string | null = null;
 	export let reportContent: string = '';
@@ -273,7 +274,6 @@ async function pollCompleteness() {
 		};
 		const response = await fetch(`${API_URL}/api/reports/${reportId}/completeness`, { headers });
 		if (!response.ok) {
-			console.error('pollCompleteness: HTTP error', response.status);
 			return;
 		}
 		const data = await response.json();
@@ -281,7 +281,6 @@ async function pollCompleteness() {
 			return;
 		}
 		if (!data.success) {
-			console.error('pollCompleteness: API returned error', data.error);
 			completenessPending = Boolean(data.pending);
 			if (!completenessPending) {
 				stopCompletenessPoll();
@@ -301,7 +300,7 @@ async function pollCompleteness() {
 			saveCacheEntry();
 		}
 	} catch (err) {
-		console.error('pollCompleteness: Exception', err);
+		// Error handled silently
 	}
 }
 
@@ -342,14 +341,12 @@ function renderMarkdown(md: string) {
 	async function loadEnhancements(force = false): Promise<void> {
 		if (!reportId) {
 			error = 'No report ID available';
-			console.error('loadEnhancements: No reportId available');
 			return;
 		}
 		
 		if (!force) {
 			const cached = enhancementCache.get(reportId);
 			if (cached) {
-				console.log('loadEnhancements: Using cached data for reportId:', reportId);
 				applyCacheEntry(cached);
 				return;
 			}
@@ -358,7 +355,6 @@ function renderMarkdown(md: string) {
 			hasLoaded = false;
 		}
 		
-		console.log('loadEnhancements: Starting for reportId:', reportId);
 		loading = true;
 		error = null;
 		
@@ -367,8 +363,6 @@ function renderMarkdown(md: string) {
 				'Content-Type': 'application/json',
 				...(($token) ? { 'Authorization': `Bearer ${$token}` } : {})
 			};
-			
-			console.log('loadEnhancements: Calling API...', `${API_URL}/api/reports/${reportId}/enhance`);
 			
 			// Add a longer timeout for this API call (enhancement can take 30-60 seconds)
 			const controller = new AbortController();
@@ -391,7 +385,6 @@ function renderMarkdown(md: string) {
 						: undefined;
 				if (abortName === 'AbortError') {
 					error = 'Request timed out. The enhancement process may be taking longer than expected.';
-					console.error('loadEnhancements: Request timeout');
 					loading = false;
 					return;
 				} else {
@@ -399,11 +392,9 @@ function renderMarkdown(md: string) {
 				}
 			}
 			
-			console.log('loadEnhancements: Response status:', response.status);
-			
 			if (!response.ok) {
 				const errorText = await response.text();
-				console.error('loadEnhancements: HTTP error:', response.status, errorText);
+				logger.error('loadEnhancements: HTTP error:', response.status, errorText);
 				error = `HTTP ${response.status}: ${errorText}`;
 				loading = false;
 				return;
@@ -412,14 +403,10 @@ function renderMarkdown(md: string) {
 			let data: any;
 			try {
 				data = await response.json();
-				console.log('loadEnhancements: Response data:', data);
 			} catch (jsonErr) {
 				// If connection reset happens after response starts, we might have partial data
 				// Try to continue if we have status 200
 				if (response.status === 200) {
-					console.warn('loadEnhancements: JSON parse error but status 200:', jsonErr);
-					const text = await response.text().catch(() => '');
-					console.warn('loadEnhancements: Response text:', text.substring(0, 200));
 					error = 'Failed to parse response, but request succeeded';
 					loading = false;
 					return;
@@ -434,7 +421,6 @@ function renderMarkdown(md: string) {
 				completenessAnalysis = data.completeness ? (cloneValue(data.completeness) as CompletenessEntry) : null;
 				completenessPending = Boolean(data.completeness_pending);
 				error = null; // Clear any previous errors
-				console.log('loadEnhancements: Success - findings:', findings.length, 'guidelines:', guidelinesData.length, 'completeness:', !!completenessAnalysis, 'pending:', completenessPending);
 				if (completenessPending) {
 					startCompletenessPoll();
 				} else {
@@ -444,16 +430,13 @@ function renderMarkdown(md: string) {
 				saveCacheEntry();
 				hasLoaded = true;
 			} else if (data && !data.success) {
+				logger.error('loadEnhancements: API returned error:', data.error);
 				error = data.error || 'Failed to load enhancements';
-				console.error('loadEnhancements: API returned error:', error);
-				if (data.traceback) {
-					console.error('Backend traceback:', data.traceback);
-				}
 				completenessPending = false;
 				stopCompletenessPoll();
 			} else {
+				logger.error('loadEnhancements: No data in response');
 				error = 'No data received from server';
-				console.error('loadEnhancements: No data in response');
 				completenessPending = false;
 				stopCompletenessPoll();
 			}
@@ -463,22 +446,20 @@ function renderMarkdown(md: string) {
 			
 			if (err instanceof TypeError && err.message.includes('fetch')) {
 				// Network error - but check if we already got the data
-				console.error('loadEnhancements: Network error:', err);
 				if (!hasData) {
+					logger.error('loadEnhancements: Network error:', err);
 					error = `Network error: ${err.message}. The connection may have been reset, but data was received.`;
 				} else {
-					console.log('loadEnhancements: Network error but data already loaded, ignoring error');
 					error = null; // Clear error if we have data
 				}
 			} else {
 				const errMsg = err instanceof Error ? err.message : String(err);
 				if (!hasData) {
+					logger.error('loadEnhancements: Exception:', err);
 					error = `Failed to connect: ${errMsg}`;
 				} else {
-					console.log('loadEnhancements: Error after data received, ignoring:', errMsg);
 					error = null; // Clear error if we have data
 				}
-				console.error('loadEnhancements: Exception:', err);
 			}
 			if (!hasData) {
 				completenessPending = false;
@@ -486,7 +467,6 @@ function renderMarkdown(md: string) {
 			}
 		} finally {
 			loading = false;
-			console.log('loadEnhancements: Finished, loading:', loading, 'findings:', findings.length, 'guidelines:', guidelinesData.length, 'error:', error);
 			if (!error && (findings.length > 0 || guidelinesData.length > 0 || completenessAnalysis)) {
 				hasLoaded = true;
 			}
@@ -761,11 +741,8 @@ $: canApplySelectedActions = selectedActionsWithPatch.length > 0 && !applyAction
 	
 	async function runComparison() {
 		if (!reportId || priorReports.length === 0) {
-			console.log('runComparison: Early return - reportId:', reportId, 'priorReports.length:', priorReports.length);
 			return;
 		}
-		console.log('runComparison: Starting comparison for reportId:', reportId);
-		console.log('runComparison: Prior reports:', priorReports);
 		comparing = true;
 		error = null;
 		revisedReportApplied = false;
@@ -779,42 +756,25 @@ $: canApplySelectedActions = selectedActionsWithPatch.length > 0 && !applyAction
 				body: JSON.stringify({ prior_reports: priorReports })
 			});
 			
-			console.log('runComparison: Response status:', response.status);
-			console.log('runComparison: Response ok:', response.ok);
-			
 			if (!response.ok) {
 				const errorText = await response.text();
-				console.error('runComparison: HTTP error:', response.status, errorText);
 				error = `HTTP ${response.status}: ${errorText}`;
 				return;
 			}
 			
 			const data = await response.json();
-			console.log('runComparison: Response data:', data);
-			console.log('runComparison: data.success:', data.success);
-			console.log('runComparison: data.comparison:', data.comparison);
-			console.log('runComparison: data.comparison type:', typeof data.comparison);
-			if (data.comparison) {
-				console.log('runComparison: data.comparison keys:', Object.keys(data.comparison));
-			}
 			
 			if (data.success && data.comparison) {
 				comparisonResult = data.comparison;
-				console.log('runComparison: Comparison result set:', comparisonResult);
-				console.log('runComparison: comparisonResult type:', typeof comparisonResult);
-				console.log('runComparison: comparisonResult keys:', Object.keys(comparisonResult || {}));
 			} else {
+				logger.error('runComparison: API returned error:', data.error);
 				error = data.error || 'Comparison analysis failed';
-				console.error('runComparison: API returned error:', error);
 			}
 		} catch (err) {
-			console.error('runComparison: Exception:', err);
+			logger.error('runComparison: Exception:', err);
 			error = `Failed to compare: ${err instanceof Error ? err.message : String(err)}`;
 		} finally {
 			comparing = false;
-			console.log('runComparison: Finished, comparing:', comparing, 'comparisonResult:', comparisonResult);
-			console.log('runComparison: comparisonResult is null?', comparisonResult === null);
-			console.log('runComparison: comparisonResult is undefined?', comparisonResult === undefined);
 		}
 	}
 	
@@ -841,7 +801,7 @@ $: canApplySelectedActions = selectedActionsWithPatch.length > 0 && !applyAction
 				error = data.error || 'Failed to apply revised report';
 			}
 		} catch (err) {
-			console.error('Apply failed:', err);
+			logger.error('Apply failed:', err);
 			error = `Failed to apply: ${err instanceof Error ? err.message : String(err)}`;
 		} finally {
 			applyRevisedReportLoading = false;
@@ -861,17 +821,11 @@ onDestroy(() => {
 	stopCompletenessPoll();
 });
 
-	// Debug logging
-	$: {
-		console.log('ReportEnhancementSidebar - visible:', visible, 'reportId:', reportId);
-	}
-	
 	// Track last report version to detect changes
 	let lastReportVersion = -1;
 	
 	// Reset hasLoaded when reportVersion changes (form resubmitted)
 	$: if (reportVersion !== lastReportVersion) {
-		console.log('ReportEnhancementSidebar: reportVersion changed from', lastReportVersion, 'to', reportVersion);
 		if (reportId && lastReportVersion !== -1) {
 			// Auto-reload when report version changes
 			hasLoaded = false;
@@ -916,7 +870,7 @@ onDestroy(() => {
 			
 			// Try to load cached data for the new report
 			if (applyCacheEntry(enhancementCache.get(reportId))) {
-				console.log('ReportEnhancementSidebar: Applied cached data for reportId:', reportId);
+				// Cache applied
 			} else {
 				// No cache found, reset to empty state
 				findings = [];
@@ -941,14 +895,6 @@ onDestroy(() => {
 	
 	// Load enhancements when sidebar becomes visible
 	$: if ((visible || autoLoad) && reportId && !loading && !hasLoaded) {
-		console.log(
-			'ReportEnhancementSidebar: Triggering loadEnhancements - visible:',
-			visible,
-			'autoLoad:',
-			autoLoad,
-			'reportId:',
-			reportId
-		);
 		loadEnhancements();
 	}
 
@@ -1612,6 +1558,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 													onclick={() => {
 														updateReportContent(msg.editProposal, 'chat');
 														msg.applied = true;
+														chatMessages = [...chatMessages]; // Trigger reactivity
 													}}
 													disabled={msg.applied}
 													class="w-full px-3 py-1.5 {msg.applied ? 'bg-green-600/50 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'} text-white text-xs font-medium rounded transition-colors flex items-center justify-center gap-2"
@@ -1722,6 +1669,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 					onclick={() => {
 						updateReportContent(expandedMsg.editProposal, 'chat');
 						expandedMsg.applied = true;
+						chatMessages = [...chatMessages]; // Trigger reactivity
 						expandedEditProposalIndex = null;
 					}}
 					disabled={expandedMsg.applied}

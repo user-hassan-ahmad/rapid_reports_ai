@@ -51,7 +51,6 @@
 				error = data.error || 'Failed to load version history.';
 			}
 		} catch (err) {
-			console.error(err);
 			error = 'Failed to load version history.';
 		} finally {
 			loading = false;
@@ -76,7 +75,6 @@
 			}
 			return null;
 		} catch (err) {
-			console.error('Failed to load comparison version', err);
 			return null;
 		} finally {
 			loadingComparison = false;
@@ -204,7 +202,7 @@
 		class="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-[11000]"
 		role="dialog"
 		aria-modal="true"
-				onclick={(event) => {
+		onclick={(event) => {
 			if (event.target === event.currentTarget) {
 				onClose();
 				selectedVersion = null;
@@ -248,10 +246,10 @@
 								>
 									<div class="flex items-center justify-between">
 										<div class="flex items-center gap-2">
-											<span class="text-sm font-semibold text-white">Version {version.version_number}</span>
-											{#if version.is_current}
-												<span class="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-200 font-medium">Current</span>
-											{/if}
+										<span class="text-sm font-semibold text-white">Version {version.version_number}</span>
+										{#if version.is_current}
+											<span class="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-200 font-medium">Current</span>
+										{/if}
 											{#if version.notes === 'Manual content update'}
 												<span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-200 font-medium">Manual Edit</span>
 											{:else if version.notes === 'Chat edit'}

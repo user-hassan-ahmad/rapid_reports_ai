@@ -11,9 +11,13 @@ import ReportEnhancementSidebar from './components/ReportEnhancementSidebar.svel
 import ReportVersionHistory from './components/ReportVersionHistory.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import { logout, user, token, isAuthenticated } from '$lib/stores/auth';
+	import { reportsStore } from '$lib/stores/reports';
+	import { templatesStore } from '$lib/stores/templates';
+	import { settingsStore } from '$lib/stores/settings';
 	import bgCircuit from '$lib/assets/background circuit board effect.png';
 	import { marked } from 'marked';
 	import { API_URL } from '$lib/config';
+	import { logger } from '$lib/utils/logger';
 	
 	type UseCaseOption = { name: string; description?: string };
 	type ApiKeyUsage = { deepgram: boolean };
@@ -153,24 +157,10 @@ let shouldAutoLoadEnhancements = false;
 	}
 
 	
-	// Load user settings
+	// Load user settings - now using store
 	async function loadUserSettings() {
-		try {
-			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-			if ($token) {
-				headers['Authorization'] = `Bearer ${$token}`;
-			}
-			
-			const response = await fetch(`${API_URL}/api/settings`, {
-				headers
-			});
-			
-			if (response.ok) {
-				const data = await response.json();
-				// Settings loaded successfully
-			}
-		} catch (err) {
-			// Failed to load settings
+		if (!$settingsStore.settings) {
+			await settingsStore.loadSettings();
 		}
 	}
 	
@@ -202,7 +192,7 @@ let shouldAutoLoadEnhancements = false;
 				}
 			}
 		} catch (err) {
-			console.error('Failed to load API key status:', err);
+			logger.error('Failed to load API key status:', err);
 		} finally {
 			loadingApiStatus = false;
 		}
@@ -360,7 +350,13 @@ let shouldAutoLoadEnhancements = false;
 			// Listen for browser back/forward button
 			window.addEventListener('hashchange', handleHashChange);
 
-			await loadUserSettings(); // Load user settings first to set default model
+			// Initialize stores
+			await Promise.all([
+				settingsStore.loadSettings(),
+				reportsStore.loadReports(),
+				templatesStore.loadTemplates()
+			]);
+			
 			await loadApiKeyStatus(); // Load API key status
 			await loadUseCases(false); // Allow setting default on initial load
 		}
@@ -487,6 +483,8 @@ let shouldAutoLoadEnhancements = false;
 					versionHistoryRefreshKey += 1;
 					reportVersion += 1;  // Increment to trigger sidebar reload
 					historyRefreshKey += 1; // Trigger history reload
+					// Refresh reports store to include new report
+					reportsStore.refreshReports();
 				}
 			} else {
 				error = data.error || 'Failed to get response';
@@ -603,7 +601,6 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							on:submit={handleSubmit}
 							on:resetForm={handleFormReset}
 							on:openSidebar={() => {
-								console.log('openSidebar event received (auto), reportId:', reportId);
 								sidebarVisible = true;
 							}}
 							on:historyRestored={(e) => handleHistoryRestored(e.detail as RestoredReportDetail)}
@@ -637,12 +634,12 @@ $: if (!isEnhancementContext && sidebarVisible) {
 									versionHistoryRefreshKey += 1;
 									reportVersion += 1;  // Increment to trigger sidebar reload
 									historyRefreshKey += 1; // Trigger history reload
+									// Refresh reports store to include new report
+									reportsStore.refreshReports();
 								}
 							}}
 							on:openSidebar={() => {
-								console.log('openSidebar event received (templated), templatedReportId:', templatedReportId, 'activeTab:', activeTab);
 								sidebarVisible = true;
-								console.log('sidebarVisible set to:', sidebarVisible);
 							}}
 							on:historyRestored={(e) => handleHistoryRestored(e.detail as RestoredReportDetail)}
 							on:historyUpdate={(e) => handleHistoryUpdate(e.detail as ReportHistoryDetail)}
@@ -704,7 +701,6 @@ $: if (!isEnhancementContext && sidebarVisible) {
 	historyAvailable={currentHistoryCount > 1}
 	reportVersion={reportVersion}
 	on:close={() => {
-		console.log('Sidebar close clicked');
 		sidebarVisible = false;
 	}}
 	on:reportUpdated={(e) => {
@@ -717,6 +713,8 @@ $: if (!isEnhancementContext && sidebarVisible) {
 				templatedResponseOverride = e.detail.report.report_content;
 				templatedResponseVersion += 1;
 			}
+			// Refresh reports store to reflect updated report
+			reportsStore.refreshReports();
 		}
 		reportUpdateLoading = false;
 	}}
