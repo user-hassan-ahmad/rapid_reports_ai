@@ -270,19 +270,23 @@ Use {{VARIABLE_NAME}} for dynamic content (e.g., {{COMPARISON}}) — these will 
 <div class="p-6">
 	<div class="flex items-center justify-between mb-6">
 		<div class="flex items-center gap-3">
-			{#if cameFromTab === 'templated'}
-				<button
-					type="button"
-					onclick={() => dispatch('backToSource')}
-					class="text-gray-400 hover:text-white flex items-center gap-2 transition-colors"
-					title="Back to Personalised Reports"
-				>
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-					</svg>
-					<span class="text-sm">Back to Reports</span>
-				</button>
-			{/if}
+			<button
+				type="button"
+				onclick={() => {
+					if (cameFromTab === 'templated') {
+						dispatch('backToSource');
+					} else {
+						dispatch('close');
+					}
+				}}
+				class="text-gray-400 hover:text-white flex items-center gap-2 transition-colors"
+				title={cameFromTab === 'templated' ? 'Back to Personalised Reports' : 'Back to Templates'}
+			>
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+				</svg>
+				<span class="text-sm">{cameFromTab === 'templated' ? 'Back to Reports' : 'Back to Templates'}</span>
+			</button>
 			<h2 class="text-2xl font-bold text-white">
 				{editingTemplate ? 'Edit' : 'Create'} Template
 			</h2>
