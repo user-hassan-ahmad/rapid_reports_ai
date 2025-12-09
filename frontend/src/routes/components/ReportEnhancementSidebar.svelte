@@ -180,6 +180,9 @@ let editingPriorIndex: number | null = null;
 let newPrior = { text: '', date: '', scan_type: '' };
 let comparing = false;
 let comparisonResult: any = null;
+let applyRevisedReportLoading = false;
+let showRevisedReportPreview = false;
+let revisedReportApplied = false;
 
 // Date formatting helper
 function formatDateUK(dateStr: string): string {
@@ -311,9 +314,11 @@ function startCompletenessPoll() {
 function renderMarkdown(md: string) {
 		if (!md) return '';
 		
+		// Convert literal \n strings to actual newlines
+		let processed = md.replace(/\\n/g, '\n');
+		
 		// Preprocess: Fix inline bullet points (• or -) that should be list items
 		// Convert "• Item1 • Item2" or ". • Item" to proper markdown lists
-		let processed = md;
 		
 		// Pattern 1: ". • Text" → "\n- Text" (period followed by bullet)
 		processed = processed.replace(/\.\s*•\s*/g, '.\n- ');
@@ -763,6 +768,7 @@ $: canApplySelectedActions = selectedActionsWithPatch.length > 0 && !applyAction
 		console.log('runComparison: Prior reports:', priorReports);
 		comparing = true;
 		error = null;
+		revisedReportApplied = false;
 		try {
 			const response = await fetch(`${API_URL}/api/reports/${reportId}/compare`, {
 				method: 'POST',
@@ -813,7 +819,11 @@ $: canApplySelectedActions = selectedActionsWithPatch.length > 0 && !applyAction
 	}
 	
 	async function applyRevisedReport() {
-		if (!comparisonResult?.revised_report) return;
+		if (!comparisonResult?.revised_report || applyRevisedReportLoading || revisedReportApplied) return;
+		
+		applyRevisedReportLoading = true;
+		dispatch('reportUpdating', { status: 'start' });
+		
 		try {
 			const response = await fetch(`${API_URL}/api/reports/${reportId}/apply-comparison`, {
 				method: 'POST',
@@ -825,10 +835,17 @@ $: canApplySelectedActions = selectedActionsWithPatch.length > 0 && !applyAction
 			});
 			const data = await response.json();
 			if (data.success) {
+				revisedReportApplied = true;
 				dispatch('reportUpdated', { report: { report_content: data.updated_content } });
+			} else {
+				error = data.error || 'Failed to apply revised report';
 			}
 		} catch (err) {
 			console.error('Apply failed:', err);
+			error = `Failed to apply: ${err instanceof Error ? err.message : String(err)}`;
+		} finally {
+			applyRevisedReportLoading = false;
+			dispatch('reportUpdating', { status: 'end' });
 		}
 	}
 	
@@ -836,6 +853,8 @@ $: canApplySelectedActions = selectedActionsWithPatch.length > 0 && !applyAction
 		comparisonResult = null;
 		priorReports = [];
 		newPrior = { text: '', date: '', scan_type: '' };
+		applyRevisedReportLoading = false;
+		revisedReportApplied = false;
 	}
 	
 onDestroy(() => {
@@ -884,6 +903,8 @@ onDestroy(() => {
 				comparisonResult = null;
 				showAddPriorModal = false;
 				newPrior = { text: '', date: '', scan_type: '' };
+				applyRevisedReportLoading = false;
+				revisedReportApplied = false;
 				stopCompletenessPoll();
 				resetActionSelections();
 		} else {
@@ -906,6 +927,8 @@ onDestroy(() => {
 				error = null;
 				completenessPending = false;
 				appliedActionIds = [];
+				applyRevisedReportLoading = false;
+				revisedReportApplied = false;
 				stopCompletenessPoll();
 				resetActionSelections();
 			}
@@ -1511,14 +1534,39 @@ $: if ((visible || autoLoad) && completenessPending) {
 								</details>
 							{/if}
 							
+							<!-- Preview and Apply Buttons -->
+							{#if comparisonResult?.revised_report}
+								<button 
+									class="btn-secondary w-full mb-2" 
+									onclick={() => showRevisedReportPreview = true}
+									disabled={applyRevisedReportLoading || revisedReportApplied}
+								>
+									👁️ Preview Full Revised Report
+								</button>
+							{/if}
+							
 							<!-- Apply Button -->
-							<button class="btn-primary w-full mb-2" onclick={applyRevisedReport}>
-								✅ Apply Revised Report
-							</button>
+							<div class="relative">
+								{#if applyRevisedReportLoading}
+									<div class="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
+										<div class="flex items-center gap-3 text-gray-200 text-sm">
+											<div class="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
+											<span>Applying revised report...</span>
+										</div>
+									</div>
+								{/if}
+								<button 
+									class="btn-primary w-full mb-2 disabled:opacity-50 disabled:cursor-not-allowed" 
+									onclick={applyRevisedReport}
+									disabled={applyRevisedReportLoading || revisedReportApplied}
+								>
+									{revisedReportApplied ? '✅ Report Applied' : '✅ Apply Revised Report'}
+								</button>
+							</div>
 							<p class="text-xs text-gray-500 text-center mb-3">
 								Updates report and creates new version in history
 							</p>
-							<button class="btn-secondary w-full" onclick={clearComparison}>
+							<button class="btn-secondary w-full" onclick={clearComparison} disabled={applyRevisedReportLoading}>
 								🔄 Start Over
 							</button>
 						{/if}
@@ -1734,6 +1782,64 @@ $: if ((visible || autoLoad) && completenessPending) {
 				<button class="btn-secondary" onclick={cancelEdit}>Cancel</button>
 				<button class="btn-primary" onclick={addPriorReport} disabled={!newPrior.text.trim() || !newPrior.date}>
 					{editingPriorIndex !== null ? 'Update Report' : 'Add Report'}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Revised Report Preview Modal -->
+{#if showRevisedReportPreview && comparisonResult?.revised_report}
+	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-[20000]" onclick={() => showRevisedReportPreview = false}>
+		<div class="bg-gray-900 rounded-lg border border-gray-700 w-[90vw] max-w-5xl max-h-[90vh] overflow-hidden flex flex-col" onclick={(e) => e.stopPropagation()}>
+			<div class="p-4 border-b border-gray-700 flex items-center justify-between">
+				<h3 class="text-lg font-semibold text-white">Preview: Revised Report</h3>
+				<button 
+					onclick={() => showRevisedReportPreview = false} 
+					class="text-gray-400 hover:text-white transition-colors"
+					aria-label="Close modal"
+				>
+					<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			</div>
+			<div class="flex-1 overflow-y-auto p-6">
+				<div class="prose prose-invert max-w-none
+					prose-headings:text-white prose-headings:font-semibold prose-headings:mt-4 prose-headings:mb-3
+					prose-p:text-gray-300 prose-p:leading-relaxed prose-p:my-3
+					prose-strong:text-white prose-strong:font-semibold
+					prose-ul:my-3 prose-ul:pl-5 prose-ul:space-y-2 prose-ul:list-disc
+					prose-ol:my-3 prose-ol:pl-5 prose-ol:space-y-2 prose-ol:list-decimal
+					prose-li:text-gray-300 prose-li:leading-relaxed prose-li:pl-1 prose-li:my-1
+					prose-code:text-purple-300 prose-code:bg-gray-800/50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded
+					prose-pre:bg-transparent prose-pre:text-gray-300 prose-pre:p-0 prose-pre:whitespace-pre-wrap">
+					{@html renderMarkdown(comparisonResult.revised_report)}
+				</div>
+			</div>
+			<div class="p-4 border-t border-gray-700 flex gap-3 justify-end">
+				<button 
+					class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+					onclick={() => showRevisedReportPreview = false}
+				>
+					Close
+				</button>
+				<button
+					onclick={() => {
+						showRevisedReportPreview = false;
+						applyRevisedReport();
+					}}
+					disabled={applyRevisedReportLoading || revisedReportApplied}
+					class="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-2"
+				>
+					{#if applyRevisedReportLoading}
+						<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+						Applying...
+					{:else if revisedReportApplied}
+						✅ Report Applied
+					{:else}
+						✅ Apply This Report
+					{/if}
 				</button>
 			</div>
 		</div>
