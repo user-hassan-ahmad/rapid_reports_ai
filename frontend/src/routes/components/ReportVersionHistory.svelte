@@ -83,62 +83,53 @@
 		}
 	}
 
-	async function openVersion(version) {
+	function openVersion(version) {
 		if (!reportId || !version) return;
-		loadingVersion = true;
-		selectedVersion = null;
+		
+		// Use version data directly from the list - instant expansion!
+		if (selectedVersion?.id === version.id) {
+			// Toggle off if clicking the same version
+			selectedVersion = null;
+			comparisonVersion = null;
+			comparisonVersionId = null;
+			return;
+		}
+		
+		selectedVersion = version; // Use the version object directly from the list
+		loadingVersion = false; // No loading needed since data is already available
 		comparisonVersion = null;
-		try {
-			const headers = { 'Content-Type': 'application/json' };
-			if ($token) {
-				headers['Authorization'] = `Bearer ${$token}`;
+		
+		// Reset comparison when version changes
+		comparisonVersionId = null;
+		comparisonVersion = null;
+		
+		// Auto-select a comparison version if diff view is enabled
+		if (showDiffView && versions.length > 1) {
+			const currentIndex = versions.findIndex(v => v.id === version.id);
+			if (currentIndex > 0) {
+				// Select previous version - use directly from list
+				comparisonVersionId = versions[currentIndex - 1].id;
+				comparisonVersion = versions[currentIndex - 1];
+			} else if (versions.length > 1) {
+				// If this is the first version, select the next one
+				comparisonVersionId = versions[1].id;
+				comparisonVersion = versions[1];
 			}
-			const response = await fetch(`${API_URL}/api/reports/${reportId}/versions/${version.id}`, { headers });
-			const data = await response.json();
-			if (response.ok && data.success) {
-				selectedVersion = data.version;
-				// Reset comparison when version changes
-				comparisonVersionId = null;
-				comparisonVersion = null;
-				
-				// Auto-select a comparison version if diff view is enabled
-				if (showDiffView && versions.length > 1) {
-					const currentIndex = versions.findIndex(v => v.id === version.id);
-					if (currentIndex > 0) {
-						// Select previous version
-						comparisonVersionId = versions[currentIndex - 1].id;
-					} else if (versions.length > 1) {
-						// If this is the first version, select the next one
-						comparisonVersionId = versions[1].id;
-					}
-					if (comparisonVersionId) {
-						comparisonVersion = await loadComparisonVersion(comparisonVersionId);
-					}
-				}
-			} else {
-				alert(data.error || 'Failed to load version details.');
-			}
-		} catch (err) {
-			console.error(err);
-			alert('Failed to load version details.');
-		} finally {
-			loadingVersion = false;
 		}
 	}
 
-	async function toggleDiffView() {
+	function toggleDiffView() {
 		showDiffView = !showDiffView;
 		if (showDiffView && selectedVersion && versions.length > 1) {
 			// Auto-select previous version if available, otherwise select first available
 			const currentIndex = versions.findIndex(v => v.id === selectedVersion.id);
 			if (currentIndex > 0) {
 				comparisonVersionId = versions[currentIndex - 1].id;
+				comparisonVersion = versions[currentIndex - 1]; // Use directly from list
 			} else if (versions.length > 1) {
 				// If this is the first version, select the next one
 				comparisonVersionId = versions[1].id;
-			}
-			if (comparisonVersionId) {
-				comparisonVersion = await loadComparisonVersion(comparisonVersionId);
+				comparisonVersion = versions[1]; // Use directly from list
 			}
 		} else {
 			comparisonVersionId = null;
@@ -146,10 +137,19 @@
 		}
 	}
 
-	async function changeComparisonVersion(versionId) {
+	function changeComparisonVersion(versionId) {
 		comparisonVersionId = versionId;
 		if (versionId && showDiffView) {
-			comparisonVersion = await loadComparisonVersion(versionId);
+			// Try to use version from list first - instant!
+			const versionFromList = versions.find(v => v.id === versionId);
+			if (versionFromList) {
+				comparisonVersion = versionFromList;
+			} else {
+				// Only fetch if not in list (shouldn't happen, but fallback)
+				loadComparisonVersion(versionId).then(v => {
+					if (v) comparisonVersion = v;
+				});
+			}
 		} else {
 			comparisonVersion = null;
 		}
@@ -274,9 +274,7 @@
 				</div>
 
 				<div class="flex-1 overflow-y-auto">
-					{#if loadingVersion}
-						<div class="p-6 text-sm text-gray-400">Loading version details...</div>
-					{:else if selectedVersion}
+					{#if selectedVersion}
 						<div class="p-6 space-y-6">
 							<div>
 								<h4 class="text-lg font-semibold text-white">Version {selectedVersion.version_number}</h4>
