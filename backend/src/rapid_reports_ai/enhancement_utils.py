@@ -4,6 +4,7 @@ Cleaner, type-safe implementation with automatic validation
 """
 
 import asyncio
+import os
 import re
 import time
 from datetime import datetime
@@ -79,6 +80,11 @@ MODEL_CONFIG = {
     "ACTION_APPLIER": "gpt-oss-120b",  # Apply enhancement actions to reports (primary - Cerebras GPT-OSS-120B with high reasoning)
     "ACTION_APPLIER_FALLBACK": "qwen/qwen3-32b",  # Fallback for action application (Qwen)
 }
+
+# Feature flag to enable/disable report validation
+# Controlled via environment variable: ENABLE_REPORT_VALIDATION=true/false
+# Defaults to False (disabled) if not set
+ENABLE_REPORT_VALIDATION = os.getenv("ENABLE_REPORT_VALIDATION", "false").lower() == "true"
 
 # Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
 QWEN_EXTRACTION_MODEL = MODEL_CONFIG["FINDING_EXTRACTION"]

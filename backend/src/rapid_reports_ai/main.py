@@ -558,29 +558,32 @@ async def chat(
                 )
                 report_id = str(saved_report.id)
                 
-                # Queue async background validation
-                from .enhancement_utils import validate_report_async
+                # Queue async background validation (if enabled)
+                from .enhancement_utils import validate_report_async, ENABLE_REPORT_VALIDATION
                 from .database.crud import update_validation_status
                 
-                # Set initial validation status to pending
-                findings = request.variables.get('FINDINGS', '') if request.variables else ''
-                update_validation_status(
-                    db=db,
-                    report_id=report_id,
-                    status="pending",
-                    violations_count=0
-                )
-                
-                # Queue background validation task
-                asyncio.create_task(
-                    validate_report_async(
+                if ENABLE_REPORT_VALIDATION:
+                    # Set initial validation status to pending
+                    findings = request.variables.get('FINDINGS', '') if request.variables else ''
+                    update_validation_status(
+                        db=db,
                         report_id=report_id,
-                        report_output=report_output,
-                        findings=findings,
-                        scan_type=report_output.scan_type or ""
+                        status="pending",
+                        violations_count=0
                     )
-                )
-                print(f"✅ Report saved, validation queued in background")
+                    
+                    # Queue background validation task
+                    asyncio.create_task(
+                        validate_report_async(
+                            report_id=report_id,
+                            report_output=report_output,
+                            findings=findings,
+                            scan_type=report_output.scan_type or ""
+                        )
+                    )
+                    print(f"✅ Report saved, validation queued in background")
+                else:
+                    print(f"✅ Report saved, validation skipped (ENABLE_REPORT_VALIDATION=false)")
             except Exception as e:
                 print(f"Failed to save report: {e}")
         else:
@@ -593,13 +596,16 @@ async def chat(
             "qwen": "qwen/qwen3-32b"
         }.get(request.model, request.model)
         
+        # Import validation flag for response
+        from .enhancement_utils import ENABLE_REPORT_VALIDATION
+        
         return {
             "success": True,
             "report_id": report_id,
             "response": report_output.report_content,
             "model": model_full_name,
             "use_case": use_case_name,
-            "validation_status": "pending" if report_id else None
+            "validation_status": "pending" if (report_id and ENABLE_REPORT_VALIDATION) else None
         }
     
     except Exception as e:
@@ -1181,29 +1187,32 @@ async def generate_report_from_template(
                 )
                 report_id = str(saved_report.id)
                 
-                # Queue async background validation
-                from .enhancement_utils import validate_report_async
+                # Queue async background validation (if enabled)
+                from .enhancement_utils import validate_report_async, ENABLE_REPORT_VALIDATION
                 from .database.crud import update_validation_status
                 
-                # Set initial validation status to pending
-                findings = request.variables.get('FINDINGS', '')
-                update_validation_status(
-                    db=db,
-                    report_id=report_id,
-                    status="pending",
-                    violations_count=0
-                )
-                
-                # Queue background validation task
-                asyncio.create_task(
-                    validate_report_async(
+                if ENABLE_REPORT_VALIDATION:
+                    # Set initial validation status to pending
+                    findings = request.variables.get('FINDINGS', '')
+                    update_validation_status(
+                        db=db,
                         report_id=report_id,
-                        report_output=report_output,
-                        findings=findings,
-                        scan_type=report_output.scan_type or ""
+                        status="pending",
+                        violations_count=0
                     )
-                )
-                print(f"✅ Report saved, validation queued in background")
+                    
+                    # Queue background validation task
+                    asyncio.create_task(
+                        validate_report_async(
+                            report_id=report_id,
+                            report_output=report_output,
+                            findings=findings,
+                            scan_type=report_output.scan_type or ""
+                        )
+                    )
+                    print(f"✅ Report saved, validation queued in background")
+                else:
+                    print(f"✅ Report saved, validation skipped (ENABLE_REPORT_VALIDATION=false)")
             except Exception as e:
                 print(f"Failed to save report: {e}")
         else:
@@ -1222,13 +1231,16 @@ async def generate_report_from_template(
             "qwen": "qwen/qwen3-32b"
         }.get(request.model, request.model)
         
+        # Import validation flag for response
+        from .enhancement_utils import ENABLE_REPORT_VALIDATION
+        
         return {
             "success": True,
             "response": report_output.report_content,
             "model": model_full_name,
             "template_id": str(template.id),
             "report_id": report_id,
-            "validation_status": "pending" if report_id else None
+            "validation_status": "pending" if (report_id and ENABLE_REPORT_VALIDATION) else None
         }
     
     except Exception as e:

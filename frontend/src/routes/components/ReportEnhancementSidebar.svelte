@@ -170,6 +170,9 @@ let sectionsExpanded: Record<SectionKey, boolean> = {
 };
 let guidelinesExpanded: Record<string, boolean> = {};
 
+// Edit proposal modal state
+let expandedEditProposalIndex: number | null = null;
+
 // Comparison state
 let priorReports: any[] = [];
 let showAddPriorModal = false;
@@ -1531,7 +1534,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 								Ask questions about the report or request improvements.
 							</div>
 						{:else}
-							{#each chatMessages as msg}
+							{#each chatMessages as msg, index}
 								<div class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}">
 									<div class="max-w-[80%] {msg.role === 'user' ? 'bg-purple-600' : msg.error ? 'bg-red-500/20 border border-red-500/30' : 'bg-gray-800'} rounded-lg p-3">
 										<div class="prose prose-invert max-w-none text-sm {msg.error ? 'text-red-300' : 'text-gray-100'}">
@@ -1540,7 +1543,19 @@ $: if ((visible || autoLoad) && completenessPending) {
 										{#if msg.editProposal}
 											<div class="mt-3 pt-3 border-t border-gray-700">
 												<div class="bg-gray-900/50 rounded p-2 mb-2 border border-gray-700/50">
-													<p class="text-xs font-medium text-gray-400 mb-1">Proposed Change:</p>
+													<div class="flex items-center justify-between mb-1">
+														<p class="text-xs font-medium text-gray-400">Proposed Change:</p>
+														<button
+															onclick={() => expandedEditProposalIndex = index}
+															class="text-xs text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
+															title="View in expanded modal"
+														>
+															<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+																<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+															</svg>
+															Expand
+														</button>
+													</div>
 													<div class="text-xs text-gray-300 max-h-32 overflow-y-auto whitespace-pre-wrap font-mono bg-black/20 p-2 rounded">
 														{msg.editProposal}
 													</div>
@@ -1622,6 +1637,61 @@ $: if ((visible || autoLoad) && completenessPending) {
 					</div>
 				</div>
 			{/if}
+		</div>
+	</div>
+{/if}
+
+<!-- Edit Proposal Modal -->
+{#if expandedEditProposalIndex !== null && chatMessages[expandedEditProposalIndex]?.editProposal}
+	{@const expandedMsg = chatMessages[expandedEditProposalIndex]}
+	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-[20000]" onclick={() => expandedEditProposalIndex = null}>
+		<div class="bg-gray-900 rounded-lg border border-gray-700 w-[90vw] max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" onclick={(e) => e.stopPropagation()}>
+			<div class="p-4 border-b border-gray-700 flex items-center justify-between">
+				<h3 class="text-lg font-semibold text-white">Proposed Change</h3>
+				<button 
+					onclick={() => expandedEditProposalIndex = null} 
+					class="text-gray-400 hover:text-white transition-colors"
+					aria-label="Close modal"
+				>
+					<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			</div>
+			<div class="flex-1 overflow-y-auto p-4">
+				<div class="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+					<pre class="text-sm text-gray-300 whitespace-pre-wrap font-mono bg-black/20 p-4 rounded overflow-x-auto">{expandedMsg.editProposal}</pre>
+				</div>
+			</div>
+			<div class="p-4 border-t border-gray-700 flex gap-3 justify-end">
+				<button 
+					class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+					onclick={() => expandedEditProposalIndex = null}
+				>
+					Close
+				</button>
+				<button
+					onclick={() => {
+						updateReportContent(expandedMsg.editProposal, 'chat');
+						expandedMsg.applied = true;
+						expandedEditProposalIndex = null;
+					}}
+					disabled={expandedMsg.applied}
+					class="px-4 py-2 {expandedMsg.applied ? 'bg-green-600/50 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'} text-white rounded-lg transition-colors flex items-center gap-2"
+				>
+					{#if expandedMsg.applied}
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+						</svg>
+						Applied
+					{:else}
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+						</svg>
+						Apply Change
+					{/if}
+				</button>
+			</div>
 		</div>
 	</div>
 {/if}
