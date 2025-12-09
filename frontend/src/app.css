@@ -360,6 +360,15 @@ input[type="date"].date-input::-webkit-calendar-picker-indicator:hover {
   @apply text-blue-400 hover:text-blue-300;
 }
 
+.prose ins {
+  @apply no-underline;
+  text-decoration: none;
+}
+
+.prose del {
+  @apply line-through;
+}
+
 /* Tab Navigation Styles */
 .tab-nav {
   @apply inline-flex rounded-lg border border-white/20 bg-white/5 backdrop-blur-xl p-1;

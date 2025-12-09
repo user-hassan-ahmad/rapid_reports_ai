@@ -2,11 +2,25 @@
 	import { createEventDispatcher, onMount } from 'svelte';
 	import { token } from '$lib/stores/auth';
 	import { API_URL } from '$lib/config';
+	import DiffMatchPatch from 'diff-match-patch';
+	import { marked } from 'marked';
+	import { htmlDiff } from '@benedicte/html-diff';
 
 	export let reportId;
 	export let refreshKey = 0;
 
 	const dispatch = createEventDispatcher();
+	const dmp = new DiffMatchPatch();
+
+	marked.setOptions({
+		breaks: true,
+		gfm: true
+	});
+
+	function renderMarkdown(md) {
+		if (!md) return '';
+		return marked.parse(md);
+	}
 
 	let versions = [];
 	let loading = false;
@@ -15,6 +29,10 @@
 	let selectedVersion = null;
 	let loadingVersion = false;
 	let restoringVersionId = null;
+	let showDiffView = false;
+	let comparisonVersionId = null;
+	let comparisonVersion = null;
+	let loadingComparison = false;
 
 	async function loadVersions() {
 		if (!reportId) {
@@ -46,10 +64,12 @@
 
 			if (versions.length > 0) {
 				const currentVersion = versions.find((v) => v.is_current) || versions[0];
+				comparisonVersion = null;
 				await selectVersion(currentVersion, { silent: true });
 			} else {
 				selectedVersionId = null;
 				selectedVersion = null;
+				comparisonVersion = null;
 			}
 		} catch (err) {
 			console.error('Failed to load report versions', err);
@@ -63,21 +83,49 @@
 		}
 	}
 
+	async function loadComparisonVersion(versionId) {
+		if (!versionId || !reportId) return null;
+
+		loadingComparison = true;
+		try {
+			const headers = { 'Content-Type': 'application/json' };
+			if ($token) {
+				headers['Authorization'] = `Bearer ${$token}`;
+			}
+
+			const response = await fetch(`${API_URL}/api/reports/${reportId}/versions/${versionId}`, { headers });
+			const data = await response.json();
+
+			if (response.ok && data.success) {
+				return data.version;
+			}
+			return null;
+		} catch (err) {
+			console.error('Failed to load comparison version', err);
+			return null;
+		} finally {
+			loadingComparison = false;
+		}
+	}
+
 	async function selectVersion(version, { silent = false } = {}) {
 		if (!version || !reportId) {
 			selectedVersion = null;
 			selectedVersionId = null;
+			comparisonVersion = null;
 			return;
 		}
 
 		if (selectedVersionId === version.id) {
 			selectedVersionId = null;
 			selectedVersion = null;
+			comparisonVersion = null;
 			return;
 		}
 
 		selectedVersionId = version.id;
 		selectedVersion = null;
+		comparisonVersion = null;
 		loadingVersion = true;
 
 		try {
@@ -94,6 +142,26 @@
 			}
 
 			selectedVersion = data.version;
+			
+			// Reset comparison when version changes
+			comparisonVersionId = null;
+			comparisonVersion = null;
+			
+			// Auto-select a comparison version if diff view is enabled
+			if (showDiffView && versions.length > 1) {
+				const currentIndex = versions.findIndex(v => v.id === version.id);
+				if (currentIndex > 0) {
+					// Select previous version
+					comparisonVersionId = versions[currentIndex - 1].id;
+				} else if (versions.length > 1) {
+					// If this is the first version, select the next one
+					comparisonVersionId = versions[1].id;
+				}
+				if (comparisonVersionId) {
+					comparisonVersion = await loadComparisonVersion(comparisonVersionId);
+				}
+			}
+
 			if (!silent) {
 				dispatch('versionSelected', { version: data.version });
 			}
@@ -103,6 +171,58 @@
 		} finally {
 			loadingVersion = false;
 		}
+	}
+
+	async function toggleDiffView() {
+		showDiffView = !showDiffView;
+		if (showDiffView && selectedVersion && versions.length > 1) {
+			// Auto-select previous version if available, otherwise select first available
+			const currentIndex = versions.findIndex(v => v.id === selectedVersionId);
+			if (currentIndex > 0) {
+				comparisonVersionId = versions[currentIndex - 1].id;
+			} else if (versions.length > 1) {
+				// If this is the first version, select the next one
+				comparisonVersionId = versions[1].id;
+			}
+			if (comparisonVersionId) {
+				comparisonVersion = await loadComparisonVersion(comparisonVersionId);
+			}
+		} else {
+			comparisonVersionId = null;
+			comparisonVersion = null;
+		}
+	}
+
+	async function changeComparisonVersion(versionId) {
+		comparisonVersionId = versionId;
+		if (versionId && showDiffView) {
+			comparisonVersion = await loadComparisonVersion(versionId);
+		} else {
+			comparisonVersion = null;
+		}
+	}
+
+	// Get available versions for comparison (all versions except the currently selected one)
+	$: availableComparisonVersions = selectedVersion && versions.length > 1
+		? versions.filter(v => v.id !== selectedVersionId).reverse()
+		: [];
+
+	function renderDiffWithMarkdown(oldText, newText) {
+		if (!oldText || !newText) return '';
+		
+		// Render both versions as markdown HTML first
+		const oldHtml = renderMarkdown(oldText);
+		const newHtml = renderMarkdown(newText);
+		
+		// Use html-diff to compute the diff on rendered HTML
+		// This avoids spacing issues because we're diffing the final rendered output
+		const diffedHtml = htmlDiff(oldHtml, newHtml);
+		
+		// html-diff uses <ins> for additions and <del> for deletions
+		// We need to style these tags with our color scheme
+		return diffedHtml
+			.replace(/<ins>/g, '<ins class="bg-green-500/30 text-green-200 px-0.5 rounded no-underline">')
+			.replace(/<del>/g, '<del class="bg-red-500/30 text-red-200 px-0.5 rounded line-through">');
 	}
 
 	async function restoreVersion(version) {
@@ -188,17 +308,14 @@
 									<span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-200 font-medium uppercase tracking-wide">Manual Edit</span>
 								{:else if version.notes === 'Chat edit'}
 									<span class="text-[10px] px-2 py-0.5 rounded-full bg-green-500/30 text-green-200 font-medium uppercase tracking-wide">Chat Edit</span>
+								{:else if version.notes === 'Comparison edit'}
+									<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/30 text-amber-200 font-medium uppercase tracking-wide">Comparison Edit</span>
 								{/if}
 							</div>
 							<p class="text-xs text-gray-400 mt-1">{formatDate(version.created_at)}</p>
 							{#if version.actions_applied && version.actions_applied.length > 0}
 								<p class="text-[11px] text-gray-500 mt-2 leading-snug">
 									{version.actions_applied.length} action{version.actions_applied.length === 1 ? '' : 's'} applied
-								</p>
-							{/if}
-							{#if version.report_content_preview}
-								<p class="text-[11px] text-gray-500 mt-2 leading-snug line-clamp-3">
-									{version.report_content_preview}
 								</p>
 							{/if}
 						</div>
@@ -253,8 +370,60 @@
 								</div>
 							{/if}
 							<div>
-								<h5 class="text-xs font-semibold text-white uppercase tracking-wide mb-2">Report Content</h5>
-								<pre class="text-sm text-gray-100 bg-gray-950/70 border border-gray-800 rounded-md p-4 whitespace-pre-wrap overflow-x-auto max-h-80">{selectedVersion.report_content}</pre>
+								<div class="flex items-center justify-between mb-2">
+									<h5 class="text-xs font-semibold text-white uppercase tracking-wide">Report Content</h5>
+									<div class="flex items-center gap-2">
+										{#if versions.length > 1}
+											<button
+												type="button"
+												onclick={toggleDiffView}
+												class="px-2 py-1 text-xs rounded-md transition-colors {showDiffView ? 'bg-purple-600 text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}"
+											>
+												{showDiffView ? 'Hide Changes' : 'Track Changes'}
+											</button>
+										{/if}
+									</div>
+								</div>
+								{#if showDiffView && versions.length > 1}
+									<div class="mb-2 flex items-center gap-2">
+										<span class="text-xs text-gray-400">Compare with:</span>
+										<select
+											onchange={(e) => changeComparisonVersion(e.target.value)}
+											value={comparisonVersionId || ''}
+											class="px-3 py-1.5 pr-8 text-xs rounded-md bg-white/10 text-gray-300 border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[160px] appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23d1d5db%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M6 9l6 6 6-6%22/%3E%3C/svg%3E')] bg-[length:16px_16px] bg-[right_0.5rem_center] bg-no-repeat"
+										>
+											<option value="">Select version...</option>
+											{#each availableComparisonVersions as compVersion}
+												<option value={compVersion.id}>
+													Version {compVersion.version_number}
+													{#if compVersion.is_current}
+														(Current)
+													{/if}
+												</option>
+											{/each}
+										</select>
+									</div>
+									{#if loadingComparison}
+										<div class="text-xs text-gray-400 py-2">Loading comparison...</div>
+									{:else if comparisonVersion}
+										<div class="prose prose-invert prose-sm max-w-none text-sm text-gray-100 bg-gray-950/70 border border-gray-800 rounded-md p-4 overflow-x-auto max-h-80">
+											{@html renderDiffWithMarkdown(comparisonVersion.report_content, selectedVersion.report_content)}
+										</div>
+									{:else if comparisonVersionId}
+										<div class="text-xs text-gray-400 py-2">Loading comparison version...</div>
+										<div class="prose prose-invert prose-sm max-w-none text-sm text-gray-100 bg-gray-950/70 border border-gray-800 rounded-md p-4 overflow-x-auto max-h-80">
+											{@html renderMarkdown(selectedVersion.report_content)}
+										</div>
+									{:else}
+										<div class="prose prose-invert prose-sm max-w-none text-sm text-gray-100 bg-gray-950/70 border border-gray-800 rounded-md p-4 overflow-x-auto max-h-80">
+											{@html renderMarkdown(selectedVersion.report_content)}
+										</div>
+									{/if}
+								{:else}
+									<div class="prose prose-invert prose-sm max-w-none text-sm text-gray-100 bg-gray-950/70 border border-gray-800 rounded-md p-4 overflow-x-auto max-h-80">
+										{@html renderMarkdown(selectedVersion.report_content)}
+									</div>
+								{/if}
 							</div>
 							{/if}
 						</div>

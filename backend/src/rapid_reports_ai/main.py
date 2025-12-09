@@ -2356,7 +2356,7 @@ async def apply_comparison_revision(
         db,
         report=report,
         actions_applied=None,
-        notes="Applied comparison analysis with interval changes"
+        notes="Comparison edit"
     )
     
     return {
