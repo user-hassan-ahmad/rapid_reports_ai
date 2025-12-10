@@ -894,6 +894,13 @@ onDestroy(() => {
 			} else {
 				// No cache found, reset to empty state
 				resetAllSidebarState();
+				// Load enhancements for the new report if sidebar is visible or auto-loading
+				if (visible || autoLoad) {
+					hasLoaded = false;
+					loadEnhancements();
+				} else {
+					hasLoaded = false;
+				}
 			}
 			
 			// Always reset hasLoaded for new reports to force refresh
