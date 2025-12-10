@@ -104,7 +104,6 @@ import ReportVersionHistory from './components/ReportVersionHistory.svelte';
 	let autoReportSelectedModel = 'claude';  // Track model selected in AutoReportTab
 	let templatedReportId: any = null;  // For enhancement sidebar (templated reports)
 	let sidebarVisible = false;  // Control sidebar visibility
-	let reportVersion: number = 0;  // Increment to force sidebar reload on form resubmit
 	let historyModalReport: HistoryModal | null = null;
 	let inputsExpanded = false;  // For collapsible input data section in history modal
 	let lastModalReportId: string | null = null;  // Track which report is open to reset inputsExpanded
@@ -481,7 +480,6 @@ let shouldAutoLoadEnhancements = false;
 				reportId = data.report_id || null;
 				if (reportId) {
 					versionHistoryRefreshKey += 1;
-					reportVersion += 1;  // Increment to trigger sidebar reload
 					historyRefreshKey += 1; // Trigger history reload
 					// Refresh reports store to include new report
 					reportsStore.refreshReports();
@@ -632,7 +630,6 @@ $: if (!isEnhancementContext && sidebarVisible) {
 								templatedReportId = e.detail.reportId;
 								if (templatedReportId) {
 									versionHistoryRefreshKey += 1;
-									reportVersion += 1;  // Increment to trigger sidebar reload
 									historyRefreshKey += 1; // Trigger history reload
 									// Refresh reports store to include new report
 									reportsStore.refreshReports();
@@ -699,7 +696,6 @@ $: if (!isEnhancementContext && sidebarVisible) {
 	visible={sidebarVisible && isEnhancementContext}
 	autoLoad={shouldAutoLoadEnhancements}
 	historyAvailable={currentHistoryCount > 1}
-	reportVersion={reportVersion}
 	on:close={() => {
 		sidebarVisible = false;
 	}}

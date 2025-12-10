@@ -131,7 +131,6 @@ interface CompletenessAnalysis {
 	export let visible: boolean = false;
 	export let autoLoad: boolean = false;
 	export let historyAvailable: boolean = false;
-	export let reportVersion: number = 0; // Increment this to force reload
 	
 	let activeTab: 'guidelines' | 'analysis' | 'comparison' | 'chat' = 'guidelines';
 	
@@ -857,26 +856,6 @@ onDestroy(() => {
 	stopCompletenessPoll();
 });
 
-	// Track last report version to detect changes
-	let lastReportVersion = -1;
-	
-	// Reset hasLoaded when reportVersion changes (form resubmitted)
-	$: if (reportVersion !== lastReportVersion) {
-		if (reportId && lastReportVersion !== -1) {
-			// Auto-reload when report version changes
-			hasLoaded = false;
-			invalidateCache();
-			if (visible || autoLoad) {
-				loadEnhancements(true);
-			}
-		} else if (reportId) {
-			// First load for this report ID
-			hasLoaded = false;
-			invalidateCache();
-		}
-		lastReportVersion = reportVersion;
-	}
-	
 	// Apply cache when report changes
 	$: if (reportId !== lastReportId) {
 		if (!reportId) {
