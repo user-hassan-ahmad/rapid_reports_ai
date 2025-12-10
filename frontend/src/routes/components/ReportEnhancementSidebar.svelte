@@ -865,29 +865,27 @@ onDestroy(() => {
 			if (lastReportId) {
 				saveCacheEntry();
 			}
-			lastReportId = reportId;
 			
 			// Try to load cached data for the new report
-			if (applyCacheEntry(enhancementCache.get(reportId))) {
-				// Cache applied
+			const cachedData = enhancementCache.get(reportId);
+			if (cachedData && applyCacheEntry(cachedData)) {
+				// Cache applied successfully
+				hasLoaded = true;
 			} else {
-				// No cache found, set loading state BEFORE resetting to show loading UI immediately
-				if (visible || autoLoad) {
-					loading = true;
-				}
+				// No cache found - prepare for loading
+				// Set loading state BEFORE resetting to show loading UI immediately
+				loading = true;
+				hasLoaded = false;
 				resetAllSidebarState();
-				// Load enhancements for the new report if sidebar is visible or auto-loading
+				
+				// Load enhancements if sidebar is visible or auto-loading
 				if (visible || autoLoad) {
-					hasLoaded = false;
 					loadEnhancements();
 				} else {
-					hasLoaded = false;
-					loading = false; // Reset loading if not loading
+					// Not visible yet, but keep loading=true so UI shows loading state when opened
+					loading = false;
 				}
 			}
-			
-			// Always reset hasLoaded for new reports to force refresh
-			hasLoaded = false;
 		}
 		lastReportId = reportId;
 	}
