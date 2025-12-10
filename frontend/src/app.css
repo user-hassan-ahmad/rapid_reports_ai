@@ -73,14 +73,12 @@ input[type="date"].date-input {
   color-scheme: dark;
 }
 
+/* Hide native calendar picker indicator when using custom icon */
 input[type="date"].date-input::-webkit-calendar-picker-indicator {
-  filter: invert(1);
+  opacity: 0;
   cursor: pointer;
-  opacity: 0.8;
-}
-
-input[type="date"].date-input::-webkit-calendar-picker-indicator:hover {
-  opacity: 1;
+  width: 0;
+  height: 0;
 }
 
 /* Select Styles */

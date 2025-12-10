@@ -627,14 +627,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							externalResponseVersion={templatedResponseVersion}
 							on:editTemplate={handleEditTemplate}
 							on:reportGenerated={(e) => {
-								const oldTemplatedReportId = templatedReportId;
 								templatedReportId = e.detail.reportId;
-								console.log('[PAGE DEBUG] TemplatedReport form submitted:', {
-									oldTemplatedReportId,
-									newTemplatedReportId: templatedReportId,
-									activeTab,
-									timestamp: new Date().toISOString()
-								});
 								if (templatedReportId) {
 									versionHistoryRefreshKey += 1;
 									historyRefreshKey += 1; // Trigger history reload

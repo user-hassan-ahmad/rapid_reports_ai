@@ -406,32 +406,71 @@ class FindingComparison(BaseModel):
         description="Model's contextual analysis of the change and clinical significance, including trend analysis if multiple priors"
     )
 
-class ComparisonAnalysisStage1(BaseModel):
-    """Stage 1: Comparison analysis without revised report"""
-    findings: List[FindingComparison] = Field(
-        description="All findings analyzed with status classification"
+class ChangeDirective(BaseModel):
+    """Structured directive for Stage 2 report modification"""
+    finding_name: str = Field(
+        description="Name of the finding being addressed"
     )
-    summary: str = Field(
-        description="High-level synthesis of changes and clinical implications"
+    location: str = Field(
+        description="Anatomical location of the finding"
     )
-    key_changes: List[dict] = Field(
-        default_factory=list,
-        description="Important text changes for UI highlighting: {original, revised, reason}"
+    change_type: str = Field(
+        description="Type of change: 'new', 'changed', 'resolved', or 'stable'"
+    )
+    integration_strategy: str = Field(
+        description="How to integrate this change into the report (e.g., 'Add to Findings after discussion of X', 'Update Comparison section', 'Modify Impression')"
+    )
+    measurement_data: Optional[dict] = Field(
+        default=None,
+        description="Structured measurement data including prior/current values, changes, and dates"
+    )
+    clinical_significance: str = Field(
+        description="Brief clinical interpretation for context"
+    )
+    section_target: str = Field(
+        description="Primary target section: 'Comparison', 'Findings', 'Impression', or 'Multiple'"
     )
 
-class ComparisonAnalysis(BaseModel):
-    """Complete comparison analysis with revised report"""
+class ComparisonAnalysisStage1(BaseModel):
+    """Stage 1: Pure analysis with structured change directives"""
     findings: List[FindingComparison] = Field(
         description="All findings analyzed with status classification"
     )
     summary: str = Field(
         description="High-level synthesis of changes and clinical implications"
     )
+    change_directives: List[ChangeDirective] = Field(
+        default_factory=list,
+        description="Structured directives for Stage 2 report integration (NOT text replacements)"
+    )
+
+class ComparisonReportGeneration(BaseModel):
+    """Stage 2: Generated report with documented changes"""
     revised_report: str = Field(
         description="Complete rewritten report with comparison language integrated"
     )
     key_changes: List[dict] = Field(
         default_factory=list,
-        description="Important text changes for UI highlighting: {original, revised, reason}"
+        description="5-7 most significant actual changes made for UI display: {original, revised, reason}"
+    )
+
+class ComparisonAnalysis(BaseModel):
+    """Complete two-stage comparison analysis result"""
+    findings: List[FindingComparison] = Field(
+        description="All findings analyzed with status classification (from Stage 1)"
+    )
+    summary: str = Field(
+        description="High-level synthesis of changes and clinical implications (from Stage 1)"
+    )
+    change_directives: List[ChangeDirective] = Field(
+        default_factory=list,
+        description="Structured directives used for report generation (from Stage 1)"
+    )
+    revised_report: str = Field(
+        description="Complete rewritten report with comparison language integrated (from Stage 2)"
+    )
+    key_changes: List[dict] = Field(
+        default_factory=list,
+        description="Actual text changes made for UI highlighting (from Stage 2): {original, revised, reason}"
     )
 

@@ -47,6 +47,8 @@ from .enhancement_models import (
     FindingComparison,
     ComparisonAnalysis,
     ComparisonAnalysisStage1,
+    ChangeDirective,
+    ComparisonReportGeneration,
 )
 
 # Central Model Configuration Dictionary
@@ -1906,7 +1908,10 @@ async def analyze_interval_changes(
 {guidelines_context}
 
 TASK: Analyze interval changes between reports. Extract findings, classify their status, 
-generate summary, and identify key text changes. Use calculate_measurement_change tool for precise measurements."""
+generate summary, and create structured change directives for Stage 2 integration. 
+Use calculate_measurement_change tool for precise measurements.
+
+Focus on analysis and structured data extraction - do NOT generate revised report text."""
     
     stage1_system_prompt = """You are an expert radiologist performing interval comparison analysis.
 
@@ -1916,13 +1921,14 @@ CRITICAL: Use UK date format (DD/MM/YYYY) for all dates.
 TOOL AVAILABLE: calculate_measurement_change
 Use this tool for precise measurement calculations between prior and current reports.
 
-YOUR TASK: Extract and analyze findings, classify changes, generate summary, identify key changes.
-Do NOT generate the revised report - that will be done separately.
+YOUR SINGULAR TASK: Analyze findings and classify changes. Do NOT generate any revised text.
+This is a pure analysis task. Report generation will be handled separately in Stage 2.
 
 METHODOLOGY:
 
 1. CONTEXT INTEGRATION
    Use provided clinical guidelines to inform significance assessment
+   Consider the clinical trajectory across multiple priors when available
 
 2. FINDING CLASSIFICATION
    CRITICAL: Only classify actual findings (pathology, abnormalities, lesions, masses, etc.)
@@ -1934,12 +1940,11 @@ METHODOLOGY:
    - NEW: Only in current report
    - NOT_MENTIONED: In prior but not current (explain likely reason)
    
-   For multiple prior reports:
-   - Track evolution across all timepoints
-   - Use calculate_measurement_change tool for precise calculations
-   - Calculate growth rates and trends
-   - Use prior_states list for multiple priors
-   - Include numerical details in trend field
+   OUTPUT STRUCTURE:
+   - Single prior report: Populate prior_measurement, prior_description, prior_date. Leave prior_states empty and trend None.
+   - Multiple prior reports: Populate prior_states (all priors where finding present, oldest first) and trend (progression analysis with measurements, dates, growth rates). Status compares to most recent prior. Optionally populate single prior fields with most recent values.
+   - Always populate current_measurement and current_description when available.
+   - Use calculate_measurement_change tool for precise calculations.
 
 3. MEASUREMENT EXTRACTION
    Measurement Object Structure:
@@ -1949,16 +1954,59 @@ METHODOLOGY:
      "raw_text": "5.3 cm"     # REQUIRED
    }
 
-4. KEY CHANGES
-   Identify 3-5 most important text changes that will need to be made.
-   For each change, provide:
+4. CHANGE DIRECTIVES (Structured Instructions for Stage 2)
+   For each significant finding that requires report integration, create a ChangeDirective with:
+   
    {
-     "original": "text from original report",
-     "revised": "suggested revised text", 
-     "reason": "explanation"
+     "finding_name": "Name of the finding (e.g., 'Left lower lobe nodule')",
+     "location": "Anatomical location (e.g., 'Left lower lobe', 'Right parietal region')",
+     "change_type": "Type of change: 'new', 'changed', 'resolved', or 'stable'",
+     "integration_strategy": "HOW to integrate this into the report (e.g., 'Add new finding to Findings section after discussion of lung parenchyma', 'Update existing measurement in Findings', 'Add to Comparison section with prior date and scan type', 'Update Impression with progression assessment')",
+     "measurement_data": {
+       "prior": {"value": "X", "unit": "mm", "raw_text": "X mm"},
+       "current": {"value": "Y", "unit": "mm", "raw_text": "Y mm"},
+       "absolute_change": "+Z mm",
+       "percentage_change": "+W%",
+       "dates": {"prior": "DD/MM/YYYY", "current": "DD/MM/YYYY"}
+     },  # Include only if measurements are relevant
+     "clinical_significance": "Brief clinical interpretation (e.g., 'Interval growth concerning for malignancy', 'Stable appearance favours benign process', 'New acute finding requiring urgent attention')",
+     "section_target": "Primary section to modify: 'Comparison', 'Findings', 'Impression', or 'Multiple'"
    }
+   
+   SELECTION CRITERIA FOR DIRECTIVES:
+   - Include all NEW findings (change_type='new')
+   - Include all CHANGED findings with significant interval change
+   - Include RESOLVED findings if previously significant
+   - Include STABLE findings only if they are major/critical (e.g., large aneurysm stable)
+   - Generally exclude truly stable minor findings
+   
+   INTEGRATION STRATEGY GUIDANCE:
+   - Be specific about WHERE in the report (which section, after which discussion)
+   - Be clear about WHAT to do (add, update, modify)
+   - Reference anatomical progression when relevant
+   - For findings with TREND (multiple priors): Instruct to integrate full progression pattern with all measurements and dates, not just most recent comparison
+   - For Comparison section directives: Specify to list ALL prior reports with dates and scan types
+   
+OUTPUT: ComparisonAnalysisStage1 with findings, summary, and change_directives (NO text generation)
+- findings: List of FindingComparison objects, each with:
+  * name (string): Finding name
+  * location (string): Anatomic location
+  * status (string): "changed", "stable", "new", or "not_mentioned"
+  * prior_measurement, prior_description, prior_date (for single prior)
+  * prior_states (list), trend (string) (for multiple priors)
+  * current_measurement, current_description
+  * assessment (string): Clinical analysis
+- summary: String with high-level synthesis of changes and clinical trajectory
+- change_directives: List of ChangeDirective objects with structured instructions for Stage 2
 
-OUTPUT: ComparisonAnalysisStage1 with findings, summary, and key_changes (NO revised_report field)"""
+REASONING WORKFLOW (for high-reasoning models like GPT-OSS 120B):
+1. Parse all reports systematically (current and all priors)
+2. Extract and classify each finding with precise measurements
+3. Use tools to calculate exact interval changes
+4. Assess clinical significance using guidelines when available
+5. Generate structured change directives (NOT text replacements)
+6. Synthesize high-level summary of clinical trajectory
+7. Output structured analysis"""
     
     # Get model and API key for Stage 1
     model_name = MODEL_CONFIG["COMPARISON_ANALYZER"]
@@ -1981,6 +2029,9 @@ OUTPUT: ComparisonAnalysisStage1 with findings, summary, and key_changes (NO rev
         system_prompt=stage1_system_prompt
     )
     
+    # Track tool calls for debugging
+    tool_calls_log = []
+    
     @stage1_agent.tool
     def calculate_measurement_change_tool(
         ctx: RunContext,
@@ -1992,6 +2043,17 @@ OUTPUT: ComparisonAnalysisStage1 with findings, summary, and key_changes (NO rev
         current_date: Optional[str] = None
     ) -> dict:
         """Calculate precise interval change between measurements."""
+        # Log tool call
+        tool_call_info = {
+            "tool": "calculate_measurement_change",
+            "inputs": {
+                "prior": f"{prior_value} {prior_unit}",
+                "current": f"{current_value} {current_unit}",
+                "prior_date": prior_date,
+                "current_date": current_date
+            }
+        }
+        
         input_data = MeasurementCalculationInput(
             prior_value=prior_value,
             prior_unit=prior_unit,
@@ -2001,13 +2063,27 @@ OUTPUT: ComparisonAnalysisStage1 with findings, summary, and key_changes (NO rev
             current_date=current_date
         )
         result = calculate_measurement_change(input_data)
-        return {
+        
+        output = {
             "absolute_change": result.absolute_change_str,
             "percentage_change": result.percentage_change_str,
             "growth_rate": result.growth_rate,
             "days_elapsed": result.days_elapsed,
             "error": result.calculation_error
         }
+        
+        # Log output
+        tool_call_info["output"] = output
+        tool_calls_log.append(tool_call_info)
+        
+        # Print concise tool call
+        print(f"  🔧 Tool Call: {prior_value}{prior_unit} → {current_value}{current_unit}")
+        if result.percentage_change_str:
+            print(f"     └─ Change: {result.absolute_change_str} ({result.percentage_change_str})")
+        if result.growth_rate:
+            print(f"     └─ Growth rate: {result.growth_rate}")
+        
+        return output
     
     # Set up environment variable for API key
     env_var_map = {
@@ -2027,14 +2103,14 @@ OUTPUT: ComparisonAnalysisStage1 with findings, summary, and key_changes (NO rev
     try:
         for attempt in range(max_retries):
             try:
-                # Run Stage 1 agent
-                model_settings = {"temperature": 0.3}
+                # Run Stage 1 agent with optimized settings for analysis
+                model_settings = {"temperature": 0.2}  # Lower for precise analysis
                 if provider == 'cerebras':
                     model_settings["reasoning_effort"] = "high"
-                    model_settings["max_tokens"] = 4000  # Focused on analysis, not report
-                    print(f"  └─ Using Cerebras reasoning_effort=high, max_tokens=4000")
+                    model_settings["max_tokens"] = 5000  # Increased for comprehensive analysis
+                    print(f"  └─ Using Cerebras reasoning_effort=high, max_tokens=5000, temperature=0.2")
                 else:
-                    model_settings["max_tokens"] = 4000
+                    model_settings["max_tokens"] = 5000
                     print(f"  └─ Using model settings: {model_settings}")
                 
                 result = await stage1_agent.run(stage1_user_prompt, model_settings=model_settings)
@@ -2046,7 +2122,55 @@ OUTPUT: ComparisonAnalysisStage1 with findings, summary, and key_changes (NO rev
                 print(f"  └─ Changed: {len([f for f in stage1_result.findings if f.status == 'changed'])}")
                 print(f"  └─ New: {len([f for f in stage1_result.findings if f.status == 'new'])}")
                 print(f"  └─ Stable: {len([f for f in stage1_result.findings if f.status == 'stable'])}")
-                print(f"  └─ Key changes identified: {len(stage1_result.key_changes)}")
+                print(f"  └─ Change directives created: {len(stage1_result.change_directives)}")
+                
+                # Debug: Print Stage 1 outputs
+                print(f"\n{'─'*80}")
+                print(f"📊 STAGE 1 OUTPUTS")
+                print(f"{'─'*80}")
+                
+                # Summary
+                print(f"\n📝 Summary:")
+                print(f"  {stage1_result.summary[:200]}{'...' if len(stage1_result.summary) > 200 else ''}")
+                
+                # Findings breakdown
+                print(f"\n🔍 Findings Breakdown:")
+                for i, finding in enumerate(stage1_result.findings[:10], 1):  # Show first 10
+                    status_emoji = {"changed": "📈", "new": "🆕", "stable": "✅", "not_mentioned": "❌"}.get(finding.status, "❓")
+                    print(f"  {i}. {status_emoji} {finding.name} ({finding.status})")
+                    if finding.location:
+                        print(f"     Location: {finding.location}")
+                    if finding.prior_measurement and finding.current_measurement:
+                        print(f"     Measurement: {finding.prior_measurement.raw_text} → {finding.current_measurement.raw_text}")
+                    elif finding.current_measurement:
+                        print(f"     Measurement: {finding.current_measurement.raw_text}")
+                    if finding.assessment:
+                        assessment_preview = finding.assessment[:100] + "..." if len(finding.assessment) > 100 else finding.assessment
+                        print(f"     Assessment: {assessment_preview}")
+                if len(stage1_result.findings) > 10:
+                    print(f"  ... and {len(stage1_result.findings) - 10} more findings")
+                
+                # Change directives
+                print(f"\n📋 Change Directives ({len(stage1_result.change_directives)}):")
+                for i, directive in enumerate(stage1_result.change_directives[:5], 1):  # Show first 5
+                    print(f"  {i}. {directive.finding_name} ({directive.change_type})")
+                    print(f"     Target: {directive.section_target}")
+                    print(f"     Strategy: {directive.integration_strategy[:80]}{'...' if len(directive.integration_strategy) > 80 else ''}")
+                if len(stage1_result.change_directives) > 5:
+                    print(f"  ... and {len(stage1_result.change_directives) - 5} more directives")
+                
+                # Tool calls summary
+                if tool_calls_log:
+                    print(f"\n🔧 Tool Calls ({len(tool_calls_log)}):")
+                    for i, tool_call in enumerate(tool_calls_log[:5], 1):
+                        inputs = tool_call["inputs"]
+                        print(f"  {i}. {tool_call['tool']}: {inputs.get('prior', 'N/A')} → {inputs.get('current', 'N/A')}")
+                        if tool_call["output"].get("percentage_change"):
+                            print(f"     Result: {tool_call['output']['absolute_change']} ({tool_call['output']['percentage_change']})")
+                    if len(tool_calls_log) > 5:
+                        print(f"  ... and {len(tool_calls_log) - 5} more tool calls")
+                
+                print(f"{'─'*80}\n")
                 break  # Success
                 
             except Exception as e:
@@ -2071,10 +2195,39 @@ OUTPUT: ComparisonAnalysisStage1 with findings, summary, and key_changes (NO rev
         print(f"📝 STAGE 2: Revised Report Generation")
         print(f"{'='*80}")
         
-        # Build compact context for Stage 2
-        findings_context = ", ".join([
-            f"{f.name} ({f.status})"
-            for f in stage1_result.findings[:8]  # Top 8 findings
+        # Build comprehensive context for Stage 2 - Pass ALL findings and directives
+        import json
+        
+        # Pass ALL findings with complete data (not truncated)
+        findings_json = json.dumps([
+            {
+                "name": f.name,
+                "location": f.location,
+                "status": f.status,
+                "prior_measurement": f.prior_measurement.dict() if f.prior_measurement else None,
+                "current_measurement": f.current_measurement.dict() if f.current_measurement else None,
+                "assessment": f.assessment,
+                "trend": f.trend if hasattr(f, 'trend') and f.trend else None
+            }
+            for f in stage1_result.findings
+        ], indent=2)
+        
+        # Build change directives context for Stage 2 (structured instructions)
+        directives_context = "\n\n".join([
+            f"DIRECTIVE {i+1}: {d.finding_name}\n"
+            f"  Location: {d.location}\n"
+            f"  Change Type: {d.change_type}\n"
+            f"  Integration Strategy: {d.integration_strategy}\n"
+            f"  Clinical Significance: {d.clinical_significance}\n"
+            f"  Target Section: {d.section_target}\n"
+            f"  Measurement Data: {json.dumps(d.measurement_data, indent=4) if d.measurement_data else 'N/A'}"
+            for i, d in enumerate(stage1_result.change_directives)
+        ])
+        
+        # Build scan types context for Stage 2 - Pass ALL priors, not just most recent 2
+        scan_types_context = "\n".join([
+            f"- {format_date_uk(p.get('date', ''))}: {p.get('scan_type', 'Not specified')}"
+            for p in sorted_priors  # Pass all priors to ensure complete comparison section
         ])
         
         stage2_user_prompt = f"""Here is the original radiology report that needs interval comparison integrated:
@@ -2083,91 +2236,179 @@ OUTPUT: ComparisonAnalysisStage1 with findings, summary, and key_changes (NO rev
 {current_report}
 --- END ORIGINAL REPORT ---
 
-Context for your revision (do NOT include this in output):
-- Overall summary: {stage1_result.summary[:300]}
-- Key findings: {findings_context}
-- Prior report date(s): {', '.join([format_date_uk(p.get('date', '')) for p in sorted_priors[:2]])}
+ANALYSIS CONTEXT (from Stage 1):
+Overall Summary: {stage1_result.summary}
 
-Your task: Generate the complete updated report with interval comparison language naturally integrated.
-- Update the Comparison section with prior dates (UK format)
-- Integrate interval changes in the Findings section
-- Update Impression as appropriate
-- Preserve exact formatting and structure of the original
+Prior Report Scan Types (use these FULL descriptions in Comparison section):
+{scan_types_context}
 
-Output ONLY the revised report text below (nothing else):"""
+ALL FINDINGS ANALYZED (complete data):
+{findings_json}
+
+CHANGE DIRECTIVES TO EXECUTE:
+{directives_context}
+
+YOUR TASKS:
+1. Execute each change directive systematically to generate the complete updated report
+2. Document the 5-7 most significant changes you made for UI display (key_changes output)
+
+EXECUTION INSTRUCTIONS:
+- Update the Comparison section with ALL prior scan dates (UK format) and FULL scan type descriptions from context above
+- CRITICAL: Comparison section should be a SIMPLE LIST of scans only (e.g., "20/12/2024 - CT Chest with IV contrast") - NO clinical observations or narrative text
+- CRITICAL: List ALL prior reports in the Comparison section, not just the most recent one
+- CRITICAL: Use the FULL scan type descriptions provided (e.g., "CT Abdomen and Pelvis with IV contrast"), NOT abbreviations
+- For each directive, follow the integration_strategy precisely
+- Use the exact measurement data provided in each directive
+- If a finding has TREND information (multiple priors), integrate the full progression/regression pattern in the FINDINGS section, not in Comparison
+- CRITICAL FORMATTING: Preserve exact formatting style - if original uses paragraphs, do NOT introduce bullets when adding new content. Weave new information into existing text flow.
+- Update Impression section as appropriate based on interval changes
+
+OUTPUT STRUCTURE:
+You must output a structured object with TWO fields:
+1. revised_report: The complete revised radiology report text
+2. key_changes: List of 5-7 most significant changes made, each with "original", "revised", "reason"
+
+For key_changes, select the most clinically significant changes (new findings, major interval changes, measurement updates, impression changes). Keep text concise (1-2 sentences each)."""
         
         stage2_system_prompt = """CRITICAL: You MUST use British English spelling and terminology throughout all output.
 
-You are a radiology reporting assistant. Your task is to generate ONLY the complete updated report text.
+You are a radiology reporting assistant executing change directives from a comprehensive analysis.
 
-WHAT TO OUTPUT:
-- The complete revised radiology report (and nothing else)
-- Do NOT include the prior reports
-- Do NOT include analysis summaries
-- Do NOT include metadata or commentary
-- Just the report itself, exactly as it would appear in clinical practice
+YOUR TWO TASKS:
+1. Generate the complete updated report by executing the change directives
+2. Document the 5-7 most significant changes you made for UI display
+
+OUTPUT: ComparisonReportGeneration with two fields:
+- revised_report: The complete revised radiology report text
+- key_changes: List of 5-7 most significant changes, each with:
+  {
+    "original": "exact text from original report that was changed",
+    "revised": "exact text in the revised report",
+    "reason": "brief explanation (e.g., 'New finding added', 'Updated measurement', 'Added interval comparison')"
+  }
+
+EXECUTION APPROACH:
+1. Start with the original report structure
+2. For each change directive:
+   - Locate the appropriate section/position per integration_strategy
+   - Integrate the change following the specified strategy
+   - Use the exact measurements and data provided
+   - Track what you changed for key_changes output
+3. Select the 5-7 most clinically significant changes for key_changes
 
 FORMATTING PRESERVATION (HIGHEST PRIORITY):
 - Preserve exact structure, formatting style, and organization of the original report
 - Keep all section headers exactly as they appear (e.g., "TECHNIQUE:", "FINDINGS:", "IMPRESSION:")
-- If original uses paragraphs, keep paragraphs (do NOT convert to bullets)
-- If original uses bullet points, keep bullet points (do NOT convert to paragraphs)
+- CRITICAL: If original uses paragraphs, keep paragraphs (do NOT convert to bullets) - even when adding NEW content
+- CRITICAL: If original uses bullet points, keep bullet points (do NOT convert to paragraphs) - even when adding NEW content
+- When adding new information, integrate it into existing sentences/paragraphs - do NOT introduce bullets or new formatting styles
 - Maintain the same section order and spacing
 - Do NOT add or remove sections
-- Match the original writing style (narrative vs. structured)
+- Match the original writing style (narrative vs. structured) consistently throughout
+- NEVER mix formatting styles within a section (e.g., don't add bullets to a paragraph-based section)
 
-COMPARISON INTEGRATION:
-- Update the Comparison section with prior report dates (UK format DD/MM/YYYY)
+COMPARISON SECTION UPDATE:
+- CRITICAL: The Comparison section should be a SIMPLE LIST of prior scans ONLY - no narrative text, no clinical observations
+- Format each prior as: "DD/MM/YYYY - Full Scan Type Description" (one per line)
+- CRITICAL: List ALL prior reports provided in the context (do not omit any)
+- List priors in reverse chronological order (most recent first)
+- CRITICAL: Use the FULL scan type descriptions provided (e.g., "CT Abdomen and Pelvis with IV contrast")
+- Do NOT use abbreviations like "CT" or "CT A/P" even if they appear in the original text
+- Do NOT add clinical details - those belong in Findings section only
+
+FINDINGS & IMPRESSION INTEGRATION:
 - Integrate comparison language naturally within the Findings section
-- Update measurements and descriptions in-place
+- For findings with TREND data (multiple priors): Reference the full progression pattern, not just most recent comparison
+- Update measurements and descriptions in-place per directives
+- CRITICAL: When adding NEW findings, weave them into the existing text flow - do NOT introduce bullets if section uses paragraphs
+- If adding to a paragraph section: Continue the paragraph or add a new paragraph in the same style
+- If adding to a bulleted section: Add as a new bullet point
 - Update recommendations in Impression section as appropriate
+- Ensure clinical consistency with the analysis summary
 
-OUTPUT FORMAT: Return ONLY the full revised report text. No prior reports, no commentary, no thinking blocks, no tags."""
+KEY_CHANGES SELECTION CRITERIA:
+- Prioritize new findings and significant interval changes
+- Include measurement updates with clinical significance
+- Include comparison section updates (prior scan references)
+- Include impression updates
+- Keep original/revised text concise (1-2 sentences each)
+- Do NOT include minor formatting or punctuation changes
+
+REASONING WORKFLOW (for high-reasoning models):
+1. Review all change directives systematically
+2. Plan integration order (Comparison → Findings → Impression)
+3. Execute each change with precise measurement integration
+4. As you make significant changes, capture them for key_changes
+5. Verify internal consistency before outputting
+6. Output the structured ComparisonReportGeneration object"""
         
         # Use same model for Stage 2
-        stage2_model_label = f"{model_name} (Stage 2: Report)"
+        stage2_model_label = f"{model_name} (Stage 2: Report + Key Changes)"
         print(f"  └─ Model: {stage2_model_label}")
         
-        revised_report = None
+        # Create model instance for Stage 2
+        stage2_pydantic_model = _create_pydantic_model(model_name, api_key, use_thinking=False)
+        
+        # Create Stage 2 agent with structured output
+        stage2_agent = Agent(
+            stage2_pydantic_model,
+            output_type=ComparisonReportGeneration,
+            system_prompt=stage2_system_prompt
+        )
+        
+        stage2_result = None
         for attempt in range(max_retries):
             try:
-                # Run Stage 2 with Pydantic AI using simple string output
-                model_settings = {"temperature": 0.3}
+                # Run Stage 2 with optimized settings for report generation
+                model_settings = {"temperature": 0.25}  # Slightly higher for natural flow
                 if provider == 'cerebras':
-                    model_settings["reasoning_effort"] = "high"
-                    model_settings["max_tokens"] = 4096
-                    print(f"  └─ Using Cerebras reasoning_effort=high, max_tokens=4096")
+                    model_settings["reasoning_effort"] = "medium"  # Less than Stage 1
+                    model_settings["max_tokens"] = 5000  # Increased for report + key_changes
+                    print(f"  └─ Using Cerebras reasoning_effort=medium, max_tokens=5000, temperature=0.25")
                 else:
-                    model_settings["max_tokens"] = 4096
+                    model_settings["max_tokens"] = 5000
                     print(f"  └─ Using model settings: {model_settings}")
                 
-                result = await _run_agent_with_model(
-                    model_name=model_name,
-                    output_type=str,
-                    system_prompt=stage2_system_prompt,
-                    user_prompt=stage2_user_prompt,
-                    api_key=api_key,
-                    use_thinking=(provider == 'groq'),
-                    model_settings=model_settings
-                )
+                result = await stage2_agent.run(stage2_user_prompt, model_settings=model_settings)
+                stage2_result: ComparisonReportGeneration = result.output
                 
-                revised_report = str(result.output).strip()
-                
-                # Clean up thinking tags if present
-                if revised_report and provider == 'groq':
-                    revised_report = re.sub(
-                        r'<think>.*?</think>',
-                        '',
-                        revised_report,
-                        flags=re.DOTALL | re.IGNORECASE
-                    ).strip()
-                
-                if not revised_report:
-                    raise ValueError("Stage 2 returned empty report")
+                # Validate outputs
+                if not stage2_result.revised_report or not stage2_result.revised_report.strip():
+                    raise ValueError("Stage 2 returned empty revised_report")
                 
                 stage2_elapsed = time.time() - start_time
                 print(f"\n✅ Stage 2 completed in {stage2_elapsed:.2f}s")
-                print(f"  └─ Revised report length: {len(revised_report)} chars")
+                print(f"  └─ Revised report length: {len(stage2_result.revised_report)} chars")
+                print(f"  └─ Key changes documented: {len(stage2_result.key_changes)}")
+                
+                # Debug: Print Stage 2 outputs
+                print(f"\n{'─'*80}")
+                print(f"📝 STAGE 2 OUTPUTS")
+                print(f"{'─'*80}")
+                
+                # Key changes
+                if stage2_result.key_changes:
+                    print(f"\n🔑 Key Changes ({len(stage2_result.key_changes)}):")
+                    for i, change in enumerate(stage2_result.key_changes, 1):
+                        print(f"\n  {i}. {change.get('reason', 'No reason provided')}")
+                        original_preview = change.get('original', '')[:100] + "..." if len(change.get('original', '')) > 100 else change.get('original', '')
+                        revised_preview = change.get('revised', '')[:100] + "..." if len(change.get('revised', '')) > 100 else change.get('revised', '')
+                        print(f"     ❌ Original: {original_preview}")
+                        print(f"     ✅ Revised:  {revised_preview}")
+                else:
+                    print(f"\n⚠️  No key changes documented")
+                
+                # Revised report preview
+                print(f"\n📄 Revised Report Preview (first 500 chars):")
+                report_preview = stage2_result.revised_report[:500]
+                # Show first few lines
+                preview_lines = report_preview.split('\n')[:10]
+                for line in preview_lines:
+                    print(f"  {line}")
+                if len(stage2_result.revised_report) > 500:
+                    print(f"  ... ({len(stage2_result.revised_report) - 500} more characters)")
+                
+                print(f"{'─'*80}\n")
                 break  # Success
                 
             except Exception as e:
@@ -2181,7 +2422,7 @@ OUTPUT FORMAT: Return ONLY the full revised report text. No prior reports, no co
                     print(f"❌ Stage 2 failed after {max_retries} attempts")
                     raise Exception(f"Stage 2 (Report Generation) failed after {max_retries} retries: {str(e)}")
         
-        if not revised_report:
+        if not stage2_result:
             raise Exception("Stage 2 (Report Generation) did not produce a result")
         
         # ============================================================================
@@ -2189,19 +2430,27 @@ OUTPUT FORMAT: Return ONLY the full revised report text. No prior reports, no co
         # ============================================================================
         
         final_result = ComparisonAnalysis(
-            findings=stage1_result.findings,
-            summary=stage1_result.summary,
-            revised_report=revised_report,
-            key_changes=stage1_result.key_changes
+            findings=stage1_result.findings,              # From Stage 1
+            summary=stage1_result.summary,                # From Stage 1
+            change_directives=stage1_result.change_directives,  # From Stage 1 (NEW!)
+            revised_report=stage2_result.revised_report,  # From Stage 2
+            key_changes=stage2_result.key_changes         # From Stage 2 (NEW source!)
         )
         
         total_elapsed = time.time() - start_time
         print(f"\n{'='*80}")
-        print(f"✅ Two-stage comparison completed in {total_elapsed:.2f}s")
+        print(f"✅ TWO-STAGE COMPARISON COMPLETE")
         print(f"{'='*80}")
+        print(f"⏱️  Total time: {total_elapsed:.2f}s")
+        print(f"\n📊 Summary:")
         print(f"  └─ Total findings: {len(final_result.findings)}")
-        print(f"  └─ Key changes: {len(final_result.key_changes)}")
+        print(f"     • Changed: {len([f for f in final_result.findings if f.status == 'changed'])}")
+        print(f"     • New: {len([f for f in final_result.findings if f.status == 'new'])}")
+        print(f"     • Stable: {len([f for f in final_result.findings if f.status == 'stable'])}")
+        print(f"  └─ Change directives (Stage 1): {len(final_result.change_directives)}")
+        print(f"  └─ Key changes (Stage 2): {len(final_result.key_changes)}")
         print(f"  └─ Revised report: {len(final_result.revised_report)} chars")
+        print(f"  └─ Tool calls made: {len(tool_calls_log)}")
         print(f"{'='*80}\n")
         
         return final_result

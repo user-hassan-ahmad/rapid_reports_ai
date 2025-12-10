@@ -178,6 +178,7 @@ let priorReports: any[] = [];
 let showAddPriorModal = false;
 let editingPriorIndex: number | null = null;
 let newPrior = { text: '', date: '', scan_type: '' };
+let studyDateInput: HTMLInputElement;
 let comparing = false;
 let comparisonResult: any = null;
 let applyRevisedReportLoading = false;
@@ -726,14 +727,14 @@ $: canApplySelectedActions = selectedActionsWithPatch.length > 0 && !applyAction
 	
 	// Comparison functions
 	async function addPriorReport() {
-		if (!newPrior.text.trim() || !newPrior.date) return;
+		if (!newPrior.text.trim() || !newPrior.date || !newPrior.scan_type.trim()) return;
 		
 		if (editingPriorIndex !== null) {
 			// Update existing report
 			priorReports[editingPriorIndex] = {
 				text: newPrior.text,
 				date: newPrior.date,
-				scan_type: newPrior.scan_type || ''
+				scan_type: newPrior.scan_type.trim()
 			};
 			editingPriorIndex = null;
 		} else {
@@ -741,7 +742,7 @@ $: canApplySelectedActions = selectedActionsWithPatch.length > 0 && !applyAction
 			priorReports = [...priorReports, { 
 				text: newPrior.text, 
 				date: newPrior.date,
-				scan_type: newPrior.scan_type || ''
+				scan_type: newPrior.scan_type.trim()
 			}];
 		}
 		
@@ -1406,114 +1407,230 @@ $: if ((visible || autoLoad) && completenessPending) {
 						{:else}
 							<!-- Summary -->
 							<div class="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
-								<h3 class="text-sm font-semibold text-blue-300 mb-2">Summary</h3>
+								<h3 class="text-sm font-semibold text-blue-300 mb-2">📊 Summary</h3>
 								<p class="text-sm text-gray-300">{comparisonResult.summary}</p>
 							</div>
 							
-							<!-- Key Changes -->
-							{#if comparisonResult.key_changes?.length > 0}
-								<div class="space-y-3 mb-4">
-									<h3 class="text-sm font-semibold text-white">Key Changes</h3>
-									{#each comparisonResult.key_changes as change}
-										<div class="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
-											<div class="text-xs text-gray-400 mb-2">{change.reason}</div>
-											<div class="bg-red-500/10 border border-red-500/30 rounded p-2 mb-2">
-												<div class="text-xs text-red-400 mb-1">Original:</div>
-												<div class="text-sm text-gray-300 line-through">{change.original}</div>
-											</div>
-											<div class="bg-green-500/10 border border-green-500/30 rounded p-2">
-												<div class="text-xs text-green-400 mb-1">Revised:</div>
-												<div class="text-sm text-gray-300">{change.revised}</div>
-											</div>
-										</div>
-									{/each}
-								</div>
-							{/if}
-							
-							<!-- Findings by Status -->
+							<!-- Clinical Analysis Section -->
 							{@const changedFindings = comparisonResult.findings.filter(f => f.status === 'changed')}
 							{@const newFindings = comparisonResult.findings.filter(f => f.status === 'new')}
 							{@const stableFindings = comparisonResult.findings.filter(f => f.status === 'stable')}
 							
-							{#if changedFindings.length > 0}
-								<details open class="bg-orange-500/10 border border-orange-500/30 rounded-lg mb-3">
-									<summary class="p-3 cursor-pointer text-sm font-medium text-orange-300">
-										📈 Interval Changes ({changedFindings.length})
-									</summary>
-									<div class="p-3 pt-0 space-y-3">
-										{#each changedFindings as finding}
-											<div class="border-l-2 border-orange-500 pl-3 py-1">
-												<div class="text-sm font-medium text-white">{finding.name}</div>
-												<div class="text-sm text-gray-300 mt-1">{finding.assessment}</div>
+							<div class="mb-4">
+								<h3 class="text-sm font-semibold text-white mb-3">🔍 Clinical Analysis</h3>
+								
+								<!-- New Findings (Priority 1 - Most Important) -->
+								{#if newFindings.length > 0}
+									{@const hasUrgent = newFindings.some(f => 
+										f.assessment.toLowerCase().includes('concerning') || 
+										f.assessment.toLowerCase().includes('urgent') ||
+										f.assessment.toLowerCase().includes('immediate')
+									)}
+									<details open class="bg-red-500/10 border border-red-500/30 rounded-lg mb-3">
+										<summary class="p-3 cursor-pointer text-sm font-medium flex items-center gap-2 list-none">
+											<svg class="w-4 h-4 text-red-300 transition-transform duration-200 arrow-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+											</svg>
+											<span class="text-red-300">🆕 New Findings</span>
+											<span class="text-xs bg-red-500/30 text-red-200 px-2 py-0.5 rounded font-medium">
+												{newFindings.length}
+											</span>
+											{#if hasUrgent}
+												<span class="text-xs bg-red-600/50 text-red-100 px-2 py-0.5 rounded font-bold animate-pulse">
+													URGENT
+												</span>
+											{/if}
+										</summary>
+										<div class="p-3 pt-0 space-y-3">
+											{#each newFindings as finding}
+												<div class="border-l-2 border-red-500 pl-3 py-2 bg-red-500/5 rounded">
+													<!-- Finding Name & Location -->
+													<div class="flex items-start justify-between gap-2 mb-1">
+														<div class="text-sm font-medium text-white">{finding.name}</div>
+														{#if finding.location}
+															<div class="text-xs text-red-300/60 shrink-0 bg-red-500/10 px-1.5 py-0.5 rounded">
+																{finding.location}
+															</div>
+														{/if}
+													</div>
+													
+													<!-- Current Measurement (if available) -->
+													{#if finding.current_measurement}
+														<div class="text-xs mb-2">
+															<span class="bg-red-500/20 text-red-200 px-2 py-0.5 rounded">
+																Measures: {finding.current_measurement.raw_text}
+															</span>
+														</div>
+													{/if}
+													
+													<!-- Assessment -->
+													<div class="text-sm text-gray-300">{finding.assessment}</div>
+												</div>
+											{/each}
+										</div>
+									</details>
+								{/if}
+								
+								<!-- Interval Changes (Priority 2) -->
+								{#if changedFindings.length > 0}
+									{@const hasSignificant = changedFindings.some(f => 
+										f.assessment.toLowerCase().includes('significant') || 
+										f.assessment.toLowerCase().includes('concerning') ||
+										f.assessment.toLowerCase().includes('progression')
+									)}
+									<details open class="bg-orange-500/10 border border-orange-500/30 rounded-lg mb-3">
+										<summary class="p-3 cursor-pointer text-sm font-medium flex items-center gap-2 list-none">
+											<svg class="w-4 h-4 text-orange-300 transition-transform duration-200 arrow-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+											</svg>
+											<span class="text-orange-300">📈 Interval Changes</span>
+											<span class="text-xs bg-orange-500/30 text-orange-200 px-2 py-0.5 rounded font-medium">
+												{changedFindings.length}
+											</span>
+											{#if hasSignificant}
+												<span class="text-xs bg-orange-600/40 text-orange-100 px-2 py-0.5 rounded font-semibold">
+													SIGNIFICANT
+												</span>
+											{/if}
+										</summary>
+										<div class="p-3 pt-0 space-y-3">
+											{#each changedFindings as finding}
+												<div class="border-l-2 border-orange-500 pl-3 py-2 bg-orange-500/5 rounded">
+													<!-- Finding Name & Location -->
+													<div class="flex items-start justify-between gap-2 mb-1">
+														<div class="text-sm font-medium text-white">{finding.name}</div>
+														{#if finding.location}
+															<div class="text-xs text-orange-300/60 shrink-0 bg-orange-500/10 px-1.5 py-0.5 rounded">
+																{finding.location}
+															</div>
+														{/if}
+													</div>
+													
+													<!-- Measurements (Before → After) -->
+													{#if finding.prior_measurement || finding.current_measurement}
+														<div class="flex items-center gap-2 text-xs mb-2 flex-wrap">
+															{#if finding.prior_measurement}
+																<span class="bg-gray-800/50 text-gray-400 px-2 py-0.5 rounded">
+																	Was: {finding.prior_measurement.raw_text}
+																</span>
+															{/if}
+															{#if finding.prior_measurement && finding.current_measurement}
+																<span class="text-orange-400">→</span>
+															{/if}
+															{#if finding.current_measurement}
+																<span class="bg-orange-500/20 text-orange-200 px-2 py-0.5 rounded">
+																	Now: {finding.current_measurement.raw_text}
+																</span>
+															{/if}
+														</div>
+													{/if}
+													
+													<!-- Trend (if multiple priors) -->
+													{#if finding.trend}
+														<div class="text-xs text-gray-400 mb-2 italic border-l-2 border-gray-700 pl-2 py-1 bg-gray-800/30 rounded">
+															<span class="text-gray-500 font-semibold">Trend:</span> {finding.trend}
+														</div>
+													{/if}
+													
+													<!-- Prior Date (if single prior) -->
+													{#if finding.prior_date && !finding.trend}
+														<div class="text-xs text-gray-500 mb-1">
+															Prior: {finding.prior_date}
+														</div>
+													{/if}
+													
+													<!-- Assessment -->
+													<div class="text-sm text-gray-300">{finding.assessment}</div>
+												</div>
+											{/each}
+										</div>
+									</details>
+								{/if}
+								
+								<!-- Stable Findings (Priority 3 - Least Urgent) -->
+								{#if stableFindings.length > 0}
+									<details class="bg-green-500/10 border border-green-500/30 rounded-lg mb-3">
+										<summary class="p-3 cursor-pointer text-sm font-medium flex items-center gap-2 list-none">
+											<svg class="w-4 h-4 text-green-300 transition-transform duration-200 arrow-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+											</svg>
+											<span class="text-green-300">✅ Stable</span>
+											<span class="text-xs bg-green-500/30 text-green-200 px-2 py-0.5 rounded font-medium">
+												{stableFindings.length}
+											</span>
+										</summary>
+										<div class="p-3 pt-0">
+											<ul class="text-sm text-gray-300 space-y-1">
+												{#each stableFindings as finding}
+													<li class="flex items-start gap-2">
+														<span class="text-green-500 mt-0.5">•</span>
+														<span>{finding.name}</span>
+													</li>
+												{/each}
+											</ul>
+										</div>
+									</details>
+								{/if}
+							</div>
+							
+							<!-- Report Modifications Section -->
+							{#if comparisonResult.key_changes?.length > 0}
+								<div class="mb-4">
+									<h3 class="text-sm font-semibold text-white mb-3">📝 Report Modifications</h3>
+									<div class="space-y-3">
+										{#each comparisonResult.key_changes as change}
+											<div class="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
+												<div class="text-xs text-gray-400 mb-2 font-medium">{change.reason}</div>
+												<div class="bg-red-500/10 border border-red-500/30 rounded p-2 mb-2">
+													<div class="text-xs text-red-400 mb-1">Original:</div>
+													<div class="text-sm text-gray-300 line-through">{change.original}</div>
+												</div>
+												<div class="bg-green-500/10 border border-green-500/30 rounded p-2">
+													<div class="text-xs text-green-400 mb-1">Revised:</div>
+													<div class="text-sm text-gray-300">{change.revised}</div>
+												</div>
 											</div>
 										{/each}
 									</div>
-								</details>
+								</div>
 							{/if}
 							
-							{#if newFindings.length > 0}
-								<details class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg mb-3">
-									<summary class="p-3 cursor-pointer text-sm font-medium text-yellow-300">
-										⭐ New Findings ({newFindings.length})
-									</summary>
-									<div class="p-3 pt-0 space-y-2">
-										{#each newFindings as finding}
-											<div class="text-sm text-gray-300">• {finding.name}</div>
-										{/each}
-									</div>
-								</details>
-							{/if}
-							
-							{#if stableFindings.length > 0}
-								<details class="bg-green-500/10 border border-green-500/30 rounded-lg mb-3">
-									<summary class="p-3 cursor-pointer text-sm font-medium text-green-300">
-										✅ Stable ({stableFindings.length})
-									</summary>
-									<div class="p-3 pt-0">
-										<ul class="text-sm text-gray-300 space-y-1">
-											{#each stableFindings as finding}
-												<li>• {finding.name}</li>
-											{/each}
-										</ul>
-									</div>
-								</details>
-							{/if}
-							
-							<!-- Preview and Apply Buttons -->
-							{#if comparisonResult?.revised_report}
-								<button 
-									class="btn-secondary w-full mb-2" 
-									onclick={() => showRevisedReportPreview = true}
-									disabled={applyRevisedReportLoading || revisedReportApplied}
-								>
-									👁️ Preview Full Revised Report
-								</button>
-							{/if}
-							
-							<!-- Apply Button -->
-							<div class="relative">
-								{#if applyRevisedReportLoading}
-									<div class="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
-										<div class="flex items-center gap-3 text-gray-200 text-sm">
-											<div class="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
-											<span>Applying revised report...</span>
-										</div>
-									</div>
+							<!-- Action Buttons -->
+							<div class="border-t border-gray-700 pt-4">
+								{#if comparisonResult?.revised_report}
+									<button 
+										class="btn-secondary w-full mb-2" 
+										onclick={() => showRevisedReportPreview = true}
+										disabled={applyRevisedReportLoading || revisedReportApplied}
+									>
+										👁️ Preview Full Revised Report
+									</button>
 								{/if}
-								<button 
-									class="btn-primary w-full mb-2 disabled:opacity-50 disabled:cursor-not-allowed" 
-									onclick={applyRevisedReport}
-									disabled={applyRevisedReportLoading || revisedReportApplied}
-								>
-									{revisedReportApplied ? '✅ Report Applied' : '✅ Apply Revised Report'}
+								
+								<div class="relative">
+									{#if applyRevisedReportLoading}
+										<div class="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
+											<div class="flex items-center gap-3 text-gray-200 text-sm">
+												<div class="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
+												<span>Applying revised report...</span>
+											</div>
+										</div>
+									{/if}
+									<button 
+										class="btn-primary w-full mb-2 disabled:opacity-50 disabled:cursor-not-allowed" 
+										onclick={applyRevisedReport}
+										disabled={applyRevisedReportLoading || revisedReportApplied}
+									>
+										{revisedReportApplied ? '✅ Report Applied' : '✅ Apply Revised Report'}
+									</button>
+								</div>
+								<p class="text-xs text-gray-500 text-center mb-3">
+									Updates report and creates new version in history
+								</p>
+								<button class="btn-secondary w-full" onclick={clearComparison} disabled={applyRevisedReportLoading}>
+									🔄 Start Over
 								</button>
 							</div>
-							<p class="text-xs text-gray-500 text-center mb-3">
-								Updates report and creates new version in history
-							</p>
-							<button class="btn-secondary w-full" onclick={clearComparison} disabled={applyRevisedReportLoading}>
-								🔄 Start Over
-							</button>
 						{/if}
 					{/if}
 				</div>
@@ -1702,21 +1819,40 @@ $: if ((visible || autoLoad) && completenessPending) {
 			<div class="p-4 space-y-4">
 				<div>
 					<label class="block text-sm font-medium text-gray-300 mb-2">Study Date *</label>
-					<input 
-						type="date" 
-						bind:value={newPrior.date} 
-						class="input-dark w-full date-input" 
-						required 
-						style="color-scheme: dark;"
-					/>
+					<div class="relative">
+						<input 
+							type="date" 
+							bind:value={newPrior.date} 
+							bind:this={studyDateInput}
+							class="input-dark w-full date-input pr-10" 
+							required 
+							style="color-scheme: dark;"
+						/>
+						<button
+							type="button"
+							onclick={() => {
+								if (studyDateInput) {
+									studyDateInput.showPicker?.() || studyDateInput.click();
+								}
+							}}
+							class="absolute right-3 top-1/2 -translate-y-1/2 text-white hover:text-gray-200 transition-colors cursor-pointer z-10"
+							aria-label="Open calendar"
+							tabindex="-1"
+						>
+							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+							</svg>
+						</button>
+					</div>
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-gray-300 mb-2">Scan Type</label>
+					<label class="block text-sm font-medium text-gray-300 mb-2">Scan Type *</label>
 					<input 
 						type="text" 
 						bind:value={newPrior.scan_type} 
-						placeholder="e.g., CT Chest, MRI Brain, etc." 
+						placeholder="e.g., CT Abdomen and Pelvis with IV contrast" 
 						class="input-dark w-full" 
+						required
 					/>
 				</div>
 				<div>
@@ -1727,7 +1863,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 			</div>
 			<div class="p-4 border-t border-gray-700 flex gap-3 justify-end">
 				<button class="btn-secondary" onclick={cancelEdit}>Cancel</button>
-				<button class="btn-primary" onclick={addPriorReport} disabled={!newPrior.text.trim() || !newPrior.date}>
+				<button class="btn-primary" onclick={addPriorReport} disabled={!newPrior.text.trim() || !newPrior.date || !newPrior.scan_type.trim()}>
 					{editingPriorIndex !== null ? 'Update Report' : 'Add Report'}
 				</button>
 			</div>
@@ -1793,3 +1929,9 @@ $: if ((visible || autoLoad) && completenessPending) {
 	</div>
 {/if}
 
+<style>
+	/* Rotate arrow icon when details is open */
+	details[open] summary .arrow-icon {
+		transform: rotate(90deg);
+	}
+</style>
