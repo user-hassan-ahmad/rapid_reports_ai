@@ -892,7 +892,10 @@ onDestroy(() => {
 			if (applyCacheEntry(enhancementCache.get(reportId))) {
 				// Cache applied
 			} else {
-				// No cache found, reset to empty state
+				// No cache found, set loading state BEFORE resetting to show loading UI immediately
+				if (visible || autoLoad) {
+					loading = true;
+				}
 				resetAllSidebarState();
 				// Load enhancements for the new report if sidebar is visible or auto-loading
 				if (visible || autoLoad) {
@@ -900,6 +903,7 @@ onDestroy(() => {
 					loadEnhancements();
 				} else {
 					hasLoaded = false;
+					loading = false; // Reset loading if not loading
 				}
 			}
 			
