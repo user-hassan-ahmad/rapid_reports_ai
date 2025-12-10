@@ -866,25 +866,23 @@ onDestroy(() => {
 				saveCacheEntry();
 			}
 			
+			// ALWAYS reset state when switching reports to prevent stale data
+			hasLoaded = false;
+			
 			// Try to load cached data for the new report
 			const cachedData = enhancementCache.get(reportId);
 			if (cachedData && applyCacheEntry(cachedData)) {
-				// Cache applied successfully
+				// Cache applied successfully - no need to load from API
 				hasLoaded = true;
+				loading = false;
 			} else {
 				// No cache found - prepare for loading
 				// Set loading state BEFORE resetting to show loading UI immediately
 				loading = true;
-				hasLoaded = false;
 				resetAllSidebarState();
 				
-				// Load enhancements if sidebar is visible or auto-loading
-				if (visible || autoLoad) {
-					loadEnhancements();
-				} else {
-					// Not visible yet, but keep loading=true so UI shows loading state when opened
-					loading = false;
-				}
+				// Always load enhancements when reportId changes (auto-load in background)
+				loadEnhancements();
 			}
 		}
 		lastReportId = reportId;
