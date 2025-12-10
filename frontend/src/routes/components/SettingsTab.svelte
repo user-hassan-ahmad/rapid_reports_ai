@@ -182,7 +182,7 @@
 		<div class="card-dark">
 			<h2 class="text-xl font-bold text-white mb-4">API Keys</h2>
 			<p class="text-sm text-gray-400 mb-4">
-				Configure your Deepgram API key to enable voice dictation features. LLM models (Claude, Qwen) are configured via environment variables on the backend.
+				Configure your Deepgram API key to enable voice dictation features.
 			</p>
 			<div>
 				<div class="flex items-center justify-between mb-2">
