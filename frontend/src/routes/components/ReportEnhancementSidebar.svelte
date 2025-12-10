@@ -247,15 +247,51 @@ let completenessPollTimer: ReturnType<typeof setInterval> | null = null;
 		});
 	}
 	
+	function resetAllSidebarState(): void {
+		// Guidelines tab state
+		findings = [];
+		guidelinesData = [];
+		guidelinesExpanded = {};
+		
+		// Analysis tab state
+		completenessAnalysis = null;
+		completenessPending = false;
+		appliedActionIds = [];
+		sectionsExpanded = {
+			summary: true,
+			questions: true,
+			actions: true
+		};
+		
+		// Chat tab state
+		chatMessages = [];
+		chatInput = '';
+		chatLoading = false;
+		expandedEditProposalIndex = null;
+		
+		// Comparison tab state
+		priorReports = [];
+		comparisonResult = null;
+		showAddPriorModal = false;
+		editingPriorIndex = null;
+		newPrior = { text: '', date: '', scan_type: '' };
+		comparing = false;
+		applyRevisedReportLoading = false;
+		revisedReportApplied = false;
+		showRevisedReportPreview = false;
+		
+		// General state
+		error = null;
+		stopCompletenessPoll();
+		resetActionSelections();
+	}
+	
 	function invalidateCache(): void {
 		if (reportId) {
 			enhancementCache.delete(reportId);
 		}
-	completenessPending = false;
-	completenessAnalysis = null;
-	stopCompletenessPoll();
-	resetActionSelections();
-}
+		resetAllSidebarState();
+	}
 
 function stopCompletenessPoll() {
 	if (completenessPollTimer) {
@@ -844,23 +880,7 @@ onDestroy(() => {
 	// Apply cache when report changes
 	$: if (reportId !== lastReportId) {
 		if (!reportId) {
-			findings = [];
-			guidelinesData = [];
-			completenessAnalysis = null;
-			chatMessages = [];
-			chatInput = '';
-			chatLoading = false;
-			error = null;
-			completenessPending = false;
-			appliedActionIds = [];
-				priorReports = [];
-				comparisonResult = null;
-				showAddPriorModal = false;
-				newPrior = { text: '', date: '', scan_type: '' };
-				applyRevisedReportLoading = false;
-				revisedReportApplied = false;
-				stopCompletenessPoll();
-				resetActionSelections();
+			resetAllSidebarState();
 		} else {
 			// Switching to a different report - save current state first
 			if (lastReportId) {
@@ -873,18 +893,7 @@ onDestroy(() => {
 				// Cache applied
 			} else {
 				// No cache found, reset to empty state
-				findings = [];
-				guidelinesData = [];
-				completenessAnalysis = null;
-				chatMessages = [];
-				chatInput = '';
-				error = null;
-				completenessPending = false;
-				appliedActionIds = [];
-				applyRevisedReportLoading = false;
-				revisedReportApplied = false;
-				stopCompletenessPoll();
-				resetActionSelections();
+				resetAllSidebarState();
 			}
 			
 			// Always reset hasLoaded for new reports to force refresh
