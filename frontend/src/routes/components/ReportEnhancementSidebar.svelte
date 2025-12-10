@@ -232,9 +232,10 @@ let completenessPollTimer: ReturnType<typeof setInterval> | null = null;
 		return true;
 	}
 	
-	function saveCacheEntry(): void {
-		if (!reportId) return;
-		enhancementCache.set(reportId, {
+	function saveCacheEntry(id?: string): void {
+		const cacheId = id || reportId;
+		if (!cacheId) return;
+		enhancementCache.set(cacheId, {
 			findings: cloneValue(findings) as Finding[],
 			guidelines: cloneValue(guidelinesData) as GuidelineEntry[],
 			completeness: cloneValue(completenessAnalysis) as CompletenessEntry,
@@ -464,6 +465,7 @@ function renderMarkdown(md: string) {
 				resetActionSelections();
 				saveCacheEntry();
 				hasLoaded = true;
+				loading = false;
 			} else if (data && !data.success) {
 				logger.error('loadEnhancements: API returned error:', data.error);
 				error = data.error || 'Failed to load enhancements';
@@ -862,8 +864,9 @@ onDestroy(() => {
 			resetAllSidebarState();
 		} else {
 			// Switching to a different report - save current state first
+			// IMPORTANT: Save cache using lastReportId BEFORE reportId changes
 			if (lastReportId) {
-				saveCacheEntry();
+				saveCacheEntry(lastReportId);
 			}
 			
 			// ALWAYS reset state when switching reports to prevent stale data
@@ -882,7 +885,8 @@ onDestroy(() => {
 				resetAllSidebarState();
 				
 				// Always load enhancements when reportId changes (auto-load in background)
-				loadEnhancements();
+				// Use force=true to bypass cache check since we already checked above
+				loadEnhancements(true);
 			}
 		}
 		lastReportId = reportId;
