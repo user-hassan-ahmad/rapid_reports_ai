@@ -182,9 +182,17 @@ def build_actions_prompt(report: Report, actions: List[Dict[str, Any]], addition
     )
 
     prompt = (
-        "You are a radiology reporting assistant. Integrate every requested action into the report.\n"
-        "Respect clinical accuracy, keep formatting consistent, and return the full revised report text only "
-        "(no commentary, headings, or markdown besides the report itself).\n\n"
+        "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
+        "You are applying SPECIFIC edits to an existing radiology report.\n"
+        "Your task is to make SURGICAL changes—modify ONLY what's requested, keep everything else identical.\n\n"
+        "CRITICAL EDITING PRINCIPLES:\n"
+        "1. Apply ONLY the changes specified in the actions below\n"
+        "2. Preserve ALL other content exactly as it appears in the original report\n"
+        "3. Maintain the exact formatting, spacing, line breaks, and structure\n"
+        "4. Do NOT add separators, decorative lines, or markdown formatting (no '---', '====', '**' for section headers, etc.)\n"
+        "5. Do NOT rewrite or rephrase content unless explicitly requested in the actions\n"
+        "6. Do NOT change section headers, terminology, or style unless specified\n"
+        "7. Make minimal, targeted edits—change only what the action specifies\n\n"
         f"{context_section}"
         "Original report:\n"
         "---------------------\n"
@@ -193,8 +201,9 @@ def build_actions_prompt(report: Report, actions: List[Dict[str, Any]], addition
         "Actions to apply:\n"
         "---------------------\n"
         f"{chr(10).join(action_lines)}\n"
-        "---------------------\n"
-        "Produce the revised report now."
+        "---------------------\n\n"
+        "TASK: Apply ONLY the changes specified above. Keep all other content, formatting, and structure identical to the original.\n"
+        "Return the complete revised report with surgical edits applied. No separators, no markdown, just the report text."
     )
     return prompt
 
@@ -227,8 +236,17 @@ async def regenerate_report_with_actions(
     from .enhancement_utils import with_retry
     
     system_prompt = (
-        "You are a radiology reporting assistant. Apply every requested action to the report. "
-        "Return ONLY the full, final report text. No commentary, no thinking blocks, no tags—just the complete revised report."
+        "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
+        "You are a radiology reporting assistant applying SPECIFIC, SURGICAL edits to an existing report.\n"
+        "CRITICAL PRINCIPLES:\n"
+        "1. Apply ONLY the requested changes specified in the actions below\n"
+        "2. Keep EVERYTHING ELSE exactly as it appears in the original report\n"
+        "3. Preserve the exact formatting, structure, spacing, and style of the original report\n"
+        "4. Do NOT add separators, markdown formatting, or decorative elements (no '---', '====', etc.)\n"
+        "5. Do NOT rewrite sections that aren't mentioned in the actions\n"
+        "6. Do NOT change wording, terminology, or structure unless explicitly requested\n"
+        "7. Make surgical edits: replace/add/remove only what's specified, nothing more\n\n"
+        "Return ONLY the complete revised report text. No commentary, no thinking blocks, no tags, no separators—just the report."
     )
     
     # Get primary model and provider
@@ -1944,6 +1962,17 @@ class ReportUpdate(BaseModel):
     """Tool for updating the report content."""
     content: str = Field(..., description="The ENTIRE text of the updated radiology report. Do NOT provide a diff or snippet. You must provide the FULL report content.")
 
+class StructuredActionItem(BaseModel):
+    """Single structured action for report editing."""
+    title: str = Field(..., description="Brief title describing what this action does (e.g., 'Update TNM staging', 'Add measurement details')")
+    details: str = Field(..., description="Detailed explanation of what needs to change and why, based on conversation context")
+    patch: str = Field(..., description="Specific patch instruction describing exactly what to change (e.g., 'Replace X with Y in Section Z', 'Add measurement after finding in Findings section')")
+
+class StructuredActionsRequest(BaseModel):
+    """Tool for applying structured actions to the report."""
+    actions: List[StructuredActionItem] = Field(..., description="List of specific actions to apply to the report. Each action should be a focused, surgical edit.")
+    conversation_summary: Optional[str] = Field(None, description="Brief summary of the conversation context that led to these edits (optional but helpful)")
+
 @app.post("/api/reports/{report_id}/chat")
 async def chat_about_report(
     report_id: str,
@@ -2032,11 +2061,28 @@ async def chat_about_report(
             "When discussing findings, reference the clinical guidelines context provided below. "
             "If asked about management or next steps, prioritize the guideline recommendations. "
             "If unsure, say so clearly.\n\n"
-            "### Report Editing Instructions:\n"
-            "If the user explicitly asks you to modify, rewrite, or update the report content, you MUST use the `update_report` tool to provide the full updated report content.\n"
-            "CRITICAL: The `content` argument MUST contain the ENTIRE report text, not just the changed paragraph. Do NOT truncate the report. Do NOT provide a diff.\n"
-            "Do NOT output the report text in the chat message if you are calling the tool.\n"
-            "For general questions or discussion, just reply normally.\n\n"
+            "### PROACTIVE EDIT SUGGESTIONS:\n"
+            "When providing conversational responses, proactively suggest specific, actionable edits where appropriate to improve clarity, precision, or guideline alignment.\n\n"
+            "### WHEN TO USE THE TOOL vs WHEN TO JUST CHAT:\n\n"
+            "DO NOT use the tool for:\n"
+            "- Questions asking for your opinion, thoughts, or analysis (e.g., 'thoughts on report structure?', 'review of report structure?', 'what do you think?')\n"
+            "- Requests for clarification or explanation (e.g., 'what does this mean?', 'explain this finding')\n"
+            "- General discussion or conversation about the report\n"
+            "- Asking for recommendations or suggestions (e.g., 'what should I change?', 'any recommendations?')\n"
+            "For these, reply conversationally with your analysis, guidance, AND proactive edit suggestions where appropriate.\n\n"
+            "ONLY use the `apply_structured_actions` tool when:\n"
+            "- User explicitly asks you to MODIFY, UPDATE, CHANGE, IMPLEMENT, or APPLY changes (e.g., 'go ahead and implement', 'make those changes', 'update the report', 'apply the recommendations')\n"
+            "- User gives you specific edits to make (e.g., 'add TNM staging', 'change X to Y')\n"
+            "- User says 'do it', 'implement', 'apply', 'make the changes' after you've provided recommendations\n\n"
+            "### Report Editing Instructions (ONLY when user explicitly requests modifications):\n"
+            "If the user explicitly asks you to modify, rewrite, update, implement, or apply changes to the report, THEN use the `apply_structured_actions` tool.\n"
+            "CRITICAL: Extract structured actions from the conversation - break down the user's request into specific, focused edits.\n"
+            "Each action should have:\n"
+            "- title: Brief description (e.g., 'Update TNM staging', 'Add measurement details')\n"
+            "- details: Explanation of what to change and why, referencing conversation context\n"
+            "- patch: Specific instruction (e.g., 'Replace X with Y in Section Z', 'Add measurement after finding')\n"
+            "Do NOT use the old `update_report` tool - it is deprecated.\n"
+            "Do NOT output the report text in the chat message if you are calling the tool.\n\n"
             f"### Original Report:\n{report.report_content}"
             f"{enhancement_context}"
         )
@@ -2061,13 +2107,21 @@ async def chat_about_report(
             "content": request.message
         })
         
-        # Define tools
+        # Define tools - use structured actions (preferred) with backward compatibility
         tools = [
             {
                 "type": "function",
                 "function": {
+                    "name": "apply_structured_actions",
+                    "description": "ONLY use this tool when the user explicitly asks you to MODIFY, UPDATE, CHANGE, IMPLEMENT, or APPLY changes to the report. Do NOT use for questions, discussions, or requests for opinions (e.g., 'thoughts on...', 'review of...', 'what do you think?'). Only use when user says 'implement', 'apply', 'make changes', 'update', etc.",
+                    "parameters": StructuredActionsRequest.model_json_schema()
+                }
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "update_report",
-                    "description": "Updates the full content of the radiology report.",
+                    "description": "DEPRECATED: Updates the full content of the radiology report. Use apply_structured_actions instead.",
                     "parameters": ReportUpdate.model_json_schema()
                 }
             }
@@ -2094,13 +2148,108 @@ async def chat_about_report(
         response_text = message.content
         tool_calls = message.tool_calls
         
+        # DEBUG: Log response details
+        print(f"\n{'='*80}")
+        print(f"🔍 DEBUG: Qwen Response Analysis")
+        print(f"{'='*80}")
+        print(f"Response text length: {len(response_text) if response_text else 0} chars")
+        print(f"Response text preview: {response_text[:200] if response_text else 'None'}...")
+        print(f"Tool calls: {len(tool_calls) if tool_calls else 0}")
+        if tool_calls:
+            for i, tc in enumerate(tool_calls, 1):
+                print(f"  Tool call {i}: {tc.function.name}")
+                print(f"    Arguments preview: {tc.function.arguments[:200] if tc.function.arguments else 'None'}...")
+        print(f"{'='*80}\n")
+        
         edit_proposal = None
         
         if tool_calls:
             for tool_call in tool_calls:
-                if tool_call.function.name == "update_report":
+                if tool_call.function.name == "apply_structured_actions":
                     print(f"\n{'='*80}")
-                    print(f"🔧 Chat tool call detected: update_report")
+                    print(f"🔧 Chat tool call detected: apply_structured_actions")
+                    print(f"{'='*80}")
+                    print(f"User request: {request.message[:200]}")
+                    print(f"Chat history length: {len(request.history) if request.history else 0}")
+                    
+                    # DEBUG: Log raw tool call arguments
+                    print(f"\n🔍 DEBUG: Raw tool call arguments:")
+                    print(f"  Full arguments: {tool_call.function.arguments}")
+                    print(f"  Arguments length: {len(tool_call.function.arguments)} chars")
+                    
+                    try:
+                        # Parse structured actions from Qwen's tool call
+                        args = json.loads(tool_call.function.arguments)
+                        print(f"\n🔍 DEBUG: Parsed JSON arguments:")
+                        print(f"  Keys: {list(args.keys())}")
+                        print(f"  Actions count: {len(args.get('actions', []))}")
+                        if 'conversation_summary' in args:
+                            print(f"  Conversation summary: {args['conversation_summary'][:100] if args['conversation_summary'] else 'None'}...")
+                        
+                        structured_actions_data = StructuredActionsRequest(**args)
+                        
+                        print(f"\n📋 Extracted {len(structured_actions_data.actions)} structured actions:")
+                        for i, action in enumerate(structured_actions_data.actions, 1):
+                            print(f"  {i}. {action.title}")
+                            print(f"     Details: {action.details[:200] if len(action.details) > 200 else action.details}")
+                            print(f"     Patch: {action.patch[:200] if len(action.patch) > 200 else action.patch}")
+                        
+                        # Convert to format expected by regenerate_report_with_actions
+                        # Generate IDs for actions (required by ApplyActionItem)
+                        actions_payload = []
+                        for idx, action in enumerate(structured_actions_data.actions):
+                            actions_payload.append({
+                                "id": f"chat_action_{idx}",
+                                "title": action.title,
+                                "details": action.details,
+                                "patch": action.patch
+                            })
+                        
+                        # Build conversation summary for additional context
+                        conversation_summary = structured_actions_data.conversation_summary
+                        if not conversation_summary and request.history:
+                            # Auto-generate summary from recent history if not provided
+                            recent_messages = request.history[-3:] if len(request.history) > 3 else request.history
+                            conversation_summary = "Recent conversation context:\n"
+                            for msg in recent_messages:
+                                role = msg.get('role', 'user')
+                                content = msg.get('content', '')
+                                if content:
+                                    conversation_summary += f"{role.upper()}: {content[:200]}\n"
+                        
+                        # Use existing regenerate_report_with_actions function
+                        print(f"\n🚀 Routing to regenerate_report_with_actions (GPT-OSS)...")
+                        print(f"  Actions payload: {len(actions_payload)} actions")
+                        print(f"  Conversation summary length: {len(conversation_summary) if conversation_summary else 0} chars")
+                        
+                        edit_proposal = await regenerate_report_with_actions(
+                            report=report,
+                            actions=actions_payload,
+                            additional_context=conversation_summary,
+                            current_user=current_user
+                        )
+                        
+                        print(f"\n✅ Structured actions applied successfully")
+                        print(f"  └─ Updated report length: {len(edit_proposal)} chars")
+                        print(f"  └─ Edit proposal preview: {edit_proposal[:200]}...")
+                        print(f"{'='*80}\n")
+                        
+                    except json.JSONDecodeError as e:
+                        print(f"❌ Failed to parse structured actions tool call: {e}")
+                        import traceback
+                        traceback.print_exc()
+                    except Exception as e:
+                        import traceback
+                        print(f"❌ Failed to apply structured actions: {type(e).__name__}")
+                        print(f"  Error: {str(e)[:500]}")
+                        traceback.print_exc()
+                        print(f"{'='*80}\n")
+                
+                elif tool_call.function.name == "update_report":
+                    # Backward compatibility: handle old update_report tool
+                    print(f"\n{'='*80}")
+                    print(f"⚠️ DEPRECATED tool call detected: update_report")
+                    print(f"   Falling back to legacy full-report regeneration")
                     print(f"{'='*80}")
                     print(f"User request: {request.message[:200]}")
                     print(f"Chat history length: {len(request.history) if request.history else 0}")
@@ -2122,7 +2271,7 @@ async def chat_about_report(
                         provider = _get_model_provider(model_name)
                         api_key = _get_api_key_for_provider(provider)
                         
-                        print(f"📊 Using GPT OSS for report update:")
+                        print(f"📊 Using GPT OSS for report update (legacy mode):")
                         print(f"  Model: {model_name}")
                         print(f"  Provider: {provider}")
                         
@@ -2205,22 +2354,52 @@ Maintain the same structure, formatting, and style as the original report."""
                     # Other tool calls (shouldn't happen, but handle gracefully)
                     print(f"⚠️ Unexpected tool call: {tool_call.function.name}")
         
+        # DEBUG: Log final state before returning
+        print(f"\n{'='*80}")
+        print(f"🔍 DEBUG: Final Response State")
+        print(f"{'='*80}")
+        print(f"Tool calls detected: {len(tool_calls) if tool_calls else 0}")
+        print(f"Edit proposal exists: {edit_proposal is not None}")
+        print(f"Edit proposal length: {len(edit_proposal) if edit_proposal else 0} chars")
+        print(f"Response text exists: {response_text is not None and response_text.strip() != ''}")
+        print(f"Response text length: {len(response_text) if response_text else 0} chars")
+        
         # If no tool calls but Qwen might have provided content in response
         if not edit_proposal and not tool_calls:
             print(f"💬 Chat response only (no tool calls)")
             print(f"  Response length: {len(response_text) if response_text else 0} chars")
+            print(f"  Response preview: {response_text[:300] if response_text else 'None'}...")
+        
+        # Check if response_text contains report-like content (potential issue)
+        if response_text and edit_proposal:
+            # Check for common report indicators in response_text
+            report_indicators = ['Comparison:', 'Findings:', 'Impression:', '---', '-----']
+            found_indicators = [ind for ind in report_indicators if ind in response_text]
+            if found_indicators:
+                print(f"\n⚠️ WARNING: Response text contains report-like content!")
+                print(f"  Found indicators: {found_indicators}")
+                print(f"  Response text snippet: {response_text[:500]}...")
         
         # Filter out Qwen's thinking tokens if present in text response
         if response_text:
+            original_length = len(response_text)
             response_text = re.sub(
                 r'<think>.*?</think>',
                 '',
                 response_text,
                 flags=re.DOTALL | re.IGNORECASE
             ).strip()
+            if len(response_text) != original_length:
+                print(f"  └─ Removed thinking tokens (length changed: {original_length} -> {len(response_text)})")
             
         if not response_text and edit_proposal:
             response_text = "I've drafted the changes for you. Please review and apply them below."
+            print(f"  └─ Set default response text (edit_proposal exists but no response_text)")
+        
+        print(f"\n📤 Returning response:")
+        print(f"  Response text length: {len(response_text) if response_text else 0} chars")
+        print(f"  Edit proposal length: {len(edit_proposal) if edit_proposal else 0} chars")
+        print(f"{'='*80}\n")
         
         sources = []
         
