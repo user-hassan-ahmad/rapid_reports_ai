@@ -49,6 +49,9 @@
 	// Track recording state for each variable (for glow effect)
 	let dictationStates = {};
 	
+	// Store textarea element references for cursor-based insertion
+	let textareaRefs = {};
+	
 	// Initialize dictation states for each variable
 	$: if (promptVariables.length > 0) {
 		promptVariables.forEach(variable => {
@@ -322,6 +325,7 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 									<div class="flex gap-2 dictation-field-wrapper" class:dictating-active={dictationStates[variable]}>
 										<textarea
 											id={variable}
+											bind:this={textareaRefs[variable]}
 											bind:value={variableValues[variable]}
 											placeholder={`Enter ${variable.replace(/_/g, ' ').toLowerCase()}...`}
 											disabled={loading}
@@ -330,7 +334,8 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 										></textarea>
 										<div class="relative group">
 											<DictationButton 
-												bind:bindText={variableValues[variable]} 
+												bind:bindText={variableValues[variable]}
+												textareaElement={textareaRefs[variable]}
 												bind:isRecording={dictationStates[variable]} 
 												disabled={loading || !apiKeyStatus.using_user_keys?.deepgram}
 												disabledReason={!apiKeyStatus.using_user_keys?.deepgram ? 'Add Deepgram API key in Settings to enable dictation' : ''}

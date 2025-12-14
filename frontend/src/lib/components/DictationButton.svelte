@@ -6,6 +6,7 @@
 	import { API_URL } from '$lib/config';
 
 	export let bindText = ''; // Bound to textarea value
+	export let textareaElement = null; // Reference to textarea element for cursor insertion
 	export let disabled = false;
 	export let isRecording = false; // Expose recording state for parent styling (bindable)
 	export let disabledReason = ''; // Optional reason for being disabled (for tooltip)
@@ -27,7 +28,250 @@
 	
 	// Streaming mode variables
 	let lastFinalTranscript = ''; // Only finalized segments
-	let currentInterim = ''; // Current interim segment
+	let currentInterim = ''; // Current interim segment text from API
+	let segmentStartPosition = -1; // Track where current speech segment started (for cumulative replacement)
+	let segmentEndPosition = -1; // Track where segment ends (for replacing selected text)
+	let lastInsertionPosition = 0; // Track where we last inserted text (for cursor-based insertion)
+	let startedWithSelection = false; // Track if dictation started with text selected
+
+	/**
+	 * Check if we're at a sentence boundary (should capitalize)
+	 * Only capitalize at true sentence starts, not mid-sentence insertions
+	 */
+	function shouldCapitalizeFirstLetter(currentValue, insertPos) {
+		// At start of text - always capitalize
+		if (insertPos === 0) return true;
+		
+		// Get text before insertion point
+		const before = currentValue.substring(0, insertPos);
+		
+		// Trim trailing spaces to check what's actually there
+		const trimmedBefore = before.trimEnd();
+		
+		// Empty after trimming - we're at start of a line (after newline)
+		if (trimmedBefore.length === 0) return true;
+		
+		// Check if we're after sentence-ending punctuation
+		// This handles: "word. " or "word." (with or without space)
+		const sentenceEnders = /[.!?]$/;
+		if (sentenceEnders.test(trimmedBefore)) return true;
+		
+		// Check if we're after a newline (new paragraph/section)
+		// Look for newline at the end (after trimming spaces)
+		const beforeNewline = before.replace(/\s+$/, ''); // Remove trailing spaces
+		if (beforeNewline.endsWith('\n') || beforeNewline.endsWith('\n\n')) return true;
+		
+		// Otherwise, we're mid-sentence - don't capitalize
+		return false;
+	}
+
+	/**
+	 * Clean up text: remove spaces before punctuation, fix spacing issues
+	 */
+	function cleanTextSpacing(text) {
+		if (!text) return text;
+		
+		// Remove spaces before punctuation marks
+		// Pattern: space followed by punctuation (but not if punctuation is at start)
+		let cleaned = text.replace(/\s+([.,!?;:])/g, '$1');
+		
+		// Remove multiple consecutive spaces
+		cleaned = cleaned.replace(/\s{2,}/g, ' ');
+		
+		return cleaned;
+	}
+
+	/**
+	 * Capitalize first letter of text if needed
+	 * Also handles cases where text starts with punctuation followed by a word
+	 * Only capitalizes at sentence boundaries, preserves Deepgram's capitalization otherwise
+	 */
+	function capitalizeIfNeeded(text, shouldCapitalize) {
+		if (!text || text.length === 0) return text;
+		
+		// Only capitalize if we're at a sentence boundary
+		if (!shouldCapitalize) {
+			// Mid-sentence: force lowercase first letter (Deepgram may capitalize first word of each segment)
+			// Find first letter (skip leading spaces/punctuation)
+			const firstLetterIndex = text.search(/[a-zA-Z]/);
+			if (firstLetterIndex !== -1) {
+				const firstLetter = text.charAt(firstLetterIndex);
+				if (firstLetter === firstLetter.toUpperCase()) {
+					// Force lowercase for mid-sentence insertions
+					return text.substring(0, firstLetterIndex) + 
+					       firstLetter.toLowerCase() + 
+					       text.substring(firstLetterIndex + 1);
+				}
+			}
+			return text;
+		}
+		
+		// Check if text starts with punctuation followed by a word (e.g., ". unusual")
+		// In this case, capitalize the word after the punctuation
+		const punctuationWordMatch = text.match(/^([\s.,!?;:]*)([a-zA-Z])/);
+		if (punctuationWordMatch) {
+			const beforeLetter = punctuationWordMatch[1];
+			const firstLetter = punctuationWordMatch[2];
+			return beforeLetter + firstLetter.toUpperCase() + text.substring(beforeLetter.length + 1);
+		}
+		
+		// Find first letter (skip leading spaces/punctuation)
+		const firstLetterIndex = text.search(/[a-zA-Z]/);
+		if (firstLetterIndex === -1) return text;
+		
+		// Only capitalize if it's lowercase (preserve if already capitalized)
+		const firstLetter = text.charAt(firstLetterIndex);
+		if (firstLetter === firstLetter.toLowerCase()) {
+			return text.substring(0, firstLetterIndex) + 
+			       firstLetter.toUpperCase() + 
+			       text.substring(firstLetterIndex + 1);
+		}
+		
+		// Already capitalized, return as-is
+		return text;
+	}
+
+	/**
+	 * Check if we need to add spacing before text insertion
+	 * Never add space before punctuation marks or if space already exists
+	 */
+	function needsSpacingBefore(currentValue, insertPos, textToInsert) {
+		if (insertPos === 0) return false;
+		
+		// Never add space before punctuation marks
+		const firstChar = textToInsert.trim().charAt(0);
+		if (/[.,!?;:]/.test(firstChar)) return false;
+		
+		// Check if text already starts with a space
+		if (textToInsert.startsWith(' ')) return false;
+		
+		// Check if there's already a space at insertion point
+		const charAtPos = currentValue.charAt(insertPos - 1);
+		if (charAtPos === ' ') return false; // Already has space
+		
+		const charBefore = currentValue.charAt(insertPos - 1);
+		// Need space if previous char is a word character or punctuation (except spaces/newlines)
+		return /[\w.,!?;:]/.test(charBefore);
+	}
+
+	/**
+	 * Check if we need to add spacing after text insertion
+	 */
+	function needsSpacingAfter(currentValue, insertPos) {
+		if (insertPos >= currentValue.length) return false;
+		const charAfter = currentValue.charAt(insertPos);
+		// Need space if next char is a word character
+		return /[\w]/.test(charAfter);
+	}
+
+	/**
+	 * Insert or replace text at cursor position
+	 * Uses segmentStartPosition to replace cumulative transcripts from Deepgram
+	 * Handles text selection (highlighted text) by replacing it
+	 * Handles spacing and capitalization intelligently
+	 */
+	function insertTextAtCursor(text, replaceSegment = false) {
+		if (!textareaElement) {
+			// Fallback: append to end if no textarea reference
+			bindText = bindText + (bindText && !bindText.endsWith(' ') ? ' ' : '') + text;
+			return;
+		}
+		
+		const currentValue = textareaElement.value;
+		
+		if (replaceSegment && segmentStartPosition >= 0) {
+			// Replace entire segment from segmentStartPosition to lastInsertionPosition
+			// Deepgram sends cumulative transcripts, so we replace everything from segment start
+			const before = currentValue.substring(0, segmentStartPosition);
+			const after = currentValue.substring(lastInsertionPosition);
+			
+			// Clean up spacing issues (remove spaces before punctuation)
+			const cleanedText = cleanTextSpacing(text);
+			
+			// Add space before if needed (when inserting after existing text)
+			// Never add space before punctuation marks or if space already exists
+			// Check if before text already ends with space
+			const beforeEndsWithSpace = before.endsWith(' ');
+			const spaceBefore = (!beforeEndsWithSpace && segmentStartPosition > 0 && needsSpacingBefore(currentValue, segmentStartPosition, cleanedText)) ? ' ' : '';
+			
+			// Capitalize if needed (after sentence enders or newlines)
+			// Check if text before segment ends with punctuation, or if replacement text starts with punctuation+word
+			const beforeText = before.trimEnd();
+			const endsWithPunctuation = /[.!?]$/.test(beforeText);
+			const startsWithPunctuationWord = /^[\s]*[.!?]\s+[a-zA-Z]/.test(cleanedText);
+			
+			// Should capitalize if: before ends with punctuation, or we're at start, or after newline
+			const shouldCapitalize = endsWithPunctuation || startsWithPunctuationWord || shouldCapitalizeFirstLetter(currentValue, segmentStartPosition);
+			const processedText = capitalizeIfNeeded(cleanedText, shouldCapitalize);
+			
+			const newValue = before + spaceBefore + processedText + after;
+			
+			textareaElement.value = newValue;
+			bindText = newValue;
+			
+			// Update insertion position
+			lastInsertionPosition = segmentStartPosition + spaceBefore.length + processedText.length;
+			
+			// Restore cursor
+			textareaElement.focus();
+			textareaElement.setSelectionRange(lastInsertionPosition, lastInsertionPosition);
+		} else {
+			// New segment: always use CURRENT cursor/selection position
+			// (stored state is only for replaceSegment=true cumulative replacement)
+			let replaceStart, replaceEnd;
+			
+			// Always check current selection/cursor, ignore stored state
+			const selectionStart = textareaElement.selectionStart;
+			const selectionEnd = textareaElement.selectionEnd;
+			const hasSelection = selectionStart !== selectionEnd;
+			
+			if (hasSelection) {
+				// User has selected text - replace it
+				replaceStart = selectionStart;
+				replaceEnd = selectionEnd;
+			} else {
+				// No selection - insert at cursor position
+				replaceStart = selectionStart;
+				replaceEnd = selectionStart; // No replacement, just insert
+			}
+			
+			// Replace selected text or insert at cursor
+			const before = currentValue.substring(0, replaceStart);
+			const after = currentValue.substring(replaceEnd);
+			
+			// Add space before if needed (check context before insertion point)
+			// Apply spacing logic whether replacing selected text or inserting at cursor
+			// Never add space before punctuation marks or if space already exists
+			const beforeEndsWithSpace = before.endsWith(' ');
+			const spaceBefore = (!beforeEndsWithSpace && replaceStart > 0 && needsSpacingBefore(currentValue, replaceStart, text)) ? ' ' : '';
+			
+			// Add space after if inserting before a word (and text doesn't end with punctuation)
+			// Don't add space if after already starts with space
+			const afterStartsWithSpace = after.startsWith(' ');
+			const spaceAfter = (!afterStartsWithSpace && after.length > 0 && needsSpacingAfter(currentValue, replaceEnd) && !text.endsWith(' ') && !/[,.;:!?]/.test(text.slice(-1))) ? ' ' : '';
+			
+			// Clean up spacing issues (remove spaces before punctuation)
+			const cleanedText = cleanTextSpacing(text);
+			
+			// Capitalize if needed (after sentence enders, newlines, or at start)
+			// Check context at the insertion point - only capitalize at true sentence boundaries
+			const shouldCapitalize = shouldCapitalizeFirstLetter(currentValue, replaceStart);
+			const processedText = capitalizeIfNeeded(cleanedText, shouldCapitalize);
+			
+			const newValue = before + spaceBefore + processedText + spaceAfter + after;
+			
+			textareaElement.value = newValue;
+			bindText = newValue;
+			
+			// Track where this segment started (for potential future replaceSegment=true calls)
+			segmentStartPosition = replaceStart;
+			lastInsertionPosition = replaceStart + spaceBefore.length + processedText.length + spaceAfter.length;
+			
+			// Restore cursor
+			textareaElement.focus();
+			textareaElement.setSelectionRange(lastInsertionPosition, lastInsertionPosition);
+		}
+	}
 
 	/**
 	 * Toggle recording on/off
@@ -61,9 +305,37 @@
 
 			mediaRecorder = new MediaRecorder(stream, { mimeType });
 			
-			// Store the current text before starting dictation
+			// Store the current text and cursor/selection position before starting dictation
 			lastFinalTranscript = bindText;
 			currentInterim = '';
+			
+			// Capture selection/cursor position for dictation start
+			// If text is selected, we'll replace it; otherwise insert at cursor
+			if (textareaElement) {
+				const selectionStart = textareaElement.selectionStart;
+				const selectionEnd = textareaElement.selectionEnd;
+				const hasSelection = selectionStart !== selectionEnd;
+				
+				if (hasSelection) {
+					// Text is selected - we'll replace it, so track the selection range
+					segmentStartPosition = selectionStart;
+					segmentEndPosition = selectionEnd;
+					lastInsertionPosition = selectionEnd;
+					startedWithSelection = true;
+				} else {
+					// No selection - reset tracking, will use cursor position on first insert
+					segmentStartPosition = -1;
+					segmentEndPosition = -1;
+					lastInsertionPosition = 0;
+					startedWithSelection = false;
+				}
+			} else {
+				// Fallback: reset tracking
+				segmentStartPosition = -1;
+				segmentEndPosition = -1;
+				lastInsertionPosition = 0;
+				startedWithSelection = false;
+			}
 
 			if ($streamingModeStore) {
 				await startStreamingMode();
@@ -110,17 +382,57 @@
 				
 				if (data.transcript) {
 					// Handle interim and final results
+					// Deepgram sends cumulative transcripts - each contains full text from segment start
 					if (data.is_final) {
-						// Final result: add this to finalized transcript, replace any interim
+						// Final result: replace entire segment with final transcript
+						if (segmentStartPosition >= 0) {
+							// Replace the segment we've been building
+							insertTextAtCursor(data.transcript, true);
+						} else {
+							// No segment started yet, insert at cursor with spacing
+							// Check if we need space - don't add if already exists or before punctuation
+							if (textareaElement) {
+								const cursorPos = textareaElement.selectionStart;
+								const charBefore = bindText.charAt(cursorPos - 1);
+								const transcriptStartsWithPunctuation = /^[\s]*[.,!?;:]/.test(data.transcript);
+								const needsSpace = cursorPos > 0 && charBefore !== ' ' && !/[.!?]/.test(charBefore) && !transcriptStartsWithPunctuation;
+								const prefix = needsSpace ? ' ' : '';
+								insertTextAtCursor(prefix + data.transcript, false);
+							} else {
+								// Fallback: check end of text
+								const needsSpace = bindText && !bindText.trimEnd().endsWith(' ') && !/[.!?]/.test(bindText.trimEnd().slice(-1));
+								const prefix = needsSpace ? ' ' : '';
+								insertTextAtCursor(prefix + data.transcript, false);
+							}
+						}
+						currentInterim = '';
+						// Reset segment tracking for next segment
+						segmentStartPosition = -1;
+						// Track finalized text (for reference)
 						lastFinalTranscript += ' ' + data.transcript;
-						currentInterim = ''; // Clear interim since we have final
-						// Update bound text with only final transcript (no interim)
-						bindText = lastFinalTranscript.trim();
 					} else {
-						// Interim result: REPLACE current interim with new one
+						// Interim result: replace current segment with new cumulative transcript
+						if (segmentStartPosition >= 0) {
+							// Replace the segment we've been building
+							insertTextAtCursor(data.transcript, true);
+						} else {
+							// First interim: start new segment at cursor with spacing
+							// Check if we need space - don't add if already exists or before punctuation
+							if (textareaElement) {
+								const cursorPos = textareaElement.selectionStart;
+								const charBefore = bindText.charAt(cursorPos - 1);
+								const transcriptStartsWithPunctuation = /^[\s]*[.,!?;:]/.test(data.transcript);
+								const needsSpace = cursorPos > 0 && charBefore !== ' ' && !/[.!?]/.test(charBefore) && !transcriptStartsWithPunctuation;
+								const prefix = needsSpace ? ' ' : '';
+								insertTextAtCursor(prefix + data.transcript, false);
+							} else {
+								// Fallback: check end of text
+								const needsSpace = bindText && !bindText.trimEnd().endsWith(' ') && !/[.!?]/.test(bindText.trimEnd().slice(-1));
+								const prefix = needsSpace ? ' ' : '';
+								insertTextAtCursor(prefix + data.transcript, false);
+							}
+						}
 						currentInterim = data.transcript;
-						// Update bound text: lastFinalTranscript + current interim
-						bindText = (lastFinalTranscript.trim() + ' ' + currentInterim).trim();
 					}
 				}
 			} catch (e) {
@@ -201,10 +513,18 @@
 				websocket.close();
 			}
 			
-			// Update final text - include any remaining interim text
-			bindText = (lastFinalTranscript.trim() + ' ' + currentInterim).trim();
+			// Finalize any remaining interim text
+			if (currentInterim && textareaElement) {
+				// Replace interim with final version
+				insertTextAtCursor(currentInterim, true);
+			}
+			
 			currentInterim = '';
 			lastFinalTranscript = '';
+			segmentStartPosition = -1;
+			segmentEndPosition = -1;
+			lastInsertionPosition = 0;
+			startedWithSelection = false;
 		} else {
 			// Wait for MediaRecorder to stop and process audio
 			// Wait a bit for ondataavailable to fire for final chunks
@@ -249,10 +569,19 @@
 			}
 
 			if (result.success && result.transcript) {
-				// Append transcript to existing text
-				const existingText = bindText.trim();
-				const newText = result.transcript.trim();
-				bindText = existingText ? `${existingText} ${newText}` : newText;
+				// Insert transcript at cursor position with intelligent spacing and capitalization
+				if (textareaElement) {
+					// Use insertTextAtCursor which handles spacing and capitalization intelligently
+					// It will check for existing spaces and add spacing/capitalization as needed
+					insertTextAtCursor(result.transcript.trim(), false);
+				} else {
+					// Fallback: append to end with spacing check
+					const existingText = bindText.trim();
+					const newText = result.transcript.trim();
+					// Add space only if existing text doesn't end with space or punctuation
+					const needsSpace = existingText && !existingText.endsWith(' ') && !/[.!?]/.test(existingText.slice(-1));
+					bindText = existingText ? `${existingText}${needsSpace ? ' ' : ''}${newText}` : newText;
+				}
 			} else {
 				throw new Error('No transcript returned');
 			}

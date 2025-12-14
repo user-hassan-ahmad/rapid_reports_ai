@@ -2700,6 +2700,77 @@ async def update_report_content(
 # SPEECH TO TEXT API ENDPOINTS
 # ============================================================================
 
+def process_dictation_transcript(transcript: str) -> str:
+    """
+    Post-process Deepgram transcript to convert dictation commands to actual punctuation.
+    
+    Deepgram returns dictation commands as literal strings:
+    - "new line" → "<\\n>" (literal string with backslash-n, not actual newline)
+    - "new paragraph" → "<\\n\\n>" (literal string)
+    - "full stop" is not recognized by Deepgram, but we can convert it for British English users
+    
+    This function converts these to actual characters.
+    """
+    if not transcript:
+        return transcript
+    
+    # DEBUG: Log the raw transcript to see what Deepgram actually returns
+    print(f"🔍 DEBUG: Raw transcript before processing: '{transcript}'")
+    print(f"🔍 DEBUG: Transcript repr: {repr(transcript)}")
+    
+    processed = transcript
+    
+    # Convert Deepgram's literal dictation command strings to actual characters
+    # Deepgram returns these as literal strings like "<\n>" (backslash followed by n)
+    # Replace <\n\n> (new paragraph) first, then <\n> (new line)
+    processed_before_fullstop = processed
+    processed = processed.replace('<\\n\\n>', '\n\n')  # New paragraph
+    processed = processed.replace('<\\n>', '\n')  # New line
+    
+    # DEBUG: Check if newline replacements worked
+    if processed != processed_before_fullstop:
+        print(f"🔍 DEBUG: Newline replacements applied. After: '{processed}'")
+    
+    # Convert "full stop" and "fullstop" to period (British English support)
+    # Deepgram doesn't recognize "full stop" as a dictation command, only "period"
+    # So we post-process it here for better British English support
+    # Handle both "full stop" (two words) and "fullstop" (one word) variations
+    # Make replacements case-insensitive and handle various spacing/punctuation scenarios
+    
+    processed_before_fullstop = processed
+    
+    # Use regex for case-insensitive matching of "full stop" / "fullstop"
+    # This handles all cases: standalone, with spaces, at start/end of string
+    # Pattern to match "full stop" or "fullstop" (case-insensitive) as whole words
+    # or standalone phrases
+    patterns = [
+        (r'\bfull\s+stop\b', '.'),  # "full stop" as whole words
+        (r'\bfullstop\b', '.'),      # "fullstop" as whole word
+    ]
+    
+    for pattern, replacement in patterns:
+        matches = re.findall(pattern, processed, re.IGNORECASE)
+        if matches:
+            processed = re.sub(pattern, replacement, processed, flags=re.IGNORECASE)
+            print(f"🔍 DEBUG: Replaced pattern '{pattern}' (found: {matches}) with '{replacement}'")
+    
+    # DEBUG: Check if full stop replacements worked
+    if processed != processed_before_fullstop:
+        print(f"🔍 DEBUG: Full stop replacements applied. After: '{processed}'")
+    else:
+        print(f"🔍 DEBUG: No full stop replacements applied. Checking if 'full stop' exists in transcript...")
+        if 'full' in processed.lower() and 'stop' in processed.lower():
+            print(f"🔍 DEBUG: Found 'full' and 'stop' in transcript but pattern didn't match!")
+            # Try to find the exact pattern (re is already imported at top of file)
+            matches = re.findall(r'\b(full\s*stop|fullstop)\b', processed, re.IGNORECASE)
+            if matches:
+                print(f"🔍 DEBUG: Found potential matches: {matches}")
+    
+    print(f"🔍 DEBUG: Final processed transcript: '{processed}'")
+    
+    return processed
+
+
 @app.websocket("/api/transcribe")
 async def websocket_transcribe(websocket: WebSocket):
     """
@@ -2747,7 +2818,8 @@ async def websocket_transcribe(websocket: WebSocket):
     
     # Connect to Deepgram WebSocket API with Nova-3 Medical model
     # Using nova-3-medical for optimized medical transcription
-    deepgram_url = f"wss://api.deepgram.com/v1/listen?model=nova-3-medical&language=en-GB&smart_format=true&measurements=true&dictation=true&interim_results=true"
+    # punctuate=true is required for dictation commands (full stop, new line, etc.) to work
+    deepgram_url = f"wss://api.deepgram.com/v1/listen?model=nova-3-medical&language=en-GB&smart_format=true&measurements=true&dictation=true&punctuate=true&interim_results=true"
     
     try:
         # Open connection to Deepgram WebSocket
@@ -2780,10 +2852,13 @@ async def websocket_transcribe(websocket: WebSocket):
                                 if transcript_data.get("type") == "Results":
                                     alternatives = transcript_data.get("channel", {}).get("alternatives", [])
                                     if alternatives:
-                                        transcript = alternatives[0].get("transcript", "")
+                                        raw_transcript = alternatives[0].get("transcript", "")
                                         is_final = transcript_data.get("is_final", False)
                                         
-                                        print(f"📝 Transcript: '{transcript}' (final: {is_final})")
+                                        # Process dictation commands (convert <\n> to actual newlines, etc.)
+                                        transcript = process_dictation_transcript(raw_transcript)
+                                        
+                                        print(f"📝 Raw transcript: '{raw_transcript}' → Processed: '{transcript}' (final: {is_final})")
                                         
                                         if transcript:
                                             await websocket.send_json({
@@ -2861,7 +2936,8 @@ async def transcribe_pre_recorded(
             "language": "en-GB",
             "smart_format": "true",
             "measurements": "true",
-            "dictation": "true"
+            "dictation": "true",
+            "punctuate": "true"  # Required for dictation commands (full stop, new line, etc.) to work
         }
         headers = {
             "Authorization": f"Token {deepgram_api_key}",
@@ -2886,11 +2962,14 @@ async def transcribe_pre_recorded(
                 result = await response.json()
         
         # Extract transcript from Deepgram response
-        transcript = ""
+        raw_transcript = ""
         if result.get("results") and result["results"].get("channels"):
             alternatives = result["results"]["channels"][0].get("alternatives", [])
             if alternatives:
-                transcript = alternatives[0].get("transcript", "")
+                raw_transcript = alternatives[0].get("transcript", "")
+        
+        # Process dictation commands (convert <\n> to actual newlines, etc.)
+        transcript = process_dictation_transcript(raw_transcript)
         
         return {
             "success": True,
