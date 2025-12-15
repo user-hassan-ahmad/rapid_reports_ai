@@ -13,8 +13,8 @@
 		dispatch('openSidebar', { tab });
 	}
 	
-	$: hasEnhancements = guidelinesCount > 0 || isLoading;
-	$: showCards = reportId && hasEnhancements;
+	// Show cards whenever there's a reportId - they should persist even after loading completes
+	$: showCards = Boolean(reportId);
 </script>
 
 {#if showCards}
@@ -60,6 +60,8 @@
 					<p class="text-xs text-gray-400 mt-2 text-left">View {guidelinesCount} guideline{guidelinesCount !== 1 ? 's' : ''} for this report</p>
 				{:else if isLoading}
 					<p class="text-xs text-gray-400 mt-2 text-left">Loading guidelines...</p>
+				{:else}
+					<p class="text-xs text-gray-400 mt-2 text-left">Click to load guidelines</p>
 				{/if}
 			</button>
 			
