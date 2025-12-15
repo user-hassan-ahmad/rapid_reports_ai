@@ -33,6 +33,11 @@
 export let reportId = null;
 export let versionHistoryRefreshKey = 0;
 
+// Enhancement state props
+export let enhancementGuidelinesCount = 0;
+export let enhancementLoading = false;
+export let enhancementError = false;
+
 	// Ensure props are never undefined to prevent errors
 	if (typeof selectedTemplate === 'undefined') {
 		selectedTemplate = null;
@@ -427,8 +432,11 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 				updateLoading={reportUpdateLoading}
 				reportId={reportId}
 				versionHistoryRefreshKey={versionHistoryRefreshKey}
+				enhancementGuidelinesCount={enhancementGuidelinesCount}
+				enhancementLoading={enhancementLoading}
+				enhancementError={enhancementError}
 				on:toggle={toggleResponse}
-				on:openSidebar={() => dispatch('openSidebar')}
+				on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
 				on:copy={copyToClipboard}
 				on:clear={clearResponse}
 				on:restore={(event) => handleHistoryRestore(event.detail)}

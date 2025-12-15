@@ -1,8 +1,10 @@
-<script>
+<script lang="ts">
 	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
 	import { marked } from 'marked';
 	import { token } from '$lib/stores/auth';
 	import ReportVersionInline from './ReportVersionInline.svelte';
+	import EnhancementPreviewCards from './EnhancementPreviewCards.svelte';
+	import EnhancementInlinePanel from './EnhancementInlinePanel.svelte';
 	import { API_URL } from '$lib/config';
 
 	const dispatch = createEventDispatcher();
@@ -16,6 +18,11 @@
 	export let updateLoading = false;
 	export let reportId = null;
 	export let versionHistoryRefreshKey = 0;
+	
+	// Enhancement state for preview cards
+	export let enhancementGuidelinesCount = 0;
+	export let enhancementLoading = false;
+	export let enhancementError = false;
 	
 	// Track previous response to detect manual updates
 	let previousResponse = '';
@@ -33,6 +40,10 @@
 	let activeView = 'report';
 	let isEditing = false;
 	let editContent = '';
+	
+	// Inline panel state
+	let inlinePanelVisible = false;
+	let inlinePanelTab: 'guidelines' | 'comparison' | 'chat' = 'guidelines';
 
 	$: if (!reportId && activeView === 'history') {
 		activeView = 'report';
@@ -274,7 +285,7 @@
 </script>
 
 {#if visible}
-	<div class="card-dark">
+	<div class="card-dark relative">
 		<div class="flex items-center justify-between px-4 py-3">
 			<button
 				type="button"
@@ -328,18 +339,6 @@
 
 				<button
 					type="button"
-					onclick={() => dispatch('openSidebar')}
-					class="p-2 text-gray-400 hover:text-purple-400 transition-colors rounded-lg hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
-					title="Get Guidelines & Enhancements"
-					aria-label="Open enhancement sidebar"
-					disabled={!response}
-				>
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-					</svg>
-				</button>
-				<button
-					type="button"
 					onclick={() => dispatch('copy')}
 					class="p-2 text-gray-400 hover:text-purple-400 transition-colors rounded-lg hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
 					title="Copy to clipboard"
@@ -374,7 +373,20 @@
 						</div>
 					</div>
 				{/if}
-				<div class="p-4 pt-0 max-h-96 overflow-y-auto space-y-4">
+				<div class="relative p-4 pt-0 max-h-96 overflow-y-auto space-y-4">
+					<!-- Enhancement Preview Cards - Before report content -->
+					{#if activeView === 'report' && reportId}
+						<EnhancementPreviewCards
+							guidelinesCount={enhancementGuidelinesCount}
+							isLoading={enhancementLoading}
+							hasError={enhancementError}
+							reportId={reportId}
+							on:openSidebar={(e) => {
+								dispatch('openSidebar', e.detail);
+							}}
+						/>
+					{/if}
+					
 					{#if validationStatus && activeView === 'report'}
 						<div class="mb-3">
 							{#if validationStatus.status === 'pending'}
@@ -463,6 +475,23 @@
 						<p class="text-sm text-gray-400">Response will appear here once generated.</p>
 					{/if}
 				</div>
+				
+				<!-- Inline Enhancement Panel - Hidden for now -->
+				<!--
+				{#if inlinePanelVisible && reportId}
+					<EnhancementInlinePanel
+						reportId={reportId}
+						reportContent={response || ''}
+						visible={inlinePanelVisible}
+						bind:activeTab={inlinePanelTab}
+						on:close={() => inlinePanelVisible = false}
+						on:enhancementState={(e) => {
+							// Forward enhancement state to parent
+							dispatch('enhancementState', e.detail);
+						}}
+					/>
+				{/if}
+				-->
 			</div>
 		{/if}
 	</div>

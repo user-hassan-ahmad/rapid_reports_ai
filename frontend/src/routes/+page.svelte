@@ -9,6 +9,8 @@ import HistoryTab from './components/HistoryTab.svelte';
 import SettingsTab from './components/SettingsTab.svelte';
 import ReportEnhancementSidebar from './components/ReportEnhancementSidebar.svelte';
 import ReportVersionHistory from './components/ReportVersionHistory.svelte';
+import EnhancementDock from './components/EnhancementDock.svelte';
+import EnhancementPreviewCards from './components/EnhancementPreviewCards.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import { logout, user, token, isAuthenticated } from '$lib/stores/auth';
 	import { reportsStore } from '$lib/stores/reports';
@@ -118,6 +120,12 @@ let currentHistoryCount = 0;
 let isEnhancementContext = activeTab === 'auto' || activeTab === 'templated';
 let currentReportId: string | null = null;
 let shouldAutoLoadEnhancements = false;
+
+// Enhancement dock/cards state
+let enhancementGuidelinesCount = 0;
+let enhancementLoading = false;
+let enhancementError = false;
+let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | null = null;
 	
 	// Sync URL hash when activeTab changes (for programmatic tab changes)
 	$: if (browser && !isInitializingFromHash) {
@@ -503,6 +511,14 @@ $: {
 	// Close sidebar if switching between different reports or leaving enhancement context
 	if (currentReportId !== newReportId && sidebarVisible) {
 		sidebarVisible = false;
+		sidebarTabToOpen = null;
+	}
+	
+	// Reset enhancement state when report changes
+	if (currentReportId !== newReportId) {
+		enhancementGuidelinesCount = 0;
+		enhancementLoading = false;
+		enhancementError = false;
 	}
 	
 	currentReportId = newReportId;
@@ -595,10 +611,14 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							reportUpdateLoading={reportUpdateLoading}
 							versionHistoryRefreshKey={versionHistoryRefreshKey}
 							apiKeyStatus={apiKeyStatus}
+							enhancementGuidelinesCount={enhancementGuidelinesCount}
+							enhancementLoading={enhancementLoading}
+							enhancementError={enhancementError}
 							on:useCaseChange={handleUseCaseChange}
 							on:submit={handleSubmit}
 							on:resetForm={handleFormReset}
-							on:openSidebar={() => {
+							on:openSidebar={(e) => {
+								sidebarTabToOpen = e.detail?.tab || null;
 								sidebarVisible = true;
 							}}
 							on:historyRestored={(e) => handleHistoryRestored(e.detail as RestoredReportDetail)}
@@ -625,6 +645,9 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							templatesRefreshKey={templatesRefreshKey}
 							externalResponseContent={templatedResponseOverride}
 							externalResponseVersion={templatedResponseVersion}
+							enhancementGuidelinesCount={enhancementGuidelinesCount}
+							enhancementLoading={enhancementLoading}
+							enhancementError={enhancementError}
 							on:editTemplate={handleEditTemplate}
 							on:reportGenerated={(e) => {
 								templatedReportId = e.detail.reportId;
@@ -635,7 +658,8 @@ $: if (!isEnhancementContext && sidebarVisible) {
 									reportsStore.refreshReports();
 								}
 							}}
-							on:openSidebar={() => {
+							on:openSidebar={(e) => {
+								sidebarTabToOpen = e.detail?.tab || null;
 								sidebarVisible = true;
 							}}
 							on:historyRestored={(e) => handleHistoryRestored(e.detail as RestoredReportDetail)}
@@ -696,8 +720,10 @@ $: if (!isEnhancementContext && sidebarVisible) {
 	visible={sidebarVisible && isEnhancementContext}
 	autoLoad={shouldAutoLoadEnhancements}
 	historyAvailable={currentHistoryCount > 1}
+	initialTab={sidebarTabToOpen}
 	on:close={() => {
 		sidebarVisible = false;
+		sidebarTabToOpen = null;
 	}}
 	on:reportUpdated={(e) => {
 		// Update response when report is updated
@@ -726,6 +752,12 @@ $: if (!isEnhancementContext && sidebarVisible) {
 			showVersionHistoryModal = true;
 		}
 	}}
+	on:enhancementState={(e) => {
+		const state = e.detail;
+		enhancementGuidelinesCount = state.guidelinesCount || 0;
+		enhancementLoading = state.isLoading || false;
+		enhancementError = state.hasError || false;
+	}}
 />
 <ReportVersionHistory
 	reportId={currentReportId}
@@ -733,6 +765,22 @@ $: if (!isEnhancementContext && sidebarVisible) {
 	refreshKey={versionHistoryRefreshKey}
 	onClose={() => showVersionHistoryModal = false}
 />
+
+<!-- Enhancement Dock - Floating button (Hidden for now) -->
+<!--
+{#if isEnhancementContext && currentReportId}
+	<EnhancementDock
+		guidelinesCount={enhancementGuidelinesCount}
+		isLoading={enhancementLoading}
+		hasError={enhancementError}
+		reportId={currentReportId}
+		on:openSidebar={(e) => {
+			sidebarTabToOpen = e.detail?.tab || null;
+			sidebarVisible = true;
+		}}
+	/>
+{/if}
+-->
 	
 	<!-- History Modal - Rendered at root level to avoid stacking context issues -->
 	{#if historyModalReport}

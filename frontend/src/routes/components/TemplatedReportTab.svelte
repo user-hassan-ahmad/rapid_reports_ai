@@ -27,6 +27,11 @@ export let versionHistoryRefreshKey = 0;
 export let templatesRefreshKey = 0;
 export let externalResponseContent = null;
 export let externalResponseVersion = 0;
+
+// Enhancement state props
+export let enhancementGuidelinesCount = 0;
+export let enhancementLoading = false;
+export let enhancementError = false;
 	
 	// No intermediate state needed - templatedModel is bound from parent
 	// and changes will propagate automatically via two-way binding
@@ -1956,6 +1961,9 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			{reportUpdateLoading}
 			reportId={reportId}
 			{versionHistoryRefreshKey}
+			enhancementGuidelinesCount={enhancementGuidelinesCount}
+			enhancementLoading={enhancementLoading}
+			enhancementError={enhancementError}
 			on:editTemplate={(e) => dispatch('editTemplate', e.detail)}
 			on:resetForm={handleFormReset}
 			on:reportGenerated={(e) => {

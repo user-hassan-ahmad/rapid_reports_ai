@@ -131,12 +131,18 @@ interface CompletenessAnalysis {
 	export let visible: boolean = false;
 	export let autoLoad: boolean = false;
 	export let historyAvailable: boolean = false;
+	export let initialTab: 'guidelines' | 'comparison' | 'chat' | null = null;
 	
 	let activeTab: 'guidelines' | 'analysis' | 'comparison' | 'chat' = 'guidelines';
 	
 	// Hide Analysis tab temporarily - redirect to guidelines if analysis is selected
 	$: if (activeTab === 'analysis') {
 		activeTab = 'guidelines';
+	}
+	
+	// Set initial tab when sidebar opens
+	$: if (visible && initialTab && initialTab !== 'analysis') {
+		activeTab = initialTab;
 	}
 	let loading = false;
 	let error: string | null = null;
@@ -907,6 +913,16 @@ $: if ((visible || autoLoad) && completenessPending) {
 	
 	import { createEventDispatcher } from 'svelte';
 	const dispatch = createEventDispatcher();
+	
+	// Emit enhancement state updates for dock/cards
+	$: {
+		dispatch('enhancementState', {
+			guidelinesCount: guidelinesData.length,
+			isLoading: loading,
+			hasError: Boolean(error),
+			reportId
+		});
+	}
 </script>
 
 {#if visible}
