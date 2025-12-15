@@ -140,9 +140,19 @@ interface CompletenessAnalysis {
 		activeTab = 'guidelines';
 	}
 	
-	// Set initial tab when sidebar opens
+	// Set initial tab when sidebar opens or when initialTab changes
+	let lastInitialTab: 'guidelines' | 'comparison' | 'chat' | null = null;
 	$: if (visible && initialTab && initialTab !== 'analysis') {
-		activeTab = initialTab;
+		// Only update if the tab actually changed to avoid unnecessary updates
+		if (initialTab !== lastInitialTab) {
+			activeTab = initialTab;
+			lastInitialTab = initialTab;
+		}
+	}
+	
+	// Reset lastInitialTab when sidebar closes
+	$: if (!visible) {
+		lastInitialTab = null;
 	}
 	let loading = false;
 	let error: string | null = null;

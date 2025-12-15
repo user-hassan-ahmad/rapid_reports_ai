@@ -39,8 +39,8 @@ from .enhancement_models import (
     ConsolidatedFinding,
     ConsolidationResult,
     ReportOutput,
-    ProtocolViolation,
-    ValidationResult,
+    StructureViolation,
+    StructureValidationResult,
     CompatibleIndicesResponse,
     Measurement,
     PriorState,
@@ -59,9 +59,9 @@ MODEL_CONFIG = {
     "PRIMARY_REPORT_GENERATOR": "gpt-oss-120b",  # Primary model for report generation (Cerebras GPT-OSS-120B)
     "FALLBACK_REPORT_GENERATOR": "claude-sonnet-4-20250514",  # Fallback model if primary fails after retries (Claude Sonnet 4)
     
-    # Protocol Validation Models
-    "PROTOCOL_VALIDATOR": "gpt-oss-120b",  # Validation step: Check for protocol violations (Cerebras GPT-OSS-120B)
-    "PROTOCOL_FIX_APPLIER": "gpt-oss-120b",  # Fix application step: Apply corrections for violations (Cerebras GPT-OSS-120B)
+    # Structure Validation Models
+    "STRUCTURE_VALIDATOR": "gpt-oss-120b",  # Structure validation: Check for structural quality violations (Cerebras GPT-OSS-120B with medium reasoning)
+    "STRUCTURE_VALIDATOR_FALLBACK": "qwen/qwen3-32b",  # Fallback for structure validation (Groq Qwen with thinking)
     
     # Enhancement Pipeline Models
     "FINDING_EXTRACTION": "gpt-oss-120b",  # Phase 1: Finding extraction and consolidation (primary - Cerebras GPT-OSS-120B with high reasoning)
@@ -83,11 +83,6 @@ MODEL_CONFIG = {
     "ACTION_APPLIER": "gpt-oss-120b",  # Apply enhancement actions to reports (primary - Cerebras GPT-OSS-120B with high reasoning)
     "ACTION_APPLIER_FALLBACK": "qwen/qwen3-32b",  # Fallback for action application (Qwen)
 }
-
-# Feature flag to enable/disable report validation
-# Controlled via environment variable: ENABLE_REPORT_VALIDATION=true/false
-# Defaults to False (disabled) if not set
-ENABLE_REPORT_VALIDATION = os.getenv("ENABLE_REPORT_VALIDATION", "false").lower() == "true"
 
 # Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
 QWEN_EXTRACTION_MODEL = MODEL_CONFIG["FINDING_EXTRACTION"]
@@ -2499,12 +2494,31 @@ def _log_model_inputs(model_label: str, system_prompt: str, user_prompt: str):
     print("="*80 + "\n")
 
 
+def _append_signature_to_report(report_output: ReportOutput, signature: str | None) -> ReportOutput:
+    """
+    Append signature to report_content programmatically if signature is provided.
+    
+    Args:
+        report_output: The ReportOutput object to modify
+        signature: Optional signature string to append
+        
+    Returns:
+        Modified ReportOutput with signature appended to report_content if signature exists
+    """
+    if signature and signature.strip():
+        # Append signature with double line break before it
+        report_output.report_content = report_output.report_content.rstrip() + "\n\n" + signature
+        print(f"_append_signature_to_report: Signature appended programmatically ({len(signature)} chars)")
+    return report_output
+
+
 async def _generate_report_with_claude_model(
     model_name: str,
     model_label: str,
     final_prompt: str,
     system_prompt: str,
-    api_key: str
+    api_key: str,
+    signature: str | None = None
 ) -> ReportOutput:
     """
     Helper function to generate report with Claude as fallback.
@@ -2555,6 +2569,9 @@ async def _generate_report_with_claude_model(
         _log_thinking_parts(result, f"{model_label} - Claude")
         
         report_output: ReportOutput = result.output
+        
+        # Append signature programmatically if provided
+        report_output = _append_signature_to_report(report_output, signature)
         
         elapsed = time.time() - start_time
         print(f"generate_auto_report: ✅ Completed with {model_label} in {elapsed:.2f}s")
@@ -2838,24 +2855,11 @@ async def generate_auto_report(
     
     print(f"generate_auto_report: Starting with {primary_model} ({provider})")
     
-    # Apply signature if provided, otherwise remove placeholder
+    # Remove signature placeholder from prompt if present (signature will be appended programmatically)
     final_prompt = user_prompt
-    if signature and signature.strip():
-        if '{{SIGNATURE}}' in final_prompt:
-            final_prompt = final_prompt.replace('{{SIGNATURE}}', signature)
-            print(f"generate_auto_report: Signature replaced placeholder in prompt")
-        else:
-            # Fallback: append signature if placeholder not found (like template manager does)
-            # This ensures signature is always included even if template doesn't have placeholder
-            final_prompt = final_prompt.rstrip() + "\n\n" + signature
-            print(f"generate_auto_report: Signature appended to prompt (placeholder not found)")
-    else:
-        # Remove placeholder if no signature provided to prevent AI from seeing it or hallucinating
-        if '{{SIGNATURE}}' in final_prompt:
-            final_prompt = final_prompt.replace('{{SIGNATURE}}', '').strip()
-            print(f"generate_auto_report: Removed signature placeholder (no signature provided)")
-        else:
-            print(f"generate_auto_report: No signature provided")
+    if '{{SIGNATURE}}' in final_prompt:
+        final_prompt = final_prompt.replace('{{SIGNATURE}}', '').strip()
+        print(f"generate_auto_report: Removed signature placeholder from prompt (will append programmatically)")
     
     # Try primary model with retry logic
     try:
@@ -2892,6 +2896,9 @@ async def generate_auto_report(
         
         report_output = await _try_primary()
         
+        # Append signature programmatically if provided
+        report_output = _append_signature_to_report(report_output, signature)
+        
         elapsed = time.time() - start_time
         print(f"generate_auto_report: ✅ Completed with {primary_model} (primary) in {elapsed:.2f}s")
         print(f"  └─ Report length: {len(report_output.report_content)} chars")
@@ -2918,7 +2925,7 @@ async def generate_auto_report(
             print(f"  Error: {type(e).__name__}: {str(e)[:200]}")
         else:
             print(f"⚠️ {primary_model} failed after retries ({type(e).__name__}) - falling back to {fallback_model}")
-            print(f"  Error: {str(e)[:200]}")
+            print(f"  Error: {type(e).__name__}: {str(e)[:200]}")
         
         # Fallback to configured fallback model (Claude Sonnet 4)
         try:
@@ -2930,7 +2937,8 @@ async def generate_auto_report(
                 f"{fallback_model} (fallback)",
                 final_prompt,
                 system_prompt,
-                api_key
+                api_key,
+                signature
             )
         except Exception as fallback_error:
             # Both models failed - re-raise the original error with context
@@ -2970,15 +2978,8 @@ async def generate_templated_report(
     
     print(f"generate_templated_report: Starting with {primary_model} ({provider})")
     
-    # Apply signature if provided, otherwise remove placeholder
+    # Use prompt as-is (signature will be appended programmatically after generation)
     final_prompt = user_prompt
-    if signature and signature.strip() and '{{SIGNATURE}}' in final_prompt:
-        final_prompt = final_prompt.replace('{{SIGNATURE}}', signature)
-        print(f"generate_templated_report: Signature replaced placeholder")
-    elif '{{SIGNATURE}}' in final_prompt:
-        # Remove placeholder if no signature provided to prevent AI from seeing it or hallucinating
-        final_prompt = final_prompt.replace('{{SIGNATURE}}', '').strip()
-        print(f"generate_templated_report: Removed signature placeholder (no signature provided)")
     
     # Try primary model with retry logic
     try:
@@ -3011,6 +3012,9 @@ async def generate_templated_report(
             return result.output
         
         report_output = await _try_primary()
+        
+        # Append signature programmatically if provided
+        report_output = _append_signature_to_report(report_output, signature)
         
         elapsed = time.time() - start_time
         print(f"generate_templated_report: ✅ Completed with {primary_model} (primary) in {elapsed:.2f}s")
@@ -3050,7 +3054,8 @@ async def generate_templated_report(
                 f"{fallback_model} (fallback)",
                 final_prompt,
                 system_prompt,
-                api_key
+                api_key,
+                signature
             )
         except Exception as fallback_error:
             # Both models failed - re-raise the original error with context
@@ -3060,16 +3065,15 @@ async def generate_templated_report(
             raise Exception(f"Templated report generation failed with both {primary_model} and {fallback_model}. Original error: {e}") from e
 
 @with_retry(max_retries=3, base_delay=2.0)
-async def validate_report_protocol(
+async def validate_report_structure(
     report_content: str,
     scan_type: str,
     findings: str
-) -> ValidationResult:
+) -> StructureValidationResult:
     """
-    Validate radiology report for protocol violations using configured model.
-    Model selection is driven by MODEL_CONFIG - just change PROTOCOL_VALIDATOR
-    to swap models (supports Groq/Qwen, Anthropic/Claude, or Cerebras).
-    Checks for violations like contrast enhancement on non-contrast scans, duplication, etc.
+    Validate radiology report for structural quality violations using Qwen with thinking (fast).
+    Checks for redundancy, prose flow, duplication, brevity, impression verbosity, pertinent negative placement.
+    Returns violations + proposed actions for GPT-OSS to execute.
     
     Args:
         report_content: The generated report content to validate
@@ -3077,22 +3081,32 @@ async def validate_report_protocol(
         findings: The original findings input
         
     Returns:
-        ValidationResult with violations list and validation status
+        StructureValidationResult with violations list, proposed actions, and validation status
     """
     import os
+    import time
     
     start_time = time.time()
-    print(f"validate_report_protocol: Starting validation for scan_type '{scan_type}'")
+    print(f"\n[STRUCTURE VALIDATION] Starting structural validation")
+    print(f"[STRUCTURE VALIDATION]   Scan type: '{scan_type}'")
+    print(f"[STRUCTURE VALIDATION]   Report length: {len(report_content)} chars")
+    print(f"[STRUCTURE VALIDATION]   Findings length: {len(findings)} chars")
     
     # Get model and provider
-    model_name = MODEL_CONFIG["PROTOCOL_VALIDATOR"]
+    model_name = MODEL_CONFIG["STRUCTURE_VALIDATOR"]
     provider = _get_model_provider(model_name)
     api_key = _get_api_key_for_provider(provider)
     
-    # Build validation prompt
-    validation_prompt = f"""Validate this radiology report for protocol violations.
+    print(f"[STRUCTURE VALIDATION]   Primary model: {model_name} ({provider})")
+    
+    # GPT-OSS doesn't use thinking format
+    use_thinking = False
+    print(f"[STRUCTURE VALIDATION]   Thinking enabled: False (GPT-OSS)")
+    
+    # Build simplified validation prompt - focused on 3 critical issues
+    validation_prompt = f"""Validate this radiology report for structural quality violations.
 
-EXTRACTED SCAN TYPE: {scan_type}
+SCAN TYPE: {scan_type}
 
 REPORT TO VALIDATE:
 {report_content}
@@ -3100,293 +3114,136 @@ REPORT TO VALIDATE:
 ORIGINAL FINDINGS INPUT:
 {findings}
 
-Check for violations:
-1. Contrast enhancement mentioned when scan_type contains 'non-contrast', 'non-con', or 'without contrast'
-2. Verbatim duplication between Findings and Impression sections (CRITICAL: Do NOT flag clinically significant measurements in Impression if they're part of actionable conclusions - e.g., size thresholds that trigger management. Only flag verbatim copying of detailed descriptive text from Findings)
-3. Hallucinated PATHOLOGICAL findings not in original input (CRITICAL: Normal findings for structures visible in this scan type are EXPECTED and NOT violations - systematic review of normal anatomy is part of the task)
-4. Protocol incompatibilities (e.g., DWI findings on non-DWI scans, MRI signal characteristics on CT scans, perfusion parameters on non-perfusion scans)
+=== VALIDATION RULES (CHECK THESE 3 CRITICAL ISSUES) ===
 
-IMPORTANT: Do NOT flag normal findings (e.g., "ventricles normal", "no midline shift", "bones intact", "sinuses clear") as hallucinations - these are part of systematic review. Only flag pathological findings that were not in the original input.
+**1. REDUNDANCY CHECK:**
+- Each anatomical structure must appear only ONCE in the entire report
+- Same information must not be stated multiple times (even in different words)
+- Pertinent negatives must not be repeated across paragraphs
 
-Return structured violations. If no violations found, return empty violations list with is_valid=True.
+**2. GROUPING CHECK:**
+- Related normal structures should be grouped together, not listed individually
+- If there are 3+ consecutive sentences about normal structures that could be combined, flag for grouping
+
+**3. IMPRESSION CHECK:**
+- Impression must be 1-2 sentences in prose format (NOT bullet points)
+- Impression must contain ONLY: diagnostic conclusions, differentials, actionable recommendations
+- Impression must NOT contain: descriptive details from Findings, benign incidentals below action threshold
+
+=== OUTPUT FORMAT ===
+
+For each violation found, provide:
+- location: Specific section (e.g., "Findings paragraph 2", "Impression")
+- issue: What's wrong (e.g., "Liver mentioned twice - once in paragraph 1 and again in paragraph 3")
+- fix: Specific instruction using this format:
+  * "MERGE: [list structures] into single sentence" (for grouping)
+  * "REMOVE: [exact duplicate text]" (for redundancy)
+  * "MOVE: [text] from Impression to Findings" (for impression issues)
+
+If no violations found, return empty violations list with is_valid=True.
 """
     
-    # Build model settings with conditional reasoning_effort and max_completion_tokens for Cerebras
+    # Build model settings - Qwen uses max_tokens, no reasoning_effort
     model_settings = {
-        "temperature": 0,
+        "temperature": 0.1,  # Low temperature for rule-checking
     }
     if model_name == "gpt-oss-120b":
-        model_settings["max_completion_tokens"] = 2048
+        model_settings["max_completion_tokens"] = 2000
         model_settings["reasoning_effort"] = "medium"
-        print(f"validate_report_protocol: Using Cerebras reasoning_effort=medium, max_completion_tokens=2048 for {model_name}")
+        print(f"[STRUCTURE VALIDATION]   Model settings: Cerebras (reasoning_effort=medium, max_completion_tokens=2000)")
     else:
-        model_settings["max_tokens"] = 2048
+        model_settings["max_tokens"] = 2000
+        print(f"[STRUCTURE VALIDATION]   Model settings: {model_name} (temperature=0.1, max_tokens=2000)")
     
-    result = await _run_agent_with_model(
-        model_name=model_name,
-        output_type=ValidationResult,
-        system_prompt="You are a radiology protocol validator. Find violations against the scan type/protocol. Be precise and only flag actual violations. If no violations exist, return empty violations list.",
-        user_prompt=validation_prompt,
-        api_key=api_key,
-        use_thinking=(provider == 'groq'),  # Enable thinking for Groq models
-        model_settings=model_settings
-    )
-    
-    validation_result: ValidationResult = result.output
+    # Try primary model with retry logic
+    print(f"[STRUCTURE VALIDATION] Calling primary model: {model_name}...")
+    try:
+        result = await _run_agent_with_model(
+            model_name=model_name,
+            output_type=StructureValidationResult,
+            system_prompt="You are a radiology report structure validator. Check for 3 critical issues: (1) redundancy - structures mentioned multiple times, (2) grouping - normal structures that should be combined, (3) impression - contains descriptive content that belongs in Findings. Be precise - only flag actual violations.",
+            user_prompt=validation_prompt,
+            api_key=api_key,
+            use_thinking=use_thinking,  # Enable thinking for Qwen
+            model_settings=model_settings
+        )
+        
+        validation_result: StructureValidationResult = result.output
+        
+        print(f"[STRUCTURE VALIDATION] ✅ Primary model succeeded")
+        
+    except Exception as e:
+        # Primary failed - try fallback
+        fallback_model = MODEL_CONFIG["STRUCTURE_VALIDATOR_FALLBACK"]
+        fallback_provider = _get_model_provider(fallback_model)
+        fallback_api_key = _get_api_key_for_provider(fallback_provider)
+        
+        if _is_parsing_error(e):
+            print(f"[STRUCTURE VALIDATION] ⚠️ Primary model parsing error - switching to fallback")
+            print(f"[STRUCTURE VALIDATION]   Error type: {type(e).__name__}")
+            print(f"[STRUCTURE VALIDATION]   Error message: {str(e)[:200]}")
+        else:
+            print(f"[STRUCTURE VALIDATION] ⚠️ Primary model failed after retries - switching to fallback")
+            print(f"[STRUCTURE VALIDATION]   Error type: {type(e).__name__}")
+            print(f"[STRUCTURE VALIDATION]   Error message: {str(e)[:200]}")
+        
+        # Fallback model settings
+        fallback_model_settings = {
+            "temperature": 0.1,
+        }
+        if fallback_model == "gpt-oss-120b":
+            fallback_model_settings["max_completion_tokens"] = 2000
+            fallback_model_settings["reasoning_effort"] = "medium"
+            print(f"[STRUCTURE VALIDATION]   Fallback settings: Cerebras (reasoning_effort=medium, max_completion_tokens=2000)")
+        else:
+            fallback_model_settings["max_tokens"] = 2000
+            print(f"[STRUCTURE VALIDATION]   Fallback settings: {fallback_model} (temperature=0.1, max_tokens=2000)")
+        
+        # Enable thinking for Qwen fallback (Groq models)
+        fallback_use_thinking = (fallback_provider == 'groq' and 'qwen' in fallback_model.lower())
+        print(f"[STRUCTURE VALIDATION]   Fallback thinking enabled: {fallback_use_thinking}")
+        print(f"[STRUCTURE VALIDATION] Calling fallback model: {fallback_model}...")
+        
+        result = await _run_agent_with_model(
+            model_name=fallback_model,
+            output_type=StructureValidationResult,
+            system_prompt="You are a radiology report structure validator. Check for 3 critical issues: (1) redundancy - structures mentioned multiple times, (2) grouping - normal structures that should be combined, (3) impression - contains descriptive content that belongs in Findings. Be precise - only flag actual violations.",
+            user_prompt=validation_prompt,
+            api_key=fallback_api_key,
+            use_thinking=fallback_use_thinking,
+            model_settings=fallback_model_settings
+        )
+        
+        validation_result: StructureValidationResult = result.output
+        
+        # Log thinking parts for debugging (if Qwen fallback with thinking)
+        if fallback_use_thinking:
+            print(f"[STRUCTURE VALIDATION] Logging thinking parts from Qwen fallback...")
+            _log_thinking_parts(result, "Structure Validation - Qwen Fallback")
+        
+        print(f"[STRUCTURE VALIDATION] ✅ Fallback model succeeded")
     
     elapsed = time.time() - start_time
     violation_count = len(validation_result.violations)
-    print(f"validate_report_protocol: ✅ Completed in {elapsed:.2f}s - Found {violation_count} violation(s)")
+    print(f"[STRUCTURE VALIDATION] Validation completed in {elapsed:.2f}s")
+    print(f"[STRUCTURE VALIDATION]   Violations found: {violation_count}")
+    print(f"[STRUCTURE VALIDATION]   Validation status: {'VALID' if validation_result.is_valid else 'INVALID'}")
     
     # Enhanced debugging: Log each violation in detail
     if violation_count > 0:
-        print(f"\n{'='*80}")
-        print(f"PROTOCOL VIOLATIONS DETECTED ({violation_count} total)")
-        print(f"{'='*80}")
+        print(f"\n[STRUCTURE VALIDATION] {'='*70}")
+        print(f"[STRUCTURE VALIDATION] VIOLATIONS DETECTED ({violation_count} total)")
+        print(f"[STRUCTURE VALIDATION] {'='*70}")
         for i, violation in enumerate(validation_result.violations, 1):
-            print(f"\nViolation {i}:")
-            print(f"  Type: {violation.violation_type}")
-            print(f"  Location: {violation.location}")
-            print(f"  Issue: {violation.issue}")
-            original_preview = violation.original_text[:200] + "..." if len(violation.original_text) > 200 else violation.original_text
-            print(f"  Original Text: {original_preview}")
-            fix_preview = violation.suggested_fix[:200] + "..." if len(violation.suggested_fix) > 200 else violation.suggested_fix
-            print(f"  Suggested Fix: {fix_preview}")
-        print(f"{'='*80}\n")
+            print(f"[STRUCTURE VALIDATION] Violation {i}/{violation_count}:")
+            print(f"[STRUCTURE VALIDATION]   Location: {violation.location}")
+            print(f"[STRUCTURE VALIDATION]   Issue: {violation.issue}")
+            fix_preview = violation.fix[:200] + "..." if len(violation.fix) > 200 else violation.fix
+            print(f"[STRUCTURE VALIDATION]   Fix: {fix_preview}")
+        print(f"[STRUCTURE VALIDATION] {'='*70}\n")
     else:
-        print("✅ No violations found - report passes protocol validation")
+        print(f"[STRUCTURE VALIDATION] ✅ No violations found - report passes structure validation")
     
     return validation_result
 
-
-@with_retry(max_retries=3, base_delay=2.0)
-async def apply_protocol_fixes(
-    report_output: ReportOutput,
-    validation_result: ValidationResult
-) -> ReportOutput:
-    """
-    Apply protocol fixes to a report based on validation violations.
-    Model selection is driven by MODEL_CONFIG - just change PROTOCOL_FIX_APPLIER
-    to swap models (supports Groq/Qwen, Anthropic/Claude, or Cerebras).
-    
-    Args:
-        report_output: The original ReportOutput with violations
-        validation_result: The ValidationResult containing violations to fix
-        
-    Returns:
-        Corrected ReportOutput with fixes applied
-    """
-    import os
-    
-    start_time = time.time()
-    violation_count = len(validation_result.violations)
-    print(f"apply_protocol_fixes: Starting fix application for {violation_count} violation(s)")
-    
-    # Get model and provider
-    model_name = MODEL_CONFIG["PROTOCOL_FIX_APPLIER"]
-    provider = _get_model_provider(model_name)
-    api_key = _get_api_key_for_provider(provider)
-    
-    # Build violations summary for prompt
-    violations_text = []
-    for i, violation in enumerate(validation_result.violations, 1):
-        violations_text.append(f"{i}. {violation.violation_type}")
-        violations_text.append(f"   Location: {violation.location}")
-        violations_text.append(f"   Issue: {violation.issue}")
-        violations_text.append(f"   Original text: {violation.original_text}")
-        violations_text.append(f"   Suggested fix: {violation.suggested_fix}")
-        violations_text.append("")
-    
-    # Build fix application prompt
-    fix_prompt = f"""Apply protocol fixes to this radiology report.
-
-SCAN TYPE: {validation_result.scan_type_checked}
-
-ORIGINAL REPORT (PRESERVE THIS EXACT STRUCTURE):
-{report_output.report_content}
-
-VIOLATIONS TO FIX:
-{chr(10).join(violations_text)}
-
-CRITICAL INSTRUCTIONS:
-- ONLY fix the specific violations listed above
-- If a hallucinated pathological finding is removed from Findings section, also remove it from Impression section if it appears there
-- PRESERVE the exact report structure, section headers, formatting, and organization
-- Do NOT reorganize sections or change the report layout
-- Do NOT add or remove sections
-- Do NOT change section order
-- PRESERVE the signature block at the end of the report exactly as it appears in the original
-- Do NOT remove or modify the signature block - it must remain unchanged
-- Make MINIMAL changes - only correct the protocol violations
-- Keep all other text exactly as written (including signature)
-- Maintain the same writing style and tone
-
-Return the complete corrected report with:
-- report_content: The fixed report text (with violations corrected but structure preserved)
-- description: Keep the original description unchanged
-- scan_type: Keep the original scan_type unchanged
-"""
-    
-    # Build model settings with conditional reasoning_effort and max_completion_tokens for Cerebras
-    model_settings = {
-        "temperature": 0,
-    }
-    if model_name == "gpt-oss-120b":
-        model_settings["max_completion_tokens"] = 4096
-        model_settings["reasoning_effort"] = "medium"
-        print(f"apply_protocol_fixes: Using Cerebras reasoning_effort=medium, max_completion_tokens=4096 for {model_name}")
-    else:
-        model_settings["max_tokens"] = 4096
-    
-    result = await _run_agent_with_model(
-        model_name=model_name,
-        output_type=ReportOutput,
-        system_prompt="You are a radiology report editor. Apply ONLY the specific protocol fixes requested. Preserve the exact report structure, formatting, and organization. Make minimal changes - only correct the violations, do not restructure the report.",
-        user_prompt=fix_prompt,
-        api_key=api_key,
-        use_thinking=(provider == 'groq'),  # Enable thinking for Groq models
-        model_settings=model_settings
-    )
-    
-    fixed_output: ReportOutput = result.output
-    
-    elapsed = time.time() - start_time
-    print(f"apply_protocol_fixes: ✅ Completed in {elapsed:.2f}s")
-    print(f"  └─ Fixed report length: {len(fixed_output.report_content)} chars")
-    
-    return fixed_output
-
-
-async def validate_report_async(
-    report_id: str,
-    report_output: ReportOutput,
-    findings: str,
-    scan_type: str
-):
-    """
-    Async background validation function.
-    Runs validation and applies fixes if needed, updating the report in the database.
-    
-    Args:
-        report_id: Report UUID string
-        report_output: ReportOutput object with report_content, scan_type, description
-        findings: Original findings input
-        scan_type: Extracted scan type
-    """
-    from .database.connection import SessionLocal
-    from .database.crud import (
-        get_report,
-        update_validation_status,
-        create_report_version
-    )
-    from sqlalchemy.orm import Session
-    
-    db: Session = SessionLocal()
-    
-    try:
-        # Set status to pending
-        update_validation_status(
-            db=db,
-            report_id=report_id,
-            status="pending",
-            violations_count=0
-        )
-        
-        print(f"\n{'='*80}")
-        print(f"🔄 Background validation started for report {report_id}")
-        print(f"{'='*80}\n")
-        
-        # Run validation
-        validation_result = await validate_report_protocol(
-            report_content=report_output.report_content,
-            scan_type=scan_type,
-            findings=findings
-        )
-        
-        violation_count = len(validation_result.violations)
-        
-        if violation_count > 0:
-            # Violations found - apply fixes
-            print(f"\n{'='*80}")
-            print(f"⚠️ PROTOCOL VIOLATIONS DETECTED: {violation_count} violation(s)")
-            print(f"{'='*80}")
-            for i, violation in enumerate(validation_result.violations, 1):
-                print(f"  {i}. [{violation.violation_type}] {violation.location}")
-                print(f"     Issue: {violation.issue}")
-            print(f"{'='*80}\n")
-            print(f"Applying fixes...")
-            
-            fixed_output = await apply_protocol_fixes(
-                report_output=report_output,
-                validation_result=validation_result
-            )
-            
-            print(f"✅ Fixes applied successfully")
-            
-            # Get report to update
-            report = get_report(db, report_id)
-            if report:
-                # Create version snapshot of original before updating
-                create_report_version(
-                    db=db,
-                    report=report,
-                    actions_applied=None,
-                    notes=f"Protocol validation fixes applied ({violation_count} violation(s))"
-                )
-                
-                # Update report content with fixed version
-                report.report_content = fixed_output.report_content
-                db.commit()
-                db.refresh(report)
-                
-                # Update validation status
-                update_validation_status(
-                    db=db,
-                    report_id=report_id,
-                    status="fixed",
-                    violations_count=violation_count
-                )
-                
-                print(f"✅ Report updated with fixes, version created")
-            else:
-                print(f"⚠️ Report {report_id} not found, cannot update")
-                update_validation_status(
-                    db=db,
-                    report_id=report_id,
-                    status="error",
-                    error="Report not found"
-                )
-        else:
-            # No violations - validation passed
-            print("✅ No violations found, validation passed")
-            update_validation_status(
-                db=db,
-                report_id=report_id,
-                status="passed",
-                violations_count=0
-            )
-            
-    except Exception as e:
-        import traceback
-        error_msg = str(e)
-        print(f"\n{'='*80}")
-        print(f"❌ Background validation failed for report {report_id}")
-        print(f"Error: {error_msg}")
-        print(f"{'='*80}\n")
-        traceback.print_exc()
-        
-        # Update status to error
-        try:
-            update_validation_status(
-                db=db,
-                report_id=report_id,
-                status="error",
-                error=error_msg
-            )
-        except Exception as db_error:
-            print(f"⚠️ Failed to update validation status: {db_error}")
-    
-    finally:
-        # Always close the database session
-        db.close()
 

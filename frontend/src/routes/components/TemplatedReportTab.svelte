@@ -1980,7 +1980,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 				reportId = e.detail.reportId;
 				dispatch('reportGenerated', { reportId: e.detail.reportId });
 			}}
-			on:openSidebar={() => dispatch('openSidebar')}
+			on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
 			on:historyUpdate={(event) => dispatch('historyUpdate', event.detail)}
 			on:historyRestored={(event) => dispatch('historyRestored', event.detail)}
 			on:reportCleared={() => dispatch('reportCleared')}

@@ -274,39 +274,30 @@ class CompatibleIndicesResponse(BaseModel):
 
 
 # ============================================================================
-# Protocol Validation Models
+# Structure Validation Models
 # ============================================================================
 
-class ProtocolViolation(BaseModel):
-    """A single protocol violation found in a radiology report"""
-    violation_type: str = Field(
-        description="Type of violation (e.g., 'contrast_on_noncontrast', 'duplication', 'hallucination', 'protocol_incompatibility')"
-    )
+class StructureViolation(BaseModel):
+    """A structural quality violation found in the report"""
     location: str = Field(
-        description="Where in report the violation occurs (e.g., 'Findings section, line 3', 'Impression section')"
-    )
-    original_text: str = Field(
-        description="The problematic text that violates the protocol"
+        description="Specific location: section name and paragraph (e.g., 'Findings paragraph 2', 'Impression')"
     )
     issue: str = Field(
-        description="Why this violates the scan protocol/type"
+        description="Clear description of what's wrong and why it violates the principle"
     )
-    suggested_fix: str = Field(
-        description="How to fix this violation"
+    fix: str = Field(
+        description="Specific fix instruction: what to change, where, and how. Format: '[Action: Remove/Add/Move/Restructure] [what/where] because [reason].'"
     )
 
 
-class ValidationResult(BaseModel):
-    """Result of protocol validation check"""
-    violations: List[ProtocolViolation] = Field(
+class StructureValidationResult(BaseModel):
+    """Result of structural quality validation"""
+    violations: List[StructureViolation] = Field(
         default_factory=list,
-        description="List of protocol violations found. Empty list if no violations."
+        description="List of structural violations found, each with location, issue description and recommended fix"
     )
     is_valid: bool = Field(
-        description="True if no violations found, False if violations exist"
-    )
-    scan_type_checked: str = Field(
-        description="The scan type that was validated against"
+        description="True if no violations found"
     )
 
 

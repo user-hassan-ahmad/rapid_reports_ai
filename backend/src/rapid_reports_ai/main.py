@@ -237,16 +237,22 @@ async def regenerate_report_with_actions(
     
     system_prompt = (
         "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
-        "You are a radiology reporting assistant applying SPECIFIC, SURGICAL edits to an existing report.\n"
+        "You are applying edits to a radiology report. Each violation specifies a problem and how to fix it.\n\n"
+        "EDITING STRATEGY:\n"
+        "1. Read each violation's 'issue' to understand WHAT is wrong\n"
+        "2. Read each violation's 'fix' to understand HOW to fix it\n"
+        "3. Locate the exact text/location mentioned in the fix instruction\n"
+        "4. Apply the fix while preserving grammatical completeness\n\n"
         "CRITICAL PRINCIPLES:\n"
-        "1. Apply ONLY the requested changes specified in the actions below\n"
-        "2. Keep EVERYTHING ELSE exactly as it appears in the original report\n"
-        "3. Preserve the exact formatting, structure, spacing, and style of the original report\n"
-        "4. Do NOT add separators, markdown formatting, or decorative elements (no '---', '====', etc.)\n"
-        "5. Do NOT rewrite sections that aren't mentioned in the actions\n"
-        "6. Do NOT change wording, terminology, or structure unless explicitly requested\n"
-        "7. Make surgical edits: replace/add/remove only what's specified, nothing more\n\n"
-        "Return ONLY the complete revised report text. No commentary, no thinking blocks, no tags, no separators—just the report."
+        "1. Apply fixes EXACTLY as specified in the 'fix' field\n"
+        "2. If removing text leaves a sentence incomplete, restructure the sentence grammatically\n"
+        "3. If moving text, ensure it flows naturally in the new location\n"
+        "4. If restructuring, maintain all information but integrate it cohesively\n"
+        "5. Preserve formatting, spacing, and structure of unchanged sections\n"
+        "6. Verify every sentence is grammatically complete after edits\n"
+        "7. Do NOT add separators, markdown formatting, or decorative elements\n"
+        "8. Do NOT rewrite sections not mentioned in the violations\n\n"
+        "Return ONLY the complete revised report text. No commentary, no thinking blocks, no tags—just the report."
     )
     
     # Get primary model and provider
@@ -265,8 +271,8 @@ async def regenerate_report_with_actions(
             }
             if primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 4096  # Generous token limit for Cerebras
-                model_settings["reasoning_effort"] = "high"
-                print(f"regenerate_report_with_actions: Using Cerebras reasoning_effort=high, max_completion_tokens=4096 for {primary_model}")
+                model_settings["reasoning_effort"] = "medium"
+                print(f"regenerate_report_with_actions: Using Cerebras reasoning_effort=medium, max_completion_tokens=4096 for {primary_model}")
             else:
                 model_settings["max_tokens"] = 4096
             
@@ -539,6 +545,164 @@ async def chat(
             signature=signature_value
         )
         
+        # STRUCTURE VALIDATION (synchronous, before saving)
+        # DISABLED: Validation checks temporarily disabled - code preserved below
+        import os
+        ENABLE_STRUCTURE_VALIDATION = os.getenv("ENABLE_STRUCTURE_VALIDATION", "true").lower() == "true"
+        
+        # if ENABLE_STRUCTURE_VALIDATION:  # DISABLED
+        if False:  # Validation disabled - uncomment above line to re-enable
+            from .enhancement_utils import validate_report_structure
+            
+            findings = request.variables.get('FINDINGS', '') if request.variables else ''
+            
+            print(f"\n{'='*80}")
+            print(f"🔍 STRUCTURE VALIDATION - Starting")
+            print(f"{'='*80}")
+            print(f"[DEBUG] Scan type: {report_output.scan_type or '(none)'}")
+            print(f"[DEBUG] Findings length: {len(findings)} chars")
+            print(f"[DEBUG] Report content length: {len(report_output.report_content)} chars")
+            
+            try:
+                print(f"[DEBUG] Step 1/3: Calling validate_report_structure()...")
+                validation_result = await validate_report_structure(
+                    report_content=report_output.report_content,
+                    scan_type=report_output.scan_type or "",
+                    findings=findings
+                )
+                print(f"[DEBUG] Step 1/3: ✅ Validation complete")
+                print(f"[DEBUG]   - is_valid: {validation_result.is_valid}")
+                print(f"[DEBUG]   - violations count: {len(validation_result.violations)}")
+                
+                if not validation_result.is_valid and len(validation_result.violations) > 0:
+                    print(f"\n[DEBUG] Step 2/3: Preparing to apply fixes...")
+                    print(f"[DEBUG]   - Found {len(validation_result.violations)} violation(s)")
+                    
+                    # Build simplified prompt directly from violations
+                    violations_text = "\n\n".join([
+                        f"Violation {i+1}:\n"
+                        f"Location: {v.location}\n"
+                        f"Issue: {v.issue}\n"
+                        f"Fix: {v.fix}"
+                        for i, v in enumerate(validation_result.violations)
+                    ])
+                    
+                    user_prompt = f"""Apply these fixes to the radiology report:
+
+{violations_text}
+
+Original report:
+{report_output.report_content}
+
+Apply each fix while preserving grammatical completeness and report structure."""
+                    
+                    # Import enhancement utilities for model configuration
+                    from .enhancement_utils import (
+                        MODEL_CONFIG,
+                        _get_model_provider,
+                        _get_api_key_for_provider,
+                        _run_agent_with_model,
+                        _is_parsing_error,
+                    )
+                    from .enhancement_utils import with_retry
+                    
+                    system_prompt = (
+                        "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
+                        "You are applying edits to a radiology report. Each violation specifies a problem and how to fix it.\n\n"
+                        "EDITING STRATEGY:\n"
+                        "1. Read each violation's 'issue' to understand WHAT is wrong\n"
+                        "2. Read each violation's 'fix' to understand HOW to fix it\n"
+                        "3. Locate the exact text/location mentioned in the fix instruction\n"
+                        "4. Apply the fix while preserving grammatical completeness\n\n"
+                        "CRITICAL PRINCIPLES:\n"
+                        "1. Apply fixes EXACTLY as specified in the 'fix' field\n"
+                        "2. If removing text leaves a sentence incomplete, restructure the sentence grammatically\n"
+                        "3. If moving text, ensure it flows naturally in the new location\n"
+                        "4. If restructuring, maintain all information but integrate it cohesively\n"
+                        "5. Preserve formatting, spacing, and structure of unchanged sections\n"
+                        "6. Verify every sentence is grammatically complete after edits\n"
+                        "7. Do NOT add separators, markdown formatting, or decorative elements\n"
+                        "8. Do NOT rewrite sections not mentioned in the violations\n\n"
+                        "Return ONLY the complete revised report text. No commentary, no thinking blocks, no tags—just the report."
+                    )
+                    
+                    # Get model and provider
+                    primary_model = MODEL_CONFIG["ACTION_APPLIER"]
+                    primary_provider = _get_model_provider(primary_model)
+                    primary_api_key = _get_api_key_for_provider(primary_provider)
+                    
+                    print(f"[DEBUG] Step 3/3: Executing fixes...")
+                    print(f"[DEBUG]   - Using model: {primary_model}")
+                    
+                    @with_retry(max_retries=3, base_delay=2.0)
+                    async def _apply_fixes():
+                        model_settings = {
+                            "temperature": 0.3,
+                        }
+                        if primary_model == "gpt-oss-120b":
+                            model_settings["max_completion_tokens"] = 4096
+                            model_settings["reasoning_effort"] = "medium"
+                        else:
+                            model_settings["max_tokens"] = 4096
+                        
+                        result = await _run_agent_with_model(
+                            model_name=primary_model,
+                            output_type=str,
+                            system_prompt=system_prompt,
+                            user_prompt=user_prompt,
+                            api_key=primary_api_key,
+                            use_thinking=(primary_provider == 'groq'),
+                            model_settings=model_settings
+                        )
+                        
+                        refined_content = str(result.output).strip()
+                        
+                        # Clean up thinking tags if present (for Groq models)
+                        if refined_content and primary_provider == 'groq':
+                            import re
+                            refined_content = re.sub(
+                                r'<think>.*?</think>',
+                                '',
+                                refined_content,
+                                flags=re.DOTALL | re.IGNORECASE
+                            ).strip()
+                        
+                        if not refined_content:
+                            raise ValueError(f"{primary_model} returned an empty response when applying fixes.")
+                        
+                        return refined_content
+                    
+                    refined_content = await _apply_fixes()
+                    
+                    original_length = len(report_output.report_content)
+                    refined_length = len(refined_content)
+                    print(f"[DEBUG] Step 3/3: ✅ Fix execution complete")
+                    print(f"[DEBUG]   - Original report length: {original_length} chars")
+                    print(f"[DEBUG]   - Refined report length: {refined_length} chars")
+                    print(f"[DEBUG]   - Length change: {refined_length - original_length:+d} chars")
+                    
+                    report_output.report_content = refined_content
+                    print(f"\n✅ STRUCTURE VALIDATION COMPLETE - Fixes applied successfully")
+                    print(f"{'='*80}\n")
+                else:
+                    print(f"[DEBUG] No fixes needed - report passes validation")
+                    print(f"\n✅ STRUCTURE VALIDATION COMPLETE - No violations found")
+                    print(f"{'='*80}\n")
+            except Exception as e:
+                print(f"\n{'='*80}")
+                print(f"⚠️ STRUCTURE VALIDATION FAILED")
+                print(f"{'='*80}")
+                print(f"[ERROR] Exception type: {type(e).__name__}")
+                print(f"[ERROR] Error message: {str(e)[:500]}")
+                import traceback
+                print(f"[ERROR] Full traceback:")
+                print(traceback.format_exc())
+                # Continue with original report if validation fails
+                print(f"[DEBUG] Continuing with original report (validation skipped)")
+                print(f"{'='*80}\n")
+        else:
+            print(f"[DEBUG] Structure validation disabled (ENABLE_STRUCTURE_VALIDATION=false)")
+        
         # Build context title: scan type + description
         context_title = None
         if report_output.scan_type:
@@ -575,33 +739,7 @@ async def chat(
                     description=context_title
                 )
                 report_id = str(saved_report.id)
-                
-                # Queue async background validation (if enabled)
-                from .enhancement_utils import validate_report_async, ENABLE_REPORT_VALIDATION
-                from .database.crud import update_validation_status
-                
-                if ENABLE_REPORT_VALIDATION:
-                    # Set initial validation status to pending
-                    findings = request.variables.get('FINDINGS', '') if request.variables else ''
-                    update_validation_status(
-                        db=db,
-                        report_id=report_id,
-                        status="pending",
-                        violations_count=0
-                    )
-                    
-                    # Queue background validation task
-                    asyncio.create_task(
-                        validate_report_async(
-                            report_id=report_id,
-                            report_output=report_output,
-                            findings=findings,
-                            scan_type=report_output.scan_type or ""
-                        )
-                    )
-                    print(f"✅ Report saved, validation queued in background")
-                else:
-                    print(f"✅ Report saved, validation skipped (ENABLE_REPORT_VALIDATION=false)")
+                print(f"✅ Report saved")
             except Exception as e:
                 print(f"Failed to save report: {e}")
         else:
@@ -614,16 +752,12 @@ async def chat(
             "qwen": "qwen/qwen3-32b"
         }.get(request.model, request.model)
         
-        # Import validation flag for response
-        from .enhancement_utils import ENABLE_REPORT_VALIDATION
-        
         return {
             "success": True,
             "report_id": report_id,
             "response": report_output.report_content,
             "model": model_full_name,
-            "use_case": use_case_name,
-            "validation_status": "pending" if (report_id and ENABLE_REPORT_VALIDATION) else None
+            "use_case": use_case_name
         }
     
     except Exception as e:
@@ -1121,32 +1255,15 @@ async def generate_report_from_template(
         if not template:
             return {"success": False, "error": "Template not found"}
         
-        # Build prompts using TemplateManager (now returns dict with system_prompt and user_prompt)
-        # Get primary model from MODEL_CONFIG for conditional routing
-        from .enhancement_utils import MODEL_CONFIG
-        
+        # Build prompts using TemplateManager unified function
         tm = TemplateManager()
-        primary_model = MODEL_CONFIG.get("PRIMARY_REPORT_GENERATOR")
-        
-        # Conditionally use reasoning method for gpt-oss-120b
-        if primary_model == "gpt-oss-120b":
-            prompts = tm.build_master_prompt_with_reasoning(
-                template=template.template_content,
-                variable_values=request.variables,
-                template_name=template.name,
-                template_description=template.description,
-                master_instructions=template.master_prompt_instructions,
-                model=request.model
-            )
-        else:
-            prompts = tm.build_master_prompt(
-                template=template.template_content,
-                variable_values=request.variables,
-                template_name=template.name,
-                template_description=template.description,
-                master_instructions=template.master_prompt_instructions,
-                model=request.model
-            )
+        prompts = tm.build_unified_master_prompt(
+            template=template.template_content,
+            variable_values=request.variables,
+            template_name=template.name,
+            template_description=template.description,
+            master_instructions=template.master_prompt_instructions
+        )
         
         system_prompt = prompts.get('system_prompt', '')
         user_prompt = prompts.get('user_prompt', '')
@@ -1168,6 +1285,161 @@ async def generate_report_from_template(
             api_key=api_key,
             signature=current_user.signature
         )
+        
+        # Optional: Add structure validation for templated reports
+        # Controlled by ENABLE_TEMPLATE_STRUCTURE_VALIDATION env var
+        import os
+        ENABLE_TEMPLATE_STRUCTURE_VALIDATION = os.getenv("ENABLE_TEMPLATE_STRUCTURE_VALIDATION", "false").lower() == "true"
+        
+        if ENABLE_TEMPLATE_STRUCTURE_VALIDATION:
+            from .enhancement_utils import validate_report_structure
+            
+            findings = request.variables.get('FINDINGS', '') if request.variables else ''
+            
+            print(f"\n{'='*80}")
+            print(f"🔍 TEMPLATE STRUCTURE VALIDATION - Starting")
+            print(f"{'='*80}")
+            print(f"[DEBUG] Scan type: {report_output.scan_type or '(none)'}")
+            print(f"[DEBUG] Findings length: {len(findings)} chars")
+            print(f"[DEBUG] Report content length: {len(report_output.report_content)} chars")
+            
+            try:
+                print(f"[DEBUG] Step 1/3: Calling validate_report_structure()...")
+                validation_result = await validate_report_structure(
+                    report_content=report_output.report_content,
+                    scan_type=report_output.scan_type or "",
+                    findings=findings
+                )
+                print(f"[DEBUG] Step 1/3: ✅ Validation complete")
+                print(f"[DEBUG]   - is_valid: {validation_result.is_valid}")
+                print(f"[DEBUG]   - violations count: {len(validation_result.violations)}")
+                
+                if not validation_result.is_valid and len(validation_result.violations) > 0:
+                    print(f"\n[DEBUG] Step 2/3: Preparing to apply fixes...")
+                    print(f"[DEBUG]   - Found {len(validation_result.violations)} violation(s)")
+                    
+                    # Build simplified prompt directly from violations
+                    violations_text = "\n\n".join([
+                        f"Violation {i+1}:\n"
+                        f"Location: {v.location}\n"
+                        f"Issue: {v.issue}\n"
+                        f"Fix: {v.fix}"
+                        for i, v in enumerate(validation_result.violations)
+                    ])
+                    
+                    user_prompt = f"""Apply these fixes to the radiology report:
+
+{violations_text}
+
+Original report:
+{report_output.report_content}
+
+Apply each fix while preserving grammatical completeness and report structure."""
+                    
+                    # Import enhancement utilities for model configuration
+                    from .enhancement_utils import (
+                        MODEL_CONFIG,
+                        _get_model_provider,
+                        _get_api_key_for_provider,
+                        _run_agent_with_model,
+                        _is_parsing_error,
+                    )
+                    from .enhancement_utils import with_retry
+                    
+                    system_prompt = (
+                        "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
+                        "You are applying edits to a radiology report. Each violation specifies a problem and how to fix it.\n\n"
+                        "EDITING STRATEGY:\n"
+                        "1. Read each violation's 'issue' to understand WHAT is wrong\n"
+                        "2. Read each violation's 'fix' to understand HOW to fix it\n"
+                        "3. Locate the exact text/location mentioned in the fix instruction\n"
+                        "4. Apply the fix while preserving grammatical completeness\n\n"
+                        "CRITICAL PRINCIPLES:\n"
+                        "1. Apply fixes EXACTLY as specified in the 'fix' field\n"
+                        "2. If removing text leaves a sentence incomplete, restructure the sentence grammatically\n"
+                        "3. If moving text, ensure it flows naturally in the new location\n"
+                        "4. If restructuring, maintain all information but integrate it cohesively\n"
+                        "5. Preserve formatting, spacing, and structure of unchanged sections\n"
+                        "6. Verify every sentence is grammatically complete after edits\n"
+                        "7. Do NOT add separators, markdown formatting, or decorative elements\n"
+                        "8. Do NOT rewrite sections not mentioned in the violations\n\n"
+                        "Return ONLY the complete revised report text. No commentary, no thinking blocks, no tags—just the report."
+                    )
+                    
+                    # Get model and provider
+                    primary_model = MODEL_CONFIG["ACTION_APPLIER"]
+                    primary_provider = _get_model_provider(primary_model)
+                    primary_api_key = _get_api_key_for_provider(primary_provider)
+                    
+                    print(f"[DEBUG] Step 3/3: Executing fixes...")
+                    print(f"[DEBUG]   - Using model: {primary_model}")
+                    
+                    @with_retry(max_retries=3, base_delay=2.0)
+                    async def _apply_fixes():
+                        model_settings = {
+                            "temperature": 0.3,
+                        }
+                        if primary_model == "gpt-oss-120b":
+                            model_settings["max_completion_tokens"] = 4096
+                            model_settings["reasoning_effort"] = "medium"
+                        else:
+                            model_settings["max_tokens"] = 4096
+                        
+                        result = await _run_agent_with_model(
+                            model_name=primary_model,
+                            output_type=str,
+                            system_prompt=system_prompt,
+                            user_prompt=user_prompt,
+                            api_key=primary_api_key,
+                            use_thinking=(primary_provider == 'groq'),
+                            model_settings=model_settings
+                        )
+                        
+                        refined_content = str(result.output).strip()
+                        
+                        # Clean up thinking tags if present (for Groq models)
+                        if refined_content and primary_provider == 'groq':
+                            import re
+                            refined_content = re.sub(
+                                r'<think>.*?</think>',
+                                '',
+                                refined_content,
+                                flags=re.DOTALL | re.IGNORECASE
+                            ).strip()
+                        
+                        if not refined_content:
+                            raise ValueError(f"{primary_model} returned an empty response when applying fixes.")
+                        
+                        return refined_content
+                    
+                    refined_content = await _apply_fixes()
+                    
+                    original_length = len(report_output.report_content)
+                    refined_length = len(refined_content)
+                    print(f"[DEBUG] Step 3/3: ✅ Fix execution complete")
+                    print(f"[DEBUG]   - Original report length: {original_length} chars")
+                    print(f"[DEBUG]   - Refined report length: {refined_length} chars")
+                    print(f"[DEBUG]   - Length change: {refined_length - original_length:+d} chars")
+                    
+                    report_output.report_content = refined_content
+                    print(f"\n✅ TEMPLATE STRUCTURE VALIDATION COMPLETE - Fixes applied successfully")
+                    print(f"{'='*80}\n")
+                else:
+                    print(f"[DEBUG] No fixes needed - report passes validation")
+                    print(f"\n✅ TEMPLATE STRUCTURE VALIDATION COMPLETE - No violations found")
+                    print(f"{'='*80}\n")
+            except Exception as e:
+                print(f"\n{'='*80}")
+                print(f"⚠️ TEMPLATE STRUCTURE VALIDATION FAILED")
+                print(f"{'='*80}")
+                print(f"[ERROR] Exception type: {type(e).__name__}")
+                print(f"[ERROR] Error message: {str(e)[:500]}")
+                import traceback
+                print(f"[ERROR] Full traceback:")
+                print(traceback.format_exc())
+                # Continue with original report if validation fails
+                print(f"[DEBUG] Continuing with original report (validation skipped)")
+                print(f"{'='*80}\n")
         
         # Build context title: template name + description
         context_title = None
@@ -1204,33 +1476,7 @@ async def generate_report_from_template(
                     description=context_title
                 )
                 report_id = str(saved_report.id)
-                
-                # Queue async background validation (if enabled)
-                from .enhancement_utils import validate_report_async, ENABLE_REPORT_VALIDATION
-                from .database.crud import update_validation_status
-                
-                if ENABLE_REPORT_VALIDATION:
-                    # Set initial validation status to pending
-                    findings = request.variables.get('FINDINGS', '')
-                    update_validation_status(
-                        db=db,
-                        report_id=report_id,
-                        status="pending",
-                        violations_count=0
-                    )
-                    
-                    # Queue background validation task
-                    asyncio.create_task(
-                        validate_report_async(
-                            report_id=report_id,
-                            report_output=report_output,
-                            findings=findings,
-                            scan_type=report_output.scan_type or ""
-                        )
-                    )
-                    print(f"✅ Report saved, validation queued in background")
-                else:
-                    print(f"✅ Report saved, validation skipped (ENABLE_REPORT_VALIDATION=false)")
+                print(f"✅ Report saved")
             except Exception as e:
                 print(f"Failed to save report: {e}")
         else:
@@ -1249,16 +1495,12 @@ async def generate_report_from_template(
             "qwen": "qwen/qwen3-32b"
         }.get(request.model, request.model)
         
-        # Import validation flag for response
-        from .enhancement_utils import ENABLE_REPORT_VALIDATION
-        
         return {
             "success": True,
             "response": report_output.report_content,
             "model": model_full_name,
             "template_id": str(template.id),
-            "report_id": report_id,
-            "validation_status": "pending" if (report_id and ENABLE_REPORT_VALIDATION) else None
+            "report_id": report_id
         }
     
     except Exception as e:
