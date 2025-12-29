@@ -56,8 +56,8 @@ from .enhancement_models import (
 # Update this dictionary to change models without modifying code throughout the codebase
 MODEL_CONFIG = {
     # Report Generation Models
-    "PRIMARY_REPORT_GENERATOR": "gpt-oss-120b",  # Primary model for report generation (Cerebras GPT-OSS-120B)
-    "FALLBACK_REPORT_GENERATOR": "claude-sonnet-4-20250514",  # Fallback model if primary fails after retries (Claude Sonnet 4)
+    "PRIMARY_REPORT_GENERATOR": "claude-sonnet-4-20250514",  # Primary model for report generation (Claude Sonnet 4)
+    "FALLBACK_REPORT_GENERATOR": "gpt-oss-120b",  # Fallback model if primary fails after retries (Cerebras GPT-OSS-120B)
     
     # Structure Validation Models
     "STRUCTURE_VALIDATOR": "gpt-oss-120b",  # Structure validation: Check for structural quality violations (Cerebras GPT-OSS-120B with medium reasoning)
@@ -2874,14 +2874,21 @@ async def generate_auto_report(
         async def _try_primary():
             # Build model settings with conditional reasoning_effort and max_completion_tokens for Cerebras
             model_settings = {
-                "temperature": 0,
+                "temperature": 1,
             }
             if primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
                 print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=6500 for {primary_model}")
+            elif primary_model == "claude-sonnet-4-20250514":
+                model_settings["max_tokens"] = 6000
+                model_settings["anthropic_thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": 2048
+                }
+                print(f"  └─ Using Claude with thinking enabled, budget_tokens=2048, temperature=1 for {primary_model}")
             else:
-                model_settings["max_tokens"] = 6500
+                model_settings["max_tokens"] = 6000
             
             result = await _run_agent_with_model(
                 model_name=primary_model,
@@ -2892,9 +2899,15 @@ async def generate_auto_report(
                 use_thinking=(provider == 'groq'),  # Enable thinking for Groq models
                 model_settings=model_settings
             )
-            return result.output
+            return result
         
-        report_output = await _try_primary()
+        result = await _try_primary()
+        
+        # Log thinking parts for Claude when using extended thinking
+        if primary_model == "claude-sonnet-4-20250514":
+            _log_thinking_parts(result, f"{primary_model} (Primary) - Claude Extended Thinking")
+        
+        report_output = result.output
         
         # Append signature programmatically if provided
         report_output = _append_signature_to_report(report_output, signature)
@@ -2973,10 +2986,12 @@ async def generate_templated_report(
     import os
     
     start_time = time.time()
-    primary_model = MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
+    # Templated reports use gptoss as primary, Claude as fallback
+    primary_model = "gpt-oss-120b"
+    fallback_model = "claude-sonnet-4-20250514"
     provider = _get_model_provider(primary_model)
     
-    print(f"generate_templated_report: Starting with {primary_model} ({provider})")
+    print(f"generate_templated_report: Starting with {primary_model} ({provider}), fallback: {fallback_model}")
     
     # Use prompt as-is (signature will be appended programmatically after generation)
     final_prompt = user_prompt
@@ -2991,14 +3006,21 @@ async def generate_templated_report(
         async def _try_primary():
             # Build model settings with conditional reasoning_effort and max_completion_tokens for Cerebras
             model_settings = {
-                "temperature": 0,
+                "temperature": 0.7,
             }
             if primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
                 print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=6500 for {primary_model}")
+            elif primary_model == "claude-sonnet-4-20250514":
+                model_settings["max_tokens"] = 6000
+                model_settings["anthropic_thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": 2048
+                }
+                print(f"  └─ Using Claude with thinking enabled, budget_tokens=2048, temperature=0.7 for {primary_model}")
             else:
-                model_settings["max_tokens"] = 6500
+                model_settings["max_tokens"] = 6000
             
             result = await _run_agent_with_model(
                 model_name=primary_model,
@@ -3009,9 +3031,15 @@ async def generate_templated_report(
                 use_thinking=(provider == 'groq'),  # Enable thinking for Groq models
                 model_settings=model_settings
             )
-            return result.output
+            return result
         
-        report_output = await _try_primary()
+        result = await _try_primary()
+        
+        # Log thinking parts for Groq models (gptoss doesn't use thinking, uses reasoning_effort instead)
+        if provider == 'groq':
+            _log_thinking_parts(result, f"{primary_model} (Primary) - Groq")
+        
+        report_output = result.output
         
         # Append signature programmatically if provided
         report_output = _append_signature_to_report(report_output, signature)
@@ -3035,8 +3063,7 @@ async def generate_templated_report(
         return report_output
         
     except Exception as e:
-        # Primary failed - determine why and fallback
-        fallback_model = MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"]
+        # Primary failed - determine why and fallback to Claude
         if _is_parsing_error(e):
             print(f"⚠️ {primary_model} parsing error detected - immediate fallback to {fallback_model}")
             print(f"  Error: {type(e).__name__}: {str(e)[:200]}")
@@ -3044,7 +3071,7 @@ async def generate_templated_report(
             print(f"⚠️ {primary_model} failed after retries ({type(e).__name__}) - falling back to {fallback_model}")
             print(f"  Error: {str(e)[:200]}")
         
-        # Fallback to configured fallback model (Claude Sonnet 4)
+        # Fallback to Claude Sonnet 4
         try:
             if not api_key:
                 raise Exception(f"{primary_model} failed and no fallback API key available. Original error: {e}") from e

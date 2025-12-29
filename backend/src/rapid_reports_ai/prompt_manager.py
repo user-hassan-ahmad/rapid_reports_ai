@@ -49,17 +49,24 @@ class PromptManager:
             metadata = self._load_json(metadata_file)
             
             # Load template - check primary_model first for auto template selection
+            # If primary_model is "claude-sonnet-4-20250514", use claude.json
             # If primary_model is "gpt-oss-120b", use gptoss.json, otherwise fallback to unified.json
             template_file = None
             
-            if primary_model == "gpt-oss-120b":
+            if primary_model == "claude-sonnet-4-20250514":
+                # Check for claude.json first when primary model is claude-sonnet-4-20250514
+                claude_file = use_case_dir / "claude.json"
+                if claude_file.exists():
+                    template_file = claude_file
+                    print(f"load_prompt: Using claude.json for primary model {primary_model}")
+            elif primary_model == "gpt-oss-120b":
                 # Check for gptoss.json first when primary model is gpt-oss-120b
                 gptoss_file = use_case_dir / "gptoss.json"
                 if gptoss_file.exists():
                     template_file = gptoss_file
                     print(f"load_prompt: Using gptoss.json for primary model {primary_model}")
             
-            # Fallback to unified.json if gptoss.json not found or primary_model not gpt-oss-120b
+            # Fallback to unified.json if specific model file not found or primary_model not matched
             if template_file is None:
                 unified_file = use_case_dir / "unified.json"
                 if unified_file.exists():
