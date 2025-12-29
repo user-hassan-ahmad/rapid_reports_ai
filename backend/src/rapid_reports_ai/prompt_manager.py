@@ -50,7 +50,9 @@ class PromptManager:
             
             # Load template - check primary_model first for auto template selection
             # If primary_model is "claude-sonnet-4-20250514", use claude.json
-            # If primary_model is "gpt-oss-120b", use gptoss.json, otherwise fallback to unified.json
+            # If primary_model is "gpt-oss-120b", use gptoss.json
+            # If primary_model is "zai-glm-4.6", use zai-glm-4.6.json
+            # Otherwise fallback to unified.json
             template_file = None
             
             if primary_model == "claude-sonnet-4-20250514":
@@ -65,6 +67,12 @@ class PromptManager:
                 if gptoss_file.exists():
                     template_file = gptoss_file
                     print(f"load_prompt: Using gptoss.json for primary model {primary_model}")
+            elif primary_model == "zai-glm-4.6":
+                # Check for zai-glm-4.6.json first when primary model is zai-glm-4.6
+                zai_glm_file = use_case_dir / "zai-glm-4.6.json"
+                if zai_glm_file.exists():
+                    template_file = zai_glm_file
+                    print(f"load_prompt: Using zai-glm-4.6.json for primary model {primary_model}")
             
             # Fallback to unified.json if specific model file not found or primary_model not matched
             if template_file is None:

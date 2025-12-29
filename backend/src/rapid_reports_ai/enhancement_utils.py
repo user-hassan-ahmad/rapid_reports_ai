@@ -56,8 +56,8 @@ from .enhancement_models import (
 # Update this dictionary to change models without modifying code throughout the codebase
 MODEL_CONFIG = {
     # Report Generation Models
-    "PRIMARY_REPORT_GENERATOR": "claude-sonnet-4-20250514",  # Primary model for report generation (Claude Sonnet 4)
-    "FALLBACK_REPORT_GENERATOR": "gpt-oss-120b",  # Fallback model if primary fails after retries (Cerebras GPT-OSS-120B)
+    "PRIMARY_REPORT_GENERATOR": "zai-glm-4.6",  # Primary model for report generation (Cerebras Zai-GLM-4.6)
+    "FALLBACK_REPORT_GENERATOR": "claude-sonnet-4-20250514",  # Fallback model if primary fails after retries (Claude Sonnet 4)
     
     # Structure Validation Models
     "STRUCTURE_VALIDATOR": "gpt-oss-120b",  # Structure validation: Check for structural quality violations (Cerebras GPT-OSS-120B with medium reasoning)
@@ -104,6 +104,7 @@ MODEL_PROVIDERS = {
     
     # Cerebras models
     "gpt-oss-120b": "cerebras",
+    "zai-glm-4.6": "cerebras",
 }
 
 
@@ -2876,7 +2877,12 @@ async def generate_auto_report(
             model_settings = {
                 "temperature": 1,
             }
-            if primary_model == "gpt-oss-120b":
+            if primary_model == "zai-glm-4.6":
+                model_settings["max_completion_tokens"] = 40960
+                model_settings["temperature"] = 0.6
+                model_settings["top_p"] = 0.95
+                print(f"  └─ Using Cerebras zai-glm-4.6 with max_completion_tokens=40960, temperature=0.6, top_p=0.95 for {primary_model}")
+            elif primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
                 print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=6500 for {primary_model}")
@@ -2986,8 +2992,8 @@ async def generate_templated_report(
     import os
     
     start_time = time.time()
-    # Templated reports use gptoss as primary, Claude as fallback
-    primary_model = "gpt-oss-120b"
+    # Templated reports use zai-glm-4.6 as primary, Claude as fallback
+    primary_model = "zai-glm-4.6"
     fallback_model = "claude-sonnet-4-20250514"
     provider = _get_model_provider(primary_model)
     
@@ -3008,7 +3014,12 @@ async def generate_templated_report(
             model_settings = {
                 "temperature": 0.7,
             }
-            if primary_model == "gpt-oss-120b":
+            if primary_model == "zai-glm-4.6":
+                model_settings["max_completion_tokens"] = 40960
+                model_settings["temperature"] = 0.6
+                model_settings["top_p"] = 0.95
+                print(f"  └─ Using Cerebras zai-glm-4.6 with max_completion_tokens=40960, temperature=0.6, top_p=0.95 for {primary_model}")
+            elif primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
                 print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=6500 for {primary_model}")
@@ -3035,7 +3046,7 @@ async def generate_templated_report(
         
         result = await _try_primary()
         
-        # Log thinking parts for Groq models (gptoss doesn't use thinking, uses reasoning_effort instead)
+        # Log thinking parts for Groq models (Cerebras models don't use thinking, use reasoning_effort instead)
         if provider == 'groq':
             _log_thinking_parts(result, f"{primary_model} (Primary) - Groq")
         

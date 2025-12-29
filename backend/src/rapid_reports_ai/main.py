@@ -1256,13 +1256,15 @@ async def generate_report_from_template(
             return {"success": False, "error": "Template not found"}
         
         # Build prompts using TemplateManager unified function
+        # Pass model name to use appropriate prompt structure (zai-glm-4.6 uses simpler prompts)
         tm = TemplateManager()
         prompts = tm.build_unified_master_prompt(
             template=template.template_content,
             variable_values=request.variables,
             template_name=template.name,
             template_description=template.description,
-            master_instructions=template.master_prompt_instructions
+            master_instructions=template.master_prompt_instructions,
+            model_name="zai-glm-4.6"  # Templated reports use zai-glm-4.6 as primary
         )
         
         system_prompt = prompts.get('system_prompt', '')

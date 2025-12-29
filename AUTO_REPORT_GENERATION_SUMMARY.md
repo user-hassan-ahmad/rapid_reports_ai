@@ -338,3 +338,7 @@ The auto report generation system uses **synchronous structure validation** that
 
 The system uses **Cerebras GPT-OSS-120B** as the primary model for generation and validation, with **Claude Sonnet 4** and **Qwen 3-32B** as fallbacks. All models are configured centrally via `MODEL_CONFIG` dictionary for easy swapping.
 
+
+
+
+
