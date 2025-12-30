@@ -3424,6 +3424,7 @@ CORRECTION RULES:
 10. IMPRESSION refinement:
     - Remove symptom-explanatory phrases: "explains the...", "accounts for..."
     - Use clinical synthesis, not descriptive repetition
+    - Don't repeat findings in recommendations: "Referral for the calculus" → "Referral recommended"
     - Format: Finding → Diagnosis + differentials → Recommendation
     Example: "5cm calculus explains renal colic" → "Obstructing calculus (5 cm)"
 
