@@ -3412,7 +3412,10 @@ CORRECTION RULES:
 3. Redundant qualifiers: Remove when measurements specify size
    Example: "Large 5cm stone" → "5 cm stone"
 4. British English: Use oesophagus, haemorrhage, oedema, paediatric, centre, litre
-5. Translation artifacts: Fix awkward phrasing
+5. Organ-as-subject patterns: Replace "demonstrates/shows" with direct statements
+   Example: "The liver shows metastases" → "Hepatic metastases"
+   Example: "The lungs demonstrate nodules" → "Multiple pulmonary nodules"
+   Example: "Skeletal structures demonstrate no abnormalities" → "No acute bony abnormality"
 6. Anatomical redundancy: Omit implied locations
    Example: "gallbladder contains calculi within its lumen" → "gallbladder contains calculi"
 7. Subject repetition: Don't repeat organ name in same clause
