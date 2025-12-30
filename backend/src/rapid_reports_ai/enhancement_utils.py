@@ -82,6 +82,9 @@ MODEL_CONFIG = {
     # Action Application Models
     "ACTION_APPLIER": "gpt-oss-120b",  # Apply enhancement actions to reports (primary - Cerebras GPT-OSS-120B with high reasoning)
     "ACTION_APPLIER_FALLBACK": "qwen/qwen3-32b",  # Fallback for action application (Qwen)
+    
+    # Linguistic Validation Models (for zai-glm-4.6 post-processing)
+    "ZAI_GLM_LINGUISTIC_VALIDATOR": "llama-3.3-70b",  # Linguistic/anatomical correction for zai-glm-4.6 output (Cerebras-hosted Llama)
 }
 
 # Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
@@ -105,6 +108,7 @@ MODEL_PROVIDERS = {
     # Cerebras models
     "gpt-oss-120b": "cerebras",
     "zai-glm-4.6": "cerebras",
+    "llama-3.3-70b": "cerebras",  # Cerebras-hosted Llama for linguistic validation
 }
 
 
@@ -2934,6 +2938,40 @@ async def generate_auto_report(
         print(report_output.report_content)
         print(f"{'='*80}\n")
         
+        # LINGUISTIC VALIDATION for zai-glm-4.6 (conditionally enabled)
+        if primary_model == "zai-glm-4.6":
+            import os
+            ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
+            
+            if ENABLE_LINGUISTIC_VALIDATION:
+                try:
+                    print(f"\n{'='*80}")
+                    print(f"🔍 LINGUISTIC VALIDATION - Starting for zai-glm-4.6")
+                    print(f"{'='*80}")
+                    
+                    validated_content = await validate_zai_glm_linguistics(
+                        report_content=report_output.report_content,
+                        scan_type=report_output.scan_type or "",
+                        description=report_output.description or ""
+                    )
+                    
+                    report_output.report_content = validated_content
+                    print(f"✅ LINGUISTIC VALIDATION COMPLETE")
+                    print(f"{'='*80}\n")
+                except Exception as e:
+                    print(f"\n{'='*80}")
+                    print(f"⚠️ LINGUISTIC VALIDATION FAILED - continuing with original report")
+                    print(f"{'='*80}")
+                    print(f"[ERROR] Exception type: {type(e).__name__}")
+                    print(f"[ERROR] Error message: {str(e)[:300]}")
+                    import traceback
+                    print(f"[ERROR] Traceback:")
+                    print(traceback.format_exc()[:500])
+                    print(f"[DEBUG] Returning original report (validation skipped)")
+                    print(f"{'='*80}\n")
+            else:
+                print(f"[DEBUG] Linguistic validation disabled (ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION=false)")
+        
         return report_output
                 
     except Exception as e:
@@ -3070,6 +3108,40 @@ async def generate_templated_report(
         print(f"\nFull report content:")
         print(report_output.report_content)
         print(f"{'='*80}\n")
+        
+        # LINGUISTIC VALIDATION for zai-glm-4.6 (conditionally enabled)
+        if primary_model == "zai-glm-4.6":
+            import os
+            ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
+            
+            if ENABLE_LINGUISTIC_VALIDATION:
+                try:
+                    print(f"\n{'='*80}")
+                    print(f"🔍 LINGUISTIC VALIDATION - Starting for zai-glm-4.6")
+                    print(f"{'='*80}")
+                    
+                    validated_content = await validate_zai_glm_linguistics(
+                        report_content=report_output.report_content,
+                        scan_type=report_output.scan_type or "",
+                        description=report_output.description or ""
+                    )
+                    
+                    report_output.report_content = validated_content
+                    print(f"✅ LINGUISTIC VALIDATION COMPLETE")
+                    print(f"{'='*80}\n")
+                except Exception as e:
+                    print(f"\n{'='*80}")
+                    print(f"⚠️ LINGUISTIC VALIDATION FAILED - continuing with original report")
+                    print(f"{'='*80}")
+                    print(f"[ERROR] Exception type: {type(e).__name__}")
+                    print(f"[ERROR] Error message: {str(e)[:300]}")
+                    import traceback
+                    print(f"[ERROR] Traceback:")
+                    print(traceback.format_exc()[:500])
+                    print(f"[DEBUG] Returning original report (validation skipped)")
+                    print(f"{'='*80}\n")
+            else:
+                print(f"[DEBUG] Linguistic validation disabled (ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION=false)")
         
         return report_output
         
@@ -3283,5 +3355,137 @@ If no violations found, return empty violations list with is_valid=True.
         print(f"[STRUCTURE VALIDATION] ✅ No violations found - report passes structure validation")
     
     return validation_result
+
+
+@with_retry(max_retries=2, base_delay=1.5)
+async def validate_zai_glm_linguistics(
+    report_content: str,
+    scan_type: str = "",
+    description: str = ""
+) -> str:
+    """
+    Validate and correct linguistic/anatomical errors in zai-glm-4.6 generated reports.
+    Uses Cerebras llama-3.3-70b to fix British English grammar, anatomical errors,
+    and redundant qualifiers without altering clinical content.
+    
+    This function addresses specific issues from the Chinese zai-glm-4.6 model:
+    - Anatomical errors (e.g., "liver demonstrates gallstones" → "gallbladder contains gallstones")
+    - Redundant qualifiers (e.g., "Large 5cm stone" → "5 cm stone")
+    - Translation artifacts from internal Chinese→English conversion
+    
+    Args:
+        report_content: The generated report text from zai-glm-4.6
+        scan_type: The scan type for context (optional)
+        description: The report description for context (optional)
+    
+    Returns:
+        Corrected report content (or original if validation fails)
+    
+    Raises:
+        Exception: Re-raises exceptions after retries for graceful handling by caller
+    """
+    import os
+    import time
+    
+    start_time = time.time()
+    print(f"\n[LINGUISTIC VALIDATION] Starting linguistic validation for zai-glm-4.6")
+    print(f"[LINGUISTIC VALIDATION]   Report length: {len(report_content)} chars")
+    print(f"[LINGUISTIC VALIDATION]   Scan type: '{scan_type}'")
+    
+    # Get model and provider
+    model_name = MODEL_CONFIG["ZAI_GLM_LINGUISTIC_VALIDATOR"]
+    provider = _get_model_provider(model_name)
+    api_key = _get_api_key_for_provider(provider)
+    
+    print(f"[LINGUISTIC VALIDATION]   Validation model: {model_name} ({provider})")
+    
+    # Build system prompt - focused and concise
+    system_prompt = """You are a medical text editor specializing in British English medical writing. Fix ONLY linguistic and anatomical errors. Preserve all clinical content, findings, diagnoses, and measurements."""
+    
+    # Build user prompt - streamlined rules
+    user_prompt = f"""Review this radiology report for LINGUISTIC and ANATOMICAL errors ONLY.
+
+CORRECTION RULES:
+1. Grammar: Fix verb agreement, tense, sentence structure
+2. Anatomy: Correct organ/structure references
+   Example: "liver demonstrates gallstones" → "gallbladder contains gallstones"
+3. Redundant qualifiers: Remove when measurements specify size
+   Example: "Large 5cm stone" → "5 cm stone"
+4. British English: Use oesophagus, haemorrhage, oedema, paediatric, centre, litre
+5. Translation artifacts: Fix awkward phrasing
+6. Anatomical redundancy: Omit implied locations
+   Example: "gallbladder contains calculi within its lumen" → "gallbladder contains calculi"
+7. Subject repetition: Don't repeat organ name in same clause
+   Example: "gallbladder wall thickening" → "wall thickening" (when gallbladder is subject)
+8. Verbose prepositions: Use direct statements
+   Example: "within the lumen of the gallbladder" → "gallbladder"
+9. Compound clarity: Separate positive finding from 3+ negative findings
+   Example: "calculi without A or B or C" → "Calculi. No A, B, or C."
+10. IMPRESSION refinement:
+    - Remove symptom-explanatory phrases: "explains the...", "accounts for..."
+    - Use clinical synthesis, not descriptive repetition
+    - Format: Finding → Diagnosis + differentials → Recommendation
+    Example: "5cm calculus explains renal colic" → "Obstructing calculus (5 cm)"
+
+PROHIBITIONS:
+Do NOT change: diagnoses, differentials, severity, measurements, findings, recommendations, sections, medical terminology (unless anatomically incorrect), or clinical meaning.
+
+OUTPUT:
+Return ONLY the corrected report text with no commentary or metadata. Preserve spacing and structure.
+
+Report:
+{report_content}"""
+    
+    # Build model settings - low temperature for precise corrections
+    model_settings = {
+        "temperature": 0.3,  # Low temperature for precise, consistent corrections
+        "max_completion_tokens": 6000,  # Sufficient for full radiology reports
+    }
+    
+    print(f"[LINGUISTIC VALIDATION]   Model settings: temperature=0.3, max_completion_tokens=6000")
+    print(f"[LINGUISTIC VALIDATION] Calling validation model...")
+    
+    # Call model for validation
+    result = await _run_agent_with_model(
+        model_name=model_name,
+        output_type=str,  # Plain text output
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        api_key=api_key,
+        use_thinking=False,  # No thinking needed for Cerebras models
+        model_settings=model_settings
+    )
+    
+    validated_content = str(result.output).strip()
+    
+    # Ensure we got valid output
+    if not validated_content or len(validated_content) < 50:
+        raise ValueError(f"Linguistic validation returned invalid output (length: {len(validated_content)})")
+    
+    elapsed = time.time() - start_time
+    
+    # Calculate changes
+    original_length = len(report_content)
+    validated_length = len(validated_content)
+    length_diff = validated_length - original_length
+    
+    print(f"[LINGUISTIC VALIDATION] ✅ Validation completed in {elapsed:.2f}s")
+    print(f"[LINGUISTIC VALIDATION]   Original length: {original_length} chars")
+    print(f"[LINGUISTIC VALIDATION]   Validated length: {validated_length} chars")
+    print(f"[LINGUISTIC VALIDATION]   Length change: {length_diff:+d} chars ({length_diff/original_length*100:+.1f}%)")
+    
+    # Detailed comparison logging (optional - can be made verbose with env var)
+    if os.getenv("VERBOSE_LINGUISTIC_VALIDATION", "false").lower() == "true":
+        print(f"\n[LINGUISTIC VALIDATION] {'='*70}")
+        print(f"[LINGUISTIC VALIDATION] BEFORE:")
+        print(f"[LINGUISTIC VALIDATION] {'='*70}")
+        print(report_content[:500] + "..." if len(report_content) > 500 else report_content)
+        print(f"\n[LINGUISTIC VALIDATION] {'='*70}")
+        print(f"[LINGUISTIC VALIDATION] AFTER:")
+        print(f"[LINGUISTIC VALIDATION] {'='*70}")
+        print(validated_content[:500] + "..." if len(validated_content) > 500 else validated_content)
+        print(f"[LINGUISTIC VALIDATION] {'='*70}\n")
+    
+    return validated_content
 
 

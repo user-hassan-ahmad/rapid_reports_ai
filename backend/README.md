@@ -16,7 +16,11 @@ poetry install
 ```env
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 GROQ_API_KEY=your_groq_api_key_here
+CEREBRAS_API_KEY=your_cerebras_api_key_here
 SECRET_KEY=your_secret_key_here
+
+# Optional: Linguistic validation for zai-glm-4.6 model (default: true)
+ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION=true
 ```
 
 3. Run the server:
@@ -40,6 +44,34 @@ Once running, visit:
 - **Report Versioning**: Full version history with restore capabilities
 - **Real-time Dictation**: Medical-grade transcription via Deepgram
 - **User Authentication**: Secure JWT-based auth with email verification
+- **Linguistic Validation**: Automatic British English grammar and anatomical error correction for zai-glm-4.6 model outputs
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | Yes | - | API key for Claude models |
+| `GROQ_API_KEY` | Yes | - | API key for Groq models (Qwen, Llama) |
+| `CEREBRAS_API_KEY` | Yes | - | API key for Cerebras models (GPT-OSS, Zai-GLM, Llama) |
+| `SECRET_KEY` | Yes | - | JWT secret key for authentication |
+| `ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION` | No | `true` | Enable linguistic validation for zai-glm-4.6 outputs |
+| `VERBOSE_LINGUISTIC_VALIDATION` | No | `false` | Show detailed before/after comparison in logs |
+
+### Linguistic Validation
+
+When using the `zai-glm-4.6` model (Chinese-trained), reports are automatically post-processed by Cerebras's `llama-3.3-70b` model to correct:
+- **Anatomical errors**: e.g., "liver demonstrates gallstones" → "gallbladder contains gallstones"
+- **Redundant qualifiers**: e.g., "Large 5cm stone" → "5 cm stone"
+- **Translation artifacts**: Awkward phrasing from internal Chinese→English conversion
+- **British English consistency**: Ensures proper spelling (oesophagus, haemorrhage, etc.)
+
+This validation:
+- ✅ Runs automatically by default (can be disabled via env var)
+- ✅ Preserves all clinical content, findings, and measurements
+- ✅ Adds ~1-2 seconds to report generation
+- ✅ Fails gracefully (returns original report if validation encounters errors)
 
 ## API Endpoints Overview
 
