@@ -898,4 +898,18 @@ $: if (!isEnhancementContext && sidebarVisible) {
 			</div>
 		</div>
 	{/if}
+	
+	<!-- Footer -->
+	{#if $isAuthenticated}
+		<footer class="relative z-10 px-4 md:px-6 py-6 border-t border-white/5 mt-auto">
+			<div class="max-w-7xl mx-auto text-center">
+				<p class="text-xs text-gray-500 mb-1">
+					© 2026 H&A LABS LTD | Company No. 16114480
+				</p>
+				<p class="text-xs text-gray-600">
+					RadFlow is a product of H&A LABS LTD
+				</p>
+			</div>
+		</footer>
+	{/if}
 </div>

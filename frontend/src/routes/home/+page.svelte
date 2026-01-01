@@ -219,10 +219,18 @@
 					<a href="/login" class="hover:text-gray-300 transition-colors">Login</a>
 					<a href="/register" class="hover:text-gray-300 transition-colors">Register</a>
 				</div>
+				<div class="mt-6 pt-6 border-t border-white/5">
+					<p class="text-sm text-gray-400 mb-1">
+						© 2026 H&A LABS LTD | Company No. 16114480
+					</p>
+					<p class="text-sm text-gray-500">
+						RadFlow is a product of H&A LABS LTD
+					</p>
+				</div>
 			</div>
 			
 			<!-- Legal Disclaimer -->
-			<div class="mt-12 pt-8 border-t border-white/5">
+			<div class="mt-8 pt-8 border-t border-white/5">
 				<div class="max-w-4xl mx-auto">
 					<button
 						onclick={() => disclaimerExpanded = !disclaimerExpanded}

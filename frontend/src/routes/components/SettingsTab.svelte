@@ -217,6 +217,17 @@
 			</div>
 		</div>
 
+		<!-- About -->
+		<div class="card-dark">
+			<h2 class="text-xl font-bold text-white mb-4">About</h2>
+			<div class="space-y-3">
+				<div class="text-sm text-gray-300">
+					<p class="mb-2">© 2026 H&A LABS LTD | Company No. 16114480</p>
+					<p class="text-gray-400">RadFlow is a product of H&A LABS LTD</p>
+				</div>
+			</div>
+		</div>
+
 		<!-- Application Preferences -->
 		<div class="card-dark">
 			<h2 class="text-xl font-bold text-white mb-4">Application Preferences</h2>
