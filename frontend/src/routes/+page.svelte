@@ -9,6 +9,7 @@ import HistoryTab from './components/HistoryTab.svelte';
 import SettingsTab from './components/SettingsTab.svelte';
 import ReportEnhancementSidebar from './components/ReportEnhancementSidebar.svelte';
 import ReportVersionHistory from './components/ReportVersionHistory.svelte';
+import ReportVersionInline from './components/ReportVersionInline.svelte';
 import EnhancementDock from './components/EnhancementDock.svelte';
 import EnhancementPreviewCards from './components/EnhancementPreviewCards.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
@@ -890,9 +891,41 @@ $: if (!isEnhancementContext && sidebarVisible) {
 						</div>
 					{/if}
 					
-					<!-- Report Content -->
-					<div class="prose prose-invert max-w-none text-gray-300">
-						{@html renderMarkdown(historyModalReport?.report_content)}
+					<!-- Version History Section -->
+					{#if historyModalReport?.id}
+						<div class="mb-6">
+							<h3 class="text-sm font-semibold text-white uppercase tracking-wide mb-4 flex items-center gap-2">
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+								</svg>
+								Version History
+							</h3>
+							<ReportVersionInline
+								reportId={historyModalReport.id}
+								refreshKey={versionHistoryRefreshKey}
+								on:restored={(e) => {
+									// Refresh the report data when a version is restored
+									if (e.detail?.report) {
+										historyModalReport = { ...historyModalReport, ...e.detail.report };
+										versionHistoryRefreshKey += 1;
+										reportsStore.refreshReports();
+									}
+								}}
+							/>
+						</div>
+					{/if}
+					
+					<!-- Report Content (Current Version) -->
+					<div class="mb-6">
+						<h3 class="text-sm font-semibold text-white uppercase tracking-wide mb-4 flex items-center gap-2">
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+							</svg>
+							Current Report Content
+						</h3>
+						<div class="prose prose-invert max-w-none text-gray-300">
+							{@html renderMarkdown(historyModalReport?.report_content)}
+						</div>
 					</div>
 				</div>
 			</div>

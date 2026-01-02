@@ -109,6 +109,7 @@ MODEL_PROVIDERS = {
     "gpt-oss-120b": "cerebras",
     "zai-glm-4.6": "cerebras",
     "llama-3.3-70b": "cerebras",  # Cerebras-hosted Llama for linguistic validation
+    "qwen-3-235b-a22b-instruct-2507": "cerebras",  # Cerebras-hosted Qwen for linguistic validation
 }
 
 
@@ -2883,9 +2884,9 @@ async def generate_auto_report(
             }
             if primary_model == "zai-glm-4.6":
                 model_settings["max_completion_tokens"] = 40960
-                model_settings["temperature"] = 0.6
-                model_settings["top_p"] = 0.95
-                print(f"  └─ Using Cerebras zai-glm-4.6 with max_completion_tokens=40960, temperature=0.6, top_p=0.95 for {primary_model}")
+                model_settings["temperature"] = 0.3
+                model_settings["top_p"] = 0.7
+                print(f"  └─ Using Cerebras zai-glm-4.6 with max_completion_tokens=40960, temperature=0.3, top_p=0.7 for {primary_model}")
             elif primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
@@ -3054,9 +3055,9 @@ async def generate_templated_report(
             }
             if primary_model == "zai-glm-4.6":
                 model_settings["max_completion_tokens"] = 40960
-                model_settings["temperature"] = 0.6
-                model_settings["top_p"] = 0.95
-                print(f"  └─ Using Cerebras zai-glm-4.6 with max_completion_tokens=40960, temperature=0.6, top_p=0.95 for {primary_model}")
+                model_settings["temperature"] = 0.3
+                model_settings["top_p"] = 0.7
+                print(f"  └─ Using Cerebras zai-glm-4.6 with max_completion_tokens=40960, temperature=0.3, top_p=0.7 for {primary_model}")
             elif primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
@@ -3407,24 +3408,50 @@ async def validate_zai_glm_linguistics(
 
 CORRECTION RULES:
 1. Grammar: Fix verb agreement, tense, sentence structure
+
 2. Anatomy: Correct organ/structure references
    Example: "liver demonstrates gallstones" → "gallbladder contains gallstones"
+
 3. Redundant qualifiers: Remove when measurements specify size
    Example: "Large 5cm stone" → "5 cm stone"
+
 4. British English: Use oesophagus, haemorrhage, oedema, paediatric, centre, litre
+
 5. Organ-as-subject patterns: Replace "demonstrates/shows" with direct statements
    Example: "The liver shows metastases" → "Hepatic metastases"
    Example: "The lungs demonstrate nodules" → "Multiple pulmonary nodules"
-   Example: "Skeletal structures demonstrate no abnormalities" → "No acute bony abnormality"
+
 6. Anatomical redundancy: Omit implied locations
    Example: "gallbladder contains calculi within its lumen" → "gallbladder contains calculi"
+
 7. Subject repetition: Don't repeat organ name in same clause
    Example: "gallbladder wall thickening" → "wall thickening" (when gallbladder is subject)
+
 8. Verbose prepositions: Use direct statements
    Example: "within the lumen of the gallbladder" → "gallbladder"
+
 9. Compound clarity: Separate positive finding from 3+ negative findings
    Example: "calculi without A or B or C" → "Calculi. No A, B, or C."
-10. IMPRESSION refinement:
+
+10. Finding consolidation: Merge repeated findings into single comprehensive statement
+    a) Structural findings: Keep instance with most clinical context, delete sparse mentions
+       Example: "Pleural effusion" + later "Moderate effusion with atelectasis" → Keep detailed version only
+    
+    b) Functional abnormalities: State once with all hemodynamic/structural consequences
+       Example: "SAM present" + later "SAM with LVOT obstruction, no MR" → "Systolic anterior motion with dynamic LVOT obstruction. No significant mitral regurgitation."
+       Example: "Patent foramen ovale" + later "Small left-to-right shunt" → "Patent foramen ovale with small left-to-right shunt."
+
+11. Passive voice tightening: Use active constructs where natural
+    Example: "is present" → direct statement, "is seen" → eliminate
+    Example: "Enhancement is present in" → "Enhancement involves"
+
+12. Measurement redundancy: Don't repeat same measurement in different sections
+    Example: "22mm hypertrophy" + later "maximum thickness 22mm" → Use once in most detailed context
+
+13. Sequential negatives: Combine related negative findings
+    Example: "No thrombus. No aneurysm. No wall thinning." → "No thrombus, aneurysm, or wall thinning."
+
+14. IMPRESSION refinement:
     - Remove symptom-explanatory phrases: "explains the...", "accounts for..."
     - Use clinical synthesis, not descriptive repetition
     - Don't repeat findings in recommendations: "Referral for the calculus" → "Referral recommended"
@@ -3433,6 +3460,7 @@ CORRECTION RULES:
 
 PROHIBITIONS:
 Do NOT change: diagnoses, differentials, severity, measurements, findings, recommendations, sections, medical terminology (unless anatomically incorrect), or clinical meaning.
+Do NOT remove signatures or other metadata from the original report.
 
 OUTPUT:
 Return ONLY the corrected report text with no commentary or metadata. Preserve spacing and structure.
