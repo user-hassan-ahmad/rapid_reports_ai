@@ -4,7 +4,6 @@
 	import { goto } from '$app/navigation';
 import AutoReportTab from './components/AutoReportTab.svelte';
 import TemplatedReportTab from './components/TemplatedReportTab.svelte';
-import TemplateManagementTab from './components/TemplateManagementTab.svelte';
 import HistoryTab from './components/HistoryTab.svelte';
 import SettingsTab from './components/SettingsTab.svelte';
 import ReportEnhancementSidebar from './components/ReportEnhancementSidebar.svelte';
@@ -12,7 +11,14 @@ import ReportVersionHistory from './components/ReportVersionHistory.svelte';
 import ReportVersionInline from './components/ReportVersionInline.svelte';
 import EnhancementDock from './components/EnhancementDock.svelte';
 import EnhancementPreviewCards from './components/EnhancementPreviewCards.svelte';
+import TemplateEditorNew from './components/TemplateEditorNew.svelte';
+import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
+	import UnfilledItemHoverPopup from './components/UnfilledItemHoverPopup.svelte';
+	import type { UnfilledItem } from '$lib/utils/placeholderDetection';
+	import { applyEditsToReport } from '$lib/utils/reportEditing';
+	import type { UnfilledEdit } from '$lib/stores/unfilledEditor';
+	import { detectUnfilledPlaceholders } from '$lib/utils/placeholderDetection';
 	import { logout, user, token, isAuthenticated } from '$lib/stores/auth';
 	import { reportsStore } from '$lib/stores/reports';
 	import { templatesStore } from '$lib/stores/templates';
@@ -61,7 +67,7 @@ import EnhancementPreviewCards from './components/EnhancementPreviewCards.svelte
 	}
 
 	// Valid tab names for hash routing
-	const VALID_TABS = ['auto', 'templated', 'templates', 'history', 'settings'];
+	const VALID_TABS = ['auto', 'templated', 'history', 'settings'];
 
 	let activeTab = 'auto';
 	let sidebarCollapsed = false;
@@ -98,26 +104,36 @@ import EnhancementPreviewCards from './components/EnhancementPreviewCards.svelte
 	let selectedUseCase = '';
 	let availableUseCases: UseCaseOption[] = [];
 	let promptVariables: string[] = [];
+	
+	// Separate state for auto reports
+	let autoVariableValues: Record<string, string> = {};
+	let autoResponse: any = null;
+	let autoResponseModel: any = null;
+	let autoLoading = false;
+	let autoError: any = null;
+	let reportId: any = null;  // For enhancement sidebar (auto reports)
+	let autoReportSelectedModel = 'claude';  // Track model selected in AutoReportTab
+	
+	// Separate state for templated reports
+	let templatedReportId: any = null;  // For enhancement sidebar (templated reports)
+	
+	// Legacy variables for backward compatibility (will be removed after migration)
 	let variableValues: Record<string, string> = {};
 	let response: any = null;
 	let responseModel: any = null;
 	let loading = false;
 	let error: any = null;
-	let reportId: any = null;  // For enhancement sidebar (auto reports)
-	let autoReportSelectedModel = 'claude';  // Track model selected in AutoReportTab
-	let templatedReportId: any = null;  // For enhancement sidebar (templated reports)
 	let sidebarVisible = false;  // Control sidebar visibility
 	let historyModalReport: HistoryModal | null = null;
 	let inputsExpanded = false;  // For collapsible input data section in history modal
 	let lastModalReportId: string | null = null;  // Track which report is open to reset inputsExpanded
-	let templateToEdit: any = null;  // Template to auto-open in editor
-	let editSourceTab: any = null;  // Track which tab the edit came from ('templated' or 'templates')
 let reportUpdateLoading = false;
 let versionHistoryRefreshKey = 0;
 let showVersionHistoryModal = false;
 let templatedResponseOverride: any = null;
 let templatedResponseVersion = 0;
 let currentHistoryCount = 0;
+
 let isEnhancementContext = activeTab === 'auto' || activeTab === 'templated';
 let currentReportId: string | null = null;
 let shouldAutoLoadEnhancements = false;
@@ -127,6 +143,23 @@ let enhancementGuidelinesCount = 0;
 let enhancementLoading = false;
 let enhancementError = false;
 let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | null = null;
+let chatInitialMessage: string | null = null;
+
+// Hover popup state (rendered at root level)
+let hoverPopupVisible = false;
+let hoverPopupItem: UnfilledItem | null = null;
+let hoverPopupPosition = { x: 0, y: 0 };
+let hoverPopupReportContent = '';
+let hoverPopupReportId: string | null = null;
+
+// Track if enhancements have finished loading (for Ask AI button)
+let enhancementsLoaded = false;
+
+// Template modal state (rendered at root level)
+let showTemplateEditor = false;
+let editingTemplate: any = null;
+let showTemplateWizard = false;
+let templatedModel = 'claude'; // Track model for template editor
 	
 	// Sync URL hash when activeTab changes (for programmatic tab changes)
 	$: if (browser && !isInitializingFromHash) {
@@ -160,8 +193,21 @@ let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | null = null;
 	
 	// Initialize once on first mount - prevents resets on re-render
 	if (!initialized) {
-		variableValues = {};
+		autoVariableValues = {};
+		variableValues = {}; // Legacy
 		initialized = true;
+	}
+	
+	// Clear auto report state when switching away from auto tab
+	$: if (activeTab !== 'auto') {
+		// Don't clear immediately - let user switch back and see their work
+		// Only clear when explicitly switching tabs if needed
+	}
+	
+	// Clear templated report state when switching away from templated tab
+	$: if (activeTab !== 'templated') {
+		// Don't clear immediately - let user switch back and see their work
+		// Only clear when explicitly switching tabs if needed
 	}
 
 	
@@ -220,35 +266,48 @@ let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | null = null;
 
 	function handleTabChange(event: CustomEvent<string>): void {
 		activeTab = event.detail;
-		// Clear templateToEdit and editSourceTab when switching away from templates tab
-		if (event.detail !== 'templates') {
-			templateToEdit = null;
-			editSourceTab = null;
-		}
 	}
 
 	function handleEditTemplate(event: CustomEvent<{ template: Record<string, unknown> }>): void {
-		templateToEdit = event.detail.template;
-		editSourceTab = 'templated';  // Track that we came from templated tab
-		activeTab = 'templates';
-		// Clear after a short delay to allow component to receive it
-		setTimeout(() => {
-			templateToEdit = null;
-		}, 100);
+		// Editing now happens inline in TemplatedReportTab, so this handler is kept for compatibility
+		// but doesn't need to switch tabs anymore
+	}
+
+	// Template modal handlers
+	function handleOpenTemplateEditor(event: CustomEvent<{ template: any; model: string }>): void {
+		editingTemplate = event.detail.template;
+		templatedModel = event.detail.model;
+		showTemplateEditor = true;
+	}
+
+	function handleCloseTemplateEditor(): void {
+		showTemplateEditor = false;
+		editingTemplate = null;
+	}
+
+	function handleTemplateEditorSaved(): void {
+		showTemplateEditor = false;
+		editingTemplate = null;
+		// Refresh templates
+		templatesStore.refreshTemplates();
+	}
+
+	function handleOpenTemplateWizard(): void {
+		showTemplateWizard = true;
+	}
+
+	function handleCloseTemplateWizard(): void {
+		showTemplateWizard = false;
+	}
+
+	function handleTemplateWizardCreated(): void {
+		showTemplateWizard = false;
+		// Refresh templates
+		templatesStore.refreshTemplates();
 	}
 
 	let templatesRefreshKey = 0;
 	let historyRefreshKey = 0;
-	
-	function handleBackToSourceTab(): void {
-		if (editSourceTab === 'templated') {
-			activeTab = 'templated';
-			editSourceTab = null;
-			templateToEdit = null; // Clear the template edit state
-			// Increment refresh key to trigger template reload in TemplatedReportTab
-			templatesRefreshKey += 1;
-		}
-	}
 
 	function handleLogoutFromSidebar(): void {
 		handleLogout();
@@ -311,7 +370,8 @@ let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | null = null;
 				if (selectedUseCase && !availableUseCases.some((uc: UseCaseOption) => uc.name === selectedUseCase)) {
 					selectedUseCase = '';
 					promptVariables = [];
-					variableValues = {};
+					autoVariableValues = {};
+					variableValues = {}; // Legacy
 				}
 				
 				// Only set default if explicitly requested (e.g., on initial load or reset)
@@ -379,10 +439,11 @@ let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | null = null;
 	// Handle use case change in AutoReportTab
 	async function onUseCaseChange(preserveValues = false): Promise<void> {
 		// Save existing values if we're preserving them (e.g., when model changes)
-		const existingValues = preserveValues ? { ...variableValues } : {};
+		const existingValues = preserveValues ? { ...autoVariableValues } : {};
 		
 		if (!preserveValues) {
-			variableValues = {};
+			autoVariableValues = {};
+			variableValues = {}; // Legacy
 		}
 		
 		if (!selectedUseCase) {
@@ -400,10 +461,12 @@ let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | null = null;
 				promptVariables.forEach((v: string) => {
 					if (preserveValues && existingValues[v] !== undefined) {
 						// Keep existing value
-						variableValues[v] = existingValues[v];
+						autoVariableValues[v] = existingValues[v];
+						variableValues[v] = existingValues[v]; // Legacy
 					} else {
 						// Initialize with empty string
-						variableValues[v] = '';
+						autoVariableValues[v] = '';
+						variableValues[v] = ''; // Legacy
 					}
 				});
 			}
@@ -419,7 +482,8 @@ let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | null = null;
 	
 	// Handle form reset from AutoReportTab
 	async function handleFormReset(): Promise<void> {
-		variableValues = {};
+		autoVariableValues = {};
+		variableValues = {}; // Legacy
 		selectedUseCase = '';
 		promptVariables = [];
 		error = null;
@@ -442,7 +506,7 @@ let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | null = null;
 		
 		// For use cases with variables, check if they're filled
 		if (promptVariables.length > 0) {
-			const hasEmptyFields = promptVariables.some(v => !variableValues[v] || !variableValues[v].trim());
+			const hasEmptyFields = promptVariables.some(v => !autoVariableValues[v] || !autoVariableValues[v].trim());
 			if (hasEmptyFields) {
 				error = 'Please fill in all required fields';
 				return;
@@ -467,7 +531,7 @@ let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | null = null;
 			};
 			
 			if (promptVariables.length > 0) {
-				payload.variables = variableValues;
+				payload.variables = autoVariableValues;
 			}
 
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -484,8 +548,8 @@ let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | null = null;
 			const data = await res.json();
 			
 			if (data.success) {
-				response = data.response;
-				responseModel = data.model;
+				autoResponse = data.response;
+				autoResponseModel = data.model;
 				reportId = data.report_id || null;
 				if (reportId) {
 					versionHistoryRefreshKey += 1;
@@ -494,12 +558,12 @@ let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | null = null;
 					reportsStore.refreshReports();
 				}
 			} else {
-				error = data.error || 'Failed to get response';
+				autoError = data.error || 'Failed to get response';
 			}
 		} catch (err) {
-			error = 'Failed to connect to API. Make sure the backend is running.';
+			autoError = 'Failed to connect to API. Make sure the backend is running.';
 		} finally {
-			loading = false;
+			autoLoading = false;
 		}
 	}
 
@@ -602,13 +666,13 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							bind:availableUseCases
 							bind:selectedUseCase
 							bind:promptVariables
-							bind:variableValues
-							bind:response
-							bind:responseModel
-							bind:loading
-							bind:error
+							bind:variableValues={autoVariableValues}
+							bind:response={autoResponse}
+							bind:responseModel={autoResponseModel}
+							bind:loading={autoLoading}
+							bind:error={autoError}
 							bind:selectedModel={autoReportSelectedModel}
-							reportId={reportId}
+							bind:reportId={reportId}
 							reportUpdateLoading={reportUpdateLoading}
 							versionHistoryRefreshKey={versionHistoryRefreshKey}
 							apiKeyStatus={apiKeyStatus}
@@ -620,7 +684,19 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							on:resetForm={handleFormReset}
 							on:openSidebar={(e) => {
 								sidebarTabToOpen = e.detail?.tab || null;
+								chatInitialMessage = e.detail?.initialMessage || null;
 								sidebarVisible = true;
+							}}
+							on:showHoverPopup={(e) => {
+								hoverPopupItem = e.detail.item;
+								hoverPopupPosition = e.detail.position;
+								hoverPopupReportContent = e.detail.reportContent || '';
+								hoverPopupReportId = reportId;
+								hoverPopupVisible = true;
+							}}
+							on:hideHoverPopup={() => {
+								hoverPopupVisible = false;
+								hoverPopupItem = null;
 							}}
 							on:historyRestored={(e) => handleHistoryRestored(e.detail as RestoredReportDetail)}
 							on:historyUpdate={(e) => handleHistoryUpdate(e.detail as ReportHistoryDetail)}
@@ -639,30 +715,50 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							<div class="h-32 bg-gray-700/50 rounded animate-pulse"></div>
 						</div>
 					{:else}
-						<TemplatedReportTab
-							apiKeyStatus={apiKeyStatus}
-							reportUpdateLoading={reportUpdateLoading}
-							versionHistoryRefreshKey={versionHistoryRefreshKey}
-							templatesRefreshKey={templatesRefreshKey}
-							externalResponseContent={templatedResponseOverride}
-							externalResponseVersion={templatedResponseVersion}
-							enhancementGuidelinesCount={enhancementGuidelinesCount}
-							enhancementLoading={enhancementLoading}
-							enhancementError={enhancementError}
-							on:editTemplate={handleEditTemplate}
-							on:reportGenerated={(e) => {
-								templatedReportId = e.detail.reportId;
-								if (templatedReportId) {
-									versionHistoryRefreshKey += 1;
-									historyRefreshKey += 1; // Trigger history reload
-									// Refresh reports store to include new report
-									reportsStore.refreshReports();
-								}
-							}}
-							on:openSidebar={(e) => {
-								sidebarTabToOpen = e.detail?.tab || null;
-								sidebarVisible = true;
-							}}
+					<TemplatedReportTab
+						apiKeyStatus={apiKeyStatus}
+						reportUpdateLoading={reportUpdateLoading}
+						versionHistoryRefreshKey={versionHistoryRefreshKey}
+						templatesRefreshKey={templatesRefreshKey}
+						externalResponseContent={templatedResponseOverride}
+						externalResponseVersion={templatedResponseVersion}
+						enhancementGuidelinesCount={enhancementGuidelinesCount}
+						enhancementLoading={enhancementLoading}
+						enhancementError={enhancementError}
+						on:editTemplate={handleEditTemplate}
+						on:openTemplateEditor={handleOpenTemplateEditor}
+						on:openTemplateWizard={handleOpenTemplateWizard}
+						on:templateCreated={() => {
+							templatesRefreshKey += 1;
+						}}
+						on:templateDeleted={() => {
+							templatesRefreshKey += 1;
+						}}
+						on:reportGenerated={(e) => {
+							templatedReportId = e.detail.reportId;
+							if (templatedReportId) {
+								versionHistoryRefreshKey += 1;
+								historyRefreshKey += 1; // Trigger history reload
+								// Refresh reports store to include new report
+								reportsStore.refreshReports();
+							}
+						}}
+						on:openSidebar={(e) => {
+							sidebarTabToOpen = e.detail?.tab || null;
+							chatInitialMessage = e.detail?.initialMessage || null;
+							sidebarVisible = true;
+						}}
+						on:showHoverPopup={(e) => {
+							hoverPopupItem = e.detail.item;
+							hoverPopupPosition = e.detail.position;
+							hoverPopupReportContent = e.detail.reportContent || '';
+							hoverPopupReportId = templatedReportId;
+							hoverPopupVisible = true;
+						}}
+						on:hideHoverPopup={() => {
+							hoverPopupVisible = false;
+							hoverPopupItem = null;
+						}}
 							on:historyRestored={(e) => handleHistoryRestored(e.detail as RestoredReportDetail)}
 							on:historyUpdate={(e) => handleHistoryUpdate(e.detail as ReportHistoryDetail)}
 							on:reportCleared={handleTemplateCleared}
@@ -671,22 +767,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 				</div>
 				
 				<!-- Tab components - all loaded on app initialization -->
-				<!-- Templates Tab -->
-				<div class={activeTab === 'templates' ? '' : 'hidden'}>
-					<TemplateManagementTab
-						initialEditTemplate={templateToEdit}
-						cameFromTab={editSourceTab}
-						on:backToSource={handleBackToSourceTab}
-						on:templateCreated={() => {
-							// Increment refresh key to trigger template reload in TemplatedReportTab
-							templatesRefreshKey += 1;
-						}}
-						on:templateDeleted={() => {
-							// Increment refresh key to trigger template reload in TemplatedReportTab
-							templatesRefreshKey += 1;
-						}}
-					/>
-				</div>
+				<!-- Template Management Tab removed - functionality consolidated into TemplatedReportTab -->
 				
 				<!-- History Tab -->
 				<div class={activeTab === 'history' ? '' : 'hidden'}>
@@ -722,10 +803,12 @@ $: if (!isEnhancementContext && sidebarVisible) {
 	autoLoad={shouldAutoLoadEnhancements}
 	historyAvailable={currentHistoryCount > 1}
 	initialTab={sidebarTabToOpen}
-	on:close={() => {
-		sidebarVisible = false;
-		sidebarTabToOpen = null;
-	}}
+	initialMessage={chatInitialMessage}
+		on:close={() => {
+			sidebarVisible = false;
+			sidebarTabToOpen = null;
+			chatInitialMessage = null;
+		}}
 	on:reportUpdated={(e) => {
 		// Update response when report is updated
 		if (e.detail.report) {
@@ -758,6 +841,9 @@ $: if (!isEnhancementContext && sidebarVisible) {
 		enhancementGuidelinesCount = state.guidelinesCount || 0;
 		enhancementLoading = state.isLoading || false;
 		enhancementError = state.hasError || false;
+		// Track when enhancements have finished loading
+		// Consider loaded when: not loading AND we have a reportId (enhancements are ready to use)
+		enhancementsLoaded = !state.isLoading && !!currentReportId;
 	}}
 />
 <ReportVersionHistory
@@ -766,6 +852,40 @@ $: if (!isEnhancementContext && sidebarVisible) {
 	refreshKey={versionHistoryRefreshKey}
 	onClose={() => showVersionHistoryModal = false}
 />
+
+<!-- Template Editor Modal - Rendered at root level -->
+{#if showTemplateEditor}
+	<div 
+		class="fixed inset-0 bg-black/90 backdrop-blur-lg overflow-y-auto"
+		style="z-index: 9999;"
+		on:click={handleCloseTemplateEditor}
+		on:keydown={(e) => e.key === 'Escape' && handleCloseTemplateEditor()}
+		role="dialog"
+		aria-modal="true"
+		tabindex="-1"
+	>
+		<div 
+			class="min-h-screen p-4 md:p-6"
+			on:click={(e) => e.stopPropagation()}
+			role="document"
+		>
+			<TemplateEditorNew
+				editingTemplate={editingTemplate}
+				selectedModel={templatedModel}
+				on:close={handleCloseTemplateEditor}
+				on:saved={handleTemplateEditorSaved}
+			/>
+		</div>
+	</div>
+{/if}
+
+<!-- Template Wizard Modal - Rendered at root level -->
+{#if showTemplateWizard}
+	<TemplateWizard
+		onClose={handleCloseTemplateWizard}
+		on:templateCreated={handleTemplateWizardCreated}
+	/>
+{/if}
 
 <!-- Enhancement Dock - Floating button (Hidden for now) -->
 <!--
@@ -777,12 +897,13 @@ $: if (!isEnhancementContext && sidebarVisible) {
 		reportId={currentReportId}
 		on:openSidebar={(e) => {
 			sidebarTabToOpen = e.detail?.tab || null;
+			chatInitialMessage = e.detail?.initialMessage || null;
 			sidebarVisible = true;
 		}}
 	/>
 {/if}
 -->
-	
+
 	<!-- History Modal - Rendered at root level to avoid stacking context issues -->
 	{#if historyModalReport}
 		<div 
@@ -931,6 +1052,191 @@ $: if (!isEnhancementContext && sidebarVisible) {
 			</div>
 		</div>
 	{/if}
+	
+	<!-- Template Wizard Modal - Now handled by TemplatedReportTab component -->
+	
+	<!-- Hover Popup (rendered at root level) -->
+	<UnfilledItemHoverPopup
+		visible={hoverPopupVisible}
+		item={hoverPopupItem}
+		position={hoverPopupPosition}
+		reportContent={hoverPopupReportContent}
+		enhancementsLoaded={enhancementsLoaded && !!hoverPopupReportId}
+		on:apply={async (e) => {
+			if (!hoverPopupItem || !hoverPopupReportContent || !hoverPopupReportId) return;
+			const { item, value } = e.detail;
+			
+			
+			// Convert markdown/HTML to plain text for position matching
+			// Detection happens on plain text (via stripNonProseContent), so we need plain text for replacement too
+			// Use the same method as detection to ensure positions match
+			const temp = document.createElement('div');
+			temp.innerHTML = hoverPopupReportContent;
+			// Remove code blocks like detection does
+			const codeBlocks = temp.querySelectorAll('pre, code');
+			codeBlocks.forEach(el => el.remove());
+			// Get text content (same as stripNonProseContent)
+			let plainTextContent = temp.textContent || temp.innerText || hoverPopupReportContent;
+			// Remove URLs and emails like detection does
+			plainTextContent = plainTextContent.replace(/https?:\/\/[^\s]+/gi, '');
+			plainTextContent = plainTextContent.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, '');
+			
+			
+			// Create edit
+			const edit: UnfilledEdit = {
+				itemId: `${item.type}-${item.index}`,
+				originalText: item.text,
+				newValue: value,
+				type: item.type,
+				context: item.surroundingContext,
+				position: item.index
+			};
+			
+			
+			// Apply edit to plain text
+			const edits = new Map<string, UnfilledEdit>();
+			edits.set(edit.itemId, edit);
+			const updatedPlainText = applyEditsToReport(plainTextContent, edits);
+			
+			
+			// Use the updated plain text as the report content
+			const updatedReport = updatedPlainText;
+			
+			
+			
+			// Save to API
+			try {
+				reportUpdateLoading = true;
+				const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+				if ($token) {
+					headers['Authorization'] = `Bearer ${$token}`;
+				}
+				
+				const res = await fetch(`${API_URL}/api/reports/${hoverPopupReportId}/update`, {
+					method: 'PUT',
+					headers,
+					body: JSON.stringify({ content: updatedReport })
+				});
+				
+				const data = await res.json();
+				
+				if (data.success) {
+					// Update response in the appropriate tab
+					if (activeTab === 'auto' && reportId === hoverPopupReportId) {
+						response = data.report.report_content;
+					} else if (activeTab === 'templated' && templatedReportId === hoverPopupReportId) {
+						// For templated reports, we need to update via the override mechanism
+						templatedResponseOverride = data.report.report_content;
+						templatedResponseVersion += 1;
+					}
+					versionHistoryRefreshKey += 1;
+				} else {
+					console.error('Failed to save report:', data.error);
+				}
+			} catch (err) {
+				console.error('Error saving report:', err);
+			} finally {
+				reportUpdateLoading = false;
+				// Note: Highlighting state will be restored by ReportResponseViewer's reactive statement
+				// when it detects unfilled items after updateLoading becomes false
+			}
+			
+			// Hide popup
+			hoverPopupVisible = false;
+			hoverPopupItem = null;
+		}}
+		on:deleteSection={async (e) => {
+			if (!hoverPopupReportContent || !hoverPopupReportId) return;
+			const { sectionName } = e.detail;
+			
+			// Remove section and its //UNFILLED marker from report
+			const lines = hoverPopupReportContent.split('\n');
+			let updatedLines = [];
+			let skipUntilNextSection = false;
+			
+			for (let i = 0; i < lines.length; i++) {
+				const line = lines[i];
+				
+				// Check if this is the section header we want to delete
+				if (line.trim().toUpperCase() === sectionName.toUpperCase()) {
+					skipUntilNextSection = true;
+					continue;
+				}
+				
+				// Stop skipping when we hit next section header (all caps line) or end
+				if (skipUntilNextSection) {
+					if (line.trim() && line === line.toUpperCase() && !line.startsWith('//')) {
+						skipUntilNextSection = false;
+					} else {
+						continue;  // Skip this line
+					}
+				}
+				
+				// Remove only the //UNFILLED marker for this specific section
+				if (line.startsWith('//UNFILLED:')) {
+					const markerSectionName = line.replace(/^\/\/UNFILLED:\s*/, '').trim();
+					if (markerSectionName.toUpperCase() === sectionName.toUpperCase()) {
+						continue;  // Skip only this specific marker
+					}
+				}
+				
+				updatedLines.push(line);
+			}
+			
+			const updatedReport = updatedLines.join('\n').replace(/\n{3,}/g, '\n\n');  // Clean up extra blank lines
+			
+			// Save to API
+			try {
+				reportUpdateLoading = true;
+				const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+				if ($token) {
+					headers['Authorization'] = `Bearer ${$token}`;
+				}
+				
+				const res = await fetch(`${API_URL}/api/reports/${hoverPopupReportId}/update`, {
+					method: 'PUT',
+					headers,
+					body: JSON.stringify({ content: updatedReport })
+				});
+				
+				const data = await res.json();
+				
+				if (data.success) {
+					if (activeTab === 'auto' && reportId === hoverPopupReportId) {
+						response = data.report.report_content;
+					} else if (activeTab === 'templated' && templatedReportId === hoverPopupReportId) {
+						templatedResponseOverride = data.report.report_content;
+						templatedResponseVersion += 1;
+					}
+					versionHistoryRefreshKey += 1;
+				} else {
+					console.error('Failed to save report:', data.error);
+				}
+			} catch (err) {
+				console.error('Error deleting section:', err);
+			} finally {
+				reportUpdateLoading = false;
+			}
+			
+			// Hide popup
+			hoverPopupVisible = false;
+			hoverPopupItem = null;
+		}}
+		on:askAI={(e) => {
+			sidebarTabToOpen = 'chat';
+			chatInitialMessage = e.detail.message;
+			sidebarVisible = true;
+			hoverPopupVisible = false;
+			hoverPopupItem = null;
+		}}
+		on:close={() => {
+			hoverPopupVisible = false;
+			hoverPopupItem = null;
+		}}
+		on:keepVisible={() => {
+			// Keep popup visible - do nothing, just prevent hiding
+		}}
+	/>
 	
 	<!-- Footer -->
 	{#if $isAuthenticated}

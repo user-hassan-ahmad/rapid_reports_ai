@@ -140,7 +140,7 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 
 		try {
 			const payload = {
-				variables: variableValues,
+				user_inputs: variableValues,
 				model: selectedModel
 			};
 
@@ -357,7 +357,18 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 				<!-- Collapsible Content -->
 				{#if formExpanded}
 					<div class="p-4 pt-0">
-						<form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+						<form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} onkeydown={(e) => {
+							// Allow Enter to create new lines in textareas - don't interfere
+							if (e.key === 'Enter' && e.target.tagName === 'TEXTAREA') {
+								// Stop the event from bubbling to prevent form submission, but let textarea handle it
+								e.stopPropagation();
+								return;
+							}
+							// For other elements, prevent form submission on Enter
+							if (e.key === 'Enter' && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'TEXTAREA') {
+								e.preventDefault();
+							}
+						}}>
 							
 							{#if !apiKeyStatus.anthropic_configured}
 								<p class="text-xs text-yellow-400 mb-6">
@@ -367,7 +378,7 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 
 							<!-- Variable Inputs -->
 							<div class="space-y-4 mb-6">
-								{#each Object.keys(variableValues) as variable}
+								{#each (selectedTemplate?.variables || Object.keys(variableValues)) as variable}
 								<div>
 									<label for={variable} class="block text-sm font-medium text-gray-300 mb-1">
 										{variable.replace(/_/g, ' ')}
@@ -442,6 +453,8 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 				on:restore={(event) => handleHistoryRestore(event.detail)}
 				on:historyUpdate={(event) => dispatch('historyUpdate', event.detail)}
 				on:save={handleReportSave}
+				on:showHoverPopup={(e) => dispatch('showHoverPopup', e.detail)}
+				on:hideHoverPopup={() => dispatch('hideHoverPopup')}
 			/>
 		</div>
 	{/if}

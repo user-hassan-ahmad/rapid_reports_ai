@@ -1,5 +1,4 @@
-import { writable } from 'svelte/store';
-import { get } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import { token } from './auth';
 import { API_URL } from '$lib/config';
 import { logger } from '$lib/utils/logger';
@@ -10,6 +9,21 @@ const templatesData = writable({
 	loading: false,
 	error: null
 });
+
+// Store for selected template ID
+export const selectedTemplateId = writable(null);
+
+// Derived store that automatically syncs selectedTemplate with templates array
+// This ensures selectedTemplate always has the latest data from templates array
+export const selectedTemplate = derived(
+	[templatesData, selectedTemplateId],
+	([$templatesData, $selectedTemplateId]) => {
+		if (!$selectedTemplateId || !$templatesData.templates || $templatesData.templates.length === 0) {
+			return null;
+		}
+		return $templatesData.templates.find(t => t.id === $selectedTemplateId) || null;
+	}
+);
 
 let isLoadingTemplates = false; // Guard against concurrent loads
 

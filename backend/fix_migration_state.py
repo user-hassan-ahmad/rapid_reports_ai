@@ -96,10 +96,21 @@ def main():
         print(f"  - reports.validation_status column: {'✓ exists' if has_validation_status else '✗ missing'}")
     
     # Determine target revision based on what exists
-    if has_validation_status:
-        # Database is fully up to date, just needs stamping
-        target_revision = 'e315d7dc70b'  # Latest migration
-        print(f"\n✓ Database appears to be up to date")
+    has_template_config = check_column_exists(engine, 'templates', 'template_config') if check_table_exists(engine, 'templates') else False
+    has_writing_style_presets = check_table_exists(engine, 'writing_style_presets')
+    
+    if has_writing_style_presets:
+        # Database has writing_style_presets table, check if it's the latest
+        target_revision = 'a1b2c3d4e5f6'  # writing_style_presets migration
+        print(f"\n✓ Database has writing_style_presets table")
+    elif has_template_config:
+        # Database has template_config, check if it's the latest
+        target_revision = '20260103094159'  # template_config migration
+        print(f"\n✓ Database has template_config column")
+    elif has_validation_status:
+        # Database is up to date with validation_status but missing template_config
+        target_revision = 'e315d7dc70b'  # validation_status migration
+        print(f"\n✓ Database has validation_status but missing template_config")
     elif has_reports:
         # Reports table exists but no validation_status
         target_revision = 'f123456789ab'  # Before validation_status

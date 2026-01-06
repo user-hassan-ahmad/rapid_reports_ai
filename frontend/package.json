@@ -46,6 +46,7 @@
 		"@benedicte/html-diff": "^0.1.0",
 		"@types/diff-match-patch": "^1.0.36",
 		"diff-match-patch": "^1.0.5",
+		"katex": "^0.16.27",
 		"marked": "^16.4.1"
 	}
 }

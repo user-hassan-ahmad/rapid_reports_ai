@@ -1,7 +1,7 @@
 """Database module for Rapid Reports AI"""
 
 from .connection import get_db, SessionLocal, engine
-from .models import Base, Template, User, PasswordResetToken, Report, TemplateVersion, ReportVersion
+from .models import Base, Template, User, PasswordResetToken, Report, TemplateVersion, ReportVersion, WritingStylePreset
 from .crud import (
     # User CRUD
     create_user,
@@ -42,6 +42,13 @@ from .crud import (
     # Validation Status CRUD
     update_validation_status,
     get_validation_status,
+    # Writing Style Preset CRUD
+    create_writing_style_preset,
+    get_user_writing_style_presets,
+    get_writing_style_preset,
+    update_writing_style_preset,
+    delete_writing_style_preset,
+    increment_preset_usage,
 )
 
 # Export Base so it can be imported from database module
@@ -56,6 +63,7 @@ __all__ = [
     "Report",
     "TemplateVersion",
     "ReportVersion",
+    "WritingStylePreset",
     "create_user",
     "get_user_by_email",
     "get_user_by_id",
@@ -89,5 +97,11 @@ __all__ = [
     "set_current_report_version",
     "update_validation_status",
     "get_validation_status",
+    "create_writing_style_preset",
+    "get_user_writing_style_presets",
+    "get_writing_style_preset",
+    "update_writing_style_preset",
+    "delete_writing_style_preset",
+    "increment_preset_usage",
 ]
 

@@ -6,6 +6,7 @@ from typing import Dict, Optional, List, Any
 import os
 import re
 from dotenv import load_dotenv
+from sqlalchemy.exc import IntegrityError
 from .prompt_manager import get_prompt_manager
 from .database import (
     get_db,
@@ -45,6 +46,12 @@ from .database import (
     get_report_versions,
     get_report_version,
     set_current_report_version,
+    create_writing_style_preset,
+    get_user_writing_style_presets,
+    get_writing_style_preset,
+    update_writing_style_preset,
+    delete_writing_style_preset,
+    increment_preset_usage,
 )
 from .database.connection import engine
 from .template_manager import TemplateManager
@@ -393,27 +400,60 @@ class TemplateCreate(BaseModel):
     name: str
     description: Optional[str] = None
     tags: Optional[List[str]] = None
-    template_content: str
-    master_prompt_instructions: Optional[str] = None
-    model_compatibility: Optional[List[str]] = None
-    variables: Optional[List[str]] = None
+    template_config: Optional[Dict] = None
+    is_pinned: Optional[bool] = False
 
 
 class TemplateUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     tags: Optional[List[str]] = None
-    template_content: Optional[str] = None
-    master_prompt_instructions: Optional[str] = None
-    model_compatibility: Optional[List[str]] = None
-    variables: Optional[List[str]] = None
-    variable_config: Optional[Dict] = None
+    template_config: Optional[Dict] = None
     is_active: Optional[bool] = None
 
 
 class TemplateGenerateRequest(BaseModel):
-    variables: Dict[str, str]
-    model: str = "claude"  # Always uses Claude (kept for API compatibility, fallback handled automatically)
+    user_inputs: Dict[str, str]  # New format: user_inputs dict
+    # Legacy format (deprecated)
+    variables: Optional[Dict[str, str]] = None
+    model: str = "zai-glm-4.6"  # Uses zai-glm-4.6 as primary
+
+
+# Wizard assistance request models
+class GenerateFindingsContentRequest(BaseModel):
+    scan_type: str
+    contrast: str
+    protocol_details: Optional[str] = None
+    content_style: str  # "guided_template", "checklist", "headers", "normal_template", or "structured_template"
+    instructions: Optional[str] = None
+
+
+class ExtractPlaceholdersRequest(BaseModel):
+    template_content: str
+
+
+class ValidateTemplateRequest(BaseModel):
+    template_content: str
+
+
+class SuggestPlaceholderFillRequest(BaseModel):
+    placeholder_type: str  # 'measurement', 'variable', 'alternative', 'instruction'
+    placeholder_text: str  # 'xxx', '~LV_EF~', 'Normal/increased'
+    surrounding_context: str  # Text around the placeholder
+    report_content: str  # Full report for context
+
+
+class SuggestInstructionsRequest(BaseModel):
+    section: str  # "FINDINGS" or "IMPRESSION"
+    scan_type: str
+    content_style: Optional[str] = None
+
+
+class AnalyzeReportsRequest(BaseModel):
+    scan_type: str
+    contrast: str
+    protocol_details: Optional[str] = None
+    reports: List[Dict[str, str]]  # List of {type, context, content}
 
 
 @app.get("/")
@@ -1110,6 +1150,21 @@ class DeleteTagRequest(BaseModel):
     tag: str
 
 
+class WritingStylePresetCreate(BaseModel):
+    name: str = Field(..., max_length=100)
+    settings: dict
+    section_type: str = Field(default='findings', pattern='^(findings|impression)$')
+    icon: Optional[str] = Field(default='⭐', max_length=10)
+    description: Optional[str] = Field(None, max_length=200)
+
+
+class WritingStylePresetUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=100)
+    settings: Optional[dict] = None
+    icon: Optional[str] = Field(None, max_length=10)
+    description: Optional[str] = Field(None, max_length=200)
+
+
 @app.post("/api/templates/tags/delete")
 async def delete_template_tag(
     request: DeleteTagRequest,
@@ -1160,27 +1215,23 @@ async def create_template_endpoint(
 ):
     """Create a new template for current user"""
     try:
-        # Extract variables from template if not provided
-        tm = TemplateManager()
-        if not template_data.variables:
-            variables = tm.extract_variables(template_data.template_content)
-        else:
-            variables = template_data.variables
+        if not template_data.template_config:
+            return {"success": False, "error": "template_config is required"}
         
         template = create_template(
             db=db,
             name=template_data.name,
             description=template_data.description,
             tags=template_data.tags,
-            template_content=template_data.template_content,
+            template_config=template_data.template_config,
+            is_pinned=template_data.is_pinned or False,
             user_id=str(current_user.id),
-            master_prompt_instructions=template_data.master_prompt_instructions,
-            model_compatibility=template_data.model_compatibility,
-            variables=variables,
         )
         
         return {"success": True, "template": template.to_dict()}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {"success": False, "error": str(e)}
 
 
@@ -1193,14 +1244,7 @@ async def update_template_endpoint(
 ):
     """Update an existing template for current user"""
     try:
-        # Always re-extract variables from template_content if it's provided
-        tm = TemplateManager()
-        variables = template_data.variables  # Default to provided variables
-        
-        if template_data.template_content is not None:
-            # Re-extract variables from the template content
-            variables = tm.extract_variables(template_data.template_content)
-        
+        # Use new template_config format if provided
         updated_template = update_template(
             db=db,
             template_id=template_id,
@@ -1208,11 +1252,7 @@ async def update_template_endpoint(
             name=template_data.name,
             description=template_data.description,
             tags=template_data.tags,
-            template_content=template_data.template_content,
-            variables=variables,
-            variable_config=template_data.variable_config,
-            master_prompt_instructions=template_data.master_prompt_instructions,
-            model_compatibility=template_data.model_compatibility,
+            template_config=template_data.template_config,
             is_active=template_data.is_active,
         )
         
@@ -1221,6 +1261,8 @@ async def update_template_endpoint(
         
         return {"success": True, "template": updated_template.to_dict()}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {"success": False, "error": str(e)}
 
 
@@ -1248,44 +1290,40 @@ async def generate_report_from_template(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Generate a report from a template using Pydantic AI"""
+    """Generate a report from a template using new structured config system"""
     try:
         # Get the template
         template = get_template(db, template_id, user_id=str(current_user.id))
         if not template:
             return {"success": False, "error": "Template not found"}
         
-        # Build prompts using TemplateManager unified function
-        # Pass model name to use appropriate prompt structure (zai-glm-4.6 uses simpler prompts)
-        tm = TemplateManager()
-        prompts = tm.build_unified_master_prompt(
-            template=template.template_content,
-            variable_values=request.variables,
-            template_name=template.name,
-            template_description=template.description,
-            master_instructions=template.master_prompt_instructions,
-            model_name="zai-glm-4.6"  # Templated reports use zai-glm-4.6 as primary
-        )
+        # Initialize actual_user_inputs early to ensure it's always available for saving
+        # Prefer user_inputs (new format) over variables (legacy format)
+        actual_user_inputs = request.user_inputs if request.user_inputs is not None else (request.variables if request.variables is not None else {})
+        print(f"[DEBUG] Received request - user_inputs: {request.user_inputs}, variables: {request.variables}")
+        print(f"[DEBUG] Using actual_user_inputs: {actual_user_inputs}, type: {type(actual_user_inputs)}, keys: {list(actual_user_inputs.keys()) if isinstance(actual_user_inputs, dict) else 'not a dict'}")
         
-        system_prompt = prompts.get('system_prompt', '')
-        user_prompt = prompts.get('user_prompt', '')
-        
-        # Always use Claude as primary model (with automatic fallback if Claude fails)
-        # Get Anthropic API key for Claude (primary)
-        api_key = get_system_api_key('anthropic', 'ANTHROPIC_API_KEY')
-        if not api_key:
+        # Use new template_config system
+        if not template.template_config:
             return {
                 "success": False,
-                "error": "Anthropic API key not configured. Please set ANTHROPIC_API_KEY environment variable."
+                "error": "Template configuration is missing. Please recreate this template using the new template editor."
             }
         
-        # Generate report using Claude (with automatic fallback to Qwen if Claude fails)
-        report_output = await generate_templated_report(
-            model="claude",  # Always use Claude (model param kept for API compatibility)
-            user_prompt=user_prompt,
-            system_prompt=system_prompt,
-            api_key=api_key,
-            signature=current_user.signature
+        tm = TemplateManager()
+        user_inputs = actual_user_inputs
+        report_output_dict = await tm.generate_report_from_config(
+            template_config=template.template_config,
+            user_inputs=user_inputs,
+            user_signature=current_user.signature
+        )
+        
+        # Convert to ReportOutput format for compatibility
+        from .enhancement_models import ReportOutput
+        report_output = ReportOutput(
+            report_content=report_output_dict["report_content"],
+            description=report_output_dict["description"],
+            scan_type=report_output_dict["scan_type"]
         )
         
         # Optional: Add structure validation for templated reports
@@ -1296,7 +1334,8 @@ async def generate_report_from_template(
         if ENABLE_TEMPLATE_STRUCTURE_VALIDATION:
             from .enhancement_utils import validate_report_structure
             
-            findings = request.variables.get('FINDINGS', '') if request.variables else ''
+            user_inputs = request.user_inputs or request.variables or {}
+            findings = user_inputs.get('FINDINGS', '')
             
             print(f"\n{'='*80}")
             print(f"🔍 TEMPLATE STRUCTURE VALIDATION - Starting")
@@ -1464,21 +1503,23 @@ Apply each fix while preserving grammatical completeness and report structure.""
                     "qwen": "qwen"
                 }.get(request.model, request.model)
                 
+                input_data_to_save = {
+                    "variables": actual_user_inputs,
+                    "extracted_scan_type": report_output.scan_type
+                }
+                print(f"[DEBUG] Saving report with input_data: variables={actual_user_inputs}, keys={list(actual_user_inputs.keys()) if isinstance(actual_user_inputs, dict) else 'not a dict'}")
                 saved_report = create_report(
                     db=db,
                     user_id=str(current_user.id),
                     report_type="templated",
                     report_content=report_output.report_content,
                     model_used=model_display,
-                    input_data={
-                        "variables": request.variables,
-                        "extracted_scan_type": report_output.scan_type
-                    },
+                    input_data=input_data_to_save,
                     template_id=str(template.id),
                     description=context_title
                 )
                 report_id = str(saved_report.id)
-                print(f"✅ Report saved")
+                print(f"✅ Report saved with ID: {report_id}")
             except Exception as e:
                 print(f"Failed to save report: {e}")
         else:
@@ -1634,6 +1675,228 @@ async def delete_template_version_endpoint(
         return {"success": False, "error": str(e)}
 
 
+# ============================================================================
+# WIZARD ASSISTANCE ENDPOINTS
+# ============================================================================
+
+@app.post("/api/templates/generate-findings-content")
+async def generate_findings_content_endpoint(
+    request: GenerateFindingsContentRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Generate FINDINGS template content via AI"""
+    try:
+        tm = TemplateManager()
+        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
+        if not api_key:
+            return {"success": False, "error": "Cerebras API key not configured"}
+        
+        content = await tm.generate_findings_content(
+            scan_type=request.scan_type,
+            contrast=request.contrast,
+            protocol_details=request.protocol_details or "",
+            content_style=request.content_style,
+            instructions=request.instructions or "",
+            api_key=api_key
+        )
+        
+        return {"success": True, "content": content}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/templates/suggest-instructions")
+async def suggest_instructions_endpoint(
+    request: SuggestInstructionsRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """AI-suggest instructions for FINDINGS or IMPRESSION sections"""
+    try:
+        tm = TemplateManager()
+        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
+        if not api_key:
+            return {"success": False, "error": "Cerebras API key not configured"}
+        
+        suggestions = await tm.suggest_instructions(
+            section=request.section,
+            scan_type=request.scan_type,
+            content_style=request.content_style,
+            api_key=api_key
+        )
+        
+        return {"success": True, "suggestions": suggestions}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/templates/analyze-reports")
+async def analyze_reports_endpoint(
+    request: AnalyzeReportsRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Analyze example reports and generate template config"""
+    try:
+        if len(request.reports) < 2:
+            return {"success": False, "error": "At least 2 reports required"}
+        if len(request.reports) > 10:
+            return {"success": False, "error": "Maximum 10 reports allowed"}
+        
+        tm = TemplateManager()
+        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
+        if not api_key:
+            return {"success": False, "error": "Cerebras API key not configured"}
+        
+        result = await tm.analyze_reports_and_generate_config(
+            scan_type=request.scan_type,
+            contrast=request.contrast,
+            protocol_details=request.protocol_details or "",
+            reports=request.reports,
+            api_key=api_key
+        )
+        
+        return {
+            "success": True,
+            "template_config": result["template_config"],
+            "detected_profile": result["detected_profile"]
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/templates/extract-placeholders")
+async def extract_placeholders_endpoint(
+    request: ExtractPlaceholdersRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Extract placeholders from a structured template for UI display"""
+    try:
+        tm = TemplateManager()
+        placeholders = tm.extract_structured_placeholders(request.template_content)
+        
+        return {
+            "success": True,
+            "placeholders": placeholders
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/templates/validate-template")
+async def validate_template_endpoint(
+    request: ValidateTemplateRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Validate a structured template and return errors, warnings, and stats"""
+    try:
+        tm = TemplateManager()
+        validation = tm.validate_structured_template(request.template_content)
+        
+        return {
+            "success": True,
+            "validation": validation
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/templates/suggest-placeholder-fill")
+async def suggest_placeholder_fill_endpoint(
+    request: SuggestPlaceholderFillRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Generate AI suggestion for filling a specific placeholder"""
+    try:
+        from .enhancement_utils import (
+            MODEL_CONFIG,
+            _get_model_provider,
+            _get_api_key_for_provider,
+            _run_agent_with_model
+        )
+        
+        # Use fast model for quick tips
+        model_name = "gpt-oss-120b"  # Fast inference model
+        
+        # Build context-aware prompt based on type
+        if request.placeholder_type == 'measurement':
+            prompt = f"""Based on this radiology report excerpt, suggest what value should fill the "xxx" measurement.
+
+Context: "{request.surrounding_context}"
+
+Provide a brief suggestion (1 sentence). If not specified in report, say "Not provided - manual entry needed."
+Format: Just the suggestion, no extra text."""
+        
+        elif request.placeholder_type == 'alternative':
+            options = request.placeholder_text.split('/')
+            prompt = f"""Based on this radiology report excerpt, which option should be selected?
+
+Context: "{request.surrounding_context}"
+Options: {request.placeholder_text}
+
+Provide a brief explanation (1-2 sentences) of which option to choose and why.
+Format: "Choose '[option]' because [reason]." """
+        
+        elif request.placeholder_type == 'variable':
+            prompt = f"""Based on this radiology report, suggest a value for the variable {request.placeholder_text}.
+
+Context: "{request.surrounding_context}"
+
+Provide the value if it appears elsewhere in the report, or suggest "Not specified" if not found.
+Format: Just the value or explanation, no extra text."""
+        
+        else:  # instruction
+            prompt = f"""Based on this radiology report excerpt, how should this instruction marker be handled?
+
+Context: "{request.surrounding_context}"
+Instruction: {request.placeholder_text}
+
+Provide a brief suggestion (1 sentence) on whether to remove it, keep it, or what text should replace it.
+Format: Just the suggestion, no extra text."""
+        
+        # Get API key
+        provider = _get_model_provider(model_name)
+        api_key = _get_api_key_for_provider(provider)
+        
+        if not api_key:
+            return {"success": False, "error": f"{provider} API key not configured"}
+        
+        # Use simple text output (not structured)
+        system_prompt = "You are a helpful assistant providing brief, concise suggestions for filling in radiology report placeholders. Respond with just the suggestion, no extra text."
+        
+        result = await _run_agent_with_model(
+            model_name=model_name,
+            output_type=str,
+            system_prompt=system_prompt,
+            user_prompt=prompt,
+            api_key=api_key,
+            use_thinking=False,
+            model_settings={
+                "temperature": 0.3,  # Low temperature for consistent suggestions
+                "max_completion_tokens": 150  # Keep it brief
+            }
+        )
+        
+        suggestion = str(result).strip() if result else "Unable to generate suggestion"
+        
+        return {
+            "success": True,
+            "suggestion": suggestion
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
 @app.post("/api/templates/{template_id}/toggle-pin")
 async def toggle_template_pin_endpoint(
     template_id: str,
@@ -1658,6 +1921,148 @@ async def toggle_template_pin_endpoint(
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+# ============================================================================
+# WRITING STYLE PRESETS API ENDPOINTS
+# ============================================================================
+
+@app.get("/api/writing-style-presets")
+async def get_writing_style_presets(
+    section_type: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get user's custom writing style presets"""
+    try:
+        import uuid
+        presets = get_user_writing_style_presets(db, current_user.id, section_type)
+        return {
+            "success": True,
+            "presets": [
+                {
+                    "id": str(p.id),
+                    "name": p.name,
+                    "icon": p.icon or '⭐',
+                    "description": p.description,
+                    "settings": p.settings,
+                    "section_type": p.section_type,
+                    "created_at": p.created_at.isoformat(),
+                    "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+                    "usage_count": p.usage_count,
+                    "last_used_at": p.last_used_at.isoformat() if p.last_used_at else None
+                }
+                for p in presets
+            ]
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/writing-style-presets")
+async def create_writing_style_preset_endpoint(
+    preset_data: WritingStylePresetCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new custom writing style preset"""
+    try:
+        import uuid
+        preset = create_writing_style_preset(
+            db, current_user.id, preset_data.name, preset_data.settings,
+            preset_data.section_type, preset_data.icon, preset_data.description
+        )
+        return {
+            "success": True,
+            "preset": {
+                "id": str(preset.id),
+                "name": preset.name,
+                "icon": preset.icon or '⭐',
+                "description": preset.description,
+                "settings": preset.settings,
+                "section_type": preset.section_type,
+                "created_at": preset.created_at.isoformat()
+            }
+        }
+    except IntegrityError:
+        raise HTTPException(status_code=400, detail="Preset name already exists for this section type")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/writing-style-presets/{preset_id}")
+async def update_writing_style_preset_endpoint(
+    preset_id: str,
+    preset_data: WritingStylePresetUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update a custom writing style preset"""
+    try:
+        import uuid
+        preset_uuid = uuid.UUID(preset_id)
+        updates = preset_data.dict(exclude_unset=True)
+        preset = update_writing_style_preset(db, preset_uuid, current_user.id, **updates)
+        if not preset:
+            raise HTTPException(status_code=404, detail="Preset not found")
+        return {
+            "success": True,
+            "preset": {
+                "id": str(preset.id),
+                "name": preset.name,
+                "icon": preset.icon or '⭐',
+                "description": preset.description,
+                "settings": preset.settings,
+                "section_type": preset.section_type,
+                "updated_at": preset.updated_at.isoformat() if preset.updated_at else None
+            }
+        }
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid preset ID format")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/writing-style-presets/{preset_id}")
+async def delete_writing_style_preset_endpoint(
+    preset_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a custom writing style preset"""
+    try:
+        import uuid
+        preset_uuid = uuid.UUID(preset_id)
+        success = delete_writing_style_preset(db, preset_uuid, current_user.id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Preset not found")
+        return {"success": True}
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid preset ID format")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/writing-style-presets/{preset_id}/use")
+async def use_writing_style_preset_endpoint(
+    preset_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Track preset usage"""
+    try:
+        import uuid
+        preset_uuid = uuid.UUID(preset_id)
+        # Verify preset belongs to user before tracking
+        preset = get_writing_style_preset(db, preset_uuid, current_user.id)
+        if not preset:
+            raise HTTPException(status_code=404, detail="Preset not found")
+        increment_preset_usage(db, preset_uuid)
+        return {"success": True}
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid preset ID format")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================
@@ -2305,6 +2710,12 @@ async def chat_about_report(
             "When discussing findings, reference the clinical guidelines context provided below. "
             "If asked about management or next steps, prioritize the guideline recommendations. "
             "If unsure, say so clearly.\n\n"
+            "### RESPONSE WORKFLOW FOR EDIT REQUESTS:\n"
+            "When a user asks about filling in a measurement, selecting an alternative, or fixing a placeholder:\n"
+            "1. FIRST: Provide your analysis, explanation, and recommendation (including any calculations or reasoning)\n"
+            "2. THEN: End your response with: 'Would you like me to make this edit to the report?'\n"
+            "3. WAIT: Do NOT use the tool until the user explicitly confirms (e.g., 'yes', 'go ahead', 'make the edit', 'apply it')\n"
+            "4. ONLY AFTER CONFIRMATION: Use the `apply_structured_actions` tool to implement the change\n\n"
             "### PROACTIVE EDIT SUGGESTIONS:\n"
             "When providing conversational responses, proactively suggest specific, actionable edits where appropriate to improve clarity, precision, or guideline alignment.\n\n"
             "### WHEN TO USE THE TOOL vs WHEN TO JUST CHAT:\n\n"
@@ -2313,8 +2724,10 @@ async def chat_about_report(
             "- Requests for clarification or explanation (e.g., 'what does this mean?', 'explain this finding')\n"
             "- General discussion or conversation about the report\n"
             "- Asking for recommendations or suggestions (e.g., 'what should I change?', 'any recommendations?')\n"
+            "- Initial requests about unfilled placeholders - provide explanation FIRST, then ask for confirmation\n"
             "For these, reply conversationally with your analysis, guidance, AND proactive edit suggestions where appropriate.\n\n"
             "ONLY use the `apply_structured_actions` tool when:\n"
+            "- User explicitly confirms after you've provided analysis (e.g., 'yes', 'go ahead', 'make the edit', 'apply it', 'do it')\n"
             "- User explicitly asks you to MODIFY, UPDATE, CHANGE, IMPLEMENT, or APPLY changes (e.g., 'go ahead and implement', 'make those changes', 'update the report', 'apply the recommendations')\n"
             "- User gives you specific edits to make (e.g., 'add TNM staging', 'change X to Y')\n"
             "- User says 'do it', 'implement', 'apply', 'make the changes' after you've provided recommendations\n\n"

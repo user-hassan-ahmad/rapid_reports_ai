@@ -3,8 +3,9 @@
 	import { browser } from '$app/environment';
 	import TemplateForm from './TemplateForm.svelte';
 	import { token } from '$lib/stores/auth';
-	import { templatesStore } from '$lib/stores/templates';
+	import { templatesStore, selectedTemplateId, selectedTemplate } from '$lib/stores/templates';
 	import { settingsStore } from '$lib/stores/settings';
+	import { tagsStore } from '$lib/stores/tags';
 	import { getTagColor, getTagColorWithOpacity } from '$lib/utils/tagColors.js';
 	import { API_URL } from '$lib/config';
 
@@ -36,11 +37,14 @@ export let enhancementError = false;
 	// No intermediate state needed - templatedModel is bound from parent
 	// and changes will propagate automatically via two-way binding
 
-	let selectedTemplate = null;
-	
 	// Subscribe to templates store
 	$: templates = $templatesStore.templates || [];
 	$: loadingTemplates = $templatesStore.loading || false;
+	
+	// Subscribe to selectedTemplate store - automatically synced with templates array
+	// This ensures that when a template is saved from the edit page, selectedTemplate
+	// gets updated with the latest data (including manual/auto-generated inclusions)
+	$: currentSelectedTemplate = $selectedTemplate;
 	
 	// Form state - manage in parent like Quick Reports to preserve across re-renders
 	let variableValues; // No default - prevents Svelte from resetting on re-render
@@ -74,54 +78,79 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 		variableValues = {};
 	}
 	
-	// Initialize variableValues when template is selected but values are empty
-	// Only initialize if this is a NEW template selection (different ID), not just a reference update
-	// This prevents clearing variables when editing a template and coming back
-	$: if (selectedTemplate && selectedTemplate.id) {
-		const templateId = selectedTemplate.id;
+	// Sync variableValues when selectedTemplate changes (automatically reactive via store)
+	// This handles both new template selection and template updates (e.g., after saving)
+	$: if (currentSelectedTemplate && currentSelectedTemplate.id) {
+		const templateId = currentSelectedTemplate.id;
 		const isNewTemplate = lastTemplateId !== templateId;
 		
-		// Only initialize if this is a new template (different ID)
+		// Sync variableValues with updated template structure
+		// Build expected variable structure from template_config or variables array
+		const expectedVariables = {};
+		
+		// Check if we have preserved values for this template
+		const preservedValues = variableValuesByTemplate[templateId];
+		
+		// Always include CLINICAL_HISTORY and FINDINGS (they're always required)
+		// If switching to a new template, only use preserved values or empty string
+		// If same template, preserve current values
 		if (isNewTemplate) {
-			// ALWAYS check preserved values first - restore them if they exist
-			// This ensures we restore values even if variableValues appears empty temporarily
-			if (variableValuesByTemplate[templateId]) {
-				variableValues = { ...variableValuesByTemplate[templateId] };
-				lastTemplateId = templateId;
-			} else if (!variableValues || Object.keys(variableValues).length === 0) {
-				// Only initialize empty values if variableValues is truly empty
-				// AND we don't have preserved values
-				variableValues = {
-					'FINDINGS': '',
-					'CLINICAL_HISTORY': ''
-				};
-				
-				// Add template-specific variables (excluding the hardcoded ones)
-				if (selectedTemplate.variables && Array.isArray(selectedTemplate.variables)) {
-					selectedTemplate.variables.forEach(v => {
-						if (v !== 'FINDINGS' && v !== 'CLINICAL_HISTORY') {
-							variableValues[v] = '';
-						}
-					});
-				}
-				lastTemplateId = templateId;
-			} else {
-				// New template but variableValues already exists - update lastTemplateId
-				lastTemplateId = templateId;
-			}
+			expectedVariables['CLINICAL_HISTORY'] = preservedValues?.['CLINICAL_HISTORY'] || '';
+			expectedVariables['FINDINGS'] = preservedValues?.['FINDINGS'] || '';
 		} else {
-			// Same template - check if values are empty strings (this shouldn't happen!)
-			const hasEmptyValues = variableValues && Object.keys(variableValues).length > 0 && 
-				Object.values(variableValues).every(v => !v || v.trim() === '');
-			
-			if (hasEmptyValues) {
-				// Try to restore from preserved values if they exist
-				if (variableValuesByTemplate[templateId]) {
-					variableValues = { ...variableValuesByTemplate[templateId] };
+			// Same template - preserve current values
+			expectedVariables['CLINICAL_HISTORY'] = variableValues?.['CLINICAL_HISTORY'] || '';
+			expectedVariables['FINDINGS'] = variableValues?.['FINDINGS'] || '';
+		}
+		
+		// For new structured templates (with template_config)
+		if (currentSelectedTemplate.template_config && currentSelectedTemplate.template_config.sections) {
+			currentSelectedTemplate.template_config.sections.forEach(section => {
+				if (section.has_input_field && section.included) {
+					const sectionName = section.name;
+					// If switching to new template, use preserved values or empty
+					// If same template, preserve current values
+					if (isNewTemplate) {
+						expectedVariables[sectionName] = preservedValues?.[sectionName] || '';
+					} else {
+						expectedVariables[sectionName] = variableValues?.[sectionName] || '';
+					}
 				}
+			});
+		} 
+		// For legacy templates (with variables array)
+		else if (currentSelectedTemplate.variables && Array.isArray(currentSelectedTemplate.variables)) {
+			currentSelectedTemplate.variables.forEach(v => {
+				if (v !== 'CLINICAL_HISTORY' && v !== 'FINDINGS') {
+					// If switching to new template, use preserved values or empty
+					// If same template, preserve current values
+					if (isNewTemplate) {
+						expectedVariables[v] = preservedValues?.[v] || '';
+					} else {
+						expectedVariables[v] = variableValues?.[v] || '';
+					}
+				}
+			});
+		}
+		
+		// Only update variableValues if this is a new template OR if structure changed
+		if (isNewTemplate) {
+			// New template - use expectedVariables which now has preserved values or empty strings
+			variableValues = expectedVariables;
+			lastTemplateId = templateId;
+		} else {
+			// Same template ID - check if structure changed (e.g., LIMITATIONS changed from manual to auto-generated)
+			const currentKeys = Object.keys(variableValues || {}).sort();
+			const expectedKeys = Object.keys(expectedVariables).sort();
+			const structureChanged = JSON.stringify(currentKeys) !== JSON.stringify(expectedKeys);
+			
+			if (structureChanged) {
+				// Structure changed - sync to new structure while preserving values
+				variableValues = expectedVariables;
+				// Update preserved values
+				variableValuesByTemplate[templateId] = { ...variableValues };
 			}
 		}
-		// If same template ID, do nothing - preserve existing variableValues
 	}
 	
 	let searchQuery = '';
@@ -144,6 +173,16 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	// Pin toggle state for optimistic updates
 	let pinningTemplates = new Set(); // Track which templates are currently being toggled
 	let optimisticPinStates = new Map(); // Map of templateId -> { originalState, pendingState }
+	
+	// Tag management state
+	let editingTag = null;
+	let renamingTag = null;
+	let newTagName = '';
+	let editingColorTag = null;
+	let showColorPicker = false;
+	let colorPickerTag = null;
+	let colorPickerValue = '#8b5cf6';
+	let previewTagColors = {}; // Temporary preview colors before saving
 	
 	// Kanban horizontal scroll references
 	let kanbanHeadersContainer;
@@ -370,8 +409,8 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			if (Object.keys(variableValues || {}).length > 0) {
 				variableValuesByTemplate[templateId] = { ...variableValues };
 			}
-			// Just update the template reference, keep variableValues as-is
-			selectedTemplate = template;
+			// Just update the template ID in store - selectedTemplate will auto-update
+			selectedTemplateId.set(templateId);
 			// Ensure lastTemplateId is set (should already be set, but ensure it for safety)
 			lastTemplateId = templateId;
 			return;
@@ -382,8 +421,8 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			variableValuesByTemplate[lastTemplateId] = { ...variableValues };
 		}
 		
-		// Different template - clear response and restore or initialize values
-		selectedTemplate = template;
+		// Different template - clear response and set template ID (selectedTemplate will auto-update)
+		selectedTemplateId.set(templateId);
 		
 		// Clear response when switching to a new template
 		response = null;
@@ -393,27 +432,10 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 		dispatch('reportGenerated', { reportId: null });
 		dispatch('reportCleared');
 		
-		if (variableValuesByTemplate[templateId]) {
-			// Restore previous values for this template
-			variableValues = { ...variableValuesByTemplate[templateId] };
-		} else {
-			// Initialize empty values for this template
-			variableValues = {
-				'FINDINGS': '',
-				'CLINICAL_HISTORY': ''
-			};
-			
-			// Add template-specific variables (excluding the hardcoded ones)
-			if (template.variables && Array.isArray(template.variables)) {
-				template.variables.forEach(v => {
-					if (v !== 'FINDINGS' && v !== 'CLINICAL_HISTORY') {
-						variableValues[v] = '';
-					}
-				});
-			}
-		}
-		
-		lastTemplateId = templateId;
+		// Note: variableValues will be synced by the reactive statement above
+		// based on currentSelectedTemplate, which will update automatically
+		// DO NOT update lastTemplateId here - let the reactive statement handle it
+		// to ensure isNewTemplate is calculated correctly
 	}
 
 	function handleFormReset() {
@@ -427,31 +449,267 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 		dispatch('reportGenerated', { reportId: null });
 		dispatch('reportCleared');
 		// Re-initialize empty values for current template if one is selected
-		// Always initialize FINDINGS and CLINICAL_HISTORY, then add template-specific variables
-		if (selectedTemplate && selectedTemplate.id) {
-			variableValues = {
-				'FINDINGS': '',
-				'CLINICAL_HISTORY': ''
-			};
-			// Add template-specific variables (excluding the hardcoded ones)
-			if (selectedTemplate.variables && Array.isArray(selectedTemplate.variables)) {
-				selectedTemplate.variables.forEach(variable => {
-					if (variable !== 'FINDINGS' && variable !== 'CLINICAL_HISTORY') {
-						variableValues[variable] = '';
-					}
+		// Build variableValues in the order from template.variables to preserve structure order
+		// Note: variableValues will be synced by the reactive statement based on currentSelectedTemplate
+		if (currentSelectedTemplate && currentSelectedTemplate.id) {
+			variableValues = {};
+			if (currentSelectedTemplate.variables && Array.isArray(currentSelectedTemplate.variables)) {
+				currentSelectedTemplate.variables.forEach(variable => {
+					variableValues[variable] = '';
 				});
+			} else {
+				// Fallback for legacy templates without variables array
+				variableValues = {
+					'FINDINGS': '',
+					'CLINICAL_HISTORY': ''
+				};
 			}
 		}
 	}
 
 	function handleBackToList() {
-		selectedTemplate = null;
+		selectedTemplateId.set(null);
 		reportId = null;
 		dispatch('reportGenerated', { reportId: null });
 		dispatch('reportCleared');
 	}
+	
+	// Template Editor handlers
+	function handleEditTemplate(template) {
+		dispatch('openTemplateEditor', { template, model: templatedModel });
+	}
+	
+	function handleEditorClose() {
+		// No longer needed - parent handles this
+	}
+	
+	async function handleEditorSaved() {
+		// No longer needed - parent handles this
+	}
+	
+	// Template Wizard handlers
+	function handleOpenWizard() {
+		dispatch('openTemplateWizard');
+	}
+	
+	function handleCloseWizard() {
+		// No longer needed - parent handles this
+	}
+	
+	// Template Delete handler
+	async function handleDeleteTemplate(template, e) {
+		e.stopPropagation();
+		if (!confirm(`Are you sure you want to delete "${template.name}"?`)) {
+			return;
+		}
+		
+		try {
+			const headers = {};
+			if ($token) {
+				headers['Authorization'] = `Bearer ${$token}`;
+			}
+			
+			const response = await fetch(`${API_URL}/api/templates/${template.id}`, {
+				method: 'DELETE',
+				headers
+			});
+			const data = await response.json();
+			if (data.success) {
+				await templatesStore.refreshTemplates();
+				dispatch('templateDeleted');
+			} else {
+				alert('Failed to delete template: ' + data.error);
+			}
+		} catch (err) {
+			alert('Failed to delete template');
+		}
+	}
+	
+	// Tag management functions (from TemplateManagementTab)
+	async function updateTagColor(tag, color) {
+		try {
+			const currentSettings = $settingsStore || {};
+			let currentTagColors = { ...(currentSettings.tag_colors || {}) };
+			
+			const tagLower = tag.toLowerCase();
+			let keyToRemove = null;
+			for (const key of Object.keys(currentTagColors)) {
+				if (key.toLowerCase() === tagLower) {
+					keyToRemove = key;
+					break;
+				}
+			}
+			if (keyToRemove) {
+				delete currentTagColors[keyToRemove];
+			}
+			
+			if (color !== '' && color) {
+				currentTagColors[tag] = color;
+			}
+			
+			const result = await settingsStore.updateSettings({
+				tag_colors: currentTagColors
+			});
+			
+			if (!result.success) {
+				alert('Failed to update tag color: ' + (result.error || 'Unknown error'));
+				await settingsStore.refreshSettings();
+				return false;
+			}
+			
+			return true;
+		} catch (err) {
+			alert('Failed to update tag color');
+			await settingsStore.refreshSettings();
+			return false;
+		}
+	}
+	
+	function openColorPicker(tag) {
+		colorPickerTag = tag;
+		
+		const tagLower = tag.toLowerCase();
+		let customColor = null;
+		for (const [key, value] of Object.entries(customTagColors)) {
+			if (key.toLowerCase() === tagLower && value) {
+				customColor = value;
+				break;
+			}
+		}
+		
+		const currentColor = customColor || getTagColor(tag, customTagColors);
+		
+		if (currentColor.startsWith('rgb')) {
+			const match = currentColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+			if (match) {
+				const [, r, g, b] = match;
+				colorPickerValue = '#' + [r, g, b].map(x => {
+					const hex = parseInt(x).toString(16);
+					return hex.length === 1 ? '0' + hex : hex;
+				}).join('');
+			} else {
+				colorPickerValue = '#8b5cf6';
+			}
+		} else if (currentColor.startsWith('#')) {
+			colorPickerValue = currentColor;
+		} else {
+			colorPickerValue = '#8b5cf6';
+		}
+		showColorPicker = true;
+	}
+	
+	function closeColorPicker() {
+		previewTagColors = {};
+		showColorPicker = false;
+		colorPickerTag = null;
+	}
+	
+	async function saveTagColor() {
+		if (!colorPickerTag || !colorPickerValue) {
+			return;
+		}
+		
+		const success = await updateTagColor(colorPickerTag, colorPickerValue);
+		
+		if (success) {
+			previewTagColors = {};
+			closeColorPicker();
+		} else {
+			await settingsStore.refreshSettings();
+		}
+	}
+	
+	async function renameTag(oldTag, newTag) {
+		if (!newTag.trim() || newTag.trim().toLowerCase() === oldTag.toLowerCase()) {
+			return;
+		}
+		
+		try {
+			const headers = { 'Content-Type': 'application/json' };
+			if ($token) {
+				headers['Authorization'] = `Bearer ${$token}`;
+			}
+			
+			const response = await fetch(`${API_URL}/api/templates/tags/rename`, {
+				method: 'POST',
+				headers,
+				body: JSON.stringify({
+					old_tag: oldTag,
+					new_tag: newTag.trim()
+				})
+			});
+			
+			const data = await response.json();
+			if (data.success) {
+				await settingsStore.refreshSettings();
+				await templatesStore.refreshTemplates();
+				await tagsStore.refreshTags();
+				renamingTag = null;
+				newTagName = '';
+			} else {
+				alert('Failed to rename tag: ' + (data.error || 'Unknown error'));
+			}
+		} catch (err) {
+			alert('Failed to rename tag');
+		}
+	}
+	
+	async function handleDeleteTag(tag) {
+		if (!confirm(`Are you sure you want to delete the tag "${tag}" from all templates?`)) {
+			return;
+		}
+		
+		try {
+			const headers = { 'Content-Type': 'application/json' };
+			if ($token) {
+				headers['Authorization'] = `Bearer ${$token}`;
+			}
+			
+			const response = await fetch(`${API_URL}/api/templates/tags/delete`, {
+				method: 'POST',
+				headers,
+				body: JSON.stringify({
+					tag: tag
+				})
+			});
+			
+			const data = await response.json();
+			if (data.success) {
+				selectedTags = selectedTags.filter(t => t !== tag);
+				await templatesStore.refreshTemplates();
+				await tagsStore.refreshTags();
+			} else {
+				alert('Failed to delete tag: ' + (data.error || 'Unknown error'));
+			}
+		} catch (err) {
+			alert('Failed to delete tag');
+		}
+	}
+	
+	function startRenamingTag(tag) {
+		renamingTag = tag;
+		newTagName = tag;
+	}
+	
+	function cancelRename() {
+		renamingTag = null;
+		newTagName = '';
+	}
+	
+	function handleRenameKeydown(event, oldTag) {
+		if (event.key === 'Enter') {
+			renameTag(oldTag, newTagName);
+		} else if (event.key === 'Escape') {
+			cancelRename();
+		}
+	}
+	
+	// Reactive statement to update preview when color picker value changes
+	$: if (showColorPicker && colorPickerTag && colorPickerValue) {
+		previewTagColors = { ...customTagColors, [colorPickerTag]: colorPickerValue };
+	}
 
-	// Helper function to check if template was recently used (within 24 hours)
+	// Helper function to check if template was recently used (within 24-48 hours)
 	function isRecentlyUsed(template) {
 		if (!template.last_used_at) return false;
 		try {
@@ -459,7 +717,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			if (isNaN(lastUsed.getTime())) return false; // Invalid date
 			const now = new Date();
 			const hoursSince = (now - lastUsed) / (1000 * 60 * 60);
-			return hoursSince <= 24 && hoursSince >= 0; // Must be in the past
+			return hoursSince <= 48 && hoursSince >= 0; // Must be in the past, within 48 hours
 		} catch (e) {
 			return false;
 		}
@@ -572,12 +830,19 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	let mostUsedTemplates = [];
 	let allOtherTemplates = [];
 	$: {
-		// Filter templates into groups
-		// Strategy: "Most Used" shows top templates by usage_count (regardless of recency)
-		// "Recently Used" shows recently used templates that aren't already in "Most Used"
-		// This allows "Most Used" to actually show the most used templates
+		// Filter templates into groups with cascading exclusion to prevent duplicates
+		// Strategy: 
+		// 1. Pinned templates (always first, excluded from other categories)
+		// 2. Most Used - Top 20% by usage_count, max 3 templates
+		// 3. Recently Used - Templates used in last 24-48 hours (excludes Pinned and Most Used)
+		// 4. All Others - Everything else
 		
-		// Step 1: Get all non-pinned templates sorted by usage_count descending
+		// Step 1: Pinned templates (always first, excluded from other categories)
+		pinnedTemplates = sortedTemplates.filter(t => t.is_pinned === true);
+		// Normalize IDs to strings for consistent comparison
+		const pinnedIds = new Set(pinnedTemplates.map(t => String(t.id || '')));
+		
+		// Step 2: Get all non-pinned templates sorted by usage_count descending
 		const nonPinned = sortedTemplates.filter(t => !t.is_pinned);
 		const sortedByUsage = [...nonPinned].sort((a, b) => {
 			const aCount = typeof a.usage_count === 'number' ? a.usage_count : (parseInt(a.usage_count) || 0);
@@ -596,35 +861,53 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			return 0;
 		});
 		
-		// Step 2: Pinned templates (always first)
-		pinnedTemplates = sortedTemplates.filter(t => t.is_pinned === true);
+		// Step 3: Most Used - Dynamic threshold: Top 20% by usage_count, max 3 templates
+		// Calculate 20th percentile threshold
+		if (sortedByUsage.length > 0) {
+			const usageCounts = sortedByUsage
+				.map(t => typeof t.usage_count === 'number' ? t.usage_count : (parseInt(t.usage_count) || 0))
+				.filter(count => count > 0)
+				.sort((a, b) => b - a); // Descending
+			
+			if (usageCounts.length > 0) {
+				// Calculate 20th percentile (top 20% threshold)
+				const percentileIndex = Math.floor(usageCounts.length * 0.2);
+				const threshold = usageCounts[percentileIndex] || usageCounts[0];
+				
+				// Get templates above threshold, limited to max 3
+				mostUsedTemplates = sortedByUsage
+					.filter(t => {
+						const count = typeof t.usage_count === 'number' ? t.usage_count : (parseInt(t.usage_count) || 0);
+						return count >= threshold && count > 0;
+					})
+					.slice(0, 3); // Max 3 templates
+			} else {
+				mostUsedTemplates = [];
+			}
+		} else {
+			mostUsedTemplates = [];
+		}
 		
-		// Step 3: Most Used - Top templates by usage_count (at least usage_count > 0)
-		// Take templates with usage_count > 0, prioritizing highest usage_count
-		// Limit to top 10 to keep it focused, but show all if there are fewer than 10
-		mostUsedTemplates = sortedByUsage
-			.filter(t => (t.usage_count || 0) > 0)
-			.slice(0, 10); // Top 10 by usage_count
+		// Normalize IDs to strings for consistent comparison
+		const mostUsedIds = new Set(mostUsedTemplates.map(t => String(t.id || '')));
 		
-		// Step 4: Recently Used - Templates used in last 24 hours that aren't in "Most Used"
-		// COMMENTED OUT: Hidden for now, can be restored if needed
-		// const mostUsedIds = new Set(mostUsedTemplates.map(t => t.id));
-		// recentlyUsedTemplates = sortedTemplates
-		// 	.filter(t => {
-		// 		if (t.is_pinned === true) return false;
-		// 		if (mostUsedIds.has(t.id)) return false; // Don't duplicate from "Most Used"
-		// 		return isRecentlyUsed(t);
-		// 	});
+		// Step 4: Recently Used - Templates used in last 24-48 hours that aren't in "Pinned" or "Most Used"
+		recentlyUsedTemplates = sortedTemplates.filter(t => {
+			const templateId = String(t.id || '');
+			if (pinnedIds.has(templateId)) return false; // Don't duplicate from "Pinned"
+			if (mostUsedIds.has(templateId)) return false; // Don't duplicate from "Most Used"
+			return isRecentlyUsed(t);
+		});
 		
-		// Initialize as empty array (hidden)
-		const mostUsedIds = new Set(mostUsedTemplates.map(t => t.id));
-		recentlyUsedTemplates = [];
+		// Normalize IDs to strings for consistent comparison
+		const recentlyUsedIds = new Set(recentlyUsedTemplates.map(t => String(t.id || '')));
 		
-		// All Others: Everything else that isn't pinned or in "Most Used"
-		// NOTE: Not excluding recently used templates since that section is hidden
+		// Step 5: All Others - Everything else that isn't pinned, in "Most Used", or "Recently Used"
 		allOtherTemplates = sortedTemplates.filter(t => {
-			if (t.is_pinned === true) return false;
-			if (mostUsedIds.has(t.id)) return false; // Already in "Most Used"
+			const templateId = String(t.id || '');
+			if (pinnedIds.has(templateId)) return false;
+			if (mostUsedIds.has(templateId)) return false;
+			if (recentlyUsedIds.has(templateId)) return false;
 			return true;
 		});
 	}
@@ -769,6 +1052,9 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			if (!$templatesStore.templates || $templatesStore.templates.length === 0) {
 				await templatesStore.loadTemplates();
 			}
+			if (!$tagsStore.tags || $tagsStore.tags.length === 0) {
+				await tagsStore.refreshTags();
+			}
 			
 			// Set up global mouse handlers for dragging
 			window.addEventListener('mousemove', handleMouseMove);
@@ -826,13 +1112,21 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 </script>
 
 <div class="p-6">
-	{#if !selectedTemplate}
+	{#if !currentSelectedTemplate}
 		<!-- Template Selector Console -->
-		<div class="flex items-center gap-3 mb-6">
-			<svg class="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-			</svg>
-			<h1 class="text-3xl font-bold text-white bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">Personalised Reports</h1>
+		<div class="flex items-center justify-between mb-6">
+			<div class="flex items-center gap-3">
+				<svg class="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+				</svg>
+				<h1 class="text-3xl font-bold text-white bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">Personalised Reports</h1>
+			</div>
+			<button
+				onclick={handleOpenWizard}
+				class="btn-primary"
+			>
+				+ Create Template
+			</button>
 		</div>
 
 		<!-- Filters and Controls -->
@@ -963,34 +1257,113 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			
 			{#if allUniqueTags.length > 0}
 				<div>
-					<p class="text-sm text-gray-400 mb-2">Filter by tags:</p>
+					<div class="flex items-center justify-between mb-2">
+						<p class="text-sm text-gray-400">Filter by tags:</p>
+						<button
+							type="button"
+							onclick={() => editingTag = editingTag ? null : 'all'}
+							class="text-xs text-gray-400 hover:text-white underline"
+						>
+							{editingTag ? 'Done Editing' : 'Edit Tags'}
+						</button>
+					</div>
 					<div class="flex flex-wrap gap-2">
 						{#each allUniqueTags as tag}
-							<button
-								type="button"
-								onclick={() => toggleTag(tag)}
-								class="px-3 py-1 rounded-full border text-xs font-medium transition-all flex items-center gap-1.5 group {
-									selectedTags.includes(tag) 
-										? 'ring-2 ring-white/50' 
-										: 'hover:opacity-80'
-								}"
-								style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {selectedTags.includes(tag) ? 'rgba(255,255,255,0.5)' : getTagColorWithOpacity(tag, 0.5, customTagColors)};"
-							>
-								<span>{tag}</span>
-							<span 
-								class="rounded-full bg-white/95 flex items-center justify-center flex-shrink-0 text-[10px] font-semibold transition-all duration-200 group-hover:w-5 group-hover:h-5 {
-									selectedTags.includes(tag) ? 'w-5 h-5' : 'w-1.5 h-1.5'
-								}"
-								style="color: {getTagColor(tag, customTagColors)};"
-								title="{(tagCounts[tag] || 0)} template{(tagCounts[tag] || 0) !== 1 ? 's' : ''}"
-							>
-								<span class="transition-opacity duration-200 {
-									selectedTags.includes(tag) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-								}">
-									{tagCounts[tag] || 0}
-								</span>
-							</span>
-							</button>
+							<div class="relative group">
+								{#if renamingTag === tag}
+									<div class="flex items-center gap-1">
+										<input
+											type="text"
+											bind:value={newTagName}
+											onkeydown={(e) => handleRenameKeydown(e, tag)}
+											class="px-3 py-1 rounded-full border text-xs font-medium bg-gray-800 border-gray-600 text-white min-w-[100px]"
+											autofocus
+										/>
+										<button
+											type="button"
+											onclick={() => renameTag(tag, newTagName)}
+											class="p-1 text-green-400 hover:text-green-300"
+											title="Save"
+										>
+											<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+											</svg>
+										</button>
+										<button
+											type="button"
+											onclick={cancelRename}
+											class="p-1 text-red-400 hover:text-red-300"
+											title="Cancel"
+										>
+											<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+											</svg>
+										</button>
+									</div>
+								{:else}
+									<div class="flex items-center gap-1">
+										<button
+											type="button"
+											onclick={() => toggleTag(tag)}
+											class="px-3 py-1 rounded-full border text-xs font-medium transition-all flex items-center gap-1.5 group {
+												selectedTags.includes(tag) 
+													? 'ring-2 ring-white/50' 
+													: 'hover:opacity-80'
+											}"
+											style="background-color: {showColorPicker && colorPickerTag === tag ? getTagColor(tag, previewTagColors) : getTagColor(tag, customTagColors)}; color: white; border-color: {selectedTags.includes(tag) ? 'rgba(255,255,255,0.5)' : getTagColorWithOpacity(tag, 0.5, showColorPicker && colorPickerTag === tag ? previewTagColors : customTagColors)};"
+										>
+											<span>{tag}</span>
+											<span 
+												class="rounded-full bg-white/95 flex items-center justify-center flex-shrink-0 text-[10px] font-semibold transition-all duration-200 group-hover:w-5 group-hover:h-5 {
+													selectedTags.includes(tag) ? 'w-5 h-5' : 'w-1.5 h-1.5'
+												}"
+												style="color: {getTagColor(tag, customTagColors)};"
+												title="{(tagCounts[tag] || 0)} template{(tagCounts[tag] || 0) !== 1 ? 's' : ''}"
+											>
+												<span class="transition-opacity duration-200 {
+													selectedTags.includes(tag) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+												}">
+													{tagCounts[tag] || 0}
+												</span>
+											</span>
+										</button>
+										{#if editingTag}
+											<div class="flex gap-1">
+												<button
+													type="button"
+													onclick={() => openColorPicker(tag)}
+													class="p-1 text-yellow-400 hover:text-yellow-300"
+													title="Change tag color"
+												>
+													<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+													</svg>
+												</button>
+												<button
+													type="button"
+													onclick={() => startRenamingTag(tag)}
+													class="p-1 text-blue-400 hover:text-blue-300"
+													title="Rename tag"
+												>
+													<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+													</svg>
+												</button>
+												<button
+													type="button"
+													onclick={() => handleDeleteTag(tag)}
+													class="p-1 text-red-400 hover:text-red-300"
+													title="Delete tag"
+												>
+													<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+													</svg>
+												</button>
+											</div>
+										{/if}
+									</div>
+								{/if}
+							</div>
 						{/each}
 					</div>
 					{#if selectedTags.length > 0}
@@ -1017,9 +1390,15 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
 				</svg>
 				<p class="text-gray-400 text-lg mb-2">No templates found</p>
-				<p class="text-gray-500 text-sm">
-					Create templates in the "Manage Templates" section to use them here
+				<p class="text-gray-500 text-sm mb-4">
+					Create your first template to get started
 				</p>
+				<button
+					onclick={handleOpenWizard}
+					class="btn-primary"
+				>
+					+ Create Template
+				</button>
 			</div>
 		{:else if filteredTemplates.length === 0}
 			<div class="card-dark text-center py-12">
@@ -1068,47 +1447,59 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											{:else}
 												<div class="flex-grow"></div>
 											{/if}
-											<!-- Tags and vars at bottom -->
-											<div class="flex items-center justify-between mt-auto pt-4 border-t border-white/10">
-												{#if template.tags && template.tags.length > 0}
-													<div class="flex flex-wrap gap-1">
-														{#each template.tags.slice(0, 3) as tag}
-															<span 
-																class="text-xs px-2 py-1 rounded border font-medium"
-																style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
-															>
-																{tag}
-															</span>
-														{/each}
-														{#if template.tags.length > 3}
-															<span class="text-xs px-2 py-1 text-gray-400">
-																+{template.tags.length - 3}
-															</span>
-														{/if}
-													</div>
-												{:else}
-													<div></div>
-												{/if}
-												<div class="flex items-center gap-2 text-xs text-gray-500">
-													<span>{template.variables?.length || 0} vars</span>
+											<!-- Tags at bottom -->
+											{#if template.tags && template.tags.length > 0}
+												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
+													{#each template.tags.slice(0, 3) as tag}
+														<span 
+															class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
+															style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
+														>
+															{tag}
+														</span>
+													{/each}
+													{#if template.tags.length > 3}
+														<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
+															+{template.tags.length - 3}
+														</span>
+													{/if}
 												</div>
-											</div>
+											{/if}
 										</div>
-										<!-- Pin button - styled as floating action button -->
-										<div class="absolute top-3 right-3">
+										<!-- Action buttons - Pin, Edit, Delete (shown on hover) -->
+										<div class="absolute top-3 right-3 flex flex-col gap-1.5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
 											<button
 												type="button"
 												onclick={(e) => handleTogglePin(template, e)}
 												disabled={pinningTemplates.has(template.id)}
-												class="px-2.5 py-2 rounded-full bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40 transition-all opacity-90 hover:opacity-100 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative"
+												class="px-2.5 py-2 rounded-full bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40 transition-all hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative"
 												title="Unpin"
 											>
 												{#if pinningTemplates.has(template.id)}
-													<!-- Subtle pulsing indicator -->
 													<div class="absolute inset-0 rounded-full bg-yellow-400/20 animate-pulse"></div>
 												{/if}
 												<svg class="w-4 h-4 text-yellow-400 relative z-10" fill="currentColor" viewBox="0 0 24 24">
 													<path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+												</svg>
+											</button>
+											<button
+												type="button"
+												onclick={(e) => { e.stopPropagation(); handleEditTemplate(template); }}
+												class="px-2.5 py-2 rounded-full bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 transition-all hover:scale-110"
+												title="Edit template"
+											>
+												<svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+												</svg>
+											</button>
+											<button
+												type="button"
+												onclick={(e) => handleDeleteTemplate(template, e)}
+												class="px-2.5 py-2 rounded-full bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 transition-all hover:scale-110"
+												title="Delete template"
+											>
+												<svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
 												</svg>
 											</button>
 										</div>
@@ -1159,47 +1550,39 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											{:else}
 												<div class="flex-grow"></div>
 											{/if}
-											<!-- Tags and vars at bottom -->
-											<div class="flex items-center justify-between mt-auto pt-4 border-t border-white/10">
-												{#if template.tags && template.tags.length > 0}
-													<div class="flex flex-wrap gap-1">
-														{#each template.tags.slice(0, 3) as tag}
-															<span 
-																class="text-xs px-2 py-1 rounded border font-medium"
-																style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
-															>
-																{tag}
-															</span>
-														{/each}
-														{#if template.tags.length > 3}
-															<span class="text-xs px-2 py-1 text-gray-400">
-																+{template.tags.length - 3}
-															</span>
-														{/if}
-													</div>
-												{:else}
-													<div></div>
-												{/if}
-												<div class="flex items-center gap-2 text-xs text-gray-500">
-													<span>{template.variables?.length || 0} vars</span>
+											<!-- Tags at bottom -->
+											{#if template.tags && template.tags.length > 0}
+												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
+													{#each template.tags.slice(0, 3) as tag}
+														<span 
+															class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
+															style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
+														>
+															{tag}
+														</span>
+													{/each}
+													{#if template.tags.length > 3}
+														<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
+															+{template.tags.length - 3}
+														</span>
+													{/if}
 												</div>
-											</div>
+											{/if}
 										</div>
-										<!-- Pin button - styled as floating action button -->
-										<div class="absolute top-3 right-3">
-											<button
-												type="button"
-												onclick={(e) => handleTogglePin(template, e)}
-												disabled={pinningTemplates.has(template.id)}
-												class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
-													template.is_pinned === true 
-														? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
-														: 'bg-white/10 hover:bg-white/20 border border-white/20'
-												}"
-												title={template.is_pinned === true ? 'Unpin' : 'Pin'}
-											>
+									<!-- Action buttons - Pin, Edit, Delete (shown on hover) -->
+									<div class="absolute top-3 right-3 flex flex-col gap-1.5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none group-hover:pointer-events-auto z-10">
+										<button
+											type="button"
+											onclick={(e) => handleTogglePin(template, e)}
+											disabled={pinningTemplates.has(template.id)}
+											class="px-2.5 py-2 rounded-full transition-all hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
+												template.is_pinned === true 
+													? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
+													: 'bg-white/10 hover:bg-white/20 border border-white/20'
+											}"
+											title={template.is_pinned === true ? 'Unpin' : 'Pin'}
+										>
 												{#if pinningTemplates.has(template.id)}
-													<!-- Subtle pulsing indicator -->
 													<div class="absolute inset-0 rounded-full {
 														template.is_pinned === true ? 'bg-yellow-400/20' : 'bg-white/20'
 													} animate-pulse"></div>
@@ -1212,6 +1595,26 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 													{:else}
 														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
 													{/if}
+												</svg>
+											</button>
+										<button
+											type="button"
+											onclick={(e) => { e.stopPropagation(); handleEditTemplate(template); }}
+											class="px-2.5 py-2 rounded-full bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 transition-all hover:scale-110"
+											title="Edit template"
+										>
+												<svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+												</svg>
+											</button>
+										<button
+											type="button"
+											onclick={(e) => handleDeleteTemplate(template, e)}
+											class="px-2.5 py-2 rounded-full bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 transition-all hover:scale-110"
+											title="Delete template"
+										>
+												<svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
 												</svg>
 											</button>
 										</div>
@@ -1292,21 +1695,6 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 								updateScrollbar();
 							}}
 						>
-							{#if !hideEmptyColumns || allOtherTemplates.length > 0}
-								<div class="flex-shrink-0 w-80">
-									<div class="bg-black/50 backdrop-blur-sm p-3 rounded-lg border border-white/10">
-										<div class="flex items-center gap-2">
-											<svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-											</svg>
-											<h3 class="font-semibold text-white">All Templates</h3>
-											<span class="px-2 py-0.5 rounded-full bg-white/10 text-gray-300 text-xs">
-												{allOtherTemplates.length}
-											</span>
-										</div>
-									</div>
-								</div>
-							{/if}
 							{#if !hideEmptyColumns || pinnedTemplates.length > 0}
 								<div class="flex-shrink-0 w-80">
 									<div class="bg-black/50 backdrop-blur-sm p-3 rounded-lg border border-yellow-500/30">
@@ -1317,22 +1705,6 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											<h3 class="font-semibold text-white">Pinned</h3>
 											<span class="px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 text-xs">
 												{pinnedTemplates.length}
-											</span>
-										</div>
-									</div>
-								</div>
-							{/if}
-							<!-- Recently Used Section - COMMENTED OUT: Hidden for now, can be restored if needed -->
-							{#if false && (!hideEmptyColumns || recentlyUsedTemplates.length > 0)}
-								<div class="flex-shrink-0 w-80">
-									<div class="bg-black/50 backdrop-blur-sm p-3 rounded-lg border border-purple-500/30">
-										<div class="flex items-center gap-2">
-											<svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-											</svg>
-											<h3 class="font-semibold text-white">Recently Used</h3>
-											<span class="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-xs">
-												{recentlyUsedTemplates.length}
 											</span>
 										</div>
 									</div>
@@ -1353,6 +1725,36 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 									</div>
 								</div>
 							{/if}
+							{#if !hideEmptyColumns || recentlyUsedTemplates.length > 0}
+								<div class="flex-shrink-0 w-80">
+									<div class="bg-black/50 backdrop-blur-sm p-3 rounded-lg border border-purple-500/30">
+										<div class="flex items-center gap-2">
+											<svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+											</svg>
+											<h3 class="font-semibold text-white">Recently Used</h3>
+											<span class="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-xs">
+												{recentlyUsedTemplates.length}
+											</span>
+										</div>
+									</div>
+								</div>
+							{/if}
+							{#if !hideEmptyColumns || allOtherTemplates.length > 0}
+								<div class="flex-shrink-0 w-80">
+									<div class="bg-black/50 backdrop-blur-sm p-3 rounded-lg border border-white/10">
+										<div class="flex items-center gap-2">
+											<svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+											</svg>
+											<h3 class="font-semibold text-white">All Others</h3>
+											<span class="px-2 py-0.5 rounded-full bg-white/10 text-gray-300 text-xs">
+												{allOtherTemplates.length}
+											</span>
+										</div>
+									</div>
+								</div>
+							{/if}
 						</div>
 						
 						<!-- Scrollable Cards Container -->
@@ -1368,100 +1770,6 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 								updateScrollbar();
 							}}
 						>
-							<!-- All Templates Column (must match header order) -->
-							{#if !hideEmptyColumns || allOtherTemplates.length > 0}
-								<div class="flex-shrink-0 w-80" style="overflow: visible; height: 100%; display: flex; flex-direction: column; max-height: 100%;">
-								<div class="space-y-5 overflow-y-auto flex-1 scrollbar-thin" style="padding: 8px; min-height: 0; max-height: 100%;">
-									{#if allOtherTemplates.length > 0}
-										{#each allOtherTemplates as template (template.id)}
-											{@const tilt = cardTilts.get(template.id) || { rotateX: 0, rotateY: 0 }}
-											<div 
-												class="template-card relative group"
-												onmousemove={(e) => handleCardMouseMove(e, template.id)}
-												onmouseleave={() => handleCardMouseLeave(template.id)}
-												style="transform: perspective(1000px) rotateX({tilt.rotateX}deg) rotateY({tilt.rotateY}deg); transform-style: preserve-3d; transition: transform 0.1s ease-out;"
-											>
-										<!-- Main clickable area for selecting template -->
-										<div
-											class="cursor-pointer pr-12 flex flex-col h-full"
-											onclick={() => handleTemplateSelect(template)}
-											role="button"
-											tabindex="0"
-											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
-										>
-											<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-											{#if template.description}
-												<p class="text-sm text-gray-400 mb-3 flex-grow">{template.description}</p>
-											{:else}
-												<div class="flex-grow"></div>
-											{/if}
-											<!-- Tags and vars at bottom -->
-											<div class="flex items-center justify-between mt-auto pt-4 border-t border-white/10">
-												{#if template.tags && template.tags.length > 0}
-													<div class="flex flex-wrap gap-1">
-														{#each template.tags.slice(0, 3) as tag}
-															<span 
-																class="text-xs px-2 py-1 rounded border font-medium"
-																style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
-															>
-																{tag}
-															</span>
-														{/each}
-														{#if template.tags.length > 3}
-															<span class="text-xs px-2 py-1 text-gray-400">
-																+{template.tags.length - 3}
-															</span>
-														{/if}
-													</div>
-												{:else}
-													<div></div>
-												{/if}
-												<div class="flex items-center gap-2 text-xs text-gray-500">
-													<span>{template.variables?.length || 0} vars</span>
-												</div>
-											</div>
-										</div>
-										<!-- Pin button - styled as floating action button -->
-										<div class="absolute top-3 right-3">
-											<button
-												type="button"
-												onclick={(e) => handleTogglePin(template, e)}
-												disabled={pinningTemplates.has(template.id)}
-												class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
-													template.is_pinned === true 
-														? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
-														: 'bg-white/10 hover:bg-white/20 border border-white/20'
-												}"
-												title={template.is_pinned === true ? 'Unpin' : 'Pin'}
-											>
-												{#if pinningTemplates.has(template.id)}
-													<!-- Subtle pulsing indicator -->
-													<div class="absolute inset-0 rounded-full {
-														template.is_pinned === true ? 'bg-yellow-400/20' : 'bg-white/20'
-													} animate-pulse"></div>
-												{/if}
-												<svg class="w-4 h-4 relative z-10 {
-													template.is_pinned === true ? 'text-yellow-400' : 'text-gray-400'
-												}" fill={template.is_pinned === true ? 'currentColor' : 'none'} stroke={template.is_pinned === true ? 'none' : 'currentColor'} viewBox="0 0 24 24">
-													{#if template.is_pinned === true}
-														<path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
-													{:else}
-														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-													{/if}
-												</svg>
-											</button>
-										</div>
-									</div>
-											{/each}
-									{:else}
-										<div class="text-center py-8 text-gray-500 text-sm">
-											No pinned templates
-										</div>
-									{/if}
-								</div>
-							</div>
-							{/if}
-						
 						<!-- Pinned Column (must match header order) -->
 						{#if !hideEmptyColumns || pinnedTemplates.length > 0}
 							<div class="flex-shrink-0 w-80" style="overflow: visible; height: 100%; display: flex; flex-direction: column; max-height: 100%;">
@@ -1489,47 +1797,39 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											{:else}
 												<div class="flex-grow"></div>
 											{/if}
-											<!-- Tags and vars at bottom -->
-											<div class="flex items-center justify-between mt-auto pt-4 border-t border-white/10">
-												{#if template.tags && template.tags.length > 0}
-													<div class="flex flex-wrap gap-1">
-														{#each template.tags.slice(0, 3) as tag}
-															<span 
-																class="text-xs px-2 py-1 rounded border font-medium"
-																style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
-															>
-																{tag}
-															</span>
-														{/each}
-														{#if template.tags.length > 3}
-															<span class="text-xs px-2 py-1 text-gray-400">
-																+{template.tags.length - 3}
-															</span>
-														{/if}
-													</div>
-												{:else}
-													<div></div>
-												{/if}
-												<div class="flex items-center gap-2 text-xs text-gray-500">
-													<span>{template.variables?.length || 0} vars</span>
+											<!-- Tags at bottom -->
+											{#if template.tags && template.tags.length > 0}
+												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
+													{#each template.tags.slice(0, 3) as tag}
+														<span 
+															class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
+															style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
+														>
+															{tag}
+														</span>
+													{/each}
+													{#if template.tags.length > 3}
+														<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
+															+{template.tags.length - 3}
+														</span>
+													{/if}
 												</div>
-											</div>
+											{/if}
 										</div>
-										<!-- Pin button - styled as floating action button -->
-										<div class="absolute top-3 right-3">
-											<button
-												type="button"
-												onclick={(e) => handleTogglePin(template, e)}
-												disabled={pinningTemplates.has(template.id)}
-												class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
-													template.is_pinned === true 
-														? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
-														: 'bg-white/10 hover:bg-white/20 border border-white/20'
-												}"
-												title={template.is_pinned === true ? 'Unpin' : 'Pin'}
-											>
+									<!-- Action buttons - Pin, Edit, Delete (shown on hover) -->
+									<div class="absolute top-3 right-3 flex flex-col gap-1.5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none group-hover:pointer-events-auto z-10">
+										<button
+											type="button"
+											onclick={(e) => handleTogglePin(template, e)}
+											disabled={pinningTemplates.has(template.id)}
+											class="px-2.5 py-2 rounded-full transition-all hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
+												template.is_pinned === true 
+													? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
+													: 'bg-white/10 hover:bg-white/20 border border-white/20'
+											}"
+											title={template.is_pinned === true ? 'Unpin' : 'Pin'}
+										>
 												{#if pinningTemplates.has(template.id)}
-													<!-- Subtle pulsing indicator -->
 													<div class="absolute inset-0 rounded-full {
 														template.is_pinned === true ? 'bg-yellow-400/20' : 'bg-white/20'
 													} animate-pulse"></div>
@@ -1542,6 +1842,26 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 													{:else}
 														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
 													{/if}
+												</svg>
+											</button>
+										<button
+											type="button"
+											onclick={(e) => { e.stopPropagation(); handleEditTemplate(template); }}
+											class="px-2.5 py-2 rounded-full bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 transition-all hover:scale-110"
+											title="Edit template"
+										>
+												<svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+												</svg>
+											</button>
+										<button
+											type="button"
+											onclick={(e) => handleDeleteTemplate(template, e)}
+											class="px-2.5 py-2 rounded-full bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 transition-all hover:scale-110"
+											title="Delete template"
+										>
+												<svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
 												</svg>
 											</button>
 										</div>
@@ -1555,100 +1875,6 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 								</div>
 							</div>
 							{/if}
-						
-						<!-- Recently Used Column - COMMENTED OUT: Hidden for now, can be restored if needed -->
-						{#if false && (!hideEmptyColumns || recentlyUsedTemplates.length > 0)}
-							<div class="flex-shrink-0 w-80" style="overflow: visible; height: 100%; display: flex; flex-direction: column; max-height: 100%;">
-								<div class="space-y-5 overflow-y-auto flex-1 scrollbar-thin" style="padding: 8px; min-height: 0; max-height: 100%;">
-									{#if recentlyUsedTemplates.length > 0}
-										{#each recentlyUsedTemplates as template (template.id)}
-											{@const tilt = cardTilts.get(template.id) || { rotateX: 0, rotateY: 0 }}
-											<div 
-												class="template-card relative group"
-												onmousemove={(e) => handleCardMouseMove(e, template.id)}
-												onmouseleave={() => handleCardMouseLeave(template.id)}
-												style="transform: perspective(1000px) rotateX({tilt.rotateX}deg) rotateY({tilt.rotateY}deg); transform-style: preserve-3d; transition: transform 0.1s ease-out;"
-											>
-										<!-- Main clickable area for selecting template -->
-										<div
-											class="cursor-pointer pr-12 flex flex-col h-full"
-											onclick={() => handleTemplateSelect(template)}
-											role="button"
-											tabindex="0"
-											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
-										>
-											<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-											{#if template.description}
-												<p class="text-sm text-gray-400 mb-3 flex-grow">{template.description}</p>
-											{:else}
-												<div class="flex-grow"></div>
-											{/if}
-											<!-- Tags and vars at bottom -->
-											<div class="flex items-center justify-between mt-auto pt-4 border-t border-white/10">
-												{#if template.tags && template.tags.length > 0}
-													<div class="flex flex-wrap gap-1">
-														{#each template.tags.slice(0, 3) as tag}
-															<span 
-																class="text-xs px-2 py-1 rounded border font-medium"
-																style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
-															>
-																{tag}
-							</span>
-														{/each}
-														{#if template.tags.length > 3}
-															<span class="text-xs px-2 py-1 text-gray-400">
-																+{template.tags.length - 3}
-															</span>
-														{/if}
-													</div>
-												{:else}
-													<div></div>
-												{/if}
-												<div class="flex items-center gap-2 text-xs text-gray-500">
-													<span>{template.variables?.length || 0} vars</span>
-												</div>
-											</div>
-										</div>
-										<!-- Pin button - styled as floating action button -->
-										<div class="absolute top-3 right-3">
-											<button
-												type="button"
-												onclick={(e) => handleTogglePin(template, e)}
-												disabled={pinningTemplates.has(template.id)}
-												class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
-													template.is_pinned === true 
-														? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
-														: 'bg-white/10 hover:bg-white/20 border border-white/20'
-												}"
-												title={template.is_pinned === true ? 'Unpin' : 'Pin'}
-											>
-												{#if pinningTemplates.has(template.id)}
-													<!-- Subtle pulsing indicator -->
-													<div class="absolute inset-0 rounded-full {
-														template.is_pinned === true ? 'bg-yellow-400/20' : 'bg-white/20'
-													} animate-pulse"></div>
-												{/if}
-												<svg class="w-4 h-4 relative z-10 {
-													template.is_pinned === true ? 'text-yellow-400' : 'text-gray-400'
-												}" fill={template.is_pinned === true ? 'currentColor' : 'none'} stroke={template.is_pinned === true ? 'none' : 'currentColor'} viewBox="0 0 24 24">
-													{#if template.is_pinned === true}
-														<path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
-													{:else}
-														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-													{/if}
-												</svg>
-											</button>
-										</div>
-					</div>
-				{/each}
-									{:else}
-										<div class="text-center py-8 text-gray-500 text-sm">
-											No recently used templates
-			</div>
-		{/if}
-								</div>
-							</div>
-						{/if}
 						
 						<!-- Most Used Column (must match header order) -->
 						{#if !hideEmptyColumns || mostUsedTemplates.length > 0}
@@ -1677,47 +1903,39 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											{:else}
 												<div class="flex-grow"></div>
 											{/if}
-											<!-- Tags and vars at bottom -->
-											<div class="flex items-center justify-between mt-auto pt-4 border-t border-white/10">
-												{#if template.tags && template.tags.length > 0}
-													<div class="flex flex-wrap gap-1">
-														{#each template.tags.slice(0, 3) as tag}
-															<span 
-																class="text-xs px-2 py-1 rounded border font-medium"
-																style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
-															>
-																{tag}
-															</span>
-														{/each}
-														{#if template.tags.length > 3}
-															<span class="text-xs px-2 py-1 text-gray-400">
-																+{template.tags.length - 3}
-															</span>
-														{/if}
-													</div>
-												{:else}
-													<div></div>
-												{/if}
-												<div class="flex items-center gap-2 text-xs text-gray-500">
-													<span>{template.variables?.length || 0} vars</span>
+											<!-- Tags at bottom -->
+											{#if template.tags && template.tags.length > 0}
+												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
+													{#each template.tags.slice(0, 3) as tag}
+														<span 
+															class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
+															style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
+														>
+															{tag}
+														</span>
+													{/each}
+													{#if template.tags.length > 3}
+														<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
+															+{template.tags.length - 3}
+														</span>
+													{/if}
 												</div>
-											</div>
+											{/if}
 										</div>
-										<!-- Pin button - styled as floating action button -->
-										<div class="absolute top-3 right-3">
-											<button
-												type="button"
-												onclick={(e) => handleTogglePin(template, e)}
-												disabled={pinningTemplates.has(template.id)}
-												class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
-													template.is_pinned === true 
-														? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
-														: 'bg-white/10 hover:bg-white/20 border border-white/20'
-												}"
-												title={template.is_pinned === true ? 'Unpin' : 'Pin'}
-											>
+									<!-- Action buttons - Pin, Edit, Delete (shown on hover) -->
+									<div class="absolute top-3 right-3 flex flex-col gap-1.5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none group-hover:pointer-events-auto z-10">
+										<button
+											type="button"
+											onclick={(e) => handleTogglePin(template, e)}
+											disabled={pinningTemplates.has(template.id)}
+											class="px-2.5 py-2 rounded-full transition-all hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
+												template.is_pinned === true 
+													? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
+													: 'bg-white/10 hover:bg-white/20 border border-white/20'
+											}"
+											title={template.is_pinned === true ? 'Unpin' : 'Pin'}
+										>
 												{#if pinningTemplates.has(template.id)}
-													<!-- Subtle pulsing indicator -->
 													<div class="absolute inset-0 rounded-full {
 														template.is_pinned === true ? 'bg-yellow-400/20' : 'bg-white/20'
 													} animate-pulse"></div>
@@ -1732,16 +1950,248 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 													{/if}
 												</svg>
 											</button>
+										<button
+											type="button"
+											onclick={(e) => { e.stopPropagation(); handleEditTemplate(template); }}
+											class="px-2.5 py-2 rounded-full bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 transition-all hover:scale-110"
+											title="Edit template"
+										>
+												<svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+												</svg>
+											</button>
+										<button
+											type="button"
+											onclick={(e) => handleDeleteTemplate(template, e)}
+											class="px-2.5 py-2 rounded-full bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 transition-all hover:scale-110"
+											title="Delete template"
+										>
+												<svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+												</svg>
+											</button>
 										</div>
+					</div>
+				{/each}
+									{:else}
+										<div class="text-center py-8 text-gray-500 text-sm">
+											No most used templates
 										</div>
-									{/each}
-								{:else}
-									<div class="text-center py-8 text-gray-500 text-sm">
-										No frequently used templates
-									</div>
-								{/if}
+									{/if}
+								</div>
 							</div>
-						</div>
+						{/if}
+						
+						<!-- Recently Used Column (must match header order) -->
+						{#if !hideEmptyColumns || recentlyUsedTemplates.length > 0}
+							<div class="flex-shrink-0 w-80" style="overflow: visible; height: 100%; display: flex; flex-direction: column; max-height: 100%;">
+							<div class="space-y-3 overflow-y-auto flex-1 scrollbar-thin" style="padding: 8px; min-height: 0; max-height: 100%;">
+									{#if recentlyUsedTemplates.length > 0}
+										{#each recentlyUsedTemplates as template (template.id)}
+											{@const tilt = cardTilts.get(template.id) || { rotateX: 0, rotateY: 0 }}
+											<div 
+												class="template-card relative group"
+												onmousemove={(e) => handleCardMouseMove(e, template.id)}
+												onmouseleave={() => handleCardMouseLeave(template.id)}
+												style="transform: perspective(1000px) rotateX({tilt.rotateX}deg) rotateY({tilt.rotateY}deg); transform-style: preserve-3d; transition: transform 0.1s ease-out;"
+											>
+										<!-- Main clickable area for selecting template -->
+										<div
+											class="cursor-pointer pr-12 flex flex-col h-full"
+											onclick={() => handleTemplateSelect(template)}
+											role="button"
+											tabindex="0"
+											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
+										>
+											<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
+											{#if template.description}
+												<p class="text-sm text-gray-400 mb-3 flex-grow">{template.description}</p>
+											{:else}
+												<div class="flex-grow"></div>
+											{/if}
+											<!-- Tags at bottom -->
+											{#if template.tags && template.tags.length > 0}
+												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
+													{#each template.tags.slice(0, 3) as tag}
+														<span 
+															class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
+															style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
+														>
+															{tag}
+														</span>
+													{/each}
+													{#if template.tags.length > 3}
+														<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
+															+{template.tags.length - 3}
+														</span>
+													{/if}
+												</div>
+											{/if}
+										</div>
+									<!-- Action buttons - Pin, Edit, Delete (shown on hover) -->
+									<div class="absolute top-3 right-3 flex flex-col gap-1.5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none group-hover:pointer-events-auto z-10">
+										<button
+											type="button"
+											onclick={(e) => handleTogglePin(template, e)}
+											disabled={pinningTemplates.has(template.id)}
+											class="px-2.5 py-2 rounded-full transition-all hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
+												template.is_pinned === true 
+													? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
+													: 'bg-white/10 hover:bg-white/20 border border-white/20'
+											}"
+											title={template.is_pinned === true ? 'Unpin' : 'Pin'}
+										>
+												{#if pinningTemplates.has(template.id)}
+													<div class="absolute inset-0 rounded-full {
+														template.is_pinned === true ? 'bg-yellow-400/20' : 'bg-white/20'
+													} animate-pulse"></div>
+												{/if}
+												<svg class="w-4 h-4 relative z-10 {
+													template.is_pinned === true ? 'text-yellow-400' : 'text-gray-400'
+												}" fill={template.is_pinned === true ? 'currentColor' : 'none'} stroke={template.is_pinned === true ? 'none' : 'currentColor'} viewBox="0 0 24 24">
+													{#if template.is_pinned === true}
+														<path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+													{:else}
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+													{/if}
+												</svg>
+											</button>
+										<button
+											type="button"
+											onclick={(e) => { e.stopPropagation(); handleEditTemplate(template); }}
+											class="px-2.5 py-2 rounded-full bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 transition-all hover:scale-110"
+											title="Edit template"
+										>
+												<svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+												</svg>
+											</button>
+										<button
+											type="button"
+											onclick={(e) => handleDeleteTemplate(template, e)}
+											class="px-2.5 py-2 rounded-full bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 transition-all hover:scale-110"
+											title="Delete template"
+										>
+												<svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+												</svg>
+											</button>
+										</div>
+					</div>
+				{/each}
+									{:else}
+										<div class="text-center py-8 text-gray-500 text-sm">
+											No recently used templates
+			</div>
+		{/if}
+								</div>
+							</div>
+						{/if}
+						
+						<!-- All Others Column (must match header order) -->
+						{#if !hideEmptyColumns || allOtherTemplates.length > 0}
+							<div class="flex-shrink-0 w-80" style="overflow: visible; height: 100%; display: flex; flex-direction: column; max-height: 100%;">
+							<div class="space-y-3 overflow-y-auto flex-1 scrollbar-thin" style="padding: 8px; min-height: 0; max-height: 100%;">
+								{#if allOtherTemplates.length > 0}
+									{#each allOtherTemplates as template (template.id)}
+										{@const tilt = cardTilts.get(template.id) || { rotateX: 0, rotateY: 0 }}
+										<div 
+											class="template-card relative group"
+											onmousemove={(e) => handleCardMouseMove(e, template.id)}
+											onmouseleave={() => handleCardMouseLeave(template.id)}
+											style="transform: perspective(1000px) rotateX({tilt.rotateX}deg) rotateY({tilt.rotateY}deg); transform-style: preserve-3d; transition: transform 0.1s ease-out;"
+										>
+										<!-- Main clickable area for selecting template -->
+										<div
+											class="cursor-pointer pr-12 flex flex-col h-full"
+											onclick={() => handleTemplateSelect(template)}
+											role="button"
+											tabindex="0"
+											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
+										>
+											<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
+											{#if template.description}
+												<p class="text-sm text-gray-400 mb-3 flex-grow">{template.description}</p>
+											{:else}
+												<div class="flex-grow"></div>
+											{/if}
+											<!-- Tags at bottom -->
+											{#if template.tags && template.tags.length > 0}
+												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
+													{#each template.tags.slice(0, 3) as tag}
+														<span 
+															class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
+															style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
+														>
+															{tag}
+														</span>
+													{/each}
+													{#if template.tags.length > 3}
+														<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
+															+{template.tags.length - 3}
+														</span>
+													{/if}
+												</div>
+											{/if}
+										</div>
+									<!-- Action buttons - Pin, Edit, Delete (shown on hover) -->
+									<div class="absolute top-3 right-3 flex flex-col gap-1.5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none group-hover:pointer-events-auto z-10">
+										<button
+											type="button"
+											onclick={(e) => handleTogglePin(template, e)}
+											disabled={pinningTemplates.has(template.id)}
+											class="px-2.5 py-2 rounded-full transition-all hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
+												template.is_pinned === true 
+													? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
+													: 'bg-white/10 hover:bg-white/20 border border-white/20'
+											}"
+											title={template.is_pinned === true ? 'Unpin' : 'Pin'}
+										>
+												{#if pinningTemplates.has(template.id)}
+													<div class="absolute inset-0 rounded-full {
+														template.is_pinned === true ? 'bg-yellow-400/20' : 'bg-white/20'
+													} animate-pulse"></div>
+												{/if}
+												<svg class="w-4 h-4 relative z-10 {
+													template.is_pinned === true ? 'text-yellow-400' : 'text-gray-400'
+												}" fill={template.is_pinned === true ? 'currentColor' : 'none'} stroke={template.is_pinned === true ? 'none' : 'currentColor'} viewBox="0 0 24 24">
+													{#if template.is_pinned === true}
+														<path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+													{:else}
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+													{/if}
+												</svg>
+											</button>
+										<button
+											type="button"
+											onclick={(e) => { e.stopPropagation(); handleEditTemplate(template); }}
+											class="px-2.5 py-2 rounded-full bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 transition-all hover:scale-110"
+											title="Edit template"
+										>
+												<svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+												</svg>
+											</button>
+										<button
+											type="button"
+											onclick={(e) => handleDeleteTemplate(template, e)}
+											class="px-2.5 py-2 rounded-full bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 transition-all hover:scale-110"
+											title="Delete template"
+										>
+												<svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+												</svg>
+											</button>
+										</div>
+									</div>
+											{/each}
+									{:else}
+										<div class="text-center py-8 text-gray-500 text-sm">
+											No other templates
+										</div>
+									{/if}
+								</div>
+							</div>
 						{/if}
 						</div>
 				{:else}
@@ -1869,45 +2319,38 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 												{:else}
 													<div class="flex-grow"></div>
 												{/if}
-												<!-- Tags and vars at bottom -->
-												<div class="flex items-center justify-between mt-auto pt-4 border-t border-white/10">
-													{#if template.tags && template.tags.length > 0}
-														<div class="flex flex-wrap gap-1">
-															{#each template.tags.slice(0, 3) as tag}
-																<span 
-																	class="text-xs px-2 py-1 rounded border font-medium"
-																	style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
-																>
-																	{tag}
-																</span>
-															{/each}
-															{#if template.tags.length > 3}
-																<span class="text-xs px-2 py-1 text-gray-400">
-																	+{template.tags.length - 3}
-																</span>
-															{/if}
-														</div>
-													{:else}
-														<div></div>
+											<!-- Tags at bottom -->
+											{#if template.tags && template.tags.length > 0}
+												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
+													{#each template.tags.slice(0, 3) as tag}
+														<span 
+															class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
+															style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
+														>
+															{tag}
+														</span>
+													{/each}
+													{#if template.tags.length > 3}
+														<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
+															+{template.tags.length - 3}
+														</span>
 													{/if}
-													<div class="flex items-center gap-2 text-xs text-gray-500">
-														<span>{template.variables?.length || 0} vars</span>
-													</div>
 												</div>
+											{/if}
 											</div>
-											<!-- Pin button - styled as floating action button -->
-											<div class="absolute top-3 right-3">
-												<button
-													type="button"
-													onclick={(e) => handleTogglePin(template, e)}
-													disabled={pinningTemplates.has(template.id)}
-													class="px-2.5 py-2 rounded-full transition-all opacity-60 hover:opacity-100 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
-														template.is_pinned === true 
-															? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
-															: 'bg-white/10 hover:bg-white/20 border border-white/20'
-													}"
-													title={template.is_pinned === true ? 'Unpin' : 'Pin'}
-												>
+										<!-- Pin button - styled as floating action button (shown on hover) -->
+										<div class="absolute top-3 right-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none group-hover:pointer-events-auto z-10">
+											<button
+												type="button"
+												onclick={(e) => handleTogglePin(template, e)}
+												disabled={pinningTemplates.has(template.id)}
+												class="px-2.5 py-2 rounded-full transition-all hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative {
+													template.is_pinned === true 
+														? 'bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40' 
+														: 'bg-white/10 hover:bg-white/20 border border-white/20'
+												}"
+												title={template.is_pinned === true ? 'Unpin' : 'Pin'}
+											>
 													{#if pinningTemplates.has(template.id)}
 														<!-- Subtle pulsing indicator -->
 														<div class="absolute inset-0 rounded-full {
@@ -1950,7 +2393,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 		</button>
 
 		<TemplateForm
-			{selectedTemplate}
+			selectedTemplate={currentSelectedTemplate}
 			bind:selectedModel={templatedModel}
 			bind:variableValues
 			bind:response
@@ -1964,13 +2407,13 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			enhancementGuidelinesCount={enhancementGuidelinesCount}
 			enhancementLoading={enhancementLoading}
 			enhancementError={enhancementError}
-			on:editTemplate={(e) => dispatch('editTemplate', e.detail)}
+			on:editTemplate={(e) => handleEditTemplate(e.detail.template)}
 			on:resetForm={handleFormReset}
 			on:reportGenerated={(e) => {
 				// CRITICAL: Preserve variableValues IMMEDIATELY when report is generated
 				// This must happen before any re-renders or state updates that might clear them
-				if (selectedTemplate && selectedTemplate.id && variableValues && Object.keys(variableValues).length > 0) {
-					const templateId = selectedTemplate.id;
+				if (currentSelectedTemplate && currentSelectedTemplate.id && variableValues && Object.keys(variableValues).length > 0) {
+					const templateId = currentSelectedTemplate.id;
 					const hasRealValues = Object.values(variableValues).some(v => v && v.trim().length > 0);
 					if (hasRealValues) {
 						variableValuesByTemplate[templateId] = { ...variableValues };
@@ -1981,9 +2424,69 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 				dispatch('reportGenerated', { reportId: e.detail.reportId });
 			}}
 			on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
+			on:showHoverPopup={(e) => dispatch('showHoverPopup', e.detail)}
+			on:hideHoverPopup={() => dispatch('hideHoverPopup')}
 			on:historyUpdate={(event) => dispatch('historyUpdate', event.detail)}
 			on:historyRestored={(event) => dispatch('historyRestored', event.detail)}
 			on:reportCleared={() => dispatch('reportCleared')}
 		/>
+	{/if}
+	
+	<!-- Color Picker Modal -->
+	{#if showColorPicker && colorPickerTag}
+		<div 
+			class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-3 z-50"
+			onclick={closeColorPicker}
+			role="dialog"
+			aria-modal="true"
+		>
+			<div 
+				class="card-dark p-6 max-w-sm w-full"
+				onclick={(e) => e.stopPropagation()}
+			>
+				<h3 class="text-lg font-semibold text-white mb-4">Change Tag Color</h3>
+				<div class="space-y-4">
+					<div>
+						<label for="tag-color-picker" class="block text-sm font-medium text-gray-300 mb-2">
+							Color for "{colorPickerTag}"
+						</label>
+						<input
+							id="tag-color-picker"
+							type="color"
+							bind:value={colorPickerValue}
+							oninput={(e) => {
+								colorPickerValue = e.target.value;
+							}}
+							class="w-full h-12 rounded cursor-pointer"
+						/>
+						<div class="mt-3 flex items-center gap-3">
+							<span class="text-xs text-gray-400">Preview:</span>
+							<span 
+								class="px-3 py-1 rounded-full border text-xs font-medium"
+								style="background-color: {colorPickerValue}; color: white; border-color: {colorPickerValue}80;"
+							>
+								{colorPickerTag}
+							</span>
+						</div>
+					</div>
+					<div class="flex gap-3">
+						<button
+							type="button"
+							onclick={saveTagColor}
+							class="btn-primary flex-1"
+						>
+							Save Color
+						</button>
+						<button
+							type="button"
+							onclick={closeColorPicker}
+							class="btn-secondary flex-1"
+						>
+							Cancel
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
 	{/if}
 </div>

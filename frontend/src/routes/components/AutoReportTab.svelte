@@ -132,6 +132,20 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 		}
 	}
 
+	function handleFormKeyDown(e) {
+		
+		// Allow Enter to create new lines in textareas - don't interfere at all
+		if (e.key === 'Enter' && e.target.tagName === 'TEXTAREA') {
+			// Stop the event from bubbling to prevent form submission, but let textarea handle it
+			e.stopPropagation();
+			return;
+		}
+		// For other elements, prevent form submission on Enter
+		if (e.key === 'Enter' && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'TEXTAREA') {
+			e.preventDefault();
+		}
+	}
+
 	function toggleForm() {
 		formExpanded = !formExpanded;
 	}
@@ -294,7 +308,7 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 		<!-- Collapsible Content -->
 		<div class={formExpanded ? '' : 'hidden'}>
 			<div class="p-4 pt-0">
-				<form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} class="space-y-4">
+				<form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} onkeydown={handleFormKeyDown} class="space-y-4">
 					<!-- Use Case Selector -->
 					<div>
 						<label for="usecase-select" class="block text-sm font-medium text-gray-300 mb-2">
@@ -336,6 +350,11 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 											disabled={loading}
 											class="input-dark flex-1 resize-none"
 											rows="4"
+											onkeydown={(e) => {
+												
+												if (e.key === 'Enter') {
+												}
+											}}
 										></textarea>
 										<div class="relative group">
 											<DictationButton 
@@ -370,7 +389,7 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 						disabled={loading || !selectedUseCase || (promptVariables.length > 0 && promptVariables.some(v => !variableValues[v] || !variableValues[v].trim())) || !hasModelKey}
 						class="w-full btn-primary px-6 py-3"
 					>
-						{loading ? 'Sending...' : 'Send'}
+						{loading ? 'Generating...' : 'Generate Report'}
 					</button>
 				</form>
 			</div>
@@ -396,6 +415,8 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 			on:restore={(event) => handleHistoryRestore(event.detail)}
 			on:historyUpdate={(event) => dispatch('historyUpdate', event.detail)}
 			on:save={handleReportSave}
+			on:showHoverPopup={(e) => dispatch('showHoverPopup', e.detail)}
+			on:hideHoverPopup={() => dispatch('hideHoverPopup')}
 		/>
 </div>
 

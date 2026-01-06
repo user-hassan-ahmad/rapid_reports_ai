@@ -13,6 +13,7 @@ from .models import (
     Report,
     TemplateVersion,
     ReportVersion,
+    WritingStylePreset,
 )
 
 
@@ -114,25 +115,21 @@ def mark_token_used(db: Session, token: str) -> None:
 def create_template(
     db: Session,
     name: str,
-    template_content: str,
     user_id: str,
+    template_config: Optional[dict] = None,
     description: Optional[str] = None,
     tags: Optional[list] = None,
-    master_prompt_instructions: Optional[str] = None,
-    model_compatibility: Optional[list] = None,
-    variables: Optional[list] = None,
+    is_pinned: Optional[bool] = False,
 ) -> Template:
     """Create a new template for a user"""
     template = Template(
         name=name,
         description=description,
         tags=tags or [],
-        template_content=template_content,
-        variables=variables or [],
-        master_prompt_instructions=master_prompt_instructions,
-        model_compatibility=model_compatibility or ["claude", "gemini"],
+        template_config=template_config or {},
         user_id=uuid.UUID(user_id) if isinstance(user_id, str) else user_id,
         is_active=True,
+        is_pinned=is_pinned or False,
     )
     db.add(template)
     db.commit()
@@ -357,11 +354,7 @@ def update_template(
     name: Optional[str] = None,
     description: Optional[str] = None,
     tags: Optional[list] = None,
-    template_content: Optional[str] = None,
-    variables: Optional[list] = None,
-    variable_config: Optional[dict] = None,
-    master_prompt_instructions: Optional[str] = None,
-    model_compatibility: Optional[list] = None,
+    template_config: Optional[dict] = None,
     is_active: Optional[bool] = None,
     user_id: Optional[str] = None,
 ) -> Optional[Template]:
@@ -371,18 +364,14 @@ def update_template(
     if not template:
         return None
     
-    # Check if this is a meaningful update (at least one field is actually changing)
-    # Only create version if template actually exists and has content (not a brand new template)
+    # Check if this is a meaningful update
     should_create_version = False
-    if template.template_content or template.name:
+    if template.template_config or template.name:
         has_changes = (
             (name is not None and name != template.name) or
             (description is not None and description != template.description) or
             (tags is not None and tags != (template.tags or [])) or
-            (template_content is not None and template_content != template.template_content) or
-            (variables is not None and variables != (template.variables or [])) or
-            (master_prompt_instructions is not None and master_prompt_instructions != template.master_prompt_instructions) or
-            (model_compatibility is not None and model_compatibility != (template.model_compatibility or []))
+            (template_config is not None and template_config != (template.template_config or {}))
         )
         should_create_version = has_changes
     
@@ -393,16 +382,8 @@ def update_template(
         template.description = description
     if tags is not None:
         template.tags = tags
-    if template_content is not None:
-        template.template_content = template_content
-    if variables is not None:
-        template.variables = variables
-    if variable_config is not None:
-        template.variable_config = variable_config
-    if master_prompt_instructions is not None:
-        template.master_prompt_instructions = master_prompt_instructions
-    if model_compatibility is not None:
-        template.model_compatibility = model_compatibility
+    if template_config is not None:
+        template.template_config = template_config
     if is_active is not None:
         template.is_active = is_active
     
@@ -443,10 +424,7 @@ def _template_equals_version(template: Template, version: TemplateVersion) -> bo
         template.name == version.name and
         template.description == version.description and
         template.tags == version.tags and
-        template.template_content == version.template_content and
-        template.variables == version.variables and
-        template.master_prompt_instructions == version.master_prompt_instructions and
-        template.model_compatibility == version.model_compatibility
+        template.template_config == version.template_config
     )
 
 
@@ -475,10 +453,7 @@ def create_template_version(db: Session, template: Template, skip_if_unchanged: 
             name=template.name,
             description=template.description,
             tags=template.tags,
-            template_content=template.template_content,
-            variables=template.variables,
-            master_prompt_instructions=template.master_prompt_instructions,
-            model_compatibility=template.model_compatibility,
+            template_config=template.template_config,
             version_number=next_version,
         )
         
@@ -684,10 +659,7 @@ def restore_template_version(
     template.name = version.name
     template.description = version.description
     template.tags = version.tags
-    template.template_content = version.template_content
-    template.variables = version.variables
-    template.master_prompt_instructions = version.master_prompt_instructions
-    template.model_compatibility = version.model_compatibility
+    template.template_config = version.template_config
     
     db.commit()
     db.refresh(template)
@@ -1034,4 +1006,103 @@ def get_validation_status(
         return None
     
     return report.validation_status
+
+
+# ============ Writing Style Preset CRUD ============
+
+def create_writing_style_preset(
+    db: Session,
+    user_id: uuid.UUID,
+    name: str,
+    settings: dict,
+    section_type: str = 'findings',
+    icon: str = '⭐',
+    description: Optional[str] = None
+) -> WritingStylePreset:
+    """Create a new writing style preset"""
+    preset = WritingStylePreset(
+        user_id=user_id,
+        name=name,
+        settings=settings,
+        section_type=section_type,
+        icon=icon,
+        description=description
+    )
+    db.add(preset)
+    db.commit()
+    db.refresh(preset)
+    return preset
+
+
+def get_user_writing_style_presets(
+    db: Session,
+    user_id: uuid.UUID,
+    section_type: Optional[str] = None
+) -> List[WritingStylePreset]:
+    """Get all writing style presets for a user, optionally filtered by section type"""
+    query = db.query(WritingStylePreset).filter(WritingStylePreset.user_id == user_id)
+    if section_type:
+        query = query.filter(WritingStylePreset.section_type == section_type)
+    return query.order_by(WritingStylePreset.created_at.desc()).all()
+
+
+def get_writing_style_preset(
+    db: Session,
+    preset_id: uuid.UUID,
+    user_id: uuid.UUID
+) -> Optional[WritingStylePreset]:
+    """Get a specific writing style preset by ID, ensuring it belongs to the user"""
+    return db.query(WritingStylePreset).filter(
+        WritingStylePreset.id == preset_id,
+        WritingStylePreset.user_id == user_id
+    ).first()
+
+
+def update_writing_style_preset(
+    db: Session,
+    preset_id: uuid.UUID,
+    user_id: uuid.UUID,
+    **updates
+) -> Optional[WritingStylePreset]:
+    """Update a writing style preset"""
+    preset = get_writing_style_preset(db, preset_id, user_id)
+    if not preset:
+        return None
+    
+    for key, value in updates.items():
+        if hasattr(preset, key):
+            setattr(preset, key, value)
+    
+    preset.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(preset)
+    return preset
+
+
+def delete_writing_style_preset(
+    db: Session,
+    preset_id: uuid.UUID,
+    user_id: uuid.UUID
+) -> bool:
+    """Delete a writing style preset"""
+    preset = get_writing_style_preset(db, preset_id, user_id)
+    if preset:
+        db.delete(preset)
+        db.commit()
+        return True
+    return False
+
+
+def increment_preset_usage(
+    db: Session,
+    preset_id: uuid.UUID
+) -> bool:
+    """Increment usage count and update last_used_at timestamp"""
+    preset = db.query(WritingStylePreset).filter(WritingStylePreset.id == preset_id).first()
+    if preset:
+        preset.usage_count += 1
+        preset.last_used_at = datetime.now(timezone.utc)
+        db.commit()
+        return True
+    return False
 

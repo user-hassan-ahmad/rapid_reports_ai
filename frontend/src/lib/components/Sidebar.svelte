@@ -74,17 +74,6 @@
 			</button>
 
 			<button
-				onclick={() => { handleTabChange('templates'); if (window.innerWidth < 768) isCollapsed = true; }}
-				class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 {activeTab === 'templates' ? 'bg-purple-600/20 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}"
-				title="Manage Templates"
-			>
-				<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-				</svg>
-				{#if !isCollapsed}<span class="text-sm font-medium">Manage My Templates</span>{/if}
-			</button>
-
-			<button
 				onclick={() => { handleTabChange('history'); if (window.innerWidth < 768) isCollapsed = true; }}
 				class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 {activeTab === 'history' ? 'bg-purple-600/20 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}"
 				title="History"

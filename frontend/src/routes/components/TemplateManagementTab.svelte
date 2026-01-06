@@ -4,6 +4,7 @@
 	import TemplateManager from './TemplateManager.svelte';
 	import { token } from '$lib/stores/auth';
 	import { templatesStore } from '$lib/stores/templates';
+	import { tagsStore } from '$lib/stores/tags';
 	import { settingsStore } from '$lib/stores/settings';
 	import { getTagColor, getTagColorWithOpacity } from '$lib/utils/tagColors.js';
 	import { API_URL } from '$lib/config';
@@ -33,16 +34,41 @@
 	let colorPickerTag = null;
 	let colorPickerValue = '#8b5cf6';
 	let previewTagColors = {}; // Temporary preview colors before saving
+	export let showWizard = false;
+
+	// Sync isEditorOpen with initialEditTemplate prop
+	// When initialEditTemplate is set, editor should be open
+	$: if (initialEditTemplate) {
+		isEditorOpen = true;
+	}
 
 	// Reactive statement to update preview when color picker value changes
 	$: if (showColorPicker && colorPickerTag && colorPickerValue) {
 		previewTagColors = { ...customTagColors, [colorPickerTag]: colorPickerValue };
 	}
 
+	export function openWizard() {
+		showWizard = true;
+		dispatch('wizardOpened');
+	}
+
+	export function closeWizard() {
+		showWizard = false;
+		dispatch('wizardClosed');
+	}
+
+	export async function handleWizardTemplateCreated() {
+		await templatesStore.refreshTemplates();
+		dispatch('templateCreated');
+		closeWizard();
+	}
+
 	async function handleTemplateCreated() {
 		// Small delay to ensure backend has processed the save
 		await new Promise(resolve => setTimeout(resolve, 100));
 		await templatesStore.refreshTemplates();
+		// Refresh tags after template creation (tags may have changed)
+		await tagsStore.refreshTags();
 		// Dispatch event to parent to trigger refresh in TemplatedReportTab
 		dispatch('templateCreated');
 	}
@@ -51,12 +77,35 @@
 		// Small delay to ensure backend has processed the delete
 		await new Promise(resolve => setTimeout(resolve, 100));
 		await templatesStore.refreshTemplates();
+		// Refresh tags after template deletion (tags may have changed)
+		await tagsStore.refreshTags();
 		// Dispatch event to parent to trigger refresh in TemplatedReportTab
 		dispatch('templateDeleted');
 	}
 	
+	let lastEditorStateEvent = null;
+	
 	function handleEditorStateChange(event) {
 		isEditorOpen = event.detail.open;
+		lastEditorStateEvent = Date.now();
+		// This is the source of truth for editor state from TemplateManager
+	}
+	
+	// Track previous initialEditTemplate to detect when it's cleared
+	let previousInitialEditTemplate = initialEditTemplate;
+	
+	// Reset isEditorOpen only when initialEditTemplate changes from non-null to null
+	// AND we haven't received a recent editorStateChange event
+	// This handles the case when navigating back to the tab after editor was closed
+	// We don't reset if initialEditTemplate is null from the start (like when creating new template)
+	$: {
+		const justReceivedEvent = lastEditorStateEvent && (Date.now() - lastEditorStateEvent) < 100;
+		if (previousInitialEditTemplate && !initialEditTemplate && isEditorOpen && !justReceivedEvent) {
+			// initialEditTemplate was cleared (editor closed) and no recent event
+			// Reset the state - this handles navigation back to tab after editor was closed
+			isEditorOpen = false;
+		}
+		previousInitialEditTemplate = initialEditTemplate;
 	}
 
 	function updateUniqueTags() {
@@ -243,6 +292,9 @@
 				// Reload templates to get updated tags
 				await templatesStore.refreshTemplates();
 				
+				// Refresh tags store
+				await tagsStore.refreshTags();
+				
 				renamingTag = null;
 				newTagName = '';
 			} else {
@@ -278,6 +330,8 @@
 				selectedTags = selectedTags.filter(t => t !== tag);
 				// Reload templates to get updated tags
 				await templatesStore.refreshTemplates();
+				// Refresh tags store
+				await tagsStore.refreshTags();
 			} else {
 				alert('Failed to delete tag: ' + (data.error || 'Unknown error'));
 			}
@@ -341,11 +395,21 @@
 </script>
 
 <div class="p-6">
-	<div class="flex items-center gap-3 mb-6">
-		<svg class="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-		</svg>
-		<h1 class="text-3xl font-bold text-white bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">Manage My Templates</h1>
+	<div class="flex items-center justify-between mb-6">
+		<div class="flex items-center gap-3">
+			<svg class="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+			</svg>
+			<h1 class="text-3xl font-bold text-white bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">Manage My Templates</h1>
+		</div>
+		{#if !isEditorOpen}
+			<button
+				onclick={openWizard}
+				class="btn-primary"
+			>
+				+ Create Template
+			</button>
+		{/if}
 	</div>
 	
 	<!-- Filters -->
@@ -574,6 +638,7 @@
 			templates={filteredTemplates}
 			{selectedModel} 
 			hideUseButton={true}
+			hideCreateButton={true}
 			customTagColors={customTagColors}
 			{initialEditTemplate}
 			{cameFromTab}

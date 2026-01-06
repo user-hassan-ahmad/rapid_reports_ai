@@ -121,10 +121,25 @@ interface CompletenessAnalysis {
 <script lang="ts">
 	import { token } from '$lib/stores/auth';
 	import { marked } from 'marked';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import pilotIcon from '$lib/assets/pilot.png';
 	import { API_URL } from '$lib/config';
 	import { logger } from '$lib/utils/logger';
+	
+	// KaTeX for math rendering (optional - will be loaded dynamically)
+	let katex: any = null;
+	let katexLoaded = false;
+	
+	onMount(async () => {
+		try {
+			katex = (await import('katex')).default;
+			await import('katex/dist/katex.css');
+			katexLoaded = true;
+		} catch (e) {
+			// KaTeX not installed yet - math will render as plain text
+			console.warn('KaTeX not available - math formulas will render as plain text');
+		}
+	});
 	
 	export let reportId: string | null = null;
 	export let reportContent: string = '';
@@ -132,6 +147,7 @@ interface CompletenessAnalysis {
 	export let autoLoad: boolean = false;
 	export let historyAvailable: boolean = false;
 	export let initialTab: 'guidelines' | 'comparison' | 'chat' | null = null;
+	export let initialMessage: string | null = null;
 	
 	let activeTab: 'guidelines' | 'analysis' | 'comparison' | 'chat' = 'guidelines';
 	
@@ -147,12 +163,29 @@ interface CompletenessAnalysis {
 		if (initialTab !== lastInitialTab) {
 			activeTab = initialTab;
 			lastInitialTab = initialTab;
+		// If chat tab and initialMessage provided, populate chat input
+		if (initialTab === 'chat' && initialMessage) {
+			chatInput = initialMessage;
+			// Resize textarea after setting initial message
+			setTimeout(() => {
+				if (chatTextareaRef) {
+					chatTextareaRef.style.height = 'auto';
+					const maxHeight = Math.floor(window.innerHeight * 0.2);
+					const newHeight = Math.min(chatTextareaRef.scrollHeight, maxHeight);
+					chatTextareaRef.style.height = `${newHeight}px`;
+					chatTextareaRef.style.maxHeight = `${maxHeight}px`;
+				}
+			}, 0);
+		}
 		}
 	}
 	
 	// Reset lastInitialTab when sidebar closes
 	$: if (!visible) {
 		lastInitialTab = null;
+		if (initialMessage) {
+			chatInput = '';
+		}
 	}
 	let loading = false;
 	let error: string | null = null;
@@ -166,6 +199,7 @@ interface CompletenessAnalysis {
 	
 	let chatMessages: ChatMessage[] = [];
 	let chatInput = '';
+	let chatTextareaRef: HTMLTextAreaElement | null = null;
 	let chatLoading = false;
 
 let selectedActionIds: string[] = [];
@@ -388,7 +422,35 @@ function renderMarkdown(md: string) {
 		processed = processed.replace(/^[\s]*-[\s]+-[\s]+/gm, '- ');
 		processed = processed.replace(/^[\s]{2,}-[\s]+/gm, '- ');
 		
-		return marked.parse(processed);
+		// Render markdown to HTML
+		let html = marked.parse(processed) as string;
+		
+		// Render math formulas using KaTeX if available
+		if (katexLoaded && katex) {
+			// Handle block math: $$...$$
+			html = html.replace(/\$\$([\s\S]*?)\$\$/g, (match, formula) => {
+				try {
+					const rendered = katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false });
+					// Wrap in a container with overflow handling
+					return `<div class="katex-block-container" style="overflow-x: auto; overflow-y: hidden; max-width: 100%; margin: 1rem 0;">${rendered}</div>`;
+				} catch (e) {
+					return match; // Return original if rendering fails
+				}
+			});
+			
+			// Handle inline math: $...$
+			html = html.replace(/\$([^$\n]+?)\$/g, (match, formula) => {
+				try {
+					const rendered = katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false });
+					// Wrap inline math in a span with word-break handling
+					return `<span class="katex-inline-container" style="display: inline-block; max-width: 100%; overflow-x: auto; word-break: break-word;">${rendered}</span>`;
+				} catch (e) {
+					return match; // Return original if rendering fails
+				}
+			});
+		}
+		
+		return html;
 	}
 
 	async function loadEnhancements(force = false): Promise<void> {
@@ -532,6 +594,13 @@ function renderMarkdown(md: string) {
 		
 		const userMessage = chatInput.trim();
 		chatInput = '';
+		
+		// Reset textarea height after clearing input
+		if (chatTextareaRef) {
+			chatTextareaRef.style.height = 'auto';
+			chatTextareaRef.style.maxHeight = '';
+		}
+		
 		chatMessages.push({ role: 'user', content: userMessage });
 		chatMessages = [...chatMessages];
 		
@@ -734,7 +803,7 @@ $: selectedActions = availableSuggestedActions.filter((action) =>
 $: selectedActionsWithPatch = selectedActions.filter((action) => hasActionPatch(action));
 $: canApplySelectedActions = selectedActionsWithPatch.length > 0 && !applyActionsLoading;
 
-	function handleKeyPress(e: KeyboardEvent) {
+	function handleKeyDown(e: KeyboardEvent) {
 		if (e.key === 'Enter' && !e.shiftKey) {
 			e.preventDefault();
 			sendChatMessage();
@@ -1757,11 +1826,23 @@ $: if ((visible || autoLoad) && completenessPending) {
 						<div class="flex gap-2">
 							<textarea
 								bind:value={chatInput}
-								onkeypress={handleKeyPress}
+								bind:this={chatTextareaRef}
+								onkeydown={handleKeyDown}
 								placeholder="Ask about the report..."
-								class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 resize-none"
+								class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 resize-none overflow-y-auto"
 								rows="2"
+								style="min-height: 2.5rem;"
 								disabled={chatLoading || !reportId}
+								oninput={(e) => {
+									const target = e.target as HTMLTextAreaElement;
+									// Auto-resize textarea
+									target.style.height = 'auto';
+									// Max height: 20% of viewport height
+									const maxHeight = Math.floor(window.innerHeight * 0.2);
+									const newHeight = Math.min(target.scrollHeight, maxHeight);
+									target.style.height = `${newHeight}px`;
+									target.style.maxHeight = `${maxHeight}px`;
+								}}
 							></textarea>
 							<button
 								onclick={sendChatMessage}
@@ -1959,5 +2040,41 @@ $: if ((visible || autoLoad) && completenessPending) {
 	/* Rotate arrow icon when details is open */
 	details[open] summary .arrow-icon {
 		transform: rotate(90deg);
+	}
+	
+	/* KaTeX math rendering styles */
+	:global(.katex-block-container) {
+		overflow-x: auto;
+		overflow-y: hidden;
+		max-width: 100%;
+		margin: 1rem 0;
+		padding: 0.5rem 0;
+	}
+	
+	:global(.katex-block-container .katex) {
+		display: block;
+		white-space: nowrap;
+	}
+	
+	:global(.katex-inline-container) {
+		display: inline-block;
+		max-width: 100%;
+		overflow-x: auto;
+		word-break: break-word;
+		vertical-align: middle;
+	}
+	
+	:global(.katex-inline-container .katex) {
+		display: inline-block;
+		white-space: nowrap;
+	}
+	
+	/* Ensure prose containers handle KaTeX properly */
+	:global(.prose .katex-block-container) {
+		margin: 1rem 0;
+	}
+	
+	:global(.prose .katex-inline-container) {
+		margin: 0 0.2em;
 	}
 </style>

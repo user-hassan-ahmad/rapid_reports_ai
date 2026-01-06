@@ -3,7 +3,7 @@
 from sqlalchemy import Column, String, Text, Boolean, DateTime, JSON, ForeignKey, Integer, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from datetime import datetime, timezone
 import uuid
 
@@ -101,14 +101,8 @@ class Template(Base):
     description = Column(Text, nullable=True)
     tags = Column(JSON, nullable=True)  # Array of tag strings
     
-    # Template content and variables
-    template_content = Column(Text, nullable=False)  # The template with {{variables}}
-    variables = Column(JSON, nullable=True)  # Simple array of variable names
-    variable_config = Column(JSON, nullable=True)  # Advanced config (for future)
-    
-    # Instructions and compatibility
-    master_prompt_instructions = Column(Text, nullable=True)
-    model_compatibility = Column(JSON, nullable=True)  # ["claude", "gemini"]
+    # Template configuration (structured JSON)
+    template_config = Column(JSON, nullable=True)  # Complete template configuration
     
     # Foreign key to user
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -134,17 +128,44 @@ class Template(Base):
     
     def to_dict(self):
         """Convert template to dictionary"""
+        template_config = self.template_config or {}
+        
+        # Extract variables from template_config.sections
+        # Variables are sections with has_input_field=True and included=True
+        # Preserve the order from the sections' order field
+        variables = []
+        if isinstance(template_config, dict):
+            sections = template_config.get('sections', [])
+            if isinstance(sections, list):
+                # Sort sections by order field to maintain structure order
+                sorted_sections = sorted(
+                    [s for s in sections if isinstance(s, dict)],
+                    key=lambda s: s.get('order', 999)  # Default to 999 if order missing
+                )
+                
+                for section in sorted_sections:
+                    # Check if section has input field and is included
+                    if section.get('has_input_field') and section.get('included'):
+                        section_name = section.get('name')
+                        if section_name:
+                            variables.append(section_name)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_variables = []
+        for var in variables:
+            if var not in seen:
+                seen.add(var)
+                unique_variables.append(var)
+        
         return {
             "id": str(self.id),
             "user_id": str(self.user_id),
             "name": self.name,
             "description": self.description,
             "tags": self.tags or [],
-            "template_content": self.template_content,
-            "variables": self.variables or [],
-            "variable_config": self.variable_config,
-            "master_prompt_instructions": self.master_prompt_instructions,
-            "model_compatibility": self.model_compatibility or ["claude", "gemini"],
+            "template_config": template_config,
+            "variables": unique_variables,  # Add extracted variables
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
             "is_active": self.is_active,
@@ -179,10 +200,7 @@ class TemplateVersion(Base):
     name = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     tags = Column(JSON, nullable=True)
-    template_content = Column(Text, nullable=False)
-    variables = Column(JSON, nullable=True)
-    master_prompt_instructions = Column(Text, nullable=True)
-    model_compatibility = Column(JSON, nullable=True)
+    template_config = Column(JSON, nullable=True)  # Complete template configuration snapshot
     
     # Version metadata
     version_number = Column(Integer, nullable=False)
@@ -201,16 +219,44 @@ class TemplateVersion(Base):
     
     def to_dict(self):
         """Convert version to dictionary"""
+        template_config = self.template_config or {}
+        
+        # Extract variables from template_config.sections
+        # Variables are sections with has_input_field=True and included=True
+        # Preserve the order from the sections' order field
+        variables = []
+        if isinstance(template_config, dict):
+            sections = template_config.get('sections', [])
+            if isinstance(sections, list):
+                # Sort sections by order field to maintain structure order
+                sorted_sections = sorted(
+                    [s for s in sections if isinstance(s, dict)],
+                    key=lambda s: s.get('order', 999)  # Default to 999 if order missing
+                )
+                
+                for section in sorted_sections:
+                    # Check if section has input field and is included
+                    if section.get('has_input_field') and section.get('included'):
+                        section_name = section.get('name')
+                        if section_name:
+                            variables.append(section_name)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_variables = []
+        for var in variables:
+            if var not in seen:
+                seen.add(var)
+                unique_variables.append(var)
+        
         return {
             "id": str(self.id),
             "template_id": str(self.template_id),
             "name": self.name,
             "description": self.description,
             "tags": self.tags or [],
-            "template_content": self.template_content,
-            "variables": self.variables or [],
-            "master_prompt_instructions": self.master_prompt_instructions,
-            "model_compatibility": self.model_compatibility or [],
+            "template_config": template_config,
+            "variables": unique_variables,  # Add extracted variables
             "version_number": self.version_number,
             "created_at": self.created_at.isoformat(),
         }
@@ -314,5 +360,67 @@ class ReportVersion(Base):
             "model_used": self.model_used,
             "is_current": self.is_current,
             "created_at": self.created_at.isoformat()
+        }
+
+
+class WritingStylePreset(Base):
+    """Model for user's custom writing style presets"""
+    
+    __tablename__ = "writing_style_presets"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Preset metadata
+    name = Column(String(100), nullable=False)
+    icon = Column(String(10), nullable=True, default='⭐')  # Optional emoji icon
+    description = Column(String(200), nullable=True)
+    
+    # Preset settings for FINDINGS or IMPRESSION section
+    settings = Column(JSON, nullable=False)
+    # Example: {
+    #   "writing_style": "standard",
+    #   "format": "prose",
+    #   "use_subsection_headers": false,
+    #   "organization": "clinical_priority",
+    #   ...
+    # }
+    
+    # Section type: 'findings' or 'impression'
+    section_type = Column(String(20), nullable=False, default='findings', index=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=True)
+    
+    # Usage tracking
+    usage_count = Column(Integer, default=0, nullable=False)
+    last_used_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    user = relationship("User", backref="writing_style_presets")
+    
+    # Constraint: unique name per user per section
+    __table_args__ = (
+        UniqueConstraint('user_id', 'name', 'section_type', name='uix_user_preset_section'),
+    )
+    
+    def __repr__(self):
+        return f"<WritingStylePreset(id={self.id}, name='{self.name}', section_type='{self.section_type}')>"
+    
+    def to_dict(self):
+        """Convert preset to dictionary"""
+        return {
+            "id": str(self.id),
+            "user_id": str(self.user_id),
+            "name": self.name,
+            "icon": self.icon or '⭐',
+            "description": self.description,
+            "settings": self.settings,
+            "section_type": self.section_type,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "usage_count": self.usage_count,
+            "last_used_at": self.last_used_at.isoformat() if self.last_used_at else None,
         }
 

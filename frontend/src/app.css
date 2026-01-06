@@ -11,10 +11,10 @@ body {
 
 /* Custom Button Styles */
 .btn-primary {
-  @apply px-6 py-2 rounded-lg font-medium text-white transition-all duration-300;
+  @apply px-6 py-2.5 rounded-lg font-medium text-white transition-all duration-200;
   @apply bg-purple-700;
-  @apply hover:bg-purple-600;
-  @apply hover:shadow-lg hover:shadow-purple-500/50;
+  @apply hover:bg-purple-600 hover:shadow-lg hover:shadow-purple-500/50;
+  @apply hover:scale-[1.02] active:scale-[0.98];
   @apply focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-black;
 }
 
@@ -23,10 +23,10 @@ body {
 }
 
 .btn-secondary {
-  @apply px-4 py-2 rounded-lg font-medium transition-all duration-300;
-  @apply bg-white/10 text-gray-200 border border-white/20;
-  @apply hover:bg-white/20 hover:border-white/30;
-  @apply hover:text-white;
+  @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+  @apply bg-black/40 text-gray-200 border border-white/20;
+  @apply hover:bg-black/60 hover:border-white/30;
+  @apply hover:text-white hover:scale-[1.02] active:scale-[0.98];
   @apply focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-black;
 }
 
@@ -55,13 +55,13 @@ body {
   @apply text-gray-400 hover:text-white hover:bg-white/5;
 }
 
-/* Input Styles */
+/* Input Styles - Less frosted, more solid */
 .input-dark {
-  @apply w-full px-4 py-3 rounded-lg transition-all duration-300;
-  @apply bg-black/50 border border-white/10 text-gray-200;
+  @apply w-full px-4 py-2.5 rounded-lg transition-all duration-200;
+  @apply bg-black/60 border border-white/15 text-gray-200;
   @apply placeholder:text-gray-500;
-  @apply focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent;
-  @apply hover:border-white/20;
+  @apply focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50;
+  @apply hover:border-white/25;
 }
 
 .input-dark:disabled {
@@ -93,9 +93,86 @@ input[type="date"].date-input::-webkit-calendar-picker-indicator {
   @apply opacity-50 cursor-not-allowed;
 }
 
-/* Card Styles */
+/* Card Styles - Sleeker, less frosted */
 .card-dark {
-  @apply bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-6;
+  @apply bg-black/40 border border-white/10 rounded-lg shadow-lg p-4;
+  @apply transition-all duration-200;
+}
+
+/* Advanced Settings Panel - Compact and sleek */
+.advanced-settings {
+  @apply bg-black/30 border border-white/10 rounded-lg p-4 space-y-4;
+  @apply transition-all duration-200;
+}
+
+/* Remove default summary arrow */
+details summary {
+  list-style: none;
+}
+
+details summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Smooth expand/collapse animation */
+details[open] summary {
+  margin-bottom: 1rem;
+}
+
+details summary {
+  @apply transition-all duration-200;
+}
+
+details[open] .advanced-settings {
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Smooth fade-in animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Subtle hover lift effect */
+.hover-lift {
+  @apply transition-all duration-200;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  @apply shadow-xl;
+}
+
+/* Gradient card hover effect */
+.gradient-card {
+  @apply transition-all duration-300;
+}
+
+.gradient-card:hover {
+  transform: translateY(-2px);
+  @apply shadow-xl;
+  border-color: rgba(139, 92, 246, 0.4);
 }
 
 /* Template Card with Enhanced Glass Morphism and Gradient Accents */
