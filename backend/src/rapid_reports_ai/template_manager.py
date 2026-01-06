@@ -44,8 +44,9 @@ class TemplateManager:
         # Count XXX measurement placeholders (case insensitive: xxx, XXX, Xxx, etc.)
         measurements = re.findall(r'\b[Xx]{3}\b', template, re.IGNORECASE)
         
-        # Extract [option1/option2] alternatives (must have brackets, support hyphens)
-        alternatives = re.findall(r'\[([\w-]+(?:/[\w-]+)+)\]', template)
+        # Extract [option1/option2] alternatives (must have brackets, support spaces and hyphens)
+        # Match anything inside brackets that contains a slash
+        alternatives = re.findall(r'\[([^\]]+?/[^\]]+?)\]', template)
         
         # Extract // instruction lines (exclude //UNFILLED: markers)
         instructions = re.findall(r'^//\s*(?!UNFILLED:)(.+)$', template, re.MULTILINE)
@@ -136,25 +137,35 @@ class TemplateManager:
             # Look for word/word patterns that aren't units and aren't already in brackets
             unit_patterns = {'ml/m2', 'm/s', 'mmhg', 'cm2', 'mm2', 'cm3', 'ml/min', 'kg/m2', 'g/m2', 'l/min', 'bpm', 'beats/min', 'ml/m²', 'g/m²', 'l/min/m²'}
             
-            # Find all [word/word] patterns (already bracketed alternatives)
-            # Support hyphens in words (e.g., mid-wall, T1-weighted)
-            bracketed_alternatives = set()
+            # Find all [option1/option2] patterns (already bracketed alternatives)
+            # Support spaces, hyphens, and any characters inside brackets
+            bracketed_ranges = []  # Store (start, end) positions of bracketed alternatives
             for match in re.finditer(r'\[([^\]]+?/[^\]]+?)\]', line):
-                # Extract just the text inside brackets
-                bracketed_alternatives.add(match.group(1))
+                # Store the character range of the entire bracket pattern including brackets
+                bracketed_ranges.append((match.start(), match.end()))
             
             # Find all word/word patterns (including multi-option like word1/word2/word3)
             # Updated to support hyphens in words: [\w-]+ instead of \w+
             alternative_pattern = r'\b([\w-]+(?:/[\w-]+)+)\b'
             for match in re.finditer(alternative_pattern, line):
                 alt_text = match.group(1)
+                alt_start = match.start()
+                alt_end = match.end()
                 
                 # Skip if it's a known unit
                 if alt_text.lower() in unit_patterns:
                     continue
                 
-                # Skip if this exact alternative text is already in brackets
-                if alt_text in bracketed_alternatives:
+                # Skip if this alternative is inside any bracketed alternative range
+                is_inside_brackets = False
+                for br_start, br_end in bracketed_ranges:
+                    # Check if the unbracketed alternative is inside the bracketed range
+                    # (accounting for the brackets themselves)
+                    if br_start < alt_start and alt_end < br_end:
+                        is_inside_brackets = True
+                        break
+                
+                if is_inside_brackets:
                     continue
                 
                 # Only warn if NOT already bracketed
@@ -397,7 +408,7 @@ PLACEHOLDER TYPES (use EXACTLY as specified):
 1. VARIABLES: {VAR_NAME}
    - For named measurements that need explicit matching
    - Example: "LVEF={LVEF}%" 
-   - Limit to 5-7 critical measurements (creates labeled input fields)
+   - Limit to 5-7 critical measurements only (creates labeled input fields)
 
 2. MEASUREMENTS: xxx
    - Generic measurement blanks (always lowercase)
@@ -405,41 +416,49 @@ PLACEHOLDER TYPES (use EXACTLY as specified):
    - Use when specific variable name not needed
 
 3. ALTERNATIVES: [option1/option2]
-   - CRITICAL: Brackets ONLY wrap the options themselves, NOT full sentences
+   - CRITICAL RULE: Brackets wrap ONLY the alternative words/phrases, NEVER entire sentences
+   - Keep alternatives SIMPLE: single words or short phrases (2-3 words max per option)
+   - Use alternatives SPARINGLY - only when there are 2-3 clear, mutually exclusive options
    - AI selects ONE option based on findings and removes brackets
-   - Example: "Size is [normal/increased]" → "Size is normal" or "Size is increased"
    - Limit to 2-3 options max per bracket
-   - WRONG: "[Effusion is present/absent]" → brackets wrap full sentence
-   - CORRECT: "Effusion is [present/absent]" → brackets wrap only options
+   - Each option must be grammatically compatible with the surrounding sentence
+   
+   CORRECT EXAMPLES:
+   ✓ "Size is [normal/increased]" → "Size is normal" or "Size is increased"
+   ✓ "Effusion is [present/absent]" → "Effusion is present" or "Effusion is absent"
+   ✓ "Enhancement is [homogeneous/heterogeneous]" → works grammatically
+   ✓ "Wall motion is [normal/abnormal]" → simple, clear alternatives
+   
+   WRONG EXAMPLES (DO NOT DO THIS):
+   ✗ "[Effusion is present/absent]" → brackets wrap full sentence
+   ✗ "[No effusion/Effusion present]" → different sentence structures, won't read well
+   ✗ "The [lungs are clear/lungs show consolidation]" → brackets wrap too much
+   ✗ "There is [a mass measuring 4cm/no mass]" → entire phrases wrapped
+   ✗ "Size is [normal/increased/decreased/slightly enlarged]" → too many options
+   ✗ "Enhancement pattern shows [homogeneous enhancement with smooth margins/heterogeneous enhancement with irregular borders]" → options too complex
 
 4. INSTRUCTIONS: // instruction
    - ACTIONABLE guidance for AI behavior (stripped from final output)
    - Must tell AI WHAT TO DO or HOW TO HANDLE a section
-   - Can appear anywhere in template (scattered throughout)
+   - Use SPARINGLY (2-4 per template) at key decision points only
    - GOOD examples (actionable):
      • "// Describe only if abnormal"
      • "// Skip this section if not assessed"
      • "// Grade severity based on measurements"
-     • "// Include wall thickness if >12mm"
-   - BAD examples (just comments/labels):
+   - BAD examples (just comments/labels - DON'T USE):
      • "// Systematic review of structures" (not actionable)
      • "// Perfusion assessment" (just a label)
      • "// Additional findings" (just a label)
-   - Use sparingly (2-4 per template) at key decision points
-
-CRITICAL BRACKET RULES:
-- [normal/dilated] ✓ Correct - wraps options only
-- [Effusion is present/absent] ✗ Wrong - wraps full sentence
-- Size is [normal/increased] at xxx ml ✓ Correct
-- [No effusion/Effusion present] ✗ Wrong - different sentence structures
 
 STRUCTURE RULES:
+- Keep structure SIMPLE and FLEXIBLE
 - Use clear section headers (e.g., "LEFT VENTRICLE", "RIGHT VENTRICLE")
-- Pre-write complete prose with placeholders embedded
+- Pre-write complete prose with placeholders embedded naturally
 - Static text preserved exactly during report generation
 - British English is automatic (don't add // comments about it)
+- Don't over-complicate - use alternatives only where they genuinely help
 
-EXAMPLE TEMPLATE:
+EXAMPLE TEMPLATE (simple and clear):
 
 LEFT VENTRICLE
 End-diastolic volume is [normal/increased] at xxx ml/m².
@@ -447,9 +466,8 @@ Systolic function is [preserved/reduced] with LVEF={LVEF}%.
 
 // Describe wall motion only if abnormal
 WALL MOTION
-Regional abnormalities are [present/absent] in the [anterior/inferior/lateral/septal] segments.
+Regional abnormalities are [present/absent].
 
-// Skip this section if not performed
 PERFUSION ASSESSMENT
 First-pass perfusion shows [normal/reduced] enhancement.
 Defects are [present/absent] in the xxx territory.
@@ -578,24 +596,31 @@ Protocol: {protocol_details or "Standard protocol"}
 Instructions: {instructions or "Standard systematic anatomical review"}
 
 CRITICAL PLACEHOLDER RULES:
-- {{VAR}} for named variables (5-7 max critical measurements only)
-- xxx for generic measurements (lowercase)
-- [option1/option2] for alternatives - ONLY wrap the options, NOT full sentences
-  Example: "Size is [normal/increased]" ✓
-  WRONG: "[Size is normal/increased]" ✗
-- // for ACTIONABLE AI INSTRUCTIONS only
 
-Include clear section headers for major anatomical structures.
-Pre-write complete prose with embedded placeholders.
+1. {{VAR}} for named variables (5-7 max critical measurements only)
 
-CRITICAL INSTRUCTION RULES:
-- // must be ACTIONABLE - tell AI what to do or when to act
-- GOOD: "// Describe only if abnormal" | "// Skip if not assessed" | "// Grade severity based on size"
-- BAD: "// Perfusion section" | "// Review findings" | "// Additional notes" (just labels)
-- Use 2-4 instructions maximum at key decision points
-- DON'T use // for section labels or general comments
+2. xxx for generic measurements (lowercase)
 
-Generate the template now."""
+3. [option1/option2] for alternatives:
+   - CRITICAL: Brackets wrap ONLY the alternative words/phrases, NEVER entire sentences
+   - Keep alternatives SIMPLE: single words or short phrases (2-3 words max per option)
+   - Use SPARINGLY - only when there are 2-3 clear, mutually exclusive options
+   - Each option must work grammatically with the sentence
+   - CORRECT: "Size is [normal/increased]" → "Size is normal" or "Size is increased"
+   - WRONG: "[Size is normal/increased]" → brackets wrap full sentence
+   - WRONG: "[No effusion/Effusion present]" → different structures, won't read well
+   - WRONG: "Size is [normal/increased/decreased/enlarged]" → too many options
+
+4. // for ACTIONABLE AI INSTRUCTIONS only (use sparingly, 2-4 max)
+
+STRUCTURE GUIDANCE:
+- Keep it SIMPLE and FLEXIBLE - just enough structure to guide the user
+- Use clear section headers for major anatomical structures
+- Pre-write complete prose with placeholders embedded naturally
+- Don't over-complicate with excessive alternatives
+- Focus on clarity and ease of use
+
+Generate the template now. Remember: simplicity and clarity are key."""
 
         else:
             # Fallback
