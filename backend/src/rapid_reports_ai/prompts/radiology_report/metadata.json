@@ -2,7 +2,7 @@
   "name": "radiology_report",
   "display_name": "Radiology Report",
   "description": "Generate professional NHS radiology reports from imaging findings with clinical history and scan type",
-  "variables": ["FINDINGS", "CLINICAL_HISTORY", "SCAN_TYPE"],
+  "variables": ["CLINICAL_HISTORY", "SCAN_TYPE", "FINDINGS"],
   "category": "reports"
 }
 
