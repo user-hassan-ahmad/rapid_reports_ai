@@ -799,13 +799,24 @@ Generate suggestions now."""
             
         org_guidance = {
             'clinical_priority': """ORGANIZATION - CLINICAL PRIORITY:
-  KEY PRINCIPLE: Order by clinical significance + REGIONAL CLUSTERING
+  KEY PRINCIPLE: Template structure is your organizational framework. Clinical priority elevates significant findings to lead position.
+  
   SEQUENCE: 
-    1. Acute/significant abnormalities (The Headline)
-    2. IMMEDIATE REGIONAL CONTEXT (related structures, fluid, nodal stations - e.g. for Appendicitis, discuss Bowel/Peritoneum next)
-    3. Other pertinent negatives
-    4. Remainder of systematic review (distant normals)
-  EXAMPLE: "Acute appendicitis. Adjacent fat stranding and free fluid. No other bowel pathology. Liver/Spleen/Kidneys normal."
+    1. HEADLINE: Lead with acute/significant abnormalities if present
+    2. IMMEDIATE CONTEXT: Complete the regional picture for that finding (related structures, complications)
+    3. RETURN TO TEMPLATE: Resume template's structural flow for remaining findings
+    4. SKIP DUPLICATES: When returning to template, skip any structures already addressed in steps 1-2
+    5. Within each template section, prioritize: abnormal → pertinent negative → incidental normal
+  
+  EXAMPLE FLOW:
+    • PE in right PA [HEADLINE] 
+    • RV dilation with IVC reflux [IMMEDIATE CONTEXT]
+    • [RETURN TO TEMPLATE - skip PA/heart sections already done]
+    • Wedge consolidation in RLL [next template section: parenchyma]
+    • Small pleural effusion [next template section: pleural space]
+    • Remainder as per template structure
+  
+  CRITICAL: Each finding mentioned ONCE only. Template is your roadmap - clinical priority determines what to emphasize first.
 """,
             
             'systematic': """ORGANIZATION - SYSTEMATIC REVIEW:
@@ -1240,7 +1251,7 @@ DESCRIPTOR DENSITY - STANDARD:
         anatomical_instr = (
             "- Maintain anatomical flow and organization from template"
             if is_exact_order else
-            "- Adapt anatomical flow to match the organization style below (e.g., Clinical Priority)\n- CRITICAL: Cluster spatially and functionally related structures together. Do NOT revert to template order immediately after the main finding. Finish the regional picture first."
+            "- Apply organization style below (see ORGANIZATION guidance)\n- ANTI-DUPLICATION: Each structure mentioned ONCE only\n- If Clinical Priority: Lead with significant findings + immediate context, then return to template structure\n- When returning to template flow, skip any structures already addressed in priority section"
         )
 
         prompt = f"""
@@ -1300,7 +1311,7 @@ DESCRIPTOR DENSITY - STANDARD:
         anatomical_instr = (
             "- Follow anatomical order from template"
             if is_exact_order else
-            "- Adapt anatomical order to match the organization style below (e.g., Clinical Priority)\n- CRITICAL: Cluster spatially and functionally related structures together. Do NOT revert to template order immediately after the main finding. Finish the regional picture first."
+            "- Apply organization style below (see ORGANIZATION guidance)\n- ANTI-DUPLICATION: Each structure mentioned ONCE only\n- If Clinical Priority: Lead with significant findings + immediate context, then return to template structure\n- When returning to template flow, skip any structures already addressed in priority section"
         )
 
         prompt = f"""
@@ -1359,7 +1370,7 @@ DESCRIPTOR DENSITY - STANDARD:
         anatomical_instr = (
             "- Systematically cover each anatomical structure in checklist"
             if is_exact_order else
-            "- Adapt checklist order to match the organization style below (e.g., Clinical Priority)\n- CRITICAL: Cluster spatially and functionally related structures together. Do NOT revert to template order immediately after the main finding. Finish the regional picture first."
+            "- Apply organization style below (see ORGANIZATION guidance)\n- ANTI-DUPLICATION: Each structure mentioned ONCE only\n- If Clinical Priority: Lead with significant findings + immediate context, then return to template structure\n- When returning to template flow, skip any structures already addressed in priority section"
         )
 
         prompt = f"""
@@ -1411,6 +1422,12 @@ DESCRIPTOR DENSITY - STANDARD:
             if is_exact_order else
             "**TEMPLATE ADAPTATION**: Emulate the template's language and content, but PRIORITIZE findings according to the organization style below."
         )
+        
+        anatomical_instr = (
+            "- Fill content under each header based on user findings\n- Leave headers in place, maintain their order"
+            if is_exact_order else
+            "- Fill content under each header based on user findings\n- Apply organization style below (see ORGANIZATION guidance)\n- ANTI-DUPLICATION: Each structure mentioned ONCE only\n- If Clinical Priority: Lead with significant findings + immediate context, then return to template structure\n- When returning to template flow, skip any structures already addressed in priority section"
+        )
 
         prompt = f"""
 ### FINDINGS SECTION - Headers Mode
@@ -1424,10 +1441,7 @@ DESCRIPTOR DENSITY - STANDARD:
 {findings_input}
 
 **Critical Instructions**:
-- Fill content under each header based on user findings
-- Headers define anatomical organization - but prioritize significant findings within or by reordering headers if Clinical Priority is enabled below.
-- CRITICAL: Cluster spatially and functionally related structures together (e.g., if Appendicitis is found, group Bowel/Peritoneum headers next).
-- Leave headers in place, add content below each
+{anatomical_instr}
 
 **WRITING STYLE REQUIREMENTS**:
 
@@ -1893,15 +1907,22 @@ CORE PRINCIPLES:
         philosophy_instr = """
 === TEMPLATE PHILOSOPHY ===
 This report contains "Flexible" and/or "Structured Fill-In" sections. 
-- FLEXIBLE SECTIONS (Normal, Guided, Checklist, Headers): Emulate the template's style and language, but ADAPT the organization to match the user's "Clinical Priority" or "Problem-Grouped" settings. 
-- STRUCTURED FILL-IN SECTIONS: Preserve template structure and wording as much as possible, BUT allow flexibility for:
-  • Following // instruction guidance (e.g., "// Describe only if abnormal")
-  • Adding appropriate descriptors when clinically relevant
-  • Minor grammatical adjustments for natural flow
-  Do NOT fundamentally change the template's core structure, terminology, or sentence patterns.
+- FLEXIBLE SECTIONS (Normal, Guided, Checklist, Headers): 
+  • Template provides the organizational framework and style guide
+  • User's style settings control HOW findings are organized and expressed
+  • Each anatomical structure/finding mentioned ONCE only
+  
+- STRUCTURED FILL-IN SECTIONS: 
+  • Preserve template structure and wording precisely
+  • Fill placeholders following // instruction guidance
+  • Minor grammatical adjustments for natural flow only
+  • Do NOT fundamentally change core structure or terminology
 """ if has_exact_mode else """
 === TEMPLATE PHILOSOPHY ===
-All sections in this report are "Flexible". Emulate the template's style and language, but ADAPT the organization (ordering) to match the user's "Clinical Priority" or "Problem-Grouped" settings. The user's style preferences for organization take precedence over the template's anatomical order.
+All sections in this report are "Flexible".
+- Template provides the organizational framework and style guide
+- User's style settings control HOW findings are organized and expressed  
+- Each anatomical structure/finding mentioned ONCE only
 """
 
         # Build user prompt
@@ -1938,6 +1959,7 @@ All sections in this report are "Flexible". Emulate the template's style and lan
 5. Clinical History: {clinical_history_instruction}
 6. Generate concise description for history tab
 7. Extract accurate scan_type
+8. NO DUPLICATION: Each anatomical structure/finding mentioned once only, regardless of organization method
 
 Generate the report now as valid JSON.
 """
