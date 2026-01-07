@@ -1971,10 +1971,8 @@ Generate the report now as valid JSON.
                 }
             )
             
-            # Append signature in post-processing (similar to old function)
+            # Don't append signature yet - will append after validation
             report_output = result.output
-            if user_signature:
-                report_output = _append_signature_to_report(report_output, user_signature)
             
             # LINGUISTIC VALIDATION for zai-glm-4.6 (conditionally enabled)
             import os
@@ -2009,6 +2007,10 @@ Generate the report now as valid JSON.
                     print(f"{'='*80}\n")
             else:
                 print(f"[DEBUG] Template linguistic validation disabled (ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION=false)")
+            
+            # Append signature AFTER validation (or if validation disabled)
+            if user_signature:
+                report_output = _append_signature_to_report(report_output, user_signature)
             
             return {
                 "report_content": report_output.report_content,
@@ -2071,9 +2073,7 @@ Generate the report now as valid JSON.
                     description = parsed_data.get('description', 'Generated report')
                     scan_type = parsed_data.get('scan_type', 'Unknown')
                     
-                    # Append signature if needed
-                    if user_signature:
-                        report_content = _append_signature_to_report(report_content, user_signature)
+                    # Don't append signature yet - will append after validation
                     
                     # LINGUISTIC VALIDATION for zai-glm-4.6 (conditionally enabled)
                     import os
@@ -2103,6 +2103,10 @@ Generate the report now as valid JSON.
                             print(f"{'='*80}")
                             print(f"[ERROR] {type(e).__name__}: {str(e)[:300]}")
                             print(f"{'='*80}\n")
+                    
+                    # Append signature AFTER validation (or if validation disabled)
+                    if user_signature:
+                        report_content = _append_signature_to_report(report_content, user_signature)
                     
                     return {
                         "report_content": report_content,

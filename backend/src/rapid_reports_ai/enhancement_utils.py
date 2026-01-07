@@ -2920,8 +2920,7 @@ async def generate_auto_report(
         
         report_output = result.output
         
-        # Append signature programmatically if provided
-        report_output = _append_signature_to_report(report_output, signature)
+        # Don't append signature yet - will append after validation
         
         elapsed = time.time() - start_time
         print(f"generate_auto_report: ✅ Completed with {primary_model} (primary) in {elapsed:.2f}s")
@@ -2972,6 +2971,10 @@ async def generate_auto_report(
                     print(f"{'='*80}\n")
             else:
                 print(f"[DEBUG] Linguistic validation disabled (ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION=false)")
+        
+        # Append signature AFTER validation (or if validation disabled)
+        if signature:
+            report_output = _append_signature_to_report(report_output, signature)
         
         return report_output
                 
@@ -3091,8 +3094,7 @@ async def generate_templated_report(
         
         report_output = result.output
         
-        # Append signature programmatically if provided
-        report_output = _append_signature_to_report(report_output, signature)
+        # Don't append signature yet - will append after validation
         
         elapsed = time.time() - start_time
         print(f"generate_templated_report: ✅ Completed with {primary_model} (primary) in {elapsed:.2f}s")
@@ -3143,6 +3145,10 @@ async def generate_templated_report(
                     print(f"{'='*80}\n")
             else:
                 print(f"[DEBUG] Linguistic validation disabled (ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION=false)")
+        
+        # Append signature AFTER validation (or if validation disabled)
+        if signature:
+            report_output = _append_signature_to_report(report_output, signature)
         
         return report_output
         
