@@ -182,13 +182,31 @@
 			if (!preset) return;
 		}
 
+		// Prevent auto-detection from interfering during manual selection
+		isAutoDetecting = true;
+		
+		// Switch to appropriate tab first
+		if (isCustom) {
+			activeTab = 'custom';
+		} else {
+			activeTab = 'default';
+		}
+
 		// Apply preset settings to advanced config
 		Object.keys(preset.settings).forEach(key => {
 			advanced[key] = preset.settings[key];
 		});
 
+		// Set selectedPresetId after applying settings
 		selectedPresetId = presetId;
+		
+		// Update hash to prevent auto-detection from triggering
+		lastAdvancedHash = JSON.stringify(advanced);
+		
 		dispatch('presetChange', { presetId, isCustom });
+		
+		// Reset flag after a tick to allow future auto-detection
+		setTimeout(() => { isAutoDetecting = false; }, 0);
 	}
 
 	async function handleSavePreset() {
@@ -267,22 +285,118 @@
 		deletingPresetId = null;
 	}
 
-	// Check if current config matches a preset
-	function checkPresetMatch() {
-		if (!selectedPresetId) return null;
-		
-		const preset = presets[selectedPresetId];
-		if (!preset) return null;
-
+	// Helper function to check if settings match a preset
+	function settingsMatchPreset(presetSettings) {
 		// Check if all preset settings match current advanced config
-		const matches = Object.keys(preset.settings).every(key => {
-			return advanced[key] === preset.settings[key];
+		// Only compare keys that exist in the preset settings
+		return Object.keys(presetSettings).every(key => {
+			const presetValue = presetSettings[key];
+			const advancedValue = advanced[key];
+			
+			// Handle nested objects (like recommendations)
+			if (typeof presetValue === 'object' && presetValue !== null && !Array.isArray(presetValue)) {
+				if (typeof advancedValue !== 'object' || advancedValue === null || Array.isArray(advancedValue)) {
+					return false;
+				}
+				// Deep compare nested objects
+				return Object.keys(presetValue).every(nestedKey => {
+					return advancedValue[nestedKey] === presetValue[nestedKey];
+				});
+			}
+			
+			return advancedValue === presetValue;
 		});
-
-		return matches ? selectedPresetId : 'custom';
 	}
 
-	$: currentPresetId = checkPresetMatch() || selectedPresetId;
+	// Find which preset (default or custom) matches the current settings
+	function findMatchingPreset() {
+		// First check default presets
+		for (const presetId in presets) {
+			const preset = presets[presetId];
+			if (settingsMatchPreset(preset.settings)) {
+				return { id: presetId, isCustom: false };
+			}
+		}
+		
+		// Then check custom presets
+		for (const preset of userPresets) {
+			if (settingsMatchPreset(preset.settings)) {
+				return { id: preset.id, isCustom: true };
+			}
+		}
+		
+		return null;
+	}
+
+	// Check if current config matches a preset (returns preset ID or 'custom')
+	function checkPresetMatch() {
+		// First check if selected preset matches
+		if (selectedPresetId) {
+			let presetSettings = null;
+			
+			if (presets[selectedPresetId]) {
+				presetSettings = presets[selectedPresetId].settings;
+			} else {
+				const customPreset = userPresets.find(p => p.id === selectedPresetId);
+				if (customPreset) {
+					presetSettings = customPreset.settings;
+				}
+			}
+			
+			// If we have preset settings, check if they match
+			if (presetSettings && settingsMatchPreset(presetSettings)) {
+				return selectedPresetId;
+			}
+		}
+		
+		// If selected preset doesn't match, check all presets to find a match
+		const match = findMatchingPreset();
+		return match ? match.id : 'custom';
+	}
+
+	// Auto-detect and set matching preset when advanced settings change or presets load
+	let lastAdvancedHash = '';
+	let isAutoDetecting = false;
+	let lastUserPresetsLength = 0;
+	
+	$: {
+		if (advanced && Object.keys(advanced).length > 0 && !isAutoDetecting) {
+			// Create a hash of advanced settings to detect actual changes
+			const currentHash = JSON.stringify(advanced);
+			const presetsChanged = userPresets.length !== lastUserPresetsLength;
+			
+			if (currentHash !== lastAdvancedHash || presetsChanged) {
+				lastAdvancedHash = currentHash;
+				lastUserPresetsLength = userPresets.length;
+				
+				// Check if current selection matches
+				const currentMatch = checkPresetMatch();
+				
+				// If current selection doesn't match, try to find a matching preset
+				if (currentMatch === 'custom' || !selectedPresetId) {
+					const match = findMatchingPreset();
+					if (match && selectedPresetId !== match.id) {
+						isAutoDetecting = true;
+						selectedPresetId = match.id;
+						if (match.isCustom) {
+							activeTab = 'custom';
+						} else {
+							activeTab = 'default';
+						}
+						// Reset flag after a tick to allow future auto-detection
+						setTimeout(() => { isAutoDetecting = false; }, 0);
+					}
+				}
+			}
+		}
+	}
+
+	// Make currentPresetId reactive to both selectedPresetId and advanced changes
+	// Explicitly include advanced in the dependency to ensure reactivity
+	let currentPresetId = null;
+	$: if (advanced) {
+		currentPresetId = checkPresetMatch();
+	}
 	$: isCustomSelected = activeTab === 'custom' && selectedPresetId && userPresets.some(p => p.id === selectedPresetId);
 </script>
 
