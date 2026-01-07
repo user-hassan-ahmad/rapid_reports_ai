@@ -3521,3 +3521,349 @@ Report:
     return validated_content
 
 
+async def validate_template_linguistics(
+    report_content: str,
+    template_config: dict,
+    user_inputs: dict,
+    scan_type: str = ""
+) -> str:
+    """
+    Validate and refine template-generated report language with section-specific style awareness.
+    
+    Progressive enhancement approach: Trust the validator to apply linguistic refinements
+    while preserving all organizational and structural decisions made by the primary model.
+    
+    Args:
+        report_content: The generated report text from zai-glm-4.6
+        template_config: Full template configuration with section configs
+        user_inputs: User inputs including FINDINGS for context
+        scan_type: The scan type for context (optional)
+    
+    Returns:
+        Linguistically refined report content (or original if validation fails)
+    
+    Raises:
+        Exception: Re-raises exceptions for graceful handling by caller
+    """
+    import os
+    import time
+    
+    start_time = time.time()
+    print(f"\n[TEMPLATE LINGUISTIC VALIDATION] Starting validation")
+    print(f"[TEMPLATE LINGUISTIC VALIDATION]   Report length: {len(report_content)} chars")
+    print(f"[TEMPLATE LINGUISTIC VALIDATION]   Scan type: '{scan_type}'")
+    
+    # === EXTRACT SECTION CONFIGS ===
+    sections = template_config.get('sections', [])
+    
+    # Get findings config
+    findings_section = next((s for s in sections if s.get('name') == 'FINDINGS'), {})
+    findings_advanced = findings_section.get('advanced', {})
+    findings_custom = findings_advanced.get('instructions', '')
+    
+    # Get impression config  
+    impression_section = next((s for s in sections if s.get('name') == 'IMPRESSION'), {})
+    impression_advanced = impression_section.get('advanced', {})
+    impression_custom = impression_advanced.get('instructions', '')
+    
+    # Get template-wide custom instructions
+    template_wide_custom = template_config.get('global_custom_instructions', '')
+    
+    print(f"[TEMPLATE LINGUISTIC VALIDATION]   Findings custom instructions: {bool(findings_custom)}")
+    print(f"[TEMPLATE LINGUISTIC VALIDATION]   Impression custom instructions: {bool(impression_custom)}")
+    print(f"[TEMPLATE LINGUISTIC VALIDATION]   Template-wide instructions: {bool(template_wide_custom)}")
+    
+    # Get model and provider
+    model_name = MODEL_CONFIG["ZAI_GLM_LINGUISTIC_VALIDATOR"]  # llama-3.3-70b
+    provider = _get_model_provider(model_name)
+    api_key = _get_api_key_for_provider(provider)
+    
+    print(f"[TEMPLATE LINGUISTIC VALIDATION]   Validation model: {model_name} ({provider})")
+    
+    # === BUILD VALIDATOR PROMPT ===
+    
+    system_prompt = """You are an expert NHS medical editor specializing in British medical reporting.
+Refine report language and phrasing while preserving all structural and organizational decisions."""
+    
+    # Get findings input for context (truncate if very long)
+    findings_input = user_inputs.get('FINDINGS', '')
+    findings_context = findings_input[:500] + "..." if len(findings_input) > 500 else findings_input
+    
+    # Build section-specific style blocks
+    findings_style_block = _build_findings_style_block(findings_advanced, findings_custom)
+    impression_style_block = _build_impression_style_block(impression_advanced, impression_custom)
+    template_wide_block = _build_template_wide_block(template_wide_custom)
+    
+    user_prompt = f"""Review this radiology report for linguistic refinement to NHS standards.
+
+=== YOUR ROLE ===
+The primary model already generated the report structure and content organization.
+Your task: Refine LANGUAGE, GRAMMAR, and PHRASING only.
+
+PRESERVE (do not change):
+- Section order and structure
+- Finding groupings and organization  
+- Which findings were included/excluded
+- All clinical content, diagnoses, measurements
+- Line breaks, section headers, formatting
+
+REFINE (apply improvements):
+- Grammar, verb agreement, syntax
+- British English compliance
+- Word choice and prose quality
+- Redundancy and verbosity (per section preferences)
+- Sentence construction
+
+=== CONTEXT ===
+**Scan Type**: {scan_type}
+
+**Original Findings Input** (for descriptor verification):
+{findings_context}
+
+=== SECTION-SPECIFIC STYLE REQUIREMENTS ===
+
+{findings_style_block}
+
+{impression_style_block}
+
+{template_wide_block}
+
+=== CORE NHS STYLE RULES ===
+
+**British English**:
+- Spelling: oesophagus, haemorrhage, oedema, paediatric, centre, litre
+- Measurements: Space between number and unit ("5 cm" not "5cm")
+
+**Phrasing Patterns**:
+- Avoid: "There is/are...", "demonstrates", "shows", "is seen"
+- Prefer: Direct statements ("Hepatic metastases", "Wall thickening measures...")
+- Avoid: Passive constructions ("is present in", "is noted")
+- Prefer: Active/direct ("involves", "extends to")
+
+**Redundancy Elimination**:
+- Remove size qualifiers with measurements: "Large 5cm" → "5 cm"
+- Remove organ-as-subject: "The liver shows" → "Hepatic"
+- Remove implied locations: "gallbladder lumen" → "gallbladder"
+
+**Anatomical Corrections**:
+- Fix organ/structure misattributions
+- Verify anatomical terminology accuracy
+
+=== OUTPUT ===
+Return ONLY the linguistically refined report. No commentary, no metadata.
+Preserve all spacing, line breaks, and structural formatting exactly.
+
+=== REPORT TO REFINE ===
+
+{report_content}"""
+    
+    # Build model settings
+    model_settings = {
+        "temperature": 0.3,  # Low temperature for consistent refinement
+        "max_completion_tokens": 6000,  # Sufficient for full reports
+    }
+    
+    print(f"[TEMPLATE LINGUISTIC VALIDATION]   Model settings: temperature=0.3, max_completion_tokens=6000")
+    print(f"[TEMPLATE LINGUISTIC VALIDATION] Calling validation model...")
+    
+    # Call model for validation
+    result = await _run_agent_with_model(
+        model_name=model_name,
+        output_type=str,  # Plain text output
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        api_key=api_key,
+        use_thinking=False,  # No thinking needed
+        model_settings=model_settings
+    )
+    
+    validated_content = str(result.output).strip()
+    
+    # Ensure we got valid output
+    if not validated_content or len(validated_content) < 50:
+        raise ValueError(f"Template linguistic validation returned invalid output (length: {len(validated_content)})")
+    
+    elapsed = time.time() - start_time
+    
+    # Calculate changes
+    original_length = len(report_content)
+    validated_length = len(validated_content)
+    length_diff = validated_length - original_length
+    
+    print(f"[TEMPLATE LINGUISTIC VALIDATION] ✅ Validation completed in {elapsed:.2f}s")
+    print(f"[TEMPLATE LINGUISTIC VALIDATION]   Original length: {original_length} chars")
+    print(f"[TEMPLATE LINGUISTIC VALIDATION]   Validated length: {validated_length} chars")
+    print(f"[TEMPLATE LINGUISTIC VALIDATION]   Length change: {length_diff:+d} chars ({length_diff/original_length*100:+.1f}%)")
+    
+    # Detailed comparison logging (optional - controlled by env var)
+    if os.getenv("VERBOSE_LINGUISTIC_VALIDATION", "false").lower() == "true":
+        print(f"\n[TEMPLATE LINGUISTIC VALIDATION] {'='*70}")
+        print(f"[TEMPLATE LINGUISTIC VALIDATION] BEFORE:")
+        print(f"[TEMPLATE LINGUISTIC VALIDATION] {'='*70}")
+        print(report_content[:500] + "..." if len(report_content) > 500 else report_content)
+        print(f"\n[TEMPLATE LINGUISTIC VALIDATION] {'='*70}")
+        print(f"[TEMPLATE LINGUISTIC VALIDATION] AFTER:")
+        print(f"[TEMPLATE LINGUISTIC VALIDATION] {'='*70}")
+        print(validated_content[:500] + "..." if len(validated_content) > 500 else validated_content)
+        print(f"[TEMPLATE LINGUISTIC VALIDATION] {'='*70}\n")
+    
+    return validated_content
+
+
+def _build_findings_style_block(advanced_config: dict, custom_instructions: str) -> str:
+    """Build Findings section style requirements block for validator"""
+    
+    # Extract style preferences
+    verbosity = advanced_config.get('verbosity_style', 'standard')
+    findings_format = advanced_config.get('findings_format', 'prose')
+    group_negatives = advanced_config.get('group_negatives', False)
+    
+    block = f"""**FINDINGS SECTION** - Style Requirements:
+
+1. **Verbosity**: {verbosity.upper()}
+{_get_verbosity_guidance(verbosity)}
+
+2. **Format**: {findings_format}
+{_get_format_guidance(findings_format)}
+
+3. **Negative Finding Grouping**: {'ENABLED - Combine related negatives into single statements' if group_negatives else 'DISABLED - Keep negative findings as separate statements'}
+"""
+    
+    # Add custom instructions if present
+    if custom_instructions and custom_instructions.strip():
+        block += f"""
+4. **Custom Instructions** (apply linguistically):
+   {custom_instructions}
+   Note: Focus on the LANGUAGE/PHRASING aspects. Preserve any organizational decisions already implemented.
+"""
+    
+    return block
+
+
+def _build_impression_style_block(advanced_config: dict, custom_instructions: str) -> str:
+    """Build Impression section style requirements block for validator"""
+    
+    # Extract style preferences
+    verbosity = advanced_config.get('verbosity_style', 'standard')
+    impression_format = advanced_config.get('impression_format', 'prose')
+    comparison_style = advanced_config.get('comparison_terminology', 'measured')
+    differential_style = advanced_config.get('differential_style', 'if_needed')
+    
+    block = f"""**IMPRESSION SECTION** - Style Requirements:
+
+1. **Verbosity**: {verbosity.upper()}
+{_get_verbosity_guidance(verbosity)}
+
+2. **Format**: {impression_format}
+{_get_format_guidance(impression_format)}
+
+3. **Comparison Terminology**: {comparison_style.upper()}
+{_get_comparison_guidance(comparison_style)}
+
+4. **Differential Presentation**: {differential_style.replace('_', ' ').title()}
+   - Content scope already determined by primary model
+   - Refine phrasing if differential is present
+"""
+    
+    # Add custom instructions if present
+    if custom_instructions and custom_instructions.strip():
+        block += f"""
+5. **Custom Instructions** (apply linguistically):
+   {custom_instructions}
+   Note: Focus on the LANGUAGE/PHRASING aspects. Preserve any organizational decisions already implemented.
+"""
+    
+    return block
+
+
+def _build_template_wide_block(custom_instructions: str) -> str:
+    """Build template-wide instructions block for validator"""
+    
+    if not custom_instructions or not custom_instructions.strip():
+        return """**TEMPLATE-WIDE INSTRUCTIONS**: None"""
+    
+    return f"""**TEMPLATE-WIDE INSTRUCTIONS** (apply across all sections):
+
+{custom_instructions}
+
+Note: These apply to the entire report. Focus on LINGUISTIC application - preserve all structural/organizational aspects already implemented by the primary model.
+"""
+
+
+def _get_verbosity_guidance(verbosity: str) -> str:
+    """Get verbosity-specific guidance for validator"""
+    
+    guides = {
+        'brief': """   Target: Maximum concision
+   - Eliminate filler words: "appears", "seems", "noted to be"
+   - Direct statements: "4cm RUL mass" not "There is a 4cm mass in the RUL"
+   - Minimal adjectives (only if clinically essential)
+   Examples:
+     ✓ "4cm right upper lobe mass."
+     ✗ "There is a spiculated mass in the right upper lobe measuring 4cm."
+""",
+        'standard': """   Target: Balanced NHS reporting style  
+   - Natural medical prose with key descriptors
+   - Include relevant morphology: "spiculated", "heterogeneous"
+   - Confidence qualifiers when appropriate: "suspicious for", "consistent with"
+   Examples:
+     ✓ "Spiculated mass in the right upper lobe, highly suspicious for malignancy."
+""",
+        'detailed': """   Target: Comprehensive documentation
+   - Rich descriptive language: "heterogeneous enhancement", "irregular margins"
+   - Full anatomical precision: "lateral segment of RUL", "subcarinal station"  
+   - Complete characterization of findings
+   Examples:
+     ✓ "Spiculated mass in the right upper lobe demonstrating irregular margins, heterogeneous enhancement..."
+"""
+    }
+    
+    return guides.get(verbosity, guides['standard'])
+
+
+def _get_format_guidance(format_type: str) -> str:
+    """Get format-specific guidance for validator"""
+    
+    guides = {
+        'prose': """   Style: Flowing sentences
+   - PRESERVE existing prose structure (already generated)
+   - Refine sentence quality, not structure
+""",
+        'bullets': """   Style: Bullet points (•)
+   - PRESERVE existing bullet structure (already generated)
+   - Refine wording within each bullet
+""",
+        'numbered': """   Style: Numbered list (1., 2., 3.)
+   - PRESERVE existing numbered structure (already generated)
+   - Refine wording within each item
+""",
+        'headers': """   Style: Anatomical headers with content
+   - PRESERVE existing header structure (already generated)
+   - Refine content under each header
+"""
+    }
+    
+    return guides.get(format_type, guides['prose'])
+
+
+def _get_comparison_guidance(comparison_style: str) -> str:
+    """Get comparison terminology guidance for validator"""
+    
+    guides = {
+        'simple': """   Use qualitative terms only: "larger", "smaller", "stable", "new"
+   - No measurements in comparisons
+   Examples: "larger than previously", "stable"
+""",
+        'measured': """   Include measurements when comparing
+   - Specify size changes: "increased from 3.2 cm to 4 cm"
+   - Use proper spacing: "3.2 cm" not "3.2cm"
+""",
+        'dated': """   Include dates and measurements
+   - Full temporal context: "increased from 3.2 cm (15/01/2025) to 4 cm"
+   - British date format: DD/MM/YYYY
+"""
+    }
+    
+    return guides.get(comparison_style, guides['measured'])
+
+

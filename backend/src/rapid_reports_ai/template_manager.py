@@ -1976,6 +1976,40 @@ Generate the report now as valid JSON.
             if user_signature:
                 report_output = _append_signature_to_report(report_output, user_signature)
             
+            # LINGUISTIC VALIDATION for zai-glm-4.6 (conditionally enabled)
+            import os
+            ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
+            
+            if ENABLE_LINGUISTIC_VALIDATION:
+                from .enhancement_utils import validate_template_linguistics
+                
+                try:
+                    print(f"\n{'='*80}")
+                    print(f"🔍 TEMPLATE LINGUISTIC VALIDATION - Starting")
+                    print(f"{'='*80}")
+                    
+                    validated_content = await validate_template_linguistics(
+                        report_content=report_output.report_content,
+                        template_config=template_config,
+                        user_inputs=user_inputs,
+                        scan_type=report_output.scan_type
+                    )
+                    
+                    report_output.report_content = validated_content
+                    print(f"✅ TEMPLATE LINGUISTIC VALIDATION COMPLETE")
+                    print(f"{'='*80}\n")
+                except Exception as e:
+                    print(f"\n{'='*80}")
+                    print(f"⚠️ TEMPLATE LINGUISTIC VALIDATION FAILED - continuing with original")
+                    print(f"{'='*80}")
+                    print(f"[ERROR] {type(e).__name__}: {str(e)[:300]}")
+                    import traceback
+                    print(f"[ERROR] Traceback:")
+                    print(traceback.format_exc()[:500])
+                    print(f"{'='*80}\n")
+            else:
+                print(f"[DEBUG] Template linguistic validation disabled (ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION=false)")
+            
             return {
                 "report_content": report_output.report_content,
                 "description": report_output.description,
@@ -2040,6 +2074,35 @@ Generate the report now as valid JSON.
                     # Append signature if needed
                     if user_signature:
                         report_content = _append_signature_to_report(report_content, user_signature)
+                    
+                    # LINGUISTIC VALIDATION for zai-glm-4.6 (conditionally enabled)
+                    import os
+                    ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
+                    
+                    if ENABLE_LINGUISTIC_VALIDATION:
+                        from .enhancement_utils import validate_template_linguistics
+                        
+                        try:
+                            print(f"\n{'='*80}")
+                            print(f"🔍 TEMPLATE LINGUISTIC VALIDATION - Starting (fallback path)")
+                            print(f"{'='*80}")
+                            
+                            validated_content = await validate_template_linguistics(
+                                report_content=report_content,
+                                template_config=template_config,
+                                user_inputs=user_inputs,
+                                scan_type=scan_type
+                            )
+                            
+                            report_content = validated_content
+                            print(f"✅ TEMPLATE LINGUISTIC VALIDATION COMPLETE")
+                            print(f"{'='*80}\n")
+                        except Exception as e:
+                            print(f"\n{'='*80}")
+                            print(f"⚠️ TEMPLATE LINGUISTIC VALIDATION FAILED - continuing with original")
+                            print(f"{'='*80}")
+                            print(f"[ERROR] {type(e).__name__}: {str(e)[:300]}")
+                            print(f"{'='*80}\n")
                     
                     return {
                         "report_content": report_content,
