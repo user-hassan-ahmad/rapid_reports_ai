@@ -104,6 +104,12 @@
 							rows="12"
 							placeholder="Paste complete report here..."
 							class="input-dark font-mono text-sm"
+							onkeydown={(e) => {
+								// Allow Enter to create new lines in textarea
+								if (e.key === 'Enter') {
+									e.stopPropagation();
+								}
+							}}
 						></textarea>
 					</div>
 				</div>

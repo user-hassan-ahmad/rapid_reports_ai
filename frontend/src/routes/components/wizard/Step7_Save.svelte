@@ -215,6 +215,12 @@
 				rows="2"
 				placeholder="Brief description of this template"
 				class="input-dark"
+				onkeydown={(e) => {
+					// Allow Enter to create new lines in textarea
+					if (e.key === 'Enter') {
+						e.stopPropagation();
+					}
+				}}
 			></textarea>
 		</div>
 
@@ -302,6 +308,12 @@
 					rows="4"
 					placeholder="e.g., Always report lymph node stations. Use 'tumour' not 'mass'..."
 					class="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition-all resize-none"
+					onkeydown={(e) => {
+						// Allow Enter to create new lines in textarea
+						if (e.key === 'Enter') {
+							e.stopPropagation();
+						}
+					}}
 				></textarea>
 
 				<!-- Hint Box -->

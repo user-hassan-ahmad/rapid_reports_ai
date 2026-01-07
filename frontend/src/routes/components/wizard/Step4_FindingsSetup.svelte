@@ -751,6 +751,12 @@
 					rows="15"
 					placeholder="Your template structure will go here... Use AI to generate or write manually."
 					class="input-dark font-mono text-sm"
+					onkeydown={(e) => {
+						// Allow Enter to create new lines in textarea
+						if (e.key === 'Enter') {
+							e.stopPropagation();
+						}
+					}}
 				></textarea>
 
 				{#if findingsConfig.content_style === 'structured_template' && findingsConfig.template_content}

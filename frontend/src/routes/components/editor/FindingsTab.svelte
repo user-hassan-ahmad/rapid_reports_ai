@@ -483,6 +483,12 @@
 					<textarea
 						bind:value={findingsConfig.template_content}
 						oninput={findingsConfig.content_style === 'structured_template' ? handleTemplateContentChange : handleChange}
+						onkeydown={(e) => {
+							// Allow Enter to create new lines in textarea
+							if (e.key === 'Enter') {
+								e.stopPropagation();
+							}
+						}}
 						rows="12"
 						placeholder="Enter your findings template content here..."
 						class="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition-all resize-y font-mono hover:border-white/20 min-h-[200px]"

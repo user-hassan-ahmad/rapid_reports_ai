@@ -291,14 +291,14 @@
 	<div class="flex gap-2 mb-4 border-b border-purple-500/20">
 		<button 
 			type="button"
-			on:click={() => activeTab = 'default'}
+			onclick={() => activeTab = 'default'}
 			class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'default' ? 'text-purple-400 border-b-2 border-purple-500' : 'text-gray-400 hover:text-gray-300'}"
 		>
 			Default Presets
 		</button>
 		<button 
 			type="button"
-			on:click={() => activeTab = 'custom'}
+			onclick={() => activeTab = 'custom'}
 			class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'custom' ? 'text-purple-400 border-b-2 border-purple-500' : 'text-gray-400 hover:text-gray-300'}"
 		>
 			My Presets ({userPresets.length})
@@ -310,7 +310,7 @@
 		<button 
 			type="button"
 			bind:this={saveButtonElement}
-			on:click={openSaveModal}
+			onclick={openSaveModal}
 			class="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white text-sm font-semibold rounded-lg transition-all shadow-md hover:shadow-lg flex items-center gap-2.5"
 		>
 			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -326,7 +326,7 @@
 			{#each presetArray as preset}
 				<button
 					type="button"
-					on:click={() => selectPreset(preset.id, false)}
+					onclick={() => selectPreset(preset.id, false)}
 					class="relative bg-gradient-to-br from-purple-900/20 to-blue-900/20 border-2 rounded-xl p-4 min-w-[140px] transition-all duration-200 cursor-pointer hover:border-purple-500/50 hover:shadow-lg hover:scale-105 {currentPresetId === preset.id && !isCustomSelected ? 'border-purple-500 bg-purple-900/30 shadow-lg ring-2 ring-purple-500/50' : 'border-purple-500/30'}"
 				>
 					<div class="flex flex-col items-center text-center gap-2">
@@ -350,7 +350,7 @@
 					<div class="relative group">
 						<button
 							type="button"
-							on:click={() => selectPreset(preset.id, true)}
+							onclick={() => selectPreset(preset.id, true)}
 							class="relative bg-gradient-to-br from-gray-900/50 to-gray-800/50 border-2 rounded-xl p-4 min-w-[140px] transition-all duration-200 cursor-pointer hover:shadow-lg hover:scale-105 {selectedPresetId === preset.id && isCustomSelected ? 'shadow-lg ring-2' : ''}"
 							style="border-color: {preset.icon || '#8b5cf6'}40; {selectedPresetId === preset.id && isCustomSelected ? `--tw-ring-color: ${preset.icon || '#8b5cf6'}80; border-color: ${preset.icon || '#8b5cf6'};` : ''}"
 						>
@@ -380,7 +380,7 @@
 						<div class="absolute top-2 left-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
 							<button
 								type="button"
-								on:click|stopPropagation={() => handleEditPreset(preset)}
+								onclick={(e) => { e.stopPropagation(); handleEditPreset(preset); }}
 								class="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded-lg flex items-center justify-center text-white shadow-md transition-colors border border-gray-600"
 								title="Edit preset"
 							>
@@ -390,7 +390,7 @@
 							</button>
 							<button
 								type="button"
-								on:click|stopPropagation={() => handleDeletePreset(preset.id)}
+								onclick={(e) => { e.stopPropagation(); handleDeletePreset(preset.id); }}
 								disabled={deletingPresetId === preset.id}
 								class="w-7 h-7 bg-red-600 hover:bg-red-700 rounded-lg flex items-center justify-center text-white shadow-md transition-colors disabled:opacity-50 border border-red-500"
 								title="Delete preset"
@@ -419,15 +419,15 @@
 		use:portal
 		class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center animate-fadeIn"
 		style="position: fixed; top: 0; left: 0; right: 0; bottom: 0;"
-		on:click={() => showSaveModal = false}
-		on:keydown={(e) => e.key === 'Escape' && (showSaveModal = false)}
+		onclick={() => showSaveModal = false}
+		onkeydown={(e) => e.key === 'Escape' && (showSaveModal = false)}
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="save-preset-title"
 	>
 		<div 
 			class="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 w-[400px] max-w-[90vw] border border-gray-700 shadow-2xl animate-slideUp max-h-[90vh] overflow-y-auto"
-			on:click|stopPropagation
+			onclick={(e) => e.stopPropagation()}
 		>
 			<div class="flex items-center gap-3 mb-6">
 				<div 
@@ -460,7 +460,7 @@
 							{#each colorPalette as color}
 								<button
 									type="button"
-									on:click={() => newPresetColor = color}
+									onclick={() => newPresetColor = color}
 									class="w-10 h-10 rounded-lg transition-all shadow-md hover:scale-110 {newPresetColor === color ? 'ring-2 ring-white ring-offset-2 ring-offset-gray-800' : 'hover:shadow-lg'}"
 									style="background-color: {color};"
 									title={color}
@@ -487,6 +487,12 @@
 						rows="2"
 						class="w-full bg-black/30 border border-gray-600 rounded-lg px-3.5 py-2.5 text-white placeholder-gray-500 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 focus:outline-none transition-all resize-none"
 						maxlength="200"
+						onkeydown={(e) => {
+							// Allow Enter to create new lines in textarea
+							if (e.key === 'Enter') {
+								e.stopPropagation();
+							}
+						}}
 					/>
 				</div>
 			</div>
@@ -494,7 +500,7 @@
 			<div class="flex gap-3 mt-6">
 				<button
 					type="button"
-					on:click={handleSavePreset}
+					onclick={handleSavePreset}
 					disabled={!newPresetName.trim() || saving}
 					class="flex-1 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all shadow-md hover:shadow-lg"
 				>
@@ -502,7 +508,7 @@
 				</button>
 				<button
 					type="button"
-					on:click={() => { showSaveModal = false; newPresetName = ''; newPresetColor = '#8b5cf6'; newPresetDescription = ''; }}
+					onclick={() => { showSaveModal = false; newPresetName = ''; newPresetColor = '#8b5cf6'; newPresetDescription = ''; }}
 					class="px-4 py-2.5 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
 				>
 					Cancel
@@ -518,15 +524,15 @@
 		use:portal
 		class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center animate-fadeIn"
 		style="position: fixed; top: 0; left: 0; right: 0; bottom: 0;"
-		on:click={() => { showEditModal = false; editingPreset = null; }}
-		on:keydown={(e) => e.key === 'Escape' && (showEditModal = false)}
+		onclick={() => { showEditModal = false; editingPreset = null; }}
+		onkeydown={(e) => e.key === 'Escape' && (showEditModal = false)}
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="edit-preset-title"
 	>
 		<div 
 			class="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 max-w-md w-full mx-4 my-8 border border-gray-700 shadow-2xl animate-slideUp max-h-[90vh] overflow-y-auto" 
-			on:click|stopPropagation
+			onclick={(e) => e.stopPropagation()}
 		>
 			<div class="flex items-center gap-3 mb-6">
 				<div 
@@ -559,7 +565,7 @@
 							{#each colorPalette as color}
 								<button
 									type="button"
-									on:click={() => newPresetColor = color}
+									onclick={() => newPresetColor = color}
 									class="w-10 h-10 rounded-lg transition-all shadow-md hover:scale-110 {newPresetColor === color ? 'ring-2 ring-white ring-offset-2 ring-offset-gray-800' : 'hover:shadow-lg'}"
 									style="background-color: {color};"
 									title={color}
@@ -586,6 +592,12 @@
 						rows="2"
 						class="w-full bg-black/30 border border-gray-600 rounded-lg px-3.5 py-2.5 text-white placeholder-gray-500 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 focus:outline-none transition-all resize-none"
 						maxlength="200"
+						onkeydown={(e) => {
+							// Allow Enter to create new lines in textarea
+							if (e.key === 'Enter') {
+								e.stopPropagation();
+							}
+						}}
 					/>
 				</div>
 			</div>
@@ -593,7 +605,7 @@
 			<div class="flex gap-3 mt-6">
 				<button
 					type="button"
-					on:click={handleUpdatePreset}
+					onclick={handleUpdatePreset}
 					disabled={!newPresetName.trim() || saving}
 					class="flex-1 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all shadow-md hover:shadow-lg"
 				>
@@ -601,7 +613,7 @@
 				</button>
 				<button
 					type="button"
-					on:click={() => { showEditModal = false; editingPreset = null; newPresetName = ''; newPresetColor = '#8b5cf6'; newPresetDescription = ''; }}
+					onclick={() => { showEditModal = false; editingPreset = null; newPresetName = ''; newPresetColor = '#8b5cf6'; newPresetDescription = ''; }}
 					class="px-4 py-2.5 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
 				>
 					Cancel

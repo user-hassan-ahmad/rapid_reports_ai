@@ -153,6 +153,12 @@
 					bind:value={generatedTemplate}
 					rows="15"
 					class="input-dark font-mono text-sm"
+					onkeydown={(e) => {
+						// Allow Enter to create new lines in textarea
+						if (e.key === 'Enter') {
+							e.stopPropagation();
+						}
+					}}
 				></textarea>
 				<div class="flex gap-2 mt-2">
 					<button

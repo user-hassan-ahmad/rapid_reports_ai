@@ -120,6 +120,12 @@
 				placeholder="e.g., 3mm slices, delayed phase, DWI sequences"
 				rows="3"
 				class="input-dark"
+				onkeydown={(e) => {
+					// Allow Enter to create new lines in textarea
+					if (e.key === 'Enter') {
+						e.stopPropagation();
+					}
+				}}
 			></textarea>
 		</div>
 	</div>

@@ -1,7 +1,9 @@
 <script>
 	import { createEventDispatcher, onMount } from 'svelte';
 	import { browser } from '$app/environment';
-	import TemplateEditor from './TemplateEditorNew.svelte';
+	// NOTE: TemplateEditorNew is the active template editor component
+	// TemplateEditor.svelte exists but is legacy/unused
+	import TemplateEditorNew from './TemplateEditorNew.svelte';
 	import { token } from '$lib/stores/auth';
 	import { settingsStore } from '$lib/stores/settings';
 	import { getTagColor, getTagColorWithOpacity } from '$lib/utils/tagColors.js';
@@ -98,7 +100,7 @@
 </script>
 
 {#if showEditor}
-	<TemplateEditor
+		<TemplateEditorNew
 		{editingTemplate}
 		{selectedModel}
 		{cameFromTab}

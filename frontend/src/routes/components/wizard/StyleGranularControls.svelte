@@ -609,6 +609,12 @@
 					rows="3"
 					placeholder="e.g., Always measure lymph node short axis. Comment on pleural surfaces even if normal..."
 					class="instructions-textarea"
+					onkeydown={(e) => {
+						// Allow Enter to create new lines in textarea
+						if (e.key === 'Enter') {
+							e.stopPropagation();
+						}
+					}}
 				></textarea>
 
 				<!-- Fine-Tuning Instructions Hint Box -->
@@ -1047,6 +1053,12 @@
 					rows="3"
 					placeholder="e.g., Lead with most clinically significant finding. Recommend follow-up for nodules >6mm..."
 					class="instructions-textarea"
+					onkeydown={(e) => {
+						// Allow Enter to create new lines in textarea
+						if (e.key === 'Enter') {
+							e.stopPropagation();
+						}
+					}}
 				></textarea>
 
 				<!-- Fine-Tuning Instructions Hint Box -->

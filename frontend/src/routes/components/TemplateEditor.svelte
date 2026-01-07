@@ -1,3 +1,8 @@
+<!--
+	LEGACY COMPONENT: This component is not actively used.
+	The active template editor is TemplateEditorNew.svelte.
+	This file is kept for reference but may be removed in the future.
+-->
 <script>
 	import { createEventDispatcher, onMount } from 'svelte';
 	import { token } from '$lib/stores/auth';
@@ -200,6 +205,19 @@ Use {{VARIABLE_NAME}} for dynamic content (e.g., {{COMPARISON}}) — these will 
 		variables = extractVariables(templateContent);
 	}
 
+	function handleFormKeyDown(e) {
+		// Allow Enter to create new lines in textareas - don't interfere at all
+		if (e.key === 'Enter' && e.target.tagName === 'TEXTAREA') {
+			// Stop the event from bubbling to prevent form submission, but let textarea handle it
+			e.stopPropagation();
+			return;
+		}
+		// For other elements, prevent form submission on Enter
+		if (e.key === 'Enter' && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'TEXTAREA') {
+			e.preventDefault();
+		}
+	}
+
 	async function handleSubmit() {
 		if (!name.trim() || !templateContent.trim()) {
 			alert('Please fill in name and template content');
@@ -354,7 +372,7 @@ Use {{VARIABLE_NAME}} for dynamic content (e.g., {{COMPARISON}}) — these will 
 		</div>
 	{/if}
 
-	<form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+	<form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} onkeydown={handleFormKeyDown}>
 		<div class="space-y-4">
 			<!-- Name -->
 			<div>
@@ -456,6 +474,12 @@ Use {{VARIABLE_NAME}} for dynamic content (e.g., {{COMPARISON}}) — these will 
 					id="template-content"
 					bind:value={templateContent}
 					oninput={handleTemplateContentChange}
+					onkeydown={(e) => {
+						// Allow Enter to create new lines in textarea
+						if (e.key === 'Enter') {
+							e.stopPropagation();
+						}
+					}}
 					required
 					placeholder={examplePlaceholder}
 					rows="8"
@@ -479,6 +503,12 @@ Use {{VARIABLE_NAME}} for dynamic content (e.g., {{COMPARISON}}) — these will 
 					placeholder="Write in prose, with a clear and consistent clinical narrative."
 					rows="4"
 					class="input-dark resize-none"
+					onkeydown={(e) => {
+						// Allow Enter to create new lines in textarea
+						if (e.key === 'Enter') {
+							e.stopPropagation();
+						}
+					}}
 				></textarea>
 			</div>
 		</div>
