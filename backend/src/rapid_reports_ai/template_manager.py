@@ -353,19 +353,27 @@ Do NOT include the "FINDINGS:" header - just the template content."""
         elif content_style == "guided_template":
             system_prompt = """You are a senior consultant radiologist creating a FINDINGS section template.
 
-Generate template content with embedded // comment lines for AI guidance.
+Generate a template with normal findings as prose defining the REPORT STRUCTURE, enriched with // contextual annotations.
+
+CONCEPTUAL APPROACH:
+- The prose statements define the report's organizational flow and structure
+- The // comments are like a senior colleague's annotations - providing contextual insights, principles, and assessment guidance
+- // comments enrich understanding of what each section assesses and why
 
 FORMAT RULES:
-- Template content describing normal findings (any format: sentences, bullets, etc.)
-- Next line: // Assess: [list of things to evaluate]
-- Blank line between anatomical regions
+- Write normal finding prose statements that define the report structure
+- Add // comment lines to provide contextual guidance and principle-based insights
+- // comments can appear before, after, or inline with prose as needed
+- Blank line between major anatomical regions
 - Example:
+  // Comment on study adequacy and technical factors first
+  
   The trachea and main bronchi are patent and of normal calibre.
   // Assess: endoluminal lesions, extrinsic compression, abnormal tracheal configuration
   
   The mediastinum is of normal width and contour.
-  // Assess: lymphadenopathy, masses, vascular structures
-- // lines are instructions for AI - they will NOT appear in final reports
+  // This section covers lymphadenopathy, masses, and vascular structures
+- // lines are contextual enrichers for AI - they will NOT appear in final reports
 - Use British English
 
 Do NOT include the "FINDINGS:" header - just the template content."""
@@ -1292,6 +1300,7 @@ DESCRIPTOR DENSITY - STANDARD:
     ) -> str:
         """
         For 'guided_template' style: Template has content + // comment guidance.
+        The prose defines report structure; // comments are contextual enrichers.
         Style preferences extracted from advanced config metadata.
         """
         # Normalize config with defaults for backward compatibility
@@ -1302,16 +1311,18 @@ DESCRIPTOR DENSITY - STANDARD:
         organization = advanced.get('organization', 'clinical_priority')
         is_exact_order = organization == 'template_order'
         
+        # For guided templates, emphasize template structure preservation
         priority_reminder = (
             "**PRIORITY REMINDER**: Template structure takes precedence. The style settings below guide HOW to express findings, not WHAT structure to use."
             if is_exact_order else
-            "**TEMPLATE ADAPTATION**: Emulate the template's language and content, but PRIORITIZE findings according to the organization style below."
+            "**TEMPLATE STRUCTURE**: The prose defines your report structure and flow - follow this line by line. Style settings control HOW to express findings within this structure."
         )
         
+        # Guided templates should maintain their structure - style settings refine expression, not organization
         anatomical_instr = (
-            "- Follow anatomical order from template"
+            "- Follow the template's organizational flow line by line"
             if is_exact_order else
-            "- Apply organization style below (see ORGANIZATION guidance)\n- ANTI-DUPLICATION: Each structure mentioned ONCE only\n- If Clinical Priority: Lead with significant findings + immediate context, then return to template structure\n- When returning to template flow, skip any structures already addressed in priority section"
+            "- Follow the template's prose structure line by line - it defines your organizational flow\n- Style settings (like Clinical Priority) control emphasis and expression WITHIN each section, not overall reorganization\n- ANTI-DUPLICATION: Each structure mentioned ONCE only\n- Replace normal statements with abnormal findings while maintaining the template's structural sequence"
         )
 
         prompt = f"""
@@ -1319,7 +1330,7 @@ DESCRIPTOR DENSITY - STANDARD:
 
 {priority_reminder}
 
-**Template Structure**: Prose statements (normal findings examples) + // comment lines (assessment guidance)
+**Template Structure**: Prose statements (report structure) + // comment lines (contextual enrichers)
 
 **Template**:
 {template_content}
@@ -1328,10 +1339,11 @@ DESCRIPTOR DENSITY - STANDARD:
 {findings_input}
 
 **Critical Instructions**:
-- Lines starting with '//' are GUIDANCE for what to assess - NOT output text
-- Prose lines show EXAMPLES of normal findings - use as style guide
+- The prose lines define your REPORT STRUCTURE - follow this organizational flow line by line
+- Lines starting with '//' are CONTEXTUAL ENRICHERS - like a colleague's annotations explaining what each section assesses and providing principle-based guidance
+- Replace normal prose statements with abnormal findings where applicable, but MAINTAIN the template's structural flow
+- The // comments explain the assessment principles and coverage for each section - they are NOT output text
 {anatomical_instr}
-- Use // lines to ensure systematic coverage
 
 **WRITING STYLE REQUIREMENTS**:
 
