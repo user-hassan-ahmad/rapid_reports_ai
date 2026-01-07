@@ -186,20 +186,20 @@
 			icon: '📝',
 			title: 'Guided Template',
 			shortTitle: 'Guided',
-			tagline: 'Template with embedded AI instructions',
+			tagline: 'Prose structure with contextual annotations',
 			description:
-				"Use // comments to guide the AI's attention and structure without forcing rigid text. Perfect for ensuring specific features are mentioned in a specific order.",
+				"Prose defines your report structure and flow. // comments are like a colleague's annotations - providing contextual insights and principle-based guidance. Perfect for maintaining a specific organizational flow with enriched assessment context.",
 			features: [
-				'Template content + // guidance comments',
-				'AI follows instructions in // lines',
-				'Best of both worlds: structure + flexibility',
-				'Good for complex logic or staging'
+				'Prose lines define report structure',
+				'// comments = contextual enrichers',
+				'Structure maintained, annotations guide assessment',
+				'Best for intentional organizational flow'
 			],
 			workflow: {
 				step1: {
 					label: 'Template',
 					content:
-						'The lungs are well aerated.\n// Describe nodules (size, loc, diff)\n\nThe pleural spaces are clear.\n// Exclude pneumothorax explicitly'
+						'The lungs are well aerated.\n// Assess parenchymal nodules (size, location, characteristics)\n\nThe pleural spaces are clear.\n// This section covers pneumothorax, effusions, thickening'
 				},
 				step2: {
 					label: 'You Dictate',
