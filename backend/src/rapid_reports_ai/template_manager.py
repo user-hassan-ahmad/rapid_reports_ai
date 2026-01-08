@@ -1133,55 +1133,64 @@ Incidentals should remain in the Findings section only.""")
             rec_parts = ["""
 **STEP 1B: RECOMMENDATIONS ASSESSMENT** (Independent evaluation - not affected by verbosity)
 
-Evaluate findings against enabled recommendation criteria:
+For each enabled criterion, evaluate whether findings warrant a specific recommendation:
 """]
             
             if enabled_recs.get('specialist_referral'):
                 rec_parts.append("""
-CRITERION 1: Specialist Referral
-Q: Do findings warrant specialist consultation?
-- Urgent/concerning findings requiring immediate specialist input?
-- Complex findings needing subspecialty expertise?
-- Surgical/interventional findings requiring procedural planning?
-→ If YES: Prepare referral recommendation with urgency level and specialty
-   Examples: 'Neurosurgical review', 'Urgent oncology consultation', 'Respiratory assessment'""")
+SPECIALIST REFERRAL
+When do findings warrant specialist consultation?
+- Urgent/concerning findings requiring immediate specialist input
+- Complex findings needing subspecialty expertise
+- Surgical/interventional findings requiring procedural planning
+
+→ If warranted: Include specific specialty and urgency level
+   Example: "Urgent respiratory review for massive pulmonary embolism with RV strain"
+""")
             
             if enabled_recs.get('further_workup'):
                 rec_parts.append("""
-CRITERION 2: Further Work-up
-Q: Are additional investigations needed for characterization?
-- Alternative imaging modality to clarify findings?
-- Tissue diagnosis required (biopsy)?
-- Laboratory tests to contextualize findings?
-→ If YES: Prepare specific work-up recommendation with rationale
-   Examples: 'PET-CT for staging', 'Image-guided biopsy', 'Ultrasound assessment', 'Tissue diagnosis'""")
+FURTHER WORK-UP
+When are additional investigations needed?
+- Alternative imaging modality would clarify findings
+- Tissue diagnosis would guide management
+- Laboratory tests would contextualize findings
+
+→ If warranted: Include specific test/modality and rationale
+   Example: "PET-CT for staging of lung mass"
+""")
             
             if enabled_recs.get('imaging_followup'):
                 rec_parts.append("""
-CRITERION 3: Imaging Follow-up
-Q: Is interval imaging appropriate?
-- Indeterminate findings requiring stability assessment?
-- Known findings with surveillance protocols?
-- Size/characteristics warranting interval monitoring?
-→ If YES: Prepare follow-up recommendation with modality and timeframe
-   Examples: 'CT chest in 3 months', 'Repeat MRI in 6 months'""")
+IMAGING FOLLOW-UP
+When is interval imaging appropriate?
+- Indeterminate findings requiring stability assessment
+- Known findings with surveillance protocols
+- Size/characteristics warranting interval monitoring
+
+→ If warranted: Include modality, timeframe, and indication
+   Example: "CT chest in 3 months to assess 8mm nodule"
+""")
             
             if enabled_recs.get('clinical_correlation'):
                 rec_parts.append("""
-CRITERION 4: Clinical Correlation
-Q: Do findings require clinical/laboratory correlation?
-- Imaging findings needing symptom correlation?
-- Abnormalities requiring specific lab test correlation?
-- Findings needing clinical examination context?
-→ If YES: Prepare SPECIFIC correlation recommendation (state exact tests/parameters)
-   Examples: 'Correlate with liver function tests (LFTs)', 'Check renal function and electrolytes',
-   'Assess for symptoms of hypercalcemia', 'Clinical examination for lymphadenopathy'
-   AVOID vague "clinical correlation advised" - be specific""")
+CLINICAL CORRELATION
+When do findings require clinical/laboratory correlation?
+- Imaging findings need symptom correlation
+- Abnormalities require specific lab correlation
+- Findings need clinical examination context
+
+→ If warranted: Be specific about which tests/parameters
+   Example: "Correlate with troponin and BNP for RV strain assessment"
+   Avoid generic: "Clinical correlation advised"
+""")
             
             rec_parts.append("""
-DECISION OUTPUT: Create a list of applicable recommendations with specific wording.
+DECISION OUTPUT:
+List applicable recommendations with specific wording.
+Aim for actionable, specific language that guides the referring clinician.
 
-CRITICAL: These recommendations are MANDATORY if criteria met - they override verbosity settings.""")
+CRITICAL: These recommendations are MANDATORY if warranted - they override verbosity settings.""")
             
             prompt_parts.append("\n".join(rec_parts))
         else:
