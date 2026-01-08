@@ -50,6 +50,12 @@ def main():
         print("✗ ERROR: DATABASE_URL not set")
         sys.exit(1)
     
+    # Railway and some other platforms use 'postgres://' but SQLAlchemy 1.4+ requires 'postgresql://'
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    
+    print(f"Database URL: {database_url.split('@')[0]}@***")  # Log without exposing password
+    
     # Create engine
     engine = create_engine(database_url)
     

@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "export PYTHONPATH=/app/src:$PYTHONPATH && cd /app/backend && poetry run python fix_migration_state.py && cd /app && poetry run uvicorn rapid_reports_ai.main:app --host 0.0.0.0 --port $PORT",
+    "startCommand": "cd /app/backend && export PYTHONPATH=/app/backend/src:$PYTHONPATH && poetry run python fix_migration_state.py && poetry run uvicorn rapid_reports_ai.main:app --host 0.0.0.0 --port $PORT",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }

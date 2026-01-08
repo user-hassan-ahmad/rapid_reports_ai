@@ -13,6 +13,10 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # For local development, fallback to a default SQLite DB if DATABASE_URL not set
 if not DATABASE_URL:
     DATABASE_URL = "sqlite:///./rapid_reports.db"
+else:
+    # Railway and some other platforms use 'postgres://' but SQLAlchemy 1.4+ requires 'postgresql://'
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # Create engine
 engine = create_engine(
