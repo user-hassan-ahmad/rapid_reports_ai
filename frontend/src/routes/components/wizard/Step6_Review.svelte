@@ -270,38 +270,7 @@
 									</div>
 
 									<div class="flex flex-wrap items-center gap-2">
-										{#if findingsConfig.advanced?.measurement_style}
-											<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-medium">
-												<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-												</svg>
-												<span>Measurements: <span class="capitalize">{findingsConfig.advanced.measurement_style.replace(/_/g, ' ')}</span></span>
-											</span>
-										{/if}
-										{#if findingsConfig.advanced?.negative_findings_style}
-											<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-medium">
-												<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-												</svg>
-												<span>Negatives: <span class="capitalize">{findingsConfig.advanced.negative_findings_style.replace(/_/g, ' ')}</span></span>
-											</span>
-										{/if}
-										{#if findingsConfig.advanced?.descriptor_density}
-											<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-medium">
-												<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-												</svg>
-												<span>Descriptions: <span class="capitalize">{findingsConfig.advanced.descriptor_density}</span></span>
-											</span>
-										{/if}
-										{#if findingsConfig.advanced?.paragraph_grouping}
-											<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-500/20 border border-violet-500/30 text-violet-300 text-xs font-medium">
-												<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14v6m-3-3h6M6 10h2a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2zm10 0h2a2 2 0 002-2V6a2 2 0 00-2-2h-2a2 2 0 00-2 2v2a2 2 0 002 2zM6 20h2a2 2 0 002-2v-2a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2z" />
-												</svg>
-												<span>Paragraphs: <span class="capitalize">{findingsConfig.advanced.paragraph_grouping.replace(/_/g, ' ')}</span></span>
-											</span>
-										{/if}
+										<!-- Old settings removed - now part of writing_style -->
 									</div>
 								</div>
 							{/if}
@@ -349,45 +318,20 @@
 										<span>Verbosity: <span class="capitalize">{impressionConfig.advanced.verbosity_style}</span></span>
 									</span>
 								{/if}
-								{#if impressionConfig.advanced?.impression_format}
+								{#if impressionConfig.advanced?.format || impressionConfig.advanced?.impression_format}
 									<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-300 text-xs font-medium">
 										<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
 										</svg>
-										<span>Format: <span class="capitalize">{impressionConfig.advanced.impression_format}</span></span>
+										<span>Format: <span class="capitalize">{impressionConfig.advanced.format || impressionConfig.advanced.impression_format}</span></span>
 									</span>
 								{/if}
-								{#if impressionConfig.advanced?.differential_style}
+								{#if impressionConfig.advanced?.differential_approach || impressionConfig.advanced?.differential_style}
 									<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-xs font-medium">
 										<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 										</svg>
-										<span>Differential: <span class="capitalize">{impressionConfig.advanced.differential_style.replace(/_/g, ' ')}</span></span>
-									</span>
-								{/if}
-								{#if impressionConfig.advanced?.comparison_terminology}
-									<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-medium">
-										<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-										</svg>
-										<span>Comparison: <span class="capitalize">{impressionConfig.advanced.comparison_terminology.replace(/_/g, ' ')}</span></span>
-									</span>
-								{/if}
-								{#if impressionConfig.advanced?.measurement_inclusion}
-									<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-medium">
-										<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-										</svg>
-										<span>Measurements: <span class="capitalize">{impressionConfig.advanced.measurement_inclusion.replace(/_/g, ' ')}</span></span>
-									</span>
-								{/if}
-								{#if impressionConfig.advanced?.incidental_handling}
-									<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-medium">
-										<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-										</svg>
-										<span>Incidentals: <span class="capitalize">{impressionConfig.advanced.incidental_handling.replace(/_/g, ' ')}</span></span>
+										<span>Differential: <span class="capitalize">{(impressionConfig.advanced.differential_approach || impressionConfig.advanced.differential_style || '').replace(/_/g, ' ')}</span></span>
 									</span>
 								{/if}
 							</div>

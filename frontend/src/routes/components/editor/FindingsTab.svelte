@@ -3,8 +3,6 @@
 	import { onMount } from 'svelte';
 	import { API_URL } from '$lib/config';
 	import { token } from '$lib/stores/auth';
-	import { fetchCustomPresets } from '$lib/stores/presets';
-	import StylePresetCards from '../wizard/StylePresetCards.svelte';
 	import StyleGranularControls from '../wizard/StyleGranularControls.svelte';
 	import TemplateSyntaxPreview from '../shared/TemplateSyntaxPreview.svelte';
 
@@ -22,35 +20,19 @@
 		advanced: {
 			instructions: '',
 			writing_style: 'standard',
-			format: 'prose',
-			use_subsection_headers: false,
 			organization: 'clinical_priority',
-			measurement_style: 'inline',
-			negative_findings_style: 'grouped',
-			descriptor_density: 'standard',
-			paragraph_grouping: 'by_finding'
+			format: 'prose',
+			use_subsection_headers: false
 		}
 	};
 
-	let selectedFindingsPreset = 'balanced_standard';
-
-	function handlePresetChange(event) {
-		selectedFindingsPreset = event.detail.presetId;
-		handleChange();
-	}
-
 	function resetToDefaults() {
-		selectedFindingsPreset = 'balanced_standard';
 		findingsConfig.advanced = {
 			instructions: '',
 			writing_style: 'standard',
-			format: 'prose',
-			use_subsection_headers: false,
 			organization: 'clinical_priority',
-			measurement_style: 'inline',
-			negative_findings_style: 'grouped',
-			descriptor_density: 'standard',
-			paragraph_grouping: 'by_finding'
+			format: 'prose',
+			use_subsection_headers: false
 		};
 		handleChange();
 	}
@@ -202,7 +184,7 @@
 	}
 
 	onMount(() => {
-		fetchCustomPresets('findings');
+		// No preset loading needed
 	});
 
 	// Note: contrastOther is not available in this component, but we don't need it for display
@@ -620,25 +602,14 @@
 				{/if}
 			</div>
 			
-			<!-- Preset Cards (hidden for structured templates) -->
-			{#if showFullStyleControls}
-				<StylePresetCards 
-					section="findings"
-					bind:selectedPresetId={selectedFindingsPreset}
-					bind:advanced={findingsConfig.advanced}
-					on:presetChange={handlePresetChange}
-				/>
-			{/if}
-			
-			<!-- Granular Controls -->
+			<!-- Style Controls -->
 			<div class="mt-6">
 				{#if showFullStyleControls}
 					<!-- Show full StyleGranularControls component for normal styles -->
 					<StyleGranularControls 
 						section="findings"
 						bind:advanced={findingsConfig.advanced}
-						findingsContentStyle={findingsConfig.content_style}
-						on:fieldChange={() => { selectedFindingsPreset = 'custom'; handleChange(); }}
+						on:fieldChange={handleChange}
 					/>
 				{:else}
 					<!-- Warning banner for structured templates -->

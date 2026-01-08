@@ -361,52 +361,6 @@ class ReportVersion(Base):
             "is_current": self.is_current,
             "created_at": self.created_at.isoformat()
         }
-
-
-class WritingStylePreset(Base):
-    """Model for user's custom writing style presets"""
-    
-    __tablename__ = "writing_style_presets"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    
-    # Preset metadata
-    name = Column(String(100), nullable=False)
-    icon = Column(String(10), nullable=True, default='⭐')  # Optional emoji icon
-    description = Column(String(200), nullable=True)
-    
-    # Preset settings for FINDINGS or IMPRESSION section
-    settings = Column(JSON, nullable=False)
-    # Example: {
-    #   "writing_style": "standard",
-    #   "format": "prose",
-    #   "use_subsection_headers": false,
-    #   "organization": "clinical_priority",
-    #   ...
-    # }
-    
-    # Section type: 'findings' or 'impression'
-    section_type = Column(String(20), nullable=False, default='findings', index=True)
-    
-    # Timestamps
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=True)
-    
-    # Usage tracking
-    usage_count = Column(Integer, default=0, nullable=False)
-    last_used_at = Column(DateTime, nullable=True)
-    
-    # Relationships
-    user = relationship("User", backref="writing_style_presets")
-    
-    # Constraint: unique name per user per section
-    __table_args__ = (
-        UniqueConstraint('user_id', 'name', 'section_type', name='uix_user_preset_section'),
-    )
-    
-    def __repr__(self):
-        return f"<WritingStylePreset(id={self.id}, name='{self.name}', section_type='{self.section_type}')>"
     
     def to_dict(self):
         """Convert preset to dictionary"""

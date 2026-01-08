@@ -3,8 +3,6 @@
 	import { onMount } from 'svelte';
 	import { API_URL } from '$lib/config';
 	import { token } from '$lib/stores/auth';
-	import { fetchCustomPresets } from '$lib/stores/presets';
-	import StylePresetCards from './StylePresetCards.svelte';
 	import StyleGranularControls from './StyleGranularControls.svelte';
 	import TemplateSyntaxPreview from '../shared/TemplateSyntaxPreview.svelte';
 	import { highlightSyntax } from '$lib/utils/templateSyntaxHighlighting';
@@ -27,33 +25,22 @@
 		}
 	};
 
-	let selectedFindingsPreset: string | null = 'balanced_standard';
-
-	function handlePresetChange(event: any) {
-		selectedFindingsPreset = event.detail.presetId;
-	}
-
 	function handleChange() {
 		dispatch('change');
 	}
 
 	function resetToDefaults() {
-		selectedFindingsPreset = 'balanced_standard';
 		findingsConfig.advanced = {
 			instructions: '',
 			writing_style: 'standard',
-			format: 'prose',
-			use_subsection_headers: false,
 			organization: 'clinical_priority',
-			measurement_style: 'inline',
-			negative_findings_style: 'grouped',
-			descriptor_density: 'standard',
-			paragraph_grouping: 'by_finding'
+			format: 'prose',
+			use_subsection_headers: false
 		};
 	}
 
 	onMount(() => {
-		fetchCustomPresets('findings' as any);
+		// No preset loading needed
 	});
 
 	export let scanType = '';
@@ -104,13 +91,9 @@
 		findingsConfig.advanced = {
 			instructions: findingsConfig.advanced?.instructions || '',
 			writing_style: 'standard',
-			format: 'prose',
-			use_subsection_headers: false,
 			organization: 'clinical_priority',
-			measurement_style: 'inline',
-			negative_findings_style: 'grouped',
-			descriptor_density: 'standard',
-			paragraph_grouping: 'by_finding'
+			format: 'prose',
+			use_subsection_headers: false
 		};
 	}
 
@@ -894,25 +877,13 @@
 					{/if}
 				</div>
 
-				<!-- Preset Cards (hidden for structured templates) -->
-				{#if showFullStyleControls}
-					<StylePresetCards
-						section="findings"
-						bind:selectedPresetId={selectedFindingsPreset as any}
-						bind:advanced={findingsConfig.advanced as any}
-						on:presetChange={handlePresetChange}
-					/>
-				{/if}
-
-				<!-- Granular Controls -->
+				<!-- Style Controls -->
 				<div class="mt-6">
 					{#if showFullStyleControls}
-					<!-- Show full StyleGranularControls component for normal styles -->
 					<StyleGranularControls
 						section="findings"
 						bind:advanced={findingsConfig.advanced}
-						findingsContentStyle={findingsConfig.content_style}
-						on:fieldChange={() => (selectedFindingsPreset = 'custom')}
+						on:fieldChange={handleChange}
 					/>
 					{:else}
 						<!-- Warning banner for structured templates -->

@@ -226,8 +226,8 @@ class TemplateManager:
     
     def _normalize_advanced_config(self, advanced: dict, section_type: str = 'findings') -> dict:
         """
-        Normalize advanced config by filling in defaults for missing fields.
-        Ensures backward compatibility with templates created before new fields.
+        Normalize advanced config - simplified architecture with NO backward compatibility.
+        No active users, so clean slate.
         
         Args:
             advanced: Current advanced config (may be incomplete)
@@ -239,48 +239,27 @@ class TemplateManager:
         if section_type == 'findings':
             defaults = {
                 'instructions': '',
-                'writing_style': 'standard',  # Merged: verbosity + sentence_structure
-                'format': 'prose',  # prose, bullets, mixed
-                'use_subsection_headers': False,  # Standalone: can combine with any format
-                'organization': 'clinical_priority',  # clinical_priority, systematic, problem_oriented, template_order
-                'measurement_style': 'inline',
-                'negative_findings_style': 'grouped',  # grouped, distributed, minimal, comprehensive
-                'paragraph_grouping': 'by_finding',  # continuous, by_finding, by_region, by_subsection
-                'descriptor_density': 'standard'
+                'writing_style': 'standard',
+                'organization': 'clinical_priority',
+                'format': 'prose',
+                'use_subsection_headers': False
             }
         else:  # impression
             defaults = {
+                'instructions': '',
                 'verbosity_style': 'standard',
-                'impression_format': 'prose',
-                'differential_style': 'if_needed',
-                'comparison_terminology': 'measured',
-                'measurement_inclusion': 'key_only',
-                'incidental_handling': 'action_threshold',
+                'format': 'prose',
+                'differential_approach': 'if_needed',
                 'recommendations': {
                     'specialist_referral': True,
                     'further_workup': True,
                     'imaging_followup': False,
                     'clinical_correlation': False
-                },
-                'instructions': ''
+                }
             }
         
         # Merge: existing values override defaults
-        merged = {**defaults, **advanced}
-        
-        # BACKWARD COMPATIBILITY: Convert old fields to new structure
-        if section_type == 'impression':
-            # Convert old verbosity (0-2) to new verbosity_style
-            if 'verbosity_style' not in advanced and 'verbosity' in advanced:
-                old_verbosity = advanced.get('verbosity', 0)
-                if old_verbosity == 0:
-                    merged['verbosity_style'] = 'brief'
-                elif old_verbosity == 1:
-                    merged['verbosity_style'] = 'standard'
-                else:  # 2
-                    merged['verbosity_style'] = 'detailed'
-        
-        return merged
+        return {**defaults, **advanced}
     
     # ========================================================================
     # Template Content Generation (AI-Powered)
@@ -739,296 +718,131 @@ Generate suggestions now."""
         return result.output.suggestions
     
     def _build_detailed_style_guidance(self, advanced: dict, section_type: str = 'findings') -> str:
-        """
-        Generate detailed, contextual writing style guidance from metadata.
-        Provides concrete examples for each setting to ensure LLM compliance.
-        
-        Args:
-            advanced: Advanced config dict with style preferences
-            section_type: 'findings' or 'impression'
-        
-        Returns:
-            Formatted string with detailed style instructions
-        """
+        """Ultra-clean style guidance with zero redundancy"""
         guidance_parts = []
         
-        # WRITING STYLE (merged verbosity + sentence structure for FINDINGS)
+        # === WRITING STYLE (Primary - handles everything) ===
         writing_style = advanced.get('writing_style', 'standard')
         
-        # Backward compatibility: map old values to new consolidated options
-        old_to_new_map = {
-            'telegraphic': 'concise',
-            'comprehensive': 'detailed',
-            'academic': 'detailed'
-        }
-        if writing_style in old_to_new_map:
-            writing_style = old_to_new_map[writing_style]
-        
         style_guidance = {
-            'concise': """WRITING STYLE - CONCISE:
-  - Brief, essential details only
-  - Short direct sentences
-  - Key measurements and locations
-  - Efficient descriptors
-  - Example: "Right upper lobe mass, 4cm, spiculated. Small pleural effusion present."
-  - NOT: "A well-defined 4cm spiculated mass is identified within the lateral segment of the right upper lobe, demonstrating heterogeneous enhancement."
-  - Use case: Rapid dictation, consultant-style brief reporting""",
+            'concise': """
+=== WRITING STYLE: CONCISE ===
+
+COMMUNICATION GOAL:
+Rapid information transfer for experienced readers. Consultant-to-consultant style.
+
+CORE PRINCIPLE:
+Strip to essentials. If removing a word doesn't change clinical understanding, remove it.
+
+DECISION FRAMEWORK:
+For each word, ask: "Does this change clinical understanding?"
+- Size + critical morphology: YES → Include
+  ✓ "4cm spiculated mass in right upper lobe"
+- Decorative descriptors: NO → Remove
+  ✗ "well-defined", "irregular", "appears to be"
+- Passive constructions: NO → Eliminate
+  ✗ "are present", "is identified" → ✓ "present"
+- Anatomical subsegments: NO → Use general location
+  ✓ "right upper lobe" not "lateral segment of right upper lobe"
+
+Key rule: Spell out anatomical terms (no RUL, PA, LLL acronyms).
+
+EXAMPLE OUTPUT:
+"Large filling defects in the right pulmonary artery extending to segmental branches. Additional defect in the left lower lobe. Right ventricle dilated, RV/LV ratio 1.3. Mild IVC reflux. Small right effusion."
+""",
             
-            'standard': """WRITING STYLE - STANDARD:
-  - Balanced sentence length and complexity
-  - Include key measurements, locations, characteristics
-  - Natural medical prose rhythm
-  - Example: "There is a 4cm spiculated mass in the right upper lobe. A small right pleural effusion is noted."
-  - Standard NHS reporting style""",
+            'standard': """
+=== WRITING STYLE: STANDARD ===
+
+COMMUNICATION GOAL:
+Balanced professional NHS reporting for multidisciplinary teams and clinical documentation.
+
+CORE PRINCIPLE:
+Include what's clinically relevant with appropriate detail. Balance completeness with readability.
+
+DECISION FRAMEWORK:
+Ask: "Does this detail add clinical value or just length?"
+- Core findings: Full description with key morphology
+- Secondary findings: Appropriate detail
+- Normal structures: Group efficiently
+- Use natural sentence flow (passive voice OK when it reads better)
+
+EXAMPLE OUTPUT:
+"Large filling defects are present in the right main pulmonary artery, extending into segmental branches. An additional filling defect is identified in the left lower lobe. The right ventricle is moderately dilated with an RV/LV ratio of 1.3. Mild IVC reflux suggests right heart strain. A small right pleural effusion is present."
+""",
             
-            'detailed': """WRITING STYLE - DETAILED:
-  - Comprehensive sentences with appropriate clauses
-  - Full measurements and precise locations
-  - Rich descriptors and characteristics
-  - Detailed anatomical relationships
-  - Example: "A well-defined 4cm spiculated mass is identified in the right upper lobe, demonstrating heterogeneous enhancement. An associated small right pleural effusion is noted, measuring approximately 1cm in depth."
-  - Use case: Teaching files, complex cases, academic centers, MDT preparation"""
+            'detailed': """
+=== WRITING STYLE: DETAILED ===
+
+COMMUNICATION GOAL:
+Comprehensive documentation for complex cases, academic review, or medico-legal contexts.
+
+CORE PRINCIPLE:
+Document the complete picture with full characterization and precision. Favor thoroughness over brevity.
+
+DECISION FRAMEWORK:
+Ask: "What's the most complete way to describe this finding?"
+- Include full morphological characterization
+- Precise subsegmental anatomical locations
+- Three-dimensional measurements when available
+- Rich descriptive language ("well-defined", "heterogeneous", etc.)
+- All associated findings and normal structures
+
+EXAMPLE OUTPUT:
+"Multiple large filling defects are identified within the right main pulmonary artery, extending distally into the segmental branches of the right upper and lower lobes. An additional filling defect is present in the posterior basal segmental artery of the left lower lobe. The right ventricle demonstrates moderate dilatation with an RV/LV ratio of 1.3. Associated mild reflux of contrast material into the IVC and hepatic veins is observed. Wedge-shaped consolidation is evident in the posterior segment of the right lower lobe, consistent with pulmonary infarction. A small right-sided pleural effusion is noted."
+"""
         }
         guidance_parts.append(style_guidance.get(writing_style, style_guidance['standard']))
         
-        # MEASUREMENT STYLE
-        measurement_style = advanced.get('measurement_style', 'inline')
-        if measurement_style == 'inline':
-            guidance_parts.append("MEASUREMENTS - INLINE INTEGRATION:\n  - Integrate measurements directly into descriptors\n  - Example: 'A 4cm spiculated mass...'\n  - NOT: 'A spiculated mass is present, measuring 4cm'")
-        else:
-            guidance_parts.append("MEASUREMENTS - SEPARATE CLAUSES:\n  - Report findings first, measurements after\n  - Example: 'A spiculated mass is present, measuring 4cm in maximum diameter'\n  - NOT: 'A 4cm spiculated mass...'")
-        
-        # ORGANIZATION (how findings are sequenced)
+        # === ORGANIZATION ===
         organization = advanced.get('organization', 'clinical_priority')
-        
-        # Consolidation: 'problem_oriented' is now merged into 'clinical_priority'
-        if organization == 'problem_oriented':
-            organization = 'clinical_priority'
-            
         org_guidance = {
-            'clinical_priority': """ORGANIZATION - CLINICAL PRIORITY:
-  KEY PRINCIPLE: Template structure is your organizational framework. Clinical priority elevates significant findings to lead position.
-  
-  SEQUENCE: 
-    1. HEADLINE: Lead with acute/significant abnormalities if present
-    2. IMMEDIATE CONTEXT: Complete the regional picture for that finding (related structures, complications)
-    3. RETURN TO TEMPLATE: Resume template's structural flow for remaining findings
-    4. SKIP DUPLICATES: When returning to template, skip any structures already addressed in steps 1-2
-    5. Within each template section, prioritize: abnormal → pertinent negative → incidental normal
-  
-  EXAMPLE FLOW:
-    • PE in right PA [HEADLINE] 
-    • RV dilation with IVC reflux [IMMEDIATE CONTEXT]
-    • [RETURN TO TEMPLATE - skip PA/heart sections already done]
-    • Wedge consolidation in RLL [next template section: parenchyma]
-    • Small pleural effusion [next template section: pleural space]
-    • Remainder as per template structure
-  
-  CRITICAL: Each finding mentioned ONCE only. Template is your roadmap - clinical priority determines what to emphasize first.
+            'clinical_priority': """
+=== FINDING SEQUENCE: Clinical Priority ===
+
+Lead with critical findings, then resume template structure.
+1. Start with acute/significant abnormalities
+2. Complete regional context
+3. Resume template flow
+4. Each finding mentioned ONCE only
 """,
-            
-            'systematic': """ORGANIZATION - SYSTEMATIC REVIEW:
-  KEY PRINCIPLE: Fixed anatomical sequence from superior to inferior
-  SEQUENCE: Head → Neck → Chest → Heart → Abdomen → Pelvis (standard order regardless of findings)
-  EXAMPLE: "Normal brain parenchyma. Clear lung fields. Normal cardiac size. Liver and spleen unremarkable. Kidneys show no focal abnormality."
-""",
-            
-            
-            'template_order': """ORGANIZATION - TEMPLATE ORDER:
-  KEY PRINCIPLE: Strictly follow template's defined anatomical sequence
-  SEQUENCE: Exact order specified in template (may be custom, not standard anatomical)
-  EXAMPLE: If template specifies "Pelvis → Abdomen → Chest", report in that exact order regardless of clinical significance
+            'template_order': """
+=== FINDING SEQUENCE: Template Order ===
+
+Follow template's anatomical structure exactly.
+Do not reorder based on clinical significance.
 """
         }
         guidance_parts.append(org_guidance.get(organization, org_guidance['clinical_priority']))
         
-        # NEGATIVE FINDINGS HANDLING
-        negative_style = advanced.get('negative_findings_style', 'grouped')
-        negative_guidance = {
-            'minimal': """NEGATIVE FINDINGS - PERTINENT ONLY:
-  STRUCTURE: Include ONLY negatives relevant to the abnormality and clinical context
-  PRINCIPLE: Adapt negative findings to what's clinically significant given the positive findings
-  SEQUENCE: Report negatives that help answer the clinical question or are relevant to staging/assessment
-  
-  EXAMPLES:
-    - For lung mass: "No mediastinal lymphadenopathy. No pleural effusion."
-    - For liver lesion: "No biliary dilatation. No ascites."
-    - Omit routine normals (e.g., "liver normal") if not relevant to clinical question
-  
-  KEY PRINCIPLE: Clinical relevance determines inclusion, not completeness""",
-            
-            'grouped': """NEGATIVE FINDINGS - GROUPED:
-  STRUCTURE: Combine related normal structures efficiently in single statements
-  PRINCIPLE: Efficient consolidation of normals without excessive verbosity
-  SEQUENCE: Group anatomically related structures together
-  
-  EXAMPLES:
-    - "The liver, spleen and pancreas are unremarkable."
-    - "No lymphadenopathy. No pleural effusion."
-    - "The kidneys and adrenal glands demonstrate no focal abnormality."
-  
-  KEY PRINCIPLE: Balance between completeness and efficiency""",
-            
-            'comprehensive': """NEGATIVE FINDINGS - COMPREHENSIVE:
-  STRUCTURE: Explicit statement for every anatomical system reviewed
-  PRINCIPLE: Complete documentation of all normals, regardless of clinical relevance
-  SEQUENCE: Systematic coverage of all systems imaged
-  
-  EXAMPLES:
-    - "No consolidation, effusion, or pneumothorax. Normal cardiac size and contour. No mediastinal lymphadenopathy. Liver normal. Spleen normal. Kidneys demonstrate no focal abnormality."
-  
-  KEY PRINCIPLE: Complete documentation takes priority over efficiency
-  USE CASE: Screening studies, teaching files, medico-legal documentation"""
-        }
-        # Handle backward compatibility: map 'distributed' to 'comprehensive'
-        if negative_style == 'distributed':
-            negative_style = 'comprehensive'
-        guidance_parts.append(negative_guidance.get(negative_style, negative_guidance['grouped']))
-        
-        # DESCRIPTOR DENSITY
-        descriptor = advanced.get('descriptor_density', 'standard')
-        if descriptor == 'sparse':
-            guidance_parts.append("""
-DESCRIPTOR DENSITY - SPARSE:
-  - Use MINIMAL adjectives and descriptors
-  - Include ONLY essential descriptive words
-  - Omit shape, margins, enhancement patterns unless critical
-  - Focus on WHAT it is, not HOW it looks
-  - Applies to POSITIVE FINDINGS ONLY (not negative findings or review structure)
-  
-  EXAMPLES: 'Mass in liver' | 'Nodule in lung' | 'Lesion in kidney'
-  
-  NOTE: This controls adjectives only, independent of writing style (sentence structure/length)
-""")
-        elif descriptor == 'rich':
-            guidance_parts.append("""
-DESCRIPTOR DENSITY - RICH:
-  - Use COMPREHENSIVE adjectives and descriptors
-  - Include shape, margins, enhancement patterns, internal characteristics
-  - Add anatomical precision (segments, stations, regions)
-  - Full morphological characterization
-  - Applies to POSITIVE FINDINGS ONLY (not negative findings or review structure)
-  
-  EXAMPLES: 'Well-defined 4cm ovoid mass in segment 7 of the liver with smooth margins and homogeneous enhancement'
-  
-  NOTE: This controls adjectives only, independent of writing style (sentence structure/length)
-""")
-        else:  # standard
-            guidance_parts.append("""
-DESCRIPTOR DENSITY - STANDARD:
-  - Use BALANCED adjectives and descriptors
-  - Include key characteristics (size, basic shape/margins when relevant)
-  - Omit excessive morphological detail
-  - Standard NHS reporting level
-  - Applies to POSITIVE FINDINGS ONLY (not negative findings or review structure)
-  
-  EXAMPLES: '4cm well-defined mass in liver' | '3cm spiculated nodule in right upper lobe'
-  
-  NOTE: This controls adjectives only, independent of writing style (sentence structure/length)
-""")
-        
-        # PARAGRAPH GROUPING
-        para_grouping = advanced.get('paragraph_grouping', 'by_finding')
-        # Handle backward compatibility: map 'by_subsection' to 'by_region'
-        if para_grouping == 'by_subsection':
-            para_grouping = 'by_region'
-        
-        para_guidance = {
-            'continuous': """PARAGRAPH GROUPING - CONTINUOUS:
-  STRUCTURE: One or two long paragraphs for entire findings section
-  PRINCIPLE: Flowing continuous prose without paragraph breaks
-  SEQUENCE: All findings in continuous text, no visual separation
-  
-  EXAMPLE STRUCTURE:
-    "There is a 4cm mass in the right upper lobe. No mediastinal lymphadenopathy. The liver, spleen and pancreas are unremarkable. Small renal cyst noted."
-  
-  KEY PRINCIPLE: Single flowing narrative, no paragraph breaks
-  USE CASE: Brief reports, rapid dictation""",
-            
-            'by_finding': """PARAGRAPH GROUPING - BY FINDING:
-  STRUCTURE: Each significant finding or related group gets its own paragraph
-  PRINCIPLE: Break into digestible paragraphs for enhanced readability
-  SEQUENCE: Logical groupings by related anatomy or findings
-  
-  EXAMPLE STRUCTURE:
-    "There is a 4cm spiculated mass in the right upper lobe, highly suspicious for malignancy. No mediastinal lymphadenopathy is identified.
-    
-    The liver, spleen and pancreas are unremarkable.
-    
-    Incidental note is made of a small renal cyst."
-  
-  KEY PRINCIPLE: Paragraph breaks enhance readability, group related findings
-  USE CASE: Standard reporting, most common approach""",
-            
-            'by_region': """PARAGRAPH GROUPING - BY ANATOMICAL REGION:
-  STRUCTURE: Separate paragraph for each major anatomical region/system
-  PRINCIPLE: Clear visual separation between anatomical systems
-  SEQUENCE: Each paragraph = one anatomical region/system
-  
-  EXAMPLE STRUCTURE:
-    "There is a 4cm spiculated mass in the right upper lobe. No mediastinal lymphadenopathy. No pleural effusion.
-    
-    The liver, spleen and pancreas are unremarkable. No ascites.
-    
-    Normal pelvic appearance. Small renal cyst noted."
-  
-  KEY PRINCIPLE: Anatomical organization with clear regional separation via paragraph breaks
-  USE CASE: Multi-region studies, systematic documentation
-  NOTE: This works WITH organization settings - if organization is "systematic", this aligns naturally. Do NOT add headers or colons - use paragraph breaks only."""
-        }
-        guidance_parts.append(para_guidance.get(para_grouping, para_guidance['by_finding']))
-        
-        # FORMAT (presentation style)
+        # === FORMAT ===
         format_style = advanced.get('format', 'prose')
         format_guidance = {
-            'prose': """FORMAT - FLOWING PROSE:
-  - Paragraph-based narrative structure
-  - Traditional medical prose style
-  - Continuous sentences forming paragraphs
-  - Use case: Standard reporting, most common""",
-            
-            'bullets': """FORMAT - BULLET POINTS:
-  - Use bullet points for each discrete finding
-  - Each point = one observation
-  - Example:
-    • 4cm mass in RUL
-    • No lymphadenopathy
-    • Small pleural effusion
-  - Use case: Rapid reporting, structured lists""",
-            
-            'mixed': """FORMAT - MIXED:
-  - Prose paragraphs for main narrative findings
-  - Bullets for lists or multiple similar items
-  - Example: Prose for main findings, bullets for "No lymphadenopathy. No effusion. No fracture."
-  - Use case: Flexible reporting, combining narrative with lists"""
+            'prose': "FORMAT: Flowing prose paragraphs with natural breaks",
+            'bullets': "FORMAT: Bullet points (•) - one finding per bullet"
         }
         guidance_parts.append(format_guidance.get(format_style, format_guidance['prose']))
         
-        # SUBSECTION HEADERS (standalone, can combine with any format)
-        use_headers = advanced.get('use_subsection_headers', False)
-        if use_headers:
-            guidance_parts.append("""SUBSECTION HEADERS - ENABLED:
-  - Use explicit anatomical region headers in CAPS (e.g., "CHEST:", "ABDOMEN:", "PLEURA:")
-  - Blank line before each header
-  - Headers followed by content in the selected format (prose/bullets/mixed)
-  - Example with prose:
-    CHEST WALL:
-    No fracture. Soft tissues unremarkable.
-    
-    LUNGS:
-    4cm spiculated mass in RUL. Otherwise clear.
-    
-    PLEURA:
-    Small right pleural effusion.
-  - Example with bullets:
-    CHEST WALL:
-    • No fracture
-    • Soft tissues unremarkable
-    
-    LUNGS:
-    • 4cm spiculated mass in RUL
-    • Otherwise clear
-  - Use case: Structured reports, multi-region studies, teaching files, enhanced readability""")
+        # === SUBSECTION HEADERS ===
+        if advanced.get('use_subsection_headers', False):
+            guidance_parts.append("""
+SUBSECTION HEADERS: ENABLED
+Use CAPS headers with colons (e.g., "CHEST:", "ABDOMEN:")
+Works with both prose and bullets.
+""")
+        
+        # === CUSTOM INSTRUCTIONS ===
+        if advanced.get('instructions', '').strip():
+            guidance_parts.append(f"CUSTOM INSTRUCTIONS:\n{advanced['instructions']}")
+        
+        # === NHS CORE RULES ===
+        guidance_parts.append("""
+NHS STYLE RULES:
+- British English: oesophagus, haemorrhage, oedema, paediatric
+- Measurements: Space between number and unit ("5 cm")
+- Avoid: "There is/are", "demonstrates", "shows", "is seen"
+- Prefer: Direct statements, active verbs
+""")
         
         return "\n\n".join(guidance_parts)
     
@@ -1036,146 +850,134 @@ DESCRIPTOR DENSITY - STANDARD:
         """Generate IMPRESSION-specific style guidance"""
         guidance_parts = []
         
-        # Verbosity style (replaces old numeric verbosity)
+        # === VERBOSITY STYLE (handles measurements, comparisons, incidentals) ===
         verbosity_style = advanced.get('verbosity_style', 'standard')
+        
         verbosity_map = {
-            'brief': (
-                "VERBOSITY STYLE: Brief\n"
-                "\n"
-                "HOW TO EXPRESS:\n"
-                "  - Direct, concise diagnostic statements\n"
-                "  - Minimal adjectives (only if essential for diagnosis)\n"
-                "  - Eliminate filler words and verbose phrasing\n"
-                "  - Think: corridor conversation between consultants\n"
-                "\n"
-                "GOOD EXAMPLES:\n"
-                "  - 'Right upper lobe lung mass.'\n"
-                "  - '4cm right upper lobe mass.' (with measurements)\n"
-                "  - 'No acute intracranial abnormality.'\n"
-                "  - '4cm right upper lobe mass. Recommend CT chest staging.' (with recommendations)\n"
-                "\n"
-                "BAD EXAMPLES:\n"
-                "  - 'There is a spiculated mass located in the right upper lobe which appears suspicious...'\n"
-                "  - 'The scan demonstrates no evidence of acute intracranial abnormality with normal brain parenchyma...'"
-            ),
-            'standard': (
-                "VERBOSITY STYLE: Standard\n"
-                "\n"
-                "HOW TO EXPRESS:\n"
-                "  - Balanced sentence structure with natural medical prose\n"
-                "  - Primary diagnosis with confidence level when uncertain ('highly suspicious for', 'consistent with')\n"
-                "  - Basic morphological descriptors when relevant\n"
-                "  - Standard NHS reporting style\n"
-                "\n"
-                "STRUCTURE:\n"
-                "  - Main finding with clinical impression\n"
-                "  - Significant secondary findings (if present)\n"
-                "  - Recommendations/differential as configured\n"
-                "\n"
-                "GOOD EXAMPLE:\n"
-                "  'There is a spiculated mass in the right upper lobe, highly suspicious for primary lung\n"
-                "   malignancy. A small right pleural effusion is present.'"
-            ),
-            'detailed': (
-                "VERBOSITY STYLE: Detailed\n"
-                "\n"
-                "HOW TO EXPRESS:\n"
-                "  - Comprehensive morphological descriptions\n"
-                "  - Detailed anatomical locations and relationships\n"
-                "  - Rich descriptive language ('heterogeneous enhancement', 'irregular margins')\n"
-                "  - Anatomical precision ('lateral segment of RUL', 'subcarinal station')\n"
-                "  - All clinically significant secondary findings with full characterization\n"
-                "\n"
-                "STRUCTURE:\n"
-                "  - Primary finding with comprehensive morphological description\n"
-                "  - Anatomical details and extent\n"
-                "  - Secondary findings with descriptive detail\n"
-                "  - Associated features with characteristics\n"
-                "\n"
-                "GOOD EXAMPLE:\n"
-                "  'There is a spiculated mass in the right upper lobe demonstrating irregular margins,\n"
-                "   heterogeneous enhancement and central low attenuation, highly suspicious for primary\n"
-                "   bronchogenic carcinoma. Associated mediastinal lymphadenopathy is present, particularly\n"
-                "   at the subcarinal station. A small right pleural effusion is noted. No distant metastatic\n"
-                "   disease is identified.'"
-            )
+            'brief': """
+=== IMPRESSION VERBOSITY: BRIEF ===
+
+COMMUNICATION GOAL:
+Corridor conversation style. What you'd tell a colleague walking past - diagnosis only.
+
+CORE PRINCIPLE:
+Distill to the essential diagnosis and critical complications. Strip everything else.
+
+DECISION FRAMEWORK:
+Ask: "Would I say this in a 5-second corridor conversation?"
+- If YES → Include
+  ✓ "Bilateral pulmonary emboli with right heart strain"
+  ✓ "New pulmonary emboli" (comparison when relevant)
+  ✓ "Progression of disease"
+- If NO → Omit
+  ✗ Secondary findings, measurements, incidentals
+
+SENTENCE CONSTRUCTION:
+Single concise statement - diagnosis with critical qualifiers:
+✓ "Bilateral pulmonary emboli with right heart strain."
+✓ "New left lower lobe consolidation."
+✓ "Progression of metastatic disease."
+
+EXAMPLE OUTPUT:
+"Bilateral pulmonary emboli with right heart strain."
+""",
+            
+            'standard': """
+=== IMPRESSION VERBOSITY: STANDARD ===
+
+COMMUNICATION GOAL:
+Balanced professional summary for MDT/documentation. Complete clinical picture with appropriate detail.
+
+CORE PRINCIPLE:
+Include what's clinically relevant for management decisions. Balance completeness with conciseness.
+
+DECISION FRAMEWORK:
+Ask: "Does this finding matter for clinical management or understanding the case?"
+- If YES → Include with appropriate detail
+  ✓ Primary diagnosis with severity
+  ✓ Key secondary findings related to primary process
+  ✓ Measurements when they inform management
+  ✓ Comparisons when relevant (simple measured changes)
+  ✓ Actionable incidentals only (require follow-up/referral)
+- If NO → Omit
+  ✗ Non-actionable incidentals
+  ✗ Excessive measurement precision
+
+SENTENCE CONSTRUCTION:
+2-3 clear sentences covering the clinical picture:
+✓ "Bilateral pulmonary emboli are present with right heart strain. A small right pleural effusion and right lower lobe infarction are noted."
+
+EXAMPLE OUTPUT:
+"Bilateral pulmonary emboli are present with right heart strain. A small right pleural effusion and right lower lobe infarction are noted."
+""",
+            
+            'detailed': """
+=== IMPRESSION VERBOSITY: DETAILED ===
+
+COMMUNICATION GOAL:
+Comprehensive documentation for complex cases, academic review, or medico-legal records.
+
+CORE PRINCIPLE:
+Document the complete clinical picture with full characterization and precision. Favor thoroughness.
+
+DECISION FRAMEWORK:
+Ask: "Is this finding present on the study?"
+- If YES → Document with full detail
+  ✓ Primary diagnosis with complete characterization
+  ✓ All secondary and associated findings
+  ✓ Precise measurements (three dimensions when available)
+  ✓ Dated comparisons when relevant
+  ✓ Actionable incidentals (require follow-up/referral)
+
+SENTENCE CONSTRUCTION:
+Multiple comprehensive sentences covering all findings systematically:
+✓ "Bilateral pulmonary emboli are present with RV dilatation (RV/LV 1.3) and contrast reflux. Additional findings include a small right pleural effusion and wedge-shaped consolidation in the RLL consistent with infarction."
+
+EXAMPLE OUTPUT:
+"Bilateral pulmonary emboli are present with RV dilatation (RV/LV 1.3) and contrast reflux. Additional findings include a small right pleural effusion and wedge-shaped consolidation in the RLL consistent with infarction."
+"""
         }
         guidance_parts.append(verbosity_map.get(verbosity_style, verbosity_map['standard']))
         
-        # Impression format
-        impression_format = advanced.get('impression_format', 'prose')
+        # === FORMAT ===
+        # Handle backward compatibility: map impression_format to format
+        impression_format = advanced.get('format') or advanced.get('impression_format', 'prose')
         format_map = {
-            'prose': "FORMAT: Flowing prose sentences\n  - Natural narrative structure\n  - Traditional medical prose style",
-            'bullets': "FORMAT: Bullet points\n  - Each bullet = one key finding/conclusion\n  - Use bullet symbol (•) for each point",
-            'numbered': "FORMAT: Numbered list\n  - Numbered items (1., 2., etc.)\n  - Clear sequential structure"
+            'prose': "FORMAT: Prose (traditional narrative)",
+            'bullets': "FORMAT: Bullets (• symbol)",
+            'numbered': "FORMAT: Numbered list (1., 2., etc.)"
         }
         guidance_parts.append(format_map.get(impression_format, format_map['prose']))
         
-        # Differential style
-        differential_style = advanced.get('differential_style', 'if_needed')
+        # === DIFFERENTIAL ===
+        differential = advanced.get('differential_approach', 'if_needed')
+        # Handle backward compatibility: map old differential_style to differential_approach
+        if 'differential_style' in advanced and 'differential_approach' not in advanced:
+            old_diff = advanced.get('differential_style')
+            if old_diff in ['always_brief', 'always_detailed']:
+                differential = 'always'
+            elif old_diff == 'none':
+                differential = 'none'
+            else:
+                differential = 'if_needed'
+        
         differential_map = {
-            'none': "DIFFERENTIAL DIAGNOSIS:\n  - Do NOT include differential diagnosis\n  - State primary diagnosis only",
-            'if_needed': "DIFFERENTIAL DIAGNOSIS:\n  - Include differential ONLY when diagnosis is uncertain or findings are non-specific\n  - Provide 2-3 most likely alternatives with reasoning when needed\n  - Skip if diagnosis is clear and definitive",
-            'always_brief': "DIFFERENTIAL DIAGNOSIS:\n  - ALWAYS include 2-3 top differential diagnoses\n  - Brief mention with most likely listed first\n  - Consider imaging findings and clinical context",
-            'always_detailed': "DIFFERENTIAL DIAGNOSIS:\n  - ALWAYS include comprehensive differential diagnosis\n  - List 3-5 possibilities with clinical reasoning for each\n  - Discuss distinguishing features and supporting/contradicting findings\n  - Order by likelihood based on imaging features"
+            'none': "DIFFERENTIAL: Do NOT include",
+            'if_needed': "DIFFERENTIAL: Only when diagnosis uncertain (2-3 alternatives)",
+            'always': "DIFFERENTIAL: ALWAYS include (2-3 alternatives, ordered by likelihood)"
         }
-        guidance_parts.append(differential_map.get(differential_style, differential_map['if_needed']))
+        guidance_parts.append(differential_map.get(differential, differential_map['if_needed']))
         
-        # Comparison terminology
-        comparison = advanced.get('comparison_terminology', 'measured')
-        comparison_map = {
-            'simple': "COMPARISON TERMS:\n  - Use descriptive terms only: 'larger', 'smaller', 'stable', 'new', 'resolved'\n  - No measurements or dates\n  - Example: 'larger than previously', 'stable compared to prior study'",
-            'measured': "COMPARISON TERMS:\n  - Include prior and current measurements when comparing\n  - Use specific size changes\n  - Example: 'increased from 3.2cm to 4cm', 'decreased from 5cm to 3.5cm'",
-            'dated': "COMPARISON TERMS:\n  - Include specific dates of prior studies\n  - Include measurements and explicit temporal references\n  - Example: 'increased from 3.2cm (15/01/2025) to 4cm on current study'"
-        }
-        # Backward compatibility
-        if comparison == 'conservative':
-            comparison = 'simple'
-        elif comparison == 'explicit':
-            comparison = 'dated'
-        guidance_parts.append(comparison_map.get(comparison, comparison_map['measured']))
+        # === RECOMMENDATIONS ===
+        recommendations = self._build_impression_recommendations_guidance(
+            advanced.get('recommendations', {})
+        )
+        if recommendations:
+            guidance_parts.append(recommendations)
         
-        # Measurement inclusion
-        measurements = advanced.get('measurement_inclusion', 'key_only')
-        if measurements == 'none':
-            guidance_parts.append("MEASUREMENTS:\n  - Omit measurements from impression\n  - Focus on diagnostic interpretation only")
-        elif measurements == 'full':
-            guidance_parts.append("MEASUREMENTS:\n  - Repeat critical measurements\n  - Include size for all significant findings")
-        else:  # key_only
-            guidance_parts.append("MEASUREMENTS:\n  - Include key measurements for significant findings only\n  - Example: '4cm mass' but not every dimension")
-        
-        # Incidental handling
-        incidentals = advanced.get('incidental_handling', 'action_threshold')
-        if incidentals == 'omit':
-            guidance_parts.append(
-                "INCIDENTAL FINDINGS:\n"
-                "  - Do NOT include any incidental findings in the impression\n"
-                "  - Focus exclusively on findings that address the primary clinical question\n"
-                "  - Incidentals should remain in the Findings section only\n"
-                "  - This approach is for focused, targeted reporting"
-            )
-        elif incidentals == 'comprehensive':
-            guidance_parts.append(
-                "INCIDENTAL FINDINGS:\n"
-                "  - Include ALL incidental findings in the impression, regardless of clinical significance\n"
-                "  - Document both significant and minor incidental findings\n"
-                "  - Provide comprehensive coverage of all findings identified\n"
-                "  - Use appropriate language to indicate relative importance (e.g., 'Incidental note is made of...')"
-            )
-        else:  # action_threshold
-            guidance_parts.append(
-                "INCIDENTAL FINDINGS (Include if actionable):\n"
-                "  - Include incidental findings ONLY if they meet actionable criteria:\n"
-                "    • Requires specific follow-up imaging.\n"
-                "    • Has malignant potential or concerning features\n"
-                "    • Needs specialist referral or further investigation\n"
-                "    • Requires intervention or specific clinical action\n"
-                "  - OMIT incidental findings that are:\n"
-                "    • Benign and common (e.g., simple renal cysts, degenerative changes)\n"
-                "    • Below action thresholds (e.g., tiny nodules not warranting follow-up)\n"
-                "    • Require no specific follow-up or intervention\n"
-                "  - Decision rule: If the finding doesn't change immediate management or require specific action, omit from impression"
-            )
+        # === CUSTOM INSTRUCTIONS ===
+        if advanced.get('instructions', '').strip():
+            guidance_parts.append(f"CUSTOM INSTRUCTIONS:\n{advanced['instructions']}")
         
         return "\n\n".join(guidance_parts)
     
@@ -1845,7 +1647,7 @@ No user input provided. Omit this section entirely from output.
 - When imaging findings are definitive and support a clear conclusion, state the diagnosis directly using definitive language
 - Use definitive statements (e.g., "X is present", "Y demonstrates Z", "Diagnosis: [condition]") rather than hedging when evidence is clear
 - Reserve uncertainty language ("consistent with", "suspicious for", "cannot exclude") only when findings are truly non-specific or require further workup.
-- If differential_style is set to "if_needed" and diagnosis is clear, state it definitively rather than listing alternatives
+- If differential_approach is set to "if_needed" and diagnosis is clear, state it definitively rather than listing alternatives
 
 **2. NO SEPARATE SECTIONS**:
 - The impression section must contain ALL diagnostic conclusions, recommendations, and follow-up guidance within a single unified section

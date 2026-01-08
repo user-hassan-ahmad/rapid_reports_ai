@@ -13,7 +13,6 @@ from .models import (
     Report,
     TemplateVersion,
     ReportVersion,
-    WritingStylePreset,
 )
 
 
@@ -1008,101 +1007,4 @@ def get_validation_status(
     return report.validation_status
 
 
-# ============ Writing Style Preset CRUD ============
-
-def create_writing_style_preset(
-    db: Session,
-    user_id: uuid.UUID,
-    name: str,
-    settings: dict,
-    section_type: str = 'findings',
-    icon: str = '⭐',
-    description: Optional[str] = None
-) -> WritingStylePreset:
-    """Create a new writing style preset"""
-    preset = WritingStylePreset(
-        user_id=user_id,
-        name=name,
-        settings=settings,
-        section_type=section_type,
-        icon=icon,
-        description=description
-    )
-    db.add(preset)
-    db.commit()
-    db.refresh(preset)
-    return preset
-
-
-def get_user_writing_style_presets(
-    db: Session,
-    user_id: uuid.UUID,
-    section_type: Optional[str] = None
-) -> List[WritingStylePreset]:
-    """Get all writing style presets for a user, optionally filtered by section type"""
-    query = db.query(WritingStylePreset).filter(WritingStylePreset.user_id == user_id)
-    if section_type:
-        query = query.filter(WritingStylePreset.section_type == section_type)
-    return query.order_by(WritingStylePreset.created_at.desc()).all()
-
-
-def get_writing_style_preset(
-    db: Session,
-    preset_id: uuid.UUID,
-    user_id: uuid.UUID
-) -> Optional[WritingStylePreset]:
-    """Get a specific writing style preset by ID, ensuring it belongs to the user"""
-    return db.query(WritingStylePreset).filter(
-        WritingStylePreset.id == preset_id,
-        WritingStylePreset.user_id == user_id
-    ).first()
-
-
-def update_writing_style_preset(
-    db: Session,
-    preset_id: uuid.UUID,
-    user_id: uuid.UUID,
-    **updates
-) -> Optional[WritingStylePreset]:
-    """Update a writing style preset"""
-    preset = get_writing_style_preset(db, preset_id, user_id)
-    if not preset:
-        return None
-    
-    for key, value in updates.items():
-        if hasattr(preset, key):
-            setattr(preset, key, value)
-    
-    preset.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(preset)
-    return preset
-
-
-def delete_writing_style_preset(
-    db: Session,
-    preset_id: uuid.UUID,
-    user_id: uuid.UUID
-) -> bool:
-    """Delete a writing style preset"""
-    preset = get_writing_style_preset(db, preset_id, user_id)
-    if preset:
-        db.delete(preset)
-        db.commit()
-        return True
-    return False
-
-
-def increment_preset_usage(
-    db: Session,
-    preset_id: uuid.UUID
-) -> bool:
-    """Increment usage count and update last_used_at timestamp"""
-    preset = db.query(WritingStylePreset).filter(WritingStylePreset.id == preset_id).first()
-    if preset:
-        preset.usage_count += 1
-        preset.last_used_at = datetime.now(timezone.utc)
-        db.commit()
-        return True
-    return False
 

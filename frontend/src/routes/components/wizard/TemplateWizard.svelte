@@ -52,10 +52,6 @@
 			format: 'prose',
 			use_subsection_headers: false,
 			organization: 'clinical_priority',
-			measurement_style: 'inline',
-			negative_findings_style: 'grouped',
-			descriptor_density: 'standard',
-			paragraph_grouping: 'by_finding'
 		}
 	};
 
@@ -67,12 +63,15 @@
 		display_name: 'IMPRESSION',
 		advanced: {
 			instructions: '',
-			verbosity: 0, // 0-2 scale
-			include_differential: true,
-			include_recommendations: true,
-			comparison_terminology: 'measured',
-			measurement_inclusion: 'key_only',
-			incidental_handling: 'action_threshold'
+			verbosity_style: 'standard',
+			format: 'prose',
+			differential_approach: 'if_needed',
+			recommendations: {
+				specialist_referral: true,
+				further_workup: true,
+				imaging_followup: false,
+				clinical_correlation: false
+			}
 		}
 	};
 

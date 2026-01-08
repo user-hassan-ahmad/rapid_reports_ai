@@ -46,12 +46,6 @@ from .database import (
     get_report_versions,
     get_report_version,
     set_current_report_version,
-    create_writing_style_preset,
-    get_user_writing_style_presets,
-    get_writing_style_preset,
-    update_writing_style_preset,
-    delete_writing_style_preset,
-    increment_preset_usage,
 )
 from .database.connection import engine
 from .template_manager import TemplateManager
@@ -1150,19 +1144,6 @@ class DeleteTagRequest(BaseModel):
     tag: str
 
 
-class WritingStylePresetCreate(BaseModel):
-    name: str = Field(..., max_length=100)
-    settings: dict
-    section_type: str = Field(default='findings', pattern='^(findings|impression)$')
-    icon: Optional[str] = Field(default='⭐', max_length=10)
-    description: Optional[str] = Field(None, max_length=200)
-
-
-class WritingStylePresetUpdate(BaseModel):
-    name: Optional[str] = Field(None, max_length=100)
-    settings: Optional[dict] = None
-    icon: Optional[str] = Field(None, max_length=10)
-    description: Optional[str] = Field(None, max_length=200)
 
 
 @app.post("/api/templates/tags/delete")
@@ -1926,144 +1907,6 @@ async def toggle_template_pin_endpoint(
 # ============================================================================
 # WRITING STYLE PRESETS API ENDPOINTS
 # ============================================================================
-
-@app.get("/api/writing-style-presets")
-async def get_writing_style_presets(
-    section_type: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get user's custom writing style presets"""
-    try:
-        import uuid
-        presets = get_user_writing_style_presets(db, current_user.id, section_type)
-        return {
-            "success": True,
-            "presets": [
-                {
-                    "id": str(p.id),
-                    "name": p.name,
-                    "icon": p.icon or '⭐',
-                    "description": p.description,
-                    "settings": p.settings,
-                    "section_type": p.section_type,
-                    "created_at": p.created_at.isoformat(),
-                    "updated_at": p.updated_at.isoformat() if p.updated_at else None,
-                    "usage_count": p.usage_count,
-                    "last_used_at": p.last_used_at.isoformat() if p.last_used_at else None
-                }
-                for p in presets
-            ]
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-@app.post("/api/writing-style-presets")
-async def create_writing_style_preset_endpoint(
-    preset_data: WritingStylePresetCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Create a new custom writing style preset"""
-    try:
-        import uuid
-        preset = create_writing_style_preset(
-            db, current_user.id, preset_data.name, preset_data.settings,
-            preset_data.section_type, preset_data.icon, preset_data.description
-        )
-        return {
-            "success": True,
-            "preset": {
-                "id": str(preset.id),
-                "name": preset.name,
-                "icon": preset.icon or '⭐',
-                "description": preset.description,
-                "settings": preset.settings,
-                "section_type": preset.section_type,
-                "created_at": preset.created_at.isoformat()
-            }
-        }
-    except IntegrityError:
-        raise HTTPException(status_code=400, detail="Preset name already exists for this section type")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.put("/api/writing-style-presets/{preset_id}")
-async def update_writing_style_preset_endpoint(
-    preset_id: str,
-    preset_data: WritingStylePresetUpdate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Update a custom writing style preset"""
-    try:
-        import uuid
-        preset_uuid = uuid.UUID(preset_id)
-        updates = preset_data.dict(exclude_unset=True)
-        preset = update_writing_style_preset(db, preset_uuid, current_user.id, **updates)
-        if not preset:
-            raise HTTPException(status_code=404, detail="Preset not found")
-        return {
-            "success": True,
-            "preset": {
-                "id": str(preset.id),
-                "name": preset.name,
-                "icon": preset.icon or '⭐',
-                "description": preset.description,
-                "settings": preset.settings,
-                "section_type": preset.section_type,
-                "updated_at": preset.updated_at.isoformat() if preset.updated_at else None
-            }
-        }
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid preset ID format")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.delete("/api/writing-style-presets/{preset_id}")
-async def delete_writing_style_preset_endpoint(
-    preset_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Delete a custom writing style preset"""
-    try:
-        import uuid
-        preset_uuid = uuid.UUID(preset_id)
-        success = delete_writing_style_preset(db, preset_uuid, current_user.id)
-        if not success:
-            raise HTTPException(status_code=404, detail="Preset not found")
-        return {"success": True}
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid preset ID format")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/writing-style-presets/{preset_id}/use")
-async def use_writing_style_preset_endpoint(
-    preset_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Track preset usage"""
-    try:
-        import uuid
-        preset_uuid = uuid.UUID(preset_id)
-        # Verify preset belongs to user before tracking
-        preset = get_writing_style_preset(db, preset_uuid, current_user.id)
-        if not preset:
-            raise HTTPException(status_code=404, detail="Preset not found")
-        increment_preset_usage(db, preset_uuid)
-        return {"success": True}
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid preset ID format")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 
 # ============================================================================
 # SETTINGS API ENDPOINTS

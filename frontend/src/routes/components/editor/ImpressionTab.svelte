@@ -3,8 +3,6 @@
 	import { onMount } from 'svelte';
 	import { API_URL } from '$lib/config';
 	import { token } from '$lib/stores/auth';
-	import { fetchCustomPresets } from '$lib/stores/presets';
-	import StylePresetCards from '../wizard/StylePresetCards.svelte';
 	import StyleGranularControls from '../wizard/StyleGranularControls.svelte';
 
 	const dispatch = createEventDispatcher();
@@ -14,43 +12,29 @@
 		advanced: {
 			instructions: '',
 			verbosity_style: 'standard',
-			impression_format: 'prose',
-			differential_style: 'if_needed',
-			comparison_terminology: 'measured',
-			measurement_inclusion: 'key_only',
-			incidental_handling: 'action_threshold',
-		recommendations: {
-			specialist_referral: true,
-			further_workup: true,
-			imaging_followup: false,
-			clinical_correlation: false
-		}
+			format: 'prose',
+			differential_approach: 'if_needed',
+			recommendations: {
+				specialist_referral: true,
+				further_workup: true,
+				imaging_followup: false,
+				clinical_correlation: false
+			}
 		}
 	};
 
-	let selectedImpressionPreset = 'standard_summary';
-
-	function handlePresetChange(event) {
-		selectedImpressionPreset = event.detail.presetId;
-		handleChange();
-	}
-
 	function resetToDefaults() {
-		selectedImpressionPreset = 'standard_summary';
 		impressionConfig.advanced = {
 			instructions: '',
 			verbosity_style: 'standard',
-			impression_format: 'prose',
-			differential_style: 'if_needed',
-			comparison_terminology: 'measured',
-			measurement_inclusion: 'key_only',
-			incidental_handling: 'action_threshold',
-		recommendations: {
-			specialist_referral: true,
-			further_workup: true,
-			imaging_followup: false,
-			clinical_correlation: false
-		}
+			format: 'prose',
+			differential_approach: 'if_needed',
+			recommendations: {
+				specialist_referral: true,
+				further_workup: true,
+				imaging_followup: false,
+				clinical_correlation: false
+			}
 		};
 		handleChange();
 	}
@@ -81,7 +65,7 @@
 	}
 
 	onMount(() => {
-		fetchCustomPresets('impression');
+		// No preset loading needed
 	});
 
 	async function suggestInstructions() {
@@ -229,23 +213,12 @@
 				</button>
 			</div>
 			
-			<!-- Preset Cards -->
-			<StylePresetCards 
+			<!-- Style Controls -->
+			<StyleGranularControls 
 				section="impression"
-				bind:selectedPresetId={selectedImpressionPreset}
 				bind:advanced={impressionConfig.advanced}
-				on:presetChange={handlePresetChange}
+				on:fieldChange={handleChange}
 			/>
-			
-			<!-- Granular Controls -->
-			<div class="mt-6">
-				<StyleGranularControls 
-					section="impression"
-					bind:advanced={impressionConfig.advanced}
-					impressionContentStyle={impressionConfig.content_style}
-					on:fieldChange={() => { selectedImpressionPreset = 'custom'; handleChange(); }}
-				/>
-			</div>
 		</section>
 	</div>
 </div>

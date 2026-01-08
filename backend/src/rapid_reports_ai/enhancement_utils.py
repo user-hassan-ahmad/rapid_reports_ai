@@ -3719,26 +3719,23 @@ Preserve all spacing, line breaks, and structural formatting exactly.
 def _build_findings_style_block(advanced_config: dict, custom_instructions: str) -> str:
     """Build Findings section style requirements block for validator"""
     
-    # Extract style preferences
-    verbosity = advanced_config.get('verbosity_style', 'standard')
-    findings_format = advanced_config.get('findings_format', 'prose')
-    group_negatives = advanced_config.get('group_negatives', False)
+    # Extract style preferences (simplified architecture)
+    writing_style = advanced_config.get('writing_style', 'standard')
+    findings_format = advanced_config.get('format', 'prose')
     
     block = f"""**FINDINGS SECTION** - Style Requirements:
 
-1. **Verbosity**: {verbosity.upper()}
-{_get_verbosity_guidance(verbosity)}
+1. **Writing Style**: {writing_style.upper()}
+{_get_verbosity_guidance(writing_style)}
 
 2. **Format**: {findings_format}
 {_get_format_guidance(findings_format)}
-
-3. **Negative Finding Grouping**: {'ENABLED - Combine related negatives into single statements' if group_negatives else 'DISABLED - Keep negative findings as separate statements'}
 """
     
     # Add custom instructions if present
     if custom_instructions and custom_instructions.strip():
         block += f"""
-4. **Custom Instructions** (apply linguistically):
+3. **Custom Instructions** (apply linguistically):
    {custom_instructions}
    Note: Focus on the LANGUAGE/PHRASING aspects. Preserve any organizational decisions already implemented.
 """
@@ -3749,11 +3746,13 @@ def _build_findings_style_block(advanced_config: dict, custom_instructions: str)
 def _build_impression_style_block(advanced_config: dict, custom_instructions: str) -> str:
     """Build Impression section style requirements block for validator"""
     
-    # Extract style preferences
+    # Extract style preferences (simplified architecture)
     verbosity = advanced_config.get('verbosity_style', 'standard')
-    impression_format = advanced_config.get('impression_format', 'prose')
-    comparison_style = advanced_config.get('comparison_terminology', 'measured')
-    differential_style = advanced_config.get('differential_style', 'if_needed')
+    impression_format = advanced_config.get('format') or advanced_config.get('impression_format', 'prose')
+    differential_approach = advanced_config.get('differential_approach') or advanced_config.get('differential_style', 'if_needed')
+    # Handle backward compatibility for differential
+    if differential_approach in ['always_brief', 'always_detailed']:
+        differential_approach = 'always'
     
     block = f"""**IMPRESSION SECTION** - Style Requirements:
 
@@ -3763,10 +3762,7 @@ def _build_impression_style_block(advanced_config: dict, custom_instructions: st
 2. **Format**: {impression_format}
 {_get_format_guidance(impression_format)}
 
-3. **Comparison Terminology**: {comparison_style.upper()}
-{_get_comparison_guidance(comparison_style)}
-
-4. **Differential Presentation**: {differential_style.replace('_', ' ').title()}
+3. **Differential**: {differential_approach.replace('_', ' ').title()}
    - Content scope already determined by primary model
    - Refine phrasing if differential is present
 """
@@ -3774,7 +3770,7 @@ def _build_impression_style_block(advanced_config: dict, custom_instructions: st
     # Add custom instructions if present
     if custom_instructions and custom_instructions.strip():
         block += f"""
-5. **Custom Instructions** (apply linguistically):
+4. **Custom Instructions** (apply linguistically):
    {custom_instructions}
    Note: Focus on the LANGUAGE/PHRASING aspects. Preserve any organizational decisions already implemented.
 """
@@ -3796,35 +3792,45 @@ Note: These apply to the entire report. Focus on LINGUISTIC application - preser
 """
 
 
-def _get_verbosity_guidance(verbosity: str) -> str:
-    """Get verbosity-specific guidance for validator"""
-    
-    guides = {
-        'brief': """   Target: Maximum concision
-   - Eliminate filler words: "appears", "seems", "noted to be"
-   - Direct statements: "4cm RUL mass" not "There is a 4cm mass in the RUL"
-   - Minimal adjectives (only if clinically essential)
-   Examples:
-     ✓ "4cm right upper lobe mass."
-     ✗ "There is a spiculated mass in the right upper lobe measuring 4cm."
+def _get_verbosity_guidance(writing_style: str) -> str:
+    """Verbosity guidance matching simplified architecture - principle-based"""
+    guidance = {
+        'concise': """
+CONCISE VALIDATION PRINCIPLES:
+Goal: Consultant-to-consultant efficiency
+- Eliminate ALL passive constructions
+- Remove decorative descriptors
+- Strip non-essential words
+- Keep anatomical terms readable (NO acronyms: use "right upper lobe" not "RUL")
+- Test: If removing a word doesn't change clinical understanding, remove it
 """,
-        'standard': """   Target: Balanced NHS reporting style  
-   - Natural medical prose with key descriptors
-   - Include relevant morphology: "spiculated", "heterogeneous"
-   - Confidence qualifiers when appropriate: "suspicious for", "consistent with"
-   Examples:
-     ✓ "Spiculated mass in the right upper lobe, highly suspicious for malignancy."
+        'standard': """
+STANDARD VALIDATION PRINCIPLES:
+Goal: Balanced NHS professional reporting
+- Natural flow with complete formal sentences
+- Clinically relevant details with appropriate precision
+- Interpretive context when helpful
+- Actionable incidentals only
 """,
-        'detailed': """   Target: Comprehensive documentation
-   - Rich descriptive language: "heterogeneous enhancement", "irregular margins"
-   - Full anatomical precision: "lateral segment of RUL", "subcarinal station"  
-   - Complete characterization of findings
-   Examples:
-     ✓ "Spiculated mass in the right upper lobe demonstrating irregular margins, heterogeneous enhancement..."
+        'detailed': """
+DETAILED VALIDATION PRINCIPLES:
+Goal: Comprehensive academic documentation
+- Full characterization with rich descriptive language
+- Precise measurements and anatomical detail
+- Complete documentation of all findings
+- Formal professional tone
+- Actionable incidentals only
+""",
+        # Backward compatibility for impression verbosity_style
+        'brief': """
+BRIEF VALIDATION PRINCIPLES:
+Goal: Essential diagnosis only
+- Strip to diagnosis and critical complications
+- Remove all non-essential details
+- NO incidentals
 """
     }
-    
-    return guides.get(verbosity, guides['standard'])
+    return guidance.get(writing_style, guidance['standard'])
 
 
 def _get_format_guidance(format_type: str) -> str:
@@ -3852,24 +3858,6 @@ def _get_format_guidance(format_type: str) -> str:
     return guides.get(format_type, guides['prose'])
 
 
-def _get_comparison_guidance(comparison_style: str) -> str:
-    """Get comparison terminology guidance for validator"""
-    
-    guides = {
-        'simple': """   Use qualitative terms only: "larger", "smaller", "stable", "new"
-   - No measurements in comparisons
-   Examples: "larger than previously", "stable"
-""",
-        'measured': """   Include measurements when comparing
-   - Specify size changes: "increased from 3.2 cm to 4 cm"
-   - Use proper spacing: "3.2 cm" not "3.2cm"
-""",
-        'dated': """   Include dates and measurements
-   - Full temporal context: "increased from 3.2 cm (15/01/2025) to 4 cm"
-   - British date format: DD/MM/YYYY
-"""
-    }
-    
-    return guides.get(comparison_style, guides['measured'])
+# Removed _get_comparison_guidance - comparisons now handled within verbosity_style principles
 
 
