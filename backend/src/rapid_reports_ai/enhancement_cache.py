@@ -6,28 +6,102 @@ Settings changes don't invalidate cache - only content changes do.
 import hashlib
 import json
 import time
+import logging
 from typing import Any, Optional, Dict, List, Callable
 from functools import wraps
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from sqlalchemy.orm import Session
+from sqlalchemy import and_, func as sa_func
+from sqlalchemy.exc import SQLAlchemyError
+
+logger = logging.getLogger(__name__)
 
 
 class EnhancementCache:
     """
     Content-based cache for enhancement pipeline.
     Caches based on findings/clinical history hash, not settings.
+    Uses PostgreSQL/SQLite database for persistent storage.
     """
     
-    def __init__(self, ttl_seconds: Optional[int] = None):
+    def __init__(self, ttl_seconds: Optional[int] = None, db_session: Optional[Session] = None):
         """
         Initialize cache.
         
         Args:
             ttl_seconds: Time-to-live for cache entries in seconds. None = no expiry.
+            db_session: Optional database session. If None, creates new session per operation.
         """
-        self._cache: Dict[str, Dict[str, Any]] = {}
-        self.ttl_seconds = ttl_seconds
+        self._cache: Dict[str, Dict[str, Any]] = {}  # Fallback in-memory cache
+        self.ttl_seconds = ttl_seconds or 86400  # Default 24 hours
         self.hits = 0
         self.misses = 0
+        self._db_session = db_session
+        self._use_db = True  # Flag to enable/disable DB usage
+        self._fallback_mode = False  # Track if we're in fallback mode
+    
+    def _get_db_session(self) -> Optional[Session]:
+        """Get database session, creating one if needed."""
+        if not self._use_db:
+            return None
+        
+        if self._db_session is not None:
+            return self._db_session
+        
+        try:
+            from .database import SessionLocal
+            return SessionLocal()
+        except Exception as e:
+            logger.warning(f"Failed to create database session: {e}")
+            self._fallback_mode = True
+            return None
+    
+    def _parse_cache_key(self, cache_key: str) -> tuple[str, str]:
+        """
+        Parse cache key to extract findings_hash and cache_type.
+        
+        Cache key format: "{cache_type}:{findings_hash}:finding_{idx}[:additional_hash]"
+        Examples:
+        - "query_gen:abc123:finding_1"
+        - "perplexity_search:abc123:finding_1:def456"
+        - "guideline_validation:abc123:finding_1:def456"
+        
+        Returns:
+            Tuple of (findings_hash, cache_type)
+        """
+        try:
+            parts = cache_key.split(':')
+            if len(parts) < 2:
+                return ('', 'unknown')
+            
+            cache_type = parts[0]
+            findings_hash = ''
+            
+            # Look for "finding_" pattern to identify where findings_hash ends
+            finding_idx = -1
+            for i, part in enumerate(parts):
+                if part.startswith('finding_'):
+                    finding_idx = i
+                    break
+            
+            if finding_idx > 0:
+                # findings_hash is the part right before "finding_"
+                findings_hash = parts[finding_idx - 1]
+            elif len(parts) >= 2:
+                # Fallback: second part might be findings_hash
+                # But be careful - it could be a hash without "finding_" pattern
+                # Check if it looks like a hash (hex string, 32-64 chars)
+                potential_hash = parts[1]
+                if len(potential_hash) >= 32 and all(c in '0123456789abcdef' for c in potential_hash.lower()):
+                    findings_hash = potential_hash
+            
+            # Limit findings_hash to 64 chars (database column limit)
+            findings_hash = findings_hash[:64] if findings_hash else ''
+            
+            return (findings_hash, cache_type)
+        except Exception as e:
+            logger.warning(f"Failed to parse cache key '{cache_key}': {e}")
+            return ('', 'unknown')
     
     def _hash_content(self, *args: Any, **kwargs: Any) -> str:
         """
@@ -49,19 +123,9 @@ class EnhancementCache:
         content_str = json.dumps(content, sort_keys=True, default=str)
         return hashlib.sha256(content_str.encode('utf-8')).hexdigest()
     
-    def _is_expired(self, entry: Dict[str, Any]) -> bool:
-        """Check if cache entry has expired."""
-        if self.ttl_seconds is None:
-            return False
-        created_at = entry.get('created_at')
-        if created_at is None:
-            return True
-        age = time.time() - created_at
-        return age > self.ttl_seconds
-    
     def get(self, cache_key: str) -> Optional[Any]:
         """
-        Get cached value.
+        Get cached value from database.
         
         Args:
             cache_key: Cache key
@@ -69,49 +133,234 @@ class EnhancementCache:
         Returns:
             Cached value or None if not found/expired
         """
-        if cache_key not in self._cache:
+        db = self._get_db_session()
+        own_session = db is not None and self._db_session is None
+        
+        try:
+            if db is not None:
+                from .database.models import EnhancementCacheEntry
+                
+                # Query database
+                entry = db.query(EnhancementCacheEntry).filter(
+                    EnhancementCacheEntry.cache_key == cache_key
+                ).first()
+                
+                if entry is None:
+                    self.misses += 1
+                    if own_session:
+                        db.close()
+                    return None
+                
+                # Check expiration
+                now = datetime.now(timezone.utc)
+                if entry.expires_at < now:
+                    # Expired - delete and return None
+                    db.delete(entry)
+                    db.commit()
+                    self.misses += 1
+                    if own_session:
+                        db.close()
+                    return None
+                
+                # Update access tracking
+                entry.last_accessed = now
+                entry.access_count += 1
+                db.commit()
+                
+                self.hits += 1
+                value = entry.cached_value
+                if own_session:
+                    db.close()
+                return value
+            else:
+                # Fallback to in-memory cache
+                if cache_key not in self._cache:
+                    self.misses += 1
+                    return None
+                
+                entry = self._cache[cache_key]
+                
+                # Check expiry (for in-memory)
+                if self.ttl_seconds is not None:
+                    created_at = entry.get('created_at')
+                    if created_at is not None:
+                        age = time.time() - created_at
+                        if age > self.ttl_seconds:
+                            del self._cache[cache_key]
+                            self.misses += 1
+                            return None
+                
+                self.hits += 1
+                return entry['value']
+                
+        except Exception as e:
+            logger.error(f"Error getting cache entry '{cache_key}': {e}", exc_info=True)
+            self._fallback_mode = True
+            
+            # Fallback to in-memory cache
+            if cache_key in self._cache:
+                entry = self._cache[cache_key]
+                if self.ttl_seconds is not None:
+                    created_at = entry.get('created_at')
+                    if created_at is not None:
+                        age = time.time() - created_at
+                        if age > self.ttl_seconds:
+                            del self._cache[cache_key]
+                            self.misses += 1
+                            return None
+                self.hits += 1
+                return entry['value']
+            
             self.misses += 1
+            if own_session and db:
+                try:
+                    db.rollback()
+                    db.close()
+                except:
+                    pass
             return None
-        
-        entry = self._cache[cache_key]
-        
-        # Check expiry
-        if self._is_expired(entry):
-            del self._cache[cache_key]
-            self.misses += 1
-            return None
-        
-        self.hits += 1
-        return entry['value']
     
     def set(self, cache_key: str, value: Any) -> None:
         """
-        Set cached value.
+        Set cached value in database.
         
         Args:
             cache_key: Cache key
             value: Value to cache
         """
-        self._cache[cache_key] = {
-            'value': value,
-            'created_at': time.time()
-        }
+        db = self._get_db_session()
+        own_session = db is not None and self._db_session is None
+        
+        try:
+            if db is not None:
+                from .database.models import EnhancementCacheEntry
+                
+                # Parse cache key to extract findings_hash and cache_type
+                findings_hash, cache_type = self._parse_cache_key(cache_key)
+                
+                # Calculate expiration time
+                now = datetime.now(timezone.utc)
+                expires_at = now + timedelta(seconds=self.ttl_seconds) if self.ttl_seconds else now + timedelta(days=365)
+                
+                # Check if entry exists
+                entry = db.query(EnhancementCacheEntry).filter(
+                    EnhancementCacheEntry.cache_key == cache_key
+                ).first()
+                
+                if entry:
+                    # Update existing entry
+                    entry.cached_value = value
+                    entry.last_accessed = now
+                    entry.expires_at = expires_at
+                    # Don't reset access_count on update
+                else:
+                    # Create new entry
+                    entry = EnhancementCacheEntry(
+                        cache_key=cache_key,
+                        findings_hash=findings_hash,
+                        cache_type=cache_type,
+                        cached_value=value,
+                        created_at=now,
+                        last_accessed=now,
+                        access_count=1,
+                        expires_at=expires_at
+                    )
+                    db.add(entry)
+                
+                db.commit()
+                if own_session:
+                    db.close()
+            else:
+                # Fallback to in-memory cache
+                self._cache[cache_key] = {
+                    'value': value,
+                    'created_at': time.time()
+                }
+                
+        except Exception as e:
+            logger.error(f"Error setting cache entry '{cache_key}': {e}", exc_info=True)
+            self._fallback_mode = True
+            
+            # Fallback to in-memory cache
+            try:
+                self._cache[cache_key] = {
+                    'value': value,
+                    'created_at': time.time()
+                }
+            except:
+                pass
+            
+            if own_session and db:
+                try:
+                    db.rollback()
+                    db.close()
+                except:
+                    pass
     
     def clear(self) -> None:
-        """Clear all cache entries."""
+        """Clear all cache entries from database and memory."""
+        db = self._get_db_session()
+        own_session = db is not None and self._db_session is None
+        
+        try:
+            if db is not None:
+                from .database.models import EnhancementCacheEntry
+                db.query(EnhancementCacheEntry).delete()
+                db.commit()
+                if own_session:
+                    db.close()
+        except Exception as e:
+            logger.error(f"Error clearing cache: {e}", exc_info=True)
+            if own_session and db:
+                try:
+                    db.rollback()
+                    db.close()
+                except:
+                    pass
+        
+        # Also clear in-memory fallback
         self._cache.clear()
         self.hits = 0
         self.misses = 0
     
     def get_stats(self) -> Dict[str, Any]:
-        """Get cache statistics."""
+        """Get cache statistics from database."""
+        db = self._get_db_session()
+        own_session = db is not None and self._db_session is None
+        
+        db_size = 0
+        db_hits = 0
+        
+        try:
+            if db is not None:
+                from .database.models import EnhancementCacheEntry
+                db_size = db.query(EnhancementCacheEntry).count()
+                # Sum access_count - 1 for each entry (first access created it)
+                db_hits = db.query(
+                    sa_func.sum(EnhancementCacheEntry.access_count - 1)
+                ).scalar() or 0
+                if own_session:
+                    db.close()
+        except Exception as e:
+            logger.error(f"Error getting cache stats: {e}", exc_info=True)
+            if own_session and db:
+                try:
+                    db.rollback()
+                    db.close()
+                except:
+                    pass
+        
         total = self.hits + self.misses
         hit_rate = (self.hits / total * 100) if total > 0 else 0.0
+        
         return {
-            'hits': self.hits,
+            'hits': self.hits + db_hits,
             'misses': self.misses,
             'hit_rate': hit_rate,
-            'size': len(self._cache)
+            'size': db_size + len(self._cache),
+            'db_size': db_size,
+            'memory_size': len(self._cache),
+            'fallback_mode': self._fallback_mode
         }
     
     def generate_cache_key(self, prefix: str, *args: Any, **kwargs: Any) -> str:
@@ -135,20 +384,55 @@ _global_cache: Optional[EnhancementCache] = None
 
 
 def get_cache() -> EnhancementCache:
-    """Get global cache instance."""
+    """Get global cache instance (DB-backed)."""
     global _global_cache
     if _global_cache is None:
         # Default TTL: 24 hours (can be configured via env var)
         import os
         ttl = os.getenv('ENHANCEMENT_CACHE_TTL_SECONDS')
         ttl_seconds = int(ttl) if ttl else 86400  # 24 hours default
-        _global_cache = EnhancementCache(ttl_seconds=ttl_seconds)
+        # Create DB-backed cache (no session passed, will create per operation)
+        _global_cache = EnhancementCache(ttl_seconds=ttl_seconds, db_session=None)
     return _global_cache
 
 
 def clear_cache() -> None:
     """Clear global cache."""
     get_cache().clear()
+
+
+def cleanup_expired_entries(db: Optional[Session] = None) -> int:
+    """
+    Delete expired cache entries from database.
+    
+    Args:
+        db: Optional database session. If None, creates new session.
+    
+    Returns:
+        Number of entries deleted
+    """
+    from .database.models import EnhancementCacheEntry
+    from .database import SessionLocal
+    
+    own_session = db is None
+    if db is None:
+        db = SessionLocal()
+    
+    try:
+        now = datetime.now(timezone.utc)
+        deleted_count = db.query(EnhancementCacheEntry).filter(
+            EnhancementCacheEntry.expires_at < now
+        ).delete()
+        db.commit()
+        logger.info(f"Cleaned up {deleted_count} expired cache entries")
+        return deleted_count
+    except Exception as e:
+        logger.error(f"Error cleaning up expired cache entries: {e}", exc_info=True)
+        db.rollback()
+        return 0
+    finally:
+        if own_session:
+            db.close()
 
 
 def cache_result(cache_key_prefix: str, key_func: Optional[Callable] = None):

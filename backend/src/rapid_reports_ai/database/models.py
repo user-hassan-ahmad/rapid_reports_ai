@@ -1,14 +1,29 @@
 """SQLAlchemy models for Rapid Reports AI"""
 
-from sqlalchemy import Column, String, Text, Boolean, DateTime, JSON, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import Column, String, Text, Boolean, DateTime, JSON, ForeignKey, Integer, UniqueConstraint, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import TypeDecorator
 from datetime import datetime, timezone
 import uuid
+import json
 
 # Create Base class
 Base = declarative_base()
+
+
+# JSONB type that works for both PostgreSQL and SQLite
+class JSONBType(TypeDecorator):
+    """JSONB type that falls back to JSON for SQLite."""
+    impl = JSON
+    cache_ok = True
+    
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(JSONB())
+        else:
+            return dialect.type_descriptor(JSON())
 
 
 class User(Base):
@@ -361,20 +376,39 @@ class ReportVersion(Base):
             "is_current": self.is_current,
             "created_at": self.created_at.isoformat()
         }
+
+
+class EnhancementCacheEntry(Base):
+    """Model for persistent enhancement pipeline cache"""
     
-    def to_dict(self):
-        """Convert preset to dictionary"""
-        return {
-            "id": str(self.id),
-            "user_id": str(self.user_id),
-            "name": self.name,
-            "icon": self.icon or '⭐',
-            "description": self.description,
-            "settings": self.settings,
-            "section_type": self.section_type,
-            "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "usage_count": self.usage_count,
-            "last_used_at": self.last_used_at.isoformat() if self.last_used_at else None,
-        }
+    __tablename__ = "enhancement_cache"
+    
+    # Primary key - cache_key format: "type:findings_hash:finding_idx:hash"
+    cache_key = Column(String(500), primary_key=True, index=True)
+    
+    # Analytics fields
+    findings_hash = Column(String(64), index=True)  # For grouping by findings
+    cache_type = Column(String(50), index=True)     # 'query_gen', 'perplexity_search', etc.
+    
+    # Cached data (JSONB for PostgreSQL, JSON for SQLite)
+    cached_value = Column(JSONBType(), nullable=False)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    last_accessed = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    
+    # Usage tracking
+    access_count = Column(Integer, default=1, nullable=False)
+    
+    # TTL management
+    expires_at = Column(DateTime, nullable=False, index=True)
+    
+    # Composite indexes for common queries
+    __table_args__ = (
+        Index('idx_findings_hash_type', 'findings_hash', 'cache_type'),
+        Index('idx_expires_at', 'expires_at'),
+    )
+    
+    def __repr__(self):
+        return f"<EnhancementCacheEntry(cache_key='{self.cache_key[:50]}...', type='{self.cache_type}')>"
 
