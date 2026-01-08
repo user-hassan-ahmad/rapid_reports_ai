@@ -2225,7 +2225,16 @@ async def enhance_report(
             return {"success": False, "error": "Report not found"}
         
         report_content = report.report_content
+        
+        # Extract original FINDINGS input for cache key generation
+        # Cache based on FINDINGS alone (not clinical history) since guidelines are generated from findings
+        findings_input = ""
+        if report.input_data:
+            variables = report.input_data.get('variables', {}) if isinstance(report.input_data, dict) else {}
+            findings_input = variables.get('FINDINGS', '').strip() if isinstance(variables, dict) else ''
+        
         print(f"enhance_report: Processing report_id {report_id}, content length: {len(report_content)}")
+        print(f"enhance_report: Original FINDINGS input length: {len(findings_input)} chars")
         
         # TEST MODE: Return simple mock data to test data flow
         # Set TEST_MODE = True to bypass AI calls and return mock data
@@ -2345,7 +2354,8 @@ async def enhance_report(
             guidelines_data = await search_guidelines_for_findings(
                 consolidated_result,
                 report_content,
-                groq_api_key
+                groq_api_key,
+                findings_input=findings_input  # Pass original FINDINGS input for cache key generation
             )
             phase2_time = time.time() - phase2_start
             print(f"enhance_report: Phase 2 complete - found guidelines for {len(guidelines_data)} findings in {phase2_time:.2f}s")

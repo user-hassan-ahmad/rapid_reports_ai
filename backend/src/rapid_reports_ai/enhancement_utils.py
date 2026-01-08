@@ -14,6 +14,14 @@ from urllib.parse import urlparse
 from pydantic import BaseModel
 from pydantic_ai import RunContext
 
+from .enhancement_cache import (
+    get_cache,
+    generate_finding_hash,
+    generate_query_hash,
+    generate_search_results_hash
+)
+import hashlib
+
 from perplexity import Perplexity
 from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel
@@ -580,6 +588,9 @@ async def generate_radiology_search_queries(finding: str, api_key: str) -> tuple
     Generate 2-3 UK-focused radiology search queries using AI with fallback support.
     Model selection is driven by MODEL_CONFIG - supports any configured model with fallback.
     
+    CACHED: Results are cached based on finding text (not api_key or settings).
+    If same finding is queried again, cached queries are returned.
+    
     Args:
         finding: The radiological finding to search for
         api_key: API key (kept for compatibility, actual key determined by provider)
@@ -589,8 +600,11 @@ async def generate_radiology_search_queries(finding: str, api_key: str) -> tuple
     """
     import os
     
+    # Note: Caching is handled at search_guidelines_for_findings level using report content hash
+    # This ensures same report content gets cached results even if finding normalization differs
+    
     start_time = time.time()
-    print(f"generate_radiology_search_queries: Starting for finding='{finding}'")
+    print(f"generate_radiology_search_queries: Generating queries for finding='{finding}'")
     
     system_prompt = (
         "Generate 3-5 focused search queries for radiology guidelines.\n\n"
@@ -1254,16 +1268,37 @@ async def validate_guideline_compatibility(
 async def search_guidelines_for_findings(
     consolidated_result: ConsolidationResult,
     report_content: str,
-    api_key: str
+    api_key: str,
+    findings_input: str = ""
 ) -> List[dict]:
     """
     Search Perplexity and synthesize guidelines for consolidated findings.
+    
+    CACHING: Uses original FINDINGS input hash as base for cache keys.
+    Clinical history doesn't affect guideline generation, so cache based on FINDINGS alone.
+    This ensures same findings input gets cached results even if:
+    - Settings change (writing style, etc.)
+    - Report content varies slightly
+    - Finding extraction normalizes differently between runs
     """
     if not consolidated_result.findings:
         return []
 
     start_time = time.time()
     print(f"search_guidelines_for_findings: Processing {len(consolidated_result.findings)} consolidated findings")
+    
+    # Generate base cache key from original FINDINGS input (normalized for consistency)
+    # Normalize: strip whitespace, lowercase for consistent hashing
+    findings_normalized = findings_input.strip().lower() if findings_input else ""
+    
+    # Fallback: if no findings_input provided, use report_content hash (backward compatibility)
+    if not findings_normalized:
+        print(f"  [CACHE DEBUG] No FINDINGS input provided, falling back to report_content hash")
+        findings_normalized = report_content.strip().lower()
+    
+    findings_hash = hashlib.sha256(findings_normalized.encode('utf-8')).hexdigest()
+    print(f"  [CACHE DEBUG] Findings hash (base for all cache keys): {findings_hash[:16]}...")
+    print(f"  [CACHE DEBUG] Findings input length: {len(findings_input)} chars")
 
     import os
 
@@ -1367,73 +1402,113 @@ async def search_guidelines_for_findings(
     for idx, consolidated_finding in enumerate(consolidated_result.findings, start=1):
         print(f"  └─ Processing consolidated finding {idx}: {consolidated_finding.finding}")
 
+        # Generate cache key prefix using findings hash + finding index
+        # This ensures same FINDINGS input gets same cache even if finding normalization differs
+        finding_cache_prefix = f"{findings_hash}:finding_{idx}"
+        
         # Generate 2-3 focused search queries using AI
-        queries, query_model = await generate_radiology_search_queries(consolidated_finding.finding, api_key)
+        # Cache based on report content + finding index, not just normalized finding text
+        cache = get_cache()
+        query_cache_key = f"query_gen:{finding_cache_prefix}"
+        cached_queries_result = cache.get(query_cache_key)
+        
+        if cached_queries_result is not None:
+            print(f"      [CACHE HIT] Using cached queries")
+            queries, query_model = cached_queries_result
+        else:
+            print(f"      [CACHE MISS] Generating queries")
+            queries, query_model = await generate_radiology_search_queries(consolidated_finding.finding, api_key)
+            # Cache the queries with report-content-based key
+            cache.set(query_cache_key, (queries, query_model))
+        
         query_models_used.add(query_model)
         print(f"      Generated {len(queries)} queries")
         for q_idx, q in enumerate(queries, 1):
             print(f"        Query {q_idx}: {q}")
 
-        # Try search with fallback strategy: restricted domains -> no domain filter -> no language filter
+        # Check cache for Perplexity search results (cache based on report content + queries)
+        queries_hash = generate_query_hash(queries)
+        search_cache_key = f"perplexity_search:{finding_cache_prefix}:{queries_hash}"
+        print(f"      [CACHE DEBUG] Perplexity search cache key: {search_cache_key[:50]}...")
+        cached_search_results = cache.get(search_cache_key)
+        
         search_results = None
         fallback_attempt = 0
         
-        # Attempt 1: Restricted domain filter (preferred - highest quality)
-        try:
-            search_response = await asyncio.to_thread(
-                lambda: perplexity_client.search.create(
-                    query=queries,  # List of 3-5 queries
-                    max_results=5,   # 5 per query = 15-25 total results
-                    max_tokens_per_page=1024,
-                    search_language_filter=["en"],
-                    search_domain_filter=COMPREHENSIVE_RADIOLOGY_DOMAINS,
-                )
-            )
-            search_results = normalize_perplexity_results(search_response, queries)
-            fallback_attempt = 1
-            if search_results:
-                print(f"      ✅ Found {len(search_results)} results with restricted domain filter")
-        except Exception as search_error:
-            print(f"⚠️  Perplexity search error (attempt 1 - restricted domains): {search_error}")
-        
-        # Attempt 2: No domain filter (broader search, still English only)
-        if not search_results:
+        if cached_search_results is not None:
+            print(f"      [CACHE HIT] Using cached Perplexity search results")
+            search_results = cached_search_results
+        else:
+            print(f"      [CACHE MISS] Executing Perplexity search")
+            
+            # Try search with fallback strategy: restricted domains -> no domain filter -> no language filter
+            
+            # Attempt 1: Restricted domain filter (preferred - highest quality)
             try:
-                print(f"      🔄 Retrying without domain filter...")
                 search_response = await asyncio.to_thread(
                     lambda: perplexity_client.search.create(
-                        query=queries,
-                        max_results=5,
+                        query=queries,  # List of 3-5 queries
+                        max_results=5,   # 5 per query = 15-25 total results
                         max_tokens_per_page=1024,
                         search_language_filter=["en"],
-                        # No search_domain_filter - broader search
+                        search_domain_filter=COMPREHENSIVE_RADIOLOGY_DOMAINS,
                     )
                 )
                 search_results = normalize_perplexity_results(search_response, queries)
-                fallback_attempt = 2
+                fallback_attempt = 1
                 if search_results:
-                    print(f"      ✅ Found {len(search_results)} results without domain filter")
+                    print(f"      ✅ Found {len(search_results)} results with restricted domain filter")
+                    # Cache successful search results
+                    cache.set(search_cache_key, search_results)
             except Exception as search_error:
-                print(f"⚠️  Perplexity search error (attempt 2 - no domain filter): {search_error}")
+                print(f"⚠️  Perplexity search error (attempt 1 - restricted domains): {search_error}")
         
-        # Attempt 3: No language filter (broadest search)
-        if not search_results:
-            try:
-                print(f"      🔄 Retrying without language filter...")
-                search_response = await asyncio.to_thread(
-                    lambda: perplexity_client.search.create(
-                        query=queries,
-                        max_results=5,
-                        max_tokens_per_page=1024,
-                        # No filters - broadest possible search
+            # Attempt 2: No domain filter (broader search, still English only)
+            if not search_results:
+                try:
+                    print(f"      🔄 Retrying without domain filter...")
+                    search_response = await asyncio.to_thread(
+                        lambda: perplexity_client.search.create(
+                            query=queries,
+                            max_results=5,
+                            max_tokens_per_page=1024,
+                            search_language_filter=["en"],
+                            # No search_domain_filter - broader search
+                        )
                     )
-                )
-                search_results = normalize_perplexity_results(search_response, queries)
-                fallback_attempt = 3
-                if search_results:
-                    print(f"      ✅ Found {len(search_results)} results without filters")
-            except Exception as search_error:
-                print(f"⚠️  Perplexity search error (attempt 3 - no filters): {search_error}")
+                    search_results = normalize_perplexity_results(search_response, queries)
+                    fallback_attempt = 2
+                    if search_results:
+                        print(f"      ✅ Found {len(search_results)} results without domain filter")
+                        # Cache successful search results
+                        cache.set(search_cache_key, search_results)
+                except Exception as search_error:
+                    print(f"⚠️  Perplexity search error (attempt 2 - no domain filter): {search_error}")
+            
+            # Attempt 3: No language filter (broadest search)
+            if not search_results:
+                try:
+                    print(f"      🔄 Retrying without language filter...")
+                    search_response = await asyncio.to_thread(
+                        lambda: perplexity_client.search.create(
+                            query=queries,
+                            max_results=5,
+                            max_tokens_per_page=1024,
+                            # No filters - broadest possible search
+                        )
+                    )
+                    search_results = normalize_perplexity_results(search_response, queries)
+                    fallback_attempt = 3
+                    if search_results:
+                        print(f"      ✅ Found {len(search_results)} results without filters")
+                        # Cache successful search results
+                        cache.set(search_cache_key, search_results)
+                except Exception as search_error:
+                    print(f"⚠️  Perplexity search error (attempt 3 - no filters): {search_error}")
+                
+                # Cache empty results too (to avoid retrying on cache miss)
+                if search_results is None:
+                    cache.set(search_cache_key, [])
         
         # Final check - if still no results, skip this finding
         if not search_results:
@@ -1444,12 +1519,28 @@ async def search_guidelines_for_findings(
         if fallback_attempt > 1:
             print(f"      ⚠️  Used fallback level {fallback_attempt} (less restrictive filtering)")
 
-        # Filter incompatible search results before synthesis
-        search_results = await filter_compatible_search_results(
-            search_results,
-            consolidated_finding.finding,
-            api_key
-        )
+        # Check cache for compatibility filtering (cache based on report content + search_results)
+        search_results_hash = generate_search_results_hash(search_results)
+        filter_cache_key = f"compat_filter:{finding_cache_prefix}:{search_results_hash}"
+        print(f"      [CACHE DEBUG] Compatibility filter cache key: {filter_cache_key[:50]}...")
+        cached_filtered_results = cache.get(filter_cache_key)
+        
+        if cached_filtered_results is not None:
+            print(f"      [CACHE HIT] Using cached compatibility filter results")
+            filtered_search_results = cached_filtered_results
+        else:
+            print(f"      [CACHE MISS] Executing compatibility filtering")
+            # Filter incompatible search results before synthesis
+            filtered_search_results = await filter_compatible_search_results(
+                search_results,
+                consolidated_finding.finding,
+                api_key
+            )
+            # Cache filtered results
+            if filtered_search_results:
+                cache.set(filter_cache_key, filtered_search_results)
+        
+        search_results = filtered_search_results
         if not search_results:
             print(f"⚠️  No compatible search results for finding {idx} after filtering")
             continue
@@ -1470,99 +1561,148 @@ async def search_guidelines_for_findings(
 
         evidence_block = "\n".join(context_lines) if context_lines else "No supporting evidence."
 
-        # Guidelines synthesis prompt
-        queries_text = "\n".join(f"  {i}. {q}" for i, q in enumerate(queries, 1))
-        prompt = (
-            f"Consolidated finding: {consolidated_finding.finding}\n"
-            f"Search queries used:\n{queries_text}\n\n"
-            f"SEARCH EVIDENCE:\n{evidence_block}\n\n"
-            "Return a GuidelineEntry JSON object with radiologist-focused diagnostic information."
-        )
-
-        try:
-            # Try primary model first with retry logic
-            @with_retry(max_retries=3, base_delay=2.0)
-            async def _try_synthesis():
-                # Build model settings with conditional reasoning_effort and max_completion_tokens for Cerebras
-                model_settings = {
-                    "temperature": 0.2,
-                }
-                if primary_model == "gpt-oss-120b":
-                    model_settings["max_completion_tokens"] = 5000  # Generous token limit for Cerebras
-                    model_settings["reasoning_effort"] = "medium"
-                    print(f"      └─ Using Cerebras reasoning_effort=medium, max_completion_tokens=5000 for {primary_model}")
-                else:
-                    model_settings["max_tokens"] = 4000  # Generous token limit for other models
-                
-                result = await _run_agent_with_model(
-                    model_name=primary_model,
-                    output_type=GuidelineEntry,
-                    system_prompt=guidelines_system_prompt,
-                    user_prompt=prompt,
-                    api_key=primary_api_key,
-                    use_thinking=(primary_provider == 'groq'),  # Enable thinking for Groq models
-                    model_settings=model_settings
-                )
-                return result
-            
-            result = await _try_synthesis()
-            synthesis_model = primary_model
-        except Exception as synthesis_error:
-            # Log detailed error information for debugging
-            print(f"⚠️ Primary model (Cerebras) error details for finding {idx}:")
-            print(f"  └─ Error type: {type(synthesis_error).__name__}")
-            print(f"  └─ Error message: {str(synthesis_error)}")
-            if hasattr(synthesis_error, 'status_code'):
-                print(f"  └─ Status code: {synthesis_error.status_code}")
-            if hasattr(synthesis_error, 'body'):
-                print(f"  └─ Error body: {synthesis_error.body}")
-            
-            # Primary model failed - try fallback
-            fallback_model = MODEL_CONFIG["GUIDELINE_SEARCH_FALLBACK"]
-            fallback_provider = _get_model_provider(fallback_model)
-            fallback_api_key = _get_api_key_for_provider(fallback_provider)
-            
-            if _is_parsing_error(synthesis_error):
-                print(f"⚠️ Primary model parsing error for finding {idx} - falling back to {fallback_model}")
+        # Check cache for guideline synthesis (cache based on report content + search_results)
+        synthesis_cache_key = f"guideline_synth:{finding_cache_prefix}:{search_results_hash}"
+        print(f"      [CACHE DEBUG] Checking guideline synthesis cache with key: {synthesis_cache_key[:80]}...")
+        cached_synthesis = cache.get(synthesis_cache_key)
+        
+        if cached_synthesis is not None:
+            print(f"      [CACHE HIT] Using cached guideline synthesis")
+            print(f"      [CACHE DEBUG] Cache key: {synthesis_cache_key[:80]}...")
+            # Reconstruct GuidelineEntry from cached dict if needed
+            if isinstance(cached_synthesis, dict):
+                guideline_entry_raw = GuidelineEntry(**cached_synthesis)
             else:
-                print(f"⚠️ Primary model failed after retries for finding {idx} - falling back to {fallback_model}")
+                guideline_entry_raw = cached_synthesis
+            synthesis_model = "cached"  # Mark as cached
+        else:
+            print(f"      [CACHE MISS] Executing guideline synthesis")
+            print(f"      [CACHE DEBUG] Cache key: {synthesis_cache_key[:80]}...")
             
+            # Guidelines synthesis prompt
+            queries_text = "\n".join(f"  {i}. {q}" for i, q in enumerate(queries, 1))
+            prompt = (
+                f"Consolidated finding: {consolidated_finding.finding}\n"
+                f"Search queries used:\n{queries_text}\n\n"
+                f"SEARCH EVIDENCE:\n{evidence_block}\n\n"
+                "Return a GuidelineEntry JSON object with radiologist-focused diagnostic information."
+            )
+
             try:
-                # Build model settings for fallback (Llama)
-                fallback_model_settings = {
-                    "temperature": 0.2,
-                    "max_tokens": 4000  # Generous token limit for Llama fallback
-                }
+                # Try primary model first with retry logic
+                @with_retry(max_retries=3, base_delay=2.0)
+                async def _try_synthesis():
+                    # Build model settings with conditional reasoning_effort and max_completion_tokens for Cerebras
+                    model_settings = {
+                        "temperature": 0.2,
+                    }
+                    if primary_model == "gpt-oss-120b":
+                        model_settings["max_completion_tokens"] = 5000  # Generous token limit for Cerebras
+                        model_settings["reasoning_effort"] = "medium"
+                        print(f"      └─ Using Cerebras reasoning_effort=medium, max_completion_tokens=5000 for {primary_model}")
+                    else:
+                        model_settings["max_tokens"] = 4000  # Generous token limit for other models
+                    
+                    result = await _run_agent_with_model(
+                        model_name=primary_model,
+                        output_type=GuidelineEntry,
+                        system_prompt=guidelines_system_prompt,
+                        user_prompt=prompt,
+                        api_key=primary_api_key,
+                        use_thinking=(primary_provider == 'groq'),  # Enable thinking for Groq models
+                        model_settings=model_settings
+                    )
+                    return result
                 
-                # Only enable thinking for Groq models that support reasoning_format (Qwen, not Llama)
-                use_thinking_fallback = (fallback_provider == 'groq' and 'qwen' in fallback_model.lower())
+                result = await _try_synthesis()
+                synthesis_model = primary_model
+                guideline_entry_raw = result.output
                 
-                result = await _run_agent_with_model(
-                    model_name=fallback_model,
-                    output_type=GuidelineEntry,
-                    system_prompt=guidelines_system_prompt,
-                    user_prompt=prompt,
-                    api_key=fallback_api_key,
-                    use_thinking=use_thinking_fallback,  # Only enable for Qwen models, not Llama
-                    model_settings=fallback_model_settings
-                )
+                # Cache the synthesized guideline (serialize Pydantic model to dict for storage)
+                guideline_dict = guideline_entry_raw.model_dump() if hasattr(guideline_entry_raw, 'model_dump') else guideline_entry_raw.dict()
+                print(f"      [CACHE DEBUG] Storing guideline with key: {synthesis_cache_key[:80]}...")
+                cache.set(synthesis_cache_key, guideline_dict)
                 
-                synthesis_model = fallback_model
-                print(f"      ✅ Guideline synthesis completed with {synthesis_model} (fallback)")
-            except Exception as fallback_error:
-                print(f"❌ Both primary and fallback models failed for finding {idx}: {fallback_error}")
-                continue
+            except Exception as synthesis_error:
+                # Log detailed error information for debugging
+                print(f"⚠️ Primary model (Cerebras) error details for finding {idx}:")
+                print(f"  └─ Error type: {type(synthesis_error).__name__}")
+                print(f"  └─ Error message: {str(synthesis_error)}")
+                if hasattr(synthesis_error, 'status_code'):
+                    print(f"  └─ Status code: {synthesis_error.status_code}")
+                if hasattr(synthesis_error, 'body'):
+                    print(f"  └─ Error body: {synthesis_error.body}")
+                
+                # Primary model failed - try fallback
+                fallback_model = MODEL_CONFIG["GUIDELINE_SEARCH_FALLBACK"]
+                fallback_provider = _get_model_provider(fallback_model)
+                fallback_api_key = _get_api_key_for_provider(fallback_provider)
+                
+                if _is_parsing_error(synthesis_error):
+                    print(f"⚠️ Primary model parsing error for finding {idx} - falling back to {fallback_model}")
+                else:
+                    print(f"⚠️ Primary model failed after retries for finding {idx} - falling back to {fallback_model}")
+                
+                try:
+                    # Build model settings for fallback (Llama)
+                    fallback_model_settings = {
+                        "temperature": 0.2,
+                        "max_tokens": 4000  # Generous token limit for Llama fallback
+                    }
+                    
+                    # Only enable thinking for Groq models that support reasoning_format (Qwen, not Llama)
+                    use_thinking_fallback = (fallback_provider == 'groq' and 'qwen' in fallback_model.lower())
+                    
+                    result = await _run_agent_with_model(
+                        model_name=fallback_model,
+                        output_type=GuidelineEntry,
+                        system_prompt=guidelines_system_prompt,
+                        user_prompt=prompt,
+                        api_key=fallback_api_key,
+                        use_thinking=use_thinking_fallback,  # Only enable for Qwen models, not Llama
+                        model_settings=fallback_model_settings
+                    )
+                    
+                    synthesis_model = fallback_model
+                    guideline_entry_raw = result.output
+                    print(f"      ✅ Guideline synthesis completed with {synthesis_model} (fallback)")
+                    
+                    # Cache the synthesized guideline (serialize Pydantic model to dict)
+                    guideline_dict = guideline_entry_raw.model_dump() if hasattr(guideline_entry_raw, 'model_dump') else guideline_entry_raw.dict()
+                    print(f"      [CACHE DEBUG] Storing guideline (fallback) with key: {synthesis_cache_key[:80]}...")
+                    cache.set(synthesis_cache_key, guideline_dict)
+                    
+                except Exception as fallback_error:
+                    print(f"❌ Both primary and fallback models failed for finding {idx}: {fallback_error}")
+                    continue
 
         synthesis_models_used.add(synthesis_model)
-        guideline_entry: GuidelineEntry = result.output
+        guideline_entry: GuidelineEntry = guideline_entry_raw
         print(f"      Generated guideline: {guideline_entry.diagnostic_overview[:160]}...")
 
-        # Validate guideline compatibility with finding
-        is_compatible = await validate_guideline_compatibility(
-            guideline_entry,
-            consolidated_finding.finding,
-            api_key
-        )
+        # Check cache for guideline validation (cache based on report content + guideline)
+        import json
+        guideline_dict = guideline_entry.model_dump() if hasattr(guideline_entry, 'model_dump') else guideline_entry.dict()
+        guideline_str = json.dumps(guideline_dict, sort_keys=True, default=str)
+        guideline_hash = hashlib.sha256(guideline_str.encode('utf-8')).hexdigest()
+        validation_cache_key = f"guideline_validation:{finding_cache_prefix}:{guideline_hash}"
+        print(f"      [CACHE DEBUG] Guideline validation cache key: {validation_cache_key[:50]}...")
+        cached_validation = cache.get(validation_cache_key)
+        
+        if cached_validation is not None:
+            print(f"      [CACHE HIT] Using cached validation result")
+            is_compatible = cached_validation
+        else:
+            print(f"      [CACHE MISS] Executing guideline validation")
+            # Validate guideline compatibility with finding
+            is_compatible = await validate_guideline_compatibility(
+                guideline_entry,
+                consolidated_finding.finding,
+                api_key
+            )
+            # Cache validation result
+            cache.set(validation_cache_key, is_compatible)
+        
         if not is_compatible:
             print(f"⚠️  Synthesized guideline incompatible with finding {idx}, skipping...")
             continue
@@ -3600,25 +3740,54 @@ Refine report language and phrasing while preserving all structural and organiza
     impression_style_block = _build_impression_style_block(impression_advanced, impression_custom)
     template_wide_block = _build_template_wide_block(template_wide_custom)
     
-    user_prompt = f"""Review this radiology report for linguistic refinement to NHS standards.
+    # Extract style configurations for both sections
+    findings_style = findings_advanced.get('writing_style', 'standard')
+    impression_verbosity = impression_advanced.get('verbosity_style', 'standard')
+    
+    # Build neutral role section (applies to all styles)
+    role_section = """=== YOUR ROLE ===
+You are a linguistic validator for NHS radiology reports.
 
-=== YOUR ROLE ===
-The primary model already generated the report structure and content organization.
-Your task: Refine LANGUAGE, GRAMMAR, and PHRASING only.
+Your task: Apply section-specific style refinements to the report below.
 
 PRESERVE (do not change):
-- Section order and structure
-- Finding groupings and organization  
-- Which findings were included/excluded
 - All clinical content, diagnoses, measurements
-- Line breaks, section headers, formatting
+- Report structure and section organization
+- Finding groupings and order
+- Any existing line breaks or formatting
 
-REFINE (apply improvements):
-- Grammar, verb agreement, syntax
+REFINE (per section-specific guidance below):
+- Language clarity and readability
 - British English compliance
-- Word choice and prose quality
-- Redundancy and verbosity (per section preferences)
-- Sentence construction
+- Grammar and phrasing per section style requirements
+
+CRITICAL PRINCIPLE:
+Each section has INDEPENDENT style requirements specified below.
+Apply each section's guidance ONLY to that section.
+- FINDINGS section → Apply FINDINGS style guidance
+- IMPRESSION section → Apply IMPRESSION style guidance
+- Do NOT carry style from one section to another."""
+    
+    # Build simplified NHS style rules (applies to all styles)
+    nhs_rules = """=== CORE NHS STYLE RULES (ALL SECTIONS) ===
+
+**British English**:
+- Spelling: oesophagus, haemorrhage, oedema, paediatric, centre, litre
+- Measurements: Space between number and unit ("5 cm" not "5cm")
+
+**Anti-Hallucination** (CRITICAL):
+⚠️ NEVER add, invent, estimate, or extrapolate:
+- Measurements not in original input
+- Morphological descriptors not in original input
+- Clinical findings not in original input
+
+**Anatomical Accuracy**:
+- Verify correct anatomical terminology
+- Fix organ/structure misattributions"""
+    
+    user_prompt = f"""Review this radiology report for linguistic refinement to NHS standards.
+
+{role_section}
 
 === CONTEXT ===
 **Scan Type**: {scan_type}
@@ -3634,26 +3803,7 @@ REFINE (apply improvements):
 
 {template_wide_block}
 
-=== CORE NHS STYLE RULES ===
-
-**British English**:
-- Spelling: oesophagus, haemorrhage, oedema, paediatric, centre, litre
-- Measurements: Space between number and unit ("5 cm" not "5cm")
-
-**Phrasing Patterns**:
-- Avoid: "There is/are...", "demonstrates", "shows", "is seen"
-- Prefer: Direct statements ("Hepatic metastases", "Wall thickening measures...")
-- Avoid: Passive constructions ("is present in", "is noted")
-- Prefer: Active/direct ("involves", "extends to")
-
-**Redundancy Elimination**:
-- Remove size qualifiers with measurements: "Large 5cm" → "5 cm"
-- Remove organ-as-subject: "The liver shows" → "Hepatic"
-- Remove implied locations: "gallbladder lumen" → "gallbladder"
-
-**Anatomical Corrections**:
-- Fix organ/structure misattributions
-- Verify anatomical terminology accuracy
+{nhs_rules}
 
 === OUTPUT ===
 Return ONLY the linguistically refined report. No commentary, no metadata.
@@ -3717,62 +3867,145 @@ Preserve all spacing, line breaks, and structural formatting exactly.
 
 
 def _build_findings_style_block(advanced_config: dict, custom_instructions: str) -> str:
-    """Build Findings section style requirements block for validator"""
+    """Build Findings section style requirements with conditional guidance."""
     
-    # Extract style preferences (simplified architecture)
     writing_style = advanced_config.get('writing_style', 'standard')
     findings_format = advanced_config.get('format', 'prose')
     
-    block = f"""**FINDINGS SECTION** - Style Requirements:
+    # Style-specific linguistic guidance
+    if writing_style == 'concise':
+        style_guidance = """
+Telegraphic, information-dense phrasing:
+- Verb-minimal constructions
+- Noun phrases predominate
+- Example: "Dilated common bile duct 12mm. Multiple gallstones. No ductal calculus."
 
-1. **Writing Style**: {writing_style.upper()}
-{_get_verbosity_guidance(writing_style)}
+PRESERVE telegraphic structure:
+- DO NOT add linking verbs ("is", "are")
+- DO NOT expand to full sentences
+- DO NOT "improve" grammar by adding subjects/verbs
 
-2. **Format**: {findings_format}
-{_get_format_guidance(findings_format)}
+ONLY refine:
+- British English spelling
+- Measurement formatting
+- Anatomical terminology errors"""
+    
+    elif writing_style == 'detailed':
+        style_guidance = """
+Descriptive clinical documentation:
+- Elaborate characterizations with appropriate detail
+- Fuller phrasing with morphological descriptors when clinically meaningful
+- Natural voice mix (passive/active) - use what reads better
+- Example: "A heterogeneous mass with irregular spiculated margins is present 
+  within the right upper lobe, abutting the major fissure."
+
+Natural, thorough prose (NOT artificial verbosity):
+- Add morphological detail when diagnostically valuable
+- Vary vocabulary naturally
+- Avoid forced passive constructions
+- NO tautological phrases ("characterized by minimal volume")
+- NO filler language for length's sake
+
+CRITICAL: NEVER fabricate measurements not in original input"""
+    
+    else:  # standard
+        style_guidance = """
+Natural radiology prose:
+- Balanced clinical register
+- Mix of complete and fragment constructions as typical in radiology
+- Passive voice acceptable when natural
+- Active voice when clearer
+- Example: "The liver demonstrates diffuse steatosis. No focal lesion is identified."
+
+Balanced readability:
+- Neither telegraphic nor elaborate
+- Natural sentence flow
+- Professional medical register"""
+    
+    # Extract organization for paragraph guidance
+    organization = advanced_config.get('organization', 'clinical_priority')
+    
+    block = f"""**FINDINGS SECTION** - Linguistic Style: {writing_style.upper()}
+
+{style_guidance}
+
+**Format**: {findings_format}
+{_get_format_guidance(findings_format, organization)}
 """
     
-    # Add custom instructions if present
     if custom_instructions and custom_instructions.strip():
         block += f"""
-3. **Custom Instructions** (apply linguistically):
-   {custom_instructions}
-   Note: Focus on the LANGUAGE/PHRASING aspects. Preserve any organizational decisions already implemented.
+**Custom Linguistic Instructions**:
+{custom_instructions}
+(Apply to language/phrasing only - preserve organizational decisions)
 """
     
     return block
 
 
 def _build_impression_style_block(advanced_config: dict, custom_instructions: str) -> str:
-    """Build Impression section style requirements block for validator"""
+    """Build Impression section style requirements with conditional guidance."""
     
-    # Extract style preferences (simplified architecture)
     verbosity = advanced_config.get('verbosity_style', 'standard')
     impression_format = advanced_config.get('format') or advanced_config.get('impression_format', 'prose')
-    differential_approach = advanced_config.get('differential_approach') or advanced_config.get('differential_style', 'if_needed')
-    # Handle backward compatibility for differential
-    if differential_approach in ['always_brief', 'always_detailed']:
-        differential_approach = 'always'
     
-    block = f"""**IMPRESSION SECTION** - Style Requirements:
+    # Verbosity-specific linguistic guidance
+    if verbosity == 'brief':
+        verbosity_guidance = """
+⚠️ THIS SECTION USES BRIEF LANGUAGE - Independent of findings style
 
-1. **Verbosity**: {verbosity.upper()}
-{_get_verbosity_guidance(verbosity)}
+Terse, direct phrasing:
+- Strip to essential wording
+- Minimal elaboration
+- Example: "Acute appendicitis. No perforation or abscess."
 
-2. **Format**: {impression_format}
+Transform verbose phrasing:
+✗ "Acute appendicitis is present without evidence of perforation"
+✓ "Acute appendicitis. No perforation."
+
+SCOPE: Refine existing impression text to be more terse
+DO NOT: Remove/add content, apply findings phrasing style here"""
+    
+    elif verbosity == 'detailed':
+        verbosity_guidance = """
+Elaborate, descriptive phrasing:
+- Fuller statements with appropriate clinical detail
+- Natural, thorough language (NOT artificial verbosity)
+- Example: "Acute cholecystitis with marked gallbladder wall thickening and 
+  surrounding inflammatory change, without evidence of perforation or abscess formation."
+
+Transform terse phrasing:
+✗ "Cholecystitis. No perforation."
+✓ "Acute cholecystitis with gallbladder wall thickening, without evidence of perforation."
+
+SCOPE: Refine existing impression text to be more elaborate
+DO NOT: Add/remove diagnoses or clinical conclusions"""
+    
+    else:  # standard
+        verbosity_guidance = """
+Natural radiology summary prose:
+- Balanced clinical register
+- Clear, readable statements
+- Mix of complete and fragment constructions typical in radiology
+- Example: "Small bowel obstruction at the level of the mid ileum. 
+  Probable adhesive aetiology. No signs of ischaemia."
+
+SCOPE: Refine grammar and phrasing for natural readability
+DO NOT: Add/remove content"""
+    
+    block = f"""**IMPRESSION SECTION** - Linguistic Verbosity: {verbosity.upper()}
+
+{verbosity_guidance}
+
+**Format**: {impression_format}
 {_get_format_guidance(impression_format)}
-
-3. **Differential**: {differential_approach.replace('_', ' ').title()}
-   - Content scope already determined by primary model
-   - Refine phrasing if differential is present
 """
     
-    # Add custom instructions if present
     if custom_instructions and custom_instructions.strip():
         block += f"""
-4. **Custom Instructions** (apply linguistically):
-   {custom_instructions}
-   Note: Focus on the LANGUAGE/PHRASING aspects. Preserve any organizational decisions already implemented.
+**Custom Linguistic Instructions**:
+{custom_instructions}
+(Apply to language/phrasing only - preserve organizational decisions)
 """
     
     return block
@@ -3792,55 +4025,25 @@ Note: These apply to the entire report. Focus on LINGUISTIC application - preser
 """
 
 
-def _get_verbosity_guidance(writing_style: str) -> str:
-    """Verbosity guidance matching simplified architecture - principle-based"""
-    guidance = {
-        'concise': """
-CONCISE VALIDATION PRINCIPLES:
-Goal: Consultant-to-consultant efficiency
-- Eliminate ALL passive constructions
-- Remove decorative descriptors
-- Strip non-essential words
-- Keep anatomical terms readable (NO acronyms: use "right upper lobe" not "RUL")
-- Test: If removing a word doesn't change clinical understanding, remove it
-""",
-        'standard': """
-STANDARD VALIDATION PRINCIPLES:
-Goal: Balanced NHS professional reporting
-- Natural flow with complete formal sentences
-- Clinically relevant details with appropriate precision
-- Interpretive context when helpful
-- Actionable incidentals only
-""",
-        'detailed': """
-DETAILED VALIDATION PRINCIPLES:
-Goal: Comprehensive academic documentation
-- Full characterization with rich descriptive language
-- Precise measurements and anatomical detail
-- Complete documentation of all findings
-- Formal professional tone
-- Actionable incidentals only
-""",
-        # Backward compatibility for impression verbosity_style
-        'brief': """
-BRIEF VALIDATION PRINCIPLES:
-Goal: Essential diagnosis only
-- Strip to diagnosis and critical complications
-- Remove all non-essential details
-- NO incidentals
-"""
-    }
-    return guidance.get(writing_style, guidance['standard'])
-
-
-def _get_format_guidance(format_type: str) -> str:
-    """Get format-specific guidance for validator"""
+def _get_format_guidance(format_type: str, organization: str = 'clinical_priority') -> str:
+    """Get format-specific guidance for validator, conditional on organization"""
     
+    if format_type == 'prose':
+        if organization == 'clinical_priority':
+            return """   Style: Flowing prose paragraphs with natural breaks
+   - ENSURE paragraph breaks between major anatomical regions or finding types
+   - ENSURE grouping of related findings/entities within paragraphs
+   - Add paragraph breaks where missing, without reorganizing content
+   - Refine sentence quality while maintaining proper paragraph structure"""
+        else:  # template_order
+            return """   Style: Flowing prose paragraphs with natural breaks
+   - ENSURE paragraph breaks aligned with template's anatomical sections
+   - ENSURE template's structural organization in paragraph breaks
+   - Add paragraph breaks where missing, without reorganizing content
+   - Refine sentence quality while maintaining proper paragraph structure"""
+    
+    # Non-prose formats remain unchanged
     guides = {
-        'prose': """   Style: Flowing sentences
-   - PRESERVE existing prose structure (already generated)
-   - Refine sentence quality, not structure
-""",
         'bullets': """   Style: Bullet points (•)
    - PRESERVE existing bullet structure (already generated)
    - Refine wording within each bullet
