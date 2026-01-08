@@ -2122,6 +2122,31 @@ async def get_migration_status():
         }
 
 
+@app.post("/api/reset-test-migration")
+async def reset_test_migration():
+    """Drop test migration table and downgrade alembic version for testing"""
+    from sqlalchemy import text
+    try:
+        with engine.connect() as conn:
+            # Drop the test table
+            conn.execute(text("DROP TABLE IF EXISTS migration_test_table CASCADE"))
+            
+            # Update alembic version to previous migration
+            conn.execute(text("UPDATE alembic_version SET version_num = 'a1b2c3d4e5f6'"))
+            conn.commit()
+        
+        return {
+            "success": True,
+            "message": "Test migration reset complete",
+            "note": "Test table dropped and version set to a1b2c3d4e5f6. Trigger a deployment to test if migrations recreate it."
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
 # ============================================================================
 # REPORTS API ENDPOINTS
 # ============================================================================
