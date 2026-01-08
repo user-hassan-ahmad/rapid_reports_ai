@@ -58,16 +58,18 @@ class EnhancementCache:
     
     def _parse_cache_key(self, cache_key: str) -> tuple[str, str]:
         """
-        Parse cache key to extract findings_hash and cache_type.
+        Parse cache key to extract finding_text_hash and cache_type.
         
-        Cache key format: "{cache_type}:{findings_hash}:finding_{idx}[:additional_hash]"
+        Cache key format: "{cache_type}:{finding_text_hash}:finding_{idx}[:additional_hash]"
         Examples:
         - "query_gen:abc123:finding_1"
         - "perplexity_search:abc123:finding_1:def456"
         - "guideline_validation:abc123:finding_1:def456"
         
+        Note: finding_text_hash is hash of extracted finding text (enables cross-user cache reuse)
+        
         Returns:
-            Tuple of (findings_hash, cache_type)
+            Tuple of (finding_text_hash, cache_type)
         """
         try:
             parts = cache_key.split(':')
@@ -75,9 +77,9 @@ class EnhancementCache:
                 return ('', 'unknown')
             
             cache_type = parts[0]
-            findings_hash = ''
+            finding_text_hash = ''
             
-            # Look for "finding_" pattern to identify where findings_hash ends
+            # Look for "finding_" pattern to identify where finding_text_hash ends
             finding_idx = -1
             for i, part in enumerate(parts):
                 if part.startswith('finding_'):
@@ -85,20 +87,24 @@ class EnhancementCache:
                     break
             
             if finding_idx > 0:
-                # findings_hash is the part right before "finding_"
-                findings_hash = parts[finding_idx - 1]
+                # finding_text_hash is the part right before "finding_"
+                finding_text_hash = parts[finding_idx - 1]
             elif len(parts) >= 2:
-                # Fallback: second part might be findings_hash
+                # Fallback: second part might be finding_text_hash
                 # But be careful - it could be a hash without "finding_" pattern
                 # Check if it looks like a hash (hex string, 32-64 chars)
                 potential_hash = parts[1]
                 if len(potential_hash) >= 32 and all(c in '0123456789abcdef' for c in potential_hash.lower()):
-                    findings_hash = potential_hash
+                    finding_text_hash = potential_hash
+                else:
+                    finding_text_hash = ''
+            else:
+                finding_text_hash = ''
             
-            # Limit findings_hash to 64 chars (database column limit)
-            findings_hash = findings_hash[:64] if findings_hash else ''
+            # Limit finding_text_hash to 64 chars (database column limit)
+            finding_text_hash = finding_text_hash[:64] if finding_text_hash else ''
             
-            return (findings_hash, cache_type)
+            return (finding_text_hash, cache_type)
         except Exception as e:
             logger.warning(f"Failed to parse cache key '{cache_key}': {e}")
             return ('', 'unknown')
@@ -153,7 +159,13 @@ class EnhancementCache:
                 
                 # Check expiration
                 now = datetime.now(timezone.utc)
-                if entry.expires_at < now:
+                # Ensure expires_at is timezone-aware (SQLite returns naive datetimes)
+                expires_at = entry.expires_at
+                if expires_at.tzinfo is None:
+                    # Naive datetime - assume UTC
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                
+                if expires_at < now:
                     # Expired - delete and return None
                     db.delete(entry)
                     db.commit()
@@ -235,8 +247,8 @@ class EnhancementCache:
             if db is not None:
                 from .database.models import EnhancementCacheEntry
                 
-                # Parse cache key to extract findings_hash and cache_type
-                findings_hash, cache_type = self._parse_cache_key(cache_key)
+                # Parse cache key to extract finding_text_hash and cache_type
+                finding_text_hash, cache_type = self._parse_cache_key(cache_key)
                 
                 # Calculate expiration time
                 now = datetime.now(timezone.utc)
@@ -252,12 +264,14 @@ class EnhancementCache:
                     entry.cached_value = value
                     entry.last_accessed = now
                     entry.expires_at = expires_at
+                    # Update finding_text_hash in case it changed (shouldn't, but for consistency)
+                    entry.findings_hash = finding_text_hash
                     # Don't reset access_count on update
                 else:
                     # Create new entry
                     entry = EnhancementCacheEntry(
                         cache_key=cache_key,
-                        findings_hash=findings_hash,
+                        findings_hash=finding_text_hash,  # Now stores finding_text_hash for analytics
                         cache_type=cache_type,
                         cached_value=value,
                         created_at=now,
@@ -387,10 +401,11 @@ def get_cache() -> EnhancementCache:
     """Get global cache instance (DB-backed)."""
     global _global_cache
     if _global_cache is None:
-        # Default TTL: 24 hours (can be configured via env var)
+        # Default TTL: 7 days (can be configured via env var)
+        # Guidelines don't change frequently, so longer TTL maximizes cache reuse
         import os
         ttl = os.getenv('ENHANCEMENT_CACHE_TTL_SECONDS')
-        ttl_seconds = int(ttl) if ttl else 86400  # 24 hours default
+        ttl_seconds = int(ttl) if ttl else 604800  # 7 days default (was 24 hours)
         # Create DB-backed cache (no session passed, will create per operation)
         _global_cache = EnhancementCache(ttl_seconds=ttl_seconds, db_session=None)
     return _global_cache
@@ -420,9 +435,24 @@ def cleanup_expired_entries(db: Optional[Session] = None) -> int:
     
     try:
         now = datetime.now(timezone.utc)
-        deleted_count = db.query(EnhancementCacheEntry).filter(
-            EnhancementCacheEntry.expires_at < now
-        ).delete()
+        # For SQLite compatibility, we need to handle naive datetimes
+        # Query all entries and filter in Python for SQLite, or use database-specific comparison
+        bind = db.bind
+        if bind and bind.dialect.name == 'sqlite':
+            # SQLite: Get all entries and filter in Python
+            all_entries = db.query(EnhancementCacheEntry).all()
+            expired_entries = [
+                e for e in all_entries
+                if (e.expires_at.replace(tzinfo=timezone.utc) if e.expires_at.tzinfo is None else e.expires_at) < now
+            ]
+            deleted_count = len(expired_entries)
+            for entry in expired_entries:
+                db.delete(entry)
+        else:
+            # PostgreSQL: Can use database comparison
+            deleted_count = db.query(EnhancementCacheEntry).filter(
+                EnhancementCacheEntry.expires_at < now
+            ).delete()
         db.commit()
         logger.info(f"Cleaned up {deleted_count} expired cache entries")
         return deleted_count

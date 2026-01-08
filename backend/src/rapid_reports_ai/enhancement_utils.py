@@ -1287,18 +1287,9 @@ async def search_guidelines_for_findings(
     start_time = time.time()
     print(f"search_guidelines_for_findings: Processing {len(consolidated_result.findings)} consolidated findings")
     
-    # Generate base cache key from original FINDINGS input (normalized for consistency)
-    # Normalize: strip whitespace, lowercase for consistent hashing
-    findings_normalized = findings_input.strip().lower() if findings_input else ""
-    
-    # Fallback: if no findings_input provided, use report_content hash (backward compatibility)
-    if not findings_normalized:
-        print(f"  [CACHE DEBUG] No FINDINGS input provided, falling back to report_content hash")
-        findings_normalized = report_content.strip().lower()
-    
-    findings_hash = hashlib.sha256(findings_normalized.encode('utf-8')).hexdigest()
-    print(f"  [CACHE DEBUG] Findings hash (base for all cache keys): {findings_hash[:16]}...")
-    print(f"  [CACHE DEBUG] Findings input length: {len(findings_input)} chars")
+    # Cache keys are now based on extracted finding text (not user input)
+    # This enables cache reuse across users with the same findings
+    # Cache key generation happens per-finding in the loop below
 
     import os
 
@@ -1402,12 +1393,16 @@ async def search_guidelines_for_findings(
     for idx, consolidated_finding in enumerate(consolidated_result.findings, start=1):
         print(f"  └─ Processing consolidated finding {idx}: {consolidated_finding.finding}")
 
-        # Generate cache key prefix using findings hash + finding index
-        # This ensures same FINDINGS input gets same cache even if finding normalization differs
-        finding_cache_prefix = f"{findings_hash}:finding_{idx}"
+        # Generate cache key prefix using extracted finding text hash + finding index
+        # This enables cache reuse across users with the same findings (much higher hit rate)
+        # Normalize finding text for consistent hashing
+        finding_text_normalized = consolidated_finding.finding.strip().lower()
+        finding_text_hash = hashlib.sha256(finding_text_normalized.encode('utf-8')).hexdigest()
+        finding_cache_prefix = f"{finding_text_hash}:finding_{idx}"
+        print(f"      [CACHE DEBUG] Finding text hash: {finding_text_hash[:16]}... (finding: '{consolidated_finding.finding[:50]}...')")
         
         # Generate 2-3 focused search queries using AI
-        # Cache based on report content + finding index, not just normalized finding text
+        # Cache based on extracted finding text hash (enables cross-user cache reuse)
         cache = get_cache()
         query_cache_key = f"query_gen:{finding_cache_prefix}"
         cached_queries_result = cache.get(query_cache_key)
