@@ -2074,6 +2074,54 @@ async def get_api_key_status(
     }
 
 
+@app.get("/api/migration-status")
+async def get_migration_status():
+    """Public endpoint to check database migration status"""
+    from sqlalchemy import inspect, text
+    try:
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        
+        # Get current migration version
+        migration_version = None
+        if 'alembic_version' in tables:
+            with engine.connect() as conn:
+                result = conn.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
+                row = result.fetchone()
+                migration_version = row[0] if row else None
+        
+        # Check for test table
+        has_test_table = 'migration_test_table' in tables
+        test_table_data = None
+        
+        if has_test_table:
+            with engine.connect() as conn:
+                result = conn.execute(text("SELECT * FROM migration_test_table LIMIT 1"))
+                row = result.fetchone()
+                if row:
+                    test_table_data = {
+                        "id": row[0],
+                        "message": row[1],
+                        "created_at": str(row[2]),
+                        "deployment_timestamp": row[3]
+                    }
+        
+        return {
+            "success": True,
+            "migration_version": migration_version,
+            "total_tables": len(tables),
+            "tables": sorted(tables),
+            "test_migration_applied": has_test_table,
+            "test_table_data": test_table_data,
+            "expected_version": "3863316116d1"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
 # ============================================================================
 # REPORTS API ENDPOINTS
 # ============================================================================
