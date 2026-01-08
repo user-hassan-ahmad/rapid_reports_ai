@@ -1,2 +1,2 @@
-web: cd /app/backend && export PYTHONPATH=/app/backend/src:$PYTHONPATH && poetry run python fix_migration_state.py && poetry run uvicorn rapid_reports_ai.main:app --host 0.0.0.0 --port $PORT
+web: export PYTHONPATH=/app/src:$PYTHONPATH && poetry run uvicorn rapid_reports_ai.main:app --host 0.0.0.0 --port $PORT
 
