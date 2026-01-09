@@ -14,6 +14,8 @@
 
 	let expandedCardIndex = null;
 	let disclaimerExpanded = false;
+	let expandedStyleExample = null; // 'concise', 'prose', or null
+	let expandedWritingControl = null; // 'format', 'sequence', 'preferences', or null
 
 	let features = [
 		{
@@ -33,12 +35,20 @@
 			additionalFeatures: ['Step-by-step guidance', 'Tag organization', 'Template customization']
 		},
 		{
+			icon: 'book',
+			iconColor: 'from-teal-400 to-cyan-500',
+			title: 'Clinical Guidelines & Literature',
+			description: 'Instant access to evidence-based guidelines, classifications, and differential diagnoses for your findings',
+			details: 'For every finding in your report, get comprehensive clinical information: diagnostic overviews, classification systems (e.g., BI-RADS, Fleischner), standardized measurement protocols, imaging characteristics, differential diagnoses, and follow-up recommendations. All sourced from current medical literature with references.',
+			additionalFeatures: ['Evidence-based guidelines', 'Classification systems', 'Differential diagnoses', 'Follow-up protocols']
+		},
+		{
 			icon: 'shield',
 			iconColor: 'from-green-400 to-emerald-500',
 			title: 'Smart Audit & Quality Control',
 			description: 'Automatically detect missing sections and incomplete information in your reports',
-			details: 'Our intelligent audit system scans structured template reports and highlights unfilled sections, missing measurements, and empty variables. Get instant visual indicators with easy options to fill manually or request AI assistance. Includes contextual clinical guidelines for findings.',
-			additionalFeatures: ['Automatic flagging', 'Clinical guidelines access', 'AI-assisted completion']
+			details: 'Our intelligent audit system scans structured template reports and highlights unfilled sections, missing measurements, and empty variables. Get instant visual indicators with easy options to fill manually or request AI assistance.',
+			additionalFeatures: ['Automatic flagging', 'Missing measurement detection', 'AI-assisted completion']
 		},
 		{
 			icon: 'chat',
@@ -51,18 +61,10 @@
 		{
 			icon: 'compare',
 			iconColor: 'from-indigo-400 to-purple-500',
-			title: 'Comparison & Version Control',
-			description: 'Track changes between report versions and maintain complete history',
-			details: 'Compare different versions to see what changed. The comparison tool identifies new, changed, and stable findings. Every report maintains full version history with the ability to restore any previous version.',
-			additionalFeatures: ['Version comparison', 'Change tracking', 'Complete history']
-		},
-		{
-			icon: 'lock',
-			iconColor: 'from-red-400 to-pink-500',
-			title: 'Secure & Private',
-			description: 'Your sensitive medical data is protected with encryption and secure authentication',
-			details: 'Data is encrypted at rest and in transit. We follow best practices for medical data security and privacy. Built with confidentiality in mind.',
-			additionalFeatures: ['Data encryption', 'Secure authentication', 'Privacy-focused']
+			title: 'Intelligent Interval Comparison',
+			description: 'AI-powered analysis of interval changes between current and prior scans with automatic report updates',
+			details: 'Compare your current report against prior studies to automatically identify new findings, disease progression, stable pathology, and resolved abnormalities. The AI precisely tracks measurements over time, calculates growth rates, and generates a revised report that properly documents interval changes with dates and scan types. Also includes version-to-version comparison with visual diff highlighting to track your edits.',
+			additionalFeatures: ['Automated interval change detection', 'Measurement tracking & trends', 'AI-generated comparison reports', 'Version history with visual diffs']
 		}
 	];
 
@@ -101,6 +103,14 @@
 
 	function toggleCard(index) {
 		expandedCardIndex = expandedCardIndex === index ? null : index;
+	}
+	
+	function toggleStyleExample(style) {
+		expandedStyleExample = expandedStyleExample === style ? null : style;
+	}
+	
+	function toggleWritingControl(control) {
+		expandedWritingControl = expandedWritingControl === control ? null : control;
 	}
 	
 	function isCardExpanded(index) {
@@ -210,31 +220,35 @@
 				>
 					<div class="flex items-start justify-between mb-4">
 						<div class="w-14 h-14 rounded-xl bg-gradient-to-br {feature.iconColor} flex items-center justify-center shadow-lg">
-							{#if feature.icon === 'lightning'}
-								<svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-								</svg>
-							{:else if feature.icon === 'wand'}
-								<svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-								</svg>
-							{:else if feature.icon === 'shield'}
-								<svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-								</svg>
-							{:else if feature.icon === 'chat'}
-								<svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-								</svg>
-							{:else if feature.icon === 'compare'}
-								<svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-								</svg>
-							{:else if feature.icon === 'lock'}
-								<svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-								</svg>
-							{/if}
+						{#if feature.icon === 'lightning'}
+							<svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+							</svg>
+						{:else if feature.icon === 'wand'}
+							<svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+							</svg>
+						{:else if feature.icon === 'book'}
+							<svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+							</svg>
+						{:else if feature.icon === 'shield'}
+							<svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+							</svg>
+						{:else if feature.icon === 'chat'}
+							<svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+							</svg>
+						{:else if feature.icon === 'compare'}
+							<svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+							</svg>
+						{:else if feature.icon === 'lock'}
+							<svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+							</svg>
+						{/if}
 						</div>
 						<button 
 							class="text-gray-400 hover:text-white transition-colors text-xl font-bold w-6 h-6 flex items-center justify-center"
@@ -308,6 +322,589 @@
 					{/if}
 				</div>
 			{/each}
+		</div>
+	</section>
+
+	<!-- Template Customization Feature Highlight -->
+	<section class="relative z-10 px-6 py-20 max-w-7xl mx-auto">
+		<div class="text-center mb-12">
+			<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-500/10 border border-purple-500/20 mb-4">
+				<svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+				</svg>
+				<span class="text-xs font-medium text-purple-300">Complete Control</span>
+			</div>
+			<h2 class="text-3xl md:text-4xl font-bold text-white mb-4">
+				Templates That Adapt to Your Workflow
+			</h2>
+			<p class="text-lg text-gray-300 max-w-3xl mx-auto">
+				Choose how AI interprets your templates and fine-tune the writing style to match your preferences—from flexible prose to strict fill-in-the-blanks
+			</p>
+		</div>
+
+		<!-- Content Style Templates -->
+		<div class="mb-12">
+			<h3 class="text-xl font-semibold text-white mb-6 text-center">Content Style Templates</h3>
+			<div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+				<!-- Normal Template -->
+				<div class="card-dark group hover:border-purple-500/40 transition-all duration-300">
+					<div class="text-4xl mb-3">📋</div>
+					<h4 class="text-lg font-bold text-white mb-2">Normal Template</h4>
+					<p class="text-sm text-gray-400 mb-4">Paste a normal report as your template—AI learns your language and adapts it to describe actual findings</p>
+					<div class="space-y-2 text-xs text-gray-500">
+						<div class="flex items-start gap-2">
+							<span class="text-green-400 mt-0.5">✓</span>
+							<span>Use any normal report as template</span>
+						</div>
+						<div class="flex items-start gap-2">
+							<span class="text-green-400 mt-0.5">✓</span>
+							<span>AI maintains your voice</span>
+						</div>
+						<div class="flex items-start gap-2">
+							<span class="text-green-400 mt-0.5">✓</span>
+							<span>Best for general reporting</span>
+						</div>
+					</div>
+				</div>
+
+				<!-- Guided Template -->
+				<div class="card-dark group hover:border-purple-500/40 transition-all duration-300">
+					<div class="text-4xl mb-3">📝</div>
+					<h4 class="text-lg font-bold text-white mb-2">Guided Template</h4>
+					<p class="text-sm text-gray-400 mb-4">Normal template + embedded // comments that guide AI on what to assess and how to interpret findings</p>
+					<div class="space-y-2 text-xs text-gray-500">
+						<div class="flex items-start gap-2">
+							<span class="text-green-400 mt-0.5">✓</span>
+							<span>Same as Normal Template</span>
+						</div>
+						<div class="flex items-start gap-2">
+							<span class="text-purple-400 mt-0.5">+</span>
+							<span>// comments provide AI context</span>
+						</div>
+						<div class="flex items-start gap-2">
+							<span class="text-green-400 mt-0.5">✓</span>
+							<span>Helps AI make smart adaptations</span>
+						</div>
+					</div>
+				</div>
+
+				<!-- Structured Template -->
+				<div class="card-dark group hover:border-purple-500/40 transition-all duration-300">
+					<div class="text-4xl mb-3">📐</div>
+					<h4 class="text-lg font-bold text-white mb-2">Structured Fill-In</h4>
+					<p class="text-sm text-gray-400 mb-4">Strict placeholders: {`{VAR}`}, xxx, [opt1/opt2] for precise control</p>
+					<div class="space-y-2 text-xs text-gray-500">
+						<div class="flex items-start gap-2">
+							<span class="text-green-400 mt-0.5">✓</span>
+							<span>EXACT template preservation</span>
+						</div>
+						<div class="flex items-start gap-2">
+							<span class="text-green-400 mt-0.5">✓</span>
+							<span>Smart form-filling</span>
+						</div>
+						<div class="flex items-start gap-2">
+							<span class="text-green-400 mt-0.5">✓</span>
+							<span>High fidelity output</span>
+						</div>
+					</div>
+				</div>
+
+				<!-- Checklist -->
+				<div class="card-dark group hover:border-purple-500/40 transition-all duration-300">
+					<div class="text-4xl mb-3">✓</div>
+					<h4 class="text-lg font-bold text-white mb-2">Systematic Checklist</h4>
+					<p class="text-sm text-gray-400 mb-4">Simple bullet list—AI expands each item systematically</p>
+					<div class="space-y-2 text-xs text-gray-500">
+						<div class="flex items-start gap-2">
+							<span class="text-green-400 mt-0.5">✓</span>
+							<span>Template is just a list</span>
+						</div>
+						<div class="flex items-start gap-2">
+							<span class="text-green-400 mt-0.5">✓</span>
+							<span>AI covers each structure</span>
+						</div>
+						<div class="flex items-start gap-2">
+							<span class="text-green-400 mt-0.5">✓</span>
+							<span>Nothing gets missed</span>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Writing Style Optimizations -->
+		<div class="card-dark">
+			<h3 class="text-xl font-semibold text-white mb-4">Writing Style Optimizations</h3>
+			<p class="text-gray-300 mb-8">
+				Fine-tune how AI generates your reports with granular control over writing style, format, organization, and clinical preferences.
+			</p>
+			
+			<!-- Primary Choice: Template Fidelity vs Custom Style -->
+			<div class="mb-8 p-6 bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/30 rounded-xl">
+				<div class="flex items-center gap-3 mb-4">
+					<div class="w-10 h-10 rounded-lg bg-purple-500/20 border border-purple-500/40 flex items-center justify-center">
+						<span class="text-xl">🎯</span>
+					</div>
+					<div class="flex-1">
+						<div class="text-white font-semibold mb-1">Primary Style Control</div>
+						<div class="text-sm text-gray-400">Choose how AI interprets your template language</div>
+					</div>
+				</div>
+				
+				<div class="grid md:grid-cols-2 gap-4">
+					<div class="bg-black/20 rounded-lg p-4 border border-white/10">
+						<div class="flex items-center gap-2 mb-2">
+							<div class="w-2 h-2 rounded-full bg-purple-400"></div>
+							<span class="text-white font-medium">Follow Template Style</span>
+						</div>
+						<p class="text-sm text-gray-400 mb-3">
+							AI matches your template's established voice and sentence structure
+						</p>
+						<div class="text-xs text-gray-500 italic">
+							Best for maintaining consistent institutional style
+						</div>
+					</div>
+					
+					<div class="bg-black/20 rounded-lg p-4 border border-white/10">
+						<div class="flex items-center gap-2 mb-2">
+							<div class="w-2 h-2 rounded-full bg-cyan-400"></div>
+							<span class="text-white font-medium">Choose Writing Style</span>
+						</div>
+						<p class="text-sm text-gray-400 mb-3">
+							Pick between 
+							<button 
+								onclick={() => toggleStyleExample('concise')} 
+								class="text-blue-300 font-medium hover:text-blue-200 underline decoration-dotted transition-colors"
+							>
+								Concise
+							</button> 
+							(essentials only) or 
+							<button 
+								onclick={() => toggleStyleExample('prose')} 
+								class="text-purple-300 font-medium hover:text-purple-200 underline decoration-dotted transition-colors"
+							>
+								Prose
+							</button> 
+							(balanced detail)
+						</p>
+						<div class="text-xs text-gray-500 italic">
+							Gives you direct control over verbosity level
+						</div>
+						
+						<!-- Expandable Examples -->
+						{#if expandedStyleExample === 'concise'}
+							<div class="mt-4 p-3 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-500/30 rounded-lg animate-fade-in">
+								<div class="flex items-center gap-2 mb-2">
+									<span class="text-xs font-semibold text-blue-300">Concise Example</span>
+									<span class="text-xs px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300">⚡</span>
+								</div>
+								<p class="text-xs text-gray-300 leading-relaxed mb-1.5">
+									Large filling defects in the right pulmonary artery extending to segmental branches. Additional defect in the left lower lobe. RV dilated, RV/LV ratio 1.3.
+								</p>
+								<div class="text-xs text-gray-500 italic">Essentials only • Brief</div>
+							</div>
+						{/if}
+						
+						{#if expandedStyleExample === 'prose'}
+							<div class="mt-4 p-3 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 rounded-lg animate-fade-in">
+								<div class="flex items-center gap-2 mb-2">
+									<span class="text-xs font-semibold text-purple-300">Prose Example</span>
+									<span class="text-xs px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300">⚖️</span>
+								</div>
+								<p class="text-xs text-gray-300 leading-relaxed mb-1.5">
+									Large filling defects are present in the right main pulmonary artery, extending into segmental branches. An additional filling defect is identified in the left lower lobe. The right ventricle is moderately dilated with an RV/LV ratio of 1.3.
+								</p>
+								<div class="text-xs text-gray-500 italic">Balanced • Natural flow</div>
+							</div>
+						{/if}
+					</div>
+				</div>
+			</div>
+			
+			<!-- Additional Controls (Expandable) -->
+			<div class="grid md:grid-cols-3 gap-4">
+				<!-- Format Options -->
+				<button 
+					onclick={() => toggleWritingControl('format')}
+					class="flex items-start gap-3 p-4 bg-white/5 rounded-lg border border-white/10 hover:border-purple-500/40 hover:bg-white/10 transition-all duration-300 cursor-pointer text-left group"
+				>
+					<div class="flex-shrink-0 w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/30 flex items-center justify-center group-hover:bg-purple-500/20 transition-colors">
+						<span class="text-base">📝</span>
+					</div>
+					<div class="flex-1">
+						<div class="text-white font-medium text-sm mb-1 flex items-center gap-2">
+							Format Options
+							<svg class="w-4 h-4 text-gray-400 transition-transform {expandedWritingControl === 'format' ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+							</svg>
+						</div>
+						<div class="text-xs text-gray-400">Prose, bullets, or numbered lists</div>
+					</div>
+				</button>
+				
+				<!-- Finding Sequence -->
+				<button 
+					onclick={() => toggleWritingControl('sequence')}
+					class="flex items-start gap-3 p-4 bg-white/5 rounded-lg border border-white/10 hover:border-purple-500/40 hover:bg-white/10 transition-all duration-300 cursor-pointer text-left group"
+				>
+					<div class="flex-shrink-0 w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/30 flex items-center justify-center group-hover:bg-purple-500/20 transition-colors">
+						<span class="text-base">📋</span>
+					</div>
+					<div class="flex-1">
+						<div class="text-white font-medium text-sm mb-1 flex items-center gap-2">
+							Finding Sequence
+							<svg class="w-4 h-4 text-gray-400 transition-transform {expandedWritingControl === 'sequence' ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+							</svg>
+						</div>
+						<div class="text-xs text-gray-400">Clinical priority or template order</div>
+					</div>
+				</button>
+				
+				<!-- Clinical Preferences -->
+				<button 
+					onclick={() => toggleWritingControl('preferences')}
+					class="flex items-start gap-3 p-4 bg-white/5 rounded-lg border border-white/10 hover:border-purple-500/40 hover:bg-white/10 transition-all duration-300 cursor-pointer text-left group"
+				>
+					<div class="flex-shrink-0 w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/30 flex items-center justify-center group-hover:bg-purple-500/20 transition-colors">
+						<span class="text-base">🔍</span>
+					</div>
+					<div class="flex-1">
+						<div class="text-white font-medium text-sm mb-1 flex items-center gap-2">
+							Clinical Preferences
+							<svg class="w-4 h-4 text-gray-400 transition-transform {expandedWritingControl === 'preferences' ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+							</svg>
+						</div>
+						<div class="text-xs text-gray-400">DDx, recommendations, headers</div>
+					</div>
+				</button>
+			</div>
+			
+			<!-- Expanded Control Details -->
+			{#if expandedWritingControl === 'format'}
+				<div class="mt-4 p-4 bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/30 rounded-lg animate-fade-in">
+					<div class="text-white font-semibold mb-3">Format Options</div>
+					<div class="grid md:grid-cols-3 gap-3">
+						<div class="bg-black/20 rounded p-3 border border-white/10">
+							<div class="text-sm font-medium text-purple-300 mb-1">Prose Paragraphs</div>
+							<div class="text-xs text-gray-400">Natural flowing text with complete sentences</div>
+						</div>
+						<div class="bg-black/20 rounded p-3 border border-white/10">
+							<div class="text-sm font-medium text-blue-300 mb-1">Bullet Points</div>
+							<div class="text-xs text-gray-400">• Structured list format for clarity</div>
+						</div>
+						<div class="bg-black/20 rounded p-3 border border-white/10">
+							<div class="text-sm font-medium text-cyan-300 mb-1">Numbered Lists</div>
+							<div class="text-xs text-gray-400">1. Sequential findings with priority</div>
+						</div>
+					</div>
+				</div>
+			{/if}
+			
+			{#if expandedWritingControl === 'sequence'}
+				<div class="mt-4 p-4 bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/30 rounded-lg animate-fade-in">
+					<div class="text-white font-semibold mb-3">Finding Sequence</div>
+					<div class="grid md:grid-cols-2 gap-3">
+						<div class="bg-black/20 rounded p-3 border border-white/10">
+							<div class="text-sm font-medium text-orange-300 mb-1">Clinical Priority</div>
+							<div class="text-xs text-gray-400">Critical findings first, then significant, then incidental</div>
+						</div>
+						<div class="bg-black/20 rounded p-3 border border-white/10">
+							<div class="text-sm font-medium text-green-300 mb-1">Template Order</div>
+							<div class="text-xs text-gray-400">Follows the exact structure of your template</div>
+						</div>
+					</div>
+				</div>
+			{/if}
+			
+			{#if expandedWritingControl === 'preferences'}
+				<div class="mt-4 p-4 bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/30 rounded-lg animate-fade-in">
+					<div class="text-white font-semibold mb-3">Clinical Preferences</div>
+					<div class="space-y-2 text-sm text-gray-300">
+						<div class="flex items-start gap-2">
+							<span class="text-purple-400">•</span>
+							<span><strong class="text-white">Differential Diagnosis:</strong> Include when needed, always, or never</span>
+						</div>
+						<div class="flex items-start gap-2">
+							<span class="text-purple-400">•</span>
+							<span><strong class="text-white">Recommendations:</strong> Specialist referral, further workup, imaging follow-up</span>
+						</div>
+						<div class="flex items-start gap-2">
+							<span class="text-purple-400">•</span>
+							<span><strong class="text-white">Subsection Headers:</strong> Add anatomical headers (CHEST:, ABDOMEN:)</span>
+						</div>
+					</div>
+				</div>
+			{/if}
+		</div>
+	</section>
+
+	<!-- Interval Comparison Feature Highlight -->
+	<section class="relative z-10 px-6 py-20 max-w-6xl mx-auto">
+		<div class="card-dark relative overflow-hidden">
+			<!-- Decorative gradient background -->
+			<div class="absolute inset-0 bg-gradient-to-br from-indigo-600/10 via-purple-600/10 to-blue-600/10"></div>
+			
+			<div class="relative z-10 grid md:grid-cols-2 gap-8 items-center">
+				<!-- Left: Content -->
+				<div>
+					<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 mb-4">
+						<svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+						</svg>
+						<span class="text-xs font-medium text-indigo-300">Powerful Feature</span>
+					</div>
+					
+					<h2 class="text-3xl md:text-4xl font-bold text-white mb-4">
+						Automated Interval Change Analysis
+					</h2>
+					
+					<p class="text-lg text-gray-300 mb-6 leading-relaxed">
+						Upload prior scans and let AI automatically detect what's new, what's changed, and what's stable. Get precise measurement tracking, growth rate calculations, and a professionally formatted comparison report—all in seconds.
+					</p>
+					
+					<div class="space-y-3">
+						<div class="flex items-start gap-3">
+							<div class="flex-shrink-0 w-6 h-6 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center mt-0.5">
+								<svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+								</svg>
+							</div>
+							<div>
+								<div class="text-white font-medium">Intelligent Finding Classification</div>
+								<div class="text-sm text-gray-400">Automatically categorizes findings as new, changed, stable, or resolved</div>
+							</div>
+						</div>
+						
+						<div class="flex items-start gap-3">
+							<div class="flex-shrink-0 w-6 h-6 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center mt-0.5">
+								<svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+								</svg>
+							</div>
+							<div>
+								<div class="text-white font-medium">Precise Measurement Tracking</div>
+								<div class="text-sm text-gray-400">Track lesion sizes over time with automated growth rate calculations</div>
+							</div>
+						</div>
+						
+						<div class="flex items-start gap-3">
+							<div class="flex-shrink-0 w-6 h-6 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center mt-0.5">
+								<svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+								</svg>
+							</div>
+							<div>
+								<div class="text-white font-medium">Professional Comparison Reports</div>
+								<div class="text-sm text-gray-400">Generates properly formatted reports with prior dates and scan types</div>
+							</div>
+						</div>
+					</div>
+				</div>
+				
+				<!-- Right: Visual representation -->
+				<div class="relative">
+					<!-- Simulated comparison view -->
+					<div class="relative space-y-3">
+						<!-- Current Report Card -->
+						<div class="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 backdrop-blur-xl border border-blue-500/30 rounded-lg p-4">
+							<div class="flex items-center justify-between mb-2">
+								<span class="text-xs font-semibold text-blue-300">Current Report</span>
+								<span class="text-xs text-gray-400">15/01/2026</span>
+							</div>
+							<div class="space-y-2 text-sm">
+								<div class="flex items-start gap-2">
+									<span class="text-green-400 font-bold text-xs mt-0.5">NEW</span>
+									<span class="text-gray-300">3mm nodule in RLL</span>
+								</div>
+								<div class="flex items-start gap-2">
+									<span class="text-yellow-400 font-bold text-xs mt-0.5">CHANGED</span>
+									<span class="text-gray-300">LUL nodule: 8mm → 11mm</span>
+								</div>
+								<div class="flex items-start gap-2">
+									<span class="text-gray-400 font-bold text-xs mt-0.5">STABLE</span>
+									<span class="text-gray-300">No pleural effusion</span>
+								</div>
+							</div>
+						</div>
+						
+						<!-- Comparison Arrow -->
+						<div class="flex justify-center">
+							<div class="w-8 h-8 rounded-full bg-purple-500/20 border border-purple-500/30 flex items-center justify-center">
+								<svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+								</svg>
+							</div>
+						</div>
+						
+						<!-- Prior Report Card -->
+						<div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg p-4">
+							<div class="flex items-center justify-between mb-2">
+								<span class="text-xs font-semibold text-gray-400">Prior Report</span>
+								<span class="text-xs text-gray-500">12/09/2025</span>
+							</div>
+							<div class="space-y-2 text-sm text-gray-400">
+								<div>• LUL nodule: 8mm</div>
+								<div>• No pleural effusion</div>
+								<div>• No focal consolidation</div>
+							</div>
+						</div>
+					</div>
+					
+					<!-- Decorative pulse animation -->
+					<div class="absolute -top-2 -right-2 w-4 h-4">
+						<span class="relative flex h-4 w-4">
+							<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+							<span class="relative inline-flex rounded-full h-4 w-4 bg-indigo-500"></span>
+						</span>
+					</div>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<!-- Clinical Guidelines Feature Highlight -->
+	<section class="relative z-10 px-6 py-20 max-w-6xl mx-auto">
+		<div class="card-dark relative overflow-hidden">
+			<!-- Decorative gradient background -->
+			<div class="absolute inset-0 bg-gradient-to-br from-teal-600/10 via-cyan-600/10 to-blue-600/10"></div>
+			
+			<div class="relative z-10 grid md:grid-cols-2 gap-8 items-center">
+				<!-- Left: Visual representation -->
+				<div class="relative order-2 md:order-1">
+					<!-- Simulated guideline cards -->
+					<div class="relative space-y-3">
+						<!-- Guideline Card 1 -->
+						<div class="bg-gradient-to-r from-teal-500/10 to-cyan-500/10 backdrop-blur-xl border border-teal-500/30 rounded-lg p-4 hover:border-teal-400/50 transition-all">
+							<div class="flex items-center gap-2 mb-2">
+								<div class="w-2 h-2 rounded-full bg-teal-400"></div>
+								<span class="text-sm font-semibold text-teal-300">Pulmonary Nodule</span>
+							</div>
+							<div class="space-y-2 text-xs text-gray-300">
+								<div class="flex items-start gap-2">
+									<span class="text-purple-400 font-medium">Classification:</span>
+									<span>Fleischner Society Criteria</span>
+								</div>
+								<div class="flex items-start gap-2">
+									<span class="text-blue-400 font-medium">Measurement:</span>
+									<span>Average diameter, thin-slice CT</span>
+								</div>
+								<div class="flex items-start gap-2">
+									<span class="text-yellow-400 font-medium">DDx:</span>
+									<span>Granuloma, adenocarcinoma, metastasis</span>
+								</div>
+								<div class="flex items-start gap-2">
+									<span class="text-orange-400 font-medium">Follow-up:</span>
+									<span>CT chest at 3 months</span>
+								</div>
+							</div>
+						</div>
+						
+						<!-- Guideline Card 2 -->
+						<div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg p-4 hover:border-white/20 transition-all">
+							<div class="flex items-center gap-2 mb-2">
+								<div class="w-2 h-2 rounded-full bg-cyan-400"></div>
+								<span class="text-sm font-semibold text-cyan-300">Renal Cyst</span>
+							</div>
+							<div class="space-y-2 text-xs text-gray-400">
+								<div class="flex items-start gap-2">
+									<span class="text-purple-400 font-medium">Classification:</span>
+									<span>Bosniak IIF</span>
+								</div>
+								<div class="flex items-start gap-2">
+									<span class="text-blue-400 font-medium">Imaging:</span>
+									<span>Minimal enhancement, thin septa</span>
+								</div>
+							</div>
+						</div>
+						
+						<!-- Reference indicator -->
+						<div class="flex items-center gap-2 text-xs text-gray-500 pl-2">
+							<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+							</svg>
+							<span>3 medical references attached</span>
+						</div>
+					</div>
+					
+					<!-- Decorative element -->
+					<div class="absolute -bottom-2 -left-2 w-4 h-4">
+						<span class="relative flex h-4 w-4">
+							<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+							<span class="relative inline-flex rounded-full h-4 w-4 bg-teal-500"></span>
+						</span>
+					</div>
+				</div>
+				
+				<!-- Right: Content -->
+				<div class="order-1 md:order-2">
+					<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-teal-500/10 border border-teal-500/20 mb-4">
+						<svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+						</svg>
+						<span class="text-xs font-medium text-teal-300">Evidence-Based</span>
+					</div>
+					
+					<h2 class="text-3xl md:text-4xl font-bold text-white mb-4">
+						Instant Clinical Guidelines & Evidence
+					</h2>
+					
+					<p class="text-lg text-gray-300 mb-6 leading-relaxed">
+						Every finding in your report gets comprehensive clinical context automatically. Access classification systems, measurement protocols, differential diagnoses, and follow-up recommendations—all sourced from current medical literature.
+					</p>
+					
+					<div class="space-y-3">
+						<div class="flex items-start gap-3">
+							<div class="flex-shrink-0 w-6 h-6 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center mt-0.5">
+								<svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+								</svg>
+							</div>
+							<div>
+								<div class="text-white font-medium">Classification Systems</div>
+								<div class="text-sm text-gray-400">BI-RADS, Fleischner, Bosniak, LI-RADS, and more—automatically referenced</div>
+							</div>
+						</div>
+						
+						<div class="flex items-start gap-3">
+							<div class="flex-shrink-0 w-6 h-6 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center mt-0.5">
+								<svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+								</svg>
+							</div>
+							<div>
+								<div class="text-white font-medium">Standardized Measurement Protocols</div>
+								<div class="text-sm text-gray-400">Learn proper measurement techniques and normal ranges for any finding</div>
+							</div>
+						</div>
+						
+						<div class="flex items-start gap-3">
+							<div class="flex-shrink-0 w-6 h-6 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center mt-0.5">
+								<svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+								</svg>
+							</div>
+							<div>
+								<div class="text-white font-medium">Differential Diagnoses & Follow-up</div>
+								<div class="text-sm text-gray-400">Comprehensive DDx with imaging features and follow-up recommendations</div>
+							</div>
+						</div>
+						
+						<div class="flex items-start gap-3">
+							<div class="flex-shrink-0 w-6 h-6 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center mt-0.5">
+								<svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+								</svg>
+							</div>
+							<div>
+								<div class="text-white font-medium">Medical Literature References</div>
+								<div class="text-sm text-gray-400">Every guideline includes citations and links to source material</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
 		</div>
 	</section>
 
@@ -522,7 +1119,7 @@
 	}
 
 	.animate-fade-in {
-		animation: fade-in 0.8s ease-out;
+		animation: fade-in 0.3s ease-out;
 	}
 
 	.animate-gradient {
