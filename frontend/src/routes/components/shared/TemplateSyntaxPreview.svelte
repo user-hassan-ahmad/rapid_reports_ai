@@ -29,12 +29,12 @@
 		aria-modal="true"
 		aria-labelledby="preview-title"
 	>
-		<div 
-			class="bg-gray-900 rounded-xl border border-purple-500/30 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
-			onclick={(e) => e.stopPropagation()}
-		>
-			<!-- Header -->
-			<div class="flex items-center justify-between p-6 border-b border-gray-700">
+	<div 
+		class="bg-black/80 backdrop-blur-2xl rounded-xl border border-white/10 shadow-2xl shadow-purple-500/20 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+		onclick={(e) => e.stopPropagation()}
+	>
+		<!-- Header -->
+		<div class="flex items-center justify-between p-6 border-b border-white/10">
 				<div>
 					<h3 id="preview-title" class="text-xl font-bold text-white">Template Syntax Preview</h3>
 					<p class="text-sm text-gray-400 mt-1">Color-coded to help you visualize placeholders</p>
@@ -48,8 +48,8 @@
 				</button>
 			</div>
 			
-			<!-- Legend -->
-			<div class="px-6 py-4 bg-gray-800/50 border-b border-gray-700">
+		<!-- Legend -->
+		<div class="px-6 py-4 border-b border-white/10">
 				<h4 class="text-xs font-semibold text-gray-400 uppercase mb-2">Legend:</h4>
 				<div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
 					<div class="flex items-center gap-2">
@@ -76,12 +76,12 @@
 				<pre class="font-mono text-sm leading-relaxed text-white whitespace-pre-wrap break-words">{@html highlightSyntax(templateContent)}</pre>
 			</div>
 			
-			<!-- Footer -->
-			<div class="px-6 py-4 bg-gray-800/50 border-t border-gray-700 flex justify-end">
-				<button 
-					onclick={handleClose}
-					class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
-				>
+		<!-- Footer -->
+		<div class="px-6 py-4 border-t border-white/10 flex justify-end">
+			<button 
+				onclick={handleClose}
+				class="px-4 py-2 bg-white/10 backdrop-blur-xl hover:bg-white/20 border border-white/10 text-white rounded-lg transition-all duration-200"
+			>
 					Close
 				</button>
 			</div>

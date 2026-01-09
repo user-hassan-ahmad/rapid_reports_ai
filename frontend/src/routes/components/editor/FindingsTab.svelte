@@ -19,7 +19,7 @@
 		},
 		advanced: {
 			instructions: '',
-			writing_style: 'standard',
+			writing_style: 'prose',
 			organization: 'clinical_priority',
 			format: 'prose',
 			use_subsection_headers: false
@@ -29,7 +29,7 @@
 	function resetToDefaults() {
 		findingsConfig.advanced = {
 			instructions: '',
-			writing_style: 'standard',
+			writing_style: 'prose',
 			organization: 'clinical_priority',
 			format: 'prose',
 			use_subsection_headers: false
@@ -81,7 +81,7 @@
 		// Restore default style settings for other content styles
 		findingsConfig.advanced = {
 			instructions: findingsConfig.advanced?.instructions || '',
-			writing_style: 'standard',
+			writing_style: 'prose',
 			format: 'prose',
 			use_subsection_headers: false,
 			organization: 'clinical_priority',
@@ -119,13 +119,6 @@
 
 	const styleOptions = [
 		{ 
-			id: 'structured_template', 
-			label: 'Structured Fill-In',
-			description: 'AI intelligently fills variables and measurements',
-			icon: '📐',
-			example: '[keep titles!]\n\nLEFT VENTRICLE\nNormal/increased indexed LV end-diastolic volume (xxx ml/m2)'
-		},
-		{ 
 			id: 'normal_template', 
 			label: 'Normal Report',
 			description: 'Pre-filled normal findings',
@@ -135,9 +128,16 @@
 		{ 
 			id: 'guided_template', 
 			label: 'Guided Template',
-			description: 'Template with inline guidance',
+			description: 'Template with inline guidance for intelligent adaptation',
 			icon: '💡',
 			example: 'Text with // comment hints'
+		},
+		{ 
+			id: 'structured_template', 
+			label: 'Structured Fill-In',
+			description: 'AI intelligently fills variables and measurements',
+			icon: '📐',
+			example: '[keep titles!]\n\nLEFT VENTRICLE\nNormal/increased indexed LV end-diastolic volume (xxx ml/m2)'
 		},
 		{ 
 			id: 'checklist', 
@@ -609,6 +609,7 @@
 					<StyleGranularControls 
 						section="findings"
 						bind:advanced={findingsConfig.advanced}
+						templateType={findingsConfig.content_style}
 						on:fieldChange={handleChange}
 					/>
 				{:else}

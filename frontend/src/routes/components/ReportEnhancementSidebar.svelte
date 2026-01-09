@@ -121,7 +121,7 @@ interface CompletenessAnalysis {
 <script lang="ts">
 	import { token } from '$lib/stores/auth';
 	import { marked } from 'marked';
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import pilotIcon from '$lib/assets/pilot.png';
 	import { API_URL } from '$lib/config';
 	import { logger } from '$lib/utils/logger';
@@ -176,8 +176,16 @@ interface CompletenessAnalysis {
 					chatTextareaRef.style.maxHeight = `${maxHeight}px`;
 				}
 			}, 0);
+			// Scroll to bottom when switching to chat tab
+			scrollChatToBottom();
 		}
 		}
+	}
+	
+	// Scroll to bottom when chat messages change and chat tab is active
+	$: if (activeTab === 'chat' && chatMessages.length > 0) {
+		// Use setTimeout to ensure DOM has updated
+		setTimeout(() => scrollChatToBottom(), 0);
 	}
 	
 	// Reset lastInitialTab when sidebar closes
@@ -200,6 +208,7 @@ interface CompletenessAnalysis {
 	let chatMessages: ChatMessage[] = [];
 	let chatInput = '';
 	let chatTextareaRef: HTMLTextAreaElement | null = null;
+	let chatMessagesContainerRef: HTMLDivElement | null = null;
 	let chatLoading = false;
 
 let selectedActionIds: string[] = [];
@@ -279,6 +288,10 @@ let completenessPollTimer: ReturnType<typeof setInterval> | null = null;
 			startCompletenessPoll();
 		} else {
 			stopCompletenessPoll();
+		}
+		// Scroll to bottom when loading cached messages
+		if (activeTab === 'chat') {
+			scrollChatToBottom();
 		}
 		return true;
 	}
@@ -603,6 +616,7 @@ function renderMarkdown(md: string) {
 		
 		chatMessages.push({ role: 'user', content: userMessage });
 		chatMessages = [...chatMessages];
+		scrollChatToBottom(); // Scroll after user message
 		
 		chatLoading = true;
 		
@@ -634,6 +648,7 @@ function renderMarkdown(md: string) {
 					editProposal
 				});
 				chatMessages = [...chatMessages];
+				scrollChatToBottom(); // Scroll after assistant message
 			} else {
 				chatMessages.push({
 					role: 'assistant',
@@ -641,6 +656,7 @@ function renderMarkdown(md: string) {
 					error: true
 				});
 				chatMessages = [...chatMessages];
+				scrollChatToBottom(); // Scroll after error message
 			}
 		} catch (err) {
 			chatMessages.push({
@@ -649,6 +665,7 @@ function renderMarkdown(md: string) {
 				error: true
 			});
 			chatMessages = [...chatMessages];
+			scrollChatToBottom(); // Scroll after error message
 		} finally {
 			chatLoading = false;
 			saveCacheEntry(); // Save chat history to cache
@@ -807,6 +824,13 @@ $: canApplySelectedActions = selectedActionsWithPatch.length > 0 && !applyAction
 		if (e.key === 'Enter' && !e.shiftKey) {
 			e.preventDefault();
 			sendChatMessage();
+		}
+	}
+	
+	async function scrollChatToBottom() {
+		await tick(); // Wait for DOM to update
+		if (chatMessagesContainerRef) {
+			chatMessagesContainerRef.scrollTop = chatMessagesContainerRef.scrollHeight;
 		}
 	}
 	
@@ -1005,9 +1029,9 @@ $: if ((visible || autoLoad) && completenessPending) {
 </script>
 
 {#if visible}
-	<div class="fixed right-0 top-0 h-full {isExpanded ? 'w-[50vw]' : 'w-96'} bg-gray-900 border-l border-gray-700 shadow-2xl z-[10000] flex flex-col transition-all duration-300 ease-in-out">
+	<div class="fixed right-0 top-0 h-full {isExpanded ? 'w-[50vw]' : 'w-96'} bg-black/70 backdrop-blur-2xl border-l border-white/10 shadow-2xl shadow-purple-500/10 z-[10000] flex flex-col transition-all duration-300 ease-in-out">
 		<!-- Header -->
-		<div class="p-4 border-b border-gray-700">
+		<div class="p-4 border-b border-white/10 bg-gradient-to-b from-black/40 to-transparent">
 			<div class="flex items-center justify-between mb-4 gap-3">
 				<div class="flex items-center gap-3">
 					<!-- Copilot Icon -->
@@ -1034,7 +1058,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 					<button
 						type="button"
 						onclick={() => dispatch('openVersionHistory')}
-						class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+						class="px-3 py-1.5 text-xs font-medium rounded-lg bg-white/10 backdrop-blur-sm hover:bg-white/20 border border-white/10 text-gray-200 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
 						title="Open version history"
 						disabled={!reportId || !historyAvailable}
 					>
@@ -1057,27 +1081,27 @@ $: if ((visible || autoLoad) && completenessPending) {
 			<div class="flex gap-2">
 				<button
 					onclick={() => activeTab = 'guidelines'}
-					class="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors {activeTab === 'guidelines' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"
+					class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 {activeTab === 'guidelines' ? 'bg-gradient-to-r from-purple-600 to-purple-500 text-white shadow-lg shadow-purple-500/50' : 'text-gray-400 hover:text-white hover:bg-white/10 backdrop-blur-sm'}"
 				>
 					Guidelines
 				</button>
 				<!-- Analysis tab hidden temporarily -->
 				<button
 					onclick={() => activeTab = 'analysis'}
-					class="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors {activeTab === 'analysis' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"
+					class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 {activeTab === 'analysis' ? 'bg-gradient-to-r from-purple-600 to-purple-500 text-white shadow-lg shadow-purple-500/50' : 'text-gray-400 hover:text-white hover:bg-white/10 backdrop-blur-sm'}"
 					style="display: none;"
 				>
 					Analysis
 				</button>
 				<button
 					onclick={() => activeTab = 'comparison'}
-					class="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors {activeTab === 'comparison' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"
+					class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 {activeTab === 'comparison' ? 'bg-gradient-to-r from-purple-600 to-purple-500 text-white shadow-lg shadow-purple-500/50' : 'text-gray-400 hover:text-white hover:bg-white/10 backdrop-blur-sm'}"
 				>
 					Comparison
 				</button>
 				<button
 					onclick={() => activeTab = 'chat'}
-					class="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors {activeTab === 'chat' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"
+					class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 {activeTab === 'chat' ? 'bg-gradient-to-r from-purple-600 to-purple-500 text-white shadow-lg shadow-purple-500/50' : 'text-gray-400 hover:text-white hover:bg-white/10 backdrop-blur-sm'}"
 				>
 					Chat
 				</button>
@@ -1091,12 +1115,12 @@ $: if ((visible || autoLoad) && completenessPending) {
 					<div class="text-gray-400">Loading enhancements...</div>
 				</div>
 			{:else if error}
-				<div class="border border-red-500/30 bg-red-500/10 rounded-lg p-4">
+				<div class="border border-red-500/30 bg-red-500/10 backdrop-blur-xl rounded-lg p-4">
 					<p class="text-red-400 font-medium mb-1">Error</p>
 					<p class="text-red-300 text-sm">{error}</p>
 					<button
 						onclick={() => loadEnhancements(true)}
-						class="mt-2 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors"
+						class="mt-2 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg shadow-lg shadow-red-500/30 hover:shadow-red-500/50 transition-all duration-200"
 					>
 						Retry
 					</button>
@@ -1111,11 +1135,11 @@ $: if ((visible || autoLoad) && completenessPending) {
 						{#each guidelinesData as guideline, idx}
 							{@const guidelineKey = `guideline-${idx}`}
 							{@const isExpanded = guidelinesExpanded[guidelineKey] !== false}
-							<div class="border border-gray-700 rounded-lg bg-gray-800/50 overflow-hidden">
+							<div class="border border-white/10 rounded-xl backdrop-blur-xl hover:border-purple-500/40 hover:shadow-lg hover:shadow-purple-500/20 overflow-hidden transition-all duration-300">
 								<button
 									type="button"
 									onclick={() => guidelinesExpanded[guidelineKey] = !isExpanded}
-									class="w-full flex items-center justify-between p-4 text-left hover:bg-gray-800/70 transition-colors"
+									class="w-full flex items-center justify-between p-4 text-left hover:bg-white/5 transition-colors"
 								>
 									<h3 class="text-lg font-semibold text-white flex-1">
 										{guideline.finding.finding}
@@ -1141,7 +1165,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 												prose-ul:my-2 prose-ul:pl-5 prose-ul:space-y-1.5 prose-ul:list-disc
 												prose-ol:my-2 prose-ol:pl-5 prose-ol:space-y-1.5 prose-ol:list-decimal
 												prose-li:text-gray-300 prose-li:leading-relaxed prose-li:pl-1
-												prose-code:text-purple-300 prose-code:bg-gray-800/50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded">
+												prose-code:text-purple-300 prose-code:bg-white/10 backdrop-blur-sm prose-code:px-1 prose-code:py-0.5 prose-code:rounded">
 												{@html renderMarkdown(guideline.diagnostic_overview)}
 											</div>
 										{/if}
@@ -1152,7 +1176,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 												<h4 class="text-sm font-semibold text-white mb-2">Classification & Grading</h4>
 												<div class="space-y-2">
 													{#each guideline.classification_systems as system}
-														<div class="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
+														<div class="rounded-lg p-3 border border-white/10 hover:border-white/20 transition-colors">
 															<div class="font-medium text-purple-300 text-sm mb-1">{system.name}</div>
 															<div class="text-xs text-gray-400 mb-1.5">{system.grade_or_category}</div>
 															<div class="text-sm text-gray-300">{system.criteria}</div>
@@ -1168,7 +1192,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 												<h4 class="text-sm font-semibold text-white mb-2">Measurement Protocols</h4>
 												<div class="space-y-2">
 													{#each guideline.measurement_protocols as measure}
-														<div class="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
+														<div class="rounded-lg p-3 border border-white/10 hover:border-white/20 transition-colors">
 															<div class="font-medium text-blue-300 text-sm mb-1">{measure.parameter}</div>
 															<div class="text-sm text-gray-300 mb-2">{measure.technique}</div>
 															{#if measure.normal_range}
@@ -1205,7 +1229,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 												<h4 class="text-sm font-semibold text-white mb-2">Differential Diagnoses</h4>
 												<div class="space-y-2">
 													{#each guideline.differential_diagnoses as ddx}
-														<div class="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
+														<div class="rounded-lg p-3 border border-white/10 hover:border-white/20 transition-colors">
 															<div class="font-medium text-yellow-300 text-sm mb-1">{ddx.diagnosis}</div>
 															<div class="text-sm text-gray-300 mb-1">{ddx.imaging_features}</div>
 															{#if ddx.supporting_findings}
@@ -1223,7 +1247,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 												<h4 class="text-sm font-semibold text-white mb-2">Follow-up Imaging</h4>
 												<div class="space-y-2">
 													{#each guideline.follow_up_imaging as followup}
-														<div class="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
+														<div class="rounded-lg p-3 border border-white/10 hover:border-white/20 transition-colors">
 															<div class="font-medium text-orange-300 text-sm mb-1">{followup.indication}</div>
 															<div class="text-sm text-gray-300 mb-1">
 																{followup.modality}, {followup.timing}
@@ -1246,13 +1270,13 @@ $: if ((visible || autoLoad) && completenessPending) {
 												prose-ul:my-2 prose-ul:pl-5 prose-ul:space-y-1.5 prose-ul:list-disc
 												prose-ol:my-2 prose-ol:pl-5 prose-ol:space-y-1.5 prose-ol:list-decimal
 												prose-li:text-gray-300 prose-li:leading-relaxed prose-li:pl-1
-												prose-code:text-purple-300 prose-code:bg-gray-800/50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded">
+												prose-code:text-purple-300 prose-code:bg-white/10 backdrop-blur-sm prose-code:px-1 prose-code:py-0.5 prose-code:rounded">
 												{@html renderMarkdown(guideline.guideline_summary)}
 											</div>
 										{/if}
 										
 										{#if guideline.sources && guideline.sources.length > 0}
-											<div class="mt-3 pt-3 border-t border-gray-700">
+											<div class="mt-3 pt-3 border-t border-white/10">
 												<p class="text-xs font-medium text-gray-400 mb-2">References:</p>
 												<ul class="space-y-1">
 													{#each guideline.sources.slice(0, 5) as source (source.url || source.title || Math.random())}
@@ -1306,10 +1330,10 @@ $: if ((visible || autoLoad) && completenessPending) {
 					</div>
 				{:else}
 					<div class="space-y-3">
-						<div class="rounded-lg border border-gray-700/60 bg-gray-900/40">
+						<div class="rounded-xl border border-white/10 backdrop-blur-xl">
 							<button
 								type="button"
-								class="w-full flex items-center justify-between px-4 py-3 text-left text-white hover:bg-gray-800/60 transition-colors"
+								class="w-full flex items-center justify-between px-4 py-3 text-left text-white hover:bg-white/5 transition-all duration-200"
 								onclick={() => toggleSection('summary')}
 								aria-expanded={sectionsExpanded.summary}
 							>
@@ -1337,10 +1361,10 @@ $: if ((visible || autoLoad) && completenessPending) {
 							{/if}
 						</div>
 
-						<div class="rounded-lg border border-gray-700/60 bg-gray-900/40">
+						<div class="rounded-xl border border-white/10 backdrop-blur-xl">
 							<button
 								type="button"
-								class="w-full flex items-center justify-between px-4 py-3 text-left text-white hover:bg-gray-800/60 transition-colors"
+								class="w-full flex items-center justify-between px-4 py-3 text-left text-white hover:bg-white/5 transition-all duration-200"
 								onclick={() => toggleSection('questions')}
 								aria-expanded={sectionsExpanded.questions}
 							>
@@ -1371,10 +1395,10 @@ $: if ((visible || autoLoad) && completenessPending) {
 							{/if}
 						</div>
 
-						<div class="rounded-lg border border-gray-700/60 bg-gray-900/40">
+						<div class="rounded-xl border border-white/10 backdrop-blur-xl">
 							<button
 								type="button"
-								class="w-full flex items-center justify-between px-4 py-3 text-left text-white hover:bg-gray-800/60 transition-colors"
+								class="w-full flex items-center justify-between px-4 py-3 text-left text-white hover:bg-white/5 transition-all duration-200"
 								onclick={() => toggleSection('actions')}
 								aria-expanded={sectionsExpanded.actions}
 							>
@@ -1397,7 +1421,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 											<p class="text-xs text-gray-400">Applying...</p>
 										{/if}
 										{#if applyActionsError}
-											<div class="border border-red-500/30 bg-red-500/10 text-xs text-red-300 rounded-lg px-3 py-2">
+											<div class="border border-red-500/30 bg-red-500/10 backdrop-blur-xl text-xs text-red-300 rounded-lg px-3 py-2">
 												{applyActionsError}
 											</div>
 										{/if}
@@ -1405,7 +1429,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 										<ul class="space-y-3">
 											{#each availableSuggestedActions as action (action.id)}
 												{#if hasActionPatch(action)}
-													<li class="rounded-lg border border-gray-700/60 bg-gray-900/50 p-3 transition-colors hover:border-purple-600/60">
+													<li class="rounded-lg border border-white/10 p-3 transition-all duration-200 hover:border-purple-500/40 hover:shadow-lg hover:shadow-purple-500/20">
 														<label class="flex items-start gap-3 cursor-pointer">
 															<input
 																type="checkbox"
@@ -1418,14 +1442,14 @@ $: if ((visible || autoLoad) && completenessPending) {
 																	{action.title || 'Suggested action'}
 																</p>
 																<p class="text-sm text-gray-300 break-words">{action.details}</p>
-																<pre class="bg-gray-950/70 border border-gray-800 rounded-md text-xs text-gray-200 p-3 overflow-x-auto whitespace-pre-wrap break-words max-w-full">
+																<pre class="bg-black/50 backdrop-blur-xl border border-white/10 rounded-md text-xs text-gray-200 p-3 overflow-x-auto whitespace-pre-wrap break-words max-w-full">
 {getActionPatch(action)}
 																</pre>
 															</div>
 														</label>
 													</li>
 												{:else}
-													<li class="rounded-lg border border-gray-700/60 bg-gray-900/50 p-3">
+													<li class="rounded-lg border border-white/10 p-3">
 														<div class="space-y-2">
 															<p class="text-sm font-semibold text-white break-words">
 																{action.title || 'Suggested action'}
@@ -1440,7 +1464,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 
 										<button
 											type="button"
-											class="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:text-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
+											class="w-full px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 disabled:bg-gray-700 disabled:text-gray-400 text-white text-sm font-medium rounded-lg shadow-lg shadow-purple-500/50 hover:shadow-purple-500/70 transition-all duration-200"
 											onclick={applySelectedActions}
 											disabled={!canApplySelectedActions}
 										>
@@ -1463,14 +1487,14 @@ $: if ((visible || autoLoad) && completenessPending) {
 							</button>
 						</div>
 					{:else}
-						<div class="bg-gray-800/50 rounded-lg p-3 space-y-2">
+						<div class="rounded-xl p-3 space-y-2 border border-white/10">
 							<div class="flex items-center justify-between">
 								<span class="text-sm text-gray-400">{priorReports.length} prior report(s) loaded</span>
 								<button class="btn-sm" onclick={() => showAddPriorModal = true}>+ Add Another</button>
 							</div>
 							<div class="space-y-2">
 								{#each priorReports as prior, idx}
-									<div class="flex items-center justify-between bg-gray-900/50 rounded p-2">
+									<div class="flex items-center justify-between rounded p-2 border border-white/10">
 										<span class="text-sm text-gray-300">
 											{formatDateUK(prior.date)}{prior.scan_type ? ` - ${prior.scan_type}` : ''}
 										</span>
@@ -1501,7 +1525,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 							</button>
 						{:else}
 							<!-- Summary -->
-							<div class="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
+							<div class="bg-blue-500/10 backdrop-blur-xl border border-blue-500/30 rounded-lg p-4 mb-4">
 								<h3 class="text-sm font-semibold text-blue-300 mb-2">📊 Summary</h3>
 								<p class="text-sm text-gray-300">{comparisonResult.summary}</p>
 							</div>
@@ -1605,7 +1629,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 													{#if finding.prior_measurement || finding.current_measurement}
 														<div class="flex items-center gap-2 text-xs mb-2 flex-wrap">
 															{#if finding.prior_measurement}
-																<span class="bg-gray-800/50 text-gray-400 px-2 py-0.5 rounded">
+																<span class="bg-white/10 backdrop-blur-sm text-gray-400 px-2 py-0.5 rounded border border-white/10">
 																	Was: {finding.prior_measurement.raw_text}
 																</span>
 															{/if}
@@ -1622,7 +1646,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 													
 													<!-- Trend (if multiple priors) -->
 													{#if finding.trend}
-														<div class="text-xs text-gray-400 mb-2 italic border-l-2 border-gray-700 pl-2 py-1 bg-gray-800/30 rounded">
+														<div class="text-xs text-gray-400 mb-2 italic border-l-2 border-white/10 pl-2 py-1 rounded">
 															<span class="text-gray-500 font-semibold">Trend:</span> {finding.trend}
 														</div>
 													{/if}
@@ -1674,7 +1698,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 									<h3 class="text-sm font-semibold text-white mb-3">📝 Report Modifications</h3>
 									<div class="space-y-3">
 										{#each comparisonResult.key_changes as change}
-											<div class="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
+											<div class="rounded-lg p-3 border border-white/10">
 												<div class="text-xs text-gray-400 mb-2 font-medium">{change.reason}</div>
 												<div class="bg-red-500/10 border border-red-500/30 rounded p-2 mb-2">
 													<div class="text-xs text-red-400 mb-1">Original:</div>
@@ -1691,7 +1715,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 							{/if}
 							
 							<!-- Action Buttons -->
-							<div class="border-t border-gray-700 pt-4">
+							<div class="border-t border-white/10 pt-4">
 								{#if comparisonResult?.revised_report}
 									<button 
 										class="btn-secondary w-full mb-2" 
@@ -1733,7 +1757,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 			{:else if activeTab === 'chat'}
 				<div class="flex flex-col h-full">
 					<!-- Messages -->
-					<div class="flex-1 overflow-y-auto mb-4 space-y-4">
+					<div bind:this={chatMessagesContainerRef} class="flex-1 overflow-y-auto mb-4 space-y-4">
 						{#if chatMessages.length === 0}
 							<div class="text-gray-400 text-center py-8">
 								Ask questions about the report or request improvements.
@@ -1741,13 +1765,13 @@ $: if ((visible || autoLoad) && completenessPending) {
 						{:else}
 							{#each chatMessages as msg, index}
 								<div class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}">
-									<div class="max-w-[80%] {msg.role === 'user' ? 'bg-purple-600' : msg.error ? 'bg-red-500/20 border border-red-500/30' : 'bg-gray-800'} rounded-lg p-3">
+									<div class="max-w-[80%] {msg.role === 'user' ? 'bg-gradient-to-br from-purple-600 to-purple-500 shadow-lg shadow-purple-500/30' : msg.error ? 'bg-red-500/20 backdrop-blur-xl border border-red-500/30' : 'bg-white/10 backdrop-blur-xl border border-white/10'} rounded-lg p-3">
 										<div class="prose prose-invert max-w-none text-sm {msg.error ? 'text-red-300' : 'text-gray-100'}">
 											{@html renderMarkdown(msg.content)}
 										</div>
 										{#if msg.editProposal}
-											<div class="mt-3 pt-3 border-t border-gray-700">
-												<div class="bg-gray-900/50 rounded p-2 mb-2 border border-gray-700/50">
+											<div class="mt-3 pt-3 border-t border-white/10">
+												<div class="bg-black/50 backdrop-blur-xl rounded p-2 mb-2 border border-white/10">
 													<div class="flex items-center justify-between mb-1">
 														<p class="text-xs font-medium text-gray-400">Proposed Change:</p>
 														<button
@@ -1789,7 +1813,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 											</div>
 										{/if}
 										{#if msg.sources && msg.sources.length > 0}
-											<div class="mt-2 pt-2 border-t border-gray-700">
+											<div class="mt-2 pt-2 border-t border-white/10">
 												<p class="text-xs font-medium text-gray-400 mb-1">Sources:</p>
 												<ul class="space-y-1">
 													{#each msg.sources as source}
@@ -1814,7 +1838,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 						
 						{#if chatLoading}
 							<div class="flex justify-start">
-								<div class="bg-gray-800 rounded-lg p-3">
+								<div class="bg-white/10 backdrop-blur-xl border border-white/10 rounded-lg p-3">
 									<div class="text-sm text-gray-400">Thinking...</div>
 								</div>
 							</div>
@@ -1822,14 +1846,14 @@ $: if ((visible || autoLoad) && completenessPending) {
 					</div>
 					
 					<!-- Input -->
-					<div class="border-t border-gray-700 pt-4">
+					<div class="border-t border-white/10 pt-4">
 						<div class="flex gap-2">
 							<textarea
 								bind:value={chatInput}
 								bind:this={chatTextareaRef}
 								onkeydown={handleKeyDown}
 								placeholder="Ask about the report..."
-								class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 resize-none overflow-y-auto"
+								class="flex-1 bg-black/50 backdrop-blur-xl border border-white/15 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 resize-none overflow-y-auto focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 hover:border-white/25 transition-all"
 								rows="2"
 								style="min-height: 2.5rem;"
 								disabled={chatLoading || !reportId}
@@ -1847,7 +1871,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 							<button
 								onclick={sendChatMessage}
 								disabled={!chatInput.trim() || chatLoading || !reportId}
-								class="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+								class="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg shadow-lg shadow-purple-500/50 hover:shadow-purple-500/70 transition-all duration-200"
 							>
 								Send
 							</button>
@@ -1862,9 +1886,9 @@ $: if ((visible || autoLoad) && completenessPending) {
 <!-- Edit Proposal Modal -->
 {#if expandedEditProposalIndex !== null && chatMessages[expandedEditProposalIndex]?.editProposal}
 	{@const expandedMsg = chatMessages[expandedEditProposalIndex]}
-	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-[20000]" onclick={() => expandedEditProposalIndex = null}>
-		<div class="bg-gray-900 rounded-lg border border-gray-700 w-[90vw] max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" onclick={(e) => e.stopPropagation()}>
-			<div class="p-4 border-b border-gray-700 flex items-center justify-between">
+	<div class="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[20000]" onclick={() => expandedEditProposalIndex = null}>
+		<div class="bg-black/80 backdrop-blur-2xl rounded-2xl border border-white/10 shadow-2xl shadow-purple-500/20 w-[90vw] max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" onclick={(e) => e.stopPropagation()}>
+			<div class="p-4 border-b border-white/10 flex items-center justify-between">
 				<h3 class="text-lg font-semibold text-white">Proposed Change</h3>
 				<button 
 					onclick={() => expandedEditProposalIndex = null} 
@@ -1877,13 +1901,13 @@ $: if ((visible || autoLoad) && completenessPending) {
 				</button>
 			</div>
 			<div class="flex-1 overflow-y-auto p-4">
-				<div class="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+				<div class="rounded-lg p-4 border border-white/10">
 					<pre class="text-sm text-gray-300 whitespace-pre-wrap font-mono bg-black/20 p-4 rounded overflow-x-auto">{expandedMsg.editProposal}</pre>
 				</div>
 			</div>
-			<div class="p-4 border-t border-gray-700 flex gap-3 justify-end">
+			<div class="p-4 border-t border-white/10 flex gap-3 justify-end">
 				<button 
-					class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+					class="px-4 py-2 bg-white/10 backdrop-blur-xl hover:bg-white/20 border border-white/10 text-white rounded-lg transition-all duration-200"
 					onclick={() => expandedEditProposalIndex = null}
 				>
 					Close
@@ -1896,7 +1920,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 						expandedEditProposalIndex = null;
 					}}
 					disabled={expandedMsg.applied}
-					class="px-4 py-2 {expandedMsg.applied ? 'bg-green-600/50 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'} text-white rounded-lg transition-colors flex items-center gap-2"
+					class="px-4 py-2 {expandedMsg.applied ? 'bg-green-600/50 cursor-not-allowed' : 'bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 shadow-lg shadow-purple-500/50'} text-white rounded-lg transition-all duration-200 flex items-center gap-2"
 				>
 					{#if expandedMsg.applied}
 						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1917,9 +1941,9 @@ $: if ((visible || autoLoad) && completenessPending) {
 
 <!-- Add Prior Report Modal -->
 {#if showAddPriorModal}
-	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-[20000]" onclick={cancelEdit}>
-		<div class="bg-gray-900 rounded-lg border border-gray-700 w-[600px] max-h-[80vh] overflow-y-auto" onclick={(e) => e.stopPropagation()}>
-			<div class="p-4 border-b border-gray-700 flex items-center justify-between">
+	<div class="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[20000]" onclick={cancelEdit}>
+		<div class="bg-black/80 backdrop-blur-2xl rounded-2xl border border-white/10 shadow-2xl shadow-purple-500/20 w-[600px] max-h-[80vh] overflow-y-auto" onclick={(e) => e.stopPropagation()}>
+			<div class="p-4 border-b border-white/10 flex items-center justify-between">
 				<h3 class="text-lg font-semibold text-white">{editingPriorIndex !== null ? 'Edit Prior Report' : 'Add Prior Report'}</h3>
 				<button onclick={cancelEdit} class="text-gray-400 hover:text-white">×</button>
 			</div>
@@ -1968,7 +1992,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 					<span class="text-xs text-gray-500">{newPrior.text.length} characters</span>
 				</div>
 			</div>
-			<div class="p-4 border-t border-gray-700 flex gap-3 justify-end">
+			<div class="p-4 border-t border-white/10 flex gap-3 justify-end">
 				<button class="btn-secondary" onclick={cancelEdit}>Cancel</button>
 				<button class="btn-primary" onclick={addPriorReport} disabled={!newPrior.text.trim() || !newPrior.date || !newPrior.scan_type.trim()}>
 					{editingPriorIndex !== null ? 'Update Report' : 'Add Report'}
@@ -1980,9 +2004,9 @@ $: if ((visible || autoLoad) && completenessPending) {
 
 <!-- Revised Report Preview Modal -->
 {#if showRevisedReportPreview && comparisonResult?.revised_report}
-	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-[20000]" onclick={() => showRevisedReportPreview = false}>
-		<div class="bg-gray-900 rounded-lg border border-gray-700 w-[90vw] max-w-5xl max-h-[90vh] overflow-hidden flex flex-col" onclick={(e) => e.stopPropagation()}>
-			<div class="p-4 border-b border-gray-700 flex items-center justify-between">
+	<div class="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[20000]" onclick={() => showRevisedReportPreview = false}>
+		<div class="bg-black/80 backdrop-blur-2xl rounded-2xl border border-white/10 shadow-2xl shadow-purple-500/20 w-[90vw] max-w-5xl max-h-[90vh] overflow-hidden flex flex-col" onclick={(e) => e.stopPropagation()}>
+			<div class="p-4 border-b border-white/10 flex items-center justify-between">
 				<h3 class="text-lg font-semibold text-white">Preview: Revised Report</h3>
 				<button 
 					onclick={() => showRevisedReportPreview = false} 
@@ -2002,14 +2026,14 @@ $: if ((visible || autoLoad) && completenessPending) {
 					prose-ul:my-3 prose-ul:pl-5 prose-ul:space-y-2 prose-ul:list-disc
 					prose-ol:my-3 prose-ol:pl-5 prose-ol:space-y-2 prose-ol:list-decimal
 					prose-li:text-gray-300 prose-li:leading-relaxed prose-li:pl-1 prose-li:my-1
-					prose-code:text-purple-300 prose-code:bg-gray-800/50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded
+					prose-code:text-purple-300 prose-code:bg-white/10 backdrop-blur-sm prose-code:px-1 prose-code:py-0.5 prose-code:rounded
 					prose-pre:bg-transparent prose-pre:text-gray-300 prose-pre:p-0 prose-pre:whitespace-pre-wrap">
 					{@html renderMarkdown(comparisonResult.revised_report)}
 				</div>
 			</div>
-			<div class="p-4 border-t border-gray-700 flex gap-3 justify-end">
+			<div class="p-4 border-t border-white/10 flex gap-3 justify-end">
 				<button 
-					class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+					class="px-4 py-2 bg-white/10 backdrop-blur-xl hover:bg-white/20 border border-white/10 text-white rounded-lg transition-all duration-200"
 					onclick={() => showRevisedReportPreview = false}
 				>
 					Close
@@ -2020,7 +2044,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 						applyRevisedReport();
 					}}
 					disabled={applyRevisedReportLoading || revisedReportApplied}
-					class="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-2"
+					class="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg shadow-lg shadow-purple-500/50 hover:shadow-purple-500/70 transition-all duration-200 flex items-center gap-2"
 				>
 					{#if applyRevisedReportLoading}
 						<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>

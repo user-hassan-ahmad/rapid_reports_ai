@@ -48,7 +48,7 @@
 		template_content: '',
 		advanced: {
 			instructions: '',
-			writing_style: 'standard', // Merged: verbosity + sentence_structure
+			writing_style: 'prose', // concise or prose
 			format: 'prose',
 			use_subsection_headers: false,
 			organization: 'clinical_priority',
@@ -63,7 +63,7 @@
 		display_name: 'IMPRESSION',
 		advanced: {
 			instructions: '',
-			verbosity_style: 'standard',
+			verbosity_style: 'prose',
 			format: 'prose',
 			differential_approach: 'if_needed',
 			recommendations: {

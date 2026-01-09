@@ -239,7 +239,8 @@ class TemplateManager:
         if section_type == 'findings':
             defaults = {
                 'instructions': '',
-                'writing_style': 'standard',  # Merged: verbosity + sentence_structure
+                'writing_style': 'prose',  # concise or prose
+                'follow_template_style': True,  # Only applies to normal_template and guided_template
                 'format': 'prose',  # prose, bullets, mixed
                 'use_subsection_headers': False,  # Standalone: can combine with any format
                 'organization': 'clinical_priority',  # clinical_priority, systematic, problem_oriented, template_order
@@ -250,7 +251,7 @@ class TemplateManager:
             }
         else:  # impression
             defaults = {
-                'verbosity_style': 'standard',
+                'verbosity_style': 'prose',
                 'impression_format': 'prose',
                 'differential_style': 'if_needed',
                 'comparison_terminology': 'measured',
@@ -276,9 +277,9 @@ class TemplateManager:
                 if old_verbosity == 0:
                     merged['verbosity_style'] = 'brief'
                 elif old_verbosity == 1:
-                    merged['verbosity_style'] = 'standard'
+                    merged['verbosity_style'] = 'prose'
                 else:  # 2
-                    merged['verbosity_style'] = 'detailed'
+                    merged['verbosity_style'] = 'prose'
         
         return merged
     
@@ -738,7 +739,7 @@ Generate suggestions now."""
         
         return result.output.suggestions
     
-    def _build_detailed_style_guidance(self, advanced: dict, section_type: str = 'findings') -> str:
+    def _build_detailed_style_guidance(self, advanced: dict, section_type: str = 'findings', template_type: str = None) -> str:
         """
         Generate detailed, contextual writing style guidance from metadata.
         Provides concrete examples for each setting to ensure LLM compliance.
@@ -746,50 +747,208 @@ Generate suggestions now."""
         Args:
             advanced: Advanced config dict with style preferences
             section_type: 'findings' or 'impression'
+            template_type: 'normal_template', 'guided_template', or 'checklist' (optional)
         
         Returns:
             Formatted string with detailed style instructions
         """
         guidance_parts = []
         
-        # WRITING STYLE (merged verbosity + sentence structure for FINDINGS)
-        writing_style = advanced.get('writing_style', 'standard')
+        # Get template type from advanced dict if not passed explicitly
+        if template_type is None:
+            template_type = advanced.get('template_type', 'normal_template')
         
-        # Backward compatibility: map old values to new consolidated options
-        old_to_new_map = {
-            'telegraphic': 'concise',
-            'comprehensive': 'detailed',
-            'academic': 'detailed'
-        }
-        if writing_style in old_to_new_map:
-            writing_style = old_to_new_map[writing_style]
+        # Check if template fidelity option is available (not for checklist)
+        is_checklist = template_type == 'checklist'
+        template_defines_style = False
         
-        style_guidance = {
-            'concise': """WRITING STYLE - CONCISE:
-  - Brief, essential details only
-  - Short direct sentences
-  - Key measurements and locations
-  - Efficient descriptors
-  - Example: "Right upper lobe mass, 4cm, spiculated. Small pleural effusion present."
-  - NOT: "A well-defined 4cm spiculated mass is identified within the lateral segment of the right upper lobe, demonstrating heterogeneous enhancement."
-  - Use case: Rapid dictation, consultant-style brief reporting""",
+        if not is_checklist:
+            # Template fidelity option available for normal/guided templates
+            follow_template_style = advanced.get('follow_template_style', True)  # Default ON
             
-            'standard': """WRITING STYLE - STANDARD:
-  - Balanced sentence length and complexity
-  - Include key measurements, locations, characteristics
-  - Natural medical prose rhythm
-  - Example: "There is a 4cm spiculated mass in the right upper lobe. A small right pleural effusion is noted."
-  - Standard NHS reporting style""",
+            if follow_template_style:
+                # Template fidelity mode - principle-based, flexible guidance
+                guidance_parts.append("""WRITING STYLE - TEMPLATE FIDELITY:
+
+Emulate the template's linguistic character:
+  - Observe the template's sentence structure patterns (complete vs. telegraphic vs. mixed)
+  - Match its formality register (formal prose vs. concise clinical notes)
+  - Mirror its use of medical terminology density and descriptor richness
+  - Maintain similar rhythm and flow in phrasing
+
+Your goal: Write in a voice that feels consistent with the template's established style
+
+Refine for quality:
+  - British English spelling and conventions
+  - Medical terminology accuracy
+  - Grammatical correctness and clarity
+  - Measurement formatting consistency
+
+Example: If template uses formal complete prose like "The liver demonstrates normal echotexture with no focal lesion", continue in that register throughout rather than shifting to telegraphic style.
+
+Principle: Linguistic consistency with template, not rigid constraint. Adapt naturally while maintaining the established voice.""")
+                
+                # Skip the explicit style choice - template defines the style approach
+                template_defines_style = True
+        
+        # Only proceed with style dict if template doesn't define style
+        if not template_defines_style:
+            # WRITING STYLE (merged verbosity + sentence structure for FINDINGS)
+            writing_style = advanced.get('writing_style', 'prose')
             
-            'detailed': """WRITING STYLE - DETAILED:
-  - Comprehensive sentences with appropriate clauses
-  - Full measurements and precise locations
-  - Rich descriptors and characteristics
-  - Detailed anatomical relationships
-  - Example: "A well-defined 4cm spiculated mass is identified in the right upper lobe, demonstrating heterogeneous enhancement. An associated small right pleural effusion is noted, measuring approximately 1cm in depth."
-  - Use case: Teaching files, complex cases, academic centers, MDT preparation"""
-        }
-        guidance_parts.append(style_guidance.get(writing_style, style_guidance['standard']))
+            style_guidance = {
+                'concise': """=== WRITING STYLE: CONCISE ===
+
+COMMUNICATION GOAL:
+Rapid consultant-to-consultant reporting. Maximum information density with zero ambiguity.
+
+CORE PHILOSOPHY:
+Adaptive telegraphic style - let complexity determine structure. Simple findings get pure telegraphic. Complex findings get minimal scaffolding for clarity.
+
+KEY PRINCIPLES:
+
+1. COMPLEXITY RULE:
+   - Simple (1-2 attributes): No verbs. "Portal vein patent, normal calibre"
+   - Grouped structures (compound subjects): Use linking verb. "Portal vein and superior mesenteric vein are patent with normal calibre"
+   - Complex findings (3+ attributes): Add "shows". "Small bowel loops show wall thickening, reduced enhancement and pneumatosis"
+   - Multiple normal attributes: Lead with "Normal". 
+     ✓ "Normal small bowel wall thickness and enhancement"
+     ✗ "Small bowel wall thickness and enhancement pattern normal"
+     ✗ "Small bowel wall thickness normal, enhancement pattern normal"
+     PATTERN: If describing normal attributes → "Normal [structure] [attribute 1] and [attribute 2]"
+
+2. MINIMAL VERBS:
+   - Default: "shows" (for complex findings with multiple attributes)
+   - Exception: Linking verbs (are/is) allowed ONLY for grouped structures
+     ✓ "Portal vein and superior mesenteric vein are patent" (compound subject)
+     ✗ "Portal vein is patent" (single structure - omit verb)
+   - Never: "demonstrates", "is present/noted/identified", "appears", "was/were"
+
+3. MEASUREMENTS:
+   - Parentheses for flow: (85% stenosis) not ", 85% stenosis,"
+   - Direct: "4cm mass" not "mass measuring 4cm"
+   - Remove: "approximately", "measuring"
+
+4. STRUCTURE:
+   - Keep essential connectors: "with", "at", "in", "from"
+   - Remove: "There is", "evidence of", "the", "a", "an" (articles)
+   - Commas separate attributes within same finding
+
+5. NEGATIVES:
+   - Single negative: "No free fluid"
+   - Multiple negatives: Chain with commas: "No thrombosis, portal hypertension, or free fluid" (not "No thrombosis, no portal hypertension")
+   - Never: "Absent [finding]" or "[finding] absent"
+
+6. ANATOMICAL TERMS:
+   - Spell out fully, no abbreviations
+   - Minimal precision: "right upper lobe" not "lateral segment of right upper lobe"
+
+DECISION TEST:
+"Can a surgeon read this in 30 seconds under pressure without re-reading?"
+If no → add minimal structure (usually "shows")
+
+FORBIDDEN PHRASES:
+"is/are present", "is identified", "demonstrates" (for simple findings), "approximately", "There is/are", "evidence of", "appears"
+
+EXAMPLES:
+
+Simple findings:
+✓ "Portal vein patent, normal calibre"
+✓ "Normal liver enhancement and attenuation, no focal lesions"
+✗ "The portal vein is patent with normal calibre"
+✗ "Liver enhancement normal, attenuation normal" (repetitive structure)
+
+Grouped structures:
+✓ "Portal vein and superior mesenteric vein are patent with normal calibre"
+✗ "Portal vein, superior mesenteric vein patent, normal calibre" (too compressed when grouping)
+
+Complex findings:
+✓ "Superior mesenteric artery shows high-grade stenosis at origin (85% diameter reduction) with calcification"
+✓ "Small bowel loops show wall thickening, reduced enhancement and mucosal irregularity"
+✗ "The superior mesenteric artery demonstrates high-grade stenosis which is approximately 85%"
+
+Negatives:
+✓ "No thrombosis, portal hypertension, or free fluid"
+✗ "No thrombosis, no portal hypertension, no free fluid" (repetitive)
+
+CRITICAL: Apply this adaptive telegraphic style UNIFORMLY throughout the ENTIRE report - all findings, normal and abnormal.""",
+                
+                'prose': """=== WRITING STYLE: PROSE (Balanced NHS Prose) ===
+
+COMMUNICATION GOAL:
+Natural, readable medical prose. Professional register without unnecessary verbosity.
+
+CORE PHILOSOPHY:
+Balanced clarity - complete enough for comprehension, concise enough for efficiency. Natural consultant dictation rhythm.
+
+KEY PRINCIPLES:
+
+1. SENTENCE STRUCTURE:
+   ✓ Default: Complete grammatical sentences with natural flow
+   ✓ Vary opening patterns - avoid repetitive "The [structure] demonstrates/is/appears"
+   ✓ Mix sentence lengths - combine short and medium sentences
+   ✓ Acceptable: Efficient phrasing for simple findings when natural
+   
+   Example (good variation):
+   "Severe coeliac axis compression by median arcuate ligament with post-stenotic dilatation. Collateral vessels from SMA to coeliac distribution via pancreaticoduodenal arcade. Common hepatic and splenic arteries normal distal to compression."
+   
+   Avoid (repetitive structure):
+   "The coeliac axis demonstrates compression. The collateral vessels are seen. The common hepatic artery demonstrates normal calibre."
+
+2. VERB CHOICES:
+   ✓ Prefer: "shows" (clear and direct)
+   ✓ Acceptable: "demonstrates" (use occasionally, not repetitively)
+   ✓ Acceptable: Passive when natural ("is present", "are patent")
+   ✗ Never: Padding verbs: "is noted", "are seen", "is identified", "is observed"
+   ✗ Avoid: "There is/are..." sentence openings
+
+3. ARTICLES:
+   ✓ Use when introducing findings or for clarity: "The transition point shows mass"
+   ✓ Omit when context clear: "Small pleural effusion", "Liver normal size"
+   ✗ Don't start every sentence with "The [structure]"
+
+4. MINIMIZE PASSIVE PADDING:
+   ✓ "Post-stenotic dilatation present" or "Post-stenotic dilatation of coeliac trunk"
+   ✗ "Post-stenotic dilatation is noted"
+   ✓ "No free fluid"
+   ✗ "No evidence of free fluid is identified"
+
+5. REMOVE VERBOSE PHRASES:
+   ✓ "no" or "without"
+   ✗ "with no evidence of", "without evidence of"
+   ✓ "normal calibre"
+   ✗ "demonstrates normal calibre"
+
+6. NEGATIVE FINDINGS:
+   ✓ Consolidated: "No free fluid, pneumoperitoneum, or abscess"
+   ✓ Simple: "No free fluid"
+   ✗ Verbose: "No evidence of free fluid is identified"
+
+EXAMPLES:
+
+Abnormal findings:
+✓ "Right upper lobe mass measuring 4 cm with spiculated margins and central cavitation. Enlarged right hilar lymph nodes (short axis 2 cm). Small right pleural effusion."
+
+✗ "There is a 4 cm mass in the right upper lobe which demonstrates spiculated margins and central cavitation. Enlarged right hilar lymph nodes are seen measuring 2 cm in short axis. A small right pleural effusion is noted."
+
+✓ "Small bowel obstruction at mid ileum with dilated proximal loops (up to 4 cm). Transition point shows intraluminal soft tissue mass. No free fluid or pneumoperitoneum."
+
+✗ "There is evidence of small bowel obstruction at the level of the mid ileum with dilated proximal small bowel loops measuring up to 4 cm. The transition point demonstrates an intraluminal soft tissue mass. No evidence of free fluid or pneumoperitoneum is identified."
+
+Normal findings:
+✓ "Liver normal size with homogeneous enhancement, no focal lesions. Portal vein patent."
+
+✗ "The liver is of normal size and demonstrates homogeneous enhancement with no focal lesions identified. The portal vein is patent."
+
+FORBIDDEN PATTERNS:
+- Repetitive "The [structure] demonstrates/is/appears..." (vary your openings!)
+- "is noted", "are seen", "is identified", "is observed" (padding verbs that add nothing)
+- "There is/are..." sentence openings
+- "with no evidence of" → use "no" or "without"
+
+CRITICAL: Apply this balanced prose style UNIFORMLY throughout the ENTIRE report - all findings, normal and abnormal. Aim for natural consultant dictation, not template reading."""
+            }
+            guidance_parts.append(style_guidance.get(writing_style, style_guidance['prose']))
         
         # MEASUREMENT STYLE
         measurement_style = advanced.get('measurement_style', 'inline')
@@ -825,12 +984,16 @@ Generate suggestions now."""
     • Remainder as per template structure
   
   CRITICAL: Each finding mentioned ONCE only. Template is your roadmap - clinical priority determines what to emphasize first.
+  
+  IMPORTANT DISTINCTION: This controls ORGANIZATION/STRUCTURE only (what order to report findings). Your LANGUAGE STYLE (how to phrase findings) is controlled by the Writing Style setting above - apply that style uniformly throughout the entire report, regardless of organizational sequence.
 """,
             
             'systematic': """ORGANIZATION - SYSTEMATIC REVIEW:
   KEY PRINCIPLE: Fixed anatomical sequence from superior to inferior
   SEQUENCE: Head → Neck → Chest → Heart → Abdomen → Pelvis (standard order regardless of findings)
   EXAMPLE: "Normal brain parenchyma. Clear lung fields. Normal cardiac size. Liver and spleen unremarkable. Kidneys show no focal abnormality."
+  
+  NOTE: This controls STRUCTURE/SEQUENCE only. Language style is controlled by Writing Style setting - apply uniformly throughout.
 """,
             
             
@@ -838,6 +1001,8 @@ Generate suggestions now."""
   KEY PRINCIPLE: Strictly follow template's defined anatomical sequence
   SEQUENCE: Exact order specified in template (may be custom, not standard anatomical)
   EXAMPLE: If template specifies "Pelvis → Abdomen → Chest", report in that exact order regardless of clinical significance
+  
+  NOTE: This controls STRUCTURE/SEQUENCE only. Language style is controlled by Writing Style setting - apply uniformly throughout.
 """
         }
         guidance_parts.append(org_guidance.get(organization, org_guidance['clinical_priority']))
@@ -1271,7 +1436,14 @@ CRITICAL SEQUENCING:
         guidance_parts = []
         
         # Verbosity style
-        verbosity_style = advanced.get('verbosity_style', 'standard')
+        verbosity_style = advanced.get('verbosity_style', 'prose')
+        
+        # Backward compatibility: map old values
+        if verbosity_style == 'standard':
+            verbosity_style = 'prose'
+        elif verbosity_style == 'detailed':
+            verbosity_style = 'prose'
+        
         verbosity_map = {
             'brief': (
                 "VERBOSITY STYLE: Brief\n"
@@ -1285,26 +1457,17 @@ CRITICAL SEQUENCING:
                 "✗ 'Acute appendicitis is present without evidence of perforation'\n"
                 "✓ 'Acute appendicitis. No perforation.'"
             ),
-            'standard': (
-                "VERBOSITY STYLE: Standard\n"
+            'prose': (
+                "VERBOSITY STYLE: Prose\n"
                 "\n"
                 "Balanced sentence structure with natural medical prose:\n"
                 "- Primary diagnosis with confidence level when uncertain\n"
                 "- Basic morphological descriptors when relevant\n"
                 "- Standard NHS reporting style\n"
                 "- Example: 'There is a spiculated mass in the right upper lobe, highly suspicious for primary lung malignancy.'"
-            ),
-            'detailed': (
-                "VERBOSITY STYLE: Detailed\n"
-                "\n"
-                "Comprehensive morphological descriptions:\n"
-                "- Detailed anatomical locations and relationships\n"
-                "- Rich descriptive language ('heterogeneous enhancement', 'irregular margins')\n"
-                "- Anatomical precision ('lateral segment of RUL', 'subcarinal station')\n"
-                "- All clinically significant secondary findings with full characterization"
             )
         }
-        guidance_parts.append(verbosity_map.get(verbosity_style, verbosity_map['standard']))
+        guidance_parts.append(verbosity_map.get(verbosity_style, verbosity_map['prose']))
         
         # Impression format
         impression_format = advanced.get('impression_format', 'prose')
@@ -1364,7 +1527,14 @@ CRITICAL SEQUENCING:
         guidance_parts = []
         
         # Verbosity style (replaces old numeric verbosity)
-        verbosity_style = advanced.get('verbosity_style', 'standard')
+        verbosity_style = advanced.get('verbosity_style', 'prose')
+        
+        # Backward compatibility: map old values
+        if verbosity_style == 'standard':
+            verbosity_style = 'prose'
+        elif verbosity_style == 'detailed':
+            verbosity_style = 'prose'
+        
         verbosity_map = {
             'brief': (
                 "VERBOSITY STYLE: Brief\n"
@@ -1385,8 +1555,8 @@ CRITICAL SEQUENCING:
                 "  - 'There is a spiculated mass located in the right upper lobe which appears suspicious...'\n"
                 "  - 'The scan demonstrates no evidence of acute intracranial abnormality with normal brain parenchyma...'"
             ),
-            'standard': (
-                "VERBOSITY STYLE: Standard\n"
+            'prose': (
+                "VERBOSITY STYLE: Prose\n"
                 "\n"
                 "HOW TO EXPRESS:\n"
                 "  - Balanced sentence structure with natural medical prose\n"
@@ -1402,32 +1572,9 @@ CRITICAL SEQUENCING:
                 "GOOD EXAMPLE:\n"
                 "  'There is a spiculated mass in the right upper lobe, highly suspicious for primary lung\n"
                 "   malignancy. A small right pleural effusion is present.'"
-            ),
-            'detailed': (
-                "VERBOSITY STYLE: Detailed\n"
-                "\n"
-                "HOW TO EXPRESS:\n"
-                "  - Comprehensive morphological descriptions\n"
-                "  - Detailed anatomical locations and relationships\n"
-                "  - Rich descriptive language ('heterogeneous enhancement', 'irregular margins')\n"
-                "  - Anatomical precision ('lateral segment of RUL', 'subcarinal station')\n"
-                "  - All clinically significant secondary findings with full characterization\n"
-                "\n"
-                "STRUCTURE:\n"
-                "  - Primary finding with comprehensive morphological description\n"
-                "  - Anatomical details and extent\n"
-                "  - Secondary findings with descriptive detail\n"
-                "  - Associated features with characteristics\n"
-                "\n"
-                "GOOD EXAMPLE:\n"
-                "  'There is a spiculated mass in the right upper lobe demonstrating irregular margins,\n"
-                "   heterogeneous enhancement and central low attenuation, highly suspicious for primary\n"
-                "   bronchogenic carcinoma. Associated mediastinal lymphadenopathy is present, particularly\n"
-                "   at the subcarinal station. A small right pleural effusion is noted. No distant metastatic\n"
-                "   disease is identified.'"
             )
         }
-        guidance_parts.append(verbosity_map.get(verbosity_style, verbosity_map['standard']))
+        guidance_parts.append(verbosity_map.get(verbosity_style, verbosity_map['prose']))
         
         # Impression format
         impression_format = advanced.get('impression_format', 'prose')
@@ -1620,7 +1767,7 @@ CRITICAL SEQUENCING:
 
 **WRITING STYLE REQUIREMENTS**:
 
-{self._build_detailed_style_guidance(advanced, section_type='findings')}
+{self._build_detailed_style_guidance(advanced, section_type='findings', template_type='normal_template')}
 """
         
         if custom_instructions:
@@ -1683,7 +1830,7 @@ CRITICAL SEQUENCING:
 
 **WRITING STYLE REQUIREMENTS**:
 
-{self._build_detailed_style_guidance(advanced, section_type='findings')}
+{self._build_detailed_style_guidance(advanced, section_type='findings', template_type='guided_template')}
 """
         
         if custom_instructions:
@@ -1739,7 +1886,7 @@ CRITICAL SEQUENCING:
 
 **WRITING STYLE REQUIREMENTS**:
 
-{self._build_detailed_style_guidance(advanced, section_type='findings')}
+{self._build_detailed_style_guidance(advanced, section_type='findings', template_type='checklist')}
 """
         
         if custom_instructions:
@@ -1793,7 +1940,7 @@ CRITICAL SEQUENCING:
 
 **WRITING STYLE REQUIREMENTS**:
 
-{self._build_detailed_style_guidance(advanced, section_type='findings')}
+{self._build_detailed_style_guidance(advanced, section_type='findings', template_type='normal_template')}
 """
         
         if custom_instructions:
@@ -1847,7 +1994,69 @@ CRITICAL SEQUENCING:
    - STRIP all // lines from final output (do not include in report)
    - IMPORTANT: // instructions guide HOW to describe WHEN input exists, NOT whether to include the section header
 
-5. BLANK SECTIONS (no corresponding input):
+5. DETAIL AUGMENTATION:
+   
+   CORE PRINCIPLE:
+   If user provides clinically significant details not captured by template structure,
+   integrate them naturally into the most relevant template section.
+   
+   WHEN TO AUGMENT:
+   ✓ Clinical modifiers that affect diagnosis/management
+   ✓ Specific anatomical structures or distributions
+   ✓ Additional measurements or characteristics
+   ✗ Redundant information already in template
+   ✗ Vague descriptions without clinical value
+   ✗ Details contradicting template selections
+   
+   HOW TO INTEGRATE:
+   
+   Use natural medical prose connectors based on context:
+   • "with" - for associated findings or characteristics
+   • "and" - for additional co-existing features
+   • "including" or "via" - for specifications or pathways
+   • "in" - for locations or distributions
+   • Parentheses - for clarifications or classifications
+   
+   When template already uses a connector, avoid repetition:
+   • Template uses "with" + User adds "with" → Use "and" instead
+   • Template uses "including" + User adds "including" → Combine the lists
+   
+   Keep augmentations concise (1-3 additional descriptors maximum).
+   Maintain template's formal prose style.
+   
+   EXAMPLES (across systems):
+   
+   Cardiac:
+   Template: "Left ventricle is dilated"
+   User: "apical thrombus"
+   → "Left ventricle is dilated with apical thrombus"
+   
+   Vascular:
+   Template: "Origin is abnormal"
+   User: "with thrombus"
+   → "Origin is abnormal with thrombus"
+   
+   Template: "...with abnormal origin"
+   User: "with thrombus"
+   → "...with abnormal origin and thrombus"
+   
+   Template: "Collateral vessels are present"
+   User: "arc of Riolan, marginal artery"
+   → "Collateral vessels are present via arc of Riolan and marginal artery"
+   
+   MSK:
+   Template: "Fracture is present"
+   User: "displaced, comminuted, involves articular surface"
+   → "Fracture is present with displacement and comminution involving articular surface"
+   
+   Neuro:
+   Template: "Mass is present"
+   User: "left frontal with mass effect"
+   → "Mass is present in left frontal lobe with mass effect"
+   
+   Default: When uncertain about integration, prioritize template fidelity
+
+6. BLANK SECTIONS (no corresponding input):
    - **CRITICAL RULE**: ALL section headers MUST be preserved in output, regardless of // instructions
    - **IMPORTANT DISTINCTION**:
      • If template has alternatives like [present/absent] or [normal/abnormal] AND user input indicates the negative state (e.g., "no LGE", "normal wall motion"):

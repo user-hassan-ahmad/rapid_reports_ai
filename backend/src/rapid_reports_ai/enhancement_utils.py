@@ -3701,6 +3701,7 @@ async def validate_template_linguistics(
     findings_section = next((s for s in sections if s.get('name') == 'FINDINGS'), {})
     findings_advanced = findings_section.get('advanced', {})
     findings_custom = findings_advanced.get('instructions', '')
+    findings_content_style = findings_section.get('content_style', 'normal_template')
     
     # Get impression config  
     impression_section = next((s for s in sections if s.get('name') == 'IMPRESSION'), {})
@@ -3710,6 +3711,7 @@ async def validate_template_linguistics(
     # Get template-wide custom instructions
     template_wide_custom = template_config.get('global_custom_instructions', '')
     
+    print(f"[TEMPLATE LINGUISTIC VALIDATION]   Findings content style: {findings_content_style}")
     print(f"[TEMPLATE LINGUISTIC VALIDATION]   Findings custom instructions: {bool(findings_custom)}")
     print(f"[TEMPLATE LINGUISTIC VALIDATION]   Impression custom instructions: {bool(impression_custom)}")
     print(f"[TEMPLATE LINGUISTIC VALIDATION]   Template-wide instructions: {bool(template_wide_custom)}")
@@ -3730,14 +3732,19 @@ Refine report language and phrasing while preserving all structural and organiza
     findings_input = user_inputs.get('FINDINGS', '')
     findings_context = findings_input[:500] + "..." if len(findings_input) > 500 else findings_input
     
-    # Build section-specific style blocks
-    findings_style_block = _build_findings_style_block(findings_advanced, findings_custom)
+    # Build section-specific style blocks - pass content_style for structured_template handling
+    findings_style_block = _build_findings_style_block(findings_advanced, findings_custom, findings_content_style)
     impression_style_block = _build_impression_style_block(impression_advanced, impression_custom)
     template_wide_block = _build_template_wide_block(template_wide_custom)
     
     # Extract style configurations for both sections
-    findings_style = findings_advanced.get('writing_style', 'standard')
-    impression_verbosity = impression_advanced.get('verbosity_style', 'standard')
+    findings_style = findings_advanced.get('writing_style', 'prose')
+    impression_verbosity = impression_advanced.get('verbosity_style', 'prose')
+    # Backward compatibility: map old values
+    if impression_verbosity == 'standard':
+        impression_verbosity = 'prose'
+    elif impression_verbosity == 'detailed':
+        impression_verbosity = 'prose'
     
     # Build neutral role section (applies to all styles)
     role_section = """=== YOUR ROLE ===
@@ -3861,61 +3868,270 @@ Preserve all spacing, line breaks, and structural formatting exactly.
     return validated_content
 
 
-def _build_findings_style_block(advanced_config: dict, custom_instructions: str) -> str:
+def _build_findings_style_block(advanced_config: dict, custom_instructions: str, content_style: str = None) -> str:
     """Build Findings section style requirements with conditional guidance."""
     
-    writing_style = advanced_config.get('writing_style', 'standard')
+    # For structured templates, style settings are disabled - apply minimal validation only
+    if content_style == 'structured_template':
+        findings_format = advanced_config.get('format', 'prose')
+        style_guidance = """
+**FINDINGS SECTION** - Mode: STRUCTURED TEMPLATE (Minimal Validation)
+
+PRESERVE EXACT STRUCTURE:
+- Maintain all template formatting, headers, and structure exactly as generated
+- Preserve any user detail augmentations integrated into template sections
+- Do NOT reorganize or restructure content
+- Preserve all measurement placeholders, variables, and alternatives as filled
+
+ONLY refine for quality:
+- British English spelling (tumour, haemorrhage, oesophagus, centre, litre)
+- Medical terminology accuracy (fix anatomical errors only)
+- Grammatical correctness (fix subject-verb agreement, tense errors)
+- Grammatical flow of augmented clinical details
+- Measurement formatting (ensure consistent units and spacing)
+
+DO NOT apply:
+- Writing style transformations (concise/prose)
+- Sentence structure modifications
+- Phrasing improvements beyond grammatical fixes
+- Removal of augmented user details
+
+CRITICAL: Template structure is sacred. User detail augmentations are sacred. Only fix linguistic and anatomical errors."""
+        
+        block = f"""{style_guidance}
+
+**Format**: {findings_format}
+{_get_format_guidance(findings_format, advanced_config.get('organization', 'clinical_priority'))}
+"""
+        if custom_instructions and custom_instructions.strip():
+            block += f"""
+**Custom Instructions** (if any):
+{custom_instructions}
+(Note: Structured templates preserve exact structure - instructions guide content only, not structure)
+"""
+        return block
+    
+    # Check template fidelity flag first (only present for normal/guided templates)
+    follow_template_style = advanced_config.get('follow_template_style', False)
+    
     findings_format = advanced_config.get('format', 'prose')
+    
+    if follow_template_style:
+        # Template fidelity mode - principle-based validation
+        style_guidance = """
+Maintain template's linguistic character:
+- Observe the existing register (formal complete prose vs. concise telegraphic vs. mixed)
+- Match sentence structure patterns present in the template
+- Keep similar verbosity and descriptor density
+
+Quality refinements only:
+- British English spelling (tumour, haemorrhage, oesophagus)
+- Medical terminology accuracy and consistency
+- Grammatical correctness (subject-verb agreement, tense)
+- Measurement formatting (consistent units, spacing: "4cm" or "4 cm" consistently)
+
+Avoid transforming the style:
+- Don't convert complete sentences to telegraphic phrasing or vice versa
+- Don't arbitrarily add/remove articles, linking verbs, or descriptors
+- Don't change the formality register established by the template
+
+Principle: You're ensuring quality and consistency, not imposing a different style. Validate naturalistically within the template's established voice."""
+        
+        block = f"""**FINDINGS SECTION** - Mode: TEMPLATE FIDELITY
+
+{style_guidance}
+
+**Format**: {findings_format}
+{_get_format_guidance(findings_format, advanced_config.get('organization', 'clinical_priority'))}
+"""
+        if custom_instructions and custom_instructions.strip():
+            block += f"""
+**Custom Linguistic Instructions**:
+{custom_instructions}
+(Apply to language/phrasing only - preserve organizational decisions)
+"""
+        return block
+    
+    # EXISTING CODE continues for when follow_template_style is False
+    writing_style = advanced_config.get('writing_style', 'prose')
     
     # Style-specific linguistic guidance
     if writing_style == 'concise':
         style_guidance = """
-Telegraphic, information-dense phrasing:
-- Verb-minimal constructions
-- Noun phrases predominate
-- Example: "Dilated common bile duct 12mm. Multiple gallstones. No ductal calculus."
+=== VALIDATOR: CONCISE STYLE ===
 
-PRESERVE telegraphic structure:
-- DO NOT add linking verbs ("is", "are")
-- DO NOT expand to full sentences
-- DO NOT "improve" grammar by adding subjects/verbs
+Apply adaptive telegraphic compression based on finding complexity.
+
+COMPLEXITY RULE:
+- Simple findings (1-2 attributes): Strip all verbs. Pure noun-adjective.
+- Grouped structures (multiple organs/vessels): Keep linking verbs for readability.
+- Complex findings (3+ attributes): Keep minimal "shows" for readability.
+- Multiple normal attributes: Lead with "Normal [list]" not "attribute normal, attribute normal"
+
+CRITICAL TRANSFORMATIONS FOR VALIDATOR:
+
+When you see these patterns in the draft report, TRANSFORM them:
+
+PATTERN 1 - Normal attributes with wrong word order:
+Input: "Small bowel wall thickness and enhancement pattern normal"
+Output: "Normal small bowel wall thickness and enhancement pattern"
+Rule: If you see "[structure] [attributes] normal" → Move "Normal" to front
+
+PATTERN 2 - Repetitive normal statements:
+Input: "Small bowel wall thickness normal. Enhancement pattern normal."
+Output: "Normal small bowel wall thickness and enhancement pattern"
+Rule: Consolidate multiple normal attributes with "and"
+
+PATTERN 3 - Multiple negatives:
+Input: "No thrombosis. No portal hypertension. No free fluid."
+Output: "No thrombosis, portal hypertension, or free fluid"
+Rule: Chain negatives with commas, single "No"
+
+PATTERN 4 - Wrong word order in normal findings:
+Input: "Wall thickness normal and enhancement normal"
+Output: "Normal wall thickness and enhancement"
+Rule: "Normal" always leads when describing normal attributes
+
+TRANSFORMATION PATTERNS:
+
+Simple → Telegraphic:
+"The abdominal aorta is of normal calibre with smooth contours" → "Abdominal aorta normal calibre, smooth contours"
+"The portal vein is patent" → "Portal vein patent"
+"Free fluid is present in the pelvis" → "Free fluid in pelvis"
+"The liver appears normal" → "Liver normal"
+"No free air is identified" → "No free air"
+
+Grouped structures → Keep linking verb:
+"Portal vein, superior mesenteric vein patent, normal calibre" → "Portal vein and superior mesenteric vein are patent with normal calibre"
+"Liver, spleen, kidneys normal" → "Liver, spleen, and kidneys are normal"
+
+Multiple normal attributes → Lead with "Normal":
+"Small bowel wall thickness normal, enhancement pattern normal" → "Normal small bowel wall thickness and enhancement"
+"Small bowel wall thickness and enhancement pattern normal" → "Normal small bowel wall thickness and enhancement pattern"
+"Liver enhancement normal, attenuation normal" → "Normal liver enhancement and attenuation"
+"Wall thickness normal and enhancement normal" → "Normal wall thickness and enhancement"
+
+Complex → Minimal verb:
+"Multiple small bowel loops are thickened and demonstrate reduced enhancement" → "Small bowel loops show thickening and reduced enhancement"
+"The mass demonstrates irregular margins, measures 4cm, and contains calcification" → "Mass shows irregular margins (4cm) with calcification"
+
+REMOVE AGGRESSIVELY:
+- Articles: "the", "a", "an"
+- Linking verbs for single structures: "is", "are", "was", "were", "appears"
+  ✗ "Portal vein is patent" → ✓ "Portal vein patent"
+  ✓ EXCEPTION: Keep "are/is" for grouped/compound subjects (see below)
+- Verbose phrases: "is present", "is identified", "is noted", "demonstrates" (for simple findings)
+- Qualifiers: "approximately", "measuring"
+- Padding: "There is", "evidence of", "with no signs of" → "no"
+
+MEASUREMENTS:
+- Use parentheses: "stenosis (85%)" not "stenosis of 85%"
+- Direct: "4cm mass" not "mass measuring 4cm"
+
+NEGATIVES:
+- Single negative: "No free fluid"
+- Multiple negatives: Chain with single "No": "No thrombosis, portal hypertension, or free fluid"
+- NOT repetitive: "No thrombosis, no portal hypertension, no free fluid"
+- Never: "Absent [finding]" or "[finding] absent"
+
+KEEP FOR CLARITY:
+- "shows" for complex findings (3+ attributes)
+- Linking verbs (are/is) ONLY for grouped/compound subjects:
+  ✓ "Portal vein and superior mesenteric vein are patent" (compound subject needs scaffolding)
+  ✗ "Portal vein is patent" (single subject - omit)
+- Essential connectors: "with", "at", "in", "from"
+- All measurements and anatomical locations
+- Commas to separate attributes
+- "and" to connect items in lists
+
+FORBIDDEN TRANSFORMATIONS:
+- Do NOT add measurements not in original
+- Do NOT change anatomical specificity
+- Do NOT create comma soup (keep "shows" for complex findings)
+
+Apply uniformly to ALL findings (abnormal AND normal):
+- Consistent telegraphic compression throughout
+- Decision: simple = no verb, complex = "shows"
 
 ONLY refine:
 - British English spelling
 - Measurement formatting
-- Anatomical terminology errors"""
+- Anatomical terminology errors
+
+CRITICAL: NEVER fabricate measurements or details not in original input"""
     
-    elif writing_style == 'detailed':
+    else:  # prose (formerly standard)
         style_guidance = """
-Descriptive clinical documentation:
-- Elaborate characterizations with appropriate detail
-- Fuller phrasing with morphological descriptors when clinically meaningful
-- Natural voice mix (passive/active) - use what reads better
-- Example: "A heterogeneous mass with irregular spiculated margins is present 
-  within the right upper lobe, abutting the major fissure."
+=== VALIDATOR: PROSE STYLE (Balanced NHS Prose) ===
 
-Natural, thorough prose (NOT artificial verbosity):
-- Add morphological detail when diagnostically valuable
-- Vary vocabulary naturally
-- Avoid forced passive constructions
-- NO tautological phrases ("characterized by minimal volume")
-- NO filler language for length's sake
+Transform verbose/repetitive prose to natural consultant dictation style.
 
-CRITICAL: NEVER fabricate measurements not in original input"""
-    
-    else:  # standard
-        style_guidance = """
-Natural radiology prose:
-- Balanced clinical register
-- Mix of complete and fragment constructions as typical in radiology
-- Passive voice acceptable when natural
-- Active voice when clearer
-- Example: "The liver demonstrates diffuse steatosis. No focal lesion is identified."
+GOAL: Natural medical prose - not telegraphic, not overly formal. Aim for how a consultant dictates, not how templates read.
 
-Balanced readability:
-- Neither telegraphic nor elaborate
-- Natural sentence flow
-- Professional medical register"""
+CRITICAL TRANSFORMATIONS:
+
+PATTERN 1 - Remove padding verbs (NEVER acceptable):
+"A mass is identified in the right upper lobe" → "Right upper lobe mass" or "Mass in right upper lobe"
+"Enlarged lymph nodes are seen in the mediastinum" → "Enlarged mediastinal lymph nodes"
+"A small pleural effusion is noted" → "Small pleural effusion" or "Small pleural effusion present"
+"No focal lesion is identified" → "No focal lesion"
+Rule: "is noted", "are seen", "is identified", "is observed" → ALWAYS remove
+
+PATTERN 2 - Simplify negative findings:
+"with no evidence of consolidation or pleural effusion" → "no consolidation or effusion"
+"without evidence of pneumoperitoneum" → "no pneumoperitoneum"
+"No evidence of free intra-abdominal air is identified" → "No free intra-abdominal air"
+"with no signs of obstruction" → "no obstruction"
+Rule: "no evidence of" → "no" or "without"
+
+PATTERN 3 - Remove excessive articles and verbose phrasing:
+"The liver is of normal size" → "Liver normal size" or "The liver is normal size"
+"has a normal calibre" → "has normal calibre" or "normal calibre"
+"with a homogeneous enhancement pattern" → "with homogeneous enhancement"
+Rule: Strip "of" and "a" where verbose, but keep natural articles when introducing findings
+
+PATTERN 4 - Vary sentence openings (avoid monotony):
+If seeing 3+ consecutive sentences starting with "The [structure] demonstrates/is/appears":
+"The liver demonstrates diffuse steatosis. The spleen demonstrates..." → "Liver shows diffuse steatosis. Spleen normal."
+Mix complete and efficient sentences for natural rhythm
+Rule: Vary structure - don't let every sentence start identically
+
+PATTERN 5 - Replace verbose template language:
+"The liver is of normal size and demonstrates homogeneous enhancement with no focal lesions identified" → "Liver normal size with homogeneous enhancement, no focal lesions"
+"The small bowel loops demonstrate normal wall thickness and enhancement pattern" → "Small bowel loops show normal wall thickness and enhancement"
+"There is a mass in the right upper lobe measuring 4 cm" → "Right upper lobe mass measuring 4 cm"
+Rule: Natural phrasing, not template fill-in-the-blank
+
+PATTERN 6 - Remove redundant qualifiers:
+"characteristic focal narrowing" → "focal narrowing"
+"approximately" → keep only if genuinely uncertain
+"significant stenosis" → "stenosis" (significance implied by reporting)
+
+VERB USAGE HIERARCHY:
+1. "shows" - preferred, clear and direct
+2. "demonstrates" - acceptable occasionally, not repetitively  
+3. "is present", "are patent" - acceptable when natural
+4. "is noted", "are seen", "is identified" - FORBIDDEN, always remove
+
+ACCEPTABLE FLEXIBILITY:
+- "demonstrates" OK occasionally (not 5 times in a row)
+- Passive voice OK when natural ("is present", "are patent")
+- Articles OK when introducing findings or needed for clarity
+- Complete sentences preferred, but efficient phrasing acceptable for simple findings
+
+SENTENCE RHYTHM:
+- Mix complete and concise sentences
+- Vary opening patterns
+- Natural flow, not robotic template reading
+- Professional NHS register
+
+Apply uniformly to ALL findings (abnormal AND normal):
+- Maintain consistent balanced prose throughout
+- Remove padding verbs and verbose constructions
+- Vary structure to avoid monotony
+- Natural consultant dictation style
+
+CRITICAL: Aim for natural consultant dictation, not template reading"""
     
     # Extract organization for paragraph guidance
     organization = advanced_config.get('organization', 'clinical_priority')
@@ -3941,7 +4157,14 @@ Balanced readability:
 def _build_impression_style_block(advanced_config: dict, custom_instructions: str) -> str:
     """Build Impression section style requirements with conditional guidance."""
     
-    verbosity = advanced_config.get('verbosity_style', 'standard')
+    verbosity = advanced_config.get('verbosity_style', 'prose')
+    
+    # Backward compatibility: map old values
+    if verbosity == 'standard':
+        verbosity = 'prose'
+    elif verbosity == 'detailed':
+        verbosity = 'prose'
+    
     impression_format = advanced_config.get('format') or advanced_config.get('impression_format', 'prose')
     
     # Verbosity-specific linguistic guidance
@@ -3961,22 +4184,7 @@ Transform verbose phrasing:
 SCOPE: Refine existing impression text to be more terse
 DO NOT: Remove/add content, apply findings phrasing style here"""
     
-    elif verbosity == 'detailed':
-        verbosity_guidance = """
-Elaborate, descriptive phrasing:
-- Fuller statements with appropriate clinical detail
-- Natural, thorough language (NOT artificial verbosity)
-- Example: "Acute cholecystitis with marked gallbladder wall thickening and 
-  surrounding inflammatory change, without evidence of perforation or abscess formation."
-
-Transform terse phrasing:
-✗ "Cholecystitis. No perforation."
-✓ "Acute cholecystitis with gallbladder wall thickening, without evidence of perforation."
-
-SCOPE: Refine existing impression text to be more elaborate
-DO NOT: Add/remove diagnoses or clinical conclusions"""
-    
-    else:  # standard
+    else:  # prose (formerly standard)
         verbosity_guidance = """
 Natural radiology summary prose:
 - Balanced clinical register

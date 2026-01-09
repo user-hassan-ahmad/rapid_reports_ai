@@ -14,7 +14,7 @@
 		template_content: '',
 		advanced: {
 			instructions: '',
-			writing_style: 'standard',
+			writing_style: 'prose',
 			format: 'prose',
 			use_subsection_headers: false,
 			organization: 'clinical_priority',
@@ -32,7 +32,7 @@
 	function resetToDefaults() {
 		findingsConfig.advanced = {
 			instructions: '',
-			writing_style: 'standard',
+			writing_style: 'prose',
 			organization: 'clinical_priority',
 			format: 'prose',
 			use_subsection_headers: false
@@ -90,7 +90,7 @@
 		// Restore default style settings for other content styles
 		findingsConfig.advanced = {
 			instructions: findingsConfig.advanced?.instructions || '',
-			writing_style: 'standard',
+			writing_style: 'prose',
 			organization: 'clinical_priority',
 			format: 'prose',
 			use_subsection_headers: false
@@ -101,38 +101,6 @@
 	$: showFullStyleControls = findingsConfig.content_style !== 'structured_template';
 
 	const styleOptions = [
-		{
-			id: 'structured_template',
-			icon: '📐',
-			title: 'Structured Fill-In Template',
-			shortTitle: 'Structured',
-			tagline: 'Strict fill-in-the-blanks. No structural deviations.',
-			description:
-				'Your template is preserved EXACTLY as written. AI acts as a smart form-filler, inserting measurements into placeholders and selecting options based on your findings.',
-			features: [
-				'High fidelity to your template structure with intelligent flexibility',
-				'{VAR} : Named variables (e.g. {LVEF})',
-				'xxx : Measurement placeholders',
-				'[opt1/opt2] : Alternatives (brackets wrap options only, not sentences)',
-				'// instruction : Actionable AI guidance, not labels (stripped from output)'
-			],
-			workflow: {
-				step1: {
-					label: 'Template',
-					content:
-						'// Keep headers uppercase\n\nLEFT VENTRICLE\nEnd-diastolic volume is [normal/dilated] at xxx ml/m².\nSystolic function is [preserved/reduced] (LVEF={LVEF}%).\n\n// Describe only if assessed\nRIGHT VENTRICLE\nRV size is [normal/dilated] at xxx ml/m².'
-				},
-				step2: {
-					label: 'You Provide',
-					content: 'LV dilated (145 ml/m2), EF 35%. RV normal (88 ml/m2).'
-				},
-				step3: {
-					label: 'AI Generates',
-					content:
-						'LEFT VENTRICLE\nEnd-diastolic volume is dilated at 145 ml/m².\nSystolic function is reduced (LVEF=35%).\n\nRIGHT VENTRICLE\nRV size is normal at 88 ml/m².'
-				}
-			}
-		},
 		{
 			id: 'normal_template',
 			icon: '📋',
@@ -169,14 +137,14 @@
 			icon: '📝',
 			title: 'Guided Template',
 			shortTitle: 'Guided',
-			tagline: 'Prose structure with contextual annotations',
+			tagline: 'Template with inline guidance for intelligent adaptation',
 			description:
-				"Prose defines your report structure and flow. // comments are like a colleague's annotations - providing contextual insights and principle-based guidance. Perfect for maintaining a specific organizational flow with enriched assessment context.",
+				"Your prose template with embedded // comments that guide AI assessment. Comments act like a colleague's annotations - providing contextual insights on what to assess and how to interpret findings. AI uses these cues to intelligently adapt your template based on actual pathology.",
 			features: [
-				'Prose lines define report structure',
-				'// comments = contextual enrichers',
-				'Structure maintained, annotations guide assessment',
-				'Best for intentional organizational flow'
+				'Template prose defines structure',
+				'// comments guide AI understanding',
+				'Helps AI make intelligent adaptations',
+				'Best when AI needs assessment context'
 			],
 			workflow: {
 				step1: {
@@ -192,6 +160,38 @@
 					label: 'AI Generates',
 					content:
 						'There is a 4cm spiculated mass in the right upper lobe. No pneumothorax is identified. The pleural spaces are otherwise clear.'
+				}
+			}
+		},
+		{
+			id: 'structured_template',
+			icon: '📐',
+			title: 'Structured Fill-In Template',
+			shortTitle: 'Structured',
+			tagline: 'Strict fill-in-the-blanks. No structural deviations.',
+			description:
+				'Your template is preserved EXACTLY as written. AI acts as a smart form-filler, inserting measurements into placeholders and selecting options based on your findings.',
+			features: [
+				'High fidelity to your template structure with intelligent flexibility',
+				'{VAR} : Named variables (e.g. {LVEF})',
+				'xxx : Measurement placeholders',
+				'[opt1/opt2] : Alternatives (brackets wrap options only, not sentences)',
+				'// instruction : Actionable AI guidance, not labels (stripped from output)'
+			],
+			workflow: {
+				step1: {
+					label: 'Template',
+					content:
+						'// Keep headers uppercase\n\nLEFT VENTRICLE\nEnd-diastolic volume is [normal/dilated] at xxx ml/m².\nSystolic function is [preserved/reduced] (LVEF={LVEF}%).\n\n// Describe only if assessed\nRIGHT VENTRICLE\nRV size is [normal/dilated] at xxx ml/m².'
+				},
+				step2: {
+					label: 'You Provide',
+					content: 'LV dilated (145 ml/m2), EF 35%. RV normal (88 ml/m2).'
+				},
+				step3: {
+					label: 'AI Generates',
+					content:
+						'LEFT VENTRICLE\nEnd-diastolic volume is dilated at 145 ml/m².\nSystolic function is reduced (LVEF=35%).\n\nRIGHT VENTRICLE\nRV size is normal at 88 ml/m².'
 				}
 			}
 		},
@@ -478,7 +478,7 @@
 								{/if}
 
 								<div
-									class="relative rounded-lg border border-white/10 bg-black/40 p-6
+									class="relative rounded-lg border border-white/10 p-6
 									       hover:border-purple-500/50 hover:shadow-lg hover:shadow-purple-500/20 
 									       transition-all duration-300 cursor-pointer
 									       {showAnimation === currentStyle.id ? 'border-purple-500/50 shadow-lg shadow-purple-500/20' : ''}"
@@ -586,7 +586,7 @@
 						<!-- Expandable Animation Section -->
 						{#if showAnimation === currentStyle.id}
 							<div
-								class="animate-fadeIn mt-4 space-y-4 rounded-xl border border-purple-500/20 bg-black/60 p-6"
+								class="animate-fadeIn mt-4 space-y-4 rounded-xl border border-purple-500/20 p-6"
 							>
 								<div>
 									<div class="mb-2 flex items-center gap-2">
@@ -883,6 +883,7 @@
 					<StyleGranularControls
 						section="findings"
 						bind:advanced={findingsConfig.advanced}
+						templateType={findingsConfig.content_style}
 						on:fieldChange={handleChange}
 					/>
 					{:else}

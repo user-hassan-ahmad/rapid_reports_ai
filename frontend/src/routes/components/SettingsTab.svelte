@@ -114,6 +114,19 @@
 		}
 	}
 
+	function handleFormKeyDown(e) {
+		// Allow Enter to create new lines in textareas - don't interfere at all
+		if (e.key === 'Enter' && e.target.tagName === 'TEXTAREA') {
+			// Stop the event from bubbling to prevent form submission, but let textarea handle it
+			e.stopPropagation();
+			return;
+		}
+		// For other elements, prevent form submission on Enter
+		if (e.key === 'Enter' && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'TEXTAREA') {
+			e.preventDefault();
+		}
+	}
+
 	onMount(async () => {
 		// Load settings if empty
 		if (!$settingsStore.settings) {
@@ -142,7 +155,7 @@
 			</div>
 		{/if}
 
-	<div class="space-y-6 max-w-2xl">
+	<form onsubmit={(e) => { e.preventDefault(); saveSettings(); }} onkeydown={handleFormKeyDown} class="space-y-6 max-w-2xl">
 		<!-- User Information -->
 		<div class="card-dark">
 			<h2 class="text-xl font-bold text-white mb-4">User Information</h2>
@@ -281,13 +294,13 @@
 
 		<div class="flex justify-end gap-3">
 			<button
-				onclick={saveSettings}
+				type="submit"
 				disabled={loading}
 				class="btn-primary"
 			>
 				{loading ? 'Saving...' : 'Save Settings'}
 			</button>
 		</div>
-	</div>
+	</form>
 	{/if}
 </div>

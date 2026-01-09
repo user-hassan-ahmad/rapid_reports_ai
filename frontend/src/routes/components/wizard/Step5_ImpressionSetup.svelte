@@ -11,7 +11,7 @@
 		display_name: 'IMPRESSION',
 		advanced: {
 			instructions: '',
-			verbosity_style: 'standard',
+			verbosity_style: 'prose',
 			format: 'prose',
 			differential_approach: 'if_needed',
 			recommendations: {
@@ -26,7 +26,7 @@
 	function resetToDefaults() {
 		impressionConfig.advanced = {
 			instructions: '',
-			verbosity_style: 'standard',
+			verbosity_style: 'prose',
 			format: 'prose',
 			differential_approach: 'if_needed',
 			recommendations: {

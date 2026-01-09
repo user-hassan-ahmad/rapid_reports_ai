@@ -201,7 +201,7 @@
 							{#if findingsConfig.template_content}
 								<div>
 									<span class="text-green-400 font-semibold text-xs block mb-2">Template Content:</span>
-									<div class="bg-black/40 border border-green-500/20 rounded-lg p-3 font-mono text-xs text-gray-300 overflow-x-auto">
+									<div class="border border-green-500/20 rounded-lg p-3 font-mono text-xs text-gray-300 overflow-x-auto">
 										{#if !showFullFindingsTemplate}
 											<div class="max-h-32 overflow-y-auto">
 												{findingsConfig.template_content.substring(0, 300)}{findingsConfig.template_content.length > 300 ? '...' : ''}

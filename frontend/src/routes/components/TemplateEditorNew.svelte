@@ -53,7 +53,7 @@
 		},
 		advanced: {
 			instructions: '',
-			writing_style: 'standard', // Merged: verbosity + sentence_structure
+			writing_style: 'prose', // concise or prose
 			format: 'prose',
 			use_subsection_headers: false,
 			organization: 'clinical_priority',
@@ -67,7 +67,7 @@
 		display_name: 'IMPRESSION',
 		advanced: {
 			instructions: '',
-			verbosity_style: 'standard',
+			verbosity_style: 'prose',
 			impression_format: 'prose',
 			differential_style: 'if_needed',
 			comparison_terminology: 'measured',
@@ -488,7 +488,7 @@
 			display_name: 'IMPRESSION',
 			advanced: {
 				instructions: '',
-				verbosity_style: 'standard',
+				verbosity_style: 'prose',
 				impression_format: 'prose',
 				differential_style: 'if_needed',
 				comparison_terminology: 'measured',

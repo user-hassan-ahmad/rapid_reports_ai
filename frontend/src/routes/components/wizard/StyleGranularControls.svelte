@@ -4,12 +4,20 @@
 
 	export let section = 'findings';
 	export let advanced = {};
+	export let templateType = null; // 'normal_template', 'guided_template', 'checklist', or null
 
 	let hoveredExample = null;
 
+	// Determine if template fidelity toggle should be shown
+	$: showTemplateFidelityToggle = section === 'findings' && 
+		(templateType === 'normal_template' || templateType === 'guided_template');
+
 	// Ensure defaults
 	$: if (section === 'findings') {
-		if (!advanced.writing_style) advanced.writing_style = 'standard';
+		if (!advanced.writing_style) advanced.writing_style = 'prose';
+		if (advanced.follow_template_style === undefined && showTemplateFidelityToggle) {
+			advanced.follow_template_style = true;
+		}
 		if (!advanced.organization) advanced.organization = 'clinical_priority';
 		if (!advanced.format) advanced.format = 'prose';
 		if (advanced.use_subsection_headers === undefined) advanced.use_subsection_headers = false;
@@ -17,7 +25,7 @@
 	}
 
 	$: if (section === 'impression') {
-		if (!advanced.verbosity_style) advanced.verbosity_style = 'standard';
+		if (!advanced.verbosity_style) advanced.verbosity_style = 'prose';
 		if (!advanced.format) advanced.format = 'prose';
 		if (!advanced.differential_approach) {
 			if (advanced.differential_style) {
@@ -49,13 +57,9 @@
 				text: "Large filling defects in the right pulmonary artery extending to segmental branches. Additional defect in the left lower lobe. Right ventricle dilated, RV/LV ratio 1.3. Mild IVC reflux. Small right effusion.",
 				desc: "Essentials only • Strip non-clinical words • Consultant-to-consultant style"
 			},
-			standard: {
+			prose: {
 				text: "Large filling defects are present in the right main pulmonary artery, extending into segmental branches. An additional filling defect is identified in the left lower lobe. The right ventricle is moderately dilated with an RV/LV ratio of 1.3. Mild IVC reflux suggests right heart strain. A small right pleural effusion is present.",
 				desc: "Clinically relevant details • Balanced readability • Natural flow"
-			},
-			detailed: {
-				text: "Multiple large filling defects are identified within the right main pulmonary artery, extending distally into the segmental branches of the right upper and lower lobes. An additional filling defect is present in the posterior basal segmental artery of the left lower lobe. The right ventricle demonstrates moderate dilatation with an RV/LV ratio of 1.3. Associated mild reflux of contrast material into the IVC and hepatic veins is observed. A small right-sided pleural effusion is noted.",
-				desc: "Complete characterization • Full precision • Rich descriptive language"
 			}
 		},
 		impression: {
@@ -63,13 +67,9 @@
 				text: "Bilateral pulmonary emboli with right heart strain.",
 				desc: "Essential diagnosis only • Corridor conversation style"
 			},
-			standard: {
+			prose: {
 				text: "Bilateral pulmonary emboli are present with right heart strain. A small right pleural effusion and right lower lobe infarction are noted.",
 				desc: "Clinically relevant findings • Balanced professional summary • Actionable incidentals only"
-			},
-			detailed: {
-				text: "Bilateral pulmonary emboli are present with RV dilatation (RV/LV 1.3) and contrast reflux. Additional findings include a small right pleural effusion and wedge-shaped consolidation in the RLL consistent with infarction.",
-				desc: "Comprehensive documentation • Full characterization • Actionable incidentals only"
 			}
 		}
 	};
@@ -81,46 +81,72 @@
 
 <div class="space-y-6">
 	{#if section === 'findings'}
-		<!-- Writing Style -->
-		<div class="control-group">
-			<div class="control-label">
-				<span class="label-icon">✍️</span>
-				<span class="label-text">Writing Style</span>
-			</div>
-			
-			<div class="option-grid">
-				{#each [
-					{ value: 'concise', icon: '⚡', label: 'Concise', desc: 'Brief, essential details only' },
-					{ value: 'standard', icon: '⚖️', label: 'Standard', desc: 'Balanced NHS style' },
-					{ value: 'detailed', icon: '📚', label: 'Detailed', desc: 'Comprehensive with precision' }
-				] as opt}
-					<label class="option-card {advanced.writing_style === opt.value ? 'selected' : ''}">
-						<input type="radio" bind:group={advanced.writing_style} value={opt.value} onchange={handleFieldChange} />
-						<div class="option-icon">{opt.icon}</div>
-						<div class="option-content">
-							<div class="option-title">{opt.label}</div>
-							<div class="option-desc">{opt.desc}</div>
-						</div>
-					</label>
-				{/each}
-			</div>
-
-			<div 
-				class="example-container"
-				onmouseenter={() => hoveredExample = 'findings-writing'}
-				onmouseleave={() => hoveredExample = null}
-			>
-				<div class="example-header">
-					<span class="example-icon">💡</span>
-					<span class="example-label">EXAMPLE</span>
-					<span class="example-hint">{hoveredExample === 'findings-writing' ? advanced.writing_style : 'Hover to view'}</span>
+		<!-- Template Fidelity Toggle (only for normal_template and guided_template) -->
+		{#if showTemplateFidelityToggle}
+			<div class="control-group template-fidelity-section">
+				<div class="control-label">
+					<span class="label-icon">🎯</span>
+					<span class="label-text">Template Style</span>
 				</div>
-				{#if hoveredExample === 'findings-writing'}
-					<p class="example-desc">{examples.findings[advanced.writing_style].desc}</p>
-					<div class="example-text">{examples.findings[advanced.writing_style].text}</div>
-				{/if}
+				<label class="toggle-switch-container">
+					<input 
+						type="checkbox" 
+						bind:checked={advanced.follow_template_style}
+						onchange={handleFieldChange}
+						class="toggle-switch-input"
+					/>
+					<div class="toggle-switch-track">
+						<div class="toggle-switch-thumb"></div>
+					</div>
+					<div class="toggle-switch-content">
+						<span class="toggle-switch-label">Follow Template Style</span>
+						<span class="toggle-switch-desc">Match the template's established voice and sentence structure</span>
+					</div>
+				</label>
 			</div>
-		</div>
+		{/if}
+
+		<!-- Writing Style (shown when template fidelity is OFF or not available) -->
+		{#if !showTemplateFidelityToggle || !advanced.follow_template_style}
+			<div class="control-group">
+				<div class="control-label">
+					<span class="label-icon">✍️</span>
+					<span class="label-text">Writing Style</span>
+				</div>
+				
+				<div class="option-grid">
+					{#each [
+						{ value: 'concise', icon: '⚡', label: 'Concise', desc: 'Brief, essential details only' },
+						{ value: 'prose', icon: '⚖️', label: 'Prose', desc: 'Balanced prose' }
+					] as opt}
+						<label class="option-card {advanced.writing_style === opt.value ? 'selected' : ''}">
+							<input type="radio" bind:group={advanced.writing_style} value={opt.value} onchange={handleFieldChange} />
+							<div class="option-icon">{opt.icon}</div>
+							<div class="option-content">
+								<div class="option-title">{opt.label}</div>
+								<div class="option-desc">{opt.desc}</div>
+							</div>
+						</label>
+					{/each}
+				</div>
+
+				<div 
+					class="example-container"
+					onmouseenter={() => hoveredExample = 'findings-writing'}
+					onmouseleave={() => hoveredExample = null}
+				>
+					<div class="example-header">
+						<span class="example-icon">💡</span>
+						<span class="example-label">EXAMPLE</span>
+						<span class="example-hint">{hoveredExample === 'findings-writing' ? advanced.writing_style : 'Hover to view'}</span>
+					</div>
+					{#if hoveredExample === 'findings-writing'}
+						<p class="example-desc">{examples.findings[advanced.writing_style]?.desc || ''}</p>
+						<div class="example-text">{examples.findings[advanced.writing_style]?.text || ''}</div>
+					{/if}
+				</div>
+			</div>
+		{/if}
 
 		<!-- Organization -->
 		<div class="control-group">
@@ -158,18 +184,19 @@
 
 		<!-- Subsection Headers -->
 		<div class="control-group">
-			<label class="checkbox-option">
-				<input type="checkbox" bind:checked={advanced.use_subsection_headers} onchange={handleFieldChange} />
-				<div class="checkbox-box">
-					{#if advanced.use_subsection_headers}
-						<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-						</svg>
-					{/if}
+			<label class="toggle-switch-container">
+				<input 
+					type="checkbox" 
+					bind:checked={advanced.use_subsection_headers}
+					onchange={handleFieldChange}
+					class="toggle-switch-input"
+				/>
+				<div class="toggle-switch-track">
+					<div class="toggle-switch-thumb"></div>
 				</div>
-				<div class="checkbox-content">
-					<div class="checkbox-label">Use Subsection Headers</div>
-					<div class="checkbox-desc">Add anatomical headers (CHEST:, ABDOMEN:)</div>
+				<div class="toggle-switch-content">
+					<span class="toggle-switch-label">Use Subsection Headers</span>
+					<span class="toggle-switch-desc">Add anatomical headers (CHEST:, ABDOMEN:)</span>
 				</div>
 			</label>
 		</div>
@@ -202,8 +229,7 @@
 			<div class="option-grid">
 				{#each [
 					{ value: 'brief', icon: '⚡', label: 'Brief', desc: 'Direct diagnosis only' },
-					{ value: 'standard', icon: '⚖️', label: 'Standard', desc: 'Main diagnosis with key details' },
-					{ value: 'detailed', icon: '📚', label: 'Detailed', desc: 'Comprehensive descriptions' }
+					{ value: 'prose', icon: '⚖️', label: 'Prose', desc: 'Main diagnosis with key details' }
 				] as opt}
 					<label class="option-card {advanced.verbosity_style === opt.value ? 'selected' : ''}">
 						<input type="radio" bind:group={advanced.verbosity_style} value={opt.value} onchange={handleFieldChange} />
@@ -368,24 +394,25 @@
 	/* Option Cards Grid */
 	.option-grid {
 		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 0.75rem;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 1rem;
 		margin-bottom: 1rem;
 	}
 
 	.option-card {
 		position: relative;
-		padding: 1.25rem 1rem;
+		padding: 1.5rem 1.25rem;
 		background: rgba(255, 255, 255, 0.02);
 		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 0.5rem;
+		border-radius: 0.625rem;
 		cursor: pointer;
-		transition: all 0.2s ease;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		text-align: center;
-		gap: 0.75rem;
+		gap: 0.875rem;
+		min-height: 140px;
 	}
 
 	.option-card input {
@@ -396,51 +423,64 @@
 	}
 
 	.option-card:hover {
-		background: rgba(255, 255, 255, 0.04);
-		border-color: rgba(139, 92, 246, 0.4);
-		transform: translateY(-1px);
+		background: rgba(255, 255, 255, 0.05);
+		border-color: rgba(139, 92, 246, 0.5);
+		transform: translateY(-3px);
+		box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(139, 92, 246, 0.2);
 	}
 
 	.option-card.selected {
-		background: rgba(139, 92, 246, 0.1);
+		background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(139, 92, 246, 0.08));
 		border-color: rgb(139, 92, 246);
+		box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1);
+	}
+
+	.option-card.selected:hover {
+		transform: translateY(-3px);
+		box-shadow: 0 8px 20px rgba(139, 92, 246, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.15);
 	}
 
 	.option-icon {
-		font-size: 2rem;
+		font-size: 2.25rem;
 		line-height: 1;
+		filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
 	}
 
 	.option-content {
 		flex: 1;
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
 	}
 
 	.option-title {
-		font-size: 0.875rem;
+		font-size: 0.9375rem;
 		font-weight: 600;
-		color: #e5e7eb;
-		margin-bottom: 0.25rem;
+		color: #f3f4f6;
+		margin-bottom: 0.375rem;
+		letter-spacing: 0.01em;
 	}
 
 	.option-desc {
-		font-size: 0.75rem;
-		color: #9ca3af;
-		line-height: 1.3;
+		font-size: 0.8125rem;
+		color: #d1d5db;
+		line-height: 1.4;
 	}
 
 	/* Example Container */
 	.example-container {
 		background: rgba(255, 255, 255, 0.02);
 		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 0.5rem;
-		padding: 1rem;
-		transition: all 0.2s ease;
+		border-radius: 0.625rem;
+		padding: 1.25rem;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 		cursor: default;
 	}
 
 	.example-container:hover {
-		background: rgba(255, 255, 255, 0.04);
-		border-color: rgba(139, 92, 246, 0.3);
+		background: rgba(255, 255, 255, 0.05);
+		border-color: rgba(139, 92, 246, 0.35);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 	}
 
 	.example-header {
@@ -478,14 +518,15 @@
 	}
 
 	.example-text {
-		margin-top: 0.75rem;
-		padding: 0.75rem;
-		background: rgba(0, 0, 0, 0.2);
-		border-radius: 0.375rem;
+		margin-top: 0.875rem;
+		padding: 1rem;
+		background: rgba(0, 0, 0, 0.25);
+		border: 1px solid rgba(255, 255, 255, 0.05);
+		border-radius: 0.5rem;
 		font-size: 0.8125rem;
-		line-height: 1.6;
-		color: #d1d5db;
-		animation: fadeIn 0.2s ease-out;
+		line-height: 1.65;
+		color: #e5e7eb;
+		animation: fadeIn 0.3s ease-out;
 	}
 
 	@keyframes fadeIn {
@@ -696,5 +737,109 @@
 
 	.textarea-input::placeholder {
 		color: #6b7280;
+	}
+
+	/* Template Fidelity Section - Elevated Design */
+	.template-fidelity-section {
+		position: relative;
+		padding: 1.25rem;
+		background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(139, 92, 246, 0.04));
+		border: 1px solid rgba(139, 92, 246, 0.3);
+		border-radius: 0.75rem;
+		box-shadow: 0 4px 12px rgba(139, 92, 246, 0.15);
+	}
+
+	/* Animated Toggle Switch */
+	.toggle-switch-container {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		padding: 1rem;
+		background: rgba(0, 0, 0, 0.2);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 0.625rem;
+		cursor: pointer;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		position: relative;
+	}
+
+	.toggle-switch-container:hover {
+		background: rgba(0, 0, 0, 0.25);
+		border-color: rgba(139, 92, 246, 0.4);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
+	}
+
+	.toggle-switch-input {
+		position: absolute;
+		opacity: 0;
+		width: 0;
+		height: 0;
+	}
+
+	.toggle-switch-track {
+		position: relative;
+		width: 3rem;
+		height: 1.5rem;
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 0.75rem;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		flex-shrink: 0;
+	}
+
+	.toggle-switch-input:checked ~ .toggle-switch-track {
+		background: linear-gradient(135deg, rgb(139, 92, 246), rgb(124, 58, 237));
+		box-shadow: 0 0 12px rgba(139, 92, 246, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.2);
+	}
+
+	.toggle-switch-thumb {
+		position: absolute;
+		top: 0.125rem;
+		left: 0.125rem;
+		width: 1.25rem;
+		height: 1.25rem;
+		background: white;
+		border-radius: 50%;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+	}
+
+	.toggle-switch-input:checked ~ .toggle-switch-track .toggle-switch-thumb {
+		transform: translateX(1.5rem);
+		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+	}
+
+	.toggle-switch-content {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.toggle-switch-label {
+		font-size: 0.9375rem;
+		font-weight: 600;
+		color: #f3f4f6;
+		letter-spacing: 0.01em;
+	}
+
+	.toggle-switch-desc {
+		font-size: 0.8125rem;
+		color: #d1d5db;
+		line-height: 1.4;
+	}
+
+	/* Pulse animation when hovering */
+	.toggle-switch-container:hover .toggle-switch-track {
+		animation: pulse-glow 2s ease-in-out infinite;
+	}
+
+	@keyframes pulse-glow {
+		0%, 100% {
+			box-shadow: 0 0 0 rgba(139, 92, 246, 0);
+		}
+		50% {
+			box-shadow: 0 0 8px rgba(139, 92, 246, 0.3);
+		}
 	}
 </style>
