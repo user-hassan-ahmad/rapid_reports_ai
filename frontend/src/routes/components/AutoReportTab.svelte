@@ -29,7 +29,6 @@
 		anthropic_configured: false,
 		groq_configured: false,
 		deepgram_configured: false,
-		has_at_least_one_model: false,
 		using_user_keys: {
 			deepgram: false
 		}

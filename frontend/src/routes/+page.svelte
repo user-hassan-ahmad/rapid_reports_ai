@@ -34,7 +34,6 @@ import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 		anthropic_configured: boolean;
 		groq_configured: boolean;
 		deepgram_configured: boolean;
-		has_at_least_one_model: boolean;
 		using_user_keys: ApiKeyUsage;
 	};
 	type HistoryModalInput = {
@@ -183,7 +182,6 @@ let templatedModel = 'claude'; // Track model for template editor
 		anthropic_configured: false,
 		groq_configured: false,
 		deepgram_configured: false,
-		has_at_least_one_model: false,
 		using_user_keys: {
 			deepgram: false
 		}
@@ -238,7 +236,6 @@ let templatedModel = 'claude'; // Track model for template editor
 						anthropic_configured: data.anthropic_configured || false,
 						groq_configured: data.groq_configured || false,
 						deepgram_configured: data.deepgram_configured || false,
-						has_at_least_one_model: data.has_at_least_one_model || false,
 						using_user_keys: data.using_user_keys || {
 							deepgram: false
 						}
@@ -628,30 +625,6 @@ $: if (!isEnhancementContext && sidebarVisible) {
 			</div>
 		{:else if $isAuthenticated}
 			<div class="p-4 md:p-6">
-				<!-- Warning Banner for Missing API Keys -->
-				{#if !loadingApiStatus && !apiKeyStatus.has_at_least_one_model}
-					<div class="mb-6 p-4 rounded-lg border-2 border-yellow-500/50 bg-yellow-500/10 text-yellow-300">
-						<div class="flex items-start gap-3">
-							<svg class="w-6 h-6 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-							</svg>
-							<div class="flex-1">
-								<h3 class="font-bold text-lg mb-1">⚠️ Setup Required</h3>
-								<p class="text-sm mb-3">
-									You need to configure at least one AI model (Claude or Gemini) to use this app. 
-									Please add your API keys in the Settings page.
-								</p>
-								<button
-								on:click={() => { activeTab = 'settings'; }}
-									class="text-sm px-4 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/50 rounded-lg transition-colors font-medium"
-								>
-									Go to Settings →
-								</button>
-							</div>
-						</div>
-					</div>
-				{/if}
-				
 				<!-- Auto Report Tab - Keep component alive, just hide/show -->
 				<div class={activeTab === 'auto' ? '' : 'hidden'}>
 					{#if loadingApiStatus || loadingUseCases}
