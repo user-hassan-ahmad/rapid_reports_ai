@@ -430,6 +430,7 @@ let templatedModel = 'claude'; // Track model for template editor
 		}
 	});
 
+
 	onDestroy(() => {
 		if (browser) {
 			window.removeEventListener('hashchange', handleHashChange);

@@ -174,7 +174,8 @@
 				</a>
 			</div>
 			<p class="text-sm text-gray-400 mt-4">
-				Currently in beta · Free to use · No payment required
+				Currently in beta ·
+				<a href="/docs" class="text-purple-400 hover:text-purple-300 underline">View Documentation</a>
 			</p>
 		</div>
 
@@ -999,6 +1000,7 @@
 					<ul class="space-y-2 text-sm">
 						<li><a href="#features" class="text-gray-400 hover:text-white transition-colors">Features</a></li>
 						<li><a href="#how-it-works" class="text-gray-400 hover:text-white transition-colors">How It Works</a></li>
+						<li><a href="/docs" class="text-gray-400 hover:text-white transition-colors">Documentation</a></li>
 						<li><a href="/register" class="text-gray-400 hover:text-white transition-colors">Try Beta</a></li>
 					</ul>
 				</div>

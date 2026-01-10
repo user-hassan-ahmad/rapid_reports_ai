@@ -23,4 +23,3 @@ export const load: PageLoad = async ({ parent }) => {
 	// The layout will verify the token and set isAuthenticated
 	return {};
 };
-

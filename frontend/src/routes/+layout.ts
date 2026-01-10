@@ -18,7 +18,8 @@ export const load: LayoutLoad = async ({ url, fetch }) => {
 		'/forgot-password',
 		'/reset-password',
 		'/verify-email',
-		'/resend-verification'
+		'/resend-verification',
+		'/docs'
 	].includes(url.pathname);
 	
 	// If no token and trying to access protected route
@@ -40,8 +41,9 @@ export const load: LayoutLoad = async ({ url, fetch }) => {
 					user.set(data.user);
 					isAuthenticated.set(true);
 					
-					// Token valid - if on public route, redirect to main app
-					if (isPublicRoute && url.pathname !== '/') {
+					// Token valid - if on public route, redirect to main app (except /docs which is accessible to everyone)
+					// Don't redirect if navigating to /docs - allow it for authenticated users
+					if (isPublicRoute && url.pathname !== '/' && url.pathname !== '/docs') {
 						throw redirect(302, '/');
 					}
 					return { user: data.user, authenticated: true };
