@@ -493,6 +493,81 @@ PROSE STYLE (CRITICAL - This determines readability):
 
 ═══════════════════════════════════════════════════════════════════
 
+MULTI-LEVEL ANATOMY - CRITICAL PATTERN (for spine, vascular, etc.):
+
+When generating templates for anatomy assessed at multiple levels/locations:
+
+AVOID: Binary "normal/abnormal" baselines that can be contradicted
+AVOID: Global statements before level-specific findings
+
+WRONG PATTERN (creates contradictions):
+✗ "Facet joints appear [normal/abnormal] bilaterally..."
+   Then user provides: "L5-S1 has hypertrophy"
+   Result: "normal bilaterally... However, hypertrophy at L5-S1" ← CONTRADICTION
+
+✗ "Central canal is [patent/stenotic] throughout"
+   Then user provides: "stenosis at L4-L5"
+   Result: Unclear if other levels normal or not assessed
+
+CORRECT PATTERN (allows level-specific findings):
+
+Option A - Presence-Based (Best for pathology):
+✓ "[No/Present] [specific pathology] [if present: specify levels and severity]"
+
+Example:
+FACET JOINTS
+[No/Present] facet joint hypertrophy [if present: specify levels]. [No/Present] facet arthropathy. [No/Present] facet joint effusion.
+
+Option B - Level-by-Level (Best for systematic assessment):
+✓ "At [level]: [finding]. At [level]: [finding]."
+
+Example:
+NEURAL FORAMINA
+At L3-L4: right [patent/mild/moderate/severe stenosis], left [patent/mild/moderate/severe stenosis].
+At L4-L5: right [patent/mild/moderate/severe stenosis], left [patent/mild/moderate/severe stenosis].
+At L5-S1: right [patent/mild/moderate/severe stenosis], left [patent/mild/moderate/severe stenosis].
+
+Option C - Conditional General Statement (For attributes that apply globally):
+✓ "Disc heights [preserved/reduced] at all levels. [No/Mild/Moderate/Severe] disc desiccation."
+   Then: "At L4-L5: [specific abnormality if present]."
+
+Works because: "Heights preserved" doesn't contradict "herniation present" (different attributes)
+
+WHEN TO USE EACH:
+
+Use Option A (Presence-Based) when:
+- Pathology can occur at any subset of levels
+- Normal state is "absent"
+- Examples: hypertrophy, effusion, fracture, mass
+
+Use Option B (Level-by-Level) when:
+- Need systematic documentation at each level
+- Bilateral structures at each level
+- Examples: foramina, facets at each disc level, vessel branches
+
+Use Option C (Conditional General) when:
+- Attribute applies globally (heights, signal, calibre)
+- Then add specific pathology by level
+- Examples: vertebral body heights, disc hydration
+
+COMPLEX MULTI-FACTOR FINDINGS:
+
+For findings with multiple contributing factors (e.g., stenosis from disc + facets + ligament):
+
+✓ Integrate causes in description:
+"At L5-S1: central canal stenosis (AP diameter xxx mm) due to disc protrusion, facet hypertrophy, and ligamentum flavum thickening."
+
+✗ Don't scatter causes across sections:
+DISC SECTION: "disc protrusion"
+FACET SECTION: "facet hypertrophy"  
+LIGAMENT SECTION: "ligamentum flavum thickening"
+CANAL SECTION: "stenosis present" ← doesn't connect causes
+
+Include // instruction:
+// Describe stenosis with contributing factors: disc, facets, ligamentum flavum
+
+═══════════════════════════════════════════════════════════════════
+
 PLACEHOLDER TYPES (use EXACTLY as specified):
 
 1. VARIABLES: {VAR_NAME}
@@ -2108,10 +2183,24 @@ CRITICAL SEQUENCING:
    - Search user findings for variable name (e.g., {{LVEF}} → find "LVEF" or "ejection fraction")
    - Replace with exact value found
    - If NOT found in input → LEAVE AS {{VAR}} (do not fabricate)
+   - **CRITICAL**: Do NOT replace {{VAR}} with phrases like "not specified", "not provided", "not measured"
+   - The {{VAR}} placeholder must remain in output for post-processing detection
 
 2. xxx measurements:
    - Replace with measurements from findings
-   - If measurement not provided → LEAVE AS xxx (do not estimate)
+   - If measurement not provided → LEAVE AS xxx EXACTLY (do not estimate)
+   - **CRITICAL**: Do NOT replace xxx with phrases like "not specified", "not provided", "not measured"
+   - The xxx placeholder must remain in output for post-processing detection
+   - Example: "diameter xxx mm" stays as "diameter xxx mm" if no measurement given
+   
+   WRONG transformations to AVOID:
+   ✗ "diameter xxx mm" → "diameter is not specified"
+   ✗ "diameter xxx mm" → "diameter not provided"  
+   ✗ "diameter xxx mm" → "diameter not measured"
+   ✗ "measuring xxx mm" → "size not documented"
+   
+   CORRECT behavior:
+   ✓ "diameter xxx mm" → "diameter xxx mm" (unchanged if no measurement)
 
 3. [option1/option2] alternatives:
    - SELECT the most appropriate option based on findings
@@ -2233,6 +2322,25 @@ CRITICAL SEQUENCING:
      // CORRECT OUTPUT:
      //UNFILLED: AORTA
      ```
+
+**PLACEHOLDER PRESERVATION - CRITICAL**:
+
+When a placeholder cannot be filled from user input:
+- xxx measurements: LEAVE AS "xxx" - do not substitute explanatory text
+- {{VAR}} variables: LEAVE AS "{{VAR}}" - do not substitute explanatory text
+
+Post-processing will detect and highlight unfilled placeholders.
+Your job is template filling, not explaining missing data.
+
+Examples of WRONG behavior (do not do this):
+✗ "diameter xxx mm" → "diameter is not specified"
+✗ "LVEF {{LVEF}}%" → "LVEF not provided"
+✗ "measuring xxx cm" → "size not documented"
+
+Examples of CORRECT behavior:
+✓ "diameter xxx mm" → "diameter xxx mm" (unchanged)
+✓ "LVEF {{LVEF}}%" → "LVEF {{LVEF}}%" (unchanged)
+✓ "measuring xxx cm" → "measuring xxx cm" (unchanged)
 
 **CRITICAL FIDELITY RULES**:
 - PRESERVE template structure and wording as much as possible

@@ -3883,8 +3883,20 @@ PRESERVE EXACT STRUCTURE:
 - Do NOT reorganize or restructure content
 - Preserve all measurement placeholders, variables, and alternatives as filled
 
+**PLACEHOLDER PRESERVATION (CRITICAL)**:
+- Unfilled xxx measurements: Must remain as "xxx" exactly
+- Unfilled {{VAR}} variables: Must remain as "{{VAR}}" exactly
+- Do NOT replace with explanatory text like "not specified", "not provided", "not measured"
+- Do NOT remove or alter unfilled placeholders
+- Post-processing will detect and handle unfilled placeholders
+- Examples:
+  ✓ KEEP: "diameter xxx mm" (if xxx unfilled)
+  ✓ KEEP: "LVEF {{LVEF}}%" (if {{LVEF}} unfilled)
+  ✗ NEVER: "diameter xxx mm" → "diameter not specified"
+  ✗ NEVER: "{{LVEF}}%" → "LVEF not provided"
+
 ONLY refine for quality:
-- British English spelling (tumour, haemorrhage, oesophagus, centre, litre)
+- British English spelling (tumour, haemorrhage, oesophagus, centre, litre, calibre)
 - Medical terminology accuracy (fix anatomical errors only)
 - Grammatical correctness (fix subject-verb agreement, tense errors)
 - Grammatical flow of augmented clinical details
@@ -3895,8 +3907,9 @@ DO NOT apply:
 - Sentence structure modifications
 - Phrasing improvements beyond grammatical fixes
 - Removal of augmented user details
+- Replacement of unfilled placeholders with explanatory text
 
-CRITICAL: Template structure is sacred. User detail augmentations are sacred. Only fix linguistic and anatomical errors."""
+CRITICAL: Template structure is sacred. User detail augmentations are sacred. Unfilled placeholders are sacred. Only fix linguistic and anatomical errors."""
         
         block = f"""{style_guidance}
 
