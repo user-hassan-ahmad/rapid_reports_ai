@@ -840,7 +840,7 @@ Generate the template now. Remember: simplicity and clarity are key."""
             user_prompt = f"""Create a FINDINGS section template for {scan_type} with {contrast} contrast."""
 
         # Get API key
-        model_name = "zai-glm-4.6"  # Cerebras Zai-GLM for template generation
+        model_name = "zai-glm-4.7"  # Cerebras Zai-GLM for template generation
         if not api_key:
             provider = _get_model_provider(model_name)
             api_key = _get_api_key_for_provider(provider)
@@ -922,7 +922,7 @@ Examples:
 Generate suggestions now."""
 
         # Get API key  
-        model_name = "zai-glm-4.6"  # Cerebras Zai-GLM for instruction suggestions
+        model_name = "zai-glm-4.7"  # Cerebras Zai-GLM for instruction suggestions
         if not api_key:
             provider = _get_model_provider(model_name)
             api_key = _get_api_key_for_provider(provider)
@@ -2726,7 +2726,7 @@ Generate the report now as valid JSON.
 """
         
         # Generate report with new structured system
-        model_name = "zai-glm-4.6"  # Primary model for structured templates
+        model_name = "zai-glm-4.7"  # Primary model for structured templates
         provider = _get_model_provider(model_name)
         api_key = _get_api_key_for_provider(provider)
         
@@ -2757,7 +2757,7 @@ Generate the report now as valid JSON.
             # Don't append signature yet - will append after validation
             report_output = result.output
             
-            # LINGUISTIC VALIDATION for zai-glm-4.6 (conditionally enabled)
+            # LINGUISTIC VALIDATION for zai-glm-4.7 (conditionally enabled)
             import os
             ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
             
@@ -2858,7 +2858,7 @@ Generate the report now as valid JSON.
                     
                     # Don't append signature yet - will append after validation
                     
-                    # LINGUISTIC VALIDATION for zai-glm-4.6 (conditionally enabled)
+                    # LINGUISTIC VALIDATION for zai-glm-4.7 (conditionally enabled)
                     import os
                     ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
                     

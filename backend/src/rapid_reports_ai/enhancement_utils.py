@@ -64,7 +64,7 @@ from .enhancement_models import (
 # Update this dictionary to change models without modifying code throughout the codebase
 MODEL_CONFIG = {
     # Report Generation Models
-    "PRIMARY_REPORT_GENERATOR": "zai-glm-4.6",  # Primary model for report generation (Cerebras Zai-GLM-4.6)
+    "PRIMARY_REPORT_GENERATOR": "zai-glm-4.7",  # Primary model for report generation (Cerebras Zai-GLM-4.6)
     "FALLBACK_REPORT_GENERATOR": "claude-sonnet-4-20250514",  # Fallback model if primary fails after retries (Claude Sonnet 4)
     
     # Structure Validation Models
@@ -91,8 +91,8 @@ MODEL_CONFIG = {
     "ACTION_APPLIER": "gpt-oss-120b",  # Apply enhancement actions to reports (primary - Cerebras GPT-OSS-120B with high reasoning)
     "ACTION_APPLIER_FALLBACK": "qwen/qwen3-32b",  # Fallback for action application (Qwen)
     
-    # Linguistic Validation Models (for zai-glm-4.6 post-processing)
-    "ZAI_GLM_LINGUISTIC_VALIDATOR": "llama-3.3-70b",  # Linguistic/anatomical correction for zai-glm-4.6 output (Cerebras-hosted Llama)
+    # Linguistic Validation Models (for zai-glm-4.7 post-processing)
+    "ZAI_GLM_LINGUISTIC_VALIDATOR": "llama-3.3-70b",  # Linguistic/anatomical correction for zai-glm-4.7 output (Cerebras-hosted Llama)
 }
 
 # Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
@@ -115,7 +115,7 @@ MODEL_PROVIDERS = {
     
     # Cerebras models
     "gpt-oss-120b": "cerebras",
-    "zai-glm-4.6": "cerebras",
+    "zai-glm-4.7": "cerebras",
     "llama-3.3-70b": "cerebras",  # Cerebras-hosted Llama for linguistic validation
     "qwen-3-235b-a22b-instruct-2507": "cerebras",  # Cerebras-hosted Qwen for linguistic validation
 }
@@ -3017,11 +3017,11 @@ async def generate_auto_report(
             model_settings = {
                 "temperature": 1,
             }
-            if primary_model == "zai-glm-4.6":
+            if primary_model == "zai-glm-4.7":
                 model_settings["max_completion_tokens"] = 40960
                 model_settings["temperature"] = 0.3
                 model_settings["top_p"] = 0.7
-                print(f"  └─ Using Cerebras zai-glm-4.6 with max_completion_tokens=40960, temperature=0.3, top_p=0.7 for {primary_model}")
+                print(f"  └─ Using Cerebras zai-glm-4.7 with max_completion_tokens=40960, temperature=0.3, top_p=0.7 for {primary_model}")
             elif primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
@@ -3073,15 +3073,15 @@ async def generate_auto_report(
         print(report_output.report_content)
         print(f"{'='*80}\n")
         
-        # LINGUISTIC VALIDATION for zai-glm-4.6 (conditionally enabled)
-        if primary_model == "zai-glm-4.6":
+        # LINGUISTIC VALIDATION for zai-glm-4.7 (conditionally enabled)
+        if primary_model == "zai-glm-4.7":
             import os
             ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
             
             if ENABLE_LINGUISTIC_VALIDATION:
                 try:
                     print(f"\n{'='*80}")
-                    print(f"🔍 LINGUISTIC VALIDATION - Starting for zai-glm-4.6")
+                    print(f"🔍 LINGUISTIC VALIDATION - Starting for zai-glm-4.7")
                     print(f"{'='*80}")
                     
                     validated_content = await validate_zai_glm_linguistics(
@@ -3169,8 +3169,8 @@ async def generate_templated_report(
     import os
     
     start_time = time.time()
-    # Templated reports use zai-glm-4.6 as primary, Claude as fallback
-    primary_model = "zai-glm-4.6"
+    # Templated reports use zai-glm-4.7 as primary, Claude as fallback
+    primary_model = "zai-glm-4.7"
     fallback_model = "claude-sonnet-4-20250514"
     provider = _get_model_provider(primary_model)
     
@@ -3191,11 +3191,11 @@ async def generate_templated_report(
             model_settings = {
                 "temperature": 0.7,
             }
-            if primary_model == "zai-glm-4.6":
+            if primary_model == "zai-glm-4.7":
                 model_settings["max_completion_tokens"] = 40960
                 model_settings["temperature"] = 0.3
                 model_settings["top_p"] = 0.7
-                print(f"  └─ Using Cerebras zai-glm-4.6 with max_completion_tokens=40960, temperature=0.3, top_p=0.7 for {primary_model}")
+                print(f"  └─ Using Cerebras zai-glm-4.7 with max_completion_tokens=40960, temperature=0.3, top_p=0.7 for {primary_model}")
             elif primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
@@ -3247,15 +3247,15 @@ async def generate_templated_report(
         print(report_output.report_content)
         print(f"{'='*80}\n")
         
-        # LINGUISTIC VALIDATION for zai-glm-4.6 (conditionally enabled)
-        if primary_model == "zai-glm-4.6":
+        # LINGUISTIC VALIDATION for zai-glm-4.7 (conditionally enabled)
+        if primary_model == "zai-glm-4.7":
             import os
             ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
             
             if ENABLE_LINGUISTIC_VALIDATION:
                 try:
                     print(f"\n{'='*80}")
-                    print(f"🔍 LINGUISTIC VALIDATION - Starting for zai-glm-4.6")
+                    print(f"🔍 LINGUISTIC VALIDATION - Starting for zai-glm-4.7")
                     print(f"{'='*80}")
                     
                     validated_content = await validate_zai_glm_linguistics(
@@ -3506,17 +3506,17 @@ async def validate_zai_glm_linguistics(
     description: str = ""
 ) -> str:
     """
-    Validate and correct linguistic/anatomical errors in zai-glm-4.6 generated reports.
+    Validate and correct linguistic/anatomical errors in zai-glm-4.7 generated reports.
     Uses Cerebras llama-3.3-70b to fix British English grammar, anatomical errors,
     and redundant qualifiers without altering clinical content.
     
-    This function addresses specific issues from the Chinese zai-glm-4.6 model:
+    This function addresses specific issues from the Chinese zai-glm-4.7 model:
     - Anatomical errors (e.g., "liver demonstrates gallstones" → "gallbladder contains gallstones")
     - Redundant qualifiers (e.g., "Large 5cm stone" → "5 cm stone")
     - Translation artifacts from internal Chinese→English conversion
     
     Args:
-        report_content: The generated report text from zai-glm-4.6
+        report_content: The generated report text from zai-glm-4.7
         scan_type: The scan type for context (optional)
         description: The report description for context (optional)
     
@@ -3530,7 +3530,7 @@ async def validate_zai_glm_linguistics(
     import time
     
     start_time = time.time()
-    print(f"\n[LINGUISTIC VALIDATION] Starting linguistic validation for zai-glm-4.6")
+    print(f"\n[LINGUISTIC VALIDATION] Starting linguistic validation for zai-glm-4.7")
     print(f"[LINGUISTIC VALIDATION]   Report length: {len(report_content)} chars")
     print(f"[LINGUISTIC VALIDATION]   Scan type: '{scan_type}'")
     
@@ -3675,7 +3675,7 @@ async def validate_template_linguistics(
     while preserving all organizational and structural decisions made by the primary model.
     
     Args:
-        report_content: The generated report text from zai-glm-4.6
+        report_content: The generated report text from zai-glm-4.7
         template_config: Full template configuration with section configs
         user_inputs: User inputs including FINDINGS for context
         scan_type: The scan type for context (optional)

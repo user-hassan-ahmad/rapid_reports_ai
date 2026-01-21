@@ -410,7 +410,7 @@ class TemplateGenerateRequest(BaseModel):
     user_inputs: Dict[str, str]  # New format: user_inputs dict
     # Legacy format (deprecated)
     variables: Optional[Dict[str, str]] = None
-    model: str = "zai-glm-4.6"  # Uses zai-glm-4.6 as primary
+    model: str = "zai-glm-4.7"  # Uses zai-glm-4.7 as primary
 
 
 # Wizard assistance request models
