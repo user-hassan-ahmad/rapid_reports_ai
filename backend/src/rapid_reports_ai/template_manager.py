@@ -2748,9 +2748,13 @@ Generate the report now as valid JSON.
                 api_key=api_key,
                 use_thinking=True,  # Enable reasoning for gpt-oss models
                 model_settings={
-                    "temperature": 0.3,
+                    "temperature": 0.8,
                     "top_p": 0.95,
-                    "max_completion_tokens": 4096
+                    "max_tokens": 40960,
+                    "extra_body": {
+                        "disable_reasoning": False,
+                        "clear_thinking": False,
+                    },
                 }
             )
             
@@ -2807,7 +2811,9 @@ Generate the report now as valid JSON.
                 'structured output' in error_str or
                 'response_format' in error_str or
                 'wrong_api_format' in error_str or
-                '422' in error_str
+                '422' in error_str or
+                'tool_choice' in error_str or
+                'tool_calls' in error_str
             )
             
             if is_structured_output_error:
@@ -2825,9 +2831,13 @@ Generate the report now as valid JSON.
                         api_key=api_key,
                         use_thinking=False,  # Disable thinking for fallback
                         model_settings={
-                            "temperature": 0.3,
+                            "temperature": 0.8,
                             "top_p": 0.95,
-                            "max_completion_tokens": 4096
+                            "max_tokens": 40960,
+                            "extra_body": {
+                                "disable_reasoning": False,
+                                "clear_thinking": False,
+                            },
                         }
                     )
                     

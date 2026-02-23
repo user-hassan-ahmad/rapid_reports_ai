@@ -2820,10 +2820,13 @@ async def _run_agent_with_model(
         if provider == 'cerebras':
             print(f"\n🔧 CEREBRAS MODEL SETTINGS ({model_name}):")
             print(f"  └─ temperature: {final_model_settings.get('temperature', 'not set')}")
+            print(f"  └─ top_p: {final_model_settings.get('top_p', 'not set')}")
             if 'max_completion_tokens' in final_model_settings:
                 print(f"  └─ max_completion_tokens: {final_model_settings.get('max_completion_tokens', 'not set')}")
             else:
                 print(f"  └─ max_tokens: {final_model_settings.get('max_tokens', 'not set')}")
+            if 'extra_body' in final_model_settings:
+                print(f"  └─ extra_body: {final_model_settings.get('extra_body')}")
             reasoning_effort = final_model_settings.get('reasoning_effort')
             if reasoning_effort:
                 print(f"  └─ reasoning_effort: {reasoning_effort} ✅")
@@ -3018,10 +3021,14 @@ async def generate_auto_report(
                 "temperature": 1,
             }
             if primary_model == "zai-glm-4.7":
-                model_settings["max_completion_tokens"] = 40960
-                model_settings["temperature"] = 0.3
-                model_settings["top_p"] = 0.7
-                print(f"  └─ Using Cerebras zai-glm-4.7 with max_completion_tokens=40960, temperature=0.3, top_p=0.7 for {primary_model}")
+                model_settings["max_tokens"] = 40960
+                model_settings["temperature"] = 0.8
+                model_settings["top_p"] = 0.95
+                model_settings["extra_body"] = {
+                    "disable_reasoning": False,
+                    "clear_thinking": False,
+                }
+                print(f"  └─ Using Cerebras zai-glm-4.7 with max_tokens=40960, temperature=0.8, top_p=0.95 (reasoning enabled) for {primary_model}")
             elif primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
@@ -3192,10 +3199,14 @@ async def generate_templated_report(
                 "temperature": 0.7,
             }
             if primary_model == "zai-glm-4.7":
-                model_settings["max_completion_tokens"] = 40960
-                model_settings["temperature"] = 0.3
-                model_settings["top_p"] = 0.7
-                print(f"  └─ Using Cerebras zai-glm-4.7 with max_completion_tokens=40960, temperature=0.3, top_p=0.7 for {primary_model}")
+                model_settings["max_tokens"] = 40960
+                model_settings["temperature"] = 0.8
+                model_settings["top_p"] = 0.95
+                model_settings["extra_body"] = {
+                    "disable_reasoning": False,
+                    "clear_thinking": False,
+                }
+                print(f"  └─ Using Cerebras zai-glm-4.7 with max_tokens=40960, temperature=0.8, top_p=0.95 (reasoning enabled) for {primary_model}")
             elif primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
