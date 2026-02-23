@@ -4252,23 +4252,16 @@ Note: These apply to the entire report. Focus on LINGUISTIC application - preser
 
 
 def _get_format_guidance(format_type: str, organization: str = 'clinical_priority') -> str:
-    """Get format-specific guidance for validator, conditional on organization"""
-    
-    if format_type == 'prose':
-        if organization == 'clinical_priority':
-            return """   Style: Flowing prose paragraphs with natural breaks
+    """Get format-specific guidance for validator. Supports frontend options: prose, bullets, numbered."""
+    prose_guidance = """   Style: Flowing prose paragraphs with natural breaks
    - ENSURE paragraph breaks between major anatomical regions or finding types
    - ENSURE grouping of related findings/entities within paragraphs
    - Add paragraph breaks where missing, without reorganizing content
    - Refine sentence quality while maintaining proper paragraph structure"""
-        else:  # template_order
-            return """   Style: Flowing prose paragraphs with natural breaks
-   - ENSURE paragraph breaks aligned with template's anatomical sections
-   - ENSURE template's structural organization in paragraph breaks
-   - Add paragraph breaks where missing, without reorganizing content
-   - Refine sentence quality while maintaining proper paragraph structure"""
-    
-    # Non-prose formats remain unchanged
+
+    if format_type == 'prose':
+        return prose_guidance
+
     guides = {
         'bullets': """   Style: Bullet points (•)
    - PRESERVE existing bullet structure (already generated)
@@ -4278,13 +4271,8 @@ def _get_format_guidance(format_type: str, organization: str = 'clinical_priorit
    - PRESERVE existing numbered structure (already generated)
    - Refine wording within each item
 """,
-        'headers': """   Style: Anatomical headers with content
-   - PRESERVE existing header structure (already generated)
-   - Refine content under each header
-"""
     }
-    
-    return guides.get(format_type, guides['prose'])
+    return guides.get(format_type, prose_guidance)
 
 
 # Removed _get_comparison_guidance - comparisons now handled within verbosity_style principles

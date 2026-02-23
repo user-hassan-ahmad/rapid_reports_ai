@@ -241,9 +241,9 @@ class TemplateManager:
                 'instructions': '',
                 'writing_style': 'prose',  # concise or prose
                 'follow_template_style': True,  # Only applies to normal_template and guided_template
-                'format': 'prose',  # prose, bullets, mixed
+                'format': 'prose',  # prose, bullets
                 'use_subsection_headers': False,  # Standalone: can combine with any format
-                'organization': 'clinical_priority',  # clinical_priority, systematic, problem_oriented, template_order
+                'organization': 'clinical_priority',  # clinical_priority, template_order
                 'measurement_style': 'inline',
                 'negative_findings_style': 'grouped',  # grouped, distributed, minimal, comprehensive
                 'paragraph_grouping': 'by_finding',  # continuous, by_finding, by_region, by_subsection
@@ -252,7 +252,9 @@ class TemplateManager:
         else:  # impression
             defaults = {
                 'verbosity_style': 'prose',
+                'format': 'prose',  # Frontend key; also canonical for impression_format
                 'impression_format': 'prose',
+                'differential_approach': 'if_needed',  # Frontend key
                 'differential_style': 'if_needed',
                 'comparison_terminology': 'measured',
                 'measurement_inclusion': 'key_only',
@@ -271,6 +273,12 @@ class TemplateManager:
         
         # BACKWARD COMPATIBILITY: Convert old fields to new structure
         if section_type == 'impression':
+            # Normalize frontend keys to canonical keys for downstream consumers
+            if 'format' in advanced and 'impression_format' not in advanced:
+                merged['impression_format'] = advanced['format']
+            if 'differential_approach' in advanced:
+                diff_val = advanced['differential_approach']
+                merged['differential_style'] = 'always_brief' if diff_val == 'always' else diff_val
             # Convert old verbosity (0-2) to new verbosity_style
             if 'verbosity_style' not in advanced and 'verbosity' in advanced:
                 old_verbosity = advanced.get('verbosity', 0)
@@ -1192,15 +1200,6 @@ CRITICAL: Apply this balanced prose style UNIFORMLY throughout the ENTIRE report
   IMPORTANT DISTINCTION: This controls ORGANIZATION/STRUCTURE only (what order to report findings). Your LANGUAGE STYLE (how to phrase findings) is controlled by the Writing Style setting above - apply that style uniformly throughout the entire report, regardless of organizational sequence.
 """,
             
-            'systematic': """ORGANIZATION - SYSTEMATIC REVIEW:
-  KEY PRINCIPLE: Fixed anatomical sequence from superior to inferior
-  SEQUENCE: Head → Neck → Chest → Heart → Abdomen → Pelvis (standard order regardless of findings)
-  EXAMPLE: "Normal brain parenchyma. Clear lung fields. Normal cardiac size. Liver and spleen unremarkable. Kidneys show no focal abnormality."
-  
-  NOTE: This controls STRUCTURE/SEQUENCE only. Language style is controlled by Writing Style setting - apply uniformly throughout.
-""",
-            
-            
             'template_order': """ORGANIZATION - TEMPLATE ORDER:
   KEY PRINCIPLE: Strictly follow template's defined anatomical sequence
   SEQUENCE: Exact order specified in template (may be custom, not standard anatomical)
@@ -1363,13 +1362,7 @@ DESCRIPTOR DENSITY - STANDARD:
     • 4cm mass in RUL
     • No lymphadenopathy
     • Small pleural effusion
-  - Use case: Rapid reporting, structured lists""",
-            
-            'mixed': """FORMAT - MIXED:
-  - Prose paragraphs for main narrative findings
-  - Bullets for lists or multiple similar items
-  - Example: Prose for main findings, bullets for "No lymphadenopathy. No effusion. No fracture."
-  - Use case: Flexible reporting, combining narrative with lists"""
+  - Use case: Rapid reporting, structured lists"""
         }
         guidance_parts.append(format_guidance.get(format_style, format_guidance['prose']))
         
@@ -1673,8 +1666,8 @@ CRITICAL SEQUENCING:
         }
         guidance_parts.append(verbosity_map.get(verbosity_style, verbosity_map['prose']))
         
-        # Impression format
-        impression_format = advanced.get('impression_format', 'prose')
+        # Impression format (frontend sends 'format', legacy uses 'impression_format')
+        impression_format = advanced.get('format') or advanced.get('impression_format', 'prose')
         format_map = {
             'prose': "FORMAT: Flowing prose sentences\n- Natural narrative structure",
             'bullets': "FORMAT: Bullet points\n- Each bullet = one key finding/conclusion\n- Use bullet symbol (•)",
@@ -1682,11 +1675,13 @@ CRITICAL SEQUENCING:
         }
         guidance_parts.append(format_map.get(impression_format, format_map['prose']))
         
-        # Differential style
-        differential_style = advanced.get('differential_style', 'if_needed')
+        # Differential (frontend sends 'differential_approach' with none/if_needed/always; legacy uses 'differential_style')
+        diff_raw = advanced.get('differential_approach') or advanced.get('differential_style', 'if_needed')
+        differential_style = 'always_brief' if diff_raw == 'always' else diff_raw
         differential_map = {
             'none': "DIFFERENTIAL DIAGNOSIS:\n- Do NOT include differential diagnosis\n- State primary diagnosis only",
             'if_needed': "DIFFERENTIAL DIAGNOSIS:\n- Include differential ONLY when diagnosis is uncertain or findings are non-specific\n- Provide 2-3 most likely alternatives with reasoning when needed\n- Skip if diagnosis is clear and definitive",
+            'always': "DIFFERENTIAL DIAGNOSIS:\n- ALWAYS include 2-3 top differential diagnoses\n- Brief mention with most likely listed first",
             'always_brief': "DIFFERENTIAL DIAGNOSIS:\n- ALWAYS include 2-3 top differential diagnoses\n- Brief mention with most likely listed first",
             'always_detailed': "DIFFERENTIAL DIAGNOSIS:\n- ALWAYS include comprehensive differential diagnosis\n- List 3-5 possibilities with clinical reasoning for each\n- Discuss distinguishing features and supporting/contradicting findings"
         }
@@ -1780,8 +1775,8 @@ CRITICAL SEQUENCING:
         }
         guidance_parts.append(verbosity_map.get(verbosity_style, verbosity_map['prose']))
         
-        # Impression format
-        impression_format = advanced.get('impression_format', 'prose')
+        # Impression format (frontend sends 'format', legacy uses 'impression_format')
+        impression_format = advanced.get('format') or advanced.get('impression_format', 'prose')
         format_map = {
             'prose': "FORMAT: Flowing prose sentences\n  - Natural narrative structure\n  - Traditional medical prose style",
             'bullets': "FORMAT: Bullet points\n  - Each bullet = one key finding/conclusion\n  - Use bullet symbol (•) for each point",
@@ -1789,11 +1784,13 @@ CRITICAL SEQUENCING:
         }
         guidance_parts.append(format_map.get(impression_format, format_map['prose']))
         
-        # Differential style
-        differential_style = advanced.get('differential_style', 'if_needed')
+        # Differential (frontend sends 'differential_approach' with none/if_needed/always; legacy uses 'differential_style')
+        diff_raw = advanced.get('differential_approach') or advanced.get('differential_style', 'if_needed')
+        differential_style = 'always_brief' if diff_raw == 'always' else diff_raw
         differential_map = {
             'none': "DIFFERENTIAL DIAGNOSIS:\n  - Do NOT include differential diagnosis\n  - State primary diagnosis only",
             'if_needed': "DIFFERENTIAL DIAGNOSIS:\n  - Include differential ONLY when diagnosis is uncertain or findings are non-specific\n  - Provide 2-3 most likely alternatives with reasoning when needed\n  - Skip if diagnosis is clear and definitive",
+            'always': "DIFFERENTIAL DIAGNOSIS:\n  - ALWAYS include 2-3 top differential diagnoses\n  - Brief mention with most likely listed first\n  - Consider imaging findings and clinical context",
             'always_brief': "DIFFERENTIAL DIAGNOSIS:\n  - ALWAYS include 2-3 top differential diagnoses\n  - Brief mention with most likely listed first\n  - Consider imaging findings and clinical context",
             'always_detailed': "DIFFERENTIAL DIAGNOSIS:\n  - ALWAYS include comprehensive differential diagnosis\n  - List 3-5 possibilities with clinical reasoning for each\n  - Discuss distinguishing features and supporting/contradicting findings\n  - Order by likelihood based on imaging features"
         }
