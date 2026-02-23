@@ -3935,7 +3935,8 @@ CRITICAL: Template structure is sacred. User detail augmentations are sacred. Un
         return block
     
     # Check template fidelity flag first (only present for normal/guided templates)
-    follow_template_style = advanced_config.get('follow_template_style', False)
+    # Default True to match primary model default — preserves template voice unless explicitly overridden
+    follow_template_style = advanced_config.get('follow_template_style', True)
     
     findings_format = advanced_config.get('format', 'prose')
     
