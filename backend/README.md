@@ -61,7 +61,7 @@ Once running, visit:
 
 ### Linguistic Validation
 
-When using the `zai-glm-4.6` model (Chinese-trained), reports are automatically post-processed by Cerebras's `llama-3.3-70b` model to correct:
+When using the `zai-glm-4.7` model, reports are automatically post-processed by `llama-3.3-70b-versatile` to correct:
 - **Anatomical errors**: e.g., "liver demonstrates gallstones" → "gallbladder contains gallstones"
 - **Redundant qualifiers**: e.g., "Large 5cm stone" → "5 cm stone"
 - **Translation artifacts**: Awkward phrasing from internal Chinese→English conversion

@@ -92,7 +92,7 @@ MODEL_CONFIG = {
     "ACTION_APPLIER_FALLBACK": "qwen/qwen3-32b",  # Fallback for action application (Qwen)
     
     # Linguistic Validation Models (for zai-glm-4.7 post-processing)
-    "ZAI_GLM_LINGUISTIC_VALIDATOR": "llama-3.3-70b",  # Linguistic/anatomical correction for zai-glm-4.7 output (Cerebras-hosted Llama)
+    "ZAI_GLM_LINGUISTIC_VALIDATOR": "llama-3.3-70b-versatile",  # Linguistic/anatomical correction for zai-glm-4.7 output (Groq Llama)
 }
 
 # Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
@@ -116,7 +116,6 @@ MODEL_PROVIDERS = {
     # Cerebras models
     "gpt-oss-120b": "cerebras",
     "zai-glm-4.7": "cerebras",
-    "llama-3.3-70b": "cerebras",  # Cerebras-hosted Llama for linguistic validation
     "qwen-3-235b-a22b-instruct-2507": "cerebras",  # Cerebras-hosted Qwen for linguistic validation
 }
 
@@ -3518,10 +3517,10 @@ async def validate_zai_glm_linguistics(
 ) -> str:
     """
     Validate and correct linguistic/anatomical errors in zai-glm-4.7 generated reports.
-    Uses Cerebras llama-3.3-70b to fix British English grammar, anatomical errors,
+    Uses llama-3.3-70b-versatile to fix British English grammar, anatomical errors,
     and redundant qualifiers without altering clinical content.
     
-    This function addresses specific issues from the Chinese zai-glm-4.7 model:
+    This function addresses specific issues from the zai-glm-4.7 model:
     - Anatomical errors (e.g., "liver demonstrates gallstones" → "gallbladder contains gallstones")
     - Redundant qualifiers (e.g., "Large 5cm stone" → "5 cm stone")
     - Translation artifacts from internal Chinese→English conversion
@@ -3728,7 +3727,7 @@ async def validate_template_linguistics(
     print(f"[TEMPLATE LINGUISTIC VALIDATION]   Template-wide instructions: {bool(template_wide_custom)}")
     
     # Get model and provider
-    model_name = MODEL_CONFIG["ZAI_GLM_LINGUISTIC_VALIDATOR"]  # llama-3.3-70b
+    model_name = MODEL_CONFIG["ZAI_GLM_LINGUISTIC_VALIDATOR"]  # llama-3.3-70b-versatile
     provider = _get_model_provider(model_name)
     api_key = _get_api_key_for_provider(provider)
     
