@@ -168,10 +168,15 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 		// Expand form and collapse response
 		formExpanded = true;
 		responseExpanded = false;
-	hasResponseEver = false;
-	responseVisible = false;
+		hasResponseEver = false;
+		responseVisible = false;
+		// Clear response state locally
+		response = null;
+		responseModel = null;
+		error = null;
 		// Dispatch to parent to handle the full reset
 		dispatch('resetForm');
+		dispatch('clearResponse');
 		dispatch('historyUpdate', { count: 0 });
 	}
 

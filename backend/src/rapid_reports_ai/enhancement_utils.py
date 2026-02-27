@@ -1382,14 +1382,18 @@ async def search_guidelines_for_findings(
         "PRIORITIZE: Information that supports diagnostic decisions or directs management pathways"
     )
 
-    perplexity_client = Perplexity()
     guidelines_results: List[dict] = []
     total_sources = 0
     # Track which models were used
     query_models_used = set()
     synthesis_models_used = set()
 
-    for idx, consolidated_finding in enumerate(consolidated_result.findings, start=1):
+    async def _process_finding(idx: int, consolidated_finding) -> Optional[tuple]:
+        """Process a single finding: query generation, search, filtering, synthesis, validation.
+        Returns (result_dict, query_model, synthesis_model, sources_count) or None if skipped."""
+        # Each coroutine gets its own Perplexity client (avoids thread-safety concerns)
+        perplexity_client = Perplexity()
+        
         print(f"  └─ Processing consolidated finding {idx}: {consolidated_finding.finding}")
 
         # Generate cache key prefix using extracted finding text hash + finding index
@@ -1415,7 +1419,6 @@ async def search_guidelines_for_findings(
             # Cache the queries with report-content-based key
             cache.set(query_cache_key, (queries, query_model))
         
-        query_models_used.add(query_model)
         print(f"      Generated {len(queries)} queries")
         for q_idx, q in enumerate(queries, 1):
             print(f"        Query {q_idx}: {q}")
@@ -1507,7 +1510,7 @@ async def search_guidelines_for_findings(
         # Final check - if still no results, skip this finding
         if not search_results:
             print(f"⚠️  No search results for finding {idx} after {fallback_attempt} attempt(s)")
-            continue
+            return None
         
         # Log which fallback level was used
         if fallback_attempt > 1:
@@ -1537,9 +1540,8 @@ async def search_guidelines_for_findings(
         search_results = filtered_search_results
         if not search_results:
             print(f"⚠️  No compatible search results for finding {idx} after filtering")
-            continue
+            return None
 
-        total_sources += len(search_results)
         print(f"      Retrieved {len(search_results)} compatible search results")
 
         # Build evidence context
@@ -1559,6 +1561,9 @@ async def search_guidelines_for_findings(
         synthesis_cache_key = f"guideline_synth:{finding_cache_prefix}:{search_results_hash}"
         print(f"      [CACHE DEBUG] Checking guideline synthesis cache with key: {synthesis_cache_key[:80]}...")
         cached_synthesis = cache.get(synthesis_cache_key)
+        
+        synthesis_model = None
+        guideline_entry_raw = None
         
         if cached_synthesis is not None:
             print(f"      [CACHE HIT] Using cached guideline synthesis")
@@ -1668,9 +1673,8 @@ async def search_guidelines_for_findings(
                     
                 except Exception as fallback_error:
                     print(f"❌ Both primary and fallback models failed for finding {idx}: {fallback_error}")
-                    continue
+                    return None
 
-        synthesis_models_used.add(synthesis_model)
         guideline_entry: GuidelineEntry = guideline_entry_raw
         print(f"      Generated guideline: {guideline_entry.diagnostic_overview[:160]}...")
 
@@ -1699,7 +1703,7 @@ async def search_guidelines_for_findings(
         
         if not is_compatible:
             print(f"⚠️  Synthesized guideline incompatible with finding {idx}, skipping...")
-            continue
+            return None
 
         guideline_entry = guideline_entry.model_copy(
             update={"finding_number": idx, "finding": consolidated_finding.finding}
@@ -1747,7 +1751,7 @@ async def search_guidelines_for_findings(
         else:
             print(f"    (empty)")
         
-        guidelines_results.append({
+        result_dict = {
             "finding": {
                 "finding": consolidated_finding.finding,
                 "guideline_focus": "diagnostic imaging guidance",
@@ -1766,7 +1770,24 @@ async def search_guidelines_for_findings(
             "imaging_characteristics": [ic.model_dump() for ic in guideline_entry.imaging_characteristics],
             "differential_diagnoses": [dd.model_dump() for dd in guideline_entry.differential_diagnoses],
             "follow_up_imaging": [fi.model_dump() for fi in (guideline_entry.follow_up_imaging or [])],
-        })
+        }
+        return (result_dict, query_model, synthesis_model, len(search_results))
+
+    # Process all findings concurrently
+    tasks = [
+        _process_finding(idx, finding)
+        for idx, finding in enumerate(consolidated_result.findings, start=1)
+    ]
+    finding_results = await asyncio.gather(*tasks)
+
+    # Aggregate results from all findings
+    for result in finding_results:
+        if result is not None:
+            result_dict, query_model, synthesis_model, sources_count = result
+            guidelines_results.append(result_dict)
+            query_models_used.add(query_model)
+            synthesis_models_used.add(synthesis_model)
+            total_sources += sources_count
 
     elapsed = time.time() - start_time
     # Build model summary string
