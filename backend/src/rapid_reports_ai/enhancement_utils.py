@@ -2973,7 +2973,8 @@ async def generate_auto_report(
     user_prompt: str,
     system_prompt: str,
     api_key: str,
-    signature: str | None = None
+    signature: str | None = None,
+    clinical_history: str = ""
 ) -> ReportOutput:
     """
     Generate a radiology report using configured primary model with automatic fallback.
@@ -3093,7 +3094,8 @@ async def generate_auto_report(
                     validated_content = await validate_zai_glm_linguistics(
                         report_content=report_output.report_content,
                         scan_type=report_output.scan_type or "",
-                        description=report_output.description or ""
+                        description=report_output.description or "",
+                        clinical_history=clinical_history
                     )
                     
                     report_output.report_content = validated_content
@@ -3271,7 +3273,8 @@ async def generate_templated_report(
                     validated_content = await validate_zai_glm_linguistics(
                         report_content=report_output.report_content,
                         scan_type=report_output.scan_type or "",
-                        description=report_output.description or ""
+                        description=report_output.description or "",
+                        clinical_history=clinical_history
                     )
                     
                     report_output.report_content = validated_content
@@ -3513,7 +3516,8 @@ If no violations found, return empty violations list with is_valid=True.
 async def validate_zai_glm_linguistics(
     report_content: str,
     scan_type: str = "",
-    description: str = ""
+    description: str = "",
+    clinical_history: str = ""
 ) -> str:
     """
     Validate and correct linguistic/anatomical errors in zai-glm-4.7 generated reports.
@@ -3563,8 +3567,9 @@ CORRECTION RULES:
 2. Anatomy: Correct organ/structure references
    Example: "liver demonstrates gallstones" → "gallbladder contains gallstones"
 
-3. Redundant qualifiers: Remove when measurements specify size
-   Example: "Large 5cm stone" → "5 cm stone"
+3. Redundant qualifiers:
+   - Remove size qualifiers when a measurement is present: "Large 5 cm stone" → "5 cm stone"
+   - Remove synonymous terminology where two terms in the same phrase describe the same pathological process, keeping the more specific or conventional clinical term: "degenerative osteoarthritis" → "osteoarthritis"; "ischaemic infarction" → "infarction"; "haemorrhagic bleed" → "haemorrhage"
 
 4. British English: Use oesophagus, haemorrhage, oedema, paediatric, centre, litre
 
@@ -3584,13 +3589,12 @@ CORRECTION RULES:
 9. Compound clarity: Separate positive finding from 3+ negative findings
    Example: "calculi without A or B or C" → "Calculi. No A, B, or C."
 
-10. Finding consolidation: Merge repeated findings into single comprehensive statement
-    a) Structural findings: Keep instance with most clinical context, delete sparse mentions
-       Example: "Pleural effusion" + later "Moderate effusion with atelectasis" → Keep detailed version only
-    
-    b) Functional abnormalities: State once with all hemodynamic/structural consequences
-       Example: "SAM present" + later "SAM with LVOT obstruction, no MR" → "Systolic anterior motion with dynamic LVOT obstruction. No significant mitral regurgitation."
-       Example: "Patent foramen ovale" + later "Small left-to-right shunt" → "Patent foramen ovale with small left-to-right shunt."
+10. Finding consolidation: Each anatomical structure must appear once only in FINDINGS. Scan across all sentences and paragraphs and merge all mentions into a single comprehensive statement, preserving all descriptors, measurements, and qualifiers.
+    Prioritise: abnormality → severity → size/measurement → associated features → relevant negatives.
+    For functional findings, preserve causal relationships within the merged statement.
+    Example (structural): "Subscapularis tendon is thickened. There is fatty atrophy of the subscapularis muscle." → "Subscapularis tendon thickening with fatty atrophy of the muscle belly."
+    Example (functional): "SAM is present." + "SAM causing dynamic LVOT obstruction." → "Systolic anterior motion with dynamic LVOT obstruction."
+    This rule applies to FINDINGS only. Structures referenced again in IMPRESSION are expected and correct.
 
 11. Passive voice tightening: Use active constructs where natural
     Example: "is present" → direct statement, "is seen" → eliminate
@@ -3602,12 +3606,14 @@ CORRECTION RULES:
 13. Sequential negatives: Combine related negative findings
     Example: "No thrombus. No aneurysm. No wall thinning." → "No thrombus, aneurysm, or wall thinning."
 
-14. IMPRESSION refinement:
-    - Remove symptom-explanatory phrases: "explains the...", "accounts for..."
-    - Use clinical synthesis, not descriptive repetition
-    - Don't repeat findings in recommendations: "Referral for the calculus" → "Referral recommended"
-    - Format: Finding → Diagnosis + differentials → Recommendation
-    Example: "5cm calculus explains renal colic" → "Obstructing calculus (5 cm)"
+14. IMPRESSION: Write a concise clinical synthesis, not a list of findings.
+    - Remove symptom-explanatory phrases and recommendation qualifiers: "explains the...", "accounts for...", "due to the...", "for management of..."
+    - Lead with the dominant diagnosis; group related pathologies by region or aetiology into single sentences
+    - All findings requiring clinical action must appear; omit minor incidentals
+    - Recommendations: action only — no restated findings, no reason clauses
+    - Format: dominant diagnosis → grouped pathology → recommendation
+    ❌ "Complex meniscus tear explains the mechanical symptoms. Orthopaedic referral recommended for management of the displaced meniscal tear."
+    ✅ "Complex medial meniscus tear with displaced fragment. Orthopaedic referral recommended."
 
 PROHIBITIONS:
 Do NOT change: diagnoses, differentials, severity, measurements, findings, recommendations, sections, medical terminology (unless anatomically incorrect), or clinical meaning.

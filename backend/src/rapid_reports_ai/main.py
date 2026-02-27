@@ -571,12 +571,15 @@ async def chat(
         print(f"[DEBUG] Auto report - signature present: {signature_value is not None and signature_value.strip() != ''}")
         print(f"[DEBUG] Auto report - signature length: {len(signature_value) if signature_value else 0}")
         
+        clinical_history = (request.variables or {}).get("CLINICAL_HISTORY", "")
+
         report_output = await generate_auto_report(
             model="claude",  # Always use Claude (model param kept for API compatibility)
             user_prompt=user_prompt,
             system_prompt=system_prompt,
             api_key=api_key,
-            signature=signature_value
+            signature=signature_value,
+            clinical_history=clinical_history
         )
         
         # STRUCTURE VALIDATION (synchronous, before saving)
