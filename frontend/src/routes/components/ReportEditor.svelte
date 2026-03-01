@@ -37,6 +37,7 @@
 	};
 
 	let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
+	let hideTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// ─── StateEffect / StateField for toggling highlighting ─────────────────────
 
@@ -312,6 +313,10 @@
 			editor = null;
 		}
 		clearHoverTimeout();
+		if (hideTimeout) {
+			clearTimeout(hideTimeout);
+			hideTimeout = null;
+		}
 	});
 
 	// ─── Reactive: sync external content prop changes into CM6 ──────────────────
@@ -350,7 +355,14 @@
 		const pos = editor.posAtCoords({ x: e.clientX, y: e.clientY });
 		if (pos === null) {
 			clearHoverTimeout();
-			fireEvent('hideHoverPopup');
+			if (!hideTimeout) {
+				hideTimeout = setTimeout(() => {
+					hideTimeout = null;
+					if (!document.querySelector('.unfilled-hover-popup:hover')) {
+						fireEvent('hideHoverPopup');
+					}
+				}, 200);
+			}
 			return;
 		}
 
@@ -363,6 +375,11 @@
 				item.type === 'blank_section');
 
 		if (isInteractive) {
+			// Cancel any pending hide — mouse is back over an item
+			if (hideTimeout) {
+				clearTimeout(hideTimeout);
+				hideTimeout = null;
+			}
 			// Only schedule if not already pending for the same item
 			if (hoverTimeout) return;
 			hoverTimeout = setTimeout(() => {
@@ -381,12 +398,25 @@
 			}, 150);
 		} else {
 			clearHoverTimeout();
-			fireEvent('hideHoverPopup');
+			// Delay hiding so the mouse can travel from the item into the popup
+			// without it disappearing mid-way (same grace period as handleMouseLeave)
+			if (!hideTimeout) {
+				hideTimeout = setTimeout(() => {
+					hideTimeout = null;
+					if (!document.querySelector('.unfilled-hover-popup:hover')) {
+						fireEvent('hideHoverPopup');
+					}
+				}, 200);
+			}
 		}
 	}
 
 	function handleMouseLeave() {
 		clearHoverTimeout();
+		if (hideTimeout) {
+			clearTimeout(hideTimeout);
+			hideTimeout = null;
+		}
 		setTimeout(() => {
 			if (!document.querySelector('.unfilled-hover-popup:hover')) {
 				fireEvent('hideHoverPopup');
