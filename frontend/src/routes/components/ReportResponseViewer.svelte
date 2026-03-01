@@ -360,7 +360,7 @@
 </script>
 
 {#if visible}
-	<div class="card-dark relative">
+	<div class="card-dark relative flex flex-col max-h-[calc(100vh-200px)]">
 		<!-- Header: Mobile-first responsive layout -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 sm:px-4 py-2 sm:py-3">
 			<!-- Title row -->
@@ -463,7 +463,7 @@
 		</div>
 
 		{#if expanded}
-			<div class="relative">
+			<div class="relative flex-1 min-h-0 flex flex-col">
 				{#if generationLoading || updateLoading}
 					<div class="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-10">
 						<div class="flex items-center gap-3 text-gray-200 text-sm">
@@ -472,7 +472,7 @@
 						</div>
 					</div>
 				{/if}
-				<div class="relative px-3 sm:px-4 pt-0 pb-3 sm:pb-4 max-h-[calc(100vh-200px)] sm:max-h-[calc(100vh-250px)] overflow-y-auto space-y-3 sm:space-y-4">
+				<div class="relative px-3 sm:px-4 pt-0 pb-3 sm:pb-4 flex-1 min-h-0 overflow-y-auto space-y-3 sm:space-y-4">
 					<!-- View container with absolute positioning for smooth crossfade transitions -->
 					<div class="relative" style="min-height: calc(100vh - 300px);">
 						<!-- History View -->
