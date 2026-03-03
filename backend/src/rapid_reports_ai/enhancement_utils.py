@@ -57,14 +57,27 @@ from .enhancement_models import (
     ComparisonAnalysisStage1,
     ChangeDirective,
     ComparisonReportGeneration,
+    AuditResult,
 )
+
+# GLM Reasoning Mode Toggle
+# Cerebras docs: temperature >= 0.8 required when reasoning is enabled.
+# If reasoning is disabled, temperature can go below 0.8 for more deterministic output.
+#   Reasoning ON  → temperature=0.8, max_completion_tokens=16000 (budget for reasoning + report)
+#   Reasoning OFF → temperature=0.5, max_completion_tokens=6000  (no reasoning overhead)
+# Toggle without restarting: edit GLM_REASONING_ENABLED in backend/.env — read fresh on every request.
+def _glm_reasoning_enabled() -> bool:
+    """Read GLM_REASONING_ENABLED from .env on every call so changes take effect without a server restart."""
+    from dotenv import dotenv_values
+    env = dotenv_values()
+    return env.get("GLM_REASONING_ENABLED", "false").lower() == "true"
 
 # Central Model Configuration Dictionary
 # Maps generic roles to specific model identifiers for easy model swapping
 # Update this dictionary to change models without modifying code throughout the codebase
 MODEL_CONFIG = {
     # Report Generation Models
-    "PRIMARY_REPORT_GENERATOR": "zai-glm-4.7",  # Primary model for report generation (Cerebras Zai-GLM-4.6)
+    "PRIMARY_REPORT_GENERATOR": "zai-glm-4.7",  # Primary model for report generation
     "FALLBACK_REPORT_GENERATOR": "claude-sonnet-4-20250514",  # Fallback model if primary fails after retries (Claude Sonnet 4)
     
     # Structure Validation Models
@@ -93,6 +106,9 @@ MODEL_CONFIG = {
     
     # Linguistic Validation Models (for zai-glm-4.7 post-processing)
     "ZAI_GLM_LINGUISTIC_VALIDATOR": "llama-3.3-70b-versatile",  # Linguistic/anatomical correction for zai-glm-4.7 output (Groq Llama)
+    
+    # Audit / QA Analysis Models
+    "AUDIT_ANALYZER": "zai-glm-4.7",  # Report audit/QA using Cerebras Zai-GLM-4.7 with high temperature for advanced reasoning
 }
 
 # Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
@@ -377,6 +393,50 @@ def _extract_thinking_content(result) -> str:
     except Exception as e:
         print(f"⚠️  Could not extract thinking content: {e}")
         return ""
+
+
+def _log_glm_reasoning(result, context: str = ""):
+    """
+    Log reasoning content from Cerebras GLM (zai-glm-4.7) responses.
+    GLM uses text_parsed reasoning format by default — reasoning is returned in a separate
+    'reasoning' field on the OpenAI message object, not as a Pydantic AI thinking part.
+    This function attempts to surface that reasoning for debugging purposes.
+    """
+    try:
+        reasoning_content = ""
+
+        # Attempt 1: check all_messages for any message with a 'reasoning' attribute
+        if hasattr(result, 'all_messages') and result.all_messages:
+            for msg in result.all_messages():
+                if hasattr(msg, 'reasoning') and msg.reasoning:
+                    reasoning_content = msg.reasoning
+                    break
+                # Also check parts for any reasoning-like content
+                if hasattr(msg, 'parts'):
+                    for part in msg.parts:
+                        part_class = part.__class__.__name__.lower()
+                        if 'reasoning' in part_class or 'thinking' in part_class:
+                            content = getattr(part, 'content', None) or getattr(part, 'text', None)
+                            if content:
+                                reasoning_content = content
+                                break
+
+        # Attempt 2: check _result or raw response attributes
+        if not reasoning_content and hasattr(result, '_result'):
+            raw = result._result
+            if hasattr(raw, 'reasoning'):
+                reasoning_content = raw.reasoning or ""
+
+        if reasoning_content:
+            print(f"\n{'='*80}")
+            print(f"🧠 GLM REASONING TRACE ({context}) — {len(reasoning_content)} chars")
+            print(f"{'='*80}")
+            print(reasoning_content)
+            print(f"{'='*80}\n")
+        else:
+            print(f"ℹ️  No GLM reasoning trace captured ({context}) — reasoning may be in hidden format or not exposed by Pydantic AI")
+    except Exception as e:
+        print(f"⚠️  Could not log GLM reasoning ({context}): {e}")
 
 
 def _log_thinking_parts(result, context: str = ""):
@@ -2847,11 +2907,19 @@ async def _run_agent_with_model(
                 print(f"  └─ max_tokens: {final_model_settings.get('max_tokens', 'not set')}")
             if 'extra_body' in final_model_settings:
                 print(f"  └─ extra_body: {final_model_settings.get('extra_body')}")
-            reasoning_effort = final_model_settings.get('reasoning_effort')
-            if reasoning_effort:
-                print(f"  └─ reasoning_effort: {reasoning_effort} ✅")
+            # reasoning_effort is GPT-OSS only; GLM/Qwen3 use extra_body toggles
+            if model_name == "zai-glm-4.7":
+                disable_reasoning = (final_model_settings.get('extra_body') or {}).get('disable_reasoning', 'not set')
+                mode_label = "REASONING OFF" if disable_reasoning else "REASONING ON"
+                print(f"  └─ GLM mode: {mode_label} (disable_reasoning={disable_reasoning})")
+            elif model_name == "qwen-3-235b-a22b-instruct-2507":
+                print(f"  └─ Qwen3 mode: thinking auto-hidden for JSON schema (no extra_body needed)")
             else:
-                print(f"  └─ reasoning_effort: NOT SET ⚠️  (check if parameter is supported)")
+                reasoning_effort = final_model_settings.get('reasoning_effort')
+                if reasoning_effort:
+                    print(f"  └─ reasoning_effort: {reasoning_effort} ✅")
+                else:
+                    print(f"  └─ reasoning_effort: NOT SET ⚠️  (check if parameter is supported)")
         
         # Run agent with error handling for Cerebras to capture raw output
         try:
@@ -3042,27 +3110,38 @@ async def generate_auto_report(
                 "temperature": 1,
             }
             if primary_model == "zai-glm-4.7":
-                model_settings["max_tokens"] = 40960
-                model_settings["temperature"] = 0.8
-                model_settings["top_p"] = 0.95
-                model_settings["extra_body"] = {
-                    "disable_reasoning": False,
-                    "clear_thinking": False,
-                }
-                print(f"  └─ Using Cerebras zai-glm-4.7 with max_tokens=40960, temperature=0.8, top_p=0.95 (reasoning enabled) for {primary_model}")
+                if _glm_reasoning_enabled():
+                    # Reasoning ON: temp must be >= 0.8 (Cerebras docs constraint)
+                    # Higher token budget to give headroom for reasoning trace + full report
+                    model_settings["max_completion_tokens"] = 16000
+                    model_settings["temperature"] = 0.8
+                    model_settings["extra_body"] = {"disable_reasoning": False}
+                    print(f"  └─ GLM mode: REASONING ON — temperature=0.8, max_completion_tokens=16000")
+                else:
+                    # Reasoning OFF: no temp floor, use lower value for more deterministic output
+                    model_settings["max_completion_tokens"] = 6000
+                    model_settings["temperature"] = 0.5
+                    model_settings["extra_body"] = {"disable_reasoning": True}
+                    print(f"  └─ GLM mode: REASONING OFF — temperature=0.5, max_completion_tokens=6000")
+            elif primary_model == "qwen-3-235b-a22b-instruct-2507":
+                # Qwen3: thinking is automatically hidden for JSON schema requests by Cerebras
+                # No extra_body needed — Cerebras rejects enable_thinking on this endpoint
+                model_settings["max_completion_tokens"] = 6000
+                model_settings["temperature"] = 0.7
+                print(f"  └─ Using Qwen3-235B — temperature=0.7, max_completion_tokens=6000 (thinking auto-hidden for JSON schema)")
             elif primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
                 print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=6500 for {primary_model}")
             elif primary_model == "claude-sonnet-4-20250514":
-                model_settings["max_tokens"] = 6000
+                model_settings["max_tokens"] = 8000
                 model_settings["anthropic_thinking"] = {
                     "type": "enabled",
                     "budget_tokens": 2048
                 }
                 print(f"  └─ Using Claude with thinking enabled, budget_tokens=2048, temperature=1 for {primary_model}")
             else:
-                model_settings["max_tokens"] = 6000
+                model_settings["max_tokens"] = 8000
             
             result = await _run_agent_with_model(
                 model_name=primary_model,
@@ -3077,11 +3156,22 @@ async def generate_auto_report(
         
         result = await _try_primary()
         
-        # Log thinking parts for Claude when using extended thinking
+        # Log thinking/reasoning for all supported reasoning models
         if primary_model == "claude-sonnet-4-20250514":
             _log_thinking_parts(result, f"{primary_model} (Primary) - Claude Extended Thinking")
+        elif primary_model == "zai-glm-4.7":
+            _log_glm_reasoning(result, f"{primary_model} (Primary) - GLM Reasoning")
         
         report_output = result.output
+        
+        # Normalise literal \n sequences that GLM reasoning mode can produce.
+        # When reasoning is ON, GLM sometimes double-escapes newlines in its JSON
+        # output (\n → \\n), leaving literal backslash-n characters in the parsed
+        # string. The linguistic validator corrects this as a side effect, but
+        # normalise here explicitly so formatting is never validator-dependent.
+        if report_output.report_content and '\\n' in report_output.report_content:
+            report_output.report_content = report_output.report_content.replace('\\n', '\n')
+            print(f"  └─ Normalised literal \\n sequences in report content")
         
         # Don't append signature yet - will append after validation
         
@@ -3101,15 +3191,17 @@ async def generate_auto_report(
         print(report_output.report_content)
         print(f"{'='*80}\n")
         
-        # LINGUISTIC VALIDATION for zai-glm-4.7 (conditionally enabled)
-        if primary_model == "zai-glm-4.7":
+        # LINGUISTIC VALIDATION disabled for quick reports — primary model handles style natively.
+        # Template reports (generate_templated_report) still run the validator.
+        # Re-enable by changing `if False` back to `if primary_model in (...)`.
+        if False and primary_model in ("zai-glm-4.7", "qwen-3-235b-a22b-instruct-2507"):
             import os
             ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
             
             if ENABLE_LINGUISTIC_VALIDATION:
                 try:
                     print(f"\n{'='*80}")
-                    print(f"🔍 LINGUISTIC VALIDATION - Starting for zai-glm-4.7")
+                    print(f"🔍 LINGUISTIC VALIDATION - Starting for {primary_model}")
                     print(f"{'='*80}")
                     
                     validated_content = await validate_zai_glm_linguistics(
@@ -3121,6 +3213,12 @@ async def generate_auto_report(
                     
                     report_output.report_content = validated_content
                     print(f"✅ LINGUISTIC VALIDATION COMPLETE")
+                    print(f"{'='*80}")
+                    print(f"📋 POST-VALIDATION OUTPUT DEBUG")
+                    print(f"{'='*80}")
+                    print(f"Report length: {len(validated_content)} chars")
+                    print(f"\nFull validated report content:")
+                    print(validated_content)
                     print(f"{'='*80}\n")
                 except Exception as e:
                     print(f"\n{'='*80}")
@@ -3221,27 +3319,33 @@ async def generate_templated_report(
                 "temperature": 0.7,
             }
             if primary_model == "zai-glm-4.7":
-                model_settings["max_tokens"] = 40960
-                model_settings["temperature"] = 0.8
-                model_settings["top_p"] = 0.95
-                model_settings["extra_body"] = {
-                    "disable_reasoning": False,
-                    "clear_thinking": False,
-                }
-                print(f"  └─ Using Cerebras zai-glm-4.7 with max_tokens=40960, temperature=0.8, top_p=0.95 (reasoning enabled) for {primary_model}")
+                if _glm_reasoning_enabled():
+                    model_settings["max_completion_tokens"] = 16000
+                    model_settings["temperature"] = 0.8
+                    model_settings["extra_body"] = {"disable_reasoning": False}
+                    print(f"  └─ GLM mode: REASONING ON — temperature=0.8, max_completion_tokens=16000")
+                else:
+                    model_settings["max_completion_tokens"] = 6000
+                    model_settings["temperature"] = 0.5
+                    model_settings["extra_body"] = {"disable_reasoning": True}
+                    print(f"  └─ GLM mode: REASONING OFF — temperature=0.5, max_completion_tokens=6000")
+            elif primary_model == "qwen-3-235b-a22b-instruct-2507":
+                model_settings["max_completion_tokens"] = 6000
+                model_settings["temperature"] = 0.7
+                print(f"  └─ Using Qwen3-235B — temperature=0.7, max_completion_tokens=6000 (thinking auto-hidden for JSON schema)")
             elif primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
                 print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=6500 for {primary_model}")
             elif primary_model == "claude-sonnet-4-20250514":
-                model_settings["max_tokens"] = 6000
+                model_settings["max_tokens"] = 8000
                 model_settings["anthropic_thinking"] = {
                     "type": "enabled",
                     "budget_tokens": 2048
                 }
                 print(f"  └─ Using Claude with thinking enabled, budget_tokens=2048, temperature=0.7 for {primary_model}")
             else:
-                model_settings["max_tokens"] = 6000
+                model_settings["max_tokens"] = 8000
             
             result = await _run_agent_with_model(
                 model_name=primary_model,
@@ -3256,11 +3360,18 @@ async def generate_templated_report(
         
         result = await _try_primary()
         
-        # Log thinking parts for Groq models (Cerebras models don't use thinking, use reasoning_effort instead)
+        # Log thinking/reasoning for all supported reasoning models
         if provider == 'groq':
             _log_thinking_parts(result, f"{primary_model} (Primary) - Groq")
+        elif primary_model == "zai-glm-4.7":
+            _log_glm_reasoning(result, f"{primary_model} (Primary) - GLM Reasoning")
         
         report_output = result.output
+        
+        # Normalise literal \n sequences (same fix as generate_auto_report)
+        if report_output.report_content and '\\n' in report_output.report_content:
+            report_output.report_content = report_output.report_content.replace('\\n', '\n')
+            print(f"  └─ Normalised literal \\n sequences in report content")
         
         # Don't append signature yet - will append after validation
         
@@ -3280,15 +3391,15 @@ async def generate_templated_report(
         print(report_output.report_content)
         print(f"{'='*80}\n")
         
-        # LINGUISTIC VALIDATION for zai-glm-4.7 (conditionally enabled)
-        if primary_model == "zai-glm-4.7":
+        # LINGUISTIC VALIDATION for non-Anthropic Cerebras models (conditionally enabled)
+        if primary_model in ("zai-glm-4.7", "qwen-3-235b-a22b-instruct-2507"):
             import os
             ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
             
             if ENABLE_LINGUISTIC_VALIDATION:
                 try:
                     print(f"\n{'='*80}")
-                    print(f"🔍 LINGUISTIC VALIDATION - Starting for zai-glm-4.7")
+                    print(f"🔍 LINGUISTIC VALIDATION - Starting for {primary_model}")
                     print(f"{'='*80}")
                     
                     validated_content = await validate_zai_glm_linguistics(
@@ -3300,6 +3411,12 @@ async def generate_templated_report(
                     
                     report_output.report_content = validated_content
                     print(f"✅ LINGUISTIC VALIDATION COMPLETE")
+                    print(f"{'='*80}")
+                    print(f"📋 POST-VALIDATION OUTPUT DEBUG")
+                    print(f"{'='*80}")
+                    print(f"Report length: {len(validated_content)} chars")
+                    print(f"\nFull validated report content:")
+                    print(validated_content)
                     print(f"{'='*80}\n")
                 except Exception as e:
                     print(f"\n{'='*80}")
@@ -3563,9 +3680,9 @@ async def validate_zai_glm_linguistics(
     """
     import os
     import time
-    
+
     start_time = time.time()
-    print(f"\n[LINGUISTIC VALIDATION] Starting linguistic validation for zai-glm-4.7")
+    print(f"\n[LINGUISTIC VALIDATION] Starting linguistic validation")
     print(f"[LINGUISTIC VALIDATION]   Report length: {len(report_content)} chars")
     print(f"[LINGUISTIC VALIDATION]   Scan type: '{scan_type}'")
     
@@ -3922,15 +4039,15 @@ PRESERVE EXACT STRUCTURE:
 
 **PLACEHOLDER PRESERVATION (CRITICAL)**:
 - Unfilled xxx measurements: Must remain as "xxx" exactly
-- Unfilled {{VAR}} variables: Must remain as "{{VAR}}" exactly
+- Unfilled {VAR} variables: Must remain as "{VAR}" exactly
 - Do NOT replace with explanatory text like "not specified", "not provided", "not measured"
 - Do NOT remove or alter unfilled placeholders
 - Post-processing will detect and handle unfilled placeholders
 - Examples:
   ✓ KEEP: "diameter xxx mm" (if xxx unfilled)
-  ✓ KEEP: "LVEF {{LVEF}}%" (if {{LVEF}} unfilled)
+  ✓ KEEP: "LVEF {LVEF}%" (if {LVEF} unfilled)
   ✗ NEVER: "diameter xxx mm" → "diameter not specified"
-  ✗ NEVER: "{{LVEF}}%" → "LVEF not provided"
+  ✗ NEVER: "{LVEF}%" → "LVEF not provided"
 
 ONLY refine for quality:
 - British English spelling (tumour, haemorrhage, oesophagus, centre, litre, calibre)
@@ -4304,5 +4421,164 @@ def _get_format_guidance(format_type: str, organization: str = 'clinical_priorit
 
 
 # Removed _get_comparison_guidance - comparisons now handled within verbosity_style principles
+
+
+# ============================================================================
+# Report Audit / QA Analysis
+# ============================================================================
+
+async def audit_report(
+    report_content: str,
+    scan_type: str,
+    clinical_history: str,
+    api_key: str
+) -> dict:
+    """
+    Audit a radiology report against 9 quality criteria using zai-glm-4.7.
+    
+    Args:
+        report_content: The report text to audit
+        scan_type: Type of scan (e.g., 'CT head non-contrast')
+        clinical_history: Clinical history/indication for the scan
+        api_key: Cerebras API key
+        
+    Returns:
+        Dictionary with overall_status, criteria list (9 items), and summary
+    """
+    start_time = time.time()
+    model_name = MODEL_CONFIG["AUDIT_ANALYZER"]
+    print(f"\n{'='*60}")
+    print(f"audit_report: Auditing report with {model_name}...")
+    print(f"  └─ Scan type     : {scan_type or 'Not specified'}")
+    print(f"  └─ Clinical hx   : {clinical_history[:120] if clinical_history else 'Not provided'}")
+    print(f"  └─ Report length : {len(report_content)} chars")
+    print(f"  └─ Report preview: {report_content[:200].replace(chr(10), ' ')!r}")
+    print(f"{'='*60}")
+    
+    system_prompt = """You are a senior radiologist and clinical radiology QA specialist practising in the UK.
+Your task is to audit a radiology report against six specific quality criteria.
+
+FLAGGING PHILOSOPHY:
+- Apply the criterion definitions as written. If a criterion is met, it is met — do not invent issues.
+- Do NOT flag stylistic preferences, formatting choices, or defensible variations in phrasing.
+- Do NOT flag appropriate deferrals of *clinical management* to the referring clinician (e.g., "clinical correlation recommended", "discuss with clinician team").
+- DO flag incomplete or vague *radiological* recommendations — if a radiologist recommends further imaging, that recommendation must include modality and appropriate urgency. Vague radiological recommendations cause clinical harm.
+- DO flag when the stated clinical question is not addressed, even partially.
+
+For highlighted_spans, copy verbatim substrings from the report exactly as they appear; these will be used to locate and highlight the text inline.
+You must evaluate all six criteria and return them in this exact order: anatomical_accuracy, clinical_relevance, recommendations, clinical_flagging, report_completeness, language_quality.
+
+OUTPUT REQUIREMENTS:
+- Return exactly 6 criteria evaluations in the specified order
+- For each criterion with issues, include highlighted_spans with verbatim text from the report
+- Use status "pass" when no issues, "flag" for significant issues requiring attention, "warning" for minor concerns
+- For clinical_flagging criterion, always populate flags_identified with all 5 sub-flag types
+- overall_status should be the worst status among all criteria (flag > warning > pass)
+- If a criterion cannot be meaningfully evaluated (e.g., no prior study referenced so comparative analysis is not applicable), assign "pass" with a brief note"""
+
+    user_prompt = f"""REPORT TO AUDIT:
+{report_content}
+
+SCAN TYPE: {scan_type or 'Not specified'}
+CLINICAL HISTORY: {clinical_history or 'Not provided'}
+
+Evaluate this report against all 6 audit criteria:
+
+1. ANATOMICAL_ACCURACY
+   Assess right/left consistency and correct anatomical labelling.
+   FLAG if: A bilateral structure (kidney, lung, adrenal gland, eye, breast) is mentioned without laterality in a context where the side is clinically material; OR a clear anatomical mislabel is present (e.g., a vascular structure named as a lymph node, a measurement assigned to the wrong organ).
+   WARNING if: Minor ambiguity in laterality that is unlikely to affect clinical management.
+   PASS if: Anatomical references are consistent and unambiguous, or any omission is clinically irrelevant.
+
+2. CLINICAL_RELEVANCE
+   Does the impression directly address the stated clinical question/indication?
+   FLAG if: The impression fails to address the clinical indication — including when the scan type ordered does not adequately cover the anatomical region relevant to the clinical question (e.g., CT abdomen/pelvis ordered for chest pain where thoracic aortic pathology is not imaged or excluded).
+   WARNING if: The indication is only partially addressed, with a clinically meaningful aspect omitted or deflected without explanation.
+   PASS if: The impression meaningfully addresses the clinical indication given the scope of the scan performed.
+
+3. RECOMMENDATIONS
+   Evaluate radiologist-initiated recommendations (suggestions for further imaging, biopsy, follow-up, additional views).
+   KEY DISTINCTION:
+   - "Clinical correlation recommended", "discuss with clinician", "as clinically indicated" = pure clinical management deferrals → DO NOT flag these.
+   - "Consider CT chest", "further imaging recommended", "consider MRI" = radiological recommendations → these MUST include modality, urgency/timeframe, and clinical threshold to avoid a flag.
+   FLAG if: A radiological recommendation (further imaging, specific investigation) is made but lacks modality, urgency, or clinical context that a reasonable radiologist would provide.
+   WARNING if: A recommendation is present and mostly specified but missing one minor detail.
+   PASS if: All radiological recommendations are adequately specified, or the only recommendations made are appropriate clinical deferrals.
+
+4. CLINICAL_FLAGGING
+   Evaluate presence of 5 sub-flags:
+   - critical: Life-threatening findings requiring immediate action (e.g., tension pneumothorax, aortic dissection)
+   - urgent: Findings needing same-day attention
+   - significant: Important findings for clinical management
+   - suspected_new_malignancy: New suspicious lesions suggestive of malignancy
+   - known_malignancy_interval: Interval changes in known malignancy
+   For each sub-flag, assess whether it is present and whether the surrounding report language adequately supports that communication level.
+   FLAG if: A critical or urgent finding is present but the report language does not convey appropriate urgency.
+   WARNING if: Language level is slightly mismatched with the clinical significance described.
+
+5. REPORT_COMPLETENESS
+   Assess three dimensions together:
+   (a) Incidental findings — Any finding described in the Findings section must appear in the Impression with an appropriate management note (even if brief). FLAG if a named incidental finding is absent from the Impression.
+   (b) Systematic coverage — For scan type "{scan_type or 'general'}", flag only if a major expected organ system/region is entirely absent with no explanatory note (e.g., bowel loops not mentioned on an abdominal CT).
+   (c) Comparative analysis — If the report references a prior study (e.g., "previously", "prior imaging", "compared to [date]"), explicit comparison language must be present. FLAG if interval change is described without a comparison section. If no prior study is referenced, this dimension is automatically met.
+   FLAG if: Any of (a) or (c) are violated. WARNING for minor coverage gaps in (b) with no plausible clinical significance.
+
+6. LANGUAGE_QUALITY
+   Assess appropriateness of diagnostic certainty.
+   FLAG if: A definitive diagnosis is stated (without hedging) for a finding that is genuinely equivocal on the available imaging, where a reasonable radiologist would qualify the statement.
+   WARNING if: Clearly normal or clearly abnormal findings are stated with excessive hedging that introduces unwarranted clinical uncertainty.
+   PASS if: The level of certainty is commensurate with the imaging evidence.
+
+For each criterion, provide:
+- status: "pass", "flag", or "warning"
+- rationale: Brief explanation (10-400 chars)
+- highlighted_spans: Verbatim text from report to highlight (only if status is flag or warning)
+- recommendation: Suggested improvement within the radiological domain only (only if status is flag or warning)
+- flags_identified: (clinical_flagging only) List of all 5 sub-flag evaluations"""
+
+    # temperature=1 required for ZAI-GLM advanced reasoning; variability is
+    # controlled via explicit per-criterion thresholds in the prompt instead
+    model_settings = {
+        "temperature": 1.0,
+        "top_p": 1,
+        "max_completion_tokens": 2000,
+    }
+    
+    try:
+        result = await _run_agent_with_model(
+            model_name=model_name,
+            output_type=AuditResult,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            api_key=api_key,
+            use_thinking=False,
+            model_settings=model_settings
+        )
+        
+        elapsed = time.time() - start_time
+        audit_out = result.output
+
+        flags = sum(1 for c in audit_out.criteria if c.status == "flag")
+        warnings = sum(1 for c in audit_out.criteria if c.status == "warning")
+
+        print(f"  └─ Audit completed in {elapsed:.2f}s")
+        print(f"  └─ Overall status: {audit_out.overall_status}  ({flags} flag(s), {warnings} warning(s))")
+        print(f"  └─ Summary: {audit_out.summary}")
+        print(f"  └─ Criteria breakdown ({len(audit_out.criteria)} returned):")
+        for c in audit_out.criteria:
+            icon = {"flag": "🚩", "warning": "⚠️", "pass": "✅"}.get(c.status, "?")
+            print(f"       {icon} [{c.status.upper():7s}] {c.criterion}")
+            print(f"              rationale : {c.rationale}")
+            if c.recommendation:
+                print(f"              recommend : {c.recommendation}")
+            if c.highlighted_spans:
+                print(f"              highlights: {c.highlighted_spans}")
+        
+        return audit_out.model_dump()
+        
+    except Exception as e:
+        elapsed = time.time() - start_time
+        print(f"  └─ Audit failed after {elapsed:.2f}s: {type(e).__name__}: {str(e)[:200]}")
+        raise
 
 
