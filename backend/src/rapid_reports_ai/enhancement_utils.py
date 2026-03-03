@@ -4497,13 +4497,10 @@ Evaluate this report against all 6 audit criteria:
    PASS if: The impression meaningfully addresses the clinical indication given the scope of the scan performed.
 
 3. RECOMMENDATIONS
-   Evaluate radiologist-initiated recommendations (suggestions for further imaging, biopsy, follow-up, additional views).
-   KEY DISTINCTION:
-   - "Clinical correlation recommended", "discuss with clinician", "as clinically indicated" = pure clinical management deferrals → DO NOT flag these.
-   - "Consider CT chest", "further imaging recommended", "consider MRI" = radiological recommendations → these MUST include modality, urgency/timeframe, and clinical threshold to avoid a flag.
-   FLAG if: A radiological recommendation (further imaging, specific investigation) is made but lacks modality, urgency, or clinical context that a reasonable radiologist would provide.
-   WARNING if: A recommendation is present and mostly specified but missing one minor detail.
-   PASS if: All radiological recommendations are adequately specified, or the only recommendations made are appropriate clinical deferrals.
+   Given the findings described in the impression, assess whether appropriate referral and investigation pathways have been recommended with urgency commensurate with clinical severity.
+   FLAG if: An actionable finding in the impression (significant pathology, new diagnosis, finding requiring further characterisation or specialist input) has no associated recommendation when a reasonable radiologist would provide one; OR the urgency is clearly mismatched with clinical severity — e.g., time-sensitive or life-threatening pathology with no urgency stated, or emergency-level findings with only routine follow-up language.
+   WARNING if: A recommendation is present but the urgency level is ambiguous or likely under-stated relative to the clinical significance of the finding.
+   PASS if: All actionable findings in the impression have appropriate next-step recommendations with urgency commensurate to the finding. Concise referral statements (e.g., "orthopaedic referral advised", "urgent neurosurgical referral") are adequate — do not flag for missing reason clauses or absence of modality detail in specialist referrals.
 
 4. CLINICAL_FLAGGING
    Evaluate presence of 5 sub-flags:
@@ -4518,16 +4515,16 @@ Evaluate this report against all 6 audit criteria:
 
 5. REPORT_COMPLETENESS
    Assess three dimensions together:
-   (a) Incidental findings — Any finding described in the Findings section must appear in the Impression with an appropriate management note (even if brief). FLAG if a named incidental finding is absent from the Impression.
+   (a) Impression completeness — All significant findings described in FINDINGS (primary diagnoses, secondary diagnoses, and clinically meaningful findings) must be synthesised in the Impression. Minor incidentals that require no action and would not change clinical management are intentionally excluded from the Impression — do NOT flag their absence. FLAG if a significant or clinically meaningful finding in FINDINGS is entirely absent from the Impression without explanation. WARNING if a potentially meaningful finding is absent but its clinical significance is uncertain. PASS if the Impression accounts for all significant findings; minor incidentals correctly omitted should not be flagged.
    (b) Systematic coverage — For scan type "{scan_type or 'general'}", flag only if a major expected organ system/region is entirely absent with no explanatory note (e.g., bowel loops not mentioned on an abdominal CT).
    (c) Comparative analysis — If the report references a prior study (e.g., "previously", "prior imaging", "compared to [date]"), explicit comparison language must be present. FLAG if interval change is described without a comparison section. If no prior study is referenced, this dimension is automatically met.
    FLAG if: Any of (a) or (c) are violated. WARNING for minor coverage gaps in (b) with no plausible clinical significance.
 
 6. LANGUAGE_QUALITY
    Assess appropriateness of diagnostic certainty.
-   FLAG if: A definitive diagnosis is stated (without hedging) for a finding that is genuinely equivocal on the available imaging, where a reasonable radiologist would qualify the statement.
-   WARNING if: Clearly normal or clearly abnormal findings are stated with excessive hedging that introduces unwarranted clinical uncertainty.
-   PASS if: The level of certainty is commensurate with the imaging evidence.
+   FLAG if: A definitive diagnosis is stated without hedging for a finding that is genuinely equivocal on the available imaging, where a reasonable and experienced radiologist would qualify the statement.
+   WARNING if: Clearly normal or clearly abnormal findings are stated with excessive hedging that introduces unwarranted clinical uncertainty or would cause unnecessary clinical concern.
+   PASS if: The level of certainty is commensurate with the imaging evidence. Committed diagnoses for clear-cut findings are correct and should not be flagged.
 
 For each criterion, provide:
 - status: "pass", "flag", or "warning"
