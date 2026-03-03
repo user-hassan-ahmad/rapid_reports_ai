@@ -30,8 +30,8 @@ export let externalResponseVersion = 0;
 
 // Enhancement state props
 export let enhancementGuidelinesCount = 0;
-export let enhancementLoading = false;
-export let enhancementError = false;
+	export let enhancementLoading = false;
+	export let enhancementError = false;
 	
 	// No intermediate state needed - templatedModel is bound from parent
 	// and changes will propagate automatically via two-way binding

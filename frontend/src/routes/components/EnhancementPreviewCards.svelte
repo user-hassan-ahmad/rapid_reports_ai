@@ -19,7 +19,8 @@
 </script>
 
 {#if showCards}
-	<div class="mb-6 space-y-3">
+	<!-- transform: translateZ(0) forces GPU layer to prevent backdrop-blur repaint glitches on scroll -->
+	<div class="mb-6 space-y-3" style="transform: translateZ(0);">
 		<!-- Header -->
 		<!--
 		<div class="flex items-center gap-2 mb-2">
@@ -28,14 +29,15 @@
 		</div>
 		-->
 		
-		<!-- Cards Grid — collapse to single column when panel is open to avoid crumpling -->
-		<div class="grid gap-3" class:grid-cols-1={panelOpen} class:md:grid-cols-3={!panelOpen} class:lg:grid-cols-3={panelOpen}>
+		<!-- Cards Grid — horizontal when container has room (~800px+), vertical when narrow (overflow) -->
+		<div class="grid grid-cols-1 gap-3 @[800px]:grid-cols-3">
 			<!-- Guidelines Card -->
 			<button
 				type="button"
 				onclick={() => openSidebar('guidelines')}
 				disabled={isLoading}
 				class="group relative bg-gradient-to-br from-purple-900/20 to-purple-800/10 backdrop-blur-xl border border-purple-500/30 hover:border-purple-500/60 rounded-xl p-4 transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+				style="transform: translateZ(0);"
 			>
 				<div class="flex items-start justify-between mb-2">
 					<div class="flex items-center gap-2">
@@ -72,6 +74,7 @@
 				onclick={() => openSidebar('comparison')}
 				disabled={isLoading}
 				class="group relative bg-gradient-to-br from-orange-900/20 to-orange-800/10 backdrop-blur-xl border border-orange-500/30 hover:border-orange-500/60 rounded-xl p-4 transition-all duration-300 hover:shadow-lg hover:shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+				style="transform: translateZ(0);"
 			>
 				<div class="flex items-start justify-between mb-2">
 					<div class="flex items-center gap-2">
@@ -95,6 +98,7 @@
 				onclick={() => openSidebar('chat')}
 				disabled={isLoading}
 				class="group relative bg-gradient-to-br from-blue-900/20 to-blue-800/10 backdrop-blur-xl border border-blue-500/30 hover:border-blue-500/60 rounded-xl p-4 transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+				style="transform: translateZ(0);"
 			>
 				<div class="flex items-start justify-between mb-2">
 					<div class="flex items-center gap-2">
