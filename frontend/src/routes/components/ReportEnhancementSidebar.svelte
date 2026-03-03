@@ -106,13 +106,27 @@ interface CompletenessAnalysis {
 		appliedActionIds?: string[];
 	}
 	
+	type ChatMessageLabel = {
+		type: 'intelli-fill' | 'audit-fix';
+		name: string;
+		itemType?: string;
+	};
+
+	type ChatMessageAction = {
+		title: string;
+		details: string;
+		patch: string;
+	};
+
 	type ChatMessage = {
 		role: 'user' | 'assistant';
 		content: string;
 		sources?: string[];
 		error?: boolean;
 		editProposal?: string;
+		actionsApplied?: ChatMessageAction[];
 		applied?: boolean;
+		label?: ChatMessageLabel;
 	};
 	
 	const enhancementCache = new Map<string, EnhancementCacheEntry>();
@@ -121,6 +135,7 @@ interface CompletenessAnalysis {
 <script lang="ts">
 	import { token } from '$lib/stores/auth';
 	import { marked } from 'marked';
+	import DiffMatchPatch from 'diff-match-patch';
 	import { onDestroy, onMount, tick } from 'svelte';
 	import pilotIcon from '$lib/assets/pilot.png';
 	import { API_URL } from '$lib/config';
@@ -148,6 +163,8 @@ interface CompletenessAnalysis {
 	export let historyAvailable: boolean = false;
 	export let initialTab: 'guidelines' | 'comparison' | 'chat' | null = null;
 	export let initialMessage: string | null = null;
+	export let autoSend: boolean = false;
+	export let autoSendLabel: { type: string; name: string; itemType?: string } | null = null;
 	
 	let activeTab: 'guidelines' | 'analysis' | 'comparison' | 'chat' = 'guidelines';
 	
@@ -158,27 +175,36 @@ interface CompletenessAnalysis {
 	
 	// Set initial tab when sidebar opens or when initialTab changes
 	let lastInitialTab: 'guidelines' | 'comparison' | 'chat' | null = null;
+	let lastInitialMessage: string | null = null;
 	$: if (visible && initialTab && initialTab !== 'analysis') {
-		// Only update if the tab actually changed to avoid unnecessary updates
-		if (initialTab !== lastInitialTab) {
+		const tabChanged = initialTab !== lastInitialTab;
+		const messageChanged = initialTab === 'chat' && !!initialMessage && initialMessage !== lastInitialMessage;
+		if (tabChanged) {
 			activeTab = initialTab;
 			lastInitialTab = initialTab;
-		// If chat tab and initialMessage provided, populate chat input
-		if (initialTab === 'chat' && initialMessage) {
+		}
+		// If chat tab and initialMessage provided (tab changed OR new message), populate chat input
+		if ((tabChanged || messageChanged) && initialTab === 'chat' && initialMessage) {
+			lastInitialMessage = initialMessage;
 			chatInput = initialMessage;
-			// Resize textarea after setting initial message
-			setTimeout(() => {
-				if (chatTextareaRef) {
-					chatTextareaRef.style.height = 'auto';
-					const maxHeight = Math.floor(window.innerHeight * 0.2);
-					const newHeight = Math.min(chatTextareaRef.scrollHeight, maxHeight);
-					chatTextareaRef.style.height = `${newHeight}px`;
-					chatTextareaRef.style.maxHeight = `${maxHeight}px`;
-				}
-			}, 0);
+			if (autoSend) {
+				// Auto-send immediately without waiting for user to press send
+				const labelToSend = autoSendLabel as ChatMessageLabel | null;
+				setTimeout(() => sendChatMessage(labelToSend ?? undefined), 50);
+			} else {
+				// Resize textarea after setting initial message
+				setTimeout(() => {
+					if (chatTextareaRef) {
+						chatTextareaRef.style.height = 'auto';
+						const maxHeight = Math.floor(window.innerHeight * 0.2);
+						const newHeight = Math.min(chatTextareaRef.scrollHeight, maxHeight);
+						chatTextareaRef.style.height = `${newHeight}px`;
+						chatTextareaRef.style.maxHeight = `${maxHeight}px`;
+					}
+				}, 0);
+			}
 			// Scroll to bottom when switching to chat tab
 			scrollChatToBottom();
-		}
 		}
 	}
 	
@@ -410,7 +436,23 @@ function startCompletenessPoll() {
 	completenessPollTimer = setInterval(pollCompleteness, COMPLETENESS_POLL_INTERVAL);
 	}
 	
-function renderMarkdown(md: string) {
+const dmp = new DiffMatchPatch();
+	
+	function renderDiff(oldText: string, newText: string): string {
+		if (!oldText || !newText) return '';
+		const diffs = dmp.diff_main(oldText, newText);
+		dmp.diff_cleanupSemantic(diffs);
+		return diffs
+			.map(([op, text]) => {
+				const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+				if (op === 1) return `<ins class="bg-green-500/30 text-green-200 px-0.5 rounded no-underline">${escaped}</ins>`;
+				if (op === -1) return `<del class="bg-red-500/30 text-red-200 px-0.5 rounded line-through">${escaped}</del>`;
+				return escaped;
+			})
+			.join('');
+	}
+	
+	function renderMarkdown(md: string) {
 		if (!md) return '';
 		
 		// Convert literal \n strings to actual newlines
@@ -602,7 +644,7 @@ function renderMarkdown(md: string) {
 		}
 	}
 	
-	async function sendChatMessage(): Promise<void> {
+	async function sendChatMessage(label?: ChatMessageLabel): Promise<void> {
 		if (!chatInput.trim() || !reportId) return;
 		
 		const userMessage = chatInput.trim();
@@ -614,7 +656,7 @@ function renderMarkdown(md: string) {
 			chatTextareaRef.style.maxHeight = '';
 		}
 		
-		chatMessages.push({ role: 'user', content: userMessage });
+		chatMessages.push({ role: 'user', content: userMessage, ...(label ? { label } : {}) });
 		chatMessages = [...chatMessages];
 		scrollChatToBottom(); // Scroll after user message
 		
@@ -640,12 +682,14 @@ function renderMarkdown(md: string) {
 			if (data.success) {
 				let content = data.response;
 				let editProposal = data.edit_proposal;
+				let actionsApplied = data.actions_applied || null;
 
 				chatMessages.push({
 					role: 'assistant',
 					content: content,
 					sources: data.sources || [],
-					editProposal
+					editProposal,
+					actionsApplied
 				});
 				chatMessages = [...chatMessages];
 				scrollChatToBottom(); // Scroll after assistant message
@@ -1765,15 +1809,47 @@ $: if ((visible || autoLoad) && completenessPending) {
 						{:else}
 							{#each chatMessages as msg, index}
 								<div class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}">
-									<div class="max-w-[80%] {msg.role === 'user' ? 'bg-gradient-to-br from-purple-600 to-purple-500 shadow-lg shadow-purple-500/30' : msg.error ? 'bg-red-500/20 backdrop-blur-xl border border-red-500/30' : 'bg-white/10 backdrop-blur-xl border border-white/10'} rounded-lg p-3">
+									<div class="max-w-[80%] {msg.role === 'user' ? (msg.label ? 'bg-white/5 border border-white/10' : 'bg-gradient-to-br from-purple-600 to-purple-500 shadow-lg shadow-purple-500/30') : msg.error ? 'bg-red-500/20 backdrop-blur-xl border border-red-500/30' : 'bg-white/10 backdrop-blur-xl border border-white/10'} rounded-lg p-3">
+										{#if msg.label}
+											{@const isAudit = msg.label.type === 'audit-fix'}
+											<div class="flex items-center gap-2">
+												<div class="flex items-center gap-1.5 px-2 py-1 rounded-md {isAudit ? 'bg-amber-500/15 border border-amber-500/25' : 'bg-purple-500/15 border border-purple-500/25'}">
+													{#if isAudit}
+														<svg class="w-3 h-3 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+														</svg>
+														<span class="text-[10px] font-semibold text-amber-400 uppercase tracking-wide">Audit Fix</span>
+													{:else}
+														<svg class="w-3 h-3 text-purple-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+														</svg>
+														<span class="text-[10px] font-semibold text-purple-400 uppercase tracking-wide">Intelli-Fill</span>
+													{/if}
+												</div>
+												<span class="text-xs font-mono {isAudit ? 'text-amber-300' : 'text-purple-300'} truncate max-w-[160px]" title={msg.label.name}>{msg.label.name}</span>
+											</div>
+										{:else}
 										<div class="prose prose-invert max-w-none text-sm {msg.error ? 'text-red-300' : 'text-gray-100'}">
 											{@html renderMarkdown(msg.content)}
 										</div>
+										{/if}
 										{#if msg.editProposal}
-											<div class="mt-3 pt-3 border-t border-white/10">
-												<div class="bg-black/50 backdrop-blur-xl rounded p-2 mb-2 border border-white/10">
+											<div class="mt-3 pt-3 border-t border-white/10 space-y-2">
+												{#if msg.actionsApplied && msg.actionsApplied.length > 0}
+													<div class="bg-black/40 rounded p-2 border border-white/10">
+														<p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Reasoning & changes</p>
+														{#each msg.actionsApplied as action}
+															<div class="text-xs text-gray-300 mb-2 last:mb-0">
+																<span class="font-medium text-purple-300">{action.title}</span>
+																{#if action.details}<p class="text-gray-400 mt-0.5">{action.details}</p>{/if}
+																<p class="font-mono text-[11px] text-amber-200/90 mt-0.5">Patch: {action.patch}</p>
+															</div>
+														{/each}
+													</div>
+												{/if}
+												<div class="bg-black/50 backdrop-blur-xl rounded p-2 border border-white/10">
 													<div class="flex items-center justify-between mb-1">
-														<p class="text-xs font-medium text-gray-400">Proposed Change:</p>
+														<p class="text-xs font-medium text-gray-400">Preview</p>
 														<button
 															onclick={() => expandedEditProposalIndex = index}
 															class="text-xs text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
@@ -1785,18 +1861,27 @@ $: if ((visible || autoLoad) && completenessPending) {
 															Expand
 														</button>
 													</div>
-													<div class="text-xs text-gray-300 max-h-32 overflow-y-auto whitespace-pre-wrap font-mono bg-black/20 p-2 rounded">
-														{msg.editProposal}
+													<div class="text-xs text-gray-300 max-h-48 overflow-y-auto font-mono bg-black/20 p-2 rounded prose prose-invert max-w-none whitespace-pre-wrap">
+														{#if msg.editProposal}
+															{#if reportContent}
+																{@html renderDiff(reportContent, msg.editProposal)}
+															{:else}
+																{msg.editProposal}
+															{/if}
+														{/if}
 													</div>
 												</div>
 												<button
 													onclick={() => {
-														updateReportContent(msg.editProposal, 'chat');
-														msg.applied = true;
+														if (msg.editProposal) {
+															updateReportContent(msg.editProposal, 'chat');
+															msg.applied = true;
+														}
 														chatMessages = [...chatMessages]; // Trigger reactivity
 													}}
-													disabled={msg.applied}
-													class="w-full px-3 py-1.5 {msg.applied ? 'bg-green-600/50 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'} text-white text-xs font-medium rounded transition-colors flex items-center justify-center gap-2"
+													disabled={msg.applied || !reportId}
+													title={!reportId ? 'No report loaded' : msg.applied ? 'Already applied' : 'Apply this change to the report'}
+													class="w-full px-3 py-1.5 {msg.applied ? 'bg-green-600/50 cursor-not-allowed' : !reportId ? 'bg-gray-600 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'} text-white text-xs font-medium rounded transition-colors flex items-center justify-center gap-2"
 												>
 													{#if msg.applied}
 														<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1868,9 +1953,9 @@ $: if ((visible || autoLoad) && completenessPending) {
 									target.style.maxHeight = `${maxHeight}px`;
 								}}
 							></textarea>
-							<button
-								onclick={sendChatMessage}
-								disabled={!chatInput.trim() || chatLoading || !reportId}
+						<button
+							onclick={() => sendChatMessage()}
+							disabled={!chatInput.trim() || chatLoading || !reportId}
 								class="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg shadow-lg shadow-purple-500/50 hover:shadow-purple-500/70 transition-all duration-200"
 							>
 								Send
@@ -1900,9 +1985,30 @@ $: if ((visible || autoLoad) && completenessPending) {
 					</svg>
 				</button>
 			</div>
-			<div class="flex-1 overflow-y-auto p-4">
+			<div class="flex-1 overflow-y-auto p-4 space-y-4">
+				{#if expandedMsg.actionsApplied && expandedMsg.actionsApplied.length > 0}
+					<div class="rounded-lg p-4 border border-white/10 bg-black/40">
+						<h4 class="text-sm font-semibold text-gray-300 mb-3">Reasoning & changes</h4>
+						{#each expandedMsg.actionsApplied as action}
+							<div class="text-sm text-gray-300 mb-3 last:mb-0">
+								<span class="font-medium text-purple-300">{action.title}</span>
+								{#if action.details}<p class="text-gray-400 mt-1">{action.details}</p>{/if}
+								<p class="font-mono text-xs text-amber-200/90 mt-1">Patch: {action.patch}</p>
+							</div>
+						{/each}
+					</div>
+				{/if}
 				<div class="rounded-lg p-4 border border-white/10">
-					<pre class="text-sm text-gray-300 whitespace-pre-wrap font-mono bg-black/20 p-4 rounded overflow-x-auto">{expandedMsg.editProposal}</pre>
+					<h4 class="text-sm font-semibold text-gray-300 mb-2">Preview</h4>
+					<div class="text-sm text-gray-300 font-mono bg-black/20 p-4 rounded overflow-x-auto overflow-y-auto max-h-[50vh] prose prose-invert max-w-none whitespace-pre-wrap">
+						{#if expandedMsg.editProposal}
+							{#if reportContent}
+								{@html renderDiff(reportContent, expandedMsg.editProposal)}
+							{:else}
+								{expandedMsg.editProposal}
+							{/if}
+						{/if}
+					</div>
 				</div>
 			</div>
 			<div class="p-4 border-t border-white/10 flex gap-3 justify-end">
@@ -1914,12 +2020,15 @@ $: if ((visible || autoLoad) && completenessPending) {
 				</button>
 				<button
 					onclick={() => {
-						updateReportContent(expandedMsg.editProposal, 'chat');
-						expandedMsg.applied = true;
-						chatMessages = [...chatMessages]; // Trigger reactivity
-						expandedEditProposalIndex = null;
+						if (expandedMsg.editProposal) {
+							updateReportContent(expandedMsg.editProposal, 'chat');
+							expandedMsg.applied = true;
+							chatMessages = [...chatMessages]; // Trigger reactivity
+							expandedEditProposalIndex = null;
+						}
 					}}
-					disabled={expandedMsg.applied}
+					disabled={expandedMsg.applied || !reportId || !expandedMsg.editProposal}
+					title={!reportId ? 'No report loaded' : expandedMsg.applied ? 'Already applied' : 'Apply this change to the report'}
 					class="px-4 py-2 {expandedMsg.applied ? 'bg-green-600/50 cursor-not-allowed' : 'bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 shadow-lg shadow-purple-500/50'} text-white rounded-lg transition-all duration-200 flex items-center gap-2"
 				>
 					{#if expandedMsg.applied}

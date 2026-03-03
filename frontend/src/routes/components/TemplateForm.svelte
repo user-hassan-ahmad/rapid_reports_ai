@@ -37,6 +37,9 @@ export let enhancementGuidelinesCount = 0;
 export let enhancementLoading = false;
 export let enhancementError = false;
 
+// Audit props
+let scanType = '';  // Captured from API response
+
 	// Ensure props are never undefined to prevent errors
 	if (typeof selectedTemplate === 'undefined') {
 		selectedTemplate = null;
@@ -163,6 +166,7 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 			if (data.success) {
 				response = data.response;
 				responseModel = data.model;
+				scanType = data.scan_type || '';
 				// Dispatch reportId to parent
 				dispatch('reportGenerated', { reportId: data.report_id });
 			} else {
@@ -431,31 +435,36 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 					</div>
 				{/if}
 			</div>
-
-			<ReportResponseViewer
-				visible={responseVisible}
-				expanded={responseExpanded}
-				response={response}
-				error={error}
-				model={responseModel}
-				generationLoading={loading}
-				updateLoading={reportUpdateLoading}
-				reportId={reportId}
-				versionHistoryRefreshKey={versionHistoryRefreshKey}
-				enhancementGuidelinesCount={enhancementGuidelinesCount}
-				enhancementLoading={enhancementLoading}
-				enhancementError={enhancementError}
-				on:toggle={toggleResponse}
-				on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
-				on:copy={copyToClipboard}
-				on:clear={clearResponse}
-				on:restore={(event) => handleHistoryRestore(event.detail)}
-				on:historyUpdate={(event) => dispatch('historyUpdate', event.detail)}
-				on:save={handleReportSave}
-				on:showHoverPopup={(e) => dispatch('showHoverPopup', e.detail)}
-				on:hideHoverPopup={() => dispatch('hideHoverPopup')}
-			/>
 		</div>
+	{/if}
+	<!-- Keep ReportResponseViewer mounted when we have response or selectedTemplate so that
+	     Back-to-Templates / re-select-same-template does not destroy it and re-trigger audit. -->
+	{#if selectedTemplate || response}
+		<ReportResponseViewer
+			visible={responseVisible && !!selectedTemplate}
+			expanded={responseExpanded}
+			response={response}
+			error={error}
+			model={responseModel}
+			generationLoading={loading}
+			updateLoading={reportUpdateLoading}
+			reportId={reportId}
+			versionHistoryRefreshKey={versionHistoryRefreshKey}
+			enhancementGuidelinesCount={enhancementGuidelinesCount}
+			enhancementLoading={enhancementLoading}
+			enhancementError={enhancementError}
+			scanType={scanType}
+			clinicalHistory={variableValues['CLINICAL_HISTORY'] || ''}
+			on:toggle={toggleResponse}
+			on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
+			on:copy={copyToClipboard}
+			on:clear={clearResponse}
+			on:restore={(event) => handleHistoryRestore(event.detail)}
+			on:historyUpdate={(event) => dispatch('historyUpdate', event.detail)}
+			on:save={handleReportSave}
+			on:showHoverPopup={(e) => dispatch('showHoverPopup', e.detail)}
+			on:hideHoverPopup={() => dispatch('hideHoverPopup')}
+		/>
 	{/if}
 </div>
 

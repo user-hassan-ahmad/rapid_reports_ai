@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
+	import { writable } from 'svelte/store';
 	import { token } from '$lib/stores/auth';
 	import ReportVersionInline from './ReportVersionInline.svelte';
 	import EnhancementPreviewCards from './EnhancementPreviewCards.svelte';
 	import EnhancementInlinePanel from './EnhancementInlinePanel.svelte';
 	import ReportEditor from './ReportEditor.svelte';
+	import AuditBanner from './AuditBanner.svelte';
 	import { API_URL } from '$lib/config';
 	import { detectUnfilledPlaceholders, generateChatContext } from '$lib/utils/placeholderDetection';
 	import { applyEditsToReport } from '$lib/utils/reportEditing';
@@ -28,6 +30,10 @@
 	export let enhancementLoading = false;
 	export let enhancementError = false;
 	
+	// Audit props
+	export let scanType: string = '';
+	export let clinicalHistory: string = '';
+	
 	// Track previous response to detect manual updates
 	let previousResponse = '';
 
@@ -37,10 +43,12 @@
 	let inlinePanelVisible = false;
 	let inlinePanelTab: 'guidelines' | 'comparison' | 'chat' = 'guidelines';
 
+	// Mobile detection for responsive QA panel
+	let isMobile = false;
+	let mediaQueryList: MediaQueryList | null = null;
+
 	// Unfilled placeholder detection state — updated via on:unfilledItems from ReportEditor
-	let highlightingEnabled = false;
 	let showHighlighting = false;
-	let manuallyDisabled = false;
 	let showSummaryPanel = false;
 	let unfilledItems: UnfilledItems = {
 		measurements: [],
@@ -57,6 +65,203 @@
 	let lastSavedResponse = '';
 	let reportEditorRef: { resetContent: (c: string) => void } | null = null;
 
+	// ─── Audit integration ────────────────────────────────────────────────────
+	// Per-component-instance store — avoids cross-contamination between the
+	// AutoReportTab and TemplatedReportTab instances of ReportResponseViewer,
+	// which previously shared a single module-level singleton.
+	interface AuditCriterionItem {
+		criterion: string;
+		status: 'pass' | 'flag' | 'warning';
+		rationale: string;
+		highlighted_spans?: string[];
+		recommendation?: string;
+		acknowledged?: boolean;
+	}
+
+	interface AuditStoreState {
+		status: 'idle' | 'loading' | 'complete' | 'stale' | 'error';
+		result: any;
+		auditId: string | null;
+		error: string | null;
+		activeCriterion: string | null;
+	}
+
+	const auditStore = writable<AuditStoreState>({
+		status: 'idle', result: null, auditId: null, error: null, activeCriterion: null
+	});
+
+	// Store helpers — mirror the global store's API
+	const auditActions = {
+		setLoading: () => auditStore.update(s => ({ ...s, status: 'loading', error: null })),
+		setResult: (result: any, auditId: string | null) =>
+			auditStore.update(s => ({ ...s, status: 'complete', result, auditId, error: null })),
+		setStale: () => auditStore.update(s => s.status === 'complete' ? { ...s, status: 'stale' } : s),
+		setError: (error: string) => auditStore.update(s => ({ ...s, status: 'error', error })),
+		setActiveCriterion: (criterion: string | null) =>
+			auditStore.update(s => ({ ...s, activeCriterion: criterion })),
+		acknowledgeLocal: (criterion: string) => auditStore.update(s => {
+			if (!s.result) return s;
+			const criteria = s.result.criteria.map((c: AuditCriterionItem) =>
+				c.criterion === criterion ? { ...c, acknowledged: true } : c
+			);
+			return { ...s, result: { ...s.result, criteria } };
+		}),
+		unacknowledgeLocal: (criterion: string) => auditStore.update(s => {
+			if (!s.result) return s;
+			const criteria = s.result.criteria.map((c: AuditCriterionItem) =>
+				c.criterion === criterion ? { ...c, acknowledged: false, resolution_method: undefined } : c
+			);
+			return { ...s, result: { ...s.result, criteria } };
+		}),
+		reset: () => auditStore.set({ status: 'idle', result: null, auditId: null, error: null, activeCriterion: null }),
+	};
+
+	let auditPanelOpen = false;
+	let auditPanelAutoOpened = false; // one-time flag so user can close panel without it snapping back
+
+	// Content-based tracking: prevents re-auditing same content AND avoids stale triggers.
+	// Set immediately (synchronously) inside triggerAudit so the reactive won't double-fire.
+	let lastAuditedContent = '';
+
+	// Derive audit decorations from store result
+	$: auditDecorations = ($auditStore.result?.criteria ?? [] as AuditCriterionItem[])
+		.filter((c: AuditCriterionItem) => c.status !== 'pass')
+		.flatMap((c: AuditCriterionItem) => (c.highlighted_spans || []).map((text: string) => ({
+			text,
+			criterion: c.criterion,
+			status: c.status as 'flag' | 'warning',
+			stale: $auditStore.status === 'stale'
+		})));
+
+	// Private tracking variable for audit resets — kept separate from `lastReportId` (used
+	// for highlighting resets) to avoid Svelte's topological sort running the lastReportId
+	// writer block before this reader block, which previously made this condition always false.
+	let lastAuditReportId: string | null = null;
+	$: if (reportId !== lastAuditReportId) {
+		lastAuditReportId = reportId;
+		lastAuditedContent = '';
+		auditPanelOpen = false;
+		auditPanelAutoOpened = false;
+		auditActions.reset();
+	}
+
+	// Auto-trigger: only fires when response is new content we haven't audited yet.
+	// Content-based check prevents firing with stale/old response text.
+	$: if (response && !generationLoading && response !== lastAuditedContent && $auditStore.status === 'idle') {
+		triggerAudit(response);
+	}
+
+	// Mark audit as stale when there are unsaved changes
+	$: if (hasUnsavedChanges && $auditStore.status === 'complete') {
+		auditActions.setStale();
+	}
+
+	// Auto-open audit panel once when audit first completes (one-time, so user can close it)
+	$: if ($auditStore.status === 'complete' && !auditPanelAutoOpened) {
+		auditPanelAutoOpened = true;
+		auditPanelOpen = true;
+	}
+
+	// Audit panel toggle badge info
+	$: auditFlagCount = ($auditStore.result?.criteria ?? [])
+		.filter((c: AuditCriterionItem) => c.status === 'flag').length;
+	$: auditWarningCount = ($auditStore.result?.criteria ?? [])
+		.filter((c: AuditCriterionItem) => c.status === 'warning').length;
+
+	async function triggerAudit(content: string) {
+		if (!content.trim()) return;
+		// Mark as audited immediately (synchronous) to prevent the reactive from re-firing
+		lastAuditedContent = content;
+		auditActions.setLoading();
+		
+		try {
+			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+			if ($token) {
+				headers['Authorization'] = `Bearer ${$token}`;
+			}
+			
+			const res = await fetch(`${API_URL}/api/audit`, {
+				method: 'POST',
+				headers,
+				body: JSON.stringify({
+					report_content: content,
+					scan_type: scanType,
+					clinical_history: clinicalHistory,
+					report_id: reportId
+				})
+			});
+			
+			const data = await res.json();
+			
+			if (!res.ok || !data.success) {
+				throw new Error(data.detail || data.error || 'Audit failed');
+			}
+			
+			auditActions.setResult(data, data.audit_id);
+		} catch (e) {
+			auditActions.setError(e instanceof Error ? e.message : 'Audit failed');
+		}
+	}
+
+	function handleAuditSpanHover(e: CustomEvent<{ criterion: string | null }>) {
+		auditActions.setActiveCriterion(e.detail.criterion);
+	}
+
+	function handleAuditSpanClick(e: CustomEvent<{ criterion: string }>) {
+		const { criterion } = e.detail;
+		// Open the panel if closed, then navigate to the criterion card
+		if (!auditPanelOpen && $auditStore.status !== 'idle') {
+			auditPanelOpen = true;
+			auditPanelAutoOpened = true;
+		}
+		auditActions.setActiveCriterion(criterion);
+	}
+
+	function handleRestore(e: CustomEvent<{ criterion: string }>) {
+		auditActions.unacknowledgeLocal(e.detail.criterion);
+	}
+
+	async function handleAcknowledge(e: CustomEvent<{ criterion: string; resolutionMethod: string }>) {
+		const { criterion, resolutionMethod } = e.detail;
+		const auditId = $auditStore.auditId;
+		
+		if (!auditId) return;
+		
+		try {
+			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+			if ($token) {
+				headers['Authorization'] = `Bearer ${$token}`;
+			}
+			
+			await fetch(`${API_URL}/api/audit/${auditId}/criteria/${criterion}`, {
+				method: 'PATCH',
+				headers,
+				body: JSON.stringify({ resolution_method: resolutionMethod })
+			});
+			
+			auditActions.acknowledgeLocal(criterion);
+		} catch (e) {
+			console.error('Failed to acknowledge criterion:', e);
+		}
+	}
+
+	function handleSuggestFix(e: CustomEvent<{ criterion: string; rationale: string }>) {
+		const { criterion, rationale } = e.detail;
+		const msg = `The audit flagged an issue with "${criterion}": ${rationale}. Please go ahead and apply the appropriate correction to the report now.`;
+		dispatch('openSidebar', {
+			tab: 'chat',
+			initialMessage: msg,
+			autoSend: true,
+			labelInfo: { type: 'audit-fix', name: criterion }
+		});
+	}
+
+	function handleReaudit() {
+		lastAuditedContent = '';
+		auditActions.reset();
+		triggerAudit(currentEditorContent || response);
+	}
+
 	$: if (!reportId && activeView === 'history') {
 		activeView = 'report';
 	}
@@ -67,18 +272,8 @@
 	// Auto-enable highlighting when unfilled items arrive from the editor
 	function handleUnfilledItems(items: UnfilledItems) {
 		unfilledItems = items;
-		if (items.total > 0 && !highlightingEnabled && !manuallyDisabled) {
-			highlightingEnabled = true;
-			showHighlighting = true;
-			showSummaryPanel = true;
-		} else if (items.total > 0 && highlightingEnabled && !manuallyDisabled) {
-			showHighlighting = true;
-			showSummaryPanel = true;
-		}
-		if (items.total === 0) {
-			showHighlighting = false;
-			showSummaryPanel = false;
-		}
+		showHighlighting = items.total > 0;
+		showSummaryPanel = items.total > 0;
 	}
 
 	// Reset highlighting during loading
@@ -94,12 +289,6 @@
 		lastSavedResponse = response;
 	}
 	
-	// Sync summary panel with highlighting toggle (only when not loading)
-	$: if (showHighlighting && unfilledItems.total > 0 && !generationLoading && !updateLoading) {
-		showSummaryPanel = true;
-	} else if (!showHighlighting || generationLoading || updateLoading) {
-		showSummaryPanel = false;
-	}
 	
 
 	$: hasContent = Boolean(response || error);
@@ -113,9 +302,7 @@
 	// Reset state when a new report is loaded
 	let lastReportId: string | null = null;
 	$: if (reportId && reportId !== lastReportId) {
-		highlightingEnabled = false;
 		showHighlighting = false;
-		manuallyDisabled = false;
 		hasUnsavedChanges = false;
 		lastReportId = reportId;
 	}
@@ -193,7 +380,19 @@
 		hasUnsavedChanges = false;
 	}
 
-	onMount(loadHistorySummary);
+	onMount(() => {
+		loadHistorySummary();
+		
+		// Set up mobile detection via matchMedia
+		mediaQueryList = window.matchMedia('(max-width: 767px)');
+		isMobile = mediaQueryList.matches;
+		const handleMediaChange = (e: MediaQueryListEvent) => { isMobile = e.matches; };
+		mediaQueryList.addEventListener('change', handleMediaChange);
+		
+		return () => {
+			mediaQueryList?.removeEventListener('change', handleMediaChange);
+		};
+	});
 
 	let lastSummaryReportId = undefined;
 	let lastSummaryRefreshKey = -1;
@@ -406,30 +605,34 @@
 					</div>
 				{/if}
 				
-				{#if activeView === 'report' && response && unfilledItems.total > 0}
+
+				<!-- QA toggle button -->
+				{#if activeView === 'report' && $auditStore.status !== 'idle'}
 					<button
 						type="button"
-						onclick={(e) => {
-							e.stopPropagation();
-							e.preventDefault();
-							showHighlighting = !showHighlighting;
-							if (!showHighlighting) {
-								manuallyDisabled = true;
-								highlightingEnabled = false;
-							} else {
-								manuallyDisabled = false;
-								highlightingEnabled = true;
-							}
-						}}
+						onclick={(e) => { e.stopPropagation(); auditPanelOpen = !auditPanelOpen; }}
 						onmousedown={(e) => e.stopPropagation()}
-						class="px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-colors {showHighlighting ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-300 hover:text-white'}"
-						title="Toggle unfilled placeholder highlighting"
+						title="Toggle QA audit panel"
+						class="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-all
+							{auditPanelOpen
+								? 'bg-purple-600/30 text-purple-300 border border-purple-500/40'
+								: 'bg-white/[0.05] text-gray-400 hover:text-gray-200 border border-white/[0.08] hover:border-white/[0.15]'}"
 					>
-						<span class="flex items-center gap-1 sm:gap-1.5">
-							<span class="hidden sm:inline">🎨</span>
-							<span class="sm:hidden">⚠️</span>
-							<span class="hidden sm:inline">Unfilled</span> ({unfilledItems.total})
-						</span>
+						{#if $auditStore.status === 'loading'}
+							<div class="w-2.5 h-2.5 border border-purple-400 border-t-transparent rounded-full animate-spin"></div>
+							<span class="hidden sm:inline">QA</span>
+						{:else}
+							<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+							</svg>
+							{#if auditFlagCount > 0}
+								<span class="hidden sm:inline text-rose-300">{auditFlagCount}</span>
+							{:else if auditWarningCount > 0}
+								<span class="hidden sm:inline text-amber-300">{auditWarningCount}</span>
+							{:else}
+								<span class="hidden sm:inline">QA</span>
+							{/if}
+						{/if}
 					</button>
 				{/if}
 
@@ -448,17 +651,6 @@
 						</svg>
 					</button>
 				{/if}
-				<button
-					type="button"
-					onclick={() => dispatch('clear')}
-					class="p-1.5 sm:p-2 text-gray-400 hover:text-red-400 transition-colors rounded-lg hover:bg-white/5"
-					title="Clear response"
-					aria-label="Clear report"
-				>
-					<svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
 			</div>
 		</div>
 
@@ -472,9 +664,9 @@
 						</div>
 					</div>
 				{/if}
-				<div class="relative px-3 sm:px-4 pt-0 pb-3 sm:pb-4 flex-1 min-h-0 overflow-y-auto space-y-3 sm:space-y-4">
+				<div class="relative px-3 sm:px-4 pt-0 pb-3 sm:pb-4 flex-1 min-h-0 overflow-y-auto">
 					<!-- View container with absolute positioning for smooth crossfade transitions -->
-					<div class="relative" style="min-height: calc(100vh - 300px);">
+					<div class="relative" style="min-height: calc(100vh - 330px);">
 						<!-- History View -->
 						{#if activeView === 'history' && reportId}
 							<div 
@@ -491,134 +683,161 @@
 							</div>
 						{/if}
 						
-						<!-- Report View -->
-						{#if activeView === 'report'}
-							<div 
-								class="absolute inset-0 overflow-y-auto"
-								transition:fade={{ duration: 200, easing: (t) => t * (2 - t) }}
-								style="will-change: opacity; backface-visibility: hidden;"
-							>
-								<!-- Enhancement Preview Cards - Before report content -->
-								{#if reportId}
-						<EnhancementPreviewCards
-							guidelinesCount={enhancementGuidelinesCount}
-							isLoading={enhancementLoading}
-							hasError={enhancementError}
-							reportId={reportId}
-							on:openSidebar={(e) => {
-								dispatch('openSidebar', e.detail);
-							}}
-						/>
-							{/if}
-							
-						<!-- Summary Panel for Unfilled Items -->
-						{#if showSummaryPanel && unfilledItems.total > 0}
-					<div class="relative mb-3 sm:mb-4" style="z-index: 10;">
-						<div
-							class="group relative w-full bg-gradient-to-br from-yellow-900/20 to-orange-800/10 backdrop-blur-xl border border-yellow-500/30 rounded-lg sm:rounded-xl p-2.5 sm:p-4"
+					<!-- Report View -->
+					{#if activeView === 'report'}
+						<div 
+							class="absolute inset-0 overflow-hidden"
+							transition:fade={{ duration: 200, easing: (t) => t * (2 - t) }}
+							style="will-change: opacity; backface-visibility: hidden;"
 						>
-							<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
-								<div class="flex items-center gap-2 sm:gap-3">
-									<div class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-yellow-600/20 flex items-center justify-center shrink-0">
-										<svg class="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-										</svg>
-									</div>
-									<div class="text-left">
-										<h4 class="text-xs sm:text-sm font-semibold text-white group-hover:text-yellow-300 transition-colors">Unfilled Items</h4>
-										<p class="text-[10px] sm:text-xs text-gray-400">Complete your report</p>
-									</div>
+							<!-- Editor content (full-width, scrollable) -->
+							<div class="h-full overflow-y-auto" style="padding-right: {!isMobile && auditPanelOpen && $auditStore.status !== 'idle' ? '288px' : '0'}; transition: padding-right 220ms cubic-bezier(0,0,0.2,1);"
+							>
+							<!-- Enhancement Preview Cards - Before report content -->
+							{#if reportId}
+					<EnhancementPreviewCards
+						guidelinesCount={enhancementGuidelinesCount}
+						isLoading={enhancementLoading}
+						hasError={enhancementError}
+						reportId={reportId}
+						panelOpen={!isMobile && auditPanelOpen && $auditStore.status !== 'idle'}
+						on:openSidebar={(e) => {
+							dispatch('openSidebar', e.detail);
+						}}
+					/>
+						{/if}
+						
+					<!-- Summary Panel for Unfilled Items -->
+					{#if showSummaryPanel && unfilledItems.total > 0}
+				<div class="relative mb-3 sm:mb-4" style="z-index: 10;">
+					<div
+						class="group relative w-full bg-gradient-to-br from-yellow-900/20 to-orange-800/10 backdrop-blur-xl border border-yellow-500/30 rounded-lg sm:rounded-xl p-2.5 sm:p-4"
+					>
+						<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
+							<div class="flex items-center gap-2 sm:gap-3">
+								<div class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-yellow-600/20 flex items-center justify-center shrink-0">
+									<svg class="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+									</svg>
 								</div>
-								<div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-									{#if unfilledItems.measurements.length > 0}
-										<span class="px-1.5 sm:px-2.5 py-0.5 sm:py-1 bg-yellow-600/20 text-yellow-400 text-[10px] sm:text-xs font-semibold rounded border border-yellow-500/30 flex items-center gap-1">
-											<span class="hidden sm:inline">🟡</span>
-											<span>{unfilledItems.measurements.length}</span>
-											<span class="text-[9px] sm:text-[10px] text-yellow-300/70">Meas</span>
-										</span>
-									{/if}
-									{#if unfilledItems.alternatives.length > 0}
-										<span class="px-1.5 sm:px-2.5 py-0.5 sm:py-1 bg-purple-600/20 text-purple-400 text-[10px] sm:text-xs font-semibold rounded border border-purple-500/30 flex items-center gap-1">
-											<span class="hidden sm:inline">🟣</span>
-											<span>{unfilledItems.alternatives.length}</span>
-											<span class="text-[9px] sm:text-[10px] text-purple-300/70">Alt</span>
-										</span>
-									{/if}
-									{#if unfilledItems.variables.length > 0}
-										<span class="px-1.5 sm:px-2.5 py-0.5 sm:py-1 bg-green-600/20 text-green-400 text-[10px] sm:text-xs font-semibold rounded border border-green-500/30 flex items-center gap-1">
-											<span class="hidden sm:inline">🟢</span>
-											<span>{unfilledItems.variables.length}</span>
-											<span class="text-[9px] sm:text-[10px] text-green-300/70">Var</span>
-										</span>
-									{/if}
+								<div class="text-left">
+									<h4 class="text-xs sm:text-sm font-semibold text-white group-hover:text-yellow-300 transition-colors">Unfilled Items</h4>
+									<p class="text-[10px] sm:text-xs text-gray-400">Complete your report</p>
 								</div>
+							</div>
+							<div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+								{#if unfilledItems.measurements.length > 0}
+									<span class="px-1.5 sm:px-2.5 py-0.5 sm:py-1 bg-yellow-600/20 text-yellow-400 text-[10px] sm:text-xs font-semibold rounded border border-yellow-500/30 flex items-center gap-1">
+										<span class="hidden sm:inline">🟡</span>
+										<span>{unfilledItems.measurements.length}</span>
+										<span class="text-[9px] sm:text-[10px] text-yellow-300/70">Meas</span>
+									</span>
+								{/if}
+								{#if unfilledItems.alternatives.length > 0}
+									<span class="px-1.5 sm:px-2.5 py-0.5 sm:py-1 bg-purple-600/20 text-purple-400 text-[10px] sm:text-xs font-semibold rounded border border-purple-500/30 flex items-center gap-1">
+										<span class="hidden sm:inline">🟣</span>
+										<span>{unfilledItems.alternatives.length}</span>
+										<span class="text-[9px] sm:text-[10px] text-purple-300/70">Alt</span>
+									</span>
+								{/if}
+								{#if unfilledItems.variables.length > 0}
+									<span class="px-1.5 sm:px-2.5 py-0.5 sm:py-1 bg-green-600/20 text-green-400 text-[10px] sm:text-xs font-semibold rounded border border-green-500/30 flex items-center gap-1">
+										<span class="hidden sm:inline">🟢</span>
+										<span>{unfilledItems.variables.length}</span>
+										<span class="text-[9px] sm:text-[10px] text-green-300/70">Var</span>
+									</span>
+								{/if}
 							</div>
 						</div>
-							</div>
-							{/if}
-							
-							{#if validationStatus}
-						<div class="mb-3">
-							{#if validationStatus.status === 'pending'}
-								<div class="flex items-center gap-2 text-yellow-400 text-sm bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-2">
-									<div class="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
-									<span>Validating report...</span>
-								</div>
-							{:else if validationStatus.status === 'passed'}
-								<div class="flex items-center gap-2 text-green-400 text-sm bg-green-500/10 border border-green-500/30 rounded-lg p-2">
-									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-									</svg>
-									<span>Report validated - No issues found</span>
-								</div>
-							{:else if validationStatus.status === 'fixed'}
-								<div class="flex items-center justify-between gap-2 text-green-400 text-sm bg-green-500/10 border border-green-500/30 rounded-lg p-2">
-									<div class="flex items-center gap-2">
-										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-										</svg>
-										<span>Report validated: {validationStatus.violations_count} issue(s) fixed automatically</span>
-									</div>
-									<button
-										type="button"
-										onclick={reloadFixedVersion}
-										class="px-2 py-1 text-xs font-medium bg-green-600 hover:bg-green-500 text-white rounded transition-colors"
-									>
-										View Fixed Version
-									</button>
-								</div>
-							{:else if validationStatus.status === 'error'}
-								<div class="flex items-center gap-2 text-yellow-400 text-sm bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-2">
-									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-									</svg>
-									<span>Validation failed: {validationStatus.error || 'Unknown error'}</span>
-								</div>
-							{/if}
-							</div>
-							{/if}
-							
-						{#if error}
-							<div class="border border-red-500/30 bg-red-500/10 rounded-lg p-4">
-								<p class="text-red-400 font-medium mb-1">Error</p>
-								<p class="text-red-300 text-sm">{error}</p>
-							</div>
-						{:else if response}
-						<ReportEditor
-							bind:this={reportEditorRef}
-							content={response}
-							showHighlighting={showHighlighting}
-							generationLoading={generationLoading || updateLoading}
-							on:change={handleEditorChange}
-							on:save={() => { if (hasUnsavedChanges) saveEditing(); }}
-							on:unfilledItems={(e) => handleUnfilledItems(e.detail.items)}
-							on:showHoverPopup={(e) => dispatch('showHoverPopup', e.detail)}
-							on:hideHoverPopup={() => dispatch('hideHoverPopup')}
-						/>
-						{:else}
-							<p class="text-sm text-gray-400">Response will appear here once generated.</p>
-						{/if}
 					</div>
+						</div>
+						{/if}
+						
+					{#if validationStatus}
+				<div class="mb-3">
+					{#if validationStatus.status === 'pending'}
+						<div class="flex items-center gap-2 text-yellow-400 text-sm bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-2">
+							<div class="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
+							<span>Validating report...</span>
+						</div>
+					{:else if validationStatus.status === 'passed'}
+						<div class="flex items-center gap-2 text-green-400 text-sm bg-green-500/10 border border-green-500/30 rounded-lg p-2">
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+							</svg>
+							<span>Report validated - No issues found</span>
+						</div>
+					{:else if validationStatus.status === 'fixed'}
+						<div class="flex items-center justify-between gap-2 text-green-400 text-sm bg-green-500/10 border border-green-500/30 rounded-lg p-2">
+							<div class="flex items-center gap-2">
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+								</svg>
+								<span>Report validated: {validationStatus.violations_count} issue(s) fixed automatically</span>
+							</div>
+							<button
+								type="button"
+								onclick={reloadFixedVersion}
+								class="px-2 py-1 text-xs font-medium bg-green-600 hover:bg-green-500 text-white rounded transition-colors"
+							>
+								View Fixed Version
+							</button>
+						</div>
+					{:else if validationStatus.status === 'error'}
+						<div class="flex items-center gap-2 text-yellow-400 text-sm bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-2">
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+							</svg>
+							<span>Validation failed: {validationStatus.error || 'Unknown error'}</span>
+						</div>
+					{/if}
+					</div>
+					{/if}
+					
+				{#if error}
+						<div class="border border-red-500/30 bg-red-500/10 rounded-lg p-4">
+							<p class="text-red-400 font-medium mb-1">Error</p>
+							<p class="text-red-300 text-sm">{error}</p>
+						</div>
+					{:else if response}
+					<ReportEditor
+						bind:this={reportEditorRef}
+						content={response}
+						showHighlighting={showHighlighting}
+						generationLoading={generationLoading || updateLoading}
+						auditDecorations={auditDecorations}
+						on:change={handleEditorChange}
+						on:save={() => { if (hasUnsavedChanges) saveEditing(); }}
+						on:unfilledItems={(e) => handleUnfilledItems(e.detail.items)}
+						on:showHoverPopup={(e) => dispatch('showHoverPopup', e.detail)}
+						on:hideHoverPopup={() => dispatch('hideHoverPopup')}
+						on:auditSpanHover={handleAuditSpanHover}
+					on:auditSpanClick={handleAuditSpanClick}
+					/>
+					{:else}
+						<p class="text-sm text-gray-400">Response will appear here once generated.</p>
+					{/if}
+							</div>
+
+							<!-- Right: Audit side panel overlay (desktop only) -->
+							{#if !isMobile && auditPanelOpen && $auditStore.status !== 'idle'}
+								<div
+									class="absolute top-0 right-0 bottom-0 w-[280px] border-l border-white/[0.06] overflow-hidden"
+									transition:fly={{ x: 16, duration: 220, easing: (t) => 1 - Math.pow(1 - t, 3) }}
+								>
+									<AuditBanner
+										auditState={$auditStore as any}
+										canReaudit={$auditStore.status === 'stale' || $auditStore.status === 'complete'}
+										showClose={true}
+										on:acknowledge={handleAcknowledge}
+										on:restore={handleRestore}
+										on:suggestFix={handleSuggestFix}
+										on:reaudit={handleReaudit}
+										on:close={() => auditPanelOpen = false}
+									/>
+								</div>
+							{/if}
+						</div>
 					{/if}
 					</div>
 				</div>
@@ -683,6 +902,56 @@
 		</div>
 		{/if}
 	</div>
+
+	<!-- Mobile QA Bottom Sheet -->
+	{#if isMobile && auditPanelOpen && $auditStore.status !== 'idle'}
+		<!-- Backdrop -->
+		<button
+			type="button"
+			class="fixed inset-0 bg-black/60 z-40"
+			transition:fade={{ duration: 200 }}
+			onclick={() => auditPanelOpen = false}
+			aria-label="Close QA panel"
+		></button>
+		
+		<!-- Bottom Sheet -->
+		<div
+			class="fixed inset-x-0 bottom-0 z-50 bg-[#0a0a12] border-t border-white/10 rounded-t-2xl max-h-[70vh] flex flex-col shadow-2xl"
+			transition:fly={{ y: 300, duration: 280, easing: (t) => 1 - Math.pow(1 - t, 3) }}
+		>
+			<!-- Drag handle indicator -->
+			<div class="flex justify-center pt-3 pb-1">
+				<div class="w-10 h-1 rounded-full bg-white/20"></div>
+			</div>
+			
+			<!-- Close button row -->
+			<div class="flex items-center justify-between px-4 pb-2">
+				<span class="text-xs font-semibold text-white/60 uppercase tracking-wider">Report QA</span>
+				<button
+					type="button"
+					class="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+					onclick={() => auditPanelOpen = false}
+					aria-label="Close"
+				>
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			</div>
+			
+			<!-- AuditBanner content (scrollable) -->
+			<div class="flex-1 min-h-0 overflow-hidden">
+				<AuditBanner
+					auditState={$auditStore as any}
+					canReaudit={$auditStore.status === 'stale' || $auditStore.status === 'complete'}
+					on:acknowledge={handleAcknowledge}
+					on:restore={handleRestore}
+					on:suggestFix={handleSuggestFix}
+					on:reaudit={handleReaudit}
+				/>
+			</div>
+		</div>
+	{/if}
 {/if}
 
 

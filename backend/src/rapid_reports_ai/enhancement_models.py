@@ -349,6 +349,77 @@ class ReportOutputWithReasoning(BaseModel):
 
 
 # ============================================================================
+# Report Audit / QA Models
+# ============================================================================
+
+class AuditCriterionFlag(BaseModel):
+    """Sub-flag for clinical_flagging criterion only"""
+    type: Literal["critical", "urgent", "significant", "suspected_new_malignancy", "known_malignancy_interval"] = Field(
+        description="Type of clinical flag"
+    )
+    present: bool = Field(
+        description="Whether this flag type is present in the report"
+    )
+    adequately_supported: bool = Field(
+        description="Whether surrounding language justifies this flag level"
+    )
+    detail: str = Field(
+        max_length=200,
+        description="Brief explanation of the flag assessment"
+    )
+
+
+class AuditCriterion(BaseModel):
+    """Single audit criterion evaluation result"""
+    criterion: Literal[
+        "anatomical_accuracy",
+        "clinical_relevance",
+        "recommendations",
+        "clinical_flagging",
+        "report_completeness",
+        "language_quality"
+    ] = Field(description="One of six audit criteria names")
+    status: Literal["pass", "flag", "warning"] = Field(
+        description="Audit status: pass (no issues), flag (requires attention), warning (minor concern)"
+    )
+    rationale: str = Field(
+        min_length=10,
+        max_length=400,
+        description="Explanation of why this status was assigned"
+    )
+    highlighted_spans: List[str] = Field(
+        default_factory=list,
+        description="Verbatim substrings from the report to highlight inline"
+    )
+    recommendation: Optional[str] = Field(
+        default=None,
+        max_length=300,
+        description="Suggested improvement if status is flag or warning"
+    )
+    flags_identified: Optional[List[AuditCriterionFlag]] = Field(
+        default=None,
+        description="Populated only for clinical_flagging criterion - lists 5 sub-flag evaluations"
+    )
+
+
+class AuditResult(BaseModel):
+    """Complete audit result for a radiology report"""
+    overall_status: Literal["pass", "flag", "warning"] = Field(
+        description="Overall audit status - worst status among all criteria"
+    )
+    criteria: List[AuditCriterion] = Field(
+        min_length=6,
+        max_length=6,
+        description="Exactly 6 criterion evaluations, one per audit criterion"
+    )
+    summary: str = Field(
+        min_length=20,
+        max_length=500,
+        description="High-level summary of audit findings and key issues"
+    )
+
+
+# ============================================================================
 # Comparison Analysis Models
 # ============================================================================
 

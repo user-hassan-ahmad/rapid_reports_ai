@@ -16,6 +16,7 @@
 	export let content: string = '';
 	export let showHighlighting: boolean = true;
 	export let generationLoading: boolean = false;
+	export let auditDecorations: Array<{text: string, criterion: string, status: 'flag' | 'warning', stale?: boolean}> = [];
 
 	let editorContainer: HTMLDivElement;
 	let editor: EditorView | null = null;
@@ -51,6 +52,22 @@
 			}
 			return value;
 		}
+	});
+
+	// ─── StateEffect / StateField for audit decorations ─────────────────────────
+
+	const setAuditDecorationsEffect = StateEffect.define<DecorationSet>();
+
+	const auditDecorationsField = StateField.define<DecorationSet>({
+		create: () => Decoration.none,
+		update(deco, tr) {
+			deco = deco.map(tr.changes);
+			for (const eff of tr.effects) {
+				if (eff.is(setAuditDecorationsEffect)) return eff.value;
+			}
+			return deco;
+		},
+		provide: (f) => EditorView.decorations.from(f)
 	});
 
 	// ─── Compartment for editable toggle ────────────────────────────────────────
@@ -276,6 +293,7 @@
 					EditorView.lineWrapping,
 					highlightingState,
 					unfilledPlugin,
+					auditDecorationsField,
 					editableCompartment.of(EditorView.editable.of(!generationLoading)),
 					darkTheme,
 					EditorView.updateListener.of((update) => {
@@ -347,6 +365,63 @@
 		});
 	}
 
+	// ─── Reactive: update audit decorations ─────────────────────────────────────
+
+	$: if (editor && auditDecorations) {
+		updateAuditDecorations();
+	}
+
+	function updateAuditDecorations() {
+		if (!editor) return;
+
+		const doc = editor.state.doc.toString();
+		const marks: Range<Decoration>[] = [];
+
+		for (const item of auditDecorations) {
+			// Find all occurrences of the span text in the document
+			let searchPos = 0;
+			while (searchPos < doc.length) {
+				const idx = doc.indexOf(item.text, searchPos);
+				if (idx === -1) break;
+
+				const end = idx + item.text.length;
+				let className = item.status === 'flag' ? 'cm-audit-flag' : 'cm-audit-warning';
+				if (item.stale) className += ' cm-audit-stale';
+
+				marks.push(
+					Decoration.mark({
+						class: className,
+						attributes: { 'data-criterion': item.criterion }
+					}).range(idx, end)
+				);
+
+				searchPos = end; // Move past this match
+			}
+		}
+
+		// Sort by from position (required by Decoration.set)
+		marks.sort((a, b) => a.from - b.from);
+
+		try {
+			const decoSet = Decoration.set(marks, true);
+			editor.dispatch({ effects: setAuditDecorationsEffect.of(decoSet) });
+		} catch {
+			// Overlap issue — clear decorations
+			editor.dispatch({ effects: setAuditDecorationsEffect.of(Decoration.none) });
+		}
+	}
+
+	// ─── Audit span click — opens the audit panel when it's closed ──────────────
+
+	function handleClick(e: MouseEvent) {
+		const target = e.target as HTMLElement;
+		const auditEl = target.closest('[data-criterion]') as HTMLElement | null;
+		if (auditEl) {
+			const criterion = auditEl.getAttribute('data-criterion');
+			if (criterion) fireEvent('auditSpanClick', { criterion });
+		}
+	}
+
 	// ─── Hover popup ─────────────────────────────────────────────────────────────
 
 	function handleMouseMove(e: MouseEvent) {
@@ -355,6 +430,7 @@
 		const pos = editor.posAtCoords({ x: e.clientX, y: e.clientY });
 		if (pos === null) {
 			clearHoverTimeout();
+			fireEvent('auditSpanHover', { criterion: null });
 			if (!hideTimeout) {
 				hideTimeout = setTimeout(() => {
 					hideTimeout = null;
@@ -364,6 +440,16 @@
 				}, 200);
 			}
 			return;
+		}
+
+		// Check if hovering over an audit decoration
+		const target = e.target as HTMLElement;
+		const auditEl = target.closest('[data-criterion]');
+		if (auditEl) {
+			const criterion = auditEl.getAttribute('data-criterion');
+			fireEvent('auditSpanHover', { criterion });
+		} else {
+			fireEvent('auditSpanHover', { criterion: null });
 		}
 
 		const item = findItemAtPos(pos, currentUnfilledItems);
@@ -449,7 +535,8 @@
 	}
 </script>
 
-<div bind:this={editorContainer} class="cm-report-editor"></div>
+<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+<div bind:this={editorContainer} class="cm-report-editor" on:click={handleClick}></div>
 
 <style>
 	.cm-report-editor {
@@ -631,5 +718,48 @@
 
 	:global(.cm-report-editor .cm-editor.cm-focused) {
 		outline: none !important;
+	}
+
+	/* Audit decoration styles */
+	:global(.cm-audit-flag) {
+		border-bottom: 2px dotted #f43f5e;
+		background: rgba(244, 63, 94, 0.1);
+		cursor: pointer;
+		padding: 0 1px;
+		border-radius: 2px;
+		transition: background 0.2s, border-color 0.2s;
+	}
+
+	:global(.cm-audit-flag:hover) {
+		background: rgba(244, 63, 94, 0.2);
+	}
+
+	:global(.cm-audit-warning) {
+		border-bottom: 2px dotted #f59e0b;
+		background: rgba(245, 158, 11, 0.1);
+		cursor: pointer;
+		padding: 0 1px;
+		border-radius: 2px;
+		transition: background 0.2s, border-color 0.2s;
+	}
+
+	:global(.cm-audit-warning:hover) {
+		background: rgba(245, 158, 11, 0.2);
+	}
+
+	/* Stale state - desaturated/dimmed */
+	:global(.cm-audit-stale) {
+		opacity: 0.5;
+		filter: saturate(0.3);
+	}
+
+	:global(.cm-audit-stale.cm-audit-flag) {
+		border-color: rgba(244, 63, 94, 0.4);
+		background: rgba(244, 63, 94, 0.05);
+	}
+
+	:global(.cm-audit-stale.cm-audit-warning) {
+		border-color: rgba(245, 158, 11, 0.4);
+		background: rgba(245, 158, 11, 0.05);
 	}
 </style>

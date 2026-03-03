@@ -73,6 +73,17 @@ class PromptManager:
                 if zai_glm_file.exists():
                     template_file = zai_glm_file
                     print(f"load_prompt: Using zai-glm-4.7.json for primary model {primary_model}")
+            elif primary_model == "qwen-3-235b-a22b-instruct-2507":
+                # Qwen3-235B shares the GLM prompt — same structured output approach
+                qwen_file = use_case_dir / "qwen-3-235b.json"
+                if qwen_file.exists():
+                    template_file = qwen_file
+                    print(f"load_prompt: Using qwen-3-235b.json for primary model {primary_model}")
+                else:
+                    zai_glm_file = use_case_dir / "zai-glm-4.7.json"
+                    if zai_glm_file.exists():
+                        template_file = zai_glm_file
+                        print(f"load_prompt: Using zai-glm-4.7.json (shared) for primary model {primary_model}")
             
             # Fallback to unified.json if specific model file not found or primary_model not matched
             if template_file is None:

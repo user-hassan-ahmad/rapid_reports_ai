@@ -112,6 +112,7 @@ import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 	let autoError: any = null;
 	let reportId: any = null;  // For enhancement sidebar (auto reports)
 	let autoReportSelectedModel = 'claude';  // Track model selected in AutoReportTab
+	let autoScanType = '';  // Captured from API response for audit
 	
 	// Separate state for templated reports
 	let templatedReportId: any = null;  // For enhancement sidebar (templated reports)
@@ -130,6 +131,7 @@ let reportUpdateLoading = false;
 let versionHistoryRefreshKey = 0;
 let showVersionHistoryModal = false;
 let templatedResponseOverride: any = null;
+let templatedReportContent: string = '';  // Live content from TemplatedReportTab for sidebar preview
 let templatedResponseVersion = 0;
 let currentHistoryCount = 0;
 
@@ -143,6 +145,8 @@ let enhancementLoading = false;
 let enhancementError = false;
 let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | null = null;
 let chatInitialMessage: string | null = null;
+let chatAutoSend: boolean = false;
+let chatAutoSendLabel: { type: string; name: string; itemType?: string } | null = null;
 
 // Hover popup state (rendered at root level)
 let hoverPopupVisible = false;
@@ -346,10 +350,11 @@ let templatedModel = 'claude'; // Track model for template editor
 		currentHistoryCount = detail?.count ?? 0;
 	}
 
-	function handleTemplateCleared(): void {
-		templatedReportId = null;
-		templatedResponseOverride = null;
-		templatedResponseVersion = 0;
+function handleTemplateCleared(): void {
+    templatedReportId = null;
+    templatedResponseOverride = null;
+    templatedReportContent = '';
+    templatedResponseVersion = 0;
 		versionHistoryRefreshKey += 1;
 		clearEnhancementState();
 	}
@@ -548,6 +553,7 @@ let templatedModel = 'claude'; // Track model for template editor
 			if (data.success) {
 				autoResponse = data.response;
 				autoResponseModel = data.model;
+				autoScanType = data.scan_type || '';
 				reportId = data.report_id || null;
 				if (reportId) {
 					versionHistoryRefreshKey += 1;
@@ -653,19 +659,23 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							enhancementGuidelinesCount={enhancementGuidelinesCount}
 							enhancementLoading={enhancementLoading}
 							enhancementError={enhancementError}
+							scanType={autoScanType}
+							clinicalHistory={autoVariableValues['CLINICAL_HISTORY'] || ''}
 							on:useCaseChange={handleUseCaseChange}
 							on:submit={handleSubmit}
 							on:resetForm={handleFormReset}
-							on:openSidebar={(e) => {
-								sidebarTabToOpen = e.detail?.tab || null;
-								chatInitialMessage = e.detail?.initialMessage || null;
-								sidebarVisible = true;
-							}}
-							on:showHoverPopup={(e) => {
-								hoverPopupItem = e.detail.item;
-								hoverPopupPosition = e.detail.position;
-								hoverPopupReportContent = e.detail.reportContent || '';
-								hoverPopupReportId = reportId;
+						on:openSidebar={(e) => {
+							sidebarTabToOpen = e.detail?.tab || null;
+							chatInitialMessage = e.detail?.initialMessage || null;
+							chatAutoSend = e.detail?.autoSend ?? false;
+							chatAutoSendLabel = e.detail?.labelInfo || null;
+							sidebarVisible = true;
+						}}
+						on:showHoverPopup={(e) => {
+							hoverPopupItem = e.detail.item;
+							hoverPopupPosition = e.detail.position;
+							hoverPopupReportContent = e.detail.reportContent || '';
+							hoverPopupReportId = reportId;
 								hoverPopupVisible = true;
 							}}
 							on:hideHoverPopup={() => {
@@ -717,12 +727,14 @@ $: if (!isEnhancementContext && sidebarVisible) {
 								reportsStore.refreshReports();
 							}
 						}}
-						on:openSidebar={(e) => {
-							sidebarTabToOpen = e.detail?.tab || null;
-							chatInitialMessage = e.detail?.initialMessage || null;
-							sidebarVisible = true;
-						}}
-						on:showHoverPopup={(e) => {
+					on:openSidebar={(e) => {
+						sidebarTabToOpen = e.detail?.tab || null;
+						chatInitialMessage = e.detail?.initialMessage || null;
+						chatAutoSend = e.detail?.autoSend ?? false;
+						chatAutoSendLabel = e.detail?.labelInfo || null;
+						sidebarVisible = true;
+					}}
+					on:showHoverPopup={(e) => {
 							hoverPopupItem = e.detail.item;
 							hoverPopupPosition = e.detail.position;
 							hoverPopupReportContent = e.detail.reportContent || '';
@@ -733,10 +745,19 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							hoverPopupVisible = false;
 							hoverPopupItem = null;
 						}}
-							on:historyRestored={(e) => handleHistoryRestored(e.detail as RestoredReportDetail)}
-							on:historyUpdate={(e) => handleHistoryUpdate(e.detail as ReportHistoryDetail)}
-							on:reportCleared={handleTemplateCleared}
-						/>
+						on:historyRestored={(e) => handleHistoryRestored(e.detail as RestoredReportDetail)}
+						on:historyUpdate={(e) => handleHistoryUpdate(e.detail as ReportHistoryDetail)}
+						on:reportCleared={handleTemplateCleared}
+						on:templateListOpen={() => {
+							// User clicked "Back to Templates" — just close the sidebar.
+							// Do NOT clear templatedReportId or enhancement state so that
+							// re-selecting the same template is seamless.
+							sidebarVisible = false;
+						}}
+						on:reportContentChange={(e) => {
+							templatedReportContent = e.detail?.content ?? '';
+						}}
+					/>
 					{/if}
 				</div>
 				
@@ -772,25 +793,31 @@ $: if (!isEnhancementContext && sidebarVisible) {
 <!-- Enhancement Sidebar - Rendered at root level like history modal -->
 <ReportEnhancementSidebar
 	reportId={currentReportId}
-	reportContent={response || ''}
+	reportContent={activeTab === 'auto' ? (autoResponse || '') : (templatedResponseOverride || templatedReportContent || response || '')}
 	visible={sidebarVisible && isEnhancementContext}
 	autoLoad={shouldAutoLoadEnhancements}
 	historyAvailable={currentHistoryCount > 1}
 	initialTab={sidebarTabToOpen}
 	initialMessage={chatInitialMessage}
+	autoSend={chatAutoSend}
+	autoSendLabel={chatAutoSendLabel}
 		on:close={() => {
-			sidebarVisible = false;
-			sidebarTabToOpen = null;
-			chatInitialMessage = null;
-		}}
+		sidebarVisible = false;
+		sidebarTabToOpen = null;
+		chatInitialMessage = null;
+		chatAutoSend = false;
+		chatAutoSendLabel = null;
+	}}
 	on:reportUpdated={(e) => {
-		// Update response when report is updated
 		if (e.detail.report) {
-			response = e.detail.report.report_content;
+			const newContent = e.detail.report.report_content;
 			versionHistoryRefreshKey += 1;
-			const updatedReportId = e.detail.report.id;
-			if (templatedReportId && updatedReportId === templatedReportId) {
-				templatedResponseOverride = e.detail.report.report_content;
+			// Push updated content to the correct tab's response variable
+			if (activeTab === 'auto') {
+				autoResponse = newContent;
+			} else {
+				// For templated tab, always update the override so ReportResponseViewer sees it
+				templatedResponseOverride = newContent;
 				templatedResponseVersion += 1;
 			}
 			// Refresh reports store to reflect updated report
@@ -1196,13 +1223,15 @@ $: if (!isEnhancementContext && sidebarVisible) {
 			hoverPopupVisible = false;
 			hoverPopupItem = null;
 		}}
-		on:askAI={(e) => {
-			sidebarTabToOpen = 'chat';
-			chatInitialMessage = e.detail.message;
-			sidebarVisible = true;
-			hoverPopupVisible = false;
-			hoverPopupItem = null;
-		}}
+	on:askAI={(e) => {
+		sidebarTabToOpen = 'chat';
+		chatInitialMessage = e.detail.message;
+		chatAutoSend = true;
+		chatAutoSendLabel = e.detail.labelInfo || null;
+		sidebarVisible = true;
+		hoverPopupVisible = false;
+		hoverPopupItem = null;
+	}}
 		on:close={() => {
 			hoverPopupVisible = false;
 			hoverPopupItem = null;
@@ -1214,7 +1243,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 	
 	<!-- Footer -->
 	{#if $isAuthenticated}
-		<footer class="relative z-10 px-4 md:px-6 py-6 border-t border-white/5 mt-auto">
+		<footer class="relative px-4 md:px-6 py-6 border-t border-white/5 mt-auto">
 			<div class="max-w-7xl mx-auto text-center">
 				<p class="text-xs text-gray-500 mb-1">
 					© 2026 H&A LABS LTD | Company No. 16114480

@@ -6,6 +6,7 @@ from sqlalchemy import and_, or_
 from datetime import datetime, timezone
 import uuid
 
+from sqlalchemy.orm import joinedload
 from .models import (
     Template,
     User,
@@ -13,6 +14,8 @@ from .models import (
     Report,
     TemplateVersion,
     ReportVersion,
+    ReportAudit,
+    ReportAuditCriterion,
 )
 
 
@@ -1005,6 +1008,184 @@ def get_validation_status(
         return None
     
     return report.validation_status
+
+
+# ============ Report Audit CRUD ============
+
+def create_report_audit(
+    db: Session,
+    report: Report,
+    user_id: str,
+    audit_result: dict,
+    scan_type: str,
+    clinical_history: str,
+    model_used: str,
+) -> ReportAudit:
+    """
+    Create a new report audit with criterion rows (currently 6).
+    
+    Args:
+        db: Database session
+        report: Report object to audit
+        user_id: User ID string
+        audit_result: Dict containing overall_status, criteria list, and summary
+        scan_type: Type of scan
+        clinical_history: Clinical history text
+        model_used: Model used for audit
+    
+    Returns:
+        Created ReportAudit object
+    """
+    user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+    
+    # Resolve report_version_id from latest is_current version
+    current_version = db.query(ReportVersion).filter(
+        ReportVersion.report_id == report.id,
+        ReportVersion.is_current == True
+    ).first()
+    
+    # Create the audit record
+    audit = ReportAudit(
+        report_id=report.id,
+        user_id=user_uuid,
+        overall_status=audit_result.get("overall_status", "warning"),
+        scan_type=scan_type or None,
+        model_used=model_used,
+        clinical_history=clinical_history or None,
+        summary=audit_result.get("summary", ""),
+        report_version_id=current_version.id if current_version else None,
+        is_reviewed=False,
+    )
+    db.add(audit)
+    db.flush()  # Get the audit ID
+    
+    # Create criterion rows
+    criteria_list = audit_result.get("criteria", [])
+    for criterion_data in criteria_list:
+        criterion = ReportAuditCriterion(
+            audit_id=audit.id,
+            criterion=criterion_data.get("criterion"),
+            status=criterion_data.get("status", "warning"),
+            rationale=criterion_data.get("rationale", ""),
+            recommendation=criterion_data.get("recommendation"),
+            highlighted_spans=criterion_data.get("highlighted_spans", []),
+            flags_json=criterion_data.get("flags_identified"),  # clinical_flagging only
+            acknowledged=False,
+        )
+        db.add(criterion)
+    
+    db.commit()
+    db.refresh(audit)
+    return audit
+
+
+def get_report_audits(
+    db: Session,
+    report_id: str,
+    user_id: str,
+) -> List[ReportAudit]:
+    """
+    Get all audits for a report, verifying user ownership.
+    
+    Args:
+        db: Database session
+        report_id: Report UUID string
+        user_id: User ID string for ownership check
+    
+    Returns:
+        List of ReportAudit objects sorted by created_at DESC
+    """
+    try:
+        report_uuid = uuid.UUID(report_id) if isinstance(report_id, str) else report_id
+        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+    except ValueError:
+        return []
+    
+    # Verify report ownership
+    report = db.query(Report).filter(
+        Report.id == report_uuid,
+        Report.user_id == user_uuid
+    ).first()
+    
+    if not report:
+        return []
+    
+    # Get audits with eager-loaded criteria
+    audits = db.query(ReportAudit).options(
+        joinedload(ReportAudit.criteria)
+    ).filter(
+        ReportAudit.report_id == report_uuid,
+        ReportAudit.user_id == user_uuid
+    ).order_by(ReportAudit.created_at.desc()).all()
+    
+    return audits
+
+
+def acknowledge_criterion(
+    db: Session,
+    audit_id: str,
+    criterion: str,
+    resolution_method: str,
+    user_id: str,
+) -> dict:
+    """
+    Acknowledge a specific criterion on an audit.
+    
+    Args:
+        db: Database session
+        audit_id: Audit UUID string
+        criterion: Criterion name to acknowledge
+        resolution_method: One of "manual", "ai_assisted", "dismissed"
+        user_id: User ID string for ownership check
+    
+    Returns:
+        Dict with {acknowledged: bool, is_reviewed: bool}
+    """
+    try:
+        audit_uuid = uuid.UUID(audit_id) if isinstance(audit_id, str) else audit_id
+        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+    except ValueError:
+        return {"acknowledged": False, "is_reviewed": False}
+    
+    # Load audit and verify ownership
+    audit = db.query(ReportAudit).options(
+        joinedload(ReportAudit.criteria)
+    ).filter(
+        ReportAudit.id == audit_uuid,
+        ReportAudit.user_id == user_uuid
+    ).first()
+    
+    if not audit:
+        return {"acknowledged": False, "is_reviewed": False}
+    
+    # Find the criterion to acknowledge
+    criterion_row = db.query(ReportAuditCriterion).filter(
+        ReportAuditCriterion.audit_id == audit_uuid,
+        ReportAuditCriterion.criterion == criterion
+    ).first()
+    
+    if not criterion_row:
+        return {"acknowledged": False, "is_reviewed": False}
+    
+    # Update the criterion
+    criterion_row.acknowledged = True
+    criterion_row.acknowledged_at = datetime.now(timezone.utc)
+    criterion_row.resolution_method = resolution_method
+    
+    # Check if all criteria are now acknowledged
+    all_criteria = db.query(ReportAuditCriterion).filter(
+        ReportAuditCriterion.audit_id == audit_uuid
+    ).all()
+    
+    all_acknowledged = all(c.acknowledged for c in all_criteria)
+    
+    if all_acknowledged and not audit.is_reviewed:
+        audit.is_reviewed = True
+        audit.reviewed_at = datetime.now(timezone.utc)
+    
+    db.commit()
+    
+    return {"acknowledged": True, "is_reviewed": all_acknowledged}
 
 
 

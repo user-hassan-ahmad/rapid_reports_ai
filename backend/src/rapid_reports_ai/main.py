@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, File, Uplo
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import Dict, Optional, List, Any
+from typing import Dict, Optional, List, Any, Literal
 import os
 import re
 from dotenv import load_dotenv
@@ -46,6 +46,9 @@ from .database import (
     get_report_versions,
     get_report_version,
     set_current_report_version,
+    create_report_audit,
+    get_report_audits,
+    acknowledge_criterion,
 )
 from .database.connection import engine
 from .template_manager import TemplateManager
@@ -450,6 +453,18 @@ class AnalyzeReportsRequest(BaseModel):
     reports: List[Dict[str, str]]  # List of {type, context, content}
 
 
+# Audit / QA request models
+class AuditRequest(BaseModel):
+    report_content: str
+    scan_type: Optional[str] = ""
+    clinical_history: Optional[str] = ""
+    report_id: Optional[str] = None
+
+
+class AcknowledgeRequest(BaseModel):
+    resolution_method: Literal["manual", "ai_assisted", "dismissed"]
+
+
 @app.get("/")
 async def root():
     """Health check endpoint"""
@@ -794,9 +809,10 @@ Apply each fix while preserving grammatical completeness and report structure.""
             "report_id": report_id,
             "response": report_output.report_content,
             "model": model_full_name,
-            "use_case": use_case_name
+            "use_case": use_case_name,
+            "scan_type": report_output.scan_type
         }
-    
+
     except Exception as e:
         import traceback
         print(f"Error in chat endpoint: {e}")
@@ -1527,7 +1543,8 @@ Apply each fix while preserving grammatical completeness and report structure.""
             "response": report_output.report_content,
             "model": model_full_name,
             "template_id": str(template.id),
-            "report_id": report_id
+            "report_id": report_id,
+            "scan_type": report_output.scan_type
         }
     
     except Exception as e:
@@ -2560,43 +2577,31 @@ async def chat_about_report(
                     enhancement_context += "\n"
         
         system_prompt = (
-            "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
-            "You are a radiology reporting assistant helping a clinician refine and discuss a radiology report. "
-            "Provide concise, authoritative guidance grounded in evidence-based radiology and clinical practices. "
-            "When discussing findings, reference the clinical guidelines context provided below. "
-            "If asked about management or next steps, prioritize the guideline recommendations. "
-            "If unsure, say so clearly.\n\n"
-            "### RESPONSE WORKFLOW FOR EDIT REQUESTS:\n"
-            "When a user asks about filling in a measurement, selecting an alternative, or fixing a placeholder:\n"
-            "1. FIRST: Provide your analysis, explanation, and recommendation (including any calculations or reasoning)\n"
-            "2. THEN: End your response with: 'Would you like me to make this edit to the report?'\n"
-            "3. WAIT: Do NOT use the tool until the user explicitly confirms (e.g., 'yes', 'go ahead', 'make the edit', 'apply it')\n"
-            "4. ONLY AFTER CONFIRMATION: Use the `apply_structured_actions` tool to implement the change\n\n"
-            "### PROACTIVE EDIT SUGGESTIONS:\n"
-            "When providing conversational responses, proactively suggest specific, actionable edits where appropriate to improve clarity, precision, or guideline alignment.\n\n"
-            "### WHEN TO USE THE TOOL vs WHEN TO JUST CHAT:\n\n"
-            "DO NOT use the tool for:\n"
-            "- Questions asking for your opinion, thoughts, or analysis (e.g., 'thoughts on report structure?', 'review of report structure?', 'what do you think?')\n"
-            "- Requests for clarification or explanation (e.g., 'what does this mean?', 'explain this finding')\n"
-            "- General discussion or conversation about the report\n"
-            "- Asking for recommendations or suggestions (e.g., 'what should I change?', 'any recommendations?')\n"
-            "- Initial requests about unfilled placeholders - provide explanation FIRST, then ask for confirmation\n"
-            "For these, reply conversationally with your analysis, guidance, AND proactive edit suggestions where appropriate.\n\n"
-            "ONLY use the `apply_structured_actions` tool when:\n"
-            "- User explicitly confirms after you've provided analysis (e.g., 'yes', 'go ahead', 'make the edit', 'apply it', 'do it')\n"
-            "- User explicitly asks you to MODIFY, UPDATE, CHANGE, IMPLEMENT, or APPLY changes (e.g., 'go ahead and implement', 'make those changes', 'update the report', 'apply the recommendations')\n"
-            "- User gives you specific edits to make (e.g., 'add TNM staging', 'change X to Y')\n"
-            "- User says 'do it', 'implement', 'apply', 'make the changes' after you've provided recommendations\n\n"
-            "### Report Editing Instructions (ONLY when user explicitly requests modifications):\n"
-            "If the user explicitly asks you to modify, rewrite, update, implement, or apply changes to the report, THEN use the `apply_structured_actions` tool.\n"
-            "CRITICAL: Extract structured actions from the conversation - break down the user's request into specific, focused edits.\n"
-            "Each action should have:\n"
-            "- title: Brief description (e.g., 'Update TNM staging', 'Add measurement details')\n"
-            "- details: Explanation of what to change and why, referencing conversation context\n"
-            "- patch: Specific instruction (e.g., 'Replace X with Y in Section Z', 'Add measurement after finding')\n"
-            "Do NOT use the old `update_report` tool - it is deprecated.\n"
-            "Do NOT output the report text in the chat message if you are calling the tool.\n\n"
-            f"### Original Report:\n{report.report_content}"
+            "You are a radiology reporting assistant. Use British English throughout. "
+            "Be concise and evidence-based; cite guideline context when relevant; say so if unsure.\n\n"
+            "## Tool use: `apply_structured_actions`\n\n"
+            "**Apply immediately** (no preamble, no confirmation) when the message:\n"
+            "- States the exact correction ('change right to left', 'it should be 12 mm', 'fix the laterality')\n"
+            "- Ends with an apply instruction ('apply it now', 'go ahead and apply', 'apply to the report now')\n"
+            "- Explicitly asks you to modify/update/implement/apply after prior discussion\n\n"
+            "**Discuss first, then offer to apply** when the message:\n"
+            "- Asks for assessment, review, or opinion without specifying a fix\n"
+            "- Flags a potential issue without saying what the correction should be\n"
+            "- Asks a question ('is this correct?', 'what should I change?')\n"
+            "→ Analyse, recommend, then end with: 'Would you like me to apply this edit?'\n"
+            "→ Only call the tool once the user confirms ('yes', 'go ahead', 'do it').\n\n"
+            "**Never use the tool** for pure questions, explanations, or general discussion.\n"
+            "**Never output the report text** in the chat message when calling the tool.\n\n"
+            "## Filling placeholders\n\n"
+            "When asked to fill a placeholder (e.g. 'xxx mm', '{VARIABLE}'):\n"
+            "- If the value is explicit in the report findings, use it.\n"
+            "- If not, apply a clinically appropriate normal/reference value for the anatomy and modality.\n"
+            "- **Never refuse to fill a placeholder** — always apply something and state in `details` whether the value was taken from the report or is a reference value requiring verification.\n\n"
+            "When calling the tool, decompose the request into focused actions, each with:\n"
+            "- `title`: one-line description\n"
+            "- `details`: what to change and why (state if a reference value was used)\n"
+            "- `patch`: exact instruction ('Replace X with Y in Section Z')\n\n"
+            f"## Report\n{report.report_content}"
             f"{enhancement_context}"
         )
         
@@ -2647,7 +2652,7 @@ async def chat_about_report(
         
         response = client.chat.completions.create(
             model="qwen/qwen3-32b",
-            max_tokens=1500,
+            max_tokens=4096,
             temperature=0.3,
             messages=messages,
             tools=tools,
@@ -2675,6 +2680,7 @@ async def chat_about_report(
         print(f"{'='*80}\n")
         
         edit_proposal = None
+        actions_applied = None  # Structured actions (title, details, patch) for UI display
         
         if tool_calls:
             for tool_call in tool_calls:
@@ -2741,6 +2747,7 @@ async def chat_about_report(
                             additional_context=conversation_summary,
                             current_user=current_user
                         )
+                        actions_applied = actions_payload
                         
                         print(f"\n✅ Structured actions applied successfully")
                         print(f"  └─ Updated report length: {len(edit_proposal)} chars")
@@ -2920,6 +2927,7 @@ Maintain the same structure, formatting, and style as the original report."""
             "success": True,
             "response": response_text,
             "edit_proposal": edit_proposal,
+            "actions_applied": actions_applied,
             "sources": sources
         }
         
@@ -3501,6 +3509,167 @@ async def transcribe_pre_recorded(
             status_code=500,
             detail=f"Error transcribing audio: {str(e)}"
         )
+
+
+# ============================================================================
+# REPORT AUDIT / QA API ENDPOINTS
+# ============================================================================
+
+@app.post("/api/audit")
+async def run_audit(
+    request: AuditRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Run an audit/QA check on a radiology report.
+    Evaluates against 6 quality criteria using AI.
+    If report_id is provided, saves the audit to the database.
+    """
+    try:
+        # Validate report content
+        if not request.report_content or not request.report_content.strip():
+            raise HTTPException(status_code=400, detail="Report content is required")
+        
+        # Get Cerebras API key for audit
+        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
+        if not api_key:
+            raise HTTPException(
+                status_code=500,
+                detail="Cerebras API key not configured. Please set CEREBRAS_API_KEY environment variable."
+            )
+        
+        # Run the audit
+        from .enhancement_utils import audit_report, MODEL_CONFIG
+        
+        try:
+            result = await audit_report(
+                report_content=request.report_content,
+                scan_type=request.scan_type or "",
+                clinical_history=request.clinical_history or "",
+                api_key=api_key
+            )
+        except Exception as e:
+            # LLM parsing error - return 422
+            print(f"Audit model error: {type(e).__name__}: {str(e)}")
+            raise HTTPException(
+                status_code=422,
+                detail=f"Audit model returned malformed response: {str(e)[:200]}"
+            )
+        
+        # If report_id provided, save to database
+        audit_id = None
+        if request.report_id:
+            report = get_report(db, request.report_id, user_id=str(current_user.id))
+            if report:
+                model_used = MODEL_CONFIG.get("AUDIT_ANALYZER", "zai-glm-4.7")
+                audit = create_report_audit(
+                    db=db,
+                    report=report,
+                    user_id=str(current_user.id),
+                    audit_result=result,
+                    scan_type=request.scan_type or "",
+                    clinical_history=request.clinical_history or "",
+                    model_used=model_used
+                )
+                audit_id = str(audit.id)
+        
+        return {
+            "success": True,
+            "audit_id": audit_id,
+            **result
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"Error in audit endpoint: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/api/audit/{audit_id}/criteria/{criterion}")
+async def acknowledge_audit_criterion(
+    audit_id: str,
+    criterion: str,
+    request: AcknowledgeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Acknowledge a specific criterion on an audit.
+    Marks it as reviewed with the specified resolution method.
+    """
+    try:
+        # Valid criterion names
+        valid_criteria = [
+            "anatomical_accuracy", "clinical_relevance", "recommendations",
+            "clinical_flagging", "report_completeness", "language_quality"
+        ]
+        
+        if criterion not in valid_criteria:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid criterion. Must be one of: {', '.join(valid_criteria)}"
+            )
+        
+        result = acknowledge_criterion(
+            db=db,
+            audit_id=audit_id,
+            criterion=criterion,
+            resolution_method=request.resolution_method,
+            user_id=str(current_user.id)
+        )
+        
+        if not result.get("acknowledged"):
+            raise HTTPException(
+                status_code=404,
+                detail="Audit or criterion not found, or you don't have permission to modify it"
+            )
+        
+        return {
+            "success": True,
+            "acknowledged": result["acknowledged"],
+            "is_reviewed": result["is_reviewed"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"Error acknowledging criterion: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/reports/{report_id}/audits")
+async def list_report_audits(
+    report_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all audits for a specific report.
+    Returns audits sorted by created_at DESC.
+    """
+    try:
+        audits = get_report_audits(
+            db=db,
+            report_id=report_id,
+            user_id=str(current_user.id)
+        )
+        
+        return {
+            "success": True,
+            "audits": [audit.to_dict() for audit in audits]
+        }
+        
+    except Exception as e:
+        import traceback
+        print(f"Error getting report audits: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def main():

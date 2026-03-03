@@ -312,6 +312,7 @@ class Report(Base):
         cascade="all, delete-orphan",
         order_by="ReportVersion.version_number"
     )
+    audits = relationship("ReportAudit", back_populates="report", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Report(id={self.id}, type='{self.report_type}')>"
@@ -376,6 +377,81 @@ class ReportVersion(Base):
             "is_current": self.is_current,
             "created_at": self.created_at.isoformat()
         }
+
+
+class ReportAudit(Base):
+    """Model for storing report audit/QA results"""
+    
+    __tablename__ = "report_audits"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    report_id = Column(UUID(as_uuid=True), ForeignKey("reports.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    overall_status = Column(String(10), nullable=False, index=True)  # "pass"|"flag"|"warning"
+    scan_type = Column(String(200), nullable=True, index=True)
+    model_used = Column(String(50), nullable=False)
+    clinical_history = Column(Text, nullable=True)
+    summary = Column(Text, nullable=False)
+    report_version_id = Column(UUID(as_uuid=True), ForeignKey("report_versions.id", ondelete="SET NULL"), nullable=True)
+    is_reviewed = Column(Boolean, default=False, nullable=False)
+    reviewed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    
+    # Relationships
+    report = relationship("Report", back_populates="audits")
+    criteria = relationship("ReportAuditCriterion", back_populates="audit", cascade="all, delete-orphan")
+    
+    def __repr__(self):
+        return f"<ReportAudit(id={self.id}, status='{self.overall_status}')>"
+    
+    def to_dict(self):
+        """Convert audit to dictionary for API response"""
+        return {
+            "id": str(self.id),
+            "report_id": str(self.report_id),
+            "overall_status": self.overall_status,
+            "scan_type": self.scan_type,
+            "model_used": self.model_used,
+            "summary": self.summary,
+            "is_reviewed": self.is_reviewed,
+            "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
+            "created_at": self.created_at.isoformat(),
+            "criteria": [{
+                "criterion": c.criterion,
+                "status": c.status,
+                "rationale": c.rationale,
+                "recommendation": c.recommendation,
+                "highlighted_spans": c.highlighted_spans or [],
+                "flags_json": c.flags_json,
+                "acknowledged": c.acknowledged,
+                "acknowledged_at": c.acknowledged_at.isoformat() if c.acknowledged_at else None,
+                "resolution_method": c.resolution_method,
+            } for c in self.criteria]
+        }
+
+
+class ReportAuditCriterion(Base):
+    """Model for individual audit criterion results"""
+    
+    __tablename__ = "report_audit_criteria"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    audit_id = Column(UUID(as_uuid=True), ForeignKey("report_audits.id", ondelete="CASCADE"), nullable=False, index=True)
+    criterion = Column(String(50), nullable=False, index=True)  # one of 9 criterion names
+    status = Column(String(10), nullable=False, index=True)  # "pass"|"flag"|"warning"
+    rationale = Column(Text, nullable=False)
+    recommendation = Column(Text, nullable=True)
+    highlighted_spans = Column(JSONBType, nullable=True)  # List[str] — verbatim substrings
+    flags_json = Column(JSONBType, nullable=True)  # clinical_flagging only: List[AuditCriterionFlag]
+    acknowledged = Column(Boolean, default=False, nullable=False)
+    acknowledged_at = Column(DateTime, nullable=True)
+    resolution_method = Column(String(20), nullable=True)  # "manual"|"ai_assisted"|"dismissed"
+    
+    # Relationship
+    audit = relationship("ReportAudit", back_populates="criteria")
+    
+    def __repr__(self):
+        return f"<ReportAuditCriterion(criterion='{self.criterion}', status='{self.status}')>"
 
 
 class EnhancementCacheEntry(Base):

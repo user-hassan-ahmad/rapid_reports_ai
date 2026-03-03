@@ -1,7 +1,7 @@
 """Database module for Rapid Reports AI"""
 
 from .connection import get_db, SessionLocal, engine
-from .models import Base, Template, User, PasswordResetToken, Report, TemplateVersion, ReportVersion, EnhancementCacheEntry
+from .models import Base, Template, User, PasswordResetToken, Report, TemplateVersion, ReportVersion, EnhancementCacheEntry, ReportAudit, ReportAuditCriterion
 from .crud import (
     # User CRUD
     create_user,
@@ -42,6 +42,10 @@ from .crud import (
     # Validation Status CRUD
     update_validation_status,
     get_validation_status,
+    # Audit CRUD
+    create_report_audit,
+    get_report_audits,
+    acknowledge_criterion,
 )
 
 # Export Base so it can be imported from database module
@@ -90,5 +94,10 @@ __all__ = [
     "set_current_report_version",
     "update_validation_status",
     "get_validation_status",
+    "ReportAudit",
+    "ReportAuditCriterion",
+    "create_report_audit",
+    "get_report_audits",
+    "acknowledge_criterion",
 ]
 

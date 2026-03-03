@@ -78,7 +78,10 @@
 	function handleAskAI() {
 		if (!item) return;
 		const chatPrompt = generateChatContext(item.type, item.text, item.surroundingContext);
-		dispatch('askAI', { message: chatPrompt });
+		dispatch('askAI', {
+			message: chatPrompt,
+			labelInfo: { type: 'intelli-fill', name: item.text, itemType: item.type }
+		});
 	}
 	
 	function handleClose() {

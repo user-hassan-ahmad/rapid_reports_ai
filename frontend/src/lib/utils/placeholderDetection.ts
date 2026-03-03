@@ -384,28 +384,33 @@ export function generateChatContext(
 	text: string,
 	surroundingContext: string
 ): string {
-	const context = surroundingContext.length > 0 ? `\n\nContext: "${surroundingContext}"` : '';
-	
+	// Include surrounding context so the AI targets the exact instance, not all similar ones.
+	// The context is NOT shown in the chat bubble (the label chip is shown instead).
+	const locationHint = surroundingContext
+		? `\n\nThis specific instance appears in the following sentence/paragraph:\n"${surroundingContext}"\n\nIMPORTANT: Only replace this specific occurrence — do NOT change other similar placeholders elsewhere in the report.`
+		: '\n\nIMPORTANT: Only replace this specific placeholder — do NOT change other similar placeholders elsewhere in the report.';
+
+	const fallbackInstruction = ' If the exact value is not documented in the report, apply a clinically appropriate normal/reference value for this anatomy and modality, and note in your reasoning that a reference value was used so the user can verify.';
+
 	switch (type) {
 		case 'measurement':
-			return `Please help me fill in the measurement "${text}" in this report.${context}\n\nWhat value should replace "${text}" based on the findings?`;
+			return `Please fill in the measurement "${text}" using the report findings or, if not documented, a typical normal/reference value for this anatomy and modality — then apply it to the report now.${fallbackInstruction}${locationHint}`;
 		
 		case 'variable':
-			return `This variable "${text}" wasn't filled in the report.${context}\n\nPlease help determine the correct value for ${text} based on the clinical findings.`;
+			return `Please determine the correct value for the variable "${text}" from the report findings, or apply a clinically appropriate default if the value is not explicitly stated — then apply it to the report now.${fallbackInstruction}${locationHint}`;
 		
-		case 'alternative':
-			// Extract options from bracketed text (e.g., "[normal/increased]" -> "normal/increased")
+		case 'alternative': {
 			const options = text.replace(/[\[\]]/g, '');
-			return `This alternative option "${text}" wasn't selected in the report.${context}\n\nPlease help choose the appropriate option from "${options}" based on the findings. Return just the selected option without brackets.`;
-		
+			return `Please select the most appropriate option from "${options}" for the placeholder "${text}" based on the report findings and apply it to the report now.${locationHint}`;
+		}
 		case 'instruction':
-			return `This instruction marker "${text}" is still present in the report.${context}\n\nPlease help process this instruction appropriately or remove it if no longer needed.`;
+			return `Please process the instruction "${text}" in the report — either fulfil it or remove it — and apply the change now.${locationHint}`;
 		
 		case 'blank_section':
-			return `Please help me complete the "${text}" section in this report.${context}\n\nThis section was not addressed in the original findings. Please generate appropriate content for this section based on available information, or indicate if it should be omitted.`;
+			return `The "${text}" section is unfilled. Please generate appropriate content based on available findings and apply it to the report now, or remove the section if it should be omitted.${locationHint}`;
 		
 		default:
-			return `Please help fix this unfilled placeholder: "${text}".${context}`;
+			return `Please fix the unfilled placeholder "${text}" and apply the correction to the report now.${locationHint}`;
 	}
 }
 

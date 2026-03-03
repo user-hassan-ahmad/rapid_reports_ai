@@ -25,6 +25,11 @@
 	export let enhancementGuidelinesCount = 0;
 	export let enhancementLoading = false;
 	export let enhancementError = false;
+	
+	// Audit props
+	export let scanType = '';
+	export let clinicalHistory = '';
+	
 	export let apiKeyStatus = {
 		anthropic_configured: false,
 		groq_configured: false,
@@ -412,6 +417,8 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 			enhancementGuidelinesCount={enhancementGuidelinesCount}
 			enhancementLoading={enhancementLoading}
 			enhancementError={enhancementError}
+			scanType={scanType}
+			clinicalHistory={clinicalHistory}
 			on:toggle={toggleResponse}
 			on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
 			on:copy={copyToClipboard}

@@ -104,8 +104,15 @@ def main():
     # Determine target revision based on what exists
     has_template_config = check_column_exists(engine, 'templates', 'template_config') if check_table_exists(engine, 'templates') else False
     has_writing_style_presets = check_table_exists(engine, 'writing_style_presets')
+    has_report_audits = check_table_exists(engine, 'report_audits')
     
-    if has_writing_style_presets:
+    print(f"  - report_audits table: {'✓ exists' if has_report_audits else '✗ missing'}")
+    
+    if has_report_audits:
+        # Database has report_audits table (latest migration)
+        target_revision = '20260228120000'  # add_audit_tables migration
+        print(f"\n✓ Database has report_audits table")
+    elif has_writing_style_presets:
         # Database has writing_style_presets table, check if it's the latest
         target_revision = 'a1b2c3d4e5f6'  # writing_style_presets migration
         print(f"\n✓ Database has writing_style_presets table")

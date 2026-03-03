@@ -8,6 +8,7 @@
 	export let isLoading: boolean = false;
 	export let hasError: boolean = false;
 	export let reportId: string | null = null;
+	export let panelOpen: boolean = false;
 	
 	function openSidebar(tab?: 'guidelines' | 'comparison' | 'chat') {
 		dispatch('openSidebar', { tab });
@@ -27,8 +28,8 @@
 		</div>
 		-->
 		
-		<!-- Cards Grid -->
-		<div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+		<!-- Cards Grid — collapse to single column when panel is open to avoid crumpling -->
+		<div class="grid gap-3" class:grid-cols-1={panelOpen} class:md:grid-cols-3={!panelOpen} class:lg:grid-cols-3={panelOpen}>
 			<!-- Guidelines Card -->
 			<button
 				type="button"

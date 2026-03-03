@@ -60,6 +60,9 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	}
 }
 
+	// Notify parent of current report content so sidebar can show diff/preview
+	$: dispatch('reportContentChange', { content: (response && typeof response === 'string') ? response : '' });
+
 	// Watch for templatesRefreshKey changes and reload templates
 	let lastTemplatesRefreshKey = 0;
 	$: if (browser && templatesRefreshKey > 0 && templatesRefreshKey !== lastTemplatesRefreshKey) {
@@ -468,9 +471,11 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 
 	function handleBackToList() {
 		selectedTemplateId.set(null);
-		reportId = null;
-		dispatch('reportGenerated', { reportId: null });
-		dispatch('reportCleared');
+		// Preserve reportId, response, and all report state so that re-selecting the same
+		// template is seamless (no audit re-run, no enhancement reload).
+		// Only signal the parent to close the sidebar — a full clear happens in
+		// handleTemplateSelect when switching to a *different* template.
+		dispatch('templateListOpen');
 	}
 	
 	// Template Editor handlers
@@ -1111,7 +1116,10 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 </script>
 
 <div class="p-6">
-	{#if !currentSelectedTemplate}
+	<!-- Template list and TemplateForm are both always mounted (never conditionally destroyed)
+	     so that ReportResponseViewer's local state (audit, enhancements) persists across
+	     Back-to-Templates / re-select-same-template navigation. -->
+	<div class:hidden={!!currentSelectedTemplate}>
 		<!-- Template Selector Console -->
 		<div class="flex items-center justify-between mb-6">
 			<div class="flex items-center gap-3">
@@ -2379,7 +2387,8 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			{/if}
 		{/if}
 		</div>
-	{:else}
+	</div>
+	<div class:hidden={!currentSelectedTemplate}>
 		<!-- Template Form -->
 		<button
 			onclick={handleBackToList}
@@ -2427,9 +2436,8 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			on:hideHoverPopup={() => dispatch('hideHoverPopup')}
 			on:historyUpdate={(event) => dispatch('historyUpdate', event.detail)}
 			on:historyRestored={(event) => dispatch('historyRestored', event.detail)}
-			on:reportCleared={() => dispatch('reportCleared')}
-		/>
-	{/if}
+		on:reportCleared={() => dispatch('reportCleared')}
+	/>
 	
 	<!-- Color Picker Modal -->
 	{#if showColorPicker && colorPickerTag}
@@ -2488,4 +2496,5 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			</div>
 		</div>
 	{/if}
+	</div>
 </div>
