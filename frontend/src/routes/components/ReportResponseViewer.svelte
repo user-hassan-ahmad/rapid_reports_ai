@@ -688,7 +688,6 @@
 						<div 
 							class="absolute inset-0 overflow-hidden"
 							transition:fade={{ duration: 200, easing: (t) => t * (2 - t) }}
-							style="will-change: opacity; backface-visibility: hidden;"
 						>
 							<!-- Editor content (full-width, scrollable). @container for enhancement cards to switch layout based on available width -->
 							<div class="@container h-full overflow-y-auto" style="padding-right: {!isMobile && auditPanelOpen && $auditStore.status !== 'idle' ? '288px' : '0'}; transition: padding-right 220ms cubic-bezier(0,0,0.2,1);"
