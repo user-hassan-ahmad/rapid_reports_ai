@@ -889,7 +889,7 @@
 								>
 									<AuditBanner
 										auditState={$auditStore as any}
-										canReaudit={$auditStore.status === 'stale' || $auditStore.status === 'complete'}
+										canReaudit={$auditStore.status === 'stale' || $auditStore.status === 'complete' || $auditStore.status === 'error'}
 										showClose={true}
 										on:acknowledge={handleAcknowledge}
 										on:restore={handleRestore}
@@ -1006,7 +1006,7 @@
 			<div class="flex-1 min-h-0 overflow-hidden">
 				<AuditBanner
 					auditState={$auditStore as any}
-					canReaudit={$auditStore.status === 'stale' || $auditStore.status === 'complete'}
+					canReaudit={$auditStore.status === 'stale' || $auditStore.status === 'complete' || $auditStore.status === 'error'}
 					on:acknowledge={handleAcknowledge}
 					on:restore={handleRestore}
 					on:suggestFix={handleSuggestFix}
