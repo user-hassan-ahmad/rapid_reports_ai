@@ -256,6 +256,28 @@
 		});
 	}
 
+	async function handleInsertBanner(e: CustomEvent<{ bannerText: string }>) {
+		const { bannerText } = e.detail;
+		const base = (currentEditorContent || response || '').trimEnd();
+		const newContent = base + '\n\n' + bannerText;
+		dispatch('save', { content: newContent });
+		auditActions.acknowledgeLocal('clinical_flagging');
+		const auditId = $auditStore.auditId;
+		if (auditId) {
+			try {
+				const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+				if ($token) headers['Authorization'] = `Bearer ${$token}`;
+				await fetch(`${API_URL}/api/audit/${auditId}/criteria/clinical_flagging`, {
+					method: 'PATCH',
+					headers,
+					body: JSON.stringify({ resolution_method: 'manual' })
+				});
+			} catch (err) {
+				console.error('Failed to acknowledge clinical_flagging:', err);
+			}
+		}
+	}
+
 	function handleReaudit() {
 		lastAuditedContent = '';
 		auditActions.reset();
@@ -831,6 +853,7 @@
 										on:acknowledge={handleAcknowledge}
 										on:restore={handleRestore}
 										on:suggestFix={handleSuggestFix}
+										on:insertBanner={handleInsertBanner}
 										on:reaudit={handleReaudit}
 										on:close={() => auditPanelOpen = false}
 									/>
@@ -946,6 +969,7 @@
 					on:acknowledge={handleAcknowledge}
 					on:restore={handleRestore}
 					on:suggestFix={handleSuggestFix}
+					on:insertBanner={handleInsertBanner}
 					on:reaudit={handleReaudit}
 				/>
 			</div>

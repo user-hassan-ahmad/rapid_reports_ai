@@ -369,6 +369,20 @@ class AuditCriterionFlag(BaseModel):
     )
 
 
+class FlagBannerOption(BaseModel):
+    """Banner option for clinical_flagging — user can select to append to report"""
+    category: Literal[
+        "critical",
+        "urgent",
+        "malignancy_suspected",
+        "malignancy_interval",
+        "significant"
+    ] = Field(description="Category of clinical flag")
+    label: str = Field(description="Short label e.g. 'Critical — Immediate Action'")
+    banner_text: str = Field(description="Full text to append to the report")
+    rationale: str = Field(description="Why this was suggested (shown to user)")
+
+
 class AuditCriterion(BaseModel):
     """Single audit criterion evaluation result"""
     criterion: Literal[
@@ -399,6 +413,10 @@ class AuditCriterion(BaseModel):
     flags_identified: Optional[List[AuditCriterionFlag]] = Field(
         default=None,
         description="Populated only for clinical_flagging criterion - lists 5 sub-flag evaluations"
+    )
+    suggested_banners: Optional[List[FlagBannerOption]] = Field(
+        default=None,
+        description="Populated only for clinical_flagging - banners to optionally append to report"
     )
 
 

@@ -3531,16 +3531,12 @@ async def run_audit(
         if not request.report_content or not request.report_content.strip():
             raise HTTPException(status_code=400, detail="Report content is required")
         
-        # Get Cerebras API key for audit
-        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
-        if not api_key:
-            raise HTTPException(
-                status_code=500,
-                detail="Cerebras API key not configured. Please set CEREBRAS_API_KEY environment variable."
-            )
+        # Run the audit (Qwen 32B primary, Zai-GLM fallback)
+        from .enhancement_utils import audit_report, MODEL_CONFIG, _get_model_provider, _get_api_key_for_provider
         
-        # Run the audit
-        from .enhancement_utils import audit_report, MODEL_CONFIG
+        primary_audit_model = MODEL_CONFIG["AUDIT_ANALYZER"]
+        provider = _get_model_provider(primary_audit_model)
+        api_key = _get_api_key_for_provider(provider)  # Raises if GROQ_API_KEY not set (primary is Qwen)
         
         try:
             result = await audit_report(
@@ -3562,7 +3558,7 @@ async def run_audit(
         if request.report_id:
             report = get_report(db, request.report_id, user_id=str(current_user.id))
             if report:
-                model_used = MODEL_CONFIG.get("AUDIT_ANALYZER", "zai-glm-4.7")
+                model_used = result.get("model_used", MODEL_CONFIG.get("AUDIT_ANALYZER", "qwen/qwen3-32b"))
                 audit = create_report_audit(
                     db=db,
                     report=report,

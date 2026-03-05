@@ -404,6 +404,33 @@ class ReportAudit(Base):
     def __repr__(self):
         return f"<ReportAudit(id={self.id}, status='{self.overall_status}')>"
     
+    def _criterion_to_dict(self, c):
+        """Serialize a criterion, expanding flags_json for clinical_flagging."""
+        d = {
+            "criterion": c.criterion,
+            "status": c.status,
+            "rationale": c.rationale,
+            "recommendation": c.recommendation,
+            "highlighted_spans": c.highlighted_spans or [],
+            "acknowledged": c.acknowledged,
+            "acknowledged_at": c.acknowledged_at.isoformat() if c.acknowledged_at else None,
+            "resolution_method": c.resolution_method,
+        }
+        if c.criterion == "clinical_flagging" and c.flags_json:
+            if isinstance(c.flags_json, list):
+                d["flags_identified"] = c.flags_json
+                d["suggested_banners"] = []
+            elif isinstance(c.flags_json, dict):
+                d["flags_identified"] = c.flags_json.get("flags_identified")
+                d["suggested_banners"] = c.flags_json.get("suggested_banners") or []
+            else:
+                d["flags_identified"] = None
+                d["suggested_banners"] = []
+        else:
+            d["flags_identified"] = None
+            d["suggested_banners"] = []
+        return d
+    
     def to_dict(self):
         """Convert audit to dictionary for API response"""
         return {
@@ -416,17 +443,7 @@ class ReportAudit(Base):
             "is_reviewed": self.is_reviewed,
             "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
             "created_at": self.created_at.isoformat(),
-            "criteria": [{
-                "criterion": c.criterion,
-                "status": c.status,
-                "rationale": c.rationale,
-                "recommendation": c.recommendation,
-                "highlighted_spans": c.highlighted_spans or [],
-                "flags_json": c.flags_json,
-                "acknowledged": c.acknowledged,
-                "acknowledged_at": c.acknowledged_at.isoformat() if c.acknowledged_at else None,
-                "resolution_method": c.resolution_method,
-            } for c in self.criteria]
+            "criteria": [self._criterion_to_dict(c) for c in self.criteria]
         }
 
 

@@ -1062,6 +1062,12 @@ def create_report_audit(
     # Create criterion rows
     criteria_list = audit_result.get("criteria", [])
     for criterion_data in criteria_list:
+        flags_json = None
+        if criterion_data.get("criterion") == "clinical_flagging":
+            flags_json = {
+                "flags_identified": criterion_data.get("flags_identified"),
+                "suggested_banners": criterion_data.get("suggested_banners"),
+            }
         criterion = ReportAuditCriterion(
             audit_id=audit.id,
             criterion=criterion_data.get("criterion"),
@@ -1069,7 +1075,7 @@ def create_report_audit(
             rationale=criterion_data.get("rationale", ""),
             recommendation=criterion_data.get("recommendation"),
             highlighted_spans=criterion_data.get("highlighted_spans", []),
-            flags_json=criterion_data.get("flags_identified"),  # clinical_flagging only
+            flags_json=flags_json,
             acknowledged=False,
         )
         db.add(criterion)

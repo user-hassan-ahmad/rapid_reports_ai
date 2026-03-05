@@ -9,6 +9,13 @@
 		detail: string;
 	}
 
+	interface FlagBannerOption {
+		category: string;
+		label: string;
+		banner_text: string;
+		rationale: string;
+	}
+
 	interface AuditCriterion {
 		criterion: string;
 		status: 'pass' | 'flag' | 'warning';
@@ -16,6 +23,7 @@
 		highlighted_spans: string[];
 		recommendation?: string;
 		flags_identified?: AuditCriterionFlag[];
+		suggested_banners?: FlagBannerOption[];
 		acknowledged?: boolean;
 		acknowledged_at?: string;
 		resolution_method?: string;
@@ -73,6 +81,12 @@
 	$: flaggedCriteria = auditState.result?.criteria.filter(c => c.status !== 'pass') || [];
 	$: pendingCriteria = flaggedCriteria.filter(c => !c.acknowledged);
 	$: reviewedCriteria = flaggedCriteria.filter(c => c.acknowledged);
+	$: clinicalFlaggingCriterion = auditState.result?.criteria?.find((c) => c.criterion === 'clinical_flagging');
+	$: suggestedBanners = (clinicalFlaggingCriterion?.suggested_banners || []).filter((b) => b && b.banner_text);
+	// When showing the banner panel, exclude clinical_flagging from the criteria list to avoid duplication
+	$: pendingCriteriaForList = suggestedBanners.length > 0
+		? pendingCriteria.filter((c) => c.criterion !== 'clinical_flagging')
+		: pendingCriteria;
 	$: unacknowledgedCount = pendingCriteria.length;
 	$: flagCount = flaggedCriteria.filter(c => c.status === 'flag').length;
 	$: warningCount = flaggedCriteria.filter(c => c.status === 'warning').length;
@@ -116,6 +130,20 @@
 
 	function handleReaudit() {
 		dispatch('reaudit');
+	}
+
+	let selectedBannerIndex: number | null = null;
+	let bannerInserted = false;
+
+	function handleInsertBanner() {
+		if (selectedBannerIndex == null || selectedBannerIndex < 0 || selectedBannerIndex >= suggestedBanners.length) return;
+		const banner = suggestedBanners[selectedBannerIndex];
+		dispatch('insertBanner', { bannerText: banner.banner_text });
+		bannerInserted = true;
+	}
+
+	function handleDismissBanner() {
+		dispatch('acknowledge', { criterion: 'clinical_flagging', resolutionMethod: 'dismissed' });
 	}
 
 	function getStatusDot(status: string): string {
@@ -279,11 +307,76 @@
 				</div>
 			</div>
 
-		<!-- Criteria list -->
+		<!-- Criteria list (with optional Flag Banner Panel) -->
 		{:else if auditState.status === 'complete' || auditState.status === 'stale'}
 
+			<!-- Flag Banner Panel - when clinical_flagging has suggested banners -->
+			{#if suggestedBanners.length > 0 && !clinicalFlaggingCriterion?.acknowledged}
+				<div class="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 mb-3 space-y-2.5">
+					<div class="flex items-center gap-2">
+						<svg class="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+						<span class="text-[10px] font-semibold text-amber-300 uppercase tracking-wider">Clinical Flagging Suggested</span>
+					</div>
+					<p class="text-[10px] text-gray-400 leading-relaxed">This report may warrant a communication banner. Select one to add to the end of the report:</p>
+					{#if bannerInserted}
+						<div class="flex items-center gap-2 p-2 rounded-md bg-emerald-500/10 border border-emerald-500/20">
+							<svg class="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+							</svg>
+							<span class="text-[10px] font-medium text-emerald-400">Banner added to report</span>
+						</div>
+					{:else}
+						<div class="space-y-1.5">
+							{#each suggestedBanners as banner, i}
+								<label
+									class="flex items-start gap-2 p-2 rounded-md cursor-pointer transition-colors {selectedBannerIndex === i ? 'bg-amber-500/15 border border-amber-500/30' : 'bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.05]'}"
+								>
+									<input
+										type="radio"
+										name="banner-option"
+										checked={selectedBannerIndex === i}
+										on:change={() => (selectedBannerIndex = i)}
+										class="sr-only"
+									/>
+									<div class="flex-1 min-w-0">
+										<span class="text-[10px] font-semibold text-amber-300/90">{banner.label}</span>
+										<p class="text-[9px] text-gray-500 mt-0.5 font-mono truncate" title={banner.banner_text}>{banner.banner_text}</p>
+										{#if banner.rationale}
+											<p class="text-[9px] text-gray-500 mt-0.5 leading-relaxed">Why: {banner.rationale}</p>
+										{/if}
+									</div>
+								</label>
+							{/each}
+						</div>
+						<div class="flex gap-1.5">
+							<button
+								type="button"
+								class="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 text-[10px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+								disabled={selectedBannerIndex == null}
+								on:click={handleInsertBanner}
+							>
+								<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+								</svg>
+								Insert Selected Banner
+							</button>
+							<button
+								type="button"
+								class="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-white/[0.05] hover:bg-white/[0.08] border border-white/[0.08] text-gray-400 hover:text-gray-300 text-[10px] font-semibold transition-colors"
+								on:click={handleDismissBanner}
+								title="Dismiss without adding banner"
+							>
+								Dismiss
+							</button>
+						</div>
+					{/if}
+				</div>
+			{/if}
+
 			<!-- Pending (unreviewed) criteria -->
-			{#each pendingCriteria as criterion (criterion.criterion)}
+			{#each pendingCriteriaForList as criterion (criterion.criterion)}
 				{@const isExpanded = expandedCriteria.has(criterion.criterion)}
 				<div
 					bind:this={criterionRefs[criterion.criterion]}

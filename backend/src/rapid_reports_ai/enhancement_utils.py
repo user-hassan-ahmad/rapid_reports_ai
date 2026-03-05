@@ -108,7 +108,8 @@ MODEL_CONFIG = {
     "ZAI_GLM_LINGUISTIC_VALIDATOR": "llama-3.3-70b-versatile",  # Linguistic/anatomical correction for zai-glm-4.7 output (Groq Llama)
     
     # Audit / QA Analysis Models
-    "AUDIT_ANALYZER": "zai-glm-4.7",  # Report audit/QA using Cerebras Zai-GLM-4.7 with high temperature for advanced reasoning
+    "AUDIT_ANALYZER": "qwen/qwen3-32b",  # Report audit/QA primary (Groq Qwen 32B)
+    "AUDIT_ANALYZER_FALLBACK": "zai-glm-4.7",  # Fallback for audit (Cerebras Zai-GLM-4.7)
 }
 
 # Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
@@ -128,6 +129,7 @@ MODEL_PROVIDERS = {
     
     # Anthropic models
     "claude-sonnet-4-20250514": "anthropic",
+    "claude-sonnet-4-6": "anthropic",
     
     # Cerebras models
     "gpt-oss-120b": "cerebras",
@@ -4431,24 +4433,28 @@ async def audit_report(
     report_content: str,
     scan_type: str,
     clinical_history: str,
-    api_key: str
+    api_key: str = None
 ) -> dict:
     """
-    Audit a radiology report against 9 quality criteria using zai-glm-4.7.
+    Audit a radiology report against 6 quality criteria using Qwen 32B (primary) with Zai-GLM fallback.
     
     Args:
         report_content: The report text to audit
         scan_type: Type of scan (e.g., 'CT head non-contrast')
         clinical_history: Clinical history/indication for the scan
-        api_key: Cerebras API key
+        api_key: Optional API key (if not provided, uses provider-specific key from env)
         
     Returns:
-        Dictionary with overall_status, criteria list (9 items), and summary
+        Dictionary with overall_status, criteria list (6 items), summary, and model_used
     """
     start_time = time.time()
-    model_name = MODEL_CONFIG["AUDIT_ANALYZER"]
+    primary_model = MODEL_CONFIG["AUDIT_ANALYZER"]
+    fallback_model = MODEL_CONFIG["AUDIT_ANALYZER_FALLBACK"]
+    provider = _get_model_provider(primary_model)
+    primary_api_key = _get_api_key_for_provider(provider, api_key)
+    
     print(f"\n{'='*60}")
-    print(f"audit_report: Auditing report with {model_name}...")
+    print(f"audit_report: Auditing report with {primary_model} (primary), {fallback_model} (fallback)...")
     print(f"  └─ Scan type     : {scan_type or 'Not specified'}")
     print(f"  └─ Clinical hx   : {clinical_history[:120] if clinical_history else 'Not provided'}")
     print(f"  └─ Report length : {len(report_content)} chars")
@@ -4503,15 +4509,21 @@ Evaluate this report against all 6 audit criteria:
    PASS if: All actionable findings in the impression have appropriate next-step recommendations with urgency commensurate to the finding. Concise referral statements (e.g., "orthopaedic referral advised", "urgent neurosurgical referral") are adequate — do not flag for missing reason clauses or absence of modality detail in specialist referrals.
 
 4. CLINICAL_FLAGGING
-   Evaluate presence of 5 sub-flags:
+   Detect whether the report warrants a clinical communication banner that the user may append to the report.
+   Evaluate presence of these categories:
    - critical: Life-threatening findings requiring immediate action (e.g., tension pneumothorax, aortic dissection)
    - urgent: Findings needing same-day attention
    - significant: Important findings for clinical management
-   - suspected_new_malignancy: New suspicious lesions suggestive of malignancy
-   - known_malignancy_interval: Interval changes in known malignancy
-   For each sub-flag, assess whether it is present and whether the surrounding report language adequately supports that communication level.
-   FLAG if: A critical or urgent finding is present but the report language does not convey appropriate urgency.
-   WARNING if: Language level is slightly mismatched with the clinical significance described.
+   - malignancy_suspected: New suspicious lesions suggestive of malignancy
+   - malignancy_interval: Interval changes in known malignancy
+   Populate suggested_banners with 0–3 ranked options (most severe first) from these standard templates. Use the exact banner_text strings below. When no actionable flags are present, return suggested_banners: [].
+   Standard banner templates (use verbatim):
+   - critical: label "Critical — Immediate Action Required", banner_text "*****CRITICAL RADIOLOGICAL FINDING — REQUIRES IMMEDIATE CLINICIAN ACTION*****"
+   - urgent: label "Urgent — Same-Day Attention", banner_text "*****URGENT RADIOLOGICAL FINDING — PLEASE REVIEW TODAY*****"
+   - malignancy_suspected: label "Suspected New Malignancy", banner_text "*****SUSPECTED NEW MALIGNANCY — URGENT ONCOLOGY/MDT REFERRAL RECOMMENDED*****"
+   - malignancy_interval: label "Known Malignancy Interval Change", banner_text "*****INTERVAL CHANGE IN KNOWN MALIGNANCY — MDT DISCUSSION RECOMMENDED*****"
+   - significant: label "Significant — Review with Referring Team", banner_text "*****CLINICALLY SIGNIFICANT FINDING — PLEASE REVIEW WITH REFERRING TEAM*****"
+   status: "pass" if suggested_banners is empty, "flag" if any banner warranted. Keep flags_identified for diagnostic display (all 5 sub-flag evaluations).
 
 5. REPORT_COMPLETENESS
    Assess three dimensions together:
@@ -4531,51 +4543,93 @@ For each criterion, provide:
 - rationale: Brief explanation (10-400 chars)
 - highlighted_spans: Verbatim text from report to highlight (only if status is flag or warning)
 - recommendation: Suggested improvement within the radiological domain only (only if status is flag or warning)
-- flags_identified: (clinical_flagging only) List of all 5 sub-flag evaluations"""
+- flags_identified: (clinical_flagging only) List of all 5 sub-flag evaluations
+- suggested_banners: (clinical_flagging only) List of 0–3 FlagBannerOption objects with category, label, banner_text, rationale"""
 
-    # temperature=1 required for ZAI-GLM advanced reasoning; variability is
-    # controlled via explicit per-criterion thresholds in the prompt instead
-    model_settings = {
-        "temperature": 1.0,
-        "top_p": 1,
-        "max_completion_tokens": 2000,
-    }
+    # Primary model settings - provider-specific
+    if provider == 'anthropic':
+        # Claude (claude-sonnet-4-6): no thinking
+        use_thinking = False
+        primary_model_settings = {
+            "temperature": 0.7,
+            "max_tokens": 2000,
+        }
+    elif provider == 'groq':
+        # Qwen 3 32B: per Groq docs for thinking mode
+        use_thinking = 'qwen' in primary_model.lower()
+        primary_model_settings = {
+            "temperature": 0.6,
+            "top_p": 0.95,
+            "max_tokens": 2000,
+        }
+    else:
+        use_thinking = False
+        primary_model_settings = {"temperature": 0.7, "max_tokens": 2000}
     
     try:
         result = await _run_agent_with_model(
-            model_name=model_name,
+            model_name=primary_model,
             output_type=AuditResult,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            api_key=api_key,
-            use_thinking=False,
-            model_settings=model_settings
+            api_key=primary_api_key,
+            use_thinking=use_thinking,
+            model_settings=primary_model_settings
         )
         
-        elapsed = time.time() - start_time
         audit_out = result.output
-
-        flags = sum(1 for c in audit_out.criteria if c.status == "flag")
-        warnings = sum(1 for c in audit_out.criteria if c.status == "warning")
-
-        print(f"  └─ Audit completed in {elapsed:.2f}s")
-        print(f"  └─ Overall status: {audit_out.overall_status}  ({flags} flag(s), {warnings} warning(s))")
-        print(f"  └─ Summary: {audit_out.summary}")
-        print(f"  └─ Criteria breakdown ({len(audit_out.criteria)} returned):")
-        for c in audit_out.criteria:
-            icon = {"flag": "🚩", "warning": "⚠️", "pass": "✅"}.get(c.status, "?")
-            print(f"       {icon} [{c.status.upper():7s}] {c.criterion}")
-            print(f"              rationale : {c.rationale}")
-            if c.recommendation:
-                print(f"              recommend : {c.recommendation}")
-            if c.highlighted_spans:
-                print(f"              highlights: {c.highlighted_spans}")
-        
-        return audit_out.model_dump()
+        model_used = primary_model
         
     except Exception as e:
-        elapsed = time.time() - start_time
-        print(f"  └─ Audit failed after {elapsed:.2f}s: {type(e).__name__}: {str(e)[:200]}")
-        raise
+        # Primary failed - try fallback (Zai-GLM)
+        fallback_provider = _get_model_provider(fallback_model)
+        fallback_api_key = _get_api_key_for_provider(fallback_provider, api_key)
+        
+        if _is_parsing_error(e):
+            print(f"  └─ Primary model parsing error - switching to fallback {fallback_model}")
+        else:
+            print(f"  └─ Primary model failed - switching to fallback {fallback_model}: {type(e).__name__}: {str(e)[:200]}")
+        
+        # temperature=1 required for ZAI-GLM advanced reasoning
+        fallback_model_settings = {
+            "temperature": 1.0,
+            "top_p": 1,
+            "max_completion_tokens": 2000,
+        }
+        
+        result = await _run_agent_with_model(
+            model_name=fallback_model,
+            output_type=AuditResult,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            api_key=fallback_api_key,
+            use_thinking=False,
+            model_settings=fallback_model_settings
+        )
+        
+        audit_out = result.output
+        model_used = fallback_model
+        print(f"  └─ Fallback model succeeded")
+    
+    elapsed = time.time() - start_time
+    flags = sum(1 for c in audit_out.criteria if c.status == "flag")
+    warnings = sum(1 for c in audit_out.criteria if c.status == "warning")
+
+    print(f"  └─ Audit completed in {elapsed:.2f}s (model: {model_used})")
+    print(f"  └─ Overall status: {audit_out.overall_status}  ({flags} flag(s), {warnings} warning(s))")
+    print(f"  └─ Summary: {audit_out.summary}")
+    print(f"  └─ Criteria breakdown ({len(audit_out.criteria)} returned):")
+    for c in audit_out.criteria:
+        icon = {"flag": "🚩", "warning": "⚠️", "pass": "✅"}.get(c.status, "?")
+        print(f"       {icon} [{c.status.upper():7s}] {c.criterion}")
+        print(f"              rationale : {c.rationale}")
+        if c.recommendation:
+            print(f"              recommend : {c.recommendation}")
+        if c.highlighted_spans:
+            print(f"              highlights: {c.highlighted_spans}")
+    
+    out = audit_out.model_dump()
+    out["model_used"] = model_used
+    return out
 
 
