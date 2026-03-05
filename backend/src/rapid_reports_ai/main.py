@@ -173,12 +173,9 @@ def build_actions_prompt(report: Report, actions: List[Dict[str, Any]], addition
     for index, action in enumerate(actions, start=1):
         title = action.get("title") or f"Action {index}"
         details = action.get("details") or ""
-        patch = (action.get("patch") or "").strip()
         block = [f"{index}. {title}"]
         if details:
-            block.append(f"   Details: {details}")
-        if patch:
-            block.append("   Patch to incorporate:\n" + patch)
+            block.append(f"   What to do and why: {details}")
         action_lines.append("\n".join(block))
 
     context_section = (
@@ -187,16 +184,16 @@ def build_actions_prompt(report: Report, actions: List[Dict[str, Any]], addition
 
     prompt = (
         "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
-        "You are applying SPECIFIC edits to an existing radiology report.\n"
-        "Your task is to make SURGICAL changes—modify ONLY what's requested, keep everything else identical.\n\n"
-        "CRITICAL EDITING PRINCIPLES:\n"
-        "1. Apply ONLY the changes specified in the actions below\n"
-        "2. Preserve ALL other content exactly as it appears in the original report\n"
-        "3. Maintain the exact formatting, spacing, line breaks, and structure\n"
-        "4. Do NOT add separators, decorative lines, or markdown formatting (no '---', '====', '**' for section headers, etc.)\n"
-        "5. Do NOT rewrite or rephrase content unless explicitly requested in the actions\n"
-        "6. Do NOT change section headers, terminology, or style unless specified\n"
-        "7. Make minimal, targeted edits—change only what the action specifies\n\n"
+        "You are applying edits to an existing radiology report. Each action below describes an intent—what should change and why.\n"
+        "Integrate each change naturally into the report so it reads as a coherent, contextually appropriate revision.\n\n"
+        "EDITING PRINCIPLES:\n"
+        "1. Understand the intent of each action (title + details) and implement it holistically\n"
+        "2. Integrate changes so they flow naturally with surrounding text and clinical context\n"
+        "3. Preserve ALL other content exactly as it appears in the original report\n"
+        "4. Maintain the exact formatting, spacing, line breaks, and structure of unchanged sections\n"
+        "5. Do NOT add separators, decorative lines, or markdown formatting (no '---', '====', '**' for section headers, etc.)\n"
+        "6. Do NOT rewrite or rephrase content unless the action explicitly requests it\n"
+        "7. Make targeted edits that satisfy the intent—adjust wording as needed for natural integration\n\n"
         f"{context_section}"
         "Original report:\n"
         "---------------------\n"
@@ -206,8 +203,8 @@ def build_actions_prompt(report: Report, actions: List[Dict[str, Any]], addition
         "---------------------\n"
         f"{chr(10).join(action_lines)}\n"
         "---------------------\n\n"
-        "TASK: Apply ONLY the changes specified above. Keep all other content, formatting, and structure identical to the original.\n"
-        "Return the complete revised report with surgical edits applied. No separators, no markdown, just the report text."
+        "TASK: Apply each action's intent in a way that integrates naturally with the report. Keep all other content identical.\n"
+        "Return the complete revised report. No separators, no markdown, just the report text."
     )
     return prompt
 
@@ -241,21 +238,20 @@ async def regenerate_report_with_actions(
     
     system_prompt = (
         "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
-        "You are applying edits to a radiology report. Each violation specifies a problem and how to fix it.\n\n"
+        "You are applying edits to a radiology report. Each action specifies an intent (what to change and why).\n\n"
         "EDITING STRATEGY:\n"
-        "1. Read each violation's 'issue' to understand WHAT is wrong\n"
-        "2. Read each violation's 'fix' to understand HOW to fix it\n"
-        "3. Locate the exact text/location mentioned in the fix instruction\n"
-        "4. Apply the fix while preserving grammatical completeness\n\n"
+        "1. Read each action's title and details to understand the intent\n"
+        "2. Locate the relevant section(s) in the report\n"
+        "3. Implement the change in a way that integrates naturally with the surrounding text\n"
+        "4. Preserve grammatical completeness and clinical coherence\n\n"
         "CRITICAL PRINCIPLES:\n"
-        "1. Apply fixes EXACTLY as specified in the 'fix' field\n"
-        "2. If removing text leaves a sentence incomplete, restructure the sentence grammatically\n"
-        "3. If moving text, ensure it flows naturally in the new location\n"
-        "4. If restructuring, maintain all information but integrate it cohesively\n"
-        "5. Preserve formatting, spacing, and structure of unchanged sections\n"
-        "6. Verify every sentence is grammatically complete after edits\n"
-        "7. Do NOT add separators, markdown formatting, or decorative elements\n"
-        "8. Do NOT rewrite sections not mentioned in the violations\n\n"
+        "1. Satisfy the intent of each action—integrate changes so they read naturally\n"
+        "2. If removing text leaves a sentence incomplete, restructure grammatically\n"
+        "3. If adding or modifying text, ensure it flows with the report's style and context\n"
+        "4. Preserve formatting, spacing, and structure of unchanged sections\n"
+        "5. Verify every sentence is grammatically complete after edits\n"
+        "6. Do NOT add separators, markdown formatting, or decorative elements\n"
+        "7. Do NOT rewrite sections not mentioned in the actions\n\n"
         "Return ONLY the complete revised report text. No commentary, no thinking blocks, no tags—just the report."
     )
     
@@ -2490,6 +2486,19 @@ class StructuredActionItem(BaseModel):
     details: str = Field(..., description="Detailed explanation of what needs to change and why, based on conversation context")
     patch: str = Field(..., description="Specific patch instruction describing exactly what to change (e.g., 'Replace X with Y in Section Z', 'Add measurement after finding in Findings section')")
 
+
+class ChatStructuredActionItem(BaseModel):
+    """Chat tool action: title + details only. Patch omitted to avoid JSON escaping issues (e.g. quotes in text)."""
+    title: str = Field(..., description="Brief title describing what this action does")
+    details: str = Field(..., description="What to change and why, based on conversation context")
+
+
+class ChatStructuredActionsRequest(BaseModel):
+    """Chat tool schema: actions with title and details only."""
+    actions: List[ChatStructuredActionItem] = Field(..., description="List of actions to apply. Each needs title and details.")
+    conversation_summary: Optional[str] = Field(None, description="Brief summary of the conversation context (optional)")
+
+
 class StructuredActionsRequest(BaseModel):
     """Tool for applying structured actions to the report."""
     actions: List[StructuredActionItem] = Field(..., description="List of specific actions to apply to the report. Each action should be a focused, surgical edit.")
@@ -2599,8 +2608,7 @@ async def chat_about_report(
             "- **Never refuse to fill a placeholder** — always apply something and state in `details` whether the value was taken from the report or is a reference value requiring verification.\n\n"
             "When calling the tool, decompose the request into focused actions, each with:\n"
             "- `title`: one-line description\n"
-            "- `details`: what to change and why (state if a reference value was used)\n"
-            "- `patch`: exact instruction ('Replace X with Y in Section Z')\n\n"
+            "- `details`: what to change and why (state if a reference value was used)\n\n"
             f"## Report\n{report.report_content}"
             f"{enhancement_context}"
         )
@@ -2632,7 +2640,7 @@ async def chat_about_report(
                 "function": {
                     "name": "apply_structured_actions",
                     "description": "ONLY use this tool when the user explicitly asks you to MODIFY, UPDATE, CHANGE, IMPLEMENT, or APPLY changes to the report. Do NOT use for questions, discussions, or requests for opinions (e.g., 'thoughts on...', 'review of...', 'what do you think?'). Only use when user says 'implement', 'apply', 'make changes', 'update', etc.",
-                    "parameters": StructuredActionsRequest.model_json_schema()
+                    "parameters": ChatStructuredActionsRequest.model_json_schema()
                 }
             },
             {
@@ -2697,7 +2705,7 @@ async def chat_about_report(
                     print(f"  Arguments length: {len(tool_call.function.arguments)} chars")
                     
                     try:
-                        # Parse structured actions from Qwen's tool call
+                        # Parse structured actions from Qwen's tool call (ChatStructuredActionsRequest: title+details only, no patch)
                         args = json.loads(tool_call.function.arguments)
                         print(f"\n🔍 DEBUG: Parsed JSON arguments:")
                         print(f"  Keys: {list(args.keys())}")
@@ -2705,23 +2713,21 @@ async def chat_about_report(
                         if 'conversation_summary' in args:
                             print(f"  Conversation summary: {args['conversation_summary'][:100] if args['conversation_summary'] else 'None'}...")
                         
-                        structured_actions_data = StructuredActionsRequest(**args)
+                        structured_actions_data = ChatStructuredActionsRequest(**args)
                         
                         print(f"\n📋 Extracted {len(structured_actions_data.actions)} structured actions:")
                         for i, action in enumerate(structured_actions_data.actions, 1):
                             print(f"  {i}. {action.title}")
                             print(f"     Details: {action.details[:200] if len(action.details) > 200 else action.details}")
-                            print(f"     Patch: {action.patch[:200] if len(action.patch) > 200 else action.patch}")
                         
-                        # Convert to format expected by regenerate_report_with_actions
-                        # Generate IDs for actions (required by ApplyActionItem)
+                        # Convert to format expected by regenerate_report_with_actions (patch omitted—updater uses title+details)
                         actions_payload = []
                         for idx, action in enumerate(structured_actions_data.actions):
                             actions_payload.append({
                                 "id": f"chat_action_{idx}",
                                 "title": action.title,
                                 "details": action.details,
-                                "patch": action.patch
+                                "patch": ""  # Not used by updater; omitted from chat schema to avoid JSON escaping issues
                             })
                         
                         # Build conversation summary for additional context
@@ -2922,12 +2928,17 @@ Maintain the same structure, formatting, and style as the original report."""
         print(f"{'='*80}\n")
         
         sources = []
+        # Strip patch from actions_applied for frontend—patch is used only for updater prompt, not displayed
+        actions_for_frontend = (
+            [{"title": a.get("title", ""), "details": a.get("details", "")} for a in actions_applied]
+            if actions_applied else actions_applied
+        )
         
         return {
             "success": True,
             "response": response_text,
             "edit_proposal": edit_proposal,
-            "actions_applied": actions_applied,
+            "actions_applied": actions_for_frontend,
             "sources": sources
         }
         

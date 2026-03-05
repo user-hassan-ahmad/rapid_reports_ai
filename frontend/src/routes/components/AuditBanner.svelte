@@ -80,7 +80,8 @@
 
 	$: flaggedCriteria = auditState.result?.criteria.filter(c => c.status !== 'pass') || [];
 	$: pendingCriteria = flaggedCriteria.filter(c => !c.acknowledged);
-	$: reviewedCriteria = flaggedCriteria.filter(c => c.acknowledged);
+	$: reviewedCriteria = flaggedCriteria.filter(c => c.acknowledged && c.resolution_method !== 'ai_assisted');
+	$: completedCriteria = flaggedCriteria.filter(c => c.acknowledged && c.resolution_method === 'ai_assisted');
 	$: clinicalFlaggingCriterion = auditState.result?.criteria?.find((c) => c.criterion === 'clinical_flagging');
 	$: suggestedBanners = (clinicalFlaggingCriterion?.suggested_banners || []).filter((b) => b && b.banner_text);
 	// When showing the banner panel, exclude clinical_flagging from the criteria list to avoid duplication
@@ -471,7 +472,41 @@
 				</div>
 			{/each}
 
-			<!-- Reviewed section -->
+			<!-- Completed section (Fix was clicked) -->
+			{#if completedCriteria.length > 0}
+				<div class="mt-3" transition:fade={{ duration: 200 }}>
+					<div class="flex items-center gap-2 mb-2">
+						<div class="flex-1 h-px bg-white/[0.06]"></div>
+						<span class="text-[9px] uppercase tracking-widest font-semibold text-purple-500/80">Completed</span>
+						<div class="flex-1 h-px bg-white/[0.06]"></div>
+					</div>
+					<div class="space-y-1">
+						{#each completedCriteria as criterion (criterion.criterion)}
+							<div
+								bind:this={criterionRefs[criterion.criterion]}
+								class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-purple-500/[0.06] border border-purple-500/20 opacity-80 hover:opacity-100 transition-opacity duration-200"
+							>
+								<svg class="w-3 h-3 text-purple-400/80 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+								</svg>
+								<span class="text-[10px] text-purple-300/90 flex-1 truncate">
+									{criterionLabels[criterion.criterion] || criterion.criterion}
+								</span>
+								<button
+									class="flex-shrink-0 p-1 rounded text-gray-600 hover:text-gray-300 hover:bg-white/[0.06] transition-all"
+									on:click|stopPropagation={() => handleRestore(criterion.criterion)}
+									title="Restore to pending"
+								>
+									<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+									</svg>
+								</button>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
+			<!-- Reviewed section (manual/dismissed) -->
 			{#if reviewedCriteria.length > 0}
 				<div class="mt-3" transition:fade={{ duration: 200 }}>
 					<div class="flex items-center gap-2 mb-2">

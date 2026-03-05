@@ -115,7 +115,7 @@ interface CompletenessAnalysis {
 	type ChatMessageAction = {
 		title: string;
 		details: string;
-		patch: string;
+		patch?: string;  // Not shown in UI; used only for updater prompt
 	};
 
 	type ChatMessage = {
@@ -1842,7 +1842,6 @@ $: if ((visible || autoLoad) && completenessPending) {
 															<div class="text-xs text-gray-300 mb-2 last:mb-0">
 																<span class="font-medium text-purple-300">{action.title}</span>
 																{#if action.details}<p class="text-gray-400 mt-0.5">{action.details}</p>{/if}
-																<p class="font-mono text-[11px] text-amber-200/90 mt-0.5">Patch: {action.patch}</p>
 															</div>
 														{/each}
 													</div>
@@ -1993,7 +1992,6 @@ $: if ((visible || autoLoad) && completenessPending) {
 							<div class="text-sm text-gray-300 mb-3 last:mb-0">
 								<span class="font-medium text-purple-300">{action.title}</span>
 								{#if action.details}<p class="text-gray-400 mt-1">{action.details}</p>{/if}
-								<p class="font-mono text-xs text-amber-200/90 mt-1">Patch: {action.patch}</p>
 							</div>
 						{/each}
 					</div>

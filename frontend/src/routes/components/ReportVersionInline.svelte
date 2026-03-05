@@ -341,9 +341,6 @@
 												{#if action.details}
 													<p class="text-sm text-gray-300 mb-2">{action.details}</p>
 												{/if}
-												{#if action.patch}
-													<pre class="text-xs text-gray-200 bg-gray-950/70 border border-gray-800 rounded-md p-3 whitespace-pre-wrap overflow-x-auto">{action.patch}</pre>
-												{/if}
 											</li>
 										{/each}
 									</ul>

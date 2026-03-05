@@ -99,10 +99,10 @@
 		setError: (error: string) => auditStore.update(s => ({ ...s, status: 'error', error })),
 		setActiveCriterion: (criterion: string | null) =>
 			auditStore.update(s => ({ ...s, activeCriterion: criterion })),
-		acknowledgeLocal: (criterion: string) => auditStore.update(s => {
+		acknowledgeLocal: (criterion: string, resolutionMethod?: string) => auditStore.update(s => {
 			if (!s.result) return s;
 			const criteria = s.result.criteria.map((c: AuditCriterionItem) =>
-				c.criterion === criterion ? { ...c, acknowledged: true } : c
+				c.criterion === criterion ? { ...c, acknowledged: true, resolution_method: resolutionMethod } : c
 			);
 			return { ...s, result: { ...s.result, criteria } };
 		}),
@@ -123,9 +123,14 @@
 	// Set immediately (synchronously) inside triggerAudit so the reactive won't double-fire.
 	let lastAuditedContent = '';
 
-	// Derive audit decorations from store result
+	// Track inserted banner texts — survives re-audits within the same report session.
+	// Reset only when the report ID changes (new report loaded).
+	let insertedBannerTexts: string[] = [];
+
+	// Derive audit decorations — only for unacknowledged, non-passing criteria
 	$: auditDecorations = ($auditStore.result?.criteria ?? [] as AuditCriterionItem[])
 		.filter((c: AuditCriterionItem) => c.status !== 'pass')
+		.filter((c: AuditCriterionItem) => !c.acknowledged)
 		.flatMap((c: AuditCriterionItem) => (c.highlighted_spans || []).map((text: string) => ({
 			text,
 			criterion: c.criterion,
@@ -143,6 +148,7 @@
 		auditPanelOpen = false;
 		auditPanelAutoOpened = false;
 		auditActions.reset();
+		insertedBannerTexts = [];
 	}
 
 	// Auto-trigger: only fires when response is new content we haven't audited yet.
@@ -151,8 +157,13 @@
 		triggerAudit(response);
 	}
 
-	// Mark audit as stale when there are unsaved changes
+	// Mark audit as stale when there are unsaved changes (user edits)
 	$: if (hasUnsavedChanges && $auditStore.status === 'complete') {
+		auditActions.setStale();
+	}
+
+	// Mark audit as stale when content changed (e.g. restore to previous version) and differs from last audited
+	$: if (response && !generationLoading && response !== lastAuditedContent && $auditStore.status === 'complete') {
 		auditActions.setStale();
 	}
 
@@ -198,6 +209,15 @@
 			}
 			
 			auditActions.setResult(data, data.audit_id);
+			// If a banner was previously inserted and is still in the report, auto-acknowledge
+			// clinical_flagging so it doesn't re-surface decorations or the banner panel.
+			if (insertedBannerTexts.length > 0) {
+				const currentContent = (currentEditorContent || response || '').trim();
+				const bannerStillPresent = insertedBannerTexts.some((txt: string) => currentContent.includes(txt));
+				if (bannerStillPresent) {
+					auditActions.acknowledgeLocal('clinical_flagging', 'manual');
+				}
+			}
 		} catch (e) {
 			auditActions.setError(e instanceof Error ? e.message : 'Audit failed');
 		}
@@ -239,27 +259,48 @@
 				body: JSON.stringify({ resolution_method: resolutionMethod })
 			});
 			
-			auditActions.acknowledgeLocal(criterion);
+			auditActions.acknowledgeLocal(criterion, resolutionMethod);
 		} catch (e) {
 			console.error('Failed to acknowledge criterion:', e);
 		}
 	}
 
-	function handleSuggestFix(e: CustomEvent<{ criterion: string; rationale: string }>) {
+	async function handleSuggestFix(e: CustomEvent<{ criterion: string; rationale: string }>) {
 		const { criterion, rationale } = e.detail;
 		const msg = `The audit flagged an issue with "${criterion}": ${rationale}. Please go ahead and apply the appropriate correction to the report now.`;
+		// Open chat sidebar
 		dispatch('openSidebar', {
 			tab: 'chat',
 			initialMessage: msg,
 			autoSend: true,
 			labelInfo: { type: 'audit-fix', name: criterion }
 		});
+		// Also acknowledge the criterion so it moves to Reviewed and Completed sections
+		auditActions.acknowledgeLocal(criterion, 'ai_assisted');
+		const auditId = $auditStore.auditId;
+		if (auditId) {
+			try {
+				const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+				if ($token) headers['Authorization'] = `Bearer ${$token}`;
+				await fetch(`${API_URL}/api/audit/${auditId}/criteria/${criterion}`, {
+					method: 'PATCH',
+					headers,
+					body: JSON.stringify({ resolution_method: 'ai_assisted' })
+				});
+			} catch (err) {
+				console.error('Failed to acknowledge criterion on fix:', err);
+			}
+		}
 	}
 
 	async function handleInsertBanner(e: CustomEvent<{ bannerText: string }>) {
 		const { bannerText } = e.detail;
 		const base = (currentEditorContent || response || '').trimEnd();
 		const newContent = base + '\n\n' + bannerText;
+		// Track the banner so re-audits can auto-acknowledge clinical_flagging if it's still present
+		insertedBannerTexts = [...insertedBannerTexts, bannerText];
+		// Keep lastAuditedContent in sync so this save doesn't mark audit stale
+		lastAuditedContent = newContent;
 		dispatch('save', { content: newContent });
 		auditActions.acknowledgeLocal('clinical_flagging');
 		const auditId = $auditStore.auditId;
