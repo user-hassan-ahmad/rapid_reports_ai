@@ -354,7 +354,7 @@ class ReportOutputWithReasoning(BaseModel):
 
 class AuditCriterionFlag(BaseModel):
     """Sub-flag for clinical_flagging criterion only"""
-    type: Literal["critical", "urgent", "significant", "suspected_new_malignancy", "known_malignancy_interval"] = Field(
+    type: Literal["critical", "urgent", "significant", "malignancy_suspected", "malignancy_interval"] = Field(
         description="Type of clinical flag"
     )
     present: bool = Field(
@@ -364,7 +364,6 @@ class AuditCriterionFlag(BaseModel):
         description="Whether surrounding language justifies this flag level"
     )
     detail: str = Field(
-        max_length=200,
         description="Brief explanation of the flag assessment"
     )
 
@@ -397,8 +396,6 @@ class AuditCriterion(BaseModel):
         description="Audit status: pass (no issues), flag (requires attention), warning (minor concern)"
     )
     rationale: str = Field(
-        min_length=10,
-        max_length=400,
         description="Explanation of why this status was assigned"
     )
     highlighted_spans: List[str] = Field(
@@ -407,7 +404,6 @@ class AuditCriterion(BaseModel):
     )
     recommendation: Optional[str] = Field(
         default=None,
-        max_length=300,
         description="Suggested improvement if status is flag or warning"
     )
     flags_identified: Optional[List[AuditCriterionFlag]] = Field(
@@ -431,8 +427,6 @@ class AuditResult(BaseModel):
         description="Exactly 6 criterion evaluations, one per audit criterion"
     )
     summary: str = Field(
-        min_length=20,
-        max_length=500,
         description="High-level summary of audit findings and key issues"
     )
 

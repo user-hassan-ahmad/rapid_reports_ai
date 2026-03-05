@@ -74,6 +74,9 @@
 		critical: 'Critical',
 		urgent: 'Urgent',
 		significant: 'Significant',
+		malignancy_suspected: 'Suspected New Malignancy',
+		malignancy_interval: 'Known Malignancy — Interval',
+		// Legacy values from older stored audits
 		suspected_new_malignancy: 'Suspected New Malignancy',
 		known_malignancy_interval: 'Known Malignancy — Interval'
 	};
@@ -176,7 +179,9 @@
 			case 'critical': return 'text-rose-400';
 			case 'urgent': return 'text-orange-400';
 			case 'significant': return 'text-amber-400';
+			case 'malignancy_suspected':
 			case 'suspected_new_malignancy': return 'text-purple-400';
+			case 'malignancy_interval':
 			case 'known_malignancy_interval': return 'text-blue-400';
 			default: return 'text-gray-400';
 		}

@@ -2893,6 +2893,7 @@ async def _run_agent_with_model(
             output_type=output_type,
             system_prompt=system_prompt,
             model_settings=agent_model_settings,
+            retries=2,
         )
         
         # Build final model settings dict
@@ -4552,7 +4553,7 @@ For each criterion, provide:
         use_thinking = False
         primary_model_settings = {
             "temperature": 0.7,
-            "max_tokens": 2000,
+            "max_tokens": 3500,
         }
     elif provider == 'groq':
         # Qwen 3 32B: per Groq docs for thinking mode
@@ -4560,11 +4561,11 @@ For each criterion, provide:
         primary_model_settings = {
             "temperature": 0.6,
             "top_p": 0.95,
-            "max_tokens": 2000,
+            "max_tokens": 3500,
         }
     else:
         use_thinking = False
-        primary_model_settings = {"temperature": 0.7, "max_tokens": 2000}
+        primary_model_settings = {"temperature": 0.7, "max_tokens": 3500}
     
     try:
         result = await _run_agent_with_model(
@@ -4594,7 +4595,7 @@ For each criterion, provide:
         fallback_model_settings = {
             "temperature": 1.0,
             "top_p": 1,
-            "max_completion_tokens": 2000,
+            "max_completion_tokens": 3500,
         }
         
         result = await _run_agent_with_model(
