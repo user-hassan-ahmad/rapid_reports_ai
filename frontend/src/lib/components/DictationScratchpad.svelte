@@ -290,21 +290,30 @@
 		try {
 			recordingError = '';
 			isConnecting = true;
-			stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-			// Prefer opus explicitly; fall back to plain webm, then mp4 (Safari/iOS)
-			const preferredTypes = [
-				'audio/webm;codecs=opus',
-				'audio/webm',
-				'audio/ogg;codecs=opus',
-				'audio/mp4'
-			];
-			const mimeType = preferredTypes.find((t) => MediaRecorder.isTypeSupported(t)) ?? '';
-			if (!mimeType) {
-				recordingError = 'Audio recording not supported in this browser';
-				isConnecting = false;
-				return;
+		// Disable Chrome's automatic audio processing — AGC/echo cancellation can
+		// zero out the signal in deployed environments, producing silent WebM frames.
+		stream = await navigator.mediaDevices.getUserMedia({
+			audio: {
+				echoCancellation: false,
+				noiseSuppression: false,
+				autoGainControl: false,
+				channelCount: 1
 			}
-			mediaRecorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 16000 });
+		});
+		// Prefer opus explicitly; fall back to plain webm, then mp4 (Safari/iOS)
+		const preferredTypes = [
+			'audio/webm;codecs=opus',
+			'audio/webm',
+			'audio/ogg;codecs=opus',
+			'audio/mp4'
+		];
+		const mimeType = preferredTypes.find((t) => MediaRecorder.isTypeSupported(t)) ?? '';
+		if (!mimeType) {
+			recordingError = 'Audio recording not supported in this browser';
+			isConnecting = false;
+			return;
+		}
+		mediaRecorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 32000 });
 
 			const wsUrlBase = API_URL.replace(/^http/, 'ws');
 			const wsUrl = `${wsUrlBase}/api/transcribe${$token ? `?token=${encodeURIComponent($token)}` : ''}`;
