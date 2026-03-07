@@ -3,6 +3,7 @@
 	import { fly, fade } from 'svelte/transition';
 	import { token } from '$lib/stores/auth';
 	import DictationScratchpad from '$lib/components/DictationScratchpad.svelte';
+	import DictationHintBar from '$lib/components/DictationHintBar.svelte';
 	import ReportResponseViewer from './ReportResponseViewer.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import { API_URL } from '$lib/config';
@@ -415,11 +416,13 @@
 				{/if}
 			</div>
 
-			<!-- Two-column workspace row -->
-			<div class="flex gap-4 min-h-0 flex-1">
-				<!-- Scratchpad column -->
-				<div class="flex flex-col flex-1 min-w-0 min-h-0">
-				<DictationScratchpad
+		<DictationHintBar />
+
+		<!-- Two-column workspace row -->
+		<div class="flex gap-4 min-h-0 flex-1">
+			<!-- Scratchpad column -->
+			<div class="flex flex-col flex-1 min-w-0 min-h-0">
+			<DictationScratchpad
 					bind:this={scratchpadRef}
 					checklistSections={prePoppedSections}
 					{activePrompts}
