@@ -35,7 +35,7 @@ RadFlow is an AI-powered radiology reporting platform designed to streamline the
 - Required API keys:
   - Anthropic (Claude)
   - Groq (Qwen/Llama models)
-  - Deepgram (optional, for dictation)
+  - Deepgram (optional, for dictation—central DEEPGRAM_API_KEY env)
   - SMTP credentials (optional, for email)
 
 ### Quick Setup
@@ -514,7 +514,7 @@ Both reports and templates maintain full version history:
 - Applied to report footer
 
 **API Keys** (User-Supplied):
-- **Deepgram**: For personal dictation API quota
+- **Deepgram**: For dictation (central DEEPGRAM_API_KEY env, available to all users)
 - Encrypted at rest
 - Used instead of system key when present
 
@@ -533,7 +533,7 @@ ANTHROPIC_API_KEY=sk-...
 GROQ_API_KEY=gsk_...
 
 # Optional
-DEEPGRAM_API_KEY=...  # System dictation fallback
+DEEPGRAM_API_KEY=...  # Central dictation key (available to all users)
 DATABASE_URL=postgresql://...  # Defaults to SQLite
 SECRET_KEY=...  # For JWT signing
 
@@ -550,7 +550,7 @@ FRONTEND_URL=http://localhost:5173
 Real-time voice transcription using Deepgram Nova-3 Medical:
 
 #### Setup
-1. Ensure Deepgram API key configured (system or user)
+1. Ensure DEEPGRAM_API_KEY set in backend environment
 2. Browser must support WebSocket
 
 #### Usage
@@ -2227,7 +2227,7 @@ Authorization: Bearer <token>
     "auto_save": true
   },
   "signature": "Dr. Jane Smith, MD\nConsultant Radiologist",
-  "encrypted_deepgram_key": "encrypted-key-data"  // if user has personal key
+  // Deepgram now central via DEEPGRAM_API_KEY env (no user key)
 }
 ```
 
@@ -2247,7 +2247,7 @@ Authorization: Bearer <token>
     "auto_save": false
   },
   "signature": "Dr. Jane Smith, MD, FRCR\nConsultant Radiologist",
-  "deepgram_key": "your-personal-deepgram-key"  // optional
+  // Deepgram: DEEPGRAM_API_KEY env (central)
 }
 ```
 
@@ -2275,7 +2275,7 @@ Authorization: Bearer <token>
   "deepgram_configured": true,
   "has_at_least_one_model": true,
   "using_user_keys": {
-    "deepgram": true  // user has personal Deepgram key
+    "deepgram": true  // same as deepgram_configured (central env)
   }
 }
 ```
@@ -2835,7 +2835,7 @@ allow_origins = [
    - Default AI model
    - Auto-save toggle
    - Signature
-3. (Optional) Add personal Deepgram API key for dictation
+3. Dictation available when DEEPGRAM_API_KEY is set by administrator
 4. Click "Save"
 
 #### 3. Generate Your First Report
@@ -2957,7 +2957,7 @@ allow_origins = [
 
 **Problem**: Microphone not working
 - **Check**: Browser permissions granted
-- **Check**: Deepgram API key configured
+- **Check**: DEEPGRAM_API_KEY environment variable set
 - **Try**: Different browser
 - **Try**: Pre-recorded audio instead
 

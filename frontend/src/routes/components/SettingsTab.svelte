@@ -2,7 +2,6 @@
 	import { onMount, createEventDispatcher } from 'svelte';
 	import { token, user } from '$lib/stores/auth';
 	import { settingsStore } from '$lib/stores/settings';
-	import { streamingMode } from '$lib/stores/dictation';
 	import { API_URL } from '$lib/config';
 	
 	const dispatch = createEventDispatcher();
@@ -14,10 +13,6 @@
 	let message = '';
 	let messageType = ''; // 'success' or 'error'
 	
-	// API Keys (don't populate from server for security) - only Deepgram is user-configurable
-	let deepgramApiKey = '';
-	let hasDeepgramKey = false;
-	
 	// Subscribe to settings store
 	$: settingsLoading = $settingsStore ? $settingsStore.loading : true;
 	
@@ -28,7 +23,6 @@
 			fullName = settings.full_name || '';
 			signature = settings.signature || '';
 			autoSave = settings.auto_save !== undefined ? settings.auto_save : true;
-			hasDeepgramKey = settings.has_deepgram_key || false;
 		}
 	}
 
@@ -41,10 +35,7 @@
 			const payload = {
 				full_name: fullName,
 				signature: signature,
-				auto_save: autoSave,
-				// Only send API key if user has entered a value (non-empty)
-				// Omit entirely if empty to avoid deleting existing key
-				deepgram_api_key: deepgramApiKey && deepgramApiKey.trim() ? deepgramApiKey.trim() : undefined
+				auto_save: autoSave
 			};
 			
 			const result = await settingsStore.updateSettings(payload);
@@ -52,9 +43,6 @@
 			if (result.success) {
 				message = 'Settings saved successfully!';
 				messageType = 'success';
-				// Clear API key field after successful save (don't keep it in memory)
-				deepgramApiKey = '';
-				// Dispatch event to parent
 				dispatch('settingsUpdated', {
 					auto_save: autoSave
 				});
@@ -68,46 +56,6 @@
 			}
 		} catch (err) {
 			message = 'Failed to save settings. Please try again.';
-			messageType = 'error';
-		} finally {
-			loading = false;
-		}
-	}
-
-	async function clearApiKey() {
-		if (!confirm(`Are you sure you want to delete your Deepgram API key? This action cannot be undone.`)) {
-			return;
-		}
-
-		loading = true;
-		message = '';
-		messageType = '';
-
-		try {
-			// Set the key to empty string to delete it
-			const payload = {
-				deepgram_api_key: ''
-			};
-
-			const result = await settingsStore.updateSettings(payload);
-
-			if (result.success) {
-				message = `Deepgram API key deleted successfully.`;
-				messageType = 'success';
-				// Dispatch event to parent
-				dispatch('settingsUpdated', {
-					auto_save: autoSave
-				});
-				setTimeout(() => {
-					message = '';
-					messageType = '';
-				}, 3000);
-			} else {
-				message = result.error || `Failed to delete Deepgram API key`;
-				messageType = 'error';
-			}
-		} catch (err) {
-			message = `Failed to delete Deepgram API key. Please try again.`;
 			messageType = 'error';
 		} finally {
 			loading = false;
@@ -191,56 +139,6 @@
 			</div>
 		</div>
 
-		<!-- API Keys -->
-		<div class="card-dark">
-			<h2 class="text-xl font-bold text-white mb-4">API Keys</h2>
-			<p class="text-sm text-gray-400 mb-4">
-				Configure your Deepgram API key to enable voice dictation features.
-			</p>
-			<div>
-				<div class="flex items-center justify-between mb-2">
-					<label for="deepgramApiKey" class="block text-sm font-medium text-gray-300">
-						Deepgram API Key (Dictation)
-						{#if hasDeepgramKey}
-							<span class="ml-2 text-green-400 text-xs">✓ Configured</span>
-						{/if}
-					</label>
-					{#if hasDeepgramKey}
-						<button
-							type="button"
-							onclick={clearApiKey}
-							disabled={loading}
-							class="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
-							title="Delete API key"
-						>
-							Clear
-						</button>
-					{/if}
-				</div>
-				<input
-					id="deepgramApiKey"
-					type="password"
-					bind:value={deepgramApiKey}
-					placeholder={hasDeepgramKey ? "Enter new key to update..." : "..."}
-					class="input-dark w-full"
-				/>
-				<p class="text-xs text-gray-500 mt-1">
-					Optional: Get your API key from <a href="https://console.deepgram.com/" target="_blank" class="text-purple-400 hover:underline">Deepgram Console</a>
-				</p>
-			</div>
-		</div>
-
-		<!-- About -->
-		<div class="card-dark">
-			<h2 class="text-xl font-bold text-white mb-4">About</h2>
-			<div class="space-y-3">
-				<div class="text-sm text-gray-300">
-					<p class="mb-2">© 2026 H&A LABS LTD | Company No. 16114480</p>
-					<p class="text-gray-400">RadFlow is a product of H&A LABS LTD</p>
-				</div>
-			</div>
-		</div>
-
 		<!-- Application Preferences -->
 		<div class="card-dark">
 			<h2 class="text-xl font-bold text-white mb-4">Application Preferences</h2>
@@ -262,32 +160,16 @@
 						</p>
 					</div>
 				</div>
+			</div>
+		</div>
 
-				<!-- Dictation Mode Toggle -->
-				<div class="flex items-center justify-between pt-2 border-t border-white/10">
-					<div>
-						<label for="streamingMode" class="block text-sm font-medium text-gray-300">
-							Dictation Mode
-							{#if !hasDeepgramKey}
-								<span class="ml-2 text-yellow-400 text-xs">(Deepgram key required)</span>
-							{/if}
-						</label>
-						<p class="text-sm text-gray-400 mt-1">
-							<span class="font-medium">Streaming:</span> Real-time transcription as you speak<br/>
-							<span class="font-medium">Batch:</span> Process entire recording for better formatting
-						</p>
-					</div>
-					<label class="relative inline-flex items-center cursor-pointer {hasDeepgramKey ? '' : 'opacity-50 cursor-not-allowed'}">
-						<input
-							type="checkbox"
-							id="streamingMode"
-							bind:checked={$streamingMode}
-							disabled={!hasDeepgramKey}
-							class="sr-only peer"
-						/>
-						<div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-						<span class="ml-3 text-sm text-gray-300">{$streamingMode ? 'Streaming' : 'Batch'}</span>
-					</label>
+		<!-- About -->
+		<div class="card-dark">
+			<h2 class="text-xl font-bold text-white mb-4">About</h2>
+			<div class="space-y-3">
+				<div class="text-sm text-gray-300">
+					<p class="mb-2">© 2026 H&A LABS LTD | Company No. 16114480</p>
+					<p class="text-gray-400">RadFlow is a product of H&A LABS LTD</p>
 				</div>
 			</div>
 		</div>

@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
-import AutoReportTab from './components/AutoReportTab.svelte';
+import IntelliDictateTab from './components/IntelliDictateTab.svelte';
 import TemplatedReportTab from './components/TemplatedReportTab.svelte';
 import HistoryTab from './components/HistoryTab.svelte';
 import SettingsTab from './components/SettingsTab.svelte';
@@ -29,12 +29,11 @@ import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 	import { logger } from '$lib/utils/logger';
 	
 	type UseCaseOption = { name: string; description?: string };
-	type ApiKeyUsage = { deepgram: boolean };
 	type ApiKeyStatus = {
 		anthropic_configured: boolean;
 		groq_configured: boolean;
 		deepgram_configured: boolean;
-		using_user_keys: ApiKeyUsage;
+		using_user_keys?: { deepgram: boolean };  // backward compat, same as deepgram_configured
 	};
 	type HistoryModalInput = {
 		variables?: Record<string, string>;
@@ -185,10 +184,7 @@ let templatedModel = 'claude'; // Track model for template editor
 	let apiKeyStatus: ApiKeyStatus = {
 		anthropic_configured: false,
 		groq_configured: false,
-		deepgram_configured: false,
-		using_user_keys: {
-			deepgram: false
-		}
+		deepgram_configured: false
 	};
 	let loadingApiStatus = true;
 	let loadingUseCases = true;
@@ -240,9 +236,7 @@ let templatedModel = 'claude'; // Track model for template editor
 						anthropic_configured: data.anthropic_configured || false,
 						groq_configured: data.groq_configured || false,
 						deepgram_configured: data.deepgram_configured || false,
-						using_user_keys: data.using_user_keys || {
-							deepgram: false
-						}
+						using_user_keys: data.using_user_keys || { deepgram: data.deepgram_configured || false }
 					};
 				}
 			}
@@ -483,19 +477,22 @@ function handleTemplateCleared(): void {
 		onUseCaseChange(false);
 	}
 	
-	// Handle form reset from AutoReportTab
+	// Handle form reset from IntelliDictateTab (or legacy AutoReportTab)
 	async function handleFormReset(): Promise<void> {
 		autoVariableValues = {};
 		variableValues = {}; // Legacy
 		selectedUseCase = '';
 		promptVariables = [];
+		autoResponse = null;
+		autoResponseModel = null;
+		autoError = null;
 		error = null;
 		response = null;
-	responseModel = null;
-	reportId = null;
-	clearEnhancementState();
-	versionHistoryRefreshKey += 1;
-		// Reload default use case (radiology_report)
+		responseModel = null;
+		reportId = null;
+		clearEnhancementState();
+		versionHistoryRefreshKey += 1;
+		// Reload default use case (radiology_report) - for legacy/templated flows
 		await loadUseCases();
 	}
 
@@ -642,16 +639,11 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							<div class="h-32 bg-gray-700/50 rounded animate-pulse"></div>
 						</div>
 					{:else}
-						<AutoReportTab
-							bind:availableUseCases
-							bind:selectedUseCase
-							bind:promptVariables
-							bind:variableValues={autoVariableValues}
+						<IntelliDictateTab
 							bind:response={autoResponse}
 							bind:responseModel={autoResponseModel}
 							bind:loading={autoLoading}
 							bind:error={autoError}
-							bind:selectedModel={autoReportSelectedModel}
 							bind:reportId={reportId}
 							reportUpdateLoading={reportUpdateLoading}
 							versionHistoryRefreshKey={versionHistoryRefreshKey}
@@ -659,12 +651,8 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							enhancementGuidelinesCount={enhancementGuidelinesCount}
 							enhancementLoading={enhancementLoading}
 							enhancementError={enhancementError}
-							scanType={autoScanType}
-							clinicalHistory={autoVariableValues['CLINICAL_HISTORY'] || ''}
-							on:useCaseChange={handleUseCaseChange}
-							on:submit={handleSubmit}
 							on:resetForm={handleFormReset}
-						on:openSidebar={(e) => {
+							on:openSidebar={(e) => {
 							sidebarTabToOpen = e.detail?.tab || null;
 							chatInitialMessage = e.detail?.initialMessage || null;
 							chatAutoSend = e.detail?.autoSend ?? false;

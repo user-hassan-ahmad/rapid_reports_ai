@@ -1,7 +1,6 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
-	import { streamingMode as streamingModeStore } from '$lib/stores/dictation';
 	import { token } from '$lib/stores/auth';
 	import { API_URL } from '$lib/config';
 
@@ -13,8 +12,6 @@
 
 	let internalIsRecording = false;
 	let isConnecting = false;
-	let isProcessing = false; // For pre-recorded mode
-	
 	// Sync internal state with exported prop (reactive)
 	// Update exported prop whenever internal state changes
 	$: if (internalIsRecording !== isRecording) {
@@ -24,9 +21,8 @@
 	let mediaRecorder = null;
 	let stream = null;
 	let websocket = null;
-	let audioChunks = []; // For pre-recorded mode
 	
-	// Streaming mode variables
+	// Streaming variables
 	let lastFinalTranscript = ''; // Only finalized segments
 	let currentInterim = ''; // Current interim segment text from API
 	let segmentStartPosition = -1; // Track where current speech segment started (for cumulative replacement)
@@ -291,7 +287,6 @@
 		try {
 			error = null;
 			isConnecting = true;
-			audioChunks = [];
 
 			// Request microphone access
 			stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -337,11 +332,7 @@
 				startedWithSelection = false;
 			}
 
-			if ($streamingModeStore) {
-				await startStreamingMode();
-			} else {
-				await startPreRecordedMode();
-			}
+			await startStreamingMode();
 		} catch (err) {
 			error = (err instanceof Error ? err.message : 'Failed to start recording') || 'Failed to start recording';
 			isConnecting = false;
@@ -466,29 +457,6 @@
 	}
 
 	/**
-	 * Start pre-recorded mode
-	 */
-	async function startPreRecordedMode() {
-		internalIsRecording = true;
-		isConnecting = false;
-		
-		// Collect audio chunks instead of streaming
-		mediaRecorder.ondataavailable = (event) => {
-			if (event.data.size > 0) {
-				audioChunks.push(event.data);
-			}
-		};
-
-		mediaRecorder.onerror = (err) => {
-			error = 'MediaRecorder error';
-			stopRecording();
-		};
-
-		// Start recording
-		mediaRecorder.start(100); // Collect chunks every 100ms
-	}
-
-	/**
 	 * Stop recording and cleanup
 	 */
 	async function stopRecording() {
@@ -507,90 +475,22 @@
 			});
 		}
 		
-		if ($streamingModeStore) {
-			// Close WebSocket
-			if (websocket) {
-				websocket.close();
-			}
-			
-			// Finalize any remaining interim text
-			if (currentInterim && textareaElement) {
-				// Replace interim with final version
-				insertTextAtCursor(currentInterim, true);
-			}
-			
-			currentInterim = '';
-			lastFinalTranscript = '';
-			segmentStartPosition = -1;
-			segmentEndPosition = -1;
-			lastInsertionPosition = 0;
-			startedWithSelection = false;
-		} else {
-			// Wait for MediaRecorder to stop and process audio
-			// Wait a bit for ondataavailable to fire for final chunks
-			await new Promise(resolve => setTimeout(resolve, 100));
-			
-			if (audioChunks.length > 0) {
-				await processPreRecordedAudio();
-			}
+		// Close WebSocket
+		if (websocket) {
+			websocket.close();
 		}
-	}
-
-	/**
-	 * Process pre-recorded audio and send to backend
-	 */
-	async function processPreRecordedAudio() {
-		try {
-			isProcessing = true;
-			error = null;
-
-			// Create audio blob from chunks
-			const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-			
-			// Create FormData to send audio
-			const formData = new FormData();
-			formData.append('audio', audioBlob, 'recording.webm');
-
-			// Send to backend with authentication token
-			const headers = {};
-			if ($token) {
-				headers['Authorization'] = `Bearer ${$token}`;
-			}
-			const response = await fetch(`${API_URL}/api/transcribe/pre-recorded`, {
-				method: 'POST',
-				headers,
-				body: formData
-			});
-
-			const result = await response.json();
-
-			if (!response.ok) {
-				throw new Error(result.detail || 'Failed to transcribe audio');
-			}
-
-			if (result.success && result.transcript) {
-				// Insert transcript at cursor position with intelligent spacing and capitalization
-				if (textareaElement) {
-					// Use insertTextAtCursor which handles spacing and capitalization intelligently
-					// It will check for existing spaces and add spacing/capitalization as needed
-					insertTextAtCursor(result.transcript.trim(), false);
-				} else {
-					// Fallback: append to end with spacing check
-					const existingText = bindText.trim();
-					const newText = result.transcript.trim();
-					// Add space only if existing text doesn't end with space or punctuation
-					const needsSpace = existingText && !existingText.endsWith(' ') && !/[.!?]/.test(existingText.slice(-1));
-					bindText = existingText ? `${existingText}${needsSpace ? ' ' : ''}${newText}` : newText;
-				}
-			} else {
-				throw new Error('No transcript returned');
-			}
-		} catch (err) {
-			error = (err instanceof Error ? err.message : 'Failed to process audio') || 'Failed to process audio';
-		} finally {
-			isProcessing = false;
-			audioChunks = [];
+		
+		// Finalize any remaining interim text
+		if (currentInterim && textareaElement) {
+			insertTextAtCursor(currentInterim, true);
 		}
+		
+		currentInterim = '';
+		lastFinalTranscript = '';
+		segmentStartPosition = -1;
+		segmentEndPosition = -1;
+		lastInsertionPosition = 0;
+		startedWithSelection = false;
 	}
 
 	/**
@@ -611,19 +511,14 @@
 	<button
 		type="button"
 		onclick={toggleRecording}
-		disabled={disabled || isConnecting || isProcessing}
+		disabled={disabled || isConnecting}
 		class="p-2.5 text-white rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed
 			{internalIsRecording 
 				? 'bg-red-600 hover:bg-red-500 shadow-lg shadow-red-500/50 pulse-glow' 
 				: 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 hover:shadow-lg hover:shadow-purple-500/50'}"
-		title={disabled && disabledReason ? disabledReason : (isProcessing ? 'Processing...' : internalIsRecording ? 'Stop Recording' : 'Start Dictation')}
+		title={disabled && disabledReason ? disabledReason : (internalIsRecording ? 'Stop Recording' : 'Start Dictation')}
 	>
-		{#if isProcessing}
-			<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-			</svg>
-		{:else if internalIsRecording}
+		{#if internalIsRecording}
 			<svg class="w-5 h-5 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
 				<path d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 100-2 1 1 0 000 2zm7-1a1 1 0 11-2 0 1 1 0 012 0zm-9.536 5.879a1 1 0 001.415 0 1 1 0 000-1.415 1 1 0 00-1.415 0zm11.072 0a1 1 0 00-1.415-1.415 1 1 0 001.415 1.415zM10 12a1 1 0 01-1 1v1a1 1 0 102 0v-1a1 1 0 01-1-1zM9 1a1 1 0 000 2h2a1 1 0 100-2H9z"/>
 			</svg>
@@ -647,14 +542,6 @@
 	
 	.animate-pulse {
 		animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-	}
-
-	@keyframes spin {
-		to { transform: rotate(360deg); }
-	}
-
-	.animate-spin {
-		animation: spin 1s linear infinite;
 	}
 
 	.pulse-glow {

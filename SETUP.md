@@ -22,7 +22,7 @@ This guide provides detailed instructions for setting up Rapid Reports AI from s
 ### Required API Keys
 1. **Anthropic API Key**: [Get from Anthropic](https://console.anthropic.com/)
 2. **Groq API Key**: [Get from Groq](https://console.groq.com/)
-3. **Deepgram API Key** (optional): [Get from Deepgram](https://console.deepgram.com/)
+3. **Deepgram API Key** (optional, central): [Get from Deepgram](https://console.deepgram.com/) — set DEEPGRAM_API_KEY in .env for dictation (available to all users)
 4. **SMTP Credentials** (optional): For email functionality
 
 ## Backend Setup
@@ -71,7 +71,7 @@ GROQ_API_KEY=your_groq_api_key_here
 # ============================================
 # OPTIONAL API KEYS
 # ============================================
-# Deepgram API key for dictation (optional)
+# Deepgram API key for dictation (optional, central—available to all users)
 DEEPGRAM_API_KEY=your_deepgram_api_key_here
 
 # ============================================

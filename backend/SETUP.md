@@ -8,7 +8,7 @@
 - Python 3.11 or higher
 - Poetry (recommended) or pip
 - PostgreSQL (for production) or SQLite (for local development)
-- API keys: Anthropic, Groq (required), Deepgram (optional)
+- API keys: Anthropic, Groq (required), Deepgram (optional, central DEEPGRAM_API_KEY)
 
 ### Installation
 
@@ -31,7 +31,7 @@ GROQ_API_KEY=your_groq_api_key
 SECRET_KEY=your_secret_key_here
 
 # Optional
-DEEPGRAM_API_KEY=your_deepgram_api_key
+DEEPGRAM_API_KEY=your_deepgram_api_key  # Central dictation (available to all users)
 DATABASE_URL=postgresql://user:password@host:port/database
 
 # Email (Resend recommended for production)

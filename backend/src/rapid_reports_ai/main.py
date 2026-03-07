@@ -62,7 +62,8 @@ from .auth import (
     ALGORITHM,
 )
 from .email_utils import send_magic_link_email
-from .encryption import encrypt_api_key, decrypt_api_key, get_user_api_key, get_system_api_key
+from .encryption import encrypt_api_key, decrypt_api_key, get_system_api_key
+from .canvas_routes import canvas_router
 from .enhancement_utils import (
     extract_consolidated_findings,
     search_guidelines_for_findings,
@@ -1933,14 +1934,11 @@ async def get_settings(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get user settings (LLM API keys now system-wide via environment variables)"""
+    """Get user settings (LLM and Deepgram API keys now system-wide via environment variables)"""
     # Force a fresh read from database
     db.refresh(current_user)
     settings = current_user.settings or {}
     tag_colors = settings.get('tag_colors', {})
-    
-    # Check if Deepgram API key exists (only user-configurable key remaining)
-    has_deepgram = bool(settings.get('deepgram_api_key'))
     
     print(f"[COLOR_PICKER] Backend GET /api/settings - returning tag_colors: {tag_colors}")
     return {
@@ -1950,7 +1948,7 @@ async def get_settings(
         "default_model": settings.get('default_model', 'claude'),
         "auto_save": settings.get('auto_save', True),
         "tag_colors": tag_colors,
-        "has_deepgram_key": has_deepgram
+        "deepgram_configured": bool(os.getenv("DEEPGRAM_API_KEY"))
     }
 
 
@@ -1960,7 +1958,6 @@ class UpdateSettingsRequest(BaseModel):
     default_model: Optional[str] = None
     auto_save: Optional[bool] = None
     tag_colors: Optional[Dict[str, str]] = None
-    deepgram_api_key: Optional[str] = None  # Only user-configurable API key
 
 
 @app.post("/api/settings")
@@ -1990,15 +1987,6 @@ async def update_settings(
             existing_tag_colors.update(request.tag_colors)
             print(f"[COLOR_PICKER] Backend - merged tag_colors: {existing_tag_colors}")
             settings['tag_colors'] = existing_tag_colors
-        
-        # Handle Deepgram API key - only user-configurable key remaining
-        # LLM API keys (Anthropic, Groq) are now system-wide via environment variables
-        if request.deepgram_api_key is not None:
-            if request.deepgram_api_key.strip():
-                settings['deepgram_api_key'] = encrypt_api_key(request.deepgram_api_key)
-            else:
-                # Empty string means delete the key
-                settings.pop('deepgram_api_key', None)
         
         # Also remove notifications if it exists (legacy field)
         if 'notifications' in settings:
@@ -2041,9 +2029,6 @@ async def update_settings(
                 final_tag_colors = saved_colors
                 print(f"[COLOR_PICKER] Backend - Using saved value: {final_tag_colors}")
         
-        # Check Deepgram API key status (only user-configurable key)
-        has_deepgram = bool(updated_settings.get('deepgram_api_key'))
-        
         return {
             "success": True,
             "full_name": current_user.full_name,
@@ -2051,7 +2036,7 @@ async def update_settings(
             "default_model": updated_settings.get('default_model', 'claude'),
             "auto_save": updated_settings.get('auto_save', True),
             "tag_colors": final_tag_colors,
-            "has_deepgram_key": has_deepgram
+            "deepgram_configured": bool(os.getenv("DEEPGRAM_API_KEY"))
         }
     except Exception as e:
         print(f"Error updating settings: {e}")
@@ -2065,18 +2050,13 @@ async def get_api_key_status(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get API key configuration status - LLM keys from system env, Deepgram from user settings"""
+    """Get API key configuration status - all keys from system env (DEEPGRAM_API_KEY central)"""
     db.refresh(current_user)
-    settings = current_user.settings or {}
     
-    # LLM API keys are now system-wide only (environment variables)
+    # All API keys are system-wide via environment variables
     has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
     has_groq = bool(os.getenv("GROQ_API_KEY"))
-    
-    # Deepgram remains user-configurable (check user settings first, then env)
-    has_deepgram_user = bool(settings.get('deepgram_api_key'))
-    has_deepgram_env = bool(os.getenv("DEEPGRAM_API_KEY"))
-    has_deepgram = has_deepgram_user or has_deepgram_env
+    has_deepgram = bool(os.getenv("DEEPGRAM_API_KEY"))
     
     return {
         "success": True,
@@ -2085,7 +2065,7 @@ async def get_api_key_status(
         "deepgram_configured": has_deepgram,
         "has_at_least_one_model": has_anthropic or has_groq,
         "using_user_keys": {
-            "deepgram": has_deepgram_user
+            "deepgram": has_deepgram  # backward compat: same as deepgram_configured
         }
     }
 
@@ -3338,12 +3318,12 @@ async def websocket_transcribe(websocket: WebSocket):
             print(f"Error authenticating WebSocket: {e}")
             # Continue with env fallback
     
-    # Get Deepgram API key from user settings or fallback to env
-    deepgram_api_key = get_user_api_key(user_settings, 'deepgram', 'DEEPGRAM_API_KEY')
+    # Get Deepgram API key from central env (DEEPGRAM_API_KEY)
+    deepgram_api_key = os.getenv("DEEPGRAM_API_KEY")
     
     if not deepgram_api_key:
         await websocket.send_json({
-            "error": "Deepgram API key not configured. Please add your Deepgram API key in Settings."
+            "error": "Deepgram API key not configured. Set DEEPGRAM_API_KEY environment variable."
         })
         await websocket.close()
         return
@@ -3351,7 +3331,36 @@ async def websocket_transcribe(websocket: WebSocket):
     # Connect to Deepgram WebSocket API with Nova-3 Medical model
     # Using nova-3-medical for optimized medical transcription
     # punctuate=true is required for dictation commands (full stop, new line, etc.) to work
-    deepgram_url = f"wss://api.deepgram.com/v1/listen?model=nova-3-medical&language=en-GB&smart_format=true&measurements=true&dictation=true&punctuate=true&interim_results=true"
+    # Radiology keyterms — boost recall on terms the model may mishear in dictation
+    radiology_keyterms = [
+        "spiculated", "appendicolith", "periappendiceal", "Bosniak", "hydronephrosis",
+        "haemorrhage", "oedema", "atelectasis", "consolidation", "ground-glass opacity",
+        "pneumothorax", "pleural effusion", "lymphadenopathy", "cardiomegaly",
+        "hepatomegaly", "splenomegaly", "pericardial effusion", "aortic aneurysm",
+        "dissection", "pulmonary embolism", "deep vein thrombosis", "mesenteric ischaemia",
+        "cholecystitis", "choledocholithiasis", "pancreatitis", "appendicitis",
+        "diverticulitis", "intussusception", "volvulus", "ileus", "pneumoperitoneum",
+        "ascites", "retroperitoneal", "mediastinal", "hilar", "subphrenic",
+        "interstitial", "parenchymal", "cortical", "corticomedullary",
+        "nephrolithiasis", "ureterolithiasis", "hydronephrosis", "hydroureter",
+        "sacroiliitis", "spondylolisthesis", "spondylosis", "foraminal stenosis",
+        "canal stenosis", "listhesis", "discitis", "vertebral body",
+    ]
+    keyterm_params = "&".join(
+        f"keyterm={term.replace(' ', '%20')}" for term in radiology_keyterms
+    )
+    deepgram_url = (
+        f"wss://api.deepgram.com/v1/listen"
+        f"?model=nova-3-medical"
+        f"&language=en"
+        f"&smart_format=true"
+        f"&measurements=true"
+        f"&dictation=true"
+        f"&punctuate=true"
+        f"&interim_results=true"
+        f"&utterance_end_ms=1500"
+        f"&{keyterm_params}"
+    )
     
     try:
         # Open connection to Deepgram WebSocket
@@ -3386,17 +3395,22 @@ async def websocket_transcribe(websocket: WebSocket):
                                     if alternatives:
                                         raw_transcript = alternatives[0].get("transcript", "")
                                         is_final = transcript_data.get("is_final", False)
+                                        speech_final = transcript_data.get("speech_final", False)
                                         
                                         # Process dictation commands (convert <\n> to actual newlines, etc.)
                                         transcript = process_dictation_transcript(raw_transcript)
                                         
-                                        print(f"📝 Raw transcript: '{raw_transcript}' → Processed: '{transcript}' (final: {is_final})")
+                                        print(f"📝 Raw transcript: '{raw_transcript}' → Processed: '{transcript}' (final: {is_final}, speech_final: {speech_final})")
                                         
                                         if transcript:
                                             await websocket.send_json({
                                                 "transcript": transcript,
-                                                "is_final": is_final
+                                                "is_final": is_final,
+                                                "speech_final": speech_final
                                             })
+                                elif transcript_data.get("type") == "UtteranceEnd":
+                                    # Signal the frontend that a natural utterance boundary was detected
+                                    await websocket.send_json({"utterance_end": True})
                                 elif transcript_data.get("type") == "error":
                                     error_msg = transcript_data.get("msg", "Unknown error")
                                     print(f"❌ Deepgram error: {error_msg}")
@@ -3430,6 +3444,147 @@ async def websocket_transcribe(websocket: WebSocket):
         await websocket.close()
 
 
+@app.websocket("/api/transcribe/whisper")
+async def websocket_transcribe_whisper(websocket: WebSocket):
+    """
+    WebSocket endpoint for speech-to-text using Groq Whisper Large v3 Turbo.
+    Buffers incoming WebM audio chunks and transcribes on silence detection.
+    Returns the same message format as the Deepgram endpoint.
+    """
+    await websocket.accept()
+    print("🎙️ Whisper WebSocket connection accepted")
+
+    # Auth — same pattern as Deepgram endpoint
+    token = websocket.query_params.get("token")
+    user_settings = {}
+    if token:
+        try:
+            from jose import jwt, JWTError
+            import uuid as uuid_lib
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            user_id = payload.get("sub")
+            if user_id:
+                db = SessionLocal()
+                try:
+                    user_uuid = uuid_lib.UUID(user_id) if isinstance(user_id, str) else user_id
+                    user = db.query(User).filter(User.id == user_uuid, User.is_active == True).first()
+                    if user:
+                        user_settings = user.settings or {}
+                finally:
+                    db.close()
+        except Exception as e:
+            print(f"Whisper WS auth error: {e}")
+
+    groq_api_key = get_system_api_key("groq", "GROQ_API_KEY")
+    if not groq_api_key:
+        await websocket.send_json({"error": "Groq API key not configured."})
+        await websocket.close()
+        return
+
+    import io
+    from groq import Groq as GroqClient
+
+    # WebM requires the EBML header (first chunk) prepended to every segment sent to Whisper.
+    webm_header: bytes | None = None
+    segment_buffer = bytearray()
+    MIN_BUFFER_BYTES = 8000   # ~0.25 s of audio — skip near-empty segments
+    INTERVAL = 5.0            # seconds between transcription calls during active recording
+    disconnect_event = asyncio.Event()
+
+    async def call_whisper(audio_bytes: bytes) -> str | None:
+        try:
+            client = GroqClient(api_key=groq_api_key)
+            audio_file = io.BytesIO(audio_bytes)
+            audio_file.name = "audio.webm"
+            result = client.audio.transcriptions.create(
+                file=audio_file,
+                model="whisper-large-v3-turbo",
+                language="en",
+                response_format="text",
+                prompt=(
+                    "Medical radiology dictation. Terms: consolidation, ground-glass opacity, "
+                    "pneumothorax, atelectasis, pleural effusion, lymphadenopathy, spiculated, "
+                    "Bosniak, appendicolith, periappendiceal, hydronephrosis, haemorrhage, oedema."
+                ),
+            )
+            text = result.strip() if isinstance(result, str) else (result.text or "").strip()
+            return text if text else None
+        except Exception as e:
+            print(f"Whisper API error: {e}")
+            return None
+
+    async def send_transcript(text: str) -> bool:
+        """Send transcript to frontend. Returns False if the connection is gone."""
+        processed = process_dictation_transcript(text)
+        print(f"🎙️ Whisper result: '{processed}'")
+        try:
+            await websocket.send_json({
+                "transcript": processed,
+                "is_final": True,
+                "speech_final": True,
+            })
+            return True
+        except Exception:
+            return False
+
+    async def drain_buffer() -> None:
+        """Transcribe and send whatever is left in the buffer."""
+        if segment_buffer and webm_header and len(segment_buffer) > MIN_BUFFER_BYTES:
+            segment = bytes(segment_buffer)
+            segment_buffer.clear()
+            audio = webm_header + segment
+            print(f"🎙️ Draining {len(audio)} bytes to Whisper")
+            transcript = await call_whisper(audio)
+            if transcript:
+                await send_transcript(transcript)
+
+    async def receive_audio():
+        nonlocal webm_header
+        try:
+            while True:
+                data = await websocket.receive_bytes()
+                if webm_header is None:
+                    webm_header = bytes(data)
+                segment_buffer.extend(data)
+        except WebSocketDisconnect:
+            print("🎙️ Whisper client disconnected")
+        finally:
+            disconnect_event.set()
+
+    async def process_periodically():
+        """Every INTERVAL seconds, transcribe accumulated audio.
+        On disconnect, drain any remaining buffer immediately."""
+        while True:
+            try:
+                # Wait up to INTERVAL seconds; exit early if disconnected
+                await asyncio.wait_for(disconnect_event.wait(), timeout=INTERVAL)
+                # Disconnect happened — drain remaining buffer then stop
+                await drain_buffer()
+                break
+            except asyncio.TimeoutError:
+                # Interval elapsed — process current segment
+                if segment_buffer and webm_header and len(segment_buffer) > MIN_BUFFER_BYTES:
+                    segment = bytes(segment_buffer)
+                    segment_buffer.clear()
+                    audio = webm_header + segment
+                    print(f"🎙️ Sending {len(audio)} bytes to Whisper (periodic)")
+                    transcript = await call_whisper(audio)
+                    if transcript:
+                        ok = await send_transcript(transcript)
+                        if not ok:
+                            break
+
+    try:
+        await asyncio.gather(receive_audio(), process_periodically())
+    except Exception as e:
+        print(f"Whisper WS error: {e}")
+        try:
+            await websocket.send_json({"error": str(e)})
+        except Exception:
+            pass
+        await websocket.close()
+
+
 @app.post("/api/transcribe/pre-recorded")
 async def transcribe_pre_recorded(
     audio: UploadFile = File(...),
@@ -3440,14 +3595,13 @@ async def transcribe_pre_recorded(
     Transcribe pre-recorded audio using Deepgram's pre-recorded API
     Processes the entire audio file at once for better formatting
     """
-    # Get Deepgram API key from user settings or fallback to env
-    settings = current_user.settings or {}
-    deepgram_api_key = get_user_api_key(settings, 'deepgram', 'DEEPGRAM_API_KEY')
+    # Get Deepgram API key from central env (DEEPGRAM_API_KEY)
+    deepgram_api_key = os.getenv("DEEPGRAM_API_KEY")
     
     if not deepgram_api_key:
         raise HTTPException(
             status_code=400,
-            detail="Deepgram API key not configured. Please add your Deepgram API key in Settings."
+            detail="Deepgram API key not configured. Set DEEPGRAM_API_KEY environment variable."
         )
     
     try:
@@ -3677,6 +3831,9 @@ async def list_report_audits(
         print(f"Error getting report audits: {e}")
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
+
+
+app.include_router(canvas_router)
 
 
 def main():

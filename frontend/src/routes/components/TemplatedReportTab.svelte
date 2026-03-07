@@ -14,10 +14,7 @@
 	export let apiKeyStatus = {
 		anthropic_configured: false,
 		groq_configured: false,
-		deepgram_configured: false,
-		using_user_keys: {
-			deepgram: false
-		}
+		deepgram_configured: false
 	};
 	
 	// Always use Claude for template reports

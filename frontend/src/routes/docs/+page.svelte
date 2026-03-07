@@ -63,7 +63,7 @@
 		},
 		{
 			q: "How do I set up dictation?",
-			a: "Dictation requires your own Deepgram API key (medical-grade transcription). Setup: (1) Go to console.deepgram.com and create a free account. (2) Generate an API key from their console. (3) In RadFlow, click Settings in the sidebar. (4) Scroll to 'API Keys' section and paste your Deepgram key. (5) Click Save. Once configured, you'll see microphone icons (🎤) throughout the app wherever text input is available (Clinical History, Findings, etc.). Two modes available in Settings: Streaming mode (default)—text appears in real-time as you speak, great for live dictation. Batch mode—record your complete finding, then click stop to generate text, better for reviewing before insertion. The medical vocabulary model understands complex anatomical terms and abbreviations automatically."
+			a: "Dictation uses a central Deepgram API key (medical-grade transcription). Your administrator sets DEEPGRAM_API_KEY in the server environment—once configured, dictation is available to all users by default. You'll see microphone icons (🎤) throughout the app wherever text input is available (Clinical History, Findings, etc.). Real-time streaming transcription as you speak. The medical vocabulary model understands complex anatomical terms and abbreviations automatically."
 		},
 		{
 			q: "Is my data secure and private?",
@@ -1645,35 +1645,22 @@ The mediastinum is of normal width and contour.
 					<h2 class="text-2xl sm:text-3xl font-bold text-white mb-6">🎤 Voice Dictation</h2>
 					
 					<div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-8">
-						<p class="text-gray-300 mb-6">Medical-grade voice transcription using Deepgram Nova-3 Medical model. Must be configured in Settings first.</p>
+						<p class="text-gray-300 mb-6">Medical-grade voice transcription using Deepgram Nova-3 Medical model. Requires DEEPGRAM_API_KEY to be set by your administrator.</p>
 						
 						<div class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 mb-6">
-							<p class="text-sm text-yellow-300"><strong>⚠️ Setup Required:</strong> You must configure your Deepgram API key in Settings before using dictation features.</p>
+							<p class="text-sm text-yellow-300"><strong>⚠️ Setup Required:</strong> Your administrator must set the DEEPGRAM_API_KEY environment variable for dictation to be available.</p>
 						</div>
 						
-						<div class="grid sm:grid-cols-2 gap-4 sm:gap-6 mb-6">
-							<div class="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-lg p-5 sm:p-6 border border-blue-500/30">
-								<h3 class="text-white font-semibold mb-3">🌊 Streaming Mode</h3>
-								<p class="text-xs text-gray-400 mb-4">Real-time transcription as you speak (default)</p>
-								<ol class="space-y-2 text-xs text-gray-300">
-									<li>1. Click microphone icon (🎤) in text field</li>
-									<li>2. Grant browser microphone permission</li>
-									<li>3. Speak your findings</li>
-									<li>4. Transcript appears <strong>in real-time</strong></li>
-									<li>5. Click stop when done</li>
-								</ol>
-							</div>
-							
-							<div class="bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-lg p-6 border border-purple-500/30">
-								<h3 class="text-white font-semibold mb-3">⏸️ Batch Mode</h3>
-								<p class="text-xs text-gray-400 mb-4">Generate text after recording completes</p>
-								<ol class="space-y-2 text-xs text-gray-300">
-									<li>1. Click microphone icon (🎤)</li>
-									<li>2. Record complete finding</li>
-									<li>3. Click stop</li>
-									<li>4. Transcript generated and inserted</li>
-								</ol>
-							</div>
+						<div class="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-lg p-5 sm:p-6 border border-blue-500/30 mb-6">
+							<h3 class="text-white font-semibold mb-3">🌊 Real-time Dictation</h3>
+							<p class="text-xs text-gray-400 mb-4">Transcript appears as you speak</p>
+							<ol class="space-y-2 text-xs text-gray-300">
+								<li>1. Click microphone icon (🎤) in text field</li>
+								<li>2. Grant browser microphone permission</li>
+								<li>3. Speak your findings</li>
+								<li>4. Transcript appears <strong>in real-time</strong></li>
+								<li>5. Click stop when done</li>
+							</ol>
 						</div>
 						
 						<div class="bg-gradient-to-r from-green-500/10 to-emerald-500/10 rounded-lg p-6 border border-green-500/30">
@@ -1681,7 +1668,7 @@ The mediastinum is of normal width and contour.
 							<ul class="grid sm:grid-cols-2 gap-2 text-sm text-gray-300">
 								<li>• Medical vocabulary optimized</li>
 								<li>• Automatic punctuation</li>
-								<li>• Real-time streaming (streaming mode)</li>
+								<li>• Real-time streaming transcription</li>
 								<li>• Error handling & recovery</li>
 								<li>• Toggle between streaming/batch in Settings</li>
 							</ul>
@@ -1696,45 +1683,25 @@ The mediastinum is of normal width and contour.
 					<div class="space-y-6">
 						<!-- Dictation Setup -->
 						<div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-8">
-							<h3 class="text-xl font-bold text-white mb-4">🎤 Dictation Setup (Deepgram API Key)</h3>
-							<p class="text-gray-300 mb-6">Configure your personal Deepgram API key to enable voice transcription features.</p>
+							<h3 class="text-xl font-bold text-white mb-4">🎤 Dictation Setup (DEEPGRAM_API_KEY)</h3>
+							<p class="text-gray-300 mb-6">Dictation uses a central Deepgram API key. Your administrator sets DEEPGRAM_API_KEY in the server environment—once configured, dictation is available to all users by default.</p>
 							
 							<div class="bg-gradient-to-r from-purple-500/10 to-blue-500/10 rounded-lg p-6 border border-purple-500/30">
-								<h4 class="text-white font-semibold mb-4">Step-by-Step Setup:</h4>
+								<h4 class="text-white font-semibold mb-4">Administrator Setup:</h4>
 								<ol class="space-y-3 text-sm text-gray-300">
 									<li class="flex items-start gap-3">
 										<span class="text-purple-400 font-bold">1.</span>
-										<span>Go to <a href="https://console.deepgram.com/" target="_blank" class="text-purple-400 hover:text-purple-300 underline">Deepgram Console</a> (opens in new tab)</span>
+										<span>Go to <a href="https://console.deepgram.com/" target="_blank" class="text-purple-400 hover:text-purple-300 underline">Deepgram Console</a> and create an API key</span>
 									</li>
 									<li class="flex items-start gap-3">
 										<span class="text-purple-400 font-bold">2.</span>
-										<span>Create account or log in</span>
+										<span>Add <code class="bg-black/30 px-1 rounded">DEEPGRAM_API_KEY=your_key</code> to the backend <code class="bg-black/30 px-1 rounded">.env</code> file</span>
 									</li>
 									<li class="flex items-start gap-3">
 										<span class="text-purple-400 font-bold">3.</span>
-										<span>Navigate to API Keys section</span>
-									</li>
-									<li class="flex items-start gap-3">
-										<span class="text-purple-400 font-bold">4.</span>
-										<span>Create new API key or copy existing key</span>
-									</li>
-									<li class="flex items-start gap-3">
-										<span class="text-purple-400 font-bold">5.</span>
-										<span>In RadFlow Settings → API Keys → Paste key in <strong>"Deepgram API Key"</strong> field</span>
-									</li>
-									<li class="flex items-start gap-3">
-										<span class="text-purple-400 font-bold">6.</span>
-										<span>Click <strong>Save Settings</strong></span>
-									</li>
-									<li class="flex items-start gap-3">
-										<span class="text-purple-400 font-bold">7.</span>
-										<span>Microphone icons now active throughout the app!</span>
+										<span>Restart the server. Microphone icons (🎤) are now active throughout the app for all users.</span>
 									</li>
 								</ol>
-							</div>
-							
-							<div class="mt-4 bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 text-sm text-blue-300">
-								<strong>Note:</strong> API key is encrypted and stored securely. You can clear it anytime with the "Clear" button.
 							</div>
 						</div>
 						
@@ -1751,15 +1718,6 @@ The mediastinum is of normal width and contour.
 								<div class="bg-black/30 rounded-lg p-4 border border-white/10">
 									<div class="text-white font-medium mb-2">💾 Auto-Save Reports</div>
 									<p class="text-sm text-gray-400">Toggle on/off: When enabled, all generated reports are automatically saved to History</p>
-								</div>
-								
-								<div class="bg-black/30 rounded-lg p-4 border border-purple-500/30">
-									<div class="text-purple-300 font-medium mb-2">🎤 Dictation Mode</div>
-									<p class="text-sm text-gray-400 mb-2">Choose transcription behavior:</p>
-									<div class="ml-4 space-y-2 text-xs text-gray-400">
-										<div>• <strong class="text-blue-300">Streaming:</strong> Transcript appears in real-time as you speak</div>
-										<div>• <strong class="text-purple-300">Batch:</strong> Transcript generated after you finish recording</div>
-									</div>
 								</div>
 							</div>
 						</div>

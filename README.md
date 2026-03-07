@@ -27,7 +27,7 @@ A comprehensive AI-powered medical report generation platform, specifically desi
 - Email verification system
 - Password reset via magic links
 - User signatures for dynamic report injection
-- Encrypted API key storage (Deepgram)
+- Central dictation via DEEPGRAM_API_KEY env
 
 ## 🏗️ Architecture
 
@@ -52,7 +52,7 @@ A comprehensive AI-powered medical report generation platform, specifically desi
 - **API Keys**:
   - Anthropic API key (required)
   - Groq API key (required for Qwen/Llama models)
-  - Deepgram API key (optional, for dictation)
+  - DEEPGRAM_API_KEY (optional, central—for dictation, available to all users)
   - SMTP credentials (optional, for email functionality)
 
 ## 🛠️ Quick Start
@@ -87,7 +87,7 @@ ANTHROPIC_API_KEY=your_anthropic_api_key
 GROQ_API_KEY=your_groq_api_key
 
 # Optional API Keys
-DEEPGRAM_API_KEY=your_deepgram_api_key  # For dictation
+DEEPGRAM_API_KEY=your_deepgram_api_key  # Central dictation (available to all users)
 
 # Database (optional - defaults to SQLite for local)
 DATABASE_URL=postgresql://user:password@host:port/database
@@ -220,7 +220,7 @@ For detailed API documentation, visit `/docs` when the backend is running.
 
 - Passwords are hashed using Argon2
 - JWT tokens for authentication
-- API keys encrypted at rest (Deepgram user keys)
+- API keys from environment (Deepgram central via DEEPGRAM_API_KEY)
 - CORS configured for frontend origins
 - Email verification required for account activation
 

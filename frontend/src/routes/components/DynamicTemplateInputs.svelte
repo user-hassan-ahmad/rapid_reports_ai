@@ -76,7 +76,7 @@
 			<button
 				on:click={handleGenerate}
 				disabled={!userInputs.CLINICAL_HISTORY || !userInputs.FINDINGS}
-				class="btn-primary"
+				class="btn-primary-subtle"
 				class:opacity-50={!userInputs.CLINICAL_HISTORY || !userInputs.FINDINGS}
 			>
 				Generate Report
