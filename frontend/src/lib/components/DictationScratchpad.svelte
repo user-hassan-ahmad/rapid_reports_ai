@@ -291,13 +291,20 @@
 			recordingError = '';
 			isConnecting = true;
 			stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-			const mimeType = 'audio/webm';
-			if (!MediaRecorder.isTypeSupported(mimeType)) {
-				recordingError = 'WebM audio not supported in this browser';
+			// Prefer opus explicitly; fall back to plain webm, then mp4 (Safari/iOS)
+			const preferredTypes = [
+				'audio/webm;codecs=opus',
+				'audio/webm',
+				'audio/ogg;codecs=opus',
+				'audio/mp4'
+			];
+			const mimeType = preferredTypes.find((t) => MediaRecorder.isTypeSupported(t)) ?? '';
+			if (!mimeType) {
+				recordingError = 'Audio recording not supported in this browser';
 				isConnecting = false;
 				return;
 			}
-			mediaRecorder = new MediaRecorder(stream, { mimeType });
+			mediaRecorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 16000 });
 
 			const wsUrlBase = API_URL.replace(/^http/, 'ws');
 			const wsUrl = `${wsUrlBase}/api/transcribe${$token ? `?token=${encodeURIComponent($token)}` : ''}`;
@@ -308,7 +315,7 @@
 				isRecording = true;
 				onRecordingChange(true);
 				isConnecting = false;
-				mediaRecorder!.start(250);
+				mediaRecorder!.start(500);
 				if (editor) {
 					editor.dispatch({
 						effects: editableCompartment.reconfigure(EditorView.editable.of(false))
