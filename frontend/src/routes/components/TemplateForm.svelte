@@ -347,6 +347,11 @@
 	}
 
 	const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+
+	function toTitleCase(s: string): string {
+		return s.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+	}
+
 </script>
 
 {#if !selectedTemplate}
@@ -412,17 +417,17 @@
 				<form onsubmit={(e) => { e.preventDefault(); handleSetUpWorkspace(); }} class="space-y-4">
 					{#each nonFindingsVariables as variable}
 						<div>
-							<label for={variable} class="block text-sm font-medium text-gray-300 mb-2">
-								{variable.replace(/_/g, ' ')}
-							</label>
-							<textarea
-								id={variable}
-								bind:value={variableValues[variable]}
-								placeholder={`Enter ${variable.replace(/_/g, ' ').toLowerCase()}...`}
-								disabled={sectionsLoading}
-								class="input-dark w-full resize-none"
-								rows="3"
-							></textarea>
+						<label for={variable} class="block text-sm font-medium text-gray-300 mb-2">
+							{toTitleCase(variable)}
+						</label>
+						<textarea
+							id={variable}
+							bind:value={variableValues[variable]}
+							placeholder={`Enter ${variable.replace(/_/g, ' ').toLowerCase()}...`}
+							disabled={sectionsLoading}
+							class="input-dark w-full resize-none"
+							rows="3"
+						></textarea>
 						</div>
 					{/each}
 					<button
