@@ -507,7 +507,7 @@
 
 					<!-- Side panel: Review Guide + Consider -->
 					<aside
-						class="flex flex-col shrink-0 transition-all duration-300 overflow-hidden {checklistCollapsed ? 'w-10' : 'w-[252px]'}"
+						class="flex flex-col shrink-0 transition-all duration-300 overflow-hidden {checklistCollapsed ? 'w-10' : 'w-[320px]'}"
 					>
 						<button
 							type="button"
@@ -530,23 +530,23 @@
 
 						{#if !checklistCollapsed}
 							<div class="mt-2 flex flex-col min-h-0 overflow-y-auto gap-0 flex-1">
-								<div class="flex flex-col gap-0.5 pb-2">
-									{#each allChecklistSections as section}
-										{@const covered = coveredSections.has(section)}
-										<div
-											class="flex items-center gap-2.5 px-2 py-1.5 rounded-md transition-colors duration-300
-								{covered ? 'text-emerald-400' : 'text-gray-600'}"
-										>
-											<span
-												class="w-2 h-2 rounded-full shrink-0 transition-all duration-300
-									{covered ? 'bg-emerald-400 border-transparent shadow-sm shadow-emerald-400/50 scale-100' : 'bg-transparent border border-gray-700 scale-90 opacity-60'}"
-											></span>
-											<span class="text-xs font-mono truncate leading-snug transition-colors duration-300">{section}</span>
-										</div>
-									{/each}
-								</div>
-								<p class="text-[10px] text-gray-700 px-2 pb-3 leading-relaxed border-b border-white/[0.05]">
-									Unchecked systems are completed automatically in the final report.
+							<div class="grid grid-cols-2 gap-0.5 pb-2">
+								{#each allChecklistSections as section}
+									{@const covered = coveredSections.has(section)}
+									<div
+										class="flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors duration-300
+							{covered ? 'text-emerald-400' : 'text-gray-600'}"
+									>
+										<span
+											class="w-2 h-2 rounded-full shrink-0 transition-all duration-300
+								{covered ? 'bg-emerald-400 border-transparent shadow-sm shadow-emerald-400/50 scale-100' : 'bg-transparent border border-gray-700 scale-90 opacity-60'}"
+										></span>
+										<span class="text-[11px] font-mono leading-snug transition-colors duration-300">{section.replace(/_/g, ' ')}</span>
+									</div>
+								{/each}
+							</div>
+								<p class="text-[11px] text-gray-500 px-2 py-2 pb-3 leading-relaxed border-b border-white/[0.05] italic">
+									Reference guide only — unchecked systems are completed automatically in the final report.
 								</p>
 
 								{#if activePrompts.length > 0}

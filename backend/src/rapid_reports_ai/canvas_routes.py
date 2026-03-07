@@ -12,6 +12,8 @@ from .encryption import get_system_api_key
 # Pydantic AI for structured LLM calls
 from pydantic_ai import Agent
 from pydantic_ai.models.groq import GroqModel, GroqModelSettings
+from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 canvas_router = APIRouter(prefix="/api/canvas", tags=["canvas"])
 
@@ -83,28 +85,25 @@ SECTIONS_SYSTEM_PROMPT = """You are a radiology report structure assistant. Your
 SECTIONS_USER_PROMPT_TEMPLATE = """Scan type: {scan_type}
 Clinical history: {clinical_history}
 
-Return a JSON array of uppercase anatomical section names that a radiologist should systematically review for this specific examination. Rules:
+## PRE-OUTPUT ANALYSIS
 
-1. STRICT FIELD-OF-VIEW RULE: Only include structures DIRECTLY IMAGED in this scan. A lumbar spine MRI does not image lungs, liver, or mediastinum. A CT abdomen does not image the brain. Be precise — no padding.
+Before producing the list, reason through the following steps. Do not include this analysis in the output — use it to inform the final array:
 
-2. INTELLIGENT GROUPING: Combine closely related structures into a single section where they are routinely reported together. Prefer grouped names over fragmented ones:
-   - LIVER + BILIARY → HEPATOBILIARY (unless one system is the clinical focus, in which case keep separate)
-   - KIDNEYS + ADRENALS → KIDNEYS & ADRENALS (or RENAL if kidneys are the primary focus)
-   - AORTA + IVC + major vessels → VASCULATURE
-   - LYMPH NODES → LYMPH NODES (keep separate — distinct clinical significance)
-   - For spine: VERTEBRAL BODIES, DISCS, SPINAL CANAL & CORD, NERVE ROOTS, FACET JOINTS & LIGAMENTS, PARASPINAL SOFT TISSUES
-   - For chest: LUNGS & AIRWAYS, PLEURA, MEDIASTINUM, HEART & PERICARDIUM, CHEST WALL
-   Goal: the checklist should feel like a clean structured reporting template, not an exhaustive anatomy list.
+1. **Field of view**: What anatomical region does this scan cover from superior to inferior extent? Include incidentally imaged structures at the periphery of the field (e.g. lung bases on an abdominal CT, visualised upper abdomen on a chest CT, included joints at the extremes of an MSK scan).
 
-3. NO REDUNDANCY: Never list overlapping structures separately if they are always assessed together. PLEURA and LUNGS should be one item (LUNGS & PLEURA) unless there is a specific pleural indication.
+2. **Full structure enumeration**: List every discrete anatomical structure or system present within that field of view — including incidentally included regions.
 
-4. ORDER: Follow a logical clinical reporting sequence. General principle: solid parenchymal organs before hollow viscera, vascular structures before lymph nodes, axial skeleton before appendicular, major structures before minor. Within a region, lead with the most clinically relevant system given the history. The order should match how a radiologist would naturally dictate the report.
+3. **Grouping decisions**: Consolidate structures into functional anatomical systems as a radiologist would think of them. The guiding principle: a section represents a system you would assess as a single coherent unit at the workstation. Structures that share the same parenchyma, lumen, or immediate anatomical relationship and are always reviewed together belong in one section. Structures with distinct pathology profiles, independent clinical significance, or separate reporting conventions warrant their own section — even if adjacent. A single organ with multiple distinct compartments (e.g. a joint with bone, cartilage, and soft tissue) may warrant one section covering the whole system rather than sub-sections for each compartment. Never create a section for a single anatomical sub-unit that would only ever be mentioned within a broader system assessment.
 
-5. APPROPRIATE GRANULARITY: Aim for 5–9 sections for a single-region study, up to 12 for a combined study. Avoid micro-sections (e.g. do not list LIGAMENTUM FLAVUM as its own item).
+4. **Order**: Arrange the final groups in the sequence a radiologist would naturally dictate — lead with the primary focus given the clinical history, then sweep remaining structures logically by anatomical region.
 
-6. Do NOT include TECHNIQUE, BACKGROUND, IMPRESSION, or CONCLUSION — these are handled separately.
+5. **Granularity check**: The list should feel like a structured reporting template — comprehensive but clean. Every clinically distinct system should have its own entry; no system should be buried inside another. Avoid micro-sections for individual ligaments, ducts, spaces, or sub-structures that are always reported as part of a parent system.
 
-7. For combined studies (e.g. CT chest/abdomen/pelvis), cover all imaged regions with the same grouping logic."""
+## OUTPUT RULES
+
+- Uppercase section names only, using spaces not underscores (e.g. "COMMON BILE DUCT" not "COMMON_BILE_DUCT")
+- Do NOT include TECHNIQUE, BACKGROUND, IMPRESSION, or CONCLUSION
+- Return a JSON array of strings"""
 
 SECTIONS_FROM_TEMPLATE_SYSTEM_PROMPT = """You are a radiology report structure assistant. Your only task is to extract anatomical section headers from a FINDINGS template and return them as an ordered JSON array."""
 
@@ -257,11 +256,11 @@ async def generate_sections(
     current_user: User = Depends(get_current_user),
 ):
     """Generate ordered anatomical section names for a radiology report based on scan type and clinical history."""
-    api_key = get_system_api_key("groq", "GROQ_API_KEY")
+    api_key = get_system_api_key("cerebras", "CEREBRAS_API_KEY")
     if not api_key:
         raise HTTPException(
             status_code=503,
-            detail="Groq API key not configured. Please set GROQ_API_KEY environment variable.",
+            detail="Cerebras API key not configured. Please set CEREBRAS_API_KEY environment variable.",
         )
 
     user_prompt = SECTIONS_USER_PROMPT_TEMPLATE.format(
@@ -269,12 +268,11 @@ async def generate_sections(
         clinical_history=request.clinical_history,
     )
 
-    # Set env for Pydantic AI Groq model
-    old_key = os.environ.get("GROQ_API_KEY")
-    os.environ["GROQ_API_KEY"] = api_key
-
     try:
-        model = GroqModel("llama-3.3-70b-versatile")
+        model = OpenAIModel(
+            "gpt-oss-120b",
+            provider=OpenAIProvider(base_url="https://api.cerebras.ai/v1", api_key=api_key),
+        )
         agent = Agent(
             model,
             output_type=SectionGenerateResponse,
@@ -283,17 +281,11 @@ async def generate_sections(
         )
         result = await agent.run(
             user_prompt,
-            model_settings={"temperature": 0.1, "max_tokens": 500},
+            model_settings={"temperature": 0.1, "max_completion_tokens": 1000},
         )
         return result.output
-    except Exception as e:
-        # On any failure, return safe fallback
+    except Exception:
         return SectionGenerateResponse(sections=["FINDINGS"])
-    finally:
-        if old_key is not None:
-            os.environ["GROQ_API_KEY"] = old_key
-        else:
-            os.environ.pop("GROQ_API_KEY", None)
 
 
 @canvas_router.post("/sections-from-template", response_model=SectionGenerateResponse)
