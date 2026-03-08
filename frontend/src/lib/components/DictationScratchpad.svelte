@@ -51,7 +51,7 @@
 	let isProcessing = false;
 	let websocket: WebSocket | null = null;
 	let audioContext: AudioContext | null = null;
-	let scriptProcessor: ScriptProcessorNode | null = null;
+	let workletNode: AudioWorkletNode | null = null;
 	let stream: MediaStream | null = null;
 	let rawFeed: string[] = [];
 	let currentInterim = '';
@@ -301,17 +301,16 @@
 				}
 			});
 
-			// Use AudioContext + ScriptProcessorNode for raw PCM capture.
+			// Use AudioContext + AudioWorkletNode for raw PCM capture.
 			// This bypasses MediaRecorder's codec/container pipeline entirely,
 			// which fixes Chrome's silent-audio issue in deployed environments where
 			// MediaRecorder produces near-empty webm clusters regardless of constraints.
 			audioContext = new AudioContext({ sampleRate: 16000 });
+			await audioContext.audioWorklet.addModule('/pcm-processor.js');
 			const source = audioContext.createMediaStreamSource(stream);
-			// bufferSize=4096 → 256 ms chunks at 16 kHz; small enough for low latency
-			// eslint-disable-next-line @typescript-eslint/no-deprecated
-			scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
-			source.connect(scriptProcessor);
-			scriptProcessor.connect(audioContext.destination);
+			workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
+			source.connect(workletNode);
+			workletNode.connect(audioContext.destination);
 
 			const wsUrlBase = API_URL.replace(/^http/, 'ws');
 			const tokenPart = $token
@@ -320,15 +319,9 @@
 			const wsUrl = `${wsUrlBase}/api/transcribe${tokenPart}`;
 			websocket = new WebSocket(wsUrl);
 
-			scriptProcessor.onaudioprocess = (event) => {
+			workletNode.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
 				if (websocket?.readyState === WebSocket.OPEN) {
-					const float32 = event.inputBuffer.getChannelData(0);
-					const int16 = new Int16Array(float32.length);
-					for (let i = 0; i < float32.length; i++) {
-						const s = Math.max(-1, Math.min(1, float32[i]));
-						int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-					}
-					websocket.send(int16.buffer);
+					websocket.send(event.data);
 				}
 			};
 
@@ -399,9 +392,9 @@
 		isRecording = false;
 		onRecordingChange(false);
 		isConnecting = false;
-		if (scriptProcessor) {
-			scriptProcessor.disconnect();
-			scriptProcessor = null;
+		if (workletNode) {
+			workletNode.disconnect();
+			workletNode = null;
 		}
 		if (audioContext) {
 			audioContext.close();
