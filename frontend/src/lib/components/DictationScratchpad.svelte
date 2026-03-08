@@ -486,7 +486,7 @@
 					onContentChange(content);
 					if (!isRecording && !isQwenWriting) {
 					let hasWordChange = false;
-					let hasDeletion = false;
+					let charsDeleted = 0;
 					const docNowEmpty = update.state.doc.length === 0;
 					update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
 						const insertedText = inserted.toString();
@@ -496,17 +496,17 @@
 						}
 						if (fromA !== toA) {
 							hasWordChange = true;
-							hasDeletion = true;
+							charsDeleted += toA - fromA;
 						}
 					});
 					if (docNowEmpty) {
 						if (typingDebounceTimer) { clearTimeout(typingDebounceTimer); typingDebounceTimer = null; }
 						onScratchpadClear();
 					} else if (hasWordChange) {
-						// Clear stale prompts immediately on any deletion so the panel
-						// never shows suggestions that no longer match the content.
-						// The debounced review will repopulate if still relevant.
-						if (hasDeletion) onPromptsChange([]);
+						// Only immediately clear prompts for large deletions (e.g. select-all-delete,
+						// clearing a paragraph). Single-char backspaces let the debounced review
+						// handle it naturally — avoids prompts flashing on every typo correction.
+						if (charsDeleted > 30) onPromptsChange([]);
 						if (typingDebounceTimer) clearTimeout(typingDebounceTimer);
 						typingDebounceTimer = setTimeout(() => {
 							typingDebounceTimer = null;
