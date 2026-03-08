@@ -486,6 +486,7 @@
 					onContentChange(content);
 					if (!isRecording && !isQwenWriting) {
 					let hasWordChange = false;
+					let hasDeletion = false;
 					const docNowEmpty = update.state.doc.length === 0;
 					update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
 						const insertedText = inserted.toString();
@@ -495,18 +496,23 @@
 						}
 						if (fromA !== toA) {
 							hasWordChange = true;
+							hasDeletion = true;
 						}
 					});
 					if (docNowEmpty) {
 						if (typingDebounceTimer) { clearTimeout(typingDebounceTimer); typingDebounceTimer = null; }
 						onScratchpadClear();
-						} else if (hasWordChange) {
-							if (typingDebounceTimer) clearTimeout(typingDebounceTimer);
-							typingDebounceTimer = setTimeout(() => {
-								typingDebounceTimer = null;
-								processReview();
-							}, TYPING_DEBOUNCE_MS);
-						}
+					} else if (hasWordChange) {
+						// Clear stale prompts immediately on any deletion so the panel
+						// never shows suggestions that no longer match the content.
+						// The debounced review will repopulate if still relevant.
+						if (hasDeletion) onPromptsChange([]);
+						if (typingDebounceTimer) clearTimeout(typingDebounceTimer);
+						typingDebounceTimer = setTimeout(() => {
+							typingDebounceTimer = null;
+							processReview();
+						}, TYPING_DEBOUNCE_MS);
+					}
 					}
 					}
 				})
