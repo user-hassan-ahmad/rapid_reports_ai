@@ -312,10 +312,12 @@
 			await dummyAudioEl.play().catch(() => {});
 
 			// Use AudioContext + AudioWorkletNode for raw PCM capture.
-			// This bypasses MediaRecorder's codec/container pipeline entirely,
-			// which fixes Chrome's silent-audio issue in deployed environments where
-			// MediaRecorder produces near-empty webm clusters regardless of constraints.
-			audioContext = new AudioContext({ sampleRate: 16000 });
+			// Do NOT force sampleRate: 16000 — external devices (headsets, USB mics) operate
+			// at 44100 or 48000 Hz and Chrome goes silent when the context rate doesn't match
+			// the device's native rate. Safari resamples transparently; Chrome does not.
+			// We read back audioContext.sampleRate and pass it to the backend so Deepgram
+			// knows the exact format it's receiving.
+			audioContext = new AudioContext();
 			await audioContext.audioWorklet.addModule('/pcm-processor.js');
 			const source = audioContext.createMediaStreamSource(stream);
 			workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
@@ -323,9 +325,10 @@
 			workletNode.connect(audioContext.destination);
 
 			const wsUrlBase = API_URL.replace(/^http/, 'ws');
+			const sr = audioContext.sampleRate;
 			const tokenPart = $token
-				? `?token=${encodeURIComponent($token)}&pcm=1`
-				: '?pcm=1';
+				? `?token=${encodeURIComponent($token)}&pcm=1&sr=${sr}`
+				: `?pcm=1&sr=${sr}`;
 			const wsUrl = `${wsUrlBase}/api/transcribe${tokenPart}`;
 			websocket = new WebSocket(wsUrl);
 

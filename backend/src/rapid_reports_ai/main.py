@@ -3330,7 +3330,10 @@ async def websocket_transcribe(websocket: WebSocket):
 
     # pcm=1 signals raw linear16 PCM from AudioContext (used by Chrome where MediaRecorder
     # produces silent webm frames). Without pcm=1 Deepgram auto-detects the container format.
+    # sr = actual AudioContext.sampleRate from the client device (varies by hardware:
+    # built-in mic → 16000/44100, headset/USB → 44100/48000). Default 16000 for safety.
     use_pcm = websocket.query_params.get("pcm") == "1"
+    pcm_sample_rate = int(websocket.query_params.get("sr", "16000"))
     
     # Connect to Deepgram WebSocket API with Nova-3 Medical model
     # Using nova-3-medical for optimized medical transcription
@@ -3353,7 +3356,7 @@ async def websocket_transcribe(websocket: WebSocket):
     keyterm_params = "&".join(
         f"keyterm={term.replace(' ', '%20')}" for term in radiology_keyterms
     )
-    pcm_params = "&encoding=linear16&sample_rate=16000&channels=1" if use_pcm else ""
+    pcm_params = f"&encoding=linear16&sample_rate={pcm_sample_rate}&channels=1" if use_pcm else ""
     deepgram_url = (
         f"wss://api.deepgram.com/v1/listen"
         f"?model=nova-3-medical"
@@ -3367,7 +3370,7 @@ async def websocket_transcribe(websocket: WebSocket):
         f"{pcm_params}"
         f"&{keyterm_params}"
     )
-    print(f"🎙️ Deepgram mode: {'PCM linear16' if use_pcm else 'auto-detect container'}")
+    print(f"🎙️ Deepgram mode: {'PCM linear16 @ ' + str(pcm_sample_rate) + ' Hz' if use_pcm else 'auto-detect container'}")
     
     try:
         # Open connection to Deepgram WebSocket
