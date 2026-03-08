@@ -50,7 +50,8 @@
 	let isConnecting = false;
 	let isProcessing = false;
 	let websocket: WebSocket | null = null;
-	let mediaRecorder: MediaRecorder | null = null;
+	let audioContext: AudioContext | null = null;
+	let scriptProcessor: ScriptProcessorNode | null = null;
 	let stream: MediaStream | null = null;
 	let rawFeed: string[] = [];
 	let currentInterim = '';
@@ -290,41 +291,52 @@
 		try {
 			recordingError = '';
 			isConnecting = true;
-		// Disable Chrome's automatic audio processing — AGC/echo cancellation can
-		// zero out the signal in deployed environments, producing silent WebM frames.
-		stream = await navigator.mediaDevices.getUserMedia({
-			audio: {
-				echoCancellation: false,
-				noiseSuppression: false,
-				autoGainControl: false,
-				channelCount: 1
-			}
-		});
-		// Prefer opus explicitly; fall back to plain webm, then mp4 (Safari/iOS)
-		const preferredTypes = [
-			'audio/webm;codecs=opus',
-			'audio/webm',
-			'audio/ogg;codecs=opus',
-			'audio/mp4'
-		];
-		const mimeType = preferredTypes.find((t) => MediaRecorder.isTypeSupported(t)) ?? '';
-		if (!mimeType) {
-			recordingError = 'Audio recording not supported in this browser';
-			isConnecting = false;
-			return;
-		}
-		mediaRecorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 32000 });
+
+			stream = await navigator.mediaDevices.getUserMedia({
+				audio: {
+					echoCancellation: false,
+					noiseSuppression: false,
+					autoGainControl: false,
+					channelCount: 1
+				}
+			});
+
+			// Use AudioContext + ScriptProcessorNode for raw PCM capture.
+			// This bypasses MediaRecorder's codec/container pipeline entirely,
+			// which fixes Chrome's silent-audio issue in deployed environments where
+			// MediaRecorder produces near-empty webm clusters regardless of constraints.
+			audioContext = new AudioContext({ sampleRate: 16000 });
+			const source = audioContext.createMediaStreamSource(stream);
+			// bufferSize=4096 → 256 ms chunks at 16 kHz; small enough for low latency
+			// eslint-disable-next-line @typescript-eslint/no-deprecated
+			scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+			source.connect(scriptProcessor);
+			scriptProcessor.connect(audioContext.destination);
 
 			const wsUrlBase = API_URL.replace(/^http/, 'ws');
-			const wsUrl = `${wsUrlBase}/api/transcribe${$token ? `?token=${encodeURIComponent($token)}` : ''}`;
+			const tokenPart = $token
+				? `?token=${encodeURIComponent($token)}&pcm=1`
+				: '?pcm=1';
+			const wsUrl = `${wsUrlBase}/api/transcribe${tokenPart}`;
 			websocket = new WebSocket(wsUrl);
+
+			scriptProcessor.onaudioprocess = (event) => {
+				if (websocket?.readyState === WebSocket.OPEN) {
+					const float32 = event.inputBuffer.getChannelData(0);
+					const int16 = new Int16Array(float32.length);
+					for (let i = 0; i < float32.length; i++) {
+						const s = Math.max(-1, Math.min(1, float32[i]));
+						int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+					}
+					websocket.send(int16.buffer);
+				}
+			};
 
 			websocket.onopen = () => {
 				sessionTranscript = '';
 				isRecording = true;
 				onRecordingChange(true);
 				isConnecting = false;
-				mediaRecorder!.start(500);
 				if (editor) {
 					editor.dispatch({
 						effects: editableCompartment.reconfigure(EditorView.editable.of(false))
@@ -356,9 +368,10 @@
 							const appended = sessionTranscript
 								? `${sessionTranscript} ${data.transcript}`
 								: data.transcript;
-							sessionTranscript = appended.length > SESSION_TRANSCRIPT_WINDOW
-								? appended.slice(appended.length - SESSION_TRANSCRIPT_WINDOW)
-								: appended;
+							sessionTranscript =
+								appended.length > SESSION_TRANSCRIPT_WINDOW
+									? appended.slice(appended.length - SESSION_TRANSCRIPT_WINDOW)
+									: appended;
 
 							// Trigger on every is_final with content — latest-wins queue prevents flooding
 							processTranscriptQueue();
@@ -375,17 +388,6 @@
 			};
 
 			websocket.onclose = () => {};
-
-			mediaRecorder.ondataavailable = (event) => {
-				if (event.data.size > 0 && websocket && websocket.readyState === WebSocket.OPEN) {
-					websocket.send(event.data);
-				}
-			};
-
-			mediaRecorder.onerror = () => {
-				recordingError = 'MediaRecorder error';
-				stopRecording();
-			};
 		} catch (err) {
 			recordingError = err instanceof Error ? err.message : 'Failed to start recording';
 			isConnecting = false;
@@ -397,8 +399,13 @@
 		isRecording = false;
 		onRecordingChange(false);
 		isConnecting = false;
-		if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-			mediaRecorder.stop();
+		if (scriptProcessor) {
+			scriptProcessor.disconnect();
+			scriptProcessor = null;
+		}
+		if (audioContext) {
+			audioContext.close();
+			audioContext = null;
 		}
 		if (stream) {
 			stream.getTracks().forEach((t) => t.stop());
@@ -407,7 +414,6 @@
 			websocket.close();
 			websocket = null;
 		}
-		mediaRecorder = null;
 		stream = null;
 		if (editor) {
 			editor.dispatch({
