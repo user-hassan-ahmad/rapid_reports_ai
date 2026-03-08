@@ -53,6 +53,7 @@
 	let audioContext: AudioContext | null = null;
 	let workletNode: AudioWorkletNode | null = null;
 	let stream: MediaStream | null = null;
+	let dummyAudioEl: HTMLAudioElement | null = null;
 	let rawFeed: string[] = [];
 	let currentInterim = '';
 	let recordingError = '';
@@ -301,6 +302,15 @@
 				}
 			});
 
+			// Chrome bug: createMediaStreamSource() produces silence unless the stream is
+			// also attached to a playing (muted) audio element first. This forces Chrome's
+			// audio pipeline to actually render the MediaStreamTrack before Web Audio taps it.
+			// See: https://issues.chromium.org/issues/40799779
+			dummyAudioEl = new Audio();
+			dummyAudioEl.srcObject = stream;
+			dummyAudioEl.muted = true;
+			await dummyAudioEl.play().catch(() => {});
+
 			// Use AudioContext + AudioWorkletNode for raw PCM capture.
 			// This bypasses MediaRecorder's codec/container pipeline entirely,
 			// which fixes Chrome's silent-audio issue in deployed environments where
@@ -399,6 +409,11 @@
 		if (audioContext) {
 			audioContext.close();
 			audioContext = null;
+		}
+		if (dummyAudioEl) {
+			dummyAudioEl.pause();
+			dummyAudioEl.srcObject = null;
+			dummyAudioEl = null;
 		}
 		if (stream) {
 			stream.getTracks().forEach((t) => t.stop());
