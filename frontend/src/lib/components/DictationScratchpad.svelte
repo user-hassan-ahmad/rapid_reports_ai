@@ -58,6 +58,29 @@
 	let currentInterim = '';
 	let recordingError = '';
 
+	// Microphone device selection
+	// Chrome on macOS cannot use Bluetooth headset mics (A2DP/HFP profile conflict).
+	// Exposing a device picker lets users choose the built-in mic while keeping headset audio.
+	interface AudioDevice { deviceId: string; label: string; }
+	let audioDevices: AudioDevice[] = [];
+	let selectedDeviceId = 'default';
+	let showDevicePicker = false;
+
+	async function loadAudioDevices(): Promise<void> {
+		try {
+			// Permissions must be granted before labels are populated
+			const devices = await navigator.mediaDevices.enumerateDevices();
+			audioDevices = devices
+				.filter((d) => d.kind === 'audioinput')
+				.map((d) => ({
+					deviceId: d.deviceId,
+					label: d.label || `Microphone (${d.deviceId.slice(0, 8)}…)`
+				}));
+		} catch {
+			// ignore — device list just won't populate
+		}
+	}
+
 	// Sliding window of recent dictation — last 600 chars. The scratchpad is the persistent
 	// memory; Qwen only needs recent context to resolve the current utterance.
 	let sessionTranscript = '';
@@ -295,12 +318,15 @@
 
 			stream = await navigator.mediaDevices.getUserMedia({
 				audio: {
+					deviceId: selectedDeviceId !== 'default' ? { exact: selectedDeviceId } : undefined,
 					echoCancellation: false,
 					noiseSuppression: false,
 					autoGainControl: false,
 					channelCount: 1
 				}
 			});
+			// Populate device list now that permission is granted (labels only appear post-permission)
+			await loadAudioDevices();
 
 			// Chrome bug: createMediaStreamSource() produces silence unless the stream is
 			// also attached to a playing (muted) audio element first. This forces Chrome's
@@ -546,6 +572,50 @@
 		</button>
 		{#if recordingError}
 			<p class="text-xs text-red-400">{recordingError}</p>
+		{/if}
+
+		<!-- Mic device picker — shown below the button when not recording -->
+		{#if !isRecording && !isConnecting && audioDevices.length > 1}
+			<div class="flex items-center gap-1.5 mt-0.5">
+				{#if showDevicePicker}
+					<select
+						bind:value={selectedDeviceId}
+						class="text-xs bg-black/40 border border-white/10 text-gray-300 rounded-lg px-2 py-1 max-w-[220px] truncate focus:outline-none focus:border-purple-500/50"
+					>
+						{#each audioDevices as d}
+							<option value={d.deviceId}>{d.label}</option>
+						{/each}
+					</select>
+					<button
+						type="button"
+						onclick={() => (showDevicePicker = false)}
+						class="text-gray-500 hover:text-gray-300 transition-colors"
+						title="Close"
+					>
+						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				{:else}
+					<button
+						type="button"
+						onclick={() => (showDevicePicker = true)}
+						class="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+						title="Change microphone"
+					>
+						<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+								d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+						</svg>
+						<span class="truncate max-w-[160px]">
+							{audioDevices.find((d) => d.deviceId === selectedDeviceId)?.label ?? 'Default mic'}
+						</span>
+						<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+						</svg>
+					</button>
+				{/if}
+			</div>
 		{/if}
 	</div>
 
