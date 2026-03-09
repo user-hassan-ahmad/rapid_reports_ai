@@ -35,8 +35,6 @@
 	if (typeof selectedTemplate === 'undefined') selectedTemplate = null;
 	if (typeof variableValues === 'undefined') variableValues = {};
 
-	// Step state (mirrors IntelliDictateTab)
-	let step: 'context' | 'workspace' = 'context';
 	let prePoppedSections: string[] = [];
 	let sectionsLoading = false;
 	let sectionsError = '';
@@ -47,7 +45,11 @@
 		rationale?: string;
 	}
 
-	let backConfirmVisible = false;
+	let resetConfirmVisible = false;
+	let caseDetailsManuallyExpanded = false;
+
+	$: workspaceOpen = prePoppedSections.length > 0 || sectionsLoading;
+	$: caseDetailsExpanded = !workspaceOpen || caseDetailsManuallyExpanded;
 	let scratchpadRef: {
 		getContent: () => string;
 		getFindingCount: () => number;
@@ -88,10 +90,9 @@
 		return findingsSection?.template_content || '';
 	})();
 
-	// Reset to step 1 when template changes
+	// Reset when template changes
 	$: if (selectedTemplate?.id && selectedTemplate.id !== lastTemplateId) {
 		lastTemplateId = selectedTemplate.id;
-		step = 'context';
 		prePoppedSections = [];
 		coveredSections = new Set();
 		activePrompts = [];
@@ -158,29 +159,28 @@
 				prePoppedSections = [];
 			}
 			coveredSections = new Set();
-			step = 'workspace';
+		caseDetailsManuallyExpanded = false;
 		} catch (e) {
 			sectionsError = 'Failed to connect to API';
 			prePoppedSections = [];
-			step = 'workspace';
 		} finally {
 			sectionsLoading = false;
 		}
 	}
 
-	function handleBackClick() {
+	function handleResetClick() {
 		const content = scratchpadRef?.getContent()?.trim() ?? '';
 		if (content.length > 0) {
-			backConfirmVisible = true;
+			resetConfirmVisible = true;
 		} else {
-			doBack();
+			doReset();
 		}
 	}
 
-	function doBack() {
+	function doReset() {
 		scratchpadRef?.reset('');
-		backConfirmVisible = false;
-		step = 'context';
+		resetConfirmVisible = false;
+		prePoppedSections = [];
 		activePrompts = [];
 		expandedPrompts = new Set();
 		coveredSections = new Set();
@@ -190,8 +190,10 @@
 		reportId = null;
 		hasResponseEver = false;
 		responseExpanded = false;
+		dispatch('resetForm');
 		dispatch('reportCleared');
 		dispatch('clearResponse');
+		dispatch('historyUpdate', { count: 0 });
 	}
 
 	function scratchpadToFindings(raw: string): string {
@@ -267,23 +269,6 @@
 		dispatch('historyUpdate', { count: 0 });
 	}
 
-	function resetForm() {
-		step = 'context';
-		prePoppedSections = [];
-		coveredSections = new Set();
-		activePrompts = [];
-		response = null;
-		responseModel = null;
-		error = null;
-		reportId = null;
-		hasResponseEver = false;
-		responseExpanded = false;
-		responseVisible = false;
-		backConfirmVisible = false;
-		dispatch('resetForm');
-		dispatch('reportCleared');
-		dispatch('historyUpdate', { count: 0 });
-	}
 
 	function handleCoveredSectionsChange(covered: string[]) {
 		coveredSections = new Set(covered);
@@ -379,118 +364,196 @@
 			</div>
 		</div>
 
-		{#if step === 'context'}
-			<!-- Step 1: Context Form (mirrors IntelliDictate) -->
-			<div class="card-dark p-6" in:fly={{ x: -40, duration: 280, easing: easeOut }}>
-				<div class="flex items-center justify-between mb-4">
+		<!-- Case Details -->
+		<div class="rounded-xl border transition-all duration-300 ease-out overflow-hidden
+			{caseDetailsExpanded
+				? 'bg-black/50 border-white/10 p-5'
+				: 'bg-white/[0.025] border-white/[0.06] px-4 py-3'}">
+
+			{#if caseDetailsExpanded}
+				<!-- Full form -->
+				<div class="flex items-center justify-between mb-5" in:fade={{ duration: 150 }}>
 					<div class="flex items-center gap-2">
-						<svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-						</svg>
-						<h2 class="text-lg font-semibold text-white">Case Details</h2>
+						<div class="w-1.5 h-5 rounded-full bg-gradient-to-b from-purple-400 to-blue-500"></div>
+						<h2 class="text-sm font-semibold text-white tracking-wide">Case Details</h2>
 					</div>
-					<div class="flex items-center gap-2">
-						<button
-							type="button"
-							onclick={() => dispatch('editTemplate', { template: selectedTemplate })}
-							class="px-3 py-1.5 btn-secondary text-sm flex items-center gap-2"
-							title="Edit Template"
-						>
-							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-							</svg>
-							Edit Template
+					<div class="flex items-center gap-1">
+						{#if resetConfirmVisible}
+							<div class="flex items-center gap-2"
+								in:fly={{ x: 16, duration: 200, easing: easeOut }}
+								out:fly={{ x: 16, duration: 150, easing: easeOut }}>
+								<p class="text-xs text-gray-400 whitespace-nowrap">Discard scratchpad content?</p>
+								<button type="button" onclick={doReset}
+									class="px-2.5 py-1 text-xs rounded-lg bg-red-600/80 hover:bg-red-500 text-white transition-colors whitespace-nowrap">Discard</button>
+								<button type="button" onclick={() => (resetConfirmVisible = false)}
+									class="px-2.5 py-1 text-xs rounded-lg text-gray-400 hover:bg-white/5 transition-colors">Cancel</button>
+							</div>
+						{:else}
+							{#if workspaceOpen}
+								<button type="button" onclick={() => (caseDetailsManuallyExpanded = false)}
+									class="p-1.5 text-gray-500 hover:text-gray-300 transition-colors rounded-lg hover:bg-white/5"
+									title="Collapse" aria-label="Collapse">
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+									</svg>
+								</button>
+							{/if}
+							<button type="button"
+								onclick={() => dispatch('editTemplate', { template: selectedTemplate })}
+								class="px-2.5 py-1.5 text-xs btn-secondary flex items-center gap-1.5">
+								<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+								</svg>
+								Edit Template
+							</button>
+							<button type="button" onclick={handleResetClick}
+								class="p-1.5 text-gray-500 hover:text-orange-400 transition-colors rounded-lg hover:bg-white/5"
+								title="Reset" aria-label="Reset">
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+								</svg>
+							</button>
+						{/if}
+					</div>
+				</div>
+
+				<form onsubmit={(e) => { e.preventDefault(); handleSetUpWorkspace(); }} class="space-y-3"
+					in:fade={{ duration: 150 }}>
+					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+						{#each nonFindingsVariables as variable}
+							<div class="space-y-1.5">
+								<label for={variable} class="block text-xs font-medium text-gray-400 uppercase tracking-wider">
+									{toTitleCase(variable)}
+								</label>
+								<textarea
+									id={variable}
+									bind:value={variableValues[variable]}
+									placeholder={`Enter ${variable.replace(/_/g, ' ').toLowerCase()}...`}
+									disabled={sectionsLoading}
+									class="input-dark w-full resize-none text-sm"
+									rows="3"
+								></textarea>
+							</div>
+						{/each}
+					</div>
+					{#if sectionsError}
+						<p class="text-red-400 text-xs">{sectionsError}</p>
+					{/if}
+					<div class="flex justify-end pt-1">
+						<button type="submit" disabled={sectionsLoading}
+							class="px-5 py-2 rounded-lg text-sm font-medium transition-all duration-200
+								bg-gradient-to-r from-purple-600/80 to-blue-600/80 border border-purple-500/30 text-white
+								hover:from-purple-600 hover:to-blue-600
+								disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+							{#if sectionsLoading}
+								<div class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+								<span>Setting up...</span>
+							{:else}
+								<span>Set up workspace</span>
+							{/if}
 						</button>
-						<button
-							type="button"
-							onclick={resetForm}
-							class="p-2 text-gray-400 hover:text-orange-400 transition-colors rounded-lg hover:bg-white/5"
-							title="Reset form"
-							aria-label="Reset form"
-						>
-							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					</div>
+				</form>
+
+			{:else}
+				<!-- Collapsed summary bar -->
+				<div class="flex items-center gap-3 min-w-0 group cursor-pointer"
+					onclick={() => (caseDetailsManuallyExpanded = true)}
+					role="button" tabindex="0"
+					onkeydown={(e) => e.key === 'Enter' && (caseDetailsManuallyExpanded = true)}
+					title="Edit case details">
+					<div class="flex items-center gap-2 flex-1 min-w-0">
+						<span class="shrink-0 px-2.5 py-1 rounded-md bg-purple-500/15 border border-purple-500/25
+							text-xs font-medium text-purple-300 truncate max-w-[200px] transition-colors
+							group-hover:border-purple-500/40 group-hover:bg-purple-500/20">
+							{selectedTemplate?.name ?? '—'}
+						</span>
+						{#each nonFindingsVariables.slice(0, 2) as v}
+							{#if variableValues[v]}
+								<span class="text-xs text-gray-500 truncate transition-colors group-hover:text-gray-400">
+									{variableValues[v]}
+								</span>
+							{/if}
+						{/each}
+					</div>
+					<div class="flex items-center gap-2 shrink-0">
+						<span class="text-[10px] text-gray-600 group-hover:text-gray-400 transition-colors uppercase tracking-wider">Edit</span>
+						<svg class="w-3.5 h-3.5 text-gray-600 group-hover:text-gray-400 transition-colors"
+							fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+						</svg>
+						<div class="w-px h-4 bg-white/10"></div>
+						<button type="button" onclick={(e) => { e.stopPropagation(); handleResetClick(); }}
+							class="p-1 text-gray-600 hover:text-orange-400 transition-colors rounded"
+							title="Reset" aria-label="Reset">
+							<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
 							</svg>
 						</button>
 					</div>
 				</div>
-				<form onsubmit={(e) => { e.preventDefault(); handleSetUpWorkspace(); }} class="space-y-4">
-					{#each nonFindingsVariables as variable}
-						<div>
-						<label for={variable} class="block text-sm font-medium text-gray-300 mb-2">
-							{toTitleCase(variable)}
-						</label>
-						<textarea
-							id={variable}
-							bind:value={variableValues[variable]}
-							placeholder={`Enter ${variable.replace(/_/g, ' ').toLowerCase()}...`}
-							disabled={sectionsLoading}
-							class="input-dark w-full resize-none"
-							rows="3"
-						></textarea>
+
+				{#if resetConfirmVisible}
+					<div class="mt-2 flex items-center gap-2 pt-2 border-t border-white/[0.06]"
+						in:fly={{ x: 16, duration: 200, easing: easeOut }}
+						out:fly={{ x: 16, duration: 150, easing: easeOut }}>
+						<p class="text-xs text-gray-400 flex-1">Discard scratchpad content?</p>
+						<button type="button" onclick={doReset}
+							class="px-2.5 py-1 text-xs rounded-lg bg-red-600/80 hover:bg-red-500 text-white transition-colors">Discard</button>
+						<button type="button" onclick={() => (resetConfirmVisible = false)}
+							class="px-2.5 py-1 text-xs rounded-lg text-gray-400 hover:bg-white/5 transition-colors">Cancel</button>
+					</div>
+				{/if}
+			{/if}
+		</div>
+
+		<!-- Skeleton loader while setting up workspace -->
+		{#if sectionsLoading && prePoppedSections.length === 0}
+			<div class="space-y-3" in:fade={{ duration: 250 }}>
+				<div class="h-px bg-gradient-to-r from-transparent via-white/8 to-transparent"></div>
+				<div class="flex gap-4">
+					<div class="flex-1 bg-black/30 border border-white/[0.06] rounded-xl p-4 space-y-3 min-h-[180px]">
+						<div class="flex items-center justify-between pb-3 border-b border-white/[0.05]">
+							<div class="h-2.5 w-20 bg-white/8 rounded-full skeleton-shimmer"></div>
+							<div class="h-2.5 w-12 bg-white/5 rounded-full skeleton-shimmer"></div>
 						</div>
-					{/each}
-					<button
-						type="submit"
-						disabled={sectionsLoading}
-						class="btn-primary-subtle w-full px-6 py-3 flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600"
-					>
-						{#if sectionsLoading}
-							<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-							<span>Setting up...</span>
-						{:else}
-							<span>Set up workspace</span>
-						{/if}
-					</button>
-					{#if sectionsError}
-						<p class="text-red-400 text-sm mt-2">{sectionsError}</p>
-					{/if}
-				</form>
+						<div class="space-y-2.5 pt-1">
+							{#each [90, 75, 100, 60, 82, 68] as w, i}
+								<div class="h-2.5 bg-white/[0.05] rounded-full skeleton-shimmer" style="width:{w}%;animation-delay:{i*80}ms"></div>
+							{/each}
+						</div>
+					</div>
+					<div class="w-52 shrink-0 bg-black/30 border border-white/[0.06] rounded-xl p-4 space-y-2">
+						<div class="h-2.5 w-24 bg-white/8 rounded-full skeleton-shimmer mb-3"></div>
+						<div class="grid grid-cols-2 gap-1.5">
+							{#each [85, 60, 75, 90, 65, 80, 55, 70] as w, i}
+								<div class="h-2 bg-white/[0.04] rounded-full skeleton-shimmer" style="width:{w}%;animation-delay:{i*60}ms"></div>
+							{/each}
+						</div>
+					</div>
+				</div>
+				<p class="text-[11px] text-gray-600 text-center tracking-wide">Generating review guide sections...</p>
 			</div>
-		{:else}
-			<!-- Step 2: Workspace (identical to IntelliDictate) -->
-			<div class="flex flex-col gap-4 min-h-0 flex-1" in:fly={{ x: 40, duration: 280, easing: easeOut }}>
-				<!-- Header bar -->
-				<div class="flex items-center gap-3 border-b border-white/[0.06] pb-3 shrink-0 min-w-0">
-					<button
-						type="button"
-						onclick={handleBackClick}
-						class="p-2 text-gray-400 hover:text-purple-400 transition-colors rounded-lg hover:bg-white/5 shrink-0"
-						aria-label="Back"
-					>
-						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-						</svg>
-					</button>
+		{/if}
+
+		{#if workspaceOpen && prePoppedSections.length > 0}
+			<div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent"
+				in:fade={{ duration: 400 }}></div>
+		{/if}
+
+		{#if prePoppedSections.length > 0}
+			<!-- Workspace -->
+			<div
+				class="flex flex-col gap-4 min-h-0 flex-1"
+				in:fly={{ y: 24, duration: 320, easing: easeOut }}
+				out:fly={{ y: 12, duration: 180, easing: easeOut }}
+			>
+				<div class="flex items-center justify-between border-b border-white/[0.06] pb-3 shrink-0 min-w-0">
 					<span class="text-xs text-gray-500 font-medium uppercase tracking-wider shrink-0">
 						{scanType || selectedTemplate?.name || 'Template'}
 					</span>
-					{#if backConfirmVisible}
-						<div
-							class="flex items-center gap-2 ml-auto"
-							in:fly={{ x: 24, duration: 200, easing: easeOut }}
-							out:fly={{ x: 24, duration: 160, easing: easeOut }}
-						>
-							<p class="text-xs text-gray-400 whitespace-nowrap">Discard scratchpad content and go back?</p>
-							<button
-								type="button"
-								onclick={doBack}
-								class="px-2.5 py-1 text-xs rounded-lg bg-red-600/80 hover:bg-red-500 text-white transition-colors whitespace-nowrap"
-							>
-								Discard
-							</button>
-							<button
-								type="button"
-								onclick={() => (backConfirmVisible = false)}
-								class="px-2.5 py-1 text-xs rounded-lg text-gray-400 hover:bg-white/5 transition-colors"
-							>
-								Cancel
-							</button>
-						</div>
-					{/if}
+					<DictationHintBar />
 				</div>
-
-			<DictationHintBar />
 
 			<!-- Two-column workspace row -->
 			<div class="flex gap-4 min-h-0 flex-1">
@@ -680,6 +743,14 @@
 <Toast bind:this={toast} />
 
 <style>
+	@keyframes shimmer {
+		0%   { opacity: 0.4; }
+		50%  { opacity: 0.8; }
+		100% { opacity: 0.4; }
+	}
+	.skeleton-shimmer {
+		animation: shimmer 1.6s ease-in-out infinite;
+	}
 	@keyframes considerPulse {
 		0%,
 		100% {

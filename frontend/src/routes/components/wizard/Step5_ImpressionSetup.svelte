@@ -7,6 +7,9 @@
 
 	const dispatch = createEventDispatcher();
 
+	/** When true, hide the Next button (used when embedded in ContentConfig) */
+	export let embedded = false;
+
 	export let impressionConfig = {
 		display_name: 'IMPRESSION',
 		advanced: {
@@ -120,14 +123,16 @@
 		</div>
 	</div>
 
-	<!-- Next Button -->
-	<div class="flex justify-end mt-6">
-		<button
-			onclick={handleNext}
-			class="btn-primary"
-		>
-			Next →
-		</button>
-	</div>
+	<!-- Next Button (hidden when embedded in ContentConfig) -->
+	{#if !embedded}
+		<div class="flex justify-end mt-6">
+			<button
+				onclick={handleNext}
+				class="btn-primary"
+			>
+				Next →
+			</button>
+		</div>
+	{/if}
 </div>
 

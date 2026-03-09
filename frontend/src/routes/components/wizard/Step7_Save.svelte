@@ -14,6 +14,8 @@
 	export let globalCustomInstructions = '';
 	export let templateConfig = {};
 	export let editingTemplate = null; // Template being edited
+	/** When true, metadata (name, description, tags) was collected in Step 1 - only show save button */
+	export let metadataCollectedInStep1 = false;
 
 	let newTag = '';
 	let saving = false;
@@ -156,7 +158,7 @@
 					description: description || null,
 					tags: tags,
 					template_config: templateConfig,
-					is_pinned: false
+					is_pinned: isPinned
 				})
 			});
 
@@ -186,10 +188,17 @@
 
 <div class="space-y-6">
 	<h3 class="text-xl font-semibold text-white mb-4">{editingTemplate ? 'Update Template' : 'Save Template'}</h3>
-	<p class="text-gray-400 text-sm mb-6">
-		{editingTemplate ? 'Update your template name and tags.' : 'Give your template a name and add tags for easy organization.'}
-	</p>
+	{#if metadataCollectedInStep1}
+		<p class="text-gray-400 text-sm mb-6">
+			Review your configuration and save your template.
+		</p>
+	{:else}
+		<p class="text-gray-400 text-sm mb-6">
+			{editingTemplate ? 'Update your template name and tags.' : 'Give your template a name and add tags for easy organization.'}
+		</p>
+	{/if}
 
+	{#if !metadataCollectedInStep1}
 	<div class="space-y-4">
 		<!-- Template Name -->
 		<div>
@@ -340,6 +349,13 @@
 			</div>
 		{/if}
 	</div>
+	{/if}
+
+	{#if metadataCollectedInStep1 && error}
+		<div class="p-3 bg-red-600/20 border border-red-600/50 rounded text-red-300 text-sm">
+			{error}
+		</div>
+	{/if}
 
 	<!-- Save Button -->
 	<div class="flex justify-end mt-6">

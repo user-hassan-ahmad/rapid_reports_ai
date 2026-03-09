@@ -46,6 +46,8 @@
 	export let scanType = '';
 	export let contrast = '';
 	export let protocolDetails = '';
+	/** When true, hide the Next button (used when embedded in ContentConfig) */
+	export let embedded = false;
 
 	let generating = false;
 	let suggesting = false;
@@ -906,18 +908,20 @@
 		</div>
 	{/if}
 
-	<!-- Next Button -->
-	<div class="mx-auto mt-8 flex max-w-4xl justify-end">
-		<button
-			onclick={handleNext}
-			disabled={!canProceed}
-			class="btn-primary px-6 py-3"
-			class:opacity-50={!canProceed}
-			class:cursor-not-allowed={!canProceed}
-		>
-			Next: IMPRESSION Setup →
-		</button>
-	</div>
+	<!-- Next Button (hidden when embedded in ContentConfig) -->
+	{#if !embedded}
+		<div class="mx-auto mt-8 flex max-w-4xl justify-end">
+			<button
+				onclick={handleNext}
+				disabled={!canProceed}
+				class="btn-primary px-6 py-3"
+				class:opacity-50={!canProceed}
+				class:cursor-not-allowed={!canProceed}
+			>
+				Next: IMPRESSION Setup →
+			</button>
+		</div>
+	{/if}
 </div>
 
 <!-- Preview Modal -->

@@ -12,8 +12,15 @@
 	export let findingsConfig = {};
 	export let impressionConfig = {};
 	export let analysisResult = null;
+	export let saving = false;
+	export let saveError = null;
+	export let templateName = '';
 
 	let showFullFindingsTemplate = false;
+
+	function handleSave() {
+		dispatch('save');
+	}
 
 	function getStyleLabel(styleId) {
 		const labels = {
@@ -418,13 +425,20 @@
 		{/if}
 	</div>
 
-	<!-- Next Button -->
-	<div class="flex justify-end mt-8 max-w-4xl mx-auto">
+	<!-- Save Button -->
+	<div class="flex flex-col items-end gap-3 mt-8 max-w-4xl mx-auto">
+		{#if saveError}
+			<div class="w-full p-3 bg-red-600/20 border border-red-600/50 rounded text-red-300 text-sm">
+				{saveError}
+			</div>
+		{/if}
 		<button
-			onclick={() => dispatch('next')}
+			onclick={handleSave}
+			disabled={saving || !templateName?.trim()}
 			class="btn-primary px-8 py-3 text-lg font-semibold"
+			class:opacity-50={saving || !templateName?.trim()}
 		>
-			Continue to Save →
+			{saving ? 'Saving...' : '💾 Save Template'}
 		</button>
 	</div>
 </div>

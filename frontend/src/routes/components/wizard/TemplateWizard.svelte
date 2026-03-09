@@ -1,14 +1,13 @@
 <script>
 	import { createEventDispatcher } from 'svelte';
 	import { token } from '$lib/stores/auth';
+	import { tagsStore } from '$lib/stores/tags';
 	import { API_URL } from '$lib/config';
-	import Step1_ScanInfo from './Step1_ScanInfo.svelte';
-	import Step2_ChooseMethod from './Step2_ChooseMethod.svelte';
+	import Step1_Basics from './Step1_Basics.svelte';
+	// Step1_ScanInfo, Step2_ChooseMethod kept for revert when From Reports is built out
 	import Step3_SectionBuilder from './Step3_SectionBuilder.svelte';
-	import Step4_FindingsSetup from './Step4_FindingsSetup.svelte';
-	import Step5_ImpressionSetup from './Step5_ImpressionSetup.svelte';
+	import Step3_ContentConfig from './Step3_ContentConfig.svelte';
 	import Step6_Review from './Step6_Review.svelte';
-	import Step7_Save from './Step7_Save.svelte';
 	import Step3_ReportInput from './from-reports/Step3_ReportInput.svelte';
 	import Step4_Analysis from './from-reports/Step4_Analysis.svelte';
 
@@ -18,7 +17,8 @@
 	export let editingTemplate = null; // Template being edited
 
 	let currentStep = 1;
-	let creationMethod = null; // 'wizard' or 'from_reports'
+	// Skip method selection until From Reports is built - default to wizard
+	let creationMethod = 'wizard'; // 'wizard' or 'from_reports'
 	let isEditMode = false;
 
 	// Step 1: Scan Information
@@ -86,29 +86,12 @@
 	let templateConfig = {}; // Initialize empty config
 
 	function nextStep() {
-		if (currentStep === 1 && (!scanType || !contrast)) {
-			return; // Validation
+		// Step 1: Basics (scan + metadata) - validated by Step1_Basics
+		if (currentStep === 1 && (!scanType || !contrast || !templateName?.trim())) {
+			return;
 		}
-		if (currentStep === 2 && !creationMethod) {
-			return; // Validation
-		}
-		if (currentStep === 3 && creationMethod === 'wizard') {
-			// Section builder validation
-			if (!sections.comparison.included && !sections.technique.included && !sections.limitations.included) {
-				// At least one optional section should be included, or proceed anyway
-			}
-		}
-		if (currentStep === 4 && creationMethod === 'wizard' && !findingsConfig.content_style) {
-			return; // Must select content style
-		}
-		if (currentStep === 5 && creationMethod === 'wizard') {
-			// Impression setup - no validation needed
-		}
-		if (currentStep === 6) {
-			// Review - no validation needed
-		}
-		if (currentStep === 7) {
-			// Save - handled by Step7 component
+		// Step 3: Content config - validated by Step3_ContentConfig
+		if (currentStep === 3 && creationMethod === 'wizard' && !findingsConfig.content_style) {
 			return;
 		}
 		currentStep++;
@@ -120,12 +103,11 @@
 		}
 	}
 
+	// Kept for revert when From Reports is built out
 	function handleMethodSelected(event) {
-		// Svelte passes event.detail as the first argument when using on:eventName
 		const method = typeof event === 'string' ? event : (event?.detail || event);
 		creationMethod = method;
-		// Advance to next step - creationMethod is set, so validation will pass
-		currentStep = 3;
+		currentStep = 2; // Section Builder
 	}
 
 	function handleAnalysisComplete(result) {
@@ -207,14 +189,15 @@
 		onClose();
 	}
 
-	// Save function for edit mode - can be called from any step
+	// Save from Review step (create or edit)
 	let saving = false;
-	async function saveFromAnyStep() {
-		if (!templateName.trim() || saving) {
-			return;
-		}
+	let saveError = null;
+
+	async function performSave() {
+		if (!templateName.trim() || saving) return;
 
 		saving = true;
+		saveError = null;
 		try {
 			const config = buildTemplateConfig();
 			const payload = {
@@ -225,8 +208,13 @@
 				is_pinned: isPinned
 			};
 
-			const response = await fetch(`${API_URL}/api/templates/${editingTemplate.id}`, {
-				method: 'PUT',
+			const url = editingTemplate
+				? `${API_URL}/api/templates/${editingTemplate.id}`
+				: `${API_URL}/api/templates`;
+			const method = editingTemplate ? 'PUT' : 'POST';
+
+			const response = await fetch(url, {
+				method,
 				headers: {
 					'Content-Type': 'application/json',
 					'Authorization': `Bearer ${$token}`
@@ -236,17 +224,23 @@
 
 			const data = await response.json();
 			if (data.success) {
+				await tagsStore.refreshTags();
 				dispatch('templateCreated');
 				onClose();
 			} else {
-				alert(data.error || 'Failed to update template');
+				saveError = data.error || `Failed to ${editingTemplate ? 'update' : 'save'} template`;
 			}
 		} catch (err) {
 			console.error('Error saving template:', err);
-			alert('Error updating template. Please try again.');
+			saveError = `Error ${editingTemplate ? 'updating' : 'saving'} template. Please try again.`;
 		} finally {
 			saving = false;
 		}
+	}
+
+	// Save function for edit mode - can be called from any step
+	async function saveFromAnyStep() {
+		await performSave();
 	}
 
 	// Initialize from editingTemplate if provided (only once)
@@ -297,8 +291,8 @@
 		// Set creation method from source
 		creationMethod = config.source || 'wizard';
 		
-		// Skip to step 3 if editing (skip method selection)
-		currentStep = 3;
+		// Start at step 1 (Basics) with all data pre-filled
+		currentStep = 1;
 
 		// Parse sections
 		if (config.sections) {
@@ -392,14 +386,15 @@
 		globalCustomInstructions = config.global_custom_instructions || '';
 	}
 
-	$: totalSteps = creationMethod === 'from_reports' ? 6 : 7;
+	// 4 steps: Basics, Section Builder / Report Input, Content / Analysis, Review (save from here)
+	$: totalSteps = 4;
 	$: stepProgress = (currentStep / totalSteps) * 100;
 
 	// Make templateConfig reactive so changes are captured when any dependency changes
 	$: {
 		templateConfig = buildTemplateConfig();
 		// Debug: log when config changes (remove in production)
-		if (currentStep === 7) {
+		if (currentStep === 4) {
 			console.log('Template config updated:', templateConfig);
 		}
 	}
@@ -608,27 +603,24 @@
 				</div>
 			</div>
 
-			<!-- Step Content -->
+			<!-- Step Content (4 steps: Basics, Section Builder/Report Input, Content/Analysis, Review) -->
 			<div class="min-h-[400px]">
 			{#if currentStep === 1}
-				<Step1_ScanInfo
+				<Step1_Basics
 					bind:scanType
 					bind:contrast
 					bind:contrastOther
 					bind:contrastPhases
 					bind:protocolDetails
+					bind:templateName
+					bind:description
+					bind:tags
+					bind:isPinned
+					bind:globalCustomInstructions
+					editingTemplate={editingTemplate}
 					on:next={nextStep}
 				/>
-			{:else if currentStep === 2 && !isEditMode}
-				<Step2_ChooseMethod
-					on:methodSelected={handleMethodSelected}
-				/>
-			{:else if currentStep === 2 && isEditMode}
-				<!-- Skip method selection in edit mode -->
-				<div class="text-center py-12 text-gray-400">
-					<p>Loading...</p>
-				</div>
-			{:else if currentStep === 3}
+			{:else if currentStep === 2}
 				{#if creationMethod === 'wizard'}
 					<Step3_SectionBuilder
 						bind:sections
@@ -653,10 +645,11 @@
 						<p>Loading...</p>
 					</div>
 				{/if}
-			{:else if currentStep === 4}
+			{:else if currentStep === 3}
 				{#if creationMethod === 'wizard'}
-					<Step4_FindingsSetup
+					<Step3_ContentConfig
 						bind:findingsConfig
+						bind:impressionConfig
 						scanType={scanType}
 						contrast={contrast}
 						protocolDetails={protocolDetails}
@@ -671,12 +664,7 @@
 						on:analysisComplete={handleAnalysisComplete}
 					/>
 				{/if}
-			{:else if currentStep === 5 && creationMethod === 'wizard'}
-				<Step5_ImpressionSetup
-					bind:impressionConfig
-					on:next={nextStep}
-				/>
-			{:else if currentStep === 6}
+			{:else if currentStep === 4}
 				<Step6_Review
 					scanType={scanType}
 					contrast={contrast}
@@ -687,73 +675,44 @@
 					findingsConfig={findingsConfig}
 					impressionConfig={impressionConfig}
 					analysisResult={analysisResult}
-					on:next={nextStep}
-				/>
-			{:else if currentStep === 7}
-				<Step7_Save
-					bind:templateName
-					bind:description
-					bind:tags
-					bind:isPinned
-					bind:globalCustomInstructions
-					templateConfig={templateConfig}
-					editingTemplate={editingTemplate}
-					on:saveComplete={handleSaveComplete}
+					templateName={templateName}
+					saving={saving}
+					saveError={saveError}
+					on:save={performSave}
 				/>
 			{/if}
 			</div>
 
 			<!-- Navigation -->
-			{#if currentStep < 7}
-				<div class="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
-					<button
-						onclick={prevStep}
-						disabled={currentStep === 1}
-						class="btn-secondary"
-						class:opacity-50={currentStep === 1}
-						class:cursor-not-allowed={currentStep === 1}
-					>
-						← Previous
-					</button>
-					<div class="flex gap-2">
-						{#if editingTemplate}
-							<!-- Show save button on all steps when editing -->
-							<button
-								onclick={saveFromAnyStep}
-								disabled={saving || !templateName.trim()}
-								class="btn-primary"
-								class:opacity-50={saving || !templateName.trim()}
-							>
-								{saving ? 'Saving...' : '💾 Save Changes'}
-							</button>
-						{/if}
+			<div class="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
+				<button
+					onclick={prevStep}
+					disabled={currentStep === 1}
+					class="btn-secondary"
+					class:opacity-50={currentStep === 1}
+					class:cursor-not-allowed={currentStep === 1}
+				>
+					← Previous
+				</button>
+				<div class="flex gap-2">
+					{#if editingTemplate}
 						<button
-							onclick={onClose}
-							class="btn-ghost"
+							onclick={saveFromAnyStep}
+							disabled={saving || !templateName.trim()}
+							class="btn-primary"
+							class:opacity-50={saving || !templateName.trim()}
 						>
-							Cancel
+							{saving ? 'Saving...' : '💾 Save Changes'}
 						</button>
-					</div>
-				</div>
-			{:else if currentStep === 7}
-				<!-- Navigation for Step 7 (Save) - show Previous and Cancel -->
-				<div class="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
+					{/if}
 					<button
-						onclick={prevStep}
-						class="btn-secondary"
+						onclick={onClose}
+						class="btn-ghost"
 					>
-						← Previous
+						Cancel
 					</button>
-					<div class="flex gap-2">
-						<button
-							onclick={onClose}
-							class="btn-ghost"
-						>
-							Cancel
-						</button>
-					</div>
 				</div>
-			{/if}
+			</div>
 </div>
 </div>
 </div>

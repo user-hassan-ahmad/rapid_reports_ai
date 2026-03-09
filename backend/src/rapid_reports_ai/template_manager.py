@@ -2683,6 +2683,19 @@ All sections in this report are "Flexible".
 - Each anatomical structure/finding mentioned ONCE only
 """
 
+        output_consistency_rule = """
+=== OUTPUT CONSISTENCY RULE ===
+Any section of the output that synthesises, summarises, or concludes from findings above it must remain faithful to the state of those findings. Specifically:
+
+- A synthesising statement must NOT assert normality or completeness for any finding that remains unfilled, unresolved, or marked //UNFILLED: in the body above.
+- A synthesising statement must NOT contradict or flatten any abnormality, augmentation, or pathological selection present in the body above.
+- Where findings are partially documented, the synthesising statement must reflect that partial state rather than defaulting to either normality or abnormality.
+
+This applies to any template section that draws on preceding content — whether labelled Summary, Conclusion, Impression, Assessment, or otherwise.
+""" if has_exact_mode else ""
+
+        system_prompt = system_prompt + output_consistency_rule
+
         # Build user prompt
         user_prompt = f"""Generate a radiology report for:
 
