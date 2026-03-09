@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import { onMount } from 'svelte';
+	import { slide, fade } from 'svelte/transition';
 	import { API_URL } from '$lib/config';
 	import { token } from '$lib/stores/auth';
 	import StyleGranularControls from './StyleGranularControls.svelte';
@@ -58,6 +59,20 @@
 	let showInstructionsGuide = false;
 	let showPreview = false;
 	let hasInteractedWithWorkflow = false;
+	let previewedStyle: string | null = null;
+	let hoverLeaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function onTabEnter(id: string) {
+		if (hoverLeaveTimer) { clearTimeout(hoverLeaveTimer); hoverLeaveTimer = null; }
+		previewedStyle = id;
+	}
+
+	function onTabLeave() {
+		hoverLeaveTimer = setTimeout(() => { previewedStyle = null; }, 100);
+	}
+
+	$: displayStyleId = previewedStyle ?? findingsConfig.content_style ?? styleOptions[0].id;
+	$: displayStyle = styleOptions.find(s => s.id === displayStyleId) ?? styleOptions[0];
 
 	// Reactive: Initialize showFullCarousel based on whether a style is already selected
 	$: if (findingsConfig.content_style) {
@@ -108,30 +123,16 @@
 			icon: '📋',
 			title: 'Normal Template',
 			shortTitle: 'Normal Template',
-			tagline: 'Flexible generation based on your style',
-			description:
-				'The standard approach. AI uses your normal template as a base language model, adapting it to describe specific pathology while maintaining your preferred phrasing and voice.',
-			features: [
-				'Flexible, natural language generation',
-				'Adapts your normal text to findings',
-				'Maintains your voice and style',
-				'Great for general reporting (CT Chest, Abdo)'
-			],
-			workflow: {
-				step1: {
-					label: 'Template',
-					content:
-						'The lungs are clear. The pleural spaces are clear with no effusion. The mediastinum is unremarkable.'
-				},
-				step2: {
-					label: 'You Dictate',
-					content: '4cm spiculated mass RUL, small left effusion'
-				},
-				step3: {
-					label: 'AI Generates',
-					content:
-						'There is a 4cm spiculated mass in the right upper lobe. A small left pleural effusion is present. The mediastinum is unremarkable.'
-				}
+			tagline: 'Write a complete normal report — AI swaps in what\'s abnormal',
+			aiRole: 'AI replaces',
+			aiRoleColor: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
+			bestFor: 'You own the prose and the phrasing. Dictate abnormalities only — AI identifies which normal sentences they correspond to and replaces them. Everything else is left exactly as written.',
+			example: {
+				label: 'Your template',
+				input: 'The lungs are clear. The pleural spaces are clear with no effusion. The mediastinum is unremarkable.',
+				templateLine: null,
+				output: 'There is a 4cm mass in the right upper lobe. A small left pleural effusion is present. The mediastinum is unremarkable.',
+				note: 'Everything you didn\'t mention stays exactly as written'
 			}
 		},
 		{
@@ -139,62 +140,33 @@
 			icon: '📝',
 			title: 'Guided Template',
 			shortTitle: 'Guided',
-			tagline: 'Template with inline guidance for intelligent adaptation',
-			description:
-				"Your prose template with embedded // comments that guide AI assessment. Comments act like a colleague's annotations - providing contextual insights on what to assess and how to interpret findings. AI uses these cues to intelligently adapt your template based on actual pathology.",
-			features: [
-				'Template prose defines structure',
-				'// comments guide AI understanding',
-				'Helps AI make intelligent adaptations',
-				'Best when AI needs assessment context'
-			],
-			workflow: {
-				step1: {
-					label: 'Template',
-					content:
-						'The lungs are well aerated.\n// Assess parenchymal nodules (size, location, characteristics)\n\nThe pleural spaces are clear.\n// This section covers pneumothorax, effusions, thickening'
-				},
-				step2: {
-					label: 'You Dictate',
-					content: '4cm spiculated mass RUL, no ptx'
-				},
-				step3: {
-					label: 'AI Generates',
-					content:
-						'There is a 4cm spiculated mass in the right upper lobe. No pneumothorax is identified. The pleural spaces are otherwise clear.'
-				}
+			tagline: 'Normal template + annotations that teach AI what each section covers',
+			aiRole: 'AI replaces + interprets',
+			aiRoleColor: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
+			bestFor: 'Your prose defines the structure, but a single normal sentence can represent a broader finding category. The // annotations tell AI the full scope of what each section covers, so it can interpret and expand correctly — without those notes appearing in the output.',
+			example: {
+				label: 'Your template',
+				input: 'The pleural spaces are clear.\n// covers pneumothorax, effusions, thickening',
+				templateLine: null,
+				output: 'No pneumothorax. No pleural effusion or thickening.',
+				note: '// lines are instructions to AI — stripped from output entirely'
 			}
 		},
 		{
 			id: 'structured_template',
 			icon: '📐',
-			title: 'Structured Fill-In Template',
+			title: 'Structured Fill-In',
 			shortTitle: 'Structured',
-			tagline: 'Strict fill-in-the-blanks. No structural deviations.',
-			description:
-				'Your template is preserved EXACTLY as written. AI acts as a smart form-filler, inserting measurements into placeholders and selecting options based on your findings.',
-			features: [
-				'High fidelity to your template structure with intelligent flexibility',
-				'{VAR} : Named variables (e.g. {LVEF})',
-				'xxx : Measurement placeholders',
-				'[opt1/opt2] : Alternatives (brackets wrap options only, not sentences)',
-				'// instruction : Actionable AI guidance, not labels (stripped from output)'
-			],
-			workflow: {
-				step1: {
-					label: 'Template',
-					content:
-						'// Keep headers uppercase\n\nLEFT VENTRICLE\nEnd-diastolic volume is [normal/dilated] at xxx ml/m².\nSystolic function is [preserved/reduced] (LVEF={LVEF}%).\n\n// Describe only if assessed\nRIGHT VENTRICLE\nRV size is [normal/dilated] at xxx ml/m².'
-				},
-				step2: {
-					label: 'You Provide',
-					content: 'LV dilated (145 ml/m2), EF 35%. RV normal (88 ml/m2).'
-				},
-				step3: {
-					label: 'AI Generates',
-					content:
-						'LEFT VENTRICLE\nEnd-diastolic volume is dilated at 145 ml/m².\nSystolic function is reduced (LVEF=35%).\n\nRIGHT VENTRICLE\nRV size is normal at 88 ml/m².'
-				}
+			tagline: 'Locked sentence frames — AI fills blanks, selects options, inserts values',
+			aiRole: 'AI fills blanks',
+			aiRoleColor: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+			bestFor: 'Every report needs the same sentence structures with only values changing. Placeholders define exactly what gets filled — measurement fields, graded alternatives, named variables. AI never rewrites a sentence; it only completes what you\'ve pre-framed.',
+			example: {
+				label: 'Your template',
+				input: 'Systolic function [preserved/reduced] (EF {LVEF}%, volumes: EDV xxx ml/m²)',
+				templateLine: null,
+				output: 'Systolic function reduced (EF 35%, volumes: EDV 145 ml/m²)',
+				note: 'Sentences are never rewritten — only blanks are filled'
 			}
 		},
 		{
@@ -202,31 +174,16 @@
 			icon: '✓',
 			title: 'Systematic Checklist',
 			shortTitle: 'Checklist',
-			tagline: 'Simple list, AI expands each item',
-			description:
-				'Your template is a bullet-point list of anatomical structures. AI generates complete findings covering each item systematically.',
-			features: [
-				'Template is just a bullet list',
-				'You dictate all findings at once',
-				'AI generates findings for each structure',
-				'Ensures nothing is missed'
-			],
-			workflow: {
-				step1: {
-					label: 'Template',
-					content:
-						'- Lungs (parenchyma, nodules, consolidation)\n- Pleural spaces\n- Mediastinum (lymph nodes, vessels, airways)\n- Heart and pericardium\n- Chest wall and bones'
-				},
-				step2: {
-					label: 'You Dictate',
-					content:
-						'RUL mass 4cm spiculated with ground glass, small left effusion, paratracheal nodes 2cm, heart normal, no bone lesions'
-				},
-				step3: {
-					label: 'AI Generates',
-					content:
-						'Lungs: There is a 4cm spiculated mass in the right upper lobe with associated ground glass opacification.\n\nPleural spaces: A small left pleural effusion is present.\n\nMediastinum: Enlarged right paratracheal lymph nodes are noted, measuring up to 2cm in short axis diameter. The airways and major vessels are unremarkable.\n\nHeart and pericardium: The heart is normal in size with no pericardial effusion.\n\nChest wall and bones: No osseous lesions are identified.'
-				}
+			tagline: 'Define broad review areas — AI generates all the language',
+			aiRole: 'AI writes all',
+			aiRoleColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+			bestFor: 'You define what gets assessed — anatomical regions, systems, or clinical categories — as a list. AI writes complete prose for every item from scratch, guided by your dictation. The list is the review agenda; nothing gets skipped.',
+			example: {
+				label: 'Your template',
+				input: '- Liver\n- Gallbladder\n- Pancreas\n- Spleen',
+				templateLine: null,
+				output: 'Liver: Normal in size, homogeneous parenchyma, no focal lesions.\nGallbladder: Mildly distended with a 8mm calculus at the neck...',
+				note: 'AI writes complete findings for every item — normal or abnormal'
 			}
 		}
 	];
@@ -403,323 +360,104 @@
 </script>
 
 <div class="space-y-6">
-	<div class="mb-8 text-center">
-		<h3 class="mb-2 text-2xl font-bold text-white">FINDINGS Setup</h3>
-		<p class="mx-auto max-w-2xl text-sm text-gray-400">
-			Choose how you want to structure your findings section. Each approach gives you different
-			levels of control and flexibility.
-		</p>
+	<div class="mb-6">
+		<h3 class="mb-1 text-xl font-bold text-white">FINDINGS Setup</h3>
+		<p class="text-sm text-gray-500">Choose how your findings template is written and how AI uses it.</p>
 	</div>
 
-	<!-- Carousel Container -->
+	<!-- Style Picker -->
 	{#if showFullCarousel}
-		<!-- Full Carousel View -->
-		<div class="relative mx-auto mb-8 max-w-5xl">
-			<!-- Main Card Display -->
-			<div class="relative overflow-hidden">
-				<div class="transition-all duration-500 ease-in-out">
-					<!-- Current Card -->
-					<div
-						class="rounded-2xl border-2 border-purple-500/30 bg-gradient-to-br from-purple-900/20 to-blue-900/20 p-8 shadow-2xl"
-					>
-						<!-- Header Section -->
-						<div class="mb-6 flex items-start justify-between">
-							<div class="flex-1">
-								<div class="mb-3 flex items-center gap-4">
-									<span class="text-5xl">{currentStyle.icon}</span>
-									<div>
-										<h4 class="text-2xl font-bold text-white">{currentStyle.title}</h4>
-										<p class="mt-1 text-sm italic text-purple-300">{currentStyle.tagline}</p>
-									</div>
-								</div>
-								<p class="text-base leading-relaxed text-gray-300">
-									{currentStyle.description}
-								</p>
-							</div>
-						</div>
-
-						<!-- Key Features -->
-						<div class="mb-8">
-							<h5 class="mb-3 text-sm font-semibold uppercase tracking-wide text-purple-400">
-								Key Features:
-							</h5>
-							<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-								{#each currentStyle.features as feature}
-									<div class="flex items-center gap-2">
-										<span class="flex-shrink-0 text-lg text-green-400">✓</span>
-										<span class="text-sm text-gray-300">{feature}</span>
-									</div>
-								{/each}
-							</div>
-						</div>
-
-						<!-- Workflow Preview -->
-						<div class="mb-6">
-							<div class="mb-4">
-								<h5 class="text-sm font-semibold uppercase tracking-wide text-purple-400">
-									How it works:
-								</h5>
-							</div>
-
-							<!-- Clickable Compact Flow Diagram -->
-							<button
-								onclick={() => toggleAnimation(currentStyle.id)}
-								class="group relative w-full text-left transition-all duration-300 hover:scale-[1.01]"
-							>
-								<!-- Floating "Click to expand" hint (shows initially, fades after interaction) -->
-								{#if !hasInteractedWithWorkflow && showAnimation !== currentStyle.id}
-									<div
-										class="absolute -top-3 left-1/2 -translate-x-1/2 z-10
-										       bg-gradient-to-r from-purple-500 to-blue-500 text-white text-xs px-3 py-1 rounded-full
-										       shadow-lg shadow-purple-500/50
-										       animate-pulse-subtle group-hover:opacity-0 transition-opacity duration-300
-										       whitespace-nowrap"
-									>
-										👆 Click to see full example
-									</div>
-								{/if}
-
-								<div
-									class="relative rounded-lg border border-white/10 p-6
-									       hover:border-purple-500/50 hover:shadow-lg hover:shadow-purple-500/20 
-									       transition-all duration-300 cursor-pointer
-									       {showAnimation === currentStyle.id ? 'border-purple-500/50 shadow-lg shadow-purple-500/20' : ''}"
-								>
-									<!-- Expand/Collapse icon in top-right -->
-									<div
-										class="absolute top-3 right-3 text-gray-400 group-hover:text-purple-400 transition-colors duration-300
-										       {showAnimation === currentStyle.id ? 'text-purple-400' : ''}"
-									>
-										{#if showAnimation === currentStyle.id}
-											<svg
-												class="h-5 w-5"
-												fill="none"
-												stroke="currentColor"
-												viewBox="0 0 24 24"
-											>
-												<path
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													stroke-width="2"
-													d="M5 15l7-7 7 7"
-												/>
-											</svg>
-										{:else}
-											<svg
-												class="h-5 w-5"
-												fill="none"
-												stroke="currentColor"
-												viewBox="0 0 24 24"
-											>
-												<path
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													stroke-width="2"
-													d="M19 9l-7 7-7-7"
-												/>
-											</svg>
-										{/if}
-									</div>
-
-									<!-- Icon-based Flow Diagram -->
-									<div class="flex items-center justify-center gap-8 py-2">
-										<div class="flex flex-col items-center gap-3 flex-1">
-											<div
-												class="w-16 h-16 rounded-xl bg-gradient-to-br from-purple-500/30 to-purple-600/20 
-												       border border-purple-500/30 flex items-center justify-center text-3xl
-												       group-hover:scale-105 transition-transform duration-300"
-											>
-												📄
-											</div>
-											<div class="text-center">
-												<div class="text-xs font-semibold text-purple-400 mb-0.5">
-													1. Template
-												</div>
-												<div class="text-[10px] text-gray-500 italic">
-													What you create once
-												</div>
-											</div>
-										</div>
-
-										<div class="text-2xl text-gray-500 self-start mt-6">→</div>
-
-										<div class="flex flex-col items-center gap-3 flex-1">
-											<div
-												class="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500/30 to-blue-600/20 
-												       border border-blue-500/30 flex items-center justify-center text-3xl
-												       group-hover:scale-105 transition-transform duration-300"
-											>
-												🎤
-											</div>
-											<div class="text-center">
-												<div class="text-xs font-semibold text-blue-400 mb-0.5">
-													2. You Dictate
-												</div>
-												<div class="text-[10px] text-gray-500 italic">
-													Each time you report
-												</div>
-											</div>
-										</div>
-
-										<div class="text-2xl text-gray-500 self-start mt-6">→</div>
-
-										<div class="flex flex-col items-center gap-3 flex-1">
-											<div
-												class="w-16 h-16 rounded-xl bg-gradient-to-br from-green-500/30 to-green-600/20 
-												       border border-green-500/30 flex items-center justify-center text-3xl
-												       group-hover:scale-105 transition-transform duration-300"
-											>
-												✨
-											</div>
-											<div class="text-center">
-												<div class="text-xs font-semibold text-green-400 mb-0.5">
-													3. AI Output
-												</div>
-												<div class="text-[10px] text-gray-500 italic">
-													Final report section
-												</div>
-											</div>
-										</div>
-									</div>
-								</div>
-							</button>
-						</div>
-
-						<!-- Expandable Animation Section -->
-						{#if showAnimation === currentStyle.id}
-							<div
-								class="animate-fadeIn mt-4 space-y-4 rounded-xl border border-purple-500/20 p-6"
-							>
-								<div>
-									<div class="mb-2 flex items-center gap-2">
-										<span class="text-sm font-semibold text-purple-400">📄 TEMPLATE</span>
-										<span class="text-xs text-gray-500">What you create once</span>
-									</div>
-									<div
-										class="whitespace-pre-wrap rounded-lg border border-purple-500/30 bg-purple-500/10 p-4 font-mono text-sm leading-relaxed text-gray-200"
-									>
-										{currentStyle.workflow.step1.content}
-									</div>
-								</div>
-
-								<div class="flex items-center justify-center">
-									<div class="text-gray-400">↓</div>
-								</div>
-
-								<div>
-									<div class="mb-2 flex items-center gap-2">
-										<span class="text-sm font-semibold text-blue-400">🎤 YOU DICTATE</span>
-										<span class="text-xs text-gray-500">Each time you generate a report</span>
-									</div>
-									<div
-										class="whitespace-pre-wrap rounded-lg border border-blue-500/30 bg-blue-500/10 p-4 font-mono text-sm leading-relaxed text-blue-200"
-									>
-										{currentStyle.workflow.step2.content}
-									</div>
-								</div>
-
-								<div class="flex items-center justify-center">
-									<div class="text-gray-400">↓</div>
-								</div>
-
-								<div>
-									<div class="mb-2 flex items-center gap-2">
-										<span class="text-sm font-semibold text-green-400">✨ AI GENERATES</span>
-										<span class="text-xs text-gray-500">Final report section</span>
-									</div>
-									<div
-										class="whitespace-pre-wrap rounded-lg border border-green-500/30 bg-green-500/10 p-4 font-mono text-sm leading-relaxed text-green-200"
-									>
-										{currentStyle.workflow.step3.content}
-									</div>
-								</div>
-							</div>
+		<!-- Wrap tabs + panel so hover only resets when leaving the whole block -->
+		<div class="mb-6"
+			onmouseleave={() => { if (hoverLeaveTimer) clearTimeout(hoverLeaveTimer); previewedStyle = null; }}
+			role="group"
+		>
+		<!-- Tab row — no bottom margin so panel sits flush -->
+		<div class="grid grid-cols-4 gap-2">
+			{#each styleOptions as style}
+				{@const isActive = displayStyle.id === style.id}
+				{@const isSelected = findingsConfig.content_style === style.id}
+				<button
+					type="button"
+					class="relative rounded-xl rounded-b-none border border-b-0 px-3 py-3 text-left transition-all duration-150 cursor-pointer
+						{isActive
+							? 'border-purple-500/60 bg-purple-900/30'
+							: 'border-white/10 bg-white/[0.025] hover:border-white/15 hover:bg-white/[0.04]'}"
+					onmouseenter={() => onTabEnter(style.id)}
+					onmouseleave={() => { if (hoverLeaveTimer) clearTimeout(hoverLeaveTimer); }}
+					onclick={() => selectStyle(style.id)}
+				>
+					<div class="flex items-center gap-1.5 mb-2">
+						<span class="text-base leading-none">{style.icon}</span>
+						<span class="text-xs font-semibold text-white leading-tight">{style.shortTitle}</span>
+						{#if isSelected}
+							<span class="ml-auto text-purple-400 text-[10px]">✓</span>
 						{/if}
-
-						<!-- Select Button -->
-						<div class="mt-6 flex justify-center">
-							<button
-								onclick={() => selectStyle(currentStyle.id)}
-								class="btn-primary px-8 py-3 text-lg"
-							>
-								Select {currentStyle.shortTitle}
-							</button>
-						</div>
 					</div>
-				</div>
-			</div>
-
-			<!-- Navigation Arrows -->
-			<button
-				onclick={prevCard}
-				class="absolute left-0 top-1/2 flex h-12 w-12 -translate-x-4 -translate-y-1/2 items-center justify-center rounded-full bg-purple-600/80 text-white shadow-lg transition-all hover:scale-110 hover:bg-purple-600"
-				aria-label="Previous option"
-			>
-				<svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						stroke-width="2"
-						d="M15 19l-7-7 7-7"
-					/>
-				</svg>
-			</button>
-			<button
-				onclick={nextCard}
-				class="absolute right-0 top-1/2 flex h-12 w-12 -translate-y-1/2 translate-x-4 items-center justify-center rounded-full bg-purple-600/80 text-white shadow-lg transition-all hover:scale-110 hover:bg-purple-600"
-				aria-label="Next option"
-			>
-				<svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-				</svg>
-			</button>
-
-			<!-- Dots Indicator -->
-			<div class="mt-6 flex items-center justify-center gap-2">
-				{#each styleOptions as style, index}
-					<button
-						onclick={() => goToCard(index)}
-						class="rounded-full transition-all {index === currentCardIndex
-							? 'h-3 w-8 bg-purple-500'
-							: 'h-3 w-3 bg-gray-600 hover:bg-gray-500'}"
-						aria-label={`Go to ${style.shortTitle}`}
-					></button>
-				{/each}
-			</div>
+					<span class="inline-block text-[9px] font-medium px-1.5 py-0.5 rounded border {style.aiRoleColor}">
+						{style.aiRole}
+					</span>
+					<!-- Active connector line at bottom -->
+					{#if isActive}
+						<div class="absolute bottom-0 left-0 right-0 h-px bg-purple-500/60"></div>
+					{/if}
+				</button>
+			{/each}
 		</div>
-	{:else if findingsConfig.content_style}
-		<!-- Collapsed View - Selected Style -->
-		<div class="mx-auto mb-6 max-w-4xl">
-			<div
-				class="rounded-xl border-2 border-purple-500/30 bg-gradient-to-r from-purple-900/20 to-blue-900/20 p-4"
-			>
-				<div class="flex items-center justify-between">
-					<div class="flex items-center gap-4">
-						<span class="text-3xl"
-							>{styleOptions.find((s) => s.id === findingsConfig.content_style)?.icon}</span
-						>
-						<div>
-							<h4 class="text-lg font-bold text-white">
-								{styleOptions.find((s) => s.id === findingsConfig.content_style)?.title}
-							</h4>
-							<p class="text-xs italic text-purple-300">
-								{styleOptions.find((s) => s.id === findingsConfig.content_style)?.tagline}
-							</p>
+
+		<!-- Detail panel — flush against tabs, top border matches active tab border -->
+		{#key displayStyle.id}
+			<div class="rounded-xl rounded-tl-none border border-purple-500/20 bg-white/[0.025] p-4" in:fade={{ duration: 120 }}>
+				<div class="flex items-start justify-between gap-4 mb-1">
+					<div class="min-w-0">
+						<div class="flex items-center gap-2 mb-0.5">
+							<span class="text-lg">{displayStyle.icon}</span>
+							<h4 class="text-sm font-semibold text-white">{displayStyle.title}</h4>
 						</div>
+						<p class="text-[11px] text-gray-500">{displayStyle.tagline}</p>
 					</div>
-					<button onclick={expandCarousel} class="btn-ghost flex items-center gap-2 text-sm">
-						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
-							/>
-						</svg>
-						Change Style
+					<button
+						type="button"
+						onclick={() => selectStyle(displayStyle.id)}
+						class="shrink-0 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors
+							{findingsConfig.content_style === displayStyle.id
+								? 'bg-purple-600/40 text-purple-300 border border-purple-500/40 cursor-default'
+								: 'bg-purple-600 hover:bg-purple-500 text-white'}"
+					>
+						{findingsConfig.content_style === displayStyle.id ? '✓ Selected' : 'Select'}
 					</button>
 				</div>
+
+				<p class="text-[11px] text-gray-600 mb-4">When to use: <span class="text-gray-400">{displayStyle.bestFor}</span></p>
+
+				<div class="grid grid-cols-2 gap-3">
+					<div>
+						<p class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{displayStyle.example.label}</p>
+						<div class="rounded-lg bg-black/40 border border-white/[0.06] p-3 font-mono text-[11px] text-purple-200/80 whitespace-pre-wrap leading-relaxed h-full">
+							{displayStyle.example.input}
+						</div>
+					</div>
+					<div>
+						<p class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">AI output</p>
+						<div class="rounded-lg bg-black/40 border border-green-500/20 p-3 font-mono text-[11px] text-green-200/70 whitespace-pre-wrap leading-relaxed">
+							{displayStyle.example.output}
+						</div>
+					</div>
+				</div>
+				<p class="text-[10px] text-gray-600 italic mt-2">{displayStyle.example.note}</p>
 			</div>
+		{/key}
+		</div><!-- end hover container -->
+	{:else if findingsConfig.content_style}
+		<!-- Collapsed View - Selected Style -->
+		<div class="mb-6 flex items-center gap-2 rounded-lg border border-purple-500/20 bg-gradient-to-r from-purple-900/10 to-blue-900/10 px-3 py-2">
+			<span class="text-sm">{styleOptions.find((s) => s.id === findingsConfig.content_style)?.icon}</span>
+			<span class="text-xs font-medium text-gray-400">{styleOptions.find((s) => s.id === findingsConfig.content_style)?.title}</span>
+			<span class="text-gray-700">·</span>
+			<span class="text-[11px] text-gray-600 italic">{styleOptions.find((s) => s.id === findingsConfig.content_style)?.tagline}</span>
+			<button onclick={expandCarousel} class="ml-auto text-[11px] text-gray-500 hover:text-gray-300 transition-colors">
+				Change
+			</button>
 		</div>
 	{/if}
 
@@ -730,6 +468,29 @@
 				<label class="mb-2 block text-sm font-medium text-gray-300">
 					Template Content <span class="text-red-400">*</span>
 				</label>
+				{#if findingsConfig.content_style === 'structured_template'}
+					<div class="mb-3 rounded-lg border border-white/10 bg-black/30 px-4 py-3">
+						<div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Syntax</div>
+						<div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+							<div class="flex items-center gap-2">
+								<span class="highlight-measurement font-mono">xxx</span>
+								<span class="text-gray-500">Measurements</span>
+							</div>
+							<div class="flex items-center gap-2">
+								<span class="highlight-variable font-mono">{'{VAR}'}</span>
+								<span class="text-gray-500">Variables</span>
+							</div>
+							<div class="flex items-center gap-2">
+								<span class="highlight-instruction font-mono">//</span>
+								<span class="text-gray-500">AI instructions</span>
+							</div>
+							<div class="flex items-center gap-2">
+								<span class="highlight-alternative font-mono">[opt1/opt2]</span>
+								<span class="text-gray-500">Alternatives</span>
+							</div>
+						</div>
+					</div>
+				{/if}
 				<textarea
 					bind:value={findingsConfig.template_content}
 					oninput={handleChange}
@@ -932,34 +693,8 @@
 />
 
 <style>
-	@keyframes fadeIn {
-		from {
-			opacity: 0;
-			transform: translateY(-10px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
-	}
-
-	@keyframes pulse-subtle {
-		0%, 100% {
-			opacity: 1;
-			transform: translateX(-50%) scale(1);
-		}
-		50% {
-			opacity: 0.8;
-			transform: translateX(-50%) scale(1.05);
-		}
-	}
-
-	.animate-fadeIn {
-		animation: fadeIn 0.3s ease-out;
-	}
-
-	.animate-pulse-subtle {
-		animation: pulse-subtle 2s ease-in-out infinite;
+	.style-card {
+		transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
 	}
 
 	/* Syntax colors for preview modal */
