@@ -34,6 +34,7 @@
 		alternatives: [],
 		instructions: [],
 		blank_sections: [],
+		units_unconfirmed: [],
 		total: 0
 	};
 
@@ -165,6 +166,14 @@
 						widget: new UnfilledSectionWidget(item.text),
 						inclusive: false
 					}).range(item.index, end)
+				);
+			}
+		}
+		for (const item of items.units_unconfirmed) {
+			const end = item.index + item.text.length;
+			if (end <= text.length) {
+				marks.push(
+					Decoration.mark({ class: 'cm-unfilled-units-unconfirmed' }).range(item.index, end)
 				);
 			}
 		}
@@ -458,7 +467,8 @@
 			(item.type === 'measurement' ||
 				item.type === 'variable' ||
 				item.type === 'alternative' ||
-				item.type === 'blank_section');
+				item.type === 'blank_section' ||
+				item.type === 'units_unconfirmed');
 
 		if (isInteractive) {
 			// Cancel any pending hide — mouse is back over an item
@@ -566,6 +576,15 @@
 		border-bottom: 2px solid #c084fc;
 		background: rgba(192, 132, 252, 0.15);
 		color: #c084fc;
+		cursor: pointer;
+		padding: 0 1px;
+		border-radius: 2px;
+	}
+
+	:global(.cm-unfilled-units-unconfirmed) {
+		border-bottom: 2px solid #f59e0b;
+		background: rgba(245, 158, 11, 0.15);
+		color: #f59e0b;
 		cursor: pointer;
 		padding: 0 1px;
 		border-radius: 2px;

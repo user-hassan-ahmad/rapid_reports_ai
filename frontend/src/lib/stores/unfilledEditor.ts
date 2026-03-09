@@ -5,7 +5,7 @@ export interface UnfilledEdit {
 	itemId: string;
 	originalText: string;
 	newValue: string;
-	type: 'measurement' | 'variable' | 'alternative' | 'instruction';
+	type: 'measurement' | 'variable' | 'alternative' | 'instruction' | 'units_unconfirmed';
 	context: string;
 	position?: number; // Position in original report for accurate replacement
 }
@@ -20,7 +20,7 @@ export interface UnfilledEditorState {
 
 function createUnfilledEditor() {
 	const { subscribe, set, update } = writable<UnfilledEditorState>({
-		items: { measurements: [], variables: [], alternatives: [], instructions: [], total: 0 },
+		items: { measurements: [], variables: [], alternatives: [], instructions: [], blank_sections: [], units_unconfirmed: [], total: 0 },
 		edits: new Map(),
 		currentStep: 0,
 		aiTips: new Map(),
@@ -73,7 +73,7 @@ function createUnfilledEditor() {
 		},
 		reset: () => {
 			set({
-				items: { measurements: [], variables: [], alternatives: [], instructions: [], total: 0 },
+				items: { measurements: [], variables: [], alternatives: [], instructions: [], blank_sections: [], units_unconfirmed: [], total: 0 },
 				edits: new Map(),
 				currentStep: 0,
 				aiTips: new Map(),
@@ -100,6 +100,12 @@ export const allUnfilledItems = derived(unfilledEditor, ($state) => {
 	});
 	$state.items.instructions.forEach((item, idx) => {
 		items.push({ ...item, id: `instruction-${idx}-${item.index}` });
+	});
+	$state.items.blank_sections?.forEach((item, idx) => {
+		items.push({ ...item, id: `blank_section-${idx}-${item.index}` });
+	});
+	$state.items.units_unconfirmed?.forEach((item, idx) => {
+		items.push({ ...item, id: `units_unconfirmed-${idx}-${item.index}` });
 	});
 	
 	// Sort by position in report

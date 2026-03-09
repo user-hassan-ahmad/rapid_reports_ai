@@ -35,6 +35,7 @@ export function detectUnfilledInRawText(content: string): UnfilledItems {
 			alternatives: [],
 			instructions: [],
 			blank_sections: [],
+			units_unconfirmed: [],
 			total: 0
 		};
 	}
@@ -45,6 +46,7 @@ export function detectUnfilledInRawText(content: string): UnfilledItems {
 		alternatives: [],
 		instructions: [],
 		blank_sections: [],
+		units_unconfirmed: [],
 		total: 0
 	};
 
@@ -108,12 +110,24 @@ export function detectUnfilledInRawText(content: string): UnfilledItems {
 		});
 	}
 
+	// [units unconfirmed] markers
+	const unitsUnconfirmedRegex = /\[units unconfirmed\]/gi;
+	while ((match = unitsUnconfirmedRegex.exec(content)) !== null) {
+		items.units_unconfirmed.push({
+			type: 'units_unconfirmed',
+			text: match[0],
+			index: match.index,
+			surroundingContext: getSurroundingContext(content, match.index, match[0].length)
+		});
+	}
+
 	items.total =
 		items.measurements.length +
 		items.variables.length +
 		items.alternatives.length +
 		items.instructions.length +
-		items.blank_sections.length;
+		items.blank_sections.length +
+		items.units_unconfirmed.length;
 
 	return items;
 }
@@ -136,6 +150,9 @@ export function findItemAtPos(pos: number, items: UnfilledItems): UnfilledItem |
 		// Blank sections span the full //UNFILLED: ... line; give a generous range
 		const markerText = `//UNFILLED: ${item.text}`;
 		if (pos >= item.index && pos <= item.index + markerText.length + 5) return item;
+	}
+	for (const item of items.units_unconfirmed) {
+		if (pos >= item.index && pos <= item.index + item.text.length) return item;
 	}
 	return null;
 }

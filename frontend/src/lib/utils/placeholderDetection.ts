@@ -9,7 +9,7 @@
  */
 
 export interface UnfilledItem {
-	type: 'measurement' | 'variable' | 'alternative' | 'instruction' | 'blank_section';
+	type: 'measurement' | 'variable' | 'alternative' | 'instruction' | 'blank_section' | 'units_unconfirmed';
 	text: string;
 	index: number;
 	surroundingContext: string;
@@ -21,6 +21,7 @@ export interface UnfilledItems {
 	alternatives: UnfilledItem[];
 	instructions: UnfilledItem[];
 	blank_sections: UnfilledItem[];
+	units_unconfirmed: UnfilledItem[];
 	total: number;
 }
 
@@ -125,6 +126,7 @@ export function detectUnfilledPlaceholders(content: string): UnfilledItems {
 			alternatives: [], 
 			instructions: [], 
 			blank_sections: [],
+			units_unconfirmed: [],
 			total: 0 
 		};
 	}
@@ -142,6 +144,7 @@ export function detectUnfilledPlaceholders(content: string): UnfilledItems {
 		alternatives: [],
 		instructions: [],
 		blank_sections: [],
+		units_unconfirmed: [],
 		total: 0
 	};
 	
@@ -208,9 +211,20 @@ export function detectUnfilledPlaceholders(content: string): UnfilledItems {
 		});
 	}
 	
+	// Detect [units unconfirmed] markers (AI filled value but units were ambiguous)
+	const unitsUnconfirmedRegex = /\[units unconfirmed\]/gi;
+	while ((match = unitsUnconfirmedRegex.exec(text)) !== null) {
+		items.units_unconfirmed.push({
+			type: 'units_unconfirmed',
+			text: match[0],
+			index: match.index,
+			surroundingContext: getSurroundingContext(text, match.index, match[0].length)
+		});
+	}
+	
 	items.total = items.measurements.length + items.variables.length + 
 	              items.alternatives.length + items.instructions.length +
-	              items.blank_sections.length;
+	              items.blank_sections.length + items.units_unconfirmed.length;
 	
 	return items;
 }
@@ -363,6 +377,35 @@ export function highlightUnfilledContent(html: string, items: UnfilledItems): st
 		}
 	}
 	
+	// Highlight [units unconfirmed] markers
+	if (items.units_unconfirmed.length > 0) {
+		const regex = /\[units unconfirmed\]/gi;
+		const matches: Array<{ index: number; match: string; itemIndex: number }> = [];
+		
+		regex.lastIndex = 0;
+		let match;
+		let itemIndex = 0;
+		while ((match = regex.exec(result)) !== null) {
+			if (!isInsideTag(result, match.index) && !isAlreadyHighlighted(result, match.index, match[0].length)) {
+				if (itemIndex < items.units_unconfirmed.length) {
+					matches.push({ index: match.index, match: match[0], itemIndex });
+					itemIndex++;
+				}
+			}
+		}
+		
+		for (let i = matches.length - 1; i >= 0; i--) {
+			const { index, match: matchedText, itemIndex: idx } = matches[i];
+			const item = items.units_unconfirmed[idx];
+			if (item) {
+				const escapedContext = escapeHtml(item.surroundingContext);
+				const escapedText = escapeHtml(item.text);
+				const replacement = `<span class="unfilled-highlight unfilled-units-unconfirmed" data-type="units_unconfirmed" data-text="${escapedText}" data-context="${escapedContext}" data-index="${item.index}">${matchedText}</span>`;
+				result = result.substring(0, index) + replacement + result.substring(index + matchedText.length);
+			}
+		}
+	}
+	
 	// LAST: Replace blank section markers with final HTML (after all other HTML processing)
 	// This is simple string replacement - no complex regex needed
 	blankSectionMarkers.forEach(({ marker, sectionName }) => {
@@ -380,7 +423,7 @@ export function highlightUnfilledContent(html: string, items: UnfilledItems): st
  * Generate smart chat context prompt for fixing an unfilled item
  */
 export function generateChatContext(
-	type: 'measurement' | 'variable' | 'alternative' | 'instruction' | 'blank_section',
+	type: 'measurement' | 'variable' | 'alternative' | 'instruction' | 'blank_section' | 'units_unconfirmed',
 	text: string,
 	surroundingContext: string
 ): string {
@@ -408,6 +451,9 @@ export function generateChatContext(
 		
 		case 'blank_section':
 			return `The "${text}" section is unfilled. Please generate appropriate content based on available findings and apply it to the report now, or remove the section if it should be omitted.${locationHint}`;
+		
+		case 'units_unconfirmed':
+			return `The measurement "${text}" was filled with a numeric value but the units were ambiguous. Please determine the correct unit from the report context (e.g., mm, cm, ml) and replace "[units unconfirmed]" with the correct unit, or remove it if the unit is already clear from context.${locationHint}`;
 		
 		default:
 			return `Please fix the unfilled placeholder "${text}" and apply the correction to the report now.${locationHint}`;

@@ -25,6 +25,8 @@
 			measurementValue = ''; // Reuse measurementValue for variables
 		} else if (item.type === 'alternative') {
 			selectedAlternative = '';
+		} else if (item.type === 'units_unconfirmed') {
+			measurementValue = '';
 		}
 	}
 
@@ -33,6 +35,7 @@
 		: item?.type === 'variable' ? 'Variable'
 		: item?.type === 'alternative' ? 'Alternative'
 		: item?.type === 'blank_section' ? 'Unfilled Section'
+		: item?.type === 'units_unconfirmed' ? 'Units Unconfirmed'
 		: 'Item';
 
 	function handleDeleteSection() {
@@ -64,6 +67,8 @@
 			value = measurementValue.trim();
 		} else if (item.type === 'alternative') {
 			value = selectedAlternative.trim();
+		} else if (item.type === 'units_unconfirmed') {
+			value = measurementValue.trim();
 		}
 
 
@@ -100,7 +105,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-{#if visible && item && (item.type === 'measurement' || item.type === 'variable' || item.type === 'alternative' || item.type === 'blank_section')}
+{#if visible && item && (item.type === 'measurement' || item.type === 'variable' || item.type === 'alternative' || item.type === 'blank_section' || item.type === 'units_unconfirmed')}
 	<div
 		class="unfilled-hover-popup"
 		style="left: {position.x}px; top: {position.y}px;"
@@ -139,6 +144,11 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
 					</svg>
 					Unfilled Section
+				{:else if item.type === 'units_unconfirmed'}
+					<svg class="w-3.5 h-3.5 inline-block mr-1.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+					</svg>
+					Units Unconfirmed
 				{:else}
 					<svg class="w-3.5 h-3.5 inline-block mr-1.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -207,6 +217,19 @@
 						{/each}
 					</select>
 				</div>
+			{:else if item.type === 'units_unconfirmed'}
+				<div class="popup-input-group">
+					<label class="popup-label">
+						Enter correct unit (e.g. mm, cm, ml)
+					</label>
+					<input
+						type="text"
+						bind:value={measurementValue}
+						placeholder="e.g. mm — or leave empty to remove marker"
+						class="popup-input"
+						autofocus
+					/>
+				</div>
 			{/if}
 		</div>
 
@@ -239,6 +262,7 @@
 						item.type === 'measurement' ? !measurementValue.trim() 
 						: item.type === 'variable' ? !measurementValue.trim()
 						: item.type === 'alternative' ? !selectedAlternative
+						: item.type === 'units_unconfirmed' ? false
 						: false
 					}
 					class="popup-btn popup-btn-primary"

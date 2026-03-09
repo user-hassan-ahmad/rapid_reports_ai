@@ -83,6 +83,20 @@ export function applyEditsToReport(
 				// Replace first occurrence
 				result = result.replace(edit.originalText, edit.newValue);
 			}
+		} else if (edit.type === 'units_unconfirmed') {
+			// Replace [units unconfirmed] with user's unit (empty = remove marker)
+			if (edit.position !== undefined && edit.position > 0) {
+				const afterPos = result.substring(edit.position);
+				const matchIndex = afterPos.indexOf(edit.originalText);
+				if (matchIndex !== -1) {
+					const actualPos = edit.position + matchIndex;
+					result = result.substring(0, actualPos) + (edit.newValue || '') + result.substring(actualPos + edit.originalText.length);
+				} else {
+					result = result.replace(edit.originalText, edit.newValue || '');
+				}
+			} else {
+				result = result.replace(edit.originalText, edit.newValue || '');
+			}
 		} else if (edit.type === 'instruction') {
 			// Remove instruction marker if user confirmed removal
 			if (edit.newValue === 'remove' || edit.newValue === '') {

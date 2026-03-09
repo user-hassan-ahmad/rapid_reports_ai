@@ -2188,7 +2188,16 @@ CRITICAL SEQUENCING:
    - If measurement not provided → LEAVE AS xxx EXACTLY (do not estimate)
    - **CRITICAL**: Do NOT replace xxx with phrases like "not specified", "not provided", "not measured"
    - The xxx placeholder must remain in output for post-processing detection
-   - Example: "diameter xxx mm" stays as "diameter xxx mm" if no measurement given
+   - When a measurement is present in the input but not explicitly labelled or formatted to match the placeholder, apply clinical and contextual inference to determine whether the value can be unambiguously attributed to that placeholder. Consider the surrounding prose, the anatomical or physiological context, the units implied or expected, and the structure of the input as a whole. If attribution is unambiguous through this reasoning, extract and fill the placeholder. Only leave a placeholder unfilled if genuine ambiguity remains after contextual inference — not simply because the input phrasing does not directly mirror the placeholder syntax.
+   
+   UNIT HANDLING:
+   When extracting a measurement to fill an xxx placeholder, the default action is always to fill. Apply the following in order:
+
+   - If the value is present with explicit, matching units — fill directly.
+   - If the value is present but units are absent or ambiguous — fill the numeric value unconditionally, append [units unconfirmed] immediately after the number, and preserve the template's expected unit label. Never leave a placeholder as xxx solely because units are missing or unconfirmed.
+   - If the numeric value itself is genuinely absent or cannot be attributed to the placeholder through any contextual reasoning — only then leave as xxx.
+
+   The threshold for leaving a placeholder unfilled is genuine absence of a numeric value, not absence of explicit units. Unit uncertainty is an annotation problem, not a filling problem.
    
    WRONG transformations to AVOID:
    ✗ "diameter xxx mm" → "diameter is not specified"
@@ -2271,7 +2280,17 @@ CRITICAL SEQUENCING:
    
    Default: When uncertain about integration, prioritize template fidelity
 
-6. BLANK SECTIONS (no corresponding input):
+6. CONFLICT RESOLUTION:
+   Before finalising any filled section, check that all elements within it are mutually consistent. If an augmentation, additional finding, or user input contradicts the template default selection or sentence, the default must be modified or replaced — not preserved alongside the contradiction.
+   Specifically:
+
+   - If a [option1/option2] selection is contradicted by a finding you are also documenting in the same section, revise the selection to be consistent with that finding, or restructure the sentence so no contradiction exists.
+   - If the template default sentence asserts a normal or neutral state that is directly incompatible with user input, replace that sentence rather than appending to it. Appending is appropriate only when the additional finding coexists with, rather than contradicts, the default state.
+   - If user input contains measurements or values that can be unambiguously attributed to a placeholder through clinical context — even without explicit labelling — extract and fill them. Do not leave a placeholder unfilled solely because the input uses informal phrasing, provided the attribution is clinically unambiguous.
+
+   Contradiction takes priority over template fidelity. An internally inconsistent section is always a greater error than a deviation from template wording.
+
+7. BLANK SECTIONS (no corresponding input):
    - **CRITICAL RULE**: ALL section headers MUST be preserved in output, regardless of // instructions
    - **IMPORTANT DISTINCTION**:
      • If template has alternatives like [present/absent] or [normal/abnormal] AND user input indicates the negative state (e.g., "no LGE", "normal wall motion"):
@@ -2493,6 +2512,7 @@ No user input provided. Omit this section entirely from output.
             _get_api_key_for_provider,
             _run_agent_with_model,
             _append_signature_to_report,
+            _log_glm_reasoning,
         )
         
         # Extract metadata
@@ -2768,6 +2788,9 @@ Generate the report now as valid JSON.
                 }
             )
             
+            # Log GLM reasoning for debugging (same as quick report)
+            _log_glm_reasoning(result, f"{model_name} (Template Report) - GLM Reasoning")
+            
             # Don't append signature yet - will append after validation
             report_output = result.output
             
@@ -2850,6 +2873,9 @@ Generate the report now as valid JSON.
                             },
                         }
                     )
+                    
+                    # Log GLM reasoning for debugging (same as quick report)
+                    _log_glm_reasoning(result, f"{model_name} (Template Report Fallback) - GLM Reasoning")
                     
                     # Parse JSON from string response
                     import json

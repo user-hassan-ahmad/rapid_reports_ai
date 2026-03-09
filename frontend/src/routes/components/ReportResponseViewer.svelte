@@ -56,6 +56,7 @@
 		alternatives: [],
 		instructions: [],
 		blank_sections: [],
+		units_unconfirmed: [],
 		total: 0
 	};
 
@@ -383,7 +384,7 @@
 			itemId: `${item.type}-${item.index}`,
 			originalText: item.text,
 			newValue: value,
-			type: item.type as 'measurement' | 'variable' | 'alternative' | 'instruction',
+			type: item.type as 'measurement' | 'variable' | 'alternative' | 'instruction' | 'units_unconfirmed',
 			context: item.surroundingContext,
 			position: item.index
 		};

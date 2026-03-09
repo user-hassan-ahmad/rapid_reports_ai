@@ -35,6 +35,12 @@
 		items.instructions.forEach((item, idx) => {
 			allItems.push({ ...item, id: generateItemId(item, idx) });
 		});
+		items.blank_sections?.forEach((item, idx) => {
+			allItems.push({ ...item, id: generateItemId(item, idx) });
+		});
+		items.units_unconfirmed?.forEach((item, idx) => {
+			allItems.push({ ...item, id: generateItemId(item, idx) });
+		});
 		allItems.sort((a, b) => a.index - b.index);
 		edits = new Map();
 	}
