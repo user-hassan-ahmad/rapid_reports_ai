@@ -248,36 +248,56 @@ Produce the complete updated scratchpad and the covered_sections list."""
 # -----------------------------------------------------------------------------
 
 
+# Shared model settings for section extraction (both scan-type and template)
+_SECTIONS_MODEL_SETTINGS_CEREBRAS = {"temperature": 0.1, "max_completion_tokens": 1000}
+_SECTIONS_MODEL_SETTINGS_GROQ = {"temperature": 0.1, "max_tokens": 1000}
+
+
 @canvas_router.post("/sections", response_model=SectionGenerateResponse)
 async def generate_sections(
     request: SectionGenerateRequest,
     current_user: User = Depends(get_current_user),
 ):
     """Generate ordered anatomical section names for a radiology report based on scan type and clinical history."""
-    model_name = MODEL_CONFIG["CANVAS_SECTIONS"]
-    try:
-        provider = _get_model_provider(model_name)
-        api_key = _get_api_key_for_provider(provider)
-    except ValueError:
-        raise HTTPException(status_code=503, detail="Service not available. Contact your administrator.")
-
+    primary_model = MODEL_CONFIG["CANVAS_SECTIONS"]
+    fallback_model = MODEL_CONFIG["CANVAS_SECTIONS_FALLBACK"]
     user_prompt = SECTIONS_USER_PROMPT_TEMPLATE.format(
         scan_type=request.scan_type,
         clinical_history=request.clinical_history,
     )
+    try:
+        provider = _get_model_provider(primary_model)
+        api_key = _get_api_key_for_provider(provider)
+    except ValueError:
+        raise HTTPException(status_code=503, detail="Service not available. Contact your administrator.")
 
     try:
+        settings = _SECTIONS_MODEL_SETTINGS_CEREBRAS if provider == "cerebras" else _SECTIONS_MODEL_SETTINGS_GROQ
         result = await _run_agent_with_model(
-            model_name=model_name,
+            model_name=primary_model,
             output_type=SectionGenerateResponse,
             system_prompt=SECTIONS_SYSTEM_PROMPT,
             user_prompt=user_prompt,
             api_key=api_key,
-            model_settings={"temperature": 0.1, "max_completion_tokens": 1000},
+            model_settings=settings,
         )
         return result.output
     except Exception:
-        return SectionGenerateResponse(sections=["FINDINGS"])
+        try:
+            fallback_provider = _get_model_provider(fallback_model)
+            fallback_api_key = _get_api_key_for_provider(fallback_provider)
+            fallback_settings = _SECTIONS_MODEL_SETTINGS_CEREBRAS if fallback_provider == "cerebras" else _SECTIONS_MODEL_SETTINGS_GROQ
+            result = await _run_agent_with_model(
+                model_name=fallback_model,
+                output_type=SectionGenerateResponse,
+                system_prompt=SECTIONS_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                api_key=fallback_api_key,
+                model_settings=fallback_settings,
+            )
+            return result.output
+        except Exception:
+            return SectionGenerateResponse(sections=["FINDINGS"])
 
 
 @canvas_router.post("/sections-from-template", response_model=SectionGenerateResponse)
@@ -286,29 +306,44 @@ async def sections_from_template(
     current_user: User = Depends(get_current_user),
 ):
     """Extract ordered anatomical section headers from a FINDINGS template body."""
-    model_name = MODEL_CONFIG["CANVAS_SECTIONS_FROM_TEMPLATE"]
+    primary_model = MODEL_CONFIG["CANVAS_SECTIONS_FROM_TEMPLATE"]
+    fallback_model = MODEL_CONFIG["CANVAS_SECTIONS_FROM_TEMPLATE_FALLBACK"]
+    user_prompt = SECTIONS_FROM_TEMPLATE_USER_PROMPT_TEMPLATE.format(
+        template_content=request.template_content or "(empty)",
+    )
     try:
-        provider = _get_model_provider(model_name)
+        provider = _get_model_provider(primary_model)
         api_key = _get_api_key_for_provider(provider)
     except ValueError:
         raise HTTPException(status_code=503, detail="Service not available. Contact your administrator.")
 
-    user_prompt = SECTIONS_FROM_TEMPLATE_USER_PROMPT_TEMPLATE.format(
-        template_content=request.template_content or "(empty)",
-    )
-
     try:
+        settings = _SECTIONS_MODEL_SETTINGS_CEREBRAS if provider == "cerebras" else _SECTIONS_MODEL_SETTINGS_GROQ
         result = await _run_agent_with_model(
-            model_name=model_name,
+            model_name=primary_model,
             output_type=SectionGenerateResponse,
             system_prompt=SECTIONS_FROM_TEMPLATE_SYSTEM_PROMPT,
             user_prompt=user_prompt,
             api_key=api_key,
-            model_settings={"temperature": 0.1, "max_completion_tokens": 500},
+            model_settings=settings,
         )
         return result.output
     except Exception:
-        return SectionGenerateResponse(sections=["FINDINGS"])
+        try:
+            fallback_provider = _get_model_provider(fallback_model)
+            fallback_api_key = _get_api_key_for_provider(fallback_provider)
+            fallback_settings = _SECTIONS_MODEL_SETTINGS_CEREBRAS if fallback_provider == "cerebras" else _SECTIONS_MODEL_SETTINGS_GROQ
+            result = await _run_agent_with_model(
+                model_name=fallback_model,
+                output_type=SectionGenerateResponse,
+                system_prompt=SECTIONS_FROM_TEMPLATE_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                api_key=fallback_api_key,
+                model_settings=fallback_settings,
+            )
+            return result.output
+        except Exception:
+            return SectionGenerateResponse(sections=["FINDINGS"])
 
 
 @canvas_router.post("/process", response_model=CanvasProcessResponse)
