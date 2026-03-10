@@ -1,19 +1,17 @@
 """Canvas routes for intelligent dictation — section generation and transcript processing."""
 
 import asyncio
-import os
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .auth import get_current_user
 from .database.models import User
-from .encryption import get_system_api_key
-
-# Pydantic AI for structured LLM calls
-from pydantic_ai import Agent
-from pydantic_ai.models.groq import GroqModel, GroqModelSettings
-from pydantic_ai.models.openai import OpenAIModel
-from pydantic_ai.providers.openai import OpenAIProvider
+from .enhancement_utils import (
+    MODEL_CONFIG,
+    _get_api_key_for_provider,
+    _get_model_provider,
+    _run_agent_with_model,
+)
 
 canvas_router = APIRouter(prefix="/api/canvas", tags=["canvas"])
 
@@ -256,12 +254,12 @@ async def generate_sections(
     current_user: User = Depends(get_current_user),
 ):
     """Generate ordered anatomical section names for a radiology report based on scan type and clinical history."""
-    api_key = get_system_api_key("cerebras", "CEREBRAS_API_KEY")
-    if not api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="Cerebras API key not configured. Please set CEREBRAS_API_KEY environment variable.",
-        )
+    model_name = MODEL_CONFIG["CANVAS_SECTIONS"]
+    try:
+        provider = _get_model_provider(model_name)
+        api_key = _get_api_key_for_provider(provider)
+    except ValueError:
+        raise HTTPException(status_code=503, detail="Service not available. Contact your administrator.")
 
     user_prompt = SECTIONS_USER_PROMPT_TEMPLATE.format(
         scan_type=request.scan_type,
@@ -269,18 +267,12 @@ async def generate_sections(
     )
 
     try:
-        model = OpenAIModel(
-            "gpt-oss-120b",
-            provider=OpenAIProvider(base_url="https://api.cerebras.ai/v1", api_key=api_key),
-        )
-        agent = Agent(
-            model,
+        result = await _run_agent_with_model(
+            model_name=model_name,
             output_type=SectionGenerateResponse,
             system_prompt=SECTIONS_SYSTEM_PROMPT,
-            retries=2,
-        )
-        result = await agent.run(
-            user_prompt,
+            user_prompt=user_prompt,
+            api_key=api_key,
             model_settings={"temperature": 0.1, "max_completion_tokens": 1000},
         )
         return result.output
@@ -294,40 +286,29 @@ async def sections_from_template(
     current_user: User = Depends(get_current_user),
 ):
     """Extract ordered anatomical section headers from a FINDINGS template body."""
-    api_key = get_system_api_key("groq", "GROQ_API_KEY")
-    if not api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="Groq API key not configured. Please set GROQ_API_KEY environment variable.",
-        )
+    model_name = MODEL_CONFIG["CANVAS_SECTIONS_FROM_TEMPLATE"]
+    try:
+        provider = _get_model_provider(model_name)
+        api_key = _get_api_key_for_provider(provider)
+    except ValueError:
+        raise HTTPException(status_code=503, detail="Service not available. Contact your administrator.")
 
     user_prompt = SECTIONS_FROM_TEMPLATE_USER_PROMPT_TEMPLATE.format(
         template_content=request.template_content or "(empty)",
     )
 
-    old_key = os.environ.get("GROQ_API_KEY")
-    os.environ["GROQ_API_KEY"] = api_key
-
     try:
-        model = GroqModel("llama-3.3-70b-versatile")
-        agent = Agent(
-            model,
+        result = await _run_agent_with_model(
+            model_name=model_name,
             output_type=SectionGenerateResponse,
             system_prompt=SECTIONS_FROM_TEMPLATE_SYSTEM_PROMPT,
-            retries=2,
-        )
-        result = await agent.run(
-            user_prompt,
-            model_settings={"temperature": 0.1, "max_tokens": 500},
+            user_prompt=user_prompt,
+            api_key=api_key,
+            model_settings={"temperature": 0.1, "max_completion_tokens": 500},
         )
         return result.output
     except Exception:
         return SectionGenerateResponse(sections=["FINDINGS"])
-    finally:
-        if old_key is not None:
-            os.environ["GROQ_API_KEY"] = old_key
-        else:
-            os.environ.pop("GROQ_API_KEY", None)
 
 
 @canvas_router.post("/process", response_model=CanvasProcessResponse)
@@ -336,12 +317,12 @@ async def process_transcript(
     current_user: User = Depends(get_current_user),
 ):
     """Process the full session transcript and return the complete updated scratchpad plus covered checklist sections."""
-    api_key = get_system_api_key("groq", "GROQ_API_KEY")
-    if not api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="Groq API key not configured. Please set GROQ_API_KEY environment variable.",
-        )
+    model_name = MODEL_CONFIG["CANVAS_PROCESS"]
+    try:
+        provider = _get_model_provider(model_name)
+        api_key = _get_api_key_for_provider(provider)
+    except ValueError:
+        raise HTTPException(status_code=503, detail="Service not available. Contact your administrator.")
 
     preferred_names_str = ", ".join(request.preferred_section_names) if request.preferred_section_names else "(none)"
     user_prompt = CANVAS_PROCESS_USER_PROMPT_TEMPLATE.format(
@@ -352,30 +333,19 @@ async def process_transcript(
         preferred_section_names=preferred_names_str,
     )
 
-    old_key = os.environ.get("GROQ_API_KEY")
-    os.environ["GROQ_API_KEY"] = api_key
-
     try:
-        model = GroqModel("qwen/qwen3-32b")
-        agent = Agent(
-            model,
+        result = await _run_agent_with_model(
+            model_name=model_name,
             output_type=CanvasProcessResponse,
             system_prompt=CANVAS_PROCESS_SYSTEM_PROMPT,
-            model_settings=GroqModelSettings(groq_reasoning_format="parsed"),
-            retries=2,
-        )
-        result = await agent.run(
-            user_prompt,
+            user_prompt=user_prompt,
+            api_key=api_key,
+            use_thinking=True,
             model_settings={"temperature": 0.1, "max_tokens": 4000},
         )
         return result.output
     except Exception:
         return CanvasProcessResponse(scratchpad=request.scratchpad_content, covered_sections=[])
-    finally:
-        if old_key is not None:
-            os.environ["GROQ_API_KEY"] = old_key
-        else:
-            os.environ.pop("GROQ_API_KEY", None)
 
 
 @canvas_router.post("/review", response_model=CanvasReviewResponse)
@@ -383,13 +353,16 @@ async def review_scratchpad(
     request: CanvasReviewRequest,
     current_user: User = Depends(get_current_user),
 ):
-    """Parallel pass: coverage matching via Llama (reliable), IntelliPrompts via Qwen (high-quality reasoning)."""
-    api_key = get_system_api_key("groq", "GROQ_API_KEY")
-    if not api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="Groq API key not configured. Please set GROQ_API_KEY environment variable.",
-        )
+    """Parallel pass: coverage matching and IntelliPrompts generation."""
+    coverage_model = MODEL_CONFIG["CANVAS_COVERAGE"]
+    intelliprompts_model = MODEL_CONFIG["CANVAS_INTELLIPROMPTS"]
+    try:
+        coverage_provider = _get_model_provider(coverage_model)
+        intelliprompts_provider = _get_model_provider(intelliprompts_model)
+        coverage_api_key = _get_api_key_for_provider(coverage_provider)
+        intelliprompts_api_key = _get_api_key_for_provider(intelliprompts_provider)
+    except ValueError:
+        raise HTTPException(status_code=503, detail="Service not available. Contact your administrator.")
 
     checklist_str = ", ".join(request.checklist_sections) if request.checklist_sections else "(none)"
     existing_prompts_str = ", ".join(f'"{q}"' for q in request.existing_prompts) if request.existing_prompts else "(none)"
@@ -405,41 +378,34 @@ async def review_scratchpad(
         existing_prompts=existing_prompts_str,
     )
 
-    old_key = os.environ.get("GROQ_API_KEY")
-    os.environ["GROQ_API_KEY"] = api_key
-
     async def run_coverage() -> list[str]:
         try:
-            agent = Agent(
-                GroqModel("llama-3.3-70b-versatile"),
+            result = await _run_agent_with_model(
+                model_name=coverage_model,
                 output_type=CoverageOnlyResponse,
                 system_prompt=CANVAS_COVERAGE_SYSTEM_PROMPT,
-                retries=2,
+                user_prompt=coverage_prompt,
+                api_key=coverage_api_key,
+                model_settings={"temperature": 0.0, "max_tokens": 200},
             )
-            result = await agent.run(coverage_prompt, model_settings={"temperature": 0.0, "max_tokens": 200})
             return result.output.covered_sections
         except Exception:
             return []
 
     async def run_intelliprompts() -> list[IntelliPrompt]:
         try:
-            agent = Agent(
-                GroqModel("qwen/qwen3-32b"),
+            result = await _run_agent_with_model(
+                model_name=intelliprompts_model,
                 output_type=PromptsOnlyResponse,
                 system_prompt=CANVAS_INTELLIPROMPTS_SYSTEM_PROMPT,
-                model_settings=GroqModelSettings(groq_reasoning_format="parsed"),
-                retries=2,
+                user_prompt=intelliprompts_prompt,
+                api_key=intelliprompts_api_key,
+                use_thinking=True,
+                model_settings={"temperature": 0.1, "max_tokens": 1000},
             )
-            result = await agent.run(intelliprompts_prompt, model_settings={"temperature": 0.1, "max_tokens": 1000})
             return result.output.prompts
         except Exception:
             return []
 
-    try:
-        covered, prompts = await asyncio.gather(run_coverage(), run_intelliprompts())
-        return CanvasReviewResponse(covered_sections=covered, prompts=prompts)
-    finally:
-        if old_key is not None:
-            os.environ["GROQ_API_KEY"] = old_key
-        else:
-            os.environ.pop("GROQ_API_KEY", None)
+    covered, prompts = await asyncio.gather(run_coverage(), run_intelliprompts())
+    return CanvasReviewResponse(covered_sections=covered, prompts=prompts)

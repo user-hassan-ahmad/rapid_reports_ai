@@ -82,34 +82,41 @@ MODEL_CONFIG = {
     
     # Structure Validation Models
     "STRUCTURE_VALIDATOR": "gpt-oss-120b",  # Structure validation: Check for structural quality violations (Cerebras GPT-OSS-120B with medium reasoning)
-    "STRUCTURE_VALIDATOR_FALLBACK": "claude-sonnet-4-6",  # Fallback for structure validation (Claude Sonnet 4.6)
+    "STRUCTURE_VALIDATOR_FALLBACK": "qwen/qwen3-32b",  # Fallback for structure validation (Groq Qwen with thinking)
     
     # Enhancement Pipeline Models
     "FINDING_EXTRACTION": "gpt-oss-120b",  # Phase 1: Finding extraction and consolidation (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "FINDING_EXTRACTION_FALLBACK": "claude-sonnet-4-6",  # Fallback for finding extraction (Claude Sonnet 4.6)
+    "FINDING_EXTRACTION_FALLBACK": "qwen/qwen3-32b",  # Fallback for finding extraction (Qwen with thinking)
     "QUERY_GENERATION": "gpt-oss-120b",  # Query generation primary (Cerebras GPT-OSS-120B with high reasoning)
-    "QUERY_GENERATION_FALLBACK": "claude-sonnet-4-6",  # Query generation fallback (Claude Sonnet 4.6)
+    "QUERY_GENERATION_FALLBACK": "llama-3.3-70b-versatile",  # Query generation fallback (Llama)
     "GUIDELINE_VALIDATOR": "gpt-oss-120b",  # Guideline compatibility validation (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "GUIDELINE_VALIDATOR_FALLBACK": "claude-sonnet-4-6",  # Fallback for guideline validation (Claude Sonnet 4.6)
+    "GUIDELINE_VALIDATOR_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for guideline validation (Llama)
     "COMPATIBILITY_FILTER": "gpt-oss-120b",  # Search result compatibility filtering (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "COMPATIBILITY_FILTER_FALLBACK": "claude-sonnet-4-6",  # Fallback for compatibility filtering (Claude Sonnet 4.6)
+    "COMPATIBILITY_FILTER_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for compatibility filtering (Llama)
     "GUIDELINE_SEARCH": "gpt-oss-120b",  # Phase 2: Guideline synthesis (primary - Cerebras)
-    "GUIDELINE_SEARCH_FALLBACK": "claude-sonnet-4-6",  # Fallback for guideline synthesis (Claude Sonnet 4.6)
+    "GUIDELINE_SEARCH_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for guideline synthesis (Llama)
     "COMPLETENESS_ANALYZER": "gpt-oss-120b",  # Phase 3: Completeness analysis (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "COMPLETENESS_ANALYZER_FALLBACK": "claude-sonnet-4-6",  # Fallback for completeness analysis (Claude Sonnet 4.6)
+    "COMPLETENESS_ANALYZER_FALLBACK": "qwen/qwen3-32b",  # Fallback for completeness analysis (Qwen)
     "COMPARISON_ANALYZER": "gpt-oss-120b",  # Interval comparison analysis (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "COMPARISON_ANALYZER_FALLBACK": "claude-sonnet-4-6",  # Fallback for comparison analysis (Claude Sonnet 4.6)
+    "COMPARISON_ANALYZER_FALLBACK": "qwen/qwen3-32b",  # Fallback for comparison analysis (Qwen)
     
     # Action Application Models
     "ACTION_APPLIER": "gpt-oss-120b",  # Apply enhancement actions to reports (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "ACTION_APPLIER_FALLBACK": "claude-sonnet-4-6",  # Fallback for action application (Claude Sonnet 4.6)
+    "ACTION_APPLIER_FALLBACK": "qwen/qwen3-32b",  # Fallback for action application (Qwen)
     
     # Linguistic Validation Models (for zai-glm-4.7 post-processing)
     "ZAI_GLM_LINGUISTIC_VALIDATOR": "llama-3.3-70b-versatile",  # Linguistic/anatomical correction for zai-glm-4.7 output (Groq Llama)
     
     # Audit / QA Analysis Models
     "AUDIT_ANALYZER": "qwen/qwen3-32b",  # Report audit/QA primary (Groq Qwen 32B)
-    "AUDIT_ANALYZER_FALLBACK": "claude-sonnet-4-6",  # Fallback for audit (Claude Sonnet 4.6)
+    "AUDIT_ANALYZER_FALLBACK": "zai-glm-4.7",  # Fallback for audit (Cerebras Zai-GLM-4.7)
+    
+    # Canvas / IntelliDictate Models
+    "CANVAS_SECTIONS": "gpt-oss-120b",  # Section generation from scan type (Cerebras)
+    "CANVAS_SECTIONS_FROM_TEMPLATE": "gpt-oss-120b",  # Extract sections from template (Cerebras)
+    "CANVAS_PROCESS": "qwen/qwen3-32b",  # Transcript → scratchpad (Groq Qwen)
+    "CANVAS_COVERAGE": "llama-3.3-70b-versatile",  # Coverage check (Groq Llama)
+    "CANVAS_INTELLIPROMPTS": "qwen/qwen3-32b",  # IntelliPrompts generation (Groq Qwen)
 }
 
 # Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
