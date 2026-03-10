@@ -78,7 +78,7 @@
 			if (data.success) {
 				dispatch('templateDeleted');
 			} else {
-				alert('Failed to delete template: ' + data.error);
+				alert('Failed to delete template. Please try again.');
 			}
 		} catch (err) {
 			alert('Failed to delete template');

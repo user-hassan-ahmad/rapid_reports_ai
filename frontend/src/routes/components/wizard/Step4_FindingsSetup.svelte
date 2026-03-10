@@ -268,7 +268,7 @@
 			if (data.success) {
 				findingsConfig.template_content = data.content;
 			} else {
-				alert('Error generating template: ' + data.error);
+				alert('Failed to generate template. Please try again.');
 			}
 		} catch (error) {
 			console.error('Error generating template:', error);
@@ -320,7 +320,7 @@
 			if (data.success) {
 				return data.placeholders;
 			}
-			throw new Error(data.error || 'Failed to extract placeholders');
+			throw new Error('Failed to extract placeholders. Please try again.');
 		} catch (err) {
 			console.error('Error extracting placeholders:', err);
 			throw err;
@@ -341,7 +341,7 @@
 			if (data.success) {
 				return data.validation;
 			}
-			throw new Error(data.error || 'Failed to validate template');
+			throw new Error('Failed to validate template. Please try again.');
 		} catch (err) {
 			console.error('Error validating template:', err);
 			throw err;

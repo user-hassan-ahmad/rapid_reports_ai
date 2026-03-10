@@ -309,7 +309,7 @@
 
 	async function startRecording(): Promise<void> {
 		if (!apiKeyStatus?.deepgram_configured) {
-			recordingError = 'Dictation requires DEEPGRAM_API_KEY to be set by your administrator.';
+			recordingError = 'Dictation is not available. Contact your administrator.';
 			return;
 		}
 		try {
@@ -380,7 +380,7 @@
 				try {
 					const data = JSON.parse(event.data);
 					if (data.error) {
-						recordingError = data.error;
+						recordingError = 'Dictation failed. Please try again.';
 						stopRecording();
 						return;
 					}

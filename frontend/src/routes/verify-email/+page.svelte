@@ -39,7 +39,7 @@
 					goto('/login');
 				}, 2000);
 			} else {
-				error = data.error || 'Failed to verify email';
+				error = 'Failed to verify email. Please try again.';
 			}
 		} catch (err) {
 			error = 'Failed to connect to server';

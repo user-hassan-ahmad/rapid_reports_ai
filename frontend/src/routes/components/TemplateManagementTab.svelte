@@ -298,7 +298,7 @@
 				renamingTag = null;
 				newTagName = '';
 			} else {
-				alert('Failed to rename tag: ' + (data.error || 'Unknown error'));
+				alert('Failed to rename tag. Please try again.');
 			}
 		} catch (err) {
 			alert('Failed to rename tag');
@@ -333,7 +333,7 @@
 				// Refresh tags store
 				await tagsStore.refreshTags();
 			} else {
-				alert('Failed to delete tag: ' + (data.error || 'Unknown error'));
+				alert('Failed to delete tag. Please try again.');
 			}
 		} catch (err) {
 			alert('Failed to delete tag');

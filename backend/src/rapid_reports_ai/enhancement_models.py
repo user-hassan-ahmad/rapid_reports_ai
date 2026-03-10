@@ -321,7 +321,8 @@ class ReportOutput(BaseModel):
         max_length=200,
         description="Extracted scan type and protocol combined (e.g., 'CT head non-contrast', 'MRI brain with contrast'). Extract from template name/description and findings context. Include contrast status ONLY if explicitly mentioned."
     )
-    
+    model_used: Optional[str] = None  # Set by backend after generation; not from LLM
+
     # NO field validators - let Pydantic handle validation exclusively
     # This preserves formatting and allows models to generate natural output
 

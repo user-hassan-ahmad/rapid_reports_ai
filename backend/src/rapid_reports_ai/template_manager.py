@@ -2508,11 +2508,13 @@ No user input provided. Omit this section entirely from output.
         """
         from pydantic import BaseModel
         from .enhancement_utils import (
+            MODEL_CONFIG,
             _get_model_provider,
             _get_api_key_for_provider,
             _run_agent_with_model,
             _append_signature_to_report,
             _log_glm_reasoning,
+            _generate_report_with_claude_model,
         )
         
         # Extract metadata
@@ -2755,10 +2757,16 @@ This applies to any template section that draws on preceding content — whether
 Generate the report now as valid JSON.
 """
         
-        # Generate report with new structured system
+        # Generate report: primary zai-glm-4.7 (Cerebras), fallback claude-sonnet-4-6 (Anthropic)
         model_name = "zai-glm-4.7"  # Primary model for structured templates
+        fallback_model = MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"]  # claude-sonnet-4-20250514
         provider = _get_model_provider(model_name)
         api_key = _get_api_key_for_provider(provider)
+        anthropic_api_key = None
+        try:
+            anthropic_api_key = _get_api_key_for_provider("anthropic")
+        except ValueError:
+            pass  # Anthropic not configured - fallback will not be available
         
         if not api_key:
             raise ValueError(f"API key not configured for provider: {provider}")
@@ -2768,9 +2776,10 @@ Generate the report now as valid JSON.
             description: str
             scan_type: str
         
-        # Try structured output first, fallback to string parsing if it fails
         try:
-            result = await _run_agent_with_model(
+            # Try structured output first, fallback to string parsing if it fails
+            try:
+                result = await _run_agent_with_model(
                 model_name=model_name,
                 output_type=ReportOutput,
                 system_prompt=system_prompt,
@@ -2786,166 +2795,195 @@ Generate the report now as valid JSON.
                         "clear_thinking": False,
                     },
                 }
-            )
-            
-            # Log GLM reasoning for debugging (same as quick report)
-            _log_glm_reasoning(result, f"{model_name} (Template Report) - GLM Reasoning")
-            
-            # Don't append signature yet - will append after validation
-            report_output = result.output
-            
-            # LINGUISTIC VALIDATION for zai-glm-4.7 (conditionally enabled)
-            import os
-            ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
-            
-            if ENABLE_LINGUISTIC_VALIDATION:
-                from .enhancement_utils import validate_template_linguistics
+                )
                 
-                try:
-                    print(f"\n{'='*80}")
-                    print(f"🔍 TEMPLATE LINGUISTIC VALIDATION - Starting")
-                    print(f"{'='*80}")
+                # Log GLM reasoning for debugging (same as quick report)
+                _log_glm_reasoning(result, f"{model_name} (Template Report) - GLM Reasoning")
+                
+                # Don't append signature yet - will append after validation
+                report_output = result.output
+                
+                # LINGUISTIC VALIDATION for zai-glm-4.7 (conditionally enabled)
+                import os
+                ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
+                
+                if ENABLE_LINGUISTIC_VALIDATION:
+                    from .enhancement_utils import validate_template_linguistics
                     
-                    validated_content = await validate_template_linguistics(
-                        report_content=report_output.report_content,
-                        template_config=template_config,
-                        user_inputs=user_inputs,
-                        scan_type=report_output.scan_type
-                    )
-                    
-                    report_output.report_content = validated_content
-                    print(f"✅ TEMPLATE LINGUISTIC VALIDATION COMPLETE")
-                    print(f"{'='*80}\n")
-                except Exception as e:
-                    print(f"\n{'='*80}")
-                    print(f"⚠️ TEMPLATE LINGUISTIC VALIDATION FAILED - continuing with original")
-                    print(f"{'='*80}")
-                    print(f"[ERROR] {type(e).__name__}: {str(e)[:300]}")
-                    import traceback
-                    print(f"[ERROR] Traceback:")
-                    print(traceback.format_exc()[:500])
-                    print(f"{'='*80}\n")
-            else:
-                print(f"[DEBUG] Template linguistic validation disabled (ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION=false)")
-            
-            # Append signature AFTER validation (or if validation disabled)
-            if user_signature:
-                report_output = _append_signature_to_report(report_output, user_signature)
-            
-            return {
-                "report_content": report_output.report_content,
-                "description": report_output.description,
-                "scan_type": report_output.scan_type
-            }
-        except Exception as e:
-            # Check if it's a structured output timeout/error
-            error_str = str(e).lower()
-            is_structured_output_error = (
-                'structured output' in error_str or
-                'response_format' in error_str or
-                'wrong_api_format' in error_str or
-                '422' in error_str or
-                'tool_choice' in error_str or
-                'tool_calls' in error_str
-            )
-            
-            if is_structured_output_error:
-                print(f"[WARNING] Structured output failed for {model_name}, falling back to string output: {e}")
-                # Fallback: Use string output and parse JSON manually
-                try:
-                    # Update prompt to explicitly request JSON format
-                    json_prompt = user_prompt + "\n\nIMPORTANT: Return your response as a valid JSON object with keys: 'report_content', 'description', 'scan_type'."
-                    
-                    result = await _run_agent_with_model(
-                        model_name=model_name,
-                        output_type=str,
-                        system_prompt=system_prompt,
-                        user_prompt=json_prompt,
-                        api_key=api_key,
-                        use_thinking=False,  # Disable thinking for fallback
-                        model_settings={
-                            "temperature": 0.8,
-                            "top_p": 0.95,
-                            "max_tokens": 40960,
-                            "extra_body": {
-                                "disable_reasoning": False,
-                                "clear_thinking": False,
-                            },
-                        }
-                    )
-                    
-                    # Log GLM reasoning for debugging (same as quick report)
-                    _log_glm_reasoning(result, f"{model_name} (Template Report Fallback) - GLM Reasoning")
-                    
-                    # Parse JSON from string response
-                    import json
-                    import re
-                    
-                    response_text = str(result.output).strip()
-                    
-                    # Try to extract JSON from response (handle markdown code blocks)
-                    json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL)
-                    if json_match:
-                        json_str = json_match.group(1)
-                    else:
-                        # Try to find JSON object directly
-                        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-                        if json_match:
-                            json_str = json_match.group(0)
-                        else:
-                            json_str = response_text
-                    
-                    parsed_data = json.loads(json_str)
-                    
-                    # Validate required fields
-                    report_content = parsed_data.get('report_content', '')
-                    description = parsed_data.get('description', 'Generated report')
-                    scan_type = parsed_data.get('scan_type', 'Unknown')
-                    
-                    # Don't append signature yet - will append after validation
-                    
-                    # LINGUISTIC VALIDATION for zai-glm-4.7 (conditionally enabled)
-                    import os
-                    ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
-                    
-                    if ENABLE_LINGUISTIC_VALIDATION:
-                        from .enhancement_utils import validate_template_linguistics
+                    try:
+                        print(f"\n{'='*80}")
+                        print(f"🔍 TEMPLATE LINGUISTIC VALIDATION - Starting")
+                        print(f"{'='*80}")
                         
-                        try:
-                            print(f"\n{'='*80}")
-                            print(f"🔍 TEMPLATE LINGUISTIC VALIDATION - Starting (fallback path)")
-                            print(f"{'='*80}")
+                        validated_content = await validate_template_linguistics(
+                            report_content=report_output.report_content,
+                            template_config=template_config,
+                            user_inputs=user_inputs,
+                            scan_type=report_output.scan_type
+                        )
+                        
+                        report_output.report_content = validated_content
+                        print(f"✅ TEMPLATE LINGUISTIC VALIDATION COMPLETE")
+                        print(f"{'='*80}\n")
+                    except Exception as e:
+                        print(f"\n{'='*80}")
+                        print(f"⚠️ TEMPLATE LINGUISTIC VALIDATION FAILED - continuing with original")
+                        print(f"{'='*80}")
+                        print(f"[ERROR] {type(e).__name__}: {str(e)[:300]}")
+                        import traceback
+                        print(f"[ERROR] Traceback:")
+                        print(traceback.format_exc()[:500])
+                        print(f"{'='*80}\n")
+                else:
+                    print(f"[DEBUG] Template linguistic validation disabled (ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION=false)")
+                
+                # Append signature AFTER validation (or if validation disabled)
+                if user_signature:
+                    report_output = _append_signature_to_report(report_output, user_signature)
+                
+                return {
+                    "report_content": report_output.report_content,
+                    "description": report_output.description,
+                    "scan_type": report_output.scan_type,
+                    "model_used": model_name,
+                }
+            except Exception as e:
+                # Check if it's a structured output timeout/error
+                error_str = str(e).lower()
+                is_structured_output_error = (
+                    'structured output' in error_str or
+                    'response_format' in error_str or
+                    'wrong_api_format' in error_str or
+                    '422' in error_str or
+                    'tool_choice' in error_str or
+                    'tool_calls' in error_str
+                )
+                
+                if is_structured_output_error:
+                    print(f"[WARNING] Structured output failed for {model_name}, falling back to string output: {e}")
+                    # Fallback: Use string output and parse JSON manually
+                    try:
+                        # Update prompt to explicitly request JSON format
+                        json_prompt = user_prompt + "\n\nIMPORTANT: Return your response as a valid JSON object with keys: 'report_content', 'description', 'scan_type'."
+                        
+                        result = await _run_agent_with_model(
+                            model_name=model_name,
+                            output_type=str,
+                            system_prompt=system_prompt,
+                            user_prompt=json_prompt,
+                            api_key=api_key,
+                            use_thinking=False,  # Disable thinking for fallback
+                            model_settings={
+                                "temperature": 0.8,
+                                "top_p": 0.95,
+                                "max_tokens": 40960,
+                                "extra_body": {
+                                    "disable_reasoning": False,
+                                    "clear_thinking": False,
+                                },
+                            }
+                        )
+                        
+                        # Log GLM reasoning for debugging (same as quick report)
+                        _log_glm_reasoning(result, f"{model_name} (Template Report Fallback) - GLM Reasoning")
+                        
+                        # Parse JSON from string response
+                        import json
+                        import re
+                        
+                        response_text = str(result.output).strip()
+                        
+                        # Try to extract JSON from response (handle markdown code blocks)
+                        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+                        if json_match:
+                            json_str = json_match.group(1)
+                        else:
+                            # Try to find JSON object directly
+                            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                            if json_match:
+                                json_str = json_match.group(0)
+                            else:
+                                json_str = response_text
+                        
+                        parsed_data = json.loads(json_str)
+                        
+                        # Validate required fields
+                        report_content = parsed_data.get('report_content', '')
+                        description = parsed_data.get('description', 'Generated report')
+                        scan_type = parsed_data.get('scan_type', 'Unknown')
+                        
+                        # Don't append signature yet - will append after validation
+                        
+                        # LINGUISTIC VALIDATION for zai-glm-4.7 (conditionally enabled)
+                        import os
+                        ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
+                        
+                        if ENABLE_LINGUISTIC_VALIDATION:
+                            from .enhancement_utils import validate_template_linguistics
                             
-                            validated_content = await validate_template_linguistics(
-                                report_content=report_content,
-                                template_config=template_config,
-                                user_inputs=user_inputs,
-                                scan_type=scan_type
-                            )
-                            
-                            report_content = validated_content
-                            print(f"✅ TEMPLATE LINGUISTIC VALIDATION COMPLETE")
-                            print(f"{'='*80}\n")
-                        except Exception as e:
-                            print(f"\n{'='*80}")
-                            print(f"⚠️ TEMPLATE LINGUISTIC VALIDATION FAILED - continuing with original")
-                            print(f"{'='*80}")
-                            print(f"[ERROR] {type(e).__name__}: {str(e)[:300]}")
-                            print(f"{'='*80}\n")
-                    
-                    # Append signature AFTER validation (or if validation disabled)
-                    if user_signature:
-                        report_content = _append_signature_to_report(report_content, user_signature)
-                    
+                            try:
+                                print(f"\n{'='*80}")
+                                print(f"🔍 TEMPLATE LINGUISTIC VALIDATION - Starting (fallback path)")
+                                print(f"{'='*80}")
+                                
+                                validated_content = await validate_template_linguistics(
+                                    report_content=report_content,
+                                    template_config=template_config,
+                                    user_inputs=user_inputs,
+                                    scan_type=scan_type
+                                )
+                                
+                                report_content = validated_content
+                                print(f"✅ TEMPLATE LINGUISTIC VALIDATION COMPLETE")
+                                print(f"{'='*80}\n")
+                            except Exception as e:
+                                print(f"\n{'='*80}")
+                                print(f"⚠️ TEMPLATE LINGUISTIC VALIDATION FAILED - continuing with original")
+                                print(f"{'='*80}")
+                                print(f"[ERROR] {type(e).__name__}: {str(e)[:300]}")
+                                print(f"{'='*80}\n")
+                        
+                        # Append signature AFTER validation (or if validation disabled)
+                        if user_signature:
+                            from types import SimpleNamespace
+                            tmp = SimpleNamespace(report_content=report_content, description=description, scan_type=scan_type)
+                            tmp = _append_signature_to_report(tmp, user_signature)
+                            report_content = tmp.report_content
+                        
+                        return {
+                            "report_content": report_content,
+                            "description": description,
+                            "scan_type": scan_type,
+                            "model_used": model_name,
+                        }
+                    except Exception as fallback_error:
+                        print(f"[ERROR] Fallback parsing also failed: {fallback_error}")
+                        raise ValueError(f"Failed to generate report with {model_name}: {str(e)}. Fallback also failed: {str(fallback_error)}")
+                else:
+                    # Re-raise if it's not a structured output error
+                    raise
+        except Exception as primary_error:
+            # Try Claude (Anthropic) as fallback when primary fails
+            if anthropic_api_key:
+                print(f"⚠️ {model_name} failed ({type(primary_error).__name__}) - falling back to {fallback_model}")
+                try:
+                    report_output = await _generate_report_with_claude_model(
+                        fallback_model,
+                        f"{fallback_model} (fallback)",
+                        user_prompt,
+                        system_prompt,
+                        anthropic_api_key,
+                        user_signature
+                    )
                     return {
-                        "report_content": report_content,
-                        "description": description,
-                        "scan_type": scan_type
+                        "report_content": report_output.report_content,
+                        "description": report_output.description,
+                        "scan_type": report_output.scan_type,
+                        "model_used": fallback_model,
                     }
                 except Exception as fallback_error:
-                    print(f"[ERROR] Fallback parsing also failed: {fallback_error}")
-                    raise ValueError(f"Failed to generate report with {model_name}: {str(e)}. Fallback also failed: {str(fallback_error)}")
+                    print(f"❌ Claude fallback also failed: {type(fallback_error).__name__}")
+                    raise ValueError(f"Failed with {model_name} and {fallback_model}. Original: {primary_error}") from primary_error
             else:
-                # Re-raise if it's not a structured output error
                 raise
 

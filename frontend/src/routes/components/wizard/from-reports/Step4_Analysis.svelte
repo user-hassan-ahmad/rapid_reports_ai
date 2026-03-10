@@ -55,7 +55,7 @@
 					}
 				}
 			} else {
-				error = data.error || 'Failed to analyze reports';
+				error = 'Failed to analyze reports. Please try again.';
 			}
 		} catch (err) {
 			console.error('Error analyzing reports:', err);

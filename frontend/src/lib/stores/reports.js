@@ -41,7 +41,7 @@ function createReportsStore() {
 					if (data.success) {
 						reportsData.set({ reports: data.reports || [], loading: false, error: null });
 					} else {
-						reportsData.set({ reports: [], loading: false, error: data.error || 'Failed to load reports' });
+						reportsData.set({ reports: [], loading: false, error: 'Failed to load reports. Please try again.' });
 					}
 				} else {
 					reportsData.set({ reports: [], loading: false, error: 'Failed to load reports' });

@@ -41,7 +41,7 @@ function createSettingsStore() {
 					if (data.success) {
 						settingsData.set({ settings: data, loading: false, error: null });
 					} else {
-						settingsData.set({ settings: null, loading: false, error: data.error || 'Failed to load settings' });
+						settingsData.set({ settings: null, loading: false, error: 'Failed to load settings. Please try again.' });
 					}
 				} else {
 					settingsData.set({ settings: null, loading: false, error: 'Failed to load settings' });
@@ -86,13 +86,13 @@ function createSettingsStore() {
 						settingsData.set({ settings: { ...currentSettings, ...updates }, loading: false, error: null });
 						return { success: true };
 					} else {
-						settingsData.update(state => ({ ...state, loading: false, error: data.error || 'Failed to update settings' }));
-						return { success: false, error: data.error };
+						settingsData.update(state => ({ ...state, loading: false, error: 'Failed to update settings. Please try again.' }));
+						return { success: false, error: 'Failed to update settings. Please try again.' };
 					}
 				} else {
 					const errorData = await response.json().catch(() => ({}));
-					settingsData.update(state => ({ ...state, loading: false, error: errorData.error || 'Failed to update settings' }));
-					return { success: false, error: errorData.error || 'Failed to update settings' };
+					settingsData.update(state => ({ ...state, loading: false, error: 'Failed to update settings. Please try again.' }));
+					return { success: false, error: 'Failed to update settings. Please try again.' };
 				}
 			} catch (err) {
 				logger.error('Failed to update settings:', err);

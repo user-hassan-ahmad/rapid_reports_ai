@@ -26,7 +26,7 @@
 			if (res.ok && data.success) {
 				message = data.message || 'Verification email sent! Please check your inbox and click the link to verify your email.';
 			} else {
-				error = data.error || 'Failed to send verification email';
+				error = 'Failed to send verification email. Please try again.';
 			}
 		} catch (err) {
 			error = 'Failed to connect to server';

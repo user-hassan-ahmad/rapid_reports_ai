@@ -568,16 +568,22 @@ async def chat(
                     "error": f"Failed to load prompt for use case '{request.use_case}': {str(e)}"
                 }
         
-        # Always use Claude as primary model (with automatic fallback if Claude fails)
-        # Get Anthropic API key for Claude (primary)
-        api_key = get_system_api_key('anthropic', 'ANTHROPIC_API_KEY')
-        if not api_key:
+        # Primary model: zai-glm-4.7 (Cerebras), fallback: claude-sonnet-4-6 (Anthropic)
+        # Require at least one key (primary or fallback)
+        from .enhancement_utils import MODEL_CONFIG, _get_model_provider
+        primary_model = MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
+        primary_provider = _get_model_provider(primary_model)
+        provider_env = {"cerebras": "CEREBRAS_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "groq": "GROQ_API_KEY"}
+        has_primary = bool(os.getenv(provider_env.get(primary_provider, "CEREBRAS_API_KEY")))
+        has_fallback = bool(os.getenv("ANTHROPIC_API_KEY"))
+        if not has_primary and not has_fallback:
             return {
                 "success": False,
-                "error": "Anthropic API key not configured. Please set ANTHROPIC_API_KEY environment variable."
+                "error": "No API keys configured. Please set CEREBRAS_API_KEY (primary) or ANTHROPIC_API_KEY (fallback) environment variable."
             }
+        anthropic_api_key = get_system_api_key('anthropic', 'ANTHROPIC_API_KEY')
         
-        # Generate report using Claude (with automatic fallback to Qwen if Claude fails)
+        # Generate report with primary model, fallback to Claude if primary fails
         # Debug: Log signature status
         signature_value = current_user.signature
         print(f"[DEBUG] Auto report - signature present: {signature_value is not None and signature_value.strip() != ''}")
@@ -586,10 +592,10 @@ async def chat(
         clinical_history = (request.variables or {}).get("CLINICAL_HISTORY", "")
 
         report_output = await generate_auto_report(
-            model="claude",  # Always use Claude (model param kept for API compatibility)
+            model="claude",  # Model param kept for API compatibility; actual model from MODEL_CONFIG
             user_prompt=user_prompt,
             system_prompt=system_prompt,
-            api_key=api_key,
+            api_key=anthropic_api_key,
             signature=signature_value,
             clinical_history=clinical_history
         )
@@ -766,19 +772,13 @@ Apply each fix while preserving grammatical completeness and report structure.""
         report_id = None
         if should_auto_save(current_user):
             try:
-                # Map model names to display names
-                model_display = {
-                    "claude": "claude",
-                    "gemini": "gemini",
-                    "qwen": "qwen"
-                }.get(request.model, request.model)
-                
+                model_to_store = report_output.model_used or "zai-glm-4.7"
                 saved_report = create_report(
                     db=db,
                     user_id=str(current_user.id),
                     report_type="auto",
                     report_content=report_output.report_content,
-                    model_used=model_display,
+                    model_used=model_to_store,
                     input_data={
                         "message": request.message,
                         "variables": request.variables,
@@ -796,7 +796,7 @@ Apply each fix while preserving grammatical completeness and report structure.""
         
         # Map model names to full model identifiers for response
         model_full_name = {
-            "claude": "claude-sonnet-4-20250514",
+            "claude": "claude-sonnet-4-6",
             "gemini": "gemini-2.5-pro",
             "qwen": "qwen/qwen3-32b"
         }.get(request.model, request.model)
@@ -1493,13 +1493,7 @@ Apply each fix while preserving grammatical completeness and report structure.""
         report_id = None
         if should_auto_save(current_user):
             try:
-                # Map model names to display names
-                model_display = {
-                    "claude": "claude",
-                    "gemini": "gemini",
-                    "qwen": "qwen"
-                }.get(request.model, request.model)
-                
+                model_to_store = report_output_dict.get("model_used", "zai-glm-4.7")
                 input_data_to_save = {
                     "variables": actual_user_inputs,
                     "extracted_scan_type": report_output.scan_type
@@ -1510,7 +1504,7 @@ Apply each fix while preserving grammatical completeness and report structure.""
                     user_id=str(current_user.id),
                     report_type="templated",
                     report_content=report_output.report_content,
-                    model_used=model_display,
+                    model_used=model_to_store,
                     input_data=input_data_to_save,
                     template_id=str(template.id),
                     description=context_title
@@ -1530,7 +1524,7 @@ Apply each fix while preserving grammatical completeness and report structure.""
         
         # Map model names to full model identifiers for response
         model_full_name = {
-            "claude": "claude-sonnet-4-20250514",
+            "claude": "claude-sonnet-4-6",
             "gemini": "gemini-2.5-pro",
             "qwen": "qwen/qwen3-32b"
         }.get(request.model, request.model)
@@ -1945,7 +1939,6 @@ async def get_settings(
         "success": True,
         "full_name": current_user.full_name,
         "signature": current_user.signature,
-        "default_model": settings.get('default_model', 'claude'),
         "auto_save": settings.get('auto_save', True),
         "tag_colors": tag_colors,
         "deepgram_configured": bool(os.getenv("DEEPGRAM_API_KEY"))
@@ -1955,7 +1948,6 @@ async def get_settings(
 class UpdateSettingsRequest(BaseModel):
     full_name: Optional[str] = None
     signature: Optional[str] = None
-    default_model: Optional[str] = None
     auto_save: Optional[bool] = None
     tag_colors: Optional[Dict[str, str]] = None
 
@@ -1975,8 +1967,8 @@ async def update_settings(
         
         # Update settings JSON - create a NEW dict to trigger SQLAlchemy change detection
         settings = dict(current_user.settings or {})
-        if request.default_model is not None:
-            settings['default_model'] = request.default_model
+        # Remove legacy default_model if present (no longer used)
+        settings.pop('default_model', None)
         if request.auto_save is not None:
             settings['auto_save'] = request.auto_save
         if request.tag_colors is not None:
@@ -2033,7 +2025,6 @@ async def update_settings(
             "success": True,
             "full_name": current_user.full_name,
             "signature": current_user.signature,
-            "default_model": updated_settings.get('default_model', 'claude'),
             "auto_save": updated_settings.get('auto_save', True),
             "tag_colors": final_tag_colors,
             "deepgram_configured": bool(os.getenv("DEEPGRAM_API_KEY"))
@@ -2056,14 +2047,16 @@ async def get_api_key_status(
     # All API keys are system-wide via environment variables
     has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
     has_groq = bool(os.getenv("GROQ_API_KEY"))
+    has_cerebras = bool(os.getenv("CEREBRAS_API_KEY"))
     has_deepgram = bool(os.getenv("DEEPGRAM_API_KEY"))
     
     return {
         "success": True,
         "anthropic_configured": has_anthropic,
         "groq_configured": has_groq,
+        "cerebras_configured": has_cerebras,
         "deepgram_configured": has_deepgram,
-        "has_at_least_one_model": has_anthropic or has_groq,
+        "has_at_least_one_model": has_anthropic or has_groq or has_cerebras,
         "using_user_keys": {
             "deepgram": has_deepgram  # backward compat: same as deepgram_configured
         }

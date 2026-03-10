@@ -55,7 +55,7 @@ function createTemplatesStore() {
 					if (data.success) {
 						templatesData.set({ templates: data.templates || [], loading: false, error: null });
 					} else {
-						templatesData.set({ templates: [], loading: false, error: data.error || 'Failed to load templates' });
+						templatesData.set({ templates: [], loading: false, error: 'Failed to load templates. Please try again.' });
 					}
 				} else {
 					templatesData.set({ templates: [], loading: false, error: 'Failed to load templates' });

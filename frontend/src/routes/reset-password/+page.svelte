@@ -49,7 +49,7 @@
 					goto('/login');
 				}, 2000);
 			} else {
-				error = data.error || 'Failed to reset password';
+				error = 'Failed to reset password. Please try again.';
 			}
 		} catch (err) {
 			error = 'Failed to connect to server';

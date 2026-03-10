@@ -366,7 +366,7 @@
 				const data = JSON.parse(event.data);
 				
 				if (data.error) {
-					error = data.error;
+					error = 'Dictation failed. Please try again.';
 					stopRecording();
 					return;
 				}

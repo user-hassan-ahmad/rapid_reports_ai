@@ -92,7 +92,9 @@
 	export let apiKeyStatus = {
 		anthropic_configured: false,
 		groq_configured: false,
-		deepgram_configured: false
+		cerebras_configured: false,
+		deepgram_configured: false,
+		has_at_least_one_model: false
 	};
 
 	// ReportResponseViewer state
@@ -133,10 +135,10 @@
 				sectionsGeneratedFromHistory = clinicalHistory.trim();
 				caseDetailsManuallyExpanded = false;
 			} else {
-				sectionsError = data.error || 'Failed to generate sections';
+				sectionsError = 'Failed to generate sections. Please try again.';
 			}
 		} catch (e) {
-			sectionsError = 'Failed to connect to API';
+			sectionsError = 'Failed to connect. Please try again.';
 		} finally {
 			sectionsLoading = false;
 		}
@@ -162,10 +164,10 @@
 				sectionsGeneratedFromHistory = clinicalHistory.trim();
 				caseDetailsManuallyExpanded = false;
 			} else {
-				sectionsError = data.error || 'Failed to generate sections';
+				sectionsError = 'Failed to generate sections. Please try again.';
 			}
 		} catch (e) {
-			sectionsError = 'Failed to connect to API';
+			sectionsError = 'Failed to connect. Please try again.';
 		} finally {
 			regenerating = false;
 		}
@@ -241,10 +243,10 @@
 				responseExpanded = true;
 				dispatch('historyUpdate', { count: 1 });
 			} else {
-				error = data.error || 'Failed to generate report';
+				error = 'Failed to generate report. Please try again.';
 			}
 		} catch (e) {
-			error = 'Failed to connect to API';
+			error = 'Failed to connect. Please try again.';
 		} finally {
 			loading = false;
 		}
@@ -311,10 +313,10 @@
 				dispatch('historyUpdate', { count: data.version?.version_number ?? 0 });
 				if (toast) toast.show('Report updated successfully');
 			} else {
-				error = data.error || 'Failed to update report';
+				error = 'Failed to update report. Please try again.';
 			}
 		} catch (err) {
-			error = `Failed to update: ${err instanceof Error ? err.message : 'Unknown error'}`;
+			error = 'Failed to update report. Please try again.';
 		} finally {
 			reportUpdateLoading = false;
 		}

@@ -25,7 +25,7 @@
 			if (res.ok && data.success) {
 				message = 'If an account with that email exists, a password reset link has been sent.';
 			} else {
-				error = data.error || 'Failed to request password reset';
+				error = 'Failed to request password reset. Please try again.';
 			}
 		} catch (err) {
 			error = 'Failed to connect to server';

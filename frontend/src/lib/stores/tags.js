@@ -40,7 +40,7 @@ function createTagsStore() {
 					if (data.success) {
 						tagsData.set({ tags: data.tags || [], loading: false, error: null });
 					} else {
-						tagsData.set({ tags: [], loading: false, error: data.error || 'Failed to load tags' });
+						tagsData.set({ tags: [], loading: false, error: 'Failed to load tags. Please try again.' });
 					}
 				} else {
 					tagsData.set({ tags: [], loading: false, error: 'Failed to load tags' });

@@ -760,7 +760,7 @@
 					dispatch('saved');
 				}
 			} else {
-				error = data.error || 'Failed to save template';
+				error = 'Failed to save template. Please try again.';
 			}
 		} catch (err) {
 			console.error('Error saving template:', err);

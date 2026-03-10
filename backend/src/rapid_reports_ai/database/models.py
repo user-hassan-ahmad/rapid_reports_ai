@@ -39,7 +39,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     full_name = Column(String(200), nullable=True)
     signature = Column(Text, nullable=True)  # Report signature for dynamic injection
-    settings = Column(JSON, nullable=True)  # User preferences (default_model, auto_save, etc.)
+    settings = Column(JSON, nullable=True)  # User preferences (auto_save, tag_colors, etc.)
     
     # Auth metadata
     is_active = Column(Boolean, default=True, nullable=False)

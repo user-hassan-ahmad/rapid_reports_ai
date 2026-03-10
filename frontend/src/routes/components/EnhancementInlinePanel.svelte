@@ -69,7 +69,7 @@
 			
 			if (!response.ok) {
 				const errorText = await response.text();
-				error = `HTTP ${response.status}: ${errorText}`;
+				error = 'Something went wrong. Please try again.';
 				return;
 			}
 			
@@ -84,10 +84,10 @@
 					hasError: false
 				});
 			} else {
-				error = data.error || 'Failed to load enhancements';
+				error = 'Failed to load enhancements. Please try again.';
 			}
 		} catch (err) {
-			error = `Failed to connect: ${err instanceof Error ? err.message : String(err)}`;
+			error = 'Failed to connect. Please try again.';
 		} finally {
 			loading = false;
 		}
@@ -130,7 +130,7 @@
 			} else {
 				chatMessages.push({
 					role: 'assistant',
-					content: `Error: ${data.error || 'Failed to get response'}`,
+					content: 'Something went wrong. Please try again.',
 					error: true
 				});
 				chatMessages = [...chatMessages];

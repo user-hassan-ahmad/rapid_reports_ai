@@ -46,7 +46,7 @@
 			// Navigation will unmount component, so loading will naturally reset
 			return; // Exit early on success
 		} else {
-			error = data.error || 'Login failed';
+			error = 'Login failed. Please try again.';
 			
 			// Check if error is about email verification
 			if (data.error && data.error.toLowerCase().includes('verify your email')) {
@@ -56,7 +56,7 @@
 		}
 	} catch (err) {
 		logger.error('Login error:', err);
-		error = 'Failed to connect to server';
+		error = 'Failed to connect. Please try again.';
 		loading = false; // Reset on error
 	}
 	}

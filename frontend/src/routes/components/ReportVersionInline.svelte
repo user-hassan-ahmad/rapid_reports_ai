@@ -57,7 +57,7 @@
 			const data = await response.json();
 
 			if (!response.ok || !data.success) {
-				throw new Error(data.error || `Request failed with status ${response.status}`);
+				throw new Error('Failed to load versions. Please try again.');
 			}
 
 			versions = data.versions || [];
@@ -74,7 +74,7 @@
 			}
 		} catch (err) {
 			logger.error('Failed to load report versions', err);
-			error = err instanceof Error ? err.message : String(err);
+			error = 'Failed to load versions. Please try again.';
 			versions = [];
 			selectedVersionId = null;
 			selectedVersion = null;
@@ -233,7 +233,7 @@
 			const data = await response.json();
 
 			if (!response.ok || !data.success) {
-				throw new Error(data.error || `Restore failed with status ${response.status}`);
+				throw new Error('Failed to restore version. Please try again.');
 			}
 
 			dispatch('restored', { report: data.report, version: data.version });

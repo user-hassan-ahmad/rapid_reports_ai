@@ -33,7 +33,9 @@
 	export let apiKeyStatus = {
 		anthropic_configured: false,
 		groq_configured: false,
-		deepgram_configured: false
+		cerebras_configured: false,
+		deepgram_configured: false,
+		has_at_least_one_model: false
 	};
 	
 	// Export selectedModel as a bindable prop - always uses Claude
@@ -67,8 +69,8 @@
 		});
 	}
 	
-	// Check if Claude API key is configured (always uses Claude)
-	$: hasModelKey = apiKeyStatus.anthropic_configured;
+	// Check if at least one model API key is configured
+	$: hasModelKey = apiKeyStatus.has_at_least_one_model ?? (apiKeyStatus.anthropic_configured || apiKeyStatus.groq_configured || apiKeyStatus.cerebras_configured);
 	
 	// Auto-collapse form and expand response when response arrives
 	$: if (response || error) {
@@ -99,12 +101,6 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 		// Require a use case to be selected
 		if (!selectedUseCase) {
 			error = 'Please select a use case';
-			return;
-		}
-		
-		// Check if Claude API key is configured (always uses Claude)
-		if (!apiKeyStatus.anthropic_configured) {
-			error = 'Anthropic API key not configured. Please set ANTHROPIC_API_KEY environment variable.';
 			return;
 		}
 		
@@ -255,10 +251,10 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 				
 				if (toast) toast.show('Report updated successfully');
 			} else {
-				error = data.error || 'Failed to update report';
+				error = 'Failed to update report. Please try again.';
 			}
 		} catch (err) {
-			error = `Failed to update: ${err.message}`;
+			error = 'Failed to update report. Please try again.';
 		} finally {
 			reportUpdateLoading = false;
 		}
@@ -333,9 +329,9 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 						</select>
 					</div>
 					
-					{#if !apiKeyStatus.anthropic_configured && !apiKeyStatus.groq_configured}
+					{#if !hasModelKey}
 						<p class="text-xs text-yellow-400">
-							⚠️ No API keys configured. Please set ANTHROPIC_API_KEY or GROQ_API_KEY environment variables.
+							⚠️ Report generation is not available. Contact your administrator.
 						</p>
 					{/if}
 					
@@ -368,7 +364,7 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 												textareaElement={textareaRefs[variable]}
 												bind:isRecording={dictationStates[variable]} 
 												disabled={loading || !apiKeyStatus.deepgram_configured}
-												disabledReason={!apiKeyStatus.deepgram_configured ? 'Dictation requires DEEPGRAM_API_KEY to be set by your administrator.' : ''}
+												disabledReason={!apiKeyStatus.deepgram_configured ? 'Dictation is not available. Contact your administrator.' : ''}
 											/>
 											{#if !apiKeyStatus.deepgram_configured}
 												<div class="absolute right-full mr-2 top-1/2 -translate-y-1/2 px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm text-gray-100 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 shadow-xl">
@@ -376,7 +372,7 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 														<svg class="w-4 h-4 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
 														</svg>
-														<span>Dictation requires DEEPGRAM_API_KEY to be set by your administrator.</span>
+														<span>Dictation is not available. Contact your administrator.</span>
 													</div>
 													<!-- Arrow pointing right -->
 													<div class="absolute left-full top-1/2 -translate-y-1/2 border-4 border-transparent border-l-gray-900"></div>

@@ -32,7 +32,9 @@ import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 	type ApiKeyStatus = {
 		anthropic_configured: boolean;
 		groq_configured: boolean;
+		cerebras_configured: boolean;
 		deepgram_configured: boolean;
+		has_at_least_one_model: boolean;
 		using_user_keys?: { deepgram: boolean };  // backward compat, same as deepgram_configured
 	};
 	type HistoryModalInput = {
@@ -184,8 +186,11 @@ let templatedModel = 'claude'; // Track model for template editor
 	let apiKeyStatus: ApiKeyStatus = {
 		anthropic_configured: false,
 		groq_configured: false,
-		deepgram_configured: false
+		cerebras_configured: false,
+		deepgram_configured: false,
+		has_at_least_one_model: false
 	};
+	let apiKeyStatusError: string | null = null;  // Soft message when load fails (stale token etc.)
 	let loadingApiStatus = true;
 	let loadingUseCases = true;
 	
@@ -219,6 +224,7 @@ let templatedModel = 'claude'; // Track model for template editor
 	// Load API key status
 	async function loadApiKeyStatus() {
 		loadingApiStatus = true;
+		apiKeyStatusError = null;
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) {
@@ -235,13 +241,18 @@ let templatedModel = 'claude'; // Track model for template editor
 					apiKeyStatus = {
 						anthropic_configured: data.anthropic_configured || false,
 						groq_configured: data.groq_configured || false,
+						cerebras_configured: data.cerebras_configured || false,
 						deepgram_configured: data.deepgram_configured || false,
+						has_at_least_one_model: Boolean(data.has_at_least_one_model ?? (data.anthropic_configured || data.groq_configured || data.cerebras_configured)),
 						using_user_keys: data.using_user_keys || { deepgram: data.deepgram_configured || false }
 					};
 				}
+			} else {
+				apiKeyStatusError = 'Unable to verify service status. You can still try. If you have issues, try refreshing or logging in again.';
 			}
 		} catch (err) {
 			logger.error('Failed to load API key status:', err);
+			apiKeyStatusError = 'Unable to verify service status. You can still try. If you have issues, try refreshing or logging in again.';
 		} finally {
 			loadingApiStatus = false;
 		}
@@ -249,9 +260,15 @@ let templatedModel = 'claude'; // Track model for template editor
 	
 	// Model selection is now handled internally by each tab component
 	
-	// Track when activeTab changes
-	$: if (browser) {
-		// Track state changes
+	// Reload API key status when auth state changes (e.g. after login/refresh)
+	let lastAuthToken: string | null = null;
+	$: if (browser && $token && $isAuthenticated) {
+		if (lastAuthToken !== $token) {
+			lastAuthToken = $token;
+			loadApiKeyStatus();
+		}
+	} else {
+		lastAuthToken = null;
 	}
 
 	function handleLogout(): void {
@@ -559,10 +576,10 @@ function handleTemplateCleared(): void {
 					reportsStore.refreshReports();
 				}
 			} else {
-				autoError = data.error || 'Failed to get response';
+				autoError = 'Something went wrong. Please try again.';
 			}
 		} catch (err) {
-			autoError = 'Failed to connect to API. Make sure the backend is running.';
+			autoError = 'Failed to connect. Please try again.';
 		} finally {
 			autoLoading = false;
 		}
@@ -628,6 +645,18 @@ $: if (!isEnhancementContext && sidebarVisible) {
 			</div>
 		{:else if $isAuthenticated}
 			<div class="p-4 md:p-6">
+				{#if apiKeyStatusError}
+					<div class="mb-4 px-4 py-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-200 text-sm flex items-start justify-between gap-3">
+						<span>{apiKeyStatusError}</span>
+						<button
+							type="button"
+							on:click={() => loadApiKeyStatus()}
+							class="shrink-0 text-amber-400 hover:text-amber-300 underline text-sm"
+						>
+							Retry
+						</button>
+					</div>
+				{/if}
 				<!-- Auto Report Tab - Keep component alive, just hide/show -->
 				<div class={activeTab === 'auto' ? '' : 'hidden'}>
 					{#if loadingApiStatus || loadingUseCases}

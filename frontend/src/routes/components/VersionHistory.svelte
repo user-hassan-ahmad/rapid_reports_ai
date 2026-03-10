@@ -33,7 +33,7 @@
 			if (data.success) {
 				versions = data.versions || [];
 			} else {
-				error = data.error || 'Failed to load versions';
+				error = 'Failed to load versions. Please try again.';
 			}
 		} catch (err) {
 			error = 'Failed to load versions';
@@ -65,7 +65,7 @@
 				// Call the restore callback
 				onRestore();
 			} else {
-				alert('Failed to restore version: ' + (data.error || 'Unknown error'));
+				alert('Failed to restore version. Please try again.');
 			}
 		} catch (err) {
 			alert('Failed to restore version');
@@ -93,7 +93,7 @@
 				// Reload versions after deletion
 				await loadVersions();
 			} else {
-				alert('Failed to delete version: ' + (data.error || 'Unknown error'));
+				alert('Failed to delete version. Please try again.');
 			}
 		} catch (err) {
 			alert('Failed to delete version');

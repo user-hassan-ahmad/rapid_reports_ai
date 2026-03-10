@@ -78,38 +78,38 @@ def _glm_reasoning_enabled() -> bool:
 MODEL_CONFIG = {
     # Report Generation Models
     "PRIMARY_REPORT_GENERATOR": "zai-glm-4.7",  # Primary model for report generation
-    "FALLBACK_REPORT_GENERATOR": "claude-sonnet-4-20250514",  # Fallback model if primary fails after retries (Claude Sonnet 4)
+    "FALLBACK_REPORT_GENERATOR": "claude-sonnet-4-6",  # Fallback model if primary fails after retries (Claude Sonnet 4.6)
     
     # Structure Validation Models
     "STRUCTURE_VALIDATOR": "gpt-oss-120b",  # Structure validation: Check for structural quality violations (Cerebras GPT-OSS-120B with medium reasoning)
-    "STRUCTURE_VALIDATOR_FALLBACK": "qwen/qwen3-32b",  # Fallback for structure validation (Groq Qwen with thinking)
+    "STRUCTURE_VALIDATOR_FALLBACK": "claude-sonnet-4-6",  # Fallback for structure validation (Claude Sonnet 4.6)
     
     # Enhancement Pipeline Models
     "FINDING_EXTRACTION": "gpt-oss-120b",  # Phase 1: Finding extraction and consolidation (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "FINDING_EXTRACTION_FALLBACK": "qwen/qwen3-32b",  # Fallback for finding extraction (Qwen with thinking)
+    "FINDING_EXTRACTION_FALLBACK": "claude-sonnet-4-6",  # Fallback for finding extraction (Claude Sonnet 4.6)
     "QUERY_GENERATION": "gpt-oss-120b",  # Query generation primary (Cerebras GPT-OSS-120B with high reasoning)
-    "QUERY_GENERATION_FALLBACK": "llama-3.3-70b-versatile",  # Query generation fallback (Llama)
+    "QUERY_GENERATION_FALLBACK": "claude-sonnet-4-6",  # Query generation fallback (Claude Sonnet 4.6)
     "GUIDELINE_VALIDATOR": "gpt-oss-120b",  # Guideline compatibility validation (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "GUIDELINE_VALIDATOR_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for guideline validation (Llama)
+    "GUIDELINE_VALIDATOR_FALLBACK": "claude-sonnet-4-6",  # Fallback for guideline validation (Claude Sonnet 4.6)
     "COMPATIBILITY_FILTER": "gpt-oss-120b",  # Search result compatibility filtering (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "COMPATIBILITY_FILTER_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for compatibility filtering (Llama)
+    "COMPATIBILITY_FILTER_FALLBACK": "claude-sonnet-4-6",  # Fallback for compatibility filtering (Claude Sonnet 4.6)
     "GUIDELINE_SEARCH": "gpt-oss-120b",  # Phase 2: Guideline synthesis (primary - Cerebras)
-    "GUIDELINE_SEARCH_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for guideline synthesis (Llama)
+    "GUIDELINE_SEARCH_FALLBACK": "claude-sonnet-4-6",  # Fallback for guideline synthesis (Claude Sonnet 4.6)
     "COMPLETENESS_ANALYZER": "gpt-oss-120b",  # Phase 3: Completeness analysis (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "COMPLETENESS_ANALYZER_FALLBACK": "qwen/qwen3-32b",  # Fallback for completeness analysis (Qwen)
+    "COMPLETENESS_ANALYZER_FALLBACK": "claude-sonnet-4-6",  # Fallback for completeness analysis (Claude Sonnet 4.6)
     "COMPARISON_ANALYZER": "gpt-oss-120b",  # Interval comparison analysis (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "COMPARISON_ANALYZER_FALLBACK": "qwen/qwen3-32b",  # Fallback for comparison analysis (Qwen)
+    "COMPARISON_ANALYZER_FALLBACK": "claude-sonnet-4-6",  # Fallback for comparison analysis (Claude Sonnet 4.6)
     
     # Action Application Models
     "ACTION_APPLIER": "gpt-oss-120b",  # Apply enhancement actions to reports (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "ACTION_APPLIER_FALLBACK": "qwen/qwen3-32b",  # Fallback for action application (Qwen)
+    "ACTION_APPLIER_FALLBACK": "claude-sonnet-4-6",  # Fallback for action application (Claude Sonnet 4.6)
     
     # Linguistic Validation Models (for zai-glm-4.7 post-processing)
     "ZAI_GLM_LINGUISTIC_VALIDATOR": "llama-3.3-70b-versatile",  # Linguistic/anatomical correction for zai-glm-4.7 output (Groq Llama)
     
     # Audit / QA Analysis Models
     "AUDIT_ANALYZER": "qwen/qwen3-32b",  # Report audit/QA primary (Groq Qwen 32B)
-    "AUDIT_ANALYZER_FALLBACK": "zai-glm-4.7",  # Fallback for audit (Cerebras Zai-GLM-4.7)
+    "AUDIT_ANALYZER_FALLBACK": "claude-sonnet-4-6",  # Fallback for audit (Claude Sonnet 4.6)
 }
 
 # Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
@@ -2796,6 +2796,7 @@ async def _generate_report_with_claude_model(
         # Append signature programmatically if provided
         report_output = _append_signature_to_report(report_output, signature)
         
+        report_output.model_used = model_name
         elapsed = time.time() - start_time
         print(f"generate_auto_report: ✅ Completed with {model_label} in {elapsed:.2f}s")
         print(f"  └─ Report length: {len(report_output.report_content)} chars")
@@ -3136,7 +3137,7 @@ async def generate_auto_report(
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
                 print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=6500 for {primary_model}")
-            elif primary_model == "claude-sonnet-4-20250514":
+            elif provider == "anthropic":
                 model_settings["max_tokens"] = 8000
                 model_settings["anthropic_thinking"] = {
                     "type": "enabled",
@@ -3160,7 +3161,7 @@ async def generate_auto_report(
         result = await _try_primary()
         
         # Log thinking/reasoning for all supported reasoning models
-        if primary_model == "claude-sonnet-4-20250514":
+        if provider == "anthropic":
             _log_thinking_parts(result, f"{primary_model} (Primary) - Claude Extended Thinking")
         elif primary_model == "zai-glm-4.7":
             _log_glm_reasoning(result, f"{primary_model} (Primary) - GLM Reasoning")
@@ -3241,6 +3242,7 @@ async def generate_auto_report(
         if signature:
             report_output = _append_signature_to_report(report_output, signature)
         
+        report_output.model_used = primary_model
         return report_output
                 
     except Exception as e:
@@ -3301,7 +3303,7 @@ async def generate_templated_report(
     start_time = time.time()
     # Templated reports use zai-glm-4.7 as primary, Claude as fallback
     primary_model = "zai-glm-4.7"
-    fallback_model = "claude-sonnet-4-20250514"
+    fallback_model = MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"]
     provider = _get_model_provider(primary_model)
     
     print(f"generate_templated_report: Starting with {primary_model} ({provider}), fallback: {fallback_model}")
@@ -3340,7 +3342,7 @@ async def generate_templated_report(
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
                 print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=6500 for {primary_model}")
-            elif primary_model == "claude-sonnet-4-20250514":
+            elif provider == "anthropic":
                 model_settings["max_tokens"] = 8000
                 model_settings["anthropic_thinking"] = {
                     "type": "enabled",

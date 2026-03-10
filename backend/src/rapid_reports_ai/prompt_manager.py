@@ -55,8 +55,8 @@ class PromptManager:
             # Otherwise fallback to unified.json
             template_file = None
             
-            if primary_model == "claude-sonnet-4-20250514":
-                # Check for claude.json first when primary model is claude-sonnet-4-20250514
+            if primary_model in ("claude-sonnet-4-20250514", "claude-sonnet-4-6"):
+                # Check for claude.json first when primary model is Claude
                 claude_file = use_case_dir / "claude.json"
                 if claude_file.exists():
                     template_file = claude_file

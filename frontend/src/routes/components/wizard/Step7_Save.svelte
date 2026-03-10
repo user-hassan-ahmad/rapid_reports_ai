@@ -168,11 +168,11 @@
 				await tagsStore.refreshTags();
 				dispatch('saveComplete');
 			} else {
-				error = data.error || `Failed to ${editingTemplate ? 'update' : 'save'} template`;
+				error = `Failed to ${editingTemplate ? 'update' : 'save'} template. Please try again.`;
 			}
 		} catch (err) {
 			console.error('Error saving template:', err);
-			error = `Error ${editingTemplate ? 'updating' : 'saving'} template. Please try again.`;
+			error = 'Failed to save. Please try again.';
 		} finally {
 			saving = false;
 		}

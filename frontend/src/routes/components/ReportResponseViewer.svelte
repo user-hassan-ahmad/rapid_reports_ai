@@ -206,7 +206,7 @@
 			const data = await res.json();
 			
 			if (!res.ok || !data.success) {
-				throw new Error(data.detail || data.error || 'Audit failed');
+				throw new Error('Audit failed. Please try again.');
 			}
 			
 			auditActions.setResult(data, data.audit_id);
@@ -220,7 +220,7 @@
 				}
 			}
 		} catch (e) {
-			auditActions.setError(e instanceof Error ? e.message : 'Audit failed');
+			auditActions.setError('Audit failed. Please try again.');
 		}
 	}
 
@@ -427,7 +427,7 @@
 			const response = await fetch(`${API_URL}/api/reports/${reportId}/versions`, { headers });
 			const data = await response.json();
 			if (!response.ok || !data.success) {
-				throw new Error(data.error || `Failed to load version history (${response.status})`);
+				throw new Error('Failed to load version history. Please try again.');
 			}
 			historyCount = (data.versions || []).length;
 			historyAvailable = historyCount > 1;

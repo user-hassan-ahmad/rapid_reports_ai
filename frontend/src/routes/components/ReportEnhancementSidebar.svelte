@@ -565,7 +565,7 @@ const dmp = new DiffMatchPatch();
 			if (!response.ok) {
 				const errorText = await response.text();
 				logger.error('loadEnhancements: HTTP error:', response.status, errorText);
-				error = `HTTP ${response.status}: ${errorText}`;
+				error = 'Something went wrong. Please try again.';
 				loading = false;
 				return;
 			}
@@ -602,7 +602,7 @@ const dmp = new DiffMatchPatch();
 				loading = false;
 			} else if (data && !data.success) {
 				logger.error('loadEnhancements: API returned error:', data.error);
-				error = data.error || 'Failed to load enhancements';
+				error = 'Failed to load enhancements. Please try again.';
 				completenessPending = false;
 				stopCompletenessPoll();
 			} else {
@@ -619,7 +619,7 @@ const dmp = new DiffMatchPatch();
 				// Network error - but check if we already got the data
 				if (!hasData) {
 					logger.error('loadEnhancements: Network error:', err);
-					error = `Network error: ${err.message}. The connection may have been reset, but data was received.`;
+					error = 'Something went wrong. Please try again.';
 				} else {
 					error = null; // Clear error if we have data
 				}
@@ -627,7 +627,7 @@ const dmp = new DiffMatchPatch();
 				const errMsg = err instanceof Error ? err.message : String(err);
 				if (!hasData) {
 					logger.error('loadEnhancements: Exception:', err);
-					error = `Failed to connect: ${errMsg}`;
+					error = 'Failed to connect. Please try again.';
 				} else {
 					error = null; // Clear error if we have data
 				}
@@ -696,7 +696,7 @@ const dmp = new DiffMatchPatch();
 			} else {
 				chatMessages.push({
 					role: 'assistant',
-					content: `Error: ${data.error || 'Failed to get response'}`,
+					content: 'Something went wrong. Please try again.',
 					error: true
 				});
 				chatMessages = [...chatMessages];
@@ -747,10 +747,10 @@ const dmp = new DiffMatchPatch();
 				// hasLoaded = false;
 				dispatch('reportUpdated', { report: data.report });
 			} else {
-				error = data.error || 'Failed to update report';
+				error = 'Failed to update report. Please try again.';
 			}
 		} catch (err) {
-			error = `Failed to update: ${err instanceof Error ? err.message : String(err)}`;
+			error = 'Failed to update report. Please try again.';
 		} finally {
 			dispatch('reportUpdating', { status: 'end' });
 		}
@@ -812,7 +812,7 @@ async function applySelectedActions(): Promise<void> {
 
 		const data = await response.json();
 		if (!response.ok || !data.success) {
-			applyActionsError = data.error || `Failed to apply actions (status ${response.status})`;
+				applyActionsError = 'Failed to apply changes. Please try again.';
 			return;
 		}
 
@@ -949,7 +949,7 @@ $: canApplySelectedActions = selectedActionsWithPatch.length > 0 && !applyAction
 			
 			if (!response.ok) {
 				const errorText = await response.text();
-				error = `HTTP ${response.status}: ${errorText}`;
+				error = 'Something went wrong. Please try again.';
 				return;
 			}
 			
@@ -959,11 +959,11 @@ $: canApplySelectedActions = selectedActionsWithPatch.length > 0 && !applyAction
 				comparisonResult = data.comparison;
 			} else {
 				logger.error('runComparison: API returned error:', data.error);
-				error = data.error || 'Comparison analysis failed';
+				error = 'Comparison failed. Please try again.';
 			}
 		} catch (err) {
 			logger.error('runComparison: Exception:', err);
-			error = `Failed to compare: ${err instanceof Error ? err.message : String(err)}`;
+			error = 'Comparison failed. Please try again.';
 		} finally {
 			comparing = false;
 		}
@@ -989,11 +989,11 @@ $: canApplySelectedActions = selectedActionsWithPatch.length > 0 && !applyAction
 				revisedReportApplied = true;
 				dispatch('reportUpdated', { report: { report_content: data.updated_content } });
 			} else {
-				error = data.error || 'Failed to apply revised report';
+				error = 'Failed to apply changes. Please try again.';
 			}
 		} catch (err) {
 			logger.error('Apply failed:', err);
-			error = `Failed to apply: ${err instanceof Error ? err.message : String(err)}`;
+			error = 'Failed to apply changes. Please try again.';
 		} finally {
 			applyRevisedReportLoading = false;
 			dispatch('reportUpdating', { status: 'end' });

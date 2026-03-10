@@ -235,7 +235,7 @@
 				}
 				handleChange();
 			} else {
-				alert('Error generating template: ' + data.error);
+				alert('Failed to generate template. Please try again.');
 			}
 		} catch (error) {
 			console.error('Error generating template:', error);
@@ -288,7 +288,7 @@
 			if (data.success) {
 				return data.placeholders;
 			}
-			throw new Error(data.error || 'Failed to extract placeholders');
+			throw new Error('Failed to extract placeholders. Please try again.');
 		} catch (err) {
 			console.error('Error extracting placeholders:', err);
 			throw err;
@@ -309,7 +309,7 @@
 			if (data.success) {
 				return data.validation;
 			}
-			throw new Error(data.error || 'Failed to validate template');
+			throw new Error('Failed to validate template. Please try again.');
 		} catch (err) {
 			console.error('Error validating template:', err);
 			throw err;
@@ -380,6 +380,12 @@
 		border-radius: 8px;
 		height: 8px;
 	}
+
+	/* Syntax bar colors for structured template */
+	:global(.highlight-measurement) { color: #fbbf24; } /* Amber - xxx */
+	:global(.highlight-variable) { color: #34d399; } /* Green - {VAR} */
+	:global(.highlight-instruction) { color: #60a5fa; } /* Blue - // instruction */
+	:global(.highlight-alternative) { color: #c084fc; } /* Purple - [opt1/opt2] */
 </style>
 
 <div class="max-w-6xl mx-auto space-y-6 py-2">
@@ -462,6 +468,29 @@
 			{#if findingsConfig.content_style}
 				<!-- Template Content Editor -->
 				<div class="space-y-3">
+					{#if findingsConfig.content_style === 'structured_template'}
+						<div class="rounded-lg border border-white/10 bg-black/30 px-4 py-3">
+							<div class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Syntax</div>
+							<div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+								<div class="flex items-center gap-2">
+									<span class="highlight-measurement font-mono">xxx</span>
+									<span class="text-gray-500">Measurements</span>
+								</div>
+								<div class="flex items-center gap-2">
+									<span class="highlight-variable font-mono">{'{VAR}'}</span>
+									<span class="text-gray-500">Variables</span>
+								</div>
+								<div class="flex items-center gap-2">
+									<span class="highlight-instruction font-mono">//</span>
+									<span class="text-gray-500">AI instructions</span>
+								</div>
+								<div class="flex items-center gap-2">
+									<span class="highlight-alternative font-mono">[opt1/opt2]</span>
+									<span class="text-gray-500">Alternatives</span>
+								</div>
+							</div>
+						</div>
+					{/if}
 					<textarea
 						bind:value={findingsConfig.template_content}
 						oninput={findingsConfig.content_style === 'structured_template' ? handleTemplateContentChange : handleChange}

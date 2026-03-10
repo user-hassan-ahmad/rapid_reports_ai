@@ -48,7 +48,7 @@
 				versions = data.versions || [];
 				comparisonVersion = null;
 			} else {
-				error = data.error || 'Failed to load version history.';
+				error = 'Failed to load version history. Please try again.';
 			}
 		} catch (err) {
 			error = 'Failed to load version history.';

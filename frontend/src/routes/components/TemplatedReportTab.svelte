@@ -14,7 +14,9 @@
 	export let apiKeyStatus = {
 		anthropic_configured: false,
 		groq_configured: false,
-		deepgram_configured: false
+		cerebras_configured: false,
+		deepgram_configured: false,
+		has_at_least_one_model: false
 	};
 	
 	// Always use Claude for template reports
@@ -519,7 +521,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 				await templatesStore.refreshTemplates();
 				dispatch('templateDeleted');
 			} else {
-				alert('Failed to delete template: ' + data.error);
+				alert('Failed to delete template. Please try again.');
 			}
 		} catch (err) {
 			alert('Failed to delete template');
@@ -648,7 +650,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 				renamingTag = null;
 				newTagName = '';
 			} else {
-				alert('Failed to rename tag: ' + (data.error || 'Unknown error'));
+				alert('Failed to rename tag. Please try again.');
 			}
 		} catch (err) {
 			alert('Failed to rename tag');
@@ -680,7 +682,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 				await templatesStore.refreshTemplates();
 				await tagsStore.refreshTags();
 			} else {
-				alert('Failed to delete tag: ' + (data.error || 'Unknown error'));
+				alert('Failed to delete tag. Please try again.');
 			}
 		} catch (err) {
 			alert('Failed to delete tag');

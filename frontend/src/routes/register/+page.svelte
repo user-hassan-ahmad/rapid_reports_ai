@@ -37,14 +37,14 @@
 			if (res.ok && data.success) {
 				message = data.message || 'Registration successful! Please check your email to verify your account.';
 			} else {
-				error = data.error || 'Registration failed';
+				error = 'Registration failed. Please try again.';
 			}
 		} catch (err) {
 			const errorMessage = err instanceof Error ? err.message : String(err);
 			if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
-				error = `Failed to connect to server. Please check that the API is running at ${API_URL}`;
+				error = 'Failed to connect. Please try again.';
 			} else {
-				error = `Registration failed: ${errorMessage}`;
+				error = 'Registration failed. Please try again.';
 			}
 		} finally {
 			loading = false;

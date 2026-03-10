@@ -228,7 +228,7 @@
 				dispatch('templateCreated');
 				onClose();
 			} else {
-				saveError = data.error || `Failed to ${editingTemplate ? 'update' : 'save'} template`;
+				saveError = `Failed to ${editingTemplate ? 'update' : 'save'} template. Please try again.`;
 			}
 		} catch (err) {
 			console.error('Error saving template:', err);

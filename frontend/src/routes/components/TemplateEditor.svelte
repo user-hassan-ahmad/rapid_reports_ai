@@ -277,7 +277,7 @@ Use {{VARIABLE_NAME}} for dynamic content (e.g., {{COMPARISON}}) — these will 
 					dispatch('saved');
 				}
 			} else {
-				alert('Failed to save template: ' + data.error);
+				alert('Failed to save template. Please try again.');
 			}
 		} catch (err) {
 			alert('Failed to save template');
