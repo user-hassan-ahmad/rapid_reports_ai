@@ -602,7 +602,6 @@ async def chat(
         
         # STRUCTURE VALIDATION (synchronous, before saving)
         # DISABLED: Validation checks temporarily disabled - code preserved below
-        import os
         ENABLE_STRUCTURE_VALIDATION = os.getenv("ENABLE_STRUCTURE_VALIDATION", "true").lower() == "true"
         
         # if ENABLE_STRUCTURE_VALIDATION:  # DISABLED
@@ -1325,7 +1324,6 @@ async def generate_report_from_template(
         
         # Optional: Add structure validation for templated reports
         # Controlled by ENABLE_TEMPLATE_STRUCTURE_VALIDATION env var
-        import os
         ENABLE_TEMPLATE_STRUCTURE_VALIDATION = os.getenv("ENABLE_TEMPLATE_STRUCTURE_VALIDATION", "false").lower() == "true"
         
         if ENABLE_TEMPLATE_STRUCTURE_VALIDATION:
