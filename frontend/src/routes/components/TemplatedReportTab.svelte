@@ -1,13 +1,14 @@
 <script>
-	import { onMount, afterUpdate, createEventDispatcher, onDestroy } from 'svelte';
-	import { browser } from '$app/environment';
-	import TemplateForm from './TemplateForm.svelte';
-	import { token } from '$lib/stores/auth';
-	import { templatesStore, selectedTemplateId, selectedTemplate } from '$lib/stores/templates';
-	import { settingsStore } from '$lib/stores/settings';
-	import { tagsStore } from '$lib/stores/tags';
-	import { getTagColor, getTagColorWithOpacity } from '$lib/utils/tagColors.js';
-	import { API_URL } from '$lib/config';
+import { onMount, afterUpdate, createEventDispatcher, onDestroy } from 'svelte';
+import { browser } from '$app/environment';
+import TemplateForm from './TemplateForm.svelte';
+import { token } from '$lib/stores/auth';
+import { templatesStore, selectedTemplateId, selectedTemplate } from '$lib/stores/templates';
+import { settingsStore } from '$lib/stores/settings';
+import { tagsStore } from '$lib/stores/tags';
+import { getTagColor, getTagColorWithOpacity } from '$lib/utils/tagColors.js';
+import { draftStore, hasTemplateDraft } from '$lib/stores/draft.js';
+import { API_URL } from '$lib/config';
 
 	const dispatch = createEventDispatcher();
 
@@ -73,6 +74,9 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	// This is handled intentionally in handleTemplateSelect - no reactive statements needed
 	let variableValuesByTemplate = {};
 	let lastTemplateId = null;
+
+	// Draft restore banner
+	let showRestoreBanner = false;
 	
 	// Ensure variableValues is never undefined
 	if (typeof variableValues === 'undefined') {
@@ -447,6 +451,8 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 		responseModel = null;
 		error = null;
 		reportId = null;
+		draftStore.clearTemplateTab();
+		showRestoreBanner = false;
 		dispatch('reportGenerated', { reportId: null });
 		dispatch('reportCleared');
 		// Re-initialize empty values for current template if one is selected
@@ -1046,6 +1052,33 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	let resizeObserver;
 	let mutationObserver;
 
+	// Persist template draft on every meaningful change (debounced inside store)
+	$: {
+		const hasContent =
+			!!$selectedTemplateId &&
+			variableValues &&
+			Object.values(variableValues).some((v) => v?.trim().length > 0);
+		if (hasContent) {
+			draftStore.saveTemplateTab($selectedTemplateId, variableValues);
+		}
+	}
+
+	function restoreTemplateDraft() {
+		const draft = $draftStore;
+		const { templateId, variables } = draft.templateTab;
+		if (!templateId) return;
+		// Pre-populate variableValuesByTemplate so the reactive sync statement picks up saved values
+		variableValuesByTemplate[templateId] = { ...variables };
+		// Selecting the template triggers the reactive statement which uses variableValuesByTemplate
+		selectedTemplateId.set(templateId);
+		showRestoreBanner = false;
+	}
+
+	function dismissTemplateDraft() {
+		draftStore.clearTemplateTab();
+		showRestoreBanner = false;
+	}
+
 	onMount(async () => {
 		if (browser) {
 			// Load stores if empty
@@ -1062,6 +1095,9 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			// Set up global mouse handlers for dragging
 			window.addEventListener('mousemove', handleMouseMove);
 			window.addEventListener('mouseup', handleMouseUp);
+
+			// Show restore banner if a draft exists
+			showRestoreBanner = $hasTemplateDraft;
 		}
 	});
 	
@@ -1115,6 +1151,38 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 </script>
 
 <div class="p-6">
+	<!-- Draft Restore Banner -->
+	{#if showRestoreBanner}
+		<div
+			class="flex items-center justify-between gap-3 px-4 py-3 mb-5 rounded-xl bg-amber-950/40 border border-amber-500/25 text-sm"
+		>
+			<div class="flex items-center gap-2.5 min-w-0">
+				<svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+				</svg>
+				<span class="text-amber-200/80 truncate">
+					Unsaved draft from {new Date($draftStore.savedAt ?? 0).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} — restore your previous work?
+				</span>
+			</div>
+			<div class="flex items-center gap-2 shrink-0">
+				<button
+					type="button"
+					onclick={restoreTemplateDraft}
+					class="px-3 py-1 text-xs font-medium rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors border border-amber-500/30"
+				>
+					Restore
+				</button>
+				<button
+					type="button"
+					onclick={dismissTemplateDraft}
+					class="px-3 py-1 text-xs rounded-lg text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
+				>
+					Dismiss
+				</button>
+			</div>
+		</div>
+	{/if}
+
 	<!-- Template list and TemplateForm are both always mounted (never conditionally destroyed)
 	     so that ReportResponseViewer's local state (audit, enhancements) persists across
 	     Back-to-Templates / re-select-same-template navigation. -->
@@ -2428,6 +2496,9 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 				}
 				
 				reportId = e.detail.reportId;
+				if (e.detail.reportId) {
+					draftStore.clearTemplateTab();
+				}
 				dispatch('reportGenerated', { reportId: e.detail.reportId });
 			}}
 			on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
