@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { EditorView, keymap, Decoration, type DecorationSet } from '@codemirror/view';
 	import { EditorState, Compartment, StateEffect, StateField } from '@codemirror/state';
+	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
 	import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
@@ -9,7 +10,7 @@
 	import { token } from '$lib/stores/auth';
 	import { API_URL } from '$lib/config';
 
-	interface IntelliPrompt { question: string; source_text: string; }
+	interface IntelliPrompt { question: string; source_text: string; rationale?: string; }
 
 	export let checklistSections: string[] = [];
 	export let activePrompts: IntelliPrompt[] = [];
@@ -21,6 +22,7 @@
 	export let onCoveredSectionsChange: (covered: string[]) => void = () => {};
 	export let onPromptsChange: (prompts: IntelliPrompt[]) => void = () => {};
 	export let onScratchpadClear: () => void = () => {};
+	export let onReviewingChange: (reviewing: boolean) => void = () => {};
 
 	// CM6 highlight decoration for IntelliPrompt source linking
 	const setHighlight = StateEffect.define<{ from: number; to: number } | null>();
@@ -42,6 +44,8 @@
 
 
 	let editorContainer: HTMLDivElement;
+	let scrollEl: HTMLDivElement;
+	let editorScrollTop = 0;
 	let editor: EditorView | null = null;
 	const editableCompartment = new Compartment();
 
@@ -101,6 +105,14 @@
 	// Debounce timer for typed (non-dictation) edits
 	let typingDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 	const TYPING_DEBOUNCE_MS = 1000;
+
+	// Content hash to skip redundant /review calls (dictation + typing debounce overlap)
+	let lastReviewedHash = '';
+	function simpleHash(s: string): string {
+		let h = 0;
+		for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+		return String(h);
+	}
 
 	// Markdown highlight style (from ReportEditor)
 	const markdownHighlightStyle = HighlightStyle.define([
@@ -176,6 +188,12 @@
 		editor.dispatch({
 			changes: { from: 0, to: editor.state.doc.length, insert: newDoc }
 		});
+		// Bypass the typing debounce for restored/reset content — kick off the review immediately
+		// so cards appear as soon as the scratchpad is populated rather than waiting 1s + API time.
+		if (newDoc.trim().length > 0) {
+			if (typingDebounceTimer) { clearTimeout(typingDebounceTimer); typingDebounceTimer = null; }
+			processReview();
+		}
 	}
 
 	export function getFindingCount(): number {
@@ -281,6 +299,12 @@
 
 	async function _runReview(): Promise<void> {
 		if (!editor) return;
+		const scratchpad_content = editor.state.doc.toString();
+		const hashInput = scratchpad_content + checklistSections.join();
+		const currentHash = simpleHash(hashInput);
+		if (currentHash === lastReviewedHash) return;
+
+		onReviewingChange(true);
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
@@ -288,22 +312,25 @@
 				method: 'POST',
 				headers,
 				body: JSON.stringify({
-					scratchpad_content: editor.state.doc.toString(),
+					scratchpad_content,
 					checklist_sections: checklistSections,
-					existing_prompts: activePrompts.map((p) => p.question),
 					scan_type: scanType,
 					clinical_history: clinicalHistory
 				})
 			});
-	const data = await res.json();
-	if (data.covered_sections && Array.isArray(data.covered_sections)) {
-			onCoveredSectionsChange(data.covered_sections);
-		}
-		if (data.prompts && Array.isArray(data.prompts)) {
-			onPromptsChange(data.prompts);
-		}
+			const data = await res.json();
+			if (data.covered_sections && Array.isArray(data.covered_sections)) {
+				onCoveredSectionsChange(data.covered_sections);
+			}
+			// Backend now owns the full merge — replace activePrompts with the final merged list
+			if (data.prompts && Array.isArray(data.prompts)) {
+				onPromptsChange(data.prompts);
+			}
+			lastReviewedHash = currentHash;
 		} catch {
 			// silently ignore review errors
+		} finally {
+			onReviewingChange(false);
 		}
 	}
 
@@ -503,10 +530,8 @@
 						if (typingDebounceTimer) { clearTimeout(typingDebounceTimer); typingDebounceTimer = null; }
 						onScratchpadClear();
 					} else if (hasWordChange) {
-						// Only immediately clear prompts for large deletions (e.g. select-all-delete,
-						// clearing a paragraph). Single-char backspaces let the debounced review
-						// handle it naturally — avoids prompts flashing on every typo correction.
-						if (charsDeleted > 30) onPromptsChange([]);
+						// Cards whose source_text is deleted fade out automatically via the anchor filter
+						// in IntelliPromptsMargin — no need to clear the prompt list eagerly here.
 						if (typingDebounceTimer) clearTimeout(typingDebounceTimer);
 						typingDebounceTimer = setTimeout(() => {
 							typingDebounceTimer = null;
@@ -535,7 +560,7 @@
 
 <div class="flex flex-col flex-1 min-h-0">
 
-	<!-- Floating dictate button — centered, overlaps the top edge of the editor -->
+	<!-- Floating dictate button — centered, overlaps the top edge of the editor+margin row -->
 	<div class="flex flex-col items-center gap-1.5 relative z-10">
 		<button
 			type="button"
@@ -625,35 +650,60 @@
 		{/if}
 	</div>
 
-	<!-- CM6 scratchpad wrapper — overlapped from above by the button -->
-	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-	<div
-		class="scratchpad-wrapper -mt-[22px] rounded-xl border overflow-hidden transition-all duration-300 flex-1 min-h-[360px] flex flex-col cursor-text {isRecording
-			? 'border-purple-500/50 dictation-glow'
-			: 'border-white/10 bg-black/40'}"
-		onclick={(e) => { if (e.target === e.currentTarget || !(e.target as Element).closest('.cm-editor')) editor?.focus(); }}
-	>
-		<!-- Top padding clears the overlapping button -->
-		<div class="flex-1 min-h-0 overflow-auto px-4 pb-4 pt-8">
-			<div bind:this={editorContainer} class="min-h-full"></div>
+	<!-- Editor + IntelliPrompts margin row — overlapped from above by the button -->
+	<div class="flex flex-row -mt-[22px] gap-2 flex-1 min-h-0 items-start">
+
+		<!-- CM6 scratchpad wrapper -->
+		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+		<div
+			class="scratchpad-wrapper flex-1 rounded-xl border overflow-hidden transition-all duration-300 min-h-[360px] flex flex-col cursor-text {isRecording
+				? 'border-purple-500/50 dictation-glow'
+				: 'border-white/10 bg-black/40'}"
+			onclick={(e) => { if (e.target === e.currentTarget || !(e.target as Element).closest('.cm-editor')) editor?.focus(); }}
+		>
+			<!-- Top padding clears the overlapping button -->
+			<div
+				bind:this={scrollEl}
+				onscroll={() => { editorScrollTop = scrollEl?.scrollTop ?? 0; }}
+				class="flex-1 min-h-0 overflow-auto px-4 pb-4 pt-8"
+			>
+				<div bind:this={editorContainer} class="min-h-full"></div>
+			</div>
+
+			<!-- Inline transcript feed at the bottom of the box — only when dictation is on -->
+			{#if isRecording && (currentInterim || rawFeed.length > 0)}
+				<div class="border-t border-white/[0.05] px-4 py-2 flex flex-col gap-0.5 shrink-0">
+					{#if currentInterim}
+						<p class="text-xs text-gray-600 italic truncate">{currentInterim}</p>
+					{/if}
+					{#each rawFeed.slice(-1) as line}
+						<p class="text-xs text-gray-500 italic truncate flex items-center gap-1.5">
+							{#if isProcessing}
+								<span class="w-2 h-2 border border-purple-400 border-t-transparent rounded-full animate-spin inline-block shrink-0"></span>
+							{/if}
+							{line}{#if isProcessing}…{/if}
+						</p>
+					{/each}
+				</div>
+			{/if}
 		</div>
 
-		<!-- Inline transcript feed at the bottom of the box — only when dictation is on -->
-		{#if isRecording && (currentInterim || rawFeed.length > 0)}
-			<div class="border-t border-white/[0.05] px-4 py-2 flex flex-col gap-0.5 shrink-0">
-				{#if currentInterim}
-					<p class="text-xs text-gray-600 italic truncate">{currentInterim}</p>
-				{/if}
-				{#each rawFeed.slice(-1) as line}
-					<p class="text-xs text-gray-500 italic truncate flex items-center gap-1.5">
-						{#if isProcessing}
-							<span class="w-2 h-2 border border-purple-400 border-t-transparent rounded-full animate-spin inline-block shrink-0"></span>
-						{/if}
-						{line}{#if isProcessing}…{/if}
-					</p>
-				{/each}
-			</div>
-		{/if}
+		<!-- IntelliPrompts margin column — width transitions between 0 and 240px so the
+		     editor and margin animate together as a single coordinated layout change -->
+		<div
+			class="shrink-0 self-stretch overflow-hidden"
+			style="width: {activePrompts.length > 0 ? '240px' : '0px'}; padding-top: 22px; transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1)"
+		>
+			<IntelliPromptsMargin
+				{activePrompts}
+				{editor}
+				scrollTop={editorScrollTop}
+				{isReviewing}
+				onHighlight={highlightSource}
+				onClearHighlight={clearHighlight}
+			/>
+		</div>
+
 	</div>
 
 </div>

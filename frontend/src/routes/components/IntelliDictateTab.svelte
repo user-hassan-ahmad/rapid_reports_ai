@@ -50,9 +50,6 @@ import { API_URL } from '$lib/config';
 	// IntelliPrompts from Qwen
 	let activePrompts: IntelliPrompt[] = [];
 
-	// Side panel collapse
-	let checklistCollapsed = false;
-
 	// Draft restore banner
 	let showRestoreBanner = false;
 
@@ -60,31 +57,14 @@ import { API_URL } from '$lib/config';
 		showRestoreBanner = $hasIntelliDraft;
 	});
 
-	// CONSIDER scroll overflow indicator + expand state
-	let considerScrollEl: HTMLDivElement | null = null;
-	let considerScrolledToBottom = true;
-	let expandedPrompts: Set<string> = new Set();
-
-	function togglePromptExpand(question: string) {
-		expandedPrompts = expandedPrompts.has(question)
-			? new Set([...expandedPrompts].filter((q) => q !== question))
-			: new Set([...expandedPrompts, question]);
-	}
-	function onConsiderScroll() {
-		if (!considerScrollEl) return;
-		const { scrollTop, scrollHeight, clientHeight } = considerScrollEl;
-		considerScrolledToBottom = scrollTop + clientHeight >= scrollHeight - 4;
-	}
-	// Re-evaluate overflow whenever prompts change (new prompt may push content below fold)
-	$: if (activePrompts && considerScrollEl) {
-		setTimeout(() => onConsiderScroll(), 50);
-	}
-
 	// Scratchpad content for parsing dynamic sections
 	let scratchpadContent = '';
 
 	// Recording state (from DictationScratchpad)
 	let isRecording = false;
+
+	// Review loading state (from DictationScratchpad)
+	let isReviewing = false;
 
 	// Generation (same shape as AutoReportTab)
 	export let response: any = null;
@@ -199,7 +179,6 @@ import { API_URL } from '$lib/config';
 		sectionsGeneratedFromScanType = '';
 		sectionsGeneratedFromHistory = '';
 		activePrompts = [];
-		expandedPrompts = new Set();
 		coveredSections = new Set();
 		response = null;
 		responseModel = null;
@@ -284,7 +263,6 @@ import { API_URL } from '$lib/config';
 
 	function handlePromptsChange(prompts: IntelliPrompt[]) {
 		activePrompts = prompts;
-		expandedPrompts = new Set([...expandedPrompts].filter((q) => prompts.some((p) => p.question === q)));
 	}
 
 	function copyToClipboard() {
@@ -580,27 +558,18 @@ import { API_URL } from '$lib/config';
 	{#if sectionsLoading && prePoppedSections.length === 0}
 		<div class="space-y-3" in:fade={{ duration: 250 }}>
 			<div class="h-px bg-gradient-to-r from-transparent via-white/8 to-transparent"></div>
-			<div class="flex gap-4">
-				<!-- Scratchpad skeleton -->
-				<div class="flex-1 bg-black/30 border border-white/[0.06] rounded-xl p-4 space-y-3 min-h-[180px]">
-					<div class="flex items-center justify-between pb-3 border-b border-white/[0.05]">
-						<div class="h-2.5 w-20 bg-white/8 rounded-full skeleton-shimmer"></div>
-						<div class="h-2.5 w-12 bg-white/5 rounded-full skeleton-shimmer"></div>
-					</div>
-					<div class="space-y-2.5 pt-1">
-						{#each [90, 75, 100, 60, 82, 68] as w, i}
-							<div class="h-2.5 bg-white/[0.05] rounded-full skeleton-shimmer" style="width:{w}%;animation-delay:{i*80}ms"></div>
-						{/each}
-					</div>
-				</div>
-				<!-- Review guide skeleton -->
-				<div class="w-52 shrink-0 bg-black/30 border border-white/[0.06] rounded-xl p-4 space-y-2">
-					<div class="h-2.5 w-24 bg-white/8 rounded-full skeleton-shimmer mb-3"></div>
-					<div class="grid grid-cols-2 gap-1.5">
-						{#each [85, 60, 75, 90, 65, 80, 55, 70] as w, i}
-							<div class="h-2 bg-white/[0.04] rounded-full skeleton-shimmer" style="width:{w}%;animation-delay:{i*60}ms"></div>
-						{/each}
-					</div>
+			<!-- Coverage chip strip skeleton -->
+			<div class="flex flex-wrap gap-1.5 pb-1">
+				{#each [72, 55, 88, 60, 76, 50, 82, 65] as w, i}
+					<div class="h-6 bg-white/[0.04] rounded-full skeleton-shimmer" style="width:{w}px;animation-delay:{i*60}ms"></div>
+				{/each}
+			</div>
+			<!-- Scratchpad skeleton -->
+			<div class="bg-black/30 border border-white/[0.06] rounded-xl p-4 space-y-3 min-h-[180px]">
+				<div class="space-y-2.5 pt-1">
+					{#each [90, 75, 100, 60, 82, 68] as w, i}
+						<div class="h-2.5 bg-white/[0.05] rounded-full skeleton-shimmer" style="width:{w}%;animation-delay:{i*80}ms"></div>
+					{/each}
 				</div>
 			</div>
 			<p class="text-[11px] text-gray-600 text-center tracking-wide">
@@ -631,160 +600,46 @@ import { API_URL } from '$lib/config';
 				<DictationHintBar />
 			</div>
 
-		<!-- Two-column workspace row (greyed out when sectionsDirty) -->
-		<div class="flex gap-4 min-h-0 flex-1 relative transition-opacity duration-300 {sectionsDirty ? 'opacity-50 pointer-events-none' : ''}">
-			{#if sectionsDirty}
-				<div
-					class="absolute inset-0 z-10 flex items-center justify-center bg-black/20 rounded-lg"
-					in:fade={{ duration: 200 }}
-				>
-					<p class="text-sm text-gray-400">Case details changed — regenerate workspace to continue</p>
-				</div>
-			{/if}
-			<!-- Scratchpad column -->
-			<div class="flex flex-col flex-1 min-w-0 min-h-0">
-			<DictationScratchpad
-					bind:this={scratchpadRef}
-					checklistSections={prePoppedSections}
-					{activePrompts}
-					{scanType}
-					{clinicalHistory}
-					{apiKeyStatus}
-					onContentChange={(c) => { scratchpadContent = c; }}
-					onRecordingChange={(recording) => { isRecording = recording; }}
-				onCoveredSectionsChange={handleCoveredSectionsChange}
-				onPromptsChange={handlePromptsChange}
-				onScratchpadClear={() => { coveredSections = new Set(); activePrompts = []; expandedPrompts = new Set(); }}
-				/>
-				</div>
-
-		<!-- Side panel: Review Guide + Consider -->
-		<aside
-			class="flex flex-col shrink-0 transition-all duration-300 overflow-hidden {checklistCollapsed
-				? 'w-10'
-				: 'w-[320px]'}"
-		>
-			<!-- Panel header -->
-			<button
-				type="button"
-				onclick={() => (checklistCollapsed = !checklistCollapsed)}
-				class="flex items-center justify-between gap-2 px-3 py-2.5 bg-black/40 border border-white/10 rounded-lg text-left hover:bg-white/5 transition-colors shrink-0"
-				title={checklistCollapsed ? 'Expand panel' : 'Collapse panel'}
+	<!-- Single-column workspace (greyed out when sectionsDirty) -->
+	<div class="flex flex-col min-h-0 flex-1 gap-3 relative transition-opacity duration-300 {sectionsDirty ? 'opacity-50 pointer-events-none' : ''}">
+		{#if sectionsDirty}
+			<div
+				class="absolute inset-0 z-10 flex items-center justify-center bg-black/20 rounded-lg"
+				in:fade={{ duration: 200 }}
 			>
-				{#if !checklistCollapsed}
-					{#if regenerating}
-						<div class="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-					{:else}
-						<span class="text-xs font-semibold text-gray-400 uppercase tracking-widest">Review Guide</span>
-					{/if}
-				{/if}
-				<svg
-					class="w-4 h-4 text-gray-500 shrink-0 transition-transform duration-300 {checklistCollapsed ? 'rotate-180' : ''}"
-					fill="none" stroke="currentColor" viewBox="0 0 24 24"
-				>
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-				</svg>
-			</button>
+				<p class="text-sm text-gray-400">Case details changed — regenerate workspace to continue</p>
+			</div>
+		{/if}
 
-			{#if !checklistCollapsed}
-				<div class="mt-2 flex flex-col min-h-0 overflow-y-auto gap-0 flex-1">
+		<!-- Coverage chip strip -->
+		<div class="flex flex-wrap gap-1.5 transition-opacity duration-300 {isReviewing ? 'opacity-50' : ''} {regenerating ? 'animate-pulse' : ''}">
+			{#each allChecklistSections as section}
+				{@const covered = coveredSections.has(section)}
+				<span class="px-2.5 py-1 rounded-full text-[11px] font-medium transition-all duration-300
+					{covered
+						? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+						: 'bg-white/[0.04] text-gray-600 border border-white/[0.06]'}">
+					{section.replace(/_/g, ' ')}
+				</span>
+			{/each}
+		</div>
 
-				<!-- Systems list -->
-				<div class="grid grid-cols-2 gap-0.5 pb-2 {regenerating ? 'animate-pulse' : ''}">
-				{#each allChecklistSections as section}
-					{@const covered = coveredSections.has(section)}
-					<div class="flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors duration-300
-						{covered ? 'text-emerald-400' : 'text-gray-600'}">
-						<span class="w-2 h-2 rounded-full shrink-0 transition-all duration-300
-							{covered
-								? 'bg-emerald-400 border-transparent shadow-sm shadow-emerald-400/50 scale-100'
-								: 'bg-transparent border border-gray-700 scale-90 opacity-60'}">
-						</span>
-						<span class="text-[11px] font-mono leading-snug transition-colors duration-300">{section.replace(/_/g, ' ')}</span>
-					</div>
-				{/each}
-				</div>
-
-					<!-- Footer hint -->
-				<p class="text-[11px] text-gray-500 px-2 py-2 pb-3 leading-relaxed border-b border-white/[0.05] italic">
-					Reference guide only — unchecked systems are completed automatically in the final report.
-				</p>
-
-				<!-- CONSIDER section -->
-				{#if activePrompts.length > 0}
-					<div class="pt-3 flex flex-col gap-2 min-h-0 flex-1" in:fade={{ duration: 200 }}>
-						<div class="flex items-center gap-2 px-2 shrink-0">
-							<span class="text-xs font-semibold text-gray-400 uppercase tracking-widest">Consider</span>
-							<span class="consider-pulse w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>
-						</div>
-						<!-- Scrollable prompt list -->
-						<div class="relative flex-1 min-h-0">
-						<div
-							bind:this={considerScrollEl}
-							onscroll={onConsiderScroll}
-							class="flex flex-col gap-1.5 overflow-y-auto max-h-48 pr-0.5 pb-2 scrollbar-hide"
-						>
-							{#each activePrompts as prompt (prompt.question)}
-								{@const isExpanded = expandedPrompts.has(prompt.question)}
-								<button
-									type="button"
-									onclick={() => prompt.rationale && togglePromptExpand(prompt.question)}
-									class="w-full text-left border-l-2 border-amber-400/60 pl-2.5 pr-2 py-2 rounded-r-md
-										bg-amber-400/5 shrink-0 transition-colors duration-150
-										{prompt.rationale ? 'cursor-pointer hover:bg-amber-400/10' : 'cursor-default'}"
-									in:fly={{ y: 8, duration: 220 }}
-									out:fade={{ duration: 150 }}
-								>
-									<div class="flex items-start justify-between gap-1.5">
-										<p class="text-xs text-amber-300/80 leading-snug flex-1">
-											{prompt.question}
-										</p>
-										{#if prompt.rationale}
-											<svg
-												class="w-3 h-3 text-amber-400/50 shrink-0 mt-0.5 transition-transform duration-200 {isExpanded ? 'rotate-180' : ''}"
-												fill="none" stroke="currentColor" viewBox="0 0 24 24"
-											>
-												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7" />
-											</svg>
-										{/if}
-									</div>
-									<p class="text-[10px] text-gray-600 mt-0.5 truncate">
-										re: {prompt.source_text}
-									</p>
-									{#if isExpanded && prompt.rationale}
-										<p
-											class="text-[11px] text-gray-400 leading-relaxed mt-2 pt-2 border-t border-amber-400/10"
-											in:fly={{ y: -4, duration: 180 }}
-											out:fade={{ duration: 100 }}
-										>
-											{prompt.rationale}
-										</p>
-									{/if}
-								</button>
-							{/each}
-							</div>
-							<!-- Pulsating scroll-down arrow — visible when more content is below -->
-							{#if !considerScrolledToBottom}
-								<div
-									class="absolute bottom-0 left-0 right-0 flex justify-center pb-1 pointer-events-none"
-									in:fade={{ duration: 150 }}
-									out:fade={{ duration: 150 }}
-								>
-									<span class="scroll-hint-arrow flex items-center justify-center w-5 h-5 rounded-full bg-amber-500 border border-amber-300/80 shadow-md shadow-black/40">
-										<svg class="w-3 h-3 text-black" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-										</svg>
-									</span>
-								</div>
-							{/if}
-						</div>
-					</div>
-				{/if}
-
-				</div>
-			{/if}
-			</aside>
-			</div><!-- end two-column row -->
+		<!-- Scratchpad (now full-width — IntelliPrompts margin is rendered inside) -->
+		<DictationScratchpad
+			bind:this={scratchpadRef}
+			checklistSections={prePoppedSections}
+			{activePrompts}
+			{scanType}
+			{clinicalHistory}
+			{apiKeyStatus}
+			onContentChange={(c) => { scratchpadContent = c; }}
+			onRecordingChange={(recording) => { isRecording = recording; }}
+			onReviewingChange={(reviewing) => { isReviewing = reviewing; }}
+			onCoveredSectionsChange={handleCoveredSectionsChange}
+			onPromptsChange={handlePromptsChange}
+			onScratchpadClear={() => { coveredSections = new Set(); activePrompts = []; }}
+		/>
+	</div>
 
 			<!-- Generate Report — full width spanning editor + side panel -->
 			<button
@@ -853,19 +708,5 @@ import { API_URL } from '$lib/config';
 	}
 	.skeleton-shimmer {
 		animation: shimmer 1.6s ease-in-out infinite;
-	}
-	@keyframes considerPulse {
-		0%, 100% { opacity: 1; transform: scale(1); }
-		50% { opacity: 0.4; transform: scale(0.75); }
-	}
-	.consider-pulse {
-		animation: considerPulse 1.8s ease-in-out infinite;
-	}
-	@keyframes scrollHintBounce {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.5; }
-	}
-	.scroll-hint-arrow {
-		animation: scrollHintBounce 1.4s ease-in-out infinite;
 	}
 </style>

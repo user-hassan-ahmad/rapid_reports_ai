@@ -56,7 +56,6 @@ class CanvasProcessResponse(BaseModel):
 class CanvasReviewRequest(BaseModel):
     scratchpad_content: str
     checklist_sections: list[str] = []
-    existing_prompts: list[str] = []
     scan_type: str = ""
     clinical_history: str = ""
 
@@ -156,11 +155,29 @@ OUTPUT
 Return the complete scratchpad and the covered_sections list (exact names from preferred_section_names)."""
 
 
-CANVAS_COVERAGE_SYSTEM_PROMPT = """You are a radiology checklist coverage checker. Given a dictation scratchpad and a list of expected anatomical sections, determine which sections have been meaningfully addressed.
+CANVAS_COVERAGE_SYSTEM_PROMPT = """You are a strict radiology checklist coverage checker.
 
-COVERAGE RULE: A section is covered only when the radiologist has made a definitive statement about that structure — a finding, impression, or explicit qualifier ("normal", "unremarkable", "no focal lesion", "clear", "within normal limits", "NAD"). A bare anatomical name with no qualifier does NOT count as covered. Clinical shorthand counts (e.g. "uterus NAD", "cervix clear", "no adnexal mass", "liver unremarkable").
+DEFINITION OF "COVERED":
+A section is covered when the scratchpad contains a definitive statement whose grammatical subject is THAT SECTION'S OWN NAMED STRUCTURE — combined with a qualifier, finding, or measurement. The statement must be about the structure itself, not about a related, adjacent, or parent/child structure.
 
-Use the EXACT name strings from the checklist — do not invent or paraphrase. Return only covered_sections."""
+QUALIFIES AS COVERED:
+  • Explicit normal qualifier applied to the structure: "liver unremarkable", "spleen NAD", "gallbladder clear", "kidneys within normal limits"
+  • Positive imaging finding about the structure: "gallbladder distended", "liver 2cm hypodense lesion", "CBD calculus"
+  • Explicit confident negative about the structure: "no gallbladder stones", "no biliary dilatation", "no free fluid", "no adnexal mass"
+  • Standard shorthand where the structure name is present: "uterus NAD", "pancreas unremarkable"
+  • Quantitative measurement that constitutes a clinical statement: "CBD measures 4mm", "aorta 2.1cm"
+
+DOES NOT QUALIFY — reject every one of these:
+  • Bare anatomical mention with no qualifier: "liver", "gallbladder", "kidneys" written alone
+  • A related structure covering another: if GALLBLADDER and BILIARY SYSTEM are separate checklist sections, a statement about one does NOT cover the other — they must each be addressed independently
+  • Parent structure covering a child section: "liver unremarkable" does NOT cover HEPATIC VEINS or PORTAL VEIN if those are separate sections
+  • Incidental co-mention: "CBD calculus causing biliary dilatation" covers BILIARY SYSTEM but does NOT cover GALLBLADDER unless the gallbladder itself is also explicitly addressed in the same or another bullet
+  • Vague collective terms: "upper abdomen clear" or "visualised structures unremarkable" do NOT cover individual organ sections — each section needs its own named statement
+
+MATCHING RULE:
+For each section, locate the specific scratchpad text whose grammatical subject is that section's own structure (or a universally accepted radiological abbreviation of it — e.g. CBD for common bile duct, IVC for inferior vena cava). If that text also carries a qualifier, finding, or measurement, the section is covered. If no such anchored text exists, it is NOT covered. Coverage is never transitive, inferred, or borrowed from adjacent structures.
+
+Use the EXACT name strings from the checklist. Return only covered_sections."""
 
 
 CANVAS_COVERAGE_USER_PROMPT_TEMPLATE = """Scratchpad:
@@ -179,18 +196,17 @@ Your task: Identify imaging structures or features the radiologist has NOT yet r
 
 CARDINAL RULE: Every IntelliPrompt must direct the radiologist to look at or assess a specific IMAGING STRUCTURE or FEATURE on the scan. Never ask about clinical symptoms (fever, pain, jaundice), patient history, or whether something has been "documented". The radiologist is looking at images — ask them to look at something they may have missed.
 
-SELF-CHECK before writing any prompt: "Is this imaging feature already assessed somewhere in the scratchpad?" If yes, DO NOT generate the prompt.
+SELF-CHECK before writing any prompt: "Is this imaging feature meaningfully assessed somewhere in the scratchpad — with a qualifier, finding, or measurement?" If yes, DO NOT generate the prompt. A bare anatomical name with no qualifier does NOT count as assessed. If the scratchpad has "- Portal vein" or "- Gallbladder" with nothing else, those structures are NOT assessed and DO require a prompt if clinically indicated.
 
 THRESHOLD — only generate a prompt if ALL of these apply:
-- A documented finding implies a related structure or feature that should be reviewed but has not been mentioned in the scratchpad
+- A documented finding implies a related structure or feature that should be reviewed but has not been meaningfully assessed in the scratchpad
 - Reviewing it would change the imaging diagnosis, urgency classification, or report impression
-- The finding or structure is genuinely absent from the scratchpad
+- The finding or structure is genuinely absent from or only bare-mentioned in the scratchpad
 
 DO NOT generate for:
-- Any structure or feature already described in the scratchpad, even partially
+- Any structure explicitly qualified in the scratchpad — "unremarkable", "normal", "clear", "NAD", "within normal limits", "not identified", "no X"
 - Re-confirming a finding already present (never ask "is there biliary dilatation?" if it is documented)
 - Isolated incidental findings with no meaningful imaging consequence
-- Negated structures: "no X", "clear", "normal", "unremarkable", "not identified"
 - Clinical or laboratory correlation requests — you only direct the gaze, not the clerk
 
 DO generate for (radiology-specific imaging targets):
@@ -200,17 +216,22 @@ DO generate for (radiology-specific imaging targets):
 - A finding with known imaging spread patterns not yet reviewed (e.g. portal vein thrombosis → "Superior mesenteric vein and splenic vein assessed for propagation? Bowel wall reviewed for ischaemia?")
 - A structure that could be directly compromised by the documented pathology (e.g. large aortic aneurysm → "Adjacent structures — IVC, duodenum, ureters — assessed for mass effect or involvement?")
 - Quantification that materially changes the imaging impression (e.g. aneurysm with no size → "Maximum aortic diameter measured?")
+- A mass lesion with no vascular assessment → encasement or involvement of adjacent vessels not documented (e.g. pancreatic head mass → "Coeliac axis, SMA, and portal vein assessed for vascular encasement?"); a mass with hepatic lesions and no characterisation → "Liver lesions assessed for features of metastatic disease — size, number, diffusion restriction?"; lymph node assessment absent despite a mass → "Perivascular and regional lymph nodes assessed for pathological enlargement?"
+- An asymmetric or unexplained finding where no cause has been documented (e.g. unilateral duct prominence, asymmetric organ size) → ask what explains the asymmetry on this scan
+- A clinically significant incidental finding in a structure visible on this scan, even when full characterisation requires another modality: direct the radiologist to assess what CAN be evaluated on the available images — extent, wall involvement, relationship to adjacent structures, local invasion (e.g. suspicious colonic lesion on MRCP → "Hepatic flexure lesion — extent and relationship to adjacent structures assessed on available sequences?"; lung nodule on abdominal CT → "Lung nodule — size and morphology documented on lung windows?")
 
-ONE PROMPT PER ROOT FINDING: If multiple unassessed consequences stem from the same scratchpad finding, generate ONE prompt covering the most important consequence. Do not generate separate prompts for each consequence of the same root finding — consolidate. Each prompt must have a distinct root finding as its source_text.
+ONE PROMPT PER ROOT FINDING: If multiple unassessed consequences stem from the same scratchpad finding, generate ONE prompt targeting the most clinically critical consequence. Do not generate separate prompts for each consequence of the same root finding — consolidate them. Each prompt must have a distinct root finding as its source_text. Note: separate findings (e.g. a pancreatic mass, a distended gallbladder, liver lesions) each warrant their own independent prompt.
 
-MODALITY CONSTRAINT — ABSOLUTE RULE: Before writing any prompt or rationale, identify the exact scan type from the user prompt. Only suggest imaging features and assessments that are physically obtainable on that specific modality and protocol. If contrast or a specific sequence is not part of the declared scan (e.g. MRCP is non-contrast T2, plain CT has no enhancement), never reference it. Every prompt and rationale must be achievable by the radiologist on the images they actually have in front of them.
+MODALITY CONSTRAINT — ABSOLUTE RULE: Before writing any prompt or rationale, identify the exact scan type from the user prompt. Only suggest imaging features and assessments that are physically obtainable on that specific modality and protocol. If contrast or a specific sequence is not part of the declared scan (e.g. MRCP is non-contrast T2 with DWI — no gadolinium, no enhancement phases), never reference it. Every prompt and rationale must be achievable by the radiologist on the images they actually have in front of them.
 
 STYLE: Direct, concise imaging instruction. ≤12 words. End with "?" No preamble. Name the structure, name the feature.
-SOURCE TEXT: Shortest verbatim scratchpad phrase that triggers the prompt — 3–6 words, exact substring.
-RATIONALE: 2–3 sentences of practical workstation guidance specific to the declared modality: what to scroll to, what characteristic to assess on that specific scan, and what the finding would imply. Must not reference any technique unavailable on this scan type.
-CONSOLIDATION: Re-evaluate existing_prompts against the current scratchpad. Discard any that are now answered or no longer relevant. Combine related prompts into one. Add new ones at threshold. Return the full consolidated list. Return [] if nothing meets the threshold.
+SOURCE TEXT: Shortest verbatim scratchpad phrase that triggers the prompt — 3–6 words, exact substring. Must be a substring that literally appears in the scratchpad — never invent a phrase.
+RATIONALE: Always required. 1–3 sentences of practical workstation guidance specific to the declared modality — what to scroll to, what characteristic to assess on that specific scan, and what the finding would imply. For straightforward gaps keep it to 1 sentence. Must not reference any technique unavailable on this scan type.
+ORDERING: Order prompts by clinical urgency — most critical unassessed gap first.
 
-You do NOT rewrite or modify the scratchpad. Return only prompts."""
+OUTPUT: Return the complete current list of prompts for gaps that exist in this scratchpad right now. Order by clinical urgency. Return [] if nothing meets the threshold.
+
+You do NOT rewrite or modify the scratchpad. Return only the prompts."""
 
 
 CANVAS_INTELLIPROMPTS_USER_PROMPT_TEMPLATE = """Scan type: {scan_type}
@@ -221,9 +242,7 @@ Current scratchpad:
 {scratchpad_content}
 ---
 
-Current active IntelliPrompts (re-evaluate, consolidate, discard stale, add new): {existing_prompts}
-
-Return the consolidated IntelliPrompts list."""
+Return your complete IntelliPrompts list for this scratchpad."""
 
 CANVAS_PROCESS_USER_PROMPT_TEMPLATE = """Scan type: {scan_type}
 Clinical history: {clinical_history}
@@ -383,6 +402,7 @@ async def process_transcript(
         return CanvasProcessResponse(scratchpad=request.scratchpad_content, covered_sections=[])
 
 
+
 @canvas_router.post("/review", response_model=CanvasReviewResponse)
 async def review_scratchpad(
     request: CanvasReviewRequest,
@@ -400,7 +420,6 @@ async def review_scratchpad(
         raise HTTPException(status_code=503, detail="Service not available. Contact your administrator.")
 
     checklist_str = ", ".join(request.checklist_sections) if request.checklist_sections else "(none)"
-    existing_prompts_str = ", ".join(f'"{q}"' for q in request.existing_prompts) if request.existing_prompts else "(none)"
 
     coverage_prompt = CANVAS_COVERAGE_USER_PROMPT_TEMPLATE.format(
         scratchpad_content=request.scratchpad_content,
@@ -410,10 +429,17 @@ async def review_scratchpad(
         scan_type=request.scan_type or "(not specified)",
         clinical_history=request.clinical_history or "(not specified)",
         scratchpad_content=request.scratchpad_content,
-        existing_prompts=existing_prompts_str,
     )
 
     async def run_coverage() -> list[str]:
+        import time as _time
+        coverage_model_settings = {"temperature": 0.0, "max_tokens": 500}
+        scratchpad_preview = request.scratchpad_content[:200].replace('\n', ' | ')
+        print(f"\n[COVERAGE] ── New call ──────────────────────────")
+        print(f"[COVERAGE] Model: {coverage_model} | Scratchpad: {len(request.scratchpad_content)} chars")
+        print(f"[COVERAGE] Scratchpad preview: {scratchpad_preview}...")
+        print(f"[COVERAGE] Checklist sections: {request.checklist_sections}")
+        t0 = _time.perf_counter()
         try:
             result = await _run_agent_with_model(
                 model_name=coverage_model,
@@ -421,25 +447,95 @@ async def review_scratchpad(
                 system_prompt=CANVAS_COVERAGE_SYSTEM_PROMPT,
                 user_prompt=coverage_prompt,
                 api_key=coverage_api_key,
-                model_settings={"temperature": 0.0, "max_tokens": 200},
+                model_settings=coverage_model_settings,
             )
-            return result.output.covered_sections
-        except Exception:
+            covered = result.output.covered_sections
+            elapsed = _time.perf_counter() - t0
+            print(f"[COVERAGE] ✅ {elapsed:.2f}s → {covered}")
+            return covered
+        except Exception as e:
+            elapsed = _time.perf_counter() - t0
+            print(f"[COVERAGE] ❌ {elapsed:.2f}s → {type(e).__name__}: {e}")
             return []
 
     async def run_intelliprompts() -> list[IntelliPrompt]:
-        try:
+        import time as _time
+        if intelliprompts_provider == "cerebras":
+            intelliprompts_model_settings = {"temperature": 0.1, "max_completion_tokens": 1500, "reasoning_effort": "medium"}
+            use_thinking = False
+        else:
+            intelliprompts_model_settings = {"temperature": 0.1, "max_tokens": 3000}
+            use_thinking = True
+
+        scratchpad_lower = request.scratchpad_content.lower()
+
+        async def _call_model(model_name: str, api_key: str, thinking: bool, settings: dict) -> PromptsOnlyResponse:
             result = await _run_agent_with_model(
-                model_name=intelliprompts_model,
+                model_name=model_name,
                 output_type=PromptsOnlyResponse,
                 system_prompt=CANVAS_INTELLIPROMPTS_SYSTEM_PROMPT,
                 user_prompt=intelliprompts_prompt,
-                api_key=intelliprompts_api_key,
-                use_thinking=True,
-                model_settings={"temperature": 0.1, "max_tokens": 1000},
+                api_key=api_key,
+                use_thinking=thinking,
+                model_settings=settings,
             )
-            return result.output.prompts
-        except Exception:
+            return result.output
+
+        def _validate_and_log(raw: list[IntelliPrompt], elapsed: float, label: str) -> list[IntelliPrompt]:
+            validated = []
+            for p in raw:
+                if p.source_text and p.source_text.lower() not in scratchpad_lower:
+                    print(f"[INTELLIPROMPTS] ⚠️  Clearing fabricated source_text: '{p.source_text}'")
+                    validated.append(IntelliPrompt(question=p.question, source_text="", rationale=p.rationale))
+                else:
+                    validated.append(p)
+            print(f"[INTELLIPROMPTS] {label} {elapsed:.2f}s → {len(validated)} prompts")
+            for p in validated:
+                rationale_preview = (p.rationale[:80] + "…") if p.rationale and len(p.rationale) > 80 else (p.rationale or "⚠️ NO RATIONALE")
+                print(f"[INTELLIPROMPTS]   • {p.question}")
+                print(f"[INTELLIPROMPTS]     ↳ {rationale_preview}")
+            return validated
+
+        print(f"\n[INTELLIPROMPTS] ── New call ──────────────────────────")
+        print(f"[INTELLIPROMPTS] Model: {intelliprompts_model} | use_thinking: {use_thinking} | stateless")
+        t0 = _time.perf_counter()
+        try:
+            response = await _call_model(intelliprompts_model, intelliprompts_api_key, use_thinking, intelliprompts_model_settings)
+            elapsed = _time.perf_counter() - t0
+            return _validate_and_log(response.prompts, elapsed, "✅")
+        except Exception as e:
+            elapsed = _time.perf_counter() - t0
+            error_str = str(e)
+
+            # Detect 503 / Groq busy signals
+            is_infra_failure = "503" in error_str or "queue_exceeded" in error_str
+            if "failed_generation" in error_str:
+                import re as _re
+                generation = ""
+                match = _re.search(r"'failed_generation':\s*'(.*?)'(?:,|\})", error_str, _re.DOTALL)
+                if match:
+                    generation = match.group(1)
+                is_empty = generation.strip() in ("", "[]", "[ ]")
+                if is_empty:
+                    is_infra_failure = True
+
+            # 503/busy: try gpt-oss-120b (Cerebras) once, then resume normal Qwen next call
+            if is_infra_failure:
+                try:
+                    fallback_api_key = _get_api_key_for_provider("cerebras")
+                    response = await _call_model(
+                        "gpt-oss-120b",
+                        fallback_api_key,
+                        False,
+                        {"temperature": 0.1, "max_completion_tokens": 1500, "reasoning_effort": "medium"},
+                    )
+                    elapsed = _time.perf_counter() - t0
+                    return _validate_and_log(response.prompts, elapsed, "⚡ 503→fallback")
+                except Exception as fallback_e:
+                    print(f"[INTELLIPROMPTS] ❌ Fallback also failed: {fallback_e}")
+                    return []
+
+            print(f"[INTELLIPROMPTS] ❌ {elapsed:.2f}s → {type(e).__name__}: {e}")
             return []
 
     covered, prompts = await asyncio.gather(run_coverage(), run_intelliprompts())
