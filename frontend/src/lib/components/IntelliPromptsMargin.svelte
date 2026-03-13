@@ -11,10 +11,12 @@
 	export let onHighlight: (text: string) => void = () => {};
 	export let onClearHighlight: () => void = () => {};
 
-	const GUTTER_X = 5;       // center-x of anchor dot (within 12px gutter)
-	const CARD_LEFT = 20;     // left edge of cards (px from container left)
-	const MIN_CARD_GAP = 6;   // minimum gap between adjacent cards
+	const GUTTER_X = 5;        // center-x of anchor dot (within 12px gutter)
+	const CARD_LEFT = 18;      // left edge of cards (px from container left)
+	const MIN_CARD_GAP = 8;    // minimum gap between adjacent cards
+	const CARD_RIGHT_INSET = 6; // breathing room between card right edge and container edge
 	const CARD_HEIGHT_EST = 46; // initial height estimate for layout
+	const BOTTOM_PAD = 16;     // extra space below the last card
 
 	let containerEl: HTMLDivElement;
 	let expandedSet = new Set<string>();
@@ -100,7 +102,7 @@
 		for (const p of sortedAnchored) {
 			const cardY = cardYMap.get(p.question) ?? 0;
 			const cardH = cardHeightMap[p.question] ?? CARD_HEIGHT_EST;
-			h = Math.max(h, cardY + cardH + MIN_CARD_GAP);
+			h = Math.max(h, cardY + cardH + BOTTOM_PAD);
 		}
 		for (const anchorY of anchorYMap.values()) {
 			h = Math.max(h, anchorY + 10);
@@ -134,7 +136,7 @@
 <div
 	bind:this={containerEl}
 	class="relative select-none transition-opacity duration-400 {isReviewing ? 'opacity-40' : 'opacity-100'}"
-	style="width: 240px; height: {containerHeight}px; min-height: 100%"
+	style="width: 240px; height: {containerHeight}px; min-height: 100%; padding-top: 2px"
 >
 
 	<!-- SVG layer: connector lines (rendered behind cards) -->
@@ -190,8 +192,8 @@
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div
-				class="absolute right-0"
-				style="left: {CARD_LEFT}px; top: {cardY}px; z-index: 1"
+				class="absolute"
+				style="left: {CARD_LEFT}px; right: {CARD_RIGHT_INSET}px; top: {cardY}px; z-index: 1"
 				use:attachObserver={prompt.question}
 				in:fly={{ x: 12, duration: 240 }}
 				out:fade={{ duration: 130 }}
