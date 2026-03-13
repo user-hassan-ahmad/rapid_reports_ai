@@ -7,7 +7,6 @@
 
 	export let activePrompts: IntelliPrompt[] = [];
 	export let editor: EditorView | null = null;
-	export let scrollTop: number = 0;
 	export let isReviewing: boolean = false;
 	export let onHighlight: (text: string) => void = () => {};
 	export let onClearHighlight: () => void = () => {};
@@ -74,13 +73,10 @@
 		anchorYMap = newMap;
 	}
 
-	$: activePrompts, scrollTop, editor, tick().then(recomputeAnchors);
-
-	// Re-run after the CSS open-transition completes (300ms) so cards land correctly
-	// even if the container had zero width during the first tick.
-	$: if (activePrompts.length > 0) {
-		setTimeout(recomputeAnchors, 320);
-	}
+	// coordsAtPos gives viewport-relative coords; containerRect.top is also viewport-relative.
+	// When the container is inside the scroll div, both values shift equally on scroll,
+	// so their difference is scroll-stable — no scrollTop prop needed.
+	$: activePrompts, editor, tick().then(recomputeAnchors);
 
 	// Greedy top-down distribution: keeps cards close to their anchor, pushes down to prevent overlap
 	$: cardYMap = (() => {
@@ -95,6 +91,21 @@
 			prevBottom = y + cardH;
 		}
 		return result;
+	})();
+
+	// Total height needed so all cards and anchor dots are within the element bounds.
+	// This lets the parent scroll container grow to fit, rather than clipping.
+	$: containerHeight = (() => {
+		let h = 0;
+		for (const p of sortedAnchored) {
+			const cardY = cardYMap.get(p.question) ?? 0;
+			const cardH = cardHeightMap[p.question] ?? CARD_HEIGHT_EST;
+			h = Math.max(h, cardY + cardH + MIN_CARD_GAP);
+		}
+		for (const anchorY of anchorYMap.values()) {
+			h = Math.max(h, anchorY + 10);
+		}
+		return h;
 	})();
 
 	// SVG path from anchor dot to card left edge midpoint
@@ -120,7 +131,11 @@
 	}
 </script>
 
-<div bind:this={containerEl} class="relative h-full overflow-hidden select-none transition-opacity duration-400 {isReviewing ? 'opacity-40' : 'opacity-100'}">
+<div
+	bind:this={containerEl}
+	class="relative select-none transition-opacity duration-400 {isReviewing ? 'opacity-40' : 'opacity-100'}"
+	style="width: 240px; height: {containerHeight}px; min-height: 100%"
+>
 
 	<!-- SVG layer: connector lines (rendered behind cards) -->
 	<svg class="absolute inset-0 w-full h-full pointer-events-none" style="overflow: visible">

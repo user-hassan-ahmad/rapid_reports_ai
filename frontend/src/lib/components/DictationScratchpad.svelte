@@ -44,8 +44,6 @@
 
 
 	let editorContainer: HTMLDivElement;
-	let scrollEl: HTMLDivElement;
-	let editorScrollTop = 0;
 	let editor: EditorView | null = null;
 	const editableCompartment = new Compartment();
 
@@ -650,60 +648,58 @@
 		{/if}
 	</div>
 
-	<!-- Editor + IntelliPrompts margin row — overlapped from above by the button -->
-	<div class="flex flex-row -mt-[22px] gap-2 flex-1 min-h-0 items-start">
+	<!-- CM6 scratchpad wrapper — overlapped from above by the button -->
+	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+	<div
+		class="scratchpad-wrapper -mt-[22px] flex-1 rounded-xl border overflow-hidden transition-all duration-300 min-h-[360px] flex flex-col cursor-text {isRecording
+			? 'border-purple-500/50 dictation-glow'
+			: 'border-white/10 bg-black/40'}"
+		onclick={(e) => { if (e.target === e.currentTarget || !(e.target as Element).closest('.cm-editor')) editor?.focus(); }}
+	>
+		<!-- Scroll container — holds both the editor and the margin so they scroll together.
+		     This means card overflow is never clipped: the area simply becomes scrollable. -->
+		<div class="flex-1 min-h-0 overflow-auto pb-4 pt-8">
+			<div class="flex flex-row items-start min-h-full">
 
-		<!-- CM6 scratchpad wrapper -->
-		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-		<div
-			class="scratchpad-wrapper flex-1 rounded-xl border overflow-hidden transition-all duration-300 min-h-[360px] flex flex-col cursor-text {isRecording
-				? 'border-purple-500/50 dictation-glow'
-				: 'border-white/10 bg-black/40'}"
-			onclick={(e) => { if (e.target === e.currentTarget || !(e.target as Element).closest('.cm-editor')) editor?.focus(); }}
-		>
-			<!-- Top padding clears the overlapping button -->
-			<div
-				bind:this={scrollEl}
-				onscroll={() => { editorScrollTop = scrollEl?.scrollTop ?? 0; }}
-				class="flex-1 min-h-0 overflow-auto px-4 pb-4 pt-8"
-			>
-				<div bind:this={editorContainer} class="min-h-full"></div>
-			</div>
-
-			<!-- Inline transcript feed at the bottom of the box — only when dictation is on -->
-			{#if isRecording && (currentInterim || rawFeed.length > 0)}
-				<div class="border-t border-white/[0.05] px-4 py-2 flex flex-col gap-0.5 shrink-0">
-					{#if currentInterim}
-						<p class="text-xs text-gray-600 italic truncate">{currentInterim}</p>
-					{/if}
-					{#each rawFeed.slice(-1) as line}
-						<p class="text-xs text-gray-500 italic truncate flex items-center gap-1.5">
-							{#if isProcessing}
-								<span class="w-2 h-2 border border-purple-400 border-t-transparent rounded-full animate-spin inline-block shrink-0"></span>
-							{/if}
-							{line}{#if isProcessing}…{/if}
-						</p>
-					{/each}
+				<!-- Editor column -->
+				<div class="flex-1 min-h-full pl-4 pr-4">
+					<div bind:this={editorContainer} class="min-h-full"></div>
 				</div>
-			{/if}
+
+				<!-- Margin column — width animates open/closed; stops click bubbling to editor focus handler -->
+				<div
+					class="shrink-0 overflow-hidden"
+					style="width: {activePrompts.length > 0 ? '240px' : '0px'}; transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1)"
+					onclick={(e) => e.stopPropagation()}
+				>
+					<IntelliPromptsMargin
+						{activePrompts}
+						{editor}
+						{isReviewing}
+						onHighlight={highlightSource}
+						onClearHighlight={clearHighlight}
+					/>
+				</div>
+
+			</div>
 		</div>
 
-		<!-- IntelliPrompts margin column — width transitions between 0 and 240px so the
-		     editor and margin animate together as a single coordinated layout change -->
-		<div
-			class="shrink-0 self-stretch overflow-hidden"
-			style="width: {activePrompts.length > 0 ? '240px' : '0px'}; padding-top: 22px; transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1)"
-		>
-			<IntelliPromptsMargin
-				{activePrompts}
-				{editor}
-				scrollTop={editorScrollTop}
-				{isReviewing}
-				onHighlight={highlightSource}
-				onClearHighlight={clearHighlight}
-			/>
-		</div>
-
+		<!-- Inline transcript feed at the bottom of the box — only when dictation is on -->
+		{#if isRecording && (currentInterim || rawFeed.length > 0)}
+			<div class="border-t border-white/[0.05] px-4 py-2 flex flex-col gap-0.5 shrink-0">
+				{#if currentInterim}
+					<p class="text-xs text-gray-600 italic truncate">{currentInterim}</p>
+				{/if}
+				{#each rawFeed.slice(-1) as line}
+					<p class="text-xs text-gray-500 italic truncate flex items-center gap-1.5">
+						{#if isProcessing}
+							<span class="w-2 h-2 border border-purple-400 border-t-transparent rounded-full animate-spin inline-block shrink-0"></span>
+						{/if}
+						{line}{#if isProcessing}…{/if}
+					</p>
+				{/each}
+			</div>
+		{/if}
 	</div>
 
 </div>
