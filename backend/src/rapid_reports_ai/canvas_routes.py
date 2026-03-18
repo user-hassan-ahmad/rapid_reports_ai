@@ -356,6 +356,13 @@ async def sections_from_template(
     current_user: User = Depends(get_current_user),
 ):
     """Extract ordered anatomical section headers from a FINDINGS template body."""
+    import time as _time
+
+    t0 = _time.perf_counter()
+    template_len = len(request.template_content or "")
+    print(f"\n[SECTIONS-FROM-TEMPLATE] ── New call ──────────────────────────")
+    print(f"[SECTIONS-FROM-TEMPLATE] template_content: {template_len} chars | content_style: {request.content_style!r}")
+
     primary_model = MODEL_CONFIG["CANVAS_SECTIONS_FROM_TEMPLATE"]
     fallback_model = MODEL_CONFIG["CANVAS_SECTIONS_FROM_TEMPLATE_FALLBACK"]
     legend = _syntax_legend(request.content_style)
@@ -367,6 +374,7 @@ async def sections_from_template(
         provider = _get_model_provider(primary_model)
         api_key = _get_api_key_for_provider(provider)
     except ValueError:
+        print(f"[SECTIONS-FROM-TEMPLATE] ❌ No provider for {primary_model}")
         raise HTTPException(status_code=503, detail="Service not available. Contact your administrator.")
 
     try:
@@ -379,8 +387,12 @@ async def sections_from_template(
             api_key=api_key,
             model_settings=settings,
         )
+        elapsed = _time.perf_counter() - t0
+        sections = result.output.sections
+        print(f"[SECTIONS-FROM-TEMPLATE] ✅ {elapsed:.2f}s (primary) → {len(sections)} sections: {sections}")
         return result.output
-    except Exception:
+    except Exception as e:
+        print(f"[SECTIONS-FROM-TEMPLATE] ⚠️  Primary failed: {type(e).__name__}: {e}")
         try:
             fallback_provider = _get_model_provider(fallback_model)
             fallback_api_key = _get_api_key_for_provider(fallback_provider)
@@ -393,8 +405,13 @@ async def sections_from_template(
                 api_key=fallback_api_key,
                 model_settings=fallback_settings,
             )
+            elapsed = _time.perf_counter() - t0
+            sections = result.output.sections
+            print(f"[SECTIONS-FROM-TEMPLATE] ✅ {elapsed:.2f}s (fallback) → {len(sections)} sections: {sections}")
             return result.output
-        except Exception:
+        except Exception as fallback_e:
+            elapsed = _time.perf_counter() - t0
+            print(f"[SECTIONS-FROM-TEMPLATE] ❌ {elapsed:.2f}s both failed, returning [FINDINGS]: {type(fallback_e).__name__}: {fallback_e}")
             return SectionGenerateResponse(sections=["FINDINGS"])
 
 

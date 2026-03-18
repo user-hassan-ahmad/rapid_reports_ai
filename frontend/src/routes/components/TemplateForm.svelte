@@ -130,6 +130,10 @@
 
 		try {
 			// Fetch sections from FINDINGS template_content
+			const templateId = selectedTemplate?.id ?? 'unknown';
+			const templateName = selectedTemplate?.name ?? 'unknown';
+			console.log('[SetUpWorkspace] template:', templateId, templateName, 'findingsTemplateContent len:', findingsTemplateContent?.length ?? 0, 'content_style:', findingsContentStyle);
+
 			if (findingsTemplateContent?.trim()) {
 				const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 				if ($token) headers['Authorization'] = `Bearer ${$token}`;
@@ -142,21 +146,28 @@
 					})
 				});
 				const data = await res.json();
+				console.log('[SetUpWorkspace] sections-from-template res.status:', res.status, 'data:', data, 'data.sections:', data?.sections);
+
 				if (data.sections && Array.isArray(data.sections)) {
 					prePoppedSections = data.sections;
+					console.log('[SetUpWorkspace] prePoppedSections set:', prePoppedSections.length, prePoppedSections);
 				} else {
 					prePoppedSections = [];
+					console.log('[SetUpWorkspace] prePoppedSections empty (no valid data.sections)');
 				}
 			} else {
 				prePoppedSections = [];
+				console.log('[SetUpWorkspace] prePoppedSections empty (findingsTemplateContent empty or whitespace)');
 			}
 			coveredSections = new Set();
 		caseDetailsManuallyExpanded = false;
 		} catch (e) {
+			console.error('[SetUpWorkspace] fetch error:', e);
 			sectionsError = 'Failed to connect to API';
 			prePoppedSections = [];
 		} finally {
 			sectionsLoading = false;
+			console.log('[SetUpWorkspace] done. prePoppedSections.length:', prePoppedSections.length, 'workspaceOpen will be:', prePoppedSections.length > 0);
 		}
 	}
 
