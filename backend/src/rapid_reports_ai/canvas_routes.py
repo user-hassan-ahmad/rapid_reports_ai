@@ -129,6 +129,13 @@ Granularity rule for this style: a label followed by its own {{VAR}}/xxx placeho
 
 Granularity rule for this style: each distinct prose block is the unit to extract. A // line belongs to the prose block above it — do not treat it as a separate section or as evidence of a new section boundary."""
 
+    if content_style == "normal_template":
+        return """TEMPLATE SYNTAX — Normal Prose:
+- This template has flowing prose with no placeholders ({VAR}, xxx, or //).
+- Each distinct prose paragraph or anatomical region (separated by blank lines or clear topic shifts) is a coverage unit.
+- Extract section names from the prose structure (anatomical names, paragraph topics, organ systems mentioned).
+- Principle #2 (technique exclusion) does NOT apply here: prose-only templates ARE dictation targets — extract sections from the prose blocks."""
+
     return ""
 
 
