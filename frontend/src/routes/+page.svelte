@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
+	import { fade } from 'svelte/transition';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 import IntelliDictateTab from './components/IntelliDictateTab.svelte';
@@ -22,6 +23,7 @@ import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 	import { logout, user, token, isAuthenticated } from '$lib/stores/auth';
 	import { reportsStore } from '$lib/stores/reports';
 	import { templatesStore } from '$lib/stores/templates';
+	import { draftStore, hasIntelliDraft, hasTemplateDraft } from '$lib/stores/draft.js';
 	import { settingsStore } from '$lib/stores/settings';
 	import bgCircuit from '$lib/assets/background circuit board effect.png';
 	import { marked } from 'marked';
@@ -280,6 +282,38 @@ let templatedModel = 'claude'; // Track model for template editor
 		activeTab = event.detail;
 	}
 
+	// Tab refs for draft restore (called from page-level banners)
+	let intelliTabRef: { restoreFromParent: () => Promise<void>; dismissFromParent: () => void } | null = null;
+	let templateTabRef: { restoreFromParent: () => Promise<void>; dismissFromParent: () => void } | null = null;
+
+	// Banner visibility is captured once at mount, not reactive — prevents banner firing while typing
+	let showIntelliDraftBanner = false;
+	let showTemplateDraftBanner = false;
+
+	async function handleRestoreIntelli(): Promise<void> {
+		showIntelliDraftBanner = false;
+		activeTab = 'auto';
+		await tick();
+		intelliTabRef?.restoreFromParent();
+	}
+
+	function handleDismissIntelli(): void {
+		showIntelliDraftBanner = false;
+		intelliTabRef?.dismissFromParent();
+	}
+
+	async function handleRestoreTemplate(): Promise<void> {
+		showTemplateDraftBanner = false;
+		activeTab = 'templated';
+		await tick();
+		templateTabRef?.restoreFromParent();
+	}
+
+	function handleDismissTemplate(): void {
+		showTemplateDraftBanner = false;
+		templateTabRef?.dismissFromParent();
+	}
+
 	function handleEditTemplate(event: CustomEvent<{ template: Record<string, unknown> }>): void {
 		// Editing now happens inline in TemplatedReportTab, so this handler is kept for compatibility
 		// but doesn't need to switch tabs anymore
@@ -408,6 +442,10 @@ function handleTemplateCleared(): void {
 
 	onMount(async () => {
 		if (browser) {
+			// Capture draft banner state once at mount — banners must not react to live typing
+			showIntelliDraftBanner = $hasIntelliDraft;
+			showTemplateDraftBanner = $hasTemplateDraft;
+
 			// Immediate auth check - redirect if no token (prevents any flash)
 			const token = localStorage.getItem('token');
 			if (!token) {
@@ -650,11 +688,89 @@ $: if (!isEnhancementContext && sidebarVisible) {
 						<span>{apiKeyStatusError}</span>
 						<button
 							type="button"
-							on:click={() => loadApiKeyStatus()}
+							onclick={() => loadApiKeyStatus()}
 							class="shrink-0 text-amber-400 hover:text-amber-300 underline text-sm"
 						>
 							Retry
 						</button>
+					</div>
+				{/if}
+				<!-- Draft restore banners (always visible when drafts exist) -->
+			{#if showIntelliDraftBanner || showTemplateDraftBanner}
+				<div class="space-y-2 mb-4">
+					{#if showIntelliDraftBanner}
+							<div
+								class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-amber-950/40 border border-amber-500/25 text-sm"
+								in:fade={{ duration: 200 }}
+								out:fade={{ duration: 150 }}
+							>
+								<div class="flex items-center gap-2.5 min-w-0">
+									<svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+									</svg>
+									<span class="shrink-0 px-2 py-0.5 rounded-md bg-blue-500/15 border border-blue-500/25 text-blue-300 text-[11px] font-medium">
+										Quick Report
+									</span>
+									<span class="text-amber-200/80 truncate">
+										{new Date($draftStore.savedAt ?? 0).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} — restore your previous work?
+									</span>
+								</div>
+								<div class="flex items-center gap-2 shrink-0">
+									<button
+										type="button"
+										onclick={handleRestoreIntelli}
+										class="px-3 py-1 text-xs font-medium rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors border border-amber-500/30"
+									>
+										Restore
+									</button>
+									<button
+										type="button"
+										onclick={handleDismissIntelli}
+										class="px-3 py-1 text-xs rounded-lg text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
+									>
+										Dismiss
+									</button>
+								</div>
+							</div>
+						{/if}
+						{#if showTemplateDraftBanner}
+							{@const templateName = ($templatesStore.templates || []).find(
+								(t) => t.id === $draftStore.templateTab?.templateId
+							)?.name}
+							<div
+								class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-amber-950/40 border border-amber-500/25 text-sm"
+								in:fade={{ duration: 200 }}
+								out:fade={{ duration: 150 }}
+							>
+								<div class="flex items-center gap-2.5 min-w-0">
+									<svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+									</svg>
+									<span class="shrink-0 px-2 py-0.5 rounded-md bg-purple-500/15 border border-purple-500/25 text-purple-300 text-[11px] font-medium">
+										Template{templateName ? `: ${templateName}` : ''}
+									</span>
+									<span class="text-amber-200/80 truncate">
+										{new Date($draftStore.savedAt ?? 0).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} — restore your previous work?
+									</span>
+								</div>
+								<div class="flex items-center gap-2 shrink-0">
+									<button
+										type="button"
+										onclick={handleRestoreTemplate}
+										class="px-3 py-1 text-xs font-medium rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors border border-amber-500/30"
+									>
+										Restore
+									</button>
+									<button
+										type="button"
+										onclick={handleDismissTemplate}
+										class="px-3 py-1 text-xs rounded-lg text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
+									>
+										Dismiss
+									</button>
+								</div>
+							</div>
+						{/if}
 					</div>
 				{/if}
 				<!-- Auto Report Tab - Keep component alive, just hide/show -->
@@ -669,6 +785,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 						</div>
 					{:else}
 						<IntelliDictateTab
+							bind:this={intelliTabRef}
 							bind:response={autoResponse}
 							bind:responseModel={autoResponseModel}
 							bind:loading={autoLoading}
@@ -717,6 +834,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 						</div>
 					{:else}
 					<TemplatedReportTab
+						bind:this={templateTabRef}
 						apiKeyStatus={apiKeyStatus}
 						reportUpdateLoading={reportUpdateLoading}
 						versionHistoryRefreshKey={versionHistoryRefreshKey}
@@ -876,15 +994,15 @@ $: if (!isEnhancementContext && sidebarVisible) {
 	<div 
 		class="fixed inset-0 bg-black/90 backdrop-blur-lg overflow-y-auto"
 		style="z-index: 9999;"
-		on:click={handleCloseTemplateEditor}
-		on:keydown={(e) => e.key === 'Escape' && handleCloseTemplateEditor()}
+		onclick={handleCloseTemplateEditor}
+		onkeydown={(e) => e.key === 'Escape' && handleCloseTemplateEditor()}
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
 	>
 		<div 
 			class="min-h-screen p-4 md:p-6"
-			on:click={(e) => e.stopPropagation()}
+			onclick={(e) => e.stopPropagation()}
 			role="document"
 		>
 			<TemplateEditorNew
@@ -928,8 +1046,8 @@ $: if (!isEnhancementContext && sidebarVisible) {
 			class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 md:p-6"
 			style="z-index: 9999;"
 			tabindex="-1"
-			on:click|self={() => { historyModalReport = null; inputsExpanded = false; }}
-			on:keydown={(event) => {
+			onclick={(e) => { if (e.target === e.currentTarget) { historyModalReport = null; inputsExpanded = false; } }}
+			onkeydown={(event) => {
 				if (event.key === 'Escape') {
 					historyModalReport = null;
 					inputsExpanded = false;
@@ -949,7 +1067,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 					<h2 id="history-modal-title" class="text-xl md:text-2xl font-bold text-white">Report Details</h2>
 					<div class="flex items-center gap-2">
 						<button
-							on:click={() => {
+							onclick={() => {
 								if (historyModalReport?.report_content) {
 									navigator.clipboard.writeText(historyModalReport.report_content);
 								}
@@ -963,7 +1081,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							</svg>
 						</button>
 						<button
-							on:click={() => { historyModalReport = null; inputsExpanded = false; }}
+							onclick={() => { historyModalReport = null; inputsExpanded = false; }}
 							class="p-2 text-gray-400 hover:text-red-400 transition-colors rounded-lg hover:bg-white/5"
 							title="Close report"
 							aria-label="Close report"
@@ -984,7 +1102,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 					)}
 						<div class="mb-6 border border-white/10 rounded-lg overflow-hidden">
 							<button
-								on:click={() => inputsExpanded = !inputsExpanded}
+								onclick={() => inputsExpanded = !inputsExpanded}
 								class="w-full flex items-center justify-between p-4 bg-gray-800/50 hover:bg-gray-800/70 transition-colors"
 							>
 								<div class="flex items-center gap-2">

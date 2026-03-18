@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, tick } from 'svelte';
 	import { fly, fade } from 'svelte/transition';
 	import { token } from '$lib/stores/auth';
 	import DictationScratchpad from '$lib/components/DictationScratchpad.svelte';
@@ -37,7 +37,7 @@
 	if (typeof selectedTemplate === 'undefined') selectedTemplate = null;
 	if (typeof variableValues === 'undefined') variableValues = {};
 
-	let prePoppedSections: string[] = [];
+	export let prePoppedSections: string[] = [];
 	let sectionsLoading = false;
 	let sectionsError = '';
 
@@ -64,7 +64,7 @@
 	let activePrompts: IntelliPrompt[] = [];
 	let isReviewing = false;
 
-	let scratchpadContent = '';
+	export let scratchpadContent = '';
 	let isRecording = false;
 	let scanType = '';
 	let lastTemplateId: string | null = null;
@@ -280,6 +280,14 @@
 		activePrompts = [];
 	}
 
+	export async function restoreWorkspace(sections: string[], content: string) {
+		prePoppedSections = [...sections];
+		if (content && sections.length > 0) {
+			await tick();
+			scratchpadRef?.reset(content);
+		}
+	}
+
 	function copyToClipboard() {
 		if (!response) return;
 		navigator.clipboard.writeText(response).then(() => {
@@ -287,13 +295,28 @@
 		});
 	}
 
-	function handleHistoryRestore(detail: { report?: { report_content: string; model_used?: string } }) {
+	function handleHistoryRestore(detail: {
+		report?: {
+			report_content: string;
+			model_used?: string;
+			input_data?: { variables?: Record<string, string> };
+		};
+	}) {
 		if (!detail?.report) return;
 		response = detail.report.report_content;
 		responseModel = detail.report.model_used ?? null;
 		hasResponseEver = true;
 		responseExpanded = true;
 		responseVisible = true;
+
+		const savedVars = detail.report.input_data?.variables;
+		if (savedVars && typeof savedVars === 'object') {
+			const nonFindings = Object.fromEntries(
+				Object.entries(savedVars).filter(([k]) => k !== 'FINDINGS')
+			);
+			variableValues = { ...variableValues, ...nonFindings };
+		}
+
 		dispatch('historyRestored', detail);
 	}
 
@@ -543,10 +566,10 @@
 					<DictationHintBar />
 				</div>
 
-			<!-- Single-column workspace (aligned with Quick Reports) -->
-			<div class="flex flex-col min-h-0 flex-1 gap-3 relative transition-opacity duration-300 {isReviewing ? 'opacity-50' : ''}">
-				<!-- Coverage chip strip -->
-				<div class="flex flex-wrap gap-1.5">
+		<!-- Single-column workspace (aligned with Quick Reports) -->
+		<div class="flex flex-col min-h-0 flex-1 gap-3 relative">
+			<!-- Coverage chip strip -->
+			<div class="flex flex-wrap gap-1.5 transition-opacity duration-300 {isReviewing ? 'opacity-50' : ''}">
 					{#each allChecklistSections as section}
 						{@const covered = coveredSections.has(section)}
 						<span class="px-2.5 py-1 rounded-full text-[11px] font-medium transition-all duration-300

@@ -3,7 +3,7 @@ import { browser } from '$app/environment';
 
 const STORAGE_KEY = 'rr_draft';
 const DEBOUNCE_MS = 400;
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const EMPTY_STATE = {
 	version: SCHEMA_VERSION,
@@ -15,7 +15,9 @@ const EMPTY_STATE = {
 	},
 	templateTab: {
 		templateId: null,
-		variables: {}
+		variables: {},
+		prePoppedSections: [],
+		scratchpadContent: ''
 	},
 	savedAt: null
 };
@@ -71,12 +73,17 @@ function createDraftStore() {
 			}
 		},
 
-		saveTemplateTab(templateId, variables) {
+		saveTemplateTab(templateId, variables, prePoppedSections, scratchpadContent) {
 			let latest;
 			update((draft) => {
 				latest = {
 					...draft,
-					templateTab: { templateId, variables: { ...variables } },
+					templateTab: {
+						templateId,
+						variables: { ...variables },
+						prePoppedSections: prePoppedSections ?? [],
+						scratchpadContent: scratchpadContent ?? ''
+					},
 					savedAt: Date.now()
 				};
 				return latest;
@@ -124,7 +131,8 @@ function hasIntelliContent(intelliTab) {
 function hasTemplateContent(templateTab) {
 	return (
 		!!templateTab?.templateId &&
-		Object.values(templateTab?.variables ?? {}).some((v) => String(v).trim().length > 0)
+		(Object.values(templateTab?.variables ?? {}).some((v) => String(v).trim().length > 0) ||
+			(templateTab?.scratchpadContent ?? '').trim().length > 0)
 	);
 }
 

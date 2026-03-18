@@ -1,8 +1,8 @@
 <script lang="ts">
-import { createEventDispatcher, onMount, tick } from 'svelte';
+import { createEventDispatcher, tick } from 'svelte';
 import { fly, fade } from 'svelte/transition';
 import { token } from '$lib/stores/auth';
-import { draftStore, hasIntelliDraft } from '$lib/stores/draft.js';
+import { draftStore } from '$lib/stores/draft.js';
 import DictationScratchpad from '$lib/components/DictationScratchpad.svelte';
 import DictationHintBar from '$lib/components/DictationHintBar.svelte';
 import ReportResponseViewer from './ReportResponseViewer.svelte';
@@ -49,13 +49,6 @@ import { API_URL } from '$lib/config';
 
 	// IntelliPrompts from Qwen
 	let activePrompts: IntelliPrompt[] = [];
-
-	// Draft restore banner
-	let showRestoreBanner = false;
-
-	onMount(() => {
-		showRestoreBanner = $hasIntelliDraft;
-	});
 
 	// Scratchpad content for parsing dynamic sections
 	let scratchpadContent = '';
@@ -187,7 +180,6 @@ import { API_URL } from '$lib/config';
 		hasResponseEver = false;
 		responseExpanded = false;
 		draftStore.clearIntelliTab();
-		showRestoreBanner = false;
 		dispatch('resetForm');
 		dispatch('clearResponse');
 		dispatch('historyUpdate', { count: 0 });
@@ -331,7 +323,6 @@ import { API_URL } from '$lib/config';
 		// Mark as not-dirty so workspace doesn't show the "regenerate" overlay
 		sectionsGeneratedFromScanType = draft.intelliTab.scanType;
 		sectionsGeneratedFromHistory = draft.intelliTab.clinicalHistory;
-		showRestoreBanner = false;
 		// Wait for prePoppedSections to trigger the scratchpad render, then inject content
 		if (draft.intelliTab.scratchpadContent && (draft.intelliTab.prePoppedSections?.length ?? 0) > 0) {
 			await tick();
@@ -341,7 +332,14 @@ import { API_URL } from '$lib/config';
 
 	function dismissIntelliDraft() {
 		draftStore.clearIntelliTab();
-		showRestoreBanner = false;
+	}
+
+	export async function restoreFromParent() {
+		await restoreIntelliDraft();
+	}
+
+	export function dismissFromParent() {
+		dismissIntelliDraft();
 	}
 
 	const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -354,40 +352,6 @@ import { API_URL } from '$lib/config';
 		</svg>
 		<h1 class="text-3xl font-bold text-white bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">Quick Reports</h1>
 	</div>
-
-	<!-- Draft Restore Banner -->
-	{#if showRestoreBanner}
-		<div
-			class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-amber-950/40 border border-amber-500/25 text-sm"
-			in:fade={{ duration: 200 }}
-			out:fade={{ duration: 150 }}
-		>
-			<div class="flex items-center gap-2.5 min-w-0">
-				<svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-				</svg>
-				<span class="text-amber-200/80 truncate">
-					Unsaved draft from {new Date($draftStore.savedAt ?? 0).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} — restore your previous work?
-				</span>
-			</div>
-			<div class="flex items-center gap-2 shrink-0">
-				<button
-					type="button"
-					onclick={restoreIntelliDraft}
-					class="px-3 py-1 text-xs font-medium rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors border border-amber-500/30"
-				>
-					Restore
-				</button>
-				<button
-					type="button"
-					onclick={dismissIntelliDraft}
-					class="px-3 py-1 text-xs rounded-lg text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
-				>
-					Dismiss
-				</button>
-			</div>
-		</div>
-	{/if}
 
 	<!-- Case Details -->
 	<div class="rounded-xl border transition-all duration-300 ease-out overflow-hidden
