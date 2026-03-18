@@ -33,6 +33,9 @@
 	// Audit props
 	export let scanType: string = '';
 	export let clinicalHistory: string = '';
+
+	export let caseDetailsDirty = false;
+	export let findingsStale = false;
 	
 	// Track previous response to detect manual updates
 	let previousResponse = '';
@@ -719,7 +722,23 @@
 		</div>
 
 		{#if expanded}
-			<div class="relative flex-1 min-h-0 flex flex-col">
+			<div class="relative flex-1 min-h-0 flex flex-col transition-opacity duration-300 {caseDetailsDirty ? 'opacity-50 pointer-events-none' : ''}">
+				{#if caseDetailsDirty}
+					<div class="absolute inset-0 z-20 flex items-center justify-center bg-black/20 backdrop-blur-[1px]" in:fade={{ duration: 200 }}>
+						<p class="text-sm text-gray-300 font-medium px-4 py-2 bg-black/60 rounded-lg shadow-lg">Case details changed — regenerate workspace to continue</p>
+					</div>
+				{/if}
+				{#if findingsStale && !caseDetailsDirty}
+					<div class="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-start gap-2 shrink-0" in:fade={{ duration: 200 }}>
+						<svg class="w-4 h-4 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+						</svg>
+						<p class="text-xs text-amber-200">
+							Findings have been updated — report may not reflect current changes. <span class="font-medium text-amber-400">Regenerate to update.</span>
+						</p>
+					</div>
+				{/if}
+
 				{#if generationLoading || updateLoading}
 					<div class="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-10">
 						<div class="flex items-center gap-3 text-gray-200 text-sm">

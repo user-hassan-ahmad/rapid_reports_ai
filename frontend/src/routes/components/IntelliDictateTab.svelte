@@ -31,7 +31,7 @@ import { API_URL } from '$lib/config';
 	let caseDetailsManuallyExpanded = false;
 
 	$: workspaceOpen = prePoppedSections.length > 0 || sectionsLoading;
-	$: sectionsDirty = workspaceOpen
+	$: sectionsDirty = prePoppedSections.length > 0
 		&& (scanType.trim() !== sectionsGeneratedFromScanType
 			|| clinicalHistory.trim() !== sectionsGeneratedFromHistory);
 	// Show full form when: no workspace yet, user clicked edit, or there's a dirty state needing action
@@ -84,6 +84,8 @@ import { API_URL } from '$lib/config';
 	let responseVisible = false;
 
 	$: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
+	let findingsAtReportGeneration = '';
+	$: findingsStale = hasResponseEver && !!response && scratchpadToFindings(scratchpadContent) !== findingsAtReportGeneration;
 
 	// Review guide shows the pre-generated checklist sections only.
 	// Coverage state comes entirely from covered_sections returned by Qwen — no text parsing.
@@ -139,6 +141,16 @@ import { API_URL } from '$lib/config';
 			});
 			const data = await res.json();
 			if (data.sections && Array.isArray(data.sections)) {
+				scratchpadRef?.reset('');
+				response = null;
+				responseModel = null;
+				reportId = null;
+				hasResponseEver = false;
+				responseExpanded = false;
+				activePrompts = [];
+				findingsAtReportGeneration = '';
+				dispatch('clearResponse');
+
 				prePoppedSections = data.sections;
 				coveredSections = new Set();
 				sectionsGeneratedFromScanType = scanType.trim();
@@ -179,6 +191,7 @@ import { API_URL } from '$lib/config';
 		reportId = null;
 		hasResponseEver = false;
 		responseExpanded = false;
+		findingsAtReportGeneration = '';
 		draftStore.clearIntelliTab();
 		dispatch('resetForm');
 		dispatch('clearResponse');
@@ -222,6 +235,7 @@ import { API_URL } from '$lib/config';
 				reportId = data.report_id ?? null;
 				hasResponseEver = true;
 				responseExpanded = true;
+				findingsAtReportGeneration = content;
 				draftStore.clearIntelliTab();
 				dispatch('historyUpdate', { count: 1 });
 			} else {
@@ -245,6 +259,7 @@ import { API_URL } from '$lib/config';
 		responseExpanded = false;
 		hasResponseEver = false;
 		responseVisible = false;
+		findingsAtReportGeneration = '';
 		dispatch('clearResponse');
 	}
 
@@ -642,6 +657,8 @@ import { API_URL } from '$lib/config';
 		{enhancementError}
 		{scanType}
 		{clinicalHistory}
+		caseDetailsDirty={sectionsDirty}
+		{findingsStale}
 		on:toggle={toggleResponse}
 		on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
 		on:copy={copyToClipboard}

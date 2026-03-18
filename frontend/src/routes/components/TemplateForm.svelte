@@ -51,7 +51,17 @@
 	let caseDetailsManuallyExpanded = false;
 
 	$: workspaceOpen = prePoppedSections.length > 0 || sectionsLoading;
-	$: caseDetailsExpanded = !workspaceOpen || caseDetailsManuallyExpanded;
+
+	// Non-FINDINGS variables for step 1 (plain textareas, no dictation)
+	$: nonFindingsVariables = (selectedTemplate?.variables || Object.keys(variableValues || {}))
+		.filter((v: string) => v !== 'FINDINGS');
+
+	let variableValuesGeneratedFrom: Record<string, string> = {};
+	$: sectionsDirty = prePoppedSections.length > 0 && nonFindingsVariables.some(
+		(v) => (variableValues[v] ?? '').trim() !== (variableValuesGeneratedFrom[v] ?? '').trim()
+	);
+
+	$: caseDetailsExpanded = !workspaceOpen || caseDetailsManuallyExpanded || sectionsDirty;
 	let scratchpadRef: {
 		getContent: () => string;
 		getFindingCount: () => number;
@@ -75,11 +85,10 @@
 	let responseVisible = false;
 
 	$: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
-	$: allChecklistSections = prePoppedSections;
+	let findingsAtReportGeneration = '';
+	$: findingsStale = hasResponseEver && !!response && scratchpadToFindings(scratchpadContent) !== findingsAtReportGeneration;
 
-	// Non-FINDINGS variables for step 1 (plain textareas, no dictation)
-	$: nonFindingsVariables = (selectedTemplate?.variables || Object.keys(variableValues || {}))
-		.filter((v: string) => v !== 'FINDINGS');
+	$: allChecklistSections = prePoppedSections;
 
 	// Extract FINDINGS template_content and content_style for section extraction
 	$: findingsTemplateContent = (() => {
@@ -149,6 +158,25 @@
 				console.log('[SetUpWorkspace] sections-from-template res.status:', res.status, 'data:', data, 'data.sections:', data?.sections);
 
 				if (data.sections && Array.isArray(data.sections)) {
+					// Snapshot variables for dirty tracking
+					variableValuesGeneratedFrom = {};
+					for (const v of nonFindingsVariables) {
+						variableValuesGeneratedFrom[v] = variableValues[v] || '';
+					}
+
+					// If workspace is already open, this is a regeneration, so clear previous state
+					if (workspaceOpen) {
+						scratchpadRef?.reset('');
+						response = null;
+						responseModel = null;
+						reportId = null;
+						hasResponseEver = false;
+						responseExpanded = false;
+						activePrompts = [];
+						findingsAtReportGeneration = '';
+						dispatch('clearResponse');
+					}
+
 					prePoppedSections = data.sections;
 					console.log('[SetUpWorkspace] prePoppedSections set:', prePoppedSections.length, prePoppedSections);
 				} else {
@@ -192,6 +220,7 @@
 		reportId = null;
 		hasResponseEver = false;
 		responseExpanded = false;
+		findingsAtReportGeneration = '';
 		dispatch('resetForm');
 		dispatch('reportCleared');
 		dispatch('clearResponse');
@@ -239,6 +268,7 @@
 				reportId = data.report_id ?? null;
 				hasResponseEver = true;
 				responseExpanded = true;
+				findingsAtReportGeneration = findingsContent;
 				dispatch('reportGenerated', { reportId: data.report_id });
 				dispatch('historyUpdate', { count: 1 });
 			} else {
@@ -262,6 +292,7 @@
 		responseExpanded = false;
 		hasResponseEver = false;
 		responseVisible = false;
+		findingsAtReportGeneration = '';
 		dispatch('reportCleared');
 		dispatch('historyUpdate', { count: 0 });
 	}
@@ -457,17 +488,35 @@
 					{#if sectionsError}
 						<p class="text-red-400 text-xs">{sectionsError}</p>
 					{/if}
-					<div class="flex justify-end pt-1">
+					<div class="flex items-center justify-between pt-1">
+						<div class="flex items-center gap-2">
+							{#if sectionsDirty}
+								<button type="button"
+									onclick={() => { 
+										for (const v of nonFindingsVariables) {
+											variableValues[v] = variableValuesGeneratedFrom[v] ?? '';
+										}
+									}}
+									class="text-xs text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1"
+									in:fade={{ duration: 200 }}>
+									<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+									</svg>
+									Revert changes
+								</button>
+							{/if}
+						</div>
 						<button type="submit" disabled={sectionsLoading}
 							class="px-5 py-2 rounded-lg text-sm font-medium transition-all duration-200
-								bg-gradient-to-r from-purple-600/80 to-blue-600/80 border border-purple-500/30 text-white
-								hover:from-purple-600 hover:to-blue-600
+								{sectionsDirty
+									? 'bg-amber-500/20 border border-amber-500/50 text-amber-300 hover:bg-amber-500/30 animate-pulse-once'
+									: 'bg-gradient-to-r from-purple-600/80 to-blue-600/80 border border-purple-500/30 text-white hover:from-purple-600 hover:to-blue-600'}
 								disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
 							{#if sectionsLoading}
-								<div class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-								<span>Setting up...</span>
+								<div class="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+								<span>{sectionsDirty ? 'Regenerating...' : 'Setting up...'}</span>
 							{:else}
-								<span>Set up workspace</span>
+								<span>{sectionsDirty ? 'Regenerate workspace' : 'Set up workspace'}</span>
 							{/if}
 						</button>
 					</div>
@@ -567,7 +616,12 @@
 				</div>
 
 		<!-- Single-column workspace (aligned with Quick Reports) -->
-		<div class="flex flex-col min-h-0 flex-1 gap-3 relative">
+		<div class="flex flex-col min-h-0 flex-1 gap-3 relative transition-opacity duration-300 {sectionsDirty ? 'opacity-50 pointer-events-none' : ''}">
+			{#if sectionsDirty}
+				<div class="absolute inset-0 z-10 flex items-center justify-center bg-black/20 rounded-lg" in:fade={{ duration: 200 }}>
+					<p class="text-sm text-gray-400">Case details changed — regenerate workspace to continue</p>
+				</div>
+			{/if}
 			<!-- Coverage chip strip -->
 			<div class="flex flex-wrap gap-1.5 transition-opacity duration-300 {isReviewing ? 'opacity-50' : ''}">
 					{#each allChecklistSections as section}
@@ -602,7 +656,7 @@
 				<button
 					type="button"
 					onclick={() => handleGenerateReport()}
-					disabled={isRecording || loading || !scratchpadContent.trim()}
+					disabled={isRecording || loading || !scratchpadContent.trim() || sectionsDirty}
 					class="btn-primary-subtle w-full px-6 py-3 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
 				>
 					{#if loading}
@@ -635,6 +689,8 @@
 				{enhancementError}
 				scanType={scanType}
 				clinicalHistory={variableValues['CLINICAL_HISTORY'] ?? ''}
+				caseDetailsDirty={sectionsDirty}
+				{findingsStale}
 				on:toggle={toggleResponse}
 				on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
 				on:copy={copyToClipboard}
