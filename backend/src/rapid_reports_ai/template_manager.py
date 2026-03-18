@@ -246,7 +246,7 @@ class TemplateManager:
                 'follow_template_style': True,  # Only applies to normal_template and guided_template
                 'format': 'prose',  # prose, bullets
                 'use_subsection_headers': False,  # Standalone: can combine with any format
-                'organization': 'clinical_priority',  # clinical_priority, template_order
+                'organization': 'template_order',  # clinical_priority, template_order
                 'measurement_style': 'inline',
                 'negative_findings_style': 'grouped',  # grouped, distributed, minimal, comprehensive
                 'paragraph_grouping': 'by_finding',  # continuous, by_finding, by_region, by_subsection
@@ -975,12 +975,11 @@ Generate suggestions now."""
         
         # Check if template fidelity option is available (not for checklist)
         is_checklist = template_type == 'checklist'
+        follow_template_style = False if is_checklist else advanced.get('follow_template_style', True)
         template_defines_style = False
         
         if not is_checklist:
             # Template fidelity option available for normal/guided templates
-            follow_template_style = advanced.get('follow_template_style', True)  # Default ON
-            
             if follow_template_style:
                 # Template fidelity mode - principle-based, flexible guidance
                 guidance_parts.append("""WRITING STYLE - TEMPLATE FIDELITY:
@@ -1214,9 +1213,17 @@ CRITICAL: Apply this balanced prose style UNIFORMLY throughout the ENTIRE report
         guidance_parts.append(org_guidance.get(organization, org_guidance['clinical_priority']))
         
         # NEGATIVE FINDINGS HANDLING
-        negative_style = advanced.get('negative_findings_style', 'grouped')
-        negative_guidance = {
-            'minimal': """NEGATIVE FINDINGS - PERTINENT ONLY:
+        if follow_template_style:
+            guidance_parts.append("""NEGATIVE FINDINGS - PRESERVE TEMPLATE LANGUAGE:
+  Keep all normal statements exactly as authored in the template.
+  Do not consolidate, rephrase, or group structures differently
+  from how they appear in the template body.
+  Enumerate structures explicitly as the template does — do not
+  collapse named structures into grouped summaries for brevity.""")
+        else:
+            negative_style = advanced.get('negative_findings_style', 'grouped')
+            negative_guidance = {
+                'minimal': """NEGATIVE FINDINGS - PERTINENT ONLY:
   STRUCTURE: Include ONLY negatives relevant to the abnormality and clinical context
   PRINCIPLE: Adapt negative findings to what's clinically significant given the positive findings
   SEQUENCE: Report negatives that help answer the clinical question or are relevant to staging/assessment
@@ -1227,8 +1234,7 @@ CRITICAL: Apply this balanced prose style UNIFORMLY throughout the ENTIRE report
     - Omit routine normals (e.g., "liver normal") if not relevant to clinical question
   
   KEY PRINCIPLE: Clinical relevance determines inclusion, not completeness""",
-            
-            'grouped': """NEGATIVE FINDINGS - GROUPED:
+                'grouped': """NEGATIVE FINDINGS - GROUPED:
   STRUCTURE: Combine related normal structures efficiently in single statements
   PRINCIPLE: Efficient consolidation of normals without excessive verbosity
   SEQUENCE: Group anatomically related structures together
@@ -1239,8 +1245,7 @@ CRITICAL: Apply this balanced prose style UNIFORMLY throughout the ENTIRE report
     - "The kidneys and adrenal glands demonstrate no focal abnormality."
   
   KEY PRINCIPLE: Balance between completeness and efficiency""",
-            
-            'comprehensive': """NEGATIVE FINDINGS - COMPREHENSIVE:
+                'comprehensive': """NEGATIVE FINDINGS - COMPREHENSIVE:
   STRUCTURE: Explicit statement for every anatomical system reviewed
   PRINCIPLE: Complete documentation of all normals, regardless of clinical relevance
   SEQUENCE: Systematic coverage of all systems imaged
@@ -1250,11 +1255,10 @@ CRITICAL: Apply this balanced prose style UNIFORMLY throughout the ENTIRE report
   
   KEY PRINCIPLE: Complete documentation takes priority over efficiency
   USE CASE: Screening studies, teaching files, medico-legal documentation"""
-        }
-        # Handle backward compatibility: map 'distributed' to 'comprehensive'
-        if negative_style == 'distributed':
-            negative_style = 'comprehensive'
-        guidance_parts.append(negative_guidance.get(negative_style, negative_guidance['grouped']))
+            }
+            if negative_style == 'distributed':
+                negative_style = 'comprehensive'
+            guidance_parts.append(negative_guidance.get(negative_style, negative_guidance['grouped']))
         
         # DESCRIPTOR DENSITY
         descriptor = advanced.get('descriptor_density', 'standard')
