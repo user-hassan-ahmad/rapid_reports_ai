@@ -81,12 +81,18 @@
 	$: nonFindingsVariables = (selectedTemplate?.variables || Object.keys(variableValues || {}))
 		.filter((v: string) => v !== 'FINDINGS');
 
-	// Extract FINDINGS template_content for section extraction
+	// Extract FINDINGS template_content and content_style for section extraction
 	$: findingsTemplateContent = (() => {
 		const sections = selectedTemplate?.template_config?.sections;
 		if (!sections || !Array.isArray(sections)) return '';
 		const findingsSection = sections.find((s: any) => s?.name === 'FINDINGS');
 		return findingsSection?.template_content || '';
+	})();
+	$: findingsContentStyle = (() => {
+		const sections = selectedTemplate?.template_config?.sections;
+		if (!sections || !Array.isArray(sections)) return '';
+		const findingsSection = sections.find((s: any) => s?.name === 'FINDINGS');
+		return findingsSection?.content_style || '';
 	})();
 
 	// Reset when template changes
@@ -130,7 +136,10 @@
 				const res = await fetch(`${API_URL}/api/canvas/sections-from-template`, {
 					method: 'POST',
 					headers,
-					body: JSON.stringify({ template_content: findingsTemplateContent })
+					body: JSON.stringify({
+						template_content: findingsTemplateContent,
+						content_style: findingsContentStyle
+					})
 				});
 				const data = await res.json();
 				if (data.sections && Array.isArray(data.sections)) {

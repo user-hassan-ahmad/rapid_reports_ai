@@ -28,6 +28,7 @@ class SectionGenerateRequest(BaseModel):
 
 class SectionsFromTemplateRequest(BaseModel):
     template_content: str
+    content_style: str = ""
 
 
 class SectionGenerateResponse(BaseModel):
@@ -104,14 +105,44 @@ Before producing the list, reason through the following steps. Do not include th
 
 SECTIONS_FROM_TEMPLATE_SYSTEM_PROMPT = """You are a radiology report structure assistant. Your only task is to extract anatomical section headers from a FINDINGS template and return them as an ordered JSON array."""
 
-SECTIONS_FROM_TEMPLATE_USER_PROMPT_TEMPLATE = """Below is the FINDINGS template content from a radiology report template. It may contain section headers (e.g. "Lungs:", "Pleura:", "CHEST WALL:", bullet lists with organ names, or prose with embedded structure).
 
-Extract the distinct anatomical section/organ names that the template expects the radiologist to cover. Return them in the order they appear in the template. Use UPPERCASE for consistency (e.g. LUNGS, PLEURA, CHEST WALL).
+def _syntax_legend(content_style: str) -> str:
+    shared_comment_rule = (
+        "// lines: guidance that annotates the preceding placeholder or prose section. "
+        "A // line is never a section itself — it confirms what the preceding structure covers "
+        "and is stripped from the final report. Never extract a // line as a coverage section."
+    )
 
-Rules:
-- Only include anatomical structures/systems — no TECHNIQUE, BACKGROUND, IMPRESSION, or CONCLUSION
-- Preserve the template's intended order
-- If the template has no clear section structure, return a sensible default list based on the content (e.g. ["FINDINGS"])
+    if content_style == "structured_template":
+        return f"""TEMPLATE SYNTAX — Structured Fill-In:
+- {{VAR_NAME}}: a named placeholder for a specific finding. Each label followed by a {{VAR}} placeholder is a distinct dictation target and therefore a distinct coverage unit.
+- xxx: a generic measurement placeholder — treat the surrounding label as a dictation target.
+- [option1/option2]: a choice the radiologist selects between — treat the enclosing label as a dictation target.
+- {shared_comment_rule}
+
+Granularity rule for this style: a label followed by its own {{VAR}}/xxx placeholder is the unit to extract. A header that groups multiple such labelled placeholders is a container — extract the labelled placeholders, not the header."""
+
+    if content_style == "guided_template":
+        return f"""TEMPLATE SYNTAX — Guided Prose:
+- Prose lines: the actual report structure. Each distinct prose block (separated by a blank line or clear topic shift) represents a section the radiologist addresses individually.
+- {shared_comment_rule}
+
+Granularity rule for this style: each distinct prose block is the unit to extract. A // line belongs to the prose block above it — do not treat it as a separate section or as evidence of a new section boundary."""
+
+    return ""
+
+
+SECTIONS_FROM_TEMPLATE_USER_PROMPT_TEMPLATE = """Below is the FINDINGS template content from a radiology report.
+
+{syntax_context}EXTRACTION PRINCIPLES:
+
+1. Dictation granularity — extract at the level the radiologist addresses individually. A structure with its own dedicated placeholder or prose block is a distinct coverage unit. A header that groups multiple named sub-structures each with their own placeholder is a container — extract the sub-structures, not the header.
+
+2. Technique exclusion — exclude any section that contains only fixed prose with no placeholder or blank slot. It requires no dictation and cannot be covered by a scratchpad. Include any section that has at least one placeholder or named dictation slot, even if its name sounds procedural.
+
+3. Preserve template order. Use UPPERCASE with spaces (e.g. CORONARY CALCIUM SCORING, OTHER FINDINGS).
+
+4. Do not include IMPRESSION, CONCLUSION, BACKGROUND, or CLINICAL HISTORY sections.
 
 FINDINGS template content:
 ---
@@ -327,7 +358,9 @@ async def sections_from_template(
     """Extract ordered anatomical section headers from a FINDINGS template body."""
     primary_model = MODEL_CONFIG["CANVAS_SECTIONS_FROM_TEMPLATE"]
     fallback_model = MODEL_CONFIG["CANVAS_SECTIONS_FROM_TEMPLATE_FALLBACK"]
+    legend = _syntax_legend(request.content_style)
     user_prompt = SECTIONS_FROM_TEMPLATE_USER_PROMPT_TEMPLATE.format(
+        syntax_context=legend + "\n\n" if legend else "",
         template_content=request.template_content or "(empty)",
     )
     try:
