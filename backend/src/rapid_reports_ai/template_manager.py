@@ -1,8 +1,11 @@
 """Template Manager for Custom Templates
 Handles custom template operations similar to PromptManager but for user-created templates
 """
+import logging
 import re
 from typing import Dict, List, Optional, Any
+
+logger = logging.getLogger(__name__)
 
 
 class TemplateManager:
@@ -2572,7 +2575,14 @@ No user input provided. Omit this section entirely from output.
                 content_style = section.get('content_style', 'normal_template')
                 template_content = section.get('template_content', '')
                 advanced = section.get('advanced', {})
-                
+                style_templates = section.get('style_templates', {})
+                style_body = style_templates.get(content_style, '') if isinstance(style_templates, dict) else ''
+                if style_body and template_content != style_body:
+                    logger.warning(
+                        "template_content and style_templates[%s] differ for section %s — using template_content. Consider re-saving template.",
+                        content_style,
+                        section.get('name', 'FINDINGS'),
+                    )
                 # Get style-specific prompt - pass advanced config for style extraction
                 if content_style == 'normal_template':
                     style_prompt = self._build_findings_prompt_normal_template(

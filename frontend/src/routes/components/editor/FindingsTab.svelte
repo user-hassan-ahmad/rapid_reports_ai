@@ -150,8 +150,8 @@
 
 	// Handle content style change - save current content and load new content
 	function handleStyleChange(newStyle) {
-		// Save current template content to the previous style in the persisted object
-		if (previousStyle && findingsConfig.template_content) {
+		// Always write current content back before switching
+		if (previousStyle) {
 			findingsConfig.style_templates[previousStyle] = findingsConfig.template_content;
 		}
 
@@ -159,8 +159,8 @@
 		previousStyle = newStyle;
 		findingsConfig.content_style = newStyle;
 
-		// Load template content for the new style (from persisted storage or empty)
-		const newContent = findingsConfig.style_templates[newStyle] || '';
+		// Load template content for the new style (?? preserves empty string as valid)
+		const newContent = findingsConfig.style_templates[newStyle] ?? '';
 		findingsConfig.template_content = newContent;
 
 		// Force a re-render by creating a new object
@@ -493,7 +493,7 @@
 					{/if}
 					<textarea
 						bind:value={findingsConfig.template_content}
-						oninput={findingsConfig.content_style === 'structured_template' ? handleTemplateContentChange : handleChange}
+						oninput={handleTemplateContentChange}
 						onkeydown={(e) => {
 							// Allow Enter to create new lines in textarea
 							if (e.key === 'Enter') {

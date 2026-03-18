@@ -209,6 +209,10 @@
 					if (section.style_templates) {
 						findingsConfig.style_templates = { ...findingsConfig.style_templates, ...section.style_templates };
 					}
+					// Load-time self-heal: template_content is authoritative; align active style to prevent drift on first toggle
+					if (findingsConfig.content_style) {
+						findingsConfig.style_templates[findingsConfig.content_style] = findingsConfig.template_content;
+					}
 					if (section.advanced) {
 						findingsConfig.advanced = { ...findingsConfig.advanced, ...section.advanced };
 					}

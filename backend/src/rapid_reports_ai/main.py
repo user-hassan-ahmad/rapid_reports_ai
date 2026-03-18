@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Dict, Optional, List, Any, Literal
+import copy
 import os
 import re
 from dotenv import load_dotenv
@@ -1203,6 +1204,34 @@ async def get_template_detail(
         return {"success": False, "error": str(e)}
 
 
+def _normalize_template_config_styles(config: dict) -> dict:
+    """Normalize style_templates to match template_content for template_based FINDINGS sections."""
+    if not config or not isinstance(config, dict):
+        return config
+    config = copy.deepcopy(config)
+    sections = config.get("sections")
+    if not isinstance(sections, list):
+        return config
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        if section.get("generation_mode") != "template_based":
+            continue
+        content_style = section.get("content_style")
+        if not content_style:
+            continue
+        template_content = section.get("template_content", "")
+        style_templates = section.get("style_templates")
+        if style_templates is None:
+            style_templates = {}
+        if not isinstance(style_templates, dict):
+            style_templates = {}
+        style_templates = dict(style_templates)
+        style_templates[content_style] = template_content
+        section["style_templates"] = style_templates
+    return config
+
+
 @app.post("/api/templates")
 async def create_template_endpoint(
     template_data: TemplateCreate,
@@ -1213,13 +1242,13 @@ async def create_template_endpoint(
     try:
         if not template_data.template_config:
             return {"success": False, "error": "template_config is required"}
-        
+        normalized_config = _normalize_template_config_styles(template_data.template_config)
         template = create_template(
             db=db,
             name=template_data.name,
             description=template_data.description,
             tags=template_data.tags,
-            template_config=template_data.template_config,
+            template_config=normalized_config,
             is_pinned=template_data.is_pinned or False,
             user_id=str(current_user.id),
         )
@@ -1240,7 +1269,10 @@ async def update_template_endpoint(
 ):
     """Update an existing template for current user"""
     try:
-        # Use new template_config format if provided
+        # Normalize style_templates before persisting
+        template_config = template_data.template_config
+        if template_config:
+            template_config = _normalize_template_config_styles(template_config)
         updated_template = update_template(
             db=db,
             template_id=template_id,
@@ -1248,7 +1280,7 @@ async def update_template_endpoint(
             name=template_data.name,
             description=template_data.description,
             tags=template_data.tags,
-            template_config=template_data.template_config,
+            template_config=template_config,
             is_active=template_data.is_active,
         )
         
