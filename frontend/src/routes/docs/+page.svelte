@@ -38,8 +38,8 @@
 	
 	const faqs = [
 		{
-			q: "What's the difference between Auto Report and Templated Report?",
-			a: "Auto Report is for quick, ad-hoc reporting—paste your raw findings (even unstructured notes) and AI instantly structures them into NHS-standard sections (COMPARISON, LIMITATIONS, FINDINGS, IMPRESSION) with proper medical language. No setup required. Templated Report is for consistent, repeatable reporting where you've configured specific formatting, writing styles, and section structures. Create a template once (via the 7-step wizard), then reuse it across similar cases for institutional consistency. Think of Auto Report as 'quick draft mode' and Templated Report as 'standardized production mode.'"
+			q: "What's the difference between Quick Reports and custom (templated) reports?",
+			a: "Quick Reports (sidebar: Generate Quick Report) are for ad-hoc cases: you enter case details, set up a workspace with a review checklist and scratchpad, then generate a full structured report—no saved template required. Custom reports use templates you've built so every case follows your department's structure, wording, and style. Use Quick Reports when speed matters; use templates when consistency and institutional voice matter. Both flows share the same workspace idea (checklist, scratchpad, coverage chips) so the experience feels familiar."
 		},
 		{
 			q: "Which template type should I use?",
@@ -47,11 +47,11 @@
 		},
 		{
 			q: "What does Enhancement do and when should I use it?",
-			a: "After generating any report, three enhancement cards appear at the top. Click them to access: (1) Clinical Guidelines—AI searches medical literature for your findings and provides classification systems (BI-RADS, Fleischner, LI-RADS, etc.), measurement protocols, differential diagnoses, and follow-up recommendations with source references. Great for complex or unfamiliar findings. (2) Interval Comparison—Upload prior reports and AI identifies what's new, changed, or stable with automatic measurement tracking and growth rate calculations. Generates a revised report with properly formatted comparison statements. Essential for follow-up studies. (3) AI Chat—Ask questions about your report, request edits, or explore clinical implications. AI proposes surgical edits showing exactly what will change. Use it to refine language, add differentials, or clarify findings."
+			a: "After generating a report, enhancement cards appear above the report for Guidelines, Comparison, and Chat. Guidelines: literature-backed context, classification systems (e.g. BI-RADS, Fleischner), and references—ideal for unfamiliar or complex findings. Comparison: add prior reports to see what's new, changed, or stable and optionally apply a revised report. Chat: ask questions or request edits; the AI proposes precise text changes you can apply. In the report viewer you also get a QA audit: the app reviews your report across several quality dimensions (e.g. clarity, impression balance, language) and highlights passages to revisit—you can run the audit again after you edit. Use enhancement when you want a second pass on quality, evidence, or interval change—not as a substitute for your own clinical judgment."
 		},
 		{
 			q: "How does Interval Comparison work in practice?",
-			a: "Real workflow example: You generate a chest CT report showing a lung nodule. Click the Comparison enhancement card, then 'Add Prior Report.' Paste the prior CT report text, enter the study date (e.g., 15/08/2024), and scan type. Click 'Analyze Interval Changes.' AI creates a detailed analysis with three color-coded sections: (Red) New Findings—pathology not present before with urgency flags if concerning. (Yellow) Changed Findings—prior measurements vs current with absolute change, percentage growth, and time interval calculated automatically. (Green) Stable Findings—what hasn't changed. You then get a 'Report Modifications' section showing side-by-side original vs revised text for each change. Click 'Preview Full Revised Report' to see the complete updated report, or 'Apply Comparison Report' to create a new version with all interval changes properly documented."
+			a: "Real workflow example: You generate a chest CT report showing a lung nodule. Click the Comparison enhancement card, then 'Add Prior Report.' Paste the prior CT report text, enter the study date (e.g., 15/08/2024), and scan type. Click 'Analyse Interval Changes.' AI creates a detailed analysis with three color-coded sections: (Red) New Findings—pathology not present before with urgency flags if concerning. (Yellow) Changed Findings—prior measurements vs current with absolute change, percentage growth, and time interval calculated automatically. (Green) Stable Findings—what hasn't changed. You then get a 'Report Modifications' section showing side-by-side original vs revised text for each change. Click 'Preview Full Revised Report' to see the complete updated report, or 'Apply Comparison Report' to create a new version with all interval changes properly documented."
 		},
 		{
 			q: "What are unfilled placeholders and how do I fix them?",
@@ -63,7 +63,7 @@
 		},
 		{
 			q: "How do I set up dictation?",
-			a: "Dictation uses a central Deepgram API key (medical-grade transcription). Your administrator sets DEEPGRAM_API_KEY in the server environment—once configured, dictation is available to all users by default. You'll see microphone icons (🎤) throughout the app wherever text input is available (Clinical History, Findings, etc.). Real-time streaming transcription as you speak. The medical vocabulary model understands complex anatomical terms and abbreviations automatically."
+			a: "Your organisation configures dictation on the server—once it's enabled, microphone icons (🎤) appear wherever you can enter text (including the scratchpad in Quick Reports and custom reports). Tap the mic, allow access if your browser asks, then speak; text streams in as you talk. If you use a headset or multiple microphones, pick the right input from the microphone menu when available. Optional on-screen hints (sometimes labelled CONSIDER) suggest imaging angles you might still review—they update as your dictation changes. For clearest results, minimise background noise and speak at a natural pace."
 		},
 		{
 			q: "Is my data secure and private?",
@@ -75,7 +75,7 @@
 		},
 		{
 			q: "What happens to my templates if I create them with the wizard vs the editor?",
-			a: "They're identical—same template, just different interfaces for different stages. Always use the 7-step wizard first to create new templates. It walks you through every configuration option with explanations and examples at each step, making it perfect for first-time template creation. Once a template exists, always use the 3-tab editor (Quick Edit, Findings, Impression) to modify it. The editor contains all the same settings but organized in tabs for faster access when you already know what you want to change. Both save to the same template library, so your workflow is: wizard to create, editor to modify."
+			a: "They're the same template—two ways to work. Use the Create Template wizard for new templates: it walks you through basics, which sections to include, findings and impression style, then review and save. After that, use the template editor (Quick Edit, Findings, Impression tabs) to tweak settings quickly without stepping through the wizard again. Both save to your template library."
 		}
 	];
 	
@@ -580,14 +580,14 @@
 							
 							<div class="bg-black/30 rounded-lg p-6 border border-white/10">
 								<div class="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-2xl font-bold text-white mb-4">2</div>
-								<h3 class="text-lg font-bold text-white mb-2">Generate Report</h3>
-								<p class="text-sm text-gray-400">Use Auto Report for instant generation from raw findings, or create custom templates for consistent formatting.</p>
+								<h3 class="text-lg font-bold text-white mb-2">Generate a Report</h3>
+								<p class="text-sm text-gray-400">Open <strong>Generate Quick Report</strong> for a guided workspace and scratchpad, or <strong>Generate Custom Report</strong> to use your saved templates.</p>
 							</div>
 							
 							<div class="bg-black/30 rounded-lg p-6 border border-white/10">
 								<div class="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-2xl font-bold text-white mb-4">3</div>
 								<h3 class="text-lg font-bold text-white mb-2">Enhance & Refine</h3>
-								<p class="text-sm text-gray-400">Click enhancement cards that appear above your report to access guidelines, comparison, and chat features.</p>
+								<p class="text-sm text-gray-400">Use the cards above your report for guidelines, interval comparison, and chat. Open the report viewer for QA audit and version history.</p>
 							</div>
 						</div>
 					</div>
@@ -598,49 +598,58 @@
 					<h2 class="text-2xl sm:text-3xl font-bold text-white mb-6">⚡ Quick Report Generation</h2>
 					
 					<div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-5 sm:p-6 md:p-8 mb-6">
-						<h3 class="text-lg sm:text-xl font-bold text-white mb-4">Auto Report (Instant Generation)</h3>
-						<p class="text-gray-300 mb-4 text-sm sm:text-base">Transform raw, unstructured findings into structured NHS-standard reports instantly—no template required. Perfect for quick, ad-hoc reporting.</p>
+						<h3 class="text-lg sm:text-xl font-bold text-white mb-4">Quick Reports (Generate Quick Report)</h3>
+						<p class="text-gray-300 mb-4 text-sm sm:text-base">The default home tab is <strong>Generate Quick Report</strong>. Here you get a <strong>Quick Reports</strong> screen: case details at the top, then—after you set up the workspace—a <strong>scratchpad</strong> for your findings, a row of <strong>coverage chips</strong> that show which review areas are addressed, and optional <strong>smart prompts</strong> beside the editor that suggest related imaging points you may not have covered yet.</p>
 						
 						<div class="bg-black/30 rounded-lg p-6 border border-purple-500/30 mb-4">
-							<h4 class="text-white font-semibold mb-3">How to Use:</h4>
-							<ol class="space-y-2 text-gray-300">
+							<h4 class="text-white font-semibold mb-3">How to use it</h4>
+							<ol class="space-y-3 text-gray-300 text-sm">
 								<li class="flex items-start gap-3">
 									<span class="text-purple-400 font-bold">1.</span>
-									<span>Stay on <strong>Auto Report</strong> tab (default tab when you log in)</span>
+									<span>Open <strong>Generate Quick Report</strong> in the sidebar (this opens when you sign in).</span>
 								</li>
 								<li class="flex items-start gap-3">
 									<span class="text-purple-400 font-bold">2.</span>
-									<span>Fill in three fields:</span>
+									<span>Under <strong>Case details</strong>, enter <strong>Clinical history</strong> and <strong>Scan type</strong>. You can collapse this strip later to focus on dictation.</span>
 								</li>
-								<div class="ml-6 space-y-2 text-sm">
-									<div class="bg-blue-500/10 p-3 rounded border border-blue-500/30">
-										<strong class="text-blue-300">Clinical History:</strong> <span class="text-gray-400">Patient background, indication for scan</span>
-									</div>
-									<div class="bg-blue-500/10 p-3 rounded border border-blue-500/30">
-										<strong class="text-blue-300">Scan Type:</strong> <span class="text-gray-400">Imaging modality and technical details</span>
-									</div>
-									<div class="bg-blue-500/10 p-3 rounded border border-blue-500/30">
-										<strong class="text-blue-300">Findings:</strong> <span class="text-gray-400">Raw, unstructured observations (can use 🎤 dictation)</span>
-									</div>
-								</div>
 								<li class="flex items-start gap-3">
 									<span class="text-purple-400 font-bold">3.</span>
-									<span>Click <strong>Generate Report</strong></span>
+									<span>Click <strong>Set up workspace</strong>. The app builds a tailored review checklist and opens the scratchpad.</span>
+								</li>
+								<li class="flex items-start gap-3">
+									<span class="text-purple-400 font-bold">4.</span>
+									<span>Dictate or type into the scratchpad. Chips turn green as each checklist area is meaningfully covered. Smart prompts (and optional <strong>CONSIDER</strong>-style hints) nudge you toward related structures to review—tap <strong>How to use</strong> in the workspace for short tips.</span>
+								</li>
+								<li class="flex items-start gap-3">
+									<span class="text-purple-400 font-bold">5.</span>
+									<span>Click <strong>Generate Report</strong>. You get a full structured report (e.g. COMPARISON, LIMITATIONS, FINDINGS, IMPRESSION) in NHS-style prose.</span>
 								</li>
 							</ol>
-							<div class="mt-4 p-3 bg-green-500/10 border border-green-500/30 rounded text-sm text-green-300">
-								<strong>Result:</strong> AI structures your raw findings into proper sections (COMPARISON, LIMITATIONS, FINDINGS, IMPRESSION) with appropriate medical language and formatting.
+						</div>
+
+						<div class="grid sm:grid-cols-1 gap-4 mb-4">
+							<div class="bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-4 text-sm text-gray-300">
+								<h4 class="text-white font-semibold mb-2">Tips</h4>
+								<ul class="space-y-2 list-disc list-inside text-xs sm:text-sm">
+									<li>If you change clinical history or scan type after setup, the workspace dims until you tap <strong>Regenerate workspace</strong> (or the same button when it pulses)—this keeps the checklist aligned with the case.</li>
+									<li>If you edit the scratchpad after a report is generated, a banner reminds you that the report may be out of date—<strong>regenerate</strong> to refresh it.</li>
+									<li>If you step away mid-case, you may see an offer to <strong>restore your previous work</strong> when you come back.</li>
+								</ul>
 							</div>
 						</div>
 						
 						<div class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
-							<p class="text-sm text-yellow-300"><strong>Example Input:</strong> "4cm spiculated mass RUL, right paratracheal nodes 2cm, small left effusion"</p>
-							<p class="text-xs text-yellow-400 mt-2">→ AI transforms into structured sections with proper medical prose</p>
+							<p class="text-sm text-yellow-300"><strong>Example scratchpad input:</strong> "4cm spiculated mass RUL, right paratracheal nodes 2cm, small left effusion" — the AI still turns this into structured sections with appropriate medical language.</p>
 						</div>
 					</div>
+
+					<div class="bg-gradient-to-r from-slate-600/20 to-purple-600/20 border border-white/10 rounded-xl p-5 sm:p-6 mb-6">
+						<h3 class="text-white font-semibold mb-2 text-sm sm:text-base">Choosing Quick Reports vs custom reports</h3>
+						<p class="text-sm text-gray-300"><strong>Quick Reports</strong> — fastest path when you don't need a saved template: same workspace idea, no template library step. <strong>Generate Custom Report</strong> — pick a template so output follows your department's structure and voice; the generation area uses a very similar workspace pattern (see below).</p>
+					</div>
 					
-					<div class="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mt-6">
-						<p class="text-sm text-blue-300"><strong>💡 When to Use Auto Report:</strong> Perfect for quick, one-off reports where you need instant structuring without template setup. For consistent, repeatable reporting with specific formatting requirements, see <a href="#template-report-generation" class="text-purple-300 hover:text-purple-200 underline">Template Report Generation</a>.</p>
+					<div class="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+						<p class="text-sm text-blue-300"><strong>💡 When to use Quick Reports:</strong> One-off cases, on-call reads, or whenever you want instant structuring without maintaining a template. For repeatable, standardised wording, use <a href="#template-report-generation" class="text-purple-300 hover:text-purple-200 underline">Template Report Generation</a>.</p>
 					</div>
 				</section>
 
@@ -651,39 +660,39 @@
 					<!-- Using Templates -->
 					<div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-5 sm:p-6 md:p-8 mb-6">
 						<h3 id="using-templates" class="text-lg sm:text-xl font-bold text-white mb-4 scroll-mt-24">Using Templates to Generate Reports</h3>
-						<p class="text-gray-300 mb-4 text-sm sm:text-base">Generate reports using your custom templates for consistent formatting and style. Everything happens on one page.</p>
+						<p class="text-gray-300 mb-4 text-sm sm:text-base">Generate reports using your custom templates for consistent formatting and style. After you select a template, the page shows <strong>case-style fields</strong> and the same <strong>workspace</strong> pattern as Quick Reports: <strong>Set up workspace</strong> builds a review checklist—often aligned with your template's findings structure—then you use the <strong>scratchpad</strong>, <strong>coverage chips</strong>, and dictation before <strong>Generate Report</strong>.</p>
 						
 						<div class="bg-black/30 rounded-lg p-6 border border-purple-500/30 mb-4">
-							<h4 class="text-white font-semibold mb-3">To Generate a Report:</h4>
+							<h4 class="text-white font-semibold mb-3">To generate a report</h4>
 							<ol class="space-y-3 text-gray-300 text-sm">
 								<li class="flex items-start gap-3">
 									<span class="text-purple-400 font-bold">1.</span>
-									<span>Sidebar → Click <strong>"Generate Custom Report"</strong></span>
+									<span>In the sidebar, open <strong>Generate Custom Report</strong>.</span>
 								</li>
 								<li class="flex items-start gap-3">
 									<span class="text-purple-400 font-bold">2.</span>
-									<span>Browse your templates (grid or kanban view), use search/filters as needed</span>
+									<span>Browse templates (grid or kanban), search, and filter by tags as needed.</span>
 								</li>
 								<li class="flex items-start gap-3">
 									<span class="text-purple-400 font-bold">3.</span>
 									<div>
 										<strong class="text-green-400">Click a template card</strong>
-										<p class="text-xs text-gray-400 mt-1">→ Card highlights, input fields appear below the template cards</p>
+										<p class="text-xs text-gray-400 mt-1">The card highlights and the generation area opens below with fields your template requires (e.g. clinical history, comparison).</p>
 									</div>
 								</li>
 								<li class="flex items-start gap-3">
 									<span class="text-purple-400 font-bold">4.</span>
-									<span>Fill in the input fields (Clinical History, Findings, any custom sections from your template)</span>
+									<span>Complete the template fields, then tap <strong>Set up workspace</strong> so the checklist matches your template's findings layout.</span>
 								</li>
 								<li class="flex items-start gap-3">
 									<span class="text-purple-400 font-bold">5.</span>
-									<span>Click <strong>Generate Report</strong> → Report appears in viewer below</span>
+									<span>Dictate or type findings in the scratchpad; watch the chips, then click <strong>Generate Report</strong>. The finished report appears in the viewer below.</span>
 								</li>
 							</ol>
 						</div>
 						
 						<div class="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 text-sm text-blue-300">
-							<strong>No templates yet?</strong> Scroll down to learn about <a href="#creating-templates" class="text-purple-300 hover:text-purple-200 underline">Creating Templates</a> with the 7-step wizard.
+							<strong>No templates yet?</strong> Scroll to <a href="#creating-templates" class="text-purple-300 hover:text-purple-200 underline">Creating Templates</a> and use the template wizard.
 						</div>
 					</div>
 					
@@ -721,7 +730,7 @@
 								<li class="flex items-start gap-2">
 									<span class="text-purple-400 font-bold">4.</span>
 									<div>
-										<strong class="text-white">Report Generation Area:</strong> Appears when template selected (Clinical History, Findings, custom fields + Generate button)
+										<strong class="text-white">Report generation area:</strong> Opens when a template is selected—case fields, workspace (scratchpad + chips), then Generate Report
 									</div>
 								</li>
 							</ol>
@@ -774,7 +783,7 @@
 											<li>• Section configuration (which sections to include, order, input fields)</li>
 											<li>• Global custom instructions</li>
 										</ul>
-										<p class="text-xs text-purple-400 mt-2"><strong>Wizard equivalent:</strong> Steps 1-3 (Scan Info, Section Builder)</p>
+										<p class="text-xs text-purple-400 mt-2"><strong>Wizard equivalent:</strong> Basics and section builder steps</p>
 									</div>
 								</div>
 								
@@ -791,7 +800,7 @@
 											<li>• Configure writing style optimizations (all the granular controls)</li>
 											<li>• Section-specific instructions</li>
 										</ul>
-										<p class="text-xs text-purple-400 mt-2"><strong>Wizard equivalent:</strong> Step 4 (Findings Setup)</p>
+										<p class="text-xs text-purple-400 mt-2"><strong>Wizard equivalent:</strong> Findings part of the content step</p>
 									</div>
 								</div>
 								
@@ -808,7 +817,7 @@
 											<li>• Differential diagnosis style, recommendations, clinical correlation</li>
 											<li>• Section-specific instructions</li>
 										</ul>
-										<p class="text-xs text-purple-400 mt-2"><strong>Wizard equivalent:</strong> Step 5 (Impression Setup)</p>
+										<p class="text-xs text-purple-400 mt-2"><strong>Wizard equivalent:</strong> Impression part of the content step</p>
 									</div>
 								</div>
 							</div>
@@ -821,16 +830,17 @@
 					
 					<!-- Template Wizard -->
 					<div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-8 mb-6">
-						<h3 id="creating-templates" class="text-xl font-bold text-white mb-4 scroll-mt-24">Creating Templates: Template Wizard (7-Step Process)</h3>
-						<p class="text-gray-300 mb-6">Build custom templates with guided step-by-step wizard—no technical knowledge required.</p>
+						<h3 id="creating-templates" class="text-xl font-bold text-white mb-4 scroll-mt-24">Creating Templates: Template Wizard</h3>
+						<p class="text-gray-300 mb-4">Open <strong>+ Create Template</strong> to launch the wizard. A progress bar shows <strong>Step X of 4</strong>—use <strong>Previous</strong> / <strong>Next</strong> to move. No technical knowledge required.</p>
+						<p class="text-xs text-gray-500 mb-6">An alternative path to build templates from pasted example reports may be added in a future update; today the guided steps below are what you'll see.</p>
 						
 						<div class="space-y-3">
 							<div class="bg-black/30 rounded-lg p-4 border border-white/10">
 								<div class="flex items-start gap-4">
 									<div class="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0">1</div>
 									<div>
-										<h4 class="text-white font-semibold mb-1">Scan Information</h4>
-										<p class="text-sm text-gray-400">Scan type, contrast details (no contrast/with IV contrast/other), contrast phases, protocol details</p>
+										<h4 class="text-white font-semibold mb-1">Basics</h4>
+										<p class="text-sm text-gray-400">Template name, description, tags, pin for quick access, scan type, contrast (none / IV / other), phases if relevant, protocol notes, and optional global instructions for the AI.</p>
 									</div>
 								</div>
 							</div>
@@ -839,31 +849,21 @@
 								<div class="flex items-start gap-4">
 									<div class="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0">2</div>
 									<div>
-										<h4 class="text-white font-semibold mb-1">Choose Creation Method</h4>
-										<p class="text-sm text-gray-400"><strong>Wizard:</strong> Build step-by-step OR <strong>From Reports:</strong> Paste 2-5 example reports for AI analysis</p>
-									</div>
-								</div>
-							</div>
-							
-							<div class="bg-black/30 rounded-lg p-4 border border-white/10">
-								<div class="flex items-start gap-4">
-									<div class="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0">3</div>
-									<div>
-										<h4 class="text-white font-semibold mb-1">Configure Sections</h4>
-										<p class="text-sm text-gray-400">Choose which sections to include: Comparison (with/without input field), Technique, Limitations, Clinical History</p>
+										<h4 class="text-white font-semibold mb-1">Section builder</h4>
+										<p class="text-sm text-gray-400">Choose which sections appear (e.g. comparison, technique, limitations, clinical history), whether they need input fields, and the order they appear in the report.</p>
 									</div>
 								</div>
 							</div>
 							
 							<div class="bg-black/30 rounded-lg p-4 border border-purple-500/50 ring-2 ring-purple-500/30">
 								<div class="flex items-start gap-4">
-									<div class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center text-white font-bold flex-shrink-0">4</div>
+									<div class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center text-white font-bold flex-shrink-0">3</div>
 									<div class="flex-1">
 										<div class="flex items-center gap-2 mb-2">
-											<h4 class="text-white font-semibold">Findings Setup</h4>
-											<span class="px-2 py-0.5 bg-yellow-500/20 text-yellow-300 text-xs rounded-full font-bold">CRITICAL</span>
+											<h4 class="text-white font-semibold">Findings &amp; impression</h4>
+											<span class="px-2 py-0.5 bg-yellow-500/20 text-yellow-300 text-xs rounded-full font-bold">Important</span>
 										</div>
-										<p class="text-sm text-gray-300 mb-3">Choose content style (how AI interprets your template) and configure writing style optimizations</p>
+										<p class="text-sm text-gray-300 mb-3">Pick your <strong>findings content style</strong>, write or paste template text, tune writing options, then configure the <strong>impression</strong> (verbosity, format, differentials, recommendations). This step has the most impact on how reports read.</p>
 										<button 
 											onclick={() => expandedTemplateType = expandedTemplateType === 'types' ? null : 'types'}
 											class="text-xs text-purple-400 hover:text-purple-300 underline"
@@ -932,30 +932,10 @@
 							
 							<div class="bg-black/30 rounded-lg p-4 border border-white/10">
 								<div class="flex items-start gap-4">
-									<div class="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0">5</div>
+									<div class="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0">4</div>
 									<div>
-										<h4 class="text-white font-semibold mb-1">Impression Setup</h4>
-										<p class="text-sm text-gray-400">Configure verbosity (Brief/Prose), format (prose/bullets/numbered), DDx inclusion, recommendations</p>
-									</div>
-								</div>
-							</div>
-							
-							<div class="bg-black/30 rounded-lg p-4 border border-white/10">
-								<div class="flex items-start gap-4">
-									<div class="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0">6</div>
-									<div>
-										<h4 class="text-white font-semibold mb-1">Review & Test</h4>
-										<p class="text-sm text-gray-400">Preview complete configuration, test generation with sample data, view syntax highlighting</p>
-									</div>
-								</div>
-							</div>
-							
-							<div class="bg-black/30 rounded-lg p-4 border border-white/10">
-								<div class="flex items-start gap-4">
-									<div class="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0">7</div>
-									<div>
-										<h4 class="text-white font-semibold mb-1">Save Template</h4>
-										<p class="text-sm text-gray-400">Name, description, tags for organization, pin for quick access, global custom instructions</p>
+										<h4 class="text-white font-semibold mb-1">Review &amp; save</h4>
+										<p class="text-sm text-gray-400">Preview the full configuration, try sample generation if offered, then save. When editing an existing template, you can also save from other steps using <strong>Save Changes</strong>.</p>
 									</div>
 								</div>
 							</div>
@@ -1082,7 +1062,7 @@ The mediastinum is of normal width and contour.
 					<!-- Writing Style Optimizations -->
 					<div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-8 mb-6">
 						<h3 id="writing-style-optimizations" class="text-xl font-bold text-white mb-4 scroll-mt-24">🎯 Writing Style Optimizations</h3>
-						<p class="text-gray-300 mb-6">Configure in Step 4 (Findings) and Step 5 (Impression) of wizard, or in the Template Editor's Findings and Impression tabs</p>
+						<p class="text-gray-300 mb-6">Configure in the wizard's <strong>Findings &amp; impression</strong> step, or in the template editor's <strong>Findings</strong> and <strong>Impression</strong> tabs</p>
 						
 						<div class="bg-gradient-to-r from-purple-500/10 to-indigo-500/10 rounded-lg p-6 border border-purple-500/30 mb-6">
 							<h4 class="text-white font-semibold mb-3">Primary Choice</h4>
@@ -1134,14 +1114,14 @@ The mediastinum is of normal width and contour.
 					
 					<div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-5 sm:p-6 md:p-8 mb-6">
 						<h3 class="text-lg sm:text-xl font-bold text-white mb-4">Overview</h3>
-						<p class="text-gray-300 mb-4 text-sm sm:text-base">The History tab provides a centralized view of all your generated reports (both Auto Reports and Templated Reports). Access it from the sidebar to browse, search, filter, and manage your complete report library.</p>
+						<p class="text-gray-300 mb-4 text-sm sm:text-base">The <strong>History</strong> tab lists reports from <strong>Generate Quick Report</strong> and <strong>Generate Custom Report</strong>. In filters, Quick Reports are labelled <strong>Auto Report</strong> (legacy name in the list). Browse, search, filter, and manage your library from the sidebar.</p>
 						
 						<div class="bg-black/30 rounded-lg p-6 border border-purple-500/30 mb-6">
 							<h4 class="text-white font-semibold mb-4">Key Features:</h4>
 							<ul class="space-y-3 text-sm text-gray-300">
 								<li class="flex items-start gap-3">
 									<span class="text-green-400 font-bold">✓</span>
-									<span><strong class="text-white">Complete Report Library:</strong> All generated reports (Auto and Templated) saved automatically when "Save to History" is enabled in Settings</span>
+									<span><strong class="text-white">Complete Report Library:</strong> All generated reports saved automatically when "Save to History" is enabled in Settings</span>
 								</li>
 								<li class="flex items-start gap-3">
 									<span class="text-green-400 font-bold">✓</span>
@@ -1174,7 +1154,7 @@ The mediastinum is of normal width and contour.
 									<span>Filter Reports (optional):</span>
 									<ul class="ml-6 mt-2 space-y-2 text-xs text-gray-400">
 										<li>• <strong class="text-blue-300">Search:</strong> Type keywords in the search bar to find reports by description or content</li>
-										<li>• <strong class="text-blue-300">Report Type:</strong> Select "Auto Report" or "Templated Report" to filter by type</li>
+										<li>• <strong class="text-blue-300">Report Type:</strong> Choose <strong>Auto Report</strong> (Quick Reports) or <strong>Templated Report</strong></li>
 										<li>• <strong class="text-blue-300">Date Range:</strong> Choose from predefined ranges or select "Custom Range" to pick specific start/end dates</li>
 										<li>• <strong class="text-gray-500">Reset Filters:</strong> Click "Reset Filters" button to clear all filters</li>
 									</ul>
@@ -1206,7 +1186,7 @@ The mediastinum is of normal width and contour.
 						<div class="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
 							<p class="text-sm text-blue-300"><strong>📋 Report Cards Display:</strong></p>
 							<ul class="mt-2 space-y-1 text-xs text-blue-200">
-								<li>• Report description (if provided) or default label (Auto Report/Templated Report)</li>
+								<li>• Report description (if provided) or default label (Auto Report for Quick Reports / Templated Report)</li>
 								<li>• Full creation timestamp (date and time)</li>
 								<li>• Checkbox for bulk selection</li>
 								<li>• "View" button (opens full report viewer with version history)</li>
@@ -1221,20 +1201,20 @@ The mediastinum is of normal width and contour.
 					<h2 class="text-2xl sm:text-3xl font-bold text-white mb-6">✨ Report Enhancement</h2>
 					
 					<div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-8 mb-6">
-						<h3 class="text-white font-bold mb-4 text-xl">How to Access Enhancement</h3>
+						<h3 class="text-white font-bold mb-4 text-xl">How to access enhancement</h3>
 						<div class="bg-gradient-to-r from-purple-500/10 to-blue-500/10 rounded-lg p-6 border border-purple-500/30">
-							<ol class="space-y-3 text-gray-300">
+							<ol class="space-y-3 text-gray-300 text-sm">
 								<li class="flex items-start gap-3">
 									<span class="text-purple-400 font-bold">1.</span>
-									<span>After generating a report, <strong>three enhancement cards appear at the top</strong> of your report</span>
+									<span>After generating a report, <strong>three enhancement cards</strong> appear above the report: <strong class="text-purple-300">Guidelines</strong>, <strong class="text-orange-300">Comparison</strong>, and <strong class="text-blue-300">Chat</strong>.</span>
 								</li>
 								<li class="flex items-start gap-3">
 									<span class="text-purple-400 font-bold">2.</span>
-									<span>Click any card: <strong class="text-purple-300">Guidelines</strong>, <strong class="text-orange-300">Comparison</strong>, or <strong class="text-blue-300">Chat</strong></span>
+									<span>Click a card — a <strong>sidebar</strong> opens on the right with tabs for that feature.</span>
 								</li>
 								<li class="flex items-start gap-3">
 									<span class="text-purple-400 font-bold">3.</span>
-									<span><strong>Sidebar opens on the right</strong> with tabs to navigate between features</span>
+									<span>In the <strong>report viewer</strong>, you can also open the <strong>QA audit</strong> panel (see below) for an automated quality pass on the text.</span>
 								</li>
 							</ol>
 						</div>
@@ -1353,14 +1333,18 @@ The mediastinum is of normal width and contour.
 							</div>
 						</div>
 						
-						<div class="bg-yellow-500/10 backdrop-blur-xl border border-yellow-500/30 rounded-xl p-6">
-							<div class="flex items-center gap-2 mb-2">
-								<svg class="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-								</svg>
-								<p class="text-sm text-yellow-300 font-semibold">Completeness Analysis: Currently Inactive</p>
+						<div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-8">
+							<div class="flex items-start gap-4 mb-4">
+								<div class="text-4xl">🛡️</div>
+								<div>
+									<h3 class="text-white font-bold text-xl mb-2">QA audit (report viewer)</h3>
+									<p class="text-gray-300 text-sm mb-4">When you view a generated report, RadFlow can run a <strong>quality audit</strong> on the text. A panel summarises how the report scores on several dimensions—such as whether the wording matches the findings, whether the impression covers what matters, language clarity, and whether anything needs a safety or follow-up flag.</p>
+								</div>
 							</div>
-							<p class="text-xs text-yellow-400">The completeness analysis feature is temporarily disabled. Focus on Guidelines, Comparison, and Chat for report enhancement.</p>
+							<div class="bg-gradient-to-r from-amber-500/10 to-orange-500/10 rounded-lg p-6 border border-amber-500/30 text-sm text-gray-300 space-y-3">
+								<p><strong>What to expect:</strong> You may see passes, gentle warnings, or items to review. Passages in the report can be highlighted; click them to read the rationale. If you edit the report, the audit may show as <strong>out of date</strong> until you run it again.</p>
+								<p><strong>Tip:</strong> Use the audit as a structured second check—especially before signing off complex cases. It complements Guidelines and Chat; it does not replace clinical judgment.</p>
+							</div>
 						</div>
 					</div>
 				</section>
@@ -1645,32 +1629,34 @@ The mediastinum is of normal width and contour.
 					<h2 class="text-2xl sm:text-3xl font-bold text-white mb-6">🎤 Voice Dictation</h2>
 					
 					<div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-8">
-						<p class="text-gray-300 mb-6">Medical-grade voice transcription using Deepgram Nova-3 Medical model. Requires DEEPGRAM_API_KEY to be set by your administrator.</p>
+						<p class="text-gray-300 mb-6 text-sm sm:text-base">Wherever you see a <strong>microphone</strong> (🎤)—including the Quick Reports and custom-report <strong>scratchpad</strong>—you can dictate instead of typing. Transcription is tuned for medical vocabulary and updates as you speak.</p>
 						
 						<div class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 mb-6">
-							<p class="text-sm text-yellow-300"><strong>⚠️ Setup Required:</strong> Your administrator must set the DEEPGRAM_API_KEY environment variable for dictation to be available.</p>
+							<p class="text-sm text-yellow-300"><strong>Availability:</strong> Dictation must be enabled for your organisation. If you never see mic icons, ask your administrator.</p>
 						</div>
 						
 						<div class="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-lg p-5 sm:p-6 border border-blue-500/30 mb-6">
-							<h3 class="text-white font-semibold mb-3">🌊 Real-time Dictation</h3>
+							<h3 class="text-white font-semibold mb-3">Real-time dictation</h3>
 							<p class="text-xs text-gray-400 mb-4">Transcript appears as you speak</p>
-							<ol class="space-y-2 text-xs text-gray-300">
-								<li>1. Click microphone icon (🎤) in text field</li>
-								<li>2. Grant browser microphone permission</li>
-								<li>3. Speak your findings</li>
-								<li>4. Transcript appears <strong>in real-time</strong></li>
-								<li>5. Click stop when done</li>
+							<ol class="space-y-2 text-xs sm:text-sm text-gray-300">
+								<li>1. Click the microphone in the field you want to fill</li>
+								<li>2. Allow the microphone if your browser asks</li>
+								<li>3. Speak naturally; pause or stop the recording when you are done</li>
+								<li>4. If several microphones are listed, pick the one you are actually using (helpful for headsets or Bluetooth devices)</li>
 							</ol>
+						</div>
+
+						<div class="bg-gradient-to-r from-indigo-500/10 to-violet-500/10 rounded-lg p-5 sm:p-6 border border-indigo-500/30 mb-6">
+							<h3 class="text-white font-semibold mb-3">Smart prompts in the workspace</h3>
+							<p class="text-sm text-gray-300">In the scratchpad workspace, optional <strong>CONSIDER</strong>-style prompts may appear beside the editor. They suggest imaging-related points you might still review, based on what you have already dictated. Open <strong>How to use</strong> next to the workspace title for a quick guide. Prompts update as your text changes.</p>
 						</div>
 						
 						<div class="bg-gradient-to-r from-green-500/10 to-emerald-500/10 rounded-lg p-6 border border-green-500/30">
-							<h4 class="text-white font-semibold mb-3">Features:</h4>
-							<ul class="grid sm:grid-cols-2 gap-2 text-sm text-gray-300">
-								<li>• Medical vocabulary optimized</li>
-								<li>• Automatic punctuation</li>
-								<li>• Real-time streaming transcription</li>
-								<li>• Error handling & recovery</li>
-								<li>• Toggle between streaming/batch in Settings</li>
+							<h4 class="text-white font-semibold mb-3">Tips for best results</h4>
+							<ul class="grid sm:grid-cols-1 gap-2 text-sm text-gray-300">
+								<li>• Reduce background noise when possible</li>
+								<li>• Medical terms and common abbreviations are recognised well</li>
+								<li>• You can switch streaming style in <strong>Settings</strong> if your organisation offers that option</li>
 							</ul>
 						</div>
 					</div>
@@ -1683,23 +1669,23 @@ The mediastinum is of normal width and contour.
 					<div class="space-y-6">
 						<!-- Dictation Setup -->
 						<div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-8">
-							<h3 class="text-xl font-bold text-white mb-4">🎤 Dictation Setup (DEEPGRAM_API_KEY)</h3>
-							<p class="text-gray-300 mb-6">Dictation uses a central Deepgram API key. Your administrator sets DEEPGRAM_API_KEY in the server environment—once configured, dictation is available to all users by default.</p>
+							<h3 class="text-xl font-bold text-white mb-4">🎤 Dictation (administrator setup)</h3>
+							<p class="text-gray-300 mb-6">Organisations enable dictation centrally. Once switched on, microphone controls appear for all users without per-user setup.</p>
 							
 							<div class="bg-gradient-to-r from-purple-500/10 to-blue-500/10 rounded-lg p-6 border border-purple-500/30">
-								<h4 class="text-white font-semibold mb-4">Administrator Setup:</h4>
+								<h4 class="text-white font-semibold mb-4">For IT / administrators</h4>
 								<ol class="space-y-3 text-sm text-gray-300">
 									<li class="flex items-start gap-3">
 										<span class="text-purple-400 font-bold">1.</span>
-										<span>Go to <a href="https://console.deepgram.com/" target="_blank" class="text-purple-400 hover:text-purple-300 underline">Deepgram Console</a> and create an API key</span>
+										<span>Create a medical transcription key from <a href="https://console.deepgram.com/" target="_blank" class="text-purple-400 hover:text-purple-300 underline">Deepgram</a></span>
 									</li>
 									<li class="flex items-start gap-3">
 										<span class="text-purple-400 font-bold">2.</span>
-										<span>Add <code class="bg-black/30 px-1 rounded">DEEPGRAM_API_KEY=your_key</code> to the backend <code class="bg-black/30 px-1 rounded">.env</code> file</span>
+										<span>Configure the server with that key and restart the service so the app can reach the dictation provider</span>
 									</li>
 									<li class="flex items-start gap-3">
 										<span class="text-purple-400 font-bold">3.</span>
-										<span>Restart the server. Microphone icons (🎤) are now active throughout the app for all users.</span>
+										<span>Confirm that microphone icons (🎤) appear in the app for a test account</span>
 									</li>
 								</ol>
 							</div>

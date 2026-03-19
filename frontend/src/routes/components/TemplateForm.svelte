@@ -317,6 +317,11 @@
 			await tick();
 			scratchpadRef?.reset(content);
 		}
+		// Treat restored state as ground truth so sectionsDirty stays false
+		variableValuesGeneratedFrom = {};
+		for (const v of nonFindingsVariables) {
+			variableValuesGeneratedFrom[v] = variableValues[v] ?? '';
+		}
 	}
 
 	function copyToClipboard() {
