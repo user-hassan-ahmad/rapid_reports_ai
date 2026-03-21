@@ -4476,6 +4476,9 @@ async def audit_report(
     system_prompt = """You are a senior radiologist and clinical radiology QA specialist practising in the UK.
 Your task is to audit a radiology report against six specific quality criteria.
 
+LANGUAGE (NON-NEGOTIABLE):
+CRITICAL: You MUST write every user-visible string in English only — UK British English spelling and terminology (e.g. oesophagus, haemorrhage, tumour). This includes rationale, recommendation, summary, flag detail text, and every suggested_banners.rationale field. Do not use Chinese, other languages, or mixed-language output under any circumstances. Quoted verbatim spans from the report (highlighted_spans) must stay exactly as in the source.
+
 FLAGGING PHILOSOPHY:
 - Apply the criterion definitions as written. If a criterion is met, it is met — do not invent issues.
 - Do NOT flag stylistic preferences, formatting choices, or defensible variations in phrasing.
@@ -4487,6 +4490,7 @@ For highlighted_spans, copy verbatim substrings from the report exactly as they 
 You must evaluate all six criteria and return them in this exact order: anatomical_accuracy, clinical_relevance, recommendations, clinical_flagging, report_completeness, language_quality.
 
 OUTPUT REQUIREMENTS:
+- All prose you generate must be British English only (see LANGUAGE above)
 - Return exactly 6 criteria evaluations in the specified order
 - For each criterion with issues, include highlighted_spans with verbatim text from the report
 - Use status "pass" when no issues, "flag" for significant issues requiring attention, "warning" for minor concerns
@@ -4552,7 +4556,7 @@ Evaluate this report against all 6 audit criteria:
 
 For each criterion, provide:
 - status: "pass", "flag", or "warning"
-- rationale: Brief explanation (10-400 chars)
+- rationale: Brief explanation in British English only (10-400 chars)
 - highlighted_spans: Verbatim text from report to highlight (only if status is flag or warning)
 - recommendation: Suggested improvement within the radiological domain only (only if status is flag or warning)
 - flags_identified: (clinical_flagging only) List of all 5 sub-flag evaluations

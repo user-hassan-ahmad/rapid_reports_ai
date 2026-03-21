@@ -365,7 +365,7 @@ class AuditCriterionFlag(BaseModel):
         description="Whether surrounding language justifies this flag level"
     )
     detail: str = Field(
-        description="Brief explanation of the flag assessment"
+        description="Brief explanation of the flag assessment (British English only)"
     )
 
 
@@ -378,9 +378,9 @@ class FlagBannerOption(BaseModel):
         "malignancy_interval",
         "significant"
     ] = Field(description="Category of clinical flag")
-    label: str = Field(description="Short label e.g. 'Critical — Immediate Action'")
-    banner_text: str = Field(description="Full text to append to the report")
-    rationale: str = Field(description="Why this was suggested (shown to user)")
+    label: str = Field(description="Short label in British English e.g. 'Critical — Immediate Action'")
+    banner_text: str = Field(description="Full text to append to the report (use standard templates verbatim)")
+    rationale: str = Field(description="Why this was suggested, British English only (shown to user)")
 
 
 class AuditCriterion(BaseModel):
@@ -397,7 +397,7 @@ class AuditCriterion(BaseModel):
         description="Audit status: pass (no issues), flag (requires attention), warning (minor concern)"
     )
     rationale: str = Field(
-        description="Explanation of why this status was assigned"
+        description="Explanation of why this status was assigned (British English only)"
     )
     highlighted_spans: List[str] = Field(
         default_factory=list,
@@ -405,7 +405,7 @@ class AuditCriterion(BaseModel):
     )
     recommendation: Optional[str] = Field(
         default=None,
-        description="Suggested improvement if status is flag or warning"
+        description="Suggested improvement if status is flag or warning (British English only)"
     )
     flags_identified: Optional[List[AuditCriterionFlag]] = Field(
         default=None,
@@ -428,7 +428,7 @@ class AuditResult(BaseModel):
         description="Exactly 6 criterion evaluations, one per audit criterion"
     )
     summary: str = Field(
-        description="High-level summary of audit findings and key issues"
+        description="High-level summary of audit findings and key issues (British English only)"
     )
 
 
