@@ -7,7 +7,8 @@
 	interface SourceLink {
 		url: string;
 		title?: string;
-	snippet?: string;
+		snippet?: string;
+		domain?: string;
 		[key: string]: unknown;
 	}
 	
@@ -121,7 +122,7 @@ interface CompletenessAnalysis {
 	type ChatMessage = {
 		role: 'user' | 'assistant';
 		content: string;
-		sources?: string[];
+		sources?: SourceLink[];
 		error?: boolean;
 		editProposal?: string;
 		actionsApplied?: ChatMessageAction[];
@@ -236,8 +237,7 @@ interface CompletenessAnalysis {
 	let chatTextareaRef: HTMLTextAreaElement | null = null;
 	let chatMessagesContainerRef: HTMLDivElement | null = null;
 	let chatLoading = false;
-
-let selectedActionIds: string[] = [];
+	let selectedActionIds: string[] = [];
 let applyActionsLoading = false;
 let applyActionsError: string | null = null;
 let availableSuggestedActions: SuggestedAction[] = [];
@@ -1829,9 +1829,9 @@ $: if ((visible || autoLoad) && completenessPending) {
 												<span class="text-xs font-mono {isAudit ? 'text-amber-300' : 'text-purple-300'} truncate max-w-[160px]" title={msg.label.name}>{msg.label.name}</span>
 											</div>
 										{:else}
-										<div class="prose prose-invert max-w-none text-sm {msg.error ? 'text-red-300' : 'text-gray-100'}">
-											{@html renderMarkdown(msg.content)}
-										</div>
+									<div class="prose prose-invert max-w-none text-sm prose-p:leading-relaxed prose-strong:text-white prose-strong:font-semibold prose-headings:text-white prose-li:text-gray-200 {msg.error ? 'text-red-300' : 'text-gray-100'}">
+										{@html renderMarkdown(msg.content)}
+									</div>
 										{/if}
 										{#if msg.editProposal}
 											<div class="mt-3 pt-3 border-t border-white/10 space-y-2">
@@ -1896,25 +1896,30 @@ $: if ((visible || autoLoad) && completenessPending) {
 												</button>
 											</div>
 										{/if}
-										{#if msg.sources && msg.sources.length > 0}
-											<div class="mt-2 pt-2 border-t border-white/10">
-												<p class="text-xs font-medium text-gray-400 mb-1">Sources:</p>
-												<ul class="space-y-1">
-													{#each msg.sources as source}
-														<li>
+									{#if msg.sources && msg.sources.length > 0}
+										<div class="mt-2 pt-2 border-t border-white/10">
+											<p class="text-xs font-medium text-gray-400 mb-1">Sources consulted</p>
+											<ul class="space-y-1.5">
+												{#each msg.sources as source}
+													<li class="src-ref-item text-xs flex gap-1.5 items-start">
+														<div class="min-w-0 flex-1">
 															<a
-																href={source}
+																href={source.url}
 																target="_blank"
 																rel="noopener noreferrer"
-																class="text-xs text-purple-400 hover:text-purple-300 underline truncate block"
+																class="text-purple-400 hover:text-purple-300 font-medium block truncate leading-snug"
 															>
-																{source}
+																{source.title?.trim() || source.domain || source.url}
 															</a>
-														</li>
-													{/each}
-												</ul>
-											</div>
-										{/if}
+															{#if source.snippet?.trim()}
+																<div class="src-snippet">{source.snippet}</div>
+															{/if}
+														</div>
+													</li>
+												{/each}
+											</ul>
+										</div>
+									{/if}
 									</div>
 								</div>
 							{/each}
@@ -2207,5 +2212,21 @@ $: if ((visible || autoLoad) && completenessPending) {
 	
 	:global(.prose .katex-inline-container) {
 		margin: 0 0.2em;
+	}
+
+	.src-ref-item .src-snippet {
+		max-height: 0;
+		overflow: hidden;
+		opacity: 0;
+		font-size: 0.68rem;
+		line-height: 1.45;
+		color: rgb(107, 114, 128);
+		margin-top: 0;
+		transition: max-height 0.22s ease, opacity 0.18s ease, margin-top 0.18s ease;
+	}
+	.src-ref-item:hover .src-snippet {
+		max-height: 6rem;
+		opacity: 1;
+		margin-top: 2px;
 	}
 </style>

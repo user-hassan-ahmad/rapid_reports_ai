@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, File, UploadFile, HTTPException
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Dict, Optional, List, Any, Literal
 import copy
 import os
@@ -71,6 +71,10 @@ from .enhancement_utils import (
     analyze_report_completeness,
     generate_auto_report,
     generate_templated_report,
+    build_chat_guideline_context,
+    collect_guideline_sources_for_chat,
+    run_perplexity_search_chat,
+    normalize_evidence_url_for_dedupe,
 )
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
@@ -2502,10 +2506,92 @@ class ChatStructuredActionsRequest(BaseModel):
     conversation_summary: Optional[str] = Field(None, description="Brief summary of the conversation context (optional)")
 
 
+class SearchExternalGuidelinesRequest(BaseModel):
+    """Perplexity search tool: 1–3 focused queries for UK radiology / imaging guidance not in ENHANCEMENT CONTEXT."""
+    queries: List[str] = Field(
+        ...,
+        min_length=1,
+        max_length=3,
+        description="1–3 specific search strings (e.g. 'Fleischner subsolid nodule follow-up UK', 'RCR incidental adrenal lesion').",
+    )
+
+    @field_validator("queries", mode="before")
+    @classmethod
+    def strip_queries(cls, v: Any) -> List[str]:
+        if not isinstance(v, list):
+            return []
+        return [str(q).strip() for q in v if q is not None and str(q).strip()][:3]
+
+
 class StructuredActionsRequest(BaseModel):
     """Tool for applying structured actions to the report."""
     actions: List[StructuredActionItem] = Field(..., description="List of specific actions to apply to the report. Each action should be a focused, surgical edit.")
     conversation_summary: Optional[str] = Field(None, description="Brief summary of the conversation context that led to these edits (optional but helpful)")
+
+
+def _groq_assistant_to_dict(message: Any) -> Dict[str, Any]:
+    """Serialize Groq/OpenAI chat assistant message for a follow-up completion."""
+    d: Dict[str, Any] = {"role": getattr(message, "role", "assistant"), "content": message.content or ""}
+    tcs = getattr(message, "tool_calls", None)
+    if tcs:
+        d["tool_calls"] = [
+            {
+                "id": tc.id,
+                "type": getattr(tc, "type", None) or "function",
+                "function": {"name": tc.function.name, "arguments": tc.function.arguments or "{}"},
+            }
+            for tc in tcs
+        ]
+    return d
+
+
+def _strip_report_chat_meta_phrases(text: Optional[str]) -> str:
+    """
+    Remove boilerplate where the model narrates tools, ENHANCEMENT CONTEXT, or search decisions
+    (must not appear in the clinician-facing chat UI).
+    """
+    if not text or not str(text).strip():
+        return (text or "").strip()
+    t = str(text)
+    patterns = [
+        r"(?is)\n*\s*No additional action is required[^\n.]*\.",
+        r"(?is)\n*\s*No further action is required[^\n.]*\.",
+        r"(?is)\n*\s*As the ENHANCEMENT CONTEXT[^\n.]*\.",
+        r"(?is)\n*\s*The ENHANCEMENT CONTEXT[^\n.]*\.",
+        r"(?is)\n*\s*Since the ENHANCEMENT CONTEXT[^\n.]*\.",
+        r"(?is)\n*\s*Because the ENHANCEMENT CONTEXT[^\n.]*\.",
+        r"(?is)\n*\s*This (question|topic|query) is (fully |already )?answered (by|in) the ENHANCEMENT CONTEXT[^\n.]*\.",
+        r"(?is)\n*\s*The (available )?guideline context (already )?(covers|addresses|fully covers)[^\n.]*\.",
+        r"(?is)\n*\s*No (further |additional )?search (was |is )?(required|needed|necessary)[^\n.]*\.",
+        r"(?is)\n*\s*I (did not|have not) (invoke|call|use|need to call) (the )?search[^\n.]*\.",
+        r"(?is)\n*\s*I (did not|have not) (invoke|call) `search_external_guidelines`[^\n.]*\.",
+        r"(?is)\s*No additional action is required[^\n.]*\.\s*",
+        r"(?is)\s*The ENHANCEMENT CONTEXT fully covers[^\n.]*\.\s*",
+    ]
+    for p in patterns:
+        t = re.sub(p, "\n", t)
+    t = re.sub(r"\n{3,}", "\n\n", t).strip()
+    return t
+
+
+def _merge_chat_source_lists(
+    primary_sources: List[Dict[str, Any]], secondary_sources: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """
+    Dedupe by normalised URL; earlier list wins (Perplexity sources passed as primary).
+    Uses normalize_evidence_url_for_dedupe so that URL variants like ?lang=us or
+    trailing slashes don't produce duplicate entries for the same article.
+    """
+    seen: set[str] = set()
+    out: List[Dict[str, Any]] = []
+    for s in primary_sources + secondary_sources:
+        u = (s.get("url") or "").strip()
+        key = normalize_evidence_url_for_dedupe(u) if u else ""
+        if key and key not in seen:
+            seen.add(key)
+            out.append(s)
+    return out
+
 
 @app.post("/api/reports/{report_id}/chat")
 async def chat_about_report(
@@ -2535,62 +2621,47 @@ async def chat_about_report(
         from groq import Groq
         client = Groq(api_key=groq_api_key)
         
-        # Get enhancement data if available
-        enhancement_context = ""
-        enhancement_data = ENHANCEMENT_RESULTS.get(report_id)
-        if enhancement_data:
-            findings = enhancement_data.get('findings', [])
-            guidelines = enhancement_data.get('guidelines', [])
-            
-            if findings or guidelines:
-                enhancement_context += "\n\n=== ENHANCEMENT CONTEXT ===\n"
-                enhancement_context += "The following information has been automatically extracted and synthesized from the report above to assist with discussion:\n\n"
-            
-            if findings:
-                enhancement_context += "### Extracted Findings:\n"
-                enhancement_context += "These are the key radiological findings that were automatically identified and consolidated from the report:\n"
-                for finding in findings:
-                    enhancement_context += f"- {finding.get('finding', 'N/A')}\n"
-                enhancement_context += "\n"
-            
-            if guidelines:
-                enhancement_context += "### Clinical Guidelines:\n"
-                enhancement_context += "For each extracted finding above, relevant UK radiology guidelines have been synthesized from authoritative sources. Use this context when discussing diagnostic criteria, classification systems, measurement protocols, or follow-up recommendations:\n\n"
-                for guideline in guidelines:
-                    finding_name = guideline.get('finding', {}).get('finding', 'N/A')
-                    enhancement_context += f"**Finding: {finding_name}**\n"
-                    
-                    # Use diagnostic overview (new structure)
-                    overview = guideline.get('diagnostic_overview', '')
-                    if overview:
-                        enhancement_context += f"{overview}\n"
-                    
-                    # Include classification systems
-                    classification_systems = guideline.get('classification_systems', [])
-                    if classification_systems:
-                        enhancement_context += "\nClassification Systems:\n"
-                        for system in classification_systems[:2]:
-                            enhancement_context += f"- {system.get('name', '')}: {system.get('grade_or_category', '')} - {system.get('criteria', '')}\n"
-                    
-                    # Include key imaging characteristics
-                    imaging_chars = guideline.get('imaging_characteristics', [])
-                    if imaging_chars:
-                        enhancement_context += "\nKey Imaging Features:\n"
-                        for char in imaging_chars[:3]:
-                            enhancement_context += f"- {char.get('feature', '')}: {char.get('description', '')} ({char.get('significance', '')})\n"
-                    
-                    # Include differential diagnoses
-                    differentials = guideline.get('differential_diagnoses', [])
-                    if differentials:
-                        enhancement_context += "\nDifferential Diagnoses:\n"
-                        for ddx in differentials[:2]:
-                            enhancement_context += f"- {ddx.get('diagnosis', '')}: {ddx.get('imaging_features', '')}\n"
-                    
-                    enhancement_context += "\n"
-        
+        enhancement_data = ENHANCEMENT_RESULTS.get(report_id) or {}
+        findings = enhancement_data.get("findings", [])
+        guidelines = enhancement_data.get("guidelines", [])
+        try:
+            max_ctx = int(os.getenv("CHAT_GUIDELINE_CONTEXT_MAX_CHARS", "14000"))
+        except ValueError:
+            max_ctx = 14000
+
+        # Pass the full guideline context for all findings — let the LLM decide what's relevant
+        enhancement_context = build_chat_guideline_context(findings, guidelines, max_ctx)
+        guideline_sources = collect_guideline_sources_for_chat(guidelines)
+
+        print(f"📚 Chat context: {len(guidelines)} guideline(s), {len(guideline_sources)} source(s) | report={report_id[:8]}…")
+
         system_prompt = (
             "You are a radiology reporting assistant. Use British English throughout. "
-            "Be concise and evidence-based; cite guideline context when relevant; say so if unsure.\n\n"
+            "Be concise and evidence-based; say so if unsure.\n\n"
+            "## User-facing reply (mandatory)\n"
+            "- Address the clinician only: clinical content, practical implications, and clear language.\n"
+            "- Use light Markdown when it helps readability: **bold** for society names and key thresholds, "
+            "short bullet lists for multiple recommendations, optional `###` subheadings in longer answers.\n"
+            "- Never mention or allude to: \"EVIDENCE CONTEXT\", internal blocks, tools, searches, retrieval, "
+            "the UI Sources list, filtering, pipelines, or whether you did or did not call a function.\n"
+            "- Do not end with system-style lines such as \"no additional action is required\", "
+            "\"the context fully covers…\", \"no search was needed\", or similar meta commentary.\n\n"
+            "## EVIDENCE CONTEXT (priority)\n"
+            "For questions about guidelines, staging, classifications, measurements, or follow-up imaging, "
+            "ground answers in the source evidence passages below first. Use society names, document titles, and years "
+            "**exactly as written there**. If it is insufficient or missing the topic, call `search_external_guidelines` "
+            "with 1–3 focused queries — do not invent citations.\n"
+            + "Do not write inline [1], [2] or similar numbered citation markers.\n\n"
+            + "## Source attribution (mandatory)\n"
+            "After your complete reply, on its own line, output exactly:\n"
+            "<SOURCES_USED>[\"https://url1\", \"https://url2\"]</SOURCES_USED>\n"
+            "List only the URLs you directly drew on. Use the exact URL strings from the evidence passages above. "
+            "Omit URLs from sources you did not draw on. Output an empty array [] if no external sources were used.\n\n"
+            + "## Tool: `search_external_guidelines`\n"
+            "Call only when authoritative imaging/radiology guidance is needed and not adequately covered in ENHANCEMENT CONTEXT.\n"
+            "Do not call for: report edits, laterality fixes, typos, chit-chat, or questions fully answered below.\n"
+            "Do not call `search_external_guidelines` in the **same** assistant message as `apply_structured_actions` — "
+            "finish retrieval first, then call apply in a follow-up assistant message if still needed.\n\n"
             "## Tool use: `apply_structured_actions`\n\n"
             "**Apply immediately** (no preamble, no confirmation) when the message:\n"
             "- States the exact correction ('change right to left', 'it should be 12 mm', 'fix the laterality')\n"
@@ -2636,7 +2707,6 @@ async def chat_about_report(
             "content": request.message
         })
         
-        # Define tools - use structured actions (preferred) with backward compatibility
         tools = [
             {
                 "type": "function",
@@ -2653,14 +2723,30 @@ async def chat_about_report(
                     "description": "DEPRECATED: Updates the full content of the radiology report. Use apply_structured_actions instead.",
                     "parameters": ReportUpdate.model_json_schema()
                 }
-            }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_external_guidelines",
+                    "description": (
+                        "Search authoritative web sources for UK-relevant radiology/imaging guidance when ENHANCEMENT CONTEXT "
+                        "does not cover the user's question (e.g. specific staging, classification, society guideline). "
+                        "Do not use for report text edits or questions already answered in ENHANCEMENT CONTEXT."
+                    ),
+                    "parameters": SearchExternalGuidelinesRequest.model_json_schema(),
+                }
+            },
         ]
-        
+
+        tools_edit_only = tools[:2]
+
         print(f"\n💬 Chat request received:")
         print(f"  Model: qwen/qwen3-32b (Groq)")
         print(f"  User message: {request.message[:100]}...")
         print(f"  History: {len(request.history) if request.history else 0} messages")
-        
+
+        perplexity_sources: List[Dict[str, Any]] = []
+
         response = client.chat.completions.create(
             model="qwen/qwen3-32b",
             max_tokens=4096,
@@ -2668,15 +2754,77 @@ async def chat_about_report(
             messages=messages,
             tools=tools,
             tool_choice="auto",
-            stop=None
+            stop=None,
         )
-        
+
         print(f"✅ Qwen response received")
-        
+
         message = response.choices[0].message
+        tool_calls = message.tool_calls or []
+
+        search_tool_name = "search_external_guidelines"
+        has_search = any(getattr(tc.function, "name", None) == search_tool_name for tc in tool_calls)
+
+        if has_search:
+            merged_queries: List[str] = []
+            for tc in tool_calls:
+                if tc.function.name != search_tool_name:
+                    continue
+                try:
+                    args = json.loads(tc.function.arguments or "{}")
+                    qlist = args.get("queries") or []
+                    if isinstance(qlist, list):
+                        for x in qlist:
+                            xs = str(x).strip() if x is not None else ""
+                            if xs:
+                                merged_queries.append(xs)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            seen_q: set = set()
+            uniq_queries: List[str] = []
+            for q in merged_queries:
+                if q not in seen_q:
+                    seen_q.add(q)
+                    uniq_queries.append(q)
+            uniq_queries = uniq_queries[:3]
+            evidence, perplexity_sources = (
+                await run_perplexity_search_chat(uniq_queries) if uniq_queries else ("", [])
+            )
+            deferred_note = json.dumps(
+                {
+                    "note": "Answer using external search evidence first. If report edits are still needed, call apply_structured_actions in your next assistant turn only."
+                }
+            )
+            tool_messages = []
+            for tc in tool_calls:
+                if tc.function.name == search_tool_name:
+                    tool_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": evidence if evidence else "(no search results)",
+                        }
+                    )
+                else:
+                    tool_messages.append(
+                        {"role": "tool", "tool_call_id": tc.id, "content": deferred_note}
+                    )
+            messages_followup = messages + [_groq_assistant_to_dict(message)] + tool_messages
+            response2 = client.chat.completions.create(
+                model="qwen/qwen3-32b",
+                max_tokens=4096,
+                temperature=0.3,
+                messages=messages_followup,
+                tools=tools_edit_only,
+                tool_choice="auto",
+                stop=None,
+            )
+            message = response2.choices[0].message
+            tool_calls = message.tool_calls or []
+            print(f"✅ Qwen follow-up after external search ({len(perplexity_sources)} sources)")
+
         response_text = message.content
-        tool_calls = message.tool_calls
-        
+
         # DEBUG: Log response details
         print(f"\n{'='*80}")
         print(f"🔍 DEBUG: Qwen Response Analysis")
@@ -2689,10 +2837,10 @@ async def chat_about_report(
                 print(f"  Tool call {i}: {tc.function.name}")
                 print(f"    Arguments preview: {tc.function.arguments[:200] if tc.function.arguments else 'None'}...")
         print(f"{'='*80}\n")
-        
+
         edit_proposal = None
         actions_applied = None  # Structured actions (title, details, patch) for UI display
-        
+
         if tool_calls:
             for tool_call in tool_calls:
                 if tool_call.function.name == "apply_structured_actions":
@@ -2879,8 +3027,9 @@ Maintain the same structure, formatting, and style as the original report."""
                                 print(f"✅ Using Qwen fallback (length: {len(edit_proposal)} chars)")
                         except json.JSONDecodeError as e:
                             print(f"❌ Failed to parse Qwen tool call: {e}")
+                elif tool_call.function.name == search_tool_name:
+                    print(f"⚠️ Ignoring unexpected {search_tool_name} in follow-up turn")
                 else:
-                    # Other tool calls (shouldn't happen, but handle gracefully)
                     print(f"⚠️ Unexpected tool call: {tool_call.function.name}")
         
         # DEBUG: Log final state before returning
@@ -2910,6 +3059,7 @@ Maintain the same structure, formatting, and style as the original report."""
                 print(f"  Response text snippet: {response_text[:500]}...")
         
         # Filter out Qwen's thinking tokens if present in text response
+        sources_used_urls: List[str] = []
         if response_text:
             original_length = len(response_text)
             response_text = re.sub(
@@ -2920,7 +3070,34 @@ Maintain the same structure, formatting, and style as the original report."""
             ).strip()
             if len(response_text) != original_length:
                 print(f"  └─ Removed thinking tokens (length changed: {original_length} -> {len(response_text)})")
-            
+            # Extract and strip the LLM-declared source URLs block
+            sources_used_match = re.search(
+                r'\s*<SOURCES_USED>(.*?)</SOURCES_USED>\s*',
+                response_text,
+                flags=re.DOTALL | re.IGNORECASE,
+            )
+            if sources_used_match:
+                try:
+                    sources_used_urls = json.loads(sources_used_match.group(1).strip())
+                    if not isinstance(sources_used_urls, list):
+                        sources_used_urls = []
+                except (json.JSONDecodeError, ValueError):
+                    sources_used_urls = []
+                response_text = (
+                    response_text[: sources_used_match.start()].rstrip()
+                    + response_text[sources_used_match.end():]
+                ).strip()
+                print(f"  └─ Extracted SOURCES_USED: {sources_used_urls}")
+            meta_stripped = _strip_report_chat_meta_phrases(response_text)
+            if meta_stripped != response_text:
+                print(f"  └─ Stripped chat meta phrases (length {len(response_text)} -> {len(meta_stripped)})")
+            response_text = meta_stripped
+            if response_text:
+                stripped_refs = re.sub(r"\s*\[\d+\]", "", response_text).strip()
+                if stripped_refs != response_text:
+                    print(f"  └─ Stripped spurious [n] refs")
+                response_text = stripped_refs
+
         if not response_text and edit_proposal:
             response_text = "I've drafted the changes for you. Please review and apply them below."
             print(f"  └─ Set default response text (edit_proposal exists but no response_text)")
@@ -2930,19 +3107,48 @@ Maintain the same structure, formatting, and style as the original report."""
         print(f"  Edit proposal length: {len(edit_proposal) if edit_proposal else 0} chars")
         print(f"{'='*80}\n")
         
-        sources = []
+        # Bank any new Perplexity sources into the cumulative pool for this report session
+        if perplexity_sources:
+            pool: List[Dict[str, Any]] = enhancement_data.setdefault("chat_perplexity_pool", [])
+            seen_pool = {normalize_evidence_url_for_dedupe(s.get("url", "")) for s in pool}
+            for src in perplexity_sources:
+                key = normalize_evidence_url_for_dedupe(src.get("url", ""))
+                if key and key not in seen_pool:
+                    seen_pool.add(key)
+                    pool.append(src)
+
+        # Merge: current-turn Perplexity first (most relevant to this question),
+        # then any previously accumulated Perplexity hits, then pre-computed guideline sources.
+        # Deduplication is handled by _merge_chat_source_lists; cap at 3.
+        accumulated_perplexity = enhancement_data.get("chat_perplexity_pool", [])
+        all_perplexity = _merge_chat_source_lists(perplexity_sources, accumulated_perplexity)
+        candidate_sources = _merge_chat_source_lists(all_perplexity, guideline_sources)
+
+        # Filter to only sources the LLM declared it used, when available
+        if sources_used_urls:
+            used_keys = {normalize_evidence_url_for_dedupe(u) for u in sources_used_urls if u}
+            filtered = [
+                s for s in candidate_sources
+                if normalize_evidence_url_for_dedupe(s.get("url", "")) in used_keys
+            ]
+            sources = filtered[:3] if filtered else candidate_sources[:3]
+            print(f"   SOURCES_USED filter: {len(sources_used_urls)} declared → {len(filtered)} matched (pool: {len(accumulated_perplexity)}, guideline: {len(guideline_sources)})")
+        else:
+            sources = candidate_sources[:3]
+            print(f"   Sources returned: {len(sources)} (no SOURCES_USED block; perplexity pool: {len(accumulated_perplexity)}, guideline: {len(guideline_sources)})")
+
         # Strip patch from actions_applied for frontend—patch is used only for updater prompt, not displayed
         actions_for_frontend = (
             [{"title": a.get("title", ""), "details": a.get("details", "")} for a in actions_applied]
             if actions_applied else actions_applied
         )
-        
+
         return {
             "success": True,
             "response": response_text,
             "edit_proposal": edit_proposal,
             "actions_applied": actions_for_frontend,
-            "sources": sources
+            "sources": sources,
         }
         
     except Exception as e:

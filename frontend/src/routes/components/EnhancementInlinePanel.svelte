@@ -25,11 +25,24 @@
 		guideline_summary?: string;
 		[key: string]: unknown;
 	}
+
+	interface SourceLink {
+		url: string;
+		title?: string;
+		snippet?: string;
+		domain?: string;
+		[key: string]: unknown;
+	}
 	
 	let loading = false;
 	let error: string | null = null;
 	let guidelinesData: GuidelineEntry[] = [];
-	let chatMessages: Array<{ role: 'user' | 'assistant'; content: string; sources?: string[]; error?: boolean }> = [];
+	let chatMessages: Array<{
+		role: 'user' | 'assistant';
+		content: string;
+		sources?: SourceLink[];
+		error?: boolean;
+	}> = [];
 	let chatInput = '';
 	let chatLoading = false;
 	
@@ -49,7 +62,7 @@
 		processed = processed.replace(/^[\s]{2,}-[\s]+/gm, '- ');
 		return marked.parse(processed);
 	}
-	
+
 	async function loadEnhancements() {
 		if (!reportId || loading) return;
 		
@@ -121,11 +134,11 @@
 			const data: any = await response.json();
 			
 			if (data.success) {
-				chatMessages.push({
-					role: 'assistant',
-					content: data.response,
-					sources: data.sources || []
-				});
+			chatMessages.push({
+				role: 'assistant',
+				content: data.response,
+				sources: data.sources || []
+			});
 				chatMessages = [...chatMessages];
 			} else {
 				chatMessages.push({
@@ -269,31 +282,36 @@
 								Ask questions about the report or request improvements.
 							</div>
 						{:else}
-							{#each chatMessages as msg}
+							{#each chatMessages as msg, index}
 								<div class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}">
 									<div class="max-w-[80%] {msg.role === 'user' ? 'bg-purple-600' : msg.error ? 'bg-red-500/20 border border-red-500/30' : 'bg-gray-800'} rounded-lg p-3">
-										<div class="prose prose-invert max-w-none text-sm {msg.error ? 'text-red-300' : 'text-gray-100'}">
-											{@html renderMarkdown(msg.content)}
-										</div>
-										{#if msg.sources && msg.sources.length > 0}
-											<div class="mt-2 pt-2 border-t border-gray-700">
-												<p class="text-xs font-medium text-gray-400 mb-1">Sources:</p>
-												<ul class="space-y-1">
-													{#each msg.sources as source}
-														<li>
+									<div class="prose prose-invert max-w-none text-sm prose-p:leading-relaxed prose-strong:text-white prose-strong:font-semibold prose-headings:text-white prose-li:text-gray-200 {msg.error ? 'text-red-300' : 'text-gray-100'}">
+										{@html renderMarkdown(msg.content)}
+									</div>
+									{#if msg.sources && msg.sources.length > 0}
+										<div class="mt-2 pt-2 border-t border-gray-700">
+											<p class="text-xs font-medium text-gray-400 mb-1">Sources consulted</p>
+											<ul class="space-y-1.5">
+												{#each msg.sources as source}
+													<li class="src-ref-item text-xs flex gap-1.5 items-start">
+														<div class="min-w-0 flex-1">
 															<a
-																href={source}
+																href={source.url}
 																target="_blank"
 																rel="noopener noreferrer"
-																class="text-xs text-purple-400 hover:text-purple-300 underline truncate block"
+																class="text-purple-400 hover:text-purple-300 font-medium block truncate leading-snug"
 															>
-																{source}
+																{source.title?.trim() || source.domain || source.url}
 															</a>
-														</li>
-													{/each}
-												</ul>
-											</div>
-										{/if}
+															{#if source.snippet?.trim()}
+																<div class="src-snippet">{source.snippet}</div>
+															{/if}
+														</div>
+													</li>
+												{/each}
+											</ul>
+										</div>
+									{/if}
 									</div>
 								</div>
 							{/each}
@@ -332,4 +350,22 @@
 		</div>
 	</div>
 {/if}
+
+<style>
+	.src-ref-item .src-snippet {
+		max-height: 0;
+		overflow: hidden;
+		opacity: 0;
+		font-size: 0.68rem;
+		line-height: 1.45;
+		color: rgb(107, 114, 128);
+		margin-top: 0;
+		transition: max-height 0.22s ease, opacity 0.18s ease, margin-top 0.18s ease;
+	}
+	.src-ref-item:hover .src-snippet {
+		max-height: 6rem;
+		opacity: 1;
+		margin-top: 2px;
+	}
+</style>
 

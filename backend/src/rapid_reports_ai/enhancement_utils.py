@@ -9,8 +9,8 @@ import re
 import time
 from datetime import datetime
 from functools import wraps
-from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from pydantic import BaseModel
 from pydantic_ai import RunContext
 
@@ -60,7 +60,66 @@ from .enhancement_models import (
     AuditResult,
 )
 
-# GLM Reasoning Mode Toggle
+# ── Semantic embedding cache ──────────────────────────────────────────────────
+# Keyed by MD5 of the input text; populated lazily on first embed call per text.
+# Survives the lifetime of the server process; reset on restart (fine at our scale).
+_EMBEDDING_CACHE: Dict[str, List[float]] = {}
+_EMBEDDING_CACHE_MAX = 8_000  # ~8k short snippets ≈ a few MB of floats
+
+
+def _cosine_similarity(a: List[float], b: List[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(x * x for x in b) ** 0.5
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+async def _batch_embed(texts: List[str]) -> Optional[List[List[float]]]:
+    """
+    Batch-embed texts using OpenAI text-embedding-3-small.
+
+    Returns a parallel list of embedding vectors, or None if the API key is absent
+    or the call fails (callers should fall back to lexical scoring).
+    All results are stored in _EMBEDDING_CACHE keyed by MD5(text).
+    """
+    import openai
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return None
+
+    cache_keys = [hashlib.md5(t.encode()).hexdigest() for t in texts]
+    result: List[Optional[List[float]]] = [_EMBEDDING_CACHE.get(k) for k in cache_keys]
+    uncached_idx = [i for i, v in enumerate(result) if v is None]
+
+    if uncached_idx:
+        try:
+            client = openai.AsyncOpenAI(api_key=api_key)
+            resp = await client.embeddings.create(
+                model="text-embedding-3-small",
+                input=[texts[i] for i in uncached_idx],
+            )
+            for list_pos, orig_idx in enumerate(uncached_idx):
+                vec = resp.data[list_pos].embedding
+                # Evict oldest entries if cache is full
+                if len(_EMBEDDING_CACHE) >= _EMBEDDING_CACHE_MAX:
+                    oldest = next(iter(_EMBEDDING_CACHE))
+                    del _EMBEDDING_CACHE[oldest]
+                _EMBEDDING_CACHE[cache_keys[orig_idx]] = vec
+                result[orig_idx] = vec
+        except Exception as exc:
+            print(f"[embedding] API error, falling back to lexical: {exc}")
+            return None
+
+    # If any slot is still None (shouldn't happen), abort
+    if any(v is None for v in result):
+        return None
+    return result  # type: ignore[return-value]
+
+
+# ── GLM Reasoning Mode Toggle ──────────────────────────────────────────────────
 # Cerebras docs: temperature >= 0.8 required when reasoning is enabled.
 # If reasoning is disabled, temperature can go below 0.8 for more deterministic output.
 #   Reasoning ON  → temperature=0.8, max_completion_tokens=16000 (budget for reasoning + report)
@@ -547,6 +606,56 @@ def extract_domain(url: str) -> str:
         return url
 
 
+# Query keys that must not create a second evidence row (locale, tracking, etc.)
+_DEDUPE_IGNORE_QUERY_KEYS = frozenset(
+    k.lower()
+    for k in (
+        "lang",
+        "hl",
+        "ref",
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "utm_content",
+        "utm_term",
+        "fbclid",
+        "gclid",
+        "mc_cid",
+        "mc_eid",
+    )
+)
+
+def normalize_evidence_url_for_dedupe(url: str) -> str:
+    """
+    Stable key for deduplicating search-hit URLs (http/https, www, trailing slash, query).
+    First-seen URL is kept in lists; later duplicates are dropped.
+    """
+    raw = (url or "").strip()
+    if not raw:
+        return ""
+    try:
+        p = urlparse(raw)
+        scheme = (p.scheme or "https").lower()
+        netloc = (p.netloc or "").lower()
+        if netloc.startswith("www."):
+            netloc = netloc[4:]
+        path = (p.path or "").rstrip("/") or "/"
+        # Radiopaedia: same article often appears as /articles/foo and /articles/foo?lang=us
+        if netloc == "radiopaedia.org":
+            query = ""
+        else:
+            pairs = [
+                (k, v)
+                for k, v in parse_qsl(p.query, keep_blank_values=True)
+                if k.lower() not in _DEDUPE_IGNORE_QUERY_KEYS
+            ]
+            pairs.sort()
+            query = urlencode(pairs)
+        return urlunparse((scheme, netloc, path, "", query, ""))
+    except Exception:
+        return raw
+
+
 def build_guideline_markdown(summary: str, key_points: List[Dict[str, Any]]) -> str:
     """Combine summary text and key points into Markdown-friendly string (DEPRECATED - use build_radiologist_guideline_markdown)"""
     lines = []
@@ -867,6 +976,593 @@ def normalize_perplexity_results(search_response: Any, queries: List[str]) -> Li
         unique_results.append(item)
 
     return unique_results
+
+
+def build_chat_guideline_context(
+    findings: List[Dict[str, Any]],
+    guidelines: List[Dict[str, Any]],
+    max_total_chars: int,
+) -> str:
+    """
+    Build EVIDENCE CONTEXT for report chat.
+
+    Injects source excerpts (title + snippet from raw_evidence, or synthesized structured
+    fields for older cached data) so the model can ground answers in real guideline text.
+    No numbered [n] references are injected — sources are shown as a flat list to the model.
+    """
+    if max_total_chars < 500:
+        max_total_chars = 500
+
+    chunks: List[str] = []
+    remaining = max_total_chars
+
+    def append_text(text: str) -> None:
+        nonlocal remaining
+        if not text or remaining <= 0:
+            return
+        t = text.rstrip()
+        if not t:
+            return
+        if len(t) <= remaining:
+            chunks.append(t)
+            remaining -= len(t)
+            return
+        if remaining > 100:
+            chunks.append(t[: remaining - 40].rstrip() + "\n[truncated for length]\n")
+        remaining = 0
+
+    if findings or guidelines:
+        append_text(
+            "\n\n=== EVIDENCE CONTEXT ===\n"
+            "The following source excerpts and synthesized notes ground answers about this report.\n"
+            "Use society names and years exactly as written here. Do not invent citations.\n\n"
+        )
+
+    if findings:
+        append_text("### Extracted Findings:\n")
+        for finding in findings:
+            append_text(f"- {finding.get('finding', 'N/A')}\n")
+        append_text("\n")
+
+    if not guidelines:
+        return "".join(chunks)
+
+    for guideline in guidelines:
+        if remaining <= 0:
+            break
+        finding_name = guideline.get("finding", {})
+        if isinstance(finding_name, dict):
+            finding_name = finding_name.get("finding", "N/A")
+
+        raw_evidence: List[Dict[str, Any]] = guideline.get("raw_evidence") or []
+        if raw_evidence:
+            _seen_ev: set[str] = set()
+            _deduped: List[Dict[str, Any]] = []
+            for _hit in raw_evidence:
+                _k = normalize_evidence_url_for_dedupe((_hit.get("url") or ""))
+                if not _k or _k in _seen_ev:
+                    continue
+                _seen_ev.add(_k)
+                _deduped.append(_hit)
+            raw_evidence = _deduped
+
+        if raw_evidence:
+            append_text(f"### Finding: {finding_name}\n")
+            overview = guideline.get("diagnostic_overview") or ""
+            if overview:
+                append_text(f"{overview}\n\n")
+            append_text("Source excerpts:\n")
+            for item in raw_evidence:
+                if remaining <= 0:
+                    break
+                title = (item.get("title") or "").strip()
+                url = (item.get("url") or "").strip()
+                snippet = (item.get("snippet") or "").strip()
+                if not (title or snippet):
+                    continue
+                entry = f"- {title}"
+                if url:
+                    entry += f" [{url}]"
+                if snippet:
+                    entry += f": {snippet}"
+                append_text(entry + "\n")
+            append_text("\n")
+        else:
+            # Fallback for legacy cached data without raw_evidence
+            append_text(f"### Finding: {finding_name}\n")
+            overview = guideline.get("diagnostic_overview") or ""
+            if overview:
+                append_text(f"{overview}\n")
+            for system in guideline.get("classification_systems") or []:
+                if remaining <= 0:
+                    break
+                append_text(
+                    f"- {system.get('name', '')}: {system.get('grade_or_category', '')} — {system.get('criteria', '')}\n"
+                )
+            for mp in guideline.get("measurement_protocols") or []:
+                if remaining <= 0:
+                    break
+                append_text(
+                    f"- {mp.get('parameter', '')}: {mp.get('technique', '')} "
+                    f"(threshold: {mp.get('threshold', '')})\n"
+                )
+            for fi in guideline.get("follow_up_imaging") or []:
+                if remaining <= 0:
+                    break
+                append_text(
+                    f"- {fi.get('modality', '')} at {fi.get('timing', '')}: {fi.get('indication', '')}\n"
+                )
+            gsum = guideline.get("guideline_summary") or ""
+            if gsum and remaining > 200:
+                append_text(gsum[:800])
+            append_text("\n")
+
+    return "".join(chunks)
+
+
+_CHAT_SOURCE_STOPWORDS = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "with",
+        "this",
+        "that",
+        "from",
+        "what",
+        "say",
+        "does",
+        "about",
+        "how",
+        "are",
+        "was",
+        "were",
+        "you",
+        "your",
+        "can",
+        "any",
+        "has",
+        "have",
+        "had",
+        "not",
+        "but",
+        "all",
+        "each",
+        "our",
+        "out",
+        "use",
+        "using",
+        "into",
+        "than",
+        "then",
+        "them",
+        "they",
+        "its",
+        "also",
+        "just",
+        "only",
+        "very",
+        "when",
+        "will",
+        "would",
+        "could",
+        "should",
+        "please",
+        "like",
+        "want",
+        "need",
+        "tell",
+        "give",
+        "some",
+        "such",
+        "who",
+        "why",
+        "way",
+        "may",
+        "did",
+        "get",
+    }
+)
+
+
+def _chat_corpus_tokens(text: str) -> set[str]:
+    words = re.findall(r"[a-z0-9]+", (text or "").lower())
+    return {w for w in words if len(w) > 2 and w not in _CHAT_SOURCE_STOPWORDS}
+
+
+_SOCIETY_ACRONYM_EXPANSIONS: Dict[str, str] = {
+    "bts": "british thoracic society",
+    "acr": "american college radiology",
+    "ats": "american thoracic society",
+    "ers": "european respiratory society",
+    "nice": "national institute health care excellence",
+    "esmo": "european society medical oncology",
+    "asco": "american society clinical oncology",
+    "itmig": "international thymic malignancy interest group",
+    "lung-rads": "lung rads",
+    "lungrads": "lung rads",
+    "fleischner": "fleischner society pulmonary nodule",
+}
+
+
+async def select_guidelines_for_chat_question(
+    guidelines: List[Dict[str, Any]],
+    user_message: str,
+    max_guidelines: int = 2,
+    history: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Select the most relevant guidelines for a chat question.
+
+    Scoring strategy (best-available wins):
+    1. Semantic: embed the query context and each guideline's finding+overview text,
+       then use cosine similarity. Falls back to (2) if OPENAI_API_KEY is absent.
+    2. Lexical: token overlap with acronym expansion and conversation history context.
+
+    In both cases the fallback is top-1, never the full unfiltered list.
+    """
+    if not guidelines:
+        return []
+    if len(guidelines) == 1:
+        return guidelines
+
+    # Build query context: current message + last 3 user turns from history
+    history_text = ""
+    if history:
+        recent_user = [m.get("content", "") for m in history if m.get("role") == "user"][-3:]
+        history_text = " ".join(recent_user)
+    context = f"{user_message} {history_text}".strip()
+
+    # ── Try semantic scoring first ────────────────────────────────────────────
+    guideline_blobs = []
+    for g in guidelines:
+        fn = g.get("finding", {})
+        finding_text = fn.get("finding", "") if isinstance(fn, dict) else str(fn)
+        overview = str(g.get("diagnostic_overview") or "")
+        gsum = str(g.get("guideline_summary") or "")[:400]
+        guideline_blobs.append(f"{finding_text}. {overview} {gsum}".strip())
+
+    all_texts = [context] + guideline_blobs
+    embeddings = await _batch_embed(all_texts)
+
+    if embeddings is not None:
+        query_vec = embeddings[0]
+        sem_scores = [_cosine_similarity(query_vec, embeddings[i + 1]) for i in range(len(guidelines))]
+        scored_sem = sorted(enumerate(sem_scores), key=lambda x: -x[1])
+        best_sem = scored_sem[0][1]
+        # Include guidelines within 0.08 cosine of the best, up to max_guidelines
+        threshold_sem = max(0.0, best_sem - 0.08)
+        selected = [guidelines[i] for i, s in scored_sem if s >= threshold_sem][:max_guidelines]
+        if selected:
+            print(f"[guideline-select] semantic  scores: {[(guidelines[i].get('finding', {}).get('finding', '?')[:30], round(s, 3)) for i, s in scored_sem]}")
+            return selected
+
+    # ── Lexical fallback ──────────────────────────────────────────────────────
+    # Expand society acronyms so "BTS?" matches "british thoracic society"
+    context_expanded = context
+    for acronym, expansion in _SOCIETY_ACRONYM_EXPANSIONS.items():
+        pattern = rf"\b{re.escape(acronym)}\b"
+        context_expanded = re.sub(pattern, f"{acronym} {expansion}", context_expanded, flags=re.IGNORECASE)
+
+    utoks = _chat_corpus_tokens(context_expanded)
+    if not utoks:
+        return guidelines[:1]
+
+    def _tok_variants(toks: set[str]) -> set[str]:
+        v = set(toks)
+        for t in list(toks):
+            if len(t) > 4 and t.endswith("s") and not t.endswith("ss"):
+                v.add(t[:-1])
+        return v
+
+    utoks_v = _tok_variants(utoks)
+    scored_lex: List[tuple[float, Dict[str, Any]]] = []
+    for g, blob in zip(guidelines, guideline_blobs):
+        gtoks_v = _tok_variants(_chat_corpus_tokens(blob))
+        overlap = float(len(utoks_v & gtoks_v))
+        scored_lex.append((overlap, g))
+
+    scored_lex.sort(key=lambda x: -x[0])
+    best_lex = scored_lex[0][0]
+    print(f"[guideline-select] lexical   scores: {[(g.get('finding', {}).get('finding', '?')[:30], round(s, 3)) for s, g in scored_lex]}")
+
+    if best_lex <= 0:
+        return [scored_lex[0][1]]
+
+    selected_lex: List[Dict[str, Any]] = []
+    threshold_lex = max(1.0, best_lex - 1.0)
+    for score, g in scored_lex:
+        if score >= threshold_lex and len(selected_lex) < max_guidelines:
+            selected_lex.append(g)
+    return selected_lex if selected_lex else [scored_lex[0][1]]
+
+
+def collect_guideline_sources_for_chat(guidelines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Deduped source links from enhancement guideline payloads for chat API.
+
+    Prefers ``raw_evidence`` when available: these are the original Perplexity hits with
+    real snippets, stored in order during the pipeline run. The returned list is ordered
+    consistently with the [n] numbering injected by ``build_chat_guideline_context``, so
+    the frontend can show reliable numbered references.
+
+    Falls back to the legacy ``sources`` list (no snippets) for older cached data.
+    """
+    seen: set[str] = set()
+    out: List[Dict[str, Any]] = []
+    for guideline in guidelines:
+        evidence_list = guideline.get("raw_evidence") or guideline.get("sources") or []
+        for s in evidence_list:
+            url = (s.get("url") or "").strip()
+            dedupe_key = normalize_evidence_url_for_dedupe(url)
+            if not url or not dedupe_key or dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            title_raw = (s.get("title") or "").strip()
+            snippet_raw = (s.get("snippet") or "").strip()
+            out.append(
+                {
+                    "url": url,
+                    "title": sanitize_chat_source_text(title_raw, max_display=None) or title_raw,
+                    "domain": s.get("domain") or extract_domain(url),
+                    "snippet": sanitize_chat_source_text(snippet_raw, 400) if snippet_raw else "",
+                }
+            )
+    return out
+
+
+def _pubmed_age_penalty(url: str) -> float:
+    """Small penalty (0–1.5) for old PubMed entries, based on PMID range."""
+    if "pubmed.ncbi.nlm.nih.gov" not in url:
+        return 0.0
+    pmid_match = re.search(r"/(\d{5,8})/?$", url)
+    if not pmid_match:
+        return 0.0
+    pmid = int(pmid_match.group(1))
+    if pmid < 8_000_000:    # ~pre-1997
+        return 1.5
+    if pmid < 12_000_000:   # ~pre-2002
+        return 1.0
+    if pmid < 16_000_000:   # ~pre-2006
+        return 0.5
+    return 0.0
+
+
+async def filter_chat_sources_by_relevance(
+    sources: List[Dict[str, Any]],
+    user_message: str,
+    assistant_message: str,
+    max_sources: int = 4,
+) -> List[Dict[str, Any]]:
+    """
+    Rank sources by relevance to the user question + assistant reply, then return the top N.
+
+    Hybrid scoring via Reciprocal Rank Fusion (RRF, k=60):
+    - Semantic rank: cosine similarity between query embedding and (title + snippet) embedding
+    - Lexical rank:  token overlap + long-word substring bonus + PubMed age penalty
+
+    Falls back to lexical-only if the embedding API is unavailable.
+    Always returns at least 1 source.
+    """
+    if not sources:
+        return []
+
+    # ── Build lexical corpus ──────────────────────────────────────────────────
+    full_text = f"{user_message or ''}\n{assistant_message or ''}"
+    corpus = full_text.lower()
+    corpus_tokens = _chat_corpus_tokens(corpus)
+    for ac in re.findall(r"\b([A-Z]{2,6})\b", full_text):
+        corpus_tokens.add(ac.lower())
+    for acronym, expansion in _SOCIETY_ACRONYM_EXPANSIONS.items():
+        if acronym in corpus_tokens:
+            corpus_tokens.update(_chat_corpus_tokens(expansion))
+
+    def _lex_score(src: Dict[str, Any]) -> float:
+        title = (src.get("title") or "").lower()
+        url = (src.get("url") or "").lower()
+        domain = (src.get("domain") or "").lower()
+        snippet = (src.get("snippet") or "").lower()
+        blob_main = f"{title} {url} {domain}"
+        s = float(len(_chat_corpus_tokens(blob_main) & corpus_tokens))
+        s += 0.5 * float(len(_chat_corpus_tokens(snippet) & corpus_tokens))
+        for w in re.findall(r"[a-z]{5,}", blob_main):
+            if w in corpus:
+                s += 0.75
+        s -= _pubmed_age_penalty(url)
+        return s
+
+    lex_scores = [_lex_score(src) for src in sources]
+
+    # ── Try semantic scoring ──────────────────────────────────────────────────
+    # Query = user message + recent assistant response (first 300 chars to keep it focused)
+    query_text = f"{user_message or ''} {(assistant_message or '')[:300]}".strip()
+    source_texts = [
+        f"{(src.get('title') or '')} {(src.get('snippet') or '')[:300]}".strip()
+        for src in sources
+    ]
+    all_texts = [query_text] + source_texts
+    embeddings = await _batch_embed(all_texts)
+
+    sem_scores: Optional[List[float]] = None
+    if embeddings is not None:
+        query_vec = embeddings[0]
+        raw_sem = [_cosine_similarity(query_vec, embeddings[i + 1]) for i in range(len(sources))]
+        # Apply age penalty on top of semantic score so old papers are still deprioritised
+        sem_scores = [s - _pubmed_age_penalty(src.get("url", "")) for s, src in zip(raw_sem, sources)]
+
+    # ── Reciprocal Rank Fusion ────────────────────────────────────────────────
+    RRF_K = 60
+    # Rank lists: lower rank index = better (0-based, sorted descending by score)
+    lex_order = sorted(range(len(sources)), key=lambda i: -lex_scores[i])
+    lex_rank = [0] * len(sources)
+    for rank, idx in enumerate(lex_order):
+        lex_rank[idx] = rank
+
+    if sem_scores is not None:
+        sem_order = sorted(range(len(sources)), key=lambda i: -sem_scores[i])
+        sem_rank = [0] * len(sources)
+        for rank, idx in enumerate(sem_order):
+            sem_rank[idx] = rank
+        rrf = [1 / (RRF_K + lex_rank[i]) + 1 / (RRF_K + sem_rank[i]) for i in range(len(sources))]
+        mode = "hybrid"
+    else:
+        rrf = [1 / (RRF_K + lex_rank[i]) for i in range(len(sources))]
+        mode = "lexical"
+
+    ranked = sorted(range(len(sources)), key=lambda i: -rrf[i])
+    print(f"[source-filter] {mode} RRF ranking ({len(sources)} candidates → top {max_sources}):")
+    for pos, idx in enumerate(ranked[:max_sources]):
+        src = sources[idx]
+        title = (src.get("title") or src.get("domain") or "?")[:55]
+        sem_str = f"  sem={sem_scores[idx]:.3f}" if sem_scores else ""
+        print(f"  [{pos+1}] lex={lex_scores[idx]:.2f}{sem_str}  rrf={rrf[idx]:.4f}  {title}")
+
+    # Filter out sources with strongly negative lex scores AND low semantic scores
+    # (i.e. sources that are irrelevant on both dimensions)
+    def _keep(idx: int) -> bool:
+        if sem_scores is not None:
+            return lex_scores[idx] > -1.0 or sem_scores[idx] > 0.2
+        return lex_scores[idx] > -1.0
+
+    filtered = [sources[idx] for idx in ranked if _keep(idx)]
+    if not filtered:
+        filtered = [sources[ranked[0]]]  # always return at least 1
+    return filtered[:max_sources]
+
+
+def sanitize_chat_source_text(text: str, max_display: Optional[int] = 420) -> str:
+    """
+    Plain-text preview for source snippets/titles: strip common Markdown so UI does not show ** or #.
+    """
+    if not text:
+        return ""
+    t = text.replace("\r\n", "\n")
+    t = re.sub(r"^#+\s*", "", t, flags=re.MULTILINE)
+    # Bold / italic (non-greedy; repeat for nested remnants)
+    for _ in range(4):
+        t2 = re.sub(r"\*\*([^*]+)\*\*", r"\1", t)
+        t2 = re.sub(r"__([^_]+)__", r"\1", t2)
+        t2 = re.sub(r"(?<!\*)\*(?!\*)([^*]+)\*(?!\*)", r"\1", t2)
+        if t2 == t:
+            break
+        t = t2
+    t = re.sub(r"`+([^`]+)`+", r"\1", t)
+    t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    if max_display is not None and len(t) > max_display:
+        t = t[: max_display - 3].rstrip() + "..."
+    return t
+
+
+def _excerpt_for_chat_hit(item: Dict[str, Any], max_chars: int) -> str:
+    raw = item.get("text") or item.get("content") or item.get("snippet") or ""
+    raw = (raw or "").strip()
+    cleaned = sanitize_chat_source_text(raw, max_display=None)
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return cleaned[: max_chars - 3].rstrip() + "..."
+
+
+async def run_perplexity_search_chat(
+    queries: List[str],
+    *,
+    max_results_per_query: int = 3,
+    max_excerpt_chars: int = 1000,
+    max_hits_total: int = 5,
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """
+    Run Perplexity search for chat grounding. Returns (evidence_block, sources) for the model and API.
+    Uses the same domain/language fallback strategy as guideline pipeline search.
+    """
+    queries = [q.strip() for q in queries if q and q.strip()][:3]
+    if not queries:
+        return "", []
+
+    cache = get_cache()
+    qh = generate_query_hash(queries)
+    cache_key = f"chat_perplexity:{qh}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        search_results: List[Dict[str, Any]] = list(cached)
+        print(f"run_perplexity_search_chat: [CACHE HIT] {cache_key[:48]}...")
+    else:
+        perplexity_client = Perplexity()
+        search_results = None
+
+        try:
+            search_response = await asyncio.to_thread(
+                lambda: perplexity_client.search.create(
+                    query=queries,
+                    max_results=max_results_per_query,
+                    max_tokens_per_page=1024,
+                    search_language_filter=["en"],
+                    search_domain_filter=COMPREHENSIVE_RADIOLOGY_DOMAINS,
+                )
+            )
+            search_results = normalize_perplexity_results(search_response, queries)
+            if search_results:
+                print(f"run_perplexity_search_chat: restricted domains → {len(search_results)} hits")
+        except Exception as e:
+            print(f"run_perplexity_search_chat: attempt 1 (domains) failed: {e}")
+
+        if not search_results:
+            try:
+                perplexity_client = Perplexity()
+                search_response = await asyncio.to_thread(
+                    lambda: perplexity_client.search.create(
+                        query=queries,
+                        max_results=max_results_per_query,
+                        max_tokens_per_page=1024,
+                        search_language_filter=["en"],
+                    )
+                )
+                search_results = normalize_perplexity_results(search_response, queries)
+                if search_results:
+                    print(f"run_perplexity_search_chat: no domain filter → {len(search_results)} hits")
+            except Exception as e:
+                print(f"run_perplexity_search_chat: attempt 2 failed: {e}")
+
+        if not search_results:
+            try:
+                perplexity_client = Perplexity()
+                search_response = await asyncio.to_thread(
+                    lambda: perplexity_client.search.create(
+                        query=queries,
+                        max_results=max_results_per_query,
+                        max_tokens_per_page=1024,
+                    )
+                )
+                search_results = normalize_perplexity_results(search_response, queries)
+                if search_results:
+                    print(f"run_perplexity_search_chat: no filters → {len(search_results)} hits")
+            except Exception as e:
+                print(f"run_perplexity_search_chat: attempt 3 failed: {e}")
+
+        if search_results is None:
+            search_results = []
+        cache.set(cache_key, search_results)
+
+    hits = search_results[:max_hits_total]
+    lines: List[str] = ["=== EXTERNAL SEARCH EVIDENCE (use for this answer) ===\n"]
+    sources: List[Dict[str, Any]] = []
+
+    for i, item in enumerate(hits, start=1):
+        title = (item.get("title") or item.get("name") or "Untitled").strip()
+        url = (item.get("url") or item.get("link") or "").strip()
+        excerpt = _excerpt_for_chat_hit(item, max_excerpt_chars)
+        domain = item.get("domain") or extract_domain(url)
+        lines.append(f"[{i}] {title}\nURL: {url}\nDomain: {domain}\nExcerpt:\n{excerpt}\n")
+        snippet_plain = sanitize_chat_source_text(excerpt, 400)
+        sources.append(
+            {
+                "url": url,
+                "title": sanitize_chat_source_text(title, max_display=None) or title,
+                "domain": domain,
+                "snippet": snippet_plain,
+            }
+        )
+
+    return "\n".join(lines), sources
 
 
 async def _extract_consolidated_with_model(
@@ -1784,13 +2480,32 @@ async def search_guidelines_for_findings(
         guideline_markdown = build_radiologist_guideline_markdown(guideline_entry)
 
         # Build sources (organic only - no hardcoded fallbacks)
+        # Also preserve raw evidence with snippets for chat citation grounding
         sources = []
+        raw_evidence: List[Dict[str, Any]] = []
+        seen_evidence_urls: set[str] = set()
         for item in search_results[:10]:
+            url = item.get("url", "")
+            dedupe_key = normalize_evidence_url_for_dedupe(url)
+            if not dedupe_key or dedupe_key in seen_evidence_urls:
+                continue
+            seen_evidence_urls.add(dedupe_key)
+            title = (item.get("title") or "").strip()
+            snippet_raw = (item.get("text") or item.get("content") or item.get("snippet") or "").strip()
+            if len(snippet_raw) > 600:
+                snippet_raw = snippet_raw[:597].rstrip() + "..."
             sources.append({
-                "url": item.get("url", ""),
-                "title": item.get("title", ""),
+                "url": url,
+                "title": title,
                 "snippet": "",
                 "domain": item.get("domain", ""),
+                "query": item.get("query", ""),
+            })
+            raw_evidence.append({
+                "url": url,
+                "title": sanitize_chat_source_text(title, max_display=None) or title,
+                "snippet": sanitize_chat_source_text(snippet_raw, 600),
+                "domain": item.get("domain", "") or extract_domain(url),
                 "query": item.get("query", ""),
             })
 
@@ -1835,6 +2550,8 @@ async def search_guidelines_for_findings(
             "guideline_summary": guideline_markdown,
             "diagnostic_overview": guideline_entry.diagnostic_overview,
             "sources": sources[:5],
+            # Raw Perplexity evidence for chat citation grounding (numbered, with snippets)
+            "raw_evidence": raw_evidence,
             # New structured fields
             "classification_systems": [cs.model_dump() for cs in guideline_entry.classification_systems],
             "measurement_protocols": [mp.model_dump() for mp in guideline_entry.measurement_protocols],
