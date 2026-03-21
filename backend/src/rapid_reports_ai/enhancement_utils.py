@@ -3124,12 +3124,13 @@ async def generate_auto_report(
             }
             if primary_model == "zai-glm-4.7":
                 if _glm_reasoning_enabled():
-                    # Reasoning ON: temp must be >= 0.8 (Cerebras docs constraint)
-                    # Higher token budget to give headroom for reasoning trace + full report
+                    # Reasoning ON: temperature 0.8 (instruction-following), top_p per Z.ai guidance
+                    # 16k tokens: headroom for full reasoning trace + JSON report without truncation
                     model_settings["max_completion_tokens"] = 16000
                     model_settings["temperature"] = 0.8
+                    model_settings["top_p"] = 0.95
                     model_settings["extra_body"] = {"disable_reasoning": False}
-                    print(f"  └─ GLM mode: REASONING ON — temperature=0.8, max_completion_tokens=16000")
+                    print(f"  └─ GLM mode: REASONING ON — temperature=0.8, top_p=0.95, max_completion_tokens=16000")
                 else:
                     # Reasoning OFF: no temp floor, use lower value for more deterministic output
                     model_settings["max_completion_tokens"] = 6000
