@@ -7,15 +7,16 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from firecrawl.v2.types import ScrapeOptions
-
 from .enhancement_models import ApplicableGuideline
-from .firecrawl_client import get_async_firecrawl
 from .database.crud import get_cached_guideline, upsert_cached_guideline
+from .guideline_payload import MAX_GUIDELINE_SYSTEM_LEN
+
+if TYPE_CHECKING:
+    from firecrawl.v2.types import ScrapeOptions
 
 logger = logging.getLogger(__name__)
 
@@ -30,44 +31,8 @@ RECENT_UNAVAILABLE_SKIP_SECONDS = 300
 CRITERIA_SUMMARY_API_MAX_LEN = 800
 # When multiple authoritative hits (e.g. Bosniak 2005 vs 2019), merge top two after recency sort.
 MERGED_CRITERIA_MAX_CHARS = 4000
-MAX_GUIDELINE_SYSTEM_LEN = 60
-MAX_APPLICABLE_GUIDELINES_PER_REPORT = 4
 
 _YEAR_IN_TEXT_RE = re.compile(r"\b(19[89]\d|20\d{2})\b")
-
-
-def validate_applicable_guidelines_payload(raw: Optional[List[Any]]) -> List[dict]:
-    """
-    Safety net: drop non-dicts, oversize system names, and cap list length.
-    Does not enforce mutual exclusion between frameworks — model + prompts own that.
-    """
-    if not raw:
-        return []
-    out: List[dict] = []
-    for g in raw:
-        if not isinstance(g, dict):
-            print(f"[GUIDELINE_PIPELINE] validate: skip non-dict {type(g).__name__}")
-            continue
-        sys_name = g.get("system")
-        if sys_name is None:
-            continue
-        s = str(sys_name).strip()
-        if len(s) > MAX_GUIDELINE_SYSTEM_LEN:
-            print(
-                f"[GUIDELINE_PIPELINE] validate: skip system len={len(s)} "
-                f"(max {MAX_GUIDELINE_SYSTEM_LEN}) preview={s[:40]!r}…"
-            )
-            continue
-        gg = dict(g)
-        gg["system"] = s
-        out.append(gg)
-    if len(out) > MAX_APPLICABLE_GUIDELINES_PER_REPORT:
-        print(
-            f"[GUIDELINE_PIPELINE] validate: cap {MAX_APPLICABLE_GUIDELINES_PER_REPORT} "
-            f"— truncated from {len(out)}"
-        )
-        out = out[:MAX_APPLICABLE_GUIDELINES_PER_REPORT]
-    return out
 
 
 @dataclass(frozen=True)
@@ -200,7 +165,9 @@ def _first_authoritative(search_data: Any) -> Optional[Tuple[str, str]]:
     return (top_text, top_url)
 
 
-def _scrape_options() -> ScrapeOptions:
+def _scrape_options() -> "ScrapeOptions":
+    from firecrawl.v2.types import ScrapeOptions
+
     return ScrapeOptions(
         formats=[
             {
@@ -225,7 +192,13 @@ async def fetch_guideline(guideline: ApplicableGuideline) -> Optional[Tuple[str,
         f"type={t!r} core={core[:120]!r}{'…' if len(core) > 120 else ''}"
     )
     try:
+        from .firecrawl_client import get_async_firecrawl
+
         client = get_async_firecrawl()
+    except ModuleNotFoundError as e:
+        print(f"[GUIDELINE_PIPELINE] fetch_guideline ABORT (firecrawl not installed): {e}")
+        logger.warning("guideline fetch skipped: %s", e)
+        return None
     except ValueError as e:
         print(f"[GUIDELINE_PIPELINE] fetch_guideline ABORT (no client): {e}")
         logger.warning("guideline fetch skipped: %s", e)

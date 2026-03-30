@@ -3944,7 +3944,7 @@ async def run_audit(
         if not request.report_content or not request.report_content.strip():
             raise HTTPException(status_code=400, detail="Report content is required")
 
-        from .guideline_fetcher import validate_applicable_guidelines_payload
+        from .guideline_payload import validate_applicable_guidelines_payload
 
         _ags = validate_applicable_guidelines_payload(request.applicable_guidelines or [])
         print(
