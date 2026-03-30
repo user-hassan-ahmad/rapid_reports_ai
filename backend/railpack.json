@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "steps": {
+    "install": {
+      "commands": [
+        "poetry config virtualenvs.in-project true",
+        "poetry install --no-interaction --no-ansi --only main"
+      ]
+    }
+  }
+}
