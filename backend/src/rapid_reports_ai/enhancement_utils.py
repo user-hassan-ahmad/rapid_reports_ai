@@ -5384,7 +5384,7 @@ OUTPUT REQUIREMENTS:
 - If a criterion cannot be meaningfully evaluated (e.g., no prior study referenced so comparative analysis is not applicable), assign "pass" with a brief note
 
 GUIDELINE CONTEXT (when appended below):
-Structured classification or guideline criteria may appear after this block. If **multiple** systems could relate to the **same** finding, apply the framework whose **scope** matches **scan purpose** and **clinical question** (e.g. screening programme vs incidental finding on a general CT vs oncology staging or response). **Do not** cross-apply numerical thresholds or management rules between frameworks designed for different clinical contexts. The report text remains primary evidence; supplied criteria are reference only for appropriateness of classification language and follow-up."""
+Structured classification or guideline criteria may appear after this block. If **multiple** systems could relate to the **same** finding, apply the framework whose **scope** matches **scan purpose** and **clinical question** (e.g. screening programme vs incidental finding on a general CT vs oncology staging or response). **Do not** cross-apply numerical thresholds or management rules between frameworks designed for different clinical contexts. The injected criteria serve two purposes: (1) grounding specific follow-up recommendations — use the stated intervals and actions directly when flagging vague recommendations; (2) classification reference — do not use criteria to adjudicate whether the assigned category is correct, as that is the radiologist's call."""
 
     user_prompt = f"""REPORT TO AUDIT:
 {report_content}
@@ -5565,8 +5565,21 @@ For each criterion, provide:
                 )
         if context_parts:
             guideline_context_block = (
-                "\n\nGUIDELINE CONTEXT (structural reference only — do not evaluate "
-                "classification correctness; that is the radiologist's call):\n\n"
+                "\n\nGUIDELINE CONTEXT:\n"
+                "These criteria are injected for two distinct purposes:\n\n"
+                "1. RECOMMENDATION GROUNDING — When a RECOMMENDATIONS flag fires, use the "
+                "injected criteria to provide a specific, actionable correction. If the criteria "
+                "state that a given category or finding warrants a particular follow-up interval "
+                "or action (e.g. Lung-RADS 4A → CT chest at 3 months), and the report states "
+                "only a vague management direction without specifying that interval, the "
+                "recommendation must cite the specific interval and framework from the criteria. "
+                "The injected criteria are the source of the concrete correction — use them "
+                "to tell the radiologist exactly what to write, not just that something is missing.\n\n"
+                "2. CLASSIFICATION CORRECTNESS — Do not use these criteria to judge whether the "
+                "assigned category or classification is correct. That determination requires image "
+                "review and is entirely the radiologist's call. Only flag under diagnostic_fidelity "
+                "if the impression directly contradicts the stated findings (internal consistency), "
+                "not because a category appears inconsistent with the injected criteria.\n\n"
                 + "\n\n".join(context_parts)
             )
             print(
