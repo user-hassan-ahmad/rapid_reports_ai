@@ -16,6 +16,7 @@ from .models import (
     ReportVersion,
     ReportAudit,
     ReportAuditCriterion,
+    GuidelineCache,
 )
 
 
@@ -1193,5 +1194,59 @@ def acknowledge_criterion(
     
     return {"acknowledged": True, "is_reviewed": all_acknowledged}
 
+
+# ============ Guideline cache CRUD ============
+
+
+def get_cached_guideline(db: Session, system: str) -> Optional[GuidelineCache]:
+    """Return non-expired cache row for system, or None. Updates last_used_at on hit."""
+    now = datetime.now(timezone.utc)
+    entry = (
+        db.query(GuidelineCache)
+        .filter(GuidelineCache.system == system, GuidelineCache.expires_at > now)
+        .first()
+    )
+    if entry:
+        entry.last_used_at = now
+        db.commit()
+    return entry
+
+
+def upsert_cached_guideline(
+    db: Session,
+    system: str,
+    content: Optional[str],
+    source_url: Optional[str],
+    is_available: bool,
+    expires_at: datetime,
+    version: Optional[str] = None,
+    unavailable_reason: Optional[str] = None,
+) -> GuidelineCache:
+    """Insert or replace row for system (ignores previous expiry)."""
+    now = datetime.now(timezone.utc)
+    entry = db.query(GuidelineCache).filter(GuidelineCache.system == system).first()
+    if entry:
+        entry.version = version
+        entry.content = content
+        entry.source_url = source_url
+        entry.is_available = is_available
+        entry.unavailable_reason = unavailable_reason
+        entry.fetched_at = now
+        entry.expires_at = expires_at
+    else:
+        entry = GuidelineCache(
+            system=system,
+            version=version,
+            content=content,
+            source_url=source_url,
+            is_available=is_available,
+            unavailable_reason=unavailable_reason,
+            fetched_at=now,
+            expires_at=expires_at,
+        )
+        db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
 
 

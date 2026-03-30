@@ -78,6 +78,13 @@ import { API_URL } from '$lib/config';
 		has_at_least_one_model: false
 	};
 
+	let applicableGuidelines: Array<{
+		system: string;
+		context: string;
+		type: string;
+		search_keywords?: string | null;
+	}> = [];
+
 	// ReportResponseViewer state
 	let responseExpanded = false;
 	let hasResponseEver = false;
@@ -145,6 +152,7 @@ import { API_URL } from '$lib/config';
 				response = null;
 				responseModel = null;
 				reportId = null;
+				applicableGuidelines = [];
 				hasResponseEver = false;
 				responseExpanded = false;
 				activePrompts = [];
@@ -189,6 +197,7 @@ import { API_URL } from '$lib/config';
 		responseModel = null;
 		error = null;
 		reportId = null;
+		applicableGuidelines = [];
 		hasResponseEver = false;
 		responseExpanded = false;
 		findingsAtReportGeneration = '';
@@ -210,6 +219,7 @@ import { API_URL } from '$lib/config';
 		error = null;
 		response = null;
 		responseModel = null;
+		applicableGuidelines = [];
 
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -233,6 +243,7 @@ import { API_URL } from '$lib/config';
 				response = data.response;
 				responseModel = data.model_used ?? data.model ?? 'claude';
 				reportId = data.report_id ?? null;
+				applicableGuidelines = data.applicable_guidelines ?? [];
 				hasResponseEver = true;
 				responseExpanded = true;
 				findingsAtReportGeneration = content;
@@ -256,6 +267,7 @@ import { API_URL } from '$lib/config';
 		response = null;
 		responseModel = null;
 		error = null;
+		applicableGuidelines = [];
 		responseExpanded = false;
 		hasResponseEver = false;
 		responseVisible = false;
@@ -657,6 +669,7 @@ import { API_URL } from '$lib/config';
 		{enhancementError}
 		{scanType}
 		{clinicalHistory}
+		{applicableGuidelines}
 		caseDetailsDirty={sectionsDirty}
 		{findingsStale}
 		on:toggle={toggleResponse}

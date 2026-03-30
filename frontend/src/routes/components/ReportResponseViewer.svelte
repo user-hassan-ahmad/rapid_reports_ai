@@ -33,6 +33,12 @@
 	// Audit props
 	export let scanType: string = '';
 	export let clinicalHistory: string = '';
+	export let applicableGuidelines: Array<{
+		system: string;
+		context: string;
+		type: string;
+		search_keywords?: string | null;
+	}> = [];
 
 	export let caseDetailsDirty = false;
 	export let findingsStale = false;
@@ -202,7 +208,8 @@
 					report_content: content,
 					scan_type: scanType,
 					clinical_history: clinicalHistory,
-					report_id: reportId
+					report_id: reportId,
+					applicable_guidelines: applicableGuidelines
 				})
 			});
 			

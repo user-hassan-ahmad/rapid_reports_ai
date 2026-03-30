@@ -67,6 +67,12 @@ class PromptManager:
                 if gptoss_file.exists():
                     template_file = gptoss_file
                     print(f"load_prompt: Using gptoss.json for primary model {primary_model}")
+            elif primary_model == "zai-glm-4.7-clinical-clusters":
+                # Variant: clinical cluster narrative map + sweep (A/B vs classic monolithic)
+                zai_cc = use_case_dir / "zai-glm-4.7-clinical-clusters.json"
+                if zai_cc.exists():
+                    template_file = zai_cc
+                    print(f"load_prompt: Using zai-glm-4.7-clinical-clusters.json for primary model {primary_model}")
             elif primary_model == "zai-glm-4.7":
                 # Check for zai-glm-4.7.json first when primary model is zai-glm-4.7
                 zai_glm_file = use_case_dir / "zai-glm-4.7.json"

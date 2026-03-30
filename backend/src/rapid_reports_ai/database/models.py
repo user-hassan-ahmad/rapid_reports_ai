@@ -505,3 +505,20 @@ class EnhancementCacheEntry(Base):
     def __repr__(self):
         return f"<EnhancementCacheEntry(cache_key='{self.cache_key[:50]}...', type='{self.cache_type}')>"
 
+
+class GuidelineCache(Base):
+    """Cached Firecrawl-extracted guideline criteria text per canonical system name."""
+
+    __tablename__ = "guideline_cache"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    system = Column(String(100), nullable=False, unique=True, index=True)
+    version = Column(String(20), nullable=True)
+    content = Column(Text, nullable=True)
+    source_url = Column(Text, nullable=True)
+    is_available = Column(Boolean, default=True, nullable=False)
+    unavailable_reason = Column(Text, nullable=True)
+    fetched_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    last_used_at = Column(DateTime, nullable=True)
+

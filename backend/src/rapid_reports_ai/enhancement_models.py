@@ -4,7 +4,7 @@ All structured outputs use these typed models for validation and type safety
 Pure Pydantic validation - no custom field validators or regex processing
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Literal
 
 
@@ -305,8 +305,42 @@ class StructureValidationResult(BaseModel):
 # Report Generation Output Model
 # ============================================================================
 
+
+class ApplicableGuideline(BaseModel):
+    """Classification system or UK guideline identified from findings + scan type (not from report prose audit)."""
+
+    system: str = Field(
+        max_length=60,
+        description=(
+            "Short canonical name only e.g. 'Bosniak', 'LI-RADS', 'Fleischner Society pulmonary nodule', 'NICE NG12'. "
+            "Not a long narrative title (max 60 characters)."
+        ),
+    )
+    context: str = Field(
+        description="One sentence clinical context in English only (disambiguation for humans)"
+    )
+    search_keywords: Optional[str] = Field(
+        default=None,
+        description=(
+            "3–6 search tokens for Firecrawl only (organ, modality, key finding). "
+            "Omit if redundant with system. English only."
+        ),
+    )
+    type: Literal["classification", "uk_pathway", "other"] = Field(
+        default="other",
+        description=(
+            "classification: named radiology scoring/classification (Bosniak, Fleischner, LI-RADS, etc.). "
+            "uk_pathway: NHS pathway, NICE, or UK specialist society guideline. "
+            "other: anything else."
+        ),
+    )
+
+
 class ReportOutput(BaseModel):
     """Output from report generation - both auto and templated reports"""
+
+    model_config = ConfigDict(extra="ignore")
+
     report_content: str = Field(
         min_length=50,
         description="The complete radiology report text with proper formatting"
@@ -320,6 +354,15 @@ class ReportOutput(BaseModel):
         min_length=3,
         max_length=200,
         description="Extracted scan type and protocol combined (e.g., 'CT head non-contrast', 'MRI brain with contrast'). Extract from template name/description and findings context. Include contrast status ONLY if explicitly mentioned."
+    )
+    applicable_guidelines: List[ApplicableGuideline] = Field(
+        default_factory=list,
+        description=(
+            "Classification systems or UK clinical guidelines relevant to this case from findings, scan type, and "
+            "clinical context — selected using scan-purpose-first reasoning (see generation prompt). "
+            "At most 4 entries; prefer primary plus optional secondary only when materially different. "
+            "Empty if none. All context strings English only."
+        ),
     )
     model_used: Optional[str] = None  # Set by backend after generation; not from LLM
 
@@ -391,13 +434,17 @@ class AuditCriterion(BaseModel):
         "recommendations",
         "clinical_flagging",
         "report_completeness",
-        "language_quality"
+        "diagnostic_fidelity"
     ] = Field(description="One of six audit criteria names")
     status: Literal["pass", "flag", "warning"] = Field(
         description="Audit status: pass (no issues), flag (requires attention), warning (minor concern)"
     )
     rationale: str = Field(
-        description="Explanation of why this status was assigned (British English only)"
+        description=(
+            "Explanation of why this status was assigned (British English only). "
+            "For diagnostic_fidelity, must use the two-line format required in the audit system prompt "
+            "(a) Certainty: ... (b) Consistency: ..."
+        )
     )
     highlighted_spans: List[str] = Field(
         default_factory=list,
@@ -414,6 +461,26 @@ class AuditCriterion(BaseModel):
     suggested_banners: Optional[List[FlagBannerOption]] = Field(
         default=None,
         description="Populated only for clinical_flagging - banners to optionally append to report"
+    )
+
+
+class GuidelineReference(BaseModel):
+    """Server-populated audit payload: what guideline evidence was available for QA context."""
+
+    system: str = Field(description="Canonical guideline / classification name")
+    context: str = Field(description="One-line clinical context from report generation")
+    type: str = Field(description="classification | uk_pathway | other")
+    source_url: Optional[str] = Field(default=None, description="URL of scraped source when available")
+    criteria_summary: Optional[str] = Field(
+        default=None,
+        description="Truncated excerpt of criteria text sent to the audit model (full text in DB cache)",
+    )
+    criteria_summary_truncated: bool = Field(
+        default=False,
+        description="True if criteria_summary is shorter than the full cached text",
+    )
+    injected: bool = Field(
+        description="True if non-empty criteria text was appended to the audit prompt for this system"
     )
 
 

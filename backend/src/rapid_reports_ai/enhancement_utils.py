@@ -9,6 +9,7 @@ import re
 import time
 from datetime import datetime
 from functools import wraps
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from pydantic import BaseModel
@@ -58,6 +59,7 @@ from .enhancement_models import (
     ChangeDirective,
     ComparisonReportGeneration,
     AuditResult,
+    GuidelineReference,
 )
 
 # ── Semantic embedding cache ──────────────────────────────────────────────────
@@ -167,8 +169,8 @@ MODEL_CONFIG = {
     "ZAI_GLM_LINGUISTIC_VALIDATOR": "llama-3.3-70b-versatile",  # Linguistic/anatomical correction for zai-glm-4.7 output (Groq Llama)
     
     # Audit / QA Analysis Models
-    "AUDIT_ANALYZER": "qwen/qwen3-32b",  # Report audit/QA primary (Groq Qwen 32B)
-    "AUDIT_ANALYZER_FALLBACK": "zai-glm-4.7",  # Fallback for audit (Cerebras Zai-GLM-4.7)
+    "AUDIT_ANALYZER": "zai-glm-4.7",  # Report audit/QA primary (Cerebras Zai-GLM-4.7)
+    "AUDIT_ANALYZER_FALLBACK": "qwen/qwen3-32b",  # Fallback for audit (Groq Qwen 32B)
     
     # Canvas / IntelliDictate Models
     "CANVAS_SECTIONS": "gpt-oss-120b",  # Section generation from scan type (Cerebras)
@@ -178,6 +180,11 @@ MODEL_CONFIG = {
     "CANVAS_PROCESS": "qwen/qwen3-32b",  # Transcript → scratchpad (Groq Qwen)
     "CANVAS_COVERAGE": "llama-3.3-70b-versatile",  # Coverage check (Groq Llama)
     "CANVAS_INTELLIPROMPTS": "qwen/qwen3-32b",  # IntelliPrompts generation (Groq Qwen)
+
+    # Agentic Report Pipeline Models
+    "REPORT_PLANNER": "zai-glm-4.7",        # Phase 1: planning agent (Cerebras, reasoning ON)
+    "REPORT_EXECUTOR": "zai-glm-4.7",  # Phase 2: execution agent (Cerebras GLM, reasoning ON)
+    "PLAN_ADHERENCE_CHECKER": "qwen/qwen3-32b",  # Phase 3: cross-check output vs plan (Groq)
 }
 
 # Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
@@ -409,6 +416,77 @@ def _is_parsing_error(exception: Exception) -> bool:
                 return True
     
     return False
+
+
+def _recover_report_output_from_groq_tool_use_failed(exception: BaseException) -> Optional[ReportOutput]:
+    """
+    Groq returns HTTP 400 with code tool_use_failed when the model writes JSON in the
+    assistant message instead of a valid function/tool call. The API still echoes that
+    text in error.failed_generation — often a valid ReportOutput payload.
+    """
+    import json
+
+    from pydantic import ValidationError
+    from pydantic_ai.exceptions import ModelHTTPError
+
+    def _failed_generation_string(exc: ModelHTTPError) -> Optional[str]:
+        if exc.status_code != 400:
+            return None
+        body = getattr(exc, "body", None)
+        if isinstance(body, str):
+            try:
+                body = json.loads(body)
+            except json.JSONDecodeError:
+                return None
+        if not isinstance(body, dict):
+            return None
+        err = body.get("error")
+        if not isinstance(err, dict):
+            return None
+        if err.get("code") != "tool_use_failed":
+            return None
+        fg = err.get("failed_generation")
+        return fg if isinstance(fg, str) else None
+
+    def _parse_failed_generation(raw: str) -> Optional[ReportOutput]:
+        s = raw.strip()
+        if s.startswith("```"):
+            lines = s.split("\n")
+            if lines and lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            s = "\n".join(lines).strip()
+        try:
+            data = json.loads(s)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        try:
+            return ReportOutput.model_validate(data)
+        except ValidationError:
+            return None
+
+    seen: set[int] = set()
+    stack: List[BaseException] = [exception]
+    while stack:
+        e = stack.pop()
+        if id(e) in seen:
+            continue
+        seen.add(id(e))
+        if isinstance(e, ModelHTTPError):
+            fg = _failed_generation_string(e)
+            if fg:
+                out = _parse_failed_generation(fg)
+                if out is not None:
+                    return out
+        if e.__cause__ is not None:
+            stack.append(e.__cause__)
+        ctx = getattr(e, "__context__", None)
+        if ctx is not None and ctx is not e.__cause__:
+            stack.append(ctx)
+    return None
 
 
 def _to_plain_object(value: Any, depth: int = 0, max_depth: int = 5) -> Any:
@@ -3707,7 +3785,16 @@ async def _run_agent_with_model(
                 print(tb_str[:4000])  # Print first 4000 chars of traceback
                 
                 print(f"{'='*80}\n")
-            
+
+            if provider == "groq" and output_type is ReportOutput:
+                recovered = _recover_report_output_from_groq_tool_use_failed(e)
+                if recovered is not None:
+                    print(
+                        "[groq] Recovered ReportOutput from tool_use_failed "
+                        "(model emitted JSON in message body; Groq rejected non-tool format)"
+                    )
+                    return SimpleNamespace(output=recovered)
+
             # Re-raise the exception
             raise
     finally:
@@ -3761,18 +3848,26 @@ async def _generate_report_with_groq_model(
             model_settings=groq_settings,
         )
         
-        result = await agent.run(
-            final_prompt,
-            model_settings={
-                "temperature": 0.3,
-                "max_tokens": 4096,
-            }
-        )
-        
-        # Log thinking parts (backend only - not sent to frontend)
-        _log_thinking_parts(result, f"{model_label} - Groq/Qwen")
-        
-        report_output: ReportOutput = result.output
+        try:
+            result = await agent.run(
+                final_prompt,
+                model_settings={
+                    "temperature": 0.3,
+                    "max_tokens": 4096,
+                }
+            )
+        except Exception as run_exc:
+            recovered = _recover_report_output_from_groq_tool_use_failed(run_exc)
+            if recovered is None:
+                raise run_exc
+            print(
+                f"generate_auto_report: Recovered {model_label} output from Groq tool_use_failed"
+            )
+            report_output = recovered
+        else:
+            # Log thinking parts (backend only - not sent to frontend)
+            _log_thinking_parts(result, f"{model_label} - Groq/Qwen")
+            report_output = result.output
         
         elapsed = time.time() - start_time
         print(f"generate_auto_report: ✅ Completed with {model_label} in {elapsed:.2f}s")
@@ -5159,20 +5254,85 @@ def _get_format_guidance(format_type: str, organization: str = 'clinical_priorit
 # Report Audit / QA Analysis
 # ============================================================================
 
+def _audit_error_raw_preview(exc: BaseException, limit: int = 500) -> str:
+    """Best-effort extract of model/validation payload for audit primary failures."""
+    try:
+        from pydantic import ValidationError
+        from pydantic_ai.exceptions import ModelHTTPError
+
+        if isinstance(exc, ValidationError):
+            return exc.json()[:limit]
+        if isinstance(exc, ModelHTTPError):
+            body = getattr(exc, "body", None)
+            if body is not None:
+                return (body if isinstance(body, str) else repr(body))[:limit]
+    except Exception:
+        pass
+    return str(exc)[:limit]
+
+
+def reconcile_audit_status(audit_out: AuditResult) -> AuditResult:
+    """
+    Backend safety net: enforce worst-of rules that the judge should follow but may drift from.
+    Mutates criterion rows and overall_status in place for simplicity; caller then model_dump()s.
+    """
+    STATUS_RANK = {"pass": 0, "warning": 1, "flag": 2}
+    RANK_STATUS = {0: "pass", 1: "warning", 2: "flag"}
+
+    for criterion in audit_out.criteria:
+        if criterion.criterion != "diagnostic_fidelity":
+            continue
+        a_match = re.search(
+            r"\(a\)\s*Certainty:\s*(PASS|WARNING|FLAG)",
+            criterion.rationale or "",
+            re.IGNORECASE,
+        )
+        b_match = re.search(
+            r"\(b\)\s*Consistency:\s*(PASS|WARNING|FLAG)",
+            criterion.rationale or "",
+            re.IGNORECASE,
+        )
+        if a_match and b_match:
+            a_rank = STATUS_RANK.get(a_match.group(1).lower(), 0)
+            b_rank = STATUS_RANK.get(b_match.group(1).lower(), 0)
+            correct_status = RANK_STATUS[max(a_rank, b_rank)]
+            if criterion.status != correct_status:
+                print(
+                    f"  └─ [RECONCILE] diagnostic_fidelity status "
+                    f"corrected: {criterion.status} → {correct_status}"
+                )
+                criterion.status = correct_status  # type: ignore[misc]
+
+    worst_rank = max(STATUS_RANK.get(c.status, 0) for c in audit_out.criteria)
+    correct_overall = RANK_STATUS[worst_rank]
+    if audit_out.overall_status != correct_overall:
+        print(
+            f"  └─ [RECONCILE] overall_status corrected: "
+            f"{audit_out.overall_status} → {correct_overall}"
+        )
+        audit_out.overall_status = correct_overall  # type: ignore[misc]
+
+    return audit_out
+
+
 async def audit_report(
     report_content: str,
     scan_type: str,
     clinical_history: str,
-    api_key: str = None
+    api_key: str = None,
+    applicable_guidelines: Optional[List[dict]] = None,
+    db=None,
 ) -> dict:
     """
-    Audit a radiology report against 6 quality criteria using Qwen 32B (primary) with Zai-GLM fallback.
+    Audit a radiology report against 6 quality criteria using Zai-GLM-4.7 (primary) with Qwen 32B fallback.
     
     Args:
         report_content: The report text to audit
         scan_type: Type of scan (e.g., 'CT head non-contrast')
         clinical_history: Clinical history/indication for the scan
         api_key: Optional API key (if not provided, uses provider-specific key from env)
+        applicable_guidelines: Optional list of dicts (ApplicableGuideline-shaped) for cache fetch + audit context
+        db: SQLAlchemy Session or None; if None, guideline context is skipped
         
     Returns:
         Dictionary with overall_status, criteria list (6 items), summary, and model_used
@@ -5203,9 +5363,10 @@ FLAGGING PHILOSOPHY:
 - Do NOT flag appropriate deferrals of *clinical management* to the referring clinician (e.g., "clinical correlation recommended", "discuss with clinician team").
 - DO flag incomplete or vague *radiological* recommendations — if a radiologist recommends further imaging, that recommendation must include modality and appropriate urgency. Vague radiological recommendations cause clinical harm.
 - DO flag when the stated clinical question is not addressed, even partially.
+- FINDINGS constrain the Impression for factual consistency. When evaluating any criterion, treat explicit FINDINGS statements as the ground truth against which Impression claims are validated — not the reverse. A confident, fluent Impression does not override an explicit FINDINGS negation of the same clinical entity.
 
 For highlighted_spans, copy verbatim substrings from the report exactly as they appear; these will be used to locate and highlight the text inline.
-You must evaluate all six criteria and return them in this exact order: anatomical_accuracy, clinical_relevance, recommendations, clinical_flagging, report_completeness, language_quality.
+You must evaluate all six criteria and return them in this exact order: anatomical_accuracy, clinical_relevance, recommendations, clinical_flagging, report_completeness, diagnostic_fidelity.
 
 OUTPUT REQUIREMENTS:
 - All prose you generate must be British English only (see LANGUAGE above)
@@ -5213,8 +5374,17 @@ OUTPUT REQUIREMENTS:
 - For each criterion with issues, include highlighted_spans with verbatim text from the report
 - Use status "pass" when no issues, "flag" for significant issues requiring attention, "warning" for minor concerns
 - For clinical_flagging criterion, always populate flags_identified with all 5 sub-flag types
-- overall_status should be the worst status among all criteria (flag > warning > pass)
-- If a criterion cannot be meaningfully evaluated (e.g., no prior study referenced so comparative analysis is not applicable), assign "pass" with a brief note"""
+- For the diagnostic_fidelity criterion, the rationale field must always contain both sub-dimension lines in this exact format, regardless of status:
+    (a) Certainty: [PASS | WARNING | FLAG] — [brief explanation]
+    (b) Consistency: [PASS | WARNING | FLAG] — [brief explanation]
+  Do not collapse into a single sentence. Both lines are required even when both dimensions pass.
+- For diagnostic_fidelity (b) Consistency, FINDINGS are the source of truth. If FINDINGS negate a diagnosis and the Impression asserts it, (b) must be FLAG regardless of how clinically plausible the Impression reads in isolation.
+- For diagnostic_fidelity, the criterion-level status must equal the worse of the two sub-dimension statuses: flag > warning > pass. If (b) Consistency is WARNING, status must be "warning". If either sub-dimension is FLAG, status must be "flag". Returning "pass" when either sub-dimension is warning or flag is a validation error.
+- overall_status must equal the worst status across all six criteria. If any criterion is "flag", overall_status must be "flag". If no criterion is "flag" but any is "warning", overall_status must be "warning". Returning "pass" when any criterion is flag or warning is a validation error.
+- If a criterion cannot be meaningfully evaluated (e.g., no prior study referenced so comparative analysis is not applicable), assign "pass" with a brief note
+
+GUIDELINE CONTEXT (when appended below):
+Structured classification or guideline criteria may appear after this block. If **multiple** systems could relate to the **same** finding, apply the framework whose **scope** matches **scan purpose** and **clinical question** (e.g. screening programme vs incidental finding on a general CT vs oncology staging or response). **Do not** cross-apply numerical thresholds or management rules between frameworks designed for different clinical contexts. The report text remains primary evidence; supplied criteria are reference only for appropriateness of classification language and follow-up."""
 
     user_prompt = f"""REPORT TO AUDIT:
 {report_content}
@@ -5244,8 +5414,9 @@ Evaluate this report against all 6 audit criteria:
 
 4. CLINICAL_FLAGGING
    Detect whether the report warrants a clinical communication banner that the user may append to the report.
+   Important: banner severity must be determined by the clinical features described in FINDINGS — haemodynamic status, RV strain, imaging extent — not by the severity label used in the Impression. If the Impression uses a severity characterisation that is inconsistent with the FINDINGS, base the banner category on FINDINGS.
    Evaluate presence of these categories:
-   - critical: Life-threatening findings requiring immediate action (e.g., tension pneumothorax, aortic dissection)
+   - critical: Life-threatening findings requiring immediate action as supported by FINDINGS (e.g., tension pneumothorax, aortic dissection, pulmonary embolism with haemodynamic compromise or shock when so described — do not assign critical from an Impression label alone if FINDINGS describe stability)
    - urgent: Findings needing same-day attention
    - significant: Important findings for clinical management
    - malignancy_suspected: New suspicious lesions suggestive of malignancy
@@ -5261,24 +5432,154 @@ Evaluate this report against all 6 audit criteria:
 
 5. REPORT_COMPLETENESS
    Assess three dimensions together:
-   (a) Impression completeness — All significant findings described in FINDINGS (primary diagnoses, secondary diagnoses, and clinically meaningful findings) must be synthesised in the Impression. Minor incidentals that require no action and would not change clinical management are intentionally excluded from the Impression — do NOT flag their absence. FLAG if a significant or clinically meaningful finding in FINDINGS is entirely absent from the Impression without explanation. WARNING if a potentially meaningful finding is absent but its clinical significance is uncertain. PASS if the Impression accounts for all significant findings; minor incidentals correctly omitted should not be flagged.
+   (a) Impression completeness — All significant findings described in FINDINGS (primary diagnoses, secondary diagnoses, and clinically meaningful findings) must be synthesised in the Impression. Minor incidentals that require no action and would not change clinical management are intentionally excluded from the Impression — do NOT flag their absence. FLAG if a significant or clinically meaningful finding in FINDINGS is entirely absent from the Impression without explanation. FLAG if the Impression uses language characterising the scan as normal or unremarkable (e.g., "unremarkable", "normal study", "no significant findings") when FINDINGS contain a clinically meaningful finding requiring action or follow-up. This is an active mischaracterisation, not merely an omission. WARNING if a potentially meaningful finding is absent but its clinical significance is uncertain. PASS if the Impression accounts for all significant findings; minor incidentals correctly omitted should not be flagged.
    (b) Systematic coverage — For scan type "{scan_type or 'general'}", flag only if a major expected organ system/region is entirely absent with no explanatory note (e.g., bowel loops not mentioned on an abdominal CT).
    (c) Comparative analysis — If the report references a prior study (e.g., "previously", "prior imaging", "compared to [date]"), explicit comparison language must be present. FLAG if interval change is described without a comparison section. If no prior study is referenced, this dimension is automatically met.
    FLAG if: Any of (a) or (c) are violated. WARNING for minor coverage gaps in (b) with no plausible clinical significance.
 
-6. LANGUAGE_QUALITY
-   Assess appropriateness of diagnostic certainty.
-   FLAG if: A definitive diagnosis is stated without hedging for a finding that is genuinely equivocal on the available imaging, where a reasonable and experienced radiologist would qualify the statement.
-   WARNING if: Clearly normal or clearly abnormal findings are stated with excessive hedging that introduces unwarranted clinical uncertainty or would cause unnecessary clinical concern.
-   PASS if: The level of certainty is commensurate with the imaging evidence. Committed diagnoses for clear-cut findings are correct and should not be flagged.
+6. DIAGNOSTIC_FIDELITY
+   Note: this criterion evaluates internal textual consistency within the report only — it does not assess correspondence to the actual images, which cannot be evaluated from text alone.
+
+   Assess two dimensions together. Criterion status = worst of (a) and (b).
+   The rationale field must label both dimensions using the exact OUTPUT REQUIREMENTS format (two lines: (a) Certainty: … (b) Consistency: …).
+
+   (a) Certainty calibration
+   FLAG if: A definitive diagnosis is stated without hedging for a finding that, as described in the report body, is genuinely equivocal — where a reasonable experienced radiologist would qualify the statement on the basis of the findings as written.
+   WARNING if: Clearly normal or abnormal findings as described in the report carry excessive hedging that introduces unwarranted clinical uncertainty.
+   PASS if: Certainty level is commensurate with how the findings are characterised in the report. Committed diagnoses for clear-cut findings are correct and should not be flagged.
+
+   (b) Internal consistency — severity, negation, and measurements
+   Before scoring, perform this explicit sequential check:
+
+   Step 1 — Extract clinically significant negations from FINDINGS:
+   Identify phrases that negate a primary diagnosis or key finding (e.g., "no filling defect", "no evidence of PE", "no thrombus identified"). Exclude generic boilerplate negatives ("no consolidation", "no effusion") unless they are the subject of the clinical question.
+
+   Step 2 — Check Impression against Step 1:
+   Does the Impression assert as present or confirmed any finding that FINDINGS explicitly negated? The contradiction must concern the same clinical entity or mutually exclusive claims (e.g., "no filling defect in pulmonary arteries bilaterally" in FINDINGS vs "pulmonary embolism confirmed" in Impression — same entity). Generic boilerplate negatives in FINDINGS that are not inverted in Impression do not qualify.
+
+   Step 3 — Extract significant positive findings from FINDINGS.
+
+   Step 4 — Check whether any significant positive in FINDINGS is negated or absent without explanation in the Impression.
+
+   FLAG if: Any Step 2 contradiction is identified — a finding explicitly negated in FINDINGS but asserted as confirmed in the Impression. This is the highest-priority check and represents a patient safety error; it must be flagged even if the Impression reads fluently and confidently. Do NOT rationalise this as coherence — FINDINGS constrain the Impression, not the reverse.
+
+   FLAG if: A severity characterisation in the Impression (e.g., massive/submassive, mild/moderate/severe) is inconsistent with the supporting descriptive findings in FINDINGS; OR a quantitative attribute (lesion size, vessel diameter, RV:LV ratio) in the Impression is inconsistent with the stated measurement in FINDINGS.
+
+   WARNING if: Severity language is used without adequate descriptive support in FINDINGS to justify the characterisation, but is not directly contradicted.
+
+   PASS if: Severity labels, negations, and measurements are consistent throughout. Do NOT flag when the Impression uses standard clinical shorthand that is consistent with — but less granular than — FINDINGS detail.
+
+   Note: severity classification errors (e.g., 'massive' applied to a presentation that, as described in the report, lacks the defining features of that severity class, such as haemodynamic compromise or RV strain) are diagnostic attribute errors, not terminological preferences. They must be flagged, not excused as classification ambiguity. The label used in the Impression must be consistent with the haemodynamic status, RV findings, and thrombus extent as described in FINDINGS.
 
 For each criterion, provide:
 - status: "pass", "flag", or "warning"
-- rationale: Brief explanation in British English only (10-400 chars)
+- rationale: Brief explanation in British English only. For diagnostic_fidelity, follow the OUTPUT REQUIREMENTS two-line format exactly (required). For other criteria, typically one or two sentences (roughly 10–500 characters).
 - highlighted_spans: Verbatim text from report to highlight (only if status is flag or warning)
 - recommendation: Suggested improvement within the radiological domain only (only if status is flag or warning)
 - flags_identified: (clinical_flagging only) List of all 5 sub-flag evaluations
 - suggested_banners: (clinical_flagging only) List of 0–3 FlagBannerOption objects with category, label, banner_text, rationale"""
+
+    guideline_context_block = ""
+    guideline_references: List[GuidelineReference] = []
+    if not applicable_guidelines:
+        print("[GUIDELINE_PIPELINE] audit_report: SKIP guideline resolution (no applicable_guidelines)")
+    elif db is None:
+        print("[GUIDELINE_PIPELINE] audit_report: SKIP guideline resolution (db is None)")
+    if applicable_guidelines and db is not None:
+        from .database.connection import SessionLocal
+        from .guideline_fetcher import (
+            GuidelineResolution,
+            ensure_guideline_cached,
+            truncate_criteria_summary_for_api,
+        )
+        from .enhancement_models import ApplicableGuideline as _AG
+
+        n_g = len(applicable_guidelines)
+        _mode = "parallel (SessionLocal per guideline)" if n_g > 1 else "request db session"
+        print(
+            f"[GUIDELINE_PIPELINE] audit_report: resolving {n_g} applicable guideline(s) "
+            f"({_mode})"
+        )
+
+        async def _fetch_audit_guideline(
+            idx: int, g: Any
+        ) -> Tuple[int, Any, GuidelineResolution]:
+            ag = _AG(**g) if isinstance(g, dict) else g
+            try:
+                if n_g > 1:
+                    sdb = SessionLocal()
+                    try:
+                        res = await ensure_guideline_cached(ag, sdb)
+                    finally:
+                        sdb.close()
+                else:
+                    res = await ensure_guideline_cached(ag, db)
+            except Exception as e:
+                print(
+                    f"[GUIDELINE_PIPELINE] audit_report: ensure_guideline_cached error "
+                    f"idx={idx} system={getattr(ag, 'system', '?')!r}: {type(e).__name__}: {e}"
+                )
+                res = GuidelineResolution(None, None, False)
+            return (idx, ag, res)
+
+        resolved = await asyncio.gather(
+            *[_fetch_audit_guideline(i, g) for i, g in enumerate(applicable_guidelines)]
+        )
+        resolved_sorted = sorted(resolved, key=lambda t: t[0])
+
+        context_parts: List[str] = []
+        for idx, ag, res in resolved_sorted:
+            cc = len(res.content or "")
+            print(
+                f"[GUIDELINE_PIPELINE] audit_report: item {idx + 1}/{n_g} "
+                f"system={ag.system!r} type={ag.type!r} injected={res.injected} "
+                f"content_chars={cc} source_url={res.source_url!r}"
+            )
+            excerpt, trunc = (
+                truncate_criteria_summary_for_api(res.content)
+                if res.injected and res.content
+                else ("", False)
+            )
+            guideline_references.append(
+                GuidelineReference(
+                    system=ag.system,
+                    context=ag.context,
+                    type=ag.type,
+                    source_url=res.source_url,
+                    criteria_summary=excerpt if res.injected else None,
+                    criteria_summary_truncated=trunc,
+                    injected=res.injected,
+                )
+            )
+            if res.injected and res.content:
+                part = f"[{ag.system}]\n{res.content}"
+                context_parts.append(part)
+                print(
+                    f"[GUIDELINE_PIPELINE] audit_report: appended context block for "
+                    f"{ag.system!r} block_chars={len(part)}"
+                )
+            else:
+                print(
+                    f"[GUIDELINE_PIPELINE] audit_report: no context block for "
+                    f"{ag.system!r} (not injected or empty content)"
+                )
+        if context_parts:
+            guideline_context_block = (
+                "\n\nGUIDELINE CONTEXT (structural reference only — do not evaluate "
+                "classification correctness; that is the radiologist's call):\n\n"
+                + "\n\n".join(context_parts)
+            )
+            print(
+                f"[GUIDELINE_PIPELINE] audit_report: GUIDELINE CONTEXT merged "
+                f"blocks={len(context_parts)} total_chars={len(guideline_context_block)}"
+            )
+        else:
+            print("[GUIDELINE_PIPELINE] audit_report: GUIDELINE CONTEXT empty (no injected blocks)")
+        for gr in guideline_references:
+            src = "injected" if gr.injected else "not retrieved"
+            print(f"[GUIDELINE_PIPELINE] audit_report: summary {gr.system!r} → {src}")
+    if guideline_context_block:
+        user_prompt = user_prompt + guideline_context_block
 
     # Primary model settings - provider-specific
     if provider == 'anthropic':
@@ -5295,6 +5596,14 @@ For each criterion, provide:
             "temperature": 0.6,
             "top_p": 0.95,
             "max_tokens": 3500,
+        }
+    elif provider == 'cerebras':
+        # Zai-GLM on Cerebras: temperature 1.0 per provider requirements
+        use_thinking = False
+        primary_model_settings = {
+            "temperature": 1.0,
+            "top_p": 1,
+            "max_completion_tokens": 3500,
         }
     else:
         use_thinking = False
@@ -5315,21 +5624,31 @@ For each criterion, provide:
         model_used = primary_model
         
     except Exception as e:
-        # Primary failed - try fallback (Zai-GLM)
+        # Primary failed — try fallback model
+        print(f"  └─ Primary model error: {type(e).__name__}: {e}")
+        print(f"  └─ Error preview: {_audit_error_raw_preview(e)}")
         fallback_provider = _get_model_provider(fallback_model)
         fallback_api_key = _get_api_key_for_provider(fallback_provider, api_key)
         
         if _is_parsing_error(e):
-            print(f"  └─ Primary model parsing error - switching to fallback {fallback_model}")
+            print(f"  └─ Treating as parsing/validation failure — switching to fallback {fallback_model}")
         else:
-            print(f"  └─ Primary model failed - switching to fallback {fallback_model}: {type(e).__name__}: {str(e)[:200]}")
+            print(f"  └─ Switching to fallback {fallback_model}: {str(e)[:200]}")
         
-        # temperature=1 required for ZAI-GLM advanced reasoning
-        fallback_model_settings = {
-            "temperature": 1.0,
-            "top_p": 1,
-            "max_completion_tokens": 3500,
-        }
+        if fallback_provider == 'cerebras':
+            fallback_model_settings = {
+                "temperature": 1.0,
+                "top_p": 1,
+                "max_completion_tokens": 3500,
+            }
+        elif fallback_provider == 'groq':
+            fallback_model_settings = {
+                "temperature": 0.6,
+                "top_p": 0.95,
+                "max_tokens": 3500,
+            }
+        else:
+            fallback_model_settings = {"temperature": 0.7, "max_tokens": 3500}
         
         result = await _run_agent_with_model(
             model_name=fallback_model,
@@ -5344,6 +5663,8 @@ For each criterion, provide:
         audit_out = result.output
         model_used = fallback_model
         print(f"  └─ Fallback model succeeded")
+
+    audit_out = reconcile_audit_status(audit_out)
     
     elapsed = time.time() - start_time
     flags = sum(1 for c in audit_out.criteria if c.status == "flag")
@@ -5364,6 +5685,12 @@ For each criterion, provide:
     
     out = audit_out.model_dump()
     out["model_used"] = model_used
+    out["guideline_references"] = [g.model_dump() for g in guideline_references]
+    inj = sum(1 for g in guideline_references if g.injected)
+    print(
+        f"[GUIDELINE_PIPELINE] audit_report: return guideline_references="
+        f"{len(guideline_references)} injected_count={inj}"
+    )
     return out
 
 

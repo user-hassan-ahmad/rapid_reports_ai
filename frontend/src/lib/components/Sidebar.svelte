@@ -5,6 +5,9 @@
 	import { user } from '../stores/auth';
 	import logo from '../assets/radflow-logo.png';
 
+	/** Experimental /api/v2 debug UI — off unless explicitly enabled (see agentic-test route). */
+	const showAgenticConsole = import.meta.env.PUBLIC_ENABLE_AGENTIC_CONSOLE === 'true';
+
 	export let activeTab = 'auto';
 	export let isCollapsed = false;
 	
@@ -112,6 +115,19 @@
 					</svg>
 					{#if !isCollapsed}<span class="text-sm font-medium">Documentation</span>{/if}
 				</a>
+				{#if showAgenticConsole}
+					<a
+						href="/agentic-test"
+						onclick={() => { if (browser && window.innerWidth < 768) isCollapsed = true; }}
+						class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-amber-200/80 hover:bg-amber-500/10 hover:text-amber-100"
+						title="Debug agentic /api/v2 pipeline (set PUBLIC_ENABLE_AGENTIC_CONSOLE=true)"
+					>
+						<svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+						</svg>
+						{#if !isCollapsed}<span class="text-sm font-medium">Agentic console</span>{/if}
+					</a>
+				{/if}
 			</div>
 		</nav>
 

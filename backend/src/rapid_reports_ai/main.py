@@ -65,6 +65,7 @@ from .auth import (
 from .email_utils import send_magic_link_email
 from .encryption import encrypt_api_key, decrypt_api_key, get_system_api_key
 from .canvas_routes import canvas_router
+from .agentic_routes import agentic_router
 from .enhancement_utils import (
     extract_consolidated_findings,
     search_guidelines_for_findings,
@@ -461,6 +462,7 @@ class AuditRequest(BaseModel):
     scan_type: Optional[str] = ""
     clinical_history: Optional[str] = ""
     report_id: Optional[str] = None
+    applicable_guidelines: Optional[List[dict]] = None
 
 
 class AcknowledgeRequest(BaseModel):
@@ -811,7 +813,10 @@ Apply each fix while preserving grammatical completeness and report structure.""
             "response": report_output.report_content,
             "model": model_full_name,
             "use_case": use_case_name,
-            "scan_type": report_output.scan_type
+            "scan_type": report_output.scan_type,
+            "applicable_guidelines": [
+                g.model_dump() for g in report_output.applicable_guidelines
+            ],
         }
 
     except Exception as e:
@@ -1355,7 +1360,8 @@ async def generate_report_from_template(
         report_output = ReportOutput(
             report_content=report_output_dict["report_content"],
             description=report_output_dict["description"],
-            scan_type=report_output_dict["scan_type"]
+            scan_type=report_output_dict["scan_type"],
+            applicable_guidelines=[],
         )
         
         # Optional: Add structure validation for templated reports
@@ -1569,7 +1575,10 @@ Apply each fix while preserving grammatical completeness and report structure.""
             "model": model_full_name,
             "template_id": str(template.id),
             "report_id": report_id,
-            "scan_type": report_output.scan_type
+            "scan_type": report_output.scan_type,
+            "applicable_guidelines": [
+                g.model_dump() for g in report_output.applicable_guidelines
+            ],
         }
     
     except Exception as e:
@@ -3934,8 +3943,25 @@ async def run_audit(
         # Validate report content
         if not request.report_content or not request.report_content.strip():
             raise HTTPException(status_code=400, detail="Report content is required")
+
+        from .guideline_fetcher import validate_applicable_guidelines_payload
+
+        _ags = validate_applicable_guidelines_payload(request.applicable_guidelines or [])
+        print(
+            f"[GUIDELINE_PIPELINE] POST /api/audit: report_id={request.report_id!r} "
+            f"applicable_guidelines={len(_ags)} report_chars={len(request.report_content)}"
+        )
+        for _i, _g in enumerate(_ags):
+            if isinstance(_g, dict):
+                print(
+                    f"[GUIDELINE_PIPELINE]   request guideline [{_i}]: "
+                    f"system={_g.get('system')!r} type={_g.get('type')!r} "
+                    f"search_keywords={_g.get('search_keywords')!r}"
+                )
+            else:
+                print(f"[GUIDELINE_PIPELINE]   request guideline [{_i}]: non-dict payload {type(_g).__name__}")
         
-        # Run the audit (Qwen 32B primary, Zai-GLM fallback)
+        # Run the audit (Zai-GLM-4.7 primary, Qwen 32B fallback)
         from .enhancement_utils import audit_report, MODEL_CONFIG, _get_model_provider, _get_api_key_for_provider
         
         primary_audit_model = MODEL_CONFIG["AUDIT_ANALYZER"]
@@ -3947,7 +3973,9 @@ async def run_audit(
                 report_content=request.report_content,
                 scan_type=request.scan_type or "",
                 clinical_history=request.clinical_history or "",
-                api_key=api_key
+                api_key=api_key,
+                applicable_guidelines=_ags,
+                db=db,
             )
         except Exception as e:
             # LLM parsing error - return 422
@@ -3962,7 +3990,7 @@ async def run_audit(
         if request.report_id:
             report = get_report(db, request.report_id, user_id=str(current_user.id))
             if report:
-                model_used = result.get("model_used", MODEL_CONFIG.get("AUDIT_ANALYZER", "qwen/qwen3-32b"))
+                model_used = result.get("model_used", MODEL_CONFIG.get("AUDIT_ANALYZER", "zai-glm-4.7"))
                 audit = create_report_audit(
                     db=db,
                     report=report,
@@ -3974,6 +4002,13 @@ async def run_audit(
                 )
                 audit_id = str(audit.id)
         
+        _nref = len(result.get("guideline_references") or [])
+        _ninj = sum(1 for r in (result.get("guideline_references") or []) if r.get("injected"))
+        print(
+            f"[GUIDELINE_PIPELINE] POST /api/audit done: guideline_references={_nref} "
+            f"injected_true={_ninj} audit_id={audit_id!r}"
+        )
+
         return {
             "success": True,
             "audit_id": audit_id,
@@ -4005,10 +4040,11 @@ async def acknowledge_audit_criterion(
         # Valid criterion names
         valid_criteria = [
             "anatomical_accuracy", "clinical_relevance", "recommendations",
-            "clinical_flagging", "report_completeness", "language_quality"
+            "clinical_flagging", "report_completeness", "diagnostic_fidelity",
         ]
-        
-        if criterion not in valid_criteria:
+        legacy_audit_criteria = ("language_quality",)  # pre–diagnostic_fidelity DB rows
+
+        if criterion not in valid_criteria and criterion not in legacy_audit_criteria:
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid criterion. Must be one of: {', '.join(valid_criteria)}"
@@ -4073,6 +4109,9 @@ async def list_report_audits(
 
 
 app.include_router(canvas_router)
+# Experimental planning/execution pipeline (/api/v2/*). Product report generation uses monolithic
+# prompts + /api/chat + generate_auto_report; keep router mounted for future work and manual API tests.
+app.include_router(agentic_router)
 
 
 def main():

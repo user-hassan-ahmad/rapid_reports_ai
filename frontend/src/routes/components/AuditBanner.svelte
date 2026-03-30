@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher, tick } from 'svelte';
 	import { fly, fade } from 'svelte/transition';
+	import GuidelinePanel from './GuidelinePanel.svelte';
 
 	interface AuditCriterionFlag {
 		type: string;
@@ -29,10 +30,21 @@
 		resolution_method?: string;
 	}
 
+	interface GuidelineReference {
+		system: string;
+		context: string;
+		type: string;
+		source_url?: string | null;
+		criteria_summary?: string | null;
+		criteria_summary_truncated?: boolean;
+		injected: boolean;
+	}
+
 	interface AuditResult {
 		overall_status: 'pass' | 'flag' | 'warning';
 		criteria: AuditCriterion[];
 		summary: string;
+		guideline_references?: GuidelineReference[];
 	}
 
 	interface AuditState {
@@ -58,6 +70,7 @@
 		recommendations: 'Recommendations',
 		clinical_flagging: 'Clinical Flagging',
 		report_completeness: 'Report Completeness',
+		diagnostic_fidelity: 'Diagnostic Fidelity',
 		language_quality: 'Language Quality',
 		// Legacy labels for older stored audits
 		laterality: 'Laterality',
@@ -94,6 +107,32 @@
 	$: unacknowledgedCount = pendingCriteria.length;
 	$: flagCount = flaggedCriteria.filter(c => c.status === 'flag').length;
 	$: warningCount = flaggedCriteria.filter(c => c.status === 'warning').length;
+	$: guidelineReferences = auditState.result?.guideline_references ?? [];
+
+	function relatedGuidelineIndices(criterion: AuditCriterion): number[] {
+		if (criterion.status === 'pass' || guidelineReferences.length === 0) return [];
+		const hay = `${criterion.rationale} ${criterion.recommendation || ''}`.toLowerCase();
+		const out: number[] = [];
+		guidelineReferences.forEach((ref, i) => {
+			const sys = ref.system.toLowerCase();
+			if (hay.includes(sys)) {
+				out.push(i);
+				return;
+			}
+			const token = sys.split(/\s+/)[0];
+			if (token.length >= 4 && hay.includes(token)) out.push(i);
+		});
+		return [...new Set(out)];
+	}
+
+	function scrollToGuidelineIndex(i: number) {
+		tick().then(() => {
+			document.getElementById(`guideline-ref-${i}`)?.scrollIntoView({
+				behavior: 'smooth',
+				block: 'nearest'
+			});
+		});
+	}
 
 	// Auto-scroll to active criterion
 	$: if (auditState.activeCriterion && criterionRefs[auditState.activeCriterion]) {
@@ -186,13 +225,33 @@
 			default: return 'text-gray-400';
 		}
 	}
+
+	interface DiagnosticFidelityRow {
+		letter: string;
+		sub: string;
+		status: string;
+		body: string;
+	}
+
+	function parseDiagnosticFidelityRationale(text: string): DiagnosticFidelityRow[] | null {
+		const pattern =
+			/\(([ab])\)\s*(Certainty|Consistency):\s*(PASS|WARNING|FLAG)\s*[—\-]\s*([^(]+?)(?=\s*\([ab]\)|$)/gi;
+		const matches = [...text.matchAll(pattern)];
+		if (matches.length < 2) return null;
+		return matches.map((m) => ({
+			letter: m[1].toLowerCase(),
+			sub: m[2],
+			status: m[3].toLowerCase(),
+			body: m[4].trim()
+		}));
+	}
 </script>
 
 <div class="audit-panel flex flex-col h-full">
 
 	<!-- ── Panel Header ─────────────────────────────────────────────── -->
-	<div class="flex-shrink-0 px-4 py-3 border-b border-white/[0.06]">
-		<div class="flex items-center justify-between mb-2">
+	<div class="flex-shrink-0 px-4 py-3.5 border-b border-white/[0.06]">
+		<div class="flex items-center justify-between mb-2.5">
 			<div class="flex items-center gap-2">
 				<div class="w-6 h-6 rounded-md bg-purple-500/20 flex items-center justify-center">
 					<svg class="w-3.5 h-3.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -258,7 +317,7 @@
 	</div>
 
 	<!-- ── Scrollable Body ──────────────────────────────────────────── -->
-	<div class="flex-1 overflow-y-auto overflow-x-hidden min-h-0 px-3 py-3 space-y-2 custom-scrollbar">
+	<div class="flex-1 overflow-y-auto overflow-x-hidden min-h-0 px-3.5 py-4 space-y-3 custom-scrollbar">
 
 		<!-- Loading -->
 		{#if auditState.status === 'loading'}
@@ -272,9 +331,9 @@
 					<p class="text-xs text-gray-500 mt-0.5">Evaluating 6 quality criteria…</p>
 				</div>
 				<!-- Skeleton criteria -->
-				<div class="w-full space-y-2 mt-2">
+				<div class="w-full space-y-3 mt-3">
 					{#each [1,2,3] as i}
-						<div class="h-14 rounded-lg bg-white/[0.03] border border-white/[0.04] animate-pulse" style="animation-delay: {i * 0.1}s"></div>
+						<div class="h-16 rounded-lg bg-white/[0.03] border border-white/[0.04] animate-pulse" style="animation-delay: {i * 0.1}s"></div>
 					{/each}
 				</div>
 			</div>
@@ -299,45 +358,43 @@
 				{/if}
 			</div>
 
-		<!-- All clear -->
-		{:else if (auditState.status === 'complete' || auditState.status === 'stale') && flaggedCriteria.length === 0}
-			<div class="flex flex-col items-center justify-center py-10 gap-3">
-				<div class="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-					<svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-					</svg>
-				</div>
-				<div class="text-center">
-					<p class="text-sm text-emerald-400 font-semibold">All clear</p>
-					<p class="text-xs text-gray-500 mt-0.5">No issues found across 6 criteria</p>
-				</div>
-			</div>
-
-		<!-- Criteria list (with optional Flag Banner Panel) -->
+		<!-- Complete / stale: issues list OR all clear, then reference guidelines -->
 		{:else if auditState.status === 'complete' || auditState.status === 'stale'}
-
+			{#if flaggedCriteria.length === 0}
+				<div class="flex flex-col items-center justify-center py-10 gap-3">
+					<div class="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+						<svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+					</div>
+					<div class="text-center">
+						<p class="text-sm text-emerald-400 font-semibold">All clear</p>
+						<p class="text-xs text-gray-500 mt-0.5">No issues found across 6 criteria</p>
+					</div>
+				</div>
+			{:else}
 			<!-- Flag Banner Panel - when clinical_flagging has suggested banners -->
 			{#if suggestedBanners.length > 0 && !clinicalFlaggingCriterion?.acknowledged}
-				<div class="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 mb-3 space-y-2.5">
+				<div class="rounded-lg border border-amber-500/25 bg-amber-500/5 p-4 mb-4 space-y-3">
 					<div class="flex items-center gap-2">
 						<svg class="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 						</svg>
 						<span class="text-[10px] font-semibold text-amber-300 uppercase tracking-wider">Clinical Flagging Suggested</span>
 					</div>
-					<p class="text-[10px] text-gray-400 leading-relaxed">This report may warrant a communication banner. Select one to add to the end of the report:</p>
+					<p class="text-[10px] text-gray-400 leading-relaxed mt-0.5">This report may warrant a communication banner. Select one to add to the end of the report:</p>
 					{#if bannerInserted}
-						<div class="flex items-center gap-2 p-2 rounded-md bg-emerald-500/10 border border-emerald-500/20">
+						<div class="flex items-center gap-2 p-2.5 rounded-md bg-emerald-500/10 border border-emerald-500/20">
 							<svg class="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
 							</svg>
 							<span class="text-[10px] font-medium text-emerald-400">Banner added to report</span>
 						</div>
 					{:else}
-						<div class="space-y-1.5">
+						<div class="space-y-2">
 							{#each suggestedBanners as banner, i}
 								<label
-									class="flex items-start gap-2 p-2 rounded-md cursor-pointer transition-colors {selectedBannerIndex === i ? 'bg-amber-500/15 border border-amber-500/30' : 'bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.05]'}"
+									class="flex items-start gap-2.5 p-2.5 rounded-md cursor-pointer transition-colors {selectedBannerIndex === i ? 'bg-amber-500/15 border border-amber-500/30' : 'bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.05]'}"
 								>
 									<input
 										type="radio"
@@ -348,18 +405,18 @@
 									/>
 									<div class="flex-1 min-w-0">
 										<span class="text-[10px] font-semibold text-amber-300/90">{banner.label}</span>
-										<p class="text-[9px] text-gray-500 mt-0.5 font-mono truncate" title={banner.banner_text}>{banner.banner_text}</p>
+										<p class="text-[9px] text-gray-500 mt-1 font-mono truncate" title={banner.banner_text}>{banner.banner_text}</p>
 										{#if banner.rationale}
-											<p class="text-[9px] text-gray-500 mt-0.5 leading-relaxed">Why: {banner.rationale}</p>
+											<p class="text-[9px] text-gray-500 mt-1 leading-relaxed">Why: {banner.rationale}</p>
 										{/if}
 									</div>
 								</label>
 							{/each}
 						</div>
-						<div class="flex gap-1.5">
+						<div class="flex gap-2 pt-1">
 							<button
 								type="button"
-								class="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 text-[10px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+								class="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-md bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 text-[10px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 								disabled={selectedBannerIndex == null}
 								on:click={handleInsertBanner}
 							>
@@ -370,7 +427,7 @@
 							</button>
 							<button
 								type="button"
-								class="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-white/[0.05] hover:bg-white/[0.08] border border-white/[0.08] text-gray-400 hover:text-gray-300 text-[10px] font-semibold transition-colors"
+								class="flex items-center justify-center gap-1.5 px-2 py-2 rounded-md bg-white/[0.05] hover:bg-white/[0.08] border border-white/[0.08] text-gray-400 hover:text-gray-300 text-[10px] font-semibold transition-colors"
 								on:click={handleDismissBanner}
 								title="Dismiss without adding banner"
 							>
@@ -384,43 +441,132 @@
 			<!-- Pending (unreviewed) criteria -->
 			{#each pendingCriteriaForList as criterion (criterion.criterion)}
 				{@const isExpanded = expandedCriteria.has(criterion.criterion)}
+				{@const relatedGi = relatedGuidelineIndices(criterion)}
 				<div
 					bind:this={criterionRefs[criterion.criterion]}
 					class="criterion-card rounded-lg border border-white/[0.06] border-l-2 {getStatusBorder(criterion.status)} bg-white/[0.025] transition-all duration-200 overflow-hidden
 						{auditState.status === 'stale' ? 'saturate-50' : ''}"
 				>
-					<button
-						class="w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-white/[0.03] transition-colors"
+					<div
+						class="w-full flex items-start gap-3 px-3.5 py-3.5 text-left hover:bg-white/[0.03] transition-colors cursor-pointer select-none"
+						role="button"
+						tabindex="0"
 						on:click={() => toggleCriterion(criterion.criterion)}
+						on:keydown={(e) => {
+							if (e.key === 'Enter' || e.key === ' ') {
+								e.preventDefault();
+								toggleCriterion(criterion.criterion);
+							}
+						}}
 					>
-						<div class="flex-shrink-0 mt-0.5">
-							<div class="w-1.5 h-1.5 rounded-full {getStatusDot(criterion.status)} mt-1"></div>
+						<div class="flex-shrink-0 mt-1">
+							<div class="w-1.5 h-1.5 rounded-full {getStatusDot(criterion.status)} mt-0.5"></div>
 						</div>
 						<div class="flex-1 min-w-0">
-							<div class="flex items-center gap-1.5 mb-0.5">
+							<div class="flex items-center gap-1.5 mb-1.5">
 								<span class="text-[10px] font-semibold uppercase tracking-wider {getStatusPill(criterion.status)} px-1.5 py-0.5 rounded border">
 									{criterionLabels[criterion.criterion] || criterion.criterion}
 								</span>
 							</div>
-							<p class="text-[11px] text-gray-300 leading-relaxed line-clamp-2">
-								{criterion.rationale}
-							</p>
+							{#if relatedGi.length > 0}
+								<div class="flex flex-wrap gap-1 mb-1.5">
+									{#each relatedGi as gi}
+										<button
+											type="button"
+											class="text-[8px] font-semibold px-1.5 py-0.5 rounded border border-cyan-500/25 bg-cyan-500/10 text-cyan-300/90 hover:bg-cyan-500/20 transition-colors max-w-full truncate"
+											title="Scroll to reference guideline"
+											on:click|stopPropagation={() => scrollToGuidelineIndex(gi)}
+										>
+											{guidelineReferences[gi]?.system}
+										</button>
+									{/each}
+								</div>
+							{/if}
+							{#if criterion.criterion === 'diagnostic_fidelity'}
+								{@const dfPreview = parseDiagnosticFidelityRationale(criterion.rationale)}
+								{#if dfPreview}
+									<div class="mt-1.5 flex flex-col gap-1.5">
+										{#each dfPreview as row}
+											<div class="text-[10px] leading-snug block flex items-baseline gap-2 flex-wrap">
+												<span class="text-[9px] font-semibold tracking-wider text-gray-500">
+													({row.letter}) <span class="capitalize">{row.sub.toLowerCase()}</span>
+												</span>
+												<span
+													class="text-[9px] font-bold tracking-wide
+													{row.status === 'flag'
+														? 'text-rose-400'
+														: row.status === 'warning'
+															? 'text-amber-400'
+															: 'text-gray-600'}"
+												>
+													{row.status.toUpperCase()}
+												</span>
+											</div>
+										{/each}
+									</div>
+								{:else}
+									<p class="text-[11px] text-gray-300 leading-relaxed line-clamp-2">
+										{criterion.rationale}
+									</p>
+								{/if}
+							{:else}
+								<p class="text-[11px] text-gray-300 leading-relaxed line-clamp-2">
+									{criterion.rationale}
+								</p>
+							{/if}
 						</div>
 						<svg
-							class="w-3.5 h-3.5 text-gray-600 flex-shrink-0 mt-1 transition-transform duration-200"
+							class="w-3.5 h-3.5 text-gray-600 flex-shrink-0 mt-1.5 transition-transform duration-200"
 							class:rotate-180={isExpanded}
 							fill="none" stroke="currentColor" viewBox="0 0 24 24"
 						>
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 						</svg>
-					</button>
+					</div>
 
 					{#if isExpanded}
-						<div class="px-3 pb-3 space-y-2.5 border-t border-white/[0.05]" transition:fly={{ y: -4, duration: 150 }}>
-							<p class="text-[11px] text-gray-400 leading-relaxed pt-2">{criterion.rationale}</p>
+						<div class="px-3.5 pb-4 pt-3 space-y-4 border-t border-white/[0.05]" transition:fly={{ y: -4, duration: 150 }}>
+							{#if criterion.criterion === 'diagnostic_fidelity'}
+								{@const dfRows = parseDiagnosticFidelityRationale(criterion.rationale)}
+								{#if dfRows}
+									<div class="space-y-3">
+										{#each dfRows as row}
+											<div
+												class="pl-2.5 py-1 border-l-2
+												{row.status === 'flag'
+													? 'border-l-rose-500/50'
+													: row.status === 'warning'
+														? 'border-l-amber-400/50'
+														: 'border-l-emerald-500/30'}"
+											>
+												<div class="flex items-baseline gap-2 flex-wrap">
+													<span class="text-[9px] font-semibold tracking-wider text-gray-500">
+														({row.letter}) <span class="capitalize">{row.sub.toLowerCase()}</span>
+													</span>
+													<span
+														class="text-[9px] font-bold tracking-wide
+														{row.status === 'flag'
+															? 'text-rose-400'
+															: row.status === 'warning'
+																? 'text-amber-400'
+																: 'text-emerald-500/70'}"
+													>
+														{row.status.toUpperCase()}
+													</span>
+												</div>
+												<p class="text-[11px] text-gray-400 leading-relaxed mt-1.5">{row.body}</p>
+											</div>
+										{/each}
+									</div>
+								{:else}
+									<p class="text-[11px] text-gray-400 leading-relaxed">{criterion.rationale}</p>
+								{/if}
+							{:else}
+								<p class="text-[11px] text-gray-400 leading-relaxed">{criterion.rationale}</p>
+							{/if}
 
 							{#if criterion.recommendation}
-								<div class="flex gap-2 p-2 rounded-md bg-white/[0.03] border border-white/[0.05]">
+								<div class="flex gap-2.5 p-3 rounded-md bg-white/[0.03] border border-white/[0.05]">
 									<svg class="w-3 h-3 text-purple-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 									</svg>
@@ -429,11 +575,11 @@
 							{/if}
 
 							{#if criterion.criterion === 'clinical_flagging' && criterion.flags_identified && criterion.flags_identified.length > 0}
-								<div class="space-y-1 pt-0.5">
+								<div class="space-y-2 pt-1">
 									<p class="text-[9px] text-gray-600 uppercase tracking-wider font-semibold">Clinical flags</p>
 									{#each criterion.flags_identified as flag}
 										{#if flag.present}
-											<div class="flex items-start gap-2 p-1.5 rounded-md bg-white/[0.02] border border-white/[0.04]">
+											<div class="flex items-start gap-2.5 p-2.5 rounded-md bg-white/[0.02] border border-white/[0.04]">
 												<div class="w-1 h-1 rounded-full {flagTypeColor(flag.type).replace('text-', 'bg-')} mt-1.5 flex-shrink-0"></div>
 												<div class="min-w-0">
 													<span class="text-[10px] font-semibold {flagTypeColor(flag.type)}">{flagTypeLabels[flag.type] || flag.type}</span>
@@ -441,7 +587,7 @@
 														<span class="ml-1 text-[9px] text-amber-400/70">(language insufficient)</span>
 													{/if}
 													{#if flag.detail}
-														<p class="text-[10px] text-gray-500 mt-0.5 leading-relaxed">{flag.detail}</p>
+														<p class="text-[10px] text-gray-500 mt-1 leading-relaxed">{flag.detail}</p>
 													{/if}
 												</div>
 											</div>
@@ -450,9 +596,9 @@
 								</div>
 							{/if}
 
-						<div class="flex items-center gap-1.5 pt-1">
+						<div class="flex items-center gap-2 pt-2 border-t border-white/[0.04] mt-1">
 							<button
-								class="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 hover:border-emerald-500/40 text-emerald-400 transition-all"
+								class="flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 hover:border-emerald-500/40 text-emerald-400 transition-all"
 								on:click|stopPropagation={() => handleAcknowledge(criterion.criterion, 'manual')}
 								title="Mark as reviewed"
 							>
@@ -462,7 +608,7 @@
 								<span class="text-[10px] font-semibold">Reviewed</span>
 							</button>
 							<button
-								class="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 hover:border-purple-500/40 text-purple-400 transition-all"
+								class="flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-md bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 hover:border-purple-500/40 text-purple-400 transition-all"
 								on:click|stopPropagation={() => handleSuggestFix(criterion)}
 								title="Ask AI to fix"
 							>
@@ -479,17 +625,17 @@
 
 			<!-- Completed section (Fix was clicked) -->
 			{#if completedCriteria.length > 0}
-				<div class="mt-3" transition:fade={{ duration: 200 }}>
-					<div class="flex items-center gap-2 mb-2">
+				<div class="mt-4" transition:fade={{ duration: 200 }}>
+					<div class="flex items-center gap-2 mb-3">
 						<div class="flex-1 h-px bg-white/[0.06]"></div>
 						<span class="text-[9px] uppercase tracking-widest font-semibold text-purple-500/80">Completed</span>
 						<div class="flex-1 h-px bg-white/[0.06]"></div>
 					</div>
-					<div class="space-y-1">
+					<div class="space-y-2">
 						{#each completedCriteria as criterion (criterion.criterion)}
 							<div
 								bind:this={criterionRefs[criterion.criterion]}
-								class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-purple-500/[0.06] border border-purple-500/20 opacity-80 hover:opacity-100 transition-opacity duration-200"
+								class="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-purple-500/[0.06] border border-purple-500/20 opacity-80 hover:opacity-100 transition-opacity duration-200"
 							>
 								<svg class="w-3 h-3 text-purple-400/80 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -513,17 +659,17 @@
 			{/if}
 			<!-- Reviewed section (manual/dismissed) -->
 			{#if reviewedCriteria.length > 0}
-				<div class="mt-3" transition:fade={{ duration: 200 }}>
-					<div class="flex items-center gap-2 mb-2">
+				<div class="mt-4" transition:fade={{ duration: 200 }}>
+					<div class="flex items-center gap-2 mb-3">
 						<div class="flex-1 h-px bg-white/[0.06]"></div>
 						<span class="text-[9px] uppercase tracking-widest font-semibold text-gray-600">Reviewed</span>
 						<div class="flex-1 h-px bg-white/[0.06]"></div>
 					</div>
-					<div class="space-y-1">
+					<div class="space-y-2">
 						{#each reviewedCriteria as criterion (criterion.criterion)}
 							<div
 								bind:this={criterionRefs[criterion.criterion]}
-								class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/[0.01] border border-white/[0.04] opacity-60 hover:opacity-80 transition-opacity duration-200"
+								class="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-white/[0.01] border border-white/[0.04] opacity-60 hover:opacity-80 transition-opacity duration-200"
 							>
 								<svg class="w-3 h-3 text-emerald-500/60 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
@@ -545,14 +691,16 @@
 					</div>
 				</div>
 			{/if}
+			{/if}
+			<GuidelinePanel references={guidelineReferences} />
 		{/if}
 	</div>
 
 	<!-- ── Footer ──────────────────────────────────────────────────── -->
 	{#if (auditState.status === 'complete' || auditState.status === 'stale') && canReaudit}
-		<div class="flex-shrink-0 px-3 pb-3 pt-2 border-t border-white/[0.04]">
+		<div class="flex-shrink-0 px-3.5 pb-4 pt-3 border-t border-white/[0.04]">
 			<button
-				class="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] hover:border-white/10 text-gray-500 hover:text-gray-300 transition-all text-xs font-medium"
+				class="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] hover:border-white/10 text-gray-500 hover:text-gray-300 transition-all text-xs font-medium"
 				on:click={handleReaudit}
 			>
 				<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -560,7 +708,7 @@
 				</svg>
 				Re-audit report
 			</button>
-			<p class="text-[9px] text-gray-700 text-center mt-2 leading-relaxed">
+			<p class="text-[9px] text-gray-700 text-center mt-3 leading-relaxed">
 				Flags are logged for governance review
 			</p>
 		</div>
