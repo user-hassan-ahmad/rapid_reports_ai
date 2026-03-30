@@ -6,7 +6,7 @@
         { "src": "pyproject.toml", "dest": "pyproject.toml" },
         { "src": "poetry.lock", "dest": "poetry.lock" },
         "poetry config virtualenvs.in-project true",
-        "poetry install --no-interaction --no-ansi --only main"
+        "poetry install --no-interaction --no-ansi --only main --no-root"
       ]
     }
   }
