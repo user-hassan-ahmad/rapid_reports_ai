@@ -4,7 +4,7 @@
     "install": {
       "commands": [
         "poetry config virtualenvs.in-project true",
-        "poetry install --no-interaction --no-ansi --only main -C /app/backend"
+        "poetry install --no-interaction --no-ansi --only main"
       ]
     }
   }
