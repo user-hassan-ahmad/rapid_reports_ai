@@ -3,8 +3,8 @@
   "steps": {
     "install": {
       "commands": [
-        "poetry config virtualenvs.in-project true",
-        "poetry install --no-interaction --no-ansi --only main"
+        "cd /app/backend && poetry config virtualenvs.in-project true",
+        "cd /app/backend && poetry install --no-interaction --no-ansi --only main"
       ]
     }
   }
