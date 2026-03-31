@@ -5383,6 +5383,17 @@ OUTPUT REQUIREMENTS:
 - overall_status must equal the worst status across all six criteria. If any criterion is "flag", overall_status must be "flag". If no criterion is "flag" but any is "warning", overall_status must be "warning". Returning "pass" when any criterion is flag or warning is a validation error.
 - If a criterion cannot be meaningfully evaluated (e.g., no prior study referenced so comparative analysis is not applicable), assign "pass" with a brief note
 
+ONE-CLICK FIX FIELDS (populate only on flag or warning, never on pass):
+- suggested_replacement: Populate for anatomical_accuracy and recommendations flags ONLY when a
+  verbatim drop-in substitution exists for highlighted_spans[0]. Must read naturally at the same
+  position in the sentence where the original appeared — no new sentences, line breaks, or headers.
+  Leave null if the correct fix is structural (requires adding content rather than replacing a span).
+- suggested_sentence: Populate for report_completeness flags ONLY when a finding is entirely absent
+  and requires a new sentence to address it. Must be a complete, report-ready sentence in British
+  English. Leave null if the problem is a span substitution rather than a missing sentence.
+Do not attempt suggested_replacement for clinical_relevance, clinical_flagging, or diagnostic_fidelity
+— the correct fix for those criteria is almost never a single span swap.
+
 GUIDELINE CONTEXT (when appended below):
 Structured classification or guideline criteria may appear after this block. If **multiple** systems could relate to the **same** finding, apply the framework whose **scope** matches **scan purpose** and **clinical question** (e.g. screening programme vs incidental finding on a general CT vs oncology staging or response). **Do not** cross-apply numerical thresholds or management rules between frameworks designed for different clinical contexts. The injected criteria serve two purposes: (1) recommendation grounding — when a recommendations flag fires, derive the specific correction from the criteria (interval, action, urgency) rather than only identifying the gap; (2) classification reference — do not use criteria to adjudicate whether the assigned category is correct, as that requires image review and is the radiologist's call."""
 

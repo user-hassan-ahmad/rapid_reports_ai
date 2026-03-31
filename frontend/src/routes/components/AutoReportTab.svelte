@@ -205,7 +205,13 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 	}
 
 	async function handleReportSave(event) {
-		const newContent = event.detail.content;
+		const {
+			content: newContent,
+			editSource,
+			originalSpan,
+			replacementSpan,
+			auditCriterion
+		} = event.detail;
 		if (!reportId) return;
 
 		try {
@@ -218,7 +224,13 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 			const res = await fetch(`${API_URL}/api/reports/${reportId}/update`, {
 				method: 'PUT',
 				headers,
-				body: JSON.stringify({ content: newContent })
+				body: JSON.stringify({
+					content: newContent,
+					edit_source: editSource ?? 'manual',
+					original_span: originalSpan ?? null,
+					replacement_span: replacementSpan ?? null,
+					audit_criterion: auditCriterion ?? null
+				})
 			});
 
 			const data = await res.json();

@@ -454,6 +454,23 @@ class AuditCriterion(BaseModel):
         default=None,
         description="Suggested improvement if status is flag or warning (British English only)"
     )
+    suggested_replacement: Optional[str] = Field(
+        default=None,
+        description=(
+            "anatomical_accuracy and recommendations flags only. "
+            "Verbatim drop-in substitution for highlighted_spans[0] — must read naturally at the "
+            "same position in the sentence, no new sentences or line breaks. "
+            "Null if the fix is structural rather than a span substitution."
+        )
+    )
+    suggested_sentence: Optional[str] = Field(
+        default=None,
+        description=(
+            "report_completeness flags only. "
+            "A complete, report-ready British English sentence to insert when a finding is entirely "
+            "absent. Null if the problem is a span substitution rather than a missing sentence."
+        )
+    )
     flags_identified: Optional[List[AuditCriterionFlag]] = Field(
         default=None,
         description="Populated only for clinical_flagging criterion - lists 5 sub-flag evaluations"

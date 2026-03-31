@@ -2224,7 +2224,10 @@ class ChatMessageRequest(BaseModel):
 
 class UpdateReportRequest(BaseModel):
     content: str
-    edit_source: Optional[str] = None  # 'manual' or 'chat', defaults to 'manual'
+    edit_source: Optional[str] = None  # 'manual', 'chat', or 'audit_suggested_replacement'
+    original_span: Optional[str] = None   # verbatim text replaced (audit fix only)
+    replacement_span: Optional[str] = None  # replacement text applied (audit fix or inserted sentence)
+    audit_criterion: Optional[str] = None   # criterion key that triggered the fix
 
 
 class ApplyActionItem(BaseModel):
@@ -3419,8 +3422,27 @@ async def update_report_content(
         try:
             # Determine notes based on edit source
             edit_source = request.edit_source or "manual"
+            _criterion_labels = {
+                "recommendations": "Recommendations",
+                "anatomical_accuracy": "Anatomical Accuracy",
+                "report_completeness": "Report Completeness",
+                "clinical_relevance": "Clinical Relevance",
+                "clinical_flagging": "Clinical Flagging",
+                "diagnostic_fidelity": "Diagnostic Fidelity",
+            }
             if edit_source == "chat":
                 notes = "Chat edit"
+            elif edit_source == "audit_suggested_replacement" and request.audit_criterion:
+                label = _criterion_labels.get(request.audit_criterion, request.audit_criterion)
+                if request.original_span and request.replacement_span:
+                    orig = request.original_span[:60]
+                    repl = request.replacement_span[:60]
+                    notes = f"Audit fix ({label}): '{orig}' → '{repl}'"
+                elif request.replacement_span:
+                    preview = request.replacement_span[:60]
+                    notes = f"Audit insertion ({label}): '{preview}...'"
+                else:
+                    notes = f"Audit-suggested fix ({label})"
             else:
                 notes = "Manual content update"
             

@@ -330,6 +330,64 @@
 		}
 	}
 
+	async function handleApplyFix(e: CustomEvent<{
+		criterion: string;
+		original: string | null;
+		replacement: string | null;
+		sentence: string | null;
+		source: string;
+	}>) {
+		const { criterion, original, replacement, sentence, source } = e.detail;
+		const base = currentEditorContent || response || '';
+
+		let newContent: string;
+		let originalSpan: string | null = null;
+		let replacementSpan: string | null = null;
+
+		if (original && replacement) {
+			// Surgical span substitution — first occurrence only
+			const index = base.indexOf(original);
+			if (index === -1) {
+				// Span not found (report edited after audit ran) — no-op; fall back to chat
+				handleSuggestFix(new CustomEvent('suggestFix', { detail: { criterion, rationale: 'Span not found — please apply manually.' } }));
+				return;
+			}
+			newContent = base.slice(0, index) + replacement + base.slice(index + original.length);
+			originalSpan = original;
+			replacementSpan = replacement;
+		} else if (sentence) {
+			// Structural insertion — append sentence after the last paragraph
+			newContent = base.trimEnd() + '\n\n' + sentence;
+			replacementSpan = sentence;
+		} else {
+			return;
+		}
+
+		lastAuditedContent = newContent;
+		dispatch('save', {
+			content: newContent,
+			editSource: source,
+			originalSpan,
+			replacementSpan,
+			auditCriterion: criterion
+		});
+		auditActions.acknowledgeLocal(criterion, 'manual');
+		const auditId = $auditStore.auditId;
+		if (auditId) {
+			try {
+				const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+				if ($token) headers['Authorization'] = `Bearer ${$token}`;
+				await fetch(`${API_URL}/api/audit/${auditId}/criteria/${criterion}`, {
+					method: 'PATCH',
+					headers,
+					body: JSON.stringify({ resolution_method: 'manual' })
+				});
+			} catch (err) {
+				console.error('Failed to acknowledge criterion after apply fix:', err);
+			}
+		}
+	}
+
 	function handleReaudit() {
 		lastAuditedContent = '';
 		auditActions.reset();
@@ -918,12 +976,13 @@
 										auditState={$auditStore as any}
 										canReaudit={$auditStore.status === 'stale' || $auditStore.status === 'complete' || $auditStore.status === 'error'}
 										showClose={true}
-										on:acknowledge={handleAcknowledge}
-										on:restore={handleRestore}
-										on:suggestFix={handleSuggestFix}
-										on:insertBanner={handleInsertBanner}
-										on:reaudit={handleReaudit}
-										on:close={() => auditPanelOpen = false}
+									on:acknowledge={handleAcknowledge}
+									on:restore={handleRestore}
+									on:suggestFix={handleSuggestFix}
+									on:insertBanner={handleInsertBanner}
+									on:applyFix={handleApplyFix}
+									on:reaudit={handleReaudit}
+									on:close={() => auditPanelOpen = false}
 									/>
 								</div>
 							{/if}
@@ -1034,14 +1093,15 @@
 				<AuditBanner
 					auditState={$auditStore as any}
 					canReaudit={$auditStore.status === 'stale' || $auditStore.status === 'complete' || $auditStore.status === 'error'}
-					on:acknowledge={handleAcknowledge}
-					on:restore={handleRestore}
-					on:suggestFix={handleSuggestFix}
-					on:insertBanner={handleInsertBanner}
-					on:reaudit={handleReaudit}
-				/>
-			</div>
+				on:acknowledge={handleAcknowledge}
+				on:restore={handleRestore}
+				on:suggestFix={handleSuggestFix}
+				on:insertBanner={handleInsertBanner}
+				on:applyFix={handleApplyFix}
+				on:reaudit={handleReaudit}
+			/>
 		</div>
+	</div>
 	{/if}
 {/if}
 
