@@ -611,48 +611,66 @@
 								</div>
 							{/if}
 
-					<div class="flex items-center gap-2 pt-2 border-t border-white/[0.04] mt-1">
-						<button
-							class="flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 hover:border-emerald-500/40 text-emerald-400 transition-all"
-							on:click|stopPropagation={() => handleAcknowledge(criterion.criterion, 'manual')}
-							title="Mark as reviewed"
-						>
-							<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
-							</svg>
-							<span class="text-[10px] font-semibold">Reviewed</span>
-						</button>
+					<div class="flex flex-col gap-1.5 pt-2 border-t border-white/[0.04] mt-1">
 						{#if criterion.suggested_replacement || criterion.suggested_sentence}
+							<!-- Apply fix: full-width primary row -->
 							<button
-								class="flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-md bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 hover:border-blue-500/40 text-blue-400 transition-all"
+								class="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 hover:border-blue-500/40 text-blue-400 transition-all"
 								on:click|stopPropagation={() => handleApplyFix(criterion)}
 								title="Apply suggested fix to report"
 							>
 								<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
 								</svg>
-								<span class="text-[10px] font-semibold">Apply fix</span>
+								<span class="text-[10px] font-semibold whitespace-nowrap">Apply fix</span>
 							</button>
-							<button
-								class="flex items-center justify-center gap-1 px-2 py-2.5 rounded-md bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] hover:border-white/[0.12] text-gray-500 hover:text-gray-300 transition-all"
-								on:click|stopPropagation={() => handleSuggestFix(criterion)}
-								title="Fix with AI in chat"
-							>
-								<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-								</svg>
-							</button>
+							<!-- Secondary row: Reviewed + Fix with AI -->
+							<div class="flex items-center gap-1.5">
+								<button
+									class="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 hover:border-emerald-500/40 text-emerald-400 transition-all"
+									on:click|stopPropagation={() => handleAcknowledge(criterion.criterion, 'manual')}
+									title="Mark as reviewed"
+								>
+									<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+									</svg>
+									<span class="text-[10px] font-semibold whitespace-nowrap">Reviewed</span>
+								</button>
+								<button
+									class="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-md bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] hover:border-white/[0.12] text-gray-500 hover:text-gray-300 transition-all"
+									on:click|stopPropagation={() => handleSuggestFix(criterion)}
+									title="Fix with AI in chat"
+								>
+									<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+									</svg>
+									<span class="text-[10px] text-gray-500 whitespace-nowrap">AI</span>
+								</button>
+							</div>
 						{:else}
-							<button
-								class="flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-md bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 hover:border-purple-500/40 text-purple-400 transition-all"
-								on:click|stopPropagation={() => handleSuggestFix(criterion)}
-								title="Fix with AI in chat"
-							>
-								<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-								</svg>
-								<span class="text-[10px] font-semibold">Fix with AI</span>
-							</button>
+							<!-- No instant fix available: single row -->
+							<div class="flex items-center gap-1.5">
+								<button
+									class="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 hover:border-emerald-500/40 text-emerald-400 transition-all"
+									on:click|stopPropagation={() => handleAcknowledge(criterion.criterion, 'manual')}
+									title="Mark as reviewed"
+								>
+									<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+									</svg>
+									<span class="text-[10px] font-semibold">Reviewed</span>
+								</button>
+								<button
+									class="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-md bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 hover:border-purple-500/40 text-purple-400 transition-all"
+									on:click|stopPropagation={() => handleSuggestFix(criterion)}
+									title="Fix with AI in chat"
+								>
+									<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+									</svg>
+									<span class="text-[10px] font-semibold">Fix with AI</span>
+								</button>
+							</div>
 						{/if}
 					</div>
 						</div>
