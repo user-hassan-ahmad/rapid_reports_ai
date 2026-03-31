@@ -191,6 +191,14 @@
 	$: auditWarningCount = ($auditStore.result?.criteria ?? [])
 		.filter((c: AuditCriterionItem) => c.status === 'warning').length;
 
+	// Copilot Guidelines tile: split supporting (enhancement) vs QA (audit guideline_references)
+	$: qaGuidelineCountForTile =
+		$auditStore.status === 'loading'
+			? 0
+			: ($auditStore.result?.guideline_references?.length ?? 0);
+	$: auditHasRunForTile = ['complete', 'stale', 'error'].includes($auditStore.status);
+	$: auditLoadingForTile = $auditStore.status === 'loading';
+
 	async function triggerAudit(content: string) {
 		if (!content.trim()) return;
 		// Mark as audited immediately (synchronous) to prevent the reactive from re-firing
@@ -862,6 +870,9 @@
 							{#if reportId}
 					<EnhancementPreviewCards
 						guidelinesCount={enhancementGuidelinesCount}
+						qaGuidelineCount={qaGuidelineCountForTile}
+						auditHasRun={auditHasRunForTile}
+						auditLoading={auditLoadingForTile}
 						isLoading={enhancementLoading}
 						hasError={enhancementError}
 						reportId={reportId}

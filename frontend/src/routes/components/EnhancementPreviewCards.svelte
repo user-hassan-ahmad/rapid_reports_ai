@@ -1,10 +1,15 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
-	import pilotIcon from '$lib/assets/pilot.png';
 	
 	const dispatch = createEventDispatcher();
 	
 	export let guidelinesCount: number = 0;
+	/** Audit pipeline `guideline_references` count (Classification criteria in Copilot) */
+	export let qaGuidelineCount: number = 0;
+	/** True after a terminal audit state (complete / stale / error) */
+	export let auditHasRun: boolean = false;
+	/** True while POST /api/audit is in flight */
+	export let auditLoading: boolean = false;
 	export let isLoading: boolean = false;
 	export let hasError: boolean = false;
 	export let reportId: string | null = null;
@@ -16,17 +21,14 @@
 	
 	// Show cards whenever there's a reportId - they should persist even after loading completes
 	$: showCards = Boolean(reportId);
+	$: totalGuidelineRefs = guidelinesCount + qaGuidelineCount;
+	$: showGuidelineBadge = totalGuidelineRefs > 0;
+	$: showGuidelineSpinner = isLoading && guidelinesCount === 0 && qaGuidelineCount === 0;
 </script>
 
 {#if showCards}
 	<div class="mb-6 space-y-3">
 		<!-- Header -->
-		<!--
-		<div class="flex items-center gap-2 mb-2">
-			<img src={pilotIcon} alt="Copilot" class="w-5 h-5 brightness-0 invert" />
-			<h3 class="text-sm font-semibold text-white">Copilot Assistance</h3>
-		</div>
-		-->
 		
 		<!-- Cards Grid — horizontal when container has room (~800px+), vertical when narrow (overflow) -->
 		<div class="grid grid-cols-1 gap-3 @[800px]:grid-cols-3">
@@ -49,21 +51,78 @@
 							<p class="text-xs text-gray-400">Clinical references</p>
 						</div>
 					</div>
-					{#if guidelinesCount > 0}
+					{#if showGuidelineBadge}
 						<span class="px-2 py-1 bg-purple-600 text-white text-xs font-bold rounded-full min-w-[28px] text-center">
-							{guidelinesCount}
+							{totalGuidelineRefs}
 						</span>
-					{:else if isLoading}
+					{:else if showGuidelineSpinner || auditLoading}
 						<div class="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
 					{/if}
 				</div>
-				{#if guidelinesCount > 0}
-					<p class="text-xs text-gray-400 mt-2 text-left">View {guidelinesCount} guideline{guidelinesCount !== 1 ? 's' : ''} for this report</p>
+				{#if guidelinesCount > 0 || qaGuidelineCount > 0 || auditHasRun || auditLoading}
+					<div class="flex flex-wrap items-center gap-1.5 mt-2 text-left">
+						{#if guidelinesCount > 0}
+							<span
+								class="text-[9px] font-semibold px-2 py-0.5 rounded-md border border-purple-500/30 bg-purple-500/10 text-purple-200/90"
+							>
+								{guidelinesCount} supporting
+							</span>
+						{/if}
+						{#if auditLoading}
+							<span
+								class="text-[9px] font-semibold px-2 py-0.5 rounded-md border border-cyan-500/25 bg-cyan-500/10 text-cyan-200/80 inline-flex items-center gap-1"
+							>
+								<span class="inline-block w-2.5 h-2.5 border border-cyan-400/60 border-t-transparent rounded-full animate-spin"></span>
+								QA: updating…
+							</span>
+						{:else if qaGuidelineCount > 0}
+							<span
+								class="text-[9px] font-semibold px-2 py-0.5 rounded-md border border-cyan-500/30 bg-cyan-500/10 text-cyan-200/90"
+							>
+								{qaGuidelineCount} QA criteria
+							</span>
+						{:else if auditHasRun}
+							<span
+								class="text-[9px] font-semibold px-2 py-0.5 rounded-md border border-white/[0.1] bg-white/[0.04] text-gray-400"
+							>
+								0 QA criteria
+							</span>
+						{:else}
+							<span class="text-[9px] font-semibold px-2 py-0.5 rounded-md border border-dashed border-gray-600/60 bg-transparent text-gray-500">
+								QA: run audit
+							</span>
+						{/if}
+					</div>
 				{:else if isLoading}
-					<p class="text-xs text-gray-400 mt-2 text-left">Loading guidelines...</p>
+					<p class="text-[10px] text-gray-500 mt-2 text-left">Loading supporting references…</p>
+					<div class="flex flex-wrap items-center gap-1.5 mt-1.5 text-left">
+						{#if auditLoading}
+							<span
+								class="text-[9px] font-semibold px-2 py-0.5 rounded-md border border-cyan-500/25 bg-cyan-500/10 text-cyan-200/80 inline-flex items-center gap-1"
+							>
+								<span class="inline-block w-2.5 h-2.5 border border-cyan-400/60 border-t-transparent rounded-full animate-spin"></span>
+								QA: updating…
+							</span>
+						{:else if auditHasRun}
+							<span
+								class="text-[9px] font-semibold px-2 py-0.5 rounded-md border border-white/[0.1] bg-white/[0.04] text-gray-400"
+							>
+								{qaGuidelineCount} QA criteria
+							</span>
+						{:else}
+							<span class="text-[9px] font-semibold px-2 py-0.5 rounded-md border border-dashed border-gray-600/60 bg-transparent text-gray-500">
+								QA: run audit
+							</span>
+						{/if}
+					</div>
 				{:else}
-					<p class="text-xs text-gray-400 mt-2 text-left">Click to load guidelines</p>
+					<div class="flex flex-wrap items-center gap-1.5 mt-2 text-left">
+						<span class="text-[9px] font-semibold px-2 py-0.5 rounded-md border border-dashed border-gray-600/60 bg-transparent text-gray-500">
+							QA: run audit
+						</span>
+					</div>
 				{/if}
+				<p class="text-xs text-gray-400 mt-2 text-left">View guidelines for this report →</p>
 			</button>
 			
 			<!-- Comparison Card -->
