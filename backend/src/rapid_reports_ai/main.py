@@ -73,10 +73,13 @@ from .enhancement_utils import (
     generate_auto_report,
     generate_templated_report,
     build_chat_guideline_context,
+    build_audit_guideline_references_memory_section,
     collect_guideline_sources_for_chat,
+    format_audit_fix_context_for_system_prompt,
     run_perplexity_search_chat,
     normalize_evidence_url_for_dedupe,
 )
+from .enhancement_models import AuditFixContext
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 from fastapi.security import OAuth2PasswordRequestForm
@@ -2488,6 +2491,7 @@ async def get_completeness_status(
 class ChatRequest(BaseModel):
     message: str
     history: Optional[List[Dict[str, Any]]] = None
+    audit_fix_context: Optional[AuditFixContext] = None
 
 class ComparisonRequest(BaseModel):
     prior_reports: List[dict]  # [{text: str, date?: str}]
@@ -2645,6 +2649,28 @@ async def chat_about_report(
         enhancement_context = build_chat_guideline_context(findings, guidelines, max_ctx)
         guideline_sources = collect_guideline_sources_for_chat(guidelines)
 
+        audit_fix_block = ""
+        if request.audit_fix_context is not None:
+            audit_fix_block = format_audit_fix_context_for_system_prompt(request.audit_fix_context)
+            print(
+                f"📎 audit_fix_context: criterion={request.audit_fix_context.criterion!r} "
+                f"audit_id={request.audit_fix_context.audit_id!r} chars={len(audit_fix_block)}"
+            )
+
+        audit_memory_refs = enhancement_data.get("audit_guideline_references") or []
+        audit_memory_cap = min(4000, max(1500, max_ctx // 2))
+        audit_memory_block = ""
+        if not request.audit_fix_context and audit_memory_refs:
+            audit_memory_block = build_audit_guideline_references_memory_section(
+                audit_memory_refs if isinstance(audit_memory_refs, list) else [],
+                audit_memory_cap,
+            )
+            if audit_memory_block:
+                print(
+                    f"📎 audit_guideline_memory: refs={len(audit_memory_refs)} "
+                    f"chars={len(audit_memory_block)}"
+                )
+
         print(f"📚 Chat context: {len(guidelines)} guideline(s), {len(guideline_sources)} source(s) | report={report_id[:8]}…")
 
         system_prompt = (
@@ -2697,6 +2723,8 @@ async def chat_about_report(
             "- `details`: what to change and why (state if a reference value was used)\n\n"
             f"## Report\n{report.report_content}"
             f"{enhancement_context}"
+            f"{audit_memory_block}"
+            f"{audit_fix_block}"
         )
         
         messages = [
@@ -3966,9 +3994,13 @@ async def run_audit(
         if not request.report_content or not request.report_content.strip():
             raise HTTPException(status_code=400, detail="Report content is required")
 
-        from .guideline_payload import validate_applicable_guidelines_payload
+        from .guideline_payload import (
+            normalize_applicable_guidelines_order,
+            validate_applicable_guidelines_payload,
+        )
 
         _ags = validate_applicable_guidelines_payload(request.applicable_guidelines or [])
+        _ags = normalize_applicable_guidelines_order(_ags)
         print(
             f"[GUIDELINE_PIPELINE] POST /api/audit: report_id={request.report_id!r} "
             f"applicable_guidelines={len(_ags)} report_chars={len(request.report_content)}"
@@ -4030,6 +4062,15 @@ async def run_audit(
             f"[GUIDELINE_PIPELINE] POST /api/audit done: guideline_references={_nref} "
             f"injected_true={_ninj} audit_id={audit_id!r}"
         )
+
+        # Phase 1.5: cache audit guideline refs for chat (same session; DB remains source of truth)
+        _rid = request.report_id
+        if _rid and result.get("guideline_references") is not None:
+            _base = dict(ENHANCEMENT_RESULTS.get(_rid) or {})
+            _base["audit_guideline_references"] = result.get("guideline_references") or []
+            _base.setdefault("findings", [])
+            _base.setdefault("guidelines", [])
+            ENHANCEMENT_RESULTS[_rid] = _base
 
         return {
             "success": True,

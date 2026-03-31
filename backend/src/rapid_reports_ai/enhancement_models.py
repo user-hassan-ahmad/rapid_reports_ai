@@ -329,8 +329,9 @@ class ApplicableGuideline(BaseModel):
     type: Literal["classification", "uk_pathway", "other"] = Field(
         default="other",
         description=(
-            "classification: named radiology scoring/classification (Bosniak, Fleischner, LI-RADS, etc.). "
-            "uk_pathway: NHS pathway, NICE, or UK specialist society guideline. "
+            "classification: named radiology scoring/classification (Lung-RADS, Fleischner, LI-RADS, Bosniak, etc.). "
+            "uk_pathway: NHS pathway, NICE, RCR, or UK specialist society guideline (e.g. BTS pulmonary nodule). "
+            "Use uk_pathway for UK governing pathways even when an international classification also applies. "
             "other: anything else."
         ),
     )
@@ -358,9 +359,11 @@ class ReportOutput(BaseModel):
     applicable_guidelines: List[ApplicableGuideline] = Field(
         default_factory=list,
         description=(
-            "Classification systems or UK clinical guidelines relevant to this case from findings, scan type, and "
-            "clinical context — selected using scan-purpose-first reasoning (see generation prompt). "
-            "At most 4 entries; prefer primary plus optional secondary only when materially different. "
+            "Ordered list of applicable guidelines (contract). Position 0 is the governing framework for the "
+            "deployment context (NHS UK: UK/NICE/RCR/BTS pathways precede international frameworks used as "
+            "cross-reference). International classification-only at position 0 is correct when no UK pathway "
+            "applies or UK guidance explicitly defers to that standard (e.g. RECIST, PI-RADS). "
+            "At most 4 entries; see generation prompt for scan-purpose-first selection. "
             "Empty if none. All context strings English only."
         ),
     )
@@ -443,7 +446,9 @@ class AuditCriterion(BaseModel):
         description=(
             "Explanation of why this status was assigned (British English only). "
             "For diagnostic_fidelity, must use the two-line format required in the audit system prompt "
-            "(a) Certainty: ... (b) Consistency: ..."
+            "(a) Certainty: ... (b) Consistency: .... "
+            "For recommendations when criterion_line is set, state only what is deficient in the report "
+            "wording; do not restate guideline thresholds or correct pathways (those belong in criterion_line)."
         )
     )
     highlighted_spans: List[str] = Field(
@@ -470,6 +475,15 @@ class AuditCriterion(BaseModel):
             "A complete, report-ready British English sentence to insert when a finding is entirely "
             "absent. Null if the problem is a span substitution rather than a missing sentence."
         )
+    )
+    criterion_line: Optional[str] = Field(
+        default=None,
+        description=(
+            "Single scannable line from injected guideline context identifying the specific rule the "
+            "report failed to follow. Populated for recommendations flags only (flag or warning). "
+            "Maximum one sentence. Null on pass or when no guideline context applies or the failure is "
+            "structural rather than criterion-specific."
+        ),
     )
     flags_identified: Optional[List[AuditCriterionFlag]] = Field(
         default=None,
@@ -498,6 +512,42 @@ class GuidelineReference(BaseModel):
     )
     injected: bool = Field(
         description="True if non-empty criteria text was appended to the audit prompt for this system"
+    )
+
+
+class AuditGuidelineRef(BaseModel):
+    """Trimmed guideline row sent with chat `audit_fix_context` (criteria capped client-side)."""
+
+    system: str = Field(description="Canonical guideline / classification name")
+    type: str = Field(description="classification | uk_pathway | other")
+    context: str = Field(default="", description="One-line clinical context from report generation")
+    criteria_summary: Optional[str] = Field(
+        default=None,
+        description="Truncated criteria excerpt for chat grounding (not full cache text)",
+    )
+
+
+class AuditFixContext(BaseModel):
+    """Structured audit grounding for Fix-with-AI chat — must stay in sync with frontend `AuditFixContext`."""
+
+    audit_id: str = Field(default="", description="Persisted audit UUID when available")
+    criterion: str = Field(description="Audit criterion key, e.g. recommendations")
+    rationale: str = Field(description="Deficiency-focused rationale from the audit")
+    criterion_line: Optional[str] = Field(
+        default=None,
+        description="Single guideline rule line from audit when populated",
+    )
+    highlighted_spans: List[str] = Field(
+        default_factory=list,
+        description="Verbatim report spans from the audit",
+    )
+    suggested_replacement: Optional[str] = Field(
+        default=None,
+        description="One-click replacement text from audit when present",
+    )
+    guideline_references: List[AuditGuidelineRef] = Field(
+        default_factory=list,
+        description="Per-reference grounding; criteria_summary already capped for chat",
     )
 
 

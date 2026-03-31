@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any, List, Optional
 
 MAX_GUIDELINE_SYSTEM_LEN = 60
 MAX_APPLICABLE_GUIDELINES_PER_REPORT = 4
+
+
+class DeploymentContext(str, Enum):
+    """Product deployment; drives guideline ordering policy."""
+
+    NHS_UK = "nhs_uk"
 
 
 def validate_applicable_guidelines_payload(raw: Optional[List[Any]]) -> List[dict]:
@@ -40,3 +47,42 @@ def validate_applicable_guidelines_payload(raw: Optional[List[Any]]) -> List[dic
         )
         out = out[:MAX_APPLICABLE_GUIDELINES_PER_REPORT]
     return out
+
+
+def _canonicalize_type_on_dict(g: dict) -> dict:
+    """Normalise ``type`` to schema literals when clearly intended; shallow copy."""
+    t = g.get("type")
+    if t is None:
+        return dict(g)
+    raw = str(t).strip().lower().replace(" ", "_")
+    out = dict(g)
+    if raw in ("uk_pathway",):
+        out["type"] = "uk_pathway"
+    elif raw in ("classification",):
+        out["type"] = "classification"
+    elif raw in ("other",):
+        out["type"] = "other"
+    return out
+
+
+def normalize_applicable_guidelines_order(
+    guidelines: List[dict],
+    context: DeploymentContext = DeploymentContext.NHS_UK,
+) -> List[dict]:
+    """
+    NHS UK: ``uk_pathway`` entries precede all other types when both are present.
+    Preserves relative order within each group. Canonicalises ``type`` casing.
+
+    Other deployment contexts: no reordering (future: context-keyed rules).
+    """
+    if not guidelines:
+        return []
+    canonicalized = [_canonicalize_type_on_dict(g) for g in guidelines]
+    if context is not DeploymentContext.NHS_UK:
+        return canonicalized
+    uk = [g for g in canonicalized if g.get("type") == "uk_pathway"]
+    rest = [g for g in canonicalized if g.get("type") != "uk_pathway"]
+    reordered = uk + rest
+    if reordered != canonicalized:
+        print("  └─ [GUIDELINE] UK primacy normalisation applied")
+    return reordered

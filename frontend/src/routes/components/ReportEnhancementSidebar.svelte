@@ -137,7 +137,7 @@ interface CompletenessAnalysis {
 	import { token } from '$lib/stores/auth';
 	import { marked } from 'marked';
 	import DiffMatchPatch from 'diff-match-patch';
-	import { onDestroy, onMount, tick } from 'svelte';
+	import { createEventDispatcher, onDestroy, onMount, tick } from 'svelte';
 	import pilotIcon from '$lib/assets/pilot.png';
 	import { API_URL } from '$lib/config';
 	import { logger } from '$lib/utils/logger';
@@ -171,6 +171,10 @@ interface CompletenessAnalysis {
 	// Populated/cleared by +page.svelte via the auditComplete event chain.
 	export let auditGuidelineReferences: any[] = [];
 	export let auditCriteriaForSidebar: any[] = [];
+	/** One-shot: sent once with Fix-with-AI auto message; parent clears on `auditFixContextConsumed` */
+	export let auditFixContext: import('$lib/types/auditFixContext').AuditFixContext | null = null;
+
+	const dispatch = createEventDispatcher();
 	
 	let activeTab: 'guidelines' | 'analysis' | 'comparison' | 'chat' = 'guidelines';
 	
@@ -672,19 +676,28 @@ const dmp = new DiffMatchPatch();
 				'Content-Type': 'application/json',
 				...(($token) ? { 'Authorization': `Bearer ${$token}` } : {})
 			};
-			
+
+			const attachAuditFix = label?.type === 'audit-fix' && auditFixContext != null;
+			const body: Record<string, unknown> = {
+				message: userMessage,
+				history: chatMessages.slice(0, -1)
+			};
+			if (attachAuditFix) {
+				body.audit_fix_context = auditFixContext;
+			}
+
 			const response = await fetch(`${API_URL}/api/reports/${reportId}/chat`, {
 				method: 'POST',
 				headers,
-				body: JSON.stringify({
-					message: userMessage,
-					history: chatMessages.slice(0, -1) // Exclude the current message we just added
-				})
+				body: JSON.stringify(body)
 			});
 			
 			const data: any = await response.json();
 			
 			if (data.success) {
+				if (attachAuditFix) {
+					dispatch('auditFixContextConsumed');
+				}
 				let content = data.response;
 				let editProposal = data.edit_proposal;
 				let actionsApplied = data.actions_applied || null;
@@ -1062,10 +1075,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 } else if (!visible && !autoLoad) {
 	stopCompletenessPoll();
 }
-	
-	import { createEventDispatcher } from 'svelte';
-	const dispatch = createEventDispatcher();
-	
+
 	// Emit enhancement state updates for dock/cards
 	$: {
 		dispatch('enhancementState', {
@@ -1177,16 +1187,13 @@ $: if ((visible || autoLoad) && completenessPending) {
 		{:else if activeTab === 'guidelines'}
 		<!-- ── Classification Criteria (Firecrawl / audit-context guidelines) ─────── -->
 		{#if auditGuidelineReferences.length > 0}
-			<div class="mb-1">
-				<div class="flex items-center gap-2 mb-1">
+			<div class="mb-2">
+				<div class="flex items-center gap-2">
 					<svg class="w-3.5 h-3.5 text-cyan-400/90 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
 					</svg>
 					<span class="text-[9px] font-semibold uppercase tracking-widest text-cyan-400/80">Classification Criteria</span>
 				</div>
-				<p class="text-[9px] text-gray-600 leading-relaxed mb-2">
-					Exact criteria for classifying the findings in this report
-				</p>
 			</div>
 				<GuidelinePanel
 					references={auditGuidelineReferences}
@@ -1228,7 +1235,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 								onclick={() => guidelinesExpanded[guidelineKey] = !isExpanded}
 								class="w-full flex items-center justify-between px-3.5 py-3 text-left hover:bg-white/5 transition-colors"
 							>
-								<h3 class="text-sm font-semibold text-white flex-1">
+								<h3 class="text-xs font-semibold text-white flex-1 leading-snug">
 									{guideline.finding.finding}
 								</h3>
 								<svg
@@ -1245,14 +1252,14 @@ $: if ((visible || autoLoad) && completenessPending) {
 								<div class="px-3.5 pb-3.5">
 									<!-- Diagnostic Overview -->
 									{#if guideline.diagnostic_overview}
-										<div class="prose prose-invert max-w-none mb-4
-											prose-headings:text-white prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-2 prose-headings:text-xs
-											prose-p:text-gray-300 prose-p:leading-relaxed prose-p:my-1.5 prose-p:text-[13px]
+										<div class="prose prose-invert max-w-none mb-4 text-[11px]
+											prose-headings:text-white prose-headings:font-semibold prose-headings:mt-2 prose-headings:mb-1.5 prose-headings:text-[11px]
+											prose-p:text-gray-300 prose-p:leading-relaxed prose-p:my-1 prose-p:text-[11px]
 											prose-strong:text-white prose-strong:font-semibold
-											prose-ul:my-1.5 prose-ul:pl-4 prose-ul:space-y-1 prose-ul:list-disc
-											prose-ol:my-1.5 prose-ol:pl-4 prose-ol:space-y-1 prose-ol:list-decimal
-											prose-li:text-gray-300 prose-li:leading-relaxed prose-li:pl-0.5 prose-li:text-[13px]
-											prose-code:text-purple-300 prose-code:bg-white/10 backdrop-blur-sm prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs">
+											prose-ul:my-1 prose-ul:pl-3.5 prose-ul:space-y-0.5 prose-ul:list-disc
+											prose-ol:my-1 prose-ol:pl-3.5 prose-ol:space-y-0.5 prose-ol:list-decimal
+											prose-li:text-gray-300 prose-li:leading-relaxed prose-li:pl-0.5 prose-li:text-[11px]
+											prose-code:text-purple-300 prose-code:bg-white/10 backdrop-blur-sm prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[10px]">
 											{@html renderMarkdown(guideline.diagnostic_overview)}
 										</div>
 									{/if}
@@ -1266,7 +1273,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 													<div class="rounded-lg p-2.5 border border-white/10 hover:border-white/20 transition-colors">
 														<div class="font-medium text-purple-300 text-xs mb-0.5">{system.name}</div>
 														<div class="text-[11px] text-gray-400 mb-1">{system.grade_or_category}</div>
-														<div class="text-[13px] text-gray-300">{system.criteria}</div>
+														<div class="text-[11px] text-gray-300 leading-relaxed">{system.criteria}</div>
 													</div>
 												{/each}
 											</div>
@@ -1281,7 +1288,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 												{#each guideline.measurement_protocols as measure}
 													<div class="rounded-lg p-2.5 border border-white/10 hover:border-white/20 transition-colors">
 														<div class="font-medium text-blue-300 text-xs mb-0.5">{measure.parameter}</div>
-														<div class="text-[13px] text-gray-300 mb-1.5">{measure.technique}</div>
+														<div class="text-[11px] text-gray-300 mb-1.5 leading-relaxed">{measure.technique}</div>
 														{#if measure.normal_range}
 															<div class="text-[11px] text-gray-400">Normal: {measure.normal_range}</div>
 														{/if}
@@ -1300,7 +1307,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 											<h4 class="text-xs font-semibold text-white mb-1.5">Key Imaging Features</h4>
 											<div class="space-y-1">
 												{#each guideline.imaging_characteristics as char}
-													<div class="text-[13px]">
+													<div class="text-[11px] leading-relaxed">
 														<span class="font-medium text-green-300">{char.feature}:</span>
 														<span class="text-gray-300"> {char.description}</span>
 														<span class="text-gray-400 italic"> ({char.significance})</span>
@@ -1318,7 +1325,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 												{#each guideline.differential_diagnoses as ddx}
 													<div class="rounded-lg p-2.5 border border-white/10 hover:border-white/20 transition-colors">
 														<div class="font-medium text-yellow-300 text-xs mb-0.5">{ddx.diagnosis}</div>
-														<div class="text-[13px] text-gray-300 mb-0.5">{ddx.imaging_features}</div>
+														<div class="text-[11px] text-gray-300 mb-0.5 leading-relaxed">{ddx.imaging_features}</div>
 														{#if ddx.supporting_findings}
 															<div class="text-[11px] text-gray-400">Supporting: {ddx.supporting_findings}</div>
 														{/if}
@@ -1336,7 +1343,7 @@ $: if ((visible || autoLoad) && completenessPending) {
 												{#each guideline.follow_up_imaging as followup}
 													<div class="rounded-lg p-2.5 border border-white/10 hover:border-white/20 transition-colors">
 														<div class="font-medium text-orange-300 text-xs mb-0.5">{followup.indication}</div>
-														<div class="text-[13px] text-gray-300 mb-0.5">
+														<div class="text-[11px] text-gray-300 mb-0.5 leading-relaxed">
 															{followup.modality}, {followup.timing}
 														</div>
 														{#if followup.technical_specs}
@@ -1350,14 +1357,14 @@ $: if ((visible || autoLoad) && completenessPending) {
 
 									<!-- Fallback to guideline_summary if new fields not present -->
 									{#if !guideline.diagnostic_overview && guideline.guideline_summary}
-										<div class="prose prose-invert max-w-none mb-4
-											prose-headings:text-white prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-2 prose-headings:text-xs
-											prose-p:text-gray-300 prose-p:leading-relaxed prose-p:my-1.5 prose-p:text-[13px]
+										<div class="prose prose-invert max-w-none mb-4 text-[11px]
+											prose-headings:text-white prose-headings:font-semibold prose-headings:mt-2 prose-headings:mb-1.5 prose-headings:text-[11px]
+											prose-p:text-gray-300 prose-p:leading-relaxed prose-p:my-1 prose-p:text-[11px]
 											prose-strong:text-white prose-strong:font-semibold
-											prose-ul:my-1.5 prose-ul:pl-4 prose-ul:space-y-1 prose-ul:list-disc
-											prose-ol:my-1.5 prose-ol:pl-4 prose-ol:space-y-1 prose-ol:list-decimal
-											prose-li:text-gray-300 prose-li:leading-relaxed prose-li:pl-0.5 prose-li:text-[13px]
-											prose-code:text-purple-300 prose-code:bg-white/10 backdrop-blur-sm prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs">
+											prose-ul:my-1 prose-ul:pl-3.5 prose-ul:space-y-0.5 prose-ul:list-disc
+											prose-ol:my-1 prose-ol:pl-3.5 prose-ol:space-y-0.5 prose-ol:list-decimal
+											prose-li:text-gray-300 prose-li:leading-relaxed prose-li:pl-0.5 prose-li:text-[11px]
+											prose-code:text-purple-300 prose-code:bg-white/10 backdrop-blur-sm prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[10px]">
 											{@html renderMarkdown(guideline.guideline_summary)}
 										</div>
 									{/if}

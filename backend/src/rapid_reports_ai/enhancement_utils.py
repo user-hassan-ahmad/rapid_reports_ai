@@ -60,6 +60,7 @@ from .enhancement_models import (
     ComparisonReportGeneration,
     AuditResult,
     GuidelineReference,
+    AuditFixContext,
 )
 
 # ── Semantic embedding cache ──────────────────────────────────────────────────
@@ -1176,6 +1177,83 @@ def build_chat_guideline_context(
             append_text("\n")
 
     return "".join(chunks)
+
+
+def format_audit_fix_context_for_system_prompt(ctx: AuditFixContext) -> str:
+    """Markdown section appended to chat system prompt when Fix-with-AI sends audit_fix_context."""
+    lines: List[str] = [
+        "\n\n## AUDIT QA GROUNDING\n",
+        "This fix request is grounded in the following audit context.\n",
+        "Use this as the **authoritative** reference for this correction.\n",
+        "Do **not** substitute an alternative guideline framework "
+        "(e.g. do not apply Fleischner if Lung-RADS is the named framework below, and vice versa).\n",
+        "Avoid calling `search_external_guidelines` unless the information below is **clearly insufficient** "
+        "for the correction.\n\n",
+        f"- **Audit ID:** {ctx.audit_id or '(not persisted)'}\n",
+        f"- **Criterion:** {ctx.criterion}\n",
+        f"- **Rationale (deficiency):** {ctx.rationale}\n",
+    ]
+    if ctx.criterion_line:
+        lines.append(f"- **Guideline rule line (criterion_line):** {ctx.criterion_line}\n")
+    if ctx.highlighted_spans:
+        lines.append("- **highlighted_spans (verbatim from report):**\n")
+        for sp in ctx.highlighted_spans:
+            lines.append(f"  - {sp!r}\n")
+    if ctx.suggested_replacement:
+        lines.append(f"- **suggested_replacement (drop-in if applicable):** {ctx.suggested_replacement}\n")
+    if ctx.guideline_references:
+        lines.append("\n### Guideline references (audit)\n")
+        for ref in ctx.guideline_references:
+            lines.append(f"- **{ref.system}** ({ref.type})\n")
+            if ref.context:
+                lines.append(f"  - Context: {ref.context}\n")
+            if ref.criteria_summary:
+                lines.append(f"  - Criteria excerpt: {ref.criteria_summary}\n")
+    return "".join(lines)
+
+
+def build_audit_guideline_references_memory_section(
+    refs: List[Dict[str, Any]],
+    max_total_chars: int,
+    per_ref_summary_cap: int = 600,
+) -> str:
+    """
+    In-session guideline snapshot from the last audit (stored under ENHANCEMENT_RESULTS).
+    Kept separate from enhancement Phase-2 guidelines; optional precedence note in system prompt.
+    """
+    if not refs or max_total_chars < 200:
+        return ""
+    lines: List[str] = [
+        "\n\n## LATEST AUDIT GUIDELINE CONTEXT\n",
+        "Grounding from the most recent QA run in this server session — the report may have been edited since.\n",
+        "Where this conflicts with generic enhancement evidence below on follow-up or classification, "
+        "prefer the **framework named first** in this section for UK-ordered applicable guidelines.\n\n",
+    ]
+    used = sum(len(s) for s in lines)
+    for ref in refs:
+        if used >= max_total_chars:
+            break
+        system = str(ref.get("system") or "Guideline")
+        typ = str(ref.get("type") or "")
+        ctx = str(ref.get("context") or "").strip()
+        raw_sum = ref.get("criteria_summary")
+        summ = (str(raw_sum) if raw_sum else "").strip()
+        if len(summ) > per_ref_summary_cap:
+            summ = summ[: per_ref_summary_cap - 20].rstrip() + "\n[truncated]\n"
+        chunk = f"### {system}"
+        if typ:
+            chunk += f" ({typ})"
+        chunk += "\n"
+        if ctx:
+            chunk += f"{ctx}\n"
+        if summ:
+            chunk += f"{summ}\n"
+        chunk += "\n"
+        if used + len(chunk) > max_total_chars:
+            chunk = chunk[: max_total_chars - used - 30].rstrip() + "\n[truncated]\n"
+        lines.append(chunk)
+        used += len(chunk)
+    return "".join(lines)
 
 
 _CHAT_SOURCE_STOPWORDS = frozenset(
@@ -5392,14 +5470,36 @@ ONE-CLICK FIX FIELDS (populate only on flag or warning, never on pass):
   verbatim drop-in substitution exists for highlighted_spans[0]. Must read naturally at the same
   position in the sentence where the original appeared — no new sentences, line breaks, or headers.
   Leave null if the correct fix is structural (requires adding content rather than replacing a span).
+- **Recommendations + suggested_replacement:** When status is flag or warning and the issue is vague or
+  non-specific **recommendation wording** in the report (missing modality, interval, or named pathway)
+  and a **contiguous verbatim phrase** in the report captures that vagueness, set **highlighted_spans[0]**
+  to that **exact** phrase and **suggested_replacement** to a **single** report-ready clause that
+  substitutes at that position, **grounded in GUIDELINE CONTEXT / criterion_line** (e.g. replace
+  "respiratory referral advised" with "LDCT chest at 3 months per Lung-RADS 4A" when the audit text
+  supports it). Populate both together whenever a clean span swap is feasible — do not leave
+  suggested_replacement null merely because criterion_line already states the rule; the replacement
+  is the actionable drop-in text. If there is no single substring to replace (e.g. recommendation
+  wholly absent), leave suggested_replacement null.
 - suggested_sentence: Populate for report_completeness flags ONLY when a finding is entirely absent
   and requires a new sentence to address it. Must be a complete, report-ready sentence in British
   English. Leave null if the problem is a span substitution rather than a missing sentence.
+- criterion_line: Populate for **recommendations** flags only (flag or warning). One sentence from
+  GUIDELINE CONTEXT — the single most relevant specific rule this report failed to follow; immediately
+  scannable for inline QA display. Example: "Lung-RADS 4A: solid nodule ≥8mm → LDCT at 3 months."
+  Leave null if no GUIDELINE CONTEXT is appended to this audit, the failure is structural rather than
+  criterion-specific, or status is pass.
+- **Recommendations criterion — rationale vs criterion_line:** When `criterion_line` is non-null, the
+  `rationale` must describe **only** what is wrong with the report's recommendation or impression
+  wording (vague interval, missing modality, non-specific protocol language, etc.) — quote or paraphrase
+  the problematic phrase where helpful. Do **not** open with or restate guideline classification,
+  numerical thresholds, or the correct management pathway in `rationale`; that belongs **exclusively**
+  in `criterion_line`. If `criterion_line` is null (no guideline context or structural failure), a
+  normal brief rationale covering both gap and context is fine.
 Do not attempt suggested_replacement for clinical_relevance, clinical_flagging, or diagnostic_fidelity
 — the correct fix for those criteria is almost never a single span swap.
 
 GUIDELINE CONTEXT (when appended below):
-Structured classification or guideline criteria may appear after this block. If **multiple** systems could relate to the **same** finding, apply the framework whose **scope** matches **scan purpose** and **clinical question** (e.g. screening programme vs incidental finding on a general CT vs oncology staging or response). **Do not** cross-apply numerical thresholds or management rules between frameworks designed for different clinical contexts. The injected criteria serve two purposes: (1) recommendation grounding — when a recommendations flag fires, derive the specific correction from the criteria (interval, action, urgency) rather than only identifying the gap; (2) classification reference — do not use criteria to adjudicate whether the assigned category is correct, as that requires image review and is the radiologist's call."""
+Structured classification or guideline criteria may appear after this block. If **multiple** systems could relate to the **same** finding, apply the framework whose **scope** matches **scan purpose** and **clinical question** (e.g. screening programme vs incidental finding on a general CT vs oncology staging or response). **Do not** cross-apply numerical thresholds or management rules between frameworks designed for different clinical contexts. Where **multiple** guideline frameworks appear in the appended GUIDELINE CONTEXT, use the **first** block as the primary reference for **recommendation grounding**; subsequent blocks are for **cross-reference** — note where they corroborate or differ from the primary framework. The injected criteria serve two purposes: (1) recommendation grounding — when a recommendations flag fires, derive the specific correction from the criteria (interval, action, urgency) rather than only identifying the gap; (2) classification reference — do not use criteria to adjudicate whether the assigned category is correct, as that requires image review and is the radiologist's call."""
 
     user_prompt = f"""REPORT TO AUDIT:
 {report_content}
@@ -5426,6 +5526,7 @@ Evaluate this report against all 6 audit criteria:
    FLAG if: An actionable finding in the impression (significant pathology, new diagnosis, finding requiring further characterisation or specialist input) has no associated recommendation when a reasonable radiologist would provide one; OR the urgency is clearly mismatched with clinical severity — e.g., time-sensitive or life-threatening pathology with no urgency stated, or emergency-level findings with only routine follow-up language.
    WARNING if: A recommendation is present but the urgency level is ambiguous or likely under-stated relative to the clinical significance of the finding.
    PASS if: All actionable findings in the impression have appropriate next-step recommendations with urgency commensurate to the finding. Concise referral statements (e.g., "orthopaedic referral advised", "urgent neurosurgical referral") are adequate — do not flag for missing reason clauses or absence of modality detail in specialist referrals.
+   When GUIDELINE CONTEXT is appended and status is flag or warning with a populated criterion_line: write rationale as the deficiency in the report only (vague or missing detail in the recommendation text); put thresholds, classification, and correct interval/modality solely in criterion_line — see OUTPUT REQUIREMENTS.
 
 4. CLINICAL_FLAGGING
    Detect whether the report warrants a clinical communication banner that the user may append to the report.
@@ -5488,9 +5589,10 @@ Evaluate this report against all 6 audit criteria:
 
 For each criterion, provide:
 - status: "pass", "flag", or "warning"
-- rationale: Brief explanation in British English only. For diagnostic_fidelity, follow the OUTPUT REQUIREMENTS two-line format exactly (required). For other criteria, typically one or two sentences (roughly 10–500 characters).
+- rationale: Brief explanation in British English only. For diagnostic_fidelity, follow the OUTPUT REQUIREMENTS two-line format exactly (required). For other criteria, typically one or two sentences (roughly 10–500 characters). For **recommendations** when criterion_line is populated, rationale is **deficiency-only** — see OUTPUT REQUIREMENTS (do not duplicate the guideline rule text).
 - highlighted_spans: Verbatim text from report to highlight (only if status is flag or warning)
 - recommendation: Suggested improvement within the radiological domain only (only if status is flag or warning)
+- criterion_line: (recommendations only; flag or warning) See OUTPUT REQUIREMENTS; null otherwise and on pass
 - flags_identified: (clinical_flagging only) List of all 5 sub-flag evaluations
 - suggested_banners: (clinical_flagging only) List of 0–3 FlagBannerOption objects with category, label, banner_text, rationale"""
 

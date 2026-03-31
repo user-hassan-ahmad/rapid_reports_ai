@@ -64,9 +64,14 @@ EXTRACTION_SCHEMA: dict = {
         "is_authoritative": {
             "type": "boolean",
             "description": (
-                "True if this page is from a medical society, peer-reviewed journal, "
-                "authoritative clinical registry, or specialist society. "
-                "False for patient information pages, blogs, news articles, or commercial sites."
+                "True ONLY if this page is a primary clinical guideline document, "
+                "NHS/NICE/SIGN/RCR publication, peer-reviewed journal article, or "
+                "specialist medical society guideline. "
+                "Must be False for: news articles, press releases, campaign pages, "
+                "programme announcements, advocacy organisation posts, blog posts, "
+                "or secondary write-ups — even from legitimate medical organisations. "
+                "A coalition or charity announcing an NHS programme is NOT authoritative. "
+                "A BTS/NICE/RCR guideline document IS authoritative."
             ),
         },
         "criteria_summary": {
@@ -88,7 +93,10 @@ EXTRACTION_SCHEMA: dict = {
 EXTRACTION_PROMPT = (
     "Extract classification criteria, imaging thresholds, category definitions, and management "
     "recommendations for the named guideline system. UK NHS clinical context. "
-    "Assess whether this is an authoritative medical/clinical source."
+    "Set is_authoritative=true ONLY for primary guideline documents from medical societies "
+    "(BTS, NICE, RCR, ACR, ESR, ESUR), NHS England, or peer-reviewed journals. "
+    "Set is_authoritative=false for news articles, press releases, campaign announcements, "
+    "programme promotion pages, or advocacy content — regardless of publishing organisation."
 )
 
 QUERY_TEMPLATES = {
@@ -130,6 +138,20 @@ def _recency_score(url: str, criteria_summary: str) -> int:
     return max(years) if years else 0
 
 
+# URL path segments that usually indicate non-protocol content (news, PR, blogs).
+# /article/ is intentionally excluded — journals and societies use it for legitimate papers.
+_DISQUALIFYING_URL_PATHS = (
+    "/news/",
+    "/blog/",
+    "/campaign/",
+    "/press-release/",
+    "/press/",
+    "/announcement/",
+    "/post/",
+    "/media/",
+)
+
+
 def _first_authoritative(search_data: Any) -> Optional[Tuple[str, str]]:
     """
     Collect all authoritative docs with criteria text, rank by recency (max year in URL/summary),
@@ -145,6 +167,12 @@ def _first_authoritative(search_data: Any) -> Optional[Tuple[str, str]]:
         if not (j.get("is_authoritative") and summary):
             continue
         url = _doc_url(doc)
+        url_lower = url.lower()
+        if any(p in url_lower for p in _DISQUALIFYING_URL_PATHS):
+            print(
+                f"[GUIDELINE_PIPELINE] _first_authoritative SKIP non-protocol URL: {url!r}"
+            )
+            continue
         sc = _recency_score(url, summary)
         hits.append((sc, i, summary, url))
     if not hits:

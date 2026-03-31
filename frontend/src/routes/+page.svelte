@@ -153,9 +153,11 @@ let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | null = null;
 // Both arrays clear on audit start/error and populate on success.
 let auditGuidelineReferences: any[] = [];
 let auditCriteriaForSidebar: any[] = [];
-let chatInitialMessage: string | null = null;
-let chatAutoSend: boolean = false;
-let chatAutoSendLabel: { type: string; name: string; itemType?: string } | null = null;
+	let chatInitialMessage: string | null = null;
+	let chatAutoSend: boolean = false;
+	let chatAutoSendLabel: { type: string; name: string; itemType?: string } | null = null;
+	/** One-shot structured grounding for Fix with AI — cleared after first chat POST */
+	let chatAuditFixContext: import('$lib/types/auditFixContext').AuditFixContext | null = null;
 
 // Hover popup state (rendered at root level)
 let hoverPopupVisible = false;
@@ -809,6 +811,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							chatInitialMessage = e.detail?.initialMessage || null;
 							chatAutoSend = e.detail?.autoSend ?? false;
 							chatAutoSendLabel = e.detail?.labelInfo || null;
+							chatAuditFixContext = e.detail?.auditFixContext ?? null;
 							sidebarVisible = true;
 						}}
 						on:showHoverPopup={(e) => {
@@ -877,6 +880,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 						chatInitialMessage = e.detail?.initialMessage || null;
 						chatAutoSend = e.detail?.autoSend ?? false;
 						chatAutoSendLabel = e.detail?.labelInfo || null;
+						chatAuditFixContext = e.detail?.auditFixContext ?? null;
 						sidebarVisible = true;
 					}}
 					on:showHoverPopup={(e) => {
@@ -950,6 +954,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 	initialMessage={chatInitialMessage}
 	autoSend={chatAutoSend}
 	autoSendLabel={chatAutoSendLabel}
+	auditFixContext={chatAuditFixContext}
 	auditGuidelineReferences={auditGuidelineReferences}
 	auditCriteriaForSidebar={auditCriteriaForSidebar}
 		on:close={() => {
@@ -958,6 +963,10 @@ $: if (!isEnhancementContext && sidebarVisible) {
 		chatInitialMessage = null;
 		chatAutoSend = false;
 		chatAutoSendLabel = null;
+		chatAuditFixContext = null;
+	}}
+	on:auditFixContextConsumed={() => {
+		chatAuditFixContext = null;
 	}}
 	on:reportUpdated={(e) => {
 		if (e.detail.report) {
@@ -1379,6 +1388,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 		chatInitialMessage = e.detail.message;
 		chatAutoSend = true;
 		chatAutoSendLabel = e.detail.labelInfo || null;
+		chatAuditFixContext = null;
 		sidebarVisible = true;
 		hoverPopupVisible = false;
 		hoverPopupItem = null;

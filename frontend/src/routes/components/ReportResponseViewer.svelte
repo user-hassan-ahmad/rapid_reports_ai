@@ -13,6 +13,7 @@
 	import { applyEditsToReport } from '$lib/utils/reportEditing';
 	import type { UnfilledEdit } from '$lib/stores/unfilledEditor';
 	import type { UnfilledItem, UnfilledItems } from '$lib/utils/placeholderDetection';
+	import type { AuditFixContext } from '$lib/types/auditFixContext';
 	const dispatch = createEventDispatcher();
 
 	export let visible = false;
@@ -85,6 +86,7 @@
 		rationale: string;
 		highlighted_spans?: string[];
 		recommendation?: string;
+		criterion_line?: string | null;
 		acknowledged?: boolean;
 	}
 
@@ -285,15 +287,22 @@
 		}
 	}
 
-	async function handleSuggestFix(e: CustomEvent<{ criterion: string; rationale: string }>) {
-		const { criterion, rationale } = e.detail;
+	async function handleSuggestFix(
+		e: CustomEvent<{
+			criterion: string;
+			rationale: string;
+			auditFixContext?: AuditFixContext;
+		}>
+	) {
+		const { criterion, rationale, auditFixContext } = e.detail;
 		const msg = `The audit flagged an issue with "${criterion}": ${rationale}. Please go ahead and apply the appropriate correction to the report now.`;
 		// Open chat sidebar
 		dispatch('openSidebar', {
 			tab: 'chat',
 			initialMessage: msg,
 			autoSend: true,
-			labelInfo: { type: 'audit-fix', name: criterion }
+			labelInfo: { type: 'audit-fix', name: criterion },
+			...(auditFixContext ? { auditFixContext } : {})
 		});
 		// Also acknowledge the criterion so it moves to Reviewed and Completed sections
 		auditActions.acknowledgeLocal(criterion, 'ai_assisted');

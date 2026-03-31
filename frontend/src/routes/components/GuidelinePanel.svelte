@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { marked } from 'marked';
+	import { onDestroy } from 'svelte';
+	import { fade, scale } from 'svelte/transition';
 
 	interface GuidelineReference {
 		system: string;
@@ -36,6 +38,17 @@
 	export let compact: boolean = false;
 
 	let expanded = new Set<number>();
+	let copiedIndex: number | null = null;
+	let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function clearCopyTimer() {
+		if (copyResetTimer) {
+			clearTimeout(copyResetTimer);
+			copyResetTimer = null;
+		}
+	}
+
+	onDestroy(() => clearCopyTimer());
 
 	function toggle(i: number) {
 		const n = new Set(expanded);
@@ -67,12 +80,18 @@
 		}
 	}
 
-	async function copyExcerpt(ref: GuidelineReference) {
+	async function copyExcerpt(ref: GuidelineReference, index: number) {
 		const parts = [`[${ref.system}]`, ref.context];
 		if (ref.criteria_summary) parts.push('', ref.criteria_summary);
 		if (ref.criteria_summary_truncated) parts.push('', '(Excerpt — see source for full criteria.)');
 		try {
 			await navigator.clipboard.writeText(parts.join('\n'));
+			clearCopyTimer();
+			copiedIndex = index;
+			copyResetTimer = setTimeout(() => {
+				copiedIndex = null;
+				copyResetTimer = null;
+			}, 2000);
 		} catch {
 			/* ignore */
 		}
@@ -119,15 +138,14 @@
 					{#if ref.injected && ref.criteria_summary}
 						<div class="px-3 py-2 space-y-2">
 						{#if expanded.has(i)}
-							<div class="text-[9px] text-gray-400 leading-relaxed max-h-48 overflow-y-auto custom-scrollbar
-								prose prose-invert prose-[9px]
-								prose-p:my-1 prose-p:leading-relaxed
+							<div class="text-[10px] text-gray-400 leading-relaxed max-h-48 overflow-y-auto custom-scrollbar
+								prose prose-invert max-w-none
+								prose-p:my-1 prose-p:leading-relaxed prose-p:text-[10px]
 								prose-strong:text-gray-300 prose-strong:font-semibold
-								prose-ul:my-1 prose-ul:pl-4 prose-ul:space-y-0.5
-								prose-ol:my-1 prose-ol:pl-4 prose-ol:space-y-0.5
-								prose-li:text-gray-400 prose-li:leading-relaxed prose-li:pl-0
-								prose-headings:text-gray-300 prose-headings:font-semibold prose-headings:mt-2 prose-headings:mb-1
-								max-w-none">
+								prose-ul:my-1 prose-ul:pl-3.5 prose-ul:space-y-0.5
+								prose-ol:my-1 prose-ol:pl-3.5 prose-ol:space-y-0.5
+								prose-li:text-gray-400 prose-li:leading-relaxed prose-li:pl-0 prose-li:text-[10px]
+								prose-headings:text-gray-300 prose-headings:font-semibold prose-headings:text-[10px] prose-headings:mt-2 prose-headings:mb-1">
 							{@html marked(ref.criteria_summary)}
 						</div>
 						{/if}
@@ -141,10 +159,34 @@
 								</button>
 								<button
 									type="button"
-									class="text-[9px] font-semibold px-2 py-1 rounded-md bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.08] text-gray-400 transition-colors"
-									on:click={() => copyExcerpt(ref)}
+									class="text-[9px] font-semibold px-2 py-1 rounded-md border min-w-[92px] justify-center inline-flex items-center gap-1 transition-all duration-300 ease-out
+										{copiedIndex === i
+										? 'bg-emerald-500/[0.14] border-emerald-500/40 text-emerald-300 shadow-[0_0_14px_-4px_rgba(52,211,153,0.45)]'
+										: 'bg-white/[0.04] hover:bg-white/[0.07] border-white/[0.08] text-gray-400'}"
+									class:copy-excerpt-success={copiedIndex === i}
+									on:click={() => copyExcerpt(ref, i)}
 								>
-									Copy excerpt
+									{#if copiedIndex === i}
+										<span class="inline-flex items-center gap-1" in:scale={{ duration: 220, start: 0.88, opacity: 0 }}>
+											<svg
+												class="w-3 h-3 text-emerald-400 flex-shrink-0"
+												fill="none"
+												stroke="currentColor"
+												viewBox="0 0 24 24"
+												aria-hidden="true"
+											>
+												<path
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													stroke-width="2.5"
+													d="M5 13l4 4L19 7"
+												/>
+											</svg>
+											<span in:fade={{ duration: 180 }}>Copied</span>
+										</span>
+									{:else}
+										<span in:fade={{ duration: 120 }}>Copy excerpt</span>
+									{/if}
 								</button>
 								{#if ref.source_url}
 									<a
@@ -166,6 +208,18 @@
 {/if}
 
 <style>
+	@keyframes copy-excerpt-ring {
+		0% {
+			box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.35);
+		}
+		100% {
+			box-shadow: 0 0 0 7px rgba(52, 211, 153, 0);
+		}
+	}
+	.copy-excerpt-success {
+		animation: copy-excerpt-ring 0.65s ease-out 1;
+	}
+
 	.custom-scrollbar {
 		scrollbar-width: thin;
 		scrollbar-color: rgba(34, 211, 238, 0.15) transparent;
