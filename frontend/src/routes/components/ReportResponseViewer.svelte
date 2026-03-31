@@ -194,6 +194,9 @@
 		// Mark as audited immediately (synchronous) to prevent the reactive from re-firing
 		lastAuditedContent = content;
 		auditActions.setLoading();
+		// Clear guideline references immediately so the Copilot tab doesn't show stale
+		// cards from a previous audit while the new one is in-flight.
+		dispatch('auditComplete', { guidelineReferences: [], auditCriteria: [] });
 		
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -220,6 +223,10 @@
 			}
 			
 			auditActions.setResult(data, data.audit_id);
+			dispatch('auditComplete', {
+				guidelineReferences: data.guideline_references ?? [],
+				auditCriteria: data.criteria ?? []
+			});
 			// If a banner was previously inserted and is still in the report, auto-acknowledge
 			// clinical_flagging so it doesn't re-surface decorations or the banner panel.
 			if (insertedBannerTexts.length > 0) {
@@ -231,6 +238,8 @@
 			}
 		} catch (e) {
 			auditActions.setError('Audit failed. Please try again.');
+			// Clear on error too — stale criteria could produce phantom chips on cleared cards.
+			dispatch('auditComplete', { guidelineReferences: [], auditCriteria: [] });
 		}
 	}
 
@@ -972,18 +981,19 @@
 									class="absolute top-0 right-0 bottom-0 w-[280px] border-l border-white/[0.06] overflow-hidden"
 									transition:fly={{ x: 16, duration: 220, easing: (t) => 1 - Math.pow(1 - t, 3) }}
 								>
-									<AuditBanner
-										auditState={$auditStore as any}
-										canReaudit={$auditStore.status === 'stale' || $auditStore.status === 'complete' || $auditStore.status === 'error'}
-										showClose={true}
-									on:acknowledge={handleAcknowledge}
-									on:restore={handleRestore}
-									on:suggestFix={handleSuggestFix}
-									on:insertBanner={handleInsertBanner}
-									on:applyFix={handleApplyFix}
-									on:reaudit={handleReaudit}
-									on:close={() => auditPanelOpen = false}
-									/>
+								<AuditBanner
+									auditState={$auditStore as any}
+									canReaudit={$auditStore.status === 'stale' || $auditStore.status === 'complete' || $auditStore.status === 'error'}
+									showClose={true}
+								on:acknowledge={handleAcknowledge}
+								on:restore={handleRestore}
+								on:suggestFix={handleSuggestFix}
+								on:insertBanner={handleInsertBanner}
+								on:applyFix={handleApplyFix}
+								on:reaudit={handleReaudit}
+								on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
+								on:close={() => auditPanelOpen = false}
+								/>
 								</div>
 							{/if}
 						</div>
@@ -1090,16 +1100,17 @@
 			
 			<!-- AuditBanner content (scrollable) -->
 			<div class="flex-1 min-h-0 overflow-hidden">
-				<AuditBanner
-					auditState={$auditStore as any}
-					canReaudit={$auditStore.status === 'stale' || $auditStore.status === 'complete' || $auditStore.status === 'error'}
-				on:acknowledge={handleAcknowledge}
-				on:restore={handleRestore}
-				on:suggestFix={handleSuggestFix}
-				on:insertBanner={handleInsertBanner}
-				on:applyFix={handleApplyFix}
-				on:reaudit={handleReaudit}
-			/>
+			<AuditBanner
+				auditState={$auditStore as any}
+				canReaudit={$auditStore.status === 'stale' || $auditStore.status === 'complete' || $auditStore.status === 'error'}
+			on:acknowledge={handleAcknowledge}
+			on:restore={handleRestore}
+			on:suggestFix={handleSuggestFix}
+			on:insertBanner={handleInsertBanner}
+			on:applyFix={handleApplyFix}
+			on:reaudit={handleReaudit}
+			on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
+		/>
 		</div>
 	</div>
 	{/if}

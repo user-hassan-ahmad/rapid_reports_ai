@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher, tick } from 'svelte';
 	import { fly, fade } from 'svelte/transition';
-	import GuidelinePanel from './GuidelinePanel.svelte';
+	import { marked } from 'marked';
 
 	interface AuditCriterionFlag {
 		type: string;
@@ -65,6 +65,14 @@
 
 	let expandedCriteria: Set<string> = new Set();
 	let criterionRefs: { [key: string]: HTMLElement } = {};
+	// Tracks which inline guideline mini-cards are open. Key: "{criterion}-{guidelineIndex}"
+	let expandedInlineGuidelines: Set<string> = new Set();
+
+	function toggleInlineGuideline(key: string) {
+		const n = new Set(expandedInlineGuidelines);
+		if (n.has(key)) n.delete(key); else n.add(key);
+		expandedInlineGuidelines = n;
+	}
 
 	const criterionLabels: Record<string, string> = {
 		anatomical_accuracy: 'Anatomical Accuracy',
@@ -127,13 +135,10 @@
 		return [...new Set(out)];
 	}
 
-	function scrollToGuidelineIndex(i: number) {
-		tick().then(() => {
-			document.getElementById(`guideline-ref-${i}`)?.scrollIntoView({
-				behavior: 'smooth',
-				block: 'nearest'
-			});
-		});
+	// GuidelinePanel has moved to the Copilot Guidelines tab. Chips now navigate
+	// to the sidebar QA Reference section instead of scrolling within this panel.
+	function openGuidelineInSidebar() {
+		dispatch('openSidebar', { tab: 'guidelines' });
 	}
 
 	// Auto-scroll to active criterion
@@ -388,8 +393,8 @@
 					</div>
 				</div>
 			{:else}
-			<!-- Flag Banner Panel - when clinical_flagging has suggested banners -->
-			{#if suggestedBanners.length > 0 && !clinicalFlaggingCriterion?.acknowledged}
+		<!-- Flag Banner Panel - when clinical_flagging has suggested banners -->
+		{#if suggestedBanners.length > 0 && !clinicalFlaggingCriterion?.acknowledged}
 				<div class="rounded-lg border border-amber-500/25 bg-amber-500/5 p-4 mb-4 space-y-3">
 					<div class="flex items-center gap-2">
 						<svg class="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -451,6 +456,72 @@
 						</div>
 					{/if}
 				</div>
+
+				<!-- Related guideline chips + inline mini-cards for clinical_flagging.
+				     clinical_flagging is excluded from pendingCriteriaForList when suggestedBanners
+				     exist, so the chip/card block must be rendered here instead. -->
+				{#if clinicalFlaggingCriterion}
+					{@const cfRelatedGi = relatedGuidelineIndices(clinicalFlaggingCriterion)}
+					{#if cfRelatedGi.length > 0}
+						<div class="mt-3 pt-3 border-t border-amber-500/10">
+							<div class="flex flex-wrap gap-1 mb-1.5">
+								{#each cfRelatedGi as gi}
+									<button
+										type="button"
+										class="text-[8px] font-semibold px-1.5 py-0.5 rounded border border-cyan-500/25 bg-cyan-500/10 text-cyan-300/90 hover:bg-cyan-500/20 transition-colors max-w-full truncate"
+										title="View reference guideline in Copilot"
+										on:click|stopPropagation={openGuidelineInSidebar}
+									>
+										{guidelineReferences[gi]?.system} ↗
+									</button>
+								{/each}
+							</div>
+							{#each cfRelatedGi as gi}
+								{@const ref = guidelineReferences[gi]}
+								{#if ref}
+									{@const cardKey = `clinical_flagging-${gi}`}
+									{@const isInlineOpen = expandedInlineGuidelines.has(cardKey)}
+									<div class="mb-1.5 rounded-md border border-cyan-500/15 bg-cyan-950/20 overflow-hidden text-[9px]">
+										<button
+											type="button"
+											class="w-full flex items-center justify-between px-2.5 py-1.5 text-left hover:bg-cyan-500/5 transition-colors"
+											on:click|stopPropagation={() => toggleInlineGuideline(cardKey)}
+										>
+											<span class="font-semibold text-cyan-200/90 truncate">{ref.system}</span>
+											<svg class="w-3 h-3 text-cyan-500/60 flex-shrink-0 ml-1 transition-transform {isInlineOpen ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+											</svg>
+										</button>
+										{#if isInlineOpen}
+											<div class="px-2.5 pb-2.5 border-t border-cyan-500/10">
+												<p class="text-gray-500 leading-relaxed mt-1.5 mb-2">{ref.context}</p>
+												{#if ref.injected && ref.criteria_summary}
+													<div class="text-gray-500 leading-relaxed mb-2
+														prose prose-invert max-w-none
+														prose-p:my-0.5 prose-p:leading-relaxed prose-p:text-[9px]
+														prose-strong:text-gray-400 prose-strong:font-semibold
+														prose-ul:my-0.5 prose-ul:pl-3.5 prose-ul:space-y-0
+														prose-li:text-gray-500 prose-li:leading-relaxed prose-li:pl-0 prose-li:text-[9px]
+														prose-headings:text-gray-400 prose-headings:font-semibold prose-headings:mt-1.5 prose-headings:mb-0.5
+														max-h-32 overflow-y-auto custom-scrollbar-cyan">
+														{@html marked(ref.criteria_summary.split('\n').slice(0, 10).join('\n'))}
+													</div>
+												{/if}
+												<button
+													type="button"
+													class="text-[8px] font-semibold text-cyan-400/70 hover:text-cyan-300 transition-colors"
+													on:click|stopPropagation={openGuidelineInSidebar}
+												>
+													View full criteria in Guidelines ↗
+												</button>
+											</div>
+										{/if}
+									</div>
+								{/if}
+							{/each}
+						</div>
+					{/if}
+				{/if}
 			{/if}
 
 			<!-- Pending (unreviewed) criteria -->
@@ -483,20 +554,66 @@
 									{criterionLabels[criterion.criterion] || criterion.criterion}
 								</span>
 							</div>
-							{#if relatedGi.length > 0}
-								<div class="flex flex-wrap gap-1 mb-1.5">
-									{#each relatedGi as gi}
-										<button
-											type="button"
-											class="text-[8px] font-semibold px-1.5 py-0.5 rounded border border-cyan-500/25 bg-cyan-500/10 text-cyan-300/90 hover:bg-cyan-500/20 transition-colors max-w-full truncate"
-											title="Scroll to reference guideline"
-											on:click|stopPropagation={() => scrollToGuidelineIndex(gi)}
-										>
-											{guidelineReferences[gi]?.system}
-										</button>
-									{/each}
+					{#if relatedGi.length > 0}
+						<!-- Navigation chips — open Copilot Guidelines tab -->
+						<div class="flex flex-wrap gap-1 mb-1.5">
+							{#each relatedGi as gi}
+								<button
+									type="button"
+									class="text-[8px] font-semibold px-1.5 py-0.5 rounded border border-cyan-500/25 bg-cyan-500/10 text-cyan-300/90 hover:bg-cyan-500/20 transition-colors max-w-full truncate"
+									title="View reference guideline in Copilot"
+									on:click|stopPropagation={openGuidelineInSidebar}
+								>
+									{guidelineReferences[gi]?.system} ↗
+								</button>
+							{/each}
+						</div>
+						<!-- Inline mini-cards — collapsed by default, show context + link -->
+						{#each relatedGi as gi}
+							{@const ref = guidelineReferences[gi]}
+							{#if ref}
+								{@const cardKey = `${criterion.criterion}-${gi}`}
+								{@const isInlineOpen = expandedInlineGuidelines.has(cardKey)}
+								<div class="mb-1.5 rounded-md border border-cyan-500/15 bg-cyan-950/20 overflow-hidden text-[9px]">
+									<button
+										type="button"
+										class="w-full flex items-center justify-between px-2.5 py-1.5 text-left hover:bg-cyan-500/5 transition-colors"
+										on:click|stopPropagation={() => toggleInlineGuideline(cardKey)}
+									>
+										<span class="font-semibold text-cyan-200/90 truncate">{ref.system}</span>
+										<svg class="w-3 h-3 text-cyan-500/60 flex-shrink-0 ml-1 transition-transform {isInlineOpen ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+										</svg>
+									</button>
+									{#if isInlineOpen}
+										<div class="px-2.5 pb-2.5 border-t border-cyan-500/10">
+											<p class="text-gray-500 leading-relaxed mt-1.5 mb-2">{ref.context}</p>
+										{#if ref.injected && ref.criteria_summary}
+											<!-- Compact preview: first 10 lines. Full text available in Copilot Guidelines. -->
+											<div class="text-gray-500 leading-relaxed mb-2
+												prose prose-invert max-w-none
+												prose-p:my-0.5 prose-p:leading-relaxed prose-p:text-[9px]
+												prose-strong:text-gray-400 prose-strong:font-semibold
+												prose-ul:my-0.5 prose-ul:pl-3.5 prose-ul:space-y-0
+												prose-li:text-gray-500 prose-li:leading-relaxed prose-li:pl-0 prose-li:text-[9px]
+												prose-headings:text-gray-400 prose-headings:font-semibold prose-headings:mt-1.5 prose-headings:mb-0.5
+												max-h-32 overflow-y-auto custom-scrollbar-cyan">
+												{@html marked(ref.criteria_summary.split('\n').slice(0, 10).join('\n'))}
+											</div>
+										{/if}
+											<button
+												type="button"
+												class="text-[8px] font-semibold text-cyan-400/70 hover:text-cyan-300 transition-colors"
+												on:click|stopPropagation={openGuidelineInSidebar}
+											>
+												View full criteria in Guidelines ↗
+											</button>
+										</div>
+									{/if}
 								</div>
 							{/if}
+						{/each}
+					{/if}
 							{#if criterion.criterion === 'diagnostic_fidelity'}
 								{@const dfPreview = parseDiagnosticFidelityRationale(criterion.rationale)}
 								{#if dfPreview}
@@ -747,9 +864,13 @@
 				</div>
 			{/if}
 			{/if}
-			<GuidelinePanel references={guidelineReferences} />
-		{/if}
-	</div>
+		<!-- GUIDELINE PANEL TEMPORARILY COMMENTED — Guideline Panel Consolidation
+		     Reference guidelines have moved to the Copilot Guidelines tab (QA Reference section).
+		     See ReportEnhancementSidebar QA Reference section (step 3 of consolidation).
+		     Safe to delete once step 3 verified in staging — 2026-03-31
+		<GuidelinePanel references={guidelineReferences} /> -->
+	{/if}
+</div>
 
 	<!-- ── Footer ──────────────────────────────────────────────────── -->
 	{#if (auditState.status === 'complete' || auditState.status === 'stale') && canReaudit}
@@ -790,6 +911,20 @@
 
 	.custom-scrollbar::-webkit-scrollbar-thumb {
 		background: rgba(255,255,255,0.08);
+		border-radius: 2px;
+	}
+
+	.custom-scrollbar-cyan {
+		scrollbar-width: thin;
+		scrollbar-color: rgba(34, 211, 238, 0.15) transparent;
+	}
+
+	.custom-scrollbar-cyan::-webkit-scrollbar {
+		width: 3px;
+	}
+
+	.custom-scrollbar-cyan::-webkit-scrollbar-thumb {
+		background: rgba(34, 211, 238, 0.15);
 		border-radius: 2px;
 	}
 

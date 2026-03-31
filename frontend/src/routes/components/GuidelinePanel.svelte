@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { marked } from 'marked';
+
 	interface GuidelineReference {
 		system: string;
 		context: string;
@@ -9,7 +11,29 @@
 		injected: boolean;
 	}
 
+	interface AuditCriterion {
+		criterion: string;
+		status: string;
+		rationale: string;
+		recommendation?: string | null;
+	}
+
+	const criterionLabels: Record<string, string> = {
+		recommendations: 'Recommendations',
+		anatomical_accuracy: 'Anatomical Accuracy',
+		report_completeness: 'Report Completeness',
+		clinical_relevance: 'Clinical Relevance',
+		clinical_flagging: 'Clinical Flagging',
+		diagnostic_fidelity: 'Diagnostic Fidelity',
+	};
+
 	export let references: GuidelineReference[] = [];
+	// Pass the full criteria array from the audit result. getRelatedFlag filters to
+	// non-pass only internally, so passing all criteria (including passes) is fine.
+	export let auditCriteria: AuditCriterion[] = [];
+	// When true, suppresses the outer wrapper (header label + top border/margin) so
+	// the component can be embedded inside a parent that provides its own section header.
+	export let compact: boolean = false;
 
 	let expanded = new Set<number>();
 
@@ -18,6 +42,21 @@
 		if (n.has(i)) n.delete(i);
 		else n.add(i);
 		expanded = n;
+	}
+
+	// Returns the criterion key of the first non-pass criterion whose rationale or
+	// recommendation mentions the guideline system name. Non-pass filter prevents
+	// pass rationales like "Lung-RADS correctly applied" from producing false chips.
+	function getRelatedFlag(system: string): string | null {
+		if (!auditCriteria.length) return null;
+		const systemLower = system.toLowerCase();
+		const token = systemLower.split(/\s+/)[0];
+		return auditCriteria
+			.filter(c => c.status !== 'pass')
+			.find(c => {
+				const hay = `${c.rationale} ${c.recommendation ?? ''}`.toLowerCase();
+				return hay.includes(systemLower) || (token.length >= 4 && hay.includes(token));
+			})?.criterion ?? null;
 	}
 
 	function domainFromUrl(url: string): string {
@@ -41,42 +80,57 @@
 </script>
 
 {#if references.length > 0}
-	<div class="mt-4 pt-4 border-t border-cyan-500/15" aria-label="Reference guidelines">
-		<div class="flex items-center gap-2 mb-3">
-			<svg class="w-3.5 h-3.5 text-cyan-400/90 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-			</svg>
-			<span class="text-[9px] font-semibold uppercase tracking-widest text-cyan-400/80">Reference guidelines</span>
-		</div>
-		<p class="text-[9px] text-gray-600 leading-relaxed mb-3">
-			Structural reference used as QA context — not automated classification.
-		</p>
+	<div class="{compact ? '' : 'mt-4 pt-4 border-t border-cyan-500/15'}" aria-label="Reference guidelines">
+		{#if !compact}
+			<div class="flex items-center gap-2 mb-3">
+				<svg class="w-3.5 h-3.5 text-cyan-400/90 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+				</svg>
+				<span class="text-[9px] font-semibold uppercase tracking-widest text-cyan-400/80">Reference guidelines</span>
+			</div>
+			<p class="text-[9px] text-gray-600 leading-relaxed mb-3">
+				Structural reference used as QA context — not automated classification.
+			</p>
+		{/if}
 		<div class="space-y-2.5">
-			{#each references as ref, i (ref.system + '-' + i)}
-				<div
-					id="guideline-ref-{i}"
-					class="rounded-lg border bg-cyan-950/20 overflow-hidden transition-colors
-						{ref.injected ? 'border-cyan-500/20' : 'border-white/[0.06] opacity-90'}"
-				>
-					<div class="px-3 py-2.5 flex items-start justify-between gap-2 border-b border-white/[0.04]">
-						<div class="min-w-0 flex-1">
-							<div class="flex items-center gap-2 flex-wrap">
-								<span class="text-[11px] font-semibold text-cyan-200/95 truncate">{ref.system}</span>
-								{#if !ref.injected}
-									<span class="text-[8px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded border border-amber-500/30 text-amber-400/90 bg-amber-500/10">Not retrieved</span>
-								{/if}
-							</div>
-							<p class="text-[10px] text-gray-500 mt-1 leading-relaxed">{ref.context}</p>
+	{#each references as ref, i (ref.system + '-' + i)}
+			{@const relatedFlag = getRelatedFlag(ref.system)}
+			<div
+				id="guideline-ref-{i}"
+				class="rounded-lg border bg-cyan-950/20 overflow-hidden transition-colors
+					{ref.injected ? 'border-cyan-500/20' : 'border-white/[0.06] opacity-90'}"
+			>
+				<div class="px-3 py-2.5 flex items-start justify-between gap-2 border-b border-white/[0.04]">
+					<div class="min-w-0 flex-1">
+						<div class="flex items-center gap-2 flex-wrap">
+							<span class="text-[11px] font-semibold text-cyan-200/95 truncate">{ref.system}</span>
+							{#if !ref.injected}
+								<span class="text-[8px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded border border-amber-500/30 text-amber-400/90 bg-amber-500/10">Not retrieved</span>
+							{/if}
+							{#if relatedFlag}
+								<span class="text-[8px] font-semibold px-1.5 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-amber-300/90">
+									⚠ Related to {criterionLabels[relatedFlag] ?? relatedFlag}
+								</span>
+							{/if}
 						</div>
+						<p class="text-[10px] text-gray-500 mt-1 leading-relaxed">{ref.context}</p>
 					</div>
+				</div>
 					{#if ref.injected && ref.criteria_summary}
 						<div class="px-3 py-2 space-y-2">
-							{#if expanded.has(i)}
-								<pre class="text-[9px] text-gray-400 leading-relaxed whitespace-pre-wrap font-sans max-h-48 overflow-y-auto custom-scrollbar">{ref.criteria_summary}{#if ref.criteria_summary_truncated}<span class="text-gray-600"> …</span>{/if}</pre>
-								{#if ref.criteria_summary_truncated}
-									<p class="text-[8px] text-gray-600">Excerpt only — full text is cached server-side.</p>
-								{/if}
-							{/if}
+						{#if expanded.has(i)}
+							<div class="text-[9px] text-gray-400 leading-relaxed max-h-48 overflow-y-auto custom-scrollbar
+								prose prose-invert prose-[9px]
+								prose-p:my-1 prose-p:leading-relaxed
+								prose-strong:text-gray-300 prose-strong:font-semibold
+								prose-ul:my-1 prose-ul:pl-4 prose-ul:space-y-0.5
+								prose-ol:my-1 prose-ol:pl-4 prose-ol:space-y-0.5
+								prose-li:text-gray-400 prose-li:leading-relaxed prose-li:pl-0
+								prose-headings:text-gray-300 prose-headings:font-semibold prose-headings:mt-2 prose-headings:mb-1
+								max-w-none">
+							{@html marked(ref.criteria_summary)}
+						</div>
+						{/if}
 							<div class="flex flex-wrap items-center gap-2">
 								<button
 									type="button"

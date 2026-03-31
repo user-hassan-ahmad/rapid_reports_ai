@@ -555,7 +555,7 @@ class FindingComparison(BaseModel):
     # Trend analysis for multiple priors
     trend: Optional[str] = Field(
         None,
-        description="Progression trend when multiple priors exist. MUST include numerical/statistical details: actual measurement values, percentage changes, growth rates (e.g., mm/month), and time intervals. Example: 'Gradually increasing from 3.2 cm (15/09/2024) to 4.1 cm (22/09/2024) to 5.3 cm (current), representing 28% growth over 37 days (0.57 mm/day average)'"
+        description="Progression trend when multiple priors exist. Describe the clinical trajectory faithfully: direction of change, magnitude (measurements and calculated rates where meaningful), and the time frame involved. The goal is a compact, factually complete narrative of trajectory that Stage 2 can draw on to write natural prose — not a template for how that prose should be phrased. Do not prescribe inline date formatting here."
     )
     
     current_measurement: Optional[Measurement] = None

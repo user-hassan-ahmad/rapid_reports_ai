@@ -425,15 +425,16 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 			scanType={scanType}
 			clinicalHistory={clinicalHistory}
 			on:toggle={toggleResponse}
-			on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
-			on:copy={copyToClipboard}
-			on:clear={clearResponse}
-			on:restore={(event) => handleHistoryRestore(event.detail)}
-			on:historyUpdate={(event) => dispatch('historyUpdate', event.detail)}
-			on:save={handleReportSave}
-			on:showHoverPopup={(e) => dispatch('showHoverPopup', e.detail)}
-			on:hideHoverPopup={() => dispatch('hideHoverPopup')}
-		/>
+		on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
+		on:copy={copyToClipboard}
+		on:clear={clearResponse}
+		on:restore={(event) => handleHistoryRestore(event.detail)}
+		on:historyUpdate={(event) => dispatch('historyUpdate', event.detail)}
+		on:auditComplete={(e) => dispatch('auditComplete', e.detail)}
+		on:save={handleReportSave}
+		on:showHoverPopup={(e) => dispatch('showHoverPopup', e.detail)}
+		on:hideHoverPopup={() => dispatch('hideHoverPopup')}
+	/>
 </div>
 
 <Toast bind:this={toast} />

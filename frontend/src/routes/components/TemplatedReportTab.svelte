@@ -2486,10 +2486,11 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 				}
 				dispatch('reportGenerated', { reportId: e.detail.reportId });
 			}}
-			on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
-			on:showHoverPopup={(e) => dispatch('showHoverPopup', e.detail)}
-			on:hideHoverPopup={() => dispatch('hideHoverPopup')}
-			on:historyUpdate={(event) => dispatch('historyUpdate', event.detail)}
+		on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
+		on:showHoverPopup={(e) => dispatch('showHoverPopup', e.detail)}
+		on:hideHoverPopup={() => dispatch('hideHoverPopup')}
+		on:historyUpdate={(event) => dispatch('historyUpdate', event.detail)}
+		on:auditComplete={(e) => dispatch('auditComplete', e.detail)}
 			on:historyRestored={(event) => {
 				const savedVars = event.detail?.report?.input_data?.variables;
 				if (savedVars && currentSelectedTemplate?.id) {

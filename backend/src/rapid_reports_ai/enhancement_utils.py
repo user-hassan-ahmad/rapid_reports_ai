@@ -3006,7 +3006,7 @@ METHODOLOGY:
    - Be specific about WHERE in the report (which section, after which discussion)
    - Be clear about WHAT to do (add, update, modify)
    - Reference anatomical progression when relevant
-   - For findings with TREND (multiple priors): Instruct to integrate full progression pattern with all measurements and dates, not just most recent comparison
+   - For findings with TREND (multiple priors): Instruct Stage 2 to convey the clinical trajectory (direction, magnitude, pace) — the strategy should describe WHAT the prose must communicate, not HOW the dates should be formatted inline
    - For Comparison section directives: Specify to list ALL prior reports with dates and scan types
    
 OUTPUT: ComparisonAnalysisStage1 with findings, summary, and change_directives (NO text generation)
@@ -3338,9 +3338,13 @@ COMPARISON SECTION UPDATE:
 - Do NOT use abbreviations like "CT" or "CT A/P" even if they appear in the original text
 - Do NOT add clinical details - those belong in Findings section only
 
+SECTION RESPONSIBILITIES (first principle — do not violate):
+- The Comparison section is the canonical record of which prior studies exist (date + modality). Its job is complete once it lists them.
+- Findings and Impression describe interval change, clinical trajectory, and significance. They must not replicate the Comparison catalogue. References to prior studies in prose should use qualitative anchors ("previous CT", "prior study", "the June examination") rather than repeating exact dates and full scan labels, unless temporal disambiguation is genuinely required (e.g. three studies with the same modality where the sequence matters). Reserve parenthetical notation for quantitative interval detail where it aids precision — not as a reflexive citation of study identity.
+
 FINDINGS & IMPRESSION INTEGRATION:
-- Integrate comparison language naturally within the Findings section
-- For findings with TREND data (multiple priors): Reference the full progression pattern, not just most recent comparison
+- Integrate comparison language naturally within the Findings section using qualitative prior references as the default voice
+- For findings with TREND data (multiple priors): Convey the clinical trajectory — direction, magnitude, pace — in prose that fits the report's narrative style; measurements and calculated intervals may be included where they add clinical value, but the prose should not read as a transcription of the structured data
 - Update measurements and descriptions in-place per directives
 - CRITICAL: When adding NEW findings, weave them into the existing text flow - do NOT introduce bullets if section uses paragraphs
 - If adding to a paragraph section: Continue the paragraph or add a new paragraph in the same style
@@ -5501,7 +5505,6 @@ For each criterion, provide:
         from .guideline_fetcher import (
             GuidelineResolution,
             ensure_guideline_cached,
-            truncate_criteria_summary_for_api,
         )
         from .enhancement_models import ApplicableGuideline as _AG
 
@@ -5546,19 +5549,18 @@ For each criterion, provide:
                 f"system={ag.system!r} type={ag.type!r} injected={res.injected} "
                 f"content_chars={cc} source_url={res.source_url!r}"
             )
-            excerpt, trunc = (
-                truncate_criteria_summary_for_api(res.content)
-                if res.injected and res.content
-                else ("", False)
-            )
             guideline_references.append(
                 GuidelineReference(
                     system=ag.system,
                     context=ag.context,
                     type=ag.type,
                     source_url=res.source_url,
-                    criteria_summary=excerpt if res.injected else None,
-                    criteria_summary_truncated=trunc,
+                    # Pass the full cached content — truncation was a conservative payload
+                    # guard that is no longer needed now that the Copilot Guidelines tab
+                    # renders the expanded criteria view. The LLM context already uses the
+                    # full text (see context_parts below), so this adds no server-side cost.
+                    criteria_summary=res.content if res.injected else None,
+                    criteria_summary_truncated=False,
                     injected=res.injected,
                 )
             )

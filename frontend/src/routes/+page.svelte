@@ -147,6 +147,12 @@ let enhancementGuidelinesCount = 0;
 let enhancementLoading = false;
 let enhancementError = false;
 let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | null = null;
+
+// Audit guideline references — lifted from ReportResponseViewer so the Copilot
+// Guidelines tab can show the QA Reference section alongside Perplexity cards.
+// Both arrays clear on audit start/error and populate on success.
+let auditGuidelineReferences: any[] = [];
+let auditCriteriaForSidebar: any[] = [];
 let chatInitialMessage: string | null = null;
 let chatAutoSend: boolean = false;
 let chatAutoSendLabel: { type: string; name: string; itemType?: string } | null = null;
@@ -816,13 +822,17 @@ $: if (!isEnhancementContext && sidebarVisible) {
 								hoverPopupVisible = false;
 								hoverPopupItem = null;
 							}}
-							on:historyRestored={(e) => handleHistoryRestored(e.detail as RestoredReportDetail)}
-							on:historyUpdate={(e) => handleHistoryUpdate(e.detail as ReportHistoryDetail)}
-						/>
-					{/if}
-				</div>
-				
-				<!-- Templated Report Tab - Keep component alive, just hide/show -->
+						on:historyRestored={(e) => handleHistoryRestored(e.detail as RestoredReportDetail)}
+						on:historyUpdate={(e) => handleHistoryUpdate(e.detail as ReportHistoryDetail)}
+						on:auditComplete={(e) => {
+							auditGuidelineReferences = e.detail?.guidelineReferences ?? [];
+							auditCriteriaForSidebar = e.detail?.auditCriteria ?? [];
+						}}
+					/>
+				{/if}
+			</div>
+			
+			<!-- Templated Report Tab - Keep component alive, just hide/show -->
 				<div class={activeTab === 'templated' ? '' : 'hidden'}>
 					{#if loadingApiStatus}
 						<!-- Skeleton loader for API status -->
@@ -880,10 +890,14 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							hoverPopupVisible = false;
 							hoverPopupItem = null;
 						}}
-						on:historyRestored={(e) => handleHistoryRestored(e.detail as RestoredReportDetail)}
-						on:historyUpdate={(e) => handleHistoryUpdate(e.detail as ReportHistoryDetail)}
-						on:reportCleared={handleTemplateCleared}
-						on:templateListOpen={() => {
+					on:historyRestored={(e) => handleHistoryRestored(e.detail as RestoredReportDetail)}
+					on:historyUpdate={(e) => handleHistoryUpdate(e.detail as ReportHistoryDetail)}
+					on:auditComplete={(e) => {
+						auditGuidelineReferences = e.detail?.guidelineReferences ?? [];
+						auditCriteriaForSidebar = e.detail?.auditCriteria ?? [];
+					}}
+					on:reportCleared={handleTemplateCleared}
+					on:templateListOpen={() => {
 							// User clicked "Back to Templates" — just close the sidebar.
 							// Do NOT clear templatedReportId or enhancement state so that
 							// re-selecting the same template is seamless.
@@ -936,6 +950,8 @@ $: if (!isEnhancementContext && sidebarVisible) {
 	initialMessage={chatInitialMessage}
 	autoSend={chatAutoSend}
 	autoSendLabel={chatAutoSendLabel}
+	auditGuidelineReferences={auditGuidelineReferences}
+	auditCriteriaForSidebar={auditCriteriaForSidebar}
 		on:close={() => {
 		sidebarVisible = false;
 		sidebarTabToOpen = null;

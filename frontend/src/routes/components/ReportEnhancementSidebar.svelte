@@ -141,6 +141,7 @@ interface CompletenessAnalysis {
 	import pilotIcon from '$lib/assets/pilot.png';
 	import { API_URL } from '$lib/config';
 	import { logger } from '$lib/utils/logger';
+	import GuidelinePanel from './GuidelinePanel.svelte';
 	
 	// KaTeX for math rendering (optional - will be loaded dynamically)
 	let katex: any = null;
@@ -166,6 +167,10 @@ interface CompletenessAnalysis {
 	export let initialMessage: string | null = null;
 	export let autoSend: boolean = false;
 	export let autoSendLabel: { type: string; name: string; itemType?: string } | null = null;
+	// Lifted from the audit result so the Guidelines tab can show a QA Reference section.
+	// Populated/cleared by +page.svelte via the auditComplete event chain.
+	export let auditGuidelineReferences: any[] = [];
+	export let auditCriteriaForSidebar: any[] = [];
 	
 	let activeTab: 'guidelines' | 'analysis' | 'comparison' | 'chat' = 'guidelines';
 	
@@ -1169,155 +1174,193 @@ $: if ((visible || autoLoad) && completenessPending) {
 						Retry
 					</button>
 				</div>
-			{:else if activeTab === 'guidelines'}
-				{#if guidelinesData.length === 0}
-					<div class="text-gray-400 text-center py-8">
-						No guidelines found for this report.
-					</div>
-				{:else}
-					<div class="space-y-4">
-						{#each guidelinesData as guideline, idx}
+		{:else if activeTab === 'guidelines'}
+		<!-- ── Classification Criteria (Firecrawl / audit-context guidelines) ─────── -->
+		{#if auditGuidelineReferences.length > 0}
+			<div class="mb-1">
+				<div class="flex items-center gap-2 mb-1">
+					<svg class="w-3.5 h-3.5 text-cyan-400/90 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+					<span class="text-[9px] font-semibold uppercase tracking-widest text-cyan-400/80">Classification Criteria</span>
+				</div>
+				<p class="text-[9px] text-gray-600 leading-relaxed mb-2">
+					Exact criteria for classifying the findings in this report
+				</p>
+			</div>
+				<GuidelinePanel
+					references={auditGuidelineReferences}
+					auditCriteria={auditCriteriaForSidebar}
+					compact={true}
+				/>
+			{/if}
+
+			<!-- Divider — only when both sections are present -->
+			{#if auditGuidelineReferences.length > 0 && guidelinesData.length > 0}
+				<div class="my-5 border-t border-white/[0.06]"></div>
+			{/if}
+
+		<!-- ── Supporting Information (Perplexity / finding-driven) ──────────── -->
+		{#if guidelinesData.length > 0}
+			<div class="mb-3">
+				<div class="flex items-center gap-2 mb-1">
+					<svg class="w-3.5 h-3.5 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+					</svg>
+					<span class="text-[9px] font-semibold uppercase tracking-widest text-gray-500">Supporting Information</span>
+				</div>
+				<p class="text-[9px] text-gray-600 leading-relaxed">Background context synthesised from report findings</p>
+			</div>
+		{/if}
+
+			{#if auditGuidelineReferences.length === 0 && guidelinesData.length === 0}
+				<div class="text-gray-400 text-center py-8">
+					No guidelines found for this report.
+				</div>
+			{:else if guidelinesData.length > 0}
+				<div class="space-y-4">
+					{#each guidelinesData as guideline, idx}
 							{@const guidelineKey = `guideline-${idx}`}
-							{@const isExpanded = guidelinesExpanded[guidelineKey] !== false}
+							{@const isExpanded = guidelinesExpanded[guidelineKey] === true}
 							<div class="border border-white/10 rounded-xl backdrop-blur-xl hover:border-purple-500/40 hover:shadow-lg hover:shadow-purple-500/20 overflow-hidden transition-all duration-300">
-								<button
-									type="button"
-									onclick={() => guidelinesExpanded[guidelineKey] = !isExpanded}
-									class="w-full flex items-center justify-between p-4 text-left hover:bg-white/5 transition-colors"
+						<button
+								type="button"
+								onclick={() => guidelinesExpanded[guidelineKey] = !isExpanded}
+								class="w-full flex items-center justify-between px-3.5 py-3 text-left hover:bg-white/5 transition-colors"
+							>
+								<h3 class="text-sm font-semibold text-white flex-1">
+									{guideline.finding.finding}
+								</h3>
+								<svg
+									class="w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ml-2 {isExpanded ? 'rotate-180' : ''}"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
 								>
-									<h3 class="text-lg font-semibold text-white flex-1">
-										{guideline.finding.finding}
-									</h3>
-									<svg
-										class="w-5 h-5 text-gray-400 transition-transform flex-shrink-0 ml-2 {isExpanded ? 'rotate-180' : ''}"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-									>
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-									</svg>
-								</button>
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+								</svg>
+							</button>
 								
-								{#if isExpanded}
-									<div class="px-4 pb-4">
-										<!-- Diagnostic Overview -->
-										{#if guideline.diagnostic_overview}
-											<div class="prose prose-invert prose-sm max-w-none mb-4
-												prose-headings:text-white prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-2
-												prose-p:text-gray-300 prose-p:leading-relaxed prose-p:my-2
-												prose-strong:text-white prose-strong:font-semibold
-												prose-ul:my-2 prose-ul:pl-5 prose-ul:space-y-1.5 prose-ul:list-disc
-												prose-ol:my-2 prose-ol:pl-5 prose-ol:space-y-1.5 prose-ol:list-decimal
-												prose-li:text-gray-300 prose-li:leading-relaxed prose-li:pl-1
-												prose-code:text-purple-300 prose-code:bg-white/10 backdrop-blur-sm prose-code:px-1 prose-code:py-0.5 prose-code:rounded">
-												{@html renderMarkdown(guideline.diagnostic_overview)}
-											</div>
-										{/if}
+							{#if isExpanded}
+								<div class="px-3.5 pb-3.5">
+									<!-- Diagnostic Overview -->
+									{#if guideline.diagnostic_overview}
+										<div class="prose prose-invert max-w-none mb-4
+											prose-headings:text-white prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-2 prose-headings:text-xs
+											prose-p:text-gray-300 prose-p:leading-relaxed prose-p:my-1.5 prose-p:text-[13px]
+											prose-strong:text-white prose-strong:font-semibold
+											prose-ul:my-1.5 prose-ul:pl-4 prose-ul:space-y-1 prose-ul:list-disc
+											prose-ol:my-1.5 prose-ol:pl-4 prose-ol:space-y-1 prose-ol:list-decimal
+											prose-li:text-gray-300 prose-li:leading-relaxed prose-li:pl-0.5 prose-li:text-[13px]
+											prose-code:text-purple-300 prose-code:bg-white/10 backdrop-blur-sm prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs">
+											{@html renderMarkdown(guideline.diagnostic_overview)}
+										</div>
+									{/if}
 
-										<!-- Classification Systems -->
-										{#if guideline.classification_systems && guideline.classification_systems.length > 0}
-											<div class="mb-4">
-												<h4 class="text-sm font-semibold text-white mb-2">Classification & Grading</h4>
-												<div class="space-y-2">
-													{#each guideline.classification_systems as system}
-														<div class="rounded-lg p-3 border border-white/10 hover:border-white/20 transition-colors">
-															<div class="font-medium text-purple-300 text-sm mb-1">{system.name}</div>
-															<div class="text-xs text-gray-400 mb-1.5">{system.grade_or_category}</div>
-															<div class="text-sm text-gray-300">{system.criteria}</div>
+									<!-- Classification Systems -->
+									{#if guideline.classification_systems && guideline.classification_systems.length > 0}
+										<div class="mb-3">
+											<h4 class="text-xs font-semibold text-white mb-1.5">Classification & Grading</h4>
+											<div class="space-y-1.5">
+												{#each guideline.classification_systems as system}
+													<div class="rounded-lg p-2.5 border border-white/10 hover:border-white/20 transition-colors">
+														<div class="font-medium text-purple-300 text-xs mb-0.5">{system.name}</div>
+														<div class="text-[11px] text-gray-400 mb-1">{system.grade_or_category}</div>
+														<div class="text-[13px] text-gray-300">{system.criteria}</div>
+													</div>
+												{/each}
+											</div>
+										</div>
+									{/if}
+
+									<!-- Measurement Protocols -->
+									{#if guideline.measurement_protocols && guideline.measurement_protocols.length > 0}
+										<div class="mb-3">
+											<h4 class="text-xs font-semibold text-white mb-1.5">Measurement Protocols</h4>
+											<div class="space-y-1.5">
+												{#each guideline.measurement_protocols as measure}
+													<div class="rounded-lg p-2.5 border border-white/10 hover:border-white/20 transition-colors">
+														<div class="font-medium text-blue-300 text-xs mb-0.5">{measure.parameter}</div>
+														<div class="text-[13px] text-gray-300 mb-1.5">{measure.technique}</div>
+														{#if measure.normal_range}
+															<div class="text-[11px] text-gray-400">Normal: {measure.normal_range}</div>
+														{/if}
+														{#if measure.threshold}
+															<div class="text-[11px] text-gray-400">Threshold: {measure.threshold}</div>
+														{/if}
+													</div>
+												{/each}
+											</div>
+										</div>
+									{/if}
+
+									<!-- Imaging Characteristics -->
+									{#if guideline.imaging_characteristics && guideline.imaging_characteristics.length > 0}
+										<div class="mb-3">
+											<h4 class="text-xs font-semibold text-white mb-1.5">Key Imaging Features</h4>
+											<div class="space-y-1">
+												{#each guideline.imaging_characteristics as char}
+													<div class="text-[13px]">
+														<span class="font-medium text-green-300">{char.feature}:</span>
+														<span class="text-gray-300"> {char.description}</span>
+														<span class="text-gray-400 italic"> ({char.significance})</span>
+													</div>
+												{/each}
+											</div>
+										</div>
+									{/if}
+
+									<!-- Differential Diagnoses -->
+									{#if guideline.differential_diagnoses && guideline.differential_diagnoses.length > 0}
+										<div class="mb-3">
+											<h4 class="text-xs font-semibold text-white mb-1.5">Differential Diagnoses</h4>
+											<div class="space-y-1.5">
+												{#each guideline.differential_diagnoses as ddx}
+													<div class="rounded-lg p-2.5 border border-white/10 hover:border-white/20 transition-colors">
+														<div class="font-medium text-yellow-300 text-xs mb-0.5">{ddx.diagnosis}</div>
+														<div class="text-[13px] text-gray-300 mb-0.5">{ddx.imaging_features}</div>
+														{#if ddx.supporting_findings}
+															<div class="text-[11px] text-gray-400">Supporting: {ddx.supporting_findings}</div>
+														{/if}
+													</div>
+												{/each}
+											</div>
+										</div>
+									{/if}
+
+									<!-- Follow-up Imaging -->
+									{#if guideline.follow_up_imaging && guideline.follow_up_imaging.length > 0}
+										<div class="mb-3">
+											<h4 class="text-xs font-semibold text-white mb-1.5">Follow-up Imaging</h4>
+											<div class="space-y-1.5">
+												{#each guideline.follow_up_imaging as followup}
+													<div class="rounded-lg p-2.5 border border-white/10 hover:border-white/20 transition-colors">
+														<div class="font-medium text-orange-300 text-xs mb-0.5">{followup.indication}</div>
+														<div class="text-[13px] text-gray-300 mb-0.5">
+															{followup.modality}, {followup.timing}
 														</div>
-													{/each}
-												</div>
+														{#if followup.technical_specs}
+															<div class="text-[11px] text-gray-400">Technical: {followup.technical_specs}</div>
+														{/if}
+													</div>
+												{/each}
 											</div>
-										{/if}
+										</div>
+									{/if}
 
-										<!-- Measurement Protocols -->
-										{#if guideline.measurement_protocols && guideline.measurement_protocols.length > 0}
-											<div class="mb-4">
-												<h4 class="text-sm font-semibold text-white mb-2">Measurement Protocols</h4>
-												<div class="space-y-2">
-													{#each guideline.measurement_protocols as measure}
-														<div class="rounded-lg p-3 border border-white/10 hover:border-white/20 transition-colors">
-															<div class="font-medium text-blue-300 text-sm mb-1">{measure.parameter}</div>
-															<div class="text-sm text-gray-300 mb-2">{measure.technique}</div>
-															{#if measure.normal_range}
-																<div class="text-xs text-gray-400">Normal: {measure.normal_range}</div>
-															{/if}
-															{#if measure.threshold}
-																<div class="text-xs text-gray-400">Threshold: {measure.threshold}</div>
-															{/if}
-														</div>
-													{/each}
-												</div>
-											</div>
-										{/if}
-
-										<!-- Imaging Characteristics -->
-										{#if guideline.imaging_characteristics && guideline.imaging_characteristics.length > 0}
-											<div class="mb-4">
-												<h4 class="text-sm font-semibold text-white mb-2">Key Imaging Features</h4>
-												<div class="space-y-2">
-													{#each guideline.imaging_characteristics as char}
-														<div class="text-sm">
-															<span class="font-medium text-green-300">{char.feature}:</span>
-															<span class="text-gray-300"> {char.description}</span>
-															<span class="text-gray-400 italic"> ({char.significance})</span>
-														</div>
-													{/each}
-												</div>
-											</div>
-										{/if}
-
-										<!-- Differential Diagnoses -->
-										{#if guideline.differential_diagnoses && guideline.differential_diagnoses.length > 0}
-											<div class="mb-4">
-												<h4 class="text-sm font-semibold text-white mb-2">Differential Diagnoses</h4>
-												<div class="space-y-2">
-													{#each guideline.differential_diagnoses as ddx}
-														<div class="rounded-lg p-3 border border-white/10 hover:border-white/20 transition-colors">
-															<div class="font-medium text-yellow-300 text-sm mb-1">{ddx.diagnosis}</div>
-															<div class="text-sm text-gray-300 mb-1">{ddx.imaging_features}</div>
-															{#if ddx.supporting_findings}
-																<div class="text-xs text-gray-400">Supporting: {ddx.supporting_findings}</div>
-															{/if}
-														</div>
-													{/each}
-												</div>
-											</div>
-										{/if}
-
-										<!-- Follow-up Imaging -->
-										{#if guideline.follow_up_imaging && guideline.follow_up_imaging.length > 0}
-											<div class="mb-4">
-												<h4 class="text-sm font-semibold text-white mb-2">Follow-up Imaging</h4>
-												<div class="space-y-2">
-													{#each guideline.follow_up_imaging as followup}
-														<div class="rounded-lg p-3 border border-white/10 hover:border-white/20 transition-colors">
-															<div class="font-medium text-orange-300 text-sm mb-1">{followup.indication}</div>
-															<div class="text-sm text-gray-300 mb-1">
-																{followup.modality}, {followup.timing}
-															</div>
-															{#if followup.technical_specs}
-																<div class="text-xs text-gray-400">Technical: {followup.technical_specs}</div>
-															{/if}
-														</div>
-													{/each}
-												</div>
-											</div>
-										{/if}
-
-										<!-- Fallback to guideline_summary if new fields not present -->
-										{#if !guideline.diagnostic_overview && guideline.guideline_summary}
-											<div class="prose prose-invert prose-sm max-w-none mb-4
-												prose-headings:text-white prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-2
-												prose-p:text-gray-300 prose-p:leading-relaxed prose-p:my-2
-												prose-strong:text-white prose-strong:font-semibold
-												prose-ul:my-2 prose-ul:pl-5 prose-ul:space-y-1.5 prose-ul:list-disc
-												prose-ol:my-2 prose-ol:pl-5 prose-ol:space-y-1.5 prose-ol:list-decimal
-												prose-li:text-gray-300 prose-li:leading-relaxed prose-li:pl-1
-												prose-code:text-purple-300 prose-code:bg-white/10 backdrop-blur-sm prose-code:px-1 prose-code:py-0.5 prose-code:rounded">
-												{@html renderMarkdown(guideline.guideline_summary)}
-											</div>
-										{/if}
+									<!-- Fallback to guideline_summary if new fields not present -->
+									{#if !guideline.diagnostic_overview && guideline.guideline_summary}
+										<div class="prose prose-invert max-w-none mb-4
+											prose-headings:text-white prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-2 prose-headings:text-xs
+											prose-p:text-gray-300 prose-p:leading-relaxed prose-p:my-1.5 prose-p:text-[13px]
+											prose-strong:text-white prose-strong:font-semibold
+											prose-ul:my-1.5 prose-ul:pl-4 prose-ul:space-y-1 prose-ul:list-disc
+											prose-ol:my-1.5 prose-ol:pl-4 prose-ol:space-y-1 prose-ol:list-decimal
+											prose-li:text-gray-300 prose-li:leading-relaxed prose-li:pl-0.5 prose-li:text-[13px]
+											prose-code:text-purple-300 prose-code:bg-white/10 backdrop-blur-sm prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs">
+											{@html renderMarkdown(guideline.guideline_summary)}
+										</div>
+									{/if}
 										
 										{#if guideline.sources && guideline.sources.length > 0}
 											<div class="mt-3 pt-3 border-t border-white/10">

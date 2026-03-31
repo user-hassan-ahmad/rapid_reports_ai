@@ -697,15 +697,16 @@
 				caseDetailsDirty={sectionsDirty}
 				{findingsStale}
 				on:toggle={toggleResponse}
-				on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
-				on:copy={copyToClipboard}
-				on:clear={clearResponse}
-				on:restore={(e) => handleHistoryRestore(e.detail)}
-				on:historyUpdate={(e) => dispatch('historyUpdate', e.detail)}
-				on:save={handleReportSave}
-				on:showHoverPopup={(e) => dispatch('showHoverPopup', e.detail)}
-				on:hideHoverPopup={() => dispatch('hideHoverPopup')}
-			/>
+			on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
+			on:copy={copyToClipboard}
+			on:clear={clearResponse}
+			on:restore={(e) => handleHistoryRestore(e.detail)}
+			on:historyUpdate={(e) => dispatch('historyUpdate', e.detail)}
+			on:auditComplete={(e) => dispatch('auditComplete', e.detail)}
+			on:save={handleReportSave}
+			on:showHoverPopup={(e) => dispatch('showHoverPopup', e.detail)}
+			on:hideHoverPopup={() => dispatch('hideHoverPopup')}
+		/>
 		{/if}
 	</div>
 {/if}
