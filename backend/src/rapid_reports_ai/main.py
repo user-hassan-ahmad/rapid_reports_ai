@@ -4,8 +4,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from typing import Dict, Optional, List, Any, Literal
 import copy
+import hashlib
 import os
 import re
+import time
+import uuid
 from dotenv import load_dotenv
 from sqlalchemy.exc import IntegrityError
 from .prompt_manager import get_prompt_manager
@@ -67,15 +70,13 @@ from .encryption import encrypt_api_key, decrypt_api_key, get_system_api_key
 from .canvas_routes import canvas_router
 from .agentic_routes import agentic_router
 from .enhancement_utils import (
-    extract_consolidated_findings,
-    search_guidelines_for_findings,
-    analyze_report_completeness,
     generate_auto_report,
     generate_templated_report,
     build_chat_guideline_context,
     build_audit_guideline_references_memory_section,
     collect_guideline_sources_for_chat,
     format_audit_fix_context_for_system_prompt,
+    format_audit_fix_holistic_workflow_instructions,
     run_perplexity_search_chat,
     normalize_evidence_url_for_dedupe,
 )
@@ -105,9 +106,32 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️  Warning: Could not create tables: {e}")
         # Don't fail startup - migrations should have handled this
-    
+
+    # Seed TNM staging reference data (idempotent — skips if already populated)
+    try:
+        from rapid_reports_ai.tnm_lookup import seed_tnm_if_empty
+        db = SessionLocal()
+        try:
+            count = seed_tnm_if_empty(db)
+            if count > 0:
+                print(f"✓ TNM staging: seeded {count} tumour rows")
+            else:
+                print("✓ TNM staging: already populated")
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"⚠️  Warning: TNM seeding skipped: {e}")
+
+    # Start background TTL cleanup for in-memory prefetch store
+    _cleanup_task = asyncio.create_task(_cleanup_prefetch_store())
+
     yield
-    # Shutdown: nothing to do yet
+
+    _cleanup_task.cancel()
+    try:
+        await _cleanup_task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(title="Rapid Reports AI API", lifespan=lifespan)
@@ -128,45 +152,213 @@ app.add_middleware(
 )
 
 # -----------------------------------------------------------------------------
-# Enhancement and completeness analysis cache
+# Enhancement cache (findings + guidelines for chat context)
 # -----------------------------------------------------------------------------
 ENHANCEMENT_RESULTS: Dict[str, Dict[str, Any]] = {}  # Stores findings + guidelines
-COMPLETENESS_RESULTS: Dict[str, Dict[str, Any]] = {}
-COMPLETENESS_TASKS: Dict[str, asyncio.Task] = {}
+
+# -----------------------------------------------------------------------------
+# Prefetch pipeline stores
+# In-memory cache (30-min TTL) for same-session fast lookup.
+# Persisted to prefetch_results DB table for cross-session / post-restart reuse.
+# -----------------------------------------------------------------------------
+from .enhancement_models import PrefetchOutput  # noqa: E402 (after sys-path loads)
+
+PREFETCH_STORE: Dict[str, PrefetchOutput] = {}  # prefetch_id → PrefetchOutput
+PREFETCH_INDEX: Dict[str, str] = {}             # findings_hash → prefetch_id
+PREFETCH_TASKS: Dict[str, asyncio.Task] = {}    # prefetch_id → background task (for enhance to await)
+_PREFETCH_TTL_S = 1800  # 30 minutes
 
 
-def reset_completeness_state(report_id: str):
-    task = COMPLETENESS_TASKS.pop(report_id, None)
-    if task and not task.done():
-        task.cancel()
-    COMPLETENESS_RESULTS.pop(report_id, None)
-    ENHANCEMENT_RESULTS.pop(report_id, None)  # Also clear enhancement data
-
-
-async def run_completeness_async(
-    report_id: str,
-    report_content: str,
-    guidelines_data: List[dict],
-    anthropic_api_key: Optional[str]
-):
-    try:
-        result = await analyze_report_completeness(
-            report_content,
-            guidelines_data,
-            anthropic_api_key
+def _schedule_prefetch_task(
+    prefetch_id: str,
+    findings_hash: str,
+    findings: str,
+    scan_type: str,
+    clinical_history: str,
+    user_id: str,
+) -> None:
+    """Fire-and-forget prefetch; registers PREFETCH_TASKS for enhance to optionally await."""
+    task = asyncio.create_task(
+        _run_prefetch_and_store(
+            prefetch_id=prefetch_id,
+            findings_hash=findings_hash,
+            findings=findings,
+            scan_type=scan_type,
+            clinical_history=clinical_history,
+            user_id=user_id,
         )
-    except Exception as exc:  # pragma: no cover - defensive
-        result = {
-            "analysis": "Error analyzing report completeness.",
-            "structured": {
-                "checklist": [],
-                "suggestions": [],
-                "feedback": ""
-            },
-            "warning": str(exc)
-        }
-    COMPLETENESS_RESULTS[report_id] = result
-    COMPLETENESS_TASKS.pop(report_id, None)
+    )
+    PREFETCH_TASKS[prefetch_id] = task
+
+    def _done(t: asyncio.Task) -> None:
+        PREFETCH_TASKS.pop(prefetch_id, None)
+        if not t.cancelled() and t.exception() is not None:
+            print(f"[PREFETCH] background task failed: {t.exception()}")
+
+    task.add_done_callback(_done)
+
+
+async def _cleanup_prefetch_store():
+    """Background task: evict in-memory prefetch entries older than TTL."""
+    while True:
+        await asyncio.sleep(300)
+        now = time.time()
+        stale = [k for k, v in list(PREFETCH_STORE.items()) if now - v.created_at > _PREFETCH_TTL_S]
+        for k in stale:
+            PREFETCH_STORE.pop(k, None)
+
+
+async def _ensure_enhancement_loaded(report_id: str, db) -> None:
+    """Re-populate ENHANCEMENT_RESULTS from DB if missing (handles history reload)."""
+    if report_id not in ENHANCEMENT_RESULTS:
+        from .database import get_report as _get_report
+        row = _get_report(db, report_id)
+        if row and row.enhancement_json:
+            restored = dict(row.enhancement_json)
+            _pj = restored.get("prefetch_output_json")
+            if _pj and not restored.get("prefetch_output"):
+                try:
+                    from .enhancement_models import PrefetchOutput as _PO
+                    restored["prefetch_output"] = _PO.model_validate(_pj)
+                except Exception as _pe:
+                    print(f"[PREFETCH] _ensure_enhancement_loaded: failed to reconstruct PrefetchOutput: {_pe}")
+            ENHANCEMENT_RESULTS[report_id] = restored
+
+
+async def _run_tavily_search_chat(queries: List[str]) -> tuple:
+    """
+    Tavily Search for the chat `search_external_guidelines` tool.
+    Replaces the previous Perplexity-based run_perplexity_search_chat.
+    Returns (evidence_text, sources_list) — same shape as the old function.
+    """
+    import logging
+    _log = logging.getLogger(__name__)
+    tavily_key = os.getenv("TAVILY_API_KEY", "")
+    if not tavily_key:
+        _log.warning("TAVILY_API_KEY not set — chat search skipped")
+        return ("", [])
+
+    from .guideline_prefetch import (
+        DOMAIN_FILTER_PATHWAY, DOMAIN_FILTER_CLASSIFICATION, DOMAIN_FILTER_DIFFERENTIAL
+    )
+    all_domains = list({
+        *DOMAIN_FILTER_PATHWAY,
+        *DOMAIN_FILTER_CLASSIFICATION,
+        *DOMAIN_FILTER_DIFFERENTIAL,
+    })
+
+    try:
+        from tavily import AsyncTavilyClient
+        client = AsyncTavilyClient(tavily_key)
+
+        async def _one(query: str):
+            try:
+                resp = await asyncio.wait_for(
+                    client.search(
+                        query=query,
+                        search_depth="advanced",
+                        max_results=4,
+                        chunks_per_source=3,
+                        include_domains=all_domains,
+                    ),
+                    timeout=20.0,
+                )
+                return resp.get("results", [])
+            except Exception as exc:
+                _log.warning("Tavily chat search error: %s", exc)
+                return []
+
+        nested = await asyncio.gather(*[_one(q) for q in queries])
+        seen: set = set()
+        sources = []
+        evidence_lines = []
+        rank = 1
+        for results in nested:
+            for r in results:
+                url = r.get("url", "")
+                if not url or url in seen:
+                    continue
+                seen.add(url)
+                title = (r.get("title") or "").strip()
+                content = (r.get("content") or "").strip()
+                snippet = content[:400] if content else ""
+                evidence_lines.append(
+                    f"[{rank}] {title}\nURL: {url}\n{snippet}"
+                )
+                sources.append({"url": url, "title": title})
+                rank += 1
+
+        evidence = "\n\n".join(evidence_lines)
+        return evidence, sources
+    except Exception as exc:
+        _log.error("Tavily chat search failed: %s", exc)
+        return ("", [])
+
+
+async def _run_prefetch_and_store(
+    prefetch_id: str,
+    findings_hash: str,
+    findings: str,
+    scan_type: str,
+    clinical_history: str,
+    user_id: str,
+) -> None:
+    """
+    Background task: run the full prefetch pipeline and persist results to
+    PREFETCH_STORE (in-memory) and the prefetch_results DB table.
+    Errors are logged; callers proceed with the Perplexity fallback on miss.
+    """
+    import logging
+    _log = logging.getLogger(__name__)
+    _wall0 = time.perf_counter()
+    try:
+        from .guideline_prefetch import run_prefetch_pipeline
+        output = await run_prefetch_pipeline(
+            findings=findings,
+            scan_type=scan_type,
+            clinical_history=clinical_history,
+            prefetch_id=prefetch_id,
+            user_id=user_id,
+        )
+        _after_pipe = time.perf_counter()
+        PREFETCH_STORE[prefetch_id] = output
+        print(
+            f"[FLOW_TIMING] prefetch_task: pipeline_done prefetch_id={prefetch_id} "
+            f"reported_pipeline_ms={output.pipeline_ms} "
+            f"wall_pipeline_ms={int((_after_pipe - _wall0) * 1000)}"
+        )
+
+        # Persist to DB (7-day TTL) — best-effort, non-blocking
+        try:
+            from datetime import timezone as _tz, timedelta as _td
+            from .database import SessionLocal as _SL
+            from .database.models import PrefetchResult as _PR
+            _expires = datetime.now(timezone.utc) + timedelta(days=7)
+            with _SL() as _db:
+                _db.merge(_PR(
+                    findings_hash=findings_hash,
+                    user_id=uuid.UUID(user_id) if user_id else None,
+                    output_json=output.model_dump(mode="json"),
+                    pipeline_ms=output.pipeline_ms,
+                    created_at=datetime.now(timezone.utc),
+                    expires_at=_expires,
+                ))
+                _db.commit()
+            _after_db = time.perf_counter()
+            print(
+                f"[FLOW_TIMING] prefetch_task: db_persist_ok prefetch_id={prefetch_id} "
+                f"db_ms={int((_after_db - _after_pipe) * 1000)}"
+            )
+        except Exception as db_exc:
+            _log.warning("Prefetch DB persist failed: %s", db_exc)
+
+    except Exception as exc:
+        _log.error("Prefetch pipeline task failed: %s", exc, exc_info=True)
+    finally:
+        print(
+            f"[FLOW_TIMING] prefetch_task: exit prefetch_id={prefetch_id} "
+            f"total_wall_ms={int((time.perf_counter() - _wall0) * 1000)}"
+        )
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -601,6 +793,30 @@ async def chat(
         
         clinical_history = (request.variables or {}).get("CLINICAL_HISTORY", "")
 
+        # ── Fire prefetch pipeline in parallel with report generation ─────────
+        _chat_gen_t0 = time.perf_counter()
+        _findings_text = (request.variables or {}).get("FINDINGS", "").strip()
+        if _findings_text and request.use_case:
+            _prefetch_id = str(uuid.uuid4())
+            _findings_hash = hashlib.sha256(
+                f"{str(current_user.id)}:{_findings_text}".encode()
+            ).hexdigest()[:16]
+            PREFETCH_INDEX[_findings_hash] = _prefetch_id
+            _scan_type_hint = (request.variables or {}).get("SCAN_TYPE", "")
+            print(
+                f"[FLOW_TIMING] chat: prefetch_scheduled prefetch_id={_prefetch_id} "
+                f"findings_hash={_findings_hash} findings_len={len(_findings_text)}"
+            )
+            _schedule_prefetch_task(
+                prefetch_id=_prefetch_id,
+                findings_hash=_findings_hash,
+                findings=_findings_text,
+                scan_type=_scan_type_hint,
+                clinical_history=clinical_history,
+                user_id=str(current_user.id),
+            )
+        # ─────────────────────────────────────────────────────────────────────
+
         report_output = await generate_auto_report(
             model="claude",  # Model param kept for API compatibility; actual model from MODEL_CONFIG
             user_prompt=user_prompt,
@@ -608,6 +824,11 @@ async def chat(
             api_key=anthropic_api_key,
             signature=signature_value,
             clinical_history=clinical_history
+        )
+        print(
+            f"[FLOW_TIMING] chat: generate_auto_report_done "
+            f"wall_since_chat_start_ms={int((time.perf_counter() - _chat_gen_t0) * 1000)} "
+            f"report_chars={len(report_output.report_content or '')}"
         )
         
         # STRUCTURE VALIDATION (synchronous, before saving)
@@ -817,9 +1038,7 @@ Apply each fix while preserving grammatical completeness and report structure.""
             "model": model_full_name,
             "use_case": use_case_name,
             "scan_type": report_output.scan_type,
-            "applicable_guidelines": [
-                g.model_dump() for g in report_output.applicable_guidelines
-            ],
+            "applicable_guidelines": [],  # Populated from enhance response (prefetch pipeline)
         }
 
     except Exception as e:
@@ -1352,10 +1571,38 @@ async def generate_report_from_template(
         
         tm = TemplateManager()
         user_inputs = actual_user_inputs
+        _tpl_gen_t0 = time.perf_counter()
+        # ── Prefetch in parallel with templated report LLM (same as /api/chat) ──
+        _findings_text = (user_inputs.get("FINDINGS") or "").strip() if isinstance(user_inputs, dict) else ""
+        if _findings_text:
+            _prefetch_id = str(uuid.uuid4())
+            _findings_hash = hashlib.sha256(
+                f"{str(current_user.id)}:{_findings_text}".encode()
+            ).hexdigest()[:16]
+            PREFETCH_INDEX[_findings_hash] = _prefetch_id
+            _scan_type_hint = (user_inputs.get("SCAN_TYPE") or "") if isinstance(user_inputs, dict) else ""
+            _clinical = (user_inputs.get("CLINICAL_HISTORY") or "") if isinstance(user_inputs, dict) else ""
+            print(
+                f"[FLOW_TIMING] template_generate: prefetch_scheduled prefetch_id={_prefetch_id} "
+                f"findings_hash={_findings_hash} findings_len={len(_findings_text)}"
+            )
+            _schedule_prefetch_task(
+                prefetch_id=_prefetch_id,
+                findings_hash=_findings_hash,
+                findings=_findings_text,
+                scan_type=_scan_type_hint,
+                clinical_history=_clinical,
+                user_id=str(current_user.id),
+            )
         report_output_dict = await tm.generate_report_from_config(
             template_config=template.template_config,
             user_inputs=user_inputs,
             user_signature=current_user.signature
+        )
+        print(
+            f"[FLOW_TIMING] template_generate: llm_done "
+            f"wall_ms={int((time.perf_counter() - _tpl_gen_t0) * 1000)} "
+            f"report_chars={len((report_output_dict.get('report_content') or ''))}"
         )
         
         # Convert to ReportOutput format for compatibility
@@ -1364,7 +1611,6 @@ async def generate_report_from_template(
             report_content=report_output_dict["report_content"],
             description=report_output_dict["description"],
             scan_type=report_output_dict["scan_type"],
-            applicable_guidelines=[],
         )
         
         # Optional: Add structure validation for templated reports
@@ -1579,9 +1825,7 @@ Apply each fix while preserving grammatical completeness and report structure.""
             "template_id": str(template.id),
             "report_id": report_id,
             "scan_type": report_output.scan_type,
-            "applicable_guidelines": [
-                g.model_dump() for g in report_output.applicable_guidelines
-            ],
+            "applicable_guidelines": [],  # Populated from enhance response (prefetch pipeline)
         }
     
     except Exception as e:
@@ -2245,247 +2489,263 @@ class ApplyActionsRequest(BaseModel):
     additional_context: Optional[str] = None
 
 
+async def _get_prefetch_with_retry(
+    findings_hash: str,
+    findings_input: str,
+    scan_type: str,
+    clinical_history: str,
+    user_id: str,
+    db,
+) -> Optional[PrefetchOutput]:
+    """Multi-tier prefetch lookup with inline retry as last resort.
+
+    Tiers: A (memory) → B (in-flight task) → C (DB) → D (inline retry).
+    Returns None only on total failure.
+    """
+    # Tier A — in-memory store
+    _prefetch_id = PREFETCH_INDEX.get(findings_hash)
+    if _prefetch_id:
+        output = PREFETCH_STORE.get(_prefetch_id)
+        if output:
+            PREFETCH_INDEX.pop(findings_hash, None)
+            PREFETCH_STORE.pop(_prefetch_id, None)
+            print(f"enhance_report: prefetch hit (in-memory) hash={findings_hash}")
+            return output
+
+    # Tier B — await in-flight task
+    if _prefetch_id:
+        _task = PREFETCH_TASKS.get(_prefetch_id)
+        if _task and not _task.done():
+            _wait_budget = float(os.getenv("PREFETCH_ENHANCE_WAIT_SEC", "120"))
+            print(f"[FLOW_TIMING] enhance: awaiting in-flight prefetch prefetch_id={_prefetch_id}")
+            try:
+                await asyncio.wait_for(asyncio.shield(_task), timeout=_wait_budget)
+            except asyncio.TimeoutError:
+                print(f"[FLOW_TIMING] enhance: prefetch wait TIMEOUT after {_wait_budget}s")
+            output = PREFETCH_STORE.get(_prefetch_id)
+            if output:
+                PREFETCH_INDEX.pop(findings_hash, None)
+                PREFETCH_STORE.pop(_prefetch_id, None)
+                return output
+
+    # Tier C — DB lookup
+    try:
+        from .database.models import PrefetchResult as _PR
+        _row = db.query(_PR).filter(_PR.findings_hash == findings_hash).first()
+        if _row and _row.output_json:
+            output = PrefetchOutput(**_row.output_json)
+            print(f"enhance_report: prefetch hit (DB) hash={findings_hash}")
+            return output
+    except Exception as _pex:
+        print(f"enhance_report: prefetch DB lookup failed: {_pex}")
+
+    # Tier D — inline retry (run S1-S3 synchronously)
+    print(f"enhance_report: prefetch miss — running inline S1-S3 retry")
+    try:
+        from .guideline_prefetch import run_prefetch_pipeline
+        output = await asyncio.wait_for(
+            run_prefetch_pipeline(
+                findings=findings_input,
+                scan_type=scan_type,
+                clinical_history=clinical_history,
+                prefetch_id=f"inline-{findings_hash}",
+                user_id=user_id,
+            ),
+            timeout=60.0,
+        )
+        if output and output.consolidated_findings:
+            return output
+    except Exception as _rex:
+        print(f"enhance_report: inline prefetch retry failed: {_rex}")
+
+    return None
+
+
 @app.post("/api/reports/{report_id}/enhance")
 async def enhance_report(
     report_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    test_mode: bool = False,  # Add test mode parameter
-    skip_completeness: bool = False  # Skip completeness analysis if True
 ):
-    """
-    Three-phase enhancement: Extract Findings → Search Guidelines → Analyze Completeness
-    """
+    """Enhancement pipeline: Prefetch S1-S3 → S4 Synthesis → Phase 2 Audit."""
     try:
-        # Get report
         report = get_report(db, report_id, user_id=str(current_user.id))
         if not report:
             return {"success": False, "error": "Report not found"}
-        
+
         report_content = report.report_content
-        
-        # Extract original FINDINGS input for cache key generation
-        # Cache based on FINDINGS alone (not clinical history) since guidelines are generated from findings
+        _enh_wall0 = time.perf_counter()
+
+        # Extract findings_input, scan_type, clinical_history from stored input_data
         findings_input = ""
-        if report.input_data:
-            variables = report.input_data.get('variables', {}) if isinstance(report.input_data, dict) else {}
-            findings_input = variables.get('FINDINGS', '').strip() if isinstance(variables, dict) else ''
-        
-        print(f"enhance_report: Processing report_id {report_id}, content length: {len(report_content)}")
-        print(f"enhance_report: Original FINDINGS input length: {len(findings_input)} chars")
-        
-        # TEST MODE: Return simple mock data to test data flow
-        # Set TEST_MODE = True to bypass AI calls and return mock data
-        TEST_MODE = False  # Set to False to use real AI enhancement
-        if TEST_MODE:
-            print("enhance_report: TEST MODE - Returning mock data")
-            await asyncio.sleep(0.5)  # Simulate small delay
-            
-            # Extract simple findings from report content (simple keyword matching)
-            findings = []
-            if "nodule" in report_content.lower() or "nodules" in report_content.lower():
-                findings.append({
-                    "finding": "lung nodules",
-                    "specialty": "chest/thoracic",
-                    "type": "follow-up protocol",
-                    "guideline_focus": "measurement and surveillance intervals"
-                })
-            if "aneurysm" in report_content.lower():
-                findings.append({
-                    "finding": "aortic aneurysm",
-                    "specialty": "vascular",
-                    "type": "measurement protocol",
-                    "guideline_focus": "measurement criteria and follow-up"
-                })
-            if "appendicitis" in report_content.lower() or "appendix" in report_content.lower():
-                findings.append({
-                    "finding": "appendicitis",
-                    "specialty": "abdominal/emergency",
-                    "type": "diagnostic criteria",
-                    "guideline_focus": "diagnostic findings and complications"
-                })
-            
-            # If no findings detected, add a generic one
-            if not findings:
-                findings.append({
-                    "finding": "general radiology findings",
-                    "specialty": "general radiology",
-                    "type": "protocol",
-                    "guideline_focus": "standard reporting practices"
-                })
-            
-            # Mock guidelines data
-            guidelines_data = []
-            for finding in findings:
-                guidelines_data.append({
-                    "finding": finding,
-                    "discovered_bodies": [
-                        {"name": "Royal College of Radiologists", "domain": "rcr.ac.uk", "reason": "UK radiology standards", "priority": "high"},
-                        {"name": "Radiopaedia", "domain": "radiopaedia.org", "reason": "Comprehensive radiology reference", "priority": "high"}
-                    ],
-                    "body_names": ["Royal College of Radiologists", "Radiopaedia"],
-                    "reasoning": "Standard UK radiology reference sources for this finding type",
-                    "guideline_summary": f"**Guidelines for {finding['finding']}**\n\nStandard UK radiology guidelines recommend:\n\n1. Proper documentation of measurements\n2. Follow-up intervals based on size/criteria\n3. Clear reporting of diagnostic features\n\n*This is test/mock data to verify data flow.*",
-                    "sources": [
-                        {"url": "https://www.rcr.ac.uk/guidelines", "title": "RCR Guidelines"},
-                        {"url": "https://radiopaedia.org/articles/" + finding['finding'].replace(' ', '-'), "title": f"Radiopaedia: {finding['finding']}"}
-                    ]
-                })
-            
-            # Mock completeness analysis (only if not skipped)
-            completeness_analysis = None
-            if not skip_completeness:
-                completeness_analysis = {
-                    "analysis": f"**Report Review for {report_id[:8]}...**\n\nThis is a test analysis. The report has been reviewed for completeness.\n\n**Checklist Questions:**\n- Have all relevant measurements been included?\n- Are follow-up recommendations clear?\n- Have diagnostic criteria been addressed?\n\n**Suggested Additions:**\n- Consider adding specific measurements if applicable\n- Review follow-up intervals based on findings",
-                    "structured": {
-                        "checklist": [
-                            "Have all relevant measurements been included?",
-                            "Are follow-up recommendations clear?",
-                            "Have diagnostic criteria been addressed?"
-                        ],
-                        "suggestions": [
-                            "Consider adding specific measurements if applicable",
-                            "Review follow-up intervals based on findings"
-                        ],
-                        "feedback": "Report structure looks good. Consider the checklist items above."
-                    }
-                }
-            
+        scan_type = ""
+        clinical_history = ""
+        other_variables: dict = {}
+        if report.input_data and isinstance(report.input_data, dict):
+            variables = report.input_data.get("variables", {})
+            if isinstance(variables, dict):
+                findings_input = variables.get("FINDINGS", "").strip()
+                clinical_history = variables.get("CLINICAL_HISTORY", "").strip()
+                other_variables = {k: v for k, v in variables.items() if k != "FINDINGS"}
+            scan_type = report.input_data.get("extracted_scan_type", "")
+
+        print(
+            f"[FLOW_TIMING] enhance: begin report_id={report_id} "
+            f"report_chars={len(report_content)} findings_input_chars={len(findings_input)} "
+            f"scan_type={scan_type!r}"
+        )
+
+        # ── Prefetch lookup (multi-tier with inline retry) ──────────────────
+        _findings_hash = ""
+        prefetch_output = None
+        if findings_input:
+            _findings_hash = hashlib.sha256(
+                f"{str(current_user.id)}:{findings_input}".encode()
+            ).hexdigest()[:16]
+            prefetch_output = await _get_prefetch_with_retry(
+                findings_hash=_findings_hash,
+                findings_input=findings_input,
+                scan_type=scan_type,
+                clinical_history=clinical_history,
+                user_id=str(current_user.id),
+                db=db,
+            )
+
+        if not prefetch_output:
+            print(f"enhance_report: total prefetch failure — returning empty guidelines")
             return {
                 "success": True,
-                "findings": findings,
-                "guidelines": guidelines_data,
-                "completeness": completeness_analysis,
-                "completeness_pending": False,
-                "test_mode": True
+                "findings": [],
+                "guidelines": [],
+                "applicable_guidelines": [],
+                "urgency_signals": [],
+                "prefetch_failed": True,
             }
-        
-        # PRODUCTION MODE: Full AI enhancement with Groq
-        import time
-        pipeline_start = time.time()
-        
-        # Get Groq API key (system environment variable)
-        groq_api_key = get_system_api_key('groq', 'GROQ_API_KEY')
-        
-        if not groq_api_key:
-            return {
-                "success": False,
-                "error": "Groq API key not configured. Please set GROQ_API_KEY environment variable."
-            }
-        
-        # Get Anthropic API key for completeness analysis
-        anthropic_api_key = get_system_api_key('anthropic', 'ANTHROPIC_API_KEY')
-        
-        # Phase 1: Extract and consolidate findings
-        phase1_start = time.time()
-        print("enhance_report: Phase 1 - Extracting and consolidating findings...")
-        consolidated_result = await extract_consolidated_findings(report_content, groq_api_key)
-        phase1_time = time.time() - phase1_start
-        print(f"enhance_report: Phase 1 complete - consolidated into {len(consolidated_result.findings)} findings in {phase1_time:.2f}s")
 
-        # Phase 2: Search guidelines for consolidated findings
-        guidelines_data = []
-        phase2_time = 0
-        if consolidated_result.findings:
-            phase2_start = time.time()
-            print(f"enhance_report: Phase 2 - Searching guidelines for {len(consolidated_result.findings)} consolidated findings...")
-            guidelines_data = await search_guidelines_for_findings(
-                consolidated_result,
-                report_content,
-                groq_api_key,
-                findings_input=findings_input  # Pass original FINDINGS input for cache key generation
+        # ── S4 Synthesis ────────────────────────────────────────────────────
+        from .guideline_prefetch import run_synthesis
+
+        _synth_t0 = time.perf_counter()
+        guidelines_cards, synth_stats = await run_synthesis(
+            knowledge_base=prefetch_output.knowledge_base,
+            consolidated_findings=prefetch_output.consolidated_findings,
+            finding_short_labels=prefetch_output.finding_short_labels,
+            applicable_guidelines=prefetch_output.applicable_guidelines,
+            scan_type=scan_type,
+            clinical_history=clinical_history,
+            report_content=report_content,
+        )
+        _synth_ms = int((time.perf_counter() - _synth_t0) * 1000)
+        print(f"[FLOW_TIMING] enhance: S4 synthesis {_synth_ms}ms cards={len(guidelines_cards)}")
+
+        # Wrap S1 findings in the object shape the frontend expects
+        findings_response = [
+            {"finding": f, "sources": [i + 1]}
+            for i, f in enumerate(prefetch_output.consolidated_findings)
+        ]
+
+        # ── Phase 2 Audit (inline, uses synthesis output) ───────────────────
+        phase2_criteria_list = []
+        audit_id = None
+        try:
+            from .enhancement_utils import run_audit_phase2
+
+            phase2_criteria_list = await run_audit_phase2(
+                report_content=report_content,
+                scan_type=scan_type,
+                clinical_history=clinical_history,
+                synthesis_cards=guidelines_cards,
+                urgency_signals=prefetch_output.urgency_signals,
+                consolidated_findings=prefetch_output.consolidated_findings,
+                finding_short_labels=prefetch_output.finding_short_labels,
             )
-            phase2_time = time.time() - phase2_start
-            print(f"enhance_report: Phase 2 complete - found guidelines for {len(guidelines_data)} findings in {phase2_time:.2f}s")
-        else:
-            print("enhance_report: Phase 2 skipped - no findings to search")
-        
-        completeness_analysis = None
-        completeness_pending = False
-        
-        if not skip_completeness:
-            completeness_analysis = COMPLETENESS_RESULTS.get(report_id)
-            completeness_pending = report_id in COMPLETENESS_TASKS
 
-            if not completeness_analysis and not completeness_pending:
-                if anthropic_api_key:
-                    print("enhance_report: Phase 3 - Scheduling Claude completeness analysis...")
-                    snapshot = copy.deepcopy(guidelines_data)
-                    task = asyncio.create_task(
-                        run_completeness_async(
-                            report_id,
-                            report_content,
-                            snapshot,
-                            anthropic_api_key
-                        )
+            # Persist Phase 2 criteria (append to existing Phase 1 row or create new)
+            try:
+                from .database.crud import append_audit_criteria
+                from .database.models import ReportAudit as _RA
+
+                existing_audit = (
+                    db.query(_RA)
+                    .filter(_RA.report_id == uuid.UUID(report_id))
+                    .order_by(_RA.created_at.desc())
+                    .first()
+                )
+                if existing_audit:
+                    audit_id = str(existing_audit.id)
+                    all_statuses = [c.status for c in existing_audit.criteria] + [
+                        c.status if hasattr(c, "status") else c.get("status", "pass")
+                        for c in phase2_criteria_list
+                    ]
+                    new_overall = "pass"
+                    if any(s == "flag" for s in all_statuses):
+                        new_overall = "flag"
+                    elif any(s == "warning" for s in all_statuses):
+                        new_overall = "warning"
+                    append_audit_criteria(
+                        db, existing_audit.id, phase2_criteria_list, new_overall,
                     )
-                    COMPLETENESS_TASKS[report_id] = task
-                    completeness_pending = True
                 else:
-                    print("enhance_report: Phase 3 - Anthropic API key missing, returning fallback analysis")
-                    fallback_result = await analyze_report_completeness(
-                        report_content,
-                        guidelines_data,
-                        anthropic_api_key
-                    )
-                    COMPLETENESS_RESULTS[report_id] = fallback_result
-                    completeness_analysis = fallback_result
-                    completeness_pending = False
+                    print("enhance_report: no Phase 1 audit row yet — Phase 2 criteria stored in enhancement_json only")
+            except Exception as _pa_ex:
+                print(f"enhance_report: Phase 2 audit persistence failed: {_pa_ex}")
 
-            completeness_analysis = completeness_analysis or COMPLETENESS_RESULTS.get(report_id)
-            completeness_pending = completeness_pending or (report_id in COMPLETENESS_TASKS)
-        else:
-            print("enhance_report: Skipping completeness analysis (skip_completeness=True)")
+        except Exception as _p2_ex:
+            print(f"enhance_report: Phase 2 audit failed (non-fatal): {_p2_ex}")
 
-        # Store enhancement results for chat context
-        ENHANCEMENT_RESULTS[report_id] = {
-            "findings": [finding.model_dump() for finding in consolidated_result.findings],
-            "guidelines": guidelines_data
+        # ── Store results & persist ─────────────────────────────────────────
+        phase2_criteria_dicts = [
+            c.model_dump() if hasattr(c, "model_dump") else c
+            for c in phase2_criteria_list
+        ]
+
+        enhancement_data = {
+            "findings": findings_response,
+            "guidelines": guidelines_cards,
+            "urgency_signals": prefetch_output.urgency_signals,
+            "applicable_guidelines": prefetch_output.applicable_guidelines,
+            "prefetch_output_json": prefetch_output.model_dump(),
+            "synthesis_stats": synth_stats,
+            "phase2_audit": {"criteria": phase2_criteria_dicts},
         }
-        
-        # Calculate total pipeline time (excluding async Phase 3)
-        pipeline_time = time.time() - pipeline_start
-        print(f"enhance_report: ✅ Pipeline complete (Phases 1+2) in {pipeline_time:.2f}s")
-        print(f"  ├─ Phase 1 (Extraction): {phase1_time:.2f}s")
-        print(f"  ├─ Phase 2 (Guidelines): {phase2_time:.2f}s")
-        if skip_completeness:
-            print(f"  └─ Phase 3 (Analysis): skipped")
-        else:
-            print(f"  └─ Phase 3 (Analysis): {'async (running)' if completeness_pending else 'completed'}")
+
+        _enhancement_mem = dict(enhancement_data)
+        _enhancement_mem["prefetch_output"] = prefetch_output
+        ENHANCEMENT_RESULTS[report_id] = _enhancement_mem
+
+        try:
+            from .database.models import Report as _Report
+            _rep = db.query(_Report).filter(_Report.id == uuid.UUID(report_id)).first()
+            if _rep:
+                _rep.enhancement_json = enhancement_data
+                db.commit()
+        except Exception as _eex:
+            print(f"enhance_report: enhancement_json DB write failed: {_eex}")
+
+        _enh_wall_ms = int((time.perf_counter() - _enh_wall0) * 1000)
+        print(
+            f"[FLOW_TIMING] enhance: end report_id={report_id} total_wall_ms={_enh_wall_ms} "
+            f"guidelines_cards={len(guidelines_cards)} phase2_criteria={len(phase2_criteria_list)}"
+        )
 
         return {
             "success": True,
-            "findings": [finding.model_dump() for finding in consolidated_result.findings],
-            "guidelines": guidelines_data,
-            "completeness": completeness_analysis,
-            "completeness_pending": completeness_pending
+            "findings": findings_response,
+            "guidelines": guidelines_cards,
+            "applicable_guidelines": prefetch_output.applicable_guidelines,
+            "urgency_signals": prefetch_output.urgency_signals,
+            "phase2_audit": {
+                "criteria": phase2_criteria_dicts,
+                "audit_id": audit_id,
+            },
         }
-        
+
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
         print(f"ERROR in enhance_report for report_id {report_id}: {str(e)}")
         print(f"Traceback: {error_trace}")
         return {"success": False, "error": str(e), "traceback": error_trace}
-
-
-@app.get("/api/reports/{report_id}/completeness")
-async def get_completeness_status(
-    report_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    report = get_report(db, report_id, user_id=str(current_user.id))
-    if not report:
-        return {"success": False, "error": "Report not found"}
-    
-    pending = report_id in COMPLETENESS_TASKS
-    completeness = COMPLETENESS_RESULTS.get(report_id)
-    return {
-        "success": True,
-        "pending": pending,
-        "completeness": completeness
-    }
 
 
 class ChatRequest(BaseModel):
@@ -2636,7 +2896,8 @@ async def chat_about_report(
         
         from groq import Groq
         client = Groq(api_key=groq_api_key)
-        
+
+        await _ensure_enhancement_loaded(report_id, db)
         enhancement_data = ENHANCEMENT_RESULTS.get(report_id) or {}
         findings = enhancement_data.get("findings", [])
         guidelines = enhancement_data.get("guidelines", [])
@@ -2650,11 +2911,14 @@ async def chat_about_report(
         guideline_sources = collect_guideline_sources_for_chat(guidelines)
 
         audit_fix_block = ""
+        audit_holistic_block = ""
         if request.audit_fix_context is not None:
+            audit_holistic_block = format_audit_fix_holistic_workflow_instructions()
             audit_fix_block = format_audit_fix_context_for_system_prompt(request.audit_fix_context)
             print(
                 f"📎 audit_fix_context: criterion={request.audit_fix_context.criterion!r} "
-                f"audit_id={request.audit_fix_context.audit_id!r} chars={len(audit_fix_block)}"
+                f"audit_id={request.audit_fix_context.audit_id!r} "
+                f"holistic_chars={len(audit_holistic_block)} audit_chars={len(audit_fix_block)}"
             )
 
         audit_memory_refs = enhancement_data.get("audit_guideline_references") or []
@@ -2724,6 +2988,7 @@ async def chat_about_report(
             f"## Report\n{report.report_content}"
             f"{enhancement_context}"
             f"{audit_memory_block}"
+            f"{audit_holistic_block}"
             f"{audit_fix_block}"
         )
         
@@ -2827,9 +3092,10 @@ async def chat_about_report(
                     seen_q.add(q)
                     uniq_queries.append(q)
             uniq_queries = uniq_queries[:3]
-            evidence, perplexity_sources = (
-                await run_perplexity_search_chat(uniq_queries) if uniq_queries else ("", [])
-            )
+            if uniq_queries:
+                evidence, perplexity_sources = await _run_tavily_search_chat(uniq_queries)
+            else:
+                evidence, perplexity_sources = ("", [])
             deferred_note = json.dumps(
                 {
                     "note": "Answer using external search evidence first. If report edits are still needed, call apply_structured_actions in your next assistant turn only."
@@ -3408,7 +3674,7 @@ async def restore_report_version_endpoint(
         # Set this version as the current one (without creating a new version)
         set_current_report_version(db, report_id=report_id, version_id=version_id)
 
-        reset_completeness_state(report_id)
+        ENHANCEMENT_RESULTS.pop(report_id, None)
 
         return {
             "success": True,
@@ -3483,8 +3749,8 @@ async def update_report_content(
         except Exception as exc:
             print(f"Warning: failed to create report version snapshot for manual update: {exc}")
         
-        reset_completeness_state(report_id)
-        
+        ENHANCEMENT_RESULTS.pop(report_id, None)
+
         return {
             "success": True,
             "report": report.to_dict(),
@@ -3984,67 +4250,91 @@ async def run_audit(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Run an audit/QA check on a radiology report.
-    Evaluates against 6 quality criteria using AI.
-    If report_id is provided, saves the audit to the database.
+    """Run Phase 1 audit (6 report-integrity criteria).
+
+    Phase 2 (3 guideline-compliance criteria) runs inside /enhance after S4 synthesis.
     """
     try:
-        # Validate report content
+        _audit_t0 = time.perf_counter()
         if not request.report_content or not request.report_content.strip():
             raise HTTPException(status_code=400, detail="Report content is required")
 
-        from .guideline_payload import (
-            normalize_applicable_guidelines_order,
-            validate_applicable_guidelines_payload,
+        if request.report_id:
+            await _ensure_enhancement_loaded(request.report_id, db)
+
+        print(
+            f"[FLOW_TIMING] audit: begin report_id={request.report_id!r} "
+            f"content_chars={len(request.report_content)}"
         )
 
-        _ags = validate_applicable_guidelines_payload(request.applicable_guidelines or [])
-        _ags = normalize_applicable_guidelines_order(_ags)
-        print(
-            f"[GUIDELINE_PIPELINE] POST /api/audit: report_id={request.report_id!r} "
-            f"applicable_guidelines={len(_ags)} report_chars={len(request.report_content)}"
-        )
-        for _i, _g in enumerate(_ags):
-            if isinstance(_g, dict):
-                print(
-                    f"[GUIDELINE_PIPELINE]   request guideline [{_i}]: "
-                    f"system={_g.get('system')!r} type={_g.get('type')!r} "
-                    f"search_keywords={_g.get('search_keywords')!r}"
+        # Load findings_input + other_variables for input_fidelity
+        findings_input = ""
+        other_variables: dict = {}
+        urgency_signals: list = []
+        if request.report_id:
+            _report = get_report(db, request.report_id, user_id=str(current_user.id))
+            if _report and _report.input_data and isinstance(_report.input_data, dict):
+                variables = _report.input_data.get("variables", {})
+                if isinstance(variables, dict):
+                    findings_input = variables.get("FINDINGS", "").strip()
+                    other_variables = {k: v for k, v in variables.items() if k != "FINDINGS"}
+            _enh = ENHANCEMENT_RESULTS.get(request.report_id or "")
+            if _enh:
+                urgency_signals = _enh.get("urgency_signals", [])
+
+        from .enhancement_utils import run_audit_phase1, run_full_audit
+
+        _enh = ENHANCEMENT_RESULTS.get(request.report_id or "")
+        has_synthesis = bool(_enh and _enh.get("guidelines"))
+
+        try:
+            if has_synthesis:
+                prefetch_output = _enh.get("prefetch_output")
+                consolidated_findings: list = []
+                finding_short_labels: list = []
+                if prefetch_output and hasattr(prefetch_output, "consolidated_findings"):
+                    consolidated_findings = prefetch_output.consolidated_findings or []
+                    finding_short_labels = prefetch_output.finding_short_labels or []
+                elif prefetch_output and isinstance(prefetch_output, dict):
+                    consolidated_findings = prefetch_output.get("consolidated_findings", [])
+                    finding_short_labels = prefetch_output.get("finding_short_labels", [])
+                else:
+                    pf_json = _enh.get("prefetch_output_json", {})
+                    consolidated_findings = pf_json.get("consolidated_findings", [])
+                    finding_short_labels = pf_json.get("finding_short_labels", [])
+
+                result = await run_full_audit(
+                    report_content=request.report_content,
+                    scan_type=request.scan_type or "",
+                    clinical_history=request.clinical_history or "",
+                    findings_input=findings_input,
+                    other_variables=other_variables,
+                    urgency_signals=urgency_signals,
+                    synthesis_cards=_enh.get("guidelines", []),
+                    consolidated_findings=consolidated_findings,
+                    finding_short_labels=finding_short_labels,
                 )
             else:
-                print(f"[GUIDELINE_PIPELINE]   request guideline [{_i}]: non-dict payload {type(_g).__name__}")
-        
-        # Run the audit (Zai-GLM-4.7 primary, Qwen 32B fallback)
-        from .enhancement_utils import audit_report, MODEL_CONFIG, _get_model_provider, _get_api_key_for_provider
-        
-        primary_audit_model = MODEL_CONFIG["AUDIT_ANALYZER"]
-        provider = _get_model_provider(primary_audit_model)
-        api_key = _get_api_key_for_provider(provider)  # Raises if GROQ_API_KEY not set (primary is Qwen)
-        
-        try:
-            result = await audit_report(
-                report_content=request.report_content,
-                scan_type=request.scan_type or "",
-                clinical_history=request.clinical_history or "",
-                api_key=api_key,
-                applicable_guidelines=_ags,
-                db=db,
-            )
+                result = await run_audit_phase1(
+                    report_content=request.report_content,
+                    scan_type=request.scan_type or "",
+                    clinical_history=request.clinical_history or "",
+                    findings_input=findings_input,
+                    other_variables=other_variables,
+                    urgency_signals=urgency_signals,
+                )
         except Exception as e:
-            # LLM parsing error - return 422
             print(f"Audit model error: {type(e).__name__}: {str(e)}")
             raise HTTPException(
                 status_code=422,
                 detail=f"Audit model returned malformed response: {str(e)[:200]}"
             )
-        
-        # If report_id provided, save to database
+
+        # Save to database
         audit_id = None
         if request.report_id:
             report = get_report(db, request.report_id, user_id=str(current_user.id))
             if report:
-                model_used = result.get("model_used", MODEL_CONFIG.get("AUDIT_ANALYZER", "zai-glm-4.7"))
                 audit = create_report_audit(
                     db=db,
                     report=report,
@@ -4052,37 +4342,156 @@ async def run_audit(
                     audit_result=result,
                     scan_type=request.scan_type or "",
                     clinical_history=request.clinical_history or "",
-                    model_used=model_used
+                    model_used="zai-glm-4.7",
                 )
                 audit_id = str(audit.id)
-        
-        _nref = len(result.get("guideline_references") or [])
-        _ninj = sum(1 for r in (result.get("guideline_references") or []) if r.get("injected"))
-        print(
-            f"[GUIDELINE_PIPELINE] POST /api/audit done: guideline_references={_nref} "
-            f"injected_true={_ninj} audit_id={audit_id!r}"
-        )
 
-        # Phase 1.5: cache audit guideline refs for chat (same session; DB remains source of truth)
-        _rid = request.report_id
-        if _rid and result.get("guideline_references") is not None:
-            _base = dict(ENHANCEMENT_RESULTS.get(_rid) or {})
-            _base["audit_guideline_references"] = result.get("guideline_references") or []
-            _base.setdefault("findings", [])
-            _base.setdefault("guidelines", [])
-            ENHANCEMENT_RESULTS[_rid] = _base
+        _audit_ms = int((time.perf_counter() - _audit_t0) * 1000)
+        print(
+            f"[FLOW_TIMING] audit: end report_id={request.report_id!r} "
+            f"total_wall_ms={_audit_ms} criteria={len(result.get('criteria', []))}"
+        )
 
         return {
             "success": True,
             "audit_id": audit_id,
-            **result
+            "partial": result.get("partial", False),
+            **result,
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         import traceback
         print(f"Error in audit endpoint: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/audit/phase2")
+async def run_audit_phase2_endpoint(
+    request: AuditRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Re-run Phase 2 audit (3 guideline-compliance criteria) against current report content.
+
+    Uses stored synthesis cards from ENHANCEMENT_RESULTS or DB — does NOT re-run S4.
+    Called by the frontend on re-audit to refresh stale Phase 2 criteria.
+    """
+    try:
+        _p2_t0 = time.perf_counter()
+        if not request.report_content or not request.report_content.strip():
+            raise HTTPException(status_code=400, detail="Report content is required")
+
+        report_id = request.report_id
+        if not report_id:
+            raise HTTPException(status_code=400, detail="report_id is required for Phase 2 re-audit")
+
+        await _ensure_enhancement_loaded(report_id, db)
+        _enh = ENHANCEMENT_RESULTS.get(report_id)
+        if not _enh:
+            return {"success": False, "error": "No enhancement data found — run /enhance first", "criteria": []}
+
+        synthesis_cards = _enh.get("guidelines", [])
+        if not synthesis_cards:
+            return {"success": False, "error": "No synthesis cards available", "criteria": []}
+
+        prefetch_output = _enh.get("prefetch_output")
+        urgency_signals = _enh.get("urgency_signals", [])
+        consolidated_findings: list = []
+        finding_short_labels: list = []
+        if prefetch_output and hasattr(prefetch_output, "consolidated_findings"):
+            consolidated_findings = prefetch_output.consolidated_findings or []
+            finding_short_labels = prefetch_output.finding_short_labels or []
+        elif prefetch_output and isinstance(prefetch_output, dict):
+            consolidated_findings = prefetch_output.get("consolidated_findings", [])
+            finding_short_labels = prefetch_output.get("finding_short_labels", [])
+        else:
+            pf_json = _enh.get("prefetch_output_json", {})
+            consolidated_findings = pf_json.get("consolidated_findings", [])
+            finding_short_labels = pf_json.get("finding_short_labels", [])
+
+        scan_type = request.scan_type or ""
+        clinical_history = request.clinical_history or ""
+
+        print(
+            f"[FLOW_TIMING] audit_phase2: begin report_id={report_id!r} "
+            f"content_chars={len(request.report_content)} synth_cards={len(synthesis_cards)}"
+        )
+
+        from .enhancement_utils import run_audit_phase2
+
+        phase2_criteria_list = await run_audit_phase2(
+            report_content=request.report_content,
+            scan_type=scan_type,
+            clinical_history=clinical_history,
+            synthesis_cards=synthesis_cards,
+            urgency_signals=urgency_signals,
+            consolidated_findings=consolidated_findings,
+            finding_short_labels=finding_short_labels,
+        )
+
+        phase2_criteria_dicts = [
+            c.model_dump() if hasattr(c, "model_dump") else c
+            for c in phase2_criteria_list
+        ]
+
+        # Persist Phase 2 criteria to the latest audit row for this report
+        audit_id = None
+        if phase2_criteria_dicts:
+            try:
+                from .database.crud import append_audit_criteria
+                from .database.models import ReportAudit as _RA
+
+                latest_audit = (
+                    db.query(_RA)
+                    .filter(_RA.report_id == uuid.UUID(report_id))
+                    .order_by(_RA.created_at.desc())
+                    .first()
+                )
+                if latest_audit:
+                    audit_id = str(latest_audit.id)
+                    existing_names = {
+                        c.criterion for c in latest_audit.criteria
+                    }
+                    new_only = [
+                        c for c in phase2_criteria_dicts
+                        if c.get("criterion") not in existing_names
+                    ]
+                    if new_only:
+                        from .enhancement_utils import merge_audit_phases
+                        merged = merge_audit_phases(
+                            {"criteria": [
+                                {"criterion": c.criterion, "status": c.status}
+                                for c in latest_audit.criteria
+                            ]},
+                            new_only,
+                        )
+                        append_audit_criteria(
+                            db, latest_audit.id, new_only,
+                            merged.get("overall_status", "pass"),
+                        )
+            except Exception as _pe:
+                print(f"[AUDIT] Phase 2 re-audit: DB persist failed: {_pe}")
+
+        _p2_ms = int((time.perf_counter() - _p2_t0) * 1000)
+        print(
+            f"[FLOW_TIMING] audit_phase2: end report_id={report_id!r} "
+            f"total_wall_ms={_p2_ms} criteria={len(phase2_criteria_dicts)}"
+        )
+
+        return {
+            "success": True,
+            "audit_id": audit_id,
+            "criteria": phase2_criteria_dicts,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"Error in audit phase2 endpoint: {e}")
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -4100,12 +4509,12 @@ async def acknowledge_audit_criterion(
     Marks it as reviewed with the specified resolution method.
     """
     try:
-        # Valid criterion names
         valid_criteria = [
             "anatomical_accuracy", "clinical_relevance", "recommendations",
             "clinical_flagging", "report_completeness", "diagnostic_fidelity",
+            "input_fidelity", "scan_coverage", "characterisation_gap",
         ]
-        legacy_audit_criteria = ("language_quality",)  # pre–diagnostic_fidelity DB rows
+        legacy_audit_criteria = ("language_quality",)
 
         if criterion not in valid_criteria and criterion not in legacy_audit_criteria:
             raise HTTPException(

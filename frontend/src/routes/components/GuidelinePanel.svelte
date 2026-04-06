@@ -36,6 +36,8 @@
 	// When true, suppresses the outer wrapper (header label + top border/margin) so
 	// the component can be embedded inside a parent that provides its own section header.
 	export let compact: boolean = false;
+	/** When set, shows an "Ask →" control to prefill Copilot chat */
+	export let onAskAbout: ((text: string) => void) | undefined = undefined;
 
 	let expanded = new Set<number>();
 	let copiedIndex: number | null = null;
@@ -157,6 +159,15 @@
 								>
 									{expanded.has(i) ? 'Hide criteria' : 'Show criteria'}
 								</button>
+								{#if onAskAbout}
+									<button
+										type="button"
+										class="text-[9px] font-semibold px-2 py-1 rounded-md border border-purple-500/25 text-purple-300/90 hover:bg-purple-500/15 transition-colors"
+										on:click={() => onAskAbout?.(`[${ref.system}] ${ref.context}`.slice(0, 800))}
+									>
+										Ask →
+									</button>
+								{/if}
 								<button
 									type="button"
 									class="text-[9px] font-semibold px-2 py-1 rounded-md border min-w-[92px] justify-center inline-flex items-center gap-1 transition-all duration-300 ease-out

@@ -1,0 +1,4191 @@
+{
+  "source": "UICC TNM Classification of Malignant Tumours, 9th Edition (2025)",
+  "editors": "Brierley, Giuliani, O'Sullivan, Rous, Van Eycken",
+  "effective": "1 January 2026",
+  "isbn": "9781394216857",
+  "tumour_count": 60,
+  "cleanup_version": "2.0",
+  "cleanup_notes": [
+    "Re-parsed from raw_text with single-space regex fix",
+    "Stripped c/p prefixes from keys",
+    "Removed spurious non-TNM keys",
+    "Cleaned description artifacts",
+    "raw_text excluded for RAG-ready output"
+  ],
+  "tumours": {
+    "Oral Cavity and Mucosal Lip": {
+      "tumour": "Oral Cavity and Mucosal Lip",
+      "icd_o": "C00.3, C02",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classification applies only to carcinomas (excluding carcinomas of minor salivary glands) of the mucosal surfaces of the lips and of the oral cavity. For vermillion bor- der of the lip, see page 138) There should be histological confirmation of the disease. Anatomical Sites and Subsites Oral Cavity including Mucosal Lip (ICD-O-4 C00.3-5, C02.0-C02.3, C02.9, C03-C06)* 1. Buccal mucosa a) Mucosa of upper and lower lips (C00.3-5)* b) Cheek mucosa (C06.0) c) Retromolar areas (C06.2) d) Buccoalveolar sulci, upper and lower (vestibule of mouth) (C06.1) 2. Upper alveolus and gingiva (upper gum) (C03.0) 3. Lower alveolus and gingiva (lower gum) (C03.1) 4. Hard palate (C05.0) 5. Tongue** a) Dorsal surface and lateral borders anterior to circumvallate papillae (anterior two-thirds) (C02.0, 1) b) Inferior (ventral) surface (C02.2) 6. Floor of mouth (C04) Notes * The dry lip and vermillion border of the lip (C00.0, C00.1, C00.2) and commissure (C00.6) are included in skin of the head and neck (page 138). ** Base of tongue/lingual tonsil C02.4), posterior to circumvallate papillae, is classified in the oropharynx. Regional Lymph Nodes The regional lymph nodes are the cervical nodes. Clinical TNM Classification",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ",
+          "T1": "Tumour 2 cm or less in greatest dimension and 5 mm or less depth of invasion 1,2",
+          "T2": "Tumour 2 cm or less in greatest dimension and more than 5 mm depth of invasion or Tumour more than 2 cm but not more than 4 cm in greatest dimension and depth of invasion not more than 10 mm Head & Neck",
+          "T3": "Tumour more than 2 cm but not more than 4 cm in greatest dimension and depth of invasion more than 10 mm or Tumour more than 4 cm in greatest dimension and not more than 10 mm depth of invasion",
+          "T4a": "Tumour more than 4 cm in greatest dimension and more than 10 mm depth of invasion or Tumour invades through the cortical bone (with involvement of spongiosa/ spongy bone) of the mandible or maxilla or involves the maxillary sinus, or invades the skin of the face 2",
+          "T4b": "Tumour invades masticator space, pterygoid plates or skull base, or encases internal carotid artery"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in a single ipsilateral lymph node, 3 cm or less in greatest dimen- sion without clinical extranodal extension",
+          "N2": "Metastasis described as:",
+          "N2a": "Metastasis in a single ipsilateral lymph node more than 3 cm but not more than 6 cm in greatest dimension without clinical extranodal extension",
+          "N2b": "Metastasis in multiple ipsilateral lymph nodes, not more than 6 cm in greatest dimension, without clinical extranodal extension",
+          "N2c": "Metastasis in bilateral or contralateral lymph nodes, not more than 6 cm in greatest dimension, without clinical extranodal extension",
+          "N3a": "Metastasis in a lymph node more than 6 cm in greatest dimension without clinical extranodal extension",
+          "N3b": "Metastasis in a single or multiple lymph nodes with clinical extranodal extension*"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis Pathological TNM Classification"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T4a",
+          "N": "N0, N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "N3",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVC",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Pharynx": {
+      "tumour": "Pharynx",
+      "icd_o": "C01, C02.4, C05.1, C09, C10.0, C10.2, C10.9, C11",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classification applies only to carcinomas (excluding carcinomas of minor salivary glands). There should be histological confirmation of the disease.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour, but EBV-positive (EBV-associated) cervical node(s) metastasis present",
+          "Tis": "Carcinoma in situ",
+          "T1": "Tumour confined to nasopharynx or Tumour extends to oropharynx and/or nasal cavity without parapharyngeal involvement",
+          "T2": "Tumour with extension to parapharyngeal space or Tumour infiltration of the medial pterygoid, lateral pterygoid and/or preverte- bral muscles",
+          "T3": "Tumour invades bony structures of skull base, cervical vertebrae, pterygoid structures and/or paranasal sinuses",
+          "T4": "Tumour with any of the following: • Intracranial extension • Unequivocal clinical and/or radiological involvement of cranial nerves • Involvement of hypopharynx • Invading orbit (including inferior orbital fissure) • Involvement of parotid gland • Infiltration beyond the anterolateral surface of the lateral pterygoid muscle"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Unilateral metastasis in cervical lymph node(s), and/or unilateral or bilateral metastasis in retropharyngeal lymph nodes, and 6 cm or less in greatest dimen- sion, and above the caudal border of cricoid cartilage, and without advanced clinical/radiological extranodal extension*",
+          "N2": "Bilateral metastasis in cervical lymph nodes, and 6 cm or less in greatest dimen- sion, and above the caudal border of cricoid cartilage, and without advanced clinical/radiological extranodal extension*",
+          "N3": "Metastasis in cervical lymph node(s) greater than 6 cm in greatest dimension or Extension below the caudal border of cricoid cartilage or Advanced clinical/radiological extranodal extension*"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis.",
+          "M1a": "Distant metastasis. Three or fewer lesion(s) in one or more organs",
+          "M1b": "Distant metastasis of more than three lesions in one or more organs"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IA",
+          "T": "T1, T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB",
+          "T": "T0, T1, T2",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T0, T1, T2",
+          "N": "N2",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T4",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1a"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1b"
+        }
+      ]
+    },
+    "Larynx": {
+      "tumour": "Larynx",
+      "icd_o": "C32.0, C10.1",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ",
+          "T1": "Tumour limited to subglottis",
+          "T2": "Tumour extends to vocal cord(s) with normal or impaired mobility",
+          "T3": "Tumour limited to larynx with vocal cord fixation",
+          "T4a": "Tumour invades cricoid or thyroid cartilage and/or invades tissues beyond the larynx, e.g., trachea, soft tissues of neck including deep/extrinsic muscle of tongue (genioglossus, hyoglossus, palatoglossus and styloglossus), strap mus- cles, thyroid, oesophagus",
+          "T4b": "Tumour invades prevertebral space, encases carotid artery or invades mediasti- nal structures",
+          "T1a": "Tumour limited to one vocal cord",
+          "T1b": "Tumour involves both vocal cords"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in a single ipsilateral lymph node, 3 cm or less in greatest dimen- sion without clinical extranodal extension",
+          "N2": "Metastasis described as:",
+          "N2a": "Metastasis in a single ipsilateral lymph node more than 3 cm but not more than 6 cm in greatest dimension, without clinical extranodal extension",
+          "N2b": "Metastasis in multiple ipsilateral lymph nodes, none more than 6 cm in greatest dimension, without clinical extranodal extension",
+          "N2c": "Metastasis in bilateral or contralateral lymph nodes, none more than 6 cm in greatest dimension, without clinical extranodal extension",
+          "N3a": "Metastasis in a lymph node more than 6 cm in greatest dimension without clinical extranodal extension",
+          "N3b": "Metastasis in a single or multiple lymph nodes with clinical extranodal extension*"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis Pathological TNM Classification"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T4a",
+          "N": "N0, N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "T4b",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVC",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Nasal Cavity and Paranasal Sinuses": {
+      "tumour": "Nasal Cavity and Paranasal Sinuses",
+      "icd_o": "C30.0, C31.0",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classif ication applies only to carcinomas (excluding carcinomas of minor salivary glands). There should be histological confirmation of the disease. Head & Neck",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ",
+          "T1": "Tumour restricted to one subsite of nasal cavity or ethmoid sinus, with or without bony invasion",
+          "T2": "Tumour involves two subsites in a single site or extends to involve an adjacent site within the nasoethmoidal complex, with or without bony invasion",
+          "T3": "Tumour extends to invade the medial wall or floor of the orbit, maxillary sinus, palate or cribriform plate",
+          "T4a": "Tumour invades any of the following: anterior orbital contents, skin of nose or cheek, minimal extension to anterior cranial fossa, pterygoid plates, sphenoid or frontal sinuses",
+          "T4b": "Tumour invades any of the following: orbital apex, dura, brain, middle cranial fossa, cranial nerves other than V2, nasopharynx or clivus"
+        },
+        "N": {
+          "N1": "Metastasis in a single ipsilateral lymph node, 3 cm or less in greatest dimen- sion without clinical extranodal extension",
+          "N2": "Metastasis described as:",
+          "N2a": "Metastasis in a single ipsilateral lymph node, more than 3 cm but not more than 6 cm in greatest dimension, without clinical extranodal extension",
+          "N2b": "Metastasis in multiple ipsilateral lymph nodes, none more than 6 cm in greatest dimension, without clinical extranodal extension",
+          "N2c": "Metastasis in bilateral or contralateral lymph nodes, none more than 6 cm in greatest dimension, without clinical extranodal extension",
+          "N3a": "Metastasis in a lymph node more than 6 cm in greatest dimension without extranodal extension or",
+          "N3b": "Metastasis in a single or multiple lymph nodes with clinical extranodal extension*"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis Pathological TNM Classification"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T1, T2, T3",
+          "N": "N2",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "T4b",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVC",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Unknown Primary - Cervical Nodes": {
+      "tumour": "Unknown Primary - Cervical Nodes",
+      "icd_o": "C77.0",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "There should be histological confirmation of squamous cell carcinoma with lymph node metastases but without an identified primary carcinoma. Histological methods should be used to identify EBV and HPV/p16-associated tumours. If there is evidence of EBV, the nasopharyngeal classification is applied. If there is evidence of HPV and/or positive immunohistochemistry p16 overexpression, the p16-positive oropharyngeal classification is applied. Head & Neck Clinical TNM Classification EBV Negative and HPV Independent or Unknown The definitions of the N and M categories correspond with the AJCC 8th edition/ version.",
+      "tnm": {
+        "T": {
+          "T0": "No evidence of primary tumour"
+        },
+        "N": {
+          "N1": "Metastasis in a single ipsilateral lymph node, 3 cm or less in greatest dimen- sion without clinical extranodal extension",
+          "N2": "Metastasis described as:",
+          "N2a": "Metastasis in a single ipsilateral lymph node, more than 3 cm but not more than 6 cm in greatest dimension, without clinical extranodal extension",
+          "N2b": "Metastasis in multiple ipsilateral lymph nodes, none more than 6 cm in greatest dimension, without clinical extranodal extension",
+          "N2c": "Metastasis in bilateral lymph nodes, none more than 6 cm in greatest dimension, without clinical extranodal extension",
+          "N3a": "Metastasis in a lymph node more than 6 cm in greatest dimension without clinical extranodal extension",
+          "N3b": "Metastasis in a single or multiple lymph nodes with clinical extranodal extension*"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis Pathological TNM Classification pN - Regional Lymph Nodes"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage III",
+          "T": "T0",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T0",
+          "N": "N2",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "T0",
+          "N": "N3",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVC",
+          "T": "T0",
+          "N": "N1, N2, N3",
+          "M": "M1"
+        }
+      ]
+    },
+    "Malignant Melanoma of Upper Aerodigestive Tract": {
+      "tumour": "Malignant Melanoma of Upper Aerodigestive Tract",
+      "icd_o": "C00, C09, C30",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "T3": "Tumour limited to the epithelium and/or submucosa (mucosal disease)",
+          "T4a": "Tumour invades deep soft tissue, cartilage, bone or overlying skin",
+          "T4b": "Tumour invades any of the following: brain, dura, skull base, lower cranial nerves (IX, X, XI, XII), masticator space, carotid artery, prevertebral space and mediastinal structures"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis Pathological TNM Classification"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage III",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T4a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "T4b",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVC",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Salivary Glands": {
+      "tumour": "Salivary Glands",
+      "icd_o": "C00, C14, C15.0, C15.3, C30, C33, C41.1",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ",
+          "T1": "Tumour 2 cm or less in greatest dimension without extraparenchymal extension*",
+          "T2": "Tumour more than 2 cm but not more than 4 cm in greatest dimension with- out extraparenchymal extension*",
+          "T3": "Tumour more than 4 cm, or gross extraparenchymal or adjacent site mucosal/ soft tissue extension beyond site without structural involvement",
+          "T4a": "Tumour invades immediately adjacent structures, including skin, bone**, car- tilage, solid organ parenchyma, oesophagus, trachea, and/or named nerve",
+          "T4b": "Tumour invades beyond adjacent structures, e.g. encasement of carotid artery, and/or base of skull invasion (except nasopharynx), and/or spinal column invasion, and/or intracranial invasion, and/or orbital apex, and/or prevertebral space, and/or mediastinal structures, and/or masticator space, etc."
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in 1-3 ipsilateral lymph node(s) without unequivocal imaging- detected or clinical extranodal extension",
+          "N2": "Metastasis in more than 3 lymph nodes or any lymph node with unequivocal imaging-detected and/or clinical extranodal extension*"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T3, T4",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T1, T2",
+          "N": "N2",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Thyroid Gland": {
+      "tumour": "Thyroid Gland",
+      "icd_o": "C73.9",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "The classification applies only to carcinomas. There should be microscopic confirma- tion of the disease and division of cases by histological type. Head & Neck",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "T1": "Tumour 2 cm or less in greatest dimension, limited to the thyroid",
+          "T1a": "Tumour 1 cm or less in greatest dimension, limited to the thyroid",
+          "T1b": "Tumour more than 1 cm but not more than 2 cm in greatest dimen- sion, limited to the thyroid",
+          "T2": "Tumour more than 2 cm but not more than 4 cm in greatest dimension, lim- ited to the thyroid",
+          "T3": "Tumour more than 4 cm in greatest dimension, limited to the thyroid or with gross extrathyroidal extension invading only strap muscles (sternohyoid, sterno- thyroid, thyrohyoid or omohyoid muscles) or parathyroid gland",
+          "T3a": "Tumour more than 4 cm in greatest dimension, limited to the thyroid",
+          "T3b": "Tumour of any size with gross extrathyroidal extension invading strap muscles (sternohyoid, sternothyroid, thyrohyoid or omohyoid mus- cles) or parathyroid gland",
+          "T4a": "Tumour extends beyond the thyroid capsule and invades any of the following: subcutaneous soft tissues, larynx, trachea, oesophagus, recurrent laryngeal nerve or the sternocleidomastoid muscle.",
+          "T4b": "Tumour invades the prevertebral fascia, mediastinal vessels or encases the carotid artery."
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis",
+          "N1a": "Metastasis in Level VI (pretracheal, paratracheal and prelaryngeal/ Delphian lymph nodes) or upper/superior mediastinum",
+          "N1b": "Metastasis in other unilateral, bilateral or contralateral cervical (Levels I, II III, IV or V) or retropharyngeal"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis Pathological TNM Classification"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage I",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1a,T1b,T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T4a",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T4b",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1a, T1b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2, T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T1, T2, T3",
+          "N": "N1a",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T1, T2, T3",
+          "N": "N1b",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "T4b",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVC",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T1,T2,T3a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "T1,T2,T3a",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "T3b,T4a,T4b",
+          "N": "N0,N1",
+          "M": "M0"
+        }
+      ]
+    },
+    "Parathyroid Gland": {
+      "tumour": "Parathyroid Gland",
+      "icd_o": "C75.0",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "This classification applies only to carcinomas of the parathyroid gland.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "T1": "Limited to the parathyroid gland or any tumour with minimal extra-parathyroid soft tissue extension without direct invasion of the thyroid gland",
+          "T2": "Tumour of any size with invasion into the thyroid gland",
+          "T3": "Tumour of any size with invasion into adjacent skeletal muscle, recurrent laryngeal nerve, trachea, oesophagus, thymus or direct invasion into adjacent lymph node(s)",
+          "T4": "Tumour of any size with direct invasion into major blood vessels or spine"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1a": "Metastasis in Level VI (pretracheal, paratracheal and prelaryngeal/Delphian lymph nodes) or upper/superior mediastinal lymph nodes",
+          "N1b": "Metastasis in other unilateral, bilateral or contralateral cervical (Levels I, II, III, IV or V) or retropharyngeal node"
+        },
+        "M": {
+          "M0": "No distance metastasis",
+          "M1": "Distance metastasis Pathological TNM Classification"
+        }
+      },
+      "stage_grouping": []
+    },
+    "Oesophagus": {
+      "tumour": "Oesophagus",
+      "icd_o": "C15, C16.7",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classification applies only to carcinomas and includes adenocarcinomas of the oesophagogastric/gastroesophageal junction (excluding carcinomas of minor salivary glands of the upper third of the oesophagus). There should be histological confirmation of the disease and division of cases by topographic localisation and histological type. A tumour the epicentre of which is within 2 cm of the oesophagogastric junction and also extends into the oesophagus is classified and staged using the oesophageal scheme. Cancers involving the oesophagogastric junction (OGJ) whose epicentre is within the proximal 2 cm of the cardia (Siewert types I/II) are to be staged as oesophageal cancers. Anatomical Subsites 1. Cervical oesophagus (C15.0): This commences at the lower border of the cricoid cartilage and ends at the thoracic inlet (suprasternal notch), approximately 18 cm from the upper incisor teeth. 2. Intrathoracic oesophagus: a) The upper thoracic portion (C15.3) extending from the thoracic inlet to the level of the tracheal bifurcation, approximately 24 cm from the upper incisor teeth. b) The mid-thoracic portion (C15.4) is the proximal half of the oesophagus between the tracheal bifurcation and the oesophagogastric junction. The lower level is approximately 32 cm from the upper incisor teeth. c) The lower thoracic portion (C15.5), approximately 8 cm in length (includes abdominal oesophagus), is the distal half of the oesophagus between the tra- cheal bifurcation and the oesophagogastric junction. The lower level is approx- imately 40 cm from the upper incisor teeth. 3. Oesophagogastric junction (C16.7): Cancers involving the oesophagogastric junc- tion (OGJ) whose epicentre is within the proximal 2 cm of the cardia (Siewert types I/II) are to be staged as oesophageal cancers. Cancers whose epicentre is more than 2 cm distal from the OGJ will be staged using the stomach cancer TNM and stage even if the OGJ is involved.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ/high-grade dysplasia",
+          "T1": "Tumour invades lamina propria, muscularis mucosae, or submucosa",
+          "T1a": "Tumour invades lamina propria or muscularis mucosae",
+          "T1b": "Tumour invades submucosa Digestive System",
+          "T2": "Tumour invades muscularis propria",
+          "T3": "Tumour invades adventitia including peri-oesophageal fat",
+          "T4": "Tumour invades adjacent structures",
+          "T4a": "Tumour invades pleura, pericardium, azygos vein, diaphragm or peritoneum",
+          "T4b": "Tumour invades other adjacent structures such as aorta, vertebral body or trachea"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in 1-2 regional lymph nodes",
+          "N2": "Metastasis in 3-6 regional lymph nodes",
+          "N3": "Metastasis in 7 or more regional lymph nodes"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": []
+    },
+    "Stomach": {
+      "tumour": "Stomach",
+      "icd_o": "C16, C16.7",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ: intraepithelial tumour without invasion of the lamina propria, high-grade dysplasia",
+          "T1": "Tumour invades lamina propria, muscularis mucosae or submucosa",
+          "T1a": "Tumour invades lamina propria or muscularis mucosae",
+          "T1b": "Tumour invades submucosa",
+          "T2": "Tumour invades muscularis propria",
+          "T3": "Tumour invades subserosa",
+          "T4": "Tumour perforates serosa (visceral peritoneum) or invades adjacent structuresa,b,c",
+          "T4a": "Tumour perforates serosa",
+          "T4b": "Tumour invades adjacent structuresa,b"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in 1-2 regional lymph nodes",
+          "N2": "Metastasis in 3-6 regional lymph nodes",
+          "N3": "Metastasis in 7 or more regional lymph nodes",
+          "N3a": "Metastasis in 7-15 regional lymph nodes",
+          "N3b": "Metastasis in 16 or more regional lymph nodes Digestive System"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": []
+    },
+    "Small Intestine": {
+      "tumour": "Small Intestine",
+      "icd_o": "C17",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ",
+          "T1": "Tumour invades lamina propria, muscularis mucosae or submucosa",
+          "T1a": "Tumour invades lamina propria or muscularis mucosae",
+          "T1b": "Tumour invades submucosa",
+          "T2": "Tumour invades muscularis propria",
+          "T3": "Tumour invades subserosa or non-peritonealised perimuscular tissue (mesen- tery or retroperitoneum*) without perforation of the serosa",
+          "T4": "Tumour perforates visceral peritoneum or directly invades other organs or structures (includes other loops of small intestine, mesentery or retroperito- neum and abdominal wall by way of serosa; for duodenum only, invasion of pancreas)"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in 1-2 regional lymph nodes",
+          "N2": "Metastasis in 3 or more regional lymph nodes"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1, T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIB",
+          "T": "T4",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "Any T",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "Any T",
+          "N": "N2",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Appendix": {
+      "tumour": "Appendix",
+      "icd_o": "C18.1",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "(LAMN)a Low-grade appendiceal mucinous neoplasm confined to the muscu- laris propria; acellular mucin or mucinous epithelium may invade into the muscularis propria.",
+          "T1": "Tumour invades submucosab",
+          "T2": "Tumour invades muscularis propriab",
+          "T3": "Tumour invades subserosa or mesoappendix",
+          "T4": "Tumour perforates visceral peritoneum, including mucinous perito- neal tumour or acellular mucin on the serosa of the appendix or mesoappendix, and/or directly invades other organs or structuresc",
+          "T4a": "Tumour perforates visceral peritoneum, including mucinous peritoneal tumour or acellular mucin on the serosa of the appendix or mesoappendix",
+          "T4b": "Tumour directly invades other organs or structures"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in 1-3 regional lymph nodes",
+          "N1a": "Metastasis in 1 regional lymph node",
+          "N1b": "Metastases in 2-3 regional lymph nodes",
+          "N1c": "Tumour deposit(s), i.e., satellites,* in the subserosa, or in non- peritonealised pericolic or peri-rectal soft tissue without regional lymph node metastasis",
+          "N2": "Metastasis in 4 or more regional lymph nodes Digestive System"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis",
+          "M1a": "Intraperitoneal acellular mucin only",
+          "M1b": "Intraperitoneal metastasis only, including mucinous epithelium",
+          "M1c": "Non-peritoneal metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1, T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T1, T2",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1a"
+        },
+        {
+          "stage": "Stage IVC",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1c"
+        }
+      ]
+    },
+    "Colon and Rectum": {
+      "tumour": "Colon and Rectum",
+      "icd_o": "C18, C18.1",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classification applies only to carcinomas. There should be histological confirma- tion of the disease. The following are the procedures for assessing the T, N and M categories.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ: invasion of lamina propriaa",
+          "T1": "Tumour invades submucosa",
+          "T2": "Tumour invades muscularis propria",
+          "T3": "Tumour invades subserosa or into non-peritonealised pericolic or peri-rectal tissues",
+          "T4": "Tumour directly invades other organs or structuresb,c,d and/or perforates vis- ceral peritoneum",
+          "T4a": "Tumour perforates visceral peritoneum",
+          "T4b": "Tumour directly invades other organs or structures"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in 1-3 regional lymph nodes",
+          "N1a": "Metastasis in 1 regional lymph node",
+          "N1b": "Metastasis in 2-3 regional lymph nodes",
+          "N1c": "Tumour deposit(s), i.e. satellites,* in the subserosa, or in non- peritonealised pericolic or peri-rectal soft tissue without regional lymph node metastasis",
+          "N2": "Metastasis in 4 or more regional lymph nodes",
+          "N2a": "Metastasis in 4-6 regional lymph nodes",
+          "N2b": "Metastasis in 7 or more regional lymph nodes"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis",
+          "M1a": "Metastasis confined to one organ (liver, lung, ovary, non-regional lymph node(s)) without peritoneal metastases",
+          "M1b": "Metastasis in more than one organ",
+          "M1c": "Metastasis to the peritoneum with or without other organ involvement TNM Pathological Classification"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1, T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T3, T4",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIB",
+          "T": "T4a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIC",
+          "T": "T4b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "Any T",
+          "N": "N1, N2",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T1, T2",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T1, T2",
+          "N": "N2b",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIC",
+          "T": "T3, T4a",
+          "N": "N2b",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1a"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1b"
+        },
+        {
+          "stage": "Stage IVC",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1c"
+        }
+      ]
+    },
+    "Anal Canal and Perianal Skin": {
+      "tumour": "Anal Canal and Perianal Skin",
+      "icd_o": "C21",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "The classification applies only to carcinomas. There should be histological confirma- tion of the disease and division of cases by histological type.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ, high- grade squamous intraepithelial lesion (HSIL), anal intraepithelial neoplasia II-III (AIN II-III) anal squamous intraepithelial neoplasia H (ASIN-H)1",
+          "T1": "Tumour 2 cm or less in greatest dimension",
+          "T2": "Tumour more than 2 cm but not more than 5 cm in greatest dimension",
+          "T3": "Tumour more than 5 cm in greatest dimension",
+          "T4": "Tumour of any size invades adjacent organ(s), e.g., vagina, urethra or bladder2"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in regional lymph node(s)",
+          "N1a": "Metastases in inguinal, mesorectal and/or internal iliac nodes",
+          "N1b": "Metastases in external iliac nodes",
+          "N1c": "Metastases in external iliac and in inguinal, mesorectal and/or internal iliac nodes"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIB",
+          "T": "T1, T2",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T3",
+          "N": "N0, N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T4",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIC",
+          "T": "T4",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Liver": {
+      "tumour": "Liver",
+      "icd_o": "C 22.0)",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "T1a": "Solitary tumour 2 cm or less in greatest dimension with or without vascular invasion",
+          "T1b": "Solitary tumour more than 2 cm in greatest dimension without vascular invasion",
+          "T2": "Solitary tumour with vascular invasion more than 2 cm dimension or multiple tumours, none more than 5 cm in greatest dimension",
+          "T3": "Multiple tumours any more than 5 cm in greatest dimension",
+          "T4": "Tumour(s) involving a major branch of the portal or hepatic vein or with direct invasion of adjacent organs (including the diaphragm), other than the gallblad- der or with perforation of visceral peritoneum"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage IA",
+          "T": "T1a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB",
+          "T": "T1b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T4",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "Any T",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Intrahepatic Bile Ducts": {
+      "tumour": "Intrahepatic Bile Ducts",
+      "icd_o": "C22.1",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The staging system applies to intrahepatic cholangiocarcinoma and combined hepato- cellular and cholangiocarcinoma (mixed hepatocellular/cholangiocellular carcinoma).",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ (intraductal tumour)",
+          "T1": "Solitary tumour without vascular invasion",
+          "T1a": "Solitary tumour 5 cm or less in greatest dimension without vascular invasion",
+          "T1b": "Solitary tumour more than 5 cm in greatest dimension without vascular invasion",
+          "T2": "Solitary tumour with intrahepatic vascular invasion or multiple tumours, with or without vascular invasion",
+          "T3": "Tumour perforating the visceral peritoneum",
+          "T4": "Tumour involving local extrahepatic structures by direct hepatic invasion"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IA",
+          "T": "T1a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB",
+          "T": "T1b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T4",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Gallbladder": {
+      "tumour": "Gallbladder",
+      "icd_o": "C23.9, C24.4",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classification applies only to carcinomas of gallbladder (C23.9) and cystic duct (C24.4). There should be histological confirmation of the disease.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ",
+          "T1": "Tumour invades lamina propria or muscular layer",
+          "T1a": "Tumour invades lamina propria",
+          "T1b": "Tumour invades muscular layer",
+          "T2": "Tumour invades perimuscular connective tissue; no extension beyond serosa or into liver",
+          "T2a": "Tumour invades perimuscular connective tissue on the peritoneal side with no extension to the serosa",
+          "T2b": "Tumour invades perimuscular connective tissue on the hepatic side with no extension into the liver",
+          "T3": "Tumour perforates the serosa (visceral peritoneum) and/or directly invades the liver and/or one other adjacent organ or structure, such as stomach, duodenum, colon, pancreas, omentum or extrahepatic bile ducts",
+          "T4": "Tumour invades main portal vein or hepatic artery or invades two or more extrahepatic organs or structures"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastases to 1-3 regional nodes",
+          "N2": "Metastasis to 4 or more regional nodes"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IA",
+          "T": "T1a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB",
+          "T": "T1b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA",
+          "T": "T2a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIB",
+          "T": "T2b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T1, T2, T3",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T4",
+          "N": "N0, N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "N2",
+          "M": "M0"
+        }
+      ]
+    },
+    "Perihilar Bile Ducts": {
+      "tumour": "Perihilar Bile Ducts",
+      "icd_o": "C24.3",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classification applies to carcinomas of the extrahepatic bile ducts of perihilar locali- sation (Klatskin tumour). Included are the right, left and the common hepatic ducts.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ",
+          "T1": "Tumour confined to the bile duct, with extension up to the muscle layer or fibrous tissue",
+          "T2a": "Tumour invades beyond the wall of the bile duct to surrounding adipose tissue",
+          "T2b": "Tumour invades adjacent hepatic parenchyma",
+          "T3": "Tumour invades unilateral branches of the portal vein or hepatic artery",
+          "T4": "Tumour invades the main portal vein or its branches bilaterally, or the com- mon hepatic artery, or unilateral second-order biliary radicals with contralat- eral portal vein or hepatic artery involvement"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastases to 1-3 regional lymph nodes",
+          "N2": "Metastases to 4 or more regional nodes"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2a, T2b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T4",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIC",
+          "T": "Any T",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "Any T",
+          "N": "N2",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Distal Extrahepatic Bile Duct": {
+      "tumour": "Distal Extrahepatic Bile Duct",
+      "icd_o": "C24.2",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classification applies to carcinomas of the extrahepatic bile ducts distal to the insertion of the cystic duct. Cystic duct carcinoma is included under gallbladder. The following are the procedures for assessing T, N and M categories.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ",
+          "T1": "Tumour invades bile duct wall to a depth less than 5 mm",
+          "T2": "Tumour invades bile duct wall to a depth of 5 mm up to 12 mm",
+          "T3": "Tumour invades bile duct wall to a depth of more than 12 mm",
+          "T4": "Tumour involves the coeliac axis, the superior mesenteric artery and/or the common hepatic artery"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastases",
+          "N1": "Metastases to 1-3 regional nodes",
+          "N2": "Metastasis to 4 or more regional nodes"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA",
+          "T": "T1",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIB",
+          "T": "T2",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T1, T2, T3",
+          "N": "N2",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T4",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Ampulla of Vater": {
+      "tumour": "Ampulla of Vater",
+      "icd_o": "C24.1",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classification applies only to carcinomas. There should be histological confirma- tion of the disease. The following are the procedures for assessing T, N and M categories.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ",
+          "T1a": "Tumour limited to ampulla of Vater or sphincter of Oddi",
+          "T1b": "Tumour invades beyond the sphincter of Oddi (perisphincteric invasion) and/or into the duodenal submucosa",
+          "T2": "Tumour invades the muscularis propria of the duodenum",
+          "T3": "Tumour invades pancreas or peripancreatic tissue",
+          "T3a": "Tumour invades 5 mm or less into the pancreas",
+          "T3b": "Tumour invades more than 5 mm into the pancreas or extends into peripancreatic tissue or duodenal serosa but without involvement of the celiac axis or the superior mesenteric artery",
+          "T4": "Tumour with vascular involvement of the superior mesenteric artery or celiac axis, or common hepatic artery"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in 1-3 regional lymph nodes",
+          "N2": "Metastasis in 4 or more regional lymph nodes"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IA",
+          "T": "T1a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB",
+          "T": "T1b, T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA",
+          "T": "T3a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIB",
+          "T": "T3b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T1a, T1b, T2, T3",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "Any T",
+          "N": "N2",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T4",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Pancreas": {
+      "tumour": "Pancreas",
+      "icd_o": "C25",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classification applies to carcinomas of the exocrine pancreas and/or high-grade neuroendocrine carcinomas. Well-differentiated neuroendocrine tumours of the pan- creas are classified as shown on page 104. There should be histological or cytological confirmation of the disease.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ*",
+          "T1": "Tumour 2 cm or less in greatest dimension",
+          "T1a": "Tumour 0.5 cm or less in greatest dimension",
+          "T1b": "Tumour greater than 0.5 cm and not more than 1 cm in greatest dimension",
+          "T1c": "Tumour greater than 1 cm but not more than 2 cm in greatest dimension",
+          "T2": "Tumour more than 2 cm but not more than 4 cm in greatest dimension",
+          "T3": "Tumour more than 4 cm in greatest dimension",
+          "T4": "Tumour involves coeliac axis, superior mesenteric artery and/or common hepatic artery"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastases in 1-3 regional lymph node(s)",
+          "N2": "Metastases in 4 or more regional lymph nodes"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IA",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIB",
+          "T": "T1, T2, T3",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T1, T2, T3",
+          "N": "N2",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Lung": {
+      "tumour": "Lung",
+      "icd_o": "C34",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "The classification applies to carcinomas of the lung, including non- small-cell carcinomas, small-cell carcinomas and bronchopulmonary carcinoid tumours. It does not apply to sarcomas and other rare tumours. Changes in this edition from the eighth edition are based on recommendations from the International Association for the Study of Lung Cancer (IASLC) Staging Project (see references).2-6 There should be histological confirmation of the disease and division of cases by histological type.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed, or tumour proven by the presence of malignant cells in sputum or bronchial washings but not visualised by imaging or bronchoscopy",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situa",
+          "T1": "Tumour 3 cm or less in greatest dimension, surrounded by lung or visceral pleura, or tumour in a lobar or more peripheral bronchusb cT1mi Minimally invasive adenocarcinomac",
+          "T1a": "Tumour 1 cm or less in greatest dimensionb",
+          "T1b": "Tumour more than 1 cm but not more than 2 cm in greatest dimensionb",
+          "T1c": "Tumour more than 2 cm but not more than 3 cm in greatest dimensionb",
+          "T2": "Tumour more than 3 cm but not more than 5 cm in greatest dimension, or tumour with any of the following features: involves main bronchus (without involvement of the carina), invades visceral pleura, associated with atelectasis or obstructive pneumonitis that extends to the hilar region",
+          "T2a": "Tumour more than 3 cm but not more than 4 cm in greatest dimension or Tumour not more than 4 cm in greatest dimension that invades one or more of the following: The main bronchus (up to the carina, but without involvement of the carina) Invades the visceral pleura An adjacent lobe Is associated with atelectasis or obstructive pneumonitis that extends to The hilar region either involving part of or the entire lung Invades an adjacent lobe",
+          "T2b": "Tumour more than 4 cm but not more than 5 cm in greatest dimension",
+          "T3": "Tumour more than 5 cm but not more than 7 cm in greatest dimension or Tumour not more than 7 cm that directly invades any of the following: Parietal pleura, chest wall (including superior sulcus tumours), pericardium, Phrenic nerve, azygos veind, thoracic nerve roots (i.e., T1, T2), stellate ganglion or Separate tumour nodule(s) in the same lobe as the primary",
+          "T4": "Tumour more than 7 cm or Tumour of any size that invades any of the following: Mediastinum, thymus, trachea, carina, Recurrent laryngeal nerve, vagus nerve, Oesophagus, diaphragm, Heart, aorta, superior or inferior vena cava, intrapericardial pulmonary arteries or veins, supra-aortic arteries, brachiocephalic veins, subclavian vessels, Vertebral body, lamina, spinal canal, cervical nerve roots, brachial plexus or separate tumour nodule(s) in a different ipsilateral lobe to that of the primary"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in ipsilateral peribronchial and/or ipsilateral hilar lymph nodes and/or intrapulmonary nodes, including involvement by direct extension",
+          "N2": "Metastasis in ipsilateral mediastinal and/or subcarinal lymph node station(s)",
+          "N2a": "Metastasis in a single station",
+          "N2b": "Metastasis in multiple ipsilateral stations",
+          "N3": "Metastasis in contralateral mediastinal, contralateral hilar, ipsilateral or contralateral scalene, or supraclavicular lymph node(s)"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis",
+          "M1a": "Separate tumour nodule(s) in a contralateral lobe, tumour with pleural or pericardial nodules or malignant pleural or pericardial effusione",
+          "M1b": "Single extrathoracic metastasis in a single organ or organ systemf",
+          "M1c": "Multiple extrathoracic metastases in a single or multiple organ(s) or organ system(s)",
+          "M1c1": "Multiple extrathoracic metastases in a single organ or organ system",
+          "M1c2": "Multiple extrathoracic metastases in multiple organs or organ systems(s)"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Occult carcinoma",
+          "T": "TX",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IA1",
+          "T": "T1mi",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IA2",
+          "T": "T1b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IA3",
+          "T": "T1c",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB",
+          "T": "T2a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA",
+          "T": "T1",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIB",
+          "T": "T1",
+          "N": "N2a",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T1",
+          "N": "N2b",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T1",
+          "N": "N3",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIC",
+          "T": "T3,4",
+          "N": "N3",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1a, M1b"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1c1, M1c2"
+        }
+      ]
+    },
+    "Pleural Mesothelioma": {
+      "tumour": "Pleural Mesothelioma",
+      "icd_o": "C38.4",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "T1": "Tumour limited to the ipsilateral pleura and no involvement of the fissure: Psum ≤12 mm* and Fmax ≤5 mm**",
+          "T2": "Tumour limited to the ipsilateral pleura: Psum ≤12 mm* with involvement of any of the following: Fissure - Fmax > 5 mm Mediastinal fat invasion Solitary area of chest wall soft tissue invasion or Tumour limited to the ipsilateral pleura, with Psum > 12 mm ≤ 30 mm* with or without involvement of the following: Fissure - Fmax > 5 mm Mediastinal fat invasion Solitary area of chest wall soft tissue invasion",
+          "T3": "Tumour limited to ipsilateral pleura: with Psum > 30 mm* with or without involvement of the following: Fissure - Fmax > 5 mm Mediastinal fat invasion Solitary area of chest wall soft tissue invasion",
+          "T4": "Tumour involves any of the following: Diffuse chest wall soft tissue involvement Chest wall with rib involvement. Mediastinal organs (oesophagus, trachea, heart, great vessels, spine) Direct extension through the diaphragm or pericardium Direct extension to contralateral pleura Malignant pericardial effusion"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastases to ipsilateral intrathoracic lymph nodes (includes ipsilateral bronchopulmonary, hilar, subcarinal, paratracheal, aortopulmonary, paraesoph- ageal, peridiaphragmatic, pericardial fat pad or intercostal and internal mam- mary nodes)",
+          "N2": "Metastases to contralateral intrathoracic lymph nodes and/or Metastases to ipsilateral or contralateral supraclavicular lymph nodes"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T1",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T1",
+          "N": "N2",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T4",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Thymus Tumours": {
+      "tumour": "Thymus Tumours",
+      "icd_o": "C37.9",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "T1": "Tumour limited to the thymus, with or without encapsulation, or directly invades the mediastinal pleura but does not involve any other mediastinal structure.",
+          "T1a": "5 cm or less in its greatest dimension.",
+          "T1b": "larger than 5 cm in its greatest dimension.",
+          "T2": "Tumour with direct involvement of the pericardium (partial or full thickness), the lung or the phrenic nerve.",
+          "T3": "Tumour directly invades any of the following: the brachiocephalic vein, the supe- rior vena cava, the chest wall or extrapericardial pulmonary arteries or veins",
+          "T4": "Tumour with direct invasion into any of the aorta (ascending, arch, or descend- ing), arch vessels, intrapericardial pulmonary artery or veins, the myocardium, the trachea or the oesophagus"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in anterior (perithymic) lymph nodes",
+          "N2": "Metastasis in deep intrathoracic or cervical lymph nodes, including the paratracheal, subcarinal, aortopulmonary window, hilar, jugular and supraclavicular nodes"
+        },
+        "M": {
+          "M0": "No metastasis",
+          "M1": "Distant metastasis",
+          "M1a": "Separate pleural or pericardial nodule(s)",
+          "M1b": "Pulmonary intraparenchymal nodule(s) or distant metastases. TNM Pathological Classification"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage I",
+          "T": "T1a,b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T4",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "Any T",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "N2",
+          "M": "M0, M1a"
+        }
+      ]
+    },
+    "Bone": {
+      "tumour": "Bone",
+      "icd_o": "C40",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour Appendicular Skeleton, Trunk, Skull and Facial Bones",
+          "T1": "Tumour confined to a single vertebral segment or two adjacent vertebral segments",
+          "T2": "Tumour confined to three adjacent vertebral segments",
+          "T3": "Tumour confined to four adjacent vertebral segments",
+          "T4a": "Tumour involving three adjacent pelvic segments or crossing the sacroiliac joint to the sacral neuroforamen",
+          "T4b": "Tumour encasing the external iliac vessels or gross tumour thrombus in major pelvic vessels",
+          "T1a": "A tumour 8 cm or less in size and confined to a single pelvic segment with no extraosseous extension",
+          "T1b": "A tumour greater than 8 cm in size and confined to a single pelvic segment with no extraosseous extension",
+          "T2a": "A tumour 8 cm or less in size and confined to a single pelvic segment with extraosseous extension or confined to two adjacent pelvic segments without extraosseous extension",
+          "T2b": "A tumour greater than 8 cm in size and confined to a single pelvic segment with extraosseous extension or confined to two adjacent pelvic segments with- out extraosseous extension",
+          "T3a": "A tumour 8 cm or less in size and confined to two pelvic segments with extra- osseous extension",
+          "T3b": "A tumour greater than 8 cm in size and confined to two pelvic segment with extraosseous extension"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis",
+          "M1a": "Lung",
+          "M1b": "Other distant sites"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage IA",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB",
+          "T": "T2, T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIB",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "Any T",
+          "N": "N0",
+          "M": "M1a"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "N1",
+          "M": "Any M"
+        }
+      ]
+    },
+    "Soft Tissues": {
+      "tumour": "Soft Tissues",
+      "icd_o": "C15, C26, C34, C37, C38.1, C47, C49, C51, C53, C58, C60, C68",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classification only applies to malignant and uncertain behaviour mesenchymal tumours with metastatic potential (including sarcomas). There should be histological confirmation of the disease and division of cases by histological type and grade. Anatomical Sites 1. Connective, subcutaneous and other soft tissues (C49); peripheral nerves (C47) 2. Retroperitoneum (C48.0) 3. Mediastinum: anterior (C38.1); posterior (C38.2); mediastinum, NOS (C38.3). Histological Types of Tumour The following histological types are not included: ▪▪ Kaposi sarcoma ▪▪ Dermatofibrosarcoma (protuberans) ▪▪ Fibromatosis (desmoid tumour) ▪▪ Sarcoma arising from the dura mater and brain ▪▪ Angiosarcoma, an aggressive sarcoma, is excluded because its natural history is not consistent with the classification. For tumours in paediatric patients, please see page 242. Note Malignant phyllodes tumour is staged as a soft tissue sarcoma of the superficial trunk. Regional Lymph Nodes The regional lymph nodes are those appropriate to the site of the primary tumour. Regional node involvement is rare, and cases in which nodal status is not assessed either clinically or pathologically could be considered N0 instead of cNX or pNX.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour Extremity and Superficial Trunk",
+          "T1": "Tumour confined to a single organ",
+          "T2": "Tumour more than 2 cm but not more than 4 cm in greatest",
+          "T3": "Tumour invades another organ or macroscopic extension beyond the serosa",
+          "T4": "Tumour more than 15 cm in greatest dimension Head and Neck",
+          "T4a": "Multifocal tumour involving not more than two sites in one organ",
+          "T4b": "Multifocal tumour involving more than two sites but not more than five sites",
+          "T2a": "Tumour invades serosa or visceral peritoneum",
+          "T2b": "Tumour with microscopic extension beyond the serosa",
+          "T4c": "Multifocal tumour involving more than five sites"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage IVA",
+          "T": "Any T",
+          "N": "N0",
+          "M": "M1a"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "N1",
+          "M": "Any M"
+        },
+        {
+          "stage": "Stage IA",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB",
+          "T": "T2, T3, T4",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T3, T4",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Gastrointestinal Stromal Tumour (GIST)": {
+      "tumour": "Gastrointestinal Stromal Tumour (GIST)",
+      "icd_o": "C15-C20",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {},
+        "N": {},
+        "M": {}
+      },
+      "stage_grouping": [],
+      "classification_note": "Uses mitotic rate/size-based staging, not standard TNM categories"
+    },
+    "Bone & Soft Tissues": {
+      "tumour": "Bone & Soft Tissues",
+      "icd_o": "C15, C48.1",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classification applies only to gastrointestinal stromal tumours. There should be histological confirmation of the disease.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence for primary tumour",
+          "T1": "Tumour 2 cm or less",
+          "T2": "Tumour more than 2 cm but not more than 5 cm",
+          "T3": "Tumour more than 5 cm but not more than 10 cm",
+          "T4": "Tumour more than 10 cm in greatest dimension"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed*",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage IA",
+          "T": "T1, T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T1, T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T4",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1, T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T2, T3, T4",
+          "N": "N0",
+          "M": "M0"
+        }
+      ]
+    },
+    "Carcinoma of Skin (excluding eyelid, head and neck, perianal, vulva and penis)": {
+      "tumour": "Carcinoma of Skin (excluding eyelid, head and neck, perianal, vulva and penis)",
+      "icd_o": "C44.5, C63.2",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be identified",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ",
+          "T1": "Tumour 2 cm or less in greatest dimension",
+          "T2": "Tumour >2 cm and ≤4 cm in greatest dimension",
+          "T3": "Tumour >4 cm in greatest dimension or minor bone erosion or perineural invasion or deep invasion*",
+          "T4a": "Tumour with gross cortical bone/marrow invasion",
+          "T4b": "Tumour with axial skeleton invasion including foraminal involvement and/or vertebral foramen involvement to the epidural space"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in a single lymph node 3 cm or less in greatest dimension",
+          "N2": "Metastasis in a single ipsilateral lymph node, more than 3 cm but not more than 6 cm in greatest dimension, or in multiple ipsilateral nodes not more than 6 cm in greatest dimension",
+          "N3": "Metastasis in a lymph node more than 6 cm in greatest dimension"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastatic disease*"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T1, T2, T3",
+          "N": "N2, N3",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Carcinoma of Skin of the Head and Neck Region": {
+      "tumour": "Carcinoma of Skin of the Head and Neck Region",
+      "icd_o": "C00.0, C00.6, C44.0, C44.2",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be identified",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ",
+          "T1": "Tumour 2 cm or less in greatest dimension",
+          "T2": "Tumour >2 cm and ≤4 cm in greatest dimension",
+          "T3": "Tumour >4 cm in greatest dimension or minor bone erosion or perineural invasion or deep invasion1",
+          "T4a": "Tumour with gross cortical bone/marrow invasion",
+          "T4b": "Tumour with foraminal involvement of the axial skeleton2 invasion with foraminal involvement or invasion into the epidural space"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed.",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in a single ipsilateral lymph node, 3 cm or less in greatest dimen- sion without extranodal extension",
+          "N2": "Metastasis described as:",
+          "N2a": "Metastasis in a single ipsilateral lymph node more than 3 cm but not more than 6 cm in greatest dimension without extranodal extension",
+          "N2b": "Metastasis in multiple ipsilateral lymph nodes, not more than 6 cm in greatest dimension, without extranodal extension",
+          "N2c": "Metastasis in bilateral or contralateral lymph nodes, not more than 6 cm in greatest dimension, without extranodal extension",
+          "N3a": "Metastasis in a lymph node more than 6 cm in greatest dimension without Skin extranodal extension",
+          "N3b": "Metastasis in a single or multiple lymph nodes with clinical extranodal extension*"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T1, T2, T3",
+          "N": "N2, N3",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Carcinoma of Skin of the Eyelid": {
+      "tumour": "Carcinoma of Skin of the Eyelid",
+      "icd_o": "C44.1",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ",
+          "T1": "Tumour 10 mm or less in greatest dimension",
+          "T1a": "Not invading the tarsal plate or eyelid margin",
+          "T1b": "Invades tarsal plate or eyelid margin",
+          "T1c": "Involves full thickness of eyelid",
+          "T2": "Tumour >10 mm, but 20 mm or less in greatest dimension",
+          "T2a": "Not invading the tarsal plate or eyelid margin",
+          "T2b": "Invades the tarsal plate or eyelid margin",
+          "T2c": "Involves full thickness of eyelid",
+          "T3": "Tumour >20 mm in greatest dimension",
+          "T3a": "Not invading the tarsal plate or eyelid margin",
+          "T3b": "Invades tarsal plate or eyelid margin",
+          "T3c": "Involves full thickness of eyelid",
+          "T4": "Any eyelid tumour that invades adjacent ocular or orbital or facial structures",
+          "T4a": "Tumour invades ocular or intraorbital structures",
+          "T4b": "Tumour invades (or erodes through) the bony walls of orbit or extends to paranasal sinuses or invades the lacrimal sac/nasolacrimal duct or brain"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No evidence of lymph node involvement",
+          "N1": "Metastasis in a single ipsilateral regional lymph node, 3 cm or less in greatest dimension",
+          "N2": "Metastasis in a single ipsilateral lymph node more than 3 cm in greatest dimen- sion or in bilateral or contralateral lymph nodes or multiple ipsilateral lymph nodes"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IA",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB",
+          "T": "T2a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA",
+          "T": "T2b, T2c, T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIB",
+          "T": "T4",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "Any T",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "Any T",
+          "N": "N2",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Melanoma of Skin": {
+      "tumour": "Melanoma of Skin",
+      "icd_o": "C00.0, C00.6, C21.3, C44, C51, C60, C63.2",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {},
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in one regional lymph node or intralymphatic regional metastasis without nodal metastases",
+          "N1a": "Only microscopic metastasis (clinically occult)",
+          "N1b": "Macroscopic metastasis (clinically apparent)",
+          "N1c": "Satellite or in-transit metastasis without regional nodal metastasis",
+          "N2": "Metastasis in two or three regional lymph nodes or satellite or in-transit metas- tasis with lymph node metastases",
+          "N2a": "Metastasis in two or three regional lymph nodes, with only microscopic nodal metastasis",
+          "N2b": "Metastasis in two or three regional lymph nodes, clinically detected in at least one node",
+          "N2c": "Satellite or in-transit metastasis with only one regional nodal metastasis, (microscopic or clinical)",
+          "N3": "Metastasis in four or more regional lymph nodes, or matted metastatic regional lymph nodes, or satellite(s) or in-transit metastasis with metastasis in two or more regional lymph node(s)",
+          "N3a": "Metastasis in four or more regional lymph nodes with only microscopic nodal metastasis",
+          "N3b": "Metastasis in four or more regional lymph nodes clinically detected in at least one node, or two or more matted nodes.",
+          "N3c": "Satellite(s) or in-transit metastasis either with two or more regional nodal metastasis (microscopic or clinical) or two or more matted nodes."
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis*",
+          "M1a": "Skin, subcutaneous tissue or lymph node(s) beyond the regional lymph nodes",
+          "M1b": "Lung",
+          "M1c": "Other non-central nervous system sites"
+        },
+        "T_note": "T classified after excision (pT only)",
+        "pT": {
+          "TX": "Primary tumour cannot be assessed*",
+          "T0": "No evidence of primary tumour or regressed melanomas",
+          "Tis": "Melanoma in situ (Clark level I)",
+          "T1": "Tumour 1 mm or less in thickness*",
+          "T1a": "less than 0.8 mm in thickness without ulceration",
+          "T1b": "less than 0.8 mm in thickness with ulceration or 0.8 mm or more, but not more than 1 mm in thickness, with or without ulceration",
+          "T2": "Tumour more than 1 mm, but not more than 2 mm in thickness",
+          "T2a": "without ulceration",
+          "T2b": "with ulceration",
+          "T3": "Tumour more than 2 mm, but not more than 4 mm in thickness",
+          "T3a": "without ulceration",
+          "T3b": "with ulceration",
+          "T4": "Tumour more than 4 mm in thickness",
+          "T4a": "without ulceration",
+          "T4b": "with ulceration"
+        }
+      },
+      "stage_grouping": []
+    },
+    "Merkel Cell Carcinoma of Skin": {
+      "tumour": "Merkel Cell Carcinoma of Skin",
+      "icd_o": "C00, C44, C51, C60, C63.2, C80",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classification applies only to Merkel cell carcinomas. There should be histological confirmation of the disease. The following are the procedures for assessing T, N and M categories: T categories Physical examination Skin N categories Physical examination and imaging M categories Physical examination and imaging",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ",
+          "T1": "Tumour 2 cm or less in greatest dimension",
+          "T2": "Tumour more than 2 cm, but not more than 5 cm in greatest dimension",
+          "T3": "Tumour more than 5 cm in greatest dimension",
+          "T4": "Tumour invades deep extradermal structures, i.e., cartilage, skeletal muscle, fascia or bone"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis",
+          "N2": "In-transit metastasis without lymph node metastasis",
+          "N3": "In-transit metastasis with lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis",
+          "M1a": "Skin, subcutaneous tissues or non-regional lymph node(s)",
+          "M1b": "Lung",
+          "M1c": "Other site(s)"
+        }
+      },
+      "stage_grouping": []
+    },
+    "Breast Tumours": {
+      "tumour": "Breast Tumours",
+      "icd_o": "C50",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classification applies only to carcinomas and concerns the male as well as the female breast. There should be histological confirmation of the disease. The anatomical subsite of origin should be recorded but is not considered in classification. In the case of multiple simultaneous primary tumours in one breast, the tumour with the highest T category should be used for classification. Simultaneous bilateral breast cancers should be classified independently to permit the division of cases by histological type.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "(Paget) Paget disease of the nipple not associated with invasive carcinoma and/or carcinoma in situ (DCIS and/or LCIS) in the underlying breast parenchyma. Carcinomas in the breast parenchyma associated with Paget disease are categorised based on the size and character- istics of the parenchymal disease, although the presence of Paget disease should still be noted.",
+          "T1": "Tumour 2 cm or less in greatest dimension cT1mi Microinvasion 0.1 cm or less in greatest dimensionb",
+          "T1a": "More than 0.1 cm but not more than 0.5 cm in greatest dimension",
+          "T1b": "More than 0.5 cm but not more than 1 cm in greatest dimension",
+          "T1c": "More than 1 cm but not more than 2 cm in greatest dimension",
+          "T2": "Tumour more than 2 cm but not more than 5 cm in greatest dimension",
+          "T3": "Tumour more than 5 cm in greatest dimension",
+          "T4": "Tumour of any size with direct extension to chest wall and/or to skin (ulceration or skin nodules)c",
+          "T4a": "Extension to chest wall (does not include pectoralis -muscle invasion only)",
+          "T4b": "Ulceration, ipsilateral satellite skin nodules or skin oedema (including peau d’orange)",
+          "T4c": "Both 4a and 4b",
+          "T4d": "Inflammatory carcinomad"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed (e.g., previously removed)",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in movable ipsilateral level I, II axillary lymph node(s)",
+          "N2": "Metastasis in ipsilateral level I, II axillary lymph node(s) that are clinically Breast fixed or matted; or in clinically detected* ipsilateral internal mammary lymph node(s) in the absence of clinically evident axillary lymph node metastasis",
+          "N2a": "Metastasis in axillary lymph node(s) fixed to one another (matted) or to other structures",
+          "N2b": "Metastasis only in clinically detected* internal mammary lymph node(s) and in the absence of clinically detected axillary lymph node metastasis",
+          "N3": "Metastasis in ipsilateral infraclavicular (level III axillary) lymph node(s) with or without level I, II axillary lymph node involvement; or in clinically detected* ipsilateral internal mammary lymph node(s) with clinically evident level I, II axillary lymph node metastasis; or metastasis in ipsilateral supraclavicular lymph node(s) with or without axillary or internal mammary lymph node involvement",
+          "N3a": "Metastasis in infraclavicular lymph node(s)",
+          "N3b": "Metastasis in internal mammary and axillary lymph nodes",
+          "N3c": "Metastasis in supraclavicular lymph node(s)"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": []
+    },
+    "Vulva": {
+      "tumour": "Vulva",
+      "icd_o": "C51",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "N/A Primary tumour cannot be assessed",
+          "T0": "N/A No evidence of primary tumour",
+          "Tis": "N/A Carcinoma in situ (preinvasive carcinoma), high grade HPV-associated squamous intraepithelial lesion (VIN II or III), HPV-independent vulvar intraepithelial neoplasia (differentiated VIN)",
+          "T1": "Tumour confined to vulva or vulva and perineum",
+          "T1a": "Tumour 2 cm or less in greatest dimension and with stromal invasion not greater than 1.0 mm*",
+          "T1b": "Tumour greater than 2 cm and/or with stromal invasion greater than 1 mm*",
+          "T2": "Tumour of any size invades lower third urethra, lower third vagina or anus",
+          "T3": "Tumour of any size invades upper two-thirds urethra, upper two-thirds vagina, bladder mucosa or rectal mucosa",
+          "T4": "IVA Tumour fixed to pelvic bone"
+        },
+        "N": {
+          "NX": "N/A Regional lymph nodes cannot be assessed",
+          "N0": "N/A No regional lymph node metastasis N0(i+) N/A Isolated tumour cells in regional lymph node(s) ≤0.2 mm, or single cells or clusters of cells ≤200 cells in a single lymph node cross-section",
+          "N1": "Tumour involvement of non-fixed, non-ulcerated regional lymph nodes cN1mi IIIA Tumour involvement (>0.2 mm but ≤2.0 mm in diameter) of regional lymph nodes",
+          "N1a": "Tumour involvement (>2.0 mm to but ≤5 mm) of regional lymph nodes",
+          "N1b": "Tumour involvement (>5 mm) of regional lymph nodes N1c; tumour involvement of regional lymph nodes with extranodal extension (ENE)",
+          "N2": "IVA Tumour involvement of fixed or ulcerated regional lymph nodes"
+        },
+        "M": {
+          "M0": "N/A No distant metastasis",
+          "M1": "IVB Distant metastasis (including pelvic lymph node metastasis) Gynaecological"
+        },
+        "figo_mapping": {
+          "T1": "I",
+          "T1a": "IA",
+          "T1b": "IB",
+          "T2": "II",
+          "T3": "III",
+          "N1": "III",
+          "N1a": "IIIA",
+          "N1b": "IIIB"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IA",
+          "T": "T1a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB",
+          "T": "T1b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T4",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Vagina": {
+      "tumour": "Vagina",
+      "icd_o": "C52",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "The classification applies to primary carcinomas only. Tumours present in the vagina as secondary growths from either genital or extragenital sites are excluded. A tumour that has extended to the portio and reached the external os (orifice of uterus) is clas- sified as carcinoma of the cervix. A vaginal carcinoma occurring 5 years after success- ful treatment (complete response) of a carcinoma of the cervix uteri is considered a primary vaginal carcinoma. A tumour involving the vulva is classified as carcinoma of the vulva. There should be histological confirmation of the disease. The following are the procedures for assessing T, N and M categories: T categories Physical examination, endoscopy and imaging N categories Physical examination and imaging M categories Physical examination and imaging The FIGO stages are based on surgical staging. (TNM stages are based on clinical and/or pathological classification.)",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ (preinvasive carcinoma); high grade squamous intraepithelial lesion",
+          "T1": "Tumour confined to vagina (Continued) (Continued) cTNM FIGO Definition Categories Stage",
+          "T2": "Tumour invades paravaginal tissues (paracolpium)",
+          "T3": "Tumour extends to the pelvic wall",
+          "T4": "IVA Tumour invades mucosa of bladder or rectum or extends beyond the true pelvis* cM1 IVB Distant metastasis"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis TNM Pathological Classification"
+        },
+        "figo_mapping": {
+          "T1": "I",
+          "T2": "II",
+          "T3": "III"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T4",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Cervix Uteri": {
+      "tumour": "Cervix Uteri",
+      "icd_o": "C53",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "The classification applies only to carcinomas. There should be histological confirma- tion of the disease. Note Imaging and pathology can be used, when available, to supplement clinical findings with respect to tumour size and extent, in all stages.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ (preinvasive carcinoma)*",
+          "T1": "Tumour confined to the cervix (extension to corpus should be disregarded)",
+          "T1a": "Invasive carcinoma diagnosed only by microscopy. Stromal invasion with a maximal depth of 5.0 mm** (Continued) (Continued) TNM FIGO Categories Stage",
+          "T1a1": "Measured depth of stromal invasion 3.0 mm or less in depth**",
+          "T1a2": "Measured depth of stromal invasion more than 3.0 mm** and not more than 5.0 mm",
+          "T1b": "Lesion confined to the cervix with depth of invasion greater than 5 mm**",
+          "T1b1": "Lesion 2.0 cm or less in greatest dimension",
+          "T1b2": "Lesion more than 2.0 cm in greatest dimension but not more than 4 cm in greatest dimension.",
+          "T1b3": "Lesion more than 4 cm in greatest diameter",
+          "T2": "Tumour invades beyond uterus but not to the pelvic wall or to the lower third of vagina",
+          "T2a": "Tumour without parametrial invasion",
+          "T2a1": "Lesion 4.0 cm or less in greatest dimension",
+          "T2a2": "Lesion more than 4.0 cm in greatest dimension",
+          "T2b": "Tumour with parametrial invasion",
+          "T3": "Tumour involves lower third of vagina or extends to pelvic wall or causes hydronephrosis or non-functioning kidney",
+          "T3a": "Tumour involves lower third of vagina",
+          "T3b": "Tumour extends to pelvic wall or causes hydro- nephrosis or non-functioning kidney",
+          "T4": "IVA Tumour invades mucosa of the bladder or rec- tum or extends beyond true pelvis***"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis to pelvic lymph nodes only",
+          "N2": "Regional lymph node metastasis to para-aortic lymph nodes, with or without positive pelvic lymph nodes"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis (includes inguinal lymph nodes and intraperitoneal dis- ease). It excludes metastasis to vagina, pelvic serosa but does include uterine serosa, and adnexa1"
+        },
+        "figo_mapping": {
+          "T1": "I",
+          "T1a": "IA",
+          "T1a1": "IA1",
+          "T1a2": "IA2",
+          "T1b": "IB",
+          "T1b1": "IB1",
+          "T1b2": "IB2",
+          "T1b3": "IB3",
+          "T2": "II",
+          "T2a": "IIA",
+          "T2a1": "IIA1",
+          "T2a2": "IIA2",
+          "T2b": "IIB",
+          "T3": "III",
+          "T3a": "IIIA",
+          "T3b": "IIIB"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IA",
+          "T": "T1a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IA1",
+          "T": "T1a1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IA2",
+          "T": "T1a2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB",
+          "T": "T1b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB1",
+          "T": "T1b1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB2",
+          "T": "T1b2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA",
+          "T": "T2a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA1",
+          "T": "T2a1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA2",
+          "T": "T2a2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIB",
+          "T": "T2b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T3a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T3b",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T4",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Uterus - Endometrium": {
+      "tumour": "Uterus - Endometrium",
+      "icd_o": "C54.0, C54.3, C54.8, C54.9, C55",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "The classification applies to endometrial carcinomas and carcinosarcomas. There should be histological verification with subdivision by histological type and grading of the carcinomas. 1. Isthmus uteri (C54.0) 2. Fundus uteri (C54.3) 3. Endometrium (C54.1)",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "T1": "Tumour confined to the corpus uteri* Gynaecological",
+          "T1a": "Tumour limited to endometrium or invading less than half of myometrium",
+          "T1b": "Tumour invades one half or more of myometrium",
+          "T2": "Tumour invades cervical stroma but does not extend beyond the uterus cT3** Local and/or regional spread as specified here:",
+          "T3a": "Tumour invades the serosa of the corpus uteri or adnexae (direct extension or metastasis)",
+          "T3b": "Vaginal or parametrial involvement (direct extension or metastasis) cT4*** Tumour invades bladder/bowel mucosa"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis to pelvic lymph nodes",
+          "N2": "Regional lymph node metastasis to para-aortic lymph nodes with or without metastasis to pelvic lymph nodes"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis (excluding metastasis to vagina, pelvic serosa or adnexa, including metastasis to inguinal lymph nodes, intra-abdominal lymph nodes other than para-aortic or pelvic nodes)"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IA",
+          "T": "T1a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB",
+          "T": "T1b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T3a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T3b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIC1",
+          "T": "T1, T2, T3",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIC2",
+          "T": "T1, T2, T3",
+          "N": "N2",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T4",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Uterine Sarcomas": {
+      "tumour": "Uterine Sarcomas",
+      "icd_o": "C53, C54, C55",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "The classification applies to sarcomas not including carcinosarcoma, which is classi- fied as carcinoma of the endometrium. There should be histological confirmation and division of cases by histological type. The following are the procedures for assessing T, N and M categories: The FIGO stages are based on surgical staging. (TNM stages are based on clinical and/or pathological classification.) Anatomical Subsites 1. Cervix uteri (C53) 2. Isthmus uteri (C54.0) 3. Myometrium (C54.2) 4. Fundus uteri (C54.3) Regional Lymph Nodes The regional lymph nodes are the pelvic (hypogastric [obturator, internal iliac], com- mon and external iliac, parametrial and sacral) and the para-aortic nodes. TNM Clinical Classification Leiomyosarcoma, Endometrial stromal sarcoma T - Primary Tumour TNM FIGO Definition categories stage cT1 I Tumour limited to the uterus cT1a IA Tumour 5 cm or less in greatest dimension cT1b IB Tumour more than 5 cm cT2 II Tumour extends beyond the uterus, within the pelvis cT2a IIA Tumour involves adnexa cT2b IIB Tumour involves other pelvic tissues (Continued) TNM FIGO Definition categories stage cT3 III Tumour infiltrates abdominal tissues cT3a IIIA One site cT3b IIIB More than one site cN1 IIIC Metastasis to regional lymph nodes cT4 IVA Tumour invades bladder or rectum cM1 IVB Distant metastasis Note Simultaneous tumours of the uterine corpus and ovary/pelvis in association with ovarian/pel- vic endometriosis should be classified as independent primary tumours. Adenosarcoma",
+      "tnm": {
+        "T": {
+          "T1": "Tumour limited to the uterus",
+          "T1a": "Tumour 5 cm or less in greatest dimension",
+          "T1b": "Tumour more than 5 cm",
+          "T2": "Tumour extends beyond the uterus, within the pelvis",
+          "T2a": "Tumour involves adnexa",
+          "T2b": "Tumour involves other pelvic tissues (Continued) TNM FIGO Definition categories stage",
+          "T3": "Tumour infiltrates abdominal tissues",
+          "T3a": "One site",
+          "T3b": "More than one site cN1 IIIC Metastasis to regional lymph nodes",
+          "T4": "IVA Tumour invades bladder or rectum cM1 IVB Distant metastasis"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis (excluding adnexa, pelvic and abdominal tissues)"
+        },
+        "figo_mapping": {
+          "T1": "I",
+          "T1a": "IA",
+          "T1b": "IB",
+          "T2": "II",
+          "T2a": "IIA",
+          "T2b": "IIB",
+          "T3": "III",
+          "T3a": "IIIA",
+          "T3b": "IIIB"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IA",
+          "T": "T1a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB",
+          "T": "T1b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA",
+          "T": "T2a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIB",
+          "T": "T2b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T3a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T3b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIC",
+          "T": "T1, T2, T3",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T4",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Ovarian, Fallopian Tube and Primary Peritoneal Carcinoma": {
+      "tumour": "Ovarian, Fallopian Tube and Primary Peritoneal Carcinoma",
+      "icd_o": "C48.1, C56, C57",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "The classification applies to malignant ovarian neoplasms of both epithelial and stro- mal origin including borderline tumours1 corresponding to ‘common epithelial tumours’ of the earlier terminology. The classification also applies to malignant and borderline epithelial and stromal tumours of the Fallopian tube and peritoneum (Müllerian origin). There should be histological confirmation of the disease and division of cases by histological type. The following are the procedures for assessing T, N and M categories: T categories Clinical examination, imaging, surgical exploration (laparoscopy/ laparotomy) N categories Clinical examination, imaging, surgical exploration (laparoscopy/ laparotomy) M categories Clinical examination, imaging, surgical exploration (laparoscopy/ laparotomy) The FIGO stages are based on surgical staging. (TNM stages are based on clinical and/or pathological classification.)",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "T1": "Tumour limited to the ovaries (one or both) or Fallopian tube(s)",
+          "T1a": "Tumour limited to one ovary (capsule intact) or Fallopian tube; capsule intact, no tumour on ovarian surface or Fallopian tube surface; no malignant cells in ascites or peritoneal washings",
+          "T1b": "Tumour limited to both ovaries or Fallopian tubes; capsule intact, no tumour on ovarian or Fallopian tube surface; no malignant cells in ascites or peritoneal washings",
+          "T1c": "IC Tumour limited to one or both ovaries or Fallopian tubes with any of the following:",
+          "T1c1": "IC1 Surgical spill",
+          "T1c2": "IC2 Capsule ruptured before surgery or tumour on ovarian or Fallopian tube surface",
+          "T1c3": "IC3 Malignant cells in ascites or peritoneal washings",
+          "T2": "Tumour involves one or both ovaries or Fallopian tubes with pelvic extension (below the pelvic brim) or primary peritoneal cancer",
+          "T2a": "Extension and/or implants on uterus and/or Fallopian tube(s) and or ovary(ies)",
+          "T2b": "Extension to other pelvic tissues, including bowel within the pelvis",
+          "T3": "and/or cN1 IIIa Tumour involves one or both ovaries or Fallopian tubes or primary peritoneal carcinoma with cytologically or histologi- cally confirmed spread to the peritoneum outside the pelvis and/or metastasis to the retroperitoneal lymph nodes (Continued) TNM FIGO Definition categories stage cN1 Retroperitoneal lymph node metastasis only cN1a IIIA1i Lymph node metastasis not more than 10 mm in greatest dimension cN1b IIIA1ii Lymph node metastasis more than 10 mm in greatest dimension",
+          "T3a": "any N IIIA2 Microscopic extrapelvic (above the pelvic brim) peritoneal involvement with or without retroperitoneal lymph node, including bowel involvement",
+          "T3b": "any N IIIB Macroscopic peritoneal metastasis beyond pelvic brim 2 cm or less in greatest dimen- sion, including bowel involvement outside the pelvis with or without retroperitoneal nodes",
+          "T3c": "any N IIIC Peritoneal metastasis beyond pelvic brim more than 2 cm in greatest dimension and/ or retroperitoneal lymph node metastasis (includes extension of tumour to capsule of liver and spleen without parenchymal involvement of either organ) cM1 IV Distant metastasis (excludes peritoneal metastasis) cM1a IVA Pleural effusion with positive cytology Gynaecological cM1bb IVB Parenchymal metastasis and metastasis to extra-abdominal organs (including inguinal lymph nodes and lymph nodes outside the abdominal cavity)"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Retroperitoneal lymph node metastasis only",
+          "N1a": "IIIA1i Lymph node metastasis not more than 10 mm in greatest dimension",
+          "N1b": "IIIA1ii Lymph node metastasis more than 10 mm in greatest dimension"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis",
+          "M1a": "Pleural effusion with positive cytology",
+          "M1b": "Parenchymal metastasis and metastasis to extra-abdominal organs (including inguinal lymph nodes and lymph nodes outside the abdominal cavity)"
+        },
+        "figo_mapping": {
+          "T1": "I",
+          "T1a": "IA",
+          "T1b": "IB",
+          "T2": "II",
+          "T2a": "IIA",
+          "T2b": "IIB",
+          "N1": "IIIA1"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IA",
+          "T": "T1a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IB",
+          "T": "T1b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IC",
+          "T": "T1c",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA",
+          "T": "T2a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIB",
+          "T": "T2b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA1",
+          "T": "T1/2",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA2",
+          "T": "T3a",
+          "N": "N0, N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T3b",
+          "N": "N0, N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIC",
+          "T": "T3c",
+          "N": "N0, N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1a"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1b"
+        }
+      ]
+    },
+    "Gestational Trophoblastic Neoplasms": {
+      "tumour": "Gestational Trophoblastic Neoplasms",
+      "icd_o": "C58",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "T1": "Tumour confined to uterus",
+          "T2b": "Tumour extends to other genital structures: vagina, ovary, broad ligament orFallopian tube by metastasis or direct extension (Continued) TM FIGO Definition categories stagesa cM1a III Metastasis to lung(s) cM1bc IV Other distant metastasis"
+        },
+        "N": {},
+        "M": {},
+        "figo_mapping": {
+          "T1": "I",
+          "T2b": "II"
+        }
+      },
+      "stage_grouping": [],
+      "classification_note": "Uses prognostic scoring system; N not applicable"
+    },
+    "Penis": {
+      "tumour": "Penis",
+      "icd_o": "C60",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ (Penile intraepithelial neoplasia -PeIN)",
+          "Ta": "Non-invasive localised squamous cell carcinoma1",
+          "T1": "Tumour invades subepithelial connective tissue2",
+          "T1a": "Tumour invades subepithelial connective tissue without lymphovascular invasion or perineural invasion and is not poorly differentiated",
+          "T1b": "Tumour invades subepithelial connective tissue with lymphovascular invasion or perineural invasion or is poorly differentiated",
+          "T2": "Tumour invades corpus spongiosum with or without invasion of the urethra",
+          "T3": "Tumour invades corpus cavernosum with or without invasion of the urethra",
+          "T4": "Tumour invades other adjacent structures"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No palpable or visibly enlarged inguinal lymph nodes Urological",
+          "N1": "Palpable mobile unilateral inguinal lymph node",
+          "N2": "Palpable mobile multiple or bilateral inguinal lymph nodes",
+          "N3": "Fixed inguinal nodal mass or pelvic lymphadenopathy unilateral or bilateral"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIA",
+          "T": "T1b,T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIB",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T1, T2, T3",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T1, T2, T3",
+          "N": "N2",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "T4",
+          "N": "Any N",
+          "M": "M0"
+        }
+      ]
+    },
+    "Prostate": {
+      "tumour": "Prostate",
+      "icd_o": "C61.9",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classification applies to carcinomas excluding urothelial carcinoma of the prostate, which is classified as a urethral tumour (see page 201). There should be histological confirmation of the disease.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "T1": "Clinically inapparent tumour that is not palpable",
+          "T1c": "Tumour identified by needle biopsy (e.g., because of elevated PSA)",
+          "T2": "Tumour that is palpable and confined within prostate",
+          "T2a": "Tumour involves one half of one lobe or less",
+          "T2b": "Tumour involves more than half of one lobe, but not both lobes",
+          "T2c": "Tumour involves both lobes",
+          "T3": "Tumour extends through the prostatic capsule*",
+          "T3a": "Extraprostatic extension (unilateral or bilateral) including microscopic bladder neck involvement",
+          "T3b": "Tumour invades seminal vesicle(s)",
+          "T4": "Tumour is fixed or invades adjacent structures other than seminal vesicles: external sphincter, rectum, levator muscles and/or pelvic wall"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis",
+          "M1a": "Non-regional lymph node(s)",
+          "M1b": "Bone(s)",
+          "M1c": "Other site(s)"
+        }
+      },
+      "stage_grouping": []
+    },
+    "Testis": {
+      "tumour": "Testis",
+      "icd_o": "C62",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {},
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis Urological",
+          "N1": "Metastasis with a lymph node mass 2 cm or less in greatest dimension or multiple lymph nodes, not more than 2 cm in greatest dimension",
+          "N2": "Metastasis with a lymph node mass more than 2 cm but not more than 5 cm in greatest dimension, or multiple lymph nodes, any one mass more than 2 cm but not more than 5 cm in greatest dimension",
+          "N3": "Metastasis with a lymph node mass more than 5 cm in greatest dimension"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis",
+          "M1a": "Non-regional lymph node(s) or lung metastasis",
+          "M1b": "Distant metastasis other than non-regional lymph nodes and lung"
+        },
+        "T_note": "T classified after radical orchiectomy (pT only)",
+        "pT": {
+          "TX": "Primary tumour cannot be assessed (see T -Primary Tumour)",
+          "T0": "No evidence of primary tumour (e.g., histological scar in testis)",
+          "Tis": "Intratubular germ cell neoplasia (carcinoma in situ)",
+          "T1": "Tumour limited to testis, including the rete testis, but without vascular/lym- phatic invasion or invasion of the epididymis; tumour may invade tunica albuginea but not tunica vaginalis1",
+          "T2": "Tumour limited to testis with vascular/lymphatic invasion, or invading hilar soft tissue or epididymis or tumour extending through tunica albuginea with involvement of tunica vaginalis",
+          "T3": "Tumour invades spermatic cord with or without vascular/lymphatic invasion2",
+          "T4": "Tumour invades scrotum with or without vascular/lymphatic invasion"
+        }
+      },
+      "stage_grouping": []
+    },
+    "Kidney": {
+      "tumour": "Kidney",
+      "icd_o": "C64",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "T1": "Tumour 7 cm or less in greatest dimension, limited to the kidney",
+          "T1a": "Tumour 4 cm or less",
+          "T1b": "Tumour more than 4 cm but not more than 7 cm",
+          "T2": "Tumour more than 7 cm in greatest dimension, limited to the kidney",
+          "T2a": "Tumour more than 7 cm but not more than 10 cm",
+          "T2b": "Tumour more than 10 cm, limited to the kidney",
+          "T3": "Tumour extends into major veins or perinephric tissues but not into the ipsi- lateral adrenal gland and not beyond Gerota fascia",
+          "T3a": "Tumour extends into the renal vein or its segmental branches, or tumour invades the pelvicalyceal system or tumour invades perirenal and/or renal sinus fat (peripelvic) fat but not beyond Gerota fascia",
+          "T3b": "Tumour extends into vena cava below diaphragm",
+          "T3c": "Tumour extends into vena cava above the diaphragm or invades the wall of the vena cava",
+          "T4": "Tumour invades beyond Gerota fascia (including contiguous extension into the ipsilateral adrenal gland)"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis Urological",
+          "N1": "Metastasis in regional lymph node(s)"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "T4",
+          "N": "Any N",
+          "M": "M0"
+        }
+      ]
+    },
+    "Renal Pelvis and Ureter": {
+      "tumour": "Renal Pelvis and Ureter",
+      "icd_o": "C65, C66",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Ta": "Non-invasive papillary carcinoma",
+          "Tis": "Carcinoma in situ",
+          "T1": "Tumour invades subepithelial connective tissue",
+          "T2": "Tumour invades muscularis",
+          "T3": "(Renal pelvis) Tumour invades beyond muscularis into peripelvic fat or renal parenchyma (Ureter) Tumour invades beyond muscularis into periureteric fat",
+          "T4": "Tumour invades adjacent organs or through the kidney into perinephric fat"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in a single lymph node 2 cm or less in greatest dimension",
+          "N2": "Metastasis in a single lymph node more than 2 cm or multiple lymph nodes"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis Urological"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0a",
+          "T": "Ta",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage 0is",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "T4",
+          "N": "N0",
+          "M": "M0"
+        }
+      ]
+    },
+    "Urinary Bladder": {
+      "tumour": "Urinary Bladder",
+      "icd_o": "C67",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Ta": "Non-invasive papillary carcinoma",
+          "Tis": "Carcinoma in situ: ‘flat tumour’",
+          "T1": "Tumour invades subepithelial connective tissue",
+          "T2": "Tumour invades muscularis propria",
+          "T2a": "Tumour invades superficial muscularis propria (inner half)",
+          "T2b": "Tumour invades deep muscularis propria (outer half)",
+          "T3": "Tumour invades perivesical tissue:",
+          "T3a": "microscopically",
+          "T3b": "macroscopically (extravesical mass)",
+          "T4": "Tumour invades any of the following: prostate stroma, seminal vesicles, uterus, vagina, pelvic wall or abdominal wall",
+          "T4a": "Tumour invades prostate stroma, seminal vesicles, uterus or vagina",
+          "T4b": "Tumour invades pelvic wall or abdominal wall"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis Urological",
+          "N1": "Metastasis in a single lymph node in the true pelvis (hypogastric, obturator, external iliac or presacral)",
+          "N2": "Metastasis in multiple regional lymph nodes in the true pelvis (hypogastric, obturator, external iliac or presacral)",
+          "N3": "Metastasis in a common iliac lymph node(s)"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1a": "Non-regional lymph nodes",
+          "M1b": "Other distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0a",
+          "T": "Ta",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage 0is",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2a, T2b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIA",
+          "T": "T3a, T3b, T4a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T1, T2, T3, T4a",
+          "N": "N2, N3",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVA",
+          "T": "T4b",
+          "N": "Any N",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IVB",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1b"
+        }
+      ]
+    },
+    "Urethra": {
+      "tumour": "Urethra",
+      "icd_o": "C68.0, C61.9",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classification applies to carcinomas of the urethra (ICD-O-4 C68.0) and urothe- lial carcinomas of the prostate (ICD-O-4 C61.9) and prostatic urethra. There should be histological or cytological confirmation of the disease.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour Urethra (male and female)",
+          "Ta": "Non-invasive papillary, polypoid or verrucous carcinoma",
+          "Tis": "Carcinoma in situ, involving the prostatic urethra, periurethral or prostatic ducts without stromal invasion",
+          "T1": "Tumour invades subepithelial connective tissue (for tumours involving prostatic urethra only)",
+          "T2": "Tumour invades any of the following: prostatic stroma, corpus spongiosum or periurethral muscle",
+          "T3": "Tumour invades any of the following: corpus cavernosum, beyond prostatic capsule or bladder neck (extraprostatic extension)",
+          "T4": "Tumour invades other adjacent organs (invasion of the bladder or rectum)"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in a single lymph node",
+          "N2": "Metastasis in multiple lymph nodes"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage 0a",
+          "T": "Ta",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage 0is",
+          "T": "Tis",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T1, T2",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "T4",
+          "N": "N0, N1",
+          "M": "M0"
+        }
+      ]
+    },
+    "Adrenal Cortex": {
+      "tumour": "Adrenal Cortex",
+      "icd_o": "C74.0",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "This classification applies only to carcinomas of the adrenal cortex. It does not apply Adrenal Cortex to tumours of the adrenal medulla or sarcomas.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "T1": "Tumour 5 cm or less in greatest dimension, no extra-adrenal invasion",
+          "T2": "Tumour greater than 5 cm, no extra-adrenal invasion",
+          "T3": "Tumour of any size with local invasion, but not invading adjacent organs*",
+          "T4": "Tumour of any size with invasion of adjacent organs*"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Metastasis in regional lymph node(s) TNM Classification of Malignant Tumours, Ninth Edition. Edited by James Brierley, Meredith Giuliani, Brian O’Sullivan, Brian Rous, and Elizabeth Van Eycken."
+        },
+        "M": {
+          "M0": "No distance metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T1, T2",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Adrenal Medulla and Extra-Adrenal Paraganglia Tumours": {
+      "tumour": "Adrenal Medulla and Extra-Adrenal Paraganglia Tumours",
+      "icd_o": "C74.1, C75.5",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "This classification applies to paraganglion neuroendocrine tumours, consisting of phaeochromocytomas of the adrenal medulla (C74.1) and paragangliomasa of the aortic body and other paragangliomas (C75.5). Carotid body tumours are excluded.b Notes a Sympathetic paragangliomas are functional. b Parasympathetic paragangliomas are non-functional and are commonly found in the head and neck region (i.e., carotid body tumours) and usually have an excellent prognosis. The definitions of the T, N and M categories correspond with the AJCC 8th edition/version. Adrenal Medulla",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "T1": "Phaeochromocytoma 5 cm or less in greatest dimension, no extra- adrenal invasion",
+          "T2": "Phaeochromocytoma greater than 5 cm in greatest dimension, no extra-adrenal invasion Paragangliomaa of any size, no local invasion",
+          "T3": "Tumour of any size with local invasion, into adjoining tissues or adjacent organsa"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distance metastasis",
+          "M1": "Distance metastasis",
+          "M1a": "Bone only",
+          "M1b": "Distant sites excluding bone",
+          "M1c": "Bone and other distant sites"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage I",
+          "T": "T1",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T2",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T1, T2",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    },
+    "Carcinoma of Conjunctiva": {
+      "tumour": "Carcinoma of Conjunctiva",
+      "icd_o": "C69.0",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Carcinoma in situ",
+          "T1": "Tumour 5 mm or less in greatest dimension invades through the conjunctival basement membrane",
+          "T2": "Tumour more than 5 mm in greatest dimension, invades through the conjunctival basement membrane without invasion of adjacent structures*",
+          "T3": "Tumour invades adjacent structures*",
+          "T4": "Tumour invades the orbit or beyond",
+          "T4a": "Tumour invades orbital soft tissues, without bone invasion",
+          "T4b": "Tumour invades bone",
+          "T4c": "Tumour invades adjacent paranasal sinuses",
+          "T4d": "Tumour invades brain"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": []
+    },
+    "Melanoma of Conjunctiva": {
+      "tumour": "Melanoma of Conjunctiva",
+      "icd_o": "C69.0",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "Tis": "Melanoma confined to the conjunctival epithelium (in situ)a",
+          "T1": "Melanoma of the bulbar conjunctiva",
+          "T1a": "Tumour involves less than or equal to one quadrantb",
+          "T1b": "Tumour involves more than one but less than or equal to two quadrants",
+          "T1c": "Tumour involves more than two but less than or equal to three quadrants",
+          "T1d": "Tumour involves more than three quadrants",
+          "T2": "Melanoma of the non-bulbar conjunctiva involving palpebral, forniceal and/or caruncular conjunctiva",
+          "T2a": "Non-caruncular tumour involves less than or equal to one quadrant",
+          "T2b": "Non-caruncular tumour involves more than one quadrant",
+          "T2c": "Caruncular tumour involves less than or equal to one quadrant of conjunctiva",
+          "T2d": "Caruncular tumour involves more than one quadrant of conjunctiva",
+          "T3": "Tumour with local invasion into:",
+          "T3a": "Globe",
+          "T3b": "Eyelid",
+          "T3c": "Orbit",
+          "T3d": "Paranasal sinus, nasolacrimal duct and/or lacrimal gland",
+          "T4": "Tumour invades central nervous system"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": []
+    },
+    "Melanoma of Uvea": {
+      "tumour": "Melanoma of Uvea",
+      "icd_o": "C69.3",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "There should be histological confirmation of the disease. The following are the procedures for assessing T, N and M categories.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour Ophthalmic Iris*",
+          "T1": "Tumour limited to iris",
+          "T1a": "not more than 3 clock hours in size",
+          "T1b": "more than 3 clock hours in size",
+          "T1c": "with secondary glaucoma",
+          "T2": "Tumour confluent with or extending into the ciliary body, choroid or both",
+          "T2a": "Tumour confluent with or extending into the ciliary body without secondary glaucoma",
+          "T2b": "Tumour confluent with or extending into the choroid without secondary glaucoma",
+          "T2c": "Tumour confluent with or extending into the ciliary body and/or choroid with secondary glaucoma",
+          "T3": "Tumour confluent with or extending into the ciliary body, choroid or both, with scleral extension",
+          "T4": "Tumour with extrascleral extension",
+          "T4a": "less than or equal to 5 mm in diameter",
+          "T4b": "more than 5 mm in diameter"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis",
+          "M1a": "Largest metastasis 3 cm or less in greatest dimension",
+          "M1b": "Largest metastasis is larger than 3 cm in greatest dimension but not larger than 8 cm",
+          "M1c": "Largest metastasis is larger than 8 cm in greatest dimension"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage IIB",
+          "T": "T2b, T3a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IIIB",
+          "T": "T3d",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "N1",
+          "M": "M0"
+        }
+      ]
+    },
+    "Retinoblastoma": {
+      "tumour": "Retinoblastoma",
+      "icd_o": "C69.2",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "In bilateral cases, the eyes should be classified separately. The classification does not apply to complete spontaneous regression of the tumour. There should be histological confirmation of the disease in an enucleated eye. For Retinoblastoma in paediatric patients, please also see page 247.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed.",
+          "T0": "No evidence of primary tumour.",
+          "T1": "Tumour confined to the retina with subretinal fluid not more than 5 mm from the base of any tumour, without retinal detachment",
+          "T1a": "No tumour in either eye is greater than 3 mm in largest dimension or located closer than 1.5 mm to the optic nerve or fovea",
+          "T1b": "At least one tumour is greater than 3 mm in largest dimension or located closer than 1.5 mm to the optic nerve or fovea. No retinal detachment or subretinal fluid beyond 5 mm from the base of the tumour",
+          "T2": "Tumours with vitreous or subretinal seeding or retinal detachment",
+          "T2a": "Tumour with subretinal fluid more than 5 mm from the base of any tumour",
+          "T2b": "Tumour with vitreous and/or subretinal seeding",
+          "T3": "Severe intraocular disease",
+          "T3a": "Phthisis or prephthisis bulbi",
+          "T3b": "Invasion of choroid, pars plana, ciliary body, lens, zonules, iris or anterior chamber",
+          "T3c": "Raised intraocular pressure with neovascularisation and/or buphthalmos",
+          "T3d": "Hyphema and/or massive vitreous haemorrhage cT3e Aseptic orbital cellulitis",
+          "T4": "Extraocular tumour",
+          "T4a": "Invasion of optic nerve or orbital tissues",
+          "T4b": "Extraocular invasion with proptosis and/or orbital mass"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis",
+          "M1a": "Single or multiple metastasis to sites other than CNS or brain",
+          "M1b": "Metastasis to the CNS including brain TNM Pathological Classification pTX Primary tumour cannot be assessed pT0 No evidence of primary tumour pT1 Tumour confined to eye with no optic nerve or choroidal invasion pT2 Tumour with intraocular invasion pT2a Focal choroidal invasion and pre-or intralaminar invasion of the optic nerve head pT2b Tumour invasion of stroma of iris and/or trabecular meshwork and/or Schlemm canal pT3 Tumour with significant local invasion pT3a Choroidal invasion larger than 3 mm in diameter or multiple foci of invasion totalling more than 3 mm or any full-thickness involvement pT3b Retrolaminar invasion of optic nerve without invasion of transected end of optic nerve pT3c Partial-thickness involvement of sclera within the inner two-thirds pT3d Full-thickness invasion into outer third of the sclera and/or invasion into or around emissary channels pT4 Extraocular extension: Tumour invades optic nerve at transected end, in menin- geal space around the optic nerve, full-thickness invasion of the sclera with invasion of the episclera, adipose tissue, extraocular muscle, bone, conjunctiva or eyelid. pNX Regional lymph nodes cannot be assessed pN0 No regional lymph node involvement pN1 Regional lymph node involvement"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage I",
+          "T": "T1, T2, T3",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T4a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T4b",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        },
+        {
+          "stage": "Stage II",
+          "T": "T4",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "Any T",
+          "N": "N1",
+          "M": "M0"
+        }
+      ]
+    },
+    "Sarcoma of Orbit": {
+      "tumour": "Sarcoma of Orbit",
+      "icd_o": "C69.6",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "8th"
+      },
+      "rules": "The classification applies to sarcomas of soft tissue and bone. There should be histological confirmation of the disease and division of cases by histological type.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "T1": "Tumour 20 mm or less in greatest dimension",
+          "T2": "Tumour more than 20 mm in greatest dimension without invasion of globe or bony wall",
+          "T3": "Tumour of any size with invasion of orbital tissues and/or bony walls",
+          "T4": "Tumour invades globe or periorbital structure, such as eyelids, temporal fossa, nasal cavity and paranasal sinuses, and/or central nervous system Ophthalmic"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": []
+    },
+    "Carcinoma of Lacrimal Gland": {
+      "tumour": "Carcinoma of Lacrimal Gland",
+      "icd_o": "C69.5",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "There should be histological confirmation of the disease and division of cases by histological type.",
+      "tnm": {
+        "T": {
+          "TX": "Primary tumour cannot be assessed",
+          "T0": "No evidence of primary tumour",
+          "T1": "Tumour 2 cm or less in greatest dimension, with or without extraglandular extension into the orbital soft tissue",
+          "T1a": "No periosteal or bone involvement",
+          "T1b": "Periosteal involvement without bone involvement",
+          "T1c": "Bone involvement",
+          "T2": "Tumour more than 2 cm but not more than 4 cm in greatest dimension.",
+          "T2a": "No periosteal or bone involvement",
+          "T2b": "Periosteal involvement without bone involvement",
+          "T2c": "Bone involvement",
+          "T3": "Tumour more than 4 cm or with extraglandular extension into orbital soft Ophthalmic tissue, including optic nerve, or globe",
+          "T3a": "No periosteal or bone involvement",
+          "T3b": "Periosteal involvement without bone involvement",
+          "T3c": "Bone involvement",
+          "T4": "Tumour invades adjacent structures (sinuses, temporal fossa, pterygoid fossa, superior orbital fissure, cavernous sinus and/or brain)",
+          "T4a": "Not more than 2 cm in greatest dimension",
+          "T4b": "More than 2 cm but not more than 4 cm in greatest dimension",
+          "T4c": "More than 4 cm in greatest dimension"
+        },
+        "N": {
+          "NX": "Regional lymph nodes cannot be assessed",
+          "N0": "No regional lymph node metastasis",
+          "N1": "Regional lymph node metastasis"
+        },
+        "M": {
+          "M0": "No distant metastasis",
+          "M1": "Distant metastasis"
+        }
+      },
+      "stage_grouping": []
+    },
+    "Brain & Spinal Cord": {
+      "tumour": "Brain & Spinal Cord",
+      "icd_o": "C71, C72.0, C72.1, C75.3",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "The classification applies only to medulloblastomas, medulloepithelioma, CNS embry- onal tumour, atypical teratoid/rhabdoid tumour and pineoblastoma. There should be histological confirmation of the disease and division of cases by histological type. For paediatric patients, please see page 249.",
+      "tnm": {
+        "T": {},
+        "N": {},
+        "M": {
+          "M0": "M0 No distant metastasis",
+          "M1": "Distant metastasis",
+          "M1b": "M2 Microscopic confirmation intracranial spread beyond primary site",
+          "M1c": "M3 Microscopic confirmation of gross spinal subarachnoid seeding",
+          "M1a": "M1 Microscopic confirmation of tumour cells present in cerebrospinal fluid (CSF) by cytology"
+        },
+        "T_note": "No T classification applies; grading-based system"
+      },
+      "stage_grouping": []
+    },
+    "Hodgkin Lymphoma": {
+      "tumour": "Hodgkin Lymphoma",
+      "icd_o": "C81",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "",
+      "tnm": {
+        "T": {},
+        "N": {},
+        "M": {}
+      },
+      "stage_grouping": [],
+      "classification_note": "Uses Ann Arbor/Lugano staging system, not TNM"
+    },
+    "Non-Hodgkin Lymphomas": {
+      "tumour": "Non-Hodgkin Lymphomas",
+      "icd_o": "C82-C86",
+      "edition": {
+        "uicc": "9th",
+        "ajcc_alignment": "9th"
+      },
+      "rules": "The classification applies to primary cutaneous lymphoma, mycosis fungoides (MF), Sézary syndrome (SS) and T and B Cell Cutaneous Lymphoma. There should be histological confirmation of the disease. Anatomical Sites The following sites are identified by the ICD-O topography rubrics: 1. External ear and other parts of face (excluding lip and eyelid) (C44. 2-3) 2. Scalp and neck (C44.4) 3. Trunk (including anal margin and perianal skin) (C44.5, C21.3) 4. Arm and shoulder (C44.6) 5. Leg and hip (C44.7) 6. Labium majus and minus, clitoris and vulva (C51. 0-2, 8-9) 7. Prepuce, glans penis, body of penis and penis (C60. 0-2, 8-9) 8. Scrotum (C63.2)",
+      "tnm": {
+        "T": {
+          "T1": "Solitary lesion",
+          "T1a": "<5 cm in diameter",
+          "T1b": "≥5 cm in diameter",
+          "T2": "Multiple lesions limited to one body region or two contiguous body regions",
+          "T2a": "All disease <15 cm in diameter",
+          "T2b": "All disease ≥15 cm to <30 cm in diameter",
+          "T2c": "All disease ≥30 cm in diameter without extending beyond 2 contiguous body regions",
+          "T3": "Generalised disease",
+          "T3a": "Multiple lesions involving two non-contiguous body lesions",
+          "T3b": "Three or more body regions involved"
+        },
+        "N": {
+          "N0": "No clinically abnormal peripheral lymph nodes",
+          "N1": "Involvement of 1 peripheral nodal region that drains the area of involved skin",
+          "N2": "Involvement of > 2 peripheral node regions or involvement of any node region that does not drain the area of involved skin",
+          "N3": "Involvement of central node on biopsy"
+        },
+        "M": {
+          "M0": "No visceral involvement",
+          "M1": "M1 Visceral involvement Stage There is no stage. Mycosis Fungoides or Sézary syndrome"
+        }
+      },
+      "stage_grouping": [
+        {
+          "stage": "Stage II",
+          "T": "T1a, T2a",
+          "N": "N0",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage III",
+          "T": "T1a, T2a",
+          "N": "N1",
+          "M": "M0"
+        },
+        {
+          "stage": "Stage IV",
+          "T": "Any T",
+          "N": "Any N",
+          "M": "M1"
+        }
+      ]
+    }
+  }
+}

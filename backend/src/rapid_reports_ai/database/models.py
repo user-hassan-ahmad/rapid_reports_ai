@@ -3,11 +3,16 @@
 from sqlalchemy import Column, String, Text, Boolean, DateTime, JSON, ForeignKey, Integer, UniqueConstraint, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID, JSONB, TSVECTOR
 from sqlalchemy import TypeDecorator
 from datetime import datetime, timezone
 import uuid
 import json
+
+try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:
+    Vector = None
 
 # Create Base class
 Base = declarative_base()
@@ -295,6 +300,7 @@ class Report(Base):
     report_content = Column(Text, nullable=False)  # Generated report
     description = Column(String(500), nullable=True)  # Brief contextual description for history display
     validation_status = Column(JSON, nullable=True)  # Async validation status: {status, violations_count, started_at, completed_at, error}
+    enhancement_json = Column(JSONBType(), nullable=True)  # Full enhance output for workspace history reload
     
     # Foreign keys
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -396,6 +402,7 @@ class ReportAudit(Base):
     is_reviewed = Column(Boolean, default=False, nullable=False)
     reviewed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    prefetch_used = Column(Boolean, nullable=True)  # Analytics: True when audit was seeded by prefetch KB
     
     # Relationships
     report = relationship("Report", back_populates="audits")
@@ -471,54 +478,55 @@ class ReportAuditCriterion(Base):
         return f"<ReportAuditCriterion(criterion='{self.criterion}', status='{self.status}')>"
 
 
-class EnhancementCacheEntry(Base):
-    """Model for persistent enhancement pipeline cache"""
-    
-    __tablename__ = "enhancement_cache"
-    
-    # Primary key - cache_key format: "type:findings_hash:finding_idx:hash"
-    cache_key = Column(String(500), primary_key=True, index=True)
-    
-    # Analytics fields
-    findings_hash = Column(String(64), index=True)  # For grouping by findings
-    cache_type = Column(String(50), index=True)     # 'query_gen', 'perplexity_search', etc.
-    
-    # Cached data (JSONB for PostgreSQL, JSON for SQLite)
-    cached_value = Column(JSONBType(), nullable=False)
-    
-    # Timestamps
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
-    last_accessed = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
-    
-    # Usage tracking
-    access_count = Column(Integer, default=1, nullable=False)
-    
-    # TTL management
+class PrefetchResult(Base):
+    """Persistent cache for prefetch pipeline outputs, keyed by findings_hash.
+
+    Replaces both EnhancementCacheEntry and GuidelineCache. Stores the full
+    PrefetchOutput JSON for cross-session and post-restart reuse (7-day TTL).
+    """
+
+    __tablename__ = "prefetch_results"
+
+    findings_hash = Column(String(64), primary_key=True, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    output_json = Column(JSONBType(), nullable=False)
+    pipeline_ms = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     expires_at = Column(DateTime, nullable=False, index=True)
-    
-    # Composite indexes for common queries
-    __table_args__ = (
-        Index('idx_findings_hash_type', 'findings_hash', 'cache_type'),
-        Index('idx_expires_at', 'expires_at'),
-    )
-    
+
+    user = relationship("User")
+
     def __repr__(self):
-        return f"<EnhancementCacheEntry(cache_key='{self.cache_key[:50]}...', type='{self.cache_type}')>"
+        return f"<PrefetchResult(hash='{self.findings_hash[:12]}…')>"
 
 
-class GuidelineCache(Base):
-    """Cached Firecrawl-extracted guideline criteria text per canonical system name."""
+class TnmStaging(Base):
+    """UICC TNM 9th Edition staging reference data with hybrid search support.
 
-    __tablename__ = "guideline_cache"
+    Each row represents one tumour type with full T/N/M category definitions,
+    stage grouping, and pre-computed embeddings for semantic search.
+    BM25 search is powered by the tsvector column with a GIN index;
+    semantic search uses pgvector HNSW on the embedding column.
+    """
+
+    __tablename__ = "tnm_staging"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    system = Column(String(100), nullable=False, unique=True, index=True)
-    version = Column(String(20), nullable=True)
-    content = Column(Text, nullable=True)
-    source_url = Column(Text, nullable=True)
-    is_available = Column(Boolean, default=True, nullable=False)
-    unavailable_reason = Column(Text, nullable=True)
-    fetched_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
-    expires_at = Column(DateTime, nullable=False, index=True)
-    last_used_at = Column(DateTime, nullable=True)
+    tumour = Column(String(200), unique=True, nullable=False, index=True)
+    icd_o = Column(String(200), nullable=True)
+    edition_uicc = Column(String(10), nullable=False, default="9th")
+    edition_ajcc = Column(String(10), nullable=True)
+    rules = Column(Text, nullable=True)
+    tnm_json = Column(JSONBType(), nullable=False)
+    stage_grouping = Column(JSONBType(), nullable=True)
+    search_text = Column(Text, nullable=False)
+    search_vector = Column(TSVECTOR)
+    embedding = Column(Vector(1536)) if Vector else Column(JSON, nullable=True)
+
+    __table_args__ = (
+        Index("ix_tnm_staging_search_vector", "search_vector", postgresql_using="gin"),
+    )
+
+    def __repr__(self):
+        return f"<TnmStaging(tumour='{self.tumour}')>"
 

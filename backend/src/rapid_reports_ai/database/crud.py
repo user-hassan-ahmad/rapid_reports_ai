@@ -16,7 +16,6 @@ from .models import (
     ReportVersion,
     ReportAudit,
     ReportAuditCriterion,
-    GuidelineCache,
 )
 
 
@@ -1086,6 +1085,47 @@ def create_report_audit(
     return audit
 
 
+def append_audit_criteria(
+    db: Session,
+    audit_id,
+    new_criteria: list,
+    new_overall_status: str,
+) -> None:
+    """Append additional criteria to an existing ReportAudit row and update overall_status.
+
+    Used by Phase 2 audit (run inside /enhance) to merge its 3 criteria into the
+    Phase 1 audit row, or vice-versa if Phase 2 finishes first.
+    """
+    audit_uuid = uuid.UUID(str(audit_id)) if isinstance(audit_id, str) else audit_id
+
+    audit = db.query(ReportAudit).filter(ReportAudit.id == audit_uuid).first()
+    if not audit:
+        return
+
+    for criterion_data in new_criteria:
+        cdata = criterion_data.model_dump() if hasattr(criterion_data, "model_dump") else criterion_data
+        flags_json = None
+        if cdata.get("criterion") == "clinical_flagging":
+            flags_json = {
+                "flags_identified": cdata.get("flags_identified"),
+                "suggested_banners": cdata.get("suggested_banners"),
+            }
+        criterion = ReportAuditCriterion(
+            audit_id=audit.id,
+            criterion=cdata.get("criterion"),
+            status=cdata.get("status", "warning"),
+            rationale=cdata.get("rationale", ""),
+            recommendation=cdata.get("recommendation"),
+            highlighted_spans=cdata.get("highlighted_spans", []),
+            flags_json=flags_json,
+            acknowledged=False,
+        )
+        db.add(criterion)
+
+    audit.overall_status = new_overall_status
+    db.commit()
+
+
 def get_report_audits(
     db: Session,
     report_id: str,
@@ -1195,58 +1235,5 @@ def acknowledge_criterion(
     return {"acknowledged": True, "is_reviewed": all_acknowledged}
 
 
-# ============ Guideline cache CRUD ============
-
-
-def get_cached_guideline(db: Session, system: str) -> Optional[GuidelineCache]:
-    """Return non-expired cache row for system, or None. Updates last_used_at on hit."""
-    now = datetime.now(timezone.utc)
-    entry = (
-        db.query(GuidelineCache)
-        .filter(GuidelineCache.system == system, GuidelineCache.expires_at > now)
-        .first()
-    )
-    if entry:
-        entry.last_used_at = now
-        db.commit()
-    return entry
-
-
-def upsert_cached_guideline(
-    db: Session,
-    system: str,
-    content: Optional[str],
-    source_url: Optional[str],
-    is_available: bool,
-    expires_at: datetime,
-    version: Optional[str] = None,
-    unavailable_reason: Optional[str] = None,
-) -> GuidelineCache:
-    """Insert or replace row for system (ignores previous expiry)."""
-    now = datetime.now(timezone.utc)
-    entry = db.query(GuidelineCache).filter(GuidelineCache.system == system).first()
-    if entry:
-        entry.version = version
-        entry.content = content
-        entry.source_url = source_url
-        entry.is_available = is_available
-        entry.unavailable_reason = unavailable_reason
-        entry.fetched_at = now
-        entry.expires_at = expires_at
-    else:
-        entry = GuidelineCache(
-            system=system,
-            version=version,
-            content=content,
-            source_url=source_url,
-            is_available=is_available,
-            unavailable_reason=unavailable_reason,
-            fetched_at=now,
-            expires_at=expires_at,
-        )
-        db.add(entry)
-    db.commit()
-    db.refresh(entry)
-    return entry
 
 

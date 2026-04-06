@@ -8,10 +8,9 @@ import TemplatedReportTab from './components/TemplatedReportTab.svelte';
 import HistoryTab from './components/HistoryTab.svelte';
 import SettingsTab from './components/SettingsTab.svelte';
 import ReportEnhancementSidebar from './components/ReportEnhancementSidebar.svelte';
+import IntervalAnalysisDrawer from './components/IntervalAnalysisDrawer.svelte';
 import ReportVersionHistory from './components/ReportVersionHistory.svelte';
 import ReportVersionInline from './components/ReportVersionInline.svelte';
-import EnhancementDock from './components/EnhancementDock.svelte';
-import EnhancementPreviewCards from './components/EnhancementPreviewCards.svelte';
 import TemplateEditorNew from './components/TemplateEditorNew.svelte';
 import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
@@ -146,7 +145,7 @@ let shouldAutoLoadEnhancements = false;
 let enhancementGuidelinesCount = 0;
 let enhancementLoading = false;
 let enhancementError = false;
-let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | null = null;
+let sidebarTabToOpen: 'guidelines' | 'comparison' | 'chat' | 'qa' | null = null;
 
 // Audit guideline references — lifted from ReportResponseViewer so the Copilot
 // Guidelines tab can show the QA Reference section alongside Perplexity cards.
@@ -168,6 +167,89 @@ let hoverPopupReportId: string | null = null;
 
 // Track if enhancements have finished loading (for Ask AI button)
 let enhancementsLoaded = false;
+
+// Copilot workbench: nav collapse + auto-open
+let navStateBeforeCopilot = false;
+let copilotAutoOpened = false;
+let copilotPanelWide = false;
+let copilotLayoutMode: 'narrow' | 'dual' | 'tri' = 'narrow';
+
+/** Viewport tracking for Copilot width cap and layout tiers (md+ inline reserve). */
+let viewportWidth = 1200;
+const COPILOT_IDEAL_WIDTH: Record<'narrow' | 'dual' | 'tri', number> = {
+	narrow: 420,
+	dual: 700,
+	tri: 940
+};
+/** Max Copilot width as a fraction of viewport — keeps report + Copilot usable side by side. */
+const COPILOT_VIEWPORT_CAP = 0.4;
+/** Minimum capped viewport budget to offer dual / tri layouts. */
+const COPILOT_DUAL_MIN_CAP = 640;
+const COPILOT_TRI_MIN_CAP = 880;
+
+$: copilotMaxWidthPx = browser ? Math.floor(viewportWidth * COPILOT_VIEWPORT_CAP) : COPILOT_IDEAL_WIDTH.tri;
+$: copilotMaxLayoutTier = (
+	copilotMaxWidthPx >= COPILOT_TRI_MIN_CAP ? 'tri' : copilotMaxWidthPx >= COPILOT_DUAL_MIN_CAP ? 'dual' : 'narrow'
+) as 'narrow' | 'dual' | 'tri';
+$: copilotAsideWidthPx = Math.min(COPILOT_IDEAL_WIDTH[copilotLayoutMode], copilotMaxWidthPx);
+/** Right padding for main column when Copilot or peek rail is open (md+ only). */
+$: copilotMainPaddingRightPx =
+	browser && viewportWidth >= 768
+		? sidebarVisible && isEnhancementContext
+			? copilotAsideWidthPx
+			: isEnhancementContext && currentReportId && !sidebarVisible
+				? 40
+				: 0
+		: 0;
+let intervalDrawerOpen = false;
+let auditState: {
+	status: string;
+	result: unknown;
+	auditId: string | null;
+	error: string | null;
+	activeCriterion: string | null;
+	saveInFlight?: boolean;
+} | null = null;
+
+function openCopilot(options: {
+	tab?: typeof sidebarTabToOpen;
+	initialMessage?: string | null;
+	autoSend?: boolean;
+	labelInfo?: typeof chatAutoSendLabel;
+	auditFixContext?: typeof chatAuditFixContext;
+} = {}) {
+	if (options.tab === 'comparison') {
+		intervalDrawerOpen = true;
+		return;
+	}
+	navStateBeforeCopilot = !sidebarCollapsed;
+	sidebarCollapsed = true;
+	if (options.tab !== undefined) sidebarTabToOpen = options.tab ?? null;
+	if (options.initialMessage !== undefined) chatInitialMessage = options.initialMessage ?? null;
+	if (options.autoSend !== undefined) chatAutoSend = options.autoSend;
+	if (options.labelInfo !== undefined) chatAutoSendLabel = options.labelInfo ?? null;
+	if (options.auditFixContext !== undefined) chatAuditFixContext = options.auditFixContext ?? null;
+	sidebarVisible = true;
+}
+
+function closeCopilot() {
+	sidebarVisible = false;
+	sidebarTabToOpen = null;
+	chatInitialMessage = null;
+	chatAutoSend = false;
+	chatAutoSendLabel = null;
+	chatAuditFixContext = null;
+	// Preserve copilotPanelWide / copilotLayoutMode so the main column
+	// reserves the correct width immediately when the sidebar re-opens.
+	// The sidebar itself will re-emit panelWide on the visibility rising edge.
+	//
+	// Delay nav restoration until after the padding-right transition (300ms)
+	// completes — otherwise both animations fire simultaneously and the content
+	// area visually "rebounds" from being pushed from both sides at once.
+	if (navStateBeforeCopilot) {
+		setTimeout(() => { sidebarCollapsed = false; }, 310);
+	}
+}
 
 // Template modal state (rendered at root level)
 let showTemplateEditor = false;
@@ -290,9 +372,20 @@ let templatedModel = 'claude'; // Track model for template editor
 		activeTab = event.detail;
 	}
 
+	type ExternalAuditTabRef = {
+		restoreFromParent: () => Promise<void>;
+		dismissFromParent: () => void;
+		handleExternalAuditAcknowledge?: (detail: { criterion: string; resolutionMethod: string }) => void;
+		handleExternalAuditRestore?: (detail: { criterion: string }) => void;
+		handleExternalAuditSuggestFix?: (detail: unknown) => void;
+		handleExternalAuditApplyFix?: (detail: unknown) => void;
+		handleExternalAuditInsertBanner?: (bannerText: string) => void;
+		handleExternalAuditReaudit?: () => void;
+	};
+
 	// Tab refs for draft restore (called from page-level banners)
-	let intelliTabRef: { restoreFromParent: () => Promise<void>; dismissFromParent: () => void } | null = null;
-	let templateTabRef: { restoreFromParent: () => Promise<void>; dismissFromParent: () => void } | null = null;
+	let intelliTabRef: ExternalAuditTabRef | null = null;
+	let templateTabRef: ExternalAuditTabRef | null = null;
 
 	// Banner visibility is captured once at mount, not reactive — prevents banner firing while typing
 	let showIntelliDraftBanner = false;
@@ -373,7 +466,7 @@ let templatedModel = 'claude'; // Track model for template editor
 	}
 
 	function clearEnhancementState(): void {
-		sidebarVisible = false;
+		closeCopilot();
 		reportUpdateLoading = false;
 		showVersionHistoryModal = false;
 		currentHistoryCount = 0;
@@ -447,6 +540,9 @@ function handleTemplateCleared(): void {
 		}
 	}
 
+	function handleViewportResize(): void {
+		if (browser) viewportWidth = window.innerWidth;
+	}
 
 	onMount(async () => {
 		if (browser) {
@@ -476,6 +572,8 @@ function handleTemplateCleared(): void {
 
 			// Listen for browser back/forward button
 			window.addEventListener('hashchange', handleHashChange);
+			viewportWidth = window.innerWidth;
+			window.addEventListener('resize', handleViewportResize);
 
 			// Initialize stores
 			await Promise.all([
@@ -493,6 +591,7 @@ function handleTemplateCleared(): void {
 	onDestroy(() => {
 		if (browser) {
 			window.removeEventListener('hashchange', handleHashChange);
+			window.removeEventListener('resize', handleViewportResize);
 		}
 	});
 
@@ -581,6 +680,7 @@ function handleTemplateCleared(): void {
 		response = null;
 		responseModel = null;
 
+		const _flowT0 = typeof performance !== 'undefined' ? performance.now() : 0;
 		try {
 			const payload: {
 				message: string;
@@ -609,7 +709,14 @@ function handleTemplateCleared(): void {
 			});
 
 			const data = await res.json();
-			
+			const _flowT1 = typeof performance !== 'undefined' ? performance.now() : 0;
+			console.debug(
+				'[FLOW_TIMING] auto POST /api/chat roundtrip_ms=',
+				Math.round(_flowT1 - _flowT0),
+				'report_id=',
+				data.report_id
+			);
+
 			if (data.success) {
 				autoResponse = data.response;
 				autoResponseModel = data.model;
@@ -639,8 +746,7 @@ $: {
 	
 	// Close sidebar if switching between different reports or leaving enhancement context
 	if (currentReportId !== newReportId && sidebarVisible) {
-		sidebarVisible = false;
-		sidebarTabToOpen = null;
+		closeCopilot();
 	}
 	
 	// Reset enhancement state when report changes
@@ -648,13 +754,42 @@ $: {
 		enhancementGuidelinesCount = 0;
 		enhancementLoading = false;
 		enhancementError = false;
+		copilotAutoOpened = false;
+		auditState = null;
+		enhancementsLoaded = false;
 	}
 	
 	currentReportId = newReportId;
 }
 $: shouldAutoLoadEnhancements = Boolean(isEnhancementContext && currentReportId);
 $: if (!isEnhancementContext && sidebarVisible) {
-	sidebarVisible = false;
+	closeCopilot();
+}
+
+// Auto-open Copilot once per report when guideline enhancement finishes loading (QA tab first)
+$: if (enhancementsLoaded && !copilotAutoOpened && !sidebarVisible && isEnhancementContext) {
+	const autoOpenEnabled = (() => {
+		try {
+			return localStorage.getItem('copilotAutoOpen') !== 'false';
+		} catch {
+			return true;
+		}
+	})();
+	if (autoOpenEnabled) {
+		copilotAutoOpened = true;
+		openCopilot({ tab: 'qa' });
+	}
+}
+
+$: if (
+	auditState?.status === 'complete' &&
+	enhancementError &&
+	!copilotAutoOpened &&
+	!sidebarVisible &&
+	isEnhancementContext
+) {
+	copilotAutoOpened = true;
+	openCopilot({ tab: 'qa' });
 }
 </script>
 
@@ -679,8 +814,12 @@ $: if (!isEnhancementContext && sidebarVisible) {
 		/>
 	{/if}
 
-	<!-- Main Content Area -->
-	<main class="relative z-10 transition-all duration-300 {($isAuthenticated || ($token && !$isAuthenticated)) ? (sidebarCollapsed ? 'md:ml-16' : 'md:ml-64') : ''} min-h-screen">
+	<!-- Main + workbench row; right inset reserved when peek rail or desktop Copilot is open (those layers are fixed). -->
+	<div
+		class="relative z-10 flex min-h-screen md:items-start transition-[padding] duration-300 {($isAuthenticated || ($token && !$isAuthenticated)) ? (sidebarCollapsed ? 'md:ml-16' : 'md:ml-64') : ''}"
+		style:padding-right={copilotMainPaddingRightPx > 0 ? `${copilotMainPaddingRightPx}px` : undefined}
+	>
+	<main class="flex-1 min-w-0 relative min-h-screen">
 		{#if $token && !$isAuthenticated}
 			<!-- Still checking auth status - show loading -->
 			<div class="min-h-screen flex items-center justify-center">
@@ -807,13 +946,17 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							enhancementError={enhancementError}
 							on:resetForm={handleFormReset}
 							on:openSidebar={(e) => {
-							sidebarTabToOpen = e.detail?.tab || null;
-							chatInitialMessage = e.detail?.initialMessage || null;
-							chatAutoSend = e.detail?.autoSend ?? false;
-							chatAutoSendLabel = e.detail?.labelInfo || null;
-							chatAuditFixContext = e.detail?.auditFixContext ?? null;
-							sidebarVisible = true;
-						}}
+								openCopilot({
+									tab: e.detail?.tab || null,
+									initialMessage: e.detail?.initialMessage || null,
+									autoSend: e.detail?.autoSend ?? false,
+									labelInfo: e.detail?.labelInfo || null,
+									auditFixContext: e.detail?.auditFixContext ?? null
+								});
+							}}
+							on:auditStateChange={(e) => {
+								if (isEnhancementContext) auditState = e.detail;
+							}}
 						on:showHoverPopup={(e) => {
 							hoverPopupItem = e.detail.item;
 							hoverPopupPosition = e.detail.position;
@@ -831,11 +974,15 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							auditGuidelineReferences = e.detail?.guidelineReferences ?? [];
 							auditCriteriaForSidebar = e.detail?.auditCriteria ?? [];
 						}}
-					/>
-				{/if}
-			</div>
-			
-			<!-- Templated Report Tab - Keep component alive, just hide/show -->
+					on:openVersionHistory={() => {
+						if (currentReportId) showVersionHistoryModal = true;
+					}}
+					on:openCompare={() => { intervalDrawerOpen = true; }}
+				/>
+			{/if}
+		</div>
+		
+		<!-- Templated Report Tab - Keep component alive, just hide/show -->
 				<div class={activeTab === 'templated' ? '' : 'hidden'}>
 					{#if loadingApiStatus}
 						<!-- Skeleton loader for API status -->
@@ -876,12 +1023,16 @@ $: if (!isEnhancementContext && sidebarVisible) {
 							}
 						}}
 					on:openSidebar={(e) => {
-						sidebarTabToOpen = e.detail?.tab || null;
-						chatInitialMessage = e.detail?.initialMessage || null;
-						chatAutoSend = e.detail?.autoSend ?? false;
-						chatAutoSendLabel = e.detail?.labelInfo || null;
-						chatAuditFixContext = e.detail?.auditFixContext ?? null;
-						sidebarVisible = true;
+						openCopilot({
+							tab: e.detail?.tab || null,
+							initialMessage: e.detail?.initialMessage || null,
+							autoSend: e.detail?.autoSend ?? false,
+							labelInfo: e.detail?.labelInfo || null,
+							auditFixContext: e.detail?.auditFixContext ?? null
+						});
+					}}
+					on:auditStateChange={(e) => {
+						if (isEnhancementContext) auditState = e.detail;
 					}}
 					on:showHoverPopup={(e) => {
 							hoverPopupItem = e.detail.item;
@@ -900,12 +1051,16 @@ $: if (!isEnhancementContext && sidebarVisible) {
 						auditGuidelineReferences = e.detail?.guidelineReferences ?? [];
 						auditCriteriaForSidebar = e.detail?.auditCriteria ?? [];
 					}}
-					on:reportCleared={handleTemplateCleared}
+				on:openVersionHistory={() => {
+					if (currentReportId) showVersionHistoryModal = true;
+				}}
+				on:openCompare={() => { intervalDrawerOpen = true; }}
+				on:reportCleared={handleTemplateCleared}
 					on:templateListOpen={() => {
 							// User clicked "Back to Templates" — just close the sidebar.
 							// Do NOT clear templatedReportId or enhancement state so that
 							// re-selecting the same template is seamless.
-							sidebarVisible = false;
+							closeCopilot();
 						}}
 						on:reportContentChange={(e) => {
 							templatedReportContent = e.detail?.content ?? '';
@@ -943,27 +1098,57 @@ $: if (!isEnhancementContext && sidebarVisible) {
 		{/if}
 	</main>
 
-<!-- Enhancement Sidebar - Rendered at root level like history modal -->
-<ReportEnhancementSidebar
-	reportId={currentReportId}
-	reportContent={activeTab === 'auto' ? (autoResponse || '') : (templatedResponseOverride || templatedReportContent || response || '')}
-	visible={sidebarVisible && isEnhancementContext}
-	autoLoad={shouldAutoLoadEnhancements}
-	historyAvailable={currentHistoryCount > 1}
-	initialTab={sidebarTabToOpen}
-	initialMessage={chatInitialMessage}
-	autoSend={chatAutoSend}
-	autoSendLabel={chatAutoSendLabel}
-	auditFixContext={chatAuditFixContext}
-	auditGuidelineReferences={auditGuidelineReferences}
-	auditCriteriaForSidebar={auditCriteriaForSidebar}
-		on:close={() => {
-		sidebarVisible = false;
-		sidebarTabToOpen = null;
-		chatInitialMessage = null;
-		chatAutoSend = false;
-		chatAutoSendLabel = null;
-		chatAuditFixContext = null;
+	<!-- Mount when a report exists so /enhance + prefetch can run before Copilot is opened. -->
+	{#if isEnhancementContext && currentReportId}
+		<aside
+			class="fixed inset-0 z-[10000] flex min-h-0 w-full flex-col border-l border-white/10 bg-black/70 backdrop-blur-2xl overflow-hidden shadow-2xl shadow-purple-500/10 transition-[width] duration-300 ease-in-out md:inset-y-0 md:left-auto md:right-0 md:z-[35] {!sidebarVisible ? 'hidden' : ''}"
+			style={browser && viewportWidth >= 768
+				? `width: ${copilotAsideWidthPx}px; max-width: min(100vw, ${copilotMaxWidthPx}px);`
+				: 'width: 100%;'}
+			aria-hidden={!sidebarVisible}
+		>
+			<ReportEnhancementSidebar
+				reportId={currentReportId}
+				reportContent={activeTab === 'auto' ? (autoResponse || '') : (templatedResponseOverride || templatedReportContent || response || '')}
+				visible={sidebarVisible}
+				inFlow={true}
+				autoLoad={shouldAutoLoadEnhancements}
+				historyAvailable={currentHistoryCount > 1}
+				initialTab={sidebarTabToOpen}
+				initialMessage={chatInitialMessage}
+				autoSend={chatAutoSend}
+				autoSendLabel={chatAutoSendLabel}
+				auditFixContext={chatAuditFixContext}
+				auditGuidelineReferences={auditGuidelineReferences}
+				auditCriteriaForSidebar={auditCriteriaForSidebar}
+				auditState={auditState}
+				panelWide={copilotPanelWide}
+				maxLayoutTier={copilotMaxLayoutTier}
+				on:close={closeCopilot}
+	on:auditAcknowledge={(e) => {
+		if (activeTab === 'auto') intelliTabRef?.handleExternalAuditAcknowledge?.(e.detail);
+		else templateTabRef?.handleExternalAuditAcknowledge?.(e.detail);
+	}}
+	on:auditRestore={(e) => {
+		if (activeTab === 'auto') intelliTabRef?.handleExternalAuditRestore?.(e.detail);
+		else templateTabRef?.handleExternalAuditRestore?.(e.detail);
+	}}
+	on:auditSuggestFix={(e) => {
+		if (activeTab === 'auto') intelliTabRef?.handleExternalAuditSuggestFix?.(e.detail);
+		else templateTabRef?.handleExternalAuditSuggestFix?.(e.detail);
+	}}
+	on:auditApplyFix={(e) => {
+		if (activeTab === 'auto') intelliTabRef?.handleExternalAuditApplyFix?.(e.detail);
+		else templateTabRef?.handleExternalAuditApplyFix?.(e.detail);
+	}}
+	on:auditInsertBanner={(e) => {
+		const t = e.detail?.bannerText;
+		if (activeTab === 'auto') intelliTabRef?.handleExternalAuditInsertBanner?.(t);
+		else templateTabRef?.handleExternalAuditInsertBanner?.(t);
+	}}
+	on:auditReaudit={() => {
+		if (activeTab === 'auto') intelliTabRef?.handleExternalAuditReaudit?.();
+		else templateTabRef?.handleExternalAuditReaudit?.();
 	}}
 	on:auditFixContextConsumed={() => {
 		chatAuditFixContext = null;
@@ -992,26 +1177,192 @@ $: if (!isEnhancementContext && sidebarVisible) {
 			reportUpdateLoading = false;
 		}
 	}}
-	on:openVersionHistory={() => {
-		if (currentReportId) {
-			showVersionHistoryModal = true;
-		}
+	on:openCompare={() => {
+		intervalDrawerOpen = true;
+	}}
+	on:panelWide={(e) => {
+		copilotPanelWide = Boolean(e.detail?.wide);
+		if (e.detail?.mode) copilotLayoutMode = e.detail.mode;
 	}}
 	on:enhancementState={(e) => {
 		const state = e.detail;
 		enhancementGuidelinesCount = state.guidelinesCount || 0;
 		enhancementLoading = state.isLoading || false;
 		enhancementError = state.hasError || false;
-		// Track when enhancements have finished loading
-		// Consider loaded when: not loading AND we have a reportId (enhancements are ready to use)
-		enhancementsLoaded = !state.isLoading && !!currentReportId;
+		// Ready when this event matches the active report (avoids stale sidebar emissions)
+		enhancementsLoaded =
+			!state.isLoading &&
+			!!currentReportId &&
+			String(state.reportId ?? '') === String(currentReportId);
 	}}
-/>
+			/>
+		</aside>
+	{/if}
+	</div>
+
+	<!-- Mobile Copilot FAB: visible only on < md when the copilot rail is hidden -->
+	{#if isEnhancementContext && currentReportId && !sidebarVisible}
+		<button
+			type="button"
+			class="md:hidden fixed bottom-5 right-5 z-[45] w-12 h-12 rounded-full bg-purple-600/90 backdrop-blur-lg text-white shadow-lg shadow-purple-500/30 flex items-center justify-center hover:bg-purple-500 active:scale-95 transition-all"
+			title="Open Copilot"
+			onclick={() => openCopilot()}
+		>
+			<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M13 10V3L4 14h7v7l9-11h-7z" />
+			</svg>
+			{#if (Array.isArray((auditState?.result as any)?.criteria) && (auditState?.result as any).criteria.filter((c: any) => c.status === 'flag' && !c.acknowledged).length > 0)}
+				<span class="absolute -top-0.5 -right-0.5 w-3 h-3 bg-rose-500 rounded-full border-2 border-black"></span>
+			{/if}
+		</button>
+	{/if}
+
+	<!-- Viewport-locked rail: sticky fails when ancestors use overflow-hidden (page root). -->
+	{#if isEnhancementContext && currentReportId && !sidebarVisible}
+		{@const _railLoading = enhancementLoading || auditState?.status === 'loading'}
+		{@const _railLoaded = !enhancementLoading && (enhancementGuidelinesCount > 0 || auditState?.status === 'complete' || auditState?.status === 'stale')}
+		{@const _qaFlagCount = Array.isArray((auditState?.result as any)?.criteria)
+			? (auditState?.result as any).criteria.filter((c: any) => c.status === 'flag' && !c.acknowledged).length
+			: 0}
+		<div
+			class="copilot-rail hidden md:flex fixed top-0 bottom-0 right-0 z-[25] flex-col items-stretch gap-1 py-4 overflow-hidden"
+			class:copilot-rail--loading={_railLoading}
+			class:copilot-rail--loaded={_railLoaded}
+			aria-label="Copilot quick actions"
+		>
+			{#if _railLoading}
+				<div class="rail-shimmer" aria-hidden="true"></div>
+			{/if}
+
+			<!-- Identity header -->
+			<div class="rail-header flex items-center gap-2 px-2 pb-3 mb-1 border-b border-white/8">
+				<div class="rail-icon-wrap flex-shrink-0 w-6 h-6 rounded-md bg-purple-600/20 flex items-center justify-center">
+					<svg class="w-3.5 h-3.5 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M13 10V3L4 14h7v7l9-11h-7z" />
+					</svg>
+				</div>
+				<span class="rail-label text-[11px] font-semibold text-purple-300/80 uppercase tracking-widest whitespace-nowrap overflow-hidden">Copilot</span>
+			</div>
+
+			<!-- Guidelines button -->
+			<button
+				type="button"
+				class="rail-btn relative flex items-center gap-2.5 px-2 py-2 text-gray-400 hover:text-green-400 transition-colors rounded-lg hover:bg-green-500/5 mx-1"
+				title="Guidelines"
+				onclick={() => openCopilot({ tab: 'guidelines' })}
+			>
+				<div class="relative flex-shrink-0 w-6 flex items-center justify-center">
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+					</svg>
+					{#if enhancementLoading}
+						<span class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-green-400 border-t-transparent animate-spin"></span>
+					{:else if enhancementGuidelinesCount > 0}
+						<span class="absolute -top-1 -right-1 min-w-[14px] h-3.5 px-0.5 bg-green-600 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+							{enhancementGuidelinesCount > 9 ? '9+' : enhancementGuidelinesCount}
+						</span>
+					{/if}
+				</div>
+				<span class="rail-label text-xs font-medium whitespace-nowrap overflow-hidden">Guidelines</span>
+			</button>
+
+			<!-- QA / Audit button -->
+			<button
+				type="button"
+				class="rail-btn relative flex items-center gap-2.5 px-2 py-2 text-gray-400 hover:text-rose-300 transition-colors rounded-lg hover:bg-white/5 mx-1"
+				title="QA Audit"
+				onclick={() => openCopilot({ tab: 'qa' })}
+			>
+				<div class="relative flex-shrink-0 w-6 flex items-center justify-center">
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+					</svg>
+					{#if auditState?.status === 'loading'}
+						<span class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-rose-400 border-t-transparent animate-spin"></span>
+					{:else if _qaFlagCount > 0}
+						<span class="absolute -top-1 -right-1 min-w-[14px] h-3.5 px-0.5 bg-rose-600 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+							{_qaFlagCount > 9 ? '9+' : _qaFlagCount}
+						</span>
+					{/if}
+				</div>
+				<span class="rail-label text-xs font-medium whitespace-nowrap overflow-hidden">QA Audit</span>
+			</button>
+
+			<!-- Chat button -->
+			<button
+				type="button"
+				class="rail-btn flex items-center gap-2.5 px-2 py-2 text-gray-400 hover:text-purple-300 transition-colors rounded-lg hover:bg-white/5 mx-1"
+				title="Ask AI"
+				onclick={() => openCopilot({ tab: 'chat' })}
+			>
+				<div class="flex-shrink-0 w-6 flex items-center justify-center">
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+					</svg>
+				</div>
+				<span class="rail-label text-xs font-medium whitespace-nowrap overflow-hidden">Ask AI</span>
+			</button>
+
+			<!-- Interval analysis button -->
+			<button
+				type="button"
+				class="rail-btn flex items-center gap-2.5 px-2 py-2 text-gray-400 hover:text-orange-300 transition-colors rounded-lg hover:bg-white/5 mx-1"
+				title="Interval Analysis"
+				onclick={() => (intervalDrawerOpen = true)}
+			>
+				<div class="flex-shrink-0 w-6 flex items-center justify-center">
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+					</svg>
+				</div>
+				<span class="rail-label text-xs font-medium whitespace-nowrap overflow-hidden">Compare</span>
+			</button>
+
+			<!-- Expand chevron hint at bottom -->
+			<div class="mt-auto flex flex-col items-center gap-1 px-2">
+				<div class="rail-expand-hint w-full flex items-center gap-2 px-1 py-1.5 rounded-md opacity-40">
+					<svg class="flex-shrink-0 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+					</svg>
+					<span class="rail-label text-[10px] text-gray-500 whitespace-nowrap overflow-hidden">Open panel</span>
+				</div>
+			</div>
+		</div>
+	{/if}
+
 <ReportVersionHistory
 	reportId={currentReportId}
 	show={showVersionHistoryModal}
 	refreshKey={versionHistoryRefreshKey}
 	onClose={() => showVersionHistoryModal = false}
+/>
+
+<IntervalAnalysisDrawer
+	open={intervalDrawerOpen && isEnhancementContext}
+	reportId={currentReportId}
+	reportContent={activeTab === 'auto' ? (autoResponse || '') : (templatedResponseOverride || templatedReportContent || response || '')}
+	on:close={() => (intervalDrawerOpen = false)}
+	on:reportUpdated={(e) => {
+		if (e.detail.report) {
+			const newContent = e.detail.report.report_content;
+			versionHistoryRefreshKey += 1;
+			if (activeTab === 'auto') {
+				autoResponse = newContent;
+			} else {
+				templatedResponseOverride = newContent;
+				templatedResponseVersion += 1;
+			}
+			reportsStore.refreshReports();
+		}
+		reportUpdateLoading = false;
+	}}
+	on:reportUpdating={(e) => {
+		if (e.detail?.status === 'start') {
+			reportUpdateLoading = true;
+		} else if (e.detail?.status === 'end') {
+			reportUpdateLoading = false;
+		}
+	}}
 />
 
 <!-- Template Editor Modal - Rendered at root level -->
@@ -1047,23 +1398,6 @@ $: if (!isEnhancementContext && sidebarVisible) {
 		on:templateCreated={handleTemplateWizardCreated}
 	/>
 {/if}
-
-<!-- Enhancement Dock - Floating button (Hidden for now) -->
-<!--
-{#if isEnhancementContext && currentReportId}
-	<EnhancementDock
-		guidelinesCount={enhancementGuidelinesCount}
-		isLoading={enhancementLoading}
-		hasError={enhancementError}
-		reportId={currentReportId}
-		on:openSidebar={(e) => {
-			sidebarTabToOpen = e.detail?.tab || null;
-			chatInitialMessage = e.detail?.initialMessage || null;
-			sidebarVisible = true;
-		}}
-	/>
-{/if}
--->
 
 	<!-- History Modal - Rendered at root level to avoid stacking context issues -->
 	{#if historyModalReport}
@@ -1384,12 +1718,13 @@ $: if (!isEnhancementContext && sidebarVisible) {
 			hoverPopupItem = null;
 		}}
 	on:askAI={(e) => {
-		sidebarTabToOpen = 'chat';
-		chatInitialMessage = e.detail.message;
-		chatAutoSend = true;
-		chatAutoSendLabel = e.detail.labelInfo || null;
-		chatAuditFixContext = null;
-		sidebarVisible = true;
+		openCopilot({
+			tab: 'chat',
+			initialMessage: e.detail.message,
+			autoSend: true,
+			labelInfo: e.detail.labelInfo || null,
+			auditFixContext: null
+		});
 		hoverPopupVisible = false;
 		hoverPopupItem = null;
 	}}
@@ -1416,3 +1751,97 @@ $: if (!isEnhancementContext && sidebarVisible) {
 		</footer>
 	{/if}
 </div>
+
+<style>
+/* ── Collapsed Copilot rail ────────────────────────────── */
+.copilot-rail {
+	width: 40px;
+	background: rgba(0, 0, 0, 0.5);
+	border-left: 1px solid rgba(255, 255, 255, 0.08);
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+	transition:
+		width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+		background 0.4s ease,
+		border-color 0.4s ease,
+		box-shadow 0.4s ease;
+	overflow: hidden;
+}
+
+/* Expand on hover */
+.copilot-rail:hover {
+	width: 158px;
+	background: rgba(12, 6, 28, 0.82);
+	border-left-color: rgba(139, 92, 246, 0.3);
+	box-shadow: -4px 0 32px rgba(139, 92, 246, 0.16);
+}
+
+/* Labels are hidden by default and revealed on hover */
+.copilot-rail .rail-label {
+	max-width: 0;
+	opacity: 0;
+	transition:
+		max-width 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+		opacity 0.18s ease;
+	display: block;
+	overflow: hidden;
+}
+
+.copilot-rail:hover .rail-label {
+	max-width: 120px;
+	opacity: 1;
+}
+
+.copilot-rail--loading {
+	border-left-color: rgba(139, 92, 246, 0.25);
+	box-shadow: -2px 0 20px rgba(139, 92, 246, 0.08);
+}
+
+.copilot-rail--loaded {
+	background: rgba(20, 10, 40, 0.6);
+	border-left-color: rgba(139, 92, 246, 0.22);
+	box-shadow: -2px 0 24px rgba(139, 92, 246, 0.12);
+}
+
+.copilot-rail--loaded:hover {
+	border-left-color: rgba(139, 92, 246, 0.4);
+}
+
+/* Rail buttons take full width when expanded */
+.rail-btn {
+	width: 100%;
+	text-align: left;
+}
+
+/* Vertical shimmer — sweeps bottom→top in a loop */
+.rail-shimmer {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	background: linear-gradient(
+		to top,
+		transparent 20%,
+		rgba(139, 92, 246, 0.1) 40%,
+		rgba(167, 139, 250, 0.28) 50%,
+		rgba(139, 92, 246, 0.1) 60%,
+		transparent 80%
+	);
+	background-size: 100% 300%;
+	animation: rail-shimmer-sweep 2s ease-in-out infinite;
+}
+
+@keyframes rail-shimmer-sweep {
+	0%   { background-position: 0 150%; opacity: 0.5; }
+	50%  { opacity: 1; }
+	100% { background-position: 0 -150%; opacity: 0.5; }
+}
+
+/* Expand hint fades in when rail is hovered */
+.rail-expand-hint {
+	transition: opacity 0.2s ease;
+}
+
+.copilot-rail:hover .rail-expand-hint {
+	opacity: 0 !important;
+}
+</style>

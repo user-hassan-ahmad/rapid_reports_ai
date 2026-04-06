@@ -83,6 +83,26 @@
 	let responseExpanded = false;
 	let hasResponseEver = false;
 	let responseVisible = false;
+	let reportViewerRef: any = null;
+
+	export function handleExternalAuditAcknowledge(detail: { criterion: string; resolutionMethod: string }) {
+		reportViewerRef?.acknowledgeFromExternal?.(detail);
+	}
+	export function handleExternalAuditRestore(detail: { criterion: string }) {
+		reportViewerRef?.restoreFromExternal?.(detail);
+	}
+	export function handleExternalAuditSuggestFix(detail: unknown) {
+		reportViewerRef?.suggestFixFromExternal?.(detail);
+	}
+	export function handleExternalAuditApplyFix(detail: unknown) {
+		reportViewerRef?.applyFixFromExternal?.(detail);
+	}
+	export function handleExternalAuditInsertBanner(bannerText: string) {
+		reportViewerRef?.insertBannerFromExternal?.(bannerText);
+	}
+	export function handleExternalAuditReaudit() {
+		reportViewerRef?.reauditFromExternal?.();
+	}
 
 	$: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 	let findingsAtReportGeneration = '';
@@ -249,6 +269,7 @@
 		response = null;
 		responseModel = null;
 
+		const _flowT0 = typeof performance !== 'undefined' ? performance.now() : 0;
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
@@ -261,6 +282,13 @@
 				})
 			});
 			const data = await res.json();
+			const _flowT1 = typeof performance !== 'undefined' ? performance.now() : 0;
+			console.debug(
+				'[FLOW_TIMING] template POST /generate roundtrip_ms=',
+				Math.round(_flowT1 - _flowT0),
+				'report_id=',
+				data.report_id
+			);
 
 			if (data.success) {
 				response = data.response;
@@ -613,11 +641,13 @@
 				in:fly={{ y: 24, duration: 320, easing: easeOut }}
 				out:fly={{ y: 12, duration: 180, easing: easeOut }}
 			>
-				<div class="flex items-center justify-between border-b border-white/[0.06] pb-3 shrink-0 min-w-0">
-					<span class="text-xs text-gray-500 font-medium uppercase tracking-wider shrink-0">
+				<div class="flex items-start justify-between gap-3 border-b border-white/[0.06] pb-3 shrink-0 min-w-0">
+					<span class="min-w-0 flex-1 text-xs text-gray-500 font-medium uppercase tracking-wider break-words">
 						{scanType || selectedTemplate?.name || 'Template'}
 					</span>
-					<DictationHintBar />
+					<div class="shrink-0">
+						<DictationHintBar />
+					</div>
 				</div>
 
 		<!-- Single-column workspace (aligned with Quick Reports) -->
@@ -680,6 +710,7 @@
 		<!-- Report Response Viewer (always mounted when we have template) -->
 		{#if selectedTemplate || response}
 			<ReportResponseViewer
+				bind:this={reportViewerRef}
 				visible={responseVisible && !!selectedTemplate}
 				expanded={responseExpanded}
 				response={response ?? ''}
@@ -698,6 +729,8 @@
 				{findingsStale}
 				on:toggle={toggleResponse}
 			on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
+			on:auditStateChange={(e) => dispatch('auditStateChange', e.detail)}
+			on:openVersionHistory={() => dispatch('openVersionHistory')}
 			on:copy={copyToClipboard}
 			on:clear={clearResponse}
 			on:restore={(e) => handleHistoryRestore(e.detail)}

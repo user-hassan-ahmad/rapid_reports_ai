@@ -23,6 +23,12 @@ from .enhancement_cache import (
 )
 import hashlib
 
+# Cerebras concurrency guard — limits concurrent LLM calls across all modules
+# (S1, S2.5 triage, S4 synthesis, and all 3 audit phases) to prevent rate-limit
+# errors. Default 4; tune via CEREBRAS_MAX_CONCURRENT env var.
+_CEREBRAS_MAX_CONCURRENT = int(os.environ.get("CEREBRAS_MAX_CONCURRENT", "4"))
+_cerebras_semaphore = asyncio.Semaphore(_CEREBRAS_MAX_CONCURRENT)
+
 from perplexity import Perplexity
 from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel
@@ -35,15 +41,15 @@ from .enhancement_models import (
     FindingsResponse,
     GuidelineEntry,
     GuidelinesResponse,
+    RichGuidelineEntry,
+    RichGuidelinesResponse,
+    UrgencyTier,
     KeyPoint,
     ClassificationSystem,
     MeasurementProtocol,
     ImagingCharacteristic,
     DifferentialDiagnosis,
     FollowUpImaging,
-    CompletenessAnalysis,
-    AnalysisSummary,
-    ReviewQuestion,
     SuggestedAction,
     ConsolidatedFinding,
     ConsolidationResult,
@@ -155,10 +161,8 @@ MODEL_CONFIG = {
     "GUIDELINE_VALIDATOR_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for guideline validation (Llama)
     "COMPATIBILITY_FILTER": "gpt-oss-120b",  # Search result compatibility filtering (primary - Cerebras GPT-OSS-120B with high reasoning)
     "COMPATIBILITY_FILTER_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for compatibility filtering (Llama)
-    "GUIDELINE_SEARCH": "gpt-oss-120b",  # Phase 2: Guideline synthesis (primary - Cerebras)
-    "GUIDELINE_SEARCH_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for guideline synthesis (Llama)
-    "COMPLETENESS_ANALYZER": "gpt-oss-120b",  # Phase 3: Completeness analysis (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "COMPLETENESS_ANALYZER_FALLBACK": "qwen/qwen3-32b",  # Fallback for completeness analysis (Qwen)
+    "GUIDELINE_SEARCH": "gpt-oss-120b",  # Phase 2: Guideline synthesis (primary - Cerebras GPT-OSS-120B, reliable structured output)
+    "GUIDELINE_SEARCH_FALLBACK": "zai-glm-4.7",  # Fallback (GLM cannot reliably generate tool_calls for complex schemas)
     "COMPARISON_ANALYZER": "gpt-oss-120b",  # Interval comparison analysis (primary - Cerebras GPT-OSS-120B with high reasoning)
     "COMPARISON_ANALYZER_FALLBACK": "qwen/qwen3-32b",  # Fallback for comparison analysis (Qwen)
     
@@ -190,7 +194,6 @@ MODEL_CONFIG = {
 
 # Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
 QWEN_EXTRACTION_MODEL = MODEL_CONFIG["FINDING_EXTRACTION"]
-QWEN_ANALYSIS_MODEL = MODEL_CONFIG["COMPLETENESS_ANALYZER"]  # Note: Completeness uses Qwen as primary, Claude as fallback
 LLAMA_GUIDELINE_MODEL = MODEL_CONFIG["GUIDELINE_SEARCH"]
 LLAMA_REPORT_PRIMARY_MODEL = MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"]  # Legacy: was used for fast mode
 LLAMA_REPORT_FALLBACK_MODEL = "llama-3.3-70b-versatile"  # Legacy fallback (not currently used)
@@ -380,8 +383,17 @@ def with_retry(max_retries=3, base_delay=2.0):
                     last_exception = e
                     error_str = str(e).lower()
                     
-                    # Check if it's a rate limit error
-                    if "rate" in error_str or "quota" in error_str or "429" in error_str:
+                    # Check if it's a rate limit error (use specific substrings to avoid
+                    # matching unrelated words like "generate" which contains "rate")
+                    is_rate_limit = (
+                        "rate limit" in error_str
+                        or "ratelimit" in error_str
+                        or "rate_limit" in error_str
+                        or "quota" in error_str
+                        or "429" in error_str
+                        or "too many requests" in error_str
+                    )
+                    if is_rate_limit:
                         if attempt < max_retries - 1:
                             delay = base_delay * (2 ** attempt)
                             print(f"Rate limit hit (attempt {attempt + 1}/{max_retries}), retrying in {delay}s...")
@@ -408,12 +420,14 @@ def _is_parsing_error(exception: Exception) -> bool:
     if isinstance(exception, ValidationError):
         return True
     
-    # Groq tool_use_failed errors - model can't generate proper function calls
     if isinstance(exception, ModelHTTPError):
         if exception.status_code == 400:
             body_str = str(exception.body).lower()
-            # Check for known parsing error indicators
+            # Groq: tool_use_failed / failed to call a function
             if 'tool_use_failed' in body_str or 'failed to call a function' in body_str:
+                return True
+            # Cerebras/GLM: parser_error code or failed to generate tool_calls
+            if 'parser_error' in body_str or 'failed to generate tool_call' in body_str:
                 return True
     
     return False
@@ -1057,6 +1071,39 @@ def normalize_perplexity_results(search_response: Any, queries: List[str]) -> Li
     return unique_results
 
 
+def _extract_text_from_synthesis_card(card: Dict[str, Any]) -> str:
+    """Serialize a new S4 synthesis card into a flat text representation for chat context."""
+    parts: List[str] = []
+    finding = card.get("finding") or card.get("finding_short_label") or ""
+    if finding:
+        parts.append(f"Finding: {finding}")
+    summary = card.get("clinical_summary") or ""
+    if summary:
+        parts.append(summary)
+    for a in card.get("follow_up_actions", []):
+        parts.append(
+            f"- Follow-up: {a.get('modality','')} {a.get('timing','')} "
+            f"({a.get('indication','')}) [{a.get('guideline_source','')}]"
+        )
+    for c in card.get("classifications", []):
+        parts.append(
+            f"- Classification: {c.get('system','')} ({c.get('authority','')}) "
+            f"grade {c.get('grade','')} — {c.get('management','')}"
+        )
+    for t in card.get("thresholds", []):
+        parts.append(f"- Threshold: {t.get('parameter','')}: {t.get('threshold','')} — {t.get('significance','')}")
+    for d in card.get("differentials", []):
+        parts.append(f"- DDx: {d.get('diagnosis','')} — {d.get('key_features','')}")
+    for f in card.get("imaging_flags", []):
+        parts.append(f"- Flag: {f}")
+    for s in card.get("sources", []):
+        title = s.get("title") or s.get("domain") or ""
+        url = s.get("url", "")
+        if title or url:
+            parts.append(f"- Source: {title} [{url}]")
+    return "\n".join(parts)
+
+
 def build_chat_guideline_context(
     findings: List[Dict[str, Any]],
     guidelines: List[Dict[str, Any]],
@@ -1109,6 +1156,17 @@ def build_chat_guideline_context(
     for guideline in guidelines:
         if remaining <= 0:
             break
+
+        # Detect new S4 synthesis card shape (has follow_up_actions/classifications/imaging_flags)
+        is_s4_card = any(
+            k in guideline for k in ("follow_up_actions", "urgency_tier", "imaging_flags", "finding_short_label")
+        )
+        if is_s4_card:
+            card_text = _extract_text_from_synthesis_card(guideline)
+            if card_text:
+                append_text(card_text + "\n\n")
+            continue
+
         finding_name = guideline.get("finding", {})
         if isinstance(finding_name, dict):
             finding_name = finding_name.get("finding", "N/A")
@@ -1179,16 +1237,52 @@ def build_chat_guideline_context(
     return "".join(chunks)
 
 
+def format_audit_fix_holistic_workflow_instructions() -> str:
+    """
+    Staged reasoning for audit-triggered chat (single completion).
+    Insert immediately before AUDIT QA GROUNDING when audit_fix_context is present.
+    """
+    return (
+        "\n\n## Audit-triggered fix (holistic workflow)\n\n"
+        "**Trigger vs task:** The user clicked a specific QA item. You must address that concern. "
+        "That item is the **trigger**, not necessarily the **only** change needed for a sound report.\n\n"
+        "In one reasoning pass before calling tools:\n"
+        "1. **Understand** — From `## Report` and the enhancement context below, note clinically material "
+        "claims and how **impression** aligns with **findings**.\n"
+        "2. **Map** — Relate the triggered audit rationale (in AUDIT QA GROUNDING) to the report; identify "
+        "any **material** omission or inconsistency supported by the report text itself.\n"
+        "3. **Synthesize** — Choose proportionate wording; do not treat `suggested_replacement` as mandatory "
+        "if a clearer clinical synthesis is justified (still respect named guideline frameworks in the grounding).\n"
+        "4. **Act** — Call `apply_structured_actions` to fix the trigger **and** any material gaps you found; "
+        "keep edits focused—no drive-by rewrites of unrelated sections.\n\n"
+        "**Structure preservation (mandatory):** Certain report elements are structurally required by MDT "
+        "workflow and must never be deleted as a resolution strategy:\n"
+        "- **TNM staging strings** — correct the stage; do not remove it. If a staging axis is uncertain, "
+        "use the 'x' descriptor (e.g. cTx, Nx, Mx) and state why, but keep the staging line.\n"
+        "- **Referral/follow-up recommendations** — correct the destination or wording; do not omit.\n"
+        "- **Measurement citations in the impression** — correct the value; do not drop it.\n"
+        "If the audit flags an error in one of these, your job is to CORRECT the content using the "
+        "enhancement context and guideline references — not to remove it. Removal of a required element "
+        "is a worse outcome than a corrected-but-uncertain one.\n\n"
+        "**Evidence-bound:** Add or change management statements only when supported by the presented report "
+        "(and enhancement context). If key facts are missing or ambiguous, prefer conservative wording or brief "
+        "note in your user-facing reply rather than inventing clinical detail.\n\n"
+    )
+
+
 def format_audit_fix_context_for_system_prompt(ctx: AuditFixContext) -> str:
     """Markdown section appended to chat system prompt when Fix-with-AI sends audit_fix_context."""
     lines: List[str] = [
         "\n\n## AUDIT QA GROUNDING\n",
-        "This fix request is grounded in the following audit context.\n",
-        "Use this as the **authoritative** reference for this correction.\n",
+        "The following is the **anchor** for the QA item the user chose. It constrains framework and "
+        "guideline interpretation for that concern.\n"
+        "It is **not** an exhaustive list of everything that might need improving—the audit may not flag "
+        "every material gap. You must still cross-check **impression vs findings** using the full report "
+        "and enhancement context.\n",
         "Do **not** substitute an alternative guideline framework "
         "(e.g. do not apply Fleischner if Lung-RADS is the named framework below, and vice versa).\n",
         "Avoid calling `search_external_guidelines` unless the information below is **clearly insufficient** "
-        "for the correction.\n\n",
+        "for the substantive issues you are addressing.\n\n",
         f"- **Audit ID:** {ctx.audit_id or '(not persisted)'}\n",
         f"- **Criterion:** {ctx.criterion}\n",
         f"- **Rationale (deficiency):** {ctx.rationale}\n",
@@ -1447,6 +1541,8 @@ def collect_guideline_sources_for_chat(guidelines: List[Dict[str, Any]]) -> List
     seen: set[str] = set()
     out: List[Dict[str, Any]] = []
     for guideline in guidelines:
+        # S4 synthesis cards have "sources" with url/title/domain and also
+        # follow_up_actions[].guideline_source and classifications[].authority
         evidence_list = guideline.get("raw_evidence") or guideline.get("sources") or []
         for s in evidence_list:
             url = (s.get("url") or "").strip()
@@ -1816,6 +1912,7 @@ async def _extract_consolidated_with_model(
     return consolidated_result
 
 
+# DEPRECATED — replaced by S1 finding extraction in guideline_prefetch.run_prefetch_pipeline
 @with_retry(max_retries=3, base_delay=2.0)
 async def extract_consolidated_findings(report_content: str, api_key: str) -> ConsolidationResult:
     """
@@ -1913,9 +2010,14 @@ async def filter_compatible_search_results(
     )
     
     for i, result in enumerate(search_results):
-        title = (result.get("title") or "")[:150]
-        snippet = (result.get("snippet") or "")[:200]
-        batch_prompt += f"{i}. Title: {title}\n   Summary: {snippet}\n\n"
+        title = (result.get("title") or "").strip()
+        # Full text for relevance: prefetch supplies `content`; Perplexity uses `snippet`
+        body = (result.get("content") or result.get("snippet") or "").strip()
+        url = (result.get("url") or "").strip()
+        batch_prompt += f"{i}. Title: {title}\n"
+        if url:
+            batch_prompt += f"   URL: {url}\n"
+        batch_prompt += f"   Content:\n{body}\n\n"
     
     batch_prompt += (
         "Return a JSON array string containing 0-based indices for compatible results only.\n"
@@ -2041,36 +2143,50 @@ async def filter_compatible_search_results(
 
 
 async def validate_guideline_compatibility(
-    guideline_entry: GuidelineEntry,
+    guideline_entry,  # Union[GuidelineEntry, RichGuidelineEntry]
     finding: str,
     api_key: str
 ) -> bool:
     """
     Validate that synthesized guideline matches the clinical premise of the finding.
+    Accepts both GuidelineEntry (legacy) and RichGuidelineEntry (v2) via duck-typing.
     Returns True if compatible, False otherwise.
-    Model selection is driven by MODEL_CONFIG - supports any configured model with fallback.
-    
-    Args:
-        guideline_entry: The synthesized GuidelineEntry from guideline synthesis
-        finding: The original radiological finding text
-        api_key: API key (kept for compatibility, actual key determined by provider)
-        
-    Returns:
-        True if guideline is compatible with finding, False otherwise
     """
     import os
-    
+
     start_time = time.time()
     print(f"validate_guideline_compatibility: Validating guideline for finding '{finding}'")
-    
-    # Build validation prompt
-    guideline_summary = (
-        f"Diagnostic Overview: {guideline_entry.diagnostic_overview[:300]}\n"
+
+    # Build validation prompt — handle both GuidelineEntry and RichGuidelineEntry field names
+    overview = (
+        getattr(guideline_entry, 'clinical_summary', None)
+        or getattr(guideline_entry, 'diagnostic_overview', None)
+        or ""
     )
-    if guideline_entry.classification_systems:
-        guideline_summary += f"Classification Systems: {', '.join([cs.name for cs in guideline_entry.classification_systems])}\n"
-    if guideline_entry.differential_diagnoses:
-        guideline_summary += f"Differential Diagnoses: {', '.join([dd.diagnosis for dd in guideline_entry.differential_diagnoses])}\n"
+    guideline_summary = f"Overview: {overview[:300]}\n"
+
+    # classification_systems (GuidelineEntry) or classifications (RichGuidelineEntry)
+    classifications = (
+        getattr(guideline_entry, 'classifications', None)
+        or getattr(guideline_entry, 'classification_systems', None)
+        or []
+    )
+    if classifications:
+        names = [
+            getattr(cs, 'system', None) or getattr(cs, 'name', '') or ''
+            for cs in classifications
+        ]
+        guideline_summary += f"Classification Systems: {', '.join(n for n in names if n)}\n"
+
+    # differential_diagnoses (GuidelineEntry) or differentials (RichGuidelineEntry)
+    differentials = (
+        getattr(guideline_entry, 'differentials', None)
+        or getattr(guideline_entry, 'differential_diagnoses', None)
+        or []
+    )
+    if differentials:
+        names = [getattr(dd, 'diagnosis', '') for dd in differentials]
+        guideline_summary += f"Differential Diagnoses: {', '.join(n for n in names if n)}\n"
     
     validation_prompt = (
         f"Finding: {finding}\n\n"
@@ -2186,12 +2302,117 @@ async def validate_guideline_compatibility(
         return True
 
 
-@with_retry(max_retries=3, base_delay=2.0)
+_BRANCH_LABELS = {
+    "pathway_followup": "UK PATHWAY & FOLLOW-UP EVIDENCE",
+    "classification_measurement": "CLASSIFICATION & MEASUREMENT EVIDENCE",
+    "imaging_differential": "IMAGING FEATURES & DIFFERENTIALS EVIDENCE",
+}
+_BRANCH_INSTRUCTIONS = {
+    "pathway_followup": (
+        "use for: urgency_tier, uk_authority, guideline_refs, "
+        "follow_up_actions (with guideline_source per action traceable to a specific item here)"
+    ),
+    "classification_measurement": (
+        "use for: classifications (system, authority, grade, criteria, management per grade), thresholds"
+    ),
+    "imaging_differential": (
+        "use for: differentials (key_features, excluders, likelihood), imaging_flags, clinical_summary"
+    ),
+}
+
+
+def _build_branch_evidence_blocks(
+    finding_idx: int,
+    prefetched_knowledge,           # PrefetchOutput
+    chars_per_item: int = 2500,
+    max_items_per_branch: int = 3,
+) -> Dict[str, List[dict]]:
+    """
+    Build branch-labelled evidence blocks from the prefetch knowledge base.
+    Preserves branch identity so the synthesis prompt can direct the LLM to
+    extract the right fields from the right evidence section.
+    Uses 2500 chars per item (no double-truncation from the old 500→280 pipeline).
+    """
+    branch_map: Dict[str, List[dict]] = {}
+    for branch, items in prefetched_knowledge.knowledge_base.items():
+        relevant = [
+            item for item in items
+            if not item.finding_indices or finding_idx in item.finding_indices
+        ]
+        branch_items = []
+        for item in relevant[:max_items_per_branch]:
+            branch_items.append({
+                "label": _BRANCH_LABELS.get(branch, branch),
+                "instruction": _BRANCH_INSTRUCTIONS.get(branch, ""),
+                "url": item.url,
+                "title": item.title or item.domain,
+                "content": (item.content or "")[:chars_per_item],
+                "domain": item.domain,
+            })
+        if branch_items:
+            branch_map[branch] = branch_items
+    return branch_map
+
+
+def _format_branch_evidence(branch_blocks: Dict[str, List[dict]]) -> str:
+    """
+    Format branch-aware evidence blocks into a labelled string for the synthesis prompt.
+    Each section has a header identifying what it should be used for.
+    """
+    if not branch_blocks:
+        return "No supporting evidence."
+    sections = []
+    for branch, items in branch_blocks.items():
+        if not items:
+            continue
+        label = items[0]["label"]
+        instruction = items[0]["instruction"]
+        header = f"=== {label} ===\n({instruction})"
+        item_strs = []
+        prefix = branch[0].upper()
+        for i, item in enumerate(items, 1):
+            item_strs.append(
+                f"[{prefix}{i}] {item['title']}\n"
+                f"Source: {item['url']}\n"
+                f"{item['content']}"
+            )
+        sections.append(header + "\n\n" + "\n\n---\n\n".join(item_strs))
+    return "\n\n".join(sections)
+
+
+def _build_raw_evidence_from_prefetch(
+    finding_idx: int,
+    prefetched_knowledge,  # PrefetchOutput
+) -> List[dict]:
+    """
+    Legacy shim — returns flat evidence list for non-synthesis callers
+    (e.g. chat grounding, raw_evidence field). Not used for synthesis prompt.
+    """
+    items = []
+    for branch_items in prefetched_knowledge.knowledge_base.values():
+        for item in branch_items:
+            fi = item.finding_indices
+            if not fi or finding_idx in fi:
+                content = item.content or ""
+                items.append({
+                    "url": item.url,
+                    "title": item.title or item.domain,
+                    "snippet": content[:500].replace("\n", " ").strip(),
+                    "content": content,
+                    "query": item.extract_hint or f"guideline {item.branch}",
+                    "score": 1.0,
+                    "domain": item.domain,
+                })
+    return items
+
+
+# DEPRECATED — replaced by S4 synthesis in guideline_prefetch.run_synthesis
 async def search_guidelines_for_findings(
     consolidated_result: ConsolidationResult,
     report_content: str,
     api_key: str,
-    findings_input: str = ""
+    findings_input: str = "",
+    prefetched_knowledge=None,  # Optional[PrefetchOutput]
 ) -> List[dict]:
     """
     Search Perplexity and synthesize guidelines for consolidated findings.
@@ -2220,89 +2441,42 @@ async def search_guidelines_for_findings(
     primary_provider = _get_model_provider(primary_model)
     primary_api_key = _get_api_key_for_provider(primary_provider)
 
-    # Guidelines synthesis agent - Radiologist-to-radiologist diagnostic perspective
+    # Bespoke branch-aware synthesis system prompt (v2)
     guidelines_system_prompt = (
-        "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
-        "You are a senior UK consultant radiologist providing diagnostic imaging guidance to NHS colleagues.\n\n"
-        
-        "PERSPECTIVE: Radiologist-to-radiologist - focus on imaging characterization that informs diagnostic and management decisions.\n\n"
-        
-        "FOCUS: Highlight significant/impactful information and criteria that support or direct patient care:\n"
-        "• Actionable thresholds and decision points (e.g., size criteria for follow-up, severity grading)\n"
-        "• Clinically relevant imaging features that guide management\n"
-        "• Classification systems that inform treatment decisions\n"
-        "• Measurement protocols with management implications\n"
-        "• Follow-up recommendations based on imaging findings\n\n"
-        
-        "CRITICAL REQUIREMENTS:\n"
-        "• ADULT radiology only (age 16+) - EXCLUDE pediatric systems (SFU, UTD)\n"
-        "• UK guidelines FIRST (RCR, NICE, BIR, British societies) - international sources supplement\n"
-        "• PRIORITIZE reputable sources: professional societies, academic institutions, peer-reviewed guidelines\n"
-        "• DISCARD or de-prioritize low-quality sources: blogs, forums, non-peer-reviewed content\n"
-        "• Use only provided search evidence - weight higher-quality sources more heavily\n\n"
-        
-        "CRITICAL: Guideline must match ALL three components of the finding: (1) anatomy, (2) pathology, (3) imaging finding. "
-        "ANY mismatch = incompatible. Shared terminology does not imply compatibility. "
-        "Only synthesize information matching the finding's complete definition.\n\n"
-        
-        "SOURCE QUALITY PRIORITY:\n"
-        "1. UK professional societies (RCR, NICE, BIR, British specialty societies)\n"
-        "2. International professional societies (RSNA, ACR, ECR, etc.)\n"
-        "3. Academic institutions and peer-reviewed sources (Radiopaedia, PubMed)\n"
-        "4. Use lower-quality sources only if no reputable sources available\n\n"
-        
-        "CRITICAL - OUTPUT FORMAT:\n"
-        "• All string fields (diagnostic_overview, finding) must be DIRECT STRING VALUES, not wrapped in objects\n"
-        "• Example: diagnostic_overview: 'Text here' NOT diagnostic_overview: {'text': 'Text here'}\n"
-        "• All array/list fields (classification_systems, measurement_protocols, imaging_characteristics, differential_diagnoses, follow_up_imaging) must be ARRAYS/LISTS, not single objects\n"
-        "• Example: follow_up_imaging: [{'indication': '...', 'modality': '...', 'timing': '...'}] NOT follow_up_imaging: {'indication': '...', 'modality': '...', 'timing': '...'}\n"
-        "• Example: classification_systems: [{'name': '...', 'grade_or_category': '...', 'criteria': '...'}] NOT classification_systems: {'name': '...', 'grade_or_category': '...', 'criteria': '...'}\n"
-        "• Return arrays even if there is only one item: [{...}] not {...}\n"
-        "• Return empty arrays [] if no items, not null or missing\n\n"
-        
-        "RETURN GuidelineEntry WITH:\n\n"
-        
-        "CRITICAL - ALL REQUIRED FIELDS MUST BE INCLUDED:\n"
-        "• ClassificationSystem: name, grade_or_category, criteria (all 3 required)\n"
-        "• DifferentialDiagnosis: diagnosis, imaging_features, supporting_findings (all 3 required)\n"
-        "• FollowUpImaging: indication, modality, timing (all 3 required)\n"
-        "• MeasurementProtocol: parameter, technique (required); normal_range, threshold (optional)\n"
-        "• ImagingCharacteristic: feature, description, significance (all 3 required)\n"
-        "If any required field is missing, omit the entire object.\n\n"
-        
-        "1. diagnostic_overview (2-3 sentences):\n"
-        "   Direct string value: What this represents on imaging, key features, diagnostic considerations\n\n"
-        
-        "2. classification_systems (0-2 items - MUST be an array):\n"
-        "   ARRAY of ClassificationSystem objects: [{...}, {...}]\n"
-        "   Named systems with year (Fleischner 2017, Bosniak 2019, TI-RADS, LI-RADS)\n"
-        "   Include grade/category with imaging criteria. Return empty array [] if no criteria/system exists.\n\n"
-        
-        "3. measurement_protocols (2-4 items - MUST be an array):\n"
-        "   ARRAY of MeasurementProtocol objects: [{...}, {...}, {...}]\n"
-        "   Specific techniques with numeric thresholds and units that inform management\n"
-        "   Focus on actionable thresholds (e.g., 'long axis on axial CT, normal < 10mm, abnormal > 15mm triggers follow-up')\n\n"
-        
-        "4. imaging_characteristics (4-6 items - MUST be an array):\n"
-        "   ARRAY of ImagingCharacteristic objects: [{...}, {...}, {...}, {...}]\n"
-        "   Key features with modality-specific details (CT density, MRI signal, US echogenicity)\n"
-        "   Emphasize features that impact diagnosis or management decisions\n"
-        "   Include technical considerations (phase, windowing) when clinically significant\n\n"
-        
-        "5. differential_diagnoses (2-4 items - MUST be an array):\n"
-        "   ARRAY of DifferentialDiagnosis objects: [{...}, {...}]\n"
-        "   Diagnoses WITH distinguishing imaging features\n"
-        "   Focus: 'How to tell them apart on imaging'\n\n"
-        
-        "6. follow_up_imaging (if applicable - MUST be an array):\n"
-        "   ARRAY of FollowUpImaging objects: [{...}] or [{...}, {...}]\n"
-        "   Return as array even if only one item: [{...}] NOT {...}\n"
-        "   Return empty array [] if not applicable, not null\n"
-        "   Modality, timing from UK guidelines, technical parameters\n"
-        "   Focus on recommendations that guide patient management\n\n"
-        
-        "EMPHASIZE: Significant/impactful criteria, actionable thresholds, classification systems that inform care, UK adaptations\n"
-        "PRIORITIZE: Information that supports diagnostic decisions or directs management pathways"
+        "You are a senior UK consultant radiologist synthesising clinical guideline evidence for NHS colleagues.\n"
+        "Use British English spelling and terminology throughout.\n\n"
+
+        "SCOPE RULES:\n"
+        "• ADULT radiology only (age 16+) — exclude all paediatric classification systems (SFU, UTD, etc.)\n"
+        "• Guideline must match ALL THREE of: (1) anatomy, (2) pathology, (3) imaging finding. ANY mismatch = do not include.\n"
+        "• UK guidelines first (NICE, RCR, BIR, British specialty societies); international sources supplement only.\n"
+        "• Use only the provided evidence — do not fabricate. If a section has no relevant evidence, return [].\n\n"
+
+        "EVIDENCE SECTIONS:\n"
+        "The evidence is divided into three labelled sections. Extract specific fields from each:\n"
+        "  SECTION A (UK Pathway & Follow-up) → use for: urgency_tier, uk_authority, guideline_refs, follow_up_actions\n"
+        "    - Every follow_up_action.guideline_source MUST be traceable to a specific [A*] item\n"
+        "    - urgency_tier must reflect the most urgent follow_up_action\n"
+        "  SECTION B (Classification & Measurement) → use for: classifications (with management per grade), thresholds\n"
+        "  SECTION C (Imaging Features & Differentials) → use for: differentials, imaging_flags, clinical_summary\n\n"
+
+        "OUTPUT FIELD RULES:\n"
+        "• urgency_tier: one of 'urgent' | 'soon' | 'routine' | 'watch' | 'none'\n"
+        "• clinical_summary: 2 sentences max — what the finding represents and its primary clinical significance\n"
+        "• uk_authority: primary UK body only — 'NICE', 'BSG', 'RCR', 'BTS', 'BAUS', 'RCP', etc.\n"
+        "• guideline_refs: short attribution strings e.g. ['NICE CG188', 'BSG 2020'] — not full URLs\n"
+        "• follow_up_actions: ordered most-urgent first; each needs modality, timing, indication, urgency, guideline_source\n"
+        "• classifications: 0–2 systems; each needs system, authority, grade, criteria, management\n"
+        "• thresholds: actionable decision points only (e.g. 'CBD > 8mm → MRCP') — not normal ranges\n"
+        "• differentials: 2–4 items; each needs diagnosis, key_features, excluders, likelihood\n"
+        "• imaging_flags: flat list of key imaging observations as short strings\n"
+        "• All list fields must be arrays — return [] not null when empty\n"
+        "• Do not wrap string fields in objects\n\n"
+
+        "SOURCE PRIORITY:\n"
+        "1. UK professional societies (NICE, RCR, BSG, BTS, BAUS, RCOG, RCP, BIR)\n"
+        "2. International professional societies (RSNA, ACR, Fleischner Society, etc.)\n"
+        "3. Peer-reviewed / academic sources (Radiopaedia, PubMed)"
     )
 
     guidelines_results: List[dict] = []
@@ -2326,40 +2500,61 @@ async def search_guidelines_for_findings(
         finding_text_hash = hashlib.sha256(finding_text_normalized.encode('utf-8')).hexdigest()
         finding_cache_prefix = f"{finding_text_hash}:finding_{idx}"
         print(f"      [CACHE DEBUG] Finding text hash: {finding_text_hash[:16]}... (finding: '{consolidated_finding.finding[:50]}...')")
-        
-        # Generate 2-3 focused search queries using AI
-        # Cache based on extracted finding text hash (enables cross-user cache reuse)
-        cache = get_cache()
-        query_cache_key = f"query_gen:{finding_cache_prefix}"
-        cached_queries_result = cache.get(query_cache_key)
-        
-        if cached_queries_result is not None:
-            print(f"      [CACHE HIT] Using cached queries")
-            queries, query_model = cached_queries_result
-        else:
-            print(f"      [CACHE MISS] Generating queries")
-            queries, query_model = await generate_radiology_search_queries(consolidated_finding.finding, api_key)
-            # Cache the queries with report-content-based key
-            cache.set(query_cache_key, (queries, query_model))
-        
-        print(f"      Generated {len(queries)} queries")
-        for q_idx, q in enumerate(queries, 1):
-            print(f"        Query {q_idx}: {q}")
 
-        # Check cache for Perplexity search results (cache based on report content + queries)
-        queries_hash = generate_query_hash(queries)
-        search_cache_key = f"perplexity_search:{finding_cache_prefix}:{queries_hash}"
-        print(f"      [CACHE DEBUG] Perplexity search cache key: {search_cache_key[:50]}...")
-        cached_search_results = cache.get(search_cache_key)
-        
-        search_results = None
-        fallback_attempt = 0
-        
-        if cached_search_results is not None:
-            print(f"      [CACHE HIT] Using cached Perplexity search results")
-            search_results = cached_search_results
-        else:
-            print(f"      [CACHE MISS] Executing Perplexity search")
+        # Initialise cache early — used by both prefetch and Perplexity paths
+        cache = get_cache()
+
+        # ── Prefetch short-circuit: use pre-fetched KB instead of Perplexity ──
+        _pf_knowledge = prefetched_knowledge  # local mutable copy
+        _branch_blocks: Dict[str, List[dict]] = {}  # branch-aware evidence blocks
+        if _pf_knowledge is not None:
+            _branch_blocks = _build_branch_evidence_blocks(idx - 1, _pf_knowledge)
+            pf_items = _build_raw_evidence_from_prefetch(idx - 1, _pf_knowledge)  # for raw_evidence/sources
+            if _branch_blocks:
+                total_pf_items = sum(len(v) for v in _branch_blocks.values())
+                print(f"      [PREFETCH] Using {total_pf_items} pre-fetched evidence items across {len(_branch_blocks)} branches for finding {idx}")
+                search_results = pf_items
+                queries = [item.get("query", "") for item in pf_items[:3]]
+                query_model = "prefetch"
+                fallback_attempt = 0
+                # Skip Perplexity; fall through to synthesis below
+            else:
+                print(f"      [PREFETCH] No prefetch items for finding {idx} — falling back to Perplexity")
+                _pf_knowledge = None  # Force Perplexity fallback for this finding
+
+        if _pf_knowledge is None:
+            # Generate 2-3 focused search queries using AI
+            # Cache based on extracted finding text hash (enables cross-user cache reuse)
+            query_cache_key = f"query_gen:{finding_cache_prefix}"
+            cached_queries_result = cache.get(query_cache_key)
+            
+            if cached_queries_result is not None:
+                print(f"      [CACHE HIT] Using cached queries")
+                queries, query_model = cached_queries_result
+            else:
+                print(f"      [CACHE MISS] Generating queries")
+                queries, query_model = await generate_radiology_search_queries(consolidated_finding.finding, api_key)
+                # Cache the queries with report-content-based key
+                cache.set(query_cache_key, (queries, query_model))
+            
+            print(f"      Generated {len(queries)} queries")
+            for q_idx, q in enumerate(queries, 1):
+                print(f"        Query {q_idx}: {q}")
+
+            # Check cache for Perplexity search results (cache based on report content + queries)
+            queries_hash = generate_query_hash(queries)
+            search_cache_key = f"perplexity_search:{finding_cache_prefix}:{queries_hash}"
+            print(f"      [CACHE DEBUG] Perplexity search cache key: {search_cache_key[:50]}...")
+            cached_search_results = cache.get(search_cache_key)
+            
+            search_results = None
+            fallback_attempt = 0
+            
+            if cached_search_results is not None:
+                print(f"      [CACHE HIT] Using cached Perplexity search results")
+                search_results = cached_search_results
+            else:
+                print(f"      [CACHE MISS] Executing Perplexity search")
             
             # Try search with fallback strategy: restricted domains -> no domain filter -> no language filter
             
@@ -2441,7 +2636,7 @@ async def search_guidelines_for_findings(
 
         # Check cache for compatibility filtering (cache based on report content + search_results)
         search_results_hash = generate_search_results_hash(search_results)
-        filter_cache_key = f"compat_filter:{finding_cache_prefix}:{search_results_hash}"
+        filter_cache_key = f"compat_filter:v2:{finding_cache_prefix}:{search_results_hash}"
         print(f"      [CACHE DEBUG] Compatibility filter cache key: {filter_cache_key[:50]}...")
         cached_filtered_results = cache.get(filter_cache_key)
         
@@ -2467,21 +2662,23 @@ async def search_guidelines_for_findings(
 
         print(f"      Retrieved {len(search_results)} compatible search results")
 
-        # Build evidence context
-        context_lines = []
-        for rank, item in enumerate(search_results[:12], start=1):
-            title = (item.get("title") or "").strip()
-            snippet = (item.get("snippet") or "").strip()
-            if snippet and len(snippet) > 280:
-                snippet = snippet[:277].rstrip() + "..."
-            url = (item.get("url") or "").strip()
-            query = (item.get("query") or "").strip()
-            context_lines.append(f"[{rank}] Query: {query}\nTitle: {title}\nSummary: {snippet}\nURL: {url}\n")
+        # Build branch-aware evidence block for synthesis prompt
+        # If prefetch is available use rich branch blocks; otherwise fall back to flat Perplexity items
+        if _branch_blocks:
+            evidence_block = _format_branch_evidence(_branch_blocks)
+        else:
+            # Perplexity fallback — build a flat evidence block from search results
+            context_lines = []
+            for rank, item in enumerate(search_results[:12], start=1):
+                title = (item.get("title") or "").strip()
+                snippet = (item.get("snippet") or "").strip()[:1500]
+                url = (item.get("url") or "").strip()
+                query = (item.get("query") or "").strip()
+                context_lines.append(f"[{rank}] Query: {query}\nTitle: {title}\nSummary: {snippet}\nURL: {url}\n")
+            evidence_block = "\n".join(context_lines) if context_lines else "No supporting evidence."
 
-        evidence_block = "\n".join(context_lines) if context_lines else "No supporting evidence."
-
-        # Check cache for guideline synthesis (cache based on report content + search_results)
-        synthesis_cache_key = f"guideline_synth:{finding_cache_prefix}:{search_results_hash}"
+        # Check cache for guideline synthesis (v2 prefix — incompatible with old GuidelineEntry dicts)
+        synthesis_cache_key = f"guideline_synth_v3:{finding_cache_prefix}:{search_results_hash}"
         print(f"      [CACHE DEBUG] Checking guideline synthesis cache with key: {synthesis_cache_key[:80]}...")
         cached_synthesis = cache.get(synthesis_cache_key)
         
@@ -2491,115 +2688,120 @@ async def search_guidelines_for_findings(
         if cached_synthesis is not None:
             print(f"      [CACHE HIT] Using cached guideline synthesis")
             print(f"      [CACHE DEBUG] Cache key: {synthesis_cache_key[:80]}...")
-            # Reconstruct GuidelineEntry from cached dict if needed
             if isinstance(cached_synthesis, dict):
-                guideline_entry_raw = GuidelineEntry(**cached_synthesis)
+                guideline_entry_raw = RichGuidelineEntry(**cached_synthesis)
             else:
                 guideline_entry_raw = cached_synthesis
-            synthesis_model = "cached"  # Mark as cached
+            synthesis_model = "cached"
         else:
             print(f"      [CACHE MISS] Executing guideline synthesis")
             print(f"      [CACHE DEBUG] Cache key: {synthesis_cache_key[:80]}...")
-            
-            # Guidelines synthesis prompt
-            queries_text = "\n".join(f"  {i}. {q}" for i, q in enumerate(queries, 1))
+
+            # Build applicable guidelines context line from prefetch S1 output
+            applicable_guidelines_context = ""
+            if prefetched_knowledge and prefetched_knowledge.applicable_guidelines:
+                guideline_names = [
+                    g.get("system", "") for g in prefetched_knowledge.applicable_guidelines
+                    if g.get("system")
+                ]
+                if guideline_names:
+                    applicable_guidelines_context = f"APPLICABLE GUIDELINES CONTEXT: {', '.join(guideline_names)}\n\n"
+
             prompt = (
-                f"Consolidated finding: {consolidated_finding.finding}\n"
-                f"Search queries used:\n{queries_text}\n\n"
-                f"SEARCH EVIDENCE:\n{evidence_block}\n\n"
-                "Return a GuidelineEntry JSON object with radiologist-focused diagnostic information."
+                f"CLINICAL FINDING: {consolidated_finding.finding}\n\n"
+                f"{applicable_guidelines_context}"
+                f"{evidence_block}\n\n"
+                "Return a RichGuidelineEntry JSON. "
+                "Set urgency_tier from the most urgent follow_up_action. "
+                "If a section has no useful evidence for its target fields, return [] — do not fabricate."
             )
 
+            def _synthesis_model_settings(model: str, provider: str) -> dict:
+                """Build correct model settings per provider/model for synthesis."""
+                settings: dict = {"temperature": 0.2}
+                if model == "zai-glm-4.7":
+                    # GLM uses extra_body reasoning toggle, NOT reasoning_effort
+                    settings["max_completion_tokens"] = 8000
+                    settings["extra_body"] = {"disable_reasoning": False}  # reasoning ON for complex schema
+                    print(f"      └─ GLM mode: REASONING ON, max_completion_tokens=8000 for {model}")
+                elif provider == "cerebras":
+                    # gpt-oss-120b and other Cerebras models use reasoning_effort
+                    settings["max_completion_tokens"] = 6000
+                    settings["reasoning_effort"] = "medium"
+                    print(f"      └─ Using Cerebras reasoning_effort=medium, max_completion_tokens=6000 for {model}")
+                else:
+                    settings["max_tokens"] = 4000
+                return settings
+
             try:
-                # Try primary model first with retry logic
                 @with_retry(max_retries=3, base_delay=2.0)
                 async def _try_synthesis():
-                    # Build model settings with conditional reasoning_effort and max_completion_tokens for Cerebras
-                    model_settings = {
-                        "temperature": 0.2,
-                    }
-                    if primary_model == "gpt-oss-120b":
-                        model_settings["max_completion_tokens"] = 5000  # Generous token limit for Cerebras
-                        model_settings["reasoning_effort"] = "medium"
-                        print(f"      └─ Using Cerebras reasoning_effort=medium, max_completion_tokens=5000 for {primary_model}")
-                    else:
-                        model_settings["max_tokens"] = 4000  # Generous token limit for other models
-                    
+                    model_settings = _synthesis_model_settings(primary_model, primary_provider)
                     result = await _run_agent_with_model(
                         model_name=primary_model,
-                        output_type=GuidelineEntry,
+                        output_type=RichGuidelineEntry,
                         system_prompt=guidelines_system_prompt,
                         user_prompt=prompt,
                         api_key=primary_api_key,
-                        use_thinking=(primary_provider == 'groq'),  # Enable thinking for Groq models
+                        use_thinking=(primary_provider == 'groq'),
                         model_settings=model_settings
                     )
                     return result
-                
+
                 result = await _try_synthesis()
                 synthesis_model = primary_model
                 guideline_entry_raw = result.output
-                
-                # Cache the synthesized guideline (serialize Pydantic model to dict for storage)
+
                 guideline_dict = guideline_entry_raw.model_dump() if hasattr(guideline_entry_raw, 'model_dump') else guideline_entry_raw.dict()
                 print(f"      [CACHE DEBUG] Storing guideline with key: {synthesis_cache_key[:80]}...")
                 cache.set(synthesis_cache_key, guideline_dict)
-                
+
             except Exception as synthesis_error:
-                # Log detailed error information for debugging
-                print(f"⚠️ Primary model (Cerebras) error details for finding {idx}:")
+                print(f"⚠️ Primary model ({primary_model}) error for finding {idx}:")
                 print(f"  └─ Error type: {type(synthesis_error).__name__}")
                 print(f"  └─ Error message: {str(synthesis_error)}")
                 if hasattr(synthesis_error, 'status_code'):
                     print(f"  └─ Status code: {synthesis_error.status_code}")
                 if hasattr(synthesis_error, 'body'):
                     print(f"  └─ Error body: {synthesis_error.body}")
-                
-                # Primary model failed - try fallback
+
                 fallback_model = MODEL_CONFIG["GUIDELINE_SEARCH_FALLBACK"]
                 fallback_provider = _get_model_provider(fallback_model)
                 fallback_api_key = _get_api_key_for_provider(fallback_provider)
-                
+
                 if _is_parsing_error(synthesis_error):
                     print(f"⚠️ Primary model parsing error for finding {idx} - falling back to {fallback_model}")
                 else:
                     print(f"⚠️ Primary model failed after retries for finding {idx} - falling back to {fallback_model}")
-                
+
                 try:
-                    # Build model settings for fallback (Llama)
-                    fallback_model_settings = {
-                        "temperature": 0.2,
-                        "max_tokens": 4000  # Generous token limit for Llama fallback
-                    }
-                    
-                    # Only enable thinking for Groq models that support reasoning_format (Qwen, not Llama)
+                    fallback_model_settings = _synthesis_model_settings(fallback_model, fallback_provider)
                     use_thinking_fallback = (fallback_provider == 'groq' and 'qwen' in fallback_model.lower())
-                    
+
                     result = await _run_agent_with_model(
                         model_name=fallback_model,
-                        output_type=GuidelineEntry,
+                        output_type=RichGuidelineEntry,
                         system_prompt=guidelines_system_prompt,
                         user_prompt=prompt,
                         api_key=fallback_api_key,
-                        use_thinking=use_thinking_fallback,  # Only enable for Qwen models, not Llama
+                        use_thinking=use_thinking_fallback,
                         model_settings=fallback_model_settings
                     )
-                    
+
                     synthesis_model = fallback_model
                     guideline_entry_raw = result.output
                     print(f"      ✅ Guideline synthesis completed with {synthesis_model} (fallback)")
-                    
-                    # Cache the synthesized guideline (serialize Pydantic model to dict)
+
                     guideline_dict = guideline_entry_raw.model_dump() if hasattr(guideline_entry_raw, 'model_dump') else guideline_entry_raw.dict()
                     print(f"      [CACHE DEBUG] Storing guideline (fallback) with key: {synthesis_cache_key[:80]}...")
                     cache.set(synthesis_cache_key, guideline_dict)
-                    
+
                 except Exception as fallback_error:
                     print(f"❌ Both primary and fallback models failed for finding {idx}: {fallback_error}")
                     return None
 
-        guideline_entry: GuidelineEntry = guideline_entry_raw
-        print(f"      Generated guideline: {guideline_entry.diagnostic_overview[:160]}...")
+        guideline_entry: RichGuidelineEntry = guideline_entry_raw
+        print(f"      Generated guideline: {guideline_entry.clinical_summary[:160]}...")
 
         # Check cache for guideline validation (cache based on report content + guideline)
         import json
@@ -2632,11 +2834,7 @@ async def search_guidelines_for_findings(
             update={"finding_number": idx, "finding": consolidated_finding.finding}
         )
 
-        # Build new radiologist-focused markdown
-        guideline_markdown = build_radiologist_guideline_markdown(guideline_entry)
-
-        # Build sources (organic only - no hardcoded fallbacks)
-        # Also preserve raw evidence with snippets for chat citation grounding
+        # Build sources and raw_evidence for chat citation grounding
         sources = []
         raw_evidence: List[Dict[str, Any]] = []
         seen_evidence_urls: set[str] = set()
@@ -2665,55 +2863,32 @@ async def search_guidelines_for_findings(
                 "query": item.get("query", ""),
             })
 
-        # Extract unique domains (no fallback)
-        unique_domains = list(dict.fromkeys(
-            source["domain"] for source in sources if source.get("domain")
-        ))
-        discovered_bodies = [
-            {"name": domain, "domain": domain, "reason": "Referenced in search evidence", "priority": "medium"}
-            for domain in unique_domains[:3]
-        ]
-        body_names = unique_domains[:3]
+        # Debug logging for v2 structured fields
+        print(f"📊 DEBUG (v2) - Guideline for '{consolidated_finding.finding}':")
+        print(f"  urgency_tier: {guideline_entry.urgency_tier}")
+        print(f"  uk_authority: {guideline_entry.uk_authority}")
+        print(f"  classifications: {len(guideline_entry.classifications)} items")
+        print(f"  follow_up_actions: {len(guideline_entry.follow_up_actions)} items")
+        print(f"  thresholds: {len(guideline_entry.thresholds)} items")
+        print(f"  differentials: {len(guideline_entry.differentials)} items")
+        print(f"  imaging_flags: {len(guideline_entry.imaging_flags)} items")
 
-        # Debug logging for structured fields
-        print(f"📊 DEBUG - Guideline for '{consolidated_finding.finding}':")
-        print(f"  classification_systems: {len(guideline_entry.classification_systems)} items")
-        if guideline_entry.classification_systems:
-            for cs in guideline_entry.classification_systems:
-                print(f"    • {cs.name} - {cs.grade_or_category}")
-        else:
-            print(f"    (empty)")
-        print(f"  measurement_protocols: {len(guideline_entry.measurement_protocols)} items")
-        print(f"  imaging_characteristics: {len(guideline_entry.imaging_characteristics)} items")
-        print(f"  differential_diagnoses: {len(guideline_entry.differential_diagnoses)} items")
-        print(f"  follow_up_imaging: {len(guideline_entry.follow_up_imaging or [])} items")
-        if guideline_entry.follow_up_imaging:
-            for fi in guideline_entry.follow_up_imaging:
-                print(f"    • {fi.modality} at {fi.timing}")
-        else:
-            print(f"    (empty)")
-        
         result_dict = {
-            "finding": {
-                "finding": consolidated_finding.finding,
-                "guideline_focus": "diagnostic imaging guidance",
-                "specialty": "general radiology",
-                "search_query": " | ".join(queries),  # Show all queries used
-            },
-            "discovered_bodies": discovered_bodies,
-            "body_names": body_names,
-            "reasoning": "Synthesized from UK-focused multi-query search evidence",
-            "guideline_summary": guideline_markdown,
-            "diagnostic_overview": guideline_entry.diagnostic_overview,
+            # Top-level rich fields
+            "finding_number": guideline_entry.finding_number,
+            "finding": guideline_entry.finding,
+            "urgency_tier": guideline_entry.urgency_tier,
+            "clinical_summary": guideline_entry.clinical_summary,
+            "uk_authority": guideline_entry.uk_authority,
+            "guideline_refs": guideline_entry.guideline_refs,
+            "follow_up_actions": [a.model_dump() for a in guideline_entry.follow_up_actions],
+            "classifications": [c.model_dump() for c in guideline_entry.classifications],
+            "thresholds": [t.model_dump() for t in guideline_entry.thresholds],
+            "differentials": [d.model_dump() for d in guideline_entry.differentials],
+            "imaging_flags": guideline_entry.imaging_flags,
             "sources": sources[:5],
-            # Raw Perplexity evidence for chat citation grounding (numbered, with snippets)
+            # Raw evidence for chat grounding
             "raw_evidence": raw_evidence,
-            # New structured fields
-            "classification_systems": [cs.model_dump() for cs in guideline_entry.classification_systems],
-            "measurement_protocols": [mp.model_dump() for mp in guideline_entry.measurement_protocols],
-            "imaging_characteristics": [ic.model_dump() for ic in guideline_entry.imaging_characteristics],
-            "differential_diagnoses": [dd.model_dump() for dd in guideline_entry.differential_diagnoses],
-            "follow_up_imaging": [fi.model_dump() for fi in (guideline_entry.follow_up_imaging or [])],
         }
         return (result_dict, query_model, synthesis_model, len(search_results))
 
@@ -2740,204 +2915,6 @@ async def search_guidelines_for_findings(
     models_summary = f"Query: {query_models_str} | Synthesis: {synthesis_models_str}"
     print(f"search_guidelines_for_findings: Completed with {len(guidelines_results)} guidelines from {total_sources} sources in {elapsed:.2f}s ({models_summary})")
     return guidelines_results
-
-
-async def _analyze_completeness_with_model(
-    model_name: str,
-    model_label: str,
-    report_content: str,
-    guidelines_data: List[dict],
-    api_key: str
-) -> dict:
-    """
-    Helper function to analyze report completeness with specified model.
-    Model selection is driven by MODEL_CONFIG - supports any configured model.
-    
-    Args:
-        model_name: Model identifier (e.g., "qwen/qwen3-32b", "claude-sonnet-4-20250514")
-        model_label: Human-readable model name for logging
-        report_content: The report text
-        guidelines_data: Guidelines found for the report
-        api_key: API key for the model provider
-    
-    Returns:
-        Dictionary with analysis and structured feedback
-    """
-    import os
-    
-    start_time = time.time()
-    print(f"analyze_report_completeness: Attempting with {model_label}...")
-    print(f"  └─ Received {len(guidelines_data)} guideline entries for completeness analysis")
-    
-    provider = _get_model_provider(model_name)
-    
-    system_prompt = (
-        "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
-        "You are an expert radiologist reviewing imaging reports for quality and completeness "
-        "of findings documentation.\n\n"
-        "Your role is to assess whether the radiologist has:\n"
-        "• Systematically documented all imaging findings visible on the study\n"
-        "• Clearly described anatomic locations, measurements, and characteristics\n"
-        "• Provided appropriate differential considerations based on imaging alone\n"
-        "• Communicated findings clearly for clinical application\n\n"
-        "Do NOT evaluate whether clinical information is provided or whether clinical context "
-        "is present in the report. The radiologist interprets the imaging; clinical correlation "
-        "is the ordering clinician's responsibility.\n\n"
-        "CRITICAL - OUTPUT FORMAT:\n"
-        "• All string fields (title, details, id, prompt, patch) must be returned as DIRECT STRING VALUES, not wrapped in objects\n"
-        "• Example: title: 'Report Quality Assessment' NOT title: {'text': 'Report Quality Assessment'}\n"
-        "• Example: prompt: 'Has the full anatomy been documented?' NOT prompt: {'text': 'Has the full anatomy been documented?'}\n"
-        "• Return plain string values for all text fields\n\n"
-        "Produce structured feedback with three parts:\n"
-        "• Summary – plain-language overview of completeness, clarity, and imaging interpretation quality\n"
-        "  - title: Direct string value (≤12 words)\n"
-        "  - details: Direct string value (2-3 sentences)\n"
-        "• Questions – 2-4 review prompts to verify imaging findings are adequately characterized "
-        "(specific to scan modality and anatomic region)\n"
-        "  - id: Direct string value (kebab-case identifier)\n"
-        "  - prompt: Direct string value (plain sentence, no leading numbering)\n"
-        "• Suggested Actions – optional concrete edits when specific wording would improve clarity "
-        "of imaging description. Each suggested action MUST include:\n"
-        "  - id: Direct string value (kebab-case identifier)\n"
-        "  - title: Direct string value (concise action label ≤10 words)\n"
-        "  - details: Direct string value (1-2 sentence explanation)\n"
-        "  - patch: Direct string value (EXPLICIT TEXT to add/modify in the report)\n\n"
-        "IMPORTANT: For suggested_actions, you MUST provide specific, actionable text in the 'patch' field. "
-        "Examples:\n"
-        "- patch: 'The nodule measures 8 mm in diameter'\n"
-        "- patch: 'No aggressive bone lesions or fractures identified'\n"
-        "- patch: 'Recommend follow-up CT in 3 months to assess for interval change'\n\n"
-        "Always provide a summary. Include questions focused on verification of imaging interpretation. "
-        "Only include suggested_actions when specific changes would improve the report's imaging documentation, "
-        "and ALWAYS include the actual text patch for each action."
-    )
-    
-    findings_summary = "\n".join(
-        f"- {g['finding']['finding']}: {g.get('guideline_summary', '')[:200]}"
-        for g in guidelines_data[:3]
-    )
-    print(f"  └─ Prepared guideline highlights (truncated):\n{findings_summary[:400] or '- None available.'}")
-    
-    user_prompt = (
-        f"REPORT:\n{report_content}\n\n"
-        f"GUIDELINE HIGHLIGHTS:\n{findings_summary or '- No guideline highlights available.'}\n\n"
-        "Analyze this report for completeness and provide structured feedback."
-    )
-    
-    # Build model settings with conditional reasoning_effort for Cerebras
-    model_settings = {
-        "temperature": 0,
-        "top_p": 1,
-    }
-    if model_name == "gpt-oss-120b":
-        model_settings["max_completion_tokens"] = 2000  # Generous token limit for Cerebras
-        model_settings["reasoning_effort"] = "high"
-        print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=2000 for {model_name}")
-    else:
-        model_settings["max_tokens"] = 1500
-    
-    result = await _run_agent_with_model(
-        model_name=model_name,
-        output_type=CompletenessAnalysis,
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        api_key=api_key,
-        use_thinking=(provider == 'groq'),  # Enable thinking for Groq models
-        model_settings=model_settings
-    )
-    
-    completeness: CompletenessAnalysis = result.output
-    
-    elapsed = time.time() - start_time
-    print(f"analyze_report_completeness: ✅ Completed with {model_label} in {elapsed:.2f}s")
-    print(f"  └─ Summary title: {completeness.summary.title}")
-    print(f"  └─ Questions generated: {len(completeness.questions)}")
-    print(f"  └─ Suggested actions generated: {len(completeness.suggested_actions)}")
-    
-    # Convert to format expected by frontend
-    return {
-        "analysis": f"{completeness.summary.title}\n\n{completeness.summary.details}",
-        "structured": {
-            "summary": completeness.summary.model_dump(),
-            "questions": [q.model_dump() for q in completeness.questions],
-            "suggested_actions": [a.model_dump() for a in completeness.suggested_actions],
-        }
-    }
-
-
-async def analyze_report_completeness(
-    report_content: str,
-    guidelines_data: List[dict],
-    anthropic_api_key: str | None
-) -> dict:
-    """
-    Analyze report completeness using configured primary model with automatic fallback.
-    Model selection is driven by MODEL_CONFIG - supports any configured model.
-    
-    Args:
-        report_content: The report text
-        guidelines_data: Guidelines found for the report
-        anthropic_api_key: Anthropic API key (for fallback if primary is Anthropic)
-    
-    Returns:
-        Dictionary with analysis and structured feedback
-    """
-    import os
-    
-    # Get primary model and provider
-    primary_model = MODEL_CONFIG["COMPLETENESS_ANALYZER"]
-    primary_provider = _get_model_provider(primary_model)
-    
-    # Try primary model first with retry logic
-    try:
-        primary_api_key = _get_api_key_for_provider(primary_provider, anthropic_api_key)
-        
-        @with_retry(max_retries=3, base_delay=2.0)
-        async def _try_primary():
-            return await _analyze_completeness_with_model(
-                primary_model,
-                f"{primary_model} (Completeness Analyzer)",
-                report_content,
-                guidelines_data,
-                primary_api_key
-            )
-        
-        return await _try_primary()
-    except Exception as e:
-        # Primary failed - determine why and fallback
-        fallback_model = MODEL_CONFIG["COMPLETENESS_ANALYZER_FALLBACK"]
-        if _is_parsing_error(e):
-            print(f"⚠️ {primary_model} parsing error detected - immediate fallback to {fallback_model}")
-            print(f"  Error: {type(e).__name__}: {str(e)[:200]}")
-        else:
-            print(f"⚠️ {primary_model} failed after retries ({type(e).__name__}) - falling back to {fallback_model}")
-            print(f"  Error: {str(e)[:200]}")
-        
-        # Fallback to configured fallback model
-        try:
-            fallback_provider = _get_model_provider(fallback_model)
-            fallback_api_key = _get_api_key_for_provider(fallback_provider, anthropic_api_key)
-            
-            return await _analyze_completeness_with_model(
-                fallback_model,
-                f"{fallback_model} (Completeness Analyzer - Fallback)",
-                report_content,
-                guidelines_data,
-                fallback_api_key
-            )
-        except Exception as fallback_error:
-            # Both models failed - return graceful error
-            print(f"❌ Both primary and fallback models failed: {type(fallback_error).__name__}")
-            import traceback
-            print(traceback.format_exc())
-            return {
-                "analysis": f"Error analyzing report completeness (both {primary_model} and {fallback_model} failed).",
-                "structured": {
-                    "summary": {"title": "Analysis Error", "details": f"Unable to analyze report with both {primary_model} and {fallback_model}"},
-                    "questions": [],
-                    "suggested_actions": []
-                }
-            }
 
 
 # ============================================================================
@@ -2984,6 +2961,10 @@ async def analyze_interval_changes(
     if guidelines_data:
         guidelines_context = "\n\nCLINICAL GUIDELINES CONTEXT:\n"
         for guideline in guidelines_data:
+            is_s4 = any(k in guideline for k in ("follow_up_actions", "urgency_tier", "imaging_flags", "finding_short_label"))
+            if is_s4:
+                guidelines_context += "\n" + _extract_text_from_synthesis_card(guideline) + "\n"
+                continue
             finding_name = guideline.get('finding', {}).get('finding', 'N/A')
             guidelines_context += f"\n{finding_name}:\n"
             if guideline.get('diagnostic_overview'):
@@ -3732,7 +3713,8 @@ async def _run_agent_with_model(
     user_prompt: str,
     api_key: str,
     use_thinking: bool = False,
-    model_settings: dict = None
+    model_settings: dict = None,
+    tools: list = None,
 ):
     """
     Run an agent with unified model creation and execution.
@@ -3745,6 +3727,7 @@ async def _run_agent_with_model(
         api_key: API key for the model provider
         use_thinking: Whether to enable thinking mode (only for Groq)
         model_settings: Additional model settings dict
+        tools: Optional list of async callable tools to register on the agent
     
     Returns:
         Agent result object
@@ -3774,12 +3757,13 @@ async def _run_agent_with_model(
         if provider == 'groq' and use_thinking:
             agent_model_settings = GroqModelSettings(groq_reasoning_format='parsed')
         
-        # Create agent
+        # Create agent (with optional tools)
         agent = Agent(
             pydantic_model,
             output_type=output_type,
             system_prompt=system_prompt,
             model_settings=agent_model_settings,
+            tools=tools or [],
             retries=2,
         )
         
@@ -3811,12 +3795,19 @@ async def _run_agent_with_model(
                 else:
                     print(f"  └─ reasoning_effort: NOT SET ⚠️  (check if parameter is supported)")
         
-        # Run agent with error handling for Cerebras to capture raw output
+        # Run agent with concurrency guard for Cerebras
         try:
-            result = await agent.run(
-                user_prompt,
-                model_settings=final_model_settings
-            )
+            if provider == 'cerebras':
+                async with _cerebras_semaphore:
+                    result = await agent.run(
+                        user_prompt,
+                        model_settings=final_model_settings
+                    )
+            else:
+                result = await agent.run(
+                    user_prompt,
+                    model_settings=final_model_settings
+                )
             
             # Log thinking parts for Groq models
             if provider == 'groq' and use_thinking:
@@ -5397,12 +5388,13 @@ def reconcile_audit_status(audit_out: AuditResult) -> AuditResult:
     return audit_out
 
 
-async def audit_report(
+async def audit_report(  # DEPRECATED — replaced by run_audit_phase1 + run_audit_phase2
     report_content: str,
     scan_type: str,
     clinical_history: str,
     api_key: str = None,
     applicable_guidelines: Optional[List[dict]] = None,
+    prefetched_knowledge=None,  # Optional[PrefetchOutput] — pre-built KB from parallel prefetch
     db=None,
 ) -> dict:
     """
@@ -5414,10 +5406,14 @@ async def audit_report(
         clinical_history: Clinical history/indication for the scan
         api_key: Optional API key (if not provided, uses provider-specific key from env)
         applicable_guidelines: Optional list of dicts (ApplicableGuideline-shaped) for cache fetch + audit context
+        prefetched_knowledge: Optional PrefetchOutput from the parallel prefetch pipeline.
+            When provided, its knowledge_base is injected as a [GUIDELINE CONTEXT] block and
+            urgency_signals are injected before the FLAGGING PHILOSOPHY section.
         db: SQLAlchemy Session or None; if None, guideline context is skipped
         
     Returns:
-        Dictionary with overall_status, criteria list (6 items), summary, and model_used
+        Dictionary with overall_status, criteria list (6 items), summary, model_used, and
+        prefetch_used (True when audit was seeded by prefetched_knowledge).
     """
     start_time = time.time()
     primary_model = MODEL_CONFIG["AUDIT_ANALYZER"]
@@ -5433,12 +5429,50 @@ async def audit_report(
     print(f"  └─ Report preview: {report_content[:200].replace(chr(10), ' ')!r}")
     print(f"{'='*60}")
     
-    system_prompt = """You are a senior radiologist and clinical radiology QA specialist practising in the UK.
+    # ── Build prefetch KB context block ───────────────────────────────────────
+    _prefetch_kb_block = ""
+    _urgency_block = ""
+    _prefetch_used = False
+    if prefetched_knowledge is not None:
+        _prefetch_used = True
+        # Urgency signals — injected as a prior before FLAGGING PHILOSOPHY
+        if prefetched_knowledge.urgency_signals:
+            _urgency_block = (
+                "\n[PREFETCH URGENCY CONTEXT — pre-computed from scan inputs]\n"
+                + "\n".join(f"• {s}" for s in prefetched_knowledge.urgency_signals)
+                + "\nUse these as a prior when evaluating clinical_flagging severity. "
+                "They do not override your independent assessment.\n"
+            )
+        # KB evidence — concatenate all branches into a GUIDELINE CONTEXT supplement
+        kb_parts: List[str] = []
+        for branch, items in prefetched_knowledge.knowledge_base.items():
+            for item in items:
+                if item.content and len(item.content) > 100:
+                    header = f"[{item.title or item.domain} — {branch}]"
+                    snippet = item.content[:1200]
+                    kb_parts.append(f"{header}\n{snippet}")
+        if kb_parts:
+            _prefetch_kb_block = (
+                "\n\n[PREFETCH GUIDELINE CONTEXT — pre-fetched from authoritative sources]\n"
+                "Use this knowledge block to ground recommendations and classification criteria. "
+                "Treat it as supplementary evidence that precedes any criteria appended below.\n\n"
+                + "\n\n".join(kb_parts[:8])  # cap at 8 items to stay within context budget
+            )
+        print(
+            f"[GUIDELINE_PIPELINE] audit_report: prefetch KB injected — "
+            f"urgency_signals={len(prefetched_knowledge.urgency_signals)} "
+            f"kb_items={sum(len(v) for v in prefetched_knowledge.knowledge_base.values())}"
+        )
+    # ──────────────────────────────────────────────────────────────────────────
+
+    system_prompt = (f"""You are a senior radiologist and clinical radiology QA specialist practising in the UK.
 Your task is to audit a radiology report against six specific quality criteria.
 
 LANGUAGE (NON-NEGOTIABLE):
 CRITICAL: You MUST write every user-visible string in English only — UK British English spelling and terminology (e.g. oesophagus, haemorrhage, tumour). This includes rationale, recommendation, summary, flag detail text, and every suggested_banners.rationale field. Do not use Chinese, other languages, or mixed-language output under any circumstances. Quoted verbatim spans from the report (highlighted_spans) must stay exactly as in the source.
-
+"""
+    + _urgency_block
+    + """
 FLAGGING PHILOSOPHY:
 - Apply the criterion definitions as written. If a criterion is met, it is met — do not invent issues.
 - Do NOT flag stylistic preferences, formatting choices, or defensible variations in phrasing.
@@ -5449,13 +5483,14 @@ FLAGGING PHILOSOPHY:
 
 For highlighted_spans, copy verbatim substrings from the report exactly as they appear; these will be used to locate and highlight the text inline.
 You must evaluate all six criteria and return them in this exact order: anatomical_accuracy, clinical_relevance, recommendations, clinical_flagging, report_completeness, diagnostic_fidelity.
+Note: diagnostic_fidelity has access to GUIDELINE CONTEXT below — cross-check staging assignments against synthesis thresholds.
 
 OUTPUT REQUIREMENTS:
 - All prose you generate must be British English only (see LANGUAGE above)
 - Return exactly 6 criteria evaluations in the specified order
 - For each criterion with issues, include highlighted_spans with verbatim text from the report
 - Use status "pass" when no issues, "flag" for significant issues requiring attention, "warning" for minor concerns
-- For clinical_flagging criterion, always populate flags_identified with all 5 sub-flag types
+- For clinical_flagging criterion, always populate flags_identified with all 3 sub-flag types
 - For the diagnostic_fidelity criterion, the rationale field must always contain both sub-dimension lines in this exact format, regardless of status:
     (a) Certainty: [PASS | WARNING | FLAG] — [brief explanation]
     (b) Consistency: [PASS | WARNING | FLAG] — [brief explanation]
@@ -5464,6 +5499,12 @@ OUTPUT REQUIREMENTS:
 - For diagnostic_fidelity, the criterion-level status must equal the worse of the two sub-dimension statuses: flag > warning > pass. If (b) Consistency is WARNING, status must be "warning". If either sub-dimension is FLAG, status must be "flag". Returning "pass" when either sub-dimension is warning or flag is a validation error.
 - overall_status must equal the worst status across all six criteria. If any criterion is "flag", overall_status must be "flag". If no criterion is "flag" but any is "warning", overall_status must be "warning". Returning "pass" when any criterion is flag or warning is a validation error.
 - If a criterion cannot be meaningfully evaluated (e.g., no prior study referenced so comparative analysis is not applicable), assign "pass" with a brief note
+
+STRUCTURED OUTPUT (API — MANDATORY):
+- Return one structured object with exactly these top-level keys: overall_status, criteria, summary.
+- criteria MUST be a JSON array of exactly 6 objects. It MUST NOT be a string (do not double-encode or stringify the array).
+- summary MUST be a non-empty British English string (one to three sentences) synthesising the outcome for the radiologist.
+- EVERY element of criteria MUST include a top-level rationale string. This includes clinical_flagging: populate flags_identified and suggested_banners in addition to rationale, never as a substitute for rationale. Omitting rationale on any criterion causes validation failure.
 
 ONE-CLICK FIX FIELDS (populate only on flag or warning, never on pass):
 - suggested_replacement: Populate for anatomical_accuracy and recommendations flags ONLY when a
@@ -5500,6 +5541,8 @@ Do not attempt suggested_replacement for clinical_relevance, clinical_flagging, 
 
 GUIDELINE CONTEXT (when appended below):
 Structured classification or guideline criteria may appear after this block. If **multiple** systems could relate to the **same** finding, apply the framework whose **scope** matches **scan purpose** and **clinical question** (e.g. screening programme vs incidental finding on a general CT vs oncology staging or response). **Do not** cross-apply numerical thresholds or management rules between frameworks designed for different clinical contexts. Where **multiple** guideline frameworks appear in the appended GUIDELINE CONTEXT, use the **first** block as the primary reference for **recommendation grounding**; subsequent blocks are for **cross-reference** — note where they corroborate or differ from the primary framework. The injected criteria serve two purposes: (1) recommendation grounding — when a recommendations flag fires, derive the specific correction from the criteria (interval, action, urgency) rather than only identifying the gap; (2) classification reference — do not use criteria to adjudicate whether the assigned category is correct, as that requires image review and is the radiologist's call."""
+    + _prefetch_kb_block
+    )
 
     user_prompt = f"""REPORT TO AUDIT:
 {report_content}
@@ -5531,20 +5574,17 @@ Evaluate this report against all 6 audit criteria:
 4. CLINICAL_FLAGGING
    Detect whether the report warrants a clinical communication banner that the user may append to the report.
    Important: banner severity must be determined by the clinical features described in FINDINGS — haemodynamic status, RV strain, imaging extent — not by the severity label used in the Impression. If the Impression uses a severity characterisation that is inconsistent with the FINDINGS, base the banner category on FINDINGS.
-   Evaluate presence of these categories:
+   Evaluate presence of three severity tiers (flags_identified — return all 3 evaluations):
    - critical: Life-threatening findings requiring immediate action as supported by FINDINGS (e.g., tension pneumothorax, aortic dissection, pulmonary embolism with haemodynamic compromise or shock when so described — do not assign critical from an Impression label alone if FINDINGS describe stability)
-   - urgent: Findings needing same-day attention
-   - significant: Important findings for clinical management
-   - malignancy_suspected: New suspicious lesions suggestive of malignancy
-   - malignancy_interval: Interval changes in known malignancy
+   - urgent: Findings needing same-day clinical attention (e.g. new DVT, bowel obstruction, suspected malignancy requiring urgent MDT/oncology referral)
+   - significant: Important findings for clinical management that are not immediately time-critical but require documented clinician acknowledgement (e.g. interval change in known malignancy, new indeterminate lesion needing surveillance)
    Populate suggested_banners with 0–3 ranked options (most severe first) from these standard templates. Use the exact banner_text strings below. When no actionable flags are present, return suggested_banners: [].
    Standard banner templates (use verbatim):
    - critical: label "Critical — Immediate Action Required", banner_text "*****CRITICAL RADIOLOGICAL FINDING — REQUIRES IMMEDIATE CLINICIAN ACTION*****"
    - urgent: label "Urgent — Same-Day Attention", banner_text "*****URGENT RADIOLOGICAL FINDING — PLEASE REVIEW TODAY*****"
-   - malignancy_suspected: label "Suspected New Malignancy", banner_text "*****SUSPECTED NEW MALIGNANCY — URGENT ONCOLOGY/MDT REFERRAL RECOMMENDED*****"
-   - malignancy_interval: label "Known Malignancy Interval Change", banner_text "*****INTERVAL CHANGE IN KNOWN MALIGNANCY — MDT DISCUSSION RECOMMENDED*****"
    - significant: label "Significant — Review with Referring Team", banner_text "*****CLINICALLY SIGNIFICANT FINDING — PLEASE REVIEW WITH REFERRING TEAM*****"
-   status: "pass" if suggested_banners is empty, "flag" if any banner warranted. Keep flags_identified for diagnostic display (all 5 sub-flag evaluations).
+   For each suggested_banner, also populate clinical_context: a short underscore_case semantic tag describing the clinical scenario (e.g. malignancy_new, vascular_emergency, thromboembolism) for frontend icon/colour selection.
+   status: "pass" if suggested_banners is empty, "flag" if any banner warranted. Keep flags_identified for diagnostic display (all 3 sub-flag evaluations).
 
 5. REPORT_COMPLETENESS
    Assess three dimensions together:
@@ -5593,8 +5633,14 @@ For each criterion, provide:
 - highlighted_spans: Verbatim text from report to highlight (only if status is flag or warning)
 - recommendation: Suggested improvement within the radiological domain only (only if status is flag or warning)
 - criterion_line: (recommendations only; flag or warning) See OUTPUT REQUIREMENTS; null otherwise and on pass
-- flags_identified: (clinical_flagging only) List of all 5 sub-flag evaluations
-- suggested_banners: (clinical_flagging only) List of 0–3 FlagBannerOption objects with category, label, banner_text, rationale"""
+- flags_identified: (clinical_flagging only) List of all 3 sub-flag evaluations
+- suggested_banners: (clinical_flagging only) List of 0–3 FlagBannerOption objects with category, label, banner_text, rationale, clinical_context
+
+---
+STRUCTURED OUTPUT (MANDATORY — BEFORE YOU RESPOND):
+- Root object keys: overall_status, criteria (array length 6), summary (non-empty string).
+- criteria: a real array of objects, not a string containing JSON.
+- Each of the 6 objects must include rationale; for clinical_flagging, rationale is required alongside flags_identified and suggested_banners."""
 
     guideline_context_block = ""
     guideline_references: List[GuidelineReference] = []
@@ -5621,6 +5667,7 @@ For each criterion, provide:
             idx: int, g: Any
         ) -> Tuple[int, Any, GuidelineResolution]:
             ag = _AG(**g) if isinstance(g, dict) else g
+            _g0 = time.perf_counter()
             try:
                 if n_g > 1:
                     sdb = SessionLocal()
@@ -5631,11 +5678,19 @@ For each criterion, provide:
                 else:
                     res = await ensure_guideline_cached(ag, db)
             except Exception as e:
+                _g_ms = (time.perf_counter() - _g0) * 1000.0
                 print(
                     f"[GUIDELINE_PIPELINE] audit_report: ensure_guideline_cached error "
-                    f"idx={idx} system={getattr(ag, 'system', '?')!r}: {type(e).__name__}: {e}"
+                    f"idx={idx} system={getattr(ag, 'system', '?')!r}: {type(e).__name__}: {e} "
+                    f"elapsed_ms={_g_ms:.0f}"
                 )
                 res = GuidelineResolution(None, None, False)
+            else:
+                _g_ms = (time.perf_counter() - _g0) * 1000.0
+                print(
+                    f"[GUIDELINE_PIPELINE] audit_report: guideline idx={idx} "
+                    f"system={ag.system!r} ensure_guideline_cached elapsed_ms={_g_ms:.0f}"
+                )
             return (idx, ag, res)
 
         resolved = await asyncio.gather(
@@ -5708,6 +5763,12 @@ For each criterion, provide:
     if guideline_context_block:
         user_prompt = user_prompt + guideline_context_block
 
+    user_prompt = (
+        user_prompt
+        + "\n\n---\nREMINDER: Emit criteria as a JSON array (6 objects), not a string; include summary; "
+        "every criterion object must have rationale (including clinical_flagging).\n"
+    )
+
     # Primary model settings - provider-specific
     if provider == 'anthropic':
         # Claude (claude-sonnet-4-6): no thinking
@@ -5735,7 +5796,84 @@ For each criterion, provide:
     else:
         use_thinking = False
         primary_model_settings = {"temperature": 0.7, "max_tokens": 3500}
-    
+
+    # ── Tavily search_guideline_criterion tool ────────────────────────────────
+    _tavily_call_count = 0
+    _TAVILY_MAX_CALLS = 2  # hard budget cap per audit run
+
+    async def search_guideline_criterion(query: str) -> str:  # noqa: E306
+        """
+        Focused Tavily search for a specific guideline criterion or classification threshold.
+        ONLY call when the prefetch KB and injected guidelines lack the exact rule needed.
+        Use narrow, specific queries — NOT broad symptom lookups.
+        Budget: max 2 calls per audit. Return format: JSON list of {title, url, snippet}.
+        """
+        nonlocal _tavily_call_count
+        if _tavily_call_count >= _TAVILY_MAX_CALLS:
+            return '{"error": "search budget exhausted (max 2 calls per audit)"}'
+        _tavily_call_count += 1
+
+        import os as _os
+        tavily_key = _os.getenv("TAVILY_API_KEY", "")
+        if not tavily_key:
+            return '{"error": "TAVILY_API_KEY not configured"}'
+
+        try:
+            from tavily import AsyncTavilyClient as _TavilyClient
+            from .guideline_prefetch import (
+                DOMAIN_FILTER_PATHWAY, DOMAIN_FILTER_CLASSIFICATION, DOMAIN_FILTER_DIFFERENTIAL,
+            )
+            _all_domains = list({
+                *DOMAIN_FILTER_PATHWAY, *DOMAIN_FILTER_CLASSIFICATION, *DOMAIN_FILTER_DIFFERENTIAL
+            })
+            _client = _TavilyClient(tavily_key)
+            _resp = await asyncio.wait_for(
+                _client.search(
+                    query=query,
+                    search_depth="advanced",
+                    max_results=3,
+                    chunks_per_source=2,
+                    include_domains=_all_domains,
+                ),
+                timeout=15.0,
+            )
+            _items = []
+            for _r in (_resp.get("results") or []):
+                _items.append({
+                    "title": _r.get("title", ""),
+                    "url": _r.get("url", ""),
+                    "snippet": (_r.get("content") or "")[:600],
+                })
+            print(
+                f"[GUIDELINE_PIPELINE] audit search_guideline_criterion call={_tavily_call_count} "
+                f"query={query!r:.80} results={len(_items)}"
+            )
+            import json as _json
+            return _json.dumps(_items)
+        except Exception as _exc:
+            print(f"[GUIDELINE_PIPELINE] audit search_guideline_criterion error: {_exc!s}")
+            return f'{{"error": "{type(_exc).__name__}: {str(_exc)[:120]}"}}'
+    # ─────────────────────────────────────────────────────────────────────────
+    # Cerebras and Groq reject tool calls mixed with structured-output tools
+    # (strict mode conflict). Only Anthropic/Claude handles this cleanly.
+    _provider_supports_tools = provider == 'anthropic'
+    _primary_tools = [search_guideline_criterion] if _provider_supports_tools else []
+    # Append tool-use instruction only when the provider will actually receive the tool
+    if _provider_supports_tools:
+        user_prompt = (
+            user_prompt
+            + "\nTOOL USE (search_guideline_criterion): You have access to a focused Tavily search tool. "
+            "ONLY call it when the injected GUIDELINE CONTEXT and PREFETCH GUIDELINE CONTEXT are insufficient "
+            "to answer a specific classification threshold or management rule required to complete a criterion. "
+            "Budget: MAX 2 CALLS per audit. Use narrow, specific queries targeting a single criterion or "
+            "classification system — never broad symptom or differential lookups. "
+            "Do not call the tool for criteria with status 'pass'.\n"
+        )
+    print(
+        f"[GUIDELINE_PIPELINE] audit_report: search tool "
+        f"{'ENABLED' if _primary_tools else 'DISABLED (provider=' + provider + ')'}"
+    )
+
     try:
         result = await _run_agent_with_model(
             model_name=primary_model,
@@ -5744,7 +5882,8 @@ For each criterion, provide:
             user_prompt=user_prompt,
             api_key=primary_api_key,
             use_thinking=use_thinking,
-            model_settings=primary_model_settings
+            model_settings=primary_model_settings,
+            tools=_primary_tools,
         )
         
         audit_out = result.output
@@ -5777,6 +5916,9 @@ For each criterion, provide:
         else:
             fallback_model_settings = {"temperature": 0.7, "max_tokens": 3500}
         
+        # Reset call count; only pass tool if fallback provider also supports it
+        _tavily_call_count = 0
+        _fallback_tools = [search_guideline_criterion] if fallback_provider == 'anthropic' else []
         result = await _run_agent_with_model(
             model_name=fallback_model,
             output_type=AuditResult,
@@ -5784,7 +5926,8 @@ For each criterion, provide:
             user_prompt=user_prompt,
             api_key=fallback_api_key,
             use_thinking=False,
-            model_settings=fallback_model_settings
+            model_settings=fallback_model_settings,
+            tools=_fallback_tools,
         )
         
         audit_out = result.output
@@ -5813,11 +5956,700 @@ For each criterion, provide:
     out = audit_out.model_dump()
     out["model_used"] = model_used
     out["guideline_references"] = [g.model_dump() for g in guideline_references]
+    out["prefetch_used"] = _prefetch_used
     inj = sum(1 for g in guideline_references if g.injected)
     print(
         f"[GUIDELINE_PIPELINE] audit_report: return guideline_references="
-        f"{len(guideline_references)} injected_count={inj}"
+        f"{len(guideline_references)} injected_count={inj} prefetch_used={_prefetch_used}"
     )
     return out
 
 
+# ============================================================================
+# NEW 3-Phase Audit Module
+# ============================================================================
+
+_PHASE1A_SYSTEM = """You are a senior radiologist and clinical radiology QA specialist practising in the UK.
+Your task is to evaluate whether a radiology report faithfully represents the original
+dictated findings input.
+
+LANGUAGE (NON-NEGOTIABLE):
+CRITICAL: You MUST write every user-visible string in English only — UK British English
+spelling and terminology. Do not use Chinese, other languages, or mixed-language output.
+
+EVALUATION SCOPE:
+You are given two documents:
+1. ORIGINAL INPUT — the raw findings as dictated/entered by the reporting radiologist
+2. FINAL REPORT — the structured report generated from that input
+
+Your job is to identify discrepancies between the two. The report generation process
+may restructure, reformat, and professionalise the input — this is expected and correct.
+You are NOT checking style, grammar, or structure. You are checking CONTENT FIDELITY.
+
+WHAT COUNTS AS A DISCREPANCY:
+- A finding explicitly stated in the ORIGINAL INPUT that is entirely absent from the
+  FINAL REPORT (type: dropped)
+- A measurement that changed between input and report (type: measurement_changed)
+- Laterality that changed or was lost (type: laterality_changed)
+- A qualifier or severity that was materially altered (type: qualifier_changed)
+- A finding that was present in the input but inverted in the report (type: inverted)
+
+WHAT IS NOT A DISCREPANCY:
+- Restructuring into Findings/Impression format
+- Professional language refinement
+- Reasonable inference or elaboration by the report generator
+- Omission of non-clinical fragments
+- Reordering of findings into anatomical or systematic structure
+
+STATUS LOGIC:
+- FLAG: A clinically significant finding, measurement, or laterality from the input is
+  missing, contradicted, or materially altered in the report
+- WARNING: A minor detail is lost or altered that is unlikely to affect clinical
+  management but represents imperfect fidelity
+- PASS: All clinically material content from the input is faithfully represented in the
+  report, allowing for expected restructuring and professionalisation
+
+OUTPUT:
+Return a single criterion evaluation object with:
+- criterion: "input_fidelity"
+- status, rationale, highlighted_spans, recommendation (standard fields)
+- discrepancies: Array of {input_text, report_text, type, severity} objects documenting
+  each specific discrepancy found. Empty array on pass."""
+
+
+_PHASE2_SYSTEM = """You are a senior radiologist and clinical radiology QA specialist practising in the UK.
+Your task is to evaluate a radiology report against four guideline-compliance criteria,
+using pre-computed synthesis evidence from authoritative clinical sources.
+
+LANGUAGE (NON-NEGOTIABLE):
+CRITICAL: You MUST write every user-visible string in English only — UK British English
+spelling and terminology. Do not use Chinese, other languages, or mixed-language output.
+
+FINDINGS-OVER-IMPRESSION RULE:
+FINDINGS constrain the Impression for factual consistency. When evaluating any criterion,
+treat explicit FINDINGS statements as the ground truth against which Impression claims are
+validated — not the reverse. A confident, fluent Impression does not override an explicit
+FINDINGS negation or characterisation.
+
+SYNTHESIS EVIDENCE (pre-computed from authoritative guideline sources):
+The following structured analysis has been pre-computed for each significant finding
+in this report. Use this as your primary reference for all four criteria.
+
+When evaluating DIAGNOSTIC_FIDELITY, use classifications, thresholds, and stage grouping
+from the synthesis evidence to cross-check staging assignments in the report. If the
+synthesis evidence provides explicit T/N/M definitions with size thresholds, verify the
+report's staging against those definitions — not just internal Findings↔Impression
+consistency.
+
+When evaluating RECOMMENDATIONS, compare the report's stated recommendations directly
+against the synthesised follow_up_actions — these encode the guideline-correct pathway,
+timing, and indication for this specific patient. Derive criterion_line from the
+synthesis evidence, not from general knowledge. Flag recommendations that are NOT
+supported by synthesis evidence (discordant) as well as those that are missing.
+
+When evaluating CLINICAL_FLAGGING, use urgency_tier from the synthesis evidence as a
+calibration prior for banner severity. It does not override your independent assessment
+of the report's FINDINGS but should inform whether the finding warrants
+critical/urgent/significant communication. Banner severity must be determined by the
+clinical features described in FINDINGS — haemodynamic status, imaging extent, RV strain,
+vascular involvement — not by the severity label used in the Impression.
+
+When evaluating CHARACTERISATION_GAP, use imaging_flags and classifications as the
+feature checklist against which to assess report characterisation completeness per finding.
+
+Do not cross-apply numerical thresholds or management rules between frameworks designed
+for different clinical contexts. Where multiple classification systems appear for the
+same finding, use the one whose scope matches scan purpose and clinical question.
+
+--- CRITERION-SPECIFIC INSTRUCTIONS ---
+
+1. DIAGNOSTIC_FIDELITY
+   Assess two dimensions together. Criterion status = worst of (a) and (b).
+   rationale MUST use format: (a) Certainty: PASS/WARNING/FLAG — ... (b) Consistency: PASS/WARNING/FLAG — ...
+
+   (a) Certainty calibration
+   FLAG if: A definitive diagnosis is stated without hedging for a finding that, as described
+   in the report body, is genuinely equivocal.
+   WARNING if: Excessive hedging on clearly normal/abnormal findings introduces unwarranted
+   clinical uncertainty.
+   PASS if: Certainty level is commensurate with how the findings are characterised.
+
+   (b) Internal consistency + guideline-threshold cross-check
+   Before scoring, perform this check sequence:
+   Step 1 — Extract clinically significant negations from FINDINGS. Identify phrases that negate
+   a primary diagnosis or key finding.
+   Step 2 — Check Impression against Step 1: Does the Impression assert as present any finding
+   that FINDINGS explicitly negated? FLAG if so — this is a patient safety error.
+   Step 3 — Cross-check staging and measurements against synthesis thresholds and classifications:
+   If the report assigns a staging classification (TNM, FIGO, Bosniak, etc.) or makes a
+   measurement-dependent claim, verify it is consistent with the threshold definitions in the
+   synthesis evidence. FLAG if the assigned stage contradicts the thresholds (e.g. a 4.8cm tumour
+   staged as T2a when the threshold table shows T2b for >4cm). WARNING if borderline.
+   Step 4 — Cross-check that the report does NOT recommend investigations that the synthesis
+   evidence explicitly does NOT indicate for this tumour type or clinical context (e.g. CT body
+   staging for a primary brain tumour when guidelines indicate no role for systemic staging).
+
+2. RECOMMENDATIONS
+   Compare the report's stated recommendations against the synthesised follow_up_actions.
+   This is a BIDIRECTIONAL concordance check:
+   FLAG if: (a) An actionable finding has no associated recommendation when guidelines indicate
+   one (MISSING recommendation), OR (b) the report recommends an investigation or referral that
+   the synthesis evidence does NOT support for this clinical context (DISCORDANT recommendation —
+   e.g. recommending CT staging when guidelines indicate it is not indicated for this tumour type),
+   OR (c) urgency is clearly mismatched with clinical severity.
+   WARNING if: A recommendation is present but urgency or specificity is likely under-stated.
+   PASS if: Recommendations are consistent with synthesised follow_up_actions and no discordant
+   recommendations are present.
+   When status is flag or warning, populate criterion_line with the single most relevant
+   guideline rule from the synthesis evidence, and write rationale as deficiency-only
+   (do not duplicate guideline text in rationale).
+
+3. CLINICAL_FLAGGING
+   Detect whether the report warrants a clinical communication banner that the user may
+   append to the report. This is an ALERT mechanism — banners are pure severity headers,
+   not clinical summaries.
+
+   Evaluate presence of three severity tiers (flags_identified — return all 3 evaluations):
+   - critical: Life-threatening findings requiring immediate action as supported by FINDINGS
+     (e.g. tension pneumothorax, aortic dissection, PE with haemodynamic compromise/RV strain,
+     active haemorrhage, cord compression). Do NOT assign critical from an Impression label
+     alone if FINDINGS describe haemodynamic stability.
+   - urgent: Findings needing same-day clinical attention (e.g. new DVT, bowel obstruction
+     with transition point, acute cholecystitis with complications, new stroke territory
+     infarct, suspected malignancy requiring urgent MDT/oncology referral).
+   - significant: Important findings for clinical management that are not immediately
+     time-critical but require documented clinician acknowledgement (e.g. interval change
+     in known malignancy, new indeterminate lesion needing surveillance, incidental finding
+     requiring specialist follow-up).
+
+   For each present flag, populate suggested_banners (0–3, most severe first) using these
+   EXACT standard templates:
+   - critical:    label "Critical — Immediate Action Required"
+                  banner_text "*****CRITICAL RADIOLOGICAL FINDING — REQUIRES IMMEDIATE CLINICIAN ACTION*****"
+   - urgent:      label "Urgent — Same-Day Attention"
+                  banner_text "*****URGENT RADIOLOGICAL FINDING — PLEASE REVIEW TODAY*****"
+   - significant: label "Significant — Review with Referring Team"
+                  banner_text "*****CLINICALLY SIGNIFICANT FINDING — PLEASE REVIEW WITH REFERRING TEAM*****"
+
+   For each suggested_banner, also populate:
+   - rationale: One sentence explaining why this severity tier is warranted (British English).
+   - clinical_context: A short semantic tag describing the clinical scenario, used by the
+     frontend for icon/colour selection. Use underscore_case. Examples:
+     malignancy_new, malignancy_interval, vascular_emergency, infection_sepsis,
+     bowel_obstruction, cord_compression, haemorrhage_active, fracture_unstable,
+     thromboembolism, organ_ischaemia.
+     Choose the tag that best captures the dominant clinical concern. Do NOT invent tags
+     for trivial findings — only tag banners that you are actually suggesting.
+
+   STATUS: "pass" if suggested_banners is empty; "flag" if any banner is warranted.
+   Keep flags_identified as a diagnostic array (all 3 sub-flag evaluations regardless of
+   whether present).
+
+4. CHARACTERISATION_GAP
+   For each significant positive finding, check whether the radiologist has characterised
+   all guideline-relevant features identified in the synthesis evidence (imaging_flags,
+   classification features, measurement parameters).
+   FLAG if: A critical characterisation feature is absent.
+   WARNING if: A supporting feature is absent.
+   PASS if: All guideline-relevant features are adequately characterised.
+   Populate characterisation_gaps array with specifics for each gap found.
+
+OUTPUT REQUIREMENTS:
+Return exactly 4 criterion evaluations in order: diagnostic_fidelity, recommendations,
+clinical_flagging, characterisation_gap. Each must include: criterion, status, rationale,
+highlighted_spans, recommendation. Additional fields per criterion:
+- diagnostic_fidelity: rationale MUST contain both lines: (a) Certainty: ... (b) Consistency: ...
+  Do not attempt suggested_replacement for diagnostic_fidelity — the correct fix is almost
+  never a single span swap. For diagnostic_fidelity (b) Consistency, FINDINGS are the source
+  of truth. Criterion-level status = worst of (a) and (b).
+- recommendations: criterion_line (flag/warning only, null on pass). Bidirectional check:
+  flag missing recommendations AND discordant recommendations (report recommends something
+  not indicated by synthesis evidence).
+- clinical_flagging: flags_identified (always 3 sub-flag objects), suggested_banners (0–3)
+- characterisation_gap: characterisation_gaps (array of gap objects)
+overall_status must equal the worst status across all four criteria."""
+
+
+def _build_synthesis_evidence_block(
+    synthesis_cards: list,
+    finding_short_labels: list,
+) -> str:
+    """Format S4 synthesis cards into a text block for Phase 2 audit prompt injection."""
+    if not synthesis_cards:
+        return "\n(No synthesis evidence available — evaluate from general knowledge only.)\n"
+    parts = []
+    for i, card in enumerate(synthesis_cards):
+        short_label = (
+            finding_short_labels[i] if i < len(finding_short_labels)
+            else card.get("finding_short_label", card.get("finding", f"Finding {i+1}"))
+        )
+        lines = [f"--- Finding {i+1}: {short_label} ---"]
+        lines.append(f"Urgency tier: {card.get('urgency_tier', 'none')}")
+
+        fu_actions = card.get("follow_up_actions", [])
+        if fu_actions:
+            lines.append("\nFollow-up actions:")
+            for a in fu_actions:
+                lines.append(
+                    f"  - {a.get('modality','')} | timing: {a.get('timing','')} "
+                    f"| indication: {a.get('indication','')} | urgency: {a.get('urgency','')}"
+                )
+                src = a.get("guideline_source", "")
+                if src:
+                    lines.append(f"    Source: {src}")
+
+        classifications = card.get("classifications", [])
+        if classifications:
+            lines.append("\nClassifications:")
+            for c in classifications:
+                yr = f", {c.get('year','')}" if c.get("year") else ""
+                lines.append(f"  - {c.get('system','')} ({c.get('authority','')}{yr}): grade {c.get('grade','')}")
+                if c.get("criteria"):
+                    lines.append(f"    Criteria: {c['criteria']}")
+                if c.get("management"):
+                    lines.append(f"    Management: {c['management']}")
+
+        thresholds = card.get("thresholds", [])
+        if thresholds:
+            lines.append("\nThresholds:")
+            for t in thresholds:
+                lines.append(f"  - {t.get('parameter','')}: {t.get('threshold','')} — {t.get('significance','')}")
+
+        imaging_flags = card.get("imaging_flags", [])
+        if imaging_flags:
+            lines.append("\nImaging flags:")
+            for flg in imaging_flags:
+                lines.append(f"  - {flg}")
+
+        parts.append("\n".join(lines))
+    return "\n\n".join(parts)
+
+
+async def run_audit_phase1(
+    report_content: str,
+    scan_type: str,
+    clinical_history: str,
+    findings_input: str,
+    other_variables: dict,
+    urgency_signals: list,
+    api_key: str = None,
+) -> dict:
+    """Run Phase 1a (input_fidelity) + Phase 1b (4 criteria) in parallel.
+
+    Returns a partial AuditResult dict (5 criteria).
+    """
+    from rapid_reports_ai.enhancement_models import (
+        Phase1aOutput,
+        Phase1bOutput,
+        AuditCriterion as _AC,
+    )
+
+    cerebras_key = api_key or os.environ.get("CEREBRAS_API_KEY", "")
+
+    model_settings_1a = {
+        "temperature": 0.8,
+        "top_p": 0.95,
+        "max_completion_tokens": 1500,
+        "extra_body": {"disable_reasoning": False},
+    }
+
+    model_settings_1b = {
+        "temperature": 0.8,
+        "top_p": 0.95,
+        "max_completion_tokens": 2500,
+        "extra_body": {"disable_reasoning": False},
+    }
+
+    async def _phase1a() -> _AC:
+        if not findings_input:
+            return _AC(
+                criterion="input_fidelity",
+                status="pass",
+                rationale="No original input provided — input fidelity check not applicable.",
+            )
+        vars_text = "\n".join(
+            f"{k}: {v}" for k, v in (other_variables or {}).items()
+            if k != "FINDINGS" and v
+        )
+        user_prompt = (
+            f"ORIGINAL INPUT (as dictated/entered by reporting radiologist):\n{findings_input}\n\n"
+            f"ADDITIONAL INPUT VARIABLES:\n{vars_text or '(none)'}\n\n"
+            f"FINAL REPORT:\n{report_content}\n\n"
+            f"SCAN TYPE: {scan_type or '(not specified)'}\n\n"
+            f"Evaluate input fidelity: are all clinically material findings from the "
+            f"ORIGINAL INPUT faithfully represented in the FINAL REPORT?"
+        )
+        try:
+            result = await _run_agent_with_model(
+                model_name="zai-glm-4.7",
+                output_type=Phase1aOutput,
+                system_prompt=_PHASE1A_SYSTEM,
+                user_prompt=user_prompt,
+                api_key=cerebras_key,
+                model_settings=model_settings_1a,
+            )
+            out = result.output
+            return _AC(
+                criterion="input_fidelity",
+                status=out.status,
+                rationale=out.rationale,
+                highlighted_spans=out.highlighted_spans,
+                recommendation=out.recommendation,
+                discrepancies=out.discrepancies if out.discrepancies else None,
+            )
+        except Exception as e:
+            print(f"[AUDIT] Phase 1a failed: {e}")
+            return _AC(
+                criterion="input_fidelity",
+                status="pass",
+                rationale=f"Input fidelity check could not be completed: {str(e)[:200]}",
+            )
+
+    async def _phase1b() -> list:
+        try:
+            result = await _run_agent_with_model(
+                model_name="zai-glm-4.7",
+                output_type=Phase1bOutput,
+                system_prompt=_build_phase1b_system(scan_type, clinical_history),
+                user_prompt=_build_phase1b_user(
+                    report_content, scan_type, clinical_history, urgency_signals,
+                ),
+                api_key=cerebras_key,
+                model_settings=model_settings_1b,
+            )
+            return list(result.output.criteria)
+        except Exception as e:
+            print(f"[AUDIT] Phase 1b failed: {e}")
+            return []
+
+    p1a_result, p1b_results = await asyncio.gather(_phase1a(), _phase1b())
+
+    all_criteria = [p1a_result] + p1b_results
+    statuses = [c.status for c in all_criteria]
+    overall = "pass"
+    if any(s == "flag" for s in statuses):
+        overall = "flag"
+    elif any(s == "warning" for s in statuses):
+        overall = "warning"
+
+    return {
+        "overall_status": overall,
+        "criteria": [c.model_dump() for c in all_criteria],
+        "summary": f"Phase 1 audit complete ({len(all_criteria)} criteria). Phase 2 pending.",
+        "partial": True,
+    }
+
+
+async def run_audit_phase2(
+    report_content: str,
+    scan_type: str,
+    clinical_history: str,
+    synthesis_cards: list,
+    urgency_signals: list,
+    consolidated_findings: list,
+    finding_short_labels: list,
+    api_key: str = None,
+) -> list:
+    """Run Phase 2 audit (4 guideline-compliance criteria incl. diagnostic_fidelity).
+
+    Returns a list of AuditCriterion objects (or dicts).
+    """
+    from rapid_reports_ai.enhancement_models import Phase2Output, AuditCriterion as _AC
+
+    cerebras_key = api_key or os.environ.get("CEREBRAS_API_KEY", "")
+
+    evidence_block = _build_synthesis_evidence_block(synthesis_cards, finding_short_labels)
+    system_prompt = _PHASE2_SYSTEM + "\n\n" + evidence_block
+
+    user_prompt = (
+        f"RADIOLOGY REPORT:\n{report_content}\n\n"
+        f"SCAN TYPE: {scan_type or '(not specified)'}\n"
+        f"CLINICAL HISTORY: {clinical_history or '(not provided)'}\n\n"
+        f"Evaluate the report against these four criteria:\n"
+        f"1. DIAGNOSTIC_FIDELITY — Are staging assignments and clinical assertions internally "
+        f"consistent with findings AND concordant with the synthesis thresholds/classifications?\n"
+        f"2. RECOMMENDATIONS — Are the report's recommendations concordant with the synthesised "
+        f"follow_up_actions? Check both directions: missing AND discordant recommendations.\n"
+        f"3. CLINICAL_FLAGGING — Does the report appropriately flag urgent/critical findings "
+        f"for clinical communication? Return all 3 sub-flag evaluations (critical, urgent, "
+        f"significant) in flags_identified and 0–3 suggested_banners with clinical_context tags.\n"
+        f"4. CHARACTERISATION_GAP — For each significant positive finding, has the radiologist "
+        f"characterised all guideline-relevant features?\n\n"
+        f"Return exactly 4 criterion evaluations in order: diagnostic_fidelity, recommendations, "
+        f"clinical_flagging, characterisation_gap."
+    )
+
+    model_settings = {
+        "temperature": 0.8,
+        "top_p": 0.95,
+        "max_completion_tokens": 5000,
+        "extra_body": {"disable_reasoning": False},
+    }
+
+    try:
+        result = await _run_agent_with_model(
+            model_name="zai-glm-4.7",
+            output_type=Phase2Output,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            api_key=cerebras_key,
+            model_settings=model_settings,
+        )
+        return list(result.output.criteria)
+    except Exception as e:
+        print(f"[AUDIT] Phase 2 failed: {e}")
+        return []
+
+
+def merge_audit_phases(phase1_result: dict, phase2_criteria: list) -> dict:
+    """Merge Phase 2 criteria into Phase 1 result, recompute overall_status."""
+    merged = dict(phase1_result)
+    p2_dicts = [
+        c.model_dump() if hasattr(c, "model_dump") else c
+        for c in phase2_criteria
+    ]
+    merged["criteria"] = merged.get("criteria", []) + p2_dicts
+    merged.pop("partial", None)
+
+    status_rank = {"pass": 0, "warning": 1, "flag": 2}
+    rank_status = {0: "pass", 1: "warning", 2: "flag"}
+    worst = max(
+        status_rank.get(c.get("status", "pass") if isinstance(c, dict) else c.status, 0)
+        for c in merged["criteria"]
+    ) if merged["criteria"] else 0
+    merged["overall_status"] = rank_status[worst]
+    merged["summary"] = f"Full audit complete ({len(merged['criteria'])} criteria)."
+    return merged
+
+
+async def run_full_audit(
+    report_content: str,
+    scan_type: str,
+    clinical_history: str,
+    findings_input: str,
+    other_variables: dict,
+    urgency_signals: list,
+    synthesis_cards: list,
+    consolidated_findings: list,
+    finding_short_labels: list,
+    api_key: str = None,
+) -> dict:
+    """Run all 9 audit criteria (Phase 1a + 1b + Phase 2) in parallel.
+
+    Returns a complete AuditResult dict with all criteria.
+    """
+    from rapid_reports_ai.enhancement_models import (
+        Phase1aOutput,
+        Phase1bOutput,
+        Phase2Output,
+        AuditCriterion as _AC,
+    )
+
+    cerebras_key = api_key or os.environ.get("CEREBRAS_API_KEY", "")
+
+    model_settings_1a = {
+        "temperature": 0.8,
+        "top_p": 0.95,
+        "max_completion_tokens": 1500,
+        "extra_body": {"disable_reasoning": False},
+    }
+    model_settings_1b = {
+        "temperature": 0.8,
+        "top_p": 0.95,
+        "max_completion_tokens": 2500,
+        "extra_body": {"disable_reasoning": False},
+    }
+    model_settings_2 = {
+        "temperature": 0.8,
+        "top_p": 0.95,
+        "max_completion_tokens": 5000,
+        "extra_body": {"disable_reasoning": False},
+    }
+
+    async def _phase1a() -> _AC:
+        if not findings_input:
+            return _AC(
+                criterion="input_fidelity",
+                status="pass",
+                rationale="No original input provided — input fidelity check not applicable.",
+            )
+        vars_text = "\n".join(
+            f"{k}: {v}" for k, v in (other_variables or {}).items()
+            if k != "FINDINGS" and v
+        )
+        user_prompt = (
+            f"ORIGINAL INPUT (as dictated/entered by reporting radiologist):\n{findings_input}\n\n"
+            f"ADDITIONAL INPUT VARIABLES:\n{vars_text or '(none)'}\n\n"
+            f"FINAL REPORT:\n{report_content}\n\n"
+            f"SCAN TYPE: {scan_type or '(not specified)'}\n\n"
+            f"Evaluate input fidelity: are all clinically material findings from the "
+            f"ORIGINAL INPUT faithfully represented in the FINAL REPORT?"
+        )
+        try:
+            result = await _run_agent_with_model(
+                model_name="zai-glm-4.7",
+                output_type=Phase1aOutput,
+                system_prompt=_PHASE1A_SYSTEM,
+                user_prompt=user_prompt,
+                api_key=cerebras_key,
+                model_settings=model_settings_1a,
+            )
+            out = result.output
+            return _AC(
+                criterion="input_fidelity",
+                status=out.status,
+                rationale=out.rationale,
+                highlighted_spans=out.highlighted_spans,
+                recommendation=out.recommendation,
+                discrepancies=out.discrepancies if out.discrepancies else None,
+            )
+        except Exception as e:
+            print(f"[AUDIT] Phase 1a failed: {e}")
+            return _AC(
+                criterion="input_fidelity",
+                status="pass",
+                rationale=f"Input fidelity check could not be completed: {str(e)[:200]}",
+            )
+
+    async def _phase1b() -> list:
+        try:
+            result = await _run_agent_with_model(
+                model_name="zai-glm-4.7",
+                output_type=Phase1bOutput,
+                system_prompt=_build_phase1b_system(scan_type, clinical_history),
+                user_prompt=_build_phase1b_user(
+                    report_content, scan_type, clinical_history, urgency_signals,
+                ),
+                api_key=cerebras_key,
+                model_settings=model_settings_1b,
+            )
+            return list(result.output.criteria)
+        except Exception as e:
+            print(f"[AUDIT] Phase 1b failed: {e}")
+            return []
+
+    async def _phase2() -> list:
+        evidence_block = _build_synthesis_evidence_block(synthesis_cards, finding_short_labels)
+        system_prompt = _PHASE2_SYSTEM + "\n\n" + evidence_block
+        user_prompt = (
+            f"RADIOLOGY REPORT:\n{report_content}\n\n"
+            f"SCAN TYPE: {scan_type or '(not specified)'}\n"
+            f"CLINICAL HISTORY: {clinical_history or '(not provided)'}\n\n"
+            f"Evaluate the report against these four criteria:\n"
+            f"1. DIAGNOSTIC_FIDELITY — Are staging assignments and clinical assertions internally "
+            f"consistent with findings AND concordant with the synthesis thresholds/classifications?\n"
+            f"2. RECOMMENDATIONS — Are the report's recommendations concordant with the synthesised "
+            f"follow_up_actions? Check both directions: missing AND discordant recommendations.\n"
+            f"3. CLINICAL_FLAGGING — Does the report appropriately flag urgent/critical findings "
+            f"for clinical communication? Return all 3 sub-flag evaluations (critical, urgent, "
+            f"significant) in flags_identified and 0–3 suggested_banners with clinical_context tags.\n"
+            f"4. CHARACTERISATION_GAP — For each significant positive finding, has the radiologist "
+            f"characterised all guideline-relevant features?\n\n"
+            f"Return exactly 4 criterion evaluations in order: diagnostic_fidelity, recommendations, "
+            f"clinical_flagging, characterisation_gap."
+        )
+        try:
+            result = await _run_agent_with_model(
+                model_name="zai-glm-4.7",
+                output_type=Phase2Output,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                api_key=cerebras_key,
+                model_settings=model_settings_2,
+            )
+            return list(result.output.criteria)
+        except Exception as e:
+            print(f"[AUDIT] Phase 2 failed: {e}")
+            return []
+
+    p1a_result, p1b_results, p2_results = await asyncio.gather(
+        _phase1a(), _phase1b(), _phase2()
+    )
+
+    all_criteria = [p1a_result] + p1b_results + p2_results
+    all_dicts = [
+        c.model_dump() if hasattr(c, "model_dump") else c for c in all_criteria
+    ]
+
+    status_rank = {"pass": 0, "warning": 1, "flag": 2}
+    rank_status = {0: "pass", 1: "warning", 2: "flag"}
+    worst = max(
+        (status_rank.get(
+            c.get("status", "pass") if isinstance(c, dict) else getattr(c, "status", "pass"), 0
+        ) for c in all_criteria),
+        default=0,
+    )
+
+    return {
+        "overall_status": rank_status[worst],
+        "criteria": all_dicts,
+        "summary": f"Full audit complete ({len(all_dicts)} criteria).",
+    }
+
+
+# -- Phase 1b prompt builder (reuses existing audit prompt structure) --
+
+def _build_phase1b_system(scan_type: str, clinical_history: str) -> str:
+    """Build Phase 1b system prompt (4 report-integrity criteria, no guideline context)."""
+    return """You are a senior radiologist and clinical radiology QA specialist practising in the UK.
+Your task is to evaluate a radiology report against four report-integrity criteria.
+You do NOT have access to clinical guidelines — those are assessed separately.
+
+LANGUAGE (NON-NEGOTIABLE):
+CRITICAL: You MUST write every user-visible string in English only — UK British English
+spelling and terminology. Do not use Chinese, other languages, or mixed-language output.
+
+FLAGGING PHILOSOPHY:
+The report was generated by an AI assistant. Err toward tolerance for style differences,
+reasonable inferences, and alternative but clinically correct formulations. Reserve FLAG
+for material clinical errors or omissions that could affect patient management.
+
+OUTPUT REQUIREMENTS:
+Return exactly 5 criterion evaluations, each with:
+- criterion, status (pass/flag/warning), rationale, highlighted_spans, recommendation
+- Additional fields as specified per criterion below"""
+
+
+def _build_phase1b_user(
+    report_content: str,
+    scan_type: str,
+    clinical_history: str,
+    urgency_signals: list,
+) -> str:
+    """Build Phase 1b user prompt with the 5 criteria definitions."""
+    urgency_text = ", ".join(urgency_signals) if urgency_signals else "none"
+    return f"""RADIOLOGY REPORT:
+{report_content}
+
+SCAN TYPE: {scan_type or '(not specified)'}
+CLINICAL HISTORY: {clinical_history or '(not provided)'}
+URGENCY SIGNALS: {urgency_text}
+
+Evaluate the report against these 4 criteria:
+
+1. ANATOMICAL_ACCURACY
+   Check for incorrect anatomical terms, laterality errors, spatial relationship errors.
+   suggested_replacement: populate when a verbatim span swap fixes the error. Null for structural issues.
+   Status: FLAG for material anatomical error, WARNING for minor terminology, PASS otherwise.
+
+2. CLINICAL_RELEVANCE
+   Does the report address the clinical question? Are findings appropriately linked to the indication?
+   Status: FLAG if the clinical question is ignored or misaddressed, WARNING for weak linkage, PASS otherwise.
+
+3. REPORT_COMPLETENESS
+   (a) Impression completeness — Does Impression summarise ALL significant Findings?
+   (c) Comparative analysis — If prior studies are referenced, is the comparison adequate?
+   suggested_sentence: populate for report_completeness when a complete sentence should be added. Null for span swaps.
+   Status: FLAG if a significant finding is missing from Impression, WARNING for minor omission, PASS otherwise.
+
+4. SCAN_COVERAGE
+   For the scan type "{scan_type}" and clinical indication "{clinical_history}",
+   dynamically determine the expected anatomical review areas.
+   Do NOT use a fixed checklist — infer from scan type and clinical context.
+   A system is "addressed" if the Findings section contains ANY mention of the relevant anatomy.
+   FLAG: A major organ system standard for this scan type is entirely unmentioned.
+   WARNING: A secondary review area is unmentioned.
+   PASS: All expected systems are addressed.
+   Additional output field: systems_unaddressed (array of strings, empty on pass).
+
+Return exactly 4 criteria in order: anatomical_accuracy, clinical_relevance, report_completeness, scan_coverage."""

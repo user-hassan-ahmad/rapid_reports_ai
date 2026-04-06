@@ -4,7 +4,7 @@ Simulate the planned guideline-fetch architecture before full integration.
 
 Stages exercised (with debug logging):
   0 — Simulated report-generation output: ApplicableGuideline records (system, context, type, search_keywords).
-  1 — Query construction (_query_core + templates / fallbacks) exactly as in the implementation plan.
+  1 — Query construction (classification core vs topic-first uk_pathway/other) matching guideline_fetcher.py.
   2 — Firecrawl search (+ optional JSON scrape per result).
   3 — Parse web results: URL, title, extracted json (is_authoritative, criteria_summary, source_type).
   4 — First authoritative hit → what would be cached for audit injection.
@@ -12,7 +12,7 @@ Stages exercised (with debug logging):
 Usage (from backend/):
   poetry run python scripts/simulate_guideline_fetch_flow.py
   poetry run python scripts/simulate_guideline_fetch_flow.py --dry-run
-  poetry run python scripts/simulate_guideline_fetch_flow.py --search-only --limit 2
+  poetry run python scripts/simulate_guideline_fetch_flow.py --search-only
   poetry run python scripts/simulate_guideline_fetch_flow.py --case bosniak
 
 Requires FIRECRAWL_API_KEY for live calls (load backend/.env via dotenv if present).
@@ -29,6 +29,29 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Optional
 
+_BACKEND_SRC = Path(__file__).resolve().parents[1] / "src"
+if str(_BACKEND_SRC) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_SRC))
+
+from rapid_reports_ai.guideline_fetcher import (
+    EXTRACTION_SCHEMA,
+    OTHER_FALLBACK_QUERY,
+    OTHER_PRIMARY_QUERY,
+    PDF_CATEGORY_QUERY,
+    PDF_GUIDELINE_QUERY,
+    QUERY_FALLBACKS,
+    QUERY_TEMPLATES,
+    SCRAPE_MAX_AGE_MS,
+    SEARCH_LIMIT_BROAD,
+    SEARCH_LIMIT_NARROW,
+    SEARCH_TIMEOUT_RADIOPAEDIA_MS,
+    UK_PATHWAY_FALLBACK_QUERY,
+    UK_PATHWAY_PRIMARY_QUERY,
+    _extraction_prompt_for_system,
+    _query_core_classification,
+    topic_line_for_pathway_or_other_search,
+)
+
 # -----------------------------------------------------------------------------
 # Stage 0: stand-in for ReportOutput.applicable_guidelines (plan schema)
 # -----------------------------------------------------------------------------
@@ -42,53 +65,6 @@ class ApplicableGuideline:
     search_keywords: Optional[str] = None
 
 
-# -----------------------------------------------------------------------------
-# Mirrors planned guideline_fetcher.py constants
-# -----------------------------------------------------------------------------
-
-EXTRACTION_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "is_authoritative": {
-            "type": "boolean",
-            "description": (
-                "True ONLY if this page is a primary clinical guideline document, "
-                "NHS/NICE/SIGN/RCR publication, peer-reviewed journal article, or "
-                "specialist medical society guideline. "
-                "Must be False for: news articles, press releases, campaign pages, "
-                "programme announcements, advocacy organisation posts, blog posts, "
-                "or secondary write-ups — even from legitimate medical organisations. "
-                "A coalition or charity announcing an NHS programme is NOT authoritative. "
-                "A BTS/NICE/RCR guideline document IS authoritative."
-            ),
-        },
-        "criteria_summary": {
-            "type": "string",
-            "description": (
-                "Classification categories with imaging criteria and measurement thresholds "
-                "per category. Management or follow-up recommendations per category where stated. "
-                "UK NHS context where applicable. Maximum 400 words."
-            ),
-        },
-        "source_type": {
-            "type": "string",
-            "description": (
-                "One of: society guideline, journal publication, educational, patient info, other"
-            ),
-        },
-    },
-    "required": ["is_authoritative", "criteria_summary"],
-}
-
-EXTRACTION_PROMPT = (
-    "Extract classification criteria, imaging thresholds, category definitions, and management "
-    "recommendations for the named guideline system. UK NHS clinical context. "
-    "Set is_authoritative=true ONLY for primary guideline documents from medical societies "
-    "(BTS, NICE, RCR, ACR, ESR, ESUR), NHS England, or peer-reviewed journals. "
-    "Set is_authoritative=false for news articles, press releases, campaign announcements, "
-    "programme promotion pages, or advocacy content — regardless of publishing organisation."
-)
-
 # Mirrors guideline_fetcher._DISQUALIFYING_URL_PATHS
 _DISQUALIFYING_URL_PATHS = (
     "/news/",
@@ -100,24 +76,6 @@ _DISQUALIFYING_URL_PATHS = (
     "/post/",
     "/media/",
 )
-
-QUERY_TEMPLATES = {
-    "classification": "{core} classification criteria categories site:radiopaedia.org",
-    "uk_pathway": "{core} guideline criteria UK NHS recommendations",
-    "other": "{core} radiology guideline criteria",
-}
-
-QUERY_FALLBACKS = {
-    "classification": "{core} classification imaging criteria categories 2015 2024",
-    "uk_pathway": "{core} UK clinical guideline criteria recommendations",
-    "other": "{core} radiology guideline criteria",
-}
-
-
-def _query_core(system: str, search_keywords: str | None) -> str:
-    tail = f" {search_keywords}" if search_keywords else ""
-    return f'"{system}"{tail}'.strip()
-
 
 def _debug(title: str, body: Any = None) -> None:
     bar = "=" * 72
@@ -170,20 +128,29 @@ def _quality_note(guideline: ApplicableGuideline) -> None:
         _debug("Stage 0 quality hints", "No obvious red flags on synthetic guideline row.")
 
 
-def build_scrape_options(search_only: bool) -> Any:
+def build_scrape_options(search_only: bool, system: str) -> Any:
     from firecrawl.v2.types import ScrapeOptions
 
     if search_only:
-        return ScrapeOptions(formats=["markdown"], only_main_content=True)
+        return ScrapeOptions(
+            formats=["markdown"],
+            only_main_content=True,
+            max_age=SCRAPE_MAX_AGE_MS,
+            proxy="basic",
+            parsers=[],
+        )
     return ScrapeOptions(
         formats=[
             {
                 "type": "json",
                 "schema": EXTRACTION_SCHEMA,
-                "prompt": EXTRACTION_PROMPT,
+                "prompt": _extraction_prompt_for_system(system),
             }
         ],
         only_main_content=True,
+        max_age=SCRAPE_MAX_AGE_MS,
+        proxy="basic",
+        parsers=[],
     )
 
 
@@ -257,28 +224,52 @@ async def fetch_guideline_simulated(
     """
     Same control flow as planned fetch_guideline(); verbose logging.
     """
-    core = _query_core(guideline.system, guideline.search_keywords)
     t = guideline.type
-    scrape_opts = build_scrape_options(search_only)
+    scrape_opts = build_scrape_options(search_only, guideline.system)
+    if t == "classification":
+        core = _query_core_classification(guideline.system, guideline.search_keywords)
+        _debug(
+            "Stage 1 — query core",
+            {"system": guideline.system, "search_keywords": guideline.search_keywords, "core": core, "type": t},
+        )
+    else:
+        topic = topic_line_for_pathway_or_other_search(
+            guideline.system, guideline.search_keywords, guideline.context
+        )
+        _debug(
+            "Stage 1 — topic line",
+            {"system": guideline.system, "search_keywords": guideline.search_keywords, "topic": topic, "type": t},
+        )
 
-    _debug(
-        "Stage 1 — query core",
-        {"system": guideline.system, "search_keywords": guideline.search_keywords, "core": core, "type": t},
-    )
-
-    async def attempt(label: str, query: str, **kwargs: Any) -> tuple[str | None, str | None]:
+    async def attempt(
+        label: str,
+        query: str,
+        *,
+        search_timeout_ms: int | None = None,
+        result_limit: int | None = None,
+        categories: list[str] | None = None,
+        location: str | None = None,
+    ) -> tuple[str | None, str | None]:
+        tw = search_timeout_ms if search_timeout_ms is not None else timeout_ms
+        lim = result_limit if result_limit is not None else limit
         _debug(
             f"Stage 2 — Firecrawl.search ({label})",
-            {"query": query, "kwargs": {k: v for k, v in kwargs.items() if v is not None}},
+            {
+                "query": query,
+                "limit": lim,
+                "categories": categories,
+                "location": location,
+                "timeout_ms": tw,
+            },
         )
         data = await run_firecrawl_search(
             client,
             query=query,
-            limit=limit,
+            limit=lim,
             scrape_options=scrape_opts,
-            timeout_ms=timeout_ms,
-            categories=kwargs.get("categories"),
-            location=kwargs.get("location"),
+            timeout_ms=tw,
+            categories=categories,
+            location=location,
         )
         n = len(_iter_web_results(data))
         _debug(f"Stage 2 — response summary ({label})", {"web_results": n})
@@ -297,25 +288,102 @@ async def fetch_guideline_simulated(
             )
         return payload, hit_url
 
-    # Classification: Radiopaedia-biased query, web index first, then research category
     if t == "classification":
+        core = _query_core_classification(guideline.system, guideline.search_keywords)
         q_rp = QUERY_TEMPLATES["classification"].format(core=core)
-        content, url = await attempt("classification web (no category)", q_rp)
+        content, url = await attempt(
+            "classification web (no category)",
+            q_rp,
+            search_timeout_ms=SEARCH_TIMEOUT_RADIOPAEDIA_MS,
+        )
         if content:
             return content, url
-        content, url = await attempt("classification + categories=['research']", q_rp, categories=["research"])
+        content, url = await attempt(
+            "classification + categories=['research']",
+            q_rp,
+            categories=["research"],
+            search_timeout_ms=SEARCH_TIMEOUT_RADIOPAEDIA_MS,
+        )
         if content:
             return content, url
-    else:
-        q1 = QUERY_TEMPLATES[t].format(core=core)
-        loc = "United Kingdom" if t == "uk_pathway" else None
-        content, url = await attempt(f"type={t} primary", q1, location=loc)
-        if content:
-            return content, url
+        q2 = QUERY_FALLBACKS["classification"].format(core=core)
+        content, url = await attempt(
+            "fallback (classification)",
+            q2,
+            result_limit=SEARCH_LIMIT_BROAD,
+        )
+        return content, url
 
-    q2 = QUERY_FALLBACKS[t].format(core=core)
-    loc2 = "United Kingdom" if t == "uk_pathway" else None
-    content, url = await attempt("fallback (broadened)", q2, location=loc2)
+    topic = topic_line_for_pathway_or_other_search(
+        guideline.system, guideline.search_keywords, guideline.context
+    )
+    if t == "uk_pathway":
+        loc = "United Kingdom"
+        q1 = UK_PATHWAY_PRIMARY_QUERY.format(topic=topic)
+        content, url = await attempt("uk_pathway primary", q1, location=loc)
+        if content:
+            return content, url
+        content, url = await attempt(
+            "uk_pathway research", q1, location=loc, categories=["research"]
+        )
+        if content:
+            return content, url
+        q2 = UK_PATHWAY_FALLBACK_QUERY.format(topic=topic)
+        content, url = await attempt(
+            "uk_pathway fallback",
+            q2,
+            location=loc,
+            result_limit=SEARCH_LIMIT_BROAD,
+        )
+        if content:
+            return content, url
+        q_pdf = PDF_GUIDELINE_QUERY.format(topic=topic)
+        content, url = await attempt(
+            "uk_pathway pdf filetype (no location)",
+            q_pdf,
+            result_limit=SEARCH_LIMIT_BROAD,
+        )
+        if content:
+            return content, url
+        q_pdf_cat = PDF_CATEGORY_QUERY.format(topic=topic)
+        content, url = await attempt(
+            "uk_pathway pdf category (no location)",
+            q_pdf_cat,
+            categories=["pdf"],
+            result_limit=SEARCH_LIMIT_BROAD,
+        )
+        return content, url
+
+    q1 = OTHER_PRIMARY_QUERY.format(topic=topic)
+    content, url = await attempt("other primary", q1)
+    if content:
+        return content, url
+    content, url = await attempt("other research", q1, categories=["research"])
+    if content:
+        return content, url
+    q2 = OTHER_FALLBACK_QUERY.format(topic=topic)
+    content, url = await attempt(
+        "other fallback",
+        q2,
+        result_limit=SEARCH_LIMIT_BROAD,
+    )
+    if content:
+        return content, url
+    q_pdf = PDF_GUIDELINE_QUERY.format(topic=topic)
+    content, url = await attempt(
+        "other pdf filetype (no location)",
+        q_pdf,
+        result_limit=SEARCH_LIMIT_BROAD,
+    )
+    if content:
+        return content, url
+    q_pdf_cat = PDF_CATEGORY_QUERY.format(topic=topic)
+    content, url = await attempt(
+        "other pdf category (no location)",
+        q_pdf_cat,
+        categories=["pdf"],
+        result_limit=SEARCH_LIMIT_BROAD,
+    )
     return content, url
 
 
@@ -370,7 +438,36 @@ async def main_async(args: argparse.Namespace) -> int:
             else list(SAMPLE_CASES.values())
         )
         for g in guidelines:
-            core = _query_core(g.system, g.search_keywords)
+            if g.type == "classification":
+                core = _query_core_classification(g.system, g.search_keywords)
+                planned = {
+                    "search_limit_narrow": SEARCH_LIMIT_NARROW,
+                    "search_limit_broad": SEARCH_LIMIT_BROAD,
+                    "classification_q1": QUERY_TEMPLATES["classification"].format(core=core),
+                    "classification_fallback": QUERY_FALLBACKS["classification"].format(core=core),
+                }
+            else:
+                topic = topic_line_for_pathway_or_other_search(
+                    g.system, g.search_keywords, g.context
+                )
+                if g.type == "uk_pathway":
+                    planned = {
+                        "search_limit_narrow": SEARCH_LIMIT_NARROW,
+                        "search_limit_broad": SEARCH_LIMIT_BROAD,
+                        "uk_pathway_primary": UK_PATHWAY_PRIMARY_QUERY.format(topic=topic),
+                        "uk_pathway_fallback": UK_PATHWAY_FALLBACK_QUERY.format(topic=topic),
+                        "uk_pathway_pdf_filetype": PDF_GUIDELINE_QUERY.format(topic=topic),
+                        "uk_pathway_pdf_category": PDF_CATEGORY_QUERY.format(topic=topic),
+                    }
+                else:
+                    planned = {
+                        "search_limit_narrow": SEARCH_LIMIT_NARROW,
+                        "search_limit_broad": SEARCH_LIMIT_BROAD,
+                        "other_primary": OTHER_PRIMARY_QUERY.format(topic=topic),
+                        "other_fallback": OTHER_FALLBACK_QUERY.format(topic=topic),
+                        "other_pdf_filetype": PDF_GUIDELINE_QUERY.format(topic=topic),
+                        "other_pdf_category": PDF_CATEGORY_QUERY.format(topic=topic),
+                    }
             _debug(
                 "DRY RUN — queries that would be attempted",
                 {
@@ -380,10 +477,7 @@ async def main_async(args: argparse.Namespace) -> int:
                         "context": g.context,
                         "search_keywords": g.search_keywords,
                     },
-                    "classification_q1": QUERY_TEMPLATES["classification"].format(core=core),
-                    "classification_fallback": QUERY_FALLBACKS["classification"].format(core=core),
-                    "typed_primary": QUERY_TEMPLATES[g.type].format(core=core),
-                    "typed_fallback": QUERY_FALLBACKS[g.type].format(core=core),
+                    **planned,
                 },
             )
             _quality_note(g)
@@ -445,7 +539,15 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Search + markdown only (no JSON extraction). Cheaper; tests Stage 2 wiring.",
     )
-    p.add_argument("--limit", type=int, default=3, help="Firecrawl search limit per attempt")
+    p.add_argument(
+        "--limit",
+        type=int,
+        default=SEARCH_LIMIT_NARROW,
+        help=(
+            f"Default Firecrawl search limit for narrow attempts (matches production {SEARCH_LIMIT_NARROW}); "
+            f"broad fallbacks use {SEARCH_LIMIT_BROAD} in guideline_fetcher."
+        ),
+    )
     p.add_argument("--timeout", type=int, default=60, help="Per-request timeout in seconds (sent as ms to API)")
     p.add_argument(
         "--case",

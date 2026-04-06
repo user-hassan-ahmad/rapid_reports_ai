@@ -369,6 +369,27 @@ import { API_URL } from '$lib/config';
 		dismissIntelliDraft();
 	}
 
+	let reportViewerRef: any = null;
+
+	export function handleExternalAuditAcknowledge(detail: { criterion: string; resolutionMethod: string }) {
+		reportViewerRef?.acknowledgeFromExternal?.(detail);
+	}
+	export function handleExternalAuditRestore(detail: { criterion: string }) {
+		reportViewerRef?.restoreFromExternal?.(detail);
+	}
+	export function handleExternalAuditSuggestFix(detail: unknown) {
+		reportViewerRef?.suggestFixFromExternal?.(detail);
+	}
+	export function handleExternalAuditApplyFix(detail: unknown) {
+		reportViewerRef?.applyFixFromExternal?.(detail);
+	}
+	export function handleExternalAuditInsertBanner(bannerText: string) {
+		reportViewerRef?.insertBannerFromExternal?.(bannerText);
+	}
+	export function handleExternalAuditReaudit() {
+		reportViewerRef?.reauditFromExternal?.();
+	}
+
 	const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 </script>
 
@@ -583,12 +604,14 @@ import { API_URL } from '$lib/config';
 			in:fly={{ y: 24, duration: 320, easing: easeOut }}
 			out:fly={{ y: 12, duration: 180, easing: easeOut }}
 		>
-			<div class="flex items-center justify-between border-b border-white/[0.06] pb-3 shrink-0 min-w-0">
-				<span class="text-xs font-medium uppercase tracking-wider shrink-0 transition-colors duration-300
+			<div class="flex items-start justify-between gap-3 border-b border-white/[0.06] pb-3 shrink-0 min-w-0">
+				<span class="min-w-0 flex-1 text-xs font-medium uppercase tracking-wider break-words transition-colors duration-300
 					{sectionsDirty ? 'text-gray-600' : 'text-gray-500'}">
 					{sectionsGeneratedFromScanType || 'Scan'}
 				</span>
-				<DictationHintBar />
+				<div class="shrink-0">
+					<DictationHintBar />
+				</div>
 			</div>
 
 	<!-- Single-column workspace (greyed out when sectionsDirty) -->
@@ -655,6 +678,7 @@ import { API_URL } from '$lib/config';
 
 	<!-- Report Response Viewer -->
 	<ReportResponseViewer
+		bind:this={reportViewerRef}
 		visible={responseVisible}
 		expanded={responseExpanded}
 		response={response ?? ''}
@@ -674,6 +698,9 @@ import { API_URL } from '$lib/config';
 		{findingsStale}
 		on:toggle={toggleResponse}
 	on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
+	on:auditStateChange={(e) => dispatch('auditStateChange', e.detail)}
+	on:openVersionHistory={() => dispatch('openVersionHistory')}
+	on:openCompare={() => dispatch('openCompare')}
 	on:copy={copyToClipboard}
 	on:clear={clearResponse}
 	on:restore={(e) => handleHistoryRestore(e.detail)}

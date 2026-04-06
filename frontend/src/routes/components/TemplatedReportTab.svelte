@@ -1161,6 +1161,25 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			checkScrollability();
 		}, 100);
 	}
+
+	export function handleExternalAuditAcknowledge(detail) {
+		formRef?.handleExternalAuditAcknowledge?.(detail);
+	}
+	export function handleExternalAuditRestore(detail) {
+		formRef?.handleExternalAuditRestore?.(detail);
+	}
+	export function handleExternalAuditSuggestFix(detail) {
+		formRef?.handleExternalAuditSuggestFix?.(detail);
+	}
+	export function handleExternalAuditApplyFix(detail) {
+		formRef?.handleExternalAuditApplyFix?.(detail);
+	}
+	export function handleExternalAuditInsertBanner(text) {
+		formRef?.handleExternalAuditInsertBanner?.(text);
+	}
+	export function handleExternalAuditReaudit() {
+		formRef?.handleExternalAuditReaudit?.();
+	}
 	
 </script>
 
@@ -2487,6 +2506,9 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 				dispatch('reportGenerated', { reportId: e.detail.reportId });
 			}}
 		on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
+		on:auditStateChange={(e) => dispatch('auditStateChange', e.detail)}
+		on:openVersionHistory={() => dispatch('openVersionHistory')}
+		on:openCompare={() => dispatch('openCompare')}
 		on:showHoverPopup={(e) => dispatch('showHoverPopup', e.detail)}
 		on:hideHoverPopup={() => dispatch('hideHoverPopup')}
 		on:historyUpdate={(event) => dispatch('historyUpdate', event.detail)}

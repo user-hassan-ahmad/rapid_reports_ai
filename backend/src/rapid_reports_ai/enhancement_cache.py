@@ -37,8 +37,18 @@ class EnhancementCache:
         self.hits = 0
         self.misses = 0
         self._db_session = db_session
-        self._use_db = True  # Flag to enable/disable DB usage
         self._fallback_mode = False  # Track if we're in fallback mode
+
+        # Check once at init whether the backing DB table exists.
+        # EnhancementCacheEntry was dropped in the prefetch pipeline migration;
+        # if the import fails we permanently fall back to in-memory so every
+        # get/set doesn't spam ImportError logs.
+        try:
+            from .database.models import EnhancementCacheEntry  # noqa: F401
+            self._use_db = True
+        except ImportError:
+            self._use_db = False
+            self._fallback_mode = True
     
     def _get_db_session(self) -> Optional[Session]:
         """Get database session, creating one if needed."""

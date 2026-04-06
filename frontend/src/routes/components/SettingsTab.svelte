@@ -9,6 +9,8 @@
 	let fullName = '';
 	let signature = '';
 	let autoSave;      // Don't initialize - let it be undefined initially
+	/** When true, Copilot opens automatically after report analysis (localStorage key copilotAutoOpen). */
+	let copilotAutoOpen = true;
 	let loading = false;
 	let message = '';
 	let messageType = ''; // 'success' or 'error'
@@ -75,7 +77,26 @@
 		}
 	}
 
+	function readCopilotAutoOpen() {
+		try {
+			return typeof localStorage !== 'undefined' && localStorage.getItem('copilotAutoOpen') !== 'false';
+		} catch {
+			return true;
+		}
+	}
+
+	function setCopilotAutoOpen(enabled) {
+		copilotAutoOpen = enabled;
+		try {
+			if (enabled) localStorage.removeItem('copilotAutoOpen');
+			else localStorage.setItem('copilotAutoOpen', 'false');
+		} catch {
+			/* ignore */
+		}
+	}
+
 	onMount(async () => {
+		copilotAutoOpen = readCopilotAutoOpen();
 		// Load settings if empty
 		if (!$settingsStore.settings) {
 			await settingsStore.loadSettings();
@@ -157,6 +178,25 @@
 						</label>
 						<p class="text-sm text-gray-400 mt-1">
 							Automatically save generated reports to your history
+						</p>
+					</div>
+				</div>
+
+				<div class="flex items-start space-x-3 pt-2 border-t border-white/10">
+					<input
+						type="checkbox"
+						id="copilotAutoOpen"
+						checked={copilotAutoOpen}
+						onchange={(e) => setCopilotAutoOpen(e.currentTarget.checked)}
+						disabled={settingsLoading}
+						class="mt-1 w-5 h-5 rounded border-white/20 bg-black/50 text-purple-600 focus:ring-purple-500"
+					/>
+					<div>
+						<label for="copilotAutoOpen" class="block text-sm font-medium text-gray-300">
+							Auto-open Copilot after report analysis
+						</label>
+						<p class="text-sm text-gray-400 mt-1">
+							Opens the Copilot panel when guidelines finish loading for a new report
 						</p>
 					</div>
 				</div>

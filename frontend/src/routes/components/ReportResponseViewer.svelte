@@ -3,11 +3,9 @@
 	import { fade, fly } from 'svelte/transition';
 	import { writable } from 'svelte/store';
 	import { token } from '$lib/stores/auth';
+	import { getAuditState, auditActions as sharedAuditActions } from '$lib/stores/audit';
 	import ReportVersionInline from './ReportVersionInline.svelte';
-	import EnhancementPreviewCards from './EnhancementPreviewCards.svelte';
-	import EnhancementInlinePanel from './EnhancementInlinePanel.svelte';
 	import ReportEditor from './ReportEditor.svelte';
-	import AuditBanner from './AuditBanner.svelte';
 	import { API_URL } from '$lib/config';
 	import { detectUnfilledPlaceholders, generateChatContext } from '$lib/utils/placeholderDetection';
 	import { applyEditsToReport } from '$lib/utils/reportEditing';
@@ -49,10 +47,6 @@
 
 	let activeView = 'report';
 
-	// Inline panel state
-	let inlinePanelVisible = false;
-	let inlinePanelTab: 'guidelines' | 'comparison' | 'chat' = 'guidelines';
-
 	// Mobile detection for responsive QA panel
 	let isMobile = false;
 	let mediaQueryList: MediaQueryList | null = null;
@@ -75,6 +69,7 @@
 	let currentEditorContent = '';
 	let lastSavedResponse = '';
 	let reportEditorRef: { resetContent: (c: string) => void } | null = null;
+	let saveInFlight = false;
 
 	// ─── Audit integration ────────────────────────────────────────────────────
 	// Per-component-instance store — avoids cross-contamination between the
@@ -128,9 +123,6 @@
 		reset: () => auditStore.set({ status: 'idle', result: null, auditId: null, error: null, activeCriterion: null }),
 	};
 
-	let auditPanelOpen = false;
-	let auditPanelAutoOpened = false; // one-time flag so user can close panel without it snapping back
-
 	// Content-based tracking: prevents re-auditing same content AND avoids stale triggers.
 	// Set immediately (synchronously) inside triggerAudit so the reactive won't double-fire.
 	let lastAuditedContent = '';
@@ -157,10 +149,26 @@
 	$: if (reportId !== lastAuditReportId) {
 		lastAuditReportId = reportId;
 		lastAuditedContent = '';
-		auditPanelOpen = false;
-		auditPanelAutoOpened = false;
 		auditActions.reset();
 		insertedBannerTexts = [];
+	}
+
+	// Subscribe to shared store for Phase 2 merges from the sidebar
+	$: sharedState = reportId ? getAuditState(reportId) : null;
+	$: if (sharedState && $sharedState && $sharedState.result && $auditStore.result) {
+		const sharedCount = $sharedState.result.criteria?.length ?? 0;
+		const localCount = $auditStore.result?.criteria?.length ?? 0;
+		if (sharedCount > localCount) {
+			auditActions.setResult($sharedState.result, $sharedState.auditId);
+			// Auto-acknowledge clinical_flagging if a banner was previously inserted and is still in the report
+			if (insertedBannerTexts.length > 0) {
+				const currentContent = (currentEditorContent || response || '').trim();
+				const bannerStillPresent = insertedBannerTexts.some((txt: string) => currentContent.includes(txt));
+				if (bannerStillPresent) {
+					auditActions.acknowledgeLocal('clinical_flagging', 'manual');
+				}
+			}
+		}
 	}
 
 	// Auto-trigger: only fires when response is new content we haven't audited yet.
@@ -179,66 +187,55 @@
 		auditActions.setStale();
 	}
 
-	// Auto-open audit panel once when audit first completes (one-time, so user can close it)
-	$: if ($auditStore.status === 'complete' && !auditPanelAutoOpened) {
-		auditPanelAutoOpened = true;
-		auditPanelOpen = true;
-	}
-
-	// Audit panel toggle badge info
-	$: auditFlagCount = ($auditStore.result?.criteria ?? [])
-		.filter((c: AuditCriterionItem) => c.status === 'flag').length;
-	$: auditWarningCount = ($auditStore.result?.criteria ?? [])
-		.filter((c: AuditCriterionItem) => c.status === 'warning').length;
-
-	// Copilot Guidelines tile: split supporting (enhancement) vs QA (audit guideline_references)
-	$: qaGuidelineCountForTile =
-		$auditStore.status === 'loading'
-			? 0
-			: ($auditStore.result?.guideline_references?.length ?? 0);
-	$: auditHasRunForTile = ['complete', 'stale', 'error'].includes($auditStore.status);
-	$: auditLoadingForTile = $auditStore.status === 'loading';
-
 	async function triggerAudit(content: string) {
 		if (!content.trim()) return;
-		// Mark as audited immediately (synchronous) to prevent the reactive from re-firing
 		lastAuditedContent = content;
 		auditActions.setLoading();
-		// Clear guideline references immediately so the Copilot tab doesn't show stale
-		// cards from a previous audit while the new one is in-flight.
 		dispatch('auditComplete', { guidelineReferences: [], auditCriteria: [] });
 		
+		const _auditT0 = typeof performance !== 'undefined' ? performance.now() : 0;
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) {
 				headers['Authorization'] = `Bearer ${$token}`;
 			}
 			
+			const auditBody = {
+				report_content: content,
+				scan_type: scanType,
+				clinical_history: clinicalHistory,
+				report_id: reportId,
+				applicable_guidelines: applicableGuidelines
+			};
+
 			const res = await fetch(`${API_URL}/api/audit`, {
 				method: 'POST',
 				headers,
-				body: JSON.stringify({
-					report_content: content,
-					scan_type: scanType,
-					clinical_history: clinicalHistory,
-					report_id: reportId,
-					applicable_guidelines: applicableGuidelines
-				})
+				body: JSON.stringify(auditBody)
 			});
 			
 			const data = await res.json();
-			
+			const _auditT1 = typeof performance !== 'undefined' ? performance.now() : 0;
+			console.debug(
+				'[FLOW_TIMING] viewer POST /api/audit roundtrip_ms=',
+				Math.round(_auditT1 - _auditT0),
+				'report_id=',
+				reportId
+			);
+
 			if (!res.ok || !data.success) {
 				throw new Error('Audit failed. Please try again.');
 			}
 			
 			auditActions.setResult(data, data.audit_id);
+			if (reportId) {
+				sharedAuditActions.setResult(reportId, data, data.audit_id);
+			}
 			dispatch('auditComplete', {
 				guidelineReferences: data.guideline_references ?? [],
 				auditCriteria: data.criteria ?? []
 			});
-			// If a banner was previously inserted and is still in the report, auto-acknowledge
-			// clinical_flagging so it doesn't re-surface decorations or the banner panel.
+
 			if (insertedBannerTexts.length > 0) {
 				const currentContent = (currentEditorContent || response || '').trim();
 				const bannerStillPresent = insertedBannerTexts.some((txt: string) => currentContent.includes(txt));
@@ -248,7 +245,6 @@
 			}
 		} catch (e) {
 			auditActions.setError('Audit failed. Please try again.');
-			// Clear on error too — stale criteria could produce phantom chips on cleared cards.
 			dispatch('auditComplete', { guidelineReferences: [], auditCriteria: [] });
 		}
 	}
@@ -259,12 +255,8 @@
 
 	function handleAuditSpanClick(e: CustomEvent<{ criterion: string }>) {
 		const { criterion } = e.detail;
-		// Open the panel if closed, then navigate to the criterion card
-		if (!auditPanelOpen && $auditStore.status !== 'idle') {
-			auditPanelOpen = true;
-			auditPanelAutoOpened = true;
-		}
 		auditActions.setActiveCriterion(criterion);
+		dispatch('openSidebar', { tab: 'qa' });
 	}
 
 	function handleRestore(e: CustomEvent<{ criterion: string }>) {
@@ -273,26 +265,8 @@
 
 	async function handleAcknowledge(e: CustomEvent<{ criterion: string; resolutionMethod: string }>) {
 		const { criterion, resolutionMethod } = e.detail;
-		const auditId = $auditStore.auditId;
-		
-		if (!auditId) return;
-		
-		try {
-			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-			if ($token) {
-				headers['Authorization'] = `Bearer ${$token}`;
-			}
-			
-			await fetch(`${API_URL}/api/audit/${auditId}/criteria/${criterion}`, {
-				method: 'PATCH',
-				headers,
-				body: JSON.stringify({ resolution_method: resolutionMethod })
-			});
-			
-			auditActions.acknowledgeLocal(criterion, resolutionMethod);
-		} catch (e) {
-			console.error('Failed to acknowledge criterion:', e);
-		}
+		auditActions.acknowledgeLocal(criterion, resolutionMethod);
+		await _tryPatchCriterion(criterion, resolutionMethod);
 	}
 
 	async function handleSuggestFix(
@@ -303,7 +277,11 @@
 		}>
 	) {
 		const { criterion, rationale, auditFixContext } = e.detail;
-		const msg = `The audit flagged an issue with "${criterion}": ${rationale}. Please go ahead and apply the appropriate correction to the report now.`;
+		const msg =
+			`The audit raised "${criterion}": ${rationale}\n\n` +
+			`Address that concern first. Then re-read the full report (especially impression vs findings) and apply any **material** fixes needed for internal consistency and clinical completeness—` +
+			`including important management implications supported by the documented findings even if the audit did not flag them. ` +
+			`Go ahead and apply the edits to the report now.`;
 		// Open chat sidebar
 		dispatch('openSidebar', {
 			tab: 'chat',
@@ -314,19 +292,25 @@
 		});
 		// Also acknowledge the criterion so it moves to Reviewed and Completed sections
 		auditActions.acknowledgeLocal(criterion, 'ai_assisted');
+		await _tryPatchCriterion(criterion, 'ai_assisted');
+	}
+
+	async function _tryPatchCriterion(criterion: string, resolutionMethod: string) {
 		const auditId = $auditStore.auditId;
-		if (auditId) {
-			try {
-				const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-				if ($token) headers['Authorization'] = `Bearer ${$token}`;
-				await fetch(`${API_URL}/api/audit/${auditId}/criteria/${criterion}`, {
-					method: 'PATCH',
-					headers,
-					body: JSON.stringify({ resolution_method: 'ai_assisted' })
-				});
-			} catch (err) {
-				console.error('Failed to acknowledge criterion on fix:', err);
+		if (!auditId) return;
+		try {
+			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+			if ($token) headers['Authorization'] = `Bearer ${$token}`;
+			const res = await fetch(`${API_URL}/api/audit/${auditId}/criteria/${criterion}`, {
+				method: 'PATCH',
+				headers,
+				body: JSON.stringify({ resolution_method: resolutionMethod })
+			});
+			if (!res.ok) {
+				console.warn(`[Audit] PATCH ${criterion} returned ${res.status} — criterion may not exist in this audit row (Phase 2 cache)`);
 			}
+		} catch (err) {
+			console.error('Failed to acknowledge criterion:', err);
 		}
 	}
 
@@ -336,24 +320,13 @@
 		const newContent = base + '\n\n' + bannerText;
 		// Track the banner so re-audits can auto-acknowledge clinical_flagging if it's still present
 		insertedBannerTexts = [...insertedBannerTexts, bannerText];
-		// Keep lastAuditedContent in sync so this save doesn't mark audit stale
+		currentEditorContent = newContent;
+		reportEditorRef?.resetContent(newContent);
 		lastAuditedContent = newContent;
+		saveInFlight = true;
 		dispatch('save', { content: newContent });
 		auditActions.acknowledgeLocal('clinical_flagging');
-		const auditId = $auditStore.auditId;
-		if (auditId) {
-			try {
-				const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-				if ($token) headers['Authorization'] = `Bearer ${$token}`;
-				await fetch(`${API_URL}/api/audit/${auditId}/criteria/clinical_flagging`, {
-					method: 'PATCH',
-					headers,
-					body: JSON.stringify({ resolution_method: 'manual' })
-				});
-			} catch (err) {
-				console.error('Failed to acknowledge clinical_flagging:', err);
-			}
-		}
+		await _tryPatchCriterion('clinical_flagging', 'manual');
 	}
 
 	async function handleApplyFix(e: CustomEvent<{
@@ -389,7 +362,10 @@
 			return;
 		}
 
+		currentEditorContent = newContent;
+		reportEditorRef?.resetContent(newContent);
 		lastAuditedContent = newContent;
+		saveInFlight = true;
 		dispatch('save', {
 			content: newContent,
 			editSource: source,
@@ -398,26 +374,46 @@
 			auditCriterion: criterion
 		});
 		auditActions.acknowledgeLocal(criterion, 'manual');
-		const auditId = $auditStore.auditId;
-		if (auditId) {
-			try {
-				const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-				if ($token) headers['Authorization'] = `Bearer ${$token}`;
-				await fetch(`${API_URL}/api/audit/${auditId}/criteria/${criterion}`, {
-					method: 'PATCH',
-					headers,
-					body: JSON.stringify({ resolution_method: 'manual' })
-				});
-			} catch (err) {
-				console.error('Failed to acknowledge criterion after apply fix:', err);
-			}
-		}
+		await _tryPatchCriterion(criterion, 'manual');
 	}
 
 	function handleReaudit() {
+		if (saveInFlight) return;
 		lastAuditedContent = '';
 		auditActions.reset();
 		triggerAudit(currentEditorContent || response);
+	}
+
+	$: dispatch('auditStateChange', {
+		status: $auditStore.status,
+		result: $auditStore.result,
+		auditId: $auditStore.auditId,
+		error: $auditStore.error,
+		activeCriterion: $auditStore.activeCriterion,
+		saveInFlight
+	});
+
+	export function acknowledgeFromExternal(detail: { criterion: string; resolutionMethod: string }) {
+		void handleAcknowledge(new CustomEvent('ack', { detail }));
+	}
+	export function restoreFromExternal(detail: { criterion: string }) {
+		handleRestore(new CustomEvent('restore', { detail }));
+	}
+	export function suggestFixFromExternal(detail: {
+		criterion: string;
+		rationale: string;
+		auditFixContext?: AuditFixContext;
+	}) {
+		void handleSuggestFix(new CustomEvent('sf', { detail }));
+	}
+	export function applyFixFromExternal(detail: unknown) {
+		void handleApplyFix(new CustomEvent('applyFix', { detail }));
+	}
+	export function insertBannerFromExternal(bannerText: string) {
+		void handleInsertBanner(new CustomEvent('insertBanner', { detail: { bannerText } }));
+	}
+	export function reauditFromExternal() {
+		handleReaudit();
 	}
 
 	$: if (!reportId && activeView === 'history') {
@@ -445,6 +441,7 @@
 		hasUnsavedChanges = false;
 		currentEditorContent = response;
 		lastSavedResponse = response;
+		saveInFlight = false;
 	}
 	
 	
@@ -762,40 +759,27 @@
 						</button>
 					</div>
 				{/if}
-				
 
-				<!-- QA toggle button -->
-				{#if activeView === 'report' && $auditStore.status !== 'idle'}
-					<button
-						type="button"
-						onclick={(e) => { e.stopPropagation(); auditPanelOpen = !auditPanelOpen; }}
-						onmousedown={(e) => e.stopPropagation()}
-						title="Toggle QA audit panel"
-						class="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-all
-							{auditPanelOpen
-								? 'bg-purple-600/30 text-purple-300 border border-purple-500/40'
-								: 'bg-white/[0.05] text-gray-400 hover:text-gray-200 border border-white/[0.08] hover:border-white/[0.15]'}"
-					>
-						{#if $auditStore.status === 'loading'}
-							<div class="w-2.5 h-2.5 border border-purple-400 border-t-transparent rounded-full animate-spin"></div>
-							<span class="hidden sm:inline">QA</span>
-						{:else}
-							<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-							</svg>
-							{#if auditFlagCount > 0}
-								<span class="hidden sm:inline text-rose-300">{auditFlagCount}</span>
-							{:else if auditWarningCount > 0}
-								<span class="hidden sm:inline text-amber-300">{auditWarningCount}</span>
-							{:else}
-								<span class="hidden sm:inline">QA</span>
-							{/if}
-						{/if}
-					</button>
-				{/if}
+			{#if reportId}
+				<!-- Interval Analysis / Compare: radiologist pastes in prior report text -->
+				<button
+					type="button"
+					onclick={(e) => { e.stopPropagation(); dispatch('openCompare'); }}
+					class="compare-rpt-btn"
+					title="Paste a prior report to run AI interval analysis"
+				>
+					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+						<rect x="3" y="4" width="7" height="16" rx="1.5"/>
+						<rect x="14" y="4" width="7" height="16" rx="1.5"/>
+					</svg>
+					<div class="compare-rpt-inner">
+						<span class="compare-rpt-label">Compare</span>
+						<span class="compare-rpt-sub">vs prior study</span>
+					</div>
+				</button>
+			{/if}
 
-
-				{#if activeView === 'report'}
+			{#if activeView === 'report'}
 					<button
 						type="button"
 						onclick={() => dispatch('copy')}
@@ -864,25 +848,7 @@
 							transition:fade={{ duration: 200, easing: (t) => t * (2 - t) }}
 						>
 							<!-- Editor content (full-width, scrollable). @container for enhancement cards to switch layout based on available width -->
-							<div class="@container h-full overflow-y-auto" style="padding-right: {!isMobile && auditPanelOpen && $auditStore.status !== 'idle' ? '288px' : '0'}; transition: padding-right 220ms cubic-bezier(0,0,0.2,1);"
-							>
-							<!-- Enhancement Preview Cards - Before report content -->
-							{#if reportId}
-					<EnhancementPreviewCards
-						guidelinesCount={enhancementGuidelinesCount}
-						qaGuidelineCount={qaGuidelineCountForTile}
-						auditHasRun={auditHasRunForTile}
-						auditLoading={auditLoadingForTile}
-						isLoading={enhancementLoading}
-						hasError={enhancementError}
-						reportId={reportId}
-						panelOpen={!isMobile && auditPanelOpen && $auditStore.status !== 'idle'}
-						on:openSidebar={(e) => {
-							dispatch('openSidebar', e.detail);
-						}}
-					/>
-						{/if}
-						
+							<div class="@container h-full overflow-y-auto">
 					<!-- Summary Panel for Unfilled Items -->
 					{#if showSummaryPanel && unfilledItems.total > 0}
 				<div class="relative mb-3 sm:mb-4" style="z-index: 10;">
@@ -994,28 +960,6 @@
 						<p class="text-sm text-gray-400">Response will appear here once generated.</p>
 					{/if}
 							</div>
-
-							<!-- Right: Audit side panel overlay (desktop only) -->
-							{#if !isMobile && auditPanelOpen && $auditStore.status !== 'idle'}
-								<div
-									class="absolute top-0 right-0 bottom-0 w-[280px] border-l border-white/[0.06] overflow-hidden"
-									transition:fly={{ x: 16, duration: 220, easing: (t) => 1 - Math.pow(1 - t, 3) }}
-								>
-								<AuditBanner
-									auditState={$auditStore as any}
-									canReaudit={$auditStore.status === 'stale' || $auditStore.status === 'complete' || $auditStore.status === 'error'}
-									showClose={true}
-								on:acknowledge={handleAcknowledge}
-								on:restore={handleRestore}
-								on:suggestFix={handleSuggestFix}
-								on:insertBanner={handleInsertBanner}
-								on:applyFix={handleApplyFix}
-								on:reaudit={handleReaudit}
-								on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
-								on:close={() => auditPanelOpen = false}
-								/>
-								</div>
-							{/if}
 						</div>
 					{/if}
 					</div>
@@ -1062,84 +1006,57 @@
 				</div>
 			{/if}
 
-			<!-- Inline Enhancement Panel - Hidden for now -->
-			<!--
-			{#if inlinePanelVisible && reportId}
-				<EnhancementInlinePanel
-					reportId={reportId}
-					reportContent={response || ''}
-					visible={inlinePanelVisible}
-					bind:activeTab={inlinePanelTab}
-					on:close={() => inlinePanelVisible = false}
-					on:enhancementState={(e) => {
-						// Forward enhancement state to parent
-						dispatch('enhancementState', e.detail);
-					}}
-				/>
-			{/if}
-			-->
 		</div>
 		{/if}
 	</div>
 
-	<!-- Mobile QA Bottom Sheet -->
-	{#if isMobile && auditPanelOpen && $auditStore.status !== 'idle'}
-		<!-- Backdrop -->
-		<button
-			type="button"
-			class="fixed inset-0 bg-black/60 z-40"
-			transition:fade={{ duration: 200 }}
-			onclick={() => auditPanelOpen = false}
-			aria-label="Close QA panel"
-		></button>
-		
-		<!-- Bottom Sheet -->
-		<div
-			class="fixed inset-x-0 bottom-0 z-50 bg-[#0a0a12] border-t border-white/10 rounded-t-2xl max-h-[70vh] flex flex-col shadow-2xl"
-			transition:fly={{ y: 300, duration: 280, easing: (t) => 1 - Math.pow(1 - t, 3) }}
-		>
-			<!-- Drag handle indicator -->
-			<div class="flex justify-center pt-3 pb-1">
-				<div class="w-10 h-1 rounded-full bg-white/20"></div>
-			</div>
-			
-			<!-- Close button row -->
-			<div class="flex items-center justify-between px-4 pb-2">
-				<span class="text-xs font-semibold text-white/60 uppercase tracking-wider">Report QA</span>
-				<button
-					type="button"
-					class="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-					onclick={() => auditPanelOpen = false}
-					aria-label="Close"
-				>
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
-			</div>
-			
-			<!-- AuditBanner content (scrollable) -->
-			<div class="flex-1 min-h-0 overflow-hidden">
-			<AuditBanner
-				auditState={$auditStore as any}
-				canReaudit={$auditStore.status === 'stale' || $auditStore.status === 'complete' || $auditStore.status === 'error'}
-			on:acknowledge={handleAcknowledge}
-			on:restore={handleRestore}
-			on:suggestFix={handleSuggestFix}
-			on:insertBanner={handleInsertBanner}
-			on:applyFix={handleApplyFix}
-			on:reaudit={handleReaudit}
-			on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
-		/>
-		</div>
-	</div>
-	{/if}
 {/if}
 
 
 
 <style>
 	/* Highlight decoration styles are now in ReportEditor.svelte */
+
+	/* ── Compare to prior report button ─────────────────────────────────────── */
+	.compare-rpt-btn {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		padding: 5px 10px;
+		border-radius: 8px;
+		border: 1px solid rgba(139, 92, 246, 0.28);
+		background: rgba(139, 92, 246, 0.08);
+		color: #c4b5fd;
+		cursor: pointer;
+		transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+		font-family: inherit;
+		flex-shrink: 0;
+	}
+	.compare-rpt-btn:hover {
+		background: rgba(139, 92, 246, 0.16);
+		border-color: rgba(139, 92, 246, 0.45);
+		color: #e9d5ff;
+		box-shadow: 0 0 12px rgba(139, 92, 246, 0.2);
+	}
+	.compare-rpt-inner {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 1px;
+	}
+	.compare-rpt-label {
+		font-size: 10.5px;
+		font-weight: 600;
+		line-height: 1.2;
+		letter-spacing: -0.01em;
+	}
+	.compare-rpt-sub {
+		font-size: 8.5px;
+		font-weight: 500;
+		opacity: 0.6;
+		line-height: 1.2;
+		white-space: nowrap;
+	}
 
 	/* ── Floating save bar ─────────────────────────────────────────────────── */
 

@@ -1,11 +1,15 @@
 """
 Pydantic models for AI-powered report enhancement
-All structured outputs use these typed models for validation and type safety
-Pure Pydantic validation - no custom field validators or regex processing
+All structured outputs use these typed models for validation and type safety.
+AuditResult applies light before-validation coercion for common LLM/tool formatting mistakes.
 """
 
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional, Literal
+import json
+import time
+from enum import Enum
+from typing import Any, Dict, List, Literal, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ============================================================================
@@ -170,6 +174,194 @@ class GuidelinesResponse(BaseModel):
 
 
 # ============================================================================
+# Rich Guideline Models (Bespoke Synthesis — v2)
+# ============================================================================
+
+class UrgencyTier(str, Enum):
+    URGENT   = "urgent"      # same-day / 48h action required
+    SOON     = "soon"        # 2–6 weeks
+    ROUTINE  = "routine"     # 3–6 months
+    WATCH    = "watch"       # annual / long-term surveillance
+    NONE     = "none"        # no specific follow-up indicated
+
+
+class RichFollowUpAction(BaseModel):
+    """A single follow-up imaging action with guideline attribution"""
+    modality: str = Field(description="Imaging modality (e.g. 'MRCP', 'LDCT thorax')")
+    timing: str = Field(description="Timing interval (e.g. '4–6 weeks', '6 months')")
+    indication: str = Field(description="Short trigger condition or clinical scenario")
+    urgency: UrgencyTier = Field(description="Urgency tier for this specific action")
+    guideline_source: str = Field(description="Specific guideline reference (e.g. 'NICE CG188', 'BSG 2020')")
+
+
+class RichClassificationGrade(BaseModel):
+    """A classification/grading system entry with management implication"""
+    system: str = Field(description="System name (e.g. 'Bosniak', 'Fleischner', 'LI-RADS')")
+    authority: str = Field(description="Issuing body (e.g. 'RSNA/ACR', 'RCR', 'Fleischner Society')")
+    year: Optional[str] = Field(default=None, description="Version year (e.g. '2019', '2017')")
+    grade: str = Field(description="Grade or category label (e.g. 'IIF', '3', 'Probably benign')")
+    criteria: str = Field(description="Generic textbook definition of this grade boundary — no patient-specific content")
+    management: str = Field(description="Patient-specific assignment ('This patient: [stage] — [features]') plus recommended clinical action")
+
+
+class ActionableThreshold(BaseModel):
+    """An imaging measurement threshold with clinical decision point"""
+    parameter: str = Field(description="What to measure — imaging metric or lab/biomarker (e.g. 'CBD diameter', 'CA 19-9')")
+    threshold: str = Field(description="The decision-point value (e.g. '> 8 mm', 'CA 19-9 > 100 U/mL')")
+    significance: str = Field(description="What exceeding the threshold means clinically (e.g. 'warrants MRCP')")
+    context: str = Field(default="", description="Measurement technique (imaging) or assay notes (lab/biomarker)")
+
+
+class RichDifferential(BaseModel):
+    """A differential diagnosis with distinguishing and excluding features"""
+    diagnosis: str = Field(description="Diagnosis name")
+    key_features: str = Field(description="Imaging features that suggest this diagnosis")
+    excluders: str = Field(description="Features that rule this diagnosis out")
+    likelihood: str = Field(description="'common' | 'less common' | 'rare'")
+
+
+class RichGuidelineEntry(BaseModel):  # DEPRECATED — replaced by S4 synthesis cards
+    """Bespoke radiologist-focused guideline entry — v2 synthesis output (legacy, kept for persisted data)."""
+    finding_number: int = Field(ge=1, description="1-based index matching the input finding list")
+    finding: str = Field(description="The exact finding text")
+    urgency_tier: UrgencyTier = Field(description="Overall urgency — the most urgent action required for this finding")
+    clinical_summary: str = Field(
+        min_length=10,
+        description="2 sentences max: what this finding represents and its primary clinical significance"
+    )
+    uk_authority: str = Field(description="Primary UK guideline body (e.g. 'NICE', 'BSG', 'RCR', 'BTS')")
+    guideline_refs: List[str] = Field(
+        default_factory=list,
+        description="Short guideline attributions (e.g. ['NICE CG188', 'BSG 2020'])"
+    )
+    follow_up_actions: List[RichFollowUpAction] = Field(
+        default_factory=list,
+        description="Ordered follow-up imaging actions, most urgent first"
+    )
+    classifications: List[RichClassificationGrade] = Field(
+        default_factory=list,
+        description="0–2 applicable classification/grading systems"
+    )
+    thresholds: List[ActionableThreshold] = Field(
+        default_factory=list,
+        description="Actionable measurement thresholds with clinical decision points"
+    )
+    differentials: List[RichDifferential] = Field(
+        default_factory=list,
+        description="2–4 differential diagnoses with distinguishing and excluding features"
+    )
+    imaging_flags: List[str] = Field(
+        default_factory=list,
+        description="Flat list of key imaging features to note (e.g. 'dilated CBD > 8mm', 'posterior acoustic shadowing')"
+    )
+    sources: List[dict] = Field(
+        default_factory=list,
+        description="Source URLs with titles"
+    )
+
+
+class RichGuidelinesResponse(BaseModel):
+    """Response wrapper for the bespoke synthesis output"""
+    guidelines: List[RichGuidelineEntry] = Field(
+        min_length=1,
+        description="Rich guideline entries for each finding, in the same order as the input findings"
+    )
+
+
+# ============================================================================
+# S4 Branch-Decomposed Synthesis Models
+# ============================================================================
+
+class SynthFollowUpAction(BaseModel):
+    """A single follow-up action from pathway synthesis (S4 Pass A)."""
+    modality: str
+    timing: str = ""
+    indication: str = ""
+    urgency: str = "routine"
+    guideline_source: str = ""
+
+
+class PathwaySynthesis(BaseModel):
+    """S4 Pass A output: pathway, urgency, and follow-up actions."""
+    urgency_tier: str = "none"
+    uk_authority: str = ""
+    guideline_refs: List[str] = Field(default_factory=list)
+    follow_up_actions: List[SynthFollowUpAction] = Field(default_factory=list)
+
+
+class SynthClassification(BaseModel):
+    """A classification/grading system entry from S4 Pass B."""
+    system: str
+    authority: str = ""
+    year: Optional[str] = None
+    grade: str = ""
+    criteria: str = ""
+    management: str = ""
+
+
+class SynthThreshold(BaseModel):
+    """A clinical decision-point threshold from S4 Pass B."""
+    parameter: str
+    threshold: str
+    significance: str = ""
+    context: str = ""
+
+
+class ClassificationSynthesis(BaseModel):
+    """S4 Pass B output: classifications and actionable thresholds."""
+    classifications: List[SynthClassification] = Field(default_factory=list)
+    thresholds: List[SynthThreshold] = Field(default_factory=list)
+
+
+class SynthDifferential(BaseModel):
+    """A differential diagnosis entry from S4 Pass C."""
+    diagnosis: str
+    key_features: str = ""
+    excluders: str = ""
+    likelihood: str = "common"
+
+
+class DifferentialSynthesis(BaseModel):
+    """S4 Pass C output: clinical summary, differentials, and imaging flags."""
+    clinical_summary: str = ""
+    differentials: List[SynthDifferential] = Field(default_factory=list)
+    imaging_flags: List[str] = Field(default_factory=list)
+
+
+# ============================================================================
+# Prefetch Pipeline Models
+# ============================================================================
+
+class PrefetchKnowledgeItem(BaseModel):
+    """A single content item in the prefetch knowledge base."""
+    url: str
+    content: str
+    content_chars: int
+    extraction_type: str        # "deep_extract" | "inline" | "deep_extract_fallback"
+    extract_hint: Optional[str] = None
+    finding_indices: List[int] = Field(default_factory=list)  # 0-based into consolidated_findings[]
+    title: str = ""
+    domain: str = ""
+    branch: str = ""            # "pathway_followup" | "classification_measurement" | "imaging_differential"
+
+
+class PrefetchOutput(BaseModel):
+    """Complete output of the parallel guideline prefetch pipeline."""
+    prefetch_id: str
+    findings_hash: str = ""
+    consolidated_findings: List[str] = Field(default_factory=list)
+    finding_short_labels: List[str] = Field(default_factory=list)
+    applicable_guidelines: List[dict] = Field(default_factory=list)
+    urgency_signals: List[str] = Field(default_factory=list)
+    knowledge_base: Dict[str, List[PrefetchKnowledgeItem]] = Field(default_factory=dict)
+    pipeline_ms: int = 0
+    created_at: float = Field(default_factory=time.time)
+    guidelines: List[dict] = Field(default_factory=list)
+    triage_counts: dict = Field(default_factory=dict)
+    synthesis_stats: dict = Field(default_factory=dict)
+
+
+# ============================================================================
 # Consolidation Models
 # ============================================================================
 
@@ -188,31 +380,8 @@ class ConsolidationResult(BaseModel):
 
 
 # ============================================================================
-# Completeness Analysis Models
+# Suggested actions (chat / enhancement apply-actions)
 # ============================================================================
-
-class AnalysisSummary(BaseModel):
-    """Overall completeness summary"""
-    title: str = Field(
-        max_length=100,
-        description="Short heading (≤12 words) summarizing the report quality"
-    )
-    details: str = Field(
-        min_length=50,
-        description="2-3 sentence narrative describing overall impression, strengths, and concerns"
-    )
-
-
-class ReviewQuestion(BaseModel):
-    """A review question for the radiologist to mentally confirm"""
-    id: str = Field(
-        description="Kebab-case slug identifier (e.g., 'confirm-hernia-measurements')"
-    )
-    prompt: str = Field(
-        min_length=10,
-        description="Plain sentence phrased as a review question with no leading numbering or bullets and no direct edit instructions"
-    )
-
 
 class SuggestedAction(BaseModel):
     """A suggested edit or addition to improve the report"""
@@ -230,22 +399,6 @@ class SuggestedAction(BaseModel):
     patch: str = Field(
         default="",
         description="Explicit text snippet to add/modify in the report; empty string if not applicable"
-    )
-
-
-class CompletenessAnalysis(BaseModel):
-    """Structured completeness analysis of a radiology report"""
-    summary: AnalysisSummary = Field(
-        description="Overall assessment of report completeness and quality"
-    )
-    questions: List[ReviewQuestion] = Field(
-        min_length=2,
-        max_length=4,
-        description="2-4 review questions focused on contextual verification (no edit instructions)"
-    )
-    suggested_actions: List[SuggestedAction] = Field(
-        default_factory=list,
-        description="Optional specific changes to improve clarity/completeness; empty if report is complete"
     )
 
 
@@ -322,8 +475,11 @@ class ApplicableGuideline(BaseModel):
     search_keywords: Optional[str] = Field(
         default=None,
         description=(
-            "3–6 search tokens for Firecrawl only (organ, modality, key finding). "
-            "Omit if redundant with system. English only."
+            "3–12 search tokens for Firecrawl only (organ, modality, key finding, jurisdiction). "
+            "For uk_pathway entries, include the governing specialist society acronym when known "
+            "(e.g. AUGIS for upper-GI surgery, BAUS for urology, BTS for thoracic, SIGN for Scotland, "
+            "BSGE for gynaecology, RCS/RCSED for general surgery, RCOG for obstetrics, BAETS for ENT). "
+            "Omit if the system name is already fully distinctive. English only."
         ),
     )
     type: Literal["classification", "uk_pathway", "other"] = Field(
@@ -355,17 +511,6 @@ class ReportOutput(BaseModel):
         min_length=3,
         max_length=200,
         description="Extracted scan type and protocol combined (e.g., 'CT head non-contrast', 'MRI brain with contrast'). Extract from template name/description and findings context. Include contrast status ONLY if explicitly mentioned."
-    )
-    applicable_guidelines: List[ApplicableGuideline] = Field(
-        default_factory=list,
-        description=(
-            "Ordered list of applicable guidelines (contract). Position 0 is the governing framework for the "
-            "deployment context (NHS UK: UK/NICE/RCR/BTS pathways precede international frameworks used as "
-            "cross-reference). International classification-only at position 0 is correct when no UK pathway "
-            "applies or UK guidance explicitly defers to that standard (e.g. RECIST, PI-RADS). "
-            "At most 4 entries; see generation prompt for scan-purpose-first selection. "
-            "Empty if none. All context strings English only."
-        ),
     )
     model_used: Optional[str] = None  # Set by backend after generation; not from LLM
 
@@ -399,10 +544,27 @@ class ReportOutputWithReasoning(BaseModel):
 # Report Audit / QA Models
 # ============================================================================
 
+class InputDiscrepancy(BaseModel):
+    """A discrepancy between original dictated input and generated report."""
+    input_text: str
+    report_text: str = ""
+    type: Literal["dropped", "measurement_changed", "laterality_changed", "qualifier_changed", "inverted"]
+    severity: Literal["minor", "significant"]
+
+
+class CharacterisationGap(BaseModel):
+    """A missing characterisation feature for a finding relative to guidelines."""
+    finding: str
+    missing_features: List[str]
+    guideline_basis: str
+    severity: Literal["critical", "supporting"]
+
+
 class AuditCriterionFlag(BaseModel):
-    """Sub-flag for clinical_flagging criterion only"""
-    type: Literal["critical", "urgent", "significant", "malignancy_suspected", "malignancy_interval"] = Field(
-        description="Type of clinical flag"
+    """Sub-flag for clinical_flagging criterion — 3-tier severity model aligned with RCR standards"""
+    type: Literal["critical", "urgent", "significant"] = Field(
+        description="Severity tier: critical (life-threatening, immediate action), "
+                    "urgent (same-day attention), significant (clinical management)"
     )
     present: bool = Field(
         description="Whether this flag type is present in the report"
@@ -416,17 +578,19 @@ class AuditCriterionFlag(BaseModel):
 
 
 class FlagBannerOption(BaseModel):
-    """Banner option for clinical_flagging — user can select to append to report"""
-    category: Literal[
-        "critical",
-        "urgent",
-        "malignancy_suspected",
-        "malignancy_interval",
-        "significant"
-    ] = Field(description="Category of clinical flag")
-    label: str = Field(description="Short label in British English e.g. 'Critical — Immediate Action'")
+    """Banner option for clinical_flagging — pure severity alert the user may append to the report"""
+    category: Literal["critical", "urgent", "significant"] = Field(
+        description="Severity tier for the banner"
+    )
+    label: str = Field(description="Short label in British English e.g. 'Critical — Immediate Action Required'")
     banner_text: str = Field(description="Full text to append to the report (use standard templates verbatim)")
     rationale: str = Field(description="Why this was suggested, British English only (shown to user)")
+    clinical_context: Optional[str] = Field(
+        default=None,
+        description="Semantic tag for frontend visual differentiation (e.g. 'malignancy_new', "
+                    "'vascular_emergency', 'infection_sepsis', 'malignancy_interval'). "
+                    "Not displayed as text — used for icon/colour selection."
+    )
 
 
 class AuditCriterion(BaseModel):
@@ -437,8 +601,11 @@ class AuditCriterion(BaseModel):
         "recommendations",
         "clinical_flagging",
         "report_completeness",
-        "diagnostic_fidelity"
-    ] = Field(description="One of six audit criteria names")
+        "diagnostic_fidelity",
+        "input_fidelity",
+        "scan_coverage",
+        "characterisation_gap",
+    ] = Field(description="Audit criterion name (6 legacy + 3 new)")
     status: Literal["pass", "flag", "warning"] = Field(
         description="Audit status: pass (no issues), flag (requires attention), warning (minor concern)"
     )
@@ -487,11 +654,23 @@ class AuditCriterion(BaseModel):
     )
     flags_identified: Optional[List[AuditCriterionFlag]] = Field(
         default=None,
-        description="Populated only for clinical_flagging criterion - lists 5 sub-flag evaluations"
+        description="Populated only for clinical_flagging criterion - lists 3 sub-flag evaluations (critical, urgent, significant)"
     )
     suggested_banners: Optional[List[FlagBannerOption]] = Field(
         default=None,
         description="Populated only for clinical_flagging - banners to optionally append to report"
+    )
+    discrepancies: Optional[List[InputDiscrepancy]] = Field(
+        default=None,
+        description="Populated only for input_fidelity — each discrepancy between original input and report"
+    )
+    systems_unaddressed: Optional[List[str]] = Field(
+        default=None,
+        description="Populated only for scan_coverage — anatomical systems expected but not mentioned"
+    )
+    characterisation_gaps: Optional[List[CharacterisationGap]] = Field(
+        default=None,
+        description="Populated only for characterisation_gap — missing features per finding"
     )
 
 
@@ -527,6 +706,37 @@ class AuditGuidelineRef(BaseModel):
     )
 
 
+def _default_clinical_flagging_rationale(data: dict) -> str:
+    """When the model omits top-level rationale on clinical_flagging, derive a minimal UK English line."""
+    banners = data.get("suggested_banners") or []
+    flags = data.get("flags_identified") or []
+    parts: List[str] = []
+    if banners:
+        cats = [
+            str(b.get("category", ""))
+            for b in banners
+            if isinstance(b, dict) and b.get("category")
+        ]
+        if cats:
+            parts.append(
+                f"{len(banners)} communication banner(s) suggested ({', '.join(cats)})."
+            )
+    present_types = [
+        str(f.get("type", ""))
+        for f in flags
+        if isinstance(f, dict) and f.get("present")
+    ]
+    if present_types:
+        parts.append("Sub-flags marked present: " + ", ".join(present_types) + ".")
+    st = data.get("status", "pass")
+    if not parts:
+        return (
+            f"Clinical flagging assessed (status {st}); see flags_identified for "
+            "sub-flag detail — no banner indicated or detail carried in structured fields only."
+        )
+    return " ".join(parts)
+
+
 class AuditFixContext(BaseModel):
     """Structured audit grounding for Fix-with-AI chat — must stay in sync with frontend `AuditFixContext`."""
 
@@ -552,18 +762,89 @@ class AuditFixContext(BaseModel):
 
 
 class AuditResult(BaseModel):
-    """Complete audit result for a radiology report"""
+    """Complete audit result for a radiology report.
+
+    Phase 1 returns 6 criteria (1a input_fidelity + 1b x5).
+    Phase 2 appends 3 more (recommendations, clinical_flagging, characterisation_gap).
+    Partial results (5-8 criteria) are valid during progressive rendering.
+    """
+
     overall_status: Literal["pass", "flag", "warning"] = Field(
         description="Overall audit status - worst status among all criteria"
     )
     criteria: List[AuditCriterion] = Field(
-        min_length=6,
-        max_length=6,
-        description="Exactly 6 criterion evaluations, one per audit criterion"
+        min_length=1,
+        max_length=9,
+        description="1-9 criterion evaluations (6 from Phase 1, up to 9 after Phase 2 merge)"
     )
     summary: str = Field(
         description="High-level summary of audit findings and key issues (British English only)"
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_llm_audit_payload(cls, data: Any) -> Any:
+        """Recover common provider mistakes: stringified criteria JSON, missing summary, missing clinical_flagging rationale."""
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+
+        cr = out.get("criteria")
+        if isinstance(cr, str):
+            s = cr.strip()
+            if s.startswith("["):
+                try:
+                    out["criteria"] = json.loads(s)
+                except json.JSONDecodeError:
+                    pass
+
+        summ = out.get("summary")
+        if summ is None or (isinstance(summ, str) and not summ.strip()):
+            os = out.get("overall_status", "completed")
+            out["summary"] = (
+                f"Overall audit status: {os}. See per-criterion rationales for detail."
+            )
+
+        crit_list = out.get("criteria")
+        if isinstance(crit_list, list):
+            fixed: List[Any] = []
+            for item in crit_list:
+                if not isinstance(item, dict):
+                    fixed.append(item)
+                    continue
+                d = dict(item)
+                if d.get("criterion") == "clinical_flagging":
+                    r = d.get("rationale")
+                    if r is None or (isinstance(r, str) and not r.strip()):
+                        d["rationale"] = _default_clinical_flagging_rationale(d)
+                fixed.append(d)
+            out["criteria"] = fixed
+
+        return out
+
+
+# ============================================================================
+# Audit Phase LLM Output Wrappers
+# ============================================================================
+
+class Phase1aOutput(BaseModel):
+    """Structured LLM output for Phase 1a: input_fidelity (single criterion)."""
+    criterion: str = "input_fidelity"
+    status: Literal["pass", "warning", "flag"]
+    rationale: str = ""
+    highlighted_spans: List[str] = Field(default_factory=list)
+    recommendation: Optional[str] = None
+    discrepancies: List[InputDiscrepancy] = Field(default_factory=list)
+
+
+class Phase1bOutput(BaseModel):
+    """Structured LLM output for Phase 1b: 4 report-integrity criteria."""
+    criteria: List[AuditCriterion] = Field(min_length=4, max_length=4)
+
+
+class Phase2Output(BaseModel):
+    """Structured LLM output for Phase 2: 4 guideline-compliance criteria."""
+    criteria: List[AuditCriterion] = Field(min_length=4, max_length=4)
 
 
 # ============================================================================

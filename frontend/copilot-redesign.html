@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Copilot Redesign v2</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #060608;
+  --surface: #0d0d12;
+  --surface2: #13131b;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.13);
+  --purple: #8b5cf6;
+  --text: #e2e2e8;
+  --text-dim: #71717a;
+  --text-muted: #3f3f46;
+  --rose: #f43f5e;
+  --amber: #f59e0b;
+  --emerald: #10b981;
+  --cyan: #06b6d4;
+  --panel-w: 380px;
+}
+html, body { height: 100%; }
+body {
+  background: #07070d;
+  font-family: 'DM Sans', sans-serif;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  gap: 0;
+  overflow: hidden;
+}
+
+/* ══════════════════════════════════════
+   SIDEBAR SHELL
+══════════════════════════════════════ */
+.sidebar {
+  height: 720px;
+  width: var(--panel-w);
+  background: rgba(6,6,10,0.99);
+  border: 1px solid var(--border2);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow:
+    0 40px 100px rgba(0,0,0,0.8),
+    0 0 0 0.5px rgba(255,255,255,0.04),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+  transition: width 0.4s cubic-bezier(0.4,0,0.2,1);
+  position: relative;
+}
+
+/* ══════════════════════════════════════
+   HEADER
+══════════════════════════════════════ */
+.header {
+  padding: 13px 15px 11px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.brand { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; }
+.pilot-icon {
+  width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+  background: linear-gradient(135deg, #5b21b6, #8b5cf6);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 20px rgba(139,92,246,0.3), inset 0 1px 0 rgba(255,255,255,0.15);
+}
+.pilot-icon svg { width: 15px; height: 15px; }
+.brand-name { font-size: 15px; font-weight: 700; color: white; letter-spacing: -0.01em; }
+
+/* Status indicator — replaces cryptic "1F·2W" */
+.status-indicator {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 8px; border-radius: 8px;
+  font-size: 11px; font-weight: 600;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.status-alert {
+  background: rgba(244,63,94,0.1); border: 1px solid rgba(244,63,94,0.22);
+  color: #fb7185;
+}
+.status-ok {
+  background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2);
+  color: #34d399;
+}
+.status-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+}
+.dot-alert { background: #f43f5e; box-shadow: 0 0 6px rgba(244,63,94,0.8); animation: blink 2s ease-in-out infinite; }
+.dot-ok { background: #10b981; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.hdr-right { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.btn-ghost {
+  height: 28px; padding: 0 10px; border-radius: 7px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text-dim); font-size: 11px; font-weight: 500; cursor: pointer;
+  transition: all 0.15s; font-family: 'DM Sans', sans-serif;
+  display: flex; align-items: center; white-space: nowrap;
+}
+.btn-ghost:hover { background: rgba(255,255,255,0.06); color: white; border-color: var(--border2); }
+.btn-icon {
+  width: 28px; height: 28px; border-radius: 7px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text-dim); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+}
+.btn-icon:hover { background: rgba(255,255,255,0.06); color: white; }
+.btn-icon.active { background: rgba(139,92,246,0.15); border-color: rgba(139,92,246,0.35); color: #a78bfa; }
+.expand-hint {
+  font-size: 9px; font-weight: 600; letter-spacing: 0.06em;
+  color: var(--text-muted); text-transform: uppercase;
+  transition: opacity 0.2s; white-space: nowrap;
+}
+
+/* ══════════════════════════════════════
+   NARROW: TAB BAR (single-panel mode)
+══════════════════════════════════════ */
+.tab-bar {
+  display: flex; padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  transition: opacity 0.25s, max-height 0.35s;
+  max-height: 48px; overflow: hidden;
+}
+.tab {
+  flex: 1; padding: 10px 8px 9px;
+  border: none; background: transparent; font-size: 11.5px; font-weight: 600;
+  color: var(--text-muted); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: all 0.15s; font-family: 'DM Sans', sans-serif;
+}
+.tab:hover { color: var(--text-dim); }
+.tab.active { color: white; border-bottom-color: var(--purple); }
+.tab-indicator {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+}
+.ti-alert { background: var(--rose); box-shadow: 0 0 5px rgba(244,63,94,0.7); }
+.ti-ok { background: var(--emerald); }
+.ti-neutral { background: var(--text-muted); }
+
+/* ══════════════════════════════════════
+   CONTENT AREA (shared)
+══════════════════════════════════════ */
+.content-area {
+  flex: 1; min-height: 0;
+  display: flex; /* row in wide mode */
+  overflow: hidden;
+}
+
+/* Single panel */
+.panel {
+  flex: 1; min-width: 0; overflow-y: auto;
+  padding: 14px 14px 6px;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.07) transparent;
+}
+.panel::-webkit-scrollbar { width: 3px; }
+.panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.07); border-radius: 2px; }
+
+.panel-hidden { display: none; }
+
+/* Panel header — hidden in narrow, shown in wide */
+.panel-header {
+  display: none;
+  align-items: center; gap: 7px;
+  padding: 10px 14px 8px; border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.panel-header-title {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--text-muted);
+}
+
+/* Narrow: panel is a simple scrollable block */
+.panel { overflow-y: auto; }
+.panel-scroll { /* unused in narrow */ }
+
+/* Wide: switch content-area to row, panels become columns */
+.sidebar.wide .content-area { flex-direction: row; }
+.sidebar.wide .panel {
+  display: flex !important; /* override any inline style */
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+  padding: 0;
+}
+.sidebar.wide .panel:last-child { border-right: none; }
+.sidebar.wide .panel-header { display: flex; }
+.sidebar.wide .panel .panel-scroll { flex: 1; overflow-y: auto; padding: 12px 14px; scrollbar-width: thin; }
+.sidebar.wide .panel .panel-scroll::-webkit-scrollbar { width: 3px; }
+.sidebar.wide .panel .panel-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.07); }
+.sidebar.wide .tab-bar { max-height: 0 !important; opacity: 0 !important; pointer-events: none; }
+
+/* Panel flex proportions — GL always gets the lion's share */
+.sidebar.wide #p-qa   { flex: 0 0 240px; min-width: 220px; }
+.sidebar.wide #p-gl   { flex: 1;         min-width: 300px; }
+.sidebar.wide #p-chat { flex: 0 0 240px; min-width: 210px; }
+
+/* Compact QA layout when it's a narrow side column */
+.qa-inner { padding: 12px 14px; }
+.sidebar.wide #p-qa .qa-inner          { padding: 10px; }
+.sidebar.wide #p-qa .audit-card        { padding: 10px; gap: 8px; margin-bottom: 8px; }
+.sidebar.wide #p-qa .score-ring        { width: 40px; height: 40px; flex-shrink: 0; }
+.sidebar.wide #p-qa .score-num         { font-size: 12px; }
+.sidebar.wide #p-qa .audit-title       { font-size: 11.5px; }
+.sidebar.wide #p-qa .audit-sub         { font-size: 9.5px; }
+.sidebar.wide #p-qa .reaudit-btn       { font-size: 9px; padding: 3px 8px; }
+.sidebar.wide #p-qa .urgency-pill      { padding: 7px 10px; font-size: 10px; margin-bottom: 8px; }
+.sidebar.wide #p-qa .criterion         { padding: 7px 9px; gap: 7px; margin-bottom: 5px; }
+.sidebar.wide #p-qa .c-name            { font-size: 10.5px; }
+.sidebar.wide #p-qa .c-detail          { display: none; } /* details on tap/expand; name+dot is enough in column view */
+.sidebar.wide #p-qa .fix-btn           { font-size: 8px; padding: 2px 6px; border-radius: 5px; }
+.sidebar.wide #p-qa .c-dot             { width: 6px; height: 6px; margin-top: 4px; }
+.sidebar.wide #p-qa .divider           { margin: 8px 0 6px; }
+.sidebar.wide #p-qa .div-text          { font-size: 8px; }
+/* Inline score wrap: put re-audit btn below the ring+text block */
+.sidebar.wide #p-qa .audit-card        { flex-wrap: wrap; }
+.sidebar.wide #p-qa .audit-info        { min-width: 0; flex: 1 1 60%; }
+.sidebar.wide #p-qa .reaudit-btn       { flex: 0 0 auto; align-self: center; }
+
+/* ══════════════════════════════════════
+   AUDIT PANEL CONTENT
+══════════════════════════════════════ */
+.audit-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border-radius: 12px;
+  background: rgba(244,63,94,0.05);
+  border: 1px solid rgba(244,63,94,0.13);
+  margin-bottom: 12px;
+}
+.score-ring {
+  width: 46px; height: 46px; border-radius: 50%; flex-shrink: 0;
+  background: conic-gradient(#f43f5e 0% 72%, rgba(255,255,255,0.04) 72% 100%);
+  display: flex; align-items: center; justify-content: center; position: relative;
+}
+.score-ring::before { content:''; position:absolute; inset:5px; border-radius:50%; background: rgba(6,6,10,0.98); }
+.score-num { position:relative; z-index:1; font-size:13px; font-weight:800; color:#fb7185; font-family:'DM Mono',monospace; }
+.audit-info { flex: 1; }
+.audit-title { font-size: 12.5px; font-weight: 600; color: white; margin-bottom: 2px; }
+.audit-sub { font-size: 10.5px; color: var(--text-dim); }
+.reaudit-btn {
+  padding: 4px 10px; border-radius: 7px;
+  border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04);
+  color: var(--text-dim); font-size: 10px; font-weight: 600; cursor: pointer;
+  transition: all 0.15s; font-family: 'DM Sans', sans-serif; align-self: flex-start;
+}
+.reaudit-btn:hover { background: rgba(255,255,255,0.08); color: white; }
+
+.urgency-pill {
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 11px; border-radius: 9px;
+  background: rgba(245,158,11,0.07); border: 1px solid rgba(245,158,11,0.18);
+  margin-bottom: 12px;
+}
+.u-icon { font-size: 12px; }
+.u-text { font-size: 11px; font-weight: 500; color: #fbbf24; }
+
+.criterion {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--surface);
+  margin-bottom: 6px; cursor: pointer; transition: all 0.15s;
+}
+.criterion:hover { border-color: var(--border2); background: var(--surface2); }
+.c-dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+.dot-flag { background: var(--rose); box-shadow: 0 0 7px rgba(244,63,94,0.6); }
+.dot-warn { background: var(--amber); box-shadow: 0 0 7px rgba(245,158,11,0.5); }
+.dot-pass { background: var(--emerald); }
+.c-body { flex: 1; min-width: 0; }
+.c-name { font-size: 11.5px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+.c-detail { font-size: 10.5px; color: var(--text-dim); line-height: 1.5; }
+.fix-btn {
+  padding: 3px 9px; border-radius: 6px;
+  border: 1px solid rgba(139,92,246,0.28); background: rgba(139,92,246,0.1);
+  color: #c4b5fd; font-size: 9.5px; font-weight: 600; cursor: pointer;
+  white-space: nowrap; flex-shrink: 0; transition: all 0.15s; font-family: 'DM Sans', sans-serif;
+}
+.fix-btn:hover { background: rgba(139,92,246,0.22); color: white; }
+.divider { display:flex; align-items:center; gap:8px; margin: 12px 0 8px; }
+.div-line { flex:1; height:1px; background: var(--border); }
+.div-text { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-muted); }
+
+/* ══════════════════════════════════════
+   GUIDELINE PANEL CONTENT
+══════════════════════════════════════ */
+.gl-card {
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); margin-bottom: 8px; overflow: hidden; transition: border-color 0.2s;
+}
+.gl-card:hover { border-color: rgba(139,92,246,0.28); }
+.gl-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 13px; cursor: pointer; user-select: none;
+}
+.gl-icon {
+  width: 30px; height: 30px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;
+}
+.gl-v { background: rgba(139,92,246,0.14); }
+.gl-c { background: rgba(6,182,212,0.1); }
+.gl-a { background: rgba(245,158,11,0.1); }
+.gl-meta { flex: 1; min-width: 0; }
+.gl-title { font-size: 11.5px; font-weight: 600; color: white; margin-bottom: 3px; }
+.gl-chips { display: flex; gap: 3px; flex-wrap: wrap; }
+.chip { font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 20px; letter-spacing: 0.02em; white-space: nowrap; }
+.ch-v { background: rgba(139,92,246,0.12); color: #c4b5fd; border: 1px solid rgba(139,92,246,0.2); }
+.ch-c { background: rgba(6,182,212,0.1); color: #67e8f9; border: 1px solid rgba(6,182,212,0.2); }
+.ch-a { background: rgba(245,158,11,0.1); color: #fcd34d; border: 1px solid rgba(245,158,11,0.2); }
+.ch-r { background: rgba(244,63,94,0.1); color: #fda4af; border: 1px solid rgba(244,63,94,0.2); }
+.gl-chevron { transition: transform 0.2s; color: var(--text-muted); flex-shrink: 0; }
+.gl-chevron.open { transform: rotate(180deg); }
+.gl-body { border-top: 1px solid var(--border); padding: 10px 13px 12px; }
+.gl-section { margin-bottom: 10px; }
+.gl-section:last-child { margin-bottom: 0; }
+.gl-section-title { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 5px; }
+.gl-item { font-size: 11px; color: var(--text-dim); line-height: 1.55; padding: 5px 8px; background: rgba(255,255,255,0.025); border-radius: 6px; margin-bottom: 3px; }
+.gl-item strong { color: var(--text); font-weight: 600; }
+
+/* ══════════════════════════════════════
+   CHAT DOCK
+══════════════════════════════════════ */
+.chat-dock {
+  flex-shrink: 0; border-top: 1px solid var(--border);
+  position: relative; background: rgba(6,6,10,0.99);
+}
+.chat-pill-row { padding: 10px 14px; display: flex; align-items: center; gap: 8px; }
+.chat-pill {
+  flex: 1; display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: rgba(255,255,255,0.025);
+  cursor: text; transition: all 0.15s;
+}
+.chat-pill:hover { border-color: var(--border2); background: rgba(255,255,255,0.04); }
+.chat-pill-text { font-size: 12px; color: var(--text-muted); flex: 1; }
+.chat-send {
+  width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+  background: linear-gradient(135deg, #7c3aed, #8b5cf6); border: none;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 10px rgba(139,92,246,0.4); transition: all 0.15s;
+}
+.chat-send:hover { transform: scale(1.06); }
+
+/* Chat sheet */
+.chat-sheet {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 390px;
+  display: none; flex-direction: column;
+  background: rgba(7,7,11,0.99); border-top: 1px solid rgba(139,92,246,0.2);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -24px 60px rgba(0,0,0,0.7);
+  animation: slideUp 0.25s cubic-bezier(0.4,0,0.2,1);
+  overflow: hidden;
+}
+.chat-sheet.open { display: flex; }
+@keyframes slideUp { from{transform:translateY(40px);opacity:0} to{transform:translateY(0);opacity:1} }
+.sheet-header {
+  padding: 12px 14px 10px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+}
+.sheet-title { font-size: 11px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; }
+.sheet-close {
+  width: 22px; height: 22px; border-radius: 6px;
+  background: rgba(255,255,255,0.06); border: none; color: var(--text-dim);
+  cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+}
+.sheet-close:hover { background: rgba(255,255,255,0.1); color: white; }
+.ctx-bar { display: flex; gap: 5px; flex-wrap: wrap; padding: 7px 14px 0; flex-shrink: 0; }
+.ctx-chip {
+  font-size: 9.5px; font-weight: 600; padding: 3px 8px; border-radius: 20px;
+  background: rgba(6,182,212,0.08); border: 1px solid rgba(6,182,212,0.18); color: #67e8f9;
+}
+.chat-msgs {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 10px 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.msg-u {
+  align-self: flex-end; max-width: 80%;
+  background: linear-gradient(135deg, #5b21b6, #8b5cf6);
+  color: white; border-radius: 12px 12px 3px 12px;
+  padding: 8px 12px; font-size: 12px; line-height: 1.5;
+  box-shadow: 0 4px 16px rgba(139,92,246,0.28);
+}
+.msg-a {
+  align-self: flex-start; max-width: 85%;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  color: var(--text-dim); border-radius: 12px 12px 12px 3px;
+  padding: 8px 12px; font-size: 12px; line-height: 1.5;
+}
+.typing { display: flex; gap: 4px; align-items: center; padding: 2px 0; }
+.tdot { width: 5px; height: 5px; border-radius: 50%; background: var(--purple); animation: tdot 1.2s infinite; }
+.tdot:nth-child(2){animation-delay:.2s} .tdot:nth-child(3){animation-delay:.4s}
+@keyframes tdot{0%,60%,100%{transform:translateY(0);opacity:.4} 30%{transform:translateY(-5px);opacity:1}}
+.input-bar { padding: 10px 14px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: flex-end; flex-shrink: 0; }
+.chat-textarea {
+  flex: 1; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 9px;
+  color: white; font-size: 12px; padding: 8px 10px; resize: none; outline: none;
+  min-height: 36px; max-height: 80px; font-family: 'DM Sans', sans-serif; transition: border-color 0.15s;
+}
+.chat-textarea:focus { border-color: rgba(139,92,246,0.5); }
+.chat-textarea::placeholder { color: var(--text-muted); }
+.input-send {
+  width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
+  background: linear-gradient(135deg, #7c3aed, #8b5cf6); border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 3px 12px rgba(139,92,246,0.4); transition: all 0.15s;
+}
+.input-send:hover { transform: scale(1.06); }
+
+/* ══════════════════════════════════════
+   WIDE CHAT — inline at right in tri-panel
+══════════════════════════════════════ */
+.panel-chat {
+  display: none;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  min-width: 0;
+}
+/* panel-chat show/hide is handled entirely by inline style via setLayout() */
+.sidebar.tri .chat-dock .chat-pill-row { display: none; }
+.sidebar.tri .chat-dock { border-top: none; }
+
+.chat-panel-msgs { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; }
+.chat-panel-msgs::-webkit-scrollbar { width: 2px; }
+.chat-panel-input { flex-shrink: 0; border-top: 1px solid var(--border); padding: 8px 12px; display: flex; gap: 6px; align-items: flex-end; }
+.chat-panel-textarea {
+  flex: 1; background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+  border-radius: 8px; color: white; font-size: 11px; padding: 7px 9px;
+  resize: none; outline: none; font-family: 'DM Sans', sans-serif; min-height: 32px;
+  transition: border-color 0.15s;
+}
+.chat-panel-textarea:focus { border-color: rgba(139,92,246,0.5); }
+.chat-panel-textarea::placeholder { color: var(--text-muted); }
+.chat-panel-send {
+  width: 28px; height: 28px; border-radius: 7px;
+  background: linear-gradient(135deg,#7c3aed,#8b5cf6); border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 8px rgba(139,92,246,0.35); flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════
+   LAYOUT SWITCHER HINT
+══════════════════════════════════════ */
+.layout-hint {
+  position: absolute; bottom: 60px; right: 14px;
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(10,10,18,0.95); border: 1px solid rgba(139,92,246,0.3);
+  border-radius: 20px; padding: 5px 10px;
+  font-size: 10px; font-weight: 600; color: #a78bfa;
+  pointer-events: none; opacity: 0;
+  transition: opacity 0.3s;
+}
+.sidebar:hover .layout-hint { opacity: 1; }
+
+/* ══════════════════════════════════════
+   OUTER CHROME / PAGE BACKGROUND
+══════════════════════════════════════ */
+.page-bg {
+  position: fixed; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 60% 40% at 60% 50%, rgba(139,92,246,0.04), transparent);
+}
+.demo-label {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+  font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-muted); background: rgba(10,10,18,0.9); border: 1px solid var(--border);
+  padding: 5px 16px; border-radius: 20px;
+}
+.layout-btn-group {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(10,10,18,0.95); border: 1px solid var(--border2);
+  border-radius: 24px; padding: 6px 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+.layout-opt {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 18px;
+  font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+  border: none; background: transparent; color: var(--text-muted);
+  font-family: 'DM Sans', sans-serif;
+}
+.layout-opt:hover { color: var(--text-dim); background: rgba(255,255,255,0.04); }
+.layout-opt.active { background: rgba(139,92,246,0.15); color: #c4b5fd; border: 1px solid rgba(139,92,246,0.25); }
+.layout-sep { width: 1px; height: 20px; background: var(--border); }
+</style>
+</head>
+<body>
+<div class="page-bg"></div>
+<div class="demo-label">Interactive Prototype — Click layout options below</div>
+
+<!-- ═══════════════════════════════════════════
+     SIDEBAR
+═══════════════════════════════════════════ -->
+<div class="sidebar" id="sidebar">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="brand">
+      <div class="pilot-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+      </div>
+      <span class="brand-name">Copilot</span>
+      <!-- STATUS — replaces cryptic "1F·2W" badge -->
+      <div class="status-indicator status-alert" id="statusIndicator">
+        <div class="status-dot dot-alert"></div>
+        <span id="statusText">3 items need review</span>
+      </div>
+    </div>
+    <div class="hdr-right">
+      <button class="btn-ghost">Compare</button>
+      <!-- EXPAND BUTTON -->
+      <button class="btn-icon" id="expandBtn" title="Expand layout" onclick="cycleLayout()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="expandIcon">
+          <path d="M13 5l7 7-7 7M5 5l7 7-7 7"/>
+        </svg>
+      </button>
+      <button class="btn-icon" title="Close">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- TAB BAR (hidden in wide modes) -->
+  <div class="tab-bar" id="tabBar">
+    <button class="tab active" id="t-qa" onclick="switchTab('qa')">
+      <div class="tab-indicator ti-alert" id="ti-qa"></div>
+      QA Audit
+    </button>
+    <button class="tab" id="t-gl" onclick="switchTab('gl')">
+      <div class="tab-indicator ti-neutral" id="ti-gl"></div>
+      Guidelines
+    </button>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content-area">
+
+    <!-- ── QA PANEL ── -->
+    <div class="panel" id="p-qa">
+      <!-- In wide mode, this panel-header shows -->
+      <div class="panel-header">
+        <div class="tab-indicator ti-alert"></div>
+        <span class="panel-header-title">QA Audit</span>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:5px">
+          <button class="reaudit-btn">Re-audit</button>
+        </div>
+      </div>
+      <div class="panel-scroll" id="qa-scroll">
+        <div class="qa-inner">
+          <div class="audit-card">
+            <div class="score-ring"><span class="score-num">72</span></div>
+            <div class="audit-info">
+              <div class="audit-title">Attention required</div>
+              <div class="audit-sub">1 flag · 2 warnings · 4 passed</div>
+            </div>
+            <button class="reaudit-btn" id="reauditBtnNarrow">Re-audit</button>
+          </div>
+          <div class="urgency-pill">
+            <span class="u-icon">⚡</span>
+            <span class="u-text">Malignant nodule — urgent follow-up protocol</span>
+          </div>
+          <div class="criterion" onclick="openChatWith('Fix Lung-RADS Classification Missing')">
+            <div class="c-dot dot-flag"></div>
+            <div class="c-body">
+              <div class="c-name">Lung-RADS Classification Missing</div>
+              <div class="c-detail">No category assigned. Required for nodule ≥6mm per ACR guidelines.</div>
+            </div>
+            <button class="fix-btn">Fix →</button>
+          </div>
+          <div class="criterion" onclick="openChatWith('Fix size measurement format')">
+            <div class="c-dot dot-warn"></div>
+            <div class="c-body">
+              <div class="c-name">Size measurement format</div>
+              <div class="c-detail">Should include two orthogonal diameters per Fleischner guidelines.</div>
+            </div>
+            <button class="fix-btn">Fix →</button>
+          </div>
+          <div class="criterion" onclick="openChatWith('Add follow-up interval to conclusion')">
+            <div class="c-dot dot-warn"></div>
+            <div class="c-body">
+              <div class="c-name">Follow-up interval not stated</div>
+              <div class="c-detail">Recommended follow-up CT timeframe absent from conclusion.</div>
+            </div>
+            <button class="fix-btn">Fix →</button>
+          </div>
+          <div class="divider"><div class="div-line"></div><span class="div-text">Passed</span><div class="div-line"></div></div>
+          <div class="criterion" style="opacity:.4;cursor:default">
+            <div class="c-dot dot-pass"></div>
+            <div class="c-body"><div class="c-name">Clinical indication documented</div></div>
+          </div>
+          <div class="criterion" style="opacity:.4;cursor:default">
+            <div class="c-dot dot-pass"></div>
+            <div class="c-body"><div class="c-name">Comparison study referenced</div></div>
+          </div>
+          <div class="criterion" style="opacity:.4;cursor:default">
+            <div class="c-dot dot-pass"></div>
+            <div class="c-body"><div class="c-name">Report signed and dated</div></div>
+          </div>
+          <div class="criterion" style="opacity:.4;cursor:default">
+            <div class="c-dot dot-pass"></div>
+            <div class="c-body"><div class="c-name">Laterality clearly stated</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── GUIDELINES PANEL ── -->
+    <div class="panel" id="p-gl" style="display:none">
+      <div class="panel-header">
+        <span style="font-size:14px">📋</span>
+        <span class="panel-header-title">Guidelines</span>
+        <div class="tab-indicator ti-ok" style="margin-left:auto"></div>
+      </div>
+      <div class="panel-scroll" id="gl-scroll">
+        <div style="padding: 12px 14px;">
+          <div class="urgency-pill" style="background:rgba(16,185,129,0.06);border-color:rgba(16,185,129,0.18);margin-bottom:12px">
+            <span class="u-icon">🔬</span>
+            <span class="u-text" style="color:#34d399">Prefetch complete · 3 findings enriched</span>
+          </div>
+          <div class="gl-card">
+            <div class="gl-head" onclick="toggleGL(this)">
+              <div class="gl-icon gl-v">🫁</div>
+              <div class="gl-meta">
+                <div class="gl-title">Pulmonary Nodule — 8mm RUL</div>
+                <div class="gl-chips">
+                  <span class="chip ch-v">Lung-RADS 3</span>
+                  <span class="chip ch-c">6-month CT</span>
+                  <span class="chip ch-a">NICE NG12</span>
+                </div>
+              </div>
+              <svg class="gl-chevron open" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg>
+            </div>
+            <div class="gl-body">
+              <div class="gl-section">
+                <div class="gl-section-title">Classification</div>
+                <div class="gl-item"><strong>Lung-RADS 3</strong> — Probably benign. Short-term 6-month LDCT follow-up.</div>
+              </div>
+              <div class="gl-section">
+                <div class="gl-section-title">Imaging Criteria</div>
+                <div class="gl-item">Solid 6–8mm nodule: borderline. Spiculation absent = ~1–2% malignancy risk.</div>
+                <div class="gl-item">Measure in two orthogonal axial diameters (longest + perpendicular).</div>
+              </div>
+              <div class="gl-section">
+                <div class="gl-section-title">Follow-up Protocol</div>
+                <div class="gl-item">6-month LDCT. Stable → annual. Growth ≥1.5mm → Lung-RADS 4A (3-month CT).</div>
+              </div>
+            </div>
+          </div>
+          <div class="gl-card">
+            <div class="gl-head" onclick="toggleGL(this)">
+              <div class="gl-icon gl-c">📐</div>
+              <div class="gl-meta">
+                <div class="gl-title">Measurement Protocol</div>
+                <div class="gl-chips"><span class="chip ch-c">Fleischner 2017</span><span class="chip ch-a">ACR</span></div>
+              </div>
+              <svg class="gl-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg>
+            </div>
+          </div>
+          <div class="gl-card">
+            <div class="gl-head" onclick="toggleGL(this)">
+              <div class="gl-icon gl-a">📊</div>
+              <div class="gl-meta">
+                <div class="gl-title">Mediastinal Lymphadenopathy</div>
+                <div class="gl-chips"><span class="chip ch-a">Short-axis &gt;10mm</span><span class="chip ch-r">PET-CT indicated</span></div>
+              </div>
+              <svg class="gl-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── INLINE CHAT PANEL (wide modes only) ── -->
+    <div class="panel-chat" id="p-chat" style="display:none">
+      <div class="panel-header">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#71717a" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span class="panel-header-title">Ask Copilot</span>
+      </div>
+      <div class="ctx-bar" style="padding: 6px 12px 0;">
+        <span class="ctx-chip">📋 Lung guidelines</span>
+        <span class="ctx-chip">⚠ 1 flag</span>
+      </div>
+      <div class="chat-panel-msgs" id="inlineMsgs">
+        <div class="msg-u" style="font-size:11px;padding:7px 10px">What's the Lung-RADS follow-up for 8mm?</div>
+        <div class="msg-a" style="font-size:11px;padding:7px 10px"><strong style="color:var(--text)">Lung-RADS 3</strong> — 6-month low-dose CT. If stable at 6 months, continue annual screening.</div>
+      </div>
+      <div class="chat-panel-input">
+        <textarea class="chat-panel-textarea" placeholder="Ask…" rows="1" onkeydown="handleInlineKey(event)" id="inlineInput"></textarea>
+        <button class="chat-panel-send" onclick="sendInline()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+        </button>
+      </div>
+    </div>
+
+  </div><!-- /content-area -->
+
+  <!-- CHAT DOCK (narrow mode pill + sheet) -->
+  <div class="chat-dock" id="chatDock">
+    <div class="chat-sheet" id="chatSheet">
+      <div class="sheet-header">
+        <span class="sheet-title">Ask Copilot</span>
+        <button class="sheet-close" onclick="closeSheet()">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="ctx-bar">
+        <span class="ctx-chip">📋 Lung nodule guidelines</span>
+        <span class="ctx-chip">⚠ 1 flag active</span>
+      </div>
+      <div class="chat-msgs" id="chatMsgs">
+        <div class="msg-u">What's the Lung-RADS category for an 8mm solid nodule?</div>
+        <div class="msg-a">An <strong>8mm solid nodule</strong> is <strong>Lung-RADS 3</strong> — probably benign. 6-month low-dose CT recommended. Growth ≥1.5mm upgrades to 4A.</div>
+        <div class="msg-u" id="latestUserMsg" style="display:none"></div>
+        <div class="msg-a" id="typingEl" style="display:none">
+          <div class="typing"><div class="tdot"></div><div class="tdot"></div><div class="tdot"></div></div>
+        </div>
+      </div>
+      <div class="input-bar">
+        <textarea class="chat-textarea" id="chatInput" placeholder="Ask about the report, guidelines, or request edits…" rows="1" onkeydown="handleKey(event)"></textarea>
+        <button class="input-send" onclick="sendMsg()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="chat-pill-row" id="chatPill">
+      <div class="chat-pill" onclick="openSheet()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#52525b" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span class="chat-pill-text">Ask Copilot about this report…</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#52525b" stroke-width="2"><path d="M5 15l7-7 7 7"/></svg>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /sidebar -->
+
+<!-- LAYOUT SWITCHER -->
+<div class="layout-btn-group">
+  <button class="layout-opt active" id="opt-narrow" onclick="setLayout('narrow')">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2"/></svg>
+    Narrow
+  </button>
+  <div class="layout-sep"></div>
+  <button class="layout-opt" id="opt-dual" onclick="setLayout('dual')">
+    <svg width="14" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="9" height="18" rx="1.5"/><rect x="13" y="3" width="9" height="18" rx="1.5"/></svg>
+    Dual panel
+  </button>
+  <div class="layout-sep"></div>
+  <button class="layout-opt" id="opt-tri" onclick="setLayout('tri')">
+    <svg width="16" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="6" height="18" rx="1.5"/><rect x="9" y="3" width="6" height="18" rx="1.5"/><rect x="17" y="3" width="6" height="18" rx="1.5"/></svg>
+    Tri panel
+  </button>
+</div>
+
+<script>
+const sb = document.getElementById('sidebar');
+let currentLayout = 'narrow';
+
+const LAYOUTS = {
+  narrow: { width: '380px', wide: false, panels: ['qa'], showChat: true, tabVisible: true },
+  dual:   { width: '700px', wide: true,  panels: ['qa','gl'], showChat: false, tabVisible: false },
+  tri:    { width: '920px', wide: true,  panels: ['qa','gl','chat'], showChat: false, tabVisible: false },
+};
+
+function setLayout(layout) {
+  const cfg = LAYOUTS[layout];
+  currentLayout = layout;
+
+  const pQA   = document.getElementById('p-qa');
+  const pGL   = document.getElementById('p-gl');
+  const pChat = document.getElementById('p-chat');
+  const dock  = document.getElementById('chatDock');
+
+  // ── Step 1: clear ALL inline display styles so CSS takes over cleanly ──
+  [pQA, pGL, pChat, dock].forEach(el => { if (el) el.style.display = ''; });
+
+  // ── Step 2: apply sidebar width + wide/tri class ──
+  sb.style.width = cfg.width;
+  sb.classList.toggle('wide', cfg.wide);
+  sb.classList.toggle('tri', layout === 'tri');
+
+  // ── Step 3: tab bar ──
+  const tabBar = document.getElementById('tabBar');
+  tabBar.style.maxHeight = cfg.tabVisible ? '48px' : '0';
+  tabBar.style.opacity   = cfg.tabVisible ? '1' : '0';
+
+  // ── Step 4: panel visibility ──
+  if (layout === 'narrow') {
+    // Show active tab panel only; hide others and chat panel + dock
+    const activeTab = document.querySelector('.tab.active')?.id === 't-qa' ? 'qa' : 'gl';
+    pQA.style.display   = activeTab === 'qa' ? 'block' : 'none';
+    pGL.style.display   = activeTab === 'gl' ? 'block' : 'none';
+    pChat.style.display = 'none';
+    dock.style.display  = 'block';
+  } else if (layout === 'dual') {
+    // QA + GL side by side; chat remains accessible as bottom pill
+    pQA.style.display   = 'flex';
+    pGL.style.display   = 'flex';
+    pChat.style.display = 'none';
+    dock.style.display  = 'block'; // pill stays visible in dual
+  } else if (layout === 'tri') {
+    // All three columns inline; dock hidden
+    pQA.style.display   = 'flex';
+    pGL.style.display   = 'flex';
+    pChat.style.display = 'flex';
+    dock.style.display  = 'none';
+  }
+
+  // ── Step 5: header button state ──
+  const icon = document.getElementById('expandIcon');
+  icon.innerHTML = layout === 'narrow'
+    ? '<path d="M13 5l7 7-7 7M5 5l7 7-7 7"/>'
+    : '<path d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>';
+  document.getElementById('expandBtn').classList.toggle('active', layout !== 'narrow');
+
+  // ── Step 6: Re-audit btn (only in narrow score card) ──
+  const rNarrow = document.getElementById('reauditBtnNarrow');
+  if (rNarrow) rNarrow.style.display = layout === 'narrow' ? '' : 'none';
+
+  // ── Step 7: button group highlight ──
+  ['narrow','dual','tri'].forEach(l =>
+    document.getElementById('opt-'+l)?.classList.toggle('active', l === layout)
+  );
+
+  // Close chat sheet if moving out of narrow
+  if (layout !== 'narrow') closeSheet();
+}
+
+function cycleLayout() {
+  const order = ['narrow','dual','tri'];
+  const next = order[(order.indexOf(currentLayout) + 1) % order.length];
+  setLayout(next);
+}
+
+// ── TAB SWITCHING (narrow only) ──
+function switchTab(tab) {
+  if (currentLayout !== 'narrow') return;
+  document.getElementById('t-qa').classList.toggle('active', tab==='qa');
+  document.getElementById('t-gl').classList.toggle('active', tab==='gl');
+  document.getElementById('p-qa').style.display = tab==='qa' ? 'block' : 'none';
+  document.getElementById('p-gl').style.display = tab==='gl' ? 'block' : 'none';
+}
+
+// ── GL CARDS ──
+function toggleGL(header) {
+  const body = header.nextElementSibling;
+  const chev = header.querySelector('.gl-chevron');
+  if (!body || !body.classList.contains('gl-body')) return;
+  const open = body.style.display === 'block';
+  body.style.display = open ? 'none' : 'block';
+  if (chev) chev.classList.toggle('open', !open);
+}
+
+// ── CHAT SHEET (narrow) ──
+function openSheet() {
+  document.getElementById('chatSheet').classList.add('open');
+  document.getElementById('chatPill').style.display = 'none';
+  setTimeout(() => document.getElementById('chatInput')?.focus(), 100);
+}
+function closeSheet() {
+  document.getElementById('chatSheet').classList.remove('open');
+  document.getElementById('chatPill').style.display = 'flex';
+}
+function openChatWith(msg) {
+  if (currentLayout !== 'narrow') {
+    const inp = document.getElementById('inlineInput');
+    if (inp) { inp.value = msg; inp.focus(); }
+  } else {
+    openSheet();
+    setTimeout(() => { const i = document.getElementById('chatInput'); if(i){i.value=msg;i.focus();} }, 200);
+  }
+}
+
+const botReplies = {
+  default: "Based on the active guideline context, I can help address that. Here's what I'd recommend for this report:",
+  'Fix Lung-RADS Classification Missing': 'For an 8mm solid RUL nodule, the correct category is **Lung-RADS 3**. Suggested addition to conclusion: *"Lung-RADS 3. 6-month low-dose CT recommended."*',
+  'Fix size measurement format': 'Per Fleischner 2017, report as two orthogonal axial diameters. Suggested: *"8 × 7mm solid nodule in the right upper lobe."*',
+  'Add follow-up interval to conclusion': 'For Lung-RADS 3: *"6-month low-dose CT chest recommended for surveillance."*',
+};
+
+function handleKey(e) { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); } }
+function sendMsg() {
+  const inp = document.getElementById('chatInput');
+  const msg = inp.value.trim(); if (!msg) return; inp.value = '';
+  const userEl = document.getElementById('latestUserMsg');
+  userEl.textContent = msg; userEl.style.display = 'block';
+  const typing = document.getElementById('typingEl'); typing.style.display = 'block';
+  scrollChat('chatMsgs');
+  setTimeout(() => {
+    typing.style.display = 'none';
+    const r = botReplies[msg] || botReplies.default;
+    const el = document.createElement('div'); el.className = 'msg-a';
+    el.innerHTML = r.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--text)">$1</strong>').replace(/\*(.*?)\*/g,'<em>$1</em>');
+    document.getElementById('chatMsgs').appendChild(el);
+    scrollChat('chatMsgs');
+  }, 1300);
+}
+
+function handleInlineKey(e) { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendInline(); } }
+function sendInline() {
+  const inp = document.getElementById('inlineInput');
+  const msg = inp.value.trim(); if (!msg) return; inp.value = '';
+  const msgs = document.getElementById('inlineMsgs');
+  const u = document.createElement('div'); u.className='msg-a'; u.style.cssText='font-size:11px;padding:7px 10px;align-self:flex-end;background:linear-gradient(135deg,#5b21b6,#8b5cf6);color:white;border:none';
+  u.textContent = msg; msgs.appendChild(u);
+  const t = document.createElement('div'); t.className='msg-a'; t.style.cssText='font-size:11px;padding:7px 10px';
+  t.innerHTML='<div class="typing"><div class="tdot"></div><div class="tdot"></div><div class="tdot"></div></div>';
+  msgs.appendChild(t); scrollChat('inlineMsgs');
+  const r = botReplies[msg] || botReplies.default;
+  setTimeout(() => {
+    t.innerHTML = r.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--text)">$1</strong>').replace(/\*(.*?)\*/g,'<em>$1</em>');
+    scrollChat('inlineMsgs');
+  }, 1200);
+}
+
+function scrollChat(id) { const m = document.getElementById(id); if (m) m.scrollTop = m.scrollHeight; }
+
+// init
+setLayout('narrow');
+</script>
+</body>
+</html>
