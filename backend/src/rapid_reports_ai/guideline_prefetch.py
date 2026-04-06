@@ -1581,6 +1581,7 @@ async def _run_synthesis_passes(
             from rapid_reports_ai.database.connection import SessionLocal
             db = SessionLocal()
             try:
+                logger.info("[S4] [%d] TNM query: %r", finding_idx, finding_label)
                 results = hybrid_tnm_search(finding_label, db, top_k=1)
                 if results:
                     tnm_block = format_tnm_evidence(results[0])
@@ -1589,10 +1590,12 @@ async def _run_synthesis_passes(
                         finding_idx, results[0].tumour, results[0].rrf_score,
                         results[0].bm25_rank, results[0].semantic_rank,
                     )
+                else:
+                    logger.info("[S4] [%d] TNM search returned no results for %r", finding_idx, finding_label)
             finally:
                 db.close()
         except Exception as e:
-            logger.debug("[S4] TNM lookup skipped: %s", e)
+            logger.warning("[S4] TNM lookup failed for %r: %s", finding_label, e)
 
         if tnm_block:
             up = (
