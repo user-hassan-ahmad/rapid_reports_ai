@@ -27,6 +27,18 @@ def upgrade() -> None:
     inspector = sqlalchemy_inspect(connection)
     existing_tables = inspector.get_table_names()
 
+    has_pgvector = connection.execute(text(
+        "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'"
+    )).scalar()
+    if not has_pgvector:
+        import warnings
+        warnings.warn(
+            "pgvector extension not available on this PostgreSQL instance — "
+            "skipping tnm_staging table creation. TNM hybrid search will be "
+            "disabled until pgvector is installed."
+        )
+        return
+
     connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
 
     if "tnm_staging" not in existing_tables:

@@ -80,7 +80,6 @@
 	let lastTemplateId: string | null = null;
 
 	// ReportResponseViewer state
-	let responseExpanded = false;
 	let hasResponseEver = false;
 	let responseVisible = false;
 	let reportViewerRef: any = null;
@@ -190,9 +189,8 @@
 						response = null;
 						responseModel = null;
 						reportId = null;
-						hasResponseEver = false;
-						responseExpanded = false;
-						activePrompts = [];
+					hasResponseEver = false;
+					activePrompts = [];
 						findingsAtReportGeneration = '';
 						dispatch('clearResponse');
 					}
@@ -239,7 +237,6 @@
 		error = null;
 		reportId = null;
 		hasResponseEver = false;
-		responseExpanded = false;
 		findingsAtReportGeneration = '';
 		dispatch('resetForm');
 		dispatch('reportCleared');
@@ -294,9 +291,8 @@
 				response = data.response;
 				responseModel = data.model;
 				reportId = data.report_id ?? null;
-				hasResponseEver = true;
-				responseExpanded = true;
-				findingsAtReportGeneration = findingsContent;
+			hasResponseEver = true;
+			findingsAtReportGeneration = findingsContent;
 				dispatch('reportGenerated', { reportId: data.report_id });
 				dispatch('historyUpdate', { count: 1 });
 			} else {
@@ -309,15 +305,10 @@
 		}
 	}
 
-	function toggleResponse() {
-		responseExpanded = !responseExpanded;
-	}
-
 	function clearResponse() {
 		response = null;
 		responseModel = null;
 		error = null;
-		responseExpanded = false;
 		hasResponseEver = false;
 		responseVisible = false;
 		findingsAtReportGeneration = '';
@@ -370,7 +361,6 @@
 		response = detail.report.report_content;
 		responseModel = detail.report.model_used ?? null;
 		hasResponseEver = true;
-		responseExpanded = true;
 		responseVisible = true;
 
 		const savedVars = detail.report.input_data?.variables;
@@ -712,8 +702,7 @@
 			<ReportResponseViewer
 				bind:this={reportViewerRef}
 				visible={responseVisible && !!selectedTemplate}
-				expanded={responseExpanded}
-				response={response ?? ''}
+			response={response ?? ''}
 				{error}
 				model={responseModel}
 				generationLoading={loading}
@@ -727,8 +716,7 @@
 				clinicalHistory={variableValues['CLINICAL_HISTORY'] ?? ''}
 				caseDetailsDirty={sectionsDirty}
 				{findingsStale}
-				on:toggle={toggleResponse}
-			on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
+		on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
 			on:auditStateChange={(e) => dispatch('auditStateChange', e.detail)}
 			on:openVersionHistory={() => dispatch('openVersionHistory')}
 			on:copy={copyToClipboard}

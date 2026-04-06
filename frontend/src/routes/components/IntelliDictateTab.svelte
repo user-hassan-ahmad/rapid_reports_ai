@@ -86,7 +86,6 @@ import { API_URL } from '$lib/config';
 	}> = [];
 
 	// ReportResponseViewer state
-	let responseExpanded = false;
 	let hasResponseEver = false;
 	let responseVisible = false;
 
@@ -153,9 +152,8 @@ import { API_URL } from '$lib/config';
 				responseModel = null;
 				reportId = null;
 				applicableGuidelines = [];
-				hasResponseEver = false;
-				responseExpanded = false;
-				activePrompts = [];
+			hasResponseEver = false;
+			activePrompts = [];
 				findingsAtReportGeneration = '';
 				dispatch('clearResponse');
 
@@ -199,7 +197,6 @@ import { API_URL } from '$lib/config';
 		reportId = null;
 		applicableGuidelines = [];
 		hasResponseEver = false;
-		responseExpanded = false;
 		findingsAtReportGeneration = '';
 		draftStore.clearIntelliTab();
 		dispatch('resetForm');
@@ -244,9 +241,8 @@ import { API_URL } from '$lib/config';
 				responseModel = data.model_used ?? data.model ?? 'claude';
 				reportId = data.report_id ?? null;
 				applicableGuidelines = data.applicable_guidelines ?? [];
-				hasResponseEver = true;
-				responseExpanded = true;
-				findingsAtReportGeneration = content;
+			hasResponseEver = true;
+			findingsAtReportGeneration = content;
 				draftStore.clearIntelliTab();
 				dispatch('historyUpdate', { count: 1 });
 			} else {
@@ -259,16 +255,11 @@ import { API_URL } from '$lib/config';
 		}
 	}
 
-	function toggleResponse() {
-		responseExpanded = !responseExpanded;
-	}
-
 	function clearResponse() {
 		response = null;
 		responseModel = null;
 		error = null;
 		applicableGuidelines = [];
-		responseExpanded = false;
 		hasResponseEver = false;
 		responseVisible = false;
 		findingsAtReportGeneration = '';
@@ -296,7 +287,6 @@ import { API_URL } from '$lib/config';
 		response = detail.report.report_content;
 		responseModel = detail.report.model_used ?? null;
 		hasResponseEver = true;
-		responseExpanded = true;
 		responseVisible = true;
 		dispatch('historyRestored', detail);
 	}
@@ -680,7 +670,6 @@ import { API_URL } from '$lib/config';
 	<ReportResponseViewer
 		bind:this={reportViewerRef}
 		visible={responseVisible}
-		expanded={responseExpanded}
 		response={response ?? ''}
 		{error}
 		model={responseModel}
@@ -696,8 +685,7 @@ import { API_URL } from '$lib/config';
 		{applicableGuidelines}
 		caseDetailsDirty={sectionsDirty}
 		{findingsStale}
-		on:toggle={toggleResponse}
-	on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
+		on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
 	on:auditStateChange={(e) => dispatch('auditStateChange', e.detail)}
 	on:openVersionHistory={() => dispatch('openVersionHistory')}
 	on:openCompare={() => dispatch('openCompare')}

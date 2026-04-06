@@ -66,7 +66,12 @@ def seed_tnm_if_empty(db: Session) -> int:
     except Exception:
         return 0
 
-    row = db.execute(text("SELECT count(*) FROM tnm_staging")).scalar()
+    try:
+        row = db.execute(text("SELECT count(*) FROM tnm_staging")).scalar()
+    except Exception:
+        db.rollback()
+        logger.info("[TNM] tnm_staging table does not exist — skipping seed (pgvector not available?)")
+        return 0
     if row and row > 0:
         logger.info("[TNM] tnm_staging already has %d rows — skipping seed", row)
         return 0
@@ -155,6 +160,16 @@ def hybrid_tnm_search(
         if dialect != "postgresql":
             return []
     except Exception:
+        return []
+
+    try:
+        table_exists = db.execute(text(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = 'tnm_staging'"
+        )).scalar()
+        if not table_exists:
+            return []
+    except Exception:
+        db.rollback()
         return []
 
     # BM25 leg

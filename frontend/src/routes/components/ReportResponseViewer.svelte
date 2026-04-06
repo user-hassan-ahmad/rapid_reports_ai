@@ -15,7 +15,6 @@
 	const dispatch = createEventDispatcher();
 
 	export let visible = false;
-	export let expanded = true;
 	export let response = '';
 	export let error = null;
 	export let model = null;
@@ -718,24 +717,9 @@
 		<!-- Header: Mobile-first responsive layout -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 sm:px-4 py-2 sm:py-3">
 			<!-- Title row -->
-			<button
-				type="button"
-				onclick={(e) => {
-					e.stopPropagation();
-					dispatch('toggle');
-				}}
-				class="flex items-center gap-2 transition-colors shrink-0"
-			>
-				<h2 class="text-base sm:text-lg font-semibold text-white">Response</h2>
-				<svg
-					class="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 transform transition-transform hover:text-purple-400 {expanded ? 'rotate-180' : ''}"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-				>
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-				</svg>
-			</button>
+			<div class="flex items-center gap-2 shrink-0">
+				<h2 class="text-base sm:text-lg font-semibold text-white">Report Editor</h2>
+			</div>
 			
 			<!-- Controls row: wraps on mobile -->
 			<div class="flex flex-wrap items-center gap-1.5 sm:gap-2 relative z-15">
@@ -796,8 +780,7 @@
 			</div>
 		</div>
 
-		{#if expanded}
-			<div class="relative flex-1 min-h-0 flex flex-col transition-opacity duration-300 {caseDetailsDirty ? 'opacity-50 pointer-events-none' : ''}">
+	<div class="relative flex-1 min-h-0 flex flex-col transition-opacity duration-300 {caseDetailsDirty ? 'opacity-50 pointer-events-none' : ''}">
 				{#if caseDetailsDirty}
 					<div class="absolute inset-0 z-20 flex items-center justify-center bg-black/20 backdrop-blur-[1px]" in:fade={{ duration: 200 }}>
 						<p class="text-sm text-gray-300 font-medium px-4 py-2 bg-black/60 rounded-lg shadow-lg">Case details changed — regenerate workspace to continue</p>
@@ -1007,7 +990,6 @@
 			{/if}
 
 		</div>
-		{/if}
 	</div>
 
 {/if}

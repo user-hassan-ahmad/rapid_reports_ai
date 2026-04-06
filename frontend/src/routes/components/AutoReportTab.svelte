@@ -50,7 +50,6 @@
 	
 	// Control collapsible state
 	let formExpanded = true;
-	let responseExpanded = false;
 	let hasResponseEver = false;
 	let responseVisible = false;
 	
@@ -72,10 +71,9 @@
 	// Check if at least one model API key is configured
 	$: hasModelKey = apiKeyStatus.has_at_least_one_model ?? (apiKeyStatus.anthropic_configured || apiKeyStatus.groq_configured || apiKeyStatus.cerebras_configured);
 	
-	// Auto-collapse form and expand response when response arrives
+	// Auto-collapse form when response arrives
 	$: if (response || error) {
 		formExpanded = false;
-		responseExpanded = true;
 		if (response || error) {
 			hasResponseEver = true;
 		}
@@ -147,15 +145,10 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 		formExpanded = !formExpanded;
 	}
 
-	function toggleResponse() {
-		responseExpanded = !responseExpanded;
-	}
-
 	function clearResponse() {
 		response = null;
 		responseModel = null;
 		error = null;
-		responseExpanded = false;
 		formExpanded = true;
 		hasResponseEver = false;
 		responseVisible = false;
@@ -165,7 +158,6 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 	function resetForm() {
 		// Expand form and collapse response
 		formExpanded = true;
-		responseExpanded = false;
 		hasResponseEver = false;
 		responseVisible = false;
 		// Clear response state locally
@@ -199,7 +191,6 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 		response = detail.report.report_content;
 		responseModel = detail.report.model_used;
 		hasResponseEver = true;
-		responseExpanded = true;
 		responseVisible = true;
 		dispatch('historyRestored', detail);
 	}
@@ -411,8 +402,7 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 	</div>
 		<ReportResponseViewer
 			visible={responseVisible}
-			expanded={responseExpanded}
-			response={response}
+		response={response}
 			error={error}
 			model={responseModel}
 			generationLoading={loading}
@@ -424,8 +414,7 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 			enhancementError={enhancementError}
 			scanType={scanType}
 			clinicalHistory={clinicalHistory}
-			on:toggle={toggleResponse}
-		on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
+	on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
 		on:copy={copyToClipboard}
 		on:clear={clearResponse}
 		on:restore={(event) => handleHistoryRestore(event.detail)}
