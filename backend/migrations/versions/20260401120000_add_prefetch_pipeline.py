@@ -58,20 +58,13 @@ def upgrade() -> None:
         op.add_column("report_audits", sa.Column("prefetch_used", sa.Boolean(), nullable=True))
 
     # ── 4. Drop legacy cache tables (superseded by prefetch_results) ───────────
-    if "guideline_cache" in existing_tables:
-        try:
-            op.drop_index("ix_guideline_cache_expires_at", table_name="guideline_cache")
-        except Exception:
-            pass
-        op.drop_table("guideline_cache")
-
-    if "enhancement_cache" in existing_tables:
-        for idx in ("idx_expires_at", "idx_findings_hash_type"):
-            try:
-                op.drop_index(idx, table_name="enhancement_cache")
-            except Exception:
-                pass
-        op.drop_table("enhancement_cache")
+    # Use raw SQL with IF EXISTS to avoid poisoning the PG transaction
+    # (op.drop_index inside try/except still aborts the transactional DDL block).
+    connection.execute(sa.text("DROP INDEX IF EXISTS ix_guideline_cache_expires_at"))
+    connection.execute(sa.text("DROP TABLE IF EXISTS guideline_cache"))
+    connection.execute(sa.text("DROP INDEX IF EXISTS idx_expires_at"))
+    connection.execute(sa.text("DROP INDEX IF EXISTS idx_findings_hash_type"))
+    connection.execute(sa.text("DROP TABLE IF EXISTS enhancement_cache"))
 
 
 def downgrade() -> None:
