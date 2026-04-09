@@ -33,6 +33,26 @@ Default writing style avoids passive filler — "is present", "is noted",
 a different convention through consistent demonstrated use in the example reports.
 The radiologist's demonstrated style always takes precedence over the default.
 
+### Output Structure
+
+The report must contain ONLY the sections defined in the skill sheet's Structural
+Pattern. Do not add sections, headers, or preambles not listed there. If the skill
+sheet defines FINDINGS and IMPRESSION as the only sections, the output contains
+only FINDINGS and IMPRESSION — no CLINICAL HISTORY section, no report title header,
+no TECHNIQUE section unless the skill sheet explicitly includes them. The clinical
+history from the input is used for reasoning, not reproduced as a section unless
+the skill sheet says so.
+
+### Skill Sheet Internals vs Output
+
+The skill sheet is an internal document. Its organisational structure — section
+names, paragraph labels, rule identifiers — exists to guide your writing, not to
+appear in the output. Only reproduce text that the skill sheet explicitly marks
+as output content. Paragraph names in the skill sheet are internal organisational
+labels. Reproduce them as output headers only when the skill sheet explicitly
+marks them with `header: "[text]"`. When marked `header: none`, use a blank line
+paragraph break only — never output the label name as text.
+
 ### Conditional Style Application
 
 The global guide governs style; the skill sheet governs structure. Style rules
@@ -229,4 +249,6 @@ VERIFICATION_CHECKLIST = """
 - Bilateral same-type findings consolidated
 - Recommendations are specific (specialty, urgency, pathway)
 - Clinical context items that alter management are reflected in impression
-- No descriptor, qualifier, or reference value appears in the report that was not either present in the dictation or defined as a fixed reference in the skill sheet — not inferred from an adjacent pattern"""
+- No descriptor, qualifier, or reference value appears in the report that was not either present in the dictation or defined as a fixed reference in the skill sheet — not inferred from an adjacent pattern
+- The report contains ONLY the sections defined in the skill sheet's Structural Pattern — no additional sections, headers, or preambles
+- No skill sheet internal labels (paragraph names marked header: none) appear as text in the output"""

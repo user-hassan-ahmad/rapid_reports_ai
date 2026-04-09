@@ -13,6 +13,7 @@ import ReportVersionHistory from './components/ReportVersionHistory.svelte';
 import ReportVersionInline from './components/ReportVersionInline.svelte';
 import TemplateEditorNew from './components/TemplateEditorNew.svelte';
 import TemplateWizard from './components/wizard/TemplateWizard.svelte';
+	import SkillSheetCreator from './components/SkillSheetCreator.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import UnfilledItemHoverPopup from './components/UnfilledItemHoverPopup.svelte';
 	import type { UnfilledItem } from '$lib/utils/placeholderDetection';
@@ -255,6 +256,7 @@ function closeCopilot() {
 let showTemplateEditor = false;
 let editingTemplate: any = null;
 let showTemplateWizard = false;
+let showSkillSheetCreator = false;
 let templatedModel = 'claude'; // Track model for template editor
 	
 	// Sync URL hash when activeTab changes (for programmatic tab changes)
@@ -440,7 +442,7 @@ let templatedModel = 'claude'; // Track model for template editor
 	}
 
 	function handleOpenTemplateWizard(): void {
-		showTemplateWizard = true;
+		showSkillSheetCreator = true;
 	}
 
 	function handleCloseTemplateWizard(): void {
@@ -451,6 +453,16 @@ let templatedModel = 'claude'; // Track model for template editor
 		showTemplateWizard = false;
 		// Refresh templates
 		templatesStore.refreshTemplates();
+	}
+
+	function handleCloseSkillSheetCreator(): void {
+		showSkillSheetCreator = false;
+	}
+
+	function handleSkillSheetCreated(): void {
+		showSkillSheetCreator = false;
+		templatesStore.refreshTemplates();
+		templatesRefreshKey += 1;
 	}
 
 	let templatesRefreshKey = 0;
@@ -984,7 +996,12 @@ $: if (
 		
 		<!-- Templated Report Tab - Keep component alive, just hide/show -->
 				<div class={activeTab === 'templated' ? '' : 'hidden'}>
-					{#if loadingApiStatus}
+					{#if showSkillSheetCreator}
+						<SkillSheetCreator
+							on:close={handleCloseSkillSheetCreator}
+							on:templateCreated={handleSkillSheetCreated}
+						/>
+					{:else if loadingApiStatus}
 						<!-- Skeleton loader for API status -->
 						<div class="card-dark space-y-4">
 							<div class="h-8 bg-gray-700/50 rounded animate-pulse w-1/3"></div>

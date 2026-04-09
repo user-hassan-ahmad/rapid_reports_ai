@@ -3081,13 +3081,7 @@ Generate the report now as valid JSON.
         Returns:
             { skill_sheet: str, summary: str, questions: list[str] }
         """
-        from pydantic import BaseModel
         from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model, _log_glm_reasoning
-
-        class SkillSheetAnalysisOutput(BaseModel):
-            skill_sheet: str
-            summary: str
-            questions: List[Dict[str, Any]]
 
         model_name = MODEL_CONFIG["SKILL_SHEET_ANALYZER"]
 
@@ -3130,6 +3124,7 @@ When extracting fixed blocks, tag any statement that describes the patient's sta
 For each FINDINGS section/paragraph, specify:
 
 ### [SECTION/PARAGRAPH NAME]
+- **header**: Does this paragraph have a visible heading in the example reports? A heading exists if and only if it appears on its own line, separated from the paragraph content below it, in the examples. If yes: `header: "[exact text as it appears]"` (e.g. `header: "Lung Parenchyma:"`). If no visible heading — just a paragraph break: `header: none`. Text that appears only as your organisational label during extraction is NOT a header.
 - **Mandatory fields**: fields that must always be present regardless of findings
 - **Field ordering**: sequence fields must follow within the section
 - **Mandatory negatives**: exact phrasing quoted from the examples (e.g. "No pericardial effusion is identified")
@@ -3250,7 +3245,7 @@ Return a JSON object with exactly these three keys:
 
         result = await _run_agent_with_model(
             model_name=model_name,
-            output_type=SkillSheetAnalysisOutput,
+            output_type=str,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             api_key=api_key,
@@ -3267,11 +3262,12 @@ Return a JSON object with exactly these three keys:
         )
 
         _log_glm_reasoning(result, f"{model_name} (Skill Sheet Analyze) - GLM Reasoning")
-        output = result.output
+        raw = result.output if hasattr(result, "output") else str(result)
+        parsed = self._parse_skill_sheet_json(raw, ["skill_sheet", "summary", "questions"])
         return {
-            "skill_sheet": output.skill_sheet,
-            "summary": output.summary,
-            "questions": output.questions,
+            "skill_sheet": parsed["skill_sheet"],
+            "summary": parsed["summary"],
+            "questions": parsed["questions"],
         }
 
     async def generate_test_case(
@@ -3284,12 +3280,7 @@ Return a JSON object with exactly these three keys:
         Generate a novel test case (clinical history + scratchpad findings)
         from example reports. Runs in parallel with skill sheet analysis.
         """
-        from pydantic import BaseModel
         from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model, _log_glm_reasoning
-
-        class TestCaseOutput(BaseModel):
-            sample_clinical_history: str
-            sample_findings: str
 
         model_name = MODEL_CONFIG["SKILL_SHEET_ANALYZER"]
 
@@ -3316,7 +3307,7 @@ Generate a JSON object with exactly two keys:
 
         result = await _run_agent_with_model(
             model_name=model_name,
-            output_type=TestCaseOutput,
+            output_type=str,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             api_key=api_key,
@@ -3333,10 +3324,11 @@ Generate a JSON object with exactly two keys:
         )
 
         _log_glm_reasoning(result, f"{model_name} (Test Case Generator) - GLM Reasoning")
-        output = result.output
+        raw = result.output if hasattr(result, "output") else str(result)
+        parsed = self._parse_skill_sheet_json(raw, ["sample_clinical_history", "sample_findings"])
         return {
-            "sample_clinical_history": output.sample_clinical_history,
-            "sample_findings": output.sample_findings,
+            "sample_clinical_history": parsed["sample_clinical_history"],
+            "sample_findings": parsed["sample_findings"],
         }
 
     async def refine_skill_sheet(
@@ -3358,12 +3350,7 @@ Generate a JSON object with exactly two keys:
         Returns:
             { skill_sheet: str, response: str }
         """
-        from pydantic import BaseModel
         from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model, _log_glm_reasoning
-
-        class SkillSheetRefineOutput(BaseModel):
-            skill_sheet: str
-            response: str
 
         model_name = MODEL_CONFIG["SKILL_SHEET_REFINER"]
 
@@ -3403,7 +3390,7 @@ Return a JSON object with:
 
         result = await _run_agent_with_model(
             model_name=model_name,
-            output_type=SkillSheetRefineOutput,
+            output_type=str,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             api_key=api_key,
@@ -3420,10 +3407,11 @@ Return a JSON object with:
         )
 
         _log_glm_reasoning(result, f"{model_name} (Skill Sheet Refine) - GLM Reasoning")
-        output = result.output
+        raw = result.output if hasattr(result, "output") else str(result)
+        parsed = self._parse_skill_sheet_json(raw, ["skill_sheet", "response"])
         return {
-            "skill_sheet": output.skill_sheet,
-            "response": output.response,
+            "skill_sheet": parsed["skill_sheet"],
+            "response": parsed["response"],
         }
 
     async def test_generate_with_skill_sheet(
