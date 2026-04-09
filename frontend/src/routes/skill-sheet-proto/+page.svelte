@@ -77,7 +77,7 @@
 			summary = data.summary || '';
 			sampleFindings = data.sample_findings || '';
 			testFindings = sampleFindings;
-			testClinicalHistory = '';
+			testClinicalHistory = data.sample_clinical_history || '';
 			pendingQuestions = (data.questions || []).slice(0, 3);
 			activeQuestionIdx = -1;
 			chatHistory = [];

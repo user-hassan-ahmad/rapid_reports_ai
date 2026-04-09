@@ -3084,15 +3084,10 @@ Generate the report now as valid JSON.
         from pydantic import BaseModel
         from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model, _log_glm_reasoning
 
-        class ClarifyingQuestion(BaseModel):
-            question: str
-            suggestions: List[str]
-
         class SkillSheetAnalysisOutput(BaseModel):
             skill_sheet: str
             summary: str
-            questions: List[ClarifyingQuestion]
-            sample_findings: str
+            questions: List[Dict[str, Any]]
 
         model_name = MODEL_CONFIG["SKILL_SHEET_ANALYZER"]
 
@@ -3128,6 +3123,8 @@ The Skill Sheet must follow this structure:
 Verbatim text that must be reproduced exactly and never paraphrased. Extract the precise wording from the examples. Use {laterality}, {contrast_type}, or {field_strength} for patient-specific values that vary between cases.
 - TECHNIQUE: [exact wording with parameters]
 - Any other sections with fixed standardised phrasing: [exact wording]
+
+When extracting fixed blocks, tag any statement that describes the patient's state or imaging history as [NEEDS VERIFICATION]. A statement is factual if it could be false for a different patient — "No previous CMR available", "The study is of diagnostic quality", "No pericardial effusion" are all patient-state assertions. A statement is structural if it describes what was performed and how — "MRI of the {laterality} shoulder performed at 1.5 Tesla", "Sequences include coronal and sagittal proton density fat-saturated" are structural. When in doubt, tag it. The cost of an unnecessary verification is trivial; the cost of a missed factual error in a signed report is not.
 
 ## Per-Section Construction Rules
 For each FINDINGS section/paragraph, specify:
@@ -3246,11 +3243,10 @@ Where a rule cannot be determined from the examples alone, flag it explicitly as
         user_prompt = f"""Analyse these example radiology reports for scan type: **{scan_type}**
 {examples_text}
 
-Return a JSON object with exactly these four keys:
+Return a JSON object with exactly these three keys:
 - "skill_sheet": the complete Skill Sheet markdown document following the structure above
 - "summary": a 2-3 sentence plain English summary of the key patterns you identified
-- "questions": an array of exactly 3 objects, each with "question" (the clarifying question) and "suggestions" (array of 2-3 short clickable answer options the radiologist can pick from). Target the most impactful rules flagged as [NEEDS CLARIFICATION] or where examples were ambiguous. Suggestions should be concrete, specific answers — not generic. Do not ask about things clearly evidenced in the reports
-- "sample_findings": concise scratchpad-style findings as a radiologist would dictate or type into a reporting system — use shorthand, abbreviations, bullet points or terse phrases. NOT a structured report. Include a mix of positive and negative observations, at least one incidental finding, and bilateral pathology if relevant. Example style: "- bilateral PE, R>L, extending to segmental level\n- RV:LV 1.3, septal flattening\n- no effusion\n- 7mm RUL nodule solid"."""
+- "questions": an array of exactly 3 objects, each with "question" (the clarifying question) and "suggestions" (array of 2-3 short clickable answer options the radiologist can pick from). Target the most impactful rules flagged as [NEEDS CLARIFICATION] or where examples were ambiguous. Suggestions should be concrete, specific answers — not generic. Do not ask about things clearly evidenced in the reports"""
 
         result = await _run_agent_with_model(
             model_name=model_name,
@@ -3275,7 +3271,71 @@ Return a JSON object with exactly these four keys:
         return {
             "skill_sheet": output.skill_sheet,
             "summary": output.summary,
-            "questions": [{"question": q.question, "suggestions": q.suggestions} for q in output.questions],
+            "questions": output.questions,
+        }
+
+    async def generate_test_case(
+        self,
+        examples: List[Dict[str, str]],
+        scan_type: str,
+        api_key: str,
+    ) -> Dict:
+        """
+        Generate a novel test case (clinical history + scratchpad findings)
+        from example reports. Runs in parallel with skill sheet analysis.
+        """
+        from pydantic import BaseModel
+        from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model, _log_glm_reasoning
+
+        class TestCaseOutput(BaseModel):
+            sample_clinical_history: str
+            sample_findings: str
+
+        model_name = MODEL_CONFIG["SKILL_SHEET_ANALYZER"]
+
+        examples_text = ""
+        for i, ex in enumerate(examples, 1):
+            label = ex.get("label") or f"Example {i}"
+            content = ex.get("content", "").strip()
+            examples_text += f"\n\n### {label}\n```\n{content}\n```"
+
+        system_prompt = """You are generating a test case for a radiology report template. You will be given example reports of a specific scan type. Your job is to invent a novel clinical scenario and raw findings for the same scan type that a radiologist can use to test their template.
+
+The test case has two parts:
+1. A terse clinical history in referral format
+2. Raw scratchpad findings as a radiologist would dictate before any report is written"""
+
+        user_prompt = f"""These are example reports for scan type: **{scan_type}**
+{examples_text}
+
+Generate a JSON object with exactly two keys:
+
+- "sample_clinical_history": terse referral format — age, sex abbreviated, key clinical facts as noun phrases, query statement last. Must be clinically coherent with the findings below. Do not copy from the examples.
+
+- "sample_findings": a novel clinical scenario that is distinct from all the examples above — different primary diagnosis, different pathology combination, different severity level. Every finding must be internally consistent — if one finding implies a pathological state, no other finding should contradict it. Write as raw scratchpad: terse bullet points, abbreviations, values with units. This is pre-report notation — what a radiologist would scribble before the report is constructed, not prose, not formatted sentences. Include only raw observations. Do not include reference ranges or normal value thresholds — those are applied at report generation time, not dictation time. Include at least one incidental finding. Do not composite or rehash the example findings."""
+
+        result = await _run_agent_with_model(
+            model_name=model_name,
+            output_type=TestCaseOutput,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            api_key=api_key,
+            use_thinking=True,
+            model_settings={
+                "temperature": 0.9,
+                "top_p": 0.95,
+                "max_tokens": 4096,
+                "extra_body": {
+                    "disable_reasoning": False,
+                    "clear_thinking": False,
+                },
+            },
+        )
+
+        _log_glm_reasoning(result, f"{model_name} (Test Case Generator) - GLM Reasoning")
+        output = result.output
+        return {
+            "sample_clinical_history": output.sample_clinical_history,
             "sample_findings": output.sample_findings,
         }
 

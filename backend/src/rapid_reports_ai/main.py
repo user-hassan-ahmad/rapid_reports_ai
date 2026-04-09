@@ -2115,22 +2115,32 @@ async def skill_sheet_analyze_endpoint(
         if not api_key:
             return {"success": False, "error": "Cerebras API key not configured"}
 
+        import asyncio
         examples = [{"label": ex.label, "content": ex.content} for ex in request.examples]
-        result = await tm.analyze_examples_to_skill_sheet(
+
+        # Run skill sheet analysis and test case generation in parallel
+        analysis_task = tm.analyze_examples_to_skill_sheet(
             examples=examples,
             scan_type=request.scan_type,
             api_key=api_key,
         )
+        test_case_task = tm.generate_test_case(
+            examples=examples,
+            scan_type=request.scan_type,
+            api_key=api_key,
+        )
+        result, test_case = await asyncio.gather(analysis_task, test_case_task)
 
         logger.info("━━━ SKILL SHEET ANALYZE RESULT ━━━")
         logger.info("  skill_sheet: %d chars", len(result.get("skill_sheet", "")))
         logger.info("  summary: %s", result.get("summary", "")[:200])
         logger.info("  questions: %s", result.get("questions", []))
-        logger.info("  sample_findings: %d chars", len(result.get("sample_findings", "")))
         logger.info("  ── skill_sheet content ──\n%s", result.get("skill_sheet", ""))
-        logger.info("  ── sample_findings ──\n%s", result.get("sample_findings", ""))
+        logger.info("━━━ TEST CASE RESULT ━━━")
+        logger.info("  sample_clinical_history: %s", test_case.get("sample_clinical_history", ""))
+        logger.info("  ── sample_findings ──\n%s", test_case.get("sample_findings", ""))
 
-        return {"success": True, **result}
+        return {"success": True, **result, **test_case}
     except Exception as e:
         import traceback
         traceback.print_exc()

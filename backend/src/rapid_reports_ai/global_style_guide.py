@@ -157,7 +157,11 @@ abnormalities, or introduce findings not present in the body.
 
 Reproduce fixed block text from the skill sheet verbatim. Adapt patient-specific
 values (laterality, contrast type, field strength) to the current case — do not
-hardcode values from the training examples.
+hardcode values from the training examples. Before reproducing any fixed block,
+verify that the factual condition it encodes matches the clinical history and
+findings input — if the fixed block asserts a condition that differs from the
+current case, adapt the assertion while preserving the phrasing pattern. Fixed
+blocks are fixed in structure and language, not in factual state.
 
 ### Recommendations
 
@@ -204,6 +208,9 @@ PRE_WRITING_ANALYSIS = """
 4. **Skill sheet compliance check**: Scan the skill sheet for conditional fields
    triggered by these findings. Verify all IF/THEN interpretive clauses that
    apply. Confirm fixed block text is ready with correct patient-specific values.
+   For each fixed block tagged [NEEDS VERIFICATION], confirm the factual
+   assertion holds for the current case before reproducing it. If it does not
+   hold, adapt the phrasing while preserving the structural pattern.
 
 Now generate the complete report. Do not include this analysis in the output."""
 
