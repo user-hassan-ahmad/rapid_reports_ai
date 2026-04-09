@@ -1,5 +1,11 @@
 import logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+# Also log to file for debugging
+_file_handler = logging.FileHandler("/tmp/radflow.log")
+_file_handler.setLevel(logging.INFO)
+_file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+logging.getLogger().addHandler(_file_handler)
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, File, UploadFile, HTTPException
 from contextlib import asynccontextmanager
@@ -652,6 +658,37 @@ class AnalyzeReportsRequest(BaseModel):
     contrast: str
     protocol_details: Optional[str] = None
     reports: List[Dict[str, str]]  # List of {type, context, content}
+
+
+# Skill sheet request models
+class SkillSheetExample(BaseModel):
+    label: Optional[str] = None
+    content: str
+
+class SkillSheetAnalyzeRequest(BaseModel):
+    scan_type: str
+    examples: List[SkillSheetExample]  # 1-5 example reports
+
+class SkillSheetChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
+class SkillSheetRefineRequest(BaseModel):
+    skill_sheet: str
+    message: str
+    chat_history: Optional[List[SkillSheetChatMessage]] = None
+
+class SkillSheetTestGenerateRequest(BaseModel):
+    skill_sheet: str
+    scan_type: str
+    clinical_history: str
+    findings_input: str
+
+class SkillSheetSaveRequest(BaseModel):
+    skill_sheet: str
+    scan_type: str
+    template_name: str
+    tags: List[str] = []
 
 
 # Audit / QA request models
@@ -2025,8 +2062,8 @@ async def analyze_reports_endpoint(
 ):
     """Analyze example reports and generate template config"""
     try:
-        if len(request.reports) < 2:
-            return {"success": False, "error": "At least 2 reports required"}
+        if len(request.reports) < 3:
+            return {"success": False, "error": "At least 3 reports required"}
         if len(request.reports) > 10:
             return {"success": False, "error": "Maximum 10 reports allowed"}
         
@@ -2048,6 +2085,167 @@ async def analyze_reports_endpoint(
             "template_config": result["template_config"],
             "detected_profile": result["detected_profile"]
         }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/templates/skill-sheet/analyze")
+async def skill_sheet_analyze_endpoint(
+    request: SkillSheetAnalyzeRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Analyse example reports and generate an initial skill sheet + clarifying questions."""
+    try:
+        if len(request.examples) < 3:
+            return {"success": False, "error": "At least 3 example reports required"}
+        if len(request.examples) > 5:
+            return {"success": False, "error": "Maximum 5 example reports allowed"}
+
+        logger.info("━━━ SKILL SHEET ANALYZE ━━━")
+        logger.info("  scan_type: %s", request.scan_type)
+        logger.info("  examples: %d provided", len(request.examples))
+        for i, ex in enumerate(request.examples):
+            chars = len(ex.content)
+            logger.info("    [%d] label=%r  chars=%d", i + 1, ex.label or "(none)", chars)
+
+        tm = TemplateManager()
+        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
+        if not api_key:
+            return {"success": False, "error": "Cerebras API key not configured"}
+
+        examples = [{"label": ex.label, "content": ex.content} for ex in request.examples]
+        result = await tm.analyze_examples_to_skill_sheet(
+            examples=examples,
+            scan_type=request.scan_type,
+            api_key=api_key,
+        )
+
+        logger.info("━━━ SKILL SHEET ANALYZE RESULT ━━━")
+        logger.info("  skill_sheet: %d chars", len(result.get("skill_sheet", "")))
+        logger.info("  summary: %s", result.get("summary", "")[:200])
+        logger.info("  questions: %s", result.get("questions", []))
+        logger.info("  sample_findings: %d chars", len(result.get("sample_findings", "")))
+        logger.info("  ── skill_sheet content ──\n%s", result.get("skill_sheet", ""))
+        logger.info("  ── sample_findings ──\n%s", result.get("sample_findings", ""))
+
+        return {"success": True, **result}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/templates/skill-sheet/refine")
+async def skill_sheet_refine_endpoint(
+    request: SkillSheetRefineRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Refine a skill sheet via one chat turn."""
+    try:
+        logger.info("━━━ SKILL SHEET REFINE ━━━")
+        logger.info("  message: %s", request.message[:300])
+        logger.info("  chat_history: %d turns", len(request.chat_history or []))
+        logger.info("  skill_sheet in: %d chars", len(request.skill_sheet))
+
+        tm = TemplateManager()
+        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
+        if not api_key:
+            return {"success": False, "error": "Cerebras API key not configured"}
+
+        history = [{"role": m.role, "content": m.content} for m in (request.chat_history or [])]
+        result = await tm.refine_skill_sheet(
+            skill_sheet=request.skill_sheet,
+            message=request.message,
+            chat_history=history,
+            api_key=api_key,
+        )
+
+        logger.info("━━━ SKILL SHEET REFINE RESULT ━━━")
+        logger.info("  skill_sheet out: %d chars", len(result.get("skill_sheet", "")))
+        logger.info("  response: %s", result.get("response", "")[:500])
+        logger.info("  ── refined skill_sheet ──\n%s", result.get("skill_sheet", ""))
+
+        return {"success": True, **result}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/templates/skill-sheet/test-generate")
+async def skill_sheet_test_generate_endpoint(
+    request: SkillSheetTestGenerateRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Generate a test report from a skill sheet (no saved template required)."""
+    try:
+        logger.info("━━━ SKILL SHEET TEST GENERATE ━━━")
+        logger.info("  scan_type: %s", request.scan_type)
+        logger.info("  clinical_history: %s", request.clinical_history[:200] if request.clinical_history else "(empty)")
+        logger.info("  findings_input: %d chars", len(request.findings_input))
+        logger.info("  skill_sheet: %d chars", len(request.skill_sheet))
+
+        tm = TemplateManager()
+        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
+        if not api_key:
+            return {"success": False, "error": "Cerebras API key not configured"}
+
+        result = await tm.test_generate_with_skill_sheet(
+            skill_sheet=request.skill_sheet,
+            scan_type=request.scan_type,
+            clinical_history=request.clinical_history,
+            findings_input=request.findings_input,
+            api_key=api_key,
+        )
+
+        logger.info("━━━ SKILL SHEET TEST GENERATE RESULT ━━━")
+        logger.info("  model_used: %s", result.get("model_used", "unknown"))
+        logger.info("  report_content: %d chars", len(result.get("report_content", "")))
+        logger.info("  ── generated report ──\n%s", result.get("report_content", ""))
+
+        return {"success": True, **result}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/templates/skill-sheet/save")
+async def skill_sheet_save_endpoint(
+    request: SkillSheetSaveRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Save a skill-sheet-guided template."""
+    try:
+        logger.info("━━━ SKILL SHEET SAVE ━━━")
+        logger.info("  template_name: %s", request.template_name)
+        logger.info("  scan_type: %s", request.scan_type)
+        logger.info("  skill_sheet: %d chars", len(request.skill_sheet))
+        logger.info("  tags: %s", request.tags)
+
+        if not request.template_name.strip():
+            return {"success": False, "error": "Template name is required"}
+        if not request.skill_sheet.strip():
+            return {"success": False, "error": "Skill sheet is required"}
+
+        template_config = {
+            "generation_mode": "skill_sheet_guided",
+            "skill_sheet": request.skill_sheet,
+            "scan_type": request.scan_type,
+        }
+        template = create_template(
+            db=db,
+            name=request.template_name.strip(),
+            description=f"Skill-sheet template for {request.scan_type}",
+            tags=request.tags,
+            template_config=template_config,
+            is_pinned=False,
+            user_id=str(current_user.id),
+        )
+        return {"success": True, "template_id": str(template.id)}
     except Exception as e:
         import traceback
         traceback.print_exc()

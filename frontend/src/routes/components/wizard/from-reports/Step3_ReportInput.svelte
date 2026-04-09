@@ -30,8 +30,8 @@
 	}
 
 	function handleNext() {
-		if (reports.length < 2) {
-			alert('Please provide at least 2 example reports.');
+		if (reports.length < 3) {
+			alert('Please provide at least 3 example reports.');
 			return;
 		}
 		
@@ -46,13 +46,13 @@
 		dispatch('next');
 	}
 
-	$: canProceed = reports.length >= 2 && reports.every(r => r.type && r.content.trim());
+	$: canProceed = reports.length >= 3 && reports.every(r => r.type && r.content.trim());
 </script>
 
 <div class="space-y-6">
 	<h3 class="text-xl font-semibold text-white mb-4">Paste Your Example Reports</h3>
 	<p class="text-gray-400 text-sm mb-6">
-		Provide 2-10 examples with descriptions (more is better). The AI will analyze your style and structure.
+		Provide 3-10 examples with descriptions (include a normal, single finding, and complex case). The AI will analyze your style and structure.
 	</p>
 
 	<div class="space-y-4">

@@ -190,6 +190,19 @@ MODEL_CONFIG = {
     "REPORT_PLANNER": "zai-glm-4.7",        # Phase 1: planning agent (Cerebras, reasoning ON)
     "REPORT_EXECUTOR": "zai-glm-4.7",  # Phase 2: execution agent (Cerebras GLM, reasoning ON)
     "PLAN_ADHERENCE_CHECKER": "qwen/qwen3-32b",  # Phase 3: cross-check output vs plan (Groq)
+
+    # Template Wizard Generation Models
+    "TEMPLATE_FINDINGS_GENERATOR": "zai-glm-4.7",     # Wizard: generate FINDINGS section template
+    "TEMPLATE_INSTRUCTION_SUGGESTER": "zai-glm-4.7",  # Wizard: suggest section instructions
+    "TEMPLATE_REPORT_GENERATOR": "zai-glm-4.7",       # generate_report_from_config primary model
+
+    # Skill Sheet Models
+    "SKILL_SHEET_ANALYZER": "zai-glm-4.7",      # Extract skill sheet from example reports
+    "SKILL_SHEET_REFINER": "zai-glm-4.7",       # Refine skill sheet via chat
+    "SKILL_SHEET_TEST_GENERATE": "zai-glm-4.7", # Test-generate report from skill sheet
+
+    # Knowledge Maintenance Agent
+    "KNOWLEDGE_MAINTENANCE": "gpt-oss-120b",  # Async agent: populate knowledge_links from skill sheet
 }
 
 # Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)

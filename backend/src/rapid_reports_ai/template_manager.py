@@ -324,11 +324,12 @@ class TemplateManager:
         """
         from pydantic import BaseModel
         from .enhancement_utils import (
+            MODEL_CONFIG,
             _get_model_provider,
             _get_api_key_for_provider,
             _run_agent_with_model,
         )
-        
+
         class TemplateContentOutput(BaseModel):
             content: str
         
@@ -851,7 +852,7 @@ Generate the template now. Remember: simplicity and clarity are key."""
             user_prompt = f"""Create a FINDINGS section template for {scan_type} with {contrast} contrast."""
 
         # Get API key
-        model_name = "zai-glm-4.7"  # Cerebras Zai-GLM for template generation
+        model_name = MODEL_CONFIG["TEMPLATE_FINDINGS_GENERATOR"]
         if not api_key:
             provider = _get_model_provider(model_name)
             api_key = _get_api_key_for_provider(provider)
@@ -894,11 +895,12 @@ Generate the template now. Remember: simplicity and clarity are key."""
         """
         from pydantic import BaseModel
         from .enhancement_utils import (
+            MODEL_CONFIG,
             _get_model_provider,
             _get_api_key_for_provider,
             _run_agent_with_model,
         )
-        
+
         class InstructionsSuggestionsOutput(BaseModel):
             suggestions: List[str]
         
@@ -933,7 +935,7 @@ Examples:
 Generate suggestions now."""
 
         # Get API key  
-        model_name = "zai-glm-4.7"  # Cerebras Zai-GLM for instruction suggestions
+        model_name = MODEL_CONFIG["TEMPLATE_INSTRUCTION_SUGGESTER"]
         if not api_key:
             provider = _get_model_provider(model_name)
             api_key = _get_api_key_for_provider(provider)
@@ -2694,6 +2696,15 @@ CORE PRINCIPLES:
 - Protocol consistency - verify findings match scan type/protocol
 - British English throughout
 """
+        # Inject skill sheet if present — overrides generic style defaults
+        skill_sheet = template_config.get("skill_sheet")
+        if skill_sheet:
+            system_prompt += f"""
+## TEMPLATE SKILL SHEET
+The following skill sheet defines the specific reporting conventions for this template. Follow these conventions precisely — they take precedence over generic style defaults:
+
+{skill_sheet}
+"""
         
         # Determine if any section is using "Exact" mode (structured_template)
         has_exact_mode = any(s.get('content_style') == 'structured_template' for s in sections_config)
@@ -2772,7 +2783,7 @@ Generate the report now as valid JSON.
 """
         
         # Generate report: primary zai-glm-4.7 (Cerebras), fallback claude-sonnet-4-6 (Anthropic)
-        model_name = "zai-glm-4.7"  # Primary model for structured templates
+        model_name = MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"]
         fallback_model = MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"]  # claude-sonnet-4-20250514
         provider = _get_model_provider(model_name)
         api_key = _get_api_key_for_provider(provider)
@@ -3001,3 +3012,432 @@ Generate the report now as valid JSON.
             else:
                 raise
 
+    @staticmethod
+    def _parse_skill_sheet_json(raw: str, keys: List[str]) -> Dict:
+        """
+        Extract a JSON object from a GLM string response.
+        Handles markdown code fences and stray leading/trailing text.
+        """
+        import json, re
+
+        # Strip markdown code fences (```json ... ``` or ``` ... ```)
+        fence_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', raw)
+        candidate = fence_match.group(1).strip() if fence_match else raw.strip()
+
+        # Try direct parse first
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            # Find the outermost { ... } block
+            brace_match = re.search(r'\{[\s\S]*\}', candidate)
+            if not brace_match:
+                raise ValueError(f"No JSON object found in model response. Raw: {raw[:300]}")
+            parsed = json.loads(brace_match.group())
+
+        # Validate expected keys are present
+        missing = [k for k in keys if k not in parsed]
+        if missing:
+            raise ValueError(f"Model response missing keys {missing}. Got: {list(parsed.keys())}")
+        return parsed
+
+    async def analyze_reports_and_generate_config(
+        self,
+        scan_type: str,
+        contrast: str,
+        protocol_details: str,
+        reports: List[Dict[str, str]],
+        api_key: str,
+    ) -> Dict:
+        """
+        Stub for legacy /api/templates/analyze-reports endpoint.
+        Returns a minimal template_config inferred from scan_type and contrast.
+        Will be replaced by skill-sheet flow in Iteration 2.
+        """
+        return {
+            "template_config": {
+                "scan_type": scan_type,
+                "contrast": contrast,
+                "protocol_details": protocol_details,
+                "content_style": "structured_prose",
+                "report_style": "structured",
+            },
+            "detected_profile": "inferred",
+        }
+
+    async def analyze_examples_to_skill_sheet(
+        self,
+        examples: List[Dict[str, str]],
+        scan_type: str,
+        api_key: str,
+    ) -> Dict:
+        """
+        Analyse example reports and generate an initial skill sheet.
+
+        Args:
+            examples: List of dicts with 'label' (optional) and 'content' keys
+            scan_type: Scan type string (e.g. "CT chest with contrast")
+            api_key: Cerebras API key
+
+        Returns:
+            { skill_sheet: str, summary: str, questions: list[str] }
+        """
+        from pydantic import BaseModel
+        from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model, _log_glm_reasoning
+
+        class ClarifyingQuestion(BaseModel):
+            question: str
+            suggestions: List[str]
+
+        class SkillSheetAnalysisOutput(BaseModel):
+            skill_sheet: str
+            summary: str
+            questions: List[ClarifyingQuestion]
+            sample_findings: str
+
+        model_name = MODEL_CONFIG["SKILL_SHEET_ANALYZER"]
+
+        examples_text = ""
+        for i, ex in enumerate(examples, 1):
+            label = ex.get("label") or f"Example {i}"
+            content = ex.get("content", "").strip()
+            examples_text += f"\n\n### {label}\n```\n{content}\n```"
+
+        system_prompt = """You are an expert radiology reporting analyst. Your task is to reverse-engineer a radiologist's reporting style from their example reports and produce a Skill Sheet — a construction manual that allows an AI to write reports indistinguishable from this radiologist's own work.
+
+A Skill Sheet has two layers:
+1. STRUCTURE — the skeleton: sections, ordering, mandatory fields, fixed blocks. This is the blueprint — precise and checklist-verifiable.
+2. CONSTRUCTION VOICE — how this radiologist thinks and writes within that structure. Quoted patterns, prose rhythm, decision logic, impression reasoning. This is their cognitive fingerprint.
+
+Both layers must be grounded in the examples. Quote actual text to demonstrate every convention. Do not invent rules not evidenced in the reports.
+
+IMPORTANT: A Global Style Guide already covers universal rules (British English, impersonal voice, terminology consistency, section boundaries, consolidation, measurement conventions). Do NOT re-extract these. Focus ONLY on what is specific to this radiologist and this scan type.
+
+The Skill Sheet must follow this structure:
+
+# Skill Sheet: {descriptive name}
+
+## Scan Context
+- Modality and scan type
+- Clinical setting (e.g. oncology follow-up, acute presentation, surveillance)
+
+## Structural Pattern
+- Sections included, in order
+- For each section: always present / conditionally present (state the condition) / never omitted
+
+## Fixed Blocks
+Verbatim text that must be reproduced exactly and never paraphrased. Extract the precise wording from the examples. Use {laterality}, {contrast_type}, or {field_strength} for patient-specific values that vary between cases.
+- TECHNIQUE: [exact wording with parameters]
+- Any other sections with fixed standardised phrasing: [exact wording]
+
+## Per-Section Construction Rules
+For each FINDINGS section/paragraph, specify:
+
+### [SECTION/PARAGRAPH NAME]
+- **Mandatory fields**: fields that must always be present regardless of findings
+- **Field ordering**: sequence fields must follow within the section
+- **Mandatory negatives**: exact phrasing quoted from the examples (e.g. "No pericardial effusion is identified")
+- **Multi-clause fields**: fields requiring more than one sentence (e.g. BONES AND SOFT TISSUES = osseous sentence + soft tissues sentence)
+- **Conditional fields**: fields present only when a trigger is met (state the trigger explicitly)
+- **Normal pattern**: quote a representative sentence showing how this radiologist describes this section when normal. Example: "The supraspinatus tendon is intact with no partial or full thickness tear."
+- **Abnormal pattern**: quote a representative sentence showing how this radiologist describes pathology in this section. Example: "Full thickness tear of the supraspinatus tendon at the anterior footprint measuring 16mm x 11mm, retracting to the level of the glenohumeral joint."
+- **Paragraph opening convention**: how does this radiologist open this paragraph? Direct noun phrase? Index abnormality first? Structure-by-structure sweep?
+
+## Terminology Rules
+- **Preferred terms**: [term] — use always (e.g. "thrombus")
+- **Suppressed terms**: [term] — never use, even if synonymous (e.g. "filling defect")
+- **Paired rules**: where a preferred term has a corresponding suppressed term, list both together
+
+## Interpretive Clause Rules
+Specific findings that require a mandatory interpretive or causal attribution clause.
+Format: IF [finding] THEN append [exact required clause]
+Quote the exact clause from the examples.
+
+## Conditional Suppression Rules
+
+SECOND-ORDER PASS: After extracting mandatory negatives, interpretive clauses, and fixed phrase patterns above, reason through each one with the following questions. Limit to finding states that are common clinical presentations for this scan type — not every theoretically possible scenario.
+
+For each mandatory negative:
+- What finding state does this negative assume? (e.g. "no subluxation or tear" assumes the tendon is in situ)
+- Is there a finding state — documented in the examples or common for this scan type — where this negative would be contradictory or clinically inappropriate?
+- IF yes: document as IF [alternative state] THEN suppress [phrase] AND replace with [alternative phrase or nothing]
+- IF the alternative state is clinically conceivable but not in the examples: flag as [NEEDS CLARIFICATION] with the specific scenario
+
+For each fixed phrase pattern and interpretive clause:
+- Does this phrase assume a particular finding state? If the finding state differs, does the phrase still hold?
+- Are there severity thresholds where the language becomes inappropriate? (e.g. "low volume bursitis" valid for mild fluid but inappropriate when bursa is distended or collapsed)
+
+For each grading or scoring rule:
+- Does the clinical weight of the grade change depending on adjacent findings? (e.g. Goutallier grade 0 teres minor is a positive prognostic indicator in a massive cuff tear but merely a completeness check in a normal shoulder)
+- If yes, document the contextual interpretation rule
+
+## Measurement and Grading Rules
+- How measurements appear in prose: quote an example sentence showing integration (e.g. "measuring 16mm x 11mm" vs "a 16mm tear")
+- Grading systems used: [system name], when triggered, how referenced
+- Threshold values with explicit numeric cutoffs and the exact language for each tier
+- Borderline ranges and their required language
+
+## Reference Values
+Extract ONLY explicitly stated reference values and thresholds from the example reports — values the radiologist wrote as declared normal ranges, cutoffs, or reference standards. Examples:
+- "Left atrium: 28 cm² (normal value <24 cm²)" → extract: LA normal <24 cm²
+- "Pre-contrast T1: 1020 ms (normal: 891-1035 ms at 1.5T)" → extract: T1 1.5T normal 891-1035 ms
+
+Do NOT infer thresholds from qualifier-value pairings. If a report describes LVEF 69% as "normal", that is one data point — it does not define where normal ends. Do not add "LVEF 69% = normal" to this table.
+
+For parameters where the examples use qualifiers (normal, reduced, increased) but do not state explicit thresholds, flag as [NEEDS CLARIFICATION] — these should be raised in the Q&A phase so the radiologist can provide their thresholds, which then become explicit entries in this table.
+
+This table is the sole authority for reference values at generation time. Values not in this table must not be fabricated.
+
+## Impression Construction Rules
+
+This section defines how this radiologist builds their impression — not just what it contains, but the reasoning and construction method they use. Analyse every impression across all examples to extract these patterns.
+
+### Quoted examples
+For each example report, quote the FULL impression verbatim. These are the ground truth for every rule below.
+
+### Sentence construction pattern
+How does this radiologist build an impression sentence? Describe the mechanical pattern:
+- What comes first in a sentence? (diagnosis, location, measurement, context)
+- How are related findings chained? (semicolons, commas, "with associated...")
+- Where do recommendations appear? (semicolon clause at end, separate sentence, final standalone sentence)
+- Quote a representative impression sentence and annotate its structure.
+
+### Inclusion logic
+Compare what appeared in FINDINGS vs what was promoted to IMPRESSION across all examples.
+- Which findings made the impression?
+- Which findings stayed in FINDINGS only?
+- What is the threshold — what makes a finding "impression-worthy" for this radiologist?
+
+### Sentence grouping
+- How many impression sentences does this radiologist typically write? (count across examples)
+- What determines whether findings get merged into one sentence vs separated?
+- Do findings sharing a management pathway get merged?
+
+### Recommendation phrasing
+- Quote every recommendation phrase from the examples verbatim
+- How are recommendations integrated — as a semicolon clause closing the finding sentence, as a separate sentence, or as a final summary sentence?
+- Is there a graduation pattern? (e.g. "physiotherapy review" → "orthopaedic review" → "orthopaedic review for surgical planning")
+
+### Normal study impression
+- If a normal example is included, quote the exact impression sentence
+- What is the pattern for a normal/negative impression? (single sentence answering clinical question, or list of excluded differentials?)
+
+### Restatement rules
+- Which measurements from the body are restated in the impression? (all? key only? none?)
+- Are grading scores restated? Which ones?
+- Is any new context added in the impression that wasn't in findings (e.g. risk stratification, clinical correlation)?
+
+## Negative Finding Rules
+- Per-section mandatory negatives: list explicitly by section with exact quoted phrasing
+- Normal finding behaviour when section is entirely normal: quote the exact sentence used
+
+## Incidental Findings Rules
+- Where are incidental findings placed? (dedicated section or within anatomical paragraph)
+- Quote how an incidental finding was described in the examples, if present
+- What was the inclusion threshold — did any finding get excluded as too minor?
+- How are incidentals referenced in the impression, if at all?
+
+## Domain Rules
+Specific always/never statements and domain conventions not covered above, extracted directly from the examples. Quote actual phrases to illustrate each rule.
+
+---
+
+Where a rule cannot be determined from the examples alone, flag it explicitly as [NEEDS CLARIFICATION] so it can be raised as a question."""
+
+        user_prompt = f"""Analyse these example radiology reports for scan type: **{scan_type}**
+{examples_text}
+
+Return a JSON object with exactly these four keys:
+- "skill_sheet": the complete Skill Sheet markdown document following the structure above
+- "summary": a 2-3 sentence plain English summary of the key patterns you identified
+- "questions": an array of exactly 3 objects, each with "question" (the clarifying question) and "suggestions" (array of 2-3 short clickable answer options the radiologist can pick from). Target the most impactful rules flagged as [NEEDS CLARIFICATION] or where examples were ambiguous. Suggestions should be concrete, specific answers — not generic. Do not ask about things clearly evidenced in the reports
+- "sample_findings": concise scratchpad-style findings as a radiologist would dictate or type into a reporting system — use shorthand, abbreviations, bullet points or terse phrases. NOT a structured report. Include a mix of positive and negative observations, at least one incidental finding, and bilateral pathology if relevant. Example style: "- bilateral PE, R>L, extending to segmental level\n- RV:LV 1.3, septal flattening\n- no effusion\n- 7mm RUL nodule solid"."""
+
+        result = await _run_agent_with_model(
+            model_name=model_name,
+            output_type=SkillSheetAnalysisOutput,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            api_key=api_key,
+            use_thinking=True,
+            model_settings={
+                "temperature": 0.8,
+                "top_p": 0.95,
+                "max_tokens": 40960,
+                "extra_body": {
+                    "disable_reasoning": False,
+                    "clear_thinking": False,
+                },
+            },
+        )
+
+        _log_glm_reasoning(result, f"{model_name} (Skill Sheet Analyze) - GLM Reasoning")
+        output = result.output
+        return {
+            "skill_sheet": output.skill_sheet,
+            "summary": output.summary,
+            "questions": [{"question": q.question, "suggestions": q.suggestions} for q in output.questions],
+            "sample_findings": output.sample_findings,
+        }
+
+    async def refine_skill_sheet(
+        self,
+        skill_sheet: str,
+        message: str,
+        chat_history: List[Dict[str, str]],
+        api_key: str,
+    ) -> Dict:
+        """
+        Refine a skill sheet based on radiologist feedback via chat.
+
+        Args:
+            skill_sheet: Current skill sheet markdown
+            message: Radiologist's latest message
+            chat_history: Previous turns as [{"role": "user"|"assistant", "content": str}]
+            api_key: Cerebras API key
+
+        Returns:
+            { skill_sheet: str, response: str }
+        """
+        from pydantic import BaseModel
+        from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model, _log_glm_reasoning
+
+        class SkillSheetRefineOutput(BaseModel):
+            skill_sheet: str
+            response: str
+
+        model_name = MODEL_CONFIG["SKILL_SHEET_REFINER"]
+
+        history_text = ""
+        for turn in chat_history:
+            role_label = "Radiologist" if turn["role"] == "user" else "Assistant"
+            history_text += f"\n\n**{role_label}:** {turn['content']}"
+
+        system_prompt = """You are an expert radiology reporting analyst helping a radiologist refine a Skill Sheet for their report template.
+
+A Skill Sheet is a markdown document that acts as a construction guide for an AI system generating reports. Your job is to:
+1. Understand the radiologist's feedback or instruction
+2. Update the Skill Sheet precisely to reflect it
+3. Respond conversationally confirming what you changed and why
+
+Rules:
+- Only update sections that the radiologist's message clearly affects
+- Keep all existing content that is not contradicted
+- If the message is a question rather than an instruction, answer it and ask if they want the skill sheet updated
+- Be concise in your response (2-4 sentences)
+- The skill_sheet field must be the complete document, not a diff"""
+
+        history_section = f"\n\n=== CONVERSATION HISTORY ==={history_text}" if history_text.strip() else ""
+
+        user_prompt = f"""Current Skill Sheet:
+```markdown
+{skill_sheet}
+```
+{history_section}
+
+=== RADIOLOGIST'S MESSAGE ===
+{message}
+
+Return a JSON object with:
+- "skill_sheet": the updated complete Skill Sheet markdown (unchanged if no update needed)
+- "response": your conversational reply to the radiologist (2-4 sentences)"""
+
+        result = await _run_agent_with_model(
+            model_name=model_name,
+            output_type=SkillSheetRefineOutput,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            api_key=api_key,
+            use_thinking=True,
+            model_settings={
+                "temperature": 0.8,
+                "top_p": 0.95,
+                "max_tokens": 40960,
+                "extra_body": {
+                    "disable_reasoning": False,
+                    "clear_thinking": False,
+                },
+            },
+        )
+
+        _log_glm_reasoning(result, f"{model_name} (Skill Sheet Refine) - GLM Reasoning")
+        output = result.output
+        return {
+            "skill_sheet": output.skill_sheet,
+            "response": output.response,
+        }
+
+    async def test_generate_with_skill_sheet(
+        self,
+        skill_sheet: str,
+        scan_type: str,
+        clinical_history: str,
+        findings_input: str,
+        api_key: str,
+    ) -> Dict:
+        """
+        Generate a test report using a skill sheet (no saved template required).
+
+        Args:
+            skill_sheet: Skill sheet markdown
+            scan_type: Scan type string
+            clinical_history: Clinical history text
+            findings_input: Raw findings/dictation from radiologist
+            api_key: Cerebras API key
+
+        Returns:
+            { report_content: str, model_used: str }
+        """
+        from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model, _log_glm_reasoning
+        from .global_style_guide import (
+            SYSTEM_PREAMBLE, GLOBAL_STYLE_GUIDE,
+            PRE_WRITING_ANALYSIS, VERIFICATION_CHECKLIST,
+        )
+
+        model_name = MODEL_CONFIG["SKILL_SHEET_TEST_GENERATE"]
+
+        system_prompt = f"""{SYSTEM_PREAMBLE}
+
+{GLOBAL_STYLE_GUIDE}
+
+## TEMPLATE SKILL SHEET
+
+The following skill sheet defines scan-specific reporting conventions for this template.
+It inherits all rules from the Global Style Guide above. Where a skill sheet rule
+conflicts with a global rule, the skill sheet takes precedence.
+
+{skill_sheet}"""
+
+        user_prompt = f"""## INPUTS
+
+Scan Type: {scan_type}
+Clinical History: {clinical_history}
+Findings: {findings_input}
+
+{PRE_WRITING_ANALYSIS}
+
+{VERIFICATION_CHECKLIST}"""
+
+        result = await _run_agent_with_model(
+            model_name=model_name,
+            output_type=str,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            api_key=api_key,
+            use_thinking=True,
+            model_settings={
+                "temperature": 0.8,
+                "top_p": 0.95,
+                "max_tokens": 40960,
+                "extra_body": {
+                    "disable_reasoning": False,
+                    "clear_thinking": False,
+                },
+            },
+        )
+
+        _log_glm_reasoning(result, f"{model_name} (Skill Sheet Test Generate) - GLM Reasoning")
+        report_content = result.output if hasattr(result, "output") else str(result)
+        return {
+            "report_content": report_content,
+            "model_used": model_name,
+        }
