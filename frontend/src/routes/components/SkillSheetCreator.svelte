@@ -1,7 +1,9 @@
 <script>
-	import { createEventDispatcher, tick } from 'svelte';
+	import { createEventDispatcher, onMount, tick } from 'svelte';
 	import { API_URL } from '$lib/config';
 	import { token } from '$lib/stores/auth';
+	import { tagsStore } from '$lib/stores/tags';
+	import { getTagColor } from '$lib/utils/tagColors.js';
 	import { fade, fly } from 'svelte/transition';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
@@ -40,6 +42,7 @@
 
 	// Phase 1 — examples
 	let scanType = '';
+	let protocolNotes = '';
 	const exampleHints = ['Normal study', 'Single finding', 'Complex case'];
 	let examples = [
 		{ label: '', content: '' },
@@ -97,8 +100,54 @@
 
 	let showSaveDialog = false;
 	let templateName = '';
+	/** @type {string[]} */
+	let tags = [];
+	let newTag = '';
 	let saving = false;
 	let saved = false;
+
+	$: existingTags = /** @type {string[]} */ ($tagsStore.tags || []);
+	$: tagSuggestions = newTag.trim()
+		? existingTags
+				.filter((t) => t.toLowerCase().includes(newTag.trim().toLowerCase()))
+				.filter((t) => !tags.some((existing) => existing.toLowerCase() === t.toLowerCase()))
+				.slice(0, 6)
+		: [];
+
+	onMount(async () => {
+		if (!$tagsStore.tags || $tagsStore.tags.length === 0) {
+			await tagsStore.loadTags();
+		}
+	});
+
+	/** @param {string} [tagToAdd] */
+	function addTag(tagToAdd) {
+		const raw = (tagToAdd ?? newTag).trim();
+		if (!raw) return;
+		const match = existingTags.find((t) => t.toLowerCase() === raw.toLowerCase());
+		const finalTag = match || raw;
+		if (tags.some((t) => t.toLowerCase() === finalTag.toLowerCase())) {
+			newTag = '';
+			return;
+		}
+		tags = [...tags, finalTag];
+		newTag = '';
+	}
+
+	/** @param {string} tag */
+	function removeTag(tag) {
+		tags = tags.filter((t) => t !== tag);
+	}
+
+	/** @param {KeyboardEvent} e */
+	function handleTagKeydown(e) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			addTag();
+		} else if (e.key === 'Backspace' && !newTag && tags.length > 0) {
+			tags = tags.slice(0, -1);
+		}
+	}
 
 	// Stage navigation
 	const stageOrder = /** @type {const} */ (['summary', 'questions', 'test', 'refine']);
@@ -197,6 +246,7 @@
 	$: canAnalyse = filledCount >= 3 && scanType.trim() && !loading;
 	$: currentExamplesSnapshot = JSON.stringify({
 		scanType,
+		protocolNotes,
 		examples: examples.map((e) => ({ label: e.label, content: e.content }))
 	});
 	$: hasResumableAnalysis = skillSheet !== '' && lastAnalyzedSnapshot === currentExamplesSnapshot;
@@ -211,7 +261,11 @@
 		if (filled.length < 3) { error = 'Please provide at least 3 example reports.'; return; }
 		loading = true;
 		try {
-			const data = await postJson('/api/templates/skill-sheet/analyze', { scan_type: scanType, examples: filled });
+			const data = await postJson('/api/templates/skill-sheet/analyze', {
+				scan_type: scanType,
+				protocol_notes: protocolNotes.trim(),
+				examples: filled
+			});
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
 			summary = (typeof data.summary === 'object' && data.summary !== null) ? data.summary : null;
@@ -314,15 +368,30 @@
 
 	// copyReport removed — use copyReportWithConfirm instead
 
+	/** @param {string} md */
+	function extractSkillSheetName(md) {
+		const m = md.match(/^#\s*Skill Sheet:\s*(.+)$/m);
+		return m ? m[1].trim() : '';
+	}
+
+	function openSaveDialog() {
+		if (!templateName.trim()) templateName = extractSkillSheetName(skillSheet);
+		showSaveDialog = true;
+	}
+
 	async function saveAsTemplate() {
 		if (!templateName.trim() || !skillSheet) return;
 		saving = true; error = '';
 		try {
 			const data = await postJson('/api/templates/skill-sheet/save', {
-				skill_sheet: skillSheet, scan_type: scanType, template_name: templateName.trim()
+				skill_sheet: skillSheet,
+				scan_type: scanType,
+				template_name: templateName.trim(),
+				tags
 			});
 			if (!data.success) throw new Error(data.error || 'Save failed');
 			showSaveDialog = false; saved = true;
+			tagsStore.refreshTags();
 			dispatch('templateCreated');
 		} catch (e) { error = e instanceof Error ? e.message : String(e); }
 		finally { saving = false; }
@@ -344,10 +413,23 @@
 			<button class="btn-ghost text-sm" on:click={handleClose}>Cancel</button>
 		</div>
 
-		<!-- Scan type -->
-		<div class="card-dark mb-4">
-			<label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Scan type</label>
-			<input class="input-dark" bind:value={scanType} placeholder="e.g. CT chest with IV contrast, MRI knee, CT staging colorectal" />
+		<!-- Scan type + protocol notes -->
+		<div class="card-dark mb-4 space-y-4">
+			<div>
+				<label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Scan type</label>
+				<input class="input-dark" bind:value={scanType} placeholder="e.g. CT chest with IV contrast, MRI knee, CT staging colorectal" />
+			</div>
+			<div>
+				<label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">
+					Context notes <span class="text-gray-600 normal-case tracking-normal font-normal">— optional</span>
+				</label>
+				<textarea
+					class="input-dark resize-y"
+					rows="2"
+					bind:value={protocolNotes}
+					placeholder="What's this scan typically for, and anything about the protocol worth flagging? Otherwise we'll infer from the reports."
+				></textarea>
+			</div>
 		</div>
 
 		<!-- Tabbed report card -->
@@ -857,16 +939,62 @@
 				{:else if !showSaveDialog}
 					<div class="flex items-center justify-between">
 						<p class="text-xs text-gray-500">Refine on the left, regenerate to check.</p>
-						<button class="btn-primary" on:click={() => (showSaveDialog = true)}>Save as template</button>
+						<button class="btn-primary" on:click={openSaveDialog}>Save as template</button>
 					</div>
 				{:else}
-					<div class="flex items-center gap-3">
-						<input class="input-dark !py-2 flex-1" bind:value={templateName} placeholder="Template name — e.g. CT Chest — Dr Smith" />
-						<button class="btn-primary !px-5 flex items-center gap-2" on:click={saveAsTemplate} disabled={saving || !templateName.trim()}>
-							{#if saving}<span class="inline-block w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>{/if}
-							Save
-						</button>
-						<button class="btn-ghost text-xs" on:click={() => (showSaveDialog = false)}>Cancel</button>
+					<div class="space-y-2.5">
+						<input
+							class="input-dark !py-2 w-full"
+							bind:value={templateName}
+							placeholder="Template name — e.g. CT Chest — Dr Smith"
+						/>
+						<div class="relative">
+							<div class="flex flex-wrap items-center gap-1.5 px-2 py-1.5 bg-black/30 border border-white/10 rounded-lg">
+								{#each tags as tag}
+									<span
+										class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs"
+										style="background-color: {getTagColor(tag, {})}; color: white;"
+									>
+										{tag}
+										<button
+											type="button"
+											class="hover:bg-white/20 rounded-full p-0.5 transition-colors"
+											aria-label="Remove tag"
+											on:click={() => removeTag(tag)}
+										>
+											<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+										</button>
+									</span>
+								{/each}
+								<input
+									type="text"
+									bind:value={newTag}
+									on:keydown={handleTagKeydown}
+									placeholder={tags.length === 0 ? 'Add tags — Enter to confirm' : ''}
+									class="flex-1 min-w-[8rem] bg-transparent border-0 outline-none text-sm text-white placeholder-gray-600 py-0.5"
+								/>
+							</div>
+							{#if tagSuggestions.length > 0}
+								<div class="absolute z-20 left-0 right-0 mt-1 bg-gray-900 border border-white/10 rounded-lg shadow-2xl overflow-hidden">
+									{#each tagSuggestions as suggestion}
+										<button
+											type="button"
+											class="w-full text-left px-3 py-1.5 hover:bg-white/5 text-sm text-white transition-colors"
+											on:mousedown|preventDefault={() => addTag(suggestion)}
+										>
+											{suggestion}
+										</button>
+									{/each}
+								</div>
+							{/if}
+						</div>
+						<div class="flex items-center justify-end gap-2 pt-0.5">
+							<button class="btn-ghost text-xs" on:click={() => (showSaveDialog = false)}>Cancel</button>
+							<button class="btn-primary !px-5 flex items-center gap-2" on:click={saveAsTemplate} disabled={saving || !templateName.trim()}>
+								{#if saving}<span class="inline-block w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>{/if}
+								Save
+							</button>
+						</div>
 					</div>
 				{/if}
 			</div>

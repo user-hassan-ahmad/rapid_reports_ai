@@ -668,6 +668,7 @@ class SkillSheetExample(BaseModel):
 class SkillSheetAnalyzeRequest(BaseModel):
     scan_type: str
     examples: List[SkillSheetExample]  # 1-5 example reports
+    protocol_notes: Optional[str] = ""
 
 class SkillSheetChatMessage(BaseModel):
     role: str  # "user" or "assistant"
@@ -2103,8 +2104,10 @@ async def skill_sheet_analyze_endpoint(
         if len(request.examples) > 5:
             return {"success": False, "error": "Maximum 5 example reports allowed"}
 
+        protocol_notes = (request.protocol_notes or "").strip()
         logger.info("━━━ SKILL SHEET ANALYZE ━━━")
         logger.info("  scan_type: %s", request.scan_type)
+        logger.info("  protocol_notes: %d chars", len(protocol_notes))
         logger.info("  examples: %d provided", len(request.examples))
         for i, ex in enumerate(request.examples):
             chars = len(ex.content)
@@ -2122,6 +2125,7 @@ async def skill_sheet_analyze_endpoint(
         analysis_task = tm.analyze_examples_to_skill_sheet(
             examples=examples,
             scan_type=request.scan_type,
+            protocol_notes=protocol_notes,
             api_key=api_key,
         )
         test_case_task = tm.generate_test_case(

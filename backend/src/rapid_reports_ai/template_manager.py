@@ -3069,6 +3069,7 @@ Generate the report now as valid JSON.
         examples: List[Dict[str, str]],
         scan_type: str,
         api_key: str,
+        protocol_notes: str = "",
     ) -> Dict:
         """
         Analyse example reports and generate an initial skill sheet.
@@ -3077,6 +3078,9 @@ Generate the report now as valid JSON.
             examples: List of dicts with 'label' (optional) and 'content' keys
             scan_type: Scan type string (e.g. "CT chest with contrast")
             api_key: Cerebras API key
+            protocol_notes: Optional radiologist-supplied notes about protocol
+                variations (contrast, sequences, etc.) — treated as authoritative
+                context the analyzer cannot deduce from a small example set.
 
         Returns:
             { skill_sheet: str, summary: str, questions: list[str] }
@@ -3236,7 +3240,22 @@ Specific always/never statements and domain conventions not covered above, extra
 
 Where a rule cannot be determined from the examples alone, flag it explicitly as [NEEDS CLARIFICATION] so it can be raised as a question."""
 
+        protocol_notes_block = ""
+        if protocol_notes.strip():
+            protocol_notes_block = f"""
+
+**Authoritative context from the radiologist** — treat as ground truth. These notes take precedence over inferences drawn from the examples alone. They may describe:
+- The clinical purpose of this scan type (e.g. "HRCT for ILD assessment", "CT staging colorectal post-op surveillance") — use this to shape the Scan Context section, the Impression Construction Rules, and decisions about what findings get emphasised or promoted to impression.
+- Technical protocol variations the small example set cannot reveal (e.g. "always with IV contrast", "sometimes done at 3T") — use this to decide which fields belong in Fixed Blocks verbatim and which should become {{parameters}}.
+
+Apply each piece of context wherever it is relevant; do not force a single interpretation.
+
+Notes:
+{protocol_notes.strip()}
+"""
+
         user_prompt = f"""Analyse these example radiology reports for scan type: **{scan_type}**
+{protocol_notes_block}
 {examples_text}
 
 Return a JSON object with exactly these three keys:
