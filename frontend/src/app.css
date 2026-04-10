@@ -95,25 +95,25 @@ body {
   @apply px-2 py-1 text-sm rounded-lg font-medium transition-all duration-300;
   @apply bg-white/10 text-gray-200 border border-white/20;
   @apply hover:bg-white/20 hover:border-white/30;
-  @apply hover:text-white;
+  @apply hover:text-white active:scale-[0.97];
 }
 
 .btn-danger {
   @apply px-4 py-2 rounded-lg font-medium transition-all duration-300;
   @apply bg-red-600 text-white;
-  @apply hover:bg-red-500 hover:shadow-lg hover:shadow-red-500/50;
+  @apply hover:bg-red-500 hover:shadow-lg hover:shadow-red-500/50 active:scale-[0.97];
 }
 
 .btn-accent {
   @apply px-4 py-2 rounded-lg font-medium text-white transition-all duration-300;
   @apply bg-purple-700;
   @apply hover:bg-purple-600;
-  @apply hover:shadow-lg hover:shadow-purple-500/50;
+  @apply hover:shadow-lg hover:shadow-purple-500/50 active:scale-[0.97];
 }
 
 .btn-ghost {
   @apply px-4 py-2 rounded-lg font-medium transition-all duration-300;
-  @apply text-gray-400 hover:text-white hover:bg-white/5;
+  @apply text-gray-400 hover:text-white hover:bg-white/5 active:scale-[0.97];
 }
 
 /* Input Styles - Less frosted, more solid */
@@ -156,8 +156,9 @@ input[type="date"].date-input::-webkit-calendar-picker-indicator {
 
 /* Card Styles - Sleeker, less frosted */
 .card-dark {
-  @apply bg-black/40 border border-white/10 rounded-lg shadow-lg p-4;
+  @apply bg-black/40 border border-white/10 rounded-lg p-4;
   @apply transition-all duration-200;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.06), 0 4px 16px rgba(0,0,0,0.4);
 }
 
 /* Advanced Settings Panel - Compact and sleek */
@@ -248,7 +249,7 @@ details[open] .advanced-settings {
   /* Add horizontal margin for 3D transform overflow, but let parent control vertical spacing */
   margin-left: 8px;
   margin-right: 8px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.06), 0 4px 16px rgba(0,0,0,0.4);
 }
 
 /* View container */

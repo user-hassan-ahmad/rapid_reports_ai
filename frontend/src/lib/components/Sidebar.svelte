@@ -47,7 +47,7 @@
 				<img src={logo} alt="RadFlow" class="transition-all duration-300 {isCollapsed ? 'h-10 w-10 object-contain max-w-full' : 'h-16 w-auto'}" />
 			</div>
 			{#if !isCollapsed}
-				<h1 class="text-2xl font-bold text-white flex-1 min-w-0 leading-tight">
+				<h1 class="text-2xl font-bold text-white tracking-tight flex-1 min-w-0 leading-tight">
 					RadFlow
 				</h1>
 			{/if}

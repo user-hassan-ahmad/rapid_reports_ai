@@ -4,13 +4,14 @@
 	import { token } from '$lib/stores/auth';
 	import { fade, fly } from 'svelte/transition';
 	import { marked } from 'marked';
+	import DOMPurify from 'dompurify';
 
 	marked.setOptions({ breaks: true, gfm: true });
 
 	/** @param {string} md */
 	function renderMarkdown(md) {
 		if (!md) return '';
-		return marked.parse(md);
+		return DOMPurify.sanitize(/** @type {string} */ (marked.parse(md)));
 	}
 
 	const dispatch = createEventDispatcher();
@@ -242,7 +243,7 @@
 	<div class="max-w-4xl mx-auto">
 		<div class="flex items-center justify-between mb-6">
 			<div>
-				<h2 class="text-xl font-semibold text-white">Create from examples</h2>
+				<h2 class="text-xl font-semibold text-white tracking-tight">Create from examples</h2>
 				<p class="text-sm text-gray-400 mt-1">Paste 3–5 reports to teach RadFlow your reporting style.</p>
 			</div>
 			<button class="btn-ghost text-sm" on:click={handleClose}>Cancel</button>
@@ -355,7 +356,7 @@
 				<!-- STAGE: Summary -->
 				{#if stage === 'summary'}
 					<div class="flex-1 flex flex-col px-5 py-5" in:fly={{ x: -20, duration: 200 }}>
-						<p class="text-xs text-gray-500 mb-3">{stageDescriptions.summary}</p>
+						<p class="text-sm text-gray-400 mb-3">{stageDescriptions.summary}</p>
 						<div class="flex-1 overflow-y-auto">
 							<p class="text-sm text-gray-200 leading-relaxed">{summary}</p>
 						</div>
@@ -374,7 +375,7 @@
 				<!-- STAGE: Questions -->
 				{:else if stage === 'questions'}
 					<div class="flex-1 flex flex-col min-h-0" in:fly={{ x: 20, duration: 200 }}>
-						<p class="text-xs text-gray-500 px-5 pt-4 pb-2 shrink-0">{stageDescriptions.questions}</p>
+						<p class="text-sm text-gray-400 px-5 pt-4 pb-2 shrink-0">{stageDescriptions.questions}</p>
 						<div class="flex-1 overflow-y-auto px-5 pb-4 space-y-3">
 
 							{#each questions as q, qIdx}
@@ -388,9 +389,9 @@
 								{:else if q.status === 'skipped'}
 									<!-- Skipped: collapsed -->
 									<div class="flex items-center gap-2 text-xs py-1.5 px-3 rounded-lg bg-white/[0.02]">
-										<span class="text-gray-600">—</span>
-										<span class="text-gray-600 flex-1 truncate">{q.question}</span>
-										<span class="text-gray-600 shrink-0">skipped</span>
+										<span class="text-amber-600/50">—</span>
+										<span class="text-amber-600/50 flex-1 truncate">{q.question}</span>
+										<span class="text-amber-600/50 shrink-0">skipped</span>
 									</div>
 								{:else}
 									<!-- Pending: full card -->
@@ -454,7 +455,7 @@
 				<!-- STAGE: Test -->
 				{:else if stage === 'test'}
 					<div class="flex-1 flex flex-col px-5 py-5 space-y-4" in:fly={{ x: 20, duration: 200 }}>
-						<p class="text-xs text-gray-500 shrink-0">{stageDescriptions.test}</p>
+						<p class="text-sm text-gray-400 shrink-0">{stageDescriptions.test}</p>
 						<div class="flex-1 overflow-y-auto space-y-4">
 							<div>
 								<label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Clinical history</label>
@@ -494,7 +495,7 @@
 				<!-- STAGE: Refine -->
 				{:else if stage === 'refine'}
 					<div class="flex-1 flex flex-col min-h-0" in:fly={{ x: 20, duration: 200 }}>
-						<p class="text-xs text-gray-500 px-5 pt-4 pb-2 shrink-0">{stageDescriptions.refine}</p>
+						<p class="text-sm text-gray-400 px-5 pt-4 pb-2 shrink-0">{stageDescriptions.refine}</p>
 						<div class="flex-1 overflow-y-auto px-5 pb-4 space-y-3">
 
 							<!-- Answered questions (compact) -->
@@ -516,7 +517,7 @@
 										<div class="max-w-[90%] bg-purple-600/20 border border-purple-500/15 rounded-2xl rounded-br-sm px-4 py-2.5 text-sm text-gray-200" style="white-space: pre-wrap;">{msg.content}</div>
 									</div>
 								{:else}
-									<div class="text-sm text-gray-300 leading-relaxed" style="white-space: pre-wrap;">{msg.content}</div>
+									<div class="max-w-[90%] bg-white/[0.03] border border-white/10 rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm text-gray-300 leading-relaxed" style="white-space: pre-wrap;">{msg.content}</div>
 								{/if}
 							{/each}
 
@@ -540,7 +541,7 @@
 							</div>
 							{#if hasGenerated}
 								<button
-									class="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/15 hover:border-purple-500/30 transition-all duration-200"
+									class="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-purple-300 hover:text-purple-200 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/15 hover:border-purple-500/30 transition-all duration-200"
 									on:click={runTestGenerate}
 									disabled={loadingTest}
 								>
@@ -549,7 +550,7 @@
 										Regenerating...
 									{:else}
 										<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-										Regenerate report
+										Regenerate
 									{/if}
 								</button>
 							{/if}
@@ -560,7 +561,7 @@
 		</div>
 
 		<!-- RIGHT PANEL: Report output (constant) -->
-		<div style="flex: 1; min-width: 0;" class="flex flex-col">
+		<div style="flex: 1; min-width: 0;" class="flex flex-col bg-white/[0.02]">
 
 			<!-- Header -->
 			<div class="flex items-center justify-between px-6 py-3 border-b border-white/[0.06] shrink-0">
@@ -610,7 +611,7 @@
 			<div class="flex-1 overflow-y-auto min-h-0">
 				{#if testReport}
 					<div class="px-6 py-5">
-						<div class="prose prose-invert prose-sm max-w-none">
+						<div class="prose prose-invert prose-sm max-w-2xl mx-auto">
 							{@html renderMarkdown(testReport)}
 						</div>
 						<!-- Refinement hint -->
@@ -631,8 +632,8 @@
 				{:else}
 					<div class="flex items-center justify-center h-full">
 						<div class="text-center">
-							<p class="text-sm text-gray-600">Report will appear here</p>
-							<p class="text-xs text-gray-700 mt-1">Complete the steps on the left, then generate</p>
+							<p class="text-sm text-gray-500">Report will appear here</p>
+							<p class="text-xs text-gray-500 mt-1">Complete the steps on the left, then generate</p>
 						</div>
 					</div>
 				{/if}
@@ -668,7 +669,7 @@
 {/if}
 
 {#if error}
-	<div class="fixed bottom-4 left-1/2 -translate-x-1/2 card-dark !bg-red-900/80 !border-red-500/30 px-5 py-3 text-red-200 text-sm shadow-xl z-50 max-w-lg backdrop-blur-xl">
+	<div class="fixed bottom-4 right-4 card-dark !bg-red-900 !border-red-500 px-5 py-3 text-red-200 text-sm shadow-xl z-50 max-w-lg backdrop-blur-xl">
 		{error}
 		<button class="ml-3 text-red-400 hover:text-red-200 transition-colors" on:click={() => (error = '')}>dismiss</button>
 	</div>
