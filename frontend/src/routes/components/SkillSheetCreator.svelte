@@ -78,6 +78,42 @@
 	};
 	$: stageIdx = stageOrder.indexOf(stage);
 
+	/**
+	 * @param {string} summaryText
+	 * @param {{ status: string }[]} qs
+	 * @param {boolean} hasGen
+	 * @param {string} findings
+	 * @param {{ role: string }[]} chat
+	 */
+	function computePillCaptions(summaryText, qs, hasGen, findings, chat) {
+		/** @param {string} s @param {number} n */
+		const truncate = (s, n) => (s.length > n ? s.slice(0, n).trimEnd() + '…' : s);
+
+		const summaryCap = summaryText ? truncate(summaryText, 60) : '';
+
+		let questionsCap = '';
+		if (qs.length > 0) {
+			const answered = qs.filter((q) => q.status === 'answered').length;
+			const skipped = qs.filter((q) => q.status === 'skipped').length;
+			if (answered === qs.length) questionsCap = `${answered} answered`;
+			else if (skipped === qs.length) questionsCap = 'all skipped';
+			else if (answered + skipped > 0) questionsCap = `${answered} answered · ${skipped} skipped`;
+		}
+
+		let testCap = '';
+		if (hasGen && findings.trim()) {
+			const firstLine = findings.split('\n')[0].trim();
+			testCap = truncate(firstLine, 40);
+		}
+
+		const ruleCount = chat.filter((m) => m.role === 'user').length;
+		const refineCap = ruleCount > 0 ? `${ruleCount} rule${ruleCount === 1 ? '' : 's'} added` : '';
+
+		return { summary: summaryCap, questions: questionsCap, test: testCap, refine: refineCap };
+	}
+
+	$: pillCaptions = computePillCaptions(summary, questions, hasGenerated, testFindings, chatHistory);
+
 	// Track highest stage reached (0-3) — never decreases on back-navigation
 	let maxStageReached = 0;
 
@@ -364,26 +400,35 @@
 			</div>
 
 			<!-- Stage indicator -->
-			<div class="flex items-center gap-1 px-5 py-2.5 border-b border-white/[0.06] shrink-0">
+			<div class="flex items-start gap-3 px-5 py-2.5 border-b border-white/[0.06] shrink-0">
 				{#each stageOrder as s, i}
 					<button
-						class="flex items-center gap-1.5 text-xs transition-all duration-200
-							{stage === s ? 'text-white' : (canNavigate[i] ? 'text-gray-500 hover:text-gray-300' : 'text-gray-700')}"
-						on:click={() => { if (canNavigate[i]) goToStage(s); }}
+						class="flex flex-col items-start gap-0.5 text-xs transition-all duration-200 max-w-[8rem]
+							{stage === s ? 'text-white' : canNavigate[i] ? 'text-gray-500 hover:text-gray-300' : 'text-gray-700'}"
+						on:click={() => {
+							if (canNavigate[i]) goToStage(s);
+						}}
 						disabled={!canNavigate[i]}
 					>
-						{#if canNavigate[i] && stage !== s}
-							<svg class="w-3 h-3 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg>
-						{:else if stage === s}
-							<span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-						{:else}
-							<span class="w-1.5 h-1.5 rounded-full bg-gray-700"></span>
+						<span class="flex items-center gap-1.5">
+							{#if canNavigate[i] && stage !== s}
+								<svg class="w-3 h-3 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg>
+							{:else if stage === s}
+								<span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+							{:else}
+								<span class="w-1.5 h-1.5 rounded-full bg-gray-700"></span>
+							{/if}
+							<span>{stageLabels[s]}</span>
+						</span>
+						{#if pillCaptions[s]}
+							<span
+								class="text-[10px] truncate max-w-full leading-tight pl-3.5
+									{stage === s ? 'text-gray-400' : 'text-gray-600'}"
+							>
+								{pillCaptions[s]}
+							</span>
 						{/if}
-						<span>{stageLabels[s]}</span>
 					</button>
-					{#if i < stageOrder.length - 1}
-						<span class="text-gray-700 text-xs mx-0.5">/</span>
-					{/if}
 				{/each}
 			</div>
 
