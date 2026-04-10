@@ -97,7 +97,12 @@
 			const skipped = qs.filter((q) => q.status === 'skipped').length;
 			if (answered === qs.length) questionsCap = `${answered} answered`;
 			else if (skipped === qs.length) questionsCap = 'all skipped';
-			else if (answered + skipped > 0) questionsCap = `${answered} answered · ${skipped} skipped`;
+			else if (answered + skipped > 0) {
+					const parts = [];
+					if (answered > 0) parts.push(`${answered} answered`);
+					if (skipped > 0) parts.push(`${skipped} skipped`);
+					questionsCap = parts.join(' · ');
+				}
 		}
 
 		let testCap = '';
@@ -423,7 +428,7 @@
 						{#if pillCaptions[s]}
 							<span
 								class="text-[10px] truncate max-w-full leading-tight pl-3.5
-									{stage === s ? 'text-gray-400' : 'text-gray-600'}"
+									{stage === s ? 'text-gray-400' : 'text-gray-500'}"
 							>
 								{pillCaptions[s]}
 							</span>
