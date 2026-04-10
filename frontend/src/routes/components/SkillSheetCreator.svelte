@@ -54,7 +54,7 @@
 	/** @type {string | null} */
 	let diffBadge = null;
 
-	let phase =/** @type {1|2} */ (1);
+	let phase = /** @type {1|2} */ (1);
 	/** @type {'summary'|'questions'|'test'|'refine'} */
 	let stage = 'summary';
 	let loading = false;
@@ -231,12 +231,18 @@
 			reportBlocks = result.blocks;
 			diffBadge = result.badge;
 			// Clear flash flags after the animation completes so they don't replay on unrelated re-renders.
+			// Snapshot the reference so a rapid re-generate doesn't let the stale timeout clobber the new result.
+			const blocksSnapshot = reportBlocks;
 			setTimeout(() => {
-				reportBlocks = reportBlocks.map((b) => ({ ...b, flash: false }));
+				if (reportBlocks === blocksSnapshot) {
+					reportBlocks = reportBlocks.map((b) => ({ ...b, flash: false }));
+				}
 			}, 1300);
 			stage = 'refine';
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
+			reportBlocks = [];
+			diffBadge = null;
 		} finally {
 			loadingTest = false;
 		}
