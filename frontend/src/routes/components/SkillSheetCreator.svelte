@@ -733,10 +733,21 @@
 						</div>
 					</div>
 				{:else}
-					<div class="flex items-center justify-center h-full">
-						<div class="text-center">
-							<p class="text-sm text-gray-500">Report will appear here</p>
-							<p class="text-xs text-gray-500 mt-1">Complete the steps on the left, then generate</p>
+					<div class="flex items-center justify-center h-full px-6">
+						<div class="flex flex-col items-center gap-5">
+							<div class="page-outline" aria-hidden="true">
+								<div class="page-line page-line-heading"></div>
+								<div class="page-line page-line-subheading"></div>
+								<div class="page-line"></div>
+								<div class="page-line page-line-short"></div>
+								<div class="page-line"></div>
+								<div class="page-line page-line-medium"></div>
+								<div class="page-line page-line-short"></div>
+							</div>
+							<div class="text-center">
+								<p class="text-sm text-gray-500">Report will appear here</p>
+								<p class="text-xs text-gray-600 mt-1">Complete the steps on the left, then generate</p>
+							</div>
 						</div>
 					</div>
 				{/if}
