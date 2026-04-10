@@ -557,5 +557,6 @@ details[open] .advanced-settings {
 	@apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs;
 	@apply text-purple-300 bg-purple-500/10 border border-purple-500/20;
 	@apply hover:bg-purple-500/20 hover:text-purple-200 transition-colors duration-200;
+	@apply focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-1 focus-visible:ring-offset-black;
 	cursor: pointer;
 }
