@@ -746,7 +746,7 @@
 							</div>
 							<div class="text-center">
 								<p class="text-sm text-gray-500">Report will appear here</p>
-								<p class="text-xs text-gray-600 mt-1">Complete the steps on the left, then generate</p>
+								<p class="text-xs text-gray-500 mt-1">Complete the steps on the left, then generate</p>
 							</div>
 						</div>
 					</div>
