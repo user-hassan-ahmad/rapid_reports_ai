@@ -2133,7 +2133,11 @@ async def skill_sheet_analyze_endpoint(
 
         logger.info("━━━ SKILL SHEET ANALYZE RESULT ━━━")
         logger.info("  skill_sheet: %d chars", len(result.get("skill_sheet", "")))
-        logger.info("  summary: %s", result.get("summary", "")[:200])
+        _summary = result.get("summary", {})
+        if isinstance(_summary, dict):
+            logger.info("  summary: %s", list(_summary.keys()))
+        else:
+            logger.info("  summary: %s", str(_summary)[:200])
         logger.info("  questions: %s", result.get("questions", []))
         logger.info("  ── skill_sheet content ──\n%s", result.get("skill_sheet", ""))
         logger.info("━━━ TEST CASE RESULT ━━━")
