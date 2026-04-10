@@ -228,6 +228,10 @@
 		questions[qIdx] = { ...questions[qIdx], status: 'skipped', answer: '' };
 		questions = questions;
 	}
+	function unskipQuestion(/** @type {number} */ qIdx) {
+		questions[qIdx] = { ...questions[qIdx], status: 'pending', answer: '' };
+		questions = questions;
+	}
 	function skipAllQuestions() {
 		questions = questions.map(q => q.status === 'pending' ? { ...q, status: 'skipped' } : q);
 		goToStage('test');
@@ -469,12 +473,17 @@
 										<span class="text-emerald-400 shrink-0 font-medium">{q.answer}</span>
 									</div>
 								{:else if q.status === 'skipped'}
-									<!-- Skipped: collapsed -->
-									<div class="flex items-center gap-2 text-xs py-1.5 px-3 rounded-lg bg-white/[0.02]">
-										<span class="text-amber-600/50">—</span>
-										<span class="text-amber-600/50 flex-1 truncate">{q.question}</span>
-										<span class="text-amber-600/50 shrink-0">skipped</span>
-									</div>
+									<!-- Skipped: collapsed, click to re-engage -->
+									<button
+										type="button"
+										class="w-full flex items-center gap-2 text-xs py-1.5 px-3 rounded-lg bg-white/[0.02] hover:bg-amber-500/[0.06] border border-transparent hover:border-amber-500/20 transition-colors duration-150 group"
+										on:click={() => unskipQuestion(qIdx)}
+										title="Click to answer this question"
+									>
+										<span class="text-amber-600/50 group-hover:text-amber-400">—</span>
+										<span class="text-amber-600/50 group-hover:text-amber-300 flex-1 truncate text-left">{q.question}</span>
+										<span class="text-amber-600/50 group-hover:text-amber-400 shrink-0">skipped · answer</span>
+									</button>
 								{:else}
 									<!-- Pending: full card -->
 									<div class="card-dark space-y-3">
