@@ -18,6 +18,22 @@
 		return DOMPurify.sanitize(/** @type {string} */ (marked.parse(md)));
 	}
 
+	/**
+	 * Coerce a backend value to a string. The LLM sometimes returns
+	 * arrays of bullets or nested objects where we expect plain text.
+	 * @param {unknown} v
+	 * @returns {string}
+	 */
+	function coerceToText(v) {
+		if (v == null) return '';
+		if (typeof v === 'string') return v;
+		if (Array.isArray(v)) return v.map((item) => coerceToText(item)).join('\n');
+		if (typeof v === 'object') {
+			try { return JSON.stringify(v, null, 2); } catch { return ''; }
+		}
+		return String(v);
+	}
+
 	const dispatch = createEventDispatcher();
 
 	// ── State ──────────────────────────────────────────────────────────────────
@@ -150,8 +166,8 @@
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
 			summary = (typeof data.summary === 'object' && data.summary !== null) ? data.summary : null;
-			sampleFindings = data.sample_findings || '';
-			sampleClinicalHistory = data.sample_clinical_history || '';
+			sampleFindings = coerceToText(data.sample_findings);
+			sampleClinicalHistory = coerceToText(data.sample_clinical_history);
 			testFindings = sampleFindings;
 			testClinicalHistory = sampleClinicalHistory;
 			questions = (data.questions || []).slice(0, 3).map(q => ({
@@ -231,7 +247,7 @@
 				findings_input: testFindings
 			});
 			if (!data.success) throw new Error(data.error);
-			testReport = data.report_content;
+			testReport = coerceToText(data.report_content);
 			hasGenerated = true;
 			stage = 'refine';
 		} catch (e) {
