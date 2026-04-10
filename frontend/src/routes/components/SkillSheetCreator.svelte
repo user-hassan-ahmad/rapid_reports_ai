@@ -391,7 +391,7 @@
 					{/if}
 				</div>
 				<input class="input-dark" bind:value={examples[activeExampleTab].label} placeholder="{activeExampleTab < 3 ? exampleHints[activeExampleTab] : 'Additional example'} — describe the case" />
-				<textarea class="input-dark font-mono resize-y" rows="14" bind:value={examples[activeExampleTab].content} placeholder="Paste complete report..."></textarea>
+				<textarea class="input-dark resize-y" rows="14" bind:value={examples[activeExampleTab].content} placeholder="Paste complete report..."></textarea>
 			</div>
 		</div>
 
