@@ -1,5 +1,5 @@
 <script>
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, tick } from 'svelte';
 	import { API_URL } from '$lib/config';
 	import { token } from '$lib/stores/auth';
 	import { fade, fly } from 'svelte/transition';
@@ -72,9 +72,15 @@
 	let testFindings = '';
 	let testReport = '';
 
-	// Compare-with-previous toggle for the report preview
+	// Compare-with-previous flipper for the report preview.
+	// Single-column "blink comparator": flip between previous and current
+	// in place, scroll position preserved, so the eye picks up real diffs.
 	let prevReport = '';
 	let compareMode = false;
+	/** @type {'previous' | 'current'} */
+	let compareView = 'previous';
+	/** @type {HTMLDivElement | null} */
+	let reportScrollEl = null;
 
 	// Snapshot of the inputs at the time of the last successful analysis.
 	// Used to offer "Resume workbench" when the user navigates back to Phase 1
@@ -129,6 +135,37 @@
 			navigator.clipboard.writeText(testReport);
 			copyConfirm = true;
 			setTimeout(() => { copyConfirm = false; }, 2000);
+		}
+	}
+
+	function toggleCompareMode() {
+		compareMode = !compareMode;
+		if (compareMode) compareView = 'previous';
+	}
+
+	/** @param {'previous' | 'current'} [target] */
+	async function flipCompare(target) {
+		const next = target ?? (compareView === 'previous' ? 'current' : 'previous');
+		if (next === compareView) return;
+		const scrollTop = reportScrollEl?.scrollTop ?? 0;
+		compareView = next;
+		await tick();
+		if (reportScrollEl) reportScrollEl.scrollTop = scrollTop;
+	}
+
+	/** @param {KeyboardEvent} e */
+	function handleCompareKeydown(e) {
+		if (!compareMode) return;
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			compareMode = false;
+			return;
+		}
+		if (e.key === ' ' || e.code === 'Space') {
+			const tag = typeof document !== 'undefined' ? document.activeElement?.tagName : '';
+			if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+			e.preventDefault();
+			flipCompare();
 		}
 	}
 
@@ -293,6 +330,8 @@
 
 	function handleClose() { dispatch('close'); }
 </script>
+
+<svelte:window on:keydown={handleCompareKeydown} />
 
 <!-- ── Phase 1: Paste Reports ──────────────────────────────────────────── -->
 {#if phase === 1}
@@ -691,11 +730,11 @@
 							<button
 								class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all duration-200
 									{compareMode ? 'text-purple-200 bg-purple-500/20 border border-purple-500/30' : 'text-purple-300 hover:text-purple-200 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/15 hover:border-purple-500/30'}"
-								on:click={() => (compareMode = !compareMode)}
-								title={compareMode ? 'Hide previous version' : 'Show previous version side-by-side'}
+								on:click={toggleCompareMode}
+								title={compareMode ? 'Exit compare mode (Esc)' : 'Compare with previous version'}
 							>
 								<svg class="w-3.5 h-3.5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-								{compareMode ? 'Hide previous' : 'Compare'}
+								{compareMode ? 'Exit compare' : 'Compare'}
 							</button>
 						{/if}
 						<!-- Copy -->
@@ -741,28 +780,39 @@
 			<div class="flex-1 overflow-hidden min-h-0">
 				{#if testReport}
 					{#if compareMode && prevReport}
-						<div class="h-full flex">
-							<!-- Previous -->
-							<div class="flex-1 min-w-0 overflow-y-auto border-r border-white/[0.06]">
-								<div class="px-5 pt-3 pb-2 sticky top-0 bg-black/40 backdrop-blur-sm border-b border-white/[0.06] z-10">
-									<span class="text-[10px] text-gray-500 uppercase tracking-[0.2em] font-mono">Previous</span>
+						<div class="h-full flex flex-col">
+							<!-- Flip toggle bar -->
+							<div class="flex items-center justify-between gap-3 px-5 py-2.5 border-b border-white/[0.06] shrink-0 bg-black/20">
+								<div class="inline-flex items-center gap-0.5 p-0.5 rounded-lg bg-white/[0.04] border border-white/[0.08]">
+									<button
+										type="button"
+										class="px-3 py-1 text-xs font-medium rounded-md transition-all duration-150
+											{compareView === 'previous' ? 'bg-white/10 text-gray-100 shadow-sm' : 'text-gray-500 hover:text-gray-300'}"
+										on:click={() => flipCompare('previous')}
+									>
+										Previous
+									</button>
+									<button
+										type="button"
+										class="px-3 py-1 text-xs font-medium rounded-md transition-all duration-150
+											{compareView === 'current' ? 'bg-purple-500/25 text-purple-100 shadow-sm' : 'text-gray-500 hover:text-gray-300'}"
+										on:click={() => flipCompare('current')}
+									>
+										Current
+									</button>
 								</div>
-								<div class="px-5 py-4">
-									<div class="prose prose-invert prose-sm max-w-none">
-										{@html renderMarkdown(prevReport)}
-									</div>
-								</div>
+								<span class="text-[10px] text-gray-600 hidden sm:flex items-center gap-1.5">
+									<kbd class="px-1.5 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] font-mono text-[10px]">space</kbd>
+									flip
+									<span class="text-gray-700 mx-1">·</span>
+									<kbd class="px-1.5 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] font-mono text-[10px]">esc</kbd>
+									exit
+								</span>
 							</div>
-							<!-- Current -->
-							<div class="flex-1 min-w-0 overflow-y-auto">
-								<div class="px-5 pt-3 pb-2 sticky top-0 bg-black/40 backdrop-blur-sm border-b border-white/[0.06] z-10 flex items-center gap-2">
-									<span class="text-[10px] text-purple-300 uppercase tracking-[0.2em] font-mono">Current</span>
-									<span class="w-1 h-1 rounded-full bg-purple-400"></span>
-								</div>
-								<div class="px-5 py-4">
-									<div class="prose prose-invert prose-sm max-w-none">
-										{@html renderMarkdown(testReport)}
-									</div>
+							<!-- Single rendered report (flippable) -->
+							<div class="flex-1 overflow-y-auto px-6 py-5" bind:this={reportScrollEl}>
+								<div class="prose prose-invert prose-sm max-w-2xl mx-auto">
+									{@html renderMarkdown(compareView === 'previous' ? prevReport : testReport)}
 								</div>
 							</div>
 						</div>
