@@ -5,7 +5,6 @@
 	import { fade, fly } from 'svelte/transition';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
-	import { diffReports } from '$lib/utils/reportDiff.js';
 	import StructureTree from './skill-sheet-summary/StructureTree.svelte';
 	import VoicePhrases from './skill-sheet-summary/VoicePhrases.svelte';
 	import ConventionRules from './skill-sheet-summary/ConventionRules.svelte';
@@ -57,12 +56,9 @@
 	let testFindings = '';
 	let testReport = '';
 
-	// Per-block diff state for the report preview
+	// Compare-with-previous toggle for the report preview
 	let prevReport = '';
-	/** @type {{ id: string, text: string, flash: boolean }[]} */
-	let reportBlocks = [];
-	/** @type {string | null} */
-	let diffBadge = null;
+	let compareMode = false;
 
 	let phase = /** @type {1|2} */ (1);
 	/** @type {'summary'|'questions'|'test'|'refine'} */
@@ -88,48 +84,6 @@
 	};
 	$: stageIdx = stageOrder.indexOf(stage);
 
-	/**
-	 * @param {{ voice?: { description?: string } } | null} summaryObj
-	 * @param {{ status: string }[]} qs
-	 * @param {boolean} hasGen
-	 * @param {string} findings
-	 * @param {{ role: string }[]} chat
-	 */
-	function computePillCaptions(summaryObj, qs, hasGen, findings, chat) {
-		/** @param {string} s @param {number} n */
-		const truncate = (s, n) => (s.length > n ? s.slice(0, n).trimEnd() + '…' : s);
-
-		const voiceDesc = summaryObj?.voice?.description ?? '';
-		const summaryCap = voiceDesc ? truncate(voiceDesc, 60) : '';
-
-		let questionsCap = '';
-		if (qs.length > 0) {
-			const answered = qs.filter((q) => q.status === 'answered').length;
-			const skipped = qs.filter((q) => q.status === 'skipped').length;
-			if (answered === qs.length) questionsCap = `${answered} answered`;
-			else if (skipped === qs.length) questionsCap = 'all skipped';
-			else if (answered + skipped > 0) {
-					const parts = [];
-					if (answered > 0) parts.push(`${answered} answered`);
-					if (skipped > 0) parts.push(`${skipped} skipped`);
-					questionsCap = parts.join(' · ');
-				}
-		}
-
-		let testCap = '';
-		if (hasGen && findings.trim()) {
-			const firstLine = findings.split('\n')[0].trim();
-			testCap = truncate(firstLine, 40);
-		}
-
-		const ruleCount = chat.filter((m) => m.role === 'user').length;
-		const refineCap = ruleCount > 0 ? `${ruleCount} rule${ruleCount === 1 ? '' : 's'} added` : '';
-
-		return { summary: summaryCap, questions: questionsCap, test: testCap, refine: refineCap };
-	}
-
-	$: pillCaptions = computePillCaptions(summary, questions, hasGenerated, testFindings, chatHistory);
-
 	// Track highest stage reached (0-3) — never decreases on back-navigation
 	let maxStageReached = 0;
 
@@ -154,14 +108,6 @@
 			navigator.clipboard.writeText(testReport);
 			copyConfirm = true;
 			setTimeout(() => { copyConfirm = false; }, 2000);
-		}
-	}
-
-	function scrollToFirstFlash() {
-		if (typeof document === 'undefined') return;
-		const first = document.querySelector('.report-block.flash');
-		if (first) {
-			first.scrollIntoView({ behavior: 'smooth', block: 'center' });
 		}
 	}
 
@@ -287,22 +233,9 @@
 			if (!data.success) throw new Error(data.error);
 			testReport = data.report_content;
 			hasGenerated = true;
-			const result = diffReports(prevReport, testReport);
-			reportBlocks = result.blocks;
-			diffBadge = result.badge;
-			// Clear flash flags after the animation completes so they don't replay on unrelated re-renders.
-			// Snapshot the reference so a rapid re-generate doesn't let the stale timeout clobber the new result.
-			const blocksSnapshot = reportBlocks;
-			setTimeout(() => {
-				if (reportBlocks === blocksSnapshot) {
-					reportBlocks = reportBlocks.map((b) => ({ ...b, flash: false }));
-				}
-			}, 1300);
 			stage = 'refine';
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
-			reportBlocks = [];
-			diffBadge = null;
 		} finally {
 			loadingTest = false;
 		}
@@ -416,35 +349,26 @@
 			</div>
 
 			<!-- Stage indicator -->
-			<div class="flex items-start gap-3 px-5 py-2.5 border-b border-white/[0.06] shrink-0">
+			<div class="flex items-center gap-1 px-5 py-2.5 border-b border-white/[0.06] shrink-0">
 				{#each stageOrder as s, i}
 					<button
-						class="flex flex-col items-start gap-0.5 text-xs transition-all duration-200 max-w-[8rem]
+						class="flex items-center gap-1.5 text-xs transition-all duration-200
 							{stage === s ? 'text-white' : canNavigate[i] ? 'text-gray-500 hover:text-gray-300' : 'text-gray-700'}"
-						on:click={() => {
-							if (canNavigate[i]) goToStage(s);
-						}}
+						on:click={() => { if (canNavigate[i]) goToStage(s); }}
 						disabled={!canNavigate[i]}
 					>
-						<span class="flex items-center gap-1.5">
-							{#if canNavigate[i] && stage !== s}
-								<svg class="w-3 h-3 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg>
-							{:else if stage === s}
-								<span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-							{:else}
-								<span class="w-1.5 h-1.5 rounded-full bg-gray-700"></span>
-							{/if}
-							<span>{stageLabels[s]}</span>
-						</span>
-						{#if pillCaptions[s]}
-							<span
-								class="text-[10px] truncate max-w-full leading-tight pl-3.5
-									{stage === s ? 'text-gray-400' : 'text-gray-500'}"
-							>
-								{pillCaptions[s]}
-							</span>
+						{#if canNavigate[i] && stage !== s}
+							<svg class="w-3 h-3 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg>
+						{:else if stage === s}
+							<span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+						{:else}
+							<span class="w-1.5 h-1.5 rounded-full bg-gray-700"></span>
 						{/if}
+						<span>{stageLabels[s]}</span>
 					</button>
+					{#if i < stageOrder.length - 1}
+						<span class="text-gray-700 text-xs mx-0.5">/</span>
+					{/if}
 				{/each}
 			</div>
 
@@ -708,21 +632,21 @@
 
 			<!-- Header -->
 			<div class="flex items-center justify-between px-6 py-3 border-b border-white/[0.06] shrink-0">
-				<div class="flex items-center gap-3">
-					<span class="text-xs font-medium text-gray-400 uppercase tracking-wider">Report preview</span>
-					{#if diffBadge}
-						<button
-							class="diff-badge"
-							on:click={scrollToFirstFlash}
-							title="Scroll to first changed section"
-						>
-							<svg class="w-3 h-3" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-							{diffBadge}
-						</button>
-					{/if}
-				</div>
+				<span class="text-xs font-medium text-gray-400 uppercase tracking-wider">Report preview</span>
 				{#if testReport}
 					<div class="flex items-center gap-2">
+						<!-- Compare with previous -->
+						{#if prevReport && prevReport !== testReport}
+							<button
+								class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all duration-200
+									{compareMode ? 'text-purple-200 bg-purple-500/20 border border-purple-500/30' : 'text-purple-300 hover:text-purple-200 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/15 hover:border-purple-500/30'}"
+								on:click={() => (compareMode = !compareMode)}
+								title={compareMode ? 'Hide previous version' : 'Show previous version side-by-side'}
+							>
+								<svg class="w-3.5 h-3.5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+								{compareMode ? 'Hide previous' : 'Compare'}
+							</button>
+						{/if}
 						<!-- Copy -->
 						<button
 							class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all duration-200
@@ -763,24 +687,48 @@
 			</div>
 
 			<!-- Report -->
-			<div class="flex-1 overflow-y-auto min-h-0">
+			<div class="flex-1 overflow-hidden min-h-0">
 				{#if testReport}
-					<div class="px-6 py-5">
-						<div class="prose prose-invert prose-sm max-w-2xl mx-auto">
-							{#each reportBlocks as block (block.id)}
-								<div class="report-block" class:flash={block.flash}>
-									{@html renderMarkdown(block.text)}
+					{#if compareMode && prevReport}
+						<div class="h-full flex">
+							<!-- Previous -->
+							<div class="flex-1 min-w-0 overflow-y-auto border-r border-white/[0.06]">
+								<div class="px-5 pt-3 pb-2 sticky top-0 bg-black/40 backdrop-blur-sm border-b border-white/[0.06] z-10">
+									<span class="text-[10px] text-gray-500 uppercase tracking-[0.2em] font-mono">Previous</span>
 								</div>
-							{/each}
+								<div class="px-5 py-4">
+									<div class="prose prose-invert prose-sm max-w-none">
+										{@html renderMarkdown(prevReport)}
+									</div>
+								</div>
+							</div>
+							<!-- Current -->
+							<div class="flex-1 min-w-0 overflow-y-auto">
+								<div class="px-5 pt-3 pb-2 sticky top-0 bg-black/40 backdrop-blur-sm border-b border-white/[0.06] z-10 flex items-center gap-2">
+									<span class="text-[10px] text-purple-300 uppercase tracking-[0.2em] font-mono">Current</span>
+									<span class="w-1 h-1 rounded-full bg-purple-400"></span>
+								</div>
+								<div class="px-5 py-4">
+									<div class="prose prose-invert prose-sm max-w-none">
+										{@html renderMarkdown(testReport)}
+									</div>
+								</div>
+							</div>
 						</div>
-						<!-- Refinement hint -->
-						<div class="mt-6 pt-4 border-t border-white/[0.06] flex items-start gap-3">
-							<svg class="w-4 h-4 text-purple-400/60 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-							<p class="text-xs text-gray-600 leading-relaxed">
-								Not quite right? Use the <button class="text-purple-400 hover:text-purple-300" on:click={() => goToStage('refine')}>Refine</button> tab to add corrections — describe what should change and your style guide updates automatically. Then regenerate to see the effect.
-							</p>
+					{:else}
+						<div class="h-full overflow-y-auto px-6 py-5">
+							<div class="prose prose-invert prose-sm max-w-2xl mx-auto">
+								{@html renderMarkdown(testReport)}
+							</div>
+							<!-- Refinement hint -->
+							<div class="mt-6 pt-4 border-t border-white/[0.06] flex items-start gap-3 max-w-2xl mx-auto">
+								<svg class="w-4 h-4 text-purple-400/60 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+								<p class="text-xs text-gray-600 leading-relaxed">
+									Not quite right? Use the <button class="text-purple-400 hover:text-purple-300" on:click={() => goToStage('refine')}>Refine</button> tab to add corrections — describe what should change and your style guide updates automatically. Then regenerate to see the effect.
+								</p>
+							</div>
 						</div>
-					</div>
+					{/if}
 				{:else if loadingTest}
 					<div class="flex items-center justify-center h-full">
 						<div class="flex flex-col items-center gap-3">
