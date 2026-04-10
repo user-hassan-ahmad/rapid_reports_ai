@@ -5,6 +5,7 @@
 	import { fade, fly } from 'svelte/transition';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
+	import { diffReports } from '$lib/utils/reportDiff.js';
 
 	marked.setOptions({ breaks: true, gfm: true });
 
@@ -46,7 +47,14 @@
 	let testFindings = '';
 	let testReport = '';
 
-	let phase = /** @type {1|2} */ (1);
+	// Per-block diff state for the report preview
+	let prevReport = '';
+	/** @type {{ id: string, text: string, flash: boolean }[]} */
+	let reportBlocks = [];
+	/** @type {string | null} */
+	let diffBadge = null;
+
+	let phase =/** @type {1|2} */ (1);
 	/** @type {'summary'|'questions'|'test'|'refine'} */
 	let stage = 'summary';
 	let loading = false;
@@ -205,18 +213,33 @@
 
 	async function runTestGenerate() {
 		if (!skillSheet || !testFindings.trim()) return;
-		loadingTest = true; error = ''; testReport = '';
+		loadingTest = true;
+		error = '';
+		prevReport = testReport;
+		testReport = '';
 		try {
 			const data = await postJson('/api/templates/skill-sheet/test-generate', {
-				skill_sheet: skillSheet, scan_type: scanType,
-				clinical_history: testClinicalHistory, findings_input: testFindings
+				skill_sheet: skillSheet,
+				scan_type: scanType,
+				clinical_history: testClinicalHistory,
+				findings_input: testFindings
 			});
 			if (!data.success) throw new Error(data.error);
 			testReport = data.report_content;
 			hasGenerated = true;
+			const result = diffReports(prevReport, testReport);
+			reportBlocks = result.blocks;
+			diffBadge = result.badge;
+			// Clear flash flags after the animation completes so they don't replay on unrelated re-renders.
+			setTimeout(() => {
+				reportBlocks = reportBlocks.map((b) => ({ ...b, flash: false }));
+			}, 1300);
 			stage = 'refine';
-		} catch (e) { error = e instanceof Error ? e.message : String(e); }
-		finally { loadingTest = false; }
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+		} finally {
+			loadingTest = false;
+		}
 	}
 
 	// copyReport removed — use copyReportWithConfirm instead
@@ -612,7 +635,11 @@
 				{#if testReport}
 					<div class="px-6 py-5">
 						<div class="prose prose-invert prose-sm max-w-2xl mx-auto">
-							{@html renderMarkdown(testReport)}
+							{#each reportBlocks as block (block.id)}
+								<div class="report-block" class:flash={block.flash}>
+									{@html renderMarkdown(block.text)}
+								</div>
+							{/each}
 						</div>
 						<!-- Refinement hint -->
 						<div class="mt-6 pt-4 border-t border-white/[0.06] flex items-start gap-3">

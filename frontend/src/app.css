@@ -531,3 +531,23 @@ details[open] .advanced-settings {
 .tab-inactive {
   @apply text-gray-400 hover:text-white hover:bg-white/5;
 }
+
+/* Per-block flash highlight on report regeneration */
+.report-block {
+	position: relative;
+	padding-left: 0.75rem;
+	margin-left: -0.75rem;
+	border-left: 2px solid transparent;
+	transition: border-left-color 200ms ease-out;
+}
+.report-block.flash {
+	animation: diff-flash 1200ms ease-out forwards;
+}
+@keyframes diff-flash {
+	0% {
+		border-left-color: rgb(168 85 247 / 0.9);
+	}
+	100% {
+		border-left-color: rgb(168 85 247 / 0);
+	}
+}
