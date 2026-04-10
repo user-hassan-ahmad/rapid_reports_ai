@@ -249,7 +249,7 @@
 			if (!data.success) throw new Error(data.error);
 			testReport = coerceToText(data.report_content);
 			hasGenerated = true;
-			stage = 'refine';
+			goToStage('refine');
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -448,11 +448,7 @@
 						</div>
 						<div class="flex justify-end px-5 py-3 border-t border-white/[0.06] shrink-0">
 							<button class="btn-primary flex items-center gap-2" on:click={nextStage}>
-								{#if pendingCount > 0}
-									Continue
-								{:else}
-									Test your template
-								{/if}
+								Continue
 								<span class="text-white/60">&rarr;</span>
 							</button>
 						</div>
