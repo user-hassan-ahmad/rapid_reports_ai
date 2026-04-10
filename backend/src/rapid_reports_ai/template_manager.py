@@ -3112,6 +3112,7 @@ The Skill Sheet must follow this structure:
 ## Structural Pattern
 - Sections included, in order
 - For each section: always present / conditionally present (state the condition) / never omitted
+- For each section, mark its header status using the same convention as Per-Section Construction Rules: if the section name appears on its own line as a visible heading in the example reports, mark it `header: "[exact text]"` (e.g. `header: "FINDINGS"`, `header: "IMPRESSION"`). If the section content appears without a visible heading, mark it `header: none`. The detection rule is identical: a heading exists if and only if the text appears on its own line, separated from the content below it, in the examples.
 
 ## Fixed Blocks
 Verbatim text that must be reproduced exactly and never paraphrased. Extract the precise wording from the examples. Use {laterality}, {contrast_type}, or {field_strength} for patient-specific values that vary between cases.
