@@ -76,6 +76,11 @@
 	let prevReport = '';
 	let compareMode = false;
 
+	// Snapshot of the inputs at the time of the last successful analysis.
+	// Used to offer "Resume workbench" when the user navigates back to Phase 1
+	// without changing anything, and to flag stale state when they have.
+	let lastAnalyzedSnapshot = '';
+
 	let phase = /** @type {1|2} */ (1);
 	/** @type {'summary'|'questions'|'test'|'refine'} */
 	let stage = 'summary';
@@ -153,6 +158,13 @@
 
 	$: filledCount = examples.filter((e) => e.content.trim()).length;
 	$: canAnalyse = filledCount >= 3 && scanType.trim() && !loading;
+	$: currentExamplesSnapshot = JSON.stringify({
+		scanType,
+		examples: examples.map((e) => ({ label: e.label, content: e.content }))
+	});
+	$: hasResumableAnalysis = skillSheet !== '' && lastAnalyzedSnapshot === currentExamplesSnapshot;
+	$: hasStaleAnalysis =
+		skillSheet !== '' && lastAnalyzedSnapshot !== '' && lastAnalyzedSnapshot !== currentExamplesSnapshot;
 
 	// ── Actions ────────────────────────────────────────────────────────────────
 
@@ -180,8 +192,10 @@
 			chatHistory = [];
 			hasGenerated = false;
 			testReport = '';
+			prevReport = '';
 			maxStageReached = 0;
 			stage = 'summary';
+			lastAnalyzedSnapshot = currentExamplesSnapshot;
 			phase = 2;
 		} catch (e) { error = e instanceof Error ? e.message : String(e); }
 		finally { loading = false; }
@@ -343,15 +357,31 @@
 		</div>
 
 		<div class="flex items-center justify-between mt-5">
-			<span class="text-xs text-gray-500">{filledCount} of 3 required</span>
-			<button class="btn-primary flex items-center gap-2" on:click={analyzeExamples} disabled={!canAnalyse}>
-				{#if loading}
-					<span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-					Analysing...
-				{:else}
-					Analyse my style
+			<div class="flex items-center gap-3">
+				<span class="text-xs text-gray-500">{filledCount} of 3 required</span>
+				{#if hasStaleAnalysis}
+					<span class="text-xs text-amber-500/80 flex items-center gap-1.5">
+						<span class="w-1 h-1 rounded-full bg-amber-500/80"></span>
+						Changes since last analysis — re-analyse to apply
+					</span>
 				{/if}
-			</button>
+			</div>
+			<div class="flex items-center gap-3">
+				{#if hasResumableAnalysis}
+					<button class="btn-ghost flex items-center gap-2 text-sm" on:click={() => (phase = 2)}>
+						Resume workbench
+						<span>&rarr;</span>
+					</button>
+				{/if}
+				<button class="btn-primary flex items-center gap-2" on:click={analyzeExamples} disabled={!canAnalyse}>
+					{#if loading}
+						<span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+						Analysing...
+					{:else}
+						Analyse my style
+					{/if}
+				</button>
+			</div>
 		</div>
 	</div>
 
