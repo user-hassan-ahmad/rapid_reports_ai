@@ -3240,7 +3240,41 @@ Where a rule cannot be determined from the examples alone, flag it explicitly as
 
 Return a JSON object with exactly these three keys:
 - "skill_sheet": the complete Skill Sheet markdown document following the structure above
-- "summary": a 2-3 sentence plain English summary of the key patterns you identified
+- "summary": a structured object (NOT a string) for visual rendering in the UI. Must follow this exact JSON shape:
+
+{{
+  "structure": {{
+    "sections": [
+      {{ "name": "FINDINGS", "paragraphs": ["short description of paragraph 1", "short description of paragraph 2", "..."] }},
+      {{ "name": "IMPRESSION", "paragraphs": [] }}
+    ]
+  }},
+  "voice": {{
+    "description": "one short sentence (under 12 words) describing the writing voice",
+    "phrases": ["quoted signature phrase 1", "quoted signature phrase 2", "quoted signature phrase 3"]
+  }},
+  "conventions": {{
+    "rules": [
+      {{ "title": "Short rule title (3-6 words)", "detail": "One sentence explanation, may include a quoted example." }},
+      {{ "title": "...", "detail": "..." }}
+    ]
+  }},
+  "impression": {{
+    "flow": ["Step 1 noun", "Step 2 noun", "Step 3 noun"],
+    "detail": "One short sentence describing how the impression is constructed."
+  }}
+}}
+
+Rules for the structured summary:
+- structure.sections: list every top-level section in the order they appear. Paragraphs is the list of internal paragraph descriptions within each section (empty list if the section has no internal paragraph divisions). Each paragraph description is a short noun phrase (under 10 words).
+- voice.description: one terse sentence. No "This template" or "This radiologist" framing — just adjectives and tone descriptors.
+- voice.phrases: 3-5 verbatim quoted phrases from the example reports that capture the signature voice.
+- conventions.rules: 4-6 of the most distinctive scan-specific rules. Title is a short label, detail is one sentence.
+- impression.flow: 2-4 nouns describing the construction sequence (e.g. ["Pattern", "Aetiology", "Recommendation"]).
+- impression.detail: one short sentence about sentence count, grouping, recommendation integration.
+
+Keep everything terse and scannable. This is rendered as visual hierarchy, not paragraphs of prose.
+
 - "questions": an array of exactly 3 objects, each with "question" (the clarifying question) and "suggestions" (array of 2-3 short clickable answer options the radiologist can pick from). Target the most impactful rules flagged as [NEEDS CLARIFICATION] or where examples were ambiguous. Suggestions should be concrete, specific answers — not generic. Do not ask about things clearly evidenced in the reports"""
 
         result = await _run_agent_with_model(

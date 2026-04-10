@@ -6,6 +6,10 @@
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
 	import { diffReports } from '$lib/utils/reportDiff.js';
+	import StructureTree from './skill-sheet-summary/StructureTree.svelte';
+	import VoicePhrases from './skill-sheet-summary/VoicePhrases.svelte';
+	import ConventionRules from './skill-sheet-summary/ConventionRules.svelte';
+	import ImpressionFlow from './skill-sheet-summary/ImpressionFlow.svelte';
 
 	marked.setOptions({ breaks: true, gfm: true });
 
@@ -31,7 +35,13 @@
 
 	// Phase 2 — workbench
 	let skillSheet = '';
-	let summary = '';
+	/** @type {{
+	 *   structure?: { sections: { name: string, paragraphs: string[] }[] },
+	 *   voice?: { description: string, phrases: string[] },
+	 *   conventions?: { rules: { title: string, detail: string }[] },
+	 *   impression?: { flow: string[], detail: string }
+	 * } | null} */
+	let summary = null;
 	/** @type {{ role: 'user'|'assistant', content: string }[]} */
 	let chatHistory = [];
 	let chatInput = '';
@@ -79,17 +89,18 @@
 	$: stageIdx = stageOrder.indexOf(stage);
 
 	/**
-	 * @param {string} summaryText
+	 * @param {{ voice?: { description?: string } } | null} summaryObj
 	 * @param {{ status: string }[]} qs
 	 * @param {boolean} hasGen
 	 * @param {string} findings
 	 * @param {{ role: string }[]} chat
 	 */
-	function computePillCaptions(summaryText, qs, hasGen, findings, chat) {
+	function computePillCaptions(summaryObj, qs, hasGen, findings, chat) {
 		/** @param {string} s @param {number} n */
 		const truncate = (s, n) => (s.length > n ? s.slice(0, n).trimEnd() + '…' : s);
 
-		const summaryCap = summaryText ? truncate(summaryText, 60) : '';
+		const voiceDesc = summaryObj?.voice?.description ?? '';
+		const summaryCap = voiceDesc ? truncate(voiceDesc, 60) : '';
 
 		let questionsCap = '';
 		if (qs.length > 0) {
@@ -192,7 +203,7 @@
 			const data = await postJson('/api/templates/skill-sheet/analyze', { scan_type: scanType, examples: filled });
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
-			summary = data.summary || '';
+			summary = (typeof data.summary === 'object' && data.summary !== null) ? data.summary : null;
 			sampleFindings = data.sample_findings || '';
 			sampleClinicalHistory = data.sample_clinical_history || '';
 			testFindings = sampleFindings;
@@ -442,12 +453,60 @@
 
 				<!-- STAGE: Summary -->
 				{#if stage === 'summary'}
-					<div class="flex-1 flex flex-col px-5 py-5" in:fly={{ x: -20, duration: 200 }}>
-						<p class="text-sm text-gray-400 mb-3">{stageDescriptions.summary}</p>
-						<div class="flex-1 overflow-y-auto">
-							<p class="text-sm text-gray-200 leading-relaxed">{summary}</p>
+					<div class="flex-1 flex flex-col min-h-0" in:fly={{ x: -20, duration: 200 }}>
+						<p class="text-sm text-gray-400 px-5 pt-4 pb-3 shrink-0">{stageDescriptions.summary}</p>
+						<div class="flex-1 overflow-y-auto overflow-x-hidden min-w-0 px-5 pb-4">
+							{#if summary}
+								<div class="space-y-7 pt-1">
+									<!-- Structure -->
+									{#if summary.structure && summary.structure.sections}
+										<section>
+											<div class="flex items-center gap-2 mb-3">
+												<span class="text-[10px] text-gray-500 uppercase tracking-[0.25em] font-mono">Structure</span>
+												<div class="flex-1 h-px bg-white/[0.06]"></div>
+											</div>
+											<StructureTree sections={summary.structure.sections} />
+										</section>
+									{/if}
+
+									<!-- Voice -->
+									{#if summary.voice}
+										<section>
+											<div class="flex items-center gap-2 mb-3">
+												<span class="text-[10px] text-gray-500 uppercase tracking-[0.25em] font-mono">Voice</span>
+												<div class="flex-1 h-px bg-white/[0.06]"></div>
+											</div>
+											<VoicePhrases description={summary.voice.description} phrases={summary.voice.phrases || []} />
+										</section>
+									{/if}
+
+									<!-- Conventions -->
+									{#if summary.conventions && summary.conventions.rules}
+										<section>
+											<div class="flex items-center gap-2 mb-3">
+												<span class="text-[10px] text-gray-500 uppercase tracking-[0.25em] font-mono">Conventions</span>
+												<div class="flex-1 h-px bg-white/[0.06]"></div>
+											</div>
+											<ConventionRules rules={summary.conventions.rules} />
+										</section>
+									{/if}
+
+									<!-- Impression -->
+									{#if summary.impression}
+										<section>
+											<div class="flex items-center gap-2 mb-3">
+												<span class="text-[10px] text-gray-500 uppercase tracking-[0.25em] font-mono">Impression</span>
+												<div class="flex-1 h-px bg-white/[0.06]"></div>
+											</div>
+											<ImpressionFlow flow={summary.impression.flow || []} detail={summary.impression.detail || ''} />
+										</section>
+									{/if}
+								</div>
+							{:else}
+								<p class="text-sm text-gray-600">No summary available.</p>
+							{/if}
 						</div>
-						<div class="flex justify-end mt-4 shrink-0">
+						<div class="flex justify-end px-5 py-3 border-t border-white/[0.06] shrink-0">
 							<button class="btn-primary flex items-center gap-2" on:click={nextStage}>
 								{#if pendingCount > 0}
 									Continue
@@ -615,9 +674,6 @@
 								</div>
 							{/if}
 
-							{#if chatHistory.length === 0 && !loading}
-								<p class="text-sm text-gray-600">Add corrections or rules below. Regenerate on the right to see the effect.</p>
-							{/if}
 						</div>
 
 						<!-- Chat input + regenerate -->
