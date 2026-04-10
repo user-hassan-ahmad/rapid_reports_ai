@@ -551,3 +551,11 @@ details[open] .advanced-settings {
 		border-left-color: rgb(168 85 247 / 0);
 	}
 }
+
+/* Diff badge in the report preview header */
+.diff-badge {
+	@apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs;
+	@apply text-purple-300 bg-purple-500/10 border border-purple-500/20;
+	@apply hover:bg-purple-500/20 hover:text-purple-200 transition-colors duration-200;
+	cursor: pointer;
+}
