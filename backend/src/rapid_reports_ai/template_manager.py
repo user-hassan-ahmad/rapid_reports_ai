@@ -3133,18 +3133,53 @@ Generate the report now as valid JSON.
 
     @staticmethod
     @staticmethod
-    def extract_coverage_sections(skill_sheet: str) -> List[str]:
-        """Extract coverage section names from Per-Section Construction Rules headings."""
-        import re
-        section_match = re.search(
-            r'## Per-Section Construction Rules\s*\n(.*?)(?=\n## |\Z)',
-            skill_sheet, re.DOTALL,
+    async def extract_coverage_sections(skill_sheet: str, api_key: str) -> List[str]:
+        """Extract anatomical coverage section names from a skill sheet using an LLM."""
+        from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model
+        from pydantic import BaseModel
+
+        class CoverageSections(BaseModel):
+            sections: List[str]
+
+        system_prompt = (
+            "You are a radiology report structure assistant. Extract the anatomical "
+            "coverage sections a radiologist must address when dictating findings for "
+            "this scan type. Return ONLY the organ-system or anatomical-region level "
+            "sections in dictation order as an uppercase JSON array. Do not include "
+            "IMPRESSION, CLINICAL HISTORY, TECHNIQUE, or organisational labels like "
+            "'Primary Pathology Paragraph'."
         )
-        if not section_match:
-            return []
-        body = section_match.group(1)
-        headings = re.findall(r'^###\s+(.+?)(?:\s*:)?\s*$', body, re.MULTILINE)
-        return [h.strip().upper() for h in headings if h.strip()]
+        user_prompt = f"""Extract the coverage sections from this skill sheet.
+
+Look at:
+- Per-Section Construction Rules → Field ordering bullets
+- Mandatory fields and mandatory negatives (which organs they reference)
+- Normal/abnormal patterns (which structures are described)
+
+Skill sheet:
+---
+{skill_sheet}
+---
+
+Return a JSON object: {{"sections": ["LIVER", "BILIARY SYSTEM", ...]}}"""
+
+        model_name = MODEL_CONFIG.get(
+            "CANVAS_SECTIONS_FROM_TEMPLATE",
+            MODEL_CONFIG.get("SKILL_SHEET_ANALYZER", "zai-glm-4.7"),
+        )
+
+        result = await _run_agent_with_model(
+            model_name=model_name,
+            output_type=CoverageSections,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            api_key=api_key,
+            model_settings={
+                "temperature": 0.3,
+                "max_tokens": 1024,
+            },
+        )
+        return result.output.sections
 
     @staticmethod
     def _parse_skill_sheet_json(raw: str, keys: List[str]) -> Dict:

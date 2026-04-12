@@ -2249,7 +2249,13 @@ async def skill_sheet_save_endpoint(
         if not request.skill_sheet.strip():
             return {"success": False, "error": "Skill sheet is required"}
 
-        coverage_sections = TemplateManager.extract_coverage_sections(request.skill_sheet)
+        tm = TemplateManager()
+        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
+        try:
+            coverage_sections = await tm.extract_coverage_sections(request.skill_sheet, api_key)
+        except Exception as cov_err:
+            logger.warning("  coverage_sections extraction failed: %s", cov_err)
+            coverage_sections = []
         logger.info("  coverage_sections: %s", coverage_sections)
         template_config = {
             "generation_mode": "skill_sheet_guided",
