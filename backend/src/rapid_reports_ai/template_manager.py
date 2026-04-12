@@ -3146,6 +3146,7 @@ Generate the report now as valid JSON.
         headings = re.findall(r'^###\s+(.+?)(?:\s*:)?\s*$', body, re.MULTILINE)
         return [h.strip().upper() for h in headings if h.strip()]
 
+    @staticmethod
     def _parse_skill_sheet_json(raw: str, keys: List[str]) -> Dict:
         """
         Extract a JSON object from a GLM string response.
