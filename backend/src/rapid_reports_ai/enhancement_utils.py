@@ -145,8 +145,8 @@ def _glm_reasoning_enabled() -> bool:
 # Update this dictionary to change models without modifying code throughout the codebase
 MODEL_CONFIG = {
     # Report Generation Models
-    "PRIMARY_REPORT_GENERATOR": "accounts/fireworks/models/glm-5p1",  # Primary model for report generation (Fireworks GLM-5.1)
-    "FALLBACK_REPORT_GENERATOR": "zai-glm-4.7",  # Fallback to Cerebras GLM-4.7
+    "PRIMARY_REPORT_GENERATOR": "zai-glm-4.7",  # Primary model for report generation (Cerebras GLM-4.7)
+    "FALLBACK_REPORT_GENERATOR": "claude-sonnet-4-6",  # Fallback model if primary fails (Claude Sonnet 4.6)
     
     # Structure Validation Models
     "STRUCTURE_VALIDATOR": "gpt-oss-120b",  # Structure validation: Check for structural quality violations (Cerebras GPT-OSS-120B with medium reasoning)
@@ -194,13 +194,12 @@ MODEL_CONFIG = {
     # Template Wizard Generation Models
     "TEMPLATE_FINDINGS_GENERATOR": "zai-glm-4.7",     # Wizard: generate FINDINGS section template
     "TEMPLATE_INSTRUCTION_SUGGESTER": "zai-glm-4.7",  # Wizard: suggest section instructions
-    "TEMPLATE_REPORT_GENERATOR": "accounts/fireworks/models/glm-5p1",  # generate_report_from_config primary (Fireworks GLM-5.1)
-    "TEMPLATE_REPORT_GENERATOR_FALLBACK": "zai-glm-4.7",             # Fallback to Cerebras GLM-4.7
+    "TEMPLATE_REPORT_GENERATOR": "zai-glm-4.7",       # generate_report_from_config primary model (Cerebras GLM-4.7)
 
     # Skill Sheet Models
     "SKILL_SHEET_ANALYZER": "zai-glm-4.7",      # Extract skill sheet from example reports
     "SKILL_SHEET_REFINER": "zai-glm-4.7",       # Refine skill sheet via chat
-    "SKILL_SHEET_TEST_GENERATE": "accounts/fireworks/models/glm-5p1", # Test-generate report from skill sheet (Fireworks GLM-5.1)
+    "SKILL_SHEET_TEST_GENERATE": "zai-glm-4.7", # Test-generate report from skill sheet (Cerebras GLM-4.7)
 
     # Knowledge Maintenance Agent
     "KNOWLEDGE_MAINTENANCE": "gpt-oss-120b",  # Async agent: populate knowledge_links from skill sheet
