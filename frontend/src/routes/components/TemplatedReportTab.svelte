@@ -491,7 +491,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 
 	$: hasLegacyTemplates = templates?.some(t => t.template_config?.generation_mode !== 'skill_sheet_guided') ?? false;
 	$: hasSmartTemplates = templates?.some(t => t.template_config?.generation_mode === 'skill_sheet_guided') ?? false;
-	$: showLegacyBanner = hasLegacyTemplates && hasSmartTemplates && !legacyHintDismissed;
+	$: showLegacyBanner = hasLegacyTemplates && !legacyHintDismissed;
 
 	// ── Template refine panel ──────────────────────────────────────────
 	let refiningTemplate = null;
