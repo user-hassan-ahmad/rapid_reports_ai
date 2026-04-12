@@ -486,6 +486,13 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	}
 	
 	// Template Editor handlers
+	// ── Legacy template migration hints ───────────────────────────────
+	let legacyHintDismissed = false;
+
+	$: hasLegacyTemplates = templates?.some(t => t.template_config?.generation_mode !== 'skill_sheet_guided') ?? false;
+	$: hasSmartTemplates = templates?.some(t => t.template_config?.generation_mode === 'skill_sheet_guided') ?? false;
+	$: showLegacyBanner = hasLegacyTemplates && hasSmartTemplates && !legacyHintDismissed;
+
 	// ── Template refine panel ──────────────────────────────────────────
 	let refiningTemplate = null;
 
@@ -1576,6 +1583,20 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 				{#if viewMode === 'grid'}
 				<!-- Grid View -->
 				<div class="space-y-6 view-container overflow-y-auto flex-1 scrollbar-thin" style="min-height: 0; padding: 8px; overflow-x: hidden;">
+					{#if showLegacyBanner}
+						<div class="flex items-start gap-3 px-4 py-3 bg-purple-500/[0.06] border border-purple-500/15 rounded-xl" transition:fade={{ duration: 200 }}>
+							<svg class="w-5 h-5 text-purple-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+							</svg>
+							<div class="flex-1 min-w-0">
+								<p class="text-sm text-purple-200/90">New templates learn your reporting style over time — adapting to how you write, what you change, and what you prefer.</p>
+								<p class="text-xs text-gray-500 mt-1">Older templates still work but won't adapt. Recreate them from examples when you're ready.</p>
+							</div>
+							<button class="text-gray-600 hover:text-gray-400 transition-colors p-0.5 shrink-0" onclick={() => (legacyHintDismissed = true)}>
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+							</button>
+						</div>
+					{/if}
 					{#if pinnedTemplates.length > 0}
 						<!-- Favourites Section -->
 						<div>
@@ -1649,9 +1670,14 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 												</div>
 											{:else}
 												<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-												{#if template.usage_count}
-													<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
-												{/if}
+												<div class="flex items-center gap-2">
+													{#if template.usage_count}
+														<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
+													{/if}
+													{#if template.template_config?.generation_mode !== 'skill_sheet_guided'}
+														<span class="text-[10px] text-gray-700 bg-white/[0.03] px-1.5 py-0.5 rounded">Classic</span>
+													{/if}
+												</div>
 												<div class="flex-grow"></div>
 												{#if template.tags && template.tags.length > 0}
 													<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
@@ -1794,9 +1820,14 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 												</div>
 											{:else}
 												<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-												{#if template.usage_count}
-													<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
-												{/if}
+												<div class="flex items-center gap-2">
+													{#if template.usage_count}
+														<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
+													{/if}
+													{#if template.template_config?.generation_mode !== 'skill_sheet_guided'}
+														<span class="text-[10px] text-gray-700 bg-white/[0.03] px-1.5 py-0.5 rounded">Classic</span>
+													{/if}
+												</div>
 												<div class="flex-grow"></div>
 												{#if template.tags && template.tags.length > 0}
 													<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
@@ -2083,9 +2114,14 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 												</div>
 											{:else}
 												<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-												{#if template.usage_count}
-													<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
-												{/if}
+												<div class="flex items-center gap-2">
+													{#if template.usage_count}
+														<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
+													{/if}
+													{#if template.template_config?.generation_mode !== 'skill_sheet_guided'}
+														<span class="text-[10px] text-gray-700 bg-white/[0.03] px-1.5 py-0.5 rounded">Classic</span>
+													{/if}
+												</div>
 												<div class="flex-grow"></div>
 												{#if template.tags && template.tags.length > 0}
 													<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
@@ -2231,9 +2267,14 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 												</div>
 											{:else}
 												<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-												{#if template.usage_count}
-													<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
-												{/if}
+												<div class="flex items-center gap-2">
+													{#if template.usage_count}
+														<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
+													{/if}
+													{#if template.template_config?.generation_mode !== 'skill_sheet_guided'}
+														<span class="text-[10px] text-gray-700 bg-white/[0.03] px-1.5 py-0.5 rounded">Classic</span>
+													{/if}
+												</div>
 												<div class="flex-grow"></div>
 												{#if template.tags && template.tags.length > 0}
 													<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
@@ -2379,9 +2420,14 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 												</div>
 											{:else}
 												<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-												{#if template.usage_count}
-													<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
-												{/if}
+												<div class="flex items-center gap-2">
+													{#if template.usage_count}
+														<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
+													{/if}
+													{#if template.template_config?.generation_mode !== 'skill_sheet_guided'}
+														<span class="text-[10px] text-gray-700 bg-white/[0.03] px-1.5 py-0.5 rounded">Classic</span>
+													{/if}
+												</div>
 												<div class="flex-grow"></div>
 												{#if template.tags && template.tags.length > 0}
 													<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
@@ -2527,9 +2573,14 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 												</div>
 											{:else}
 												<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-												{#if template.usage_count}
-													<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
-												{/if}
+												<div class="flex items-center gap-2">
+													{#if template.usage_count}
+														<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
+													{/if}
+													{#if template.template_config?.generation_mode !== 'skill_sheet_guided'}
+														<span class="text-[10px] text-gray-700 bg-white/[0.03] px-1.5 py-0.5 rounded">Classic</span>
+													{/if}
+												</div>
 												<div class="flex-grow"></div>
 												{#if template.tags && template.tags.length > 0}
 													<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
