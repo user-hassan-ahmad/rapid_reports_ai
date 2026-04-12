@@ -145,8 +145,8 @@ def _glm_reasoning_enabled() -> bool:
 # Update this dictionary to change models without modifying code throughout the codebase
 MODEL_CONFIG = {
     # Report Generation Models
-    "PRIMARY_REPORT_GENERATOR": "zai-glm-4.7",  # Primary model for report generation
-    "FALLBACK_REPORT_GENERATOR": "claude-sonnet-4-6",  # Fallback model if primary fails after retries (Claude Sonnet 4.6)
+    "PRIMARY_REPORT_GENERATOR": "accounts/fireworks/models/glm-5p1",  # Primary model for report generation (Fireworks GLM-5.1)
+    "FALLBACK_REPORT_GENERATOR": "zai-glm-4.7",  # Fallback to Cerebras GLM-4.7
     
     # Structure Validation Models
     "STRUCTURE_VALIDATOR": "gpt-oss-120b",  # Structure validation: Check for structural quality violations (Cerebras GPT-OSS-120B with medium reasoning)
@@ -4070,6 +4070,12 @@ async def generate_auto_report(
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
                 print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=6500 for {primary_model}")
+            elif provider == "fireworks":
+                model_settings["max_tokens"] = 16000
+                model_settings["temperature"] = 0.6
+                model_settings["top_p"] = 0.95
+                model_settings["reasoning_effort"] = "high"
+                print(f"  └─ Using Fireworks GLM-5.1 — temperature=0.6, reasoning_effort=high, max_tokens=16000")
             elif provider == "anthropic":
                 model_settings["max_tokens"] = 8000
                 model_settings["anthropic_thinking"] = {
