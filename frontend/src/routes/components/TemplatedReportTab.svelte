@@ -491,6 +491,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 
 	function openRefinePanel(template) {
 		refiningTemplate = template;
+		dispatch('openRefine', { template });
 	}
 
 	// ── Inline metadata editing ────────────────────────────────────────
@@ -2967,8 +2968,3 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	</div>
 </div>
 
-<TemplateRefinePanel
-	template={refiningTemplate}
-	on:close={() => { refiningTemplate = null; }}
-	on:saved={() => { refiningTemplate = null; templatesRefreshKey += 1; }}
-/>

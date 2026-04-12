@@ -9,6 +9,7 @@ import HistoryTab from './components/HistoryTab.svelte';
 import SettingsTab from './components/SettingsTab.svelte';
 import ReportEnhancementSidebar from './components/ReportEnhancementSidebar.svelte';
 import IntervalAnalysisDrawer from './components/IntervalAnalysisDrawer.svelte';
+import TemplateRefinePanel from './components/TemplateRefinePanel.svelte';
 import ReportVersionHistory from './components/ReportVersionHistory.svelte';
 import ReportVersionInline from './components/ReportVersionInline.svelte';
 import TemplateEditorNew from './components/TemplateEditorNew.svelte';
@@ -203,6 +204,7 @@ $: copilotMainPaddingRightPx =
 				: 0
 		: 0;
 let intervalDrawerOpen = false;
+let refiningTemplate: any = null;
 let auditState: {
 	status: string;
 	result: unknown;
@@ -1072,6 +1074,7 @@ $: if (
 					if (currentReportId) showVersionHistoryModal = true;
 				}}
 				on:openCompare={() => { intervalDrawerOpen = true; }}
+				on:openRefine={(e) => { refiningTemplate = e.detail.template; }}
 				on:reportCleared={handleTemplateCleared}
 					on:templateListOpen={() => {
 							// User clicked "Back to Templates" — just close the sidebar.
@@ -1380,6 +1383,12 @@ $: if (
 			reportUpdateLoading = false;
 		}
 	}}
+/>
+
+<TemplateRefinePanel
+	template={refiningTemplate}
+	on:close={() => { refiningTemplate = null; }}
+	on:saved={() => { refiningTemplate = null; }}
 />
 
 <!-- Template Editor Modal - Rendered at root level -->
