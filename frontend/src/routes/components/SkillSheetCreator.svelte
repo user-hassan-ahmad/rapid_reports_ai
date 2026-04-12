@@ -43,7 +43,7 @@
 	// Phase 1 — examples
 	let scanType = '';
 	let protocolNotes = '';
-	const exampleHints = ['Normal study', 'Single finding', 'Complex case'];
+	const exampleHints = ['Report 1', 'Report 2', 'Report 3'];
 	let examples = [
 		{ label: '', content: '' },
 		{ label: '', content: '' },
@@ -449,7 +449,7 @@
 						{:else}
 							<span class="w-1.5 h-1.5 rounded-full bg-gray-700 shrink-0"></span>
 						{/if}
-						<span>{i < 3 ? exampleHints[i] : `Report ${i + 1}`}</span>
+						<span>Report {i + 1}</span>
 						{#if i >= 3 && examples.length > 3}
 							<button class="ml-1 text-gray-600 hover:text-red-400 transition-colors" on:click|stopPropagation={() => { removeExample(i); if (activeExampleTab >= examples.length) activeExampleTab = examples.length - 1; }}>&times;</button>
 						{/if}
@@ -462,17 +462,18 @@
 					<button class="px-3 py-2.5 text-gray-600 hover:text-gray-400 text-sm transition-colors" on:click={() => { addExample(); activeExampleTab = examples.length - 1; }} title="Add another report (optional)">+</button>
 				{/if}
 			</div>
-			<div class="p-5 space-y-3">
+			<p class="px-5 pt-3 pb-0 text-[11px] text-gray-600">For best results, include a mix — a straightforward case, one with findings, and a complex one.</p>
+			<div class="p-5 pt-2 space-y-3">
 				<div class="flex items-center justify-between">
 					<label class="text-xs font-medium text-gray-400 uppercase tracking-wider">
-						{activeExampleTab < 3 ? exampleHints[activeExampleTab] : `Report ${activeExampleTab + 1}`}
+						Report {activeExampleTab + 1}
 						{#if activeExampleTab < 3}<span class="text-purple-400 ml-1.5">required</span>{/if}
 					</label>
 					{#if examples[activeExampleTab]?.content.trim()}
 						<span class="text-xs text-emerald-500">{examples[activeExampleTab].content.length} chars</span>
 					{/if}
 				</div>
-				<input class="input-dark" bind:value={examples[activeExampleTab].label} placeholder="{activeExampleTab < 3 ? exampleHints[activeExampleTab] : 'Additional example'} — describe the case" />
+				<input class="input-dark" bind:value={examples[activeExampleTab].label} placeholder="Describe the case..." />
 				<textarea class="input-dark resize-y" rows="14" bind:value={examples[activeExampleTab].content} placeholder="Paste complete report..."></textarea>
 			</div>
 		</div>
