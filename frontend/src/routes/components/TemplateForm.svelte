@@ -581,11 +581,6 @@
 					onkeydown={(e) => e.key === 'Enter' && (caseDetailsManuallyExpanded = true)}
 					title="Edit case details">
 					<div class="flex items-center gap-2 flex-1 min-w-0">
-						<span class="shrink-0 px-2.5 py-1 rounded-md bg-purple-500/15 border border-purple-500/25
-							text-xs font-medium text-purple-300 truncate max-w-[200px] transition-colors
-							group-hover:border-purple-500/40 group-hover:bg-purple-500/20">
-							{selectedTemplate?.name ?? '—'}
-						</span>
 						{#each nonFindingsVariables.slice(0, 2) as v}
 							{#if variableValues[v]}
 								<span class="text-xs text-gray-500 truncate transition-colors group-hover:text-gray-400">
