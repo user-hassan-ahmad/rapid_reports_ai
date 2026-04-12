@@ -157,53 +157,79 @@
 		sectionsError = '';
 
 		try {
-			// Fetch sections from FINDINGS template_content
 			const templateId = selectedTemplate?.id ?? 'unknown';
 			const templateName = selectedTemplate?.name ?? 'unknown';
-			console.log('[SetUpWorkspace] template:', templateId, templateName, 'findingsTemplateContent len:', findingsTemplateContent?.length ?? 0, 'content_style:', findingsContentStyle);
+			const isSkillSheetGuided = selectedTemplate?.template_config?.generation_mode === 'skill_sheet_guided';
 
-			if (findingsTemplateContent?.trim()) {
-				const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-				if ($token) headers['Authorization'] = `Bearer ${$token}`;
-				const res = await fetch(`${API_URL}/api/canvas/sections-from-template`, {
-					method: 'POST',
-					headers,
-					body: JSON.stringify({
-						template_content: findingsTemplateContent,
-						content_style: findingsContentStyle
-					})
-				});
-				const data = await res.json();
-				console.log('[SetUpWorkspace] sections-from-template res.status:', res.status, 'data:', data, 'data.sections:', data?.sections);
+			// Skill-sheet-guided templates: use pre-extracted coverage_sections (no API call)
+			if (isSkillSheetGuided) {
+				const storedSections = selectedTemplate?.template_config?.coverage_sections;
+				console.log('[SetUpWorkspace] skill-sheet-guided template:', templateId, templateName, 'coverage_sections:', storedSections);
 
-				if (data.sections && Array.isArray(data.sections)) {
-					// Snapshot variables for dirty tracking
-					variableValuesGeneratedFrom = {};
-					for (const v of nonFindingsVariables) {
-						variableValuesGeneratedFrom[v] = variableValues[v] || '';
-					}
+				variableValuesGeneratedFrom = {};
+				for (const v of nonFindingsVariables) {
+					variableValuesGeneratedFrom[v] = variableValues[v] || '';
+				}
 
-					// If workspace is already open, this is a regeneration, so clear previous state
-					if (workspaceOpen) {
-						scratchpadRef?.reset('');
-						response = null;
-						responseModel = null;
-						reportId = null;
+				if (workspaceOpen) {
+					scratchpadRef?.reset('');
+					response = null;
+					responseModel = null;
+					reportId = null;
 					hasResponseEver = false;
 					activePrompts = [];
-						findingsAtReportGeneration = '';
-						dispatch('clearResponse');
-					}
+					findingsAtReportGeneration = '';
+					dispatch('clearResponse');
+				}
 
-					prePoppedSections = data.sections;
-					console.log('[SetUpWorkspace] prePoppedSections set:', prePoppedSections.length, prePoppedSections);
+				prePoppedSections = Array.isArray(storedSections) && storedSections.length > 0
+					? storedSections
+					: [];
+			} else {
+				// Production wizard templates: fetch sections from FINDINGS template_content via API
+				console.log('[SetUpWorkspace] template:', templateId, templateName, 'findingsTemplateContent len:', findingsTemplateContent?.length ?? 0, 'content_style:', findingsContentStyle);
+
+				if (findingsTemplateContent?.trim()) {
+					const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+					if ($token) headers['Authorization'] = `Bearer ${$token}`;
+					const res = await fetch(`${API_URL}/api/canvas/sections-from-template`, {
+						method: 'POST',
+						headers,
+						body: JSON.stringify({
+							template_content: findingsTemplateContent,
+							content_style: findingsContentStyle
+						})
+					});
+					const data = await res.json();
+					console.log('[SetUpWorkspace] sections-from-template res.status:', res.status, 'data:', data, 'data.sections:', data?.sections);
+
+					if (data.sections && Array.isArray(data.sections)) {
+						variableValuesGeneratedFrom = {};
+						for (const v of nonFindingsVariables) {
+							variableValuesGeneratedFrom[v] = variableValues[v] || '';
+						}
+
+						if (workspaceOpen) {
+							scratchpadRef?.reset('');
+							response = null;
+							responseModel = null;
+							reportId = null;
+							hasResponseEver = false;
+							activePrompts = [];
+							findingsAtReportGeneration = '';
+							dispatch('clearResponse');
+						}
+
+						prePoppedSections = data.sections;
+						console.log('[SetUpWorkspace] prePoppedSections set:', prePoppedSections.length, prePoppedSections);
+					} else {
+						prePoppedSections = [];
+						console.log('[SetUpWorkspace] prePoppedSections empty (no valid data.sections)');
+					}
 				} else {
 					prePoppedSections = [];
-					console.log('[SetUpWorkspace] prePoppedSections empty (no valid data.sections)');
+					console.log('[SetUpWorkspace] prePoppedSections empty (findingsTemplateContent empty or whitespace)');
 				}
-			} else {
-				prePoppedSections = [];
-				console.log('[SetUpWorkspace] prePoppedSections empty (findingsTemplateContent empty or whitespace)');
 			}
 			coveredSections = new Set();
 		caseDetailsManuallyExpanded = false;

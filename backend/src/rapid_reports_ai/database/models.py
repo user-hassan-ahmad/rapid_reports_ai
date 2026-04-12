@@ -150,27 +150,24 @@ class Template(Base):
         """Convert template to dictionary"""
         template_config = self.template_config or {}
         
-        # Extract variables from template_config.sections
-        # Variables are sections with has_input_field=True and included=True
-        # Preserve the order from the sections' order field
+        # Extract variables from template_config
         variables = []
         if isinstance(template_config, dict):
-            sections = template_config.get('sections', [])
-            if isinstance(sections, list):
-                # Sort sections by order field to maintain structure order
-                sorted_sections = sorted(
-                    [s for s in sections if isinstance(s, dict)],
-                    key=lambda s: s.get('order', 999)  # Default to 999 if order missing
-                )
-                
-                for section in sorted_sections:
-                    # Check if section has input field and is included
-                    if section.get('has_input_field') and section.get('included'):
-                        section_name = section.get('name')
-                        if section_name:
-                            variables.append(section_name)
-        
-        # Remove duplicates while preserving order
+            if template_config.get('generation_mode') == 'skill_sheet_guided':
+                variables = ['CLINICAL_HISTORY', 'FINDINGS']
+            else:
+                sections = template_config.get('sections', [])
+                if isinstance(sections, list):
+                    sorted_sections = sorted(
+                        [s for s in sections if isinstance(s, dict)],
+                        key=lambda s: s.get('order', 999)
+                    )
+                    for section in sorted_sections:
+                        if section.get('has_input_field') and section.get('included'):
+                            section_name = section.get('name')
+                            if section_name:
+                                variables.append(section_name)
+
         seen = set()
         unique_variables = []
         for var in variables:
@@ -241,27 +238,24 @@ class TemplateVersion(Base):
         """Convert version to dictionary"""
         template_config = self.template_config or {}
         
-        # Extract variables from template_config.sections
-        # Variables are sections with has_input_field=True and included=True
-        # Preserve the order from the sections' order field
+        # Extract variables from template_config
         variables = []
         if isinstance(template_config, dict):
-            sections = template_config.get('sections', [])
-            if isinstance(sections, list):
-                # Sort sections by order field to maintain structure order
-                sorted_sections = sorted(
-                    [s for s in sections if isinstance(s, dict)],
-                    key=lambda s: s.get('order', 999)  # Default to 999 if order missing
-                )
-                
-                for section in sorted_sections:
-                    # Check if section has input field and is included
-                    if section.get('has_input_field') and section.get('included'):
-                        section_name = section.get('name')
-                        if section_name:
-                            variables.append(section_name)
-        
-        # Remove duplicates while preserving order
+            if template_config.get('generation_mode') == 'skill_sheet_guided':
+                variables = ['CLINICAL_HISTORY', 'FINDINGS']
+            else:
+                sections = template_config.get('sections', [])
+                if isinstance(sections, list):
+                    sorted_sections = sorted(
+                        [s for s in sections if isinstance(s, dict)],
+                        key=lambda s: s.get('order', 999)
+                    )
+                    for section in sorted_sections:
+                        if section.get('has_input_field') and section.get('included'):
+                            section_name = section.get('name')
+                            if section_name:
+                                variables.append(section_name)
+
         seen = set()
         unique_variables = []
         for var in variables:

@@ -2249,10 +2249,13 @@ async def skill_sheet_save_endpoint(
         if not request.skill_sheet.strip():
             return {"success": False, "error": "Skill sheet is required"}
 
+        coverage_sections = TemplateManager.extract_coverage_sections(request.skill_sheet)
+        logger.info("  coverage_sections: %s", coverage_sections)
         template_config = {
             "generation_mode": "skill_sheet_guided",
             "skill_sheet": request.skill_sheet,
             "scan_type": request.scan_type,
+            "coverage_sections": coverage_sections,
         }
         template = create_template(
             db=db,
