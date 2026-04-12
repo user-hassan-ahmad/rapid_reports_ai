@@ -485,7 +485,87 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	}
 	
 	// Template Editor handlers
+	// ── Inline metadata editing ────────────────────────────────────────
+	let inlineEditId = '';
+	let inlineEditName = '';
+	/** @type {string[]} */
+	let inlineEditTags = [];
+	let inlineEditNewTag = '';
+	let inlineEditSaving = false;
+
+	$: inlineEditExistingTags = /** @type {string[]} */ ($tagsStore.tags || []);
+	$: inlineEditTagSuggestions = inlineEditNewTag.trim()
+		? inlineEditExistingTags
+				.filter((t) => t.toLowerCase().includes(inlineEditNewTag.trim().toLowerCase()))
+				.filter((t) => !inlineEditTags.some((ex) => ex.toLowerCase() === t.toLowerCase()))
+				.slice(0, 6)
+		: [];
+
+	function startInlineEdit(template) {
+		inlineEditId = template.id;
+		inlineEditName = template.name;
+		inlineEditTags = [...(template.tags || [])];
+		inlineEditNewTag = '';
+	}
+
+	function cancelInlineEdit() {
+		inlineEditId = '';
+	}
+
+	function inlineEditAddTag(tagToAdd) {
+		const raw = (tagToAdd ?? inlineEditNewTag).trim();
+		if (!raw) return;
+		const match = inlineEditExistingTags.find((t) => t.toLowerCase() === raw.toLowerCase());
+		const finalTag = match || raw;
+		if (inlineEditTags.some((t) => t.toLowerCase() === finalTag.toLowerCase())) {
+			inlineEditNewTag = '';
+			return;
+		}
+		inlineEditTags = [...inlineEditTags, finalTag];
+		inlineEditNewTag = '';
+	}
+
+	function inlineEditRemoveTag(tag) {
+		inlineEditTags = inlineEditTags.filter((t) => t !== tag);
+	}
+
+	function inlineEditTagKeydown(e) {
+		if (e.key === 'Enter') { e.preventDefault(); inlineEditAddTag(); }
+		else if (e.key === 'Backspace' && !inlineEditNewTag && inlineEditTags.length > 0) {
+			inlineEditTags = inlineEditTags.slice(0, -1);
+		}
+		else if (e.key === 'Escape') { cancelInlineEdit(); }
+	}
+
+	async function saveInlineEdit() {
+		if (!inlineEditName.trim() || !inlineEditId) return;
+		inlineEditSaving = true;
+		try {
+			const headers = { 'Content-Type': 'application/json' };
+			if ($token) headers['Authorization'] = `Bearer ${$token}`;
+			const res = await fetch(`${API_URL}/api/templates/${inlineEditId}`, {
+				method: 'PUT',
+				headers,
+				body: JSON.stringify({ name: inlineEditName.trim(), tags: inlineEditTags })
+			});
+			const data = await res.json();
+			if (data.success) {
+				await templatesStore.refreshTemplates();
+				tagsStore.refreshTags();
+				inlineEditId = '';
+			}
+		} catch (err) {
+			console.error('[InlineEdit] save failed:', err);
+		} finally {
+			inlineEditSaving = false;
+		}
+	}
+
 	function handleEditTemplate(template) {
+		if (template.template_config?.generation_mode === 'skill_sheet_guided') {
+			startInlineEdit(template);
+			return;
+		}
 		dispatch('openTemplateEditor', { template, model: templatedModel });
 	}
 	
@@ -1516,28 +1596,71 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											tabindex="0"
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
-											<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-											{#if template.usage_count}
-												<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
-											{/if}
-											<div class="flex-grow"></div>
-											<!-- Tags at bottom -->
-											{#if template.tags && template.tags.length > 0}
-												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
-													{#each template.tags.slice(0, 3) as tag}
-														<span 
-															class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
-															style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
-														>
-															{tag}
-														</span>
-													{/each}
-													{#if template.tags.length > 3}
-														<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
-															+{template.tags.length - 3}
-														</span>
-													{/if}
+											{#if inlineEditId === template.id}
+												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') cancelInlineEdit(); }}>
+													<input
+														class="input-dark !py-1.5 w-full text-base font-semibold"
+														bind:value={inlineEditName}
+														onkeydown={(e) => { if (e.key === 'Enter') saveInlineEdit(); if (e.key === 'Escape') cancelInlineEdit(); }}
+													/>
+													<div class="relative">
+														<div class="flex flex-wrap items-center gap-1.5 px-2 py-1.5 bg-black/30 border border-white/10 rounded-lg">
+															{#each inlineEditTags as tag}
+																<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs" style="background-color: {getTagColor(tag, customTagColors)}; color: white;">
+																	{tag}
+																	<button type="button" class="hover:bg-white/20 rounded-full p-0.5" onclick={() => inlineEditRemoveTag(tag)}>
+																		<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+																	</button>
+																</span>
+															{/each}
+															<input type="text" bind:value={inlineEditNewTag} onkeydown={inlineEditTagKeydown}
+																placeholder={inlineEditTags.length === 0 ? 'Add tags...' : ''}
+																class="flex-1 min-w-[6rem] bg-transparent border-0 outline-none ring-0 focus:outline-none focus:ring-0 text-xs text-white placeholder-gray-600 py-0.5"
+																style="box-shadow: none;"
+															/>
+														</div>
+														{#if inlineEditTagSuggestions.length > 0}
+															<div class="absolute z-20 left-0 right-0 mt-1 bg-gray-900 border border-white/10 rounded-lg shadow-2xl overflow-hidden">
+																{#each inlineEditTagSuggestions as suggestion}
+																	<button type="button" class="w-full text-left px-3 py-1.5 hover:bg-white/5 text-xs text-white"
+																		onmousedown={(e) => { e.preventDefault(); inlineEditAddTag(suggestion); }}>
+																		{suggestion}
+																	</button>
+																{/each}
+															</div>
+														{/if}
+													</div>
+													<div class="flex items-center justify-end gap-2">
+														<button type="button" class="text-xs text-gray-500 hover:text-gray-300 transition-colors" onclick={cancelInlineEdit}>Cancel</button>
+														<button type="button" class="px-3 py-1 rounded-lg text-xs font-medium bg-purple-600/80 hover:bg-purple-600 text-white transition-colors"
+															onclick={saveInlineEdit} disabled={inlineEditSaving || !inlineEditName.trim()}>
+															{inlineEditSaving ? 'Saving...' : 'Save'}
+														</button>
+													</div>
 												</div>
+											{:else}
+												<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
+												{#if template.usage_count}
+													<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
+												{/if}
+												<div class="flex-grow"></div>
+												{#if template.tags && template.tags.length > 0}
+													<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
+														{#each template.tags.slice(0, 3) as tag}
+															<span
+																class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
+																style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
+															>
+																{tag}
+															</span>
+														{/each}
+														{#if template.tags.length > 3}
+															<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
+																+{template.tags.length - 3}
+															</span>
+														{/if}
+													</div>
+												{/if}
 											{/if}
 										</div>
 										<!-- Action buttons - Pin, Edit, Delete (shown on hover) -->
@@ -1618,28 +1741,71 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											tabindex="0"
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
-											<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-											{#if template.usage_count}
-												<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
-											{/if}
-											<div class="flex-grow"></div>
-											<!-- Tags at bottom -->
-											{#if template.tags && template.tags.length > 0}
-												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
-													{#each template.tags.slice(0, 3) as tag}
-														<span 
-															class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
-															style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
-														>
-															{tag}
-														</span>
-													{/each}
-													{#if template.tags.length > 3}
-														<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
-															+{template.tags.length - 3}
-														</span>
-													{/if}
+											{#if inlineEditId === template.id}
+												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') cancelInlineEdit(); }}>
+													<input
+														class="input-dark !py-1.5 w-full text-base font-semibold"
+														bind:value={inlineEditName}
+														onkeydown={(e) => { if (e.key === 'Enter') saveInlineEdit(); if (e.key === 'Escape') cancelInlineEdit(); }}
+													/>
+													<div class="relative">
+														<div class="flex flex-wrap items-center gap-1.5 px-2 py-1.5 bg-black/30 border border-white/10 rounded-lg">
+															{#each inlineEditTags as tag}
+																<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs" style="background-color: {getTagColor(tag, customTagColors)}; color: white;">
+																	{tag}
+																	<button type="button" class="hover:bg-white/20 rounded-full p-0.5" onclick={() => inlineEditRemoveTag(tag)}>
+																		<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+																	</button>
+																</span>
+															{/each}
+															<input type="text" bind:value={inlineEditNewTag} onkeydown={inlineEditTagKeydown}
+																placeholder={inlineEditTags.length === 0 ? 'Add tags...' : ''}
+																class="flex-1 min-w-[6rem] bg-transparent border-0 outline-none ring-0 focus:outline-none focus:ring-0 text-xs text-white placeholder-gray-600 py-0.5"
+																style="box-shadow: none;"
+															/>
+														</div>
+														{#if inlineEditTagSuggestions.length > 0}
+															<div class="absolute z-20 left-0 right-0 mt-1 bg-gray-900 border border-white/10 rounded-lg shadow-2xl overflow-hidden">
+																{#each inlineEditTagSuggestions as suggestion}
+																	<button type="button" class="w-full text-left px-3 py-1.5 hover:bg-white/5 text-xs text-white"
+																		onmousedown={(e) => { e.preventDefault(); inlineEditAddTag(suggestion); }}>
+																		{suggestion}
+																	</button>
+																{/each}
+															</div>
+														{/if}
+													</div>
+													<div class="flex items-center justify-end gap-2">
+														<button type="button" class="text-xs text-gray-500 hover:text-gray-300 transition-colors" onclick={cancelInlineEdit}>Cancel</button>
+														<button type="button" class="px-3 py-1 rounded-lg text-xs font-medium bg-purple-600/80 hover:bg-purple-600 text-white transition-colors"
+															onclick={saveInlineEdit} disabled={inlineEditSaving || !inlineEditName.trim()}>
+															{inlineEditSaving ? 'Saving...' : 'Save'}
+														</button>
+													</div>
 												</div>
+											{:else}
+												<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
+												{#if template.usage_count}
+													<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
+												{/if}
+												<div class="flex-grow"></div>
+												{#if template.tags && template.tags.length > 0}
+													<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
+														{#each template.tags.slice(0, 3) as tag}
+															<span
+																class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
+																style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
+															>
+																{tag}
+															</span>
+														{/each}
+														{#if template.tags.length > 3}
+															<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
+																+{template.tags.length - 3}
+															</span>
+														{/if}
+													</div>
+												{/if}
 											{/if}
 										</div>
 									<!-- Action buttons - Pin, Edit, Delete (shown on hover) -->
@@ -1864,28 +2030,71 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											tabindex="0"
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
-											<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-											{#if template.usage_count}
-												<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
-											{/if}
-											<div class="flex-grow"></div>
-											<!-- Tags at bottom -->
-											{#if template.tags && template.tags.length > 0}
-												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
-													{#each template.tags.slice(0, 3) as tag}
-														<span 
-															class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
-															style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
-														>
-															{tag}
-														</span>
-													{/each}
-													{#if template.tags.length > 3}
-														<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
-															+{template.tags.length - 3}
-														</span>
-													{/if}
+											{#if inlineEditId === template.id}
+												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') cancelInlineEdit(); }}>
+													<input
+														class="input-dark !py-1.5 w-full text-base font-semibold"
+														bind:value={inlineEditName}
+														onkeydown={(e) => { if (e.key === 'Enter') saveInlineEdit(); if (e.key === 'Escape') cancelInlineEdit(); }}
+													/>
+													<div class="relative">
+														<div class="flex flex-wrap items-center gap-1.5 px-2 py-1.5 bg-black/30 border border-white/10 rounded-lg">
+															{#each inlineEditTags as tag}
+																<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs" style="background-color: {getTagColor(tag, customTagColors)}; color: white;">
+																	{tag}
+																	<button type="button" class="hover:bg-white/20 rounded-full p-0.5" onclick={() => inlineEditRemoveTag(tag)}>
+																		<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+																	</button>
+																</span>
+															{/each}
+															<input type="text" bind:value={inlineEditNewTag} onkeydown={inlineEditTagKeydown}
+																placeholder={inlineEditTags.length === 0 ? 'Add tags...' : ''}
+																class="flex-1 min-w-[6rem] bg-transparent border-0 outline-none ring-0 focus:outline-none focus:ring-0 text-xs text-white placeholder-gray-600 py-0.5"
+																style="box-shadow: none;"
+															/>
+														</div>
+														{#if inlineEditTagSuggestions.length > 0}
+															<div class="absolute z-20 left-0 right-0 mt-1 bg-gray-900 border border-white/10 rounded-lg shadow-2xl overflow-hidden">
+																{#each inlineEditTagSuggestions as suggestion}
+																	<button type="button" class="w-full text-left px-3 py-1.5 hover:bg-white/5 text-xs text-white"
+																		onmousedown={(e) => { e.preventDefault(); inlineEditAddTag(suggestion); }}>
+																		{suggestion}
+																	</button>
+																{/each}
+															</div>
+														{/if}
+													</div>
+													<div class="flex items-center justify-end gap-2">
+														<button type="button" class="text-xs text-gray-500 hover:text-gray-300 transition-colors" onclick={cancelInlineEdit}>Cancel</button>
+														<button type="button" class="px-3 py-1 rounded-lg text-xs font-medium bg-purple-600/80 hover:bg-purple-600 text-white transition-colors"
+															onclick={saveInlineEdit} disabled={inlineEditSaving || !inlineEditName.trim()}>
+															{inlineEditSaving ? 'Saving...' : 'Save'}
+														</button>
+													</div>
 												</div>
+											{:else}
+												<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
+												{#if template.usage_count}
+													<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
+												{/if}
+												<div class="flex-grow"></div>
+												{#if template.tags && template.tags.length > 0}
+													<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
+														{#each template.tags.slice(0, 3) as tag}
+															<span
+																class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
+																style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
+															>
+																{tag}
+															</span>
+														{/each}
+														{#if template.tags.length > 3}
+															<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
+																+{template.tags.length - 3}
+															</span>
+														{/if}
+													</div>
+												{/if}
 											{/if}
 										</div>
 									<!-- Action buttons - Pin, Edit, Delete (shown on hover) -->
@@ -1969,28 +2178,71 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											tabindex="0"
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
-											<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-											{#if template.usage_count}
-												<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
-											{/if}
-											<div class="flex-grow"></div>
-											<!-- Tags at bottom -->
-											{#if template.tags && template.tags.length > 0}
-												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
-													{#each template.tags.slice(0, 3) as tag}
-														<span 
-															class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
-															style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
-														>
-															{tag}
-														</span>
-													{/each}
-													{#if template.tags.length > 3}
-														<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
-															+{template.tags.length - 3}
-														</span>
-													{/if}
+											{#if inlineEditId === template.id}
+												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') cancelInlineEdit(); }}>
+													<input
+														class="input-dark !py-1.5 w-full text-base font-semibold"
+														bind:value={inlineEditName}
+														onkeydown={(e) => { if (e.key === 'Enter') saveInlineEdit(); if (e.key === 'Escape') cancelInlineEdit(); }}
+													/>
+													<div class="relative">
+														<div class="flex flex-wrap items-center gap-1.5 px-2 py-1.5 bg-black/30 border border-white/10 rounded-lg">
+															{#each inlineEditTags as tag}
+																<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs" style="background-color: {getTagColor(tag, customTagColors)}; color: white;">
+																	{tag}
+																	<button type="button" class="hover:bg-white/20 rounded-full p-0.5" onclick={() => inlineEditRemoveTag(tag)}>
+																		<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+																	</button>
+																</span>
+															{/each}
+															<input type="text" bind:value={inlineEditNewTag} onkeydown={inlineEditTagKeydown}
+																placeholder={inlineEditTags.length === 0 ? 'Add tags...' : ''}
+																class="flex-1 min-w-[6rem] bg-transparent border-0 outline-none ring-0 focus:outline-none focus:ring-0 text-xs text-white placeholder-gray-600 py-0.5"
+																style="box-shadow: none;"
+															/>
+														</div>
+														{#if inlineEditTagSuggestions.length > 0}
+															<div class="absolute z-20 left-0 right-0 mt-1 bg-gray-900 border border-white/10 rounded-lg shadow-2xl overflow-hidden">
+																{#each inlineEditTagSuggestions as suggestion}
+																	<button type="button" class="w-full text-left px-3 py-1.5 hover:bg-white/5 text-xs text-white"
+																		onmousedown={(e) => { e.preventDefault(); inlineEditAddTag(suggestion); }}>
+																		{suggestion}
+																	</button>
+																{/each}
+															</div>
+														{/if}
+													</div>
+													<div class="flex items-center justify-end gap-2">
+														<button type="button" class="text-xs text-gray-500 hover:text-gray-300 transition-colors" onclick={cancelInlineEdit}>Cancel</button>
+														<button type="button" class="px-3 py-1 rounded-lg text-xs font-medium bg-purple-600/80 hover:bg-purple-600 text-white transition-colors"
+															onclick={saveInlineEdit} disabled={inlineEditSaving || !inlineEditName.trim()}>
+															{inlineEditSaving ? 'Saving...' : 'Save'}
+														</button>
+													</div>
 												</div>
+											{:else}
+												<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
+												{#if template.usage_count}
+													<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
+												{/if}
+												<div class="flex-grow"></div>
+												{#if template.tags && template.tags.length > 0}
+													<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
+														{#each template.tags.slice(0, 3) as tag}
+															<span
+																class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
+																style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
+															>
+																{tag}
+															</span>
+														{/each}
+														{#if template.tags.length > 3}
+															<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
+																+{template.tags.length - 3}
+															</span>
+														{/if}
+													</div>
+												{/if}
 											{/if}
 										</div>
 									<!-- Action buttons - Pin, Edit, Delete (shown on hover) -->
@@ -2074,28 +2326,71 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											tabindex="0"
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
-											<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-											{#if template.usage_count}
-												<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
-											{/if}
-											<div class="flex-grow"></div>
-											<!-- Tags at bottom -->
-											{#if template.tags && template.tags.length > 0}
-												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
-													{#each template.tags.slice(0, 3) as tag}
-														<span 
-															class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
-															style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
-														>
-															{tag}
-														</span>
-													{/each}
-													{#if template.tags.length > 3}
-														<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
-															+{template.tags.length - 3}
-														</span>
-													{/if}
+											{#if inlineEditId === template.id}
+												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') cancelInlineEdit(); }}>
+													<input
+														class="input-dark !py-1.5 w-full text-base font-semibold"
+														bind:value={inlineEditName}
+														onkeydown={(e) => { if (e.key === 'Enter') saveInlineEdit(); if (e.key === 'Escape') cancelInlineEdit(); }}
+													/>
+													<div class="relative">
+														<div class="flex flex-wrap items-center gap-1.5 px-2 py-1.5 bg-black/30 border border-white/10 rounded-lg">
+															{#each inlineEditTags as tag}
+																<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs" style="background-color: {getTagColor(tag, customTagColors)}; color: white;">
+																	{tag}
+																	<button type="button" class="hover:bg-white/20 rounded-full p-0.5" onclick={() => inlineEditRemoveTag(tag)}>
+																		<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+																	</button>
+																</span>
+															{/each}
+															<input type="text" bind:value={inlineEditNewTag} onkeydown={inlineEditTagKeydown}
+																placeholder={inlineEditTags.length === 0 ? 'Add tags...' : ''}
+																class="flex-1 min-w-[6rem] bg-transparent border-0 outline-none ring-0 focus:outline-none focus:ring-0 text-xs text-white placeholder-gray-600 py-0.5"
+																style="box-shadow: none;"
+															/>
+														</div>
+														{#if inlineEditTagSuggestions.length > 0}
+															<div class="absolute z-20 left-0 right-0 mt-1 bg-gray-900 border border-white/10 rounded-lg shadow-2xl overflow-hidden">
+																{#each inlineEditTagSuggestions as suggestion}
+																	<button type="button" class="w-full text-left px-3 py-1.5 hover:bg-white/5 text-xs text-white"
+																		onmousedown={(e) => { e.preventDefault(); inlineEditAddTag(suggestion); }}>
+																		{suggestion}
+																	</button>
+																{/each}
+															</div>
+														{/if}
+													</div>
+													<div class="flex items-center justify-end gap-2">
+														<button type="button" class="text-xs text-gray-500 hover:text-gray-300 transition-colors" onclick={cancelInlineEdit}>Cancel</button>
+														<button type="button" class="px-3 py-1 rounded-lg text-xs font-medium bg-purple-600/80 hover:bg-purple-600 text-white transition-colors"
+															onclick={saveInlineEdit} disabled={inlineEditSaving || !inlineEditName.trim()}>
+															{inlineEditSaving ? 'Saving...' : 'Save'}
+														</button>
+													</div>
 												</div>
+											{:else}
+												<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
+												{#if template.usage_count}
+													<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
+												{/if}
+												<div class="flex-grow"></div>
+												{#if template.tags && template.tags.length > 0}
+													<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
+														{#each template.tags.slice(0, 3) as tag}
+															<span
+																class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
+																style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
+															>
+																{tag}
+															</span>
+														{/each}
+														{#if template.tags.length > 3}
+															<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
+																+{template.tags.length - 3}
+															</span>
+														{/if}
+													</div>
+												{/if}
 											{/if}
 										</div>
 									<!-- Action buttons - Pin, Edit, Delete (shown on hover) -->
@@ -2179,28 +2474,71 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											tabindex="0"
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
-											<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-											{#if template.usage_count}
-												<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
-											{/if}
-											<div class="flex-grow"></div>
-											<!-- Tags at bottom -->
-											{#if template.tags && template.tags.length > 0}
-												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
-													{#each template.tags.slice(0, 3) as tag}
-														<span 
-															class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
-															style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
-														>
-															{tag}
-														</span>
-													{/each}
-													{#if template.tags.length > 3}
-														<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
-															+{template.tags.length - 3}
-														</span>
-													{/if}
+											{#if inlineEditId === template.id}
+												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') cancelInlineEdit(); }}>
+													<input
+														class="input-dark !py-1.5 w-full text-base font-semibold"
+														bind:value={inlineEditName}
+														onkeydown={(e) => { if (e.key === 'Enter') saveInlineEdit(); if (e.key === 'Escape') cancelInlineEdit(); }}
+													/>
+													<div class="relative">
+														<div class="flex flex-wrap items-center gap-1.5 px-2 py-1.5 bg-black/30 border border-white/10 rounded-lg">
+															{#each inlineEditTags as tag}
+																<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs" style="background-color: {getTagColor(tag, customTagColors)}; color: white;">
+																	{tag}
+																	<button type="button" class="hover:bg-white/20 rounded-full p-0.5" onclick={() => inlineEditRemoveTag(tag)}>
+																		<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+																	</button>
+																</span>
+															{/each}
+															<input type="text" bind:value={inlineEditNewTag} onkeydown={inlineEditTagKeydown}
+																placeholder={inlineEditTags.length === 0 ? 'Add tags...' : ''}
+																class="flex-1 min-w-[6rem] bg-transparent border-0 outline-none ring-0 focus:outline-none focus:ring-0 text-xs text-white placeholder-gray-600 py-0.5"
+																style="box-shadow: none;"
+															/>
+														</div>
+														{#if inlineEditTagSuggestions.length > 0}
+															<div class="absolute z-20 left-0 right-0 mt-1 bg-gray-900 border border-white/10 rounded-lg shadow-2xl overflow-hidden">
+																{#each inlineEditTagSuggestions as suggestion}
+																	<button type="button" class="w-full text-left px-3 py-1.5 hover:bg-white/5 text-xs text-white"
+																		onmousedown={(e) => { e.preventDefault(); inlineEditAddTag(suggestion); }}>
+																		{suggestion}
+																	</button>
+																{/each}
+															</div>
+														{/if}
+													</div>
+													<div class="flex items-center justify-end gap-2">
+														<button type="button" class="text-xs text-gray-500 hover:text-gray-300 transition-colors" onclick={cancelInlineEdit}>Cancel</button>
+														<button type="button" class="px-3 py-1 rounded-lg text-xs font-medium bg-purple-600/80 hover:bg-purple-600 text-white transition-colors"
+															onclick={saveInlineEdit} disabled={inlineEditSaving || !inlineEditName.trim()}>
+															{inlineEditSaving ? 'Saving...' : 'Save'}
+														</button>
+													</div>
 												</div>
+											{:else}
+												<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
+												{#if template.usage_count}
+													<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
+												{/if}
+												<div class="flex-grow"></div>
+												{#if template.tags && template.tags.length > 0}
+													<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
+														{#each template.tags.slice(0, 3) as tag}
+															<span
+																class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
+																style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
+															>
+																{tag}
+															</span>
+														{/each}
+														{#if template.tags.length > 3}
+															<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
+																+{template.tags.length - 3}
+															</span>
+														{/if}
+													</div>
+												{/if}
 											{/if}
 										</div>
 									<!-- Action buttons - Pin, Edit, Delete (shown on hover) -->
@@ -2382,29 +2720,66 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 												tabindex="0"
 												onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 											>
-												<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-												{#if template.usage_count}
-													<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
-												{/if}
-												<div class="flex-grow"></div>
-											<!-- Tags at bottom -->
-											{#if template.tags && template.tags.length > 0}
-												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
-													{#each template.tags.slice(0, 3) as tag}
-														<span 
-															class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
-															style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};"
-														>
-															{tag}
-														</span>
-													{/each}
-													{#if template.tags.length > 3}
-														<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
-															+{template.tags.length - 3}
-														</span>
+												{#if inlineEditId === template.id}
+													<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') cancelInlineEdit(); }}>
+														<input class="input-dark !py-1.5 w-full text-base font-semibold" bind:value={inlineEditName}
+															onkeydown={(e) => { if (e.key === 'Enter') saveInlineEdit(); if (e.key === 'Escape') cancelInlineEdit(); }} />
+														<div class="relative">
+															<div class="flex flex-wrap items-center gap-1.5 px-2 py-1.5 bg-black/30 border border-white/10 rounded-lg">
+																{#each inlineEditTags as tag}
+																	<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs" style="background-color: {getTagColor(tag, customTagColors)}; color: white;">
+																		{tag}
+																		<button type="button" class="hover:bg-white/20 rounded-full p-0.5" onclick={() => inlineEditRemoveTag(tag)}>
+																			<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+																		</button>
+																	</span>
+																{/each}
+																<input type="text" bind:value={inlineEditNewTag} onkeydown={inlineEditTagKeydown}
+																	placeholder={inlineEditTags.length === 0 ? 'Add tags...' : ''}
+																	class="flex-1 min-w-[6rem] bg-transparent border-0 outline-none ring-0 focus:outline-none focus:ring-0 text-xs text-white placeholder-gray-600 py-0.5"
+																	style="box-shadow: none;" />
+															</div>
+															{#if inlineEditTagSuggestions.length > 0}
+																<div class="absolute z-20 left-0 right-0 mt-1 bg-gray-900 border border-white/10 rounded-lg shadow-2xl overflow-hidden">
+																	{#each inlineEditTagSuggestions as suggestion}
+																		<button type="button" class="w-full text-left px-3 py-1.5 hover:bg-white/5 text-xs text-white"
+																			onmousedown={(e) => { e.preventDefault(); inlineEditAddTag(suggestion); }}>
+																			{suggestion}
+																		</button>
+																	{/each}
+																</div>
+															{/if}
+														</div>
+														<div class="flex items-center justify-end gap-2">
+															<button type="button" class="text-xs text-gray-500 hover:text-gray-300 transition-colors" onclick={cancelInlineEdit}>Cancel</button>
+															<button type="button" class="px-3 py-1 rounded-lg text-xs font-medium bg-purple-600/80 hover:bg-purple-600 text-white transition-colors"
+																onclick={saveInlineEdit} disabled={inlineEditSaving || !inlineEditName.trim()}>
+																{inlineEditSaving ? 'Saving...' : 'Save'}
+															</button>
+														</div>
+													</div>
+												{:else}
+													<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
+													{#if template.usage_count}
+														<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
 													{/if}
-												</div>
-											{/if}
+													<div class="flex-grow"></div>
+													{#if template.tags && template.tags.length > 0}
+														<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
+															{#each template.tags.slice(0, 3) as tag}
+																<span class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-transform group-hover:scale-105"
+																	style="background-color: {getTagColor(tag, customTagColors)}; color: white; border-color: {getTagColorWithOpacity(tag, 0.5, customTagColors)};">
+																	{tag}
+																</span>
+															{/each}
+															{#if template.tags.length > 3}
+																<span class="text-xs px-2.5 py-1 text-gray-400 bg-white/5 rounded-lg border border-white/10">
+																	+{template.tags.length - 3}
+																</span>
+															{/if}
+														</div>
+													{/if}
+												{/if}
 											</div>
 										<!-- Pin button - styled as floating action button (shown on hover) -->
 										<div class="absolute top-3 right-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none group-hover:pointer-events-auto z-10">
