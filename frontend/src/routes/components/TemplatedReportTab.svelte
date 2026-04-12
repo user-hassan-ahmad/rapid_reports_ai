@@ -2844,17 +2844,6 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			Back to Templates
 		</button>
 
-		{#if currentSelectedTemplate?.template_config?.generation_mode === 'skill_sheet_guided'}
-			<button
-				onclick={() => openRefinePanel(currentSelectedTemplate)}
-				class="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-purple-200 bg-purple-600/90 backdrop-blur-lg border border-purple-500/30 rounded-full shadow-lg shadow-purple-500/20 hover:bg-purple-500 hover:shadow-purple-500/30 transition-all"
-			>
-				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-				</svg>
-				Refine
-			</button>
-		{/if}
 
 		<TemplateForm
 			bind:this={formRef}
