@@ -2279,6 +2279,25 @@ async def skill_sheet_save_endpoint(
         return {"success": False, "error": str(e)}
 
 
+class ExtractCoverageRequest(BaseModel):
+    skill_sheet: str
+
+
+@app.post("/api/templates/skill-sheet/extract-coverage")
+async def extract_coverage_endpoint(
+    request: ExtractCoverageRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Extract anatomical coverage sections from a skill sheet."""
+    try:
+        tm = TemplateManager()
+        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
+        sections = await tm.extract_coverage_sections(request.skill_sheet, api_key)
+        return {"success": True, "sections": sections}
+    except Exception as e:
+        return {"success": True, "sections": []}
+
+
 @app.post("/api/templates/extract-placeholders")
 async def extract_placeholders_endpoint(
     request: ExtractPlaceholdersRequest,
