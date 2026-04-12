@@ -2257,7 +2257,7 @@ async def skill_sheet_save_endpoint(
         template = create_template(
             db=db,
             name=request.template_name.strip(),
-            description=f"Skill-sheet template for {request.scan_type}",
+            description=None,
             tags=request.tags,
             template_config=template_config,
             is_pinned=False,

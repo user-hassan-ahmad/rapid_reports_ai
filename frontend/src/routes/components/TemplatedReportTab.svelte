@@ -1517,11 +1517,10 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
 											<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-											{#if template.description}
-												<p class="text-sm text-gray-400 mb-3 flex-grow">{template.description}</p>
-											{:else}
-												<div class="flex-grow"></div>
+											{#if template.usage_count}
+												<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
 											{/if}
+											<div class="flex-grow"></div>
 											<!-- Tags at bottom -->
 											{#if template.tags && template.tags.length > 0}
 												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
@@ -1620,11 +1619,10 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
 											<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-											{#if template.description}
-												<p class="text-sm text-gray-400 mb-3 flex-grow">{template.description}</p>
-											{:else}
-												<div class="flex-grow"></div>
+											{#if template.usage_count}
+												<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
 											{/if}
+											<div class="flex-grow"></div>
 											<!-- Tags at bottom -->
 											{#if template.tags && template.tags.length > 0}
 												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
@@ -1867,11 +1865,10 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
 											<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-											{#if template.description}
-												<p class="text-sm text-gray-400 mb-3 flex-grow">{template.description}</p>
-											{:else}
-												<div class="flex-grow"></div>
+											{#if template.usage_count}
+												<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
 											{/if}
+											<div class="flex-grow"></div>
 											<!-- Tags at bottom -->
 											{#if template.tags && template.tags.length > 0}
 												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
@@ -1973,11 +1970,10 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
 											<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-											{#if template.description}
-												<p class="text-sm text-gray-400 mb-3 flex-grow">{template.description}</p>
-											{:else}
-												<div class="flex-grow"></div>
+											{#if template.usage_count}
+												<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
 											{/if}
+											<div class="flex-grow"></div>
 											<!-- Tags at bottom -->
 											{#if template.tags && template.tags.length > 0}
 												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
@@ -2079,11 +2075,10 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
 											<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-											{#if template.description}
-												<p class="text-sm text-gray-400 mb-3 flex-grow">{template.description}</p>
-											{:else}
-												<div class="flex-grow"></div>
+											{#if template.usage_count}
+												<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
 											{/if}
+											<div class="flex-grow"></div>
 											<!-- Tags at bottom -->
 											{#if template.tags && template.tags.length > 0}
 												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
@@ -2185,11 +2180,10 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
 											<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-											{#if template.description}
-												<p class="text-sm text-gray-400 mb-3 flex-grow">{template.description}</p>
-											{:else}
-												<div class="flex-grow"></div>
+											{#if template.usage_count}
+												<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
 											{/if}
+											<div class="flex-grow"></div>
 											<!-- Tags at bottom -->
 											{#if template.tags && template.tags.length > 0}
 												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">
@@ -2389,11 +2383,10 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 												onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 											>
 												<h3 class="text-lg font-semibold text-white mb-2 break-words">{template.name}</h3>
-												{#if template.description}
-													<p class="text-sm text-gray-400 mb-3 flex-grow">{template.description}</p>
-												{:else}
-													<div class="flex-grow"></div>
+												{#if template.usage_count}
+													<span class="text-[11px] text-gray-600">{template.usage_count} {template.usage_count === 1 ? 'report' : 'reports'}</span>
 												{/if}
+												<div class="flex-grow"></div>
 											<!-- Tags at bottom -->
 											{#if template.tags && template.tags.length > 0}
 												<div class="flex flex-wrap gap-1.5 mt-auto pt-4 border-t border-white/10">

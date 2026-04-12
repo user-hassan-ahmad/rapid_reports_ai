@@ -971,7 +971,8 @@
 									bind:value={newTag}
 									on:keydown={handleTagKeydown}
 									placeholder={tags.length === 0 ? 'Add tags — Enter to confirm' : ''}
-									class="flex-1 min-w-[8rem] bg-transparent border-0 outline-none text-sm text-white placeholder-gray-600 py-0.5"
+									class="flex-1 min-w-[8rem] bg-transparent border-0 outline-none ring-0 focus:outline-none focus:ring-0 focus:border-0 text-sm text-white placeholder-gray-600 py-0.5"
+								style="box-shadow: none;"
 								/>
 							</div>
 							{#if tagSuggestions.length > 0}
