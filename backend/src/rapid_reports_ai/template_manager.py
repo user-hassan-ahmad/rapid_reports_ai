@@ -3674,7 +3674,7 @@ Return a JSON object with:
         Returns:
             { report_content: str, model_used: str }
         """
-        from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model, _log_glm_reasoning
+        from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model, _log_glm_reasoning, _get_model_provider
         from .global_style_guide import (
             SYSTEM_PREAMBLE, GLOBAL_STYLE_GUIDE,
             PRE_WRITING_ANALYSIS, VERIFICATION_CHECKLIST,
