@@ -194,12 +194,13 @@ MODEL_CONFIG = {
     # Template Wizard Generation Models
     "TEMPLATE_FINDINGS_GENERATOR": "zai-glm-4.7",     # Wizard: generate FINDINGS section template
     "TEMPLATE_INSTRUCTION_SUGGESTER": "zai-glm-4.7",  # Wizard: suggest section instructions
-    "TEMPLATE_REPORT_GENERATOR": "zai-glm-4.7",       # generate_report_from_config primary model
+    "TEMPLATE_REPORT_GENERATOR": "accounts/fireworks/models/glm-5p1",  # generate_report_from_config primary (Fireworks GLM-5.1)
+    "TEMPLATE_REPORT_GENERATOR_FALLBACK": "zai-glm-4.7",             # Fallback to Cerebras GLM-4.7
 
     # Skill Sheet Models
     "SKILL_SHEET_ANALYZER": "zai-glm-4.7",      # Extract skill sheet from example reports
     "SKILL_SHEET_REFINER": "zai-glm-4.7",       # Refine skill sheet via chat
-    "SKILL_SHEET_TEST_GENERATE": "zai-glm-4.7", # Test-generate report from skill sheet
+    "SKILL_SHEET_TEST_GENERATE": "accounts/fireworks/models/glm-5p1", # Test-generate report from skill sheet (Fireworks GLM-5.1)
 
     # Knowledge Maintenance Agent
     "KNOWLEDGE_MAINTENANCE": "gpt-oss-120b",  # Async agent: populate knowledge_links from skill sheet
@@ -227,6 +228,9 @@ MODEL_PROVIDERS = {
     "gpt-oss-120b": "cerebras",
     "zai-glm-4.7": "cerebras",
     "qwen-3-235b-a22b-instruct-2507": "cerebras",  # Cerebras-hosted Qwen for linguistic validation
+
+    # Fireworks models
+    "accounts/fireworks/models/glm-5p1": "fireworks",
 }
 
 
@@ -379,8 +383,13 @@ def _get_api_key_for_provider(provider: str, fallback_api_key: str = None) -> st
         if not api_key:
             raise ValueError("Cerebras API key not configured. Please set CEREBRAS_API_KEY environment variable.")
         return api_key
+    elif provider == 'fireworks':
+        api_key = os.environ.get('FIREWORKS_API_KEY')
+        if not api_key:
+            raise ValueError("Fireworks API key not configured. Please set FIREWORKS_API_KEY environment variable.")
+        return api_key
     else:
-        raise ValueError(f"Unknown provider: {provider}. Must be 'groq', 'anthropic', or 'cerebras'.")
+        raise ValueError(f"Unknown provider: {provider}. Must be 'groq', 'anthropic', 'cerebras', or 'fireworks'.")
 
 
 def with_retry(max_retries=3, base_delay=2.0):
@@ -3184,6 +3193,7 @@ REASONING WORKFLOW (for high-reasoning models like GPT-OSS 120B):
         'groq': 'GROQ_API_KEY',
         'anthropic': 'ANTHROPIC_API_KEY',
         'cerebras': 'CEREBRAS_API_KEY',
+        'fireworks': 'FIREWORKS_API_KEY',
     }
     env_var_name = env_var_map[provider]
     old_api_key = os.environ.get(env_var_name)
@@ -3715,6 +3725,12 @@ def _create_pydantic_model(model_name: str, api_key: str, use_thinking: bool = F
             api_key=api_key,
         )
         return OpenAIModel(model_name, provider=provider_obj)
+    elif provider == 'fireworks':
+        provider_obj = OpenAIProvider(
+            base_url='https://api.fireworks.ai/inference/v1',
+            api_key=api_key,
+        )
+        return OpenAIModel(model_name, provider=provider_obj)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -3754,6 +3770,7 @@ async def _run_agent_with_model(
         'groq': 'GROQ_API_KEY',
         'anthropic': 'ANTHROPIC_API_KEY',
         'cerebras': 'CEREBRAS_API_KEY',
+        'fireworks': 'FIREWORKS_API_KEY',
     }
     env_var_name = env_var_map[provider]
     
@@ -3808,6 +3825,14 @@ async def _run_agent_with_model(
                 else:
                     print(f"  └─ reasoning_effort: NOT SET ⚠️  (check if parameter is supported)")
         
+        if provider == 'fireworks':
+            print(f"\n🔧 FIREWORKS MODEL SETTINGS ({model_name}):")
+            print(f"  └─ temperature: {final_model_settings.get('temperature', 'not set')}")
+            print(f"  └─ top_p: {final_model_settings.get('top_p', 'not set')}")
+            print(f"  └─ max_tokens: {final_model_settings.get('max_tokens', 'not set')}")
+            reasoning_effort = final_model_settings.get('reasoning_effort', 'not set')
+            print(f"  └─ reasoning_effort: {reasoning_effort}")
+
         # Run agent with concurrency guard for Cerebras
         try:
             if provider == 'cerebras':

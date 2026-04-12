@@ -2571,14 +2571,15 @@ Generate the report now as valid JSON."""
             description: str
             scan_type: str
 
-        result = await _run_agent_with_model(
-            model_name=model_name,
-            output_type=ReportOutput,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            api_key=api_key,
-            use_thinking=True,
-            model_settings={
+        if provider == "fireworks":
+            model_settings = {
+                "temperature": 0.6,
+                "top_p": 0.95,
+                "max_tokens": 40960,
+                "reasoning_effort": "high",
+            }
+        else:
+            model_settings = {
                 "temperature": 0.8,
                 "top_p": 0.95,
                 "max_tokens": 40960,
@@ -2586,7 +2587,16 @@ Generate the report now as valid JSON."""
                     "disable_reasoning": False,
                     "clear_thinking": False,
                 },
-            },
+            }
+
+        result = await _run_agent_with_model(
+            model_name=model_name,
+            output_type=ReportOutput,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            api_key=api_key,
+            use_thinking=True,
+            model_settings=model_settings,
         )
 
         _log_glm_reasoning(result, f"{model_name} (Skill Sheet Report) - GLM Reasoning")
@@ -3694,14 +3704,16 @@ Findings: {findings_input}
 
 {VERIFICATION_CHECKLIST}"""
 
-        result = await _run_agent_with_model(
-            model_name=model_name,
-            output_type=str,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            api_key=api_key,
-            use_thinking=True,
-            model_settings={
+        provider = _get_model_provider(model_name)
+        if provider == "fireworks":
+            test_model_settings = {
+                "temperature": 0.6,
+                "top_p": 0.95,
+                "max_tokens": 40960,
+                "reasoning_effort": "high",
+            }
+        else:
+            test_model_settings = {
                 "temperature": 0.8,
                 "top_p": 0.95,
                 "max_tokens": 40960,
@@ -3709,7 +3721,16 @@ Findings: {findings_input}
                     "disable_reasoning": False,
                     "clear_thinking": False,
                 },
-            },
+            }
+
+        result = await _run_agent_with_model(
+            model_name=model_name,
+            output_type=str,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            api_key=api_key,
+            use_thinking=True,
+            model_settings=test_model_settings,
         )
 
         _log_glm_reasoning(result, f"{model_name} (Skill Sheet Test Generate) - GLM Reasoning")
