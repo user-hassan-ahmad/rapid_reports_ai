@@ -2875,6 +2875,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			enhancementLoading={enhancementLoading}
 			enhancementError={enhancementError}
 			on:editTemplate={(e) => handleEditTemplate(e.detail.template)}
+			on:refineTemplate={(e) => openRefinePanel(e.detail.template)}
 			on:resetForm={handleFormReset}
 			on:reportGenerated={(e) => {
 				// CRITICAL: Preserve variableValues IMMEDIATELY when report is generated
