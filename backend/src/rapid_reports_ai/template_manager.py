@@ -2494,9 +2494,132 @@ No user input provided. Omit this section entirely from output.
         return ""
     
     # ========================================================================
+    # Skill-Sheet-Guided Report Generation
+    # ========================================================================
+
+    async def _generate_report_skill_sheet_guided(
+        self,
+        template_config: dict,
+        user_inputs: dict,
+        user_signature: str = None,
+    ) -> dict:
+        """
+        Generate a report using the skill sheet + global style guide prompt
+        architecture.  Called as an early-exit branch from
+        generate_report_from_config when generation_mode == 'skill_sheet_guided'.
+
+        Mirrors the prompt structure of test_generate_with_skill_sheet (global
+        style guide preamble, skill sheet with inheritance framing, pre-writing
+        analysis, verification checklist) while using the production model stack
+        (structured ReportOutput, Cerebras primary + Claude fallback, linguistic
+        validation, signature append).
+        """
+        from pydantic import BaseModel
+        from .enhancement_utils import (
+            MODEL_CONFIG,
+            _get_model_provider,
+            _get_api_key_for_provider,
+            _run_agent_with_model,
+            _append_signature_to_report,
+            _log_glm_reasoning,
+        )
+        from .global_style_guide import (
+            SYSTEM_PREAMBLE, GLOBAL_STYLE_GUIDE,
+            PRE_WRITING_ANALYSIS, VERIFICATION_CHECKLIST,
+        )
+
+        skill_sheet = template_config.get("skill_sheet", "")
+        scan_type = template_config.get("scan_type", "")
+        findings_input = user_inputs.get("FINDINGS", "")
+        clinical_history = user_inputs.get("CLINICAL_HISTORY", "")
+
+        system_prompt = f"""{SYSTEM_PREAMBLE}
+
+{GLOBAL_STYLE_GUIDE}
+
+## TEMPLATE SKILL SHEET
+
+The following skill sheet defines scan-specific reporting conventions for this template.
+It inherits all rules from the Global Style Guide above. Where a skill sheet rule
+conflicts with a global rule, the skill sheet takes precedence.
+
+{skill_sheet}
+
+OUTPUT FORMAT: Return a JSON object with exactly three keys:
+- "report_content": the complete radiology report
+- "description": a brief 5-15 word summary for the report history (exclude scan type)
+- "scan_type": the scan type extracted from context (e.g. "CT chest with IV contrast")"""
+
+        user_prompt = f"""## INPUTS
+
+Scan Type: {scan_type}
+Clinical History: {clinical_history}
+Findings: {findings_input}
+
+{PRE_WRITING_ANALYSIS}
+
+{VERIFICATION_CHECKLIST}
+
+Generate the report now as valid JSON."""
+
+        model_name = MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"]
+        provider = _get_model_provider(model_name)
+        api_key = _get_api_key_for_provider(provider)
+
+        class ReportOutput(BaseModel):
+            report_content: str
+            description: str
+            scan_type: str
+
+        result = await _run_agent_with_model(
+            model_name=model_name,
+            output_type=ReportOutput,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            api_key=api_key,
+            use_thinking=True,
+            model_settings={
+                "temperature": 0.8,
+                "top_p": 0.95,
+                "max_tokens": 40960,
+                "extra_body": {
+                    "disable_reasoning": False,
+                    "clear_thinking": False,
+                },
+            },
+        )
+
+        _log_glm_reasoning(result, f"{model_name} (Skill Sheet Report) - GLM Reasoning")
+        report_output = result.output
+
+        import os
+        if os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true":
+            from .enhancement_utils import validate_template_linguistics
+            try:
+                validated_content = await validate_template_linguistics(
+                    report_content=report_output.report_content,
+                    template_config=template_config,
+                    user_inputs=user_inputs,
+                    scan_type=report_output.scan_type,
+                )
+                report_output.report_content = validated_content
+            except Exception:
+                pass
+
+        if user_signature:
+            report_output = _append_signature_to_report(report_output, user_signature)
+
+        return {
+            "report_content": report_output.report_content,
+            "description": report_output.description,
+            "scan_type": report_output.scan_type,
+            "model_used": model_name,
+        }
+
+    # ========================================================================
     # Main Report Generation Method
     # ========================================================================
-    
+
     async def generate_report_from_config(
         self,
         template_config: dict,
@@ -2526,6 +2649,12 @@ No user input provided. Omit this section entirely from output.
             _generate_report_with_claude_model,
         )
         
+        # ── Skill-sheet-guided early exit ──────────────────────────────────
+        if template_config.get("generation_mode") == "skill_sheet_guided":
+            return await self._generate_report_skill_sheet_guided(
+                template_config, user_inputs, user_signature,
+            )
+
         # Extract metadata
         scan_type = template_config.get('scan_type', '')
         contrast = template_config.get('contrast', '')
@@ -2696,16 +2825,6 @@ CORE PRINCIPLES:
 - Protocol consistency - verify findings match scan type/protocol
 - British English throughout
 """
-        # Inject skill sheet if present — overrides generic style defaults
-        skill_sheet = template_config.get("skill_sheet")
-        if skill_sheet:
-            system_prompt += f"""
-## TEMPLATE SKILL SHEET
-The following skill sheet defines the specific reporting conventions for this template. Follow these conventions precisely — they take precedence over generic style defaults:
-
-{skill_sheet}
-"""
-        
         # Determine if any section is using "Exact" mode (structured_template)
         has_exact_mode = any(s.get('content_style') == 'structured_template' for s in sections_config)
         
