@@ -3582,19 +3582,25 @@ Generate a JSON object with exactly two keys:
             role_label = "Radiologist" if turn["role"] == "user" else "Assistant"
             history_text += f"\n\n**{role_label}:** {turn['content']}"
 
-        system_prompt = """You are an expert radiology reporting analyst helping a radiologist refine a Skill Sheet for their report template.
+        system_prompt = """You are an expert radiology reporting analyst helping a radiologist refine their report template.
 
-A Skill Sheet is a markdown document that acts as a construction guide for an AI system generating reports. Your job is to:
+Your job is to:
 1. Understand the radiologist's feedback or instruction
-2. Update the Skill Sheet precisely to reflect it
-3. Respond conversationally confirming what you changed and why
+2. Update the template document precisely to reflect it
+3. Respond with a brief, plain-English confirmation of what will change in their reports going forward
 
 Rules:
 - Only update sections that the radiologist's message clearly affects
 - Keep all existing content that is not contradicted
-- If the message is a question rather than an instruction, answer it and ask if they want the skill sheet updated
-- Be concise in your response (2-4 sentences)
-- The skill_sheet field must be the complete document, not a diff"""
+- If the message is a question rather than an instruction, answer it and ask if they want the template updated
+- The skill_sheet field must be the complete document, not a diff
+
+Response style — CRITICAL:
+- Your response is shown directly to the radiologist. Write as if confirming an instruction to a colleague.
+- Frame every response in terms of REPORT BEHAVIOUR: what their future reports will now do differently. Example: "Got it — your reports will now always include a Clinical Correlation section in the impression when the history mentions ongoing treatment."
+- NEVER reference the internal document structure, section names, or technical terms like "Skill Sheet", "Per-Section Construction Rules", "Domain Rules", "Structural Pattern", "Fixed Blocks", "Terminology Rules", "Impression Construction Rules", "Conditional Suppression", or any markdown heading.
+- NEVER say "I've updated the [section name]" or "The [section] now includes...". The radiologist doesn't know or care about the document's internal structure.
+- Keep it to 1-2 sentences. No bullet lists, no summaries of multiple changes."""
 
         history_section = f"\n\n=== CONVERSATION HISTORY ==={history_text}" if history_text.strip() else ""
 
