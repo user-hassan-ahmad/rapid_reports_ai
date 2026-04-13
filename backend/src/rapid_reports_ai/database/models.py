@@ -576,3 +576,53 @@ class TemplateRating(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
+
+class DynamicKnowledgeItem(Base):
+    """A single knowledge item accumulated from the prefetch pipeline."""
+
+    __tablename__ = "dynamic_knowledge_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    finding_label = Column(Text, nullable=False)
+    finding_label_normalized = Column(Text, nullable=False, index=True)
+    finding_short_label = Column(Text, nullable=False)
+    branch = Column(String(50), nullable=False, index=True)
+
+    title = Column(Text, nullable=True)
+    url = Column(Text, nullable=False)
+    domain = Column(Text, nullable=True)
+    content = Column(Text, nullable=False)
+    content_chars = Column(Integer, nullable=True)
+    extraction_type = Column(String(30), nullable=True)
+
+    evidence_quality = Column(String(20), nullable=True)
+
+    first_seen_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    last_seen_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    seen_count = Column(Integer, nullable=False, default=1)
+    user_id = Column(UUID(as_uuid=True), nullable=True)
+    prefetch_id = Column(Text, nullable=True)
+
+    search_text = Column(Text, nullable=True)
+
+    confidence = Column(Float, nullable=True)
+    last_verified_at = Column(DateTime, nullable=True)
+    superseded_by = Column(UUID(as_uuid=True), nullable=True)
+    canonical_node_uri = Column(Text, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("finding_label_normalized", "url", name="uq_dki_finding_url"),
+        Index("ix_dki_seen_count", "seen_count"),
+    )
+
+
+class NormalisationCache(Base):
+    """Persisted cache of raw finding label → canonical form mappings."""
+
+    __tablename__ = "normalisation_cache"
+
+    raw_label = Column(Text, primary_key=True)
+    canonical_form = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+

@@ -361,6 +361,21 @@ async def _run_prefetch_and_store(
         except Exception as db_exc:
             _log.warning("Prefetch DB persist failed: %s", db_exc)
 
+        # ── Knowledge graph reification (fire-and-forget) ─────────────
+        try:
+            from .knowledge_reify import reify_prefetch_output
+            from .database import SessionLocal as _ReifySL
+            with _ReifySL() as _reify_db:
+                _reify_count = await reify_prefetch_output(
+                    prefetch_output=output.model_dump(mode="json"),
+                    user_id=user_id,
+                    prefetch_id=prefetch_id,
+                    db=_reify_db,
+                )
+                print(f"[FLOW_TIMING] prefetch_task: reify_ok prefetch_id={prefetch_id} items={_reify_count}")
+        except Exception as reify_exc:
+            _log.warning("Knowledge reification failed (non-blocking): %s", reify_exc)
+
     except Exception as exc:
         _log.error("Prefetch pipeline task failed: %s", exc, exc_info=True)
     finally:
