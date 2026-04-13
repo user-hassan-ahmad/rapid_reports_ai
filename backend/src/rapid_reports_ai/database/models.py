@@ -1,6 +1,6 @@
 """SQLAlchemy models for Rapid Reports AI"""
 
-from sqlalchemy import Column, String, Text, Boolean, DateTime, JSON, ForeignKey, Integer, UniqueConstraint, Index
+from sqlalchemy import Column, String, Text, Boolean, DateTime, JSON, ForeignKey, Integer, Float, UniqueConstraint, Index, ARRAY
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TSVECTOR
@@ -523,4 +523,56 @@ class TnmStaging(Base):
 
     def __repr__(self):
         return f"<TnmStaging(tumour='{self.tumour}')>"
+
+
+class ReportFeedback(Base):
+    """Captures the diff between AI-generated and radiologist-committed report."""
+
+    __tablename__ = "report_feedback"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    report_id = Column(UUID(as_uuid=True), nullable=True)
+    template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    ai_output = Column(Text, nullable=False)
+    final_output = Column(Text, nullable=True)
+
+    lifecycle = Column(String(20), nullable=False, default="generated")
+    copy_count = Column(Integer, nullable=False, default=0)
+    rating = Column(String(20), nullable=True)
+
+    time_to_first_edit_ms = Column(Integer, nullable=True)
+    time_to_copy_ms = Column(Integer, nullable=True)
+    edit_distance = Column(Integer, nullable=True)
+    sections_modified = Column(ARRAY(Text), nullable=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index("ix_report_feedback_user_template", "user_id", "template_id"),
+        Index("ix_report_feedback_lifecycle", "lifecycle"),
+    )
+
+
+class TemplateRating(Base):
+    """Aggregate quality metrics per template per user."""
+
+    __tablename__ = "template_rating"
+
+    template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+
+    total_uses = Column(Integer, nullable=False, default=0)
+    positive_count = Column(Integer, nullable=False, default=0)
+    negative_count = Column(Integer, nullable=False, default=0)
+    avg_edit_distance = Column(Float, nullable=False, default=0)
+
+    last_check_in_at = Column(DateTime, nullable=True)
+    last_check_in_uses = Column(Integer, nullable=False, default=0)
+    last_rating = Column(String(30), nullable=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 

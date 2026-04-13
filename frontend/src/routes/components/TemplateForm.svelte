@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createEventDispatcher, tick } from 'svelte';
+	import { createEventDispatcher, onDestroy, tick } from 'svelte';
 	import { fly, fade } from 'svelte/transition';
 	import { token } from '$lib/stores/auth';
 	import DictationScratchpad from '$lib/components/DictationScratchpad.svelte';
@@ -7,6 +7,64 @@
 	import Toast from '$lib/components/Toast.svelte';
 	import ReportResponseViewer from './ReportResponseViewer.svelte';
 	import { API_URL } from '$lib/config';
+
+	// ── Feedback capture ──────────────────────────────────────────────
+	let feedbackId: string | null = null;
+	let feedbackAiOutput: string = '';
+	let feedbackGeneratedAt: number = 0;
+	let feedbackCopyCount: number = 0;
+	let feedbackCopied: boolean = false;
+
+	async function captureFeedback(lifecycle: string, finalOutput?: string) {
+		if (!selectedTemplate?.id || !feedbackAiOutput) return;
+		try {
+			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+			if ($token) headers['Authorization'] = `Bearer ${$token}`;
+			const now = performance.now();
+			const body: Record<string, unknown> = {
+				template_id: selectedTemplate.id,
+				ai_output: feedbackAiOutput,
+				lifecycle,
+				copy_count: feedbackCopyCount,
+			};
+			if (finalOutput) body.final_output = finalOutput;
+			if (reportId) body.report_id = reportId;
+			if (lifecycle === 'copied' && feedbackGeneratedAt) {
+				body.time_to_copy_ms = Math.round(now - feedbackGeneratedAt);
+			}
+			const res = await fetch(`${API_URL}/api/feedback/capture`, {
+				method: 'POST', headers, body: JSON.stringify(body)
+			});
+			const data = await res.json();
+			if (data.success && data.feedback_id) {
+				feedbackId = data.feedback_id;
+			}
+		} catch { /* silent */ }
+	}
+
+	function handleReportCopy() {
+		if (!feedbackAiOutput || !response) return;
+		const sel = typeof window !== 'undefined' ? window.getSelection()?.toString() : '';
+		const reportText = response || '';
+		if (sel && sel.length > reportText.length * 0.3) {
+			feedbackCopyCount++;
+			feedbackCopied = true;
+			captureFeedback('copied', sel);
+		}
+	}
+
+	if (typeof document !== 'undefined') {
+		document.addEventListener('copy', handleReportCopy);
+	}
+
+	onDestroy(() => {
+		if (typeof document !== 'undefined') {
+			document.removeEventListener('copy', handleReportCopy);
+		}
+		if (feedbackAiOutput && !feedbackCopied) {
+			captureFeedback('abandoned');
+		}
+	});
 
 	let toast: { show: (msg: string) => void } | undefined;
 
@@ -321,6 +379,15 @@
 			findingsAtReportGeneration = findingsContent;
 				dispatch('reportGenerated', { reportId: data.report_id });
 				dispatch('historyUpdate', { count: 1 });
+				// Feedback capture — record the AI output
+				feedbackAiOutput = data.response || '';
+				feedbackGeneratedAt = typeof performance !== 'undefined' ? performance.now() : 0;
+				feedbackCopyCount = 0;
+				feedbackCopied = false;
+				feedbackId = null;
+				if (selectedTemplate?.template_config?.generation_mode === 'skill_sheet_guided') {
+					captureFeedback('generated');
+				}
 			} else {
 				error = 'Failed to generate report. Please try again.';
 			}

@@ -692,6 +692,26 @@ class SkillSheetSaveRequest(BaseModel):
     tags: List[str] = []
 
 
+# Feedback request models
+class FeedbackCaptureRequest(BaseModel):
+    report_id: Optional[str] = None
+    template_id: str
+    ai_output: str
+    final_output: Optional[str] = None
+    lifecycle: str = "generated"
+    copy_count: int = 0
+    rating: Optional[str] = None
+    time_to_first_edit_ms: Optional[int] = None
+    time_to_copy_ms: Optional[int] = None
+    edit_distance: Optional[int] = None
+    sections_modified: Optional[List[str]] = None
+
+
+class FeedbackRatingRequest(BaseModel):
+    feedback_id: str
+    rating: str
+
+
 # Audit / QA request models
 class AuditRequest(BaseModel):
     report_content: str
@@ -2312,6 +2332,132 @@ async def extract_placeholders_endpoint(
             "success": True,
             "placeholders": placeholders
         }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Feedback Pipeline Endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/feedback/capture")
+async def feedback_capture_endpoint(
+    request: FeedbackCaptureRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Capture or update a feedback record (called on generate, edit, copy, abandon)."""
+    try:
+        from .database.models import ReportFeedback, TemplateRating
+        import uuid as _uuid
+
+        def _compute_edit_distance(a: str, b: str) -> int:
+            """Character-level Levenshtein distance via SequenceMatcher."""
+            from difflib import SequenceMatcher
+            sm = SequenceMatcher(None, a, b)
+            distance = 0
+            for tag, i1, i2, j1, j2 in sm.get_opcodes():
+                if tag != 'equal':
+                    distance += max(i2 - i1, j2 - j1)
+            return distance
+
+        existing = db.query(ReportFeedback).filter(
+            ReportFeedback.template_id == _uuid.UUID(request.template_id),
+            ReportFeedback.user_id == current_user.id,
+            ReportFeedback.ai_output == request.ai_output,
+        ).order_by(ReportFeedback.created_at.desc()).first()
+
+        if existing and request.lifecycle in ("edited", "copied"):
+            existing.lifecycle = request.lifecycle
+            existing.final_output = request.final_output
+            existing.copy_count = request.copy_count
+            existing.time_to_first_edit_ms = request.time_to_first_edit_ms or existing.time_to_first_edit_ms
+            existing.time_to_copy_ms = request.time_to_copy_ms or existing.time_to_copy_ms
+            if request.final_output and existing.ai_output:
+                existing.edit_distance = _compute_edit_distance(existing.ai_output, request.final_output)
+            existing.sections_modified = request.sections_modified or existing.sections_modified
+            if request.report_id:
+                existing.report_id = _uuid.UUID(request.report_id)
+            db.commit()
+            return {"success": True, "feedback_id": str(existing.id), "updated": True}
+
+        feedback = ReportFeedback(
+            report_id=_uuid.UUID(request.report_id) if request.report_id else None,
+            template_id=_uuid.UUID(request.template_id),
+            user_id=current_user.id,
+            ai_output=request.ai_output,
+            final_output=request.final_output,
+            lifecycle=request.lifecycle,
+            copy_count=request.copy_count,
+            time_to_first_edit_ms=request.time_to_first_edit_ms,
+            time_to_copy_ms=request.time_to_copy_ms,
+            edit_distance=request.edit_distance,
+            sections_modified=request.sections_modified,
+        )
+        db.add(feedback)
+        db.commit()
+        db.refresh(feedback)
+
+        # Bump template_rating.total_uses on first capture (lifecycle=generated)
+        if request.lifecycle == "generated":
+            rating = db.query(TemplateRating).filter(
+                TemplateRating.template_id == _uuid.UUID(request.template_id),
+                TemplateRating.user_id == current_user.id,
+            ).first()
+            if rating:
+                rating.total_uses += 1
+            else:
+                rating = TemplateRating(
+                    template_id=_uuid.UUID(request.template_id),
+                    user_id=current_user.id,
+                    total_uses=1,
+                )
+                db.add(rating)
+            db.commit()
+
+        return {"success": True, "feedback_id": str(feedback.id)}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/feedback/rate")
+async def feedback_rate_endpoint(
+    request: FeedbackRatingRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update the thumbs up/down rating on an existing feedback record."""
+    try:
+        from .database.models import ReportFeedback, TemplateRating
+        import uuid as _uuid
+
+        feedback = db.query(ReportFeedback).filter(
+            ReportFeedback.id == _uuid.UUID(request.feedback_id),
+            ReportFeedback.user_id == current_user.id,
+        ).first()
+        if not feedback:
+            return {"success": False, "error": "Feedback record not found"}
+
+        feedback.rating = request.rating
+        db.commit()
+
+        # Update template_rating aggregates
+        rating = db.query(TemplateRating).filter(
+            TemplateRating.template_id == feedback.template_id,
+            TemplateRating.user_id == current_user.id,
+        ).first()
+        if rating:
+            if request.rating == "positive":
+                rating.positive_count += 1
+            elif request.rating == "negative":
+                rating.negative_count += 1
+            db.commit()
+
+        return {"success": True}
     except Exception as e:
         import traceback
         traceback.print_exc()
