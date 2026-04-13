@@ -2543,12 +2543,7 @@ The following skill sheet defines scan-specific reporting conventions for this t
 It inherits all rules from the Global Style Guide above. Where a skill sheet rule
 conflicts with a global rule, the skill sheet takes precedence.
 
-{skill_sheet}
-
-OUTPUT FORMAT: Return a JSON object with exactly three keys:
-- "report_content": the complete radiology report
-- "description": a brief 5-15 word summary for the report history (exclude scan type)
-- "scan_type": the scan type extracted from context (e.g. "CT chest with IV contrast")"""
+{skill_sheet}"""
 
         user_prompt = f"""## INPUTS
 
@@ -2558,18 +2553,11 @@ Findings: {findings_input}
 
 {PRE_WRITING_ANALYSIS}
 
-{VERIFICATION_CHECKLIST}
-
-Generate the report now as valid JSON."""
+{VERIFICATION_CHECKLIST}"""
 
         model_name = MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"]
         provider = _get_model_provider(model_name)
         api_key = _get_api_key_for_provider(provider)
-
-        class ReportOutput(BaseModel):
-            report_content: str
-            description: str
-            scan_type: str
 
         if provider == "fireworks":
             model_settings = {
@@ -2589,40 +2577,54 @@ Generate the report now as valid JSON."""
                 },
             }
 
-        result = await _run_agent_with_model(
+        async def _generate_description():
+            """Parallel lightweight call to summarise findings for the history tab."""
+            try:
+                from pydantic import BaseModel as _BM
+
+                class _Desc(_BM):
+                    description: str
+
+                desc_model = "qwen/qwen3-32b"
+                desc_provider = _get_model_provider(desc_model)
+                desc_api_key = _get_api_key_for_provider(desc_provider)
+                desc_result = await _run_agent_with_model(
+                    model_name=desc_model,
+                    output_type=_Desc,
+                    system_prompt="You generate brief radiology report descriptions for a history tab. Return a JSON object with a single key 'description' containing 5-15 words summarising the key findings. No scan type, no patient demographics. British English.",
+                    user_prompt=f"Clinical history: {clinical_history}\nFindings: {findings_input}",
+                    api_key=desc_api_key,
+                    use_thinking=True,
+                    model_settings={"temperature": 0.1, "max_tokens": 3000},
+                )
+                return desc_result.output.description.strip()[:150]
+            except Exception:
+                return f"Report for {scan_type}"
+
+        import asyncio
+        report_task = _run_agent_with_model(
             model_name=model_name,
-            output_type=ReportOutput,
+            output_type=str,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             api_key=api_key,
             use_thinking=True,
             model_settings=model_settings,
         )
+        desc_task = _generate_description()
+
+        result, description = await asyncio.gather(report_task, desc_task)
 
         _log_glm_reasoning(result, f"{model_name} (Skill Sheet Report) - GLM Reasoning")
-        report_output = result.output
-
-        import os
-        if os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true":
-            from .enhancement_utils import validate_template_linguistics
-            try:
-                validated_content = await validate_template_linguistics(
-                    report_content=report_output.report_content,
-                    template_config=template_config,
-                    user_inputs=user_inputs,
-                    scan_type=report_output.scan_type,
-                )
-                report_output.report_content = validated_content
-            except Exception:
-                pass
+        report_content = result.output if hasattr(result, "output") else str(result)
 
         if user_signature:
-            report_output = _append_signature_to_report(report_output, user_signature)
+            report_content = report_content.rstrip() + "\n\n" + user_signature
 
         return {
-            "report_content": report_output.report_content,
-            "description": report_output.description,
-            "scan_type": report_output.scan_type,
+            "report_content": report_content,
+            "description": description,
+            "scan_type": scan_type,
             "model_used": model_name,
         }
 
