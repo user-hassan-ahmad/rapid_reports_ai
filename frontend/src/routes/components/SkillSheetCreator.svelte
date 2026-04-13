@@ -244,6 +244,45 @@
 
 	$: filledCount = examples.filter((e) => e.content.trim()).length;
 	$: canAnalyse = filledCount >= 3 && scanType.trim() && !loading;
+
+	// ── Diversity check ───────────────────────────────────────────────
+	/** @type {{ score: number, summary: string, gaps: string[], suggestion: string } | null} */
+	let diversityResult = null;
+	let diversityLoading = false;
+	let diversityCheckedSnapshot = '';
+
+	$: if (filledCount >= 3 && scanType.trim()) {
+		const snap = JSON.stringify({
+			scanType,
+			examples: examples.filter(e => e.content.trim()).map(e => e.content.trim().slice(0, 200))
+		});
+		if (snap !== diversityCheckedSnapshot && !diversityLoading) {
+			checkDiversity();
+		}
+	}
+
+	async function checkDiversity() {
+		const filled = examples.filter((e) => e.content.trim());
+		if (filled.length < 3 || !scanType.trim()) return;
+		diversityLoading = true;
+		diversityCheckedSnapshot = JSON.stringify({
+			scanType,
+			examples: filled.map(e => e.content.trim().slice(0, 200))
+		});
+		try {
+			const data = await postJson('/api/templates/skill-sheet/check-diversity', {
+				scan_type: scanType,
+				examples: filled
+			});
+			if (data.success) {
+				diversityResult = { score: data.score, summary: data.summary, gaps: data.gaps || [], suggestion: data.suggestion || '' };
+			}
+		} catch {
+			diversityResult = null;
+		} finally {
+			diversityLoading = false;
+		}
+	}
 	$: currentExamplesSnapshot = JSON.stringify({
 		scanType,
 		protocolNotes,
@@ -462,7 +501,9 @@
 					<button class="px-3 py-2.5 text-gray-600 hover:text-gray-400 text-sm transition-colors" on:click={() => { addExample(); activeExampleTab = examples.length - 1; }} title="Add another report (optional)">+</button>
 				{/if}
 			</div>
-			<p class="px-5 pt-3 pb-0 text-[11px] text-gray-600">For best results, include a mix — a straightforward case, one with findings, and a complex one.</p>
+			{#if filledCount < 3}
+				<p class="px-5 pt-3 pb-0 text-[11px] text-gray-600">For best results, include a mix — a straightforward case, one with findings, and a complex one.</p>
+			{/if}
 			<div class="p-5 pt-2 space-y-3">
 				<div class="flex items-center justify-between">
 					<label class="text-xs font-medium text-gray-400 uppercase tracking-wider">
@@ -477,6 +518,36 @@
 				<textarea class="input-dark resize-y" rows="14" bind:value={examples[activeExampleTab].content} placeholder="Paste complete report..."></textarea>
 			</div>
 		</div>
+
+		<!-- Diversity feedback -->
+		{#if diversityLoading}
+			<div class="mt-4 px-4 py-3 bg-white/[0.02] border border-white/[0.06] rounded-xl flex items-center gap-3">
+				<div class="w-4 h-4 border-2 border-purple-400/30 border-t-purple-400 rounded-full animate-spin shrink-0"></div>
+				<span class="text-xs text-gray-500">Checking example diversity...</span>
+			</div>
+		{:else if diversityResult && filledCount >= 3}
+			{@const isGood = diversityResult.score >= 8}
+			<div class="mt-4 px-4 py-3 rounded-xl border
+				{isGood ? 'bg-emerald-500/[0.04] border-emerald-500/15' : 'bg-amber-500/[0.04] border-amber-500/15'}">
+				<div class="flex items-start gap-3">
+					{#if isGood}
+						<svg class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+						</svg>
+					{:else}
+						<svg class="w-4 h-4 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+					{/if}
+					<div class="flex-1 min-w-0">
+						<p class="text-xs {isGood ? 'text-gray-300' : 'text-gray-300'}">{diversityResult.summary}</p>
+						{#if diversityResult.suggestion}
+							<p class="text-[11px] text-gray-500 mt-1">{diversityResult.suggestion}</p>
+						{/if}
+					</div>
+				</div>
+			</div>
+		{/if}
 
 		<div class="flex items-center justify-between mt-5">
 			<div class="flex items-center gap-3">

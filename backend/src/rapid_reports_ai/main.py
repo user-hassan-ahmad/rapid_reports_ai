@@ -685,6 +685,11 @@ class SkillSheetTestGenerateRequest(BaseModel):
     clinical_history: str
     findings_input: str
 
+class SkillSheetDiversityCheckRequest(BaseModel):
+    scan_type: str
+    examples: List[SkillSheetExample]
+
+
 class SkillSheetSaveRequest(BaseModel):
     skill_sheet: str
     scan_type: str
@@ -2110,6 +2115,110 @@ async def analyze_reports_endpoint(
         import traceback
         traceback.print_exc()
         return {"success": False, "error": str(e)}
+
+
+@app.post("/api/templates/skill-sheet/check-diversity")
+async def skill_sheet_check_diversity_endpoint(
+    request: SkillSheetDiversityCheckRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Lightweight diversity check on example reports before full analysis."""
+    try:
+        from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model, _get_model_provider, _get_api_key_for_provider
+        from pydantic import BaseModel
+
+        class DiversityResult(BaseModel):
+            score: int
+            summary: str
+            gaps: list[str]
+            suggestion: str
+
+        examples_text = ""
+        for i, ex in enumerate(request.examples, 1):
+            label = ex.label or f"Example {i}"
+            content = (ex.content or "").strip()
+            examples_text += f"\n{i}. [{label}]:\n{content}\n"
+
+        primary_model = MODEL_CONFIG["SKILL_SHEET_DIVERSITY_CHECK"]
+        fallback_model = MODEL_CONFIG["SKILL_SHEET_DIVERSITY_CHECK_FALLBACK"]
+
+        system_prompt = """You are a senior radiology reporting analyst assessing the diversity of example reports before template creation. Your goal is to ensure the examples cover enough clinical variation to produce a robust template.
+
+Return a JSON object with:
+- "score": 1-10 diversity score (internal metric, not shown to user)
+- "summary": one sentence for the radiologist. If diverse (score >= 8): state what's covered well, e.g. "Good range — covers normal anatomy, acute pathology, and complex multi-system cases." If not diverse enough: acknowledge what's strong then note what's missing, e.g. "Strong on acute cases — consider adding a normal study to capture your baseline phrasing."
+- "gaps": array of missing categories (internal, for logging). Max 3.
+- "suggestion": one actionable sentence ONLY if score < 8. Specific and encouraging, e.g. "Swapping one report for a post-operative follow-up would teach the template comparison and interval change language." Empty string if score >= 8.
+
+How to assess diversity:
+Do NOT check against a fixed category list. Instead, reason from the scan type and the examples themselves:
+1. What are the natural clinical axes of variation for this specific scan type? (e.g. for CT head: normal, haemorrhage, infarct, trauma, mass. For MRI knee: normal, meniscal, ligamentous, degenerative, multi-compartment.)
+2. Which of those axes are represented in the examples?
+3. Is there a normal/unremarkable example? This is almost always valuable regardless of scan type — it teaches the template mandatory negatives and baseline structure.
+4. Do the examples exercise different structural patterns in the report? (e.g. different section lengths, different impression complexity, different numbers of findings)
+5. Are the examples genuinely different cases, or variations of the same presentation?
+6. Within represented axes, do the examples show variation in severity or complexity? A mild and a severe case of the same pathology teach different language and impression construction — different recommendation graduation, different measurement emphasis, different urgency framing.
+
+Scoring guide:
+- 9-10: covers the major clinical axes for this scan type with good structural variety
+- 7-8: covers most axes, minor gaps that wouldn't significantly weaken the template
+- 5-6: covers some axes well but missing one that would meaningfully improve the template
+- 3-4: examples are too similar in clinical presentation
+- 1-2: essentially the same report repeated
+
+Be encouraging — acknowledge what's good before noting gaps. Frame gaps as opportunities, not criticisms. Suggestions must be specific to the scan type — never generic."""
+
+        user_prompt = f"Scan type: {request.scan_type}\n\nExample reports:\n{examples_text}"
+
+        def _diversity_settings(model):
+            p = _get_model_provider(model)
+            if p == "cerebras":
+                return {
+                    "temperature": 0.3,
+                    "top_p": 0.95,
+                    "max_tokens": 4096,
+                    "extra_body": {"disable_reasoning": False, "clear_thinking": False},
+                }
+            else:
+                return {"temperature": 0.1, "max_tokens": 3000}
+
+        # Try primary, fallback on failure
+        try:
+            provider = _get_model_provider(primary_model)
+            api_key = _get_api_key_for_provider(provider)
+            result = await _run_agent_with_model(
+                model_name=primary_model,
+                output_type=DiversityResult,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                api_key=api_key,
+                use_thinking=True,
+                model_settings=_diversity_settings(primary_model),
+            )
+        except Exception as primary_err:
+            logger.warning("Diversity check primary failed (%s), falling back to %s", primary_err, fallback_model)
+            fb_provider = _get_model_provider(fallback_model)
+            fb_api_key = _get_api_key_for_provider(fb_provider)
+            result = await _run_agent_with_model(
+                model_name=fallback_model,
+                output_type=DiversityResult,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                api_key=fb_api_key,
+                use_thinking=True,
+                model_settings=_diversity_settings(fallback_model),
+            )
+
+        out = result.output
+        return {
+            "success": True,
+            "score": out.score,
+            "summary": out.summary,
+            "gaps": out.gaps,
+            "suggestion": out.suggestion,
+        }
+    except Exception as e:
+        return {"success": True, "score": 7, "summary": "", "gaps": [], "suggestion": ""}
 
 
 @app.post("/api/templates/skill-sheet/analyze")

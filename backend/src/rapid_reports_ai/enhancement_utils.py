@@ -198,6 +198,8 @@ MODEL_CONFIG = {
 
     # Skill Sheet Models
     "SKILL_SHEET_ANALYZER": "zai-glm-4.7",      # Extract skill sheet from example reports
+    "SKILL_SHEET_DIVERSITY_CHECK": "zai-glm-4.7",       # Pre-analysis diversity assessment (primary, Cerebras with reasoning)
+    "SKILL_SHEET_DIVERSITY_CHECK_FALLBACK": "qwen/qwen3-32b",  # Diversity check fallback (Groq Qwen with thinking)
     "SKILL_SHEET_REFINER": "zai-glm-4.7",       # Refine skill sheet via chat
     "SKILL_SHEET_TEST_GENERATE": "zai-glm-4.7", # Test-generate report from skill sheet (Cerebras GLM-4.7)
 
