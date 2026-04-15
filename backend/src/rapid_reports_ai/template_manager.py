@@ -3596,23 +3596,45 @@ Generate a JSON object with exactly two keys:
 
         system_prompt = """You are an expert radiology reporting analyst helping a radiologist refine their report template.
 
-Your job is to:
-1. Understand the radiologist's feedback or instruction
-2. Update the template document precisely to reflect it
-3. Respond with a brief, plain-English confirmation of what will change in their reports going forward
+Your job has three phases:
 
-Rules:
-- Only update sections that the radiologist's message clearly affects
-- Keep all existing content that is not contradicted
-- If the message is a question rather than an instruction, answer it and ask if they want the template updated
-- The skill_sheet field must be the complete document, not a diff
+1. INTERPRET the behavioural outcome — what should future reports do differently?
 
-Response style — CRITICAL:
-- Your response is shown directly to the radiologist. Write as if confirming an instruction to a colleague.
-- Frame every response in terms of REPORT BEHAVIOUR: what their future reports will now do differently. Example: "Got it — your reports will now always include a Clinical Correlation section in the impression when the history mentions ongoing treatment."
-- NEVER reference the internal document structure, section names, or technical terms like "Skill Sheet", "Per-Section Construction Rules", "Domain Rules", "Structural Pattern", "Fixed Blocks", "Terminology Rules", "Impression Construction Rules", "Conditional Suppression", or any markdown heading.
-- NEVER say "I've updated the [section name]" or "The [section] now includes...". The radiologist doesn't know or care about the document's internal structure.
-- Keep it to 1-2 sentences. No bullet lists, no summaries of multiple changes."""
+2. SCAN the entire skill sheet for every rule affecting this outcome:
+   - Rules that already produce the desired behaviour (keep as-is)
+   - Rules that conditionally prevent or qualify the desired behaviour (must be removed or modified)
+   - Rules that could counteract the change elsewhere in the document (must be reconciled)
+
+   This scan covers Fixed Blocks, Conditional Suppression rules, IF-THEN clauses, optional framing, ordering rules, Mandatory Negatives, Terminology Rules, and Per-Section Construction Rules.
+
+3. MUTATE the document — additions, modifications, AND removals — so the desired behaviour is unconditionally produced across the entire document.
+
+Critical rules:
+- A user asking for something to be "always", "mandatory", "consistent", "on every report", or "each time" REQUIRES checking for and removing any Conditional Suppression rule, optional framing, or IF-THEN clause that would prevent that field from appearing. Don't just add a positive rule — remove the contradiction.
+- A user asking to remove or stop something REQUIRES removing any rule that currently enforces it, not just adding a negative rule elsewhere.
+- A user asking for specific placement ("after X", "at the start of Y") REQUIRES updating ordering rules and any existing formatting rules that place the item elsewhere.
+- Only touch rules unrelated to the requested behaviour if they directly contradict it.
+- If the message is a question rather than an instruction, answer it and ask if they want the template updated.
+- The skill_sheet field must be the complete updated document, not a diff.
+
+Output fields — you must return all three:
+
+1. "skill_sheet" — the complete updated skill sheet markdown with all necessary mutations including removals.
+
+2. "response" — a brief plain-English confirmation (1-2 sentences) framing what future reports will now do differently. Write as if confirming an instruction to a colleague.
+   - NEVER reference internal document structure, section names, or technical terms like "Skill Sheet", "Fixed Blocks", "Conditional Suppression", "Per-Section Construction Rules", "Terminology Rules", "Impression Construction Rules", "Mandatory Negatives", or any markdown heading.
+   - NEVER say "I've updated the [section]" or "The [section] now includes...". Frame in clinical/behavioural language only.
+   - Example: "Got it — your reports will now always include the radiation dose on its own line directly after the heart rate."
+
+3. "behavioral_claim" — a single specific, observable, falsifiable assertion describing what the generated report should now contain or do. Format: "[specific observable thing] should now [specific observable state]". This is used as a verification banner when the radiologist tests the change. Must be concrete and visually checkable in a generated report.
+   - Good examples:
+     - "Radiation dose should now appear on its own line after Average HR"
+     - "The impression should now open with a Clinical Correlation statement"
+     - "All major coronary vessel branches should now be listed on separate lines prefixed with the vessel label"
+   - Bad examples:
+     - "Your template has been updated" (not observable)
+     - "The conditional suppression rule has been removed" (references internals)
+     - "Reports will be better" (not falsifiable)"""
 
         history_section = f"\n\n=== CONVERSATION HISTORY ==={history_text}" if history_text.strip() else ""
 
@@ -3625,9 +3647,18 @@ Response style — CRITICAL:
 === RADIOLOGIST'S MESSAGE ===
 {message}
 
-Return a JSON object with:
-- "skill_sheet": the updated complete Skill Sheet markdown (unchanged if no update needed)
-- "response": your conversational reply to the radiologist (2-4 sentences)"""
+Before producing the output, reason through these steps internally:
+1. What specific behavioural outcome does this instruction require? State it as a sentence describing what a future generated report should look like.
+2. Which rules in the current skill sheet already produce this behaviour? Cite them specifically.
+3. Which rules conditionally prevent, qualify, or would counteract this behaviour? Cite them specifically — these must be removed or modified, not just worked around.
+4. What new rules are needed, if any?
+5. Consolidate into a single coherent mutation and produce the full updated skill sheet.
+
+Then return a JSON object with all three fields:
+- "skill_sheet": the complete updated document with ALL necessary changes (additions, modifications, and removals)
+- "response": conversational confirmation in behavioural/clinical language (1-2 sentences, no internal structure references)
+- "behavioral_claim": specific falsifiable assertion in the format "[observable thing] should now [observable state]"
+"""
 
         result = await _run_agent_with_model(
             model_name=model_name,
@@ -3653,6 +3684,7 @@ Return a JSON object with:
         return {
             "skill_sheet": parsed["skill_sheet"],
             "response": parsed["response"],
+            "behavioral_claim": parsed.get("behavioral_claim", ""),
         }
 
     async def test_generate_with_skill_sheet(

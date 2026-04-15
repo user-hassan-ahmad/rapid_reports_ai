@@ -2327,6 +2327,7 @@ async def skill_sheet_refine_endpoint(
         logger.info("━━━ SKILL SHEET REFINE RESULT ━━━")
         logger.info("  skill_sheet out: %d chars", len(result.get("skill_sheet", "")))
         logger.info("  response: %s", result.get("response", "")[:500])
+        logger.info("  behavioral_claim: %s", result.get("behavioral_claim", ""))
         logger.info("  ── refined skill_sheet ──\n%s", result.get("skill_sheet", ""))
 
         return {"success": True, **result}
