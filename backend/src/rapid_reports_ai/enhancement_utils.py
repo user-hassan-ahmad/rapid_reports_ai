@@ -6219,9 +6219,27 @@ def _build_synthesis_evidence_block(
     synthesis_cards: list,
     finding_short_labels: list,
 ) -> str:
-    """Format S4 synthesis cards into a text block for Phase 2 audit prompt injection."""
+    """Format S4 synthesis cards into a text block for Phase 2 audit prompt injection.
+
+    When no cards are available, return an unanchored-mode preamble. The evaluation
+    still runs — Phase 2 criteria are about report quality, not about citation — but
+    the bar for flagging is raised because no specific guideline backs the call.
+    """
     if not synthesis_cards:
-        return "\n(No synthesis evidence available — evaluate from general knowledge only.)\n"
+        return (
+            "\nUNANCHORED MODE — NO SPECIFIC GUIDELINE APPLIED:\n"
+            "No applicable guideline was retrieved for this case. Evaluate the report "
+            "using standard radiological reporting practice. The four criteria still "
+            "apply; they simply cannot be anchored to a specific guideline document.\n\n"
+            "RAISE THE BAR FOR FLAGGING:\n"
+            "Only flag issues that would be obviously inappropriate to any consultant "
+            "radiologist regardless of specific guideline — do not flag on the basis of "
+            "preference or optional best-practice variants. Where the synthesis prompt "
+            "normally instructs you to derive criterion_line from synthesis evidence, "
+            "leave criterion_line null. Where the prompt normally instructs cross-check "
+            "against synthesis thresholds, rely on internal FINDINGS↔Impression "
+            "consistency only and do not fabricate thresholds.\n"
+        )
     parts = []
     for i, card in enumerate(synthesis_cards):
         short_label = (

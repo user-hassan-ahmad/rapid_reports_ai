@@ -3189,38 +3189,57 @@ async def enhance_report(
 
         if not prefetch_output:
             print(f"enhance_report: total prefetch failure — returning empty guidelines")
-            return {
-                "success": True,
-                "findings": [],
-                "guidelines": [],
-                "applicable_guidelines": [],
-                "urgency_signals": [],
-                "prefetch_failed": True,
-            }
+            # Phase 2 still runs unanchored so the audit isn't truncated.
+            # guideline_lookup_failed signals the frontend to surface the degraded banner.
+            prefetch_output = None
 
         # ── S4 Synthesis ────────────────────────────────────────────────────
         from .guideline_prefetch import run_synthesis
 
+        guideline_lookup_failed = False
+        guidelines_cards: list = []
+        synth_stats: dict = {}
         _synth_t0 = time.perf_counter()
-        guidelines_cards, synth_stats = await run_synthesis(
-            knowledge_base=prefetch_output.knowledge_base,
-            consolidated_findings=prefetch_output.consolidated_findings,
-            finding_short_labels=prefetch_output.finding_short_labels,
-            applicable_guidelines=prefetch_output.applicable_guidelines,
-            scan_type=scan_type,
-            clinical_history=clinical_history,
-            report_content=report_content,
-        )
+
+        if prefetch_output is None:
+            # Prefetch failed entirely — no evidence to synthesise from. Mark the
+            # lookup as failed and let Phase 2 fall through to unanchored mode.
+            guideline_lookup_failed = True
+            print("enhance_report: skipping S4 synthesis — prefetch unavailable (unanchored Phase 2)")
+        else:
+            try:
+                guidelines_cards, synth_stats = await run_synthesis(
+                    knowledge_base=prefetch_output.knowledge_base,
+                    consolidated_findings=prefetch_output.consolidated_findings,
+                    finding_short_labels=prefetch_output.finding_short_labels,
+                    applicable_guidelines=prefetch_output.applicable_guidelines,
+                    scan_type=scan_type,
+                    clinical_history=clinical_history,
+                    report_content=report_content,
+                )
+            except Exception as _synth_ex:
+                # Synthesis itself errored (LLM failure, parse error, etc.).
+                # Treat as a degraded lookup — the retry button will re-fire /enhance.
+                guideline_lookup_failed = True
+                guidelines_cards = []
+                print(f"enhance_report: S4 synthesis failed ({type(_synth_ex).__name__}): {_synth_ex}")
+
         _synth_ms = int((time.perf_counter() - _synth_t0) * 1000)
-        print(f"[FLOW_TIMING] enhance: S4 synthesis {_synth_ms}ms cards={len(guidelines_cards)}")
+        print(
+            f"[FLOW_TIMING] enhance: S4 synthesis {_synth_ms}ms "
+            f"cards={len(guidelines_cards)} lookup_failed={guideline_lookup_failed}"
+        )
 
         # Wrap S1 findings in the object shape the frontend expects
         findings_response = [
             {"finding": f, "sources": [i + 1]}
-            for i, f in enumerate(prefetch_output.consolidated_findings)
+            for i, f in enumerate(prefetch_output.consolidated_findings if prefetch_output else [])
         ]
 
-        # ── Phase 2 Audit (inline, uses synthesis output) ───────────────────
+        # ── Phase 2 Audit (inline) ──────────────────────────────────────────
+        # Always runs: grounded when guidelines_cards is populated, unanchored when
+        # empty (either zero-guideline success case or degraded-lookup failure case).
+        # The prompt branches inside run_audit_phase2 based on synthesis_cards length.
         phase2_criteria_list = []
         audit_id = None
         try:
@@ -3231,9 +3250,9 @@ async def enhance_report(
                 scan_type=scan_type,
                 clinical_history=clinical_history,
                 synthesis_cards=guidelines_cards,
-                urgency_signals=prefetch_output.urgency_signals,
-                consolidated_findings=prefetch_output.consolidated_findings,
-                finding_short_labels=prefetch_output.finding_short_labels,
+                urgency_signals=prefetch_output.urgency_signals if prefetch_output else [],
+                consolidated_findings=prefetch_output.consolidated_findings if prefetch_output else [],
+                finding_short_labels=prefetch_output.finding_short_labels if prefetch_output else [],
             )
 
             # Persist Phase 2 criteria (append to existing Phase 1 row or create new)
@@ -3278,11 +3297,12 @@ async def enhance_report(
         enhancement_data = {
             "findings": findings_response,
             "guidelines": guidelines_cards,
-            "urgency_signals": prefetch_output.urgency_signals,
-            "applicable_guidelines": prefetch_output.applicable_guidelines,
-            "prefetch_output_json": prefetch_output.model_dump(),
+            "urgency_signals": prefetch_output.urgency_signals if prefetch_output else [],
+            "applicable_guidelines": prefetch_output.applicable_guidelines if prefetch_output else [],
+            "prefetch_output_json": prefetch_output.model_dump() if prefetch_output else None,
             "synthesis_stats": synth_stats,
             "phase2_audit": {"criteria": phase2_criteria_dicts},
+            "guideline_lookup_failed": guideline_lookup_failed,
         }
 
         _enhancement_mem = dict(enhancement_data)
@@ -3308,12 +3328,13 @@ async def enhance_report(
             "success": True,
             "findings": findings_response,
             "guidelines": guidelines_cards,
-            "applicable_guidelines": prefetch_output.applicable_guidelines,
-            "urgency_signals": prefetch_output.urgency_signals,
+            "applicable_guidelines": prefetch_output.applicable_guidelines if prefetch_output else [],
+            "urgency_signals": prefetch_output.urgency_signals if prefetch_output else [],
             "phase2_audit": {
                 "criteria": phase2_criteria_dicts,
                 "audit_id": audit_id,
             },
+            "guideline_lookup_failed": guideline_lookup_failed,
         }
 
     except Exception as e:
