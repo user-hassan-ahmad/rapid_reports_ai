@@ -689,10 +689,15 @@ class SkillSheetChatMessage(BaseModel):
     role: str  # "user" or "assistant"
     content: str
 
+class SkillSheetRejectionContext(BaseModel):
+    original_instruction: str
+    rejected_claim: str
+
 class SkillSheetRefineRequest(BaseModel):
     skill_sheet: str
     message: str
     chat_history: Optional[List[SkillSheetChatMessage]] = None
+    rejection_context: Optional[SkillSheetRejectionContext] = None
 
 class SkillSheetTestGenerateRequest(BaseModel):
     skill_sheet: str
@@ -2309,6 +2314,8 @@ async def skill_sheet_refine_endpoint(
         logger.info("━━━ SKILL SHEET REFINE ━━━")
         logger.info("  message: %s", request.message[:300])
         logger.info("  chat_history: %d turns", len(request.chat_history or []))
+        if request.rejection_context:
+            logger.info("  rejection_context: rejected_claim=%r", request.rejection_context.rejected_claim[:200])
         logger.info("  skill_sheet in: %d chars", len(request.skill_sheet))
 
         tm = TemplateManager()
@@ -2317,11 +2324,17 @@ async def skill_sheet_refine_endpoint(
             return {"success": False, "error": "Cerebras API key not configured"}
 
         history = [{"role": m.role, "content": m.content} for m in (request.chat_history or [])]
+        rejection_ctx = (
+            {"original_instruction": request.rejection_context.original_instruction,
+             "rejected_claim": request.rejection_context.rejected_claim}
+            if request.rejection_context else None
+        )
         result = await tm.refine_skill_sheet(
             skill_sheet=request.skill_sheet,
             message=request.message,
             chat_history=history,
             api_key=api_key,
+            rejection_context=rejection_ctx,
         )
 
         logger.info("━━━ SKILL SHEET REFINE RESULT ━━━")
