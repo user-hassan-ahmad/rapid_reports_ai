@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
-	import { writable } from 'svelte/store';
+	import { writable, get } from 'svelte/store';
 	import { token } from '$lib/stores/auth';
 	import { getAuditState, auditActions as sharedAuditActions } from '$lib/stores/audit';
 	import ReportVersionInline from './ReportVersionInline.svelte';
@@ -148,9 +148,26 @@
 	let lastAuditReportId: string | null = null;
 	$: if (reportId !== lastAuditReportId) {
 		lastAuditReportId = reportId;
-		lastAuditedContent = '';
-		auditActions.reset();
 		insertedBannerTexts = [];
+
+		// The shared audit store survives component remounts (module-scoped, keyed
+		// by reportId). On remount with the same report, seed the local store from
+		// the shared cached result instead of resetting — otherwise the auto-trigger
+		// at $auditStore.status === 'idle' fires a fresh /audit request on every
+		// re-entry into a previously-viewed report (e.g. Back to Templates → back in).
+		if (reportId) {
+			const cached = get(getAuditState(reportId));
+			if (cached && cached.status === 'complete' && cached.result) {
+				lastAuditedContent = response;
+				auditActions.setResult(cached.result, cached.auditId);
+			} else {
+				lastAuditedContent = '';
+				auditActions.reset();
+			}
+		} else {
+			lastAuditedContent = '';
+			auditActions.reset();
+		}
 	}
 
 	// Subscribe to shared store for Phase 2 merges from the sidebar
@@ -390,6 +407,9 @@
 		auditId: $auditStore.auditId,
 		error: $auditStore.error,
 		activeCriterion: $auditStore.activeCriterion,
+		// phase2Complete lives only on the shared store (owned by /enhance path);
+		// forward it here so the banner's spinner-clear condition sees it.
+		phase2Complete: sharedState && $sharedState ? $sharedState.phase2Complete : false,
 		saveInFlight
 	});
 
