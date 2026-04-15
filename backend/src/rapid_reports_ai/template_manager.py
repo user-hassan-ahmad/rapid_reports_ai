@@ -3572,18 +3572,26 @@ Generate a JSON object with exactly two keys:
         message: str,
         chat_history: List[Dict[str, str]],
         api_key: str,
+        rejection_context: Optional[Dict[str, str]] = None,
     ) -> Dict:
         """
         Refine a skill sheet based on radiologist feedback via chat.
 
         Args:
-            skill_sheet: Current skill sheet markdown
+            skill_sheet: Current skill sheet markdown (post-rollback if this turn follows a rejection)
             message: Radiologist's latest message
             chat_history: Previous turns as [{"role": "user"|"assistant", "content": str}]
             api_key: Cerebras API key
+            rejection_context: Optional failure context when this turn follows a rejected refine.
+                Shape: {
+                    "original_instruction": str,   # what the user originally asked for
+                    "rejected_claim": str,          # behavioral_claim the model produced and user rejected
+                }
+                When present, the prompt tells the model its previous mutation was rejected and
+                must re-plan from the pre-mutation skill sheet using the clarification in `message`.
 
         Returns:
-            { skill_sheet: str, response: str }
+            { skill_sheet: str, response: str, behavioral_claim: str }
         """
         from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model, _log_glm_reasoning
 
@@ -3638,11 +3646,24 @@ Output fields — you must return all three:
 
         history_section = f"\n\n=== CONVERSATION HISTORY ==={history_text}" if history_text.strip() else ""
 
+        if rejection_context:
+            failure_block = f"""
+
+=== PREVIOUS ATTEMPT WAS REJECTED ===
+The radiologist previously asked: "{(rejection_context.get('original_instruction') or '').strip()}"
+You produced this claim: "{(rejection_context.get('rejected_claim') or '').strip()}"
+The radiologist rejected it — the behaviour did not match what they wanted.
+
+The skill sheet above has been rolled back to its state before that rejected attempt.
+Treat the message below as a clarification of what they actually meant. Re-plan from scratch using both the original instruction and the clarification together — do not repeat the rejected mutation."""
+        else:
+            failure_block = ""
+
         user_prompt = f"""Current Skill Sheet:
 ```markdown
 {skill_sheet}
 ```
-{history_section}
+{history_section}{failure_block}
 
 === RADIOLOGIST'S MESSAGE ===
 {message}
