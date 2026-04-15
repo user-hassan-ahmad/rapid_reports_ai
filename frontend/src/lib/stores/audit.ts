@@ -62,6 +62,22 @@ const DEFAULT_STATE: AuditStoreState = {
 
 const _states = writable<Record<string, AuditStoreState>>({});
 
+// Dev-only: expose the store on window so you can inspect state from the
+// browser console without fighting the $lib alias. Usage:
+//   __auditStore()                 → full state snapshot
+//   __auditStore('<reportId>')     → one report's state
+//   __auditStoreLive()             → subscribe to live changes
+if (typeof window !== 'undefined') {
+	let _snapshot: Record<string, AuditStoreState> = {};
+	_states.subscribe((s) => {
+		_snapshot = s;
+	});
+	(window as any).__auditStore = (reportId?: string) =>
+		reportId ? _snapshot[reportId] : _snapshot;
+	(window as any).__auditStoreLive = () =>
+		_states.subscribe((s) => console.log('[audit store]', s));
+}
+
 export function getAuditState(reportId: string): Readable<AuditStoreState> {
 	return derived(_states, ($s) => $s[reportId] ?? { ...DEFAULT_STATE });
 }
