@@ -186,9 +186,9 @@
 					<p class="text-sm text-gray-500">Tell me what to change — a rule to add, terminology to adjust, a convention to encode.</p>
 					<div class="flex flex-wrap justify-center gap-2 mt-3">
 						{#each [
-							'Always include Clinical Correlation in the impression',
-							'Use "thrombus" not "filling defect"',
-							'Single sentence impression for normal studies'
+							'Put each finding on its own line',
+							'Always use mm for measurements',
+							'Write the impression as prose, not a numbered list'
 						] as hint}
 							<button class="text-xs px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.08] text-gray-400 hover:text-white hover:border-purple-500/30 transition-all"
 								on:click={() => { chatInput = hint; }}>
