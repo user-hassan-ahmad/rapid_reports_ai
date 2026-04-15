@@ -537,13 +537,14 @@
 				// guideline_lookup_failed signals the degraded-state banner (genuine lookup
 				// failure), distinct from a successful zero-guideline result.
 				guidelineLookupFailed = data.guideline_lookup_failed === true;
+				const guidelineCardsCount = Array.isArray(data.guidelines) ? data.guidelines.length : 0;
 				if (reportId) {
 					try {
 						const { auditActions } = await import('$lib/stores/audit');
 						auditActions.mergePhase2(
 							reportId,
 							data.phase2_audit?.criteria ?? [],
-							{ guidelineLookupFailed },
+							{ guidelineLookupFailed, guidelineCardsCount },
 						);
 					} catch (e) {
 						console.warn('[sidebar] Phase 2 audit merge failed:', e);

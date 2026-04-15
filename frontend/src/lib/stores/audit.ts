@@ -52,10 +52,18 @@ export interface AuditStoreState {
 	 * True when /enhance failed to produce synthesis evidence (prefetch failure or S4
 	 * synthesis error). Phase 2 still ran unanchored, so criteria are present, but the
 	 * UI surfaces a degraded-state banner with a Retry affordance. False in both the
-	 * happy path and the zero-guideline-success path — those are indistinguishable to
-	 * the user.
+	 * happy path and the zero-guideline-success path — those are distinguished by
+	 * guidelineCardsCount instead.
 	 */
 	guidelineLookupFailed: boolean;
+	/**
+	 * Number of guideline synthesis cards that came through on the latest /enhance call.
+	 * Distinguishes grounded (> 0) from unanchored-but-not-failed (0) — the latter being
+	 * the legitimate "no applicable guideline for this case" outcome, which deserves a
+	 * subtle info line rather than silence so the user knows Phase 2 wasn't anchored to
+	 * specific guidelines.
+	 */
+	guidelineCardsCount: number;
 }
 
 const DEFAULT_STATE: AuditStoreState = {
@@ -67,6 +75,7 @@ const DEFAULT_STATE: AuditStoreState = {
 	_phase2Cache: null,
 	phase2Complete: false,
 	guidelineLookupFailed: false,
+	guidelineCardsCount: 0,
 };
 
 const _states = writable<Record<string, AuditStoreState>>({});
@@ -141,13 +150,15 @@ export const auditActions = {
 	mergePhase2: (
 		reportId: string,
 		phase2Criteria: AuditCriterionItem[],
-		opts?: { guidelineLookupFailed?: boolean },
+		opts?: { guidelineLookupFailed?: boolean; guidelineCardsCount?: number },
 	) => {
 		const guidelineLookupFailed = opts?.guidelineLookupFailed ?? false;
+		const guidelineCardsCount = opts?.guidelineCardsCount ?? 0;
 		console.debug('[audit] mergePhase2', {
 			reportId,
 			count: phase2Criteria.length,
 			guidelineLookupFailed,
+			guidelineCardsCount,
 		});
 		_update(reportId, (s) => {
 			// phase2Complete=true regardless of criteria length — an empty Phase 2
@@ -157,6 +168,7 @@ export const auditActions = {
 				_phase2Cache: phase2Criteria,
 				phase2Complete: true,
 				guidelineLookupFailed,
+				guidelineCardsCount,
 			};
 			if (!s.result) return newState;
 			const PHASE2_NAMES = new Set(['diagnostic_fidelity', 'recommendations', 'clinical_flagging', 'characterisation_gap']);

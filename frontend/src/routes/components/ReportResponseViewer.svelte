@@ -407,11 +407,12 @@
 		auditId: $auditStore.auditId,
 		error: $auditStore.error,
 		activeCriterion: $auditStore.activeCriterion,
-		// phase2Complete + guidelineLookupFailed live only on the shared store
-		// (owned by /enhance path); forward them so the banner's spinner-clear
-		// and degraded-state banner see them.
+		// phase2Complete, guidelineLookupFailed, guidelineCardsCount all live only
+		// on the shared store (owned by /enhance path); forward them so the banner
+		// can distinguish grounded / unanchored-no-guideline / degraded.
 		phase2Complete: sharedState && $sharedState ? $sharedState.phase2Complete : false,
 		guidelineLookupFailed: sharedState && $sharedState ? $sharedState.guidelineLookupFailed : false,
+		guidelineCardsCount: sharedState && $sharedState ? $sharedState.guidelineCardsCount : 0,
 		saveInFlight
 	});
 
