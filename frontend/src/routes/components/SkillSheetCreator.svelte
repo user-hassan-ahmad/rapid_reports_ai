@@ -220,6 +220,18 @@
 
 	// ── Helpers ────────────────────────────────────────────────────────────────
 
+	/**
+	 * Strip frontend-only fields before sending chat history to the backend.
+	 * The backend Pydantic model (SkillSheetChatMessage) only accepts {role, content}.
+	 * Any extra fields (behavioralClaim, preMutationSkillSheet, originalInstruction, status)
+	 * would either 422 or leak into the LLM prompt.
+	 */
+	function toWireChatHistory(/** @type {any[]} */ history) {
+		return history
+			.filter((m) => m && (m.role === 'user' || m.role === 'assistant'))
+			.map(({ role, content }) => ({ role, content }));
+	}
+
 	/** @param {string} path @param {Record<string, unknown>} body */
 	async function postJson(path, body) {
 		/** @type {Record<string, string>} */
@@ -331,6 +343,26 @@
 		finally { loading = false; }
 	}
 
+	function rejectTurn(/** @type {number} */ assistantIndex) {
+		const target = chatHistory[assistantIndex];
+		if (!target || target.role !== 'assistant') return;
+
+		if (typeof target.preMutationSkillSheet === 'string') {
+			skillSheet = target.preMutationSkillSheet;
+		}
+
+		// Mark this turn as rejected; also mark the triggering user turn if present.
+		// Index-0 case (no preceding user message) shouldn't happen in the refine
+		// flow since assistants only reply to users — guarded here defensively.
+		const updated = [...chatHistory];
+		updated[assistantIndex] = { ...target, status: 'rejected' };
+		const userIndex = assistantIndex - 1;
+		if (userIndex >= 0 && updated[userIndex]?.role === 'user') {
+			updated[userIndex] = { ...updated[userIndex], status: 'rejected' };
+		}
+		chatHistory = updated;
+	}
+
 	async function sendAnswer(/** @type {string} */ msg) {
 		if (!msg.trim() || !skillSheet) return;
 		chatInput = '';
@@ -345,15 +377,47 @@
 			activeQuestionIdx = -1;
 		}
 
-		chatHistory = [...chatHistory, { role: 'user', content: msg }];
+		// Verification-loop metadata only applies in the refine stage.
+		// Questions-stage messages stay unadorned so no banner renders for them.
+		const isRefineTurn = stage === 'refine';
+		const preMutationSkillSheet = isRefineTurn ? skillSheet : null;
+
+		const lastAssistant = isRefineTurn
+			? [...chatHistory].reverse().find((m) => m.role === 'assistant')
+			: null;
+		const rejectionContext =
+			lastAssistant && lastAssistant.status === 'rejected'
+				? {
+						original_instruction: lastAssistant.originalInstruction || '',
+						rejected_claim: lastAssistant.behavioralClaim || ''
+				  }
+				: null;
+
+		const userMsg = isRefineTurn
+			? { role: 'user', content: msg, status: null }
+			: { role: 'user', content: msg };
+		chatHistory = [...chatHistory, userMsg];
 		loading = true; error = '';
 		try {
 			const data = await postJson('/api/templates/skill-sheet/refine', {
-				skill_sheet: skillSheet, message: fullMsg, chat_history: chatHistory.slice(0, -1)
+				skill_sheet: skillSheet,
+				message: fullMsg,
+				chat_history: toWireChatHistory(chatHistory.slice(0, -1)),
+				rejection_context: rejectionContext
 			});
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
-			chatHistory = [...chatHistory, { role: 'assistant', content: data.response }];
+			const assistantMsg = isRefineTurn
+				? {
+						role: 'assistant',
+						content: data.response,
+						behavioralClaim: data.behavioral_claim || '',
+						preMutationSkillSheet,
+						originalInstruction: msg,
+						status: 'pending'
+				  }
+				: { role: 'assistant', content: data.response };
+			chatHistory = [...chatHistory, assistantMsg];
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 			chatHistory = chatHistory.slice(0, -1);
@@ -420,6 +484,10 @@
 
 	async function saveAsTemplate() {
 		if (!templateName.trim() || !skillSheet) return;
+		// Saving is itself a confirmation of every still-pending refine turn.
+		chatHistory = chatHistory.map((m) =>
+			m.status === 'pending' ? { ...m, status: 'confirmed' } : m
+		);
 		saving = true; error = '';
 		try {
 			const data = await postJson('/api/templates/skill-sheet/save', {
@@ -825,13 +893,25 @@
 								</div>
 							{/if}
 
-							{#each chatHistory as msg}
+							{#each chatHistory as msg, i}
 								{#if msg.role === 'user'}
 									<div class="flex justify-end">
-										<div class="max-w-[90%] bg-purple-600/20 border border-purple-500/15 rounded-2xl rounded-br-sm px-4 py-2.5 text-sm text-gray-200" style="white-space: pre-wrap;">{msg.content}</div>
+										<div class="max-w-[90%] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm {msg.status === 'rejected' ? 'bg-amber-500/10 border border-amber-500/40 text-amber-100' : 'bg-purple-600/20 border border-purple-500/15 text-gray-200'}" style="white-space: pre-wrap;">{msg.content}</div>
 									</div>
 								{:else}
-									<div class="max-w-[90%] bg-white/[0.03] border border-white/10 rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm text-gray-300 leading-relaxed" style="white-space: pre-wrap;">{msg.content}</div>
+									<div class="max-w-[90%] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm leading-relaxed {msg.status === 'rejected' ? 'bg-amber-500/10 border border-amber-500/40 text-amber-100' : 'bg-white/[0.03] border border-white/10 text-gray-300'}" style="white-space: pre-wrap;">{msg.content}</div>
+									{#if msg.behavioralClaim && msg.status === 'pending'}
+										<div class="max-w-[90%] mt-1.5 rounded-xl px-3.5 py-2.5 text-xs bg-purple-500/5 border border-purple-500/20 text-purple-200/90 space-y-2">
+											<p class="leading-snug">{msg.behavioralClaim} — does this look right?</p>
+											<div class="flex gap-2">
+												<button
+													class="px-2.5 py-1 rounded-md bg-white/[0.04] hover:bg-amber-500/15 border border-white/10 hover:border-amber-500/40 text-gray-400 hover:text-amber-200 transition-colors"
+													on:click={() => rejectTurn(i)}>
+													Not quite
+												</button>
+											</div>
+										</div>
+									{/if}
 								{/if}
 							{/each}
 
