@@ -260,6 +260,13 @@
 	let error: string | null = null;
 	let hasLoaded = false;
 	let lastReportId: string | null = null;
+	// Mirrors the audit store's guidelineLookupFailed — true when /enhance failed
+	// to produce guidelines due to upstream error (prefetch unavailable, synthesis
+	// threw, Tavily down). Distinct from "succeeded with zero applicable guidelines".
+	// Used by the Guidelines tab to show an error state with Retry vs a plain
+	// empty state, and visible to the ReportEnhancementSidebar's local empty-state
+	// branch (the AuditBanner reads the store directly via auditState prop).
+	let guidelineLookupFailed = false;
 
 	let findings: Finding[] = [];
 	let guidelinesData: GuidelineEntry[] = [];
@@ -529,13 +536,14 @@
 				// spinner clears for normal studies where Phase 2 legitimately produces nothing.
 				// guideline_lookup_failed signals the degraded-state banner (genuine lookup
 				// failure), distinct from a successful zero-guideline result.
+				guidelineLookupFailed = data.guideline_lookup_failed === true;
 				if (reportId) {
 					try {
 						const { auditActions } = await import('$lib/stores/audit');
 						auditActions.mergePhase2(
 							reportId,
 							data.phase2_audit?.criteria ?? [],
-							{ guidelineLookupFailed: data.guideline_lookup_failed === true },
+							{ guidelineLookupFailed },
 						);
 					} catch (e) {
 						console.warn('[sidebar] Phase 2 audit merge failed:', e);
@@ -580,6 +588,7 @@
 			// clears the evaluating spinner AND surfaces the degraded-state banner
 			// with the Retry affordance.
 			if (reportId && error) {
+				guidelineLookupFailed = true;
 				try {
 					const { auditActions } = await import('$lib/stores/audit');
 					auditActions.mergePhase2(reportId, [], { guidelineLookupFailed: true });
@@ -1335,7 +1344,28 @@
 						</div>
 						{/if}
 						{#if !loading && auditGuidelineReferences.length === 0 && guidelinesData.length === 0}
-							<div class="text-gray-500 text-xs text-center py-8">No guidelines found for this report.</div>
+							{#if guidelineLookupFailed}
+								<div class="mx-4 my-6 p-4 rounded-lg bg-amber-500/[0.06] border border-amber-500/25 space-y-3">
+									<div class="flex items-start gap-2">
+										<svg class="w-4 h-4 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M4.93 4.93l14.14 14.14" />
+										</svg>
+										<div class="flex-1 min-w-0">
+											<p class="text-xs text-amber-200 font-medium">Guideline lookup unavailable</p>
+											<p class="text-[11px] text-amber-200/70 mt-1 leading-relaxed">
+												Retrieval failed — no guideline evidence could be fetched for this report.
+											</p>
+										</div>
+									</div>
+									<button
+										type="button"
+										class="w-full px-3 py-1.5 rounded-md text-xs font-medium text-amber-200 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 transition-colors"
+										onclick={() => loadEnhancements(true)}
+									>Retry</button>
+								</div>
+							{:else}
+								<div class="text-gray-500 text-xs text-center py-8">No guidelines applicable to this report.</div>
+							{/if}
 						{/if}
 					{/if}
 				</div>
