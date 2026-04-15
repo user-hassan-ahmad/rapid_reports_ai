@@ -111,6 +111,7 @@
 	let stage = 'summary';
 	let loading = false;
 	let loadingTest = false;
+	let loadingNewTestCase = false;
 	let error = '';
 	let hasGenerated = false;
 
@@ -486,6 +487,31 @@
 	function skipAllQuestions() {
 		questions = questions.map(q => q.status === 'pending' ? { ...q, status: 'skipped' } : q);
 		goToStage('test');
+	}
+
+	async function regenerateTestCase() {
+		if (loadingNewTestCase) return;
+		const seedExamples = examples
+			.filter((e) => e.content && e.content.trim())
+			.map((e) => ({ label: e.label, content: e.content }));
+		if (seedExamples.length === 0) return;
+		loadingNewTestCase = true;
+		error = '';
+		try {
+			const data = await postJson('/api/templates/skill-sheet/generate-test-case', {
+				scan_type: scanType,
+				examples: seedExamples
+			});
+			if (!data.success) throw new Error(data.error);
+			sampleClinicalHistory = coerceToText(data.sample_clinical_history);
+			sampleFindings = coerceToText(data.sample_findings);
+			testClinicalHistory = sampleClinicalHistory;
+			testFindings = sampleFindings;
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+		} finally {
+			loadingNewTestCase = false;
+		}
 	}
 
 	async function runTestGenerate() {
@@ -880,7 +906,25 @@
 				<!-- STAGE: Test -->
 				{:else if stage === 'test'}
 					<div class="flex-1 flex flex-col px-5 py-5 space-y-4" in:fly={{ x: 20, duration: 200 }}>
-						<p class="text-sm text-gray-400 shrink-0">{stageDescriptions.test}</p>
+						<div class="flex items-center justify-between shrink-0 gap-3">
+							<p class="text-sm text-gray-400">{stageDescriptions.test}</p>
+							<button
+								class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] text-purple-300/80 hover:text-purple-200 bg-purple-500/8 hover:bg-purple-500/15 border border-purple-500/15 hover:border-purple-500/30 transition-all disabled:opacity-40 disabled:pointer-events-none shrink-0"
+								on:click={regenerateTestCase}
+								disabled={loadingNewTestCase}
+								title="Generate a fresh clinical scenario from your examples"
+							>
+								{#if loadingNewTestCase}
+									<span class="inline-block w-3 h-3 border-2 border-purple-400/30 border-t-purple-400 rounded-full animate-spin"></span>
+									Generating…
+								{:else}
+									<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+									</svg>
+									Try another case
+								{/if}
+							</button>
+						</div>
 						<div class="flex-1 overflow-y-auto space-y-4">
 							<div>
 								<label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Clinical history</label>
