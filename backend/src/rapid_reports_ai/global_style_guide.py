@@ -167,6 +167,16 @@ provide it, omit the line entirely. Never fabricate findings, never write
 meta-statements about missing data. The report should read as if the radiologist
 wrote it — and a radiologist never documents what they didn't assess.
 
+### Parameter Placeholders
+
+Where a skill sheet includes a named placeholder for a value that varies
+per-study, substitute the dictated value when the dictation supplies it. When
+the dictation does not supply that value, keep the placeholder as written.
+Do not fabricate a substitute, and do not drop the line. A placeholder is
+itself valid report content when the corresponding data is absent — it
+preserves the structural requirement the skill sheet encodes while honouring
+the rule that only dictated values appear as factual content.
+
 ### Output Consistency
 
 Any section that synthesises from findings above must remain faithful to those

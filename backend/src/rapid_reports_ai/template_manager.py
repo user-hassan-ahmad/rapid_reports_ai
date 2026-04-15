@@ -3286,6 +3286,8 @@ Both layers must be grounded in the examples. Quote actual text to demonstrate e
 
 IMPORTANT: A Global Style Guide already covers universal rules (British English, impersonal voice, terminology consistency, section boundaries, consolidation, measurement conventions). Do NOT re-extract these. Focus ONLY on what is specific to this radiologist and this scan type.
 
+Parameter placeholders. Where a field's value varies across studies but the field itself is invariant, encode that field in the skill sheet pattern as a named placeholder in curly braces. A placeholder marks a slot for dictated data — keeping the structural requirement explicit even when the value is not yet present.
+
 The Skill Sheet must follow this structure:
 
 # Skill Sheet: {descriptive name}

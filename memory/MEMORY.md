@@ -14,5 +14,6 @@
 - [Skill Sheet Template System](project_skill_sheet_system.md) — Status, recent commits, restructured iteration plan; production wizard already cut over to SkillSheetCreator
 - [Global Style Guide Rules](project_global_style_guide.md) — Concrete rules from testing: voice, terminology, impression construction, fixed block params, clinical cross-referencing
 - [Template Fidelity Audit](project_template_fidelity_audit.md) — New QA criterion + dedicated UI widget for skill-sheet conformance gaps
+- [Parameter Slots](project_parameter_slots.md) — `{curly}` placeholders in skill sheets; resolves non-fabrication ↔ mandatory-structure tension via a third branch (emit slot verbatim when dictation is absent)
 - [Reference Values Node](project_reference_values_node.md) — First concrete use case for promoted nodes; now subsumed by broader knowledge graph architecture
 - [Feedback & Linting Design](project_feedback_linting_design.md) — Earlier partial analysis; now superseded by Feedback Pipeline spec
