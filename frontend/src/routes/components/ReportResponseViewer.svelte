@@ -746,7 +746,8 @@
 				{/if}
 
 			{#if reportId}
-				<!-- Interval Analysis / Compare: radiologist pastes in prior report text -->
+				<!-- Interval Analysis / Compare: radiologist pastes in prior report text.
+				     Icon matches the Copilot sidebar's Compare entry for cross-surface consistency. -->
 				<button
 					type="button"
 					onclick={(e) => { e.stopPropagation(); dispatch('openCompare'); }}
@@ -754,8 +755,7 @@
 					title="Paste a prior report to run AI interval analysis"
 				>
 					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-						<rect x="3" y="4" width="7" height="16" rx="1.5"/>
-						<rect x="14" y="4" width="7" height="16" rx="1.5"/>
+						<path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
 					</svg>
 					<div class="compare-rpt-inner">
 						<span class="compare-rpt-label">Compare</span>
