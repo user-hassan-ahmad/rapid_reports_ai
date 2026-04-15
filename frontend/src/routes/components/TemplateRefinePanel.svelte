@@ -52,48 +52,12 @@
 		return data;
 	}
 
-	function rejectTurn(assistantIndex) {
-		const target = chatHistory[assistantIndex];
-		if (!target || target.role !== 'assistant') return;
-
-		// Roll skill sheet back to state before this turn
-		if (typeof target.preMutationSkillSheet === 'string') {
-			skillSheet = target.preMutationSkillSheet;
-		}
-
-		// Mark this turn as rejected; also mark the triggering user turn if present.
-		// Index-0 case (no preceding user message) shouldn't happen in the current
-		// flow since assistants only reply to users — guarded here defensively.
-		const updated = [...chatHistory];
-		updated[assistantIndex] = { ...target, status: 'rejected' };
-		const userIndex = assistantIndex - 1;
-		if (userIndex >= 0 && updated[userIndex]?.role === 'user') {
-			updated[userIndex] = { ...updated[userIndex], status: 'rejected' };
-		}
-		chatHistory = updated;
-
-		hasChanges = skillSheet !== (template?.template_config?.skill_sheet || '');
-	}
-
 	async function sendMessage() {
 		if (!chatInput.trim() || !skillSheet || loading) return;
 		const msg = chatInput.trim();
 		chatInput = '';
 
-		// Snapshot the current skill sheet BEFORE the mutation — used for rollback
-		const preMutationSkillSheet = skillSheet;
-
-		// If the prior assistant turn is rejected, build rejection_context from it
-		const lastAssistant = [...chatHistory].reverse().find((m) => m.role === 'assistant');
-		const rejectionContext =
-			lastAssistant && lastAssistant.status === 'rejected'
-				? {
-						original_instruction: lastAssistant.originalInstruction || '',
-						rejected_claim: lastAssistant.behavioralClaim || ''
-				  }
-				: null;
-
-		chatHistory = [...chatHistory, { role: 'user', content: msg, status: null }];
+		chatHistory = [...chatHistory, { role: 'user', content: msg }];
 		loading = true;
 		error = '';
 
@@ -101,22 +65,11 @@
 			const data = await postJson('/api/templates/skill-sheet/refine', {
 				skill_sheet: skillSheet,
 				message: msg,
-				chat_history: toWireChatHistory(chatHistory.slice(0, -1)),
-				rejection_context: rejectionContext
+				chat_history: toWireChatHistory(chatHistory.slice(0, -1))
 			});
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
-			chatHistory = [
-				...chatHistory,
-				{
-					role: 'assistant',
-					content: data.response,
-					behavioralClaim: data.behavioral_claim || '',
-					preMutationSkillSheet,
-					originalInstruction: msg,
-					status: 'pending'
-				}
-			];
+			chatHistory = [...chatHistory, { role: 'assistant', content: data.response }];
 			hasChanges = true;
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -140,11 +93,6 @@
 		try {
 			const headers = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
-
-			// Saving is itself a confirmation of every still-pending turn.
-			chatHistory = chatHistory.map((m) =>
-				m.status === 'pending' ? { ...m, status: 'confirmed' } : m
-			);
 
 			const updatedConfig = { ...template.template_config, skill_sheet: skillSheet };
 
@@ -251,33 +199,15 @@
 				</div>
 			{/if}
 
-			{#each chatHistory as msg, i}
+			{#each chatHistory as msg}
 				<div class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}">
 					<div class="max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm
 						{msg.role === 'user'
-							? (msg.status === 'rejected'
-								? 'bg-amber-500/10 border border-amber-500/40 text-amber-100'
-								: 'bg-purple-600/20 border border-purple-500/20 text-purple-100')
-							: (msg.status === 'rejected'
-								? 'bg-amber-500/10 border border-amber-500/40 text-amber-100'
-								: 'bg-white/[0.04] border border-white/[0.06] text-gray-300')}">
+							? 'bg-purple-600/20 border border-purple-500/20 text-purple-100'
+							: 'bg-white/[0.04] border border-white/[0.06] text-gray-300'}">
 						{msg.content}
 					</div>
 				</div>
-				{#if msg.role === 'assistant' && msg.behavioralClaim && msg.status === 'pending'}
-					<div class="flex justify-start">
-						<div class="max-w-[85%] rounded-xl px-3.5 py-2.5 text-xs bg-purple-500/5 border border-purple-500/20 text-purple-200/90 space-y-2">
-							<p class="leading-snug">{msg.behavioralClaim} — does this look right?</p>
-							<div class="flex gap-2">
-								<button
-									class="px-2.5 py-1 rounded-md bg-white/[0.04] hover:bg-amber-500/15 border border-white/10 hover:border-amber-500/40 text-gray-400 hover:text-amber-200 transition-colors"
-									on:click={() => rejectTurn(i)}>
-									Not quite
-								</button>
-							</div>
-						</div>
-					</div>
-				{/if}
 			{/each}
 
 			{#if loading}
