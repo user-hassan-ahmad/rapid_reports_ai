@@ -7,6 +7,18 @@
 
 	const dispatch = createEventDispatcher();
 
+	/**
+	 * Strip frontend-only fields before sending chat history to the backend.
+	 * The backend Pydantic model (SkillSheetChatMessage) only accepts {role, content}.
+	 * Any extra fields (behavioralClaim, preMutationSkillSheet, originalInstruction, status)
+	 * would either 422 or leak into the LLM prompt.
+	 */
+	function toWireChatHistory(history) {
+		return history
+			.filter((m) => m && (m.role === 'user' || m.role === 'assistant'))
+			.map(({ role, content }) => ({ role, content }));
+	}
+
 	export let template = null;
 
 	let skillSheet = '';
@@ -40,12 +52,48 @@
 		return data;
 	}
 
+	function rejectTurn(assistantIndex) {
+		const target = chatHistory[assistantIndex];
+		if (!target || target.role !== 'assistant') return;
+
+		// Roll skill sheet back to state before this turn
+		if (typeof target.preMutationSkillSheet === 'string') {
+			skillSheet = target.preMutationSkillSheet;
+		}
+
+		// Mark this turn as rejected; also mark the triggering user turn if present.
+		// Index-0 case (no preceding user message) shouldn't happen in the current
+		// flow since assistants only reply to users — guarded here defensively.
+		const updated = [...chatHistory];
+		updated[assistantIndex] = { ...target, status: 'rejected' };
+		const userIndex = assistantIndex - 1;
+		if (userIndex >= 0 && updated[userIndex]?.role === 'user') {
+			updated[userIndex] = { ...updated[userIndex], status: 'rejected' };
+		}
+		chatHistory = updated;
+
+		hasChanges = skillSheet !== (template?.template_config?.skill_sheet || '');
+	}
+
 	async function sendMessage() {
 		if (!chatInput.trim() || !skillSheet || loading) return;
 		const msg = chatInput.trim();
 		chatInput = '';
 
-		chatHistory = [...chatHistory, { role: 'user', content: msg }];
+		// Snapshot the current skill sheet BEFORE the mutation — used for rollback
+		const preMutationSkillSheet = skillSheet;
+
+		// If the prior assistant turn is rejected, build rejection_context from it
+		const lastAssistant = [...chatHistory].reverse().find((m) => m.role === 'assistant');
+		const rejectionContext =
+			lastAssistant && lastAssistant.status === 'rejected'
+				? {
+						original_instruction: lastAssistant.originalInstruction || '',
+						rejected_claim: lastAssistant.behavioralClaim || ''
+				  }
+				: null;
+
+		chatHistory = [...chatHistory, { role: 'user', content: msg, status: null }];
 		loading = true;
 		error = '';
 
@@ -53,11 +101,22 @@
 			const data = await postJson('/api/templates/skill-sheet/refine', {
 				skill_sheet: skillSheet,
 				message: msg,
-				chat_history: chatHistory.slice(0, -1)
+				chat_history: toWireChatHistory(chatHistory.slice(0, -1)),
+				rejection_context: rejectionContext
 			});
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
-			chatHistory = [...chatHistory, { role: 'assistant', content: data.response }];
+			chatHistory = [
+				...chatHistory,
+				{
+					role: 'assistant',
+					content: data.response,
+					behavioralClaim: data.behavioral_claim || '',
+					preMutationSkillSheet,
+					originalInstruction: msg,
+					status: 'pending'
+				}
+			];
 			hasChanges = true;
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -81,6 +140,11 @@
 		try {
 			const headers = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
+
+			// Saving is itself a confirmation of every still-pending turn.
+			chatHistory = chatHistory.map((m) =>
+				m.status === 'pending' ? { ...m, status: 'confirmed' } : m
+			);
 
 			const updatedConfig = { ...template.template_config, skill_sheet: skillSheet };
 
