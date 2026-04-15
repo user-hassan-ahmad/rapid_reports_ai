@@ -60,9 +60,25 @@
 	 *   impression?: { flow: string[], detail: string }
 	 * } | null} */
 	let summary = null;
-	/** @type {{ role: 'user'|'assistant', content: string }[]} */
+	/**
+	 * Chat state shared between the questions stage (Q&A) and the refine stage.
+	 * Refine-stage turns carry verification-loop metadata on both the user and
+	 * assistant halves; questions-stage turns only carry {role, content}.
+	 * @typedef {{
+	 *   role: 'user'|'assistant',
+	 *   content: string,
+	 *   isRefineTurn?: boolean,
+	 *   behavioralClaim?: string,
+	 *   preMutationSkillSheet?: string | null,
+	 *   originalInstruction?: string,
+	 *   status?: 'pending' | 'rejected' | 'confirmed' | null,
+	 * }} ChatMessage
+	 */
+	/** @type {ChatMessage[]} */
 	let chatHistory = [];
 	let chatInput = '';
+	/** @type {HTMLInputElement | null} */
+	let chatInputEl = null;
 
 	// Questions — unified model: each Q has question, suggestions, and a status
 	/** @type {{ question: string, suggestions: string[], status: 'pending'|'answered'|'skipped', answer: string }[]} */
@@ -361,6 +377,23 @@
 			updated[userIndex] = { ...updated[userIndex], status: 'rejected' };
 		}
 		chatHistory = updated;
+
+		// Give focus to the clarification input — the user just said "not quite",
+		// they need an obvious affordance for "tell me what you meant".
+		setTimeout(() => chatInputEl?.focus(), 0);
+	}
+
+	function confirmTurn(/** @type {number} */ assistantIndex) {
+		const target = chatHistory[assistantIndex];
+		if (!target || target.role !== 'assistant') return;
+
+		const updated = [...chatHistory];
+		updated[assistantIndex] = { ...target, status: 'confirmed' };
+		const userIndex = assistantIndex - 1;
+		if (userIndex >= 0 && updated[userIndex]?.role === 'user') {
+			updated[userIndex] = { ...updated[userIndex], status: 'confirmed' };
+		}
+		chatHistory = updated;
 	}
 
 	async function sendAnswer(/** @type {string} */ msg) {
@@ -393,8 +426,9 @@
 				  }
 				: null;
 
+		/** @type {ChatMessage} */
 		const userMsg = isRefineTurn
-			? { role: 'user', content: msg, status: null }
+			? { role: 'user', content: msg, status: null, isRefineTurn: true }
 			: { role: 'user', content: msg };
 		chatHistory = [...chatHistory, userMsg];
 		loading = true; error = '';
@@ -407,6 +441,7 @@
 			});
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
+			/** @type {ChatMessage} */
 			const assistantMsg = isRefineTurn
 				? {
 						role: 'assistant',
@@ -414,7 +449,8 @@
 						behavioralClaim: data.behavioral_claim || '',
 						preMutationSkillSheet,
 						originalInstruction: msg,
-						status: 'pending'
+						status: 'pending',
+						isRefineTurn: true
 				  }
 				: { role: 'assistant', content: data.response };
 			chatHistory = [...chatHistory, assistantMsg];
@@ -422,6 +458,13 @@
 			error = e instanceof Error ? e.message : String(e);
 			chatHistory = chatHistory.slice(0, -1);
 		} finally { loading = false; }
+
+		// Auto-regenerate the preview so the user can verify the behavioral_claim
+		// against a fresh report without clicking Regenerate. No-op if testFindings
+		// isn't populated yet (e.g., still in questions stage).
+		if (isRefineTurn && stage === 'refine' && testFindings.trim()) {
+			runTestGenerate();
+		}
 	}
 
 	function handleChatKey(/** @type {KeyboardEvent} */ e) {
@@ -894,31 +937,92 @@
 							{/if}
 
 							{#each chatHistory as msg, i}
-								{#if msg.role === 'user'}
-									<div class="flex justify-end">
-										<div class="max-w-[90%] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm {msg.status === 'rejected' ? 'bg-amber-500/10 border border-amber-500/40 text-amber-100' : 'bg-purple-600/20 border border-purple-500/15 text-gray-200'}" style="white-space: pre-wrap;">{msg.content}</div>
-									</div>
-								{:else}
-									<div class="max-w-[90%] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm leading-relaxed {msg.status === 'rejected' ? 'bg-amber-500/10 border border-amber-500/40 text-amber-100' : 'bg-white/[0.03] border border-white/10 text-gray-300'}" style="white-space: pre-wrap;">{msg.content}</div>
-									{#if msg.behavioralClaim && msg.status === 'pending'}
-										<div class="max-w-[90%] mt-1.5 rounded-xl px-3.5 py-2.5 text-xs bg-purple-500/5 border border-purple-500/20 text-purple-200/90 space-y-2">
-											<p class="leading-snug">{msg.behavioralClaim} — does this look right?</p>
-											<div class="flex gap-2">
-												<button
-													class="px-2.5 py-1 rounded-md bg-white/[0.04] hover:bg-amber-500/15 border border-white/10 hover:border-amber-500/40 text-gray-400 hover:text-amber-200 transition-colors"
-													on:click={() => rejectTurn(i)}>
-													Not quite
-												</button>
+								{#if msg.isRefineTurn && msg.role === 'user'}
+									<!-- Refine turn: unified card (user instruction + behavioral_claim + actions).
+									     The assistant half of this pair renders inside this card, so skip it on its own iteration. -->
+									{@const assistantMsg = chatHistory[i + 1]?.role === 'assistant' ? chatHistory[i + 1] : null}
+									{@const assistantIdx = assistantMsg ? i + 1 : -1}
+									{@const turnStatus = assistantMsg?.status}
+									{@const isLatestPending = assistantMsg && turnStatus === 'pending' && i + 1 === chatHistory.length - 1}
+									{@const awaitingPreview = isLatestPending && loadingTest}
+
+									{#if turnStatus === 'confirmed'}
+										<!-- Collapsed: just a green check + truncated claim -->
+										<div class="flex items-center gap-2 text-xs text-emerald-300/90 px-3.5 py-2 rounded-lg bg-emerald-500/[0.06] border border-emerald-500/20">
+											<svg class="w-3.5 h-3.5 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg>
+											<span class="truncate">{assistantMsg?.behavioralClaim || msg.content}</span>
+										</div>
+									{:else if turnStatus === 'rejected'}
+										<!-- Rejected: amber, clear CTA to clarify -->
+										<div class="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm space-y-2">
+											<div class="flex items-start gap-2">
+												<svg class="w-4 h-4 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M4.93 4.93l14.14 14.14M4.93 19.07L19.07 4.93" /></svg>
+												<div class="flex-1 min-w-0">
+													<p class="text-amber-100 font-medium" style="white-space: pre-wrap;">{msg.content}</p>
+													{#if assistantMsg?.behavioralClaim}
+														<p class="text-xs text-amber-200/70 mt-1 line-through" style="white-space: pre-wrap;">{assistantMsg.behavioralClaim}</p>
+													{/if}
+												</div>
+											</div>
+											<div class="flex items-center gap-1.5 text-xs text-amber-300 pt-2 border-t border-amber-500/25">
+												<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
+												<span>Tell me what you meant differently — type below</span>
 											</div>
 										</div>
+									{:else}
+										<!-- Pending / generating: purple card with claim (or skeleton) + Looks right / Not quite -->
+										<div class="rounded-xl border border-purple-500/30 bg-purple-500/[0.06] px-4 py-3 text-sm space-y-3">
+											<p class="text-purple-100 font-medium" style="white-space: pre-wrap;">{msg.content}</p>
+											{#if !assistantMsg}
+												<!-- Refine POST still in flight: skeleton lines -->
+												<div class="space-y-2" aria-label="Applying change…">
+													<div class="h-3 rounded bg-purple-500/20 animate-pulse w-5/6"></div>
+													<div class="h-3 rounded bg-purple-500/15 animate-pulse w-2/3"></div>
+												</div>
+											{:else}
+												<p class="text-gray-200 leading-relaxed" style="white-space: pre-wrap;">{assistantMsg.behavioralClaim}</p>
+												<div class="flex items-center justify-between gap-3 pt-2 border-t border-purple-500/15">
+													{#if awaitingPreview}
+														<span class="text-xs text-purple-200/70 flex items-center gap-1.5">
+															<span class="inline-block w-3 h-3 border-2 border-purple-400/30 border-t-purple-400 rounded-full animate-spin"></span>
+															Updating preview…
+														</span>
+													{:else}
+														<span class="text-xs text-purple-200/70">Does this look right?</span>
+													{/if}
+													<div class="flex gap-2 shrink-0">
+														<button
+															class="px-2.5 py-1 rounded-md bg-white/[0.04] hover:bg-amber-500/15 border border-white/10 hover:border-amber-500/40 text-gray-400 hover:text-amber-200 text-xs transition-colors disabled:opacity-40 disabled:pointer-events-none"
+															on:click={() => rejectTurn(assistantIdx)}
+															disabled={awaitingPreview}>
+															Not quite
+														</button>
+														<button
+															class="px-2.5 py-1 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-200 text-xs transition-colors disabled:opacity-40 disabled:pointer-events-none"
+															on:click={() => confirmTurn(assistantIdx)}
+															disabled={awaitingPreview}>
+															Looks right
+														</button>
+													</div>
+												</div>
+											{/if}
+										</div>
 									{/if}
+								{:else if msg.isRefineTurn && msg.role === 'assistant'}
+									<!-- Paired with the user refine turn above — do nothing here -->
+								{:else if msg.role === 'user'}
+									<div class="flex justify-end">
+										<div class="max-w-[90%] bg-purple-600/20 border border-purple-500/15 rounded-2xl rounded-br-sm px-4 py-2.5 text-sm text-gray-200" style="white-space: pre-wrap;">{msg.content}</div>
+									</div>
+								{:else}
+									<div class="max-w-[90%] bg-white/[0.03] border border-white/10 rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm text-gray-300 leading-relaxed" style="white-space: pre-wrap;">{msg.content}</div>
 								{/if}
 							{/each}
 
 							{#if loading}
 								<div class="text-sm text-gray-500 flex items-center gap-2">
 									<span class="inline-block w-3 h-3 border-2 border-gray-600 border-t-gray-400 rounded-full animate-spin"></span>
-									Updating...
+									Updating…
 								</div>
 							{/if}
 
@@ -927,7 +1031,7 @@
 						<!-- Chat input + regenerate -->
 						<div class="px-5 py-3 border-t border-white/[0.06] shrink-0 space-y-2">
 							<div class="flex gap-2">
-								<input class="input-dark !py-2 !text-sm" bind:value={chatInput} on:keydown={handleChatKey} placeholder="Add a rule or correction..." disabled={loading} />
+								<input bind:this={chatInputEl} class="input-dark !py-2 !text-sm" bind:value={chatInput} on:keydown={handleChatKey} placeholder="Add a rule or correction..." disabled={loading} />
 								<button class="btn-accent !px-3.5 !py-2" on:click={() => sendAnswer(chatInput)} disabled={loading || !chatInput.trim()}>&uarr;</button>
 							</div>
 							{#if hasGenerated}
