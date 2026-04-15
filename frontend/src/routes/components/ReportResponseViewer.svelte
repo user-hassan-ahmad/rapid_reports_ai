@@ -407,9 +407,11 @@
 		auditId: $auditStore.auditId,
 		error: $auditStore.error,
 		activeCriterion: $auditStore.activeCriterion,
-		// phase2Complete lives only on the shared store (owned by /enhance path);
-		// forward it here so the banner's spinner-clear condition sees it.
+		// phase2Complete + guidelineLookupFailed live only on the shared store
+		// (owned by /enhance path); forward them so the banner's spinner-clear
+		// and degraded-state banner see them.
 		phase2Complete: sharedState && $sharedState ? $sharedState.phase2Complete : false,
+		guidelineLookupFailed: sharedState && $sharedState ? $sharedState.guidelineLookupFailed : false,
 		saveInFlight
 	});
 

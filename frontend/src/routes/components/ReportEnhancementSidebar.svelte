@@ -1014,7 +1014,7 @@
 					{:else}
 						<AuditBanner
 							auditState={auditForBanner as any}
-							canReaudit={['complete', 'stale', 'error'].includes(auditForBanner.status) && !auditState?.saveInFlight}
+							canReaudit={['complete', 'stale', 'error'].includes(auditForBanner.status) && !auditState?.saveInFlight && (auditForBanner as any)?.phase2Complete === true}
 							showClose={false}
 							on:acknowledge={(e) => dispatch('auditAcknowledge', e.detail)}
 							on:restore={(e) => dispatch('auditRestore', e.detail)}
@@ -1022,6 +1022,7 @@
 							on:applyFix={(e) => dispatch('auditApplyFix', e.detail)}
 							on:insertBanner={(e) => dispatch('auditInsertBanner', e.detail)}
 							on:reaudit={() => dispatch('auditReaudit')}
+							on:retryGuidelines={() => loadEnhancements(true)}
 							on:openSidebar={(e) => { if (e.detail?.tab === 'guidelines') activeTab = 'gl'; }}
 						/>
 					{/if}

@@ -60,6 +60,7 @@
 		error: string | null;
 		activeCriterion: string | null;
 		phase2Complete?: boolean;
+		guidelineLookupFailed?: boolean;
 	}
 
 	export let auditState: AuditState;
@@ -70,6 +71,22 @@
 
 	let expandedCriteria: Set<string> = new Set();
 	let criterionRefs: { [key: string]: HTMLElement } = {};
+	let retryingGuidelines = false;
+
+	function handleRetryGuidelines() {
+		if (retryingGuidelines) return;
+		retryingGuidelines = true;
+		dispatch('retryGuidelines');
+	}
+
+	// Auto-clear the local retrying flag when the store settles — either the
+	// retry succeeded (guidelineLookupFailed flips to false) or failed again
+	// (stays true but mergePhase2 fires anew). The phase2Complete pulse isn't
+	// observable here; rely on a bounded clear via status change or
+	// guidelineLookupFailed flip.
+	$: if (retryingGuidelines && auditState?.guidelineLookupFailed === false) {
+		retryingGuidelines = false;
+	}
 
 	const criterionLabels: Record<string, string> = {
 		anatomical_accuracy: 'Anatomical Accuracy',
@@ -529,6 +546,23 @@
 				<div class="flex items-center gap-2 p-2.5 rounded-md bg-blue-500/5 border border-blue-500/10 mb-3">
 					<div class="w-3 h-3 rounded-full border-2 border-blue-400/50 border-t-transparent animate-spin flex-shrink-0"></div>
 					<p class="text-[10px] text-blue-400/80">{9 - auditState.result.criteria.length} additional criteria evaluating…</p>
+				</div>
+			{/if}
+
+			{#if auditState.guidelineLookupFailed && auditState.phase2Complete}
+				<div class="flex items-center gap-2 p-2.5 rounded-md bg-amber-500/[0.06] border border-amber-500/20 mb-3">
+					{#if retryingGuidelines}
+						<div class="w-3 h-3 rounded-full border-2 border-amber-400/50 border-t-transparent animate-spin flex-shrink-0"></div>
+						<p class="text-[10px] text-amber-300/90 flex-1">Retrying guideline lookup…</p>
+					{:else}
+						<svg class="w-3 h-3 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M4.93 4.93l14.14 14.14" /></svg>
+						<p class="text-[10px] text-amber-300/90 flex-1">Guideline lookup unavailable — assessed against standard reporting practice.</p>
+						<button
+							type="button"
+							class="px-2 py-0.5 rounded text-[10px] font-medium text-amber-200 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 transition-colors shrink-0"
+							on:click={handleRetryGuidelines}
+						>Retry</button>
+					{/if}
 				</div>
 			{/if}
 
