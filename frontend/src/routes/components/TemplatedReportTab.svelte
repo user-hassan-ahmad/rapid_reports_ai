@@ -1627,7 +1627,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
 											{#if inlineEditId === template.id}
-												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') cancelInlineEdit(); }}>
+												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Enter') e.stopPropagation(); if (e.key === 'Escape') cancelInlineEdit(); }}>
 													<input
 														class="input-dark !py-1.5 w-full text-base font-semibold"
 														bind:value={inlineEditName}
@@ -1777,7 +1777,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
 											{#if inlineEditId === template.id}
-												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') cancelInlineEdit(); }}>
+												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Enter') e.stopPropagation(); if (e.key === 'Escape') cancelInlineEdit(); }}>
 													<input
 														class="input-dark !py-1.5 w-full text-base font-semibold"
 														bind:value={inlineEditName}
@@ -2071,7 +2071,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
 											{#if inlineEditId === template.id}
-												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') cancelInlineEdit(); }}>
+												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Enter') e.stopPropagation(); if (e.key === 'Escape') cancelInlineEdit(); }}>
 													<input
 														class="input-dark !py-1.5 w-full text-base font-semibold"
 														bind:value={inlineEditName}
@@ -2224,7 +2224,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
 											{#if inlineEditId === template.id}
-												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') cancelInlineEdit(); }}>
+												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Enter') e.stopPropagation(); if (e.key === 'Escape') cancelInlineEdit(); }}>
 													<input
 														class="input-dark !py-1.5 w-full text-base font-semibold"
 														bind:value={inlineEditName}
@@ -2377,7 +2377,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
 											{#if inlineEditId === template.id}
-												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') cancelInlineEdit(); }}>
+												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Enter') e.stopPropagation(); if (e.key === 'Escape') cancelInlineEdit(); }}>
 													<input
 														class="input-dark !py-1.5 w-full text-base font-semibold"
 														bind:value={inlineEditName}
@@ -2530,7 +2530,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 											onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 										>
 											{#if inlineEditId === template.id}
-												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') cancelInlineEdit(); }}>
+												<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Enter') e.stopPropagation(); if (e.key === 'Escape') cancelInlineEdit(); }}>
 													<input
 														class="input-dark !py-1.5 w-full text-base font-semibold"
 														bind:value={inlineEditName}
@@ -2781,7 +2781,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 												onkeydown={(e) => e.key === 'Enter' && handleTemplateSelect(template)}
 											>
 												{#if inlineEditId === template.id}
-													<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') cancelInlineEdit(); }}>
+													<div class="space-y-2.5" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Enter') e.stopPropagation(); if (e.key === 'Escape') cancelInlineEdit(); }}>
 														<input class="input-dark !py-1.5 w-full text-base font-semibold" bind:value={inlineEditName}
 															onkeydown={(e) => { if (e.key === 'Enter') saveInlineEdit(); if (e.key === 'Escape') cancelInlineEdit(); }} />
 														<div class="relative">
