@@ -15,6 +15,7 @@ import ReportVersionInline from './components/ReportVersionInline.svelte';
 import TemplateEditorNew from './components/TemplateEditorNew.svelte';
 import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 	import SkillSheetCreator from './components/SkillSheetCreator.svelte';
+	import { selectedTemplateId } from '$lib/stores/templates';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import UnfilledItemHoverPopup from './components/UnfilledItemHoverPopup.svelte';
 	import type { UnfilledItem } from '$lib/utils/placeholderDetection';
@@ -194,12 +195,13 @@ $: copilotMaxLayoutTier = (
 	copilotMaxWidthPx >= COPILOT_TRI_MIN_CAP ? 'tri' : copilotMaxWidthPx >= COPILOT_DUAL_MIN_CAP ? 'dual' : 'narrow'
 ) as 'narrow' | 'dual' | 'tri';
 $: copilotAsideWidthPx = Math.min(COPILOT_IDEAL_WIDTH[copilotLayoutMode], copilotMaxWidthPx);
-/** Right padding for main column when Copilot or peek rail is open (md+ only). */
+/** Right padding for main column when Copilot or peek rail is open (md+ only).
+ *  Uses viewingReport so the rail gap closes on the templates list view. */
 $: copilotMainPaddingRightPx =
 	browser && viewportWidth >= 768
 		? sidebarVisible && isEnhancementContext
 			? copilotAsideWidthPx
-			: isEnhancementContext && currentReportId && !sidebarVisible
+			: viewingReport && !sidebarVisible
 				? 40
 				: 0
 		: 0;
@@ -753,6 +755,14 @@ function handleTemplateCleared(): void {
 	}
 
 $: isEnhancementContext = activeTab === 'auto' || activeTab === 'templated';
+// True when the user is actively looking at a report (not at the templates list view).
+// templatedReportId is intentionally preserved across list-navigation for fast re-entry,
+// so we can't rely on currentReportId alone — also require $selectedTemplateId when on
+// the templated tab. This hides the Copilot peek rail / mobile FAB when browsing the list.
+$: viewingReport =
+	isEnhancementContext &&
+	!!currentReportId &&
+	(activeTab !== 'templated' || $selectedTemplateId !== null);
 $: {
 	const newReportId = isEnhancementContext
 		? (activeTab === 'auto' ? reportId : templatedReportId)
@@ -1221,7 +1231,7 @@ $: if (
 	</div>
 
 	<!-- Mobile Copilot FAB: visible only on < md when the copilot rail is hidden -->
-	{#if isEnhancementContext && currentReportId && !sidebarVisible}
+	{#if viewingReport && !sidebarVisible}
 		<button
 			type="button"
 			class="md:hidden fixed bottom-5 right-5 z-[45] w-12 h-12 rounded-full bg-purple-600/90 backdrop-blur-lg text-white shadow-lg shadow-purple-500/30 flex items-center justify-center hover:bg-purple-500 active:scale-95 transition-all"
@@ -1238,7 +1248,7 @@ $: if (
 	{/if}
 
 	<!-- Viewport-locked rail: sticky fails when ancestors use overflow-hidden (page root). -->
-	{#if isEnhancementContext && currentReportId && !sidebarVisible}
+	{#if viewingReport && !sidebarVisible}
 		{@const _railLoading = enhancementLoading || auditState?.status === 'loading'}
 		{@const _railLoaded = !enhancementLoading && (enhancementGuidelinesCount > 0 || auditState?.status === 'complete' || auditState?.status === 'stale')}
 		{@const _qaFlagCount = Array.isArray((auditState?.result as any)?.criteria)
