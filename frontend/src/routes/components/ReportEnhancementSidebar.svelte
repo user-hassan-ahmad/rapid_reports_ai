@@ -568,6 +568,27 @@
 			if (!error && (findings.length > 0 || guidelinesData.length > 0)) {
 				hasLoaded = true;
 			}
+			// Any resolution of /enhance (success, empty, or error) settles Phase 2.
+			// If mergePhase2 wasn't already called on the success path above, do it
+			// here with an empty array so the audit spinner doesn't hang forever on
+			// failure. Safe no-op when success path already merged (flips the flag
+			// to true either way and phase2_audit criteria from the server would
+			// have been applied first).
+			if (reportId) {
+				try {
+					const { auditActions } = await import('$lib/stores/audit');
+					// Only fire if we haven't merged on the success path. We can't
+					// easily tell from here, so we always-merge-empty as a fallback.
+					// mergePhase2 with [] on a report that already has Phase 2 criteria
+					// WOULD strip them — guard against that by only merging-empty when
+					// there's been no successful fetch (error path).
+					if (error) {
+						auditActions.mergePhase2(reportId, []);
+					}
+				} catch (e) {
+					console.warn('[sidebar] Phase 2 fallback merge failed:', e);
+				}
+			}
 		}
 	}
 	

@@ -75,7 +75,11 @@ function _update(reportId: string, fn: (s: AuditStoreState) => AuditStoreState) 
 
 export const auditActions = {
 	setLoading: (reportId: string) =>
-		_update(reportId, (s) => ({ ...s, status: 'loading', error: null, phase2Complete: false })),
+		// Note: phase2Complete is intentionally NOT reset here. Re-audit re-runs
+		// Phase 1 only — /enhance (which owns Phase 2) does not re-fire. Clearing
+		// phase2Complete on every re-audit leaves the spinner stuck because
+		// mergePhase2 is never called again in that window.
+		_update(reportId, (s) => ({ ...s, status: 'loading', error: null })),
 
 	setResult: (reportId: string, result: AuditResult, auditId: string | null) =>
 		_update(reportId, (s) => {
@@ -83,6 +87,7 @@ export const auditActions = {
 		}),
 
 	mergePhase2: (reportId: string, phase2Criteria: AuditCriterionItem[]) => {
+		console.debug('[audit] mergePhase2', { reportId, count: phase2Criteria.length });
 		_update(reportId, (s) => {
 			// phase2Complete=true regardless of criteria length — an empty Phase 2
 			// (normal study, no applicable guidelines) must still clear the spinner.
