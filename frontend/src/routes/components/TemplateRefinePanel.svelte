@@ -251,15 +251,33 @@
 				</div>
 			{/if}
 
-			{#each chatHistory as msg}
+			{#each chatHistory as msg, i}
 				<div class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}">
 					<div class="max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm
 						{msg.role === 'user'
-							? 'bg-purple-600/20 border border-purple-500/20 text-purple-100'
-							: 'bg-white/[0.04] border border-white/[0.06] text-gray-300'}">
+							? (msg.status === 'rejected'
+								? 'bg-amber-500/10 border border-amber-500/40 text-amber-100'
+								: 'bg-purple-600/20 border border-purple-500/20 text-purple-100')
+							: (msg.status === 'rejected'
+								? 'bg-amber-500/10 border border-amber-500/40 text-amber-100'
+								: 'bg-white/[0.04] border border-white/[0.06] text-gray-300')}">
 						{msg.content}
 					</div>
 				</div>
+				{#if msg.role === 'assistant' && msg.behavioralClaim && msg.status === 'pending'}
+					<div class="flex justify-start">
+						<div class="max-w-[85%] rounded-xl px-3.5 py-2.5 text-xs bg-purple-500/5 border border-purple-500/20 text-purple-200/90 space-y-2">
+							<p class="leading-snug">{msg.behavioralClaim} — does this look right?</p>
+							<div class="flex gap-2">
+								<button
+									class="px-2.5 py-1 rounded-md bg-white/[0.04] hover:bg-amber-500/15 border border-white/10 hover:border-amber-500/40 text-gray-400 hover:text-amber-200 transition-colors"
+									on:click={() => rejectTurn(i)}>
+									Not quite
+								</button>
+							</div>
+						</div>
+					</div>
+				{/if}
 			{/each}
 
 			{#if loading}
