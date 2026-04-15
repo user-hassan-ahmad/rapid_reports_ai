@@ -527,10 +527,16 @@
 				// mergePhase2 on successful enhance — even with an empty array — so the
 				// store flips phase2Complete=true and the "N additional criteria evaluating…"
 				// spinner clears for normal studies where Phase 2 legitimately produces nothing.
+				// guideline_lookup_failed signals the degraded-state banner (genuine lookup
+				// failure), distinct from a successful zero-guideline result.
 				if (reportId) {
 					try {
 						const { auditActions } = await import('$lib/stores/audit');
-						auditActions.mergePhase2(reportId, data.phase2_audit?.criteria ?? []);
+						auditActions.mergePhase2(
+							reportId,
+							data.phase2_audit?.criteria ?? [],
+							{ guidelineLookupFailed: data.guideline_lookup_failed === true },
+						);
 					} catch (e) {
 						console.warn('[sidebar] Phase 2 audit merge failed:', e);
 					}
@@ -569,22 +575,14 @@
 				hasLoaded = true;
 			}
 			// Any resolution of /enhance (success, empty, or error) settles Phase 2.
-			// If mergePhase2 wasn't already called on the success path above, do it
-			// here with an empty array so the audit spinner doesn't hang forever on
-			// failure. Safe no-op when success path already merged (flips the flag
-			// to true either way and phase2_audit criteria from the server would
-			// have been applied first).
-			if (reportId) {
+			// On error paths mergePhase2 was NOT called on the success branch above,
+			// so fire it here with an empty array + guidelineLookupFailed=true. This
+			// clears the evaluating spinner AND surfaces the degraded-state banner
+			// with the Retry affordance.
+			if (reportId && error) {
 				try {
 					const { auditActions } = await import('$lib/stores/audit');
-					// Only fire if we haven't merged on the success path. We can't
-					// easily tell from here, so we always-merge-empty as a fallback.
-					// mergePhase2 with [] on a report that already has Phase 2 criteria
-					// WOULD strip them — guard against that by only merging-empty when
-					// there's been no successful fetch (error path).
-					if (error) {
-						auditActions.mergePhase2(reportId, []);
-					}
+					auditActions.mergePhase2(reportId, [], { guidelineLookupFailed: true });
 				} catch (e) {
 					console.warn('[sidebar] Phase 2 fallback merge failed:', e);
 				}

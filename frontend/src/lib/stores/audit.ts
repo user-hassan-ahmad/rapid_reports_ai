@@ -48,6 +48,14 @@ export interface AuditStoreState {
 	 * breaks on normal studies where Phase 2 legitimately returns zero criteria.
 	 */
 	phase2Complete: boolean;
+	/**
+	 * True when /enhance failed to produce synthesis evidence (prefetch failure or S4
+	 * synthesis error). Phase 2 still ran unanchored, so criteria are present, but the
+	 * UI surfaces a degraded-state banner with a Retry affordance. False in both the
+	 * happy path and the zero-guideline-success path — those are indistinguishable to
+	 * the user.
+	 */
+	guidelineLookupFailed: boolean;
 }
 
 const DEFAULT_STATE: AuditStoreState = {
@@ -58,6 +66,7 @@ const DEFAULT_STATE: AuditStoreState = {
 	activeCriterion: null,
 	_phase2Cache: null,
 	phase2Complete: false,
+	guidelineLookupFailed: false,
 };
 
 const _states = writable<Record<string, AuditStoreState>>({});
@@ -91,10 +100,11 @@ function _update(reportId: string, fn: (s: AuditStoreState) => AuditStoreState) 
 
 export const auditActions = {
 	setLoading: (reportId: string) =>
-		// Note: phase2Complete is intentionally NOT reset here. Re-audit re-runs
-		// Phase 1 only — /enhance (which owns Phase 2) does not re-fire. Clearing
-		// phase2Complete on every re-audit leaves the spinner stuck because
-		// mergePhase2 is never called again in that window.
+		// Note: phase2Complete + guidelineLookupFailed are intentionally NOT reset
+		// here. Re-audit re-runs Phase 1 only — /enhance (which owns Phase 2) does
+		// not re-fire. Clearing those on every re-audit would leave the spinner
+		// stuck because mergePhase2 is never called again in that window. A fresh
+		// /enhance call via the Retry flow resets them through mergePhase2.
 		_update(reportId, (s) => ({ ...s, status: 'loading', error: null })),
 
 	setResult: (reportId: string, result: AuditResult, auditId: string | null) =>
@@ -128,12 +138,26 @@ export const auditActions = {
 			};
 		}),
 
-	mergePhase2: (reportId: string, phase2Criteria: AuditCriterionItem[]) => {
-		console.debug('[audit] mergePhase2', { reportId, count: phase2Criteria.length });
+	mergePhase2: (
+		reportId: string,
+		phase2Criteria: AuditCriterionItem[],
+		opts?: { guidelineLookupFailed?: boolean },
+	) => {
+		const guidelineLookupFailed = opts?.guidelineLookupFailed ?? false;
+		console.debug('[audit] mergePhase2', {
+			reportId,
+			count: phase2Criteria.length,
+			guidelineLookupFailed,
+		});
 		_update(reportId, (s) => {
 			// phase2Complete=true regardless of criteria length — an empty Phase 2
 			// (normal study, no applicable guidelines) must still clear the spinner.
-			const newState = { ...s, _phase2Cache: phase2Criteria, phase2Complete: true };
+			const newState = {
+				...s,
+				_phase2Cache: phase2Criteria,
+				phase2Complete: true,
+				guidelineLookupFailed,
+			};
 			if (!s.result) return newState;
 			const PHASE2_NAMES = new Set(['diagnostic_fidelity', 'recommendations', 'clinical_flagging', 'characterisation_gap']);
 			const phase1Only = s.result.criteria.filter((c) => !PHASE2_NAMES.has(c.criterion));
