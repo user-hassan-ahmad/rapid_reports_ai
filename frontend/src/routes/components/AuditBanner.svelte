@@ -59,6 +59,7 @@
 		auditId: string | null;
 		error: string | null;
 		activeCriterion: string | null;
+		phase2Complete?: boolean;
 	}
 
 	export let auditState: AuditState;
@@ -524,7 +525,7 @@
 				</div>
 			{/if}
 
-			{#if auditState.result && auditState.result.criteria && auditState.result.criteria.length < 9 && auditState.status === 'complete'}
+			{#if auditState.result && auditState.result.criteria && auditState.result.criteria.length < 9 && auditState.status === 'complete' && !auditState.phase2Complete}
 				<div class="flex items-center gap-2 p-2.5 rounded-md bg-blue-500/5 border border-blue-500/10 mb-3">
 					<div class="w-3 h-3 rounded-full border-2 border-blue-400/50 border-t-transparent animate-spin flex-shrink-0"></div>
 					<p class="text-[10px] text-blue-400/80">{9 - auditState.result.criteria.length} additional criteria evaluating…</p>

@@ -523,11 +523,14 @@
 				hasLoaded = true;
 				loading = false;
 
-				// Merge Phase 2 audit criteria into the shared audit store
-				if (data.phase2_audit?.criteria?.length && reportId) {
+				// Merge Phase 2 audit criteria into the shared audit store. Always call
+				// mergePhase2 on successful enhance — even with an empty array — so the
+				// store flips phase2Complete=true and the "N additional criteria evaluating…"
+				// spinner clears for normal studies where Phase 2 legitimately produces nothing.
+				if (reportId) {
 					try {
 						const { auditActions } = await import('$lib/stores/audit');
-						auditActions.mergePhase2(reportId, data.phase2_audit.criteria);
+						auditActions.mergePhase2(reportId, data.phase2_audit?.criteria ?? []);
 					} catch (e) {
 						console.warn('[sidebar] Phase 2 audit merge failed:', e);
 					}

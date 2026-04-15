@@ -41,6 +41,13 @@ export interface AuditStoreState {
 	activeCriterion: string | null;
 	/** Phase 2 criteria cached separately so re-audit (Phase 1 only) can re-merge them. */
 	_phase2Cache: AuditCriterionItem[] | null;
+	/**
+	 * True once Phase 2 (the guideline-compliance pass inside /enhance) has settled,
+	 * whether it produced criteria or not. The UI uses this to clear the
+	 * "N additional criteria evaluating…" spinner — inferring from criteria.length
+	 * breaks on normal studies where Phase 2 legitimately returns zero criteria.
+	 */
+	phase2Complete: boolean;
 }
 
 const DEFAULT_STATE: AuditStoreState = {
@@ -50,6 +57,7 @@ const DEFAULT_STATE: AuditStoreState = {
 	error: null,
 	activeCriterion: null,
 	_phase2Cache: null,
+	phase2Complete: false,
 };
 
 const _states = writable<Record<string, AuditStoreState>>({});
@@ -67,7 +75,7 @@ function _update(reportId: string, fn: (s: AuditStoreState) => AuditStoreState) 
 
 export const auditActions = {
 	setLoading: (reportId: string) =>
-		_update(reportId, (s) => ({ ...s, status: 'loading', error: null })),
+		_update(reportId, (s) => ({ ...s, status: 'loading', error: null, phase2Complete: false })),
 
 	setResult: (reportId: string, result: AuditResult, auditId: string | null) =>
 		_update(reportId, (s) => {
@@ -76,7 +84,9 @@ export const auditActions = {
 
 	mergePhase2: (reportId: string, phase2Criteria: AuditCriterionItem[]) => {
 		_update(reportId, (s) => {
-			const newState = { ...s, _phase2Cache: phase2Criteria };
+			// phase2Complete=true regardless of criteria length — an empty Phase 2
+			// (normal study, no applicable guidelines) must still clear the spinner.
+			const newState = { ...s, _phase2Cache: phase2Criteria, phase2Complete: true };
 			if (!s.result) return newState;
 			const PHASE2_NAMES = new Set(['diagnostic_fidelity', 'recommendations', 'clinical_flagging', 'characterisation_gap']);
 			const phase1Only = s.result.criteria.filter((c) => !PHASE2_NAMES.has(c.criterion));
