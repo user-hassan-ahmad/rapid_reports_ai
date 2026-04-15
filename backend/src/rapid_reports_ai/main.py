@@ -3187,25 +3187,45 @@ async def enhance_report(
                 db=db,
             )
 
+        # Prefetch-pipeline failure modes — distinguish true failure (no evidence
+        # could be retrieved) from a successful run that happens to yield no
+        # applicable guideline. The latter is a legitimate clinical outcome and
+        # should be silent. The former needs the degraded banner + Retry.
+        guideline_lookup_failed = False
+
         if not prefetch_output:
-            print(f"enhance_report: total prefetch failure — returning empty guidelines")
-            # Phase 2 still runs unanchored so the audit isn't truncated.
-            # guideline_lookup_failed signals the frontend to surface the degraded banner.
+            # Prefetch helper returned None entirely (shouldn't happen in normal
+            # operation — it's designed to return an empty PrefetchOutput on error).
+            print("enhance_report: total prefetch failure — no prefetch output")
+            guideline_lookup_failed = True
             prefetch_output = None
+        elif (
+            not prefetch_output.knowledge_base
+            and not prefetch_output.applicable_guidelines
+        ):
+            # Prefetch ran but produced no knowledge AND no applicable guidelines.
+            # This is the "Tavily unavailable" / "upstream retrieval failed" shape:
+            # the pipeline didn't throw but it couldn't retrieve anything to
+            # synthesise from. Distinct from a case that genuinely has no
+            # applicable guideline — in that real case, S1 still identifies
+            # applicable frameworks even when the knowledge_base is sparse.
+            print(
+                "enhance_report: prefetch returned empty knowledge_base + zero "
+                "applicable_guidelines — treating as degraded lookup"
+            )
+            guideline_lookup_failed = True
 
         # ── S4 Synthesis ────────────────────────────────────────────────────
         from .guideline_prefetch import run_synthesis
 
-        guideline_lookup_failed = False
         guidelines_cards: list = []
         synth_stats: dict = {}
         _synth_t0 = time.perf_counter()
 
-        if prefetch_output is None:
-            # Prefetch failed entirely — no evidence to synthesise from. Mark the
-            # lookup as failed and let Phase 2 fall through to unanchored mode.
-            guideline_lookup_failed = True
-            print("enhance_report: skipping S4 synthesis — prefetch unavailable (unanchored Phase 2)")
+        if prefetch_output is None or guideline_lookup_failed:
+            # No point running synthesis on empty evidence; Phase 2 will run
+            # unanchored against the report alone.
+            print("enhance_report: skipping S4 synthesis — no usable evidence (unanchored Phase 2)")
         else:
             try:
                 guidelines_cards, synth_stats = await run_synthesis(
