@@ -156,7 +156,7 @@
 		<div class="flex items-center justify-between px-5 pb-3 border-b border-white/[0.06] shrink-0">
 			<div class="min-w-0">
 				<h2 class="text-sm font-semibold text-white truncate">{template.name}</h2>
-				<p class="text-[11px] text-gray-500 mt-0.5">Describe what you'd like to change about your template</p>
+				<p class="text-[11px] text-gray-500 mt-0.5">Update template instructions — applied to future reports (regenerate to apply to this one too)</p>
 			</div>
 			<div class="flex items-center gap-2 shrink-0">
 				{#if hasChanges}
@@ -248,7 +248,7 @@
 				</button>
 			</div>
 			{#if hasChanges}
-				<p class="text-[10px] text-purple-400/60 mt-1.5">Unsaved changes — save when you're done refining</p>
+				<p class="text-[10px] text-purple-400/60 mt-1.5">Unsaved — save to apply to future reports</p>
 			{/if}
 		</div>
 	</div>
