@@ -40,6 +40,7 @@
 
 	export let caseDetailsDirty = false;
 	export let findingsStale = false;
+	export let canRefineTemplate = false;
 	
 	// Track previous response to detect manual updates
 	let previousResponse = '';
@@ -759,6 +760,24 @@
 					<div class="compare-rpt-inner">
 						<span class="compare-rpt-label">Compare</span>
 						<span class="compare-rpt-sub">vs prior study</span>
+					</div>
+				</button>
+			{/if}
+
+			{#if canRefineTemplate}
+				<!-- Refine Template: opens the template-refinement drawer for the current skill-sheet template -->
+				<button
+					type="button"
+					onclick={(e) => { e.stopPropagation(); dispatch('refineTemplate'); }}
+					class="compare-rpt-btn refine-tpl-btn"
+					title="Refine the template's instructions — applied to future reports"
+				>
+					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+					</svg>
+					<div class="compare-rpt-inner">
+						<span class="compare-rpt-label">Refine</span>
+						<span class="compare-rpt-sub">template</span>
 					</div>
 				</button>
 			{/if}
