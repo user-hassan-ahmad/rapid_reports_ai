@@ -685,6 +685,10 @@ class SkillSheetAnalyzeRequest(BaseModel):
     examples: List[SkillSheetExample]  # 1-5 example reports
     protocol_notes: Optional[str] = ""
 
+class SkillSheetGenerateTestCaseRequest(BaseModel):
+    scan_type: str
+    examples: List[SkillSheetExample]
+
 class SkillSheetChatMessage(BaseModel):
     role: str  # "user" or "assistant"
     content: str
@@ -2298,6 +2302,44 @@ async def skill_sheet_analyze_endpoint(
         logger.info("  ── sample_findings ──\n%s", test_case.get("sample_findings", ""))
 
         return {"success": True, **result, **test_case}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/templates/skill-sheet/generate-test-case")
+async def skill_sheet_generate_test_case_endpoint(
+    request: SkillSheetGenerateTestCaseRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Generate a fresh test case (clinical history + scratchpad findings) for a skill sheet template.
+
+    Wraps TemplateManager.generate_test_case so the frontend can regenerate just the sample
+    without re-running the full /analyze pipeline.
+    """
+    try:
+        logger.info("━━━ GENERATE TEST CASE ━━━")
+        logger.info("  scan_type: %s", request.scan_type)
+        logger.info("  examples: %d provided", len(request.examples))
+
+        tm = TemplateManager()
+        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
+        if not api_key:
+            return {"success": False, "error": "Cerebras API key not configured"}
+
+        examples = [{"label": ex.label, "content": ex.content} for ex in request.examples]
+        test_case = await tm.generate_test_case(
+            examples=examples,
+            scan_type=request.scan_type,
+            api_key=api_key,
+        )
+
+        logger.info("━━━ GENERATE TEST CASE RESULT ━━━")
+        logger.info("  sample_clinical_history: %s", test_case.get("sample_clinical_history", ""))
+        logger.info("  ── sample_findings ──\n%s", test_case.get("sample_findings", ""))
+
+        return {"success": True, **test_case}
     except Exception as e:
         import traceback
         traceback.print_exc()

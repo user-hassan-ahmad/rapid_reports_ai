@@ -3538,7 +3538,15 @@ Generate a JSON object with exactly two keys:
 
 - "sample_clinical_history": terse referral format — age, sex abbreviated, key clinical facts as noun phrases, query statement last. Must be clinically coherent with the findings below. Do not copy from the examples.
 
-- "sample_findings": a novel clinical scenario that is distinct from all the examples above — different primary diagnosis, different pathology combination, different severity level. Every finding must be internally consistent — if one finding implies a pathological state, no other finding should contradict it. Write as raw scratchpad: terse bullet points, abbreviations, values with units. This is pre-report notation — what a radiologist would scribble before the report is constructed, not prose, not formatted sentences. Include only raw observations. Do not include reference ranges or normal value thresholds — those are applied at report generation time, not dictation time. Include at least one incidental finding. Do not composite or rehash the example findings."""
+- "sample_findings": a novel clinical scenario that is distinct from all the examples above — different primary diagnosis, different pathology combination, different severity level. The case must obey four constraints:
+
+**Modality-native.** The scan type names the modality. Findings must use the vocabulary, measurements, and descriptors native to that modality, and describe only what is directly observable on it. Do not import conventions from adjacent modalities — e.g. no projection-based silhouette descriptors (cardiomediastinal silhouette, air-space opacification) on cross-sectional imaging; no Hounsfield density on MRI; no signal intensity on CT; no echogenicity on plain film; no ionising-radiation density language on ultrasound. When in doubt, look at what the example reports in this scan type actually say and stay inside that vocabulary.
+
+**Positive only.** Describe only what the radiologist observed as abnormal or present. Do NOT include "no X" statements, structures being unremarkable or normal, or mandatory negatives — the template handles all negatives automatically at report-generation time. Including them here fights the template logic and bloats the scratchpad.
+
+**Internally consistent.** If one finding implies a pathological state, no other finding may contradict it. The clinical history must be coherent with the positive findings.
+
+**Scratchpad format.** Terse bullet points, abbreviations, values with units. Pre-report notation — what the radiologist would scribble when calling out abnormalities, not a full dictation. Keep it short: only what is genuinely abnormal plus one incidental finding. No reference ranges or normal-value thresholds. Do not composite or rehash the example findings."""
 
         result = await _run_agent_with_model(
             model_name=model_name,
