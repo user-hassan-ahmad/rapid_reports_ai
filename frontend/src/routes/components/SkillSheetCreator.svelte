@@ -947,10 +947,10 @@
 									{@const awaitingPreview = isLatestPending && loadingTest}
 
 									{#if turnStatus === 'confirmed'}
-										<!-- Collapsed: just a green check + truncated claim -->
-										<div class="flex items-center gap-2 text-xs text-emerald-300/90 px-3.5 py-2 rounded-lg bg-emerald-500/[0.06] border border-emerald-500/20">
-											<svg class="w-3.5 h-3.5 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg>
-											<span class="truncate">{assistantMsg?.behavioralClaim || msg.content}</span>
+										<!-- Collapsed: green check + full claim (wraps on long claims) -->
+										<div class="flex items-start gap-2 text-xs text-emerald-300/90 px-3.5 py-2 rounded-lg bg-emerald-500/[0.06] border border-emerald-500/20">
+											<svg class="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg>
+											<span class="leading-relaxed" style="white-space: pre-wrap;">{assistantMsg?.behavioralClaim || msg.content}</span>
 										</div>
 									{:else if turnStatus === 'rejected'}
 										<!-- Rejected: amber, clear CTA to clarify -->
