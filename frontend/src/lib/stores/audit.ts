@@ -99,7 +99,33 @@ export const auditActions = {
 
 	setResult: (reportId: string, result: AuditResult, auditId: string | null) =>
 		_update(reportId, (s) => {
-			return { ...s, status: 'complete', result, auditId, error: null };
+			// If Phase 2 resolved before Phase 1 (e.g. /enhance faster than /audit,
+			// or /enhance was cached backend-side), the Phase 2 criteria are sitting
+			// in _phase2Cache waiting for a result to merge into. Fold them in now.
+			const cache = s._phase2Cache;
+			if (!cache || cache.length === 0) {
+				return { ...s, status: 'complete', result, auditId, error: null };
+			}
+			const PHASE2_NAMES = new Set([
+				'diagnostic_fidelity',
+				'recommendations',
+				'clinical_flagging',
+				'characterisation_gap',
+			]);
+			const phase1Only = result.criteria.filter((c) => !PHASE2_NAMES.has(c.criterion));
+			const merged = [...phase1Only, ...cache];
+			const worstStatus: 'pass' | 'flag' | 'warning' = merged.some((c) => c.status === 'flag')
+				? 'flag'
+				: merged.some((c) => c.status === 'warning')
+					? 'warning'
+					: 'pass';
+			return {
+				...s,
+				status: 'complete',
+				result: { ...result, criteria: merged, overall_status: worstStatus },
+				auditId,
+				error: null,
+			};
 		}),
 
 	mergePhase2: (reportId: string, phase2Criteria: AuditCriterionItem[]) => {
