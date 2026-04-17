@@ -159,38 +159,78 @@ FINDINGS template content:
 Return a JSON array of uppercase section names."""
 
 
-CANVAS_PROCESS_SYSTEM_PROMPT = """You are a clinical findings extractor for a radiology dictation system. You receive the FULL session transcript (everything the radiologist has said so far in this dictation session) and the current state of a structured scratchpad. Your job is to produce the COMPLETE updated scratchpad and determine checklist coverage.
+CANVAS_PROCESS_SYSTEM_PROMPT = """# Role
 
-TRANSCRIPTION CORRECTION
-The transcript comes from speech-to-text. Correct obvious homophones and phonetic approximations using radiology knowledge: "white base" → lung base, "speculated" → spiculated, "bile duck" → bile duct, "Bosnia" → Bosniak, etc. Apply corrections when producing the scratchpad content.
+You capture a radiologist's live dictation into a structured scratchpad. Your single source of truth is the dictation transcript. Every bullet you write must originate in something the radiologist actually said.
 
-EXTRACTION RULES
-- Preserve all measurements (numerals for numbers, units: cm, mm, HU), laterality (left, right, bilateral), anatomical locations, clinical descriptors, staging, negative findings, temporal comparators, qualifiers ("suspicious for", "consistent with", "cannot exclude", "in keeping with").
-- Preserve specific pathology terms: consolidation, ground-glass opacity, nodule, mass, lymphadenopathy, effusion, atelectasis, fibrosis, cavitation, necrosis, haemorrhage, oedema, infiltration, collapse, pneumothorax, etc. NEVER replace with vague terms like "involvement", "changes", "abnormality".
-- Discard filler, navigation preamble, hedges ("I think there's", "it looks like"), conversational confirmations. On self-correction ("no wait", "actually", "I mean"), output only the corrected content.
-- CONSOLIDATION: If a new transcript segment adds detail, qualification, or measurement to a finding already in the scratchpad, UPDATE that existing bullet — do not add a duplicate. Example: scratchpad has "- Gallbladder distended" and transcript adds "wall thickening and pericholecystic fluid" → merge into "- Gallbladder distended with wall thickening and pericholecystic fluid". Only create a new bullet if the new content is genuinely a separate, independent finding about a different aspect of the same organ.
-- CONTRADICTIONS: When a later finding contradicts or supersedes an earlier one, remove the superseded statement and replace with the new one. Example: scratchpad has "- Lungs appear clear" but transcript adds "spiculated nodule in right upper lobe" → remove the clear lungs bullet and add the nodule. A blanket negative is always superseded by a specific positive finding in the same region.
+# Hard fidelity rule
 
-SCRATCHPAD FORMAT
-Plain bulleted list — no section headers in the text itself.
-- One finding per line, each prefixed with `- `
-- Group findings from the same anatomical system together, separated by a blank line between groups
-- Follow standard radiology order: technique/limitations first, then anatomical systems, background last
-- Plain text only. Do NOT use: horizontal rules (---, ***), bold (**text**), italics, or any markdown. Formatting characters will break the display.
-- Example:
-  - IV contrast administered; no prior imaging for comparison
+You are not a clinical reasoning engine and you are not completing the report. Do not introduce findings, companion assessments, expected negatives, or review items that the radiologist did not dictate. You may not add descriptors, qualifiers, or features to a finding beyond what was dictated, even if they would be clinically coherent — a bullet's content is bounded by what was said, not by what could plausibly accompany it.
 
-  - Gallbladder distended with mural oedema
-  - 2 mm calculus at the CBD with upstream biliary dilatation
+Silence about a structure in the transcript means silence in the scratchpad. Silence about a descriptor on a mentioned structure means silence in the scratchpad for that descriptor. Fidelity applies at the level of each word, not just at the level of whether a structure is mentioned.
 
-  - Increased T2 signal in pancreatic head with surrounding fluid
+# Speech-to-text correction
 
-ONE SYSTEM PER FINDING: Every finding belongs to exactly one anatomical group. Never repeat a finding under a second group. Choose the most anatomically specific owner.
+Apply radiology knowledge to fix homophones and phonetic approximations — what you record is the radiologist's spoken intent, not the literal transcript surface form. Three sources of disambiguation:
 
-COVERED SECTIONS: After writing the scratchpad, return in covered_sections the names from preferred_section_names that are now meaningfully addressed. Use the EXACT name strings from preferred_section_names — do not invent or paraphrase. Clinical judgment applies: a system with a negative finding ("unremarkable", "no focal lesion") counts as covered. Only include sections with substantive content.
+1. General medical vocabulary — homophones of established radiological terms
+2. The reference context — scan type and clinical history at the top of the user prompt
+3. The current scratchpad — terms already established in this session
 
-OUTPUT
-Return the complete scratchpad and the covered_sections list (exact names from preferred_section_names)."""
+When the dictated form is phonetically close to a term made salient by one of these sources, and the established form is clinically consistent with surrounding findings, prefer the established form. Phonetic proximity plus context consistency is the test for correction.
+
+Correction changes the surface form, never the substance. If the radiologist deliberately dictates a term that clashes with context, that is a legitimate substantive statement and must be recorded as said. The test: phonetic proximity plus context incoherence points to a speech-to-text error; phonetic distance plus standalone clinical coherence points to a legitimate substantive variation.
+
+When no disambiguation source makes the intended term clear, record the transcript surface form verbatim. Imperfect literal transcription is recoverable by re-dictation or manual edit; invented descriptors are not. Invention is always worse than ambiguity.
+
+# Date format
+
+Dates in the scratchpad use British format — DD/MM/YYYY. Convert any other representation (spoken form, MM/DD/YYYY, ISO YYYY-MM-DD) to DD/MM/YYYY. The date being referenced is preserved; only the surface form changes.
+
+# What to preserve
+
+Measurements with units, laterality, anatomical location, qualifiers that convey confidence or interpretation, temporal comparators, staging, and specific pathology terms. Never substitute vague language for specific pathology — a capable reasoner knows consolidation is not "changes", a nodule is not "abnormality", an effusion is not "involvement".
+
+# What to discard
+
+Filler, navigation preamble, conversational confirmations, thinking-aloud hedges, and causal or discursive connectives that belong to spoken prose rather than written notes. The scratchpad is a written structured finding, not a verbal reasoning transcript. Preserve substantive content and the qualifiers that convey confidence or interpretation; drop the verbal bridges, sentence connectives, and chain-of-thought phrasing that led to them.
+
+On self-correction, record only the corrected intent.
+
+# Consolidation
+
+Every bullet represents one finding as a single coherent statement. When the transcript adds detail, qualification, or measurement to a finding already captured, or when a later utterance clarifies or reinterprets an earlier one, rewrite the bullet so the whole statement reads as a single coherent finding. Do not append new clauses to the end of an existing bullet — that produces incoherent duplication or contradictory surface forms.
+
+A genuinely independent finding about a different aspect of the same structure warrants its own bullet.
+
+# Contradictions and re-interpretations
+
+A specific positive finding supersedes a blanket negative about the same structure. A later statement supersedes an earlier one when they cannot both be true. When a later utterance reclassifies, reinterprets, or corrects an earlier finding — whether signalled by a correction marker or by contradicting the earlier interpretation — treat it as superseding and rewrite the bullet to carry only the final intended meaning.
+
+Do not retain the earlier interpretation as a vestigial clause, do not keep a parallel bullet about the same structure with the superseded interpretation, and do not include the correction marker itself. The final scratchpad should read as if the final interpretation had been the first one given.
+
+# Scratchpad field content
+
+These rules describe what goes *inside* the `scratchpad` string of your structured response — not the shape of your overall reply.
+
+The scratchpad string is plain text — no markdown, no headings, no bold, no horizontal rules inside it.
+
+- One finding per line, each line beginning with `- `
+- Group lines by anatomical system, separated by one blank line between groups
+- Order: technique and limitations first, then anatomical systems in standard radiology reading order, then background or incidental context last
+
+# One home per finding
+
+Each finding belongs to exactly one anatomical group — the most specific owner. Never repeat a bullet under a second group, even when the finding has cross-system implications.
+
+# Response shape
+
+Your reply is a structured object with two fields:
+
+- `scratchpad` — a single string containing the complete updated scratchpad, formatted per the rules above
+- `covered_sections` — always return an empty list `[]`. Coverage is computed in a separate pass; any value you provide here is discarded.
+
+When the transcript contains no findings yet, return an empty `scratchpad` string. Never emit raw text outside the structured response."""
 
 
 CANVAS_COVERAGE_SYSTEM_PROMPT = """You are a strict radiology checklist coverage checker.
@@ -282,22 +322,26 @@ Current scratchpad:
 
 Return your complete IntelliPrompts list for this scratchpad."""
 
-CANVAS_PROCESS_USER_PROMPT_TEMPLATE = """Scan type: {scan_type}
-Clinical history: {clinical_history}
+CANVAS_PROCESS_USER_PROMPT_TEMPLATE = """## Reference context — disambiguation only, never a source of findings
 
-Current scratchpad:
----
+- **Scan type:** {scan_type}
+- **Clinical history:** {clinical_history}
+
+Use these to interpret ambiguous dictation — which anatomy is in the field of view, which acronyms are in play, which side a term refers to, and to correct phonetic errors in words the radiologist DID say. Never write bullets derived from them.
+
+## Current scratchpad
+
+Your previous output. Update in place.
+
 {scratchpad_content}
----
 
-Full session transcript (everything said so far):
----
+## Dictation transcript — single source of truth
+
 {session_transcript}
+
 ---
 
-Preferred section names for coverage reporting (return EXACT strings from this list in covered_sections): {preferred_section_names}
-
-Produce the complete updated scratchpad and the covered_sections list."""
+Produce the complete updated scratchpad."""
 
 
 # -----------------------------------------------------------------------------
@@ -435,13 +479,11 @@ async def process_transcript(
     except ValueError:
         raise HTTPException(status_code=503, detail="Service not available. Contact your administrator.")
 
-    preferred_names_str = ", ".join(request.preferred_section_names) if request.preferred_section_names else "(none)"
     user_prompt = CANVAS_PROCESS_USER_PROMPT_TEMPLATE.format(
         scan_type=request.scan_type or "(not specified)",
         clinical_history=request.clinical_history or "(not specified)",
         scratchpad_content=request.scratchpad_content,
         session_transcript=request.session_transcript,
-        preferred_section_names=preferred_names_str,
     )
 
     try:
@@ -451,11 +493,14 @@ async def process_transcript(
             system_prompt=CANVAS_PROCESS_SYSTEM_PROMPT,
             user_prompt=user_prompt,
             api_key=api_key,
-            use_thinking=True,
-            model_settings={"temperature": 0.1, "max_tokens": 4000},
+            use_thinking=False,
+            model_settings={"temperature": 0.7, "top_p": 0.8, "max_completion_tokens": 4000},
         )
         return result.output
-    except Exception:
+    except Exception as e:
+        import traceback
+        print(f"[CANVAS-PROCESS] ❌ {type(e).__name__}: {e}")
+        traceback.print_exc()
         return CanvasProcessResponse(scratchpad=request.scratchpad_content, covered_sections=[])
 
 

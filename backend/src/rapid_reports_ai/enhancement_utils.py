@@ -182,7 +182,7 @@ MODEL_CONFIG = {
     "CANVAS_SECTIONS_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for section generation (Groq Llama)
     "CANVAS_SECTIONS_FROM_TEMPLATE": "gpt-oss-120b",  # Extract sections from template (Cerebras)
     "CANVAS_SECTIONS_FROM_TEMPLATE_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for template section extraction (Groq Llama)
-    "CANVAS_PROCESS": "qwen/qwen3-32b",  # Transcript → scratchpad (Groq Qwen)
+    "CANVAS_PROCESS": "qwen-3-235b-a22b-instruct-2507",  # Transcript → scratchpad (Cerebras Qwen3-235B instruct)
     "CANVAS_COVERAGE": "llama-3.3-70b-versatile",  # Coverage check (Groq Llama)
     "CANVAS_INTELLIPROMPTS": "qwen/qwen3-32b",  # IntelliPrompts generation (Groq Qwen)
 

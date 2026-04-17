@@ -4417,61 +4417,21 @@ def process_dictation_transcript(transcript: str) -> str:
     """
     if not transcript:
         return transcript
-    
-    # DEBUG: Log the raw transcript to see what Deepgram actually returns
-    print(f"🔍 DEBUG: Raw transcript before processing: '{transcript}'")
-    print(f"🔍 DEBUG: Transcript repr: {repr(transcript)}")
-    
+
     processed = transcript
-    
+
     # Convert Deepgram's literal dictation command strings to actual characters
     # Deepgram returns these as literal strings like "<\n>" (backslash followed by n)
     # Replace <\n\n> (new paragraph) first, then <\n> (new line)
-    processed_before_fullstop = processed
     processed = processed.replace('<\\n\\n>', '\n\n')  # New paragraph
     processed = processed.replace('<\\n>', '\n')  # New line
-    
-    # DEBUG: Check if newline replacements worked
-    if processed != processed_before_fullstop:
-        print(f"🔍 DEBUG: Newline replacements applied. After: '{processed}'")
-    
-    # Convert "full stop" and "fullstop" to period (British English support)
-    # Deepgram doesn't recognize "full stop" as a dictation command, only "period"
-    # So we post-process it here for better British English support
-    # Handle both "full stop" (two words) and "fullstop" (one word) variations
-    # Make replacements case-insensitive and handle various spacing/punctuation scenarios
-    
-    processed_before_fullstop = processed
-    
-    # Use regex for case-insensitive matching of "full stop" / "fullstop"
-    # This handles all cases: standalone, with spaces, at start/end of string
-    # Pattern to match "full stop" or "fullstop" (case-insensitive) as whole words
-    # or standalone phrases
-    patterns = [
-        (r'\bfull\s+stop\b', '.'),  # "full stop" as whole words
-        (r'\bfullstop\b', '.'),      # "fullstop" as whole word
-    ]
-    
-    for pattern, replacement in patterns:
-        matches = re.findall(pattern, processed, re.IGNORECASE)
-        if matches:
-            processed = re.sub(pattern, replacement, processed, flags=re.IGNORECASE)
-            print(f"🔍 DEBUG: Replaced pattern '{pattern}' (found: {matches}) with '{replacement}'")
-    
-    # DEBUG: Check if full stop replacements worked
-    if processed != processed_before_fullstop:
-        print(f"🔍 DEBUG: Full stop replacements applied. After: '{processed}'")
-    else:
-        print(f"🔍 DEBUG: No full stop replacements applied. Checking if 'full stop' exists in transcript...")
-        if 'full' in processed.lower() and 'stop' in processed.lower():
-            print(f"🔍 DEBUG: Found 'full' and 'stop' in transcript but pattern didn't match!")
-            # Try to find the exact pattern (re is already imported at top of file)
-            matches = re.findall(r'\b(full\s*stop|fullstop)\b', processed, re.IGNORECASE)
-            if matches:
-                print(f"🔍 DEBUG: Found potential matches: {matches}")
-    
-    print(f"🔍 DEBUG: Final processed transcript: '{processed}'")
-    
+
+
+    # Convert "full stop" / "fullstop" to period (British English — Deepgram
+    # only recognises "period" as a dictation command).
+    processed = re.sub(r'\bfull\s+stop\b', '.', processed, flags=re.IGNORECASE)
+    processed = re.sub(r'\bfullstop\b', '.', processed, flags=re.IGNORECASE)
+
     return processed
 
 
@@ -4552,13 +4512,14 @@ async def websocket_transcribe(websocket: WebSocket):
     deepgram_url = (
         f"wss://api.deepgram.com/v1/listen"
         f"?model=nova-3-medical"
-        f"&language=en"
+        f"&language=en-GB"
         f"&smart_format=true"
         f"&measurements=true"
         f"&dictation=true"
         f"&punctuate=true"
         f"&interim_results=true"
-        f"&utterance_end_ms=1500"
+        f"&endpointing=300"
+        f"&utterance_end_ms=1000"
         f"{pcm_params}"
         f"&{keyterm_params}"
     )
@@ -4577,20 +4538,18 @@ async def websocket_transcribe(websocket: WebSocket):
                     try:
                         while True:
                             data = await websocket.receive_bytes()
-                            print(f"📤 Forwarding {len(data)} bytes to Deepgram")
                             await dg_ws.send_bytes(data)
                     except WebSocketDisconnect:
                         print("❌ Client disconnected")
                         await dg_ws.close()
-                
+
                 async def forward_from_deepgram():
                     """Forward transcripts from Deepgram to client"""
                     try:
                         async for msg in dg_ws:
                             if msg.type == aiohttp.WSMsgType.TEXT:
                                 transcript_data = json.loads(msg.data)
-                                print(f"📥 Received from Deepgram: {transcript_data}")
-                                
+
                                 # Parse Deepgram response
                                 if transcript_data.get("type") == "Results":
                                     alternatives = transcript_data.get("channel", {}).get("alternatives", [])
@@ -4598,12 +4557,14 @@ async def websocket_transcribe(websocket: WebSocket):
                                         raw_transcript = alternatives[0].get("transcript", "")
                                         is_final = transcript_data.get("is_final", False)
                                         speech_final = transcript_data.get("speech_final", False)
-                                        
+
                                         # Process dictation commands (convert <\n> to actual newlines, etc.)
                                         transcript = process_dictation_transcript(raw_transcript)
-                                        
-                                        print(f"📝 Raw transcript: '{raw_transcript}' → Processed: '{transcript}' (final: {is_final}, speech_final: {speech_final})")
-                                        
+
+                                        # Only log finalised, non-empty utterances — skip interim / empty frames.
+                                        if is_final and transcript:
+                                            print(f"📝 {transcript!r} (speech_final={speech_final})")
+
                                         if transcript:
                                             await websocket.send_json({
                                                 "transcript": transcript,
@@ -4619,8 +4580,6 @@ async def websocket_transcribe(websocket: WebSocket):
                                     await websocket.send_json({"error": error_msg})
                             elif msg.type == aiohttp.WSMsgType.ERROR:
                                 print(f"❌ WebSocket error: {msg.data}")
-                            else:
-                                print(f"ℹ️ Received message type: {msg.type}")
                                     
                     except Exception as e:
                         print(f"❌ Error receiving from Deepgram: {e}")
