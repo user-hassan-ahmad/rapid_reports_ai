@@ -233,39 +233,62 @@ Your reply is a structured object with two fields:
 When the transcript contains no findings yet, return an empty `scratchpad` string. Never emit raw text outside the structured response."""
 
 
-CANVAS_COVERAGE_SYSTEM_PROMPT = """You are a strict radiology checklist coverage checker.
+CANVAS_COVERAGE_SYSTEM_PROMPT = """# Role
 
-DEFINITION OF "COVERED":
-A section is covered when the scratchpad contains a definitive statement whose grammatical subject is THAT SECTION'S OWN NAMED STRUCTURE — combined with a qualifier, finding, or measurement. The statement must be about the structure itself, not about a related, adjacent, or parent/child structure.
+You determine whether each section of a radiology checklist has been meaningfully addressed in a dictation scratchpad. Coverage is a judgment about whether the radiologist has demonstrably attended to each structure — not a rigid test on sentence structure. Respect how radiologists actually dictate while preserving the checklist's purpose of catching genuine omissions.
 
-QUALIFIES AS COVERED:
-  • Explicit normal qualifier applied to the structure: "liver unremarkable", "spleen NAD", "gallbladder clear", "kidneys within normal limits"
-  • Positive imaging finding about the structure: "gallbladder distended", "liver 2cm hypodense lesion", "CBD calculus"
-  • Explicit confident negative about the structure: "no gallbladder stones", "no biliary dilatation", "no free fluid", "no adnexal mass"
-  • Standard shorthand where the structure name is present: "uterus NAD", "pancreas unremarkable"
-  • Quantitative measurement that constitutes a clinical statement: "CBD measures 4mm", "aorta 2.1cm"
+# The coverage principle
 
-DOES NOT QUALIFY — reject every one of these:
-  • Bare anatomical mention with no qualifier: "liver", "gallbladder", "kidneys" written alone
-  • A related structure covering another: if GALLBLADDER and BILIARY SYSTEM are separate checklist sections, a statement about one does NOT cover the other — they must each be addressed independently
-  • Parent structure covering a child section: "liver unremarkable" does NOT cover HEPATIC VEINS or PORTAL VEIN if those are separate sections
-  • Incidental co-mention: "CBD calculus causing biliary dilatation" covers BILIARY SYSTEM but does NOT cover GALLBLADDER unless the gallbladder itself is also explicitly addressed in the same or another bullet
-  • Vague collective terms: "upper abdomen clear" or "visualised structures unremarkable" do NOT cover individual organ sections — each section needs its own named statement
+A checklist section is covered when the scratchpad contains a definitive clinical claim about that section's named structure. The claim may be direct — the structure is the grammatical subject — or collective — the structure is a member of a named anatomical group for which a property has been asserted.
 
-MATCHING RULE:
-For each section, locate the specific scratchpad text whose grammatical subject is that section's own structure (or a universally accepted radiological abbreviation of it — e.g. CBD for common bile duct, IVC for inferior vena cava). If that text also carries a qualifier, finding, or measurement, the section is covered. If no such anchored text exists, it is NOT covered. Coverage is never transitive, inferred, or borrowed from adjacent structures.
+In both cases the scratchpad must commit to something: a finding, a measurement, a qualifier, or an explicit normality statement. A bare mention with no claim attached does not cover a section.
 
-Use the EXACT name strings from the checklist. Return only covered_sections."""
+# Direct coverage
+
+A statement directly covers a section when its grammatical subject is that section's own named structure, or a standard radiological abbreviation of it (CBD, IVC, and similar conventions), and it carries a definitive clinical claim about that structure.
+
+# Collective coverage
+
+Radiologists routinely address multiple structures with a single claim, closing out the unremarkable portions of a study efficiently. Collective coverage is legitimate when all three conditions hold:
+
+1. **Recognisable group.** The collective names a defined anatomical category — by organ system, tissue property, or anatomical region — not a vague open-ended phrase that points at no specific scope.
+2. **Definitive group claim.** The collective asserts something about the group as a whole: normality, absence of pathology, or a shared qualifier.
+3. **Genuine set membership.** The checklist section must anatomically belong to the named group. Categorical boundaries hold: a claim over solid organs does not carry into hollow viscera, vessels, bones, or lymph nodes; a claim scoped to one anatomical region does not reach another. When uncertain whether a structure belongs to the named group, treat it as not covered by the collective.
+
+When all three conditions are met, the collective covers every checklist section that genuinely belongs to the named group.
+
+# Specific claims override collectives
+
+When the scratchpad contains both a specific claim about a structure and a collective that would otherwise include it, the specific claim is the authoritative coverage for that section. This prevents double-counting and preserves the semantics radiologists intend when they pair a positive finding with a clean-up collective.
+
+# What does not cover
+
+- Bare anatomical mentions with no claim attached.
+- Claims about an adjacent or neighbouring structure that is anatomically related but distinct.
+- Parent-structure claims that do not explicitly enumerate a sub-structure, when the checklist lists them separately. The separation itself signals that each requires its own claim.
+- Incidental co-mentions — a structure appearing in passing within a statement primarily about another structure.
+- Vague fillers with no defined anatomical scope.
+
+# Matching convention
+
+Match checklist sections to scratchpad statements by structure name or by standard radiological abbreviation. Do not match on fuzzy synonyms outside established conventions. When in doubt, treat a section as uncovered — the checklist exists to surface genuine omissions.
+
+# Output
+
+Return only the checklist sections that meet the coverage test, using the exact strings from the checklist."""
 
 
-CANVAS_COVERAGE_USER_PROMPT_TEMPLATE = """Scratchpad:
----
+CANVAS_COVERAGE_USER_PROMPT_TEMPLATE = """## Scratchpad
+
 {scratchpad_content}
+
+## Checklist
+
+{checklist_sections}
+
 ---
 
-Checklist sections to check: {checklist_sections}
-
-Return which sections from the checklist are covered."""
+Return the checklist sections that are covered, using the exact strings as they appear above."""
 
 
 CANVAS_INTELLIPROMPTS_SYSTEM_PROMPT = """You are a radiology decision-support assistant reviewing a dictation scratchpad. You are advising a radiologist who is actively at the workstation with the images in front of them. The scratchpad is a plain bulleted list of imaging findings grouped by anatomical system, separated by blank lines.
@@ -535,7 +558,7 @@ async def review_scratchpad(
 
     async def run_coverage() -> list[str]:
         import time as _time
-        coverage_model_settings = {"temperature": 0.0, "max_tokens": 500}
+        coverage_model_settings = {"temperature": 0.7, "top_p": 0.8, "max_completion_tokens": 500}
         scratchpad_preview = request.scratchpad_content[:200].replace('\n', ' | ')
         print(f"\n[COVERAGE] ── New call ──────────────────────────")
         print(f"[COVERAGE] Model: {coverage_model} | Scratchpad: {len(request.scratchpad_content)} chars")
