@@ -16,6 +16,7 @@ from .models import (
     ReportVersion,
     ReportAudit,
     ReportAuditCriterion,
+    EphemeralSkillSheet,
 )
 
 
@@ -1020,10 +1021,11 @@ def create_report_audit(
     scan_type: str,
     clinical_history: str,
     model_used: str,
+    audited_candidate_model: Optional[str] = None,
 ) -> ReportAudit:
     """
     Create a new report audit with criterion rows (currently 6).
-    
+
     Args:
         db: Database session
         report: Report object to audit
@@ -1032,18 +1034,21 @@ def create_report_audit(
         scan_type: Type of scan
         clinical_history: Clinical history text
         model_used: Model used for audit
-    
+        audited_candidate_model: For dual-candidate quick reports, the model
+            identifier of the candidate draft this audit was computed against
+            (e.g. "zai-glm-4.7"). NULL for legacy single-candidate reports.
+
     Returns:
         Created ReportAudit object
     """
     user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
-    
+
     # Resolve report_version_id from latest is_current version
     current_version = db.query(ReportVersion).filter(
         ReportVersion.report_id == report.id,
         ReportVersion.is_current == True
     ).first()
-    
+
     # Create the audit record
     audit = ReportAudit(
         report_id=report.id,
@@ -1055,6 +1060,7 @@ def create_report_audit(
         summary=audit_result.get("summary", ""),
         report_version_id=current_version.id if current_version else None,
         is_reviewed=False,
+        audited_candidate_model=audited_candidate_model,
     )
     db.add(audit)
     db.flush()  # Get the audit ID
@@ -1133,12 +1139,12 @@ def get_report_audits(
 ) -> List[ReportAudit]:
     """
     Get all audits for a report, verifying user ownership.
-    
+
     Args:
         db: Database session
         report_id: Report UUID string
         user_id: User ID string for ownership check
-    
+
     Returns:
         List of ReportAudit objects sorted by created_at DESC
     """
@@ -1147,16 +1153,16 @@ def get_report_audits(
         user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
     except ValueError:
         return []
-    
+
     # Verify report ownership
     report = db.query(Report).filter(
         Report.id == report_uuid,
         Report.user_id == user_uuid
     ).first()
-    
+
     if not report:
         return []
-    
+
     # Get audits with eager-loaded criteria
     audits = db.query(ReportAudit).options(
         joinedload(ReportAudit.criteria)
@@ -1164,8 +1170,32 @@ def get_report_audits(
         ReportAudit.report_id == report_uuid,
         ReportAudit.user_id == user_uuid
     ).order_by(ReportAudit.created_at.desc()).all()
-    
+
     return audits
+
+
+def get_latest_audit_for_candidate(
+    db: Session,
+    report_id,
+    audited_candidate_model: Optional[str],
+) -> Optional[ReportAudit]:
+    """Return the latest ReportAudit row for a report keyed by candidate model.
+
+    For dual-model quick reports we persist one audit per candidate draft,
+    each tagged in ``audited_candidate_model``. Legacy single-candidate
+    audits (from templated/auto reports) have NULL here, so this also
+    accepts ``None`` to look up those.
+    """
+    try:
+        report_uuid = uuid.UUID(str(report_id)) if not isinstance(report_id, uuid.UUID) else report_id
+    except ValueError:
+        return None
+    q = db.query(ReportAudit).filter(ReportAudit.report_id == report_uuid)
+    if audited_candidate_model is None:
+        q = q.filter(ReportAudit.audited_candidate_model.is_(None))
+    else:
+        q = q.filter(ReportAudit.audited_candidate_model == audited_candidate_model)
+    return q.order_by(ReportAudit.created_at.desc()).first()
 
 
 def acknowledge_criterion(
@@ -1229,10 +1259,186 @@ def acknowledge_criterion(
     if all_acknowledged and not audit.is_reviewed:
         audit.is_reviewed = True
         audit.reviewed_at = datetime.now(timezone.utc)
-    
+
     db.commit()
-    
+
     return {"acknowledged": True, "is_reviewed": all_acknowledged}
+
+
+# ============ Ephemeral Skill Sheet CRUD ============
+# Quick-report-ephemeral pipeline — see project_quick_report_analyser.md
+
+
+def _normalise_scan_type(scan_type: str) -> str:
+    """Clustering key for the maintenance agent: lowercase, collapse internal
+    whitespace, strip leading/trailing. Deliberately minimal — we want to group
+    'CT Abdomen and Pelvis', 'ct abdomen and pelvis ', 'CT  Abdomen and Pelvis'
+    into the same bucket, while keeping the original spelling in `scan_type`.
+    """
+    if not scan_type:
+        return ""
+    return " ".join(scan_type.lower().split())
+
+
+def create_ephemeral_skill_sheet(
+    db: Session,
+    user_id: str,
+    scan_type: str,
+    clinical_history: str,
+    skill_sheet_markdown: str,
+    analyser_model: str,
+    analyser_latency_ms: Optional[int] = None,
+    analyser_prompt_version: Optional[str] = None,
+    run_id: Optional[str] = None,
+) -> EphemeralSkillSheet:
+    """Persist a per-case skill sheet produced by the quick-report analyser.
+
+    Separate from template persistence by design — ephemeral sheets are frozen
+    per case and never versioned individually. Evolution happens via the
+    maintenance agent clustering pathway (future).
+    """
+    sheet = EphemeralSkillSheet(
+        user_id=uuid.UUID(user_id) if isinstance(user_id, str) else user_id,
+        scan_type=scan_type,
+        scan_type_normalized=_normalise_scan_type(scan_type),
+        clinical_history=clinical_history or "",
+        skill_sheet_markdown=skill_sheet_markdown,
+        analyser_model=analyser_model,
+        analyser_latency_ms=analyser_latency_ms,
+        analyser_prompt_version=analyser_prompt_version,
+        run_id=run_id,
+    )
+    db.add(sheet)
+    db.commit()
+    db.refresh(sheet)
+    return sheet
+
+
+def get_ephemeral_skill_sheet(
+    db: Session,
+    sheet_id: str,
+    user_id: Optional[str] = None,
+) -> Optional[EphemeralSkillSheet]:
+    """Fetch an ephemeral sheet, optionally user-scoped."""
+    try:
+        sheet_uuid = uuid.UUID(sheet_id) if isinstance(sheet_id, str) else sheet_id
+    except ValueError:
+        return None
+    q = db.query(EphemeralSkillSheet).filter(EphemeralSkillSheet.id == sheet_uuid)
+    if user_id is not None:
+        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+        q = q.filter(EphemeralSkillSheet.user_id == user_uuid)
+    return q.first()
+
+
+def create_quick_report_with_candidates(
+    db: Session,
+    user_id: str,
+    ephemeral_skill_sheet_id: Optional[str],
+    findings_dictation: str,
+    clinical_history: str,
+    scan_type: str,
+    candidate_reports: list,
+    description: Optional[str] = None,
+) -> Report:
+    """Persist a quick-report row with both model candidates.
+
+    ``candidate_reports`` is a list of dicts, each shaped:
+    ``{'model': str, 'content': str, 'latency_ms': int, 'run_id': str,
+       'generated_at': ISO8601, 'error': str or None}``
+
+    The first candidate's model/content is used to populate the legacy
+    ``model_used``/``report_content`` columns so that reports-list views that
+    don't know about candidates still render a reasonable row. The user's
+    eventual selection (via a PATCH endpoint in Phase 2) will overwrite
+    ``selected_model`` + ``final_report_content``.
+
+    ``input_data`` is stored in the shape the downstream enhance/audit
+    pipelines expect — ``{"variables": {"CLINICAL_HISTORY", "SCAN_TYPE",
+    "FINDINGS"}, "extracted_scan_type": str}`` — mirroring the legacy
+    ``/api/chat`` path. Conforming to that shape means every existing
+    post-generation pipeline (prefetch, enhance, audit) just works on
+    quick-report rows without needing to learn a second schema.
+    """
+    primary = candidate_reports[0] if candidate_reports else {"model": "unknown", "content": ""}
+
+    report = Report(
+        user_id=uuid.UUID(user_id) if isinstance(user_id, str) else user_id,
+        report_type="auto",
+        report_content=primary.get("content") or "",
+        model_used=primary.get("model") or "unknown",
+        input_data={
+            "variables": {
+                "CLINICAL_HISTORY": clinical_history or "",
+                "SCAN_TYPE": scan_type or "",
+                "FINDINGS": findings_dictation or "",
+            },
+            "extracted_scan_type": scan_type or "",
+        },
+        description=description,
+        generation_mode="quick_ephemeral",
+        ephemeral_skill_sheet_id=(
+            uuid.UUID(ephemeral_skill_sheet_id)
+            if ephemeral_skill_sheet_id and isinstance(ephemeral_skill_sheet_id, str)
+            else ephemeral_skill_sheet_id
+        ),
+        candidate_reports=candidate_reports,
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return report
+
+
+def set_quick_report_selection(
+    db: Session,
+    report_id: str,
+    selected_model: str,
+    final_report_content: Optional[str] = None,
+    selection_ms_since_ready: Optional[int] = None,
+    final_edit_diff: Optional[str] = None,
+) -> Optional[Report]:
+    """Record the radiologist's candidate selection and (optionally) the edited
+    final content + diff. Called when the user picks a candidate as their base
+    or saves a final edited version.
+    """
+    try:
+        report_uuid = uuid.UUID(report_id) if isinstance(report_id, str) else report_id
+    except ValueError:
+        return None
+    report = db.query(Report).filter(Report.id == report_uuid).first()
+    if not report:
+        return None
+
+    report.selected_model = selected_model
+
+    # Anchor report_content to the selected candidate's text so the version
+    # history chain (ReportVersion v0), audit and enhance pipelines all
+    # operate against the draft the radiologist actually picked. Without
+    # this the v0 baseline is whichever candidate streamed first, which
+    # produces misleading edit diffs for users who chose the alternate.
+    #
+    # Only re-anchor if no ReportVersion snapshots exist yet — once the
+    # user has saved an edit, report_content belongs to their edit
+    # trajectory and must not be clobbered by a subsequent toggle.
+    if not report.versions:
+        for cand in (report.candidate_reports or []):
+            if cand.get("model") == selected_model:
+                selected_content = cand.get("content") or ""
+                if selected_content:
+                    report.report_content = selected_content
+                break
+
+    if final_report_content is not None:
+        report.final_report_content = final_report_content
+    if selection_ms_since_ready is not None:
+        report.selection_ms_since_ready = selection_ms_since_ready
+    if final_edit_diff is not None:
+        report.final_edit_diff = final_edit_diff
+
+    db.commit()
+    db.refresh(report)
+    return report
 
 
 

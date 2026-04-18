@@ -1,9 +1,12 @@
 /**
- * Shared Audit Store — keyed by reportId to prevent cross-tab contamination.
+ * Shared Audit Store — keyed by (reportId, candidateModel?).
  *
- * Replaces the per-instance writable in ReportResponseViewer. Any component
- * can subscribe via getAuditState(reportId) or call auditActions.* directly.
- * Phase 2 merge (from /enhance) bypasses the 3-hop event chain entirely.
+ * For single-candidate reports (templated/auto) callers pass only reportId
+ * and the composite key degenerates to the reportId itself — fully
+ * backward-compatible. For dual-candidate quick reports callers pass the
+ * candidate model identifier so each draft has its own independent audit
+ * trajectory (status, result, staleness) that swaps in lockstep with the
+ * UI candidate toggle.
  */
 
 import { writable, derived, type Readable } from 'svelte/store';
@@ -80,44 +83,66 @@ const DEFAULT_STATE: AuditStoreState = {
 
 const _states = writable<Record<string, AuditStoreState>>({});
 
+// Compose the composite key. Accepts null/undefined/'' for candidateModel —
+// all collapse to the plain reportId slot so legacy single-candidate flows
+// and callers that don't care about candidates stay wire-compatible.
+function _key(reportId: string, candidateModel?: string | null): string {
+	return candidateModel ? `${reportId}::${candidateModel}` : reportId;
+}
+
 // Dev-only: expose the store on window so you can inspect state from the
 // browser console without fighting the $lib alias. Usage:
-//   __auditStore()                 → full state snapshot
-//   __auditStore('<reportId>')     → one report's state
-//   __auditStoreLive()             → subscribe to live changes
+//   __auditStore()                         → full state snapshot
+//   __auditStore('<reportId>')             → one report's state (default slot)
+//   __auditStore('<reportId>', '<model>')  → per-candidate slot
+//   __auditStoreLive()                     → subscribe to live changes
 if (typeof window !== 'undefined') {
 	let _snapshot: Record<string, AuditStoreState> = {};
 	_states.subscribe((s) => {
 		_snapshot = s;
 	});
-	(window as any).__auditStore = (reportId?: string) =>
-		reportId ? _snapshot[reportId] : _snapshot;
+	(window as any).__auditStore = (reportId?: string, candidateModel?: string) =>
+		reportId ? _snapshot[_key(reportId, candidateModel)] : _snapshot;
 	(window as any).__auditStoreLive = () =>
 		_states.subscribe((s) => console.log('[audit store]', s));
 }
 
-export function getAuditState(reportId: string): Readable<AuditStoreState> {
-	return derived(_states, ($s) => $s[reportId] ?? { ...DEFAULT_STATE });
+export function getAuditState(
+	reportId: string,
+	candidateModel?: string | null,
+): Readable<AuditStoreState> {
+	const key = _key(reportId, candidateModel);
+	return derived(_states, ($s) => $s[key] ?? { ...DEFAULT_STATE });
 }
 
-function _update(reportId: string, fn: (s: AuditStoreState) => AuditStoreState) {
+function _update(
+	reportId: string,
+	candidateModel: string | null | undefined,
+	fn: (s: AuditStoreState) => AuditStoreState,
+) {
+	const key = _key(reportId, candidateModel);
 	_states.update((all) => {
-		const current = all[reportId] ?? { ...DEFAULT_STATE };
-		return { ...all, [reportId]: fn(current) };
+		const current = all[key] ?? { ...DEFAULT_STATE };
+		return { ...all, [key]: fn(current) };
 	});
 }
 
 export const auditActions = {
-	setLoading: (reportId: string) =>
+	setLoading: (reportId: string, candidateModel?: string | null) =>
 		// Note: phase2Complete + guidelineLookupFailed are intentionally NOT reset
 		// here. Re-audit re-runs Phase 1 only — /enhance (which owns Phase 2) does
 		// not re-fire. Clearing those on every re-audit would leave the spinner
 		// stuck because mergePhase2 is never called again in that window. A fresh
 		// /enhance call via the Retry flow resets them through mergePhase2.
-		_update(reportId, (s) => ({ ...s, status: 'loading', error: null })),
+		_update(reportId, candidateModel, (s) => ({ ...s, status: 'loading', error: null })),
 
-	setResult: (reportId: string, result: AuditResult, auditId: string | null) =>
-		_update(reportId, (s) => {
+	setResult: (
+		reportId: string,
+		result: AuditResult,
+		auditId: string | null,
+		candidateModel?: string | null,
+	) =>
+		_update(reportId, candidateModel, (s) => {
 			// If Phase 2 resolved before Phase 1 (e.g. /enhance faster than /audit,
 			// or /enhance was cached backend-side), the Phase 2 criteria are sitting
 			// in _phase2Cache waiting for a result to merge into. Fold them in now.
@@ -150,17 +175,23 @@ export const auditActions = {
 	mergePhase2: (
 		reportId: string,
 		phase2Criteria: AuditCriterionItem[],
-		opts?: { guidelineLookupFailed?: boolean; guidelineCardsCount?: number },
+		opts?: {
+			guidelineLookupFailed?: boolean;
+			guidelineCardsCount?: number;
+			candidateModel?: string | null;
+		},
 	) => {
 		const guidelineLookupFailed = opts?.guidelineLookupFailed ?? false;
 		const guidelineCardsCount = opts?.guidelineCardsCount ?? 0;
+		const candidateModel = opts?.candidateModel;
 		console.debug('[audit] mergePhase2', {
 			reportId,
+			candidateModel,
 			count: phase2Criteria.length,
 			guidelineLookupFailed,
 			guidelineCardsCount,
 		});
-		_update(reportId, (s) => {
+		_update(reportId, candidateModel, (s) => {
 			// phase2Complete=true regardless of criteria length — an empty Phase 2
 			// (normal study, no applicable guidelines) must still clear the spinner.
 			const newState = {
@@ -190,20 +221,30 @@ export const auditActions = {
 		});
 	},
 
-	clearPhase2Cache: (reportId: string) =>
-		_update(reportId, (s) => ({ ...s, _phase2Cache: null })),
+	clearPhase2Cache: (reportId: string, candidateModel?: string | null) =>
+		_update(reportId, candidateModel, (s) => ({ ...s, _phase2Cache: null })),
 
-	setStale: (reportId: string) =>
-		_update(reportId, (s) => (s.status === 'complete' ? { ...s, status: 'stale' } : s)),
+	setStale: (reportId: string, candidateModel?: string | null) =>
+		_update(reportId, candidateModel, (s) =>
+			s.status === 'complete' ? { ...s, status: 'stale' } : s,
+		),
 
-	setError: (reportId: string, error: string) =>
-		_update(reportId, (s) => ({ ...s, status: 'error', error })),
+	setError: (reportId: string, error: string, candidateModel?: string | null) =>
+		_update(reportId, candidateModel, (s) => ({ ...s, status: 'error', error })),
 
-	setActiveCriterion: (reportId: string, criterion: string | null) =>
-		_update(reportId, (s) => ({ ...s, activeCriterion: criterion })),
+	setActiveCriterion: (
+		reportId: string,
+		criterion: string | null,
+		candidateModel?: string | null,
+	) => _update(reportId, candidateModel, (s) => ({ ...s, activeCriterion: criterion })),
 
-	acknowledgeLocal: (reportId: string, criterion: string, method?: string) =>
-		_update(reportId, (s) => {
+	acknowledgeLocal: (
+		reportId: string,
+		criterion: string,
+		method?: string,
+		candidateModel?: string | null,
+	) =>
+		_update(reportId, candidateModel, (s) => {
 			if (!s.result) return s;
 			const criteria = s.result.criteria.map((c) =>
 				c.criterion === criterion
@@ -213,8 +254,8 @@ export const auditActions = {
 			return { ...s, result: { ...s.result, criteria } };
 		}),
 
-	unacknowledgeLocal: (reportId: string, criterion: string) =>
-		_update(reportId, (s) => {
+	unacknowledgeLocal: (reportId: string, criterion: string, candidateModel?: string | null) =>
+		_update(reportId, candidateModel, (s) => {
 			if (!s.result) return s;
 			const criteria = s.result.criteria.map((c) =>
 				c.criterion === criterion
@@ -224,6 +265,6 @@ export const auditActions = {
 			return { ...s, result: { ...s.result, criteria } };
 		}),
 
-	reset: (reportId: string) =>
-		_update(reportId, () => ({ ...DEFAULT_STATE })),
+	reset: (reportId: string, candidateModel?: string | null) =>
+		_update(reportId, candidateModel, () => ({ ...DEFAULT_STATE })),
 };

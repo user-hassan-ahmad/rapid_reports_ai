@@ -2502,6 +2502,7 @@ No user input provided. Omit this section entirely from output.
         template_config: dict,
         user_inputs: dict,
         user_signature: str = None,
+        model_override: str = None,
     ) -> dict:
         """
         Generate a report using the skill sheet + global style guide prompt
@@ -2513,6 +2514,9 @@ No user input provided. Omit this section entirely from output.
         analysis, verification checklist) while using the production model stack
         (structured ReportOutput, Cerebras primary + Claude fallback, linguistic
         validation, signature append).
+
+        When model_override is supplied (e.g. by the quick-report proto), that
+        model is used in place of MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"].
         """
         from pydantic import BaseModel
         from .enhancement_utils import (
@@ -2545,7 +2549,30 @@ conflicts with a global rule, the skill sheet takes precedence.
 
 {skill_sheet}"""
 
-        user_prompt = f"""## INPUTS
+        model_name = model_override or MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"]
+        provider = _get_model_provider(model_name)
+        api_key = _get_api_key_for_provider(provider)
+
+        # Provider-aware user prompt. The PRE_WRITING_ANALYSIS and
+        # VERIFICATION_CHECKLIST blocks are reasoning scaffolds designed for
+        # models with native thinking mode (e.g. GLM-4.7), which keep the
+        # analysis in their reasoning stream and emit only the final report.
+        # Anthropic models called without explicit thinking mode treat those
+        # blocks as output-shaping instructions and verbalise the analysis —
+        # which bloats output from ~2k to ~14k chars and stretches latency
+        # from ~10s to ~60s+. The skill sheet and hardening preamble already
+        # carry the full reasoning discipline for the ephemeral-sheet path,
+        # so the analysis scaffolds are redundant for Anthropic provider.
+        if provider == "anthropic":
+            user_prompt = f"""## INPUTS
+
+Scan Type: {scan_type}
+Clinical History: {clinical_history}
+Findings: {findings_input}
+
+Generate the report now. Output the report content ONLY — no analysis, no commentary, no restatement of the skill sheet. Emit exactly the sections declared in the skill sheet's Structural Pattern, in order."""
+        else:
+            user_prompt = f"""## INPUTS
 
 Scan Type: {scan_type}
 Clinical History: {clinical_history}
@@ -2555,10 +2582,9 @@ Findings: {findings_input}
 
 {VERIFICATION_CHECKLIST}"""
 
-        model_name = MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"]
-        provider = _get_model_provider(model_name)
-        api_key = _get_api_key_for_provider(provider)
-
+        # Per-provider model settings. clear_thinking is GLM-4.7-specific (other
+        # Cerebras models reject it); Anthropic's non-streaming max_tokens ceiling
+        # is tighter than Cerebras's; Groq has its own tighter budget.
         if provider == "fireworks":
             model_settings = {
                 "temperature": 0.6,
@@ -2566,7 +2592,19 @@ Findings: {findings_input}
                 "max_tokens": 40960,
                 "reasoning_effort": "high",
             }
-        else:
+        elif provider == "anthropic":
+            model_settings = {
+                "temperature": 0.8,
+                "max_tokens": 16000,
+            }
+        elif provider == "groq":
+            model_settings = {
+                "temperature": 0.8,
+                "top_p": 0.95,
+                "max_tokens": 8000,
+            }
+        elif provider == "cerebras" and model_name == "zai-glm-4.7":
+            # GLM-4.7 is the only Cerebras model that accepts clear_thinking.
             model_settings = {
                 "temperature": 0.8,
                 "top_p": 0.95,
@@ -2575,6 +2613,13 @@ Findings: {findings_input}
                     "disable_reasoning": False,
                     "clear_thinking": False,
                 },
+            }
+        else:
+            # Other Cerebras models (Qwen-3-235B, GPT-OSS-120B).
+            model_settings = {
+                "temperature": 0.8,
+                "top_p": 0.95,
+                "max_tokens": 16000,
             }
 
         async def _generate_description():
@@ -2636,17 +2681,21 @@ Findings: {findings_input}
         self,
         template_config: dict,
         user_inputs: dict,
-        user_signature: str = None
+        user_signature: str = None,
+        model_override: str = None,
     ) -> dict:
         """
         Generate report using structured config with section-aware prompt construction.
         Complete separation from legacy template system - builds prompts from scratch.
-        
+
         Args:
             template_config: Structured configuration dict containing scan info and sections
             user_inputs: User-provided values for input fields (e.g., FINDINGS, CLINICAL_HISTORY)
             user_signature: Optional user signature to append
-            
+            model_override: Optional model name to override the default TEMPLATE_REPORT_GENERATOR.
+                Only wired through the skill_sheet_guided path; production templated path
+                still uses MODEL_CONFIG. Used by the quick-report proto for A/B model comparison.
+
         Returns:
             Dict with report_content, description, scan_type
         """
@@ -2660,11 +2709,12 @@ Findings: {findings_input}
             _log_glm_reasoning,
             _generate_report_with_claude_model,
         )
-        
+
         # ── Skill-sheet-guided early exit ──────────────────────────────────
         if template_config.get("generation_mode") == "skill_sheet_guided":
             return await self._generate_report_skill_sheet_guided(
                 template_config, user_inputs, user_signature,
+                model_override=model_override,
             )
 
         # Extract metadata

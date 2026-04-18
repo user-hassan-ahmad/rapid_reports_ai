@@ -203,6 +203,9 @@ MODEL_CONFIG = {
     "SKILL_SHEET_REFINER": "zai-glm-4.7",       # Refine skill sheet via chat
     "SKILL_SHEET_TEST_GENERATE": "zai-glm-4.7", # Test-generate report from skill sheet (Cerebras GLM-4.7)
 
+    # Quick Report Proto — ephemeral skill sheet from scan_type + clinical_history
+    "QUICK_REPORT_PROTO_ANALYZER": "zai-glm-4.7",
+
     # Knowledge Maintenance Agent
     "KNOWLEDGE_MAINTENANCE": "gpt-oss-120b",  # Async agent: populate knowledge_links from skill sheet
 }
@@ -3785,7 +3788,18 @@ async def _run_agent_with_model(
         
         # Create agent settings
         agent_model_settings = None
-        if provider == 'groq' and use_thinking:
+        # Groq's reasoning_format parameter is only supported by Groq's
+        # reasoning-capable models (Qwen family). Llama and other non-reasoning
+        # Groq models reject the parameter with HTTP 400, so we gate it by
+        # model identifier rather than provider alone.
+        GROQ_REASONING_MODELS = {
+            'qwen/qwen3-32b',
+        }
+        if (
+            provider == 'groq'
+            and use_thinking
+            and model_name in GROQ_REASONING_MODELS
+        ):
             agent_model_settings = GroqModelSettings(groq_reasoning_format='parsed')
         
         # Create agent (with optional tools)

@@ -1,7 +1,7 @@
 """Database module for Rapid Reports AI"""
 
 from .connection import get_db, SessionLocal, engine
-from .models import Base, Template, User, PasswordResetToken, Report, TemplateVersion, ReportVersion, ReportAudit, ReportAuditCriterion, TnmStaging
+from .models import Base, Template, User, PasswordResetToken, Report, TemplateVersion, ReportVersion, ReportAudit, ReportAuditCriterion, TnmStaging, EphemeralSkillSheet
 from .crud import (
     # User CRUD
     create_user,
@@ -47,6 +47,11 @@ from .crud import (
     append_audit_criteria,
     get_report_audits,
     acknowledge_criterion,
+    # Ephemeral Skill Sheet CRUD (quick-report-ephemeral pipeline)
+    create_ephemeral_skill_sheet,
+    get_ephemeral_skill_sheet,
+    create_quick_report_with_candidates,
+    set_quick_report_selection,
 )
 
 # Export Base so it can be imported from database module
@@ -101,5 +106,11 @@ __all__ = [
     "get_report_audits",
     "append_audit_criteria",
     "acknowledge_criterion",
+    # Ephemeral Skill Sheet pipeline
+    "EphemeralSkillSheet",
+    "create_ephemeral_skill_sheet",
+    "get_ephemeral_skill_sheet",
+    "create_quick_report_with_candidates",
+    "set_quick_report_selection",
 ]
 

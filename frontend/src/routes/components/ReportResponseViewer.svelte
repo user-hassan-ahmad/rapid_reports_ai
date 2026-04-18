@@ -41,6 +41,13 @@
 	export let caseDetailsDirty = false;
 	export let findingsStale = false;
 	export let canRefineTemplate = false;
+
+	// For dual-candidate quick reports, the model identifier of the currently
+	// selected candidate draft. When set, audit state is read/written per
+	// candidate and the local /audit auto-trigger is skipped (the /enhance call
+	// upstream populates all candidates' audit slots in one go). Null for
+	// single-candidate reports (templated/auto) — audit flow unchanged.
+	export let activeCandidateModel: string | null = null;
 	
 	// Track previous response to detect manual updates
 	let previousResponse = '';
@@ -146,20 +153,29 @@
 	// for highlighting resets) to avoid Svelte's topological sort running the lastReportId
 	// writer block before this reader block, which previously made this condition always false.
 	let lastAuditReportId: string | null = null;
-	$: if (reportId !== lastAuditReportId) {
+	let lastAuditCandidateModel: string | null = null;
+	$: if (reportId !== lastAuditReportId || activeCandidateModel !== lastAuditCandidateModel) {
 		lastAuditReportId = reportId;
+		lastAuditCandidateModel = activeCandidateModel;
 		insertedBannerTexts = [];
 
 		// The shared audit store survives component remounts (module-scoped, keyed
-		// by reportId). On remount with the same report, seed the local store from
-		// the shared cached result instead of resetting — otherwise the auto-trigger
-		// at $auditStore.status === 'idle' fires a fresh /audit request on every
-		// re-entry into a previously-viewed report (e.g. Back to Templates → back in).
+		// by reportId + optional candidateModel). On remount, or on candidate toggle,
+		// seed the local store from the shared cached result instead of resetting —
+		// otherwise the auto-trigger at $auditStore.status === 'idle' fires a fresh
+		// /audit request on every re-entry into a previously-viewed report/candidate.
 		if (reportId) {
-			const cached = get(getAuditState(reportId));
+			const cached = get(getAuditState(reportId, activeCandidateModel));
 			if (cached && cached.status === 'complete' && cached.result) {
 				lastAuditedContent = response;
 				auditActions.setResult(cached.result, cached.auditId);
+			} else if (cached && cached.status === 'stale' && cached.result) {
+				// Preserve stale state across toggles — if this candidate's audit
+				// was marked stale from a prior edit, it should still read stale
+				// after a toggle away-and-back.
+				lastAuditedContent = '';
+				auditActions.setResult(cached.result, cached.auditId);
+				auditActions.setStale();
 			} else {
 				lastAuditedContent = '';
 				auditActions.reset();
@@ -170,13 +186,23 @@
 		}
 	}
 
-	// Subscribe to shared store for Phase 2 merges from the sidebar
-	$: sharedState = reportId ? getAuditState(reportId) : null;
-	$: if (sharedState && $sharedState && $sharedState.result && $auditStore.result) {
+	// Subscribe to shared store for per-candidate audit seeding (from /enhance)
+	// and Phase 2 merges from the sidebar. Re-derives when activeCandidateModel
+	// flips so a candidate toggle swaps which slot we watch.
+	$: sharedState = reportId ? getAuditState(reportId, activeCandidateModel) : null;
+	$: if (sharedState && $sharedState && $sharedState.result) {
 		const sharedCount = $sharedState.result.criteria?.length ?? 0;
 		const localCount = $auditStore.result?.criteria?.length ?? 0;
+		// Adopt shared result when local is empty (dual-candidate first-seed
+		// case) or when shared has strictly more criteria (Phase 2 merge case).
 		if (sharedCount > localCount) {
 			auditActions.setResult($sharedState.result, $sharedState.auditId);
+			// Sync lastAuditedContent so the `response !== lastAuditedContent`
+			// stale reactive doesn't spuriously fire immediately after adoption.
+			// The shared result was computed against the current response, so
+			// they match by construction — this just re-asserts that fact after
+			// an earlier reset (e.g. candidate toggle) cleared it to ''.
+			lastAuditedContent = response;
 			// Auto-acknowledge clinical_flagging if a banner was previously inserted and is still in the report
 			if (insertedBannerTexts.length > 0) {
 				const currentContent = (currentEditorContent || response || '').trim();
@@ -190,18 +216,38 @@
 
 	// Auto-trigger: only fires when response is new content we haven't audited yet.
 	// Content-based check prevents firing with stale/old response text.
-	$: if (response && !generationLoading && response !== lastAuditedContent && $auditStore.status === 'idle') {
+	// For dual-candidate reports (activeCandidateModel set), skip this — /enhance
+	// upstream already ran the full 9-criterion audit for every candidate and
+	// seeded per-candidate slots in the shared store. Auto-firing /api/audit
+	// here would create a spurious NULL-tagged audit row and race with the
+	// proper per-candidate rows.
+	$: if (
+		response &&
+		!generationLoading &&
+		response !== lastAuditedContent &&
+		$auditStore.status === 'idle' &&
+		!activeCandidateModel
+	) {
 		triggerAudit(response);
 	}
 
-	// Mark audit as stale when there are unsaved changes (user edits)
+	// Mark audit as stale when there are unsaved changes (user edits). For
+	// dual-candidate reports this writes to the active candidate's slot so
+	// toggling away-and-back preserves the stale marker, and editing Option A
+	// does not mark Option B stale.
 	$: if (hasUnsavedChanges && $auditStore.status === 'complete') {
 		auditActions.setStale();
+		if (reportId) {
+			sharedAuditActions.setStale(reportId, activeCandidateModel);
+		}
 	}
 
 	// Mark audit as stale when content changed (e.g. restore to previous version) and differs from last audited
 	$: if (response && !generationLoading && response !== lastAuditedContent && $auditStore.status === 'complete') {
 		auditActions.setStale();
+		if (reportId) {
+			sharedAuditActions.setStale(reportId, activeCandidateModel);
+		}
 	}
 
 	async function triggerAudit(content: string) {
@@ -222,7 +268,11 @@
 				scan_type: scanType,
 				clinical_history: clinicalHistory,
 				report_id: reportId,
-				applicable_guidelines: applicableGuidelines
+				applicable_guidelines: applicableGuidelines,
+				// Tag the re-audit with which candidate draft it targets, so the
+				// server can persist the new ReportAudit row under that slot
+				// (instead of overwriting/racing with the other candidate's audit).
+				audited_candidate_model: activeCandidateModel,
 			};
 
 			const res = await fetch(`${API_URL}/api/audit`, {
@@ -246,7 +296,10 @@
 			
 			auditActions.setResult(data, data.audit_id);
 			if (reportId) {
-				sharedAuditActions.setResult(reportId, data, data.audit_id);
+				// Write to the active candidate's slot (or the default slot for
+				// single-candidate reports). This lets a manual re-audit on a
+				// stale candidate refresh only that candidate's audit state.
+				sharedAuditActions.setResult(reportId, data, data.audit_id, activeCandidateModel);
 			}
 			dispatch('auditComplete', {
 				guidelineReferences: data.guideline_references ?? [],

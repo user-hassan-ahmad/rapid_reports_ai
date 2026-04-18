@@ -276,36 +276,104 @@ class TemplateVersion(Base):
         }
 
 
-class Report(Base):
-    """Model for storing generated reports"""
-    
-    __tablename__ = "reports"
-    
+class EphemeralSkillSheet(Base):
+    """Per-case skill sheet generated just-in-time from scan_type + clinical_history.
+
+    First-class citizen for the quick-report pipeline (production path). Separate
+    from ``templates`` by design — ephemeral sheets are machine-generated, not
+    user-curated, and frozen once produced. The ``scan_type_normalized`` column
+    is the clustering key for the future maintenance agent's REIFY mode, which
+    will distil accumulated ephemeral sheets into cached canonical skill sheets.
+
+    See ``project_quick_report_analyser.md`` for the architectural plan.
+    """
+
+    __tablename__ = "ephemeral_skill_sheets"
+
     # Primary key
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    
+
+    # Inputs captured at analyser time
+    scan_type = Column(Text, nullable=False)  # As entered by radiologist
+    scan_type_normalized = Column(String(255), nullable=False, index=True)  # lowercased/whitespace-collapsed — clustering key
+    clinical_history = Column(Text, nullable=False)
+
+    # Analyser output
+    skill_sheet_markdown = Column(Text, nullable=False)
+
+    # Analyser run metadata
+    analyser_model = Column(String(100), nullable=False)  # e.g. "zai-glm-4.7"
+    analyser_latency_ms = Column(Integer, nullable=True)
+    analyser_prompt_version = Column(String(64), nullable=True)  # hash/tag of prompt — enables retrospective analysis
+    run_id = Column(String(64), nullable=True, index=True)  # anchor to proto log for debugging
+
+    # Ownership + audit
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+
+    def __repr__(self):
+        return f"<EphemeralSkillSheet(id={self.id}, scan_type='{self.scan_type_normalized}')>"
+
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "user_id": str(self.user_id),
+            "scan_type": self.scan_type,
+            "scan_type_normalized": self.scan_type_normalized,
+            "clinical_history": self.clinical_history,
+            "skill_sheet_markdown": self.skill_sheet_markdown,
+            "analyser_model": self.analyser_model,
+            "analyser_latency_ms": self.analyser_latency_ms,
+            "analyser_prompt_version": self.analyser_prompt_version,
+            "run_id": self.run_id,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class Report(Base):
+    """Model for storing generated reports"""
+
+    __tablename__ = "reports"
+
+    # Primary key
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+
     # Report type and metadata
     report_type = Column(String(50), nullable=False, index=True)  # "auto" or "templated"
     use_case = Column(String(200), nullable=True)  # For auto reports
     model_used = Column(String(50), nullable=False)  # "claude" or "gemini"
-    
+
     # Report content
     input_data = Column(JSON, nullable=True)  # Variables/message used
     report_content = Column(Text, nullable=False)  # Generated report
     description = Column(String(500), nullable=True)  # Brief contextual description for history display
     validation_status = Column(JSON, nullable=True)  # Async validation status: {status, violations_count, started_at, completed_at, error}
     enhancement_json = Column(JSONBType(), nullable=True)  # Full enhance output for workspace history reload
-    
+
+    # Quick-report-ephemeral pipeline fields (Phase 1 — additive, nullable for backward compat)
+    # See project_quick_report_analyser.md for semantics.
+    generation_mode = Column(String(50), nullable=True, index=True)  # e.g. "quick_ephemeral", "skill_sheet_guided", None (legacy)
+    ephemeral_skill_sheet_id = Column(UUID(as_uuid=True), ForeignKey("ephemeral_skill_sheets.id", ondelete="SET NULL"), nullable=True, index=True)
+    candidate_reports = Column(JSONBType(), nullable=True)  # Array of {model, content, latency_ms, run_id, generated_at, error}
+    selected_model = Column(String(100), nullable=True)  # Which candidate the user picked as base
+    selection_ms_since_ready = Column(Integer, nullable=True)  # Decision latency telemetry
+    final_report_content = Column(Text, nullable=True)  # After radiologist editing
+    final_edit_diff = Column(Text, nullable=True)  # Patch between selected candidate and final — feedback signal
+
     # Foreign keys
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="SET NULL"), nullable=True, index=True)
-    
+
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
-    
+
     # Relationships
     user = relationship("User", back_populates="reports")
     template = relationship("Template", foreign_keys=[template_id])
+    ephemeral_skill_sheet = relationship("EphemeralSkillSheet", foreign_keys=[ephemeral_skill_sheet_id])
     versions = relationship(
         "ReportVersion",
         back_populates="report",
@@ -313,10 +381,10 @@ class Report(Base):
         order_by="ReportVersion.version_number"
     )
     audits = relationship("ReportAudit", back_populates="report", cascade="all, delete-orphan")
-    
+
     def __repr__(self):
         return f"<Report(id={self.id}, type='{self.report_type}')>"
-    
+
     def to_dict(self):
         """Convert report to dictionary"""
         return {
@@ -331,6 +399,12 @@ class Report(Base):
             "description": self.description,
             "validation_status": self.validation_status,
             "created_at": self.created_at.isoformat(),
+            "generation_mode": self.generation_mode,
+            "ephemeral_skill_sheet_id": str(self.ephemeral_skill_sheet_id) if self.ephemeral_skill_sheet_id else None,
+            "candidate_reports": self.candidate_reports,
+            "selected_model": self.selected_model,
+            "selection_ms_since_ready": self.selection_ms_since_ready,
+            "final_report_content": self.final_report_content,
         }
 
 
@@ -397,7 +471,11 @@ class ReportAudit(Base):
     reviewed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     prefetch_used = Column(Boolean, nullable=True)  # Analytics: True when audit was seeded by prefetch KB
-    
+    # Which candidate draft this audit evaluated. NULL for legacy single-candidate
+    # reports; for dual-model quick reports there is one audit row per candidate,
+    # keyed by the model identifier in Report.candidate_reports[*].model.
+    audited_candidate_model = Column(String(100), nullable=True, index=True)
+
     # Relationships
     report = relationship("Report", back_populates="audits")
     criteria = relationship("ReportAuditCriterion", back_populates="audit", cascade="all, delete-orphan")
@@ -440,6 +518,7 @@ class ReportAudit(Base):
             "overall_status": self.overall_status,
             "scan_type": self.scan_type,
             "model_used": self.model_used,
+            "audited_candidate_model": self.audited_candidate_model,
             "summary": self.summary,
             "is_reviewed": self.is_reviewed,
             "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,

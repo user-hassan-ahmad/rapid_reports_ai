@@ -729,6 +729,22 @@ class SkillSheetSaveRequest(BaseModel):
     tags: List[str] = []
 
 
+# Quick Report Proto — ephemeral skill sheet pipeline
+class QuickReportProtoAnalyseRequest(BaseModel):
+    scan_type: str
+    clinical_history: str
+
+
+class QuickReportProtoGenerateRequest(BaseModel):
+    skill_sheet: str
+    scan_type: str
+    clinical_history: str
+    findings: str
+    run_id: Optional[str] = None   # links analyse+generate in the proto log
+    model: Optional[str] = None    # optional model override for A/B testing
+    sheet_id: Optional[str] = None # persisted ephemeral_skill_sheets.id from /analyse — links the report row to the sheet
+
+
 # Feedback request models
 class FeedbackCaptureRequest(BaseModel):
     report_id: Optional[str] = None
@@ -756,6 +772,11 @@ class AuditRequest(BaseModel):
     clinical_history: Optional[str] = ""
     report_id: Optional[str] = None
     applicable_guidelines: Optional[List[dict]] = None
+    # For dual-candidate quick reports: which candidate draft this re-audit
+    # targets. The persisted ReportAudit row is tagged with this so it lands
+    # in the per-candidate slot in the audit store (keyed by model). NULL
+    # for legacy single-candidate reports.
+    audited_candidate_model: Optional[str] = None
 
 
 class AcknowledgeRequest(BaseModel):
@@ -2506,6 +2527,219 @@ async def extract_coverage_endpoint(
         return {"success": True, "sections": []}
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Quick Report Proto — ephemeral skill sheet pipeline
+# ═══════════════════════════════════════════════════════════════════════════════
+# Stress-test surface for the quick-report analyser + generator flow.
+# Analyser: scan_type + clinical_history → bespoke skill sheet (GLM-4.7)
+# Generator: skill_sheet + findings → report (same skill_sheet_guided path as
+# production templates)
+# All runs logged to /tmp/radflow_quick_proto.log (separate from /tmp/radflow.log)
+
+@app.post("/api/quick-report-proto/analyse")
+async def quick_report_proto_analyse_endpoint(
+    request: QuickReportProtoAnalyseRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Generate an ephemeral skill sheet from scan_type + clinical_history.
+
+    Phase 1 persistence: every successful analyser run is written to the
+    `ephemeral_skill_sheets` table. `sheet_id` is returned so the subsequent
+    generate call can reference the persisted sheet.
+    """
+    from .quick_report_analyser import (
+        generate_ephemeral_skill_sheet,
+        log_analyser_run,
+        new_run_id,
+        ANALYSER_PROMPT_VERSION,
+    )
+    from .database import create_ephemeral_skill_sheet
+
+    run_id = new_run_id()
+    try:
+        if not request.scan_type.strip():
+            return {"success": False, "error": "Scan type is required"}
+
+        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
+        if not api_key:
+            return {"success": False, "error": "Cerebras API key not configured"}
+
+        result = await generate_ephemeral_skill_sheet(
+            scan_type=request.scan_type,
+            clinical_history=request.clinical_history,
+            api_key=api_key,
+        )
+
+        # Persist the sheet so it can be referenced at report-generation time
+        # and clustered by the maintenance agent later.
+        sheet_id = None
+        try:
+            sheet_row = create_ephemeral_skill_sheet(
+                db=db,
+                user_id=str(current_user.id),
+                scan_type=request.scan_type,
+                clinical_history=request.clinical_history,
+                skill_sheet_markdown=result.get("skill_sheet", ""),
+                analyser_model=result.get("model_used", ""),
+                analyser_latency_ms=result.get("latency_ms"),
+                analyser_prompt_version=ANALYSER_PROMPT_VERSION,
+                run_id=run_id,
+            )
+            sheet_id = str(sheet_row.id)
+        except Exception as persist_err:
+            # Do not fail the analyse call on persistence error — the sheet is
+            # still usable in-session. Log for debugging.
+            logger.warning("ephemeral skill sheet persistence failed: %s", persist_err)
+
+        log_analyser_run(
+            run_id=run_id,
+            scan_type=request.scan_type,
+            clinical_history=request.clinical_history,
+            result=result,
+        )
+
+        return {"success": True, "run_id": run_id, "sheet_id": sheet_id, **result}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        from .quick_report_analyser import log_analyser_run
+        log_analyser_run(
+            run_id=run_id,
+            scan_type=request.scan_type,
+            clinical_history=request.clinical_history,
+            result={},
+            error=str(e),
+        )
+        return {"success": False, "error": str(e), "run_id": run_id}
+
+
+@app.post("/api/quick-report-proto/generate")
+async def quick_report_proto_generate_endpoint(
+    request: QuickReportProtoGenerateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Generate a report using an ephemeral skill sheet + findings.
+
+    Reuses the same skill_sheet_guided generation path as production templates,
+    so the only difference between this and the templated flow is where the
+    skill sheet came from (ephemeral vs cached in a templates row).
+    """
+    from .quick_report_analyser import (
+        log_generator_run,
+        new_run_id,
+        proto_logger,
+    )
+    import time
+
+    run_id = request.run_id or new_run_id()
+    try:
+        if not request.skill_sheet.strip():
+            return {"success": False, "error": "Skill sheet is required"}
+
+        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
+        if not api_key:
+            return {"success": False, "error": "Cerebras API key not configured"}
+
+        # Shared preamble — same in production (/api/quick-report/generate)
+        # and proto. Single source of truth at quick_report_hardening.py.
+        from .quick_report_hardening import QUICK_REPORT_HARDENING_PREAMBLE
+        hardening_preamble = QUICK_REPORT_HARDENING_PREAMBLE
+
+        tm = TemplateManager()
+        template_config = {
+            "generation_mode": "skill_sheet_guided",
+            "skill_sheet": hardening_preamble + request.skill_sheet,
+            "scan_type": request.scan_type,
+        }
+        user_inputs = {
+            "FINDINGS": request.findings,
+            "CLINICAL_HISTORY": request.clinical_history,
+        }
+
+        # Model override is validated against an allow-list so the proto doesn't
+        # accept arbitrary strings from the frontend. Every model here must be
+        # registered in MODEL_PROVIDERS in enhancement_utils.py.
+        allowed_models = {
+            # Proprietary
+            "zai-glm-4.7",                       # Cerebras GLM-4.7 (current default)
+            "claude-sonnet-4-6",                 # Anthropic Claude Sonnet 4.6
+            # Open source
+            "gpt-oss-120b",                      # Cerebras GPT-OSS 120B
+            "qwen-3-235b-a22b-instruct-2507",    # Cerebras Qwen 3 235B
+            "llama-3.3-70b-versatile",           # Groq Llama 3.3 70B
+            "qwen/qwen3-32b",                    # Groq Qwen 3 32B
+        }
+        model_override = request.model if request.model in allowed_models else None
+
+        t0 = time.time()
+        result = await tm.generate_report_from_config(
+            template_config=template_config,
+            user_inputs=user_inputs,
+            user_signature=None,
+            model_override=model_override,
+        )
+        latency_ms = int((time.time() - t0) * 1000)
+        result["latency_ms"] = latency_ms
+
+        log_generator_run(
+            run_id=run_id,
+            scan_type=request.scan_type,
+            clinical_history=request.clinical_history,
+            findings=request.findings,
+            skill_sheet=request.skill_sheet,
+            result=result,
+        )
+
+        # Phase 1 persistence: record the report row with this candidate in
+        # `candidate_reports` so future dual-model runs can append alongside.
+        # Persistence failure must not fail the generate call — the report is
+        # still usable in-session. Log for debugging.
+        report_id = None
+        try:
+            from .database import create_quick_report_with_candidates
+            from datetime import datetime, timezone
+
+            candidate_record = {
+                "model": result.get("model_used", "unknown"),
+                "content": result.get("report_content", ""),
+                "latency_ms": latency_ms,
+                "run_id": run_id,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "error": None,
+            }
+            report_row = create_quick_report_with_candidates(
+                db=db,
+                user_id=str(current_user.id),
+                ephemeral_skill_sheet_id=request.sheet_id,
+                findings_dictation=request.findings,
+                clinical_history=request.clinical_history,
+                scan_type=request.scan_type,
+                candidate_reports=[candidate_record],
+                description=result.get("description"),
+            )
+            report_id = str(report_row.id)
+        except Exception as persist_err:
+            logger.warning("quick-report persistence failed: %s", persist_err)
+
+        return {"success": True, "run_id": run_id, "report_id": report_id, **result}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        from .quick_report_analyser import log_generator_run
+        log_generator_run(
+            run_id=run_id,
+            scan_type=request.scan_type,
+            clinical_history=request.clinical_history,
+            findings=request.findings,
+            skill_sheet=request.skill_sheet,
+            result={},
+            error=str(e),
+        )
+        return {"success": False, "error": str(e), "run_id": run_id}
+
+
 @app.post("/api/templates/extract-placeholders")
 async def extract_placeholders_endpoint(
     request: ExtractPlaceholdersRequest,
@@ -3261,57 +3495,171 @@ async def enhance_report(
             for i, f in enumerate(prefetch_output.consolidated_findings if prefetch_output else [])
         ]
 
-        # ── Phase 2 Audit (inline) ──────────────────────────────────────────
-        # Always runs: grounded when guidelines_cards is populated, unanchored when
-        # empty (either zero-guideline success case or degraded-lookup failure case).
-        # The prompt branches inside run_audit_phase2 based on synthesis_cards length.
+        # ── Audit phase: branch on dual-candidate vs single-candidate ──────
+        # Dual-candidate path (quick-report ephemeral flow with two generator
+        # outputs): run the full 9-criterion audit (phase 1a + 1b + 2) against
+        # each candidate's content in parallel, and persist one ReportAudit row
+        # per candidate tagged by audited_candidate_model. This lets the UI
+        # toggle audit state in lockstep with the candidate toggle without
+        # paying for a second prefetch/synthesis cycle.
+        #
+        # Single-candidate path (templated/auto reports, or quick reports where
+        # only one candidate succeeded): current behaviour — phase 2 only,
+        # appended to the existing phase 1 audit row created by /api/audit.
+        candidate_reports_list: list = report.candidate_reports or []
+        _valid_candidates = [
+            c for c in candidate_reports_list
+            if isinstance(c, dict) and c.get("content") and not c.get("error")
+        ]
+        is_dual_candidate = len(_valid_candidates) >= 2
+
         phase2_criteria_list = []
         audit_id = None
-        try:
-            from .enhancement_utils import run_audit_phase2
+        candidate_audits_response: list = []
 
-            phase2_criteria_list = await run_audit_phase2(
-                report_content=report_content,
-                scan_type=scan_type,
-                clinical_history=clinical_history,
-                synthesis_cards=guidelines_cards,
-                urgency_signals=prefetch_output.urgency_signals if prefetch_output else [],
-                consolidated_findings=prefetch_output.consolidated_findings if prefetch_output else [],
-                finding_short_labels=prefetch_output.finding_short_labels if prefetch_output else [],
-            )
+        if is_dual_candidate:
+            from .enhancement_utils import run_full_audit as _run_full_audit
+            from .database.crud import create_report_audit as _create_report_audit
 
-            # Persist Phase 2 criteria (append to existing Phase 1 row or create new)
-            try:
-                from .database.crud import append_audit_criteria
-                from .database.models import ReportAudit as _RA
+            _prefetch_urgency = prefetch_output.urgency_signals if prefetch_output else []
+            _prefetch_findings = prefetch_output.consolidated_findings if prefetch_output else []
+            _prefetch_labels = prefetch_output.finding_short_labels if prefetch_output else []
 
-                existing_audit = (
-                    db.query(_RA)
-                    .filter(_RA.report_id == uuid.UUID(report_id))
-                    .order_by(_RA.created_at.desc())
-                    .first()
-                )
-                if existing_audit:
-                    audit_id = str(existing_audit.id)
-                    all_statuses = [c.status for c in existing_audit.criteria] + [
-                        c.status if hasattr(c, "status") else c.get("status", "pass")
-                        for c in phase2_criteria_list
-                    ]
-                    new_overall = "pass"
-                    if any(s == "flag" for s in all_statuses):
-                        new_overall = "flag"
-                    elif any(s == "warning" for s in all_statuses):
-                        new_overall = "warning"
-                    append_audit_criteria(
-                        db, existing_audit.id, phase2_criteria_list, new_overall,
+            async def _audit_one(candidate: dict) -> dict:
+                """Full 9-criterion audit for one candidate draft. Returns
+                {candidate_model, result_dict, error}."""
+                _t0 = time.perf_counter()
+                try:
+                    result = await _run_full_audit(
+                        report_content=candidate.get("content") or "",
+                        scan_type=scan_type,
+                        clinical_history=clinical_history,
+                        findings_input=findings_input,
+                        other_variables=other_variables,
+                        urgency_signals=_prefetch_urgency,
+                        synthesis_cards=guidelines_cards,
+                        consolidated_findings=_prefetch_findings,
+                        finding_short_labels=_prefetch_labels,
                     )
-                else:
-                    print("enhance_report: no Phase 1 audit row yet — Phase 2 criteria stored in enhancement_json only")
-            except Exception as _pa_ex:
-                print(f"enhance_report: Phase 2 audit persistence failed: {_pa_ex}")
+                    _ms = int((time.perf_counter() - _t0) * 1000)
+                    print(
+                        f"[FLOW_TIMING] enhance: per-candidate full audit "
+                        f"model={candidate.get('model')!r} ms={_ms} "
+                        f"criteria={len(result.get('criteria', []))}"
+                    )
+                    return {"candidate_model": candidate.get("model"), "result": result, "error": None}
+                except Exception as _ax:
+                    print(
+                        f"enhance_report: per-candidate audit failed "
+                        f"model={candidate.get('model')!r}: {type(_ax).__name__}: {_ax}"
+                    )
+                    return {"candidate_model": candidate.get("model"), "result": None, "error": str(_ax)}
 
-        except Exception as _p2_ex:
-            print(f"enhance_report: Phase 2 audit failed (non-fatal): {_p2_ex}")
+            _audit_results = await asyncio.gather(*[_audit_one(c) for c in _valid_candidates])
+
+            for entry in _audit_results:
+                cand_model = entry["candidate_model"]
+                result = entry["result"]
+                if not result:
+                    candidate_audits_response.append({
+                        "candidate_model": cand_model,
+                        "audit_id": None,
+                        "error": entry["error"],
+                    })
+                    continue
+                try:
+                    _audit_row = _create_report_audit(
+                        db=db,
+                        report=report,
+                        user_id=str(current_user.id),
+                        audit_result=result,
+                        scan_type=scan_type or "",
+                        clinical_history=clinical_history or "",
+                        model_used="zai-glm-4.7",
+                        audited_candidate_model=cand_model,
+                    )
+                    candidate_audits_response.append({
+                        "candidate_model": cand_model,
+                        "audit_id": str(_audit_row.id),
+                        "overall_status": result.get("overall_status"),
+                        "summary": result.get("summary", ""),
+                        "criteria": result.get("criteria", []),
+                    })
+                except Exception as _pex:
+                    print(
+                        f"enhance_report: DB persist failed for candidate "
+                        f"{cand_model!r}: {_pex}"
+                    )
+                    candidate_audits_response.append({
+                        "candidate_model": cand_model,
+                        "audit_id": None,
+                        "overall_status": result.get("overall_status"),
+                        "summary": result.get("summary", ""),
+                        "criteria": result.get("criteria", []),
+                        "error": f"persist_failed: {_pex}",
+                    })
+
+            # Back-compat: populate phase2_criteria_list + audit_id from the
+            # first successful candidate so the legacy response shape and the
+            # ENHANCEMENT_RESULTS cache still carry usable phase-2 data.
+            for entry in candidate_audits_response:
+                if entry.get("criteria") and entry.get("audit_id"):
+                    phase2_criteria_list = [
+                        c for c in entry["criteria"]
+                        if c.get("criterion") in (
+                            "diagnostic_fidelity", "recommendations",
+                            "clinical_flagging", "characterisation_gap",
+                        )
+                    ]
+                    audit_id = entry["audit_id"]
+                    break
+
+        else:
+            # Single-candidate path — unchanged from the pre-dual-model behaviour.
+            try:
+                from .enhancement_utils import run_audit_phase2
+
+                phase2_criteria_list = await run_audit_phase2(
+                    report_content=report_content,
+                    scan_type=scan_type,
+                    clinical_history=clinical_history,
+                    synthesis_cards=guidelines_cards,
+                    urgency_signals=prefetch_output.urgency_signals if prefetch_output else [],
+                    consolidated_findings=prefetch_output.consolidated_findings if prefetch_output else [],
+                    finding_short_labels=prefetch_output.finding_short_labels if prefetch_output else [],
+                )
+
+                try:
+                    from .database.crud import append_audit_criteria
+                    from .database.models import ReportAudit as _RA
+
+                    existing_audit = (
+                        db.query(_RA)
+                        .filter(_RA.report_id == uuid.UUID(report_id))
+                        .order_by(_RA.created_at.desc())
+                        .first()
+                    )
+                    if existing_audit:
+                        audit_id = str(existing_audit.id)
+                        all_statuses = [c.status for c in existing_audit.criteria] + [
+                            c.status if hasattr(c, "status") else c.get("status", "pass")
+                            for c in phase2_criteria_list
+                        ]
+                        new_overall = "pass"
+                        if any(s == "flag" for s in all_statuses):
+                            new_overall = "flag"
+                        elif any(s == "warning" for s in all_statuses):
+                            new_overall = "warning"
+                        append_audit_criteria(
+                            db, existing_audit.id, phase2_criteria_list, new_overall,
+                        )
+                    else:
+                        print("enhance_report: no Phase 1 audit row yet — Phase 2 criteria stored in enhancement_json only")
+                except Exception as _pa_ex:
+                    print(f"enhance_report: Phase 2 audit persistence failed: {_pa_ex}")
+
+            except Exception as _p2_ex:
+                print(f"enhance_report: Phase 2 audit failed (non-fatal): {_p2_ex}")
 
         # ── Store results & persist ─────────────────────────────────────────
         phase2_criteria_dicts = [
@@ -3327,6 +3675,7 @@ async def enhance_report(
             "prefetch_output_json": prefetch_output.model_dump() if prefetch_output else None,
             "synthesis_stats": synth_stats,
             "phase2_audit": {"criteria": phase2_criteria_dicts},
+            "candidate_audits": candidate_audits_response,
             "guideline_lookup_failed": guideline_lookup_failed,
         }
 
@@ -3346,7 +3695,8 @@ async def enhance_report(
         _enh_wall_ms = int((time.perf_counter() - _enh_wall0) * 1000)
         print(
             f"[FLOW_TIMING] enhance: end report_id={report_id} total_wall_ms={_enh_wall_ms} "
-            f"guidelines_cards={len(guidelines_cards)} phase2_criteria={len(phase2_criteria_list)}"
+            f"guidelines_cards={len(guidelines_cards)} phase2_criteria={len(phase2_criteria_list)} "
+            f"candidate_audits={len(candidate_audits_response)} dual={is_dual_candidate}"
         )
 
         return {
@@ -3359,6 +3709,7 @@ async def enhance_report(
                 "criteria": phase2_criteria_dicts,
                 "audit_id": audit_id,
             },
+            "candidate_audits": candidate_audits_response,
             "guideline_lookup_failed": guideline_lookup_failed,
         }
 
@@ -4940,6 +5291,7 @@ async def run_audit(
                     scan_type=request.scan_type or "",
                     clinical_history=request.clinical_history or "",
                     model_used="zai-glm-4.7",
+                    audited_candidate_model=request.audited_candidate_model,
                 )
                 audit_id = str(audit.id)
 
@@ -5034,19 +5386,28 @@ async def run_audit_phase2_endpoint(
             for c in phase2_criteria_list
         ]
 
-        # Persist Phase 2 criteria to the latest audit row for this report
+        # Persist Phase 2 criteria to the latest audit row for this report.
+        # For dual-candidate quick reports, target the row tagged with the
+        # re-audit's candidate model so criteria land in the correct slot.
         audit_id = None
         if phase2_criteria_dicts:
             try:
                 from .database.crud import append_audit_criteria
                 from .database.models import ReportAudit as _RA
 
-                latest_audit = (
+                _audit_query = (
                     db.query(_RA)
                     .filter(_RA.report_id == uuid.UUID(report_id))
-                    .order_by(_RA.created_at.desc())
-                    .first()
                 )
+                if request.audited_candidate_model:
+                    _audit_query = _audit_query.filter(
+                        _RA.audited_candidate_model == request.audited_candidate_model
+                    )
+                else:
+                    _audit_query = _audit_query.filter(
+                        _RA.audited_candidate_model.is_(None)
+                    )
+                latest_audit = _audit_query.order_by(_RA.created_at.desc()).first()
                 if latest_audit:
                     audit_id = str(latest_audit.id)
                     existing_names = {
@@ -5181,6 +5542,14 @@ app.include_router(canvas_router)
 # Experimental planning/execution pipeline (/api/v2/*). Product report generation uses monolithic
 # prompts + /api/chat + generate_auto_report; keep router mounted for future work and manual API tests.
 app.include_router(agentic_router)
+
+# Quick-report production pipeline (/api/quick-report/*). Ephemeral-skill-sheet
+# path — deliberately separate from the legacy /api/chat radiology_report flow
+# (which remains the default quick-report path and the fallback) and from the
+# /api/quick-report-proto/* stress-test surface. See quick_report_api.py +
+# project_quick_report_analyser.md for architecture and phasing.
+from .quick_report_api import router as quick_report_router
+app.include_router(quick_report_router)
 
 
 def main():

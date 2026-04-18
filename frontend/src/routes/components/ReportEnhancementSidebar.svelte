@@ -541,6 +541,55 @@
 				if (reportId) {
 					try {
 						const { auditActions } = await import('$lib/stores/audit');
+
+						// Dual-candidate path: /enhance returned a full audit per candidate.
+						// Seed each candidate's slot with its complete result so the UI
+						// toggle can swap audit state instantly without a re-audit.
+						const PHASE2_NAMES = new Set([
+							'diagnostic_fidelity',
+							'recommendations',
+							'clinical_flagging',
+							'characterisation_gap',
+						]);
+						const candidateAudits: any[] = Array.isArray(data.candidate_audits)
+							? data.candidate_audits
+							: [];
+						if (candidateAudits.length > 0) {
+							for (const entry of candidateAudits) {
+								if (!entry?.candidate_model || !entry?.criteria) continue;
+								const criteria = entry.criteria ?? [];
+								const result = {
+									overall_status: entry.overall_status ?? 'pass',
+									criteria,
+									summary: entry.summary ?? '',
+								};
+								auditActions.setResult(
+									reportId,
+									result,
+									entry.audit_id ?? null,
+									entry.candidate_model,
+								);
+								// Feed the Phase 2 subset back through mergePhase2 so the
+								// store's internal merge (which strips Phase 2 from the
+								// current result and concatenates from the phase2 arg)
+								// preserves all 9 criteria. Passing [] here would drop
+								// the 4 Phase 2 criteria we just wrote via setResult.
+								// Also flips phase2Complete=true to clear the spinner.
+								const phase2Subset = criteria.filter((c: any) =>
+									PHASE2_NAMES.has(c?.criterion),
+								);
+								auditActions.mergePhase2(reportId, phase2Subset, {
+									guidelineLookupFailed,
+									guidelineCardsCount,
+									candidateModel: entry.candidate_model,
+								});
+							}
+						}
+
+						// Always also merge into the default (reportId-only) slot so
+						// single-candidate consumers and legacy flows keep working.
+						// On dual-candidate reports this slot serves as a baseline for
+						// components that haven't yet been threaded with candidateModel.
 						auditActions.mergePhase2(
 							reportId,
 							data.phase2_audit?.criteria ?? [],

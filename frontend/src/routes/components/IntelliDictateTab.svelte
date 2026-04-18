@@ -8,6 +8,7 @@ import DictationHintBar from '$lib/components/DictationHintBar.svelte';
 import ReportResponseViewer from './ReportResponseViewer.svelte';
 import Toast from '$lib/components/Toast.svelte';
 import { API_URL } from '$lib/config';
+import { readSSEStream } from '$lib/utils/sse';
 
 	let toast: { show: (msg: string) => void } | undefined;
 
@@ -21,6 +22,40 @@ import { API_URL } from '$lib/config';
 	let sectionsGeneratedFromScanType = '';
 	let sectionsGeneratedFromHistory = '';
 	let regenerating = false;
+
+	// ── Quick-report ephemeral-skill-sheet pipeline ──
+	// Fired in parallel with workspace setup so the skill sheet is ready by
+	// the time the radiologist finishes dictating. If /analyse fails or hasn't
+	// completed, /generate falls back to a one-shot path that runs the analyser
+	// inline — so the pipeline works either way.
+	let sheetId = '';
+	// True while /analyse is in flight. The Generate button disables during
+	// this window to prevent racing the scaffolding — if the user hit Generate
+	// while analyse was still working, the fallback path would work but would
+	// take ~2× the expected latency (analyser inline + generator sequential).
+	let analyseLoading = false;
+	// Monotonic token so stale /analyse responses (from superseded workspace
+	// setups) can't overwrite fresh ones. Every triggerSheetAnalyse call
+	// takes a version; only commits its result if the version is still current.
+	let analyseVersion = 0;
+
+	// ── Phase 3: dual-model candidates ──
+	// /generate streams two candidate reports (GLM-4.7 + Claude Sonnet 4.6)
+	// via SSE. The first to arrive populates `response` immediately. The
+	// second becomes available via an alt-candidate toggle once it lands.
+	interface Candidate {
+		model: string;
+		content: string;
+		latency_ms: number | null;
+		run_id: string;
+		generated_at: string;
+		error: string | null;
+		description?: string | null;
+	}
+	let candidates: Candidate[] = [];
+	let activeCandidateIdx = 0;
+	// True from the moment first candidate renders until done event arrives
+	let waitingForAlternative = false;
 
 	interface IntelliPrompt { question: string; source_text: string; rationale?: string; }
 
@@ -97,6 +132,47 @@ import { API_URL } from '$lib/config';
 	// Coverage state comes entirely from covered_sections returned by Qwen — no text parsing.
 	$: allChecklistSections = prePoppedSections;
 
+	/**
+	 * Fire the quick-report analyser in the background. Runs in parallel
+	 * with the sections call so the ephemeral skill sheet is ready by the
+	 * time the radiologist finishes dictating. Silent on failure — the
+	 * /generate endpoint has a fallback path that runs the analyser inline
+	 * if sheet_id is missing.
+	 *
+	 * Version-tokenised: if a subsequent triggerSheetAnalyse call fires while
+	 * this one is still in flight (e.g. the user re-clicks "Set up workspace"
+	 * after editing scan type), this call's response is discarded on return.
+	 */
+	async function triggerSheetAnalyse() {
+		const thisVersion = ++analyseVersion;
+		sheetId = '';
+		if (!scanType.trim() || !clinicalHistory.trim()) return;
+		analyseLoading = true;
+		try {
+			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+			if ($token) headers['Authorization'] = `Bearer ${$token}`;
+			const res = await fetch(`${API_URL}/api/quick-report/analyse`, {
+				method: 'POST',
+				headers,
+				body: JSON.stringify({
+					scan_type: scanType.trim(),
+					clinical_history: clinicalHistory.trim()
+				})
+			});
+			const data = await res.json();
+			// Discard stale response — a newer analyse has superseded this one
+			if (thisVersion !== analyseVersion) return;
+			if (data?.success && data.sheet_id) {
+				sheetId = data.sheet_id;
+			}
+		} catch {
+			// Silent — /generate fallback handles this case
+		} finally {
+			// Only clear loading if we're still the latest call
+			if (thisVersion === analyseVersion) analyseLoading = false;
+		}
+	}
+
 	async function handleSetUpWorkspace() {
 		if (!clinicalHistory.trim()) {
 			sectionsError = 'Please enter a clinical history';
@@ -108,6 +184,11 @@ import { API_URL } from '$lib/config';
 		}
 		sectionsLoading = true;
 		sectionsError = '';
+
+		// Fire the ephemeral skill sheet analyser in parallel — don't await
+		// here because sections is the gating UX; the sheet is ready-when-ready.
+		triggerSheetAnalyse();
+
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
@@ -137,6 +218,11 @@ import { API_URL } from '$lib/config';
 		if (!clinicalHistory.trim() || !scanType.trim() || regenerating) return;
 		regenerating = true;
 		sectionsError = '';
+
+		// Re-fire the ephemeral skill sheet analyser — scan context may have
+		// changed, so the old sheet_id is no longer valid for this case.
+		triggerSheetAnalyse();
+
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
@@ -218,40 +304,132 @@ import { API_URL } from '$lib/config';
 		responseModel = null;
 		applicableGuidelines = [];
 
+		// Reset dual-candidate state
+		candidates = [];
+		activeCandidateIdx = 0;
+		waitingForAlternative = true;
+
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
-			const res = await fetch(`${API_URL}/api/chat`, {
-				method: 'POST',
-				headers,
-				body: JSON.stringify({
-					message: '',
-					model: 'claude',
-					use_case: 'radiology_report',
-					variables: {
-						CLINICAL_HISTORY: clinicalHistory,
-						SCAN_TYPE: scanType,
-						FINDINGS: content
-					}
-				})
-			});
-			const data = await res.json();
-			if (data.success) {
-				response = data.response;
-				responseModel = data.model_used ?? data.model ?? 'claude';
-				reportId = data.report_id ?? null;
-				applicableGuidelines = data.applicable_guidelines ?? [];
-			hasResponseEver = true;
-			findingsAtReportGeneration = content;
-				draftStore.clearIntelliTab();
-				dispatch('historyUpdate', { count: 1 });
+
+			// Quick-report ephemeral-skill-sheet pipeline.
+			// Prefer sheet_id if the analyser already completed in parallel
+			// with workspace setup. Otherwise fall back to one-shot mode: the
+			// /generate endpoint runs the analyser inline from scan_type +
+			// clinical_history.
+			const body: Record<string, unknown> = { findings: content };
+			if (sheetId) {
+				body.sheet_id = sheetId;
 			} else {
-				error = 'Failed to generate report. Please try again.';
+				body.scan_type = scanType.trim();
+				body.clinical_history = clinicalHistory.trim();
 			}
+
+			const res = await fetch(`${API_URL}/api/quick-report/generate`, {
+				method: 'POST',
+				headers: { ...headers, Accept: 'text/event-stream' },
+				body: JSON.stringify(body)
+			});
+
+			if (!res.ok) {
+				error = `Failed to generate report (HTTP ${res.status}). Please try again.`;
+				loading = false;
+				waitingForAlternative = false;
+				return;
+			}
+
+			// SSE stream — backend emits:
+			//   event: candidate  (once per model, in completion order)
+			//   event: done       (after both complete and persist to DB)
+			//   event: error      (upstream failure before models fire)
+			await readSSEStream(res, (eventName, data) => {
+				if (eventName === 'candidate') {
+					const cand: Candidate = data;
+					candidates = [...candidates, cand];
+
+					// Render the first successful candidate immediately.
+					// If the first to land errored, wait for the other. If
+					// both error, the `done` event still fires.
+					if (response === null && !cand.error && cand.content) {
+						response = cand.content;
+						responseModel = cand.model;
+						activeCandidateIdx = candidates.length - 1;
+						hasResponseEver = true;
+						findingsAtReportGeneration = content;
+						// Flip loading off as soon as the first candidate is
+						// rendered — UX immediately actionable. The alt
+						// candidate continues in the background.
+						loading = false;
+					}
+				} else if (eventName === 'done') {
+					reportId = data?.report_id ?? null;
+					if (data?.sheet_id && !sheetId) sheetId = data.sheet_id;
+					waitingForAlternative = false;
+					// If nothing rendered yet (e.g. first candidate errored),
+					// fall back now — there may be an errored entry we can
+					// show an error message for, or the alt succeeded later.
+					if (response === null) {
+						const succeeded = candidates.find((c) => !c.error && c.content);
+						if (succeeded) {
+							response = succeeded.content;
+							responseModel = succeeded.model;
+							activeCandidateIdx = candidates.indexOf(succeeded);
+							hasResponseEver = true;
+							findingsAtReportGeneration = content;
+						} else {
+							const firstError = candidates.find((c) => c.error);
+							error = firstError?.error || 'Both models failed to generate. Please try again.';
+						}
+						loading = false;
+					}
+					draftStore.clearIntelliTab();
+					dispatch('historyUpdate', { count: 1 });
+				} else if (eventName === 'error') {
+					error = data?.error || 'Failed to generate report. Please try again.';
+					loading = false;
+					waitingForAlternative = false;
+				}
+			});
+
+			applicableGuidelines = [];
 		} catch (e) {
 			error = 'Failed to connect. Please try again.';
-		} finally {
 			loading = false;
+			waitingForAlternative = false;
+		}
+	}
+
+	/**
+	 * Switch the displayed report to a different candidate. Records the
+	 * selection with the backend so the feedback signal captures which model
+	 * the radiologist preferred.
+	 */
+	async function switchToCandidate(idx: number) {
+		if (idx < 0 || idx >= candidates.length) return;
+		if (idx === activeCandidateIdx) return;
+		const cand = candidates[idx];
+		if (cand.error || !cand.content) return;
+
+		response = cand.content;
+		responseModel = cand.model;
+		activeCandidateIdx = idx;
+
+		// Best-effort: record the selection. Not critical to the UX — if it
+		// fails, the user still sees the chosen report; only the telemetry
+		// signal is lost.
+		if (reportId) {
+			try {
+				const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+				if ($token) headers['Authorization'] = `Bearer ${$token}`;
+				await fetch(`${API_URL}/api/quick-report/reports/${reportId}/select`, {
+					method: 'PATCH',
+					headers,
+					body: JSON.stringify({ selected_model: cand.model })
+				});
+			} catch {
+				// silent — data capture convenience
+			}
 		}
 	}
 
@@ -263,6 +441,9 @@ import { API_URL } from '$lib/config';
 		hasResponseEver = false;
 		responseVisible = false;
 		findingsAtReportGeneration = '';
+		candidates = [];
+		activeCandidateIdx = 0;
+		waitingForAlternative = false;
 		dispatch('clearResponse');
 	}
 
@@ -310,6 +491,21 @@ import { API_URL } from '$lib/config';
 				versionHistoryRefreshKey += 1;
 				dispatch('historyUpdate', { count: data.version?.version_number ?? 0 });
 				if (toast) toast.show('Report updated successfully');
+
+				// Also capture the quick-report-specific feedback signal:
+				// final edited content + diff against the selected candidate.
+				// Best-effort — server computes diff if not supplied. Failure
+				// here doesn't break the save UX.
+				try {
+					await fetch(`${API_URL}/api/quick-report/reports/${reportId}/finalise`, {
+						method: 'PATCH',
+						headers,
+						body: JSON.stringify({ final_report_content: newContent })
+					});
+				} catch {
+					// silent — finalise is a data-capture convenience, not
+					// part of the critical save path
+				}
 			} else {
 				error = 'Failed to update report. Please try again.';
 			}
@@ -646,15 +842,21 @@ import { API_URL } from '$lib/config';
 	</div>
 
 			<!-- Generate Report — full width spanning editor + side panel -->
+			<!-- analyseLoading gate: disables the button briefly while the
+			     ephemeral skill sheet is being prepared (runs in parallel with
+			     dictation). Keeps expected generate latency predictable. -->
 			<button
 				type="button"
 				onclick={() => handleGenerateReport()}
-				disabled={isRecording || loading || !scratchpadContent.trim() || sectionsDirty}
+				disabled={isRecording || loading || analyseLoading || !scratchpadContent.trim() || sectionsDirty}
 				class="btn-primary-subtle w-full px-6 py-3 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
 			>
 				{#if loading}
 					<div class="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
 					<span>Generating...</span>
+				{:else if analyseLoading}
+					<div class="w-4 h-4 border-2 border-gray-500 border-t-gray-300 rounded-full animate-spin opacity-70"></div>
+					<span>Getting ready...</span>
 				{:else}
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -664,6 +866,40 @@ import { API_URL } from '$lib/config';
 			</button>
 
 		</div><!-- end workspace flex-col -->
+	{/if}
+
+	<!-- Candidate switcher: appears when dual-model generated multiple reports.
+	     Minimal Phase 3 UX — Phase 4 will replace this with side-by-side cards. -->
+	{#if candidates.length > 0 && (candidates.length >= 2 || waitingForAlternative)}
+		<div
+			class="flex items-center gap-3 px-4 py-2 border-b border-white/[0.06] bg-black/20 shrink-0"
+			in:fade={{ duration: 200 }}
+		>
+			<span class="text-[11px] uppercase tracking-wider text-gray-500">
+				{candidates.length >= 2 ? 'Reports' : 'Report'}
+			</span>
+			{#each candidates as cand, i (cand.run_id)}
+				{#if !cand.error && cand.content}
+					<button
+						type="button"
+						onclick={() => switchToCandidate(i)}
+						class="text-[11px] px-2 py-1 rounded border transition-colors
+							{i === activeCandidateIdx
+								? 'border-purple-500/40 bg-purple-500/10 text-purple-300'
+								: 'border-white/10 hover:border-white/20 text-gray-400 hover:text-gray-200'}"
+						title={cand.latency_ms ? `${(cand.latency_ms / 1000).toFixed(1)}s` : undefined}
+					>
+						Option {String.fromCharCode(65 + i)}
+					</button>
+				{/if}
+			{/each}
+			{#if waitingForAlternative}
+				<span class="flex items-center gap-1.5 text-[11px] text-gray-600 ml-1">
+					<span class="inline-block w-2.5 h-2.5 border border-gray-600 border-t-transparent rounded-full animate-spin"></span>
+					alternative coming...
+				</span>
+			{/if}
+		</div>
 	{/if}
 
 	<!-- Report Response Viewer -->
@@ -685,6 +921,7 @@ import { API_URL } from '$lib/config';
 		{applicableGuidelines}
 		caseDetailsDirty={sectionsDirty}
 		{findingsStale}
+		activeCandidateModel={candidates.length >= 2 ? (candidates[activeCandidateIdx]?.model ?? null) : null}
 		on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
 	on:auditStateChange={(e) => dispatch('auditStateChange', e.detail)}
 	on:openVersionHistory={() => dispatch('openVersionHistory')}

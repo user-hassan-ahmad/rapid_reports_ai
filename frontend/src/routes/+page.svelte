@@ -767,14 +767,24 @@ $: {
 	const newReportId = isEnhancementContext
 		? (activeTab === 'auto' ? reportId : templatedReportId)
 		: null;
-	
+
 	// Close sidebar if switching between different reports or leaving enhancement context
 	if (currentReportId !== newReportId && sidebarVisible) {
 		closeCopilot();
 	}
-	
-	// Reset enhancement state when report changes
-	if (currentReportId !== newReportId) {
+
+	// Reset enhancement/audit state ONLY on genuine report transitions:
+	// (a) switching from one report to a different report, or
+	// (b) starting a brand new report (null → uuid).
+	// Transitions through null (e.g. tabbing away to history/settings and
+	// back) must NOT reset state — the viewer is CSS-hidden, not unmounted,
+	// and its local auditStore still holds the data. Resetting auditState
+	// here would leave the sidebar banner blank on return because the
+	// viewer's dispatch reactive only re-fires when $auditStore changes,
+	// which it didn't during the hide.
+	const isRealReportTransition =
+		newReportId !== null && currentReportId !== newReportId;
+	if (isRealReportTransition) {
 		enhancementGuidelinesCount = 0;
 		enhancementLoading = false;
 		enhancementError = false;
@@ -782,8 +792,13 @@ $: {
 		auditState = null;
 		enhancementsLoaded = false;
 	}
-	
-	currentReportId = newReportId;
+
+	// Preserve currentReportId across tab-hides. Only advance it on a real
+	// report transition — otherwise the next return trip (null → uuid) would
+	// look like a transition and trigger the reset above.
+	if (newReportId !== null) {
+		currentReportId = newReportId;
+	}
 }
 $: shouldAutoLoadEnhancements = Boolean(isEnhancementContext && currentReportId);
 $: if (!isEnhancementContext && sidebarVisible) {

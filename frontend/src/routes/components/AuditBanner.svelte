@@ -138,7 +138,21 @@
 	$: allCriteria = auditState.result?.criteria ?? [];
 	$: passedCount = allCriteria.filter((c) => c.status === 'pass' || c.acknowledged).length;
 	$: totalCount = allCriteria.length;
-	$: score = totalCount > 0 ? Math.round((passedCount / totalCount) * 100) : 0;
+	// Severity-weighted score: pass/acknowledged = full credit, unacknowledged
+	// warning = partial credit (0.7 — a concern worth attention but not
+	// gate-blocking), unacknowledged flag = no credit (needs fixing before
+	// sign-off). Equal-weight pass/fail conflated warnings with flags despite
+	// very different clinical stakes.
+	$: score = (() => {
+		if (totalCount === 0) return 0;
+		const WARNING_WEIGHT = 0.7;
+		const weightedSum = allCriteria.reduce((sum, c) => {
+			if (c.status === 'pass' || c.acknowledged) return sum + 1;
+			if (c.status === 'warning') return sum + WARNING_WEIGHT;
+			return sum; // flag → 0
+		}, 0);
+		return Math.round((weightedSum / totalCount) * 100);
+	})();
 	/** Ring accent: rose &lt;70, amber 70–89, emerald ≥90 */
 	$: scoreTier = score < 70 ? 'rose' : score < 90 ? 'amber' : 'emerald';
 	$: passedCriteriaList = allCriteria.filter((c) => c.status === 'pass');
