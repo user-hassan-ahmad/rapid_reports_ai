@@ -54,7 +54,7 @@ from .database.models import User
 from .encryption import get_system_api_key
 from .enhancement_utils import MODEL_CONFIG
 from .quick_report_analyser import (
-    ANALYSER_PROMPT_VERSION,
+    analyser_prompt_version,
     generate_ephemeral_skill_sheet,
     log_analyser_run,
     log_generator_run,
@@ -70,42 +70,40 @@ router = APIRouter(prefix="/api/quick-report", tags=["quick-report"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Dual-model configuration for Phase 3 SSE
+# Generator configuration
 # ─────────────────────────────────────────────────────────────────────────────
-# When dual-model is enabled, both models run in parallel for every generate
-# call; the radiologist sees whichever arrives first as the primary report and
-# can toggle to the alternative once it lands. See project_quick_report_analyser.md
-# — model choices validated across four stress-test cases:
-#   - GLM-4.7: fast (~5s), fidelity-strict, filler floor ~7/run
-#   - Claude Sonnet 4.6: richer narrative (~10s), near-zero filler with the lean
-#     user prompt, light clinical inference sometimes surfaces
+# Single GLM-4.7 generator. The earlier dual-model pattern (GLM + Sonnet) was
+# retired because Sonnet's narrative lean fought the consultant-handover voice
+# we want, and the richer Haiku skill sheet (running in the analyser tier) now
+# delivers the clinical depth Sonnet used to contribute.
 
-# Primary (always used). Single model when dual-model is disabled.
-PRIMARY_MODEL = "zai-glm-4.7"
-# Secondary (only used when dual-model is enabled). Claude costs ~3× GLM per
-# token, so the env flag below lets you run single-model for cost savings.
-SECONDARY_MODEL = "claude-sonnet-4-6"
+GENERATOR_MODEL = "zai-glm-4.7"
 
 
-def _dual_model_enabled() -> bool:
-    """Runtime-readable toggle for dual-model generation.
+# ─────────────────────────────────────────────────────────────────────────────
+# Analyser configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# Production default: /analyse fires the FAST (GLM) analyser only. Evaluation
+# confirmed GLM→GLM is the optimal stylistic path on the majority of cases;
+# Haiku's depth advantage concentrates on a narrow aetiology-branching subset
+# that Path B (tightening the GLM analyser prompt) aims to close.
+#
+# The Haiku (BEST) infrastructure is preserved: MODEL_CONFIG entry, analyser
+# prompt, test suite invocation via generate_ephemeral_skill_sheet(model_override=...)
+# — all untouched. Flip this flag on to restore the speculative parallel
+# pattern for production A/B testing:
+#     export QUICK_REPORT_ANALYSE_PARALLEL=true
+#     # restart uvicorn
+# Read inside each request so a server restart is enough — no code deploy.
 
-    Default is enabled. To disable (cost-save, GLM-only):
-        export QUICK_REPORT_DUAL_MODEL_ENABLED=false
-        # restart uvicorn
+def _parallel_analyse_enabled() -> bool:
+    """Runtime toggle for parallel FAST+BEST analyser firing on /analyse.
 
-    Read inside each request (not at module import) so a server restart after
-    editing .env is enough — no code deploy required to flip the cost lever.
+    Default: false (GLM-only production path). Set to true to re-enable
+    the speculative parallel pattern (FAST GLM + BEST Haiku in parallel).
     """
-    raw = os.environ.get("QUICK_REPORT_DUAL_MODEL_ENABLED", "true").strip().lower()
-    return raw not in ("false", "0", "no", "off", "")
-
-
-def _active_models() -> list[str]:
-    """Models to fire for this request, respecting the dual-model toggle."""
-    if _dual_model_enabled():
-        return [PRIMARY_MODEL, SECONDARY_MODEL]
-    return [PRIMARY_MODEL]
+    raw = os.environ.get("QUICK_REPORT_ANALYSE_PARALLEL", "false").strip().lower()
+    return raw in ("true", "1", "yes", "on")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -127,15 +125,10 @@ class GenerateRequest(BaseModel):
     clinical_history: Optional[str] = None
 
 
-class SelectCandidateRequest(BaseModel):
-    selected_model: str
-    selection_ms_since_ready: Optional[int] = None
-
-
 class FinaliseRequest(BaseModel):
     final_report_content: str
-    # If not provided, the server computes a unified diff against the selected
-    # candidate's content (or the first candidate if none selected).
+    # If not provided, the server computes a unified diff against the persisted
+    # candidate content.
     final_edit_diff: Optional[str] = None
 
 
@@ -150,68 +143,132 @@ async def analyse(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Generate an ephemeral skill sheet and persist it. Returns sheet_id which
-    the subsequent /generate call should pass through.
+    """Analyser SSE endpoint. Production default: fires the FAST (GLM) sheet
+    only. Set env QUICK_REPORT_ANALYSE_PARALLEL=true to restore the speculative
+    parallel pattern (FAST GLM + BEST Haiku concurrently).
 
-    Designed to run in parallel with radiologist dictation — the scan context
-    is captured at workspace creation time, so the sheet is ready by the time
-    findings are submitted.
+    Designed to run in parallel with radiologist dictation — scan context is
+    captured at workspace creation time, so the FAST sheet (~9s) is ready
+    before dictation completes. The frontend enables the Generate button on
+    the first ready event and uses whichever sheet_id is available at click.
+
+    Event stream — single mode (default):
+      event: analyser_ready  data: {variant: "fast", sheet_id, model_used, latency_ms, skill_sheet}
+      event: done            data: {succeeded, fast_sheet_id, best_sheet_id=None}
+
+    Event stream — parallel mode (flag on):
+      event: analyser_ready  data: {variant: "fast"|"best", ...}   × 2
+      event: done            data: {both_succeeded, fast_sheet_id, best_sheet_id}
+
+      event: error           data: {error}   (on upstream failure)
     """
-    run_id = new_run_id()
-    try:
+    user_id_str = str(current_user.id)
+
+    async def event_stream():
+        run_id_base = new_run_id()
+
         if not request.scan_type.strip():
-            return {"success": False, "error": "Scan type is required"}
+            yield _sse("error", {"error": "Scan type is required"})
+            return
 
-        api_key = get_system_api_key("cerebras", "CEREBRAS_API_KEY")
-        if not api_key:
-            return {"success": False, "error": "Cerebras API key not configured"}
+        # Cerebras key is only meaningful for the GLM (FAST) path; the
+        # Anthropic (BEST) path fetches ANTHROPIC_API_KEY inside the call.
+        api_key = get_system_api_key("cerebras", "CEREBRAS_API_KEY") or ""
 
-        result = await generate_ephemeral_skill_sheet(
-            scan_type=request.scan_type,
-            clinical_history=request.clinical_history,
-            api_key=api_key,
+        fast_model = MODEL_CONFIG.get("QUICK_REPORT_ANALYZER_FAST", "zai-glm-4.7")
+        best_model = MODEL_CONFIG.get("QUICK_REPORT_ANALYZER_BEST", "claude-haiku-4-5-20251001")
+
+        async def _run_variant(variant: str, model_name: str) -> dict:
+            run_id = f"{run_id_base}-{variant}"
+            try:
+                result = await generate_ephemeral_skill_sheet(
+                    scan_type=request.scan_type,
+                    clinical_history=request.clinical_history,
+                    api_key=api_key,
+                    model_override=model_name,
+                )
+                sheet_row = create_ephemeral_skill_sheet(
+                    db=db,
+                    user_id=user_id_str,
+                    scan_type=request.scan_type,
+                    clinical_history=request.clinical_history,
+                    skill_sheet_markdown=result.get("skill_sheet", ""),
+                    analyser_model=result.get("model_used", ""),
+                    analyser_latency_ms=result.get("latency_ms"),
+                    analyser_prompt_version=result.get("prompt_version") or analyser_prompt_version(model_name),
+                    run_id=run_id,
+                )
+                try:
+                    log_analyser_run(
+                        run_id=run_id,
+                        scan_type=request.scan_type,
+                        clinical_history=request.clinical_history,
+                        result=result,
+                    )
+                except Exception:
+                    pass
+                return {
+                    "variant": variant,
+                    "sheet_id": str(sheet_row.id),
+                    "model_used": result.get("model_used"),
+                    "latency_ms": result.get("latency_ms"),
+                    "skill_sheet": result.get("skill_sheet", ""),
+                    "error": None,
+                }
+            except Exception as e:
+                logger.warning("analyser variant=%s model=%s failed: %s", variant, model_name, e)
+                try:
+                    log_analyser_run(
+                        run_id=run_id,
+                        scan_type=request.scan_type,
+                        clinical_history=request.clinical_history,
+                        result={},
+                        error=str(e),
+                    )
+                except Exception:
+                    pass
+                return {
+                    "variant": variant,
+                    "sheet_id": None,
+                    "model_used": model_name,
+                    "latency_ms": None,
+                    "skill_sheet": "",
+                    "error": str(e),
+                }
+
+        parallel = _parallel_analyse_enabled()
+        logger.info(
+            "quick-report /analyse firing variants: %s",
+            "fast+best (parallel)" if parallel else "fast only (single)",
         )
 
-        # Persist — this is the whole point of Phase 1, now load-bearing
-        # for Phase 2's /generate lookup path.
-        sheet_row = create_ephemeral_skill_sheet(
-            db=db,
-            user_id=str(current_user.id),
-            scan_type=request.scan_type,
-            clinical_history=request.clinical_history,
-            skill_sheet_markdown=result.get("skill_sheet", ""),
-            analyser_model=result.get("model_used", ""),
-            analyser_latency_ms=result.get("latency_ms"),
-            analyser_prompt_version=ANALYSER_PROMPT_VERSION,
-            run_id=run_id,
-        )
+        fast_task = asyncio.create_task(_run_variant("fast", fast_model))
+        tasks = [fast_task]
+        if parallel:
+            best_task = asyncio.create_task(_run_variant("best", best_model))
+            tasks.append(best_task)
 
-        log_analyser_run(
-            run_id=run_id,
-            scan_type=request.scan_type,
-            clinical_history=request.clinical_history,
-            result=result,
-        )
+        results_by_variant: dict[str, dict] = {}
+        for coro in asyncio.as_completed(tasks):
+            record = await coro
+            results_by_variant[record["variant"]] = record
+            yield _sse("analyser_ready", record)
 
-        return {
-            "success": True,
-            "sheet_id": str(sheet_row.id),
-            "run_id": run_id,
-            "skill_sheet": result.get("skill_sheet", ""),
-            "model_used": result.get("model_used"),
-            "latency_ms": result.get("latency_ms"),
+        fast_rec = results_by_variant.get("fast", {})
+        best_rec = results_by_variant.get("best", {})
+        done_payload = {
+            "fast_sheet_id": fast_rec.get("sheet_id"),
+            "best_sheet_id": best_rec.get("sheet_id"),  # None in single mode
         }
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        log_analyser_run(
-            run_id=run_id,
-            scan_type=request.scan_type,
-            clinical_history=request.clinical_history,
-            result={},
-            error=str(e),
-        )
-        return {"success": False, "error": str(e), "run_id": run_id}
+        if parallel:
+            done_payload["both_succeeded"] = (
+                not fast_rec.get("error") and not best_rec.get("error")
+            )
+        else:
+            done_payload["succeeded"] = not fast_rec.get("error")
+        yield _sse("done", done_payload)
+
+    return EventSourceResponse(event_stream())
 
 
 async def _run_one_generator(
@@ -288,23 +345,19 @@ async def generate(
 ):
     """Generate a report against the ephemeral skill sheet via SSE streaming.
 
-    Fires GLM-4.7 and Claude Sonnet 4.6 in parallel against the same skill
-    sheet. Emits a ``candidate`` event as each model completes (progressive
-    disclosure — user sees the first-arriving report immediately and the
-    alternative becomes available when the second lands). Emits a ``done``
-    event with the persisted ``report_id`` once both candidates have completed
-    and been written to the DB.
+    Fires a single GLM-4.7 generator against the skill sheet, emits the
+    ``candidate`` event when it completes, then a ``done`` event once the
+    report has been persisted.
 
     Accepts either ``sheet_id`` (preferred; skill sheet already persisted by a
     prior /analyse call) or ``scan_type`` + ``clinical_history`` as a one-shot
-    fallback that runs the analyser inline before the dual-model generate.
+    fallback that runs the analyser inline before generation.
 
     Event stream:
       event: candidate  data: {model, content, latency_ms, run_id, ...}
-      event: candidate  data: {model, content, latency_ms, run_id, ...}
-      event: done       data: {report_id, sheet_id, both_succeeded}
+      event: done       data: {report_id, sheet_id, succeeded, description}
 
-      event: error      data: {error}           (on upstream failure before models fire)
+      event: error      data: {error}           (on upstream failure before the generator fires)
     """
     # Resolve user_id now — SSE generator body closes over Session which is
     # scoped to the request; current_user.id stays valid within the generator.
@@ -317,10 +370,12 @@ async def generate(
                 yield _sse("error", {"error": "Findings are required"})
                 return
 
-            api_key = get_system_api_key("cerebras", "CEREBRAS_API_KEY")
-            if not api_key:
-                yield _sse("error", {"error": "Cerebras API key not configured"})
-                return
+            # Cerebras key passes through for Cerebras-backed analysers;
+            # Anthropic-backed analysers fetch ANTHROPIC_API_KEY inline.
+            # An empty cerebras key is fine if the active analyser is Anthropic,
+            # but the generator dual-model path still needs model-specific keys
+            # at its own call sites.
+            api_key = get_system_api_key("cerebras", "CEREBRAS_API_KEY") or ""
 
             # ── Resolve the skill sheet ───────────────────────────────────
             sheet_row = None
@@ -353,7 +408,7 @@ async def generate(
                     skill_sheet_markdown=analyser_result.get("skill_sheet", ""),
                     analyser_model=analyser_result.get("model_used", ""),
                     analyser_latency_ms=analyser_result.get("latency_ms"),
-                    analyser_prompt_version=ANALYSER_PROMPT_VERSION,
+                    analyser_prompt_version=analyser_result.get("prompt_version") or analyser_prompt_version(analyser_result.get("model_used", "zai-glm-4.7")),
                     run_id=run_id_base,
                 )
                 skill_sheet_markdown = sheet_row.skill_sheet_markdown
@@ -366,7 +421,7 @@ async def generate(
                 )
                 return
 
-            # ── Fire both models in parallel ──────────────────────────────
+            # ── Fire the GLM generator ────────────────────────────────────
             tm = TemplateManager()
             template_config = {
                 "generation_mode": "skill_sheet_guided",
@@ -378,61 +433,28 @@ async def generate(
                 "CLINICAL_HISTORY": clinical_history,
             }
 
-            models_to_run = _active_models()
+            logger.info("quick-report generate firing model=%s", GENERATOR_MODEL)
+            candidate = await _run_one_generator(
+                tm=tm,
+                template_config=template_config,
+                user_inputs=user_inputs,
+                model_name=GENERATOR_MODEL,
+                run_id=f"{run_id_base}-{GENERATOR_MODEL[:8]}",
+                scan_type=scan_type,
+                clinical_history=clinical_history,
+                skill_sheet_markdown=skill_sheet_markdown,
+            )
+
             logger.info(
-                "quick-report generate firing models=%s (dual_enabled=%s)",
-                models_to_run,
-                _dual_model_enabled(),
+                "[SSE] yielding candidate event model=%s content_chars=%d latency=%sms error=%s",
+                candidate.get("model"),
+                len(candidate.get("content") or ""),
+                candidate.get("latency_ms"),
+                candidate.get("error"),
             )
-            tasks = [
-                asyncio.create_task(
-                    _run_one_generator(
-                        tm=tm,
-                        template_config=template_config,
-                        user_inputs=user_inputs,
-                        model_name=model_name,
-                        # Per-model run_id so proto logs tell candidates apart
-                        run_id=f"{run_id_base}-{model_name[:8].replace('/', '-')}",
-                        scan_type=scan_type,
-                        clinical_history=clinical_history,
-                        skill_sheet_markdown=skill_sheet_markdown,
-                    )
-                )
-                for model_name in models_to_run
-            ]
+            yield _sse("candidate", candidate)
 
-            candidates: list = []
-            # asyncio.as_completed yields each future in completion order, so
-            # whichever model returns first gets emitted first — progressive UX.
-            for future in asyncio.as_completed(tasks):
-                candidate = await future
-                candidates.append(candidate)
-                logger.info(
-                    "[SSE] yielding candidate event model=%s content_chars=%d latency=%sms error=%s",
-                    candidate.get("model"),
-                    len(candidate.get("content") or ""),
-                    candidate.get("latency_ms"),
-                    candidate.get("error"),
-                )
-                yield _sse("candidate", candidate)
-
-            # ── Persist both candidates to one reports row ────────────────
-            # Use the candidate with non-null content as primary for the legacy
-            # model_used/report_content columns (matters for reports-list views
-            # that don't know about candidate_reports).
-            primary_candidate = next(
-                (c for c in candidates if c.get("content")), candidates[0]
-            )
-            # Any non-null description from either model (GLM generally supplies one)
-            description = next(
-                (c.get("description") for c in candidates if c.get("description")),
-                None,
-            )
-
-            # Reorder so the primary sits at index 0 in candidate_reports
-            ordered_candidates = [primary_candidate] + [
-                c for c in candidates if c is not primary_candidate
-            ]
+            description = candidate.get("description")
 
             report_row = create_quick_report_with_candidates(
                 db=db,
@@ -441,15 +463,15 @@ async def generate(
                 findings_dictation=request.findings,
                 clinical_history=clinical_history,
                 scan_type=scan_type,
-                candidate_reports=ordered_candidates,
+                candidate_reports=[candidate],
                 description=description,
             )
 
             logger.info(
-                "[SSE] yielding done event report_id=%s sheet_id=%s both_succeeded=%s",
+                "[SSE] yielding done event report_id=%s sheet_id=%s succeeded=%s",
                 report_row.id,
                 sheet_row.id,
-                all(c.get("error") is None for c in candidates),
+                candidate.get("error") is None,
             )
             yield _sse(
                 "done",
@@ -457,7 +479,7 @@ async def generate(
                     "report_id": str(report_row.id),
                     "sheet_id": str(sheet_row.id),
                     "run_id": run_id_base,
-                    "both_succeeded": all(c.get("error") is None for c in candidates),
+                    "succeeded": candidate.get("error") is None,
                     "description": description,
                 },
             )
@@ -470,41 +492,6 @@ async def generate(
     return EventSourceResponse(event_stream())
 
 
-@router.patch("/reports/{report_id}/select")
-async def select_candidate(
-    report_id: str,
-    request: SelectCandidateRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Record which candidate the radiologist picked as the base for editing.
-
-    In Phase 2 with single-model generation there is only one candidate, so
-    this endpoint is mostly a no-op but records the selection for consistency
-    with the dual-model UX arriving in Phase 3.
-    """
-    # Ownership check — user can only select candidates on their own reports
-    report = get_report(db, report_id, user_id=str(current_user.id))
-    if report is None:
-        return {"success": False, "error": f"report {report_id} not found"}
-
-    updated = set_quick_report_selection(
-        db=db,
-        report_id=report_id,
-        selected_model=request.selected_model,
-        selection_ms_since_ready=request.selection_ms_since_ready,
-    )
-    if updated is None:
-        return {"success": False, "error": "Failed to record selection"}
-
-    return {
-        "success": True,
-        "report_id": str(updated.id),
-        "selected_model": updated.selected_model,
-        "selection_ms_since_ready": updated.selection_ms_since_ready,
-    }
-
-
 @router.patch("/reports/{report_id}/finalise")
 async def finalise_report(
     report_id: str,
@@ -513,8 +500,8 @@ async def finalise_report(
     db: Session = Depends(get_db),
 ):
     """Record the radiologist's final edited report content and a diff against
-    the selected candidate. If no diff is provided, compute a unified diff
-    server-side from the selected (or first) candidate.
+    the generated candidate. If no diff is provided, compute a unified diff
+    server-side.
 
     The ``final_edit_diff`` is the feedback signal that will eventually feed
     into learning about what the radiologist corrects and what they accept.
@@ -523,20 +510,12 @@ async def finalise_report(
     if report is None:
         return {"success": False, "error": f"report {report_id} not found"}
 
-    # Compute diff if not provided
+    # Compute diff if not provided. With a single generator there is one
+    # candidate — diff against it.
     diff_text = request.final_edit_diff
     if diff_text is None:
-        # Find the content to diff against — selected candidate if set, else
-        # the first candidate in the list
-        baseline_content = ""
         candidates = report.candidate_reports or []
-        if report.selected_model:
-            for cand in candidates:
-                if cand.get("model") == report.selected_model:
-                    baseline_content = cand.get("content", "")
-                    break
-        if not baseline_content and candidates:
-            baseline_content = candidates[0].get("content", "")
+        baseline_content = candidates[0].get("content", "") if candidates else ""
 
         diff_lines = list(difflib.unified_diff(
             baseline_content.splitlines(keepends=True),
@@ -550,9 +529,7 @@ async def finalise_report(
     updated = set_quick_report_selection(
         db=db,
         report_id=report_id,
-        selected_model=report.selected_model or (
-            (report.candidate_reports or [{}])[0].get("model", "unknown")
-        ),
+        selected_model=GENERATOR_MODEL,
         final_report_content=request.final_report_content,
         final_edit_diff=diff_text,
     )

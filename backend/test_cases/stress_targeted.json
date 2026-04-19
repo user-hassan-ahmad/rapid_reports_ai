@@ -1,0 +1,20 @@
+[
+  {
+    "name": "ct_ap_cholecystitis_descriptor_stress",
+    "scan_type": "CT abdomen pelvis with contrast",
+    "clinical_history": "52F with right upper quadrant pain, fever 38.9, WCC 18",
+    "findings": "The gallbladder is distended measuring 11 cm in long axis with marked wall thickening to 6 mm. Pericholecystic fluid and fat stranding are present. A 15 mm calculus is impacted in the cystic duct neck. Gallbladder wall hyperenhancement is noted. No pneumobilia or portal venous gas. No intrahepatic or extrahepatic biliary ductal dilatation; CBD measures 5 mm. Liver is normal in size and attenuation with no focal lesion. Pancreas, spleen, kidneys, and adrenals are unremarkable. Bowel loops are normal in calibre without wall thickening or obstruction. No free intraperitoneal fluid or air. Bladder and uterus and ovaries are unremarkable. No pelvic or retroperitoneal lymphadenopathy. No acute osseous abnormality. Lung bases are clear."
+  },
+  {
+    "name": "ct_thorax_pleural_tethering_stress",
+    "scan_type": "CT thorax with IV contrast",
+    "clinical_history": "65M smoker, incidental pulmonary nodule on recent chest X-ray, for characterisation",
+    "findings": "A 28 mm spiculated mass in the left upper lobe apicoposterior segment. The mass abuts the parietal pleura without frank invasion. It tethers the adjacent visceral pleura with surface retraction but no discrete pleural nodularity. The fat plane between the mass and the aortic arch is preserved. The mass is closely apposed to but does not encase the left upper lobe bronchus; bronchial patency is maintained. No cavitation. Left hilar node measures 11 mm in short axis. No mediastinal lymphadenopathy. No pleural effusion. No contralateral pulmonary nodules. No adrenal or hepatic metastases within the imaged upper abdomen. Background upper lobe centrilobular emphysema. No bony lesion."
+  },
+  {
+    "name": "ct_ap_gender_indeterminate_stress",
+    "scan_type": "CT abdomen pelvis with contrast",
+    "clinical_history": "73 year old with 2 day history of abdominal pain and low grade fever, no localising signs. Query source.",
+    "findings": "No acute intra-abdominal pathology. Liver, spleen, pancreas, kidneys, and adrenal glands are normal in size and appearance with no focal lesion. No intrahepatic or extrahepatic biliary ductal dilatation. Bowel loops are normal in calibre and wall thickness with no obstruction, mural thickening, or surrounding fat stranding. No free intraperitoneal air or fluid. No lymphadenopathy. No acute osseous lesion. The lung bases are clear."
+  }
+]

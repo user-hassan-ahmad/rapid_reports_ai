@@ -79,6 +79,28 @@ body {
   @apply opacity-50 cursor-not-allowed;
 }
 
+/* "Best skill sheet ready" glow — applied via class:best-ready binding
+   when the Haiku analyser completes. Uses a lighter violet (purple-300/400)
+   that reads as distinctly brighter than the purple-700 baseline button,
+   so the transition clearly signals state change rather than mimicking hover.
+   Existing btn-primary-subtle transition covers box-shadow at 0.4s so the
+   glow fades in smoothly. */
+.btn-primary-subtle.best-ready {
+  box-shadow:
+    0 0 0 1px rgba(216, 180, 254, 0.55),
+    0 0 18px rgba(192, 132, 252, 0.38),
+    0 0 32px rgba(167, 139, 250, 0.2);
+}
+
+.btn-primary-subtle.best-ready:not(:disabled):hover {
+  box-shadow:
+    0 0 0 1px rgba(216, 180, 254, 0.75),
+    0 0 24px rgba(192, 132, 252, 0.5),
+    0 0 42px rgba(167, 139, 250, 0.28),
+    0 4px 14px rgba(0, 0, 0, 0.3);
+  filter: brightness(1.09);
+}
+
 .btn-primary:disabled {
   @apply opacity-50 cursor-not-allowed;
 }

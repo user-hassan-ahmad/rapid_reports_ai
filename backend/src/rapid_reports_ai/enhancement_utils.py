@@ -203,8 +203,12 @@ MODEL_CONFIG = {
     "SKILL_SHEET_REFINER": "zai-glm-4.7",       # Refine skill sheet via chat
     "SKILL_SHEET_TEST_GENERATE": "zai-glm-4.7", # Test-generate report from skill sheet (Cerebras GLM-4.7)
 
-    # Quick Report Proto — ephemeral skill sheet from scan_type + clinical_history
-    "QUICK_REPORT_PROTO_ANALYZER": "zai-glm-4.7",
+    # Quick Report — ephemeral skill sheet from scan_type + clinical_history.
+    # Speculative-parallel pattern: both analysers fire on workspace setup.
+    # FAST returns first (GLM on Cerebras, ~9s), BEST returns later (Haiku on
+    # Anthropic, ~40s). Generate uses whichever sheet is available at click.
+    "QUICK_REPORT_ANALYZER_FAST": "zai-glm-4.7",
+    "QUICK_REPORT_ANALYZER_BEST": "claude-haiku-4-5-20251001",
 
     # Knowledge Maintenance Agent
     "KNOWLEDGE_MAINTENANCE": "gpt-oss-120b",  # Async agent: populate knowledge_links from skill sheet
@@ -227,6 +231,7 @@ MODEL_PROVIDERS = {
     # Anthropic models
     "claude-sonnet-4-20250514": "anthropic",
     "claude-sonnet-4-6": "anthropic",
+    "claude-haiku-4-5-20251001": "anthropic",  # Haiku 4.5 — fast/cheap analyser variant
     
     # Cerebras models
     "gpt-oss-120b": "cerebras",

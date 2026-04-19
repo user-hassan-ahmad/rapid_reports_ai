@@ -245,7 +245,13 @@ In both cases the scratchpad must commit to something: a finding, a measurement,
 
 # Direct coverage
 
-A statement directly covers a section when its grammatical subject is that section's own named structure, or a standard radiological abbreviation of it (CBD, IVC, and similar conventions), and it carries a definitive clinical claim about that structure.
+A statement directly covers a section when it carries a definitive clinical claim whose **structural anchor** is that section's named structure (or a standard radiological abbreviation of it — CBD, IVC, and similar conventions). The structural anchor can take any of three forms:
+
+- the **grammatical subject** of the claim ("The liver is normal", "The mediastinum is unremarkable")
+- the **location** of the claim via prepositional phrase ("mass in the liver", "lesion in the mediastinum", "collection in the pelvis")
+- the **adjectival or attributive modifier** of the claim's subject ("pleural effusion", "hepatic lesion", "renal cyst", "mediastinal lymphadenopathy")
+
+In all three forms a definitive clinical claim is still required — a bare mention with no finding, measurement, qualifier, or explicit normality statement does not cover the section. The distinction is only about *where in the sentence the named structure sits*; it does not relax the requirement that the statement commits to something.
 
 # Collective coverage
 
@@ -275,7 +281,7 @@ Match checklist sections to scratchpad statements by structure name or by standa
 
 # Output
 
-Return only the checklist sections that meet the coverage test, using the exact strings from the checklist."""
+Return only the checklist sections that meet the coverage test. **Each covered section appears as a separate element in the list, using the exact string as it appears in the checklist.** Do not concatenate multiple sections into a single comma-separated string — if three sections are covered, emit three list elements, not one string containing three names. Never invent a section that was not in the checklist."""
 
 
 CANVAS_COVERAGE_USER_PROMPT_TEMPLATE = """## Scratchpad
@@ -558,7 +564,7 @@ async def review_scratchpad(
 
     async def run_coverage() -> list[str]:
         import time as _time
-        coverage_model_settings = {"temperature": 0.7, "top_p": 0.8, "max_completion_tokens": 500}
+        coverage_model_settings = {"temperature": 0.1, "top_p": 0.8, "max_completion_tokens": 500}
         scratchpad_preview = request.scratchpad_content[:200].replace('\n', ' | ')
         print(f"\n[COVERAGE] ── New call ──────────────────────────")
         print(f"[COVERAGE] Model: {coverage_model} | Scratchpad: {len(request.scratchpad_content)} chars")
@@ -574,8 +580,39 @@ async def review_scratchpad(
                 api_key=coverage_api_key,
                 model_settings=coverage_model_settings,
             )
-            covered = result.output.covered_sections
+            raw_covered = result.output.covered_sections
             elapsed = _time.perf_counter() - t0
+
+            # Defensive post-validation — the schema is list[str] so any string is
+            # valid at the schema layer, but Qwen occasionally:
+            #   (a) comma-concatenates multiple sections into one string element
+            #       (e.g. "LUNGS, PLEURA, MEDIASTINAL AND HILAR STRUCTURES")
+            #   (b) emits a section name that isn't on the checklist (hallucination)
+            # Split comma-joined elements when every part matches the checklist,
+            # then filter to sections that are actually on the checklist.
+            checklist_set = set(request.checklist_sections)
+            normalised: list[str] = []
+            split_count = 0
+            dropped: list[str] = []
+            for item in raw_covered:
+                if "," in item:
+                    parts = [p.strip() for p in item.split(",")]
+                    if all(p in checklist_set for p in parts):
+                        normalised.extend(parts)
+                        split_count += 1
+                        continue
+                if item in checklist_set:
+                    normalised.append(item)
+                else:
+                    dropped.append(item)
+            # Dedupe preserving order
+            covered = list(dict.fromkeys(normalised))
+
+            if split_count or dropped:
+                print(
+                    f"[COVERAGE] 🔧 normalised raw={raw_covered} "
+                    f"split={split_count} dropped={dropped}"
+                )
             print(f"[COVERAGE] ✅ {elapsed:.2f}s → {covered}")
             return covered
         except Exception as e:

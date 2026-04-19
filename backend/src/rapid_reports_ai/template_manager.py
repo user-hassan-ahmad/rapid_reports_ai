@@ -2570,7 +2570,11 @@ Scan Type: {scan_type}
 Clinical History: {clinical_history}
 Findings: {findings_input}
 
-Generate the report now. Output the report content ONLY — no analysis, no commentary, no restatement of the skill sheet. Emit exactly the sections declared in the skill sheet's Structural Pattern, in order."""
+Generate the report now. Output the report content ONLY — no analysis, no commentary, no restatement of the skill sheet. Emit exactly the sections declared in the skill sheet's Structural Pattern, in order.
+
+**Voice.** Write as a consultant dictating clinical observations at pace — each finding a compressed declarative, noun-dense, connective-sparse. Separate observations get separate sentences; a consultant states what is, not what they saw. Hedge only where diagnostic uncertainty is genuine.
+
+**Impression.** Write as a consultant handing over to the referring clinician — they need to know what you concluded and what to do about it, and nothing else. Every sentence earns its place by changing what happens next. The voice is clinical handover: specific, unsentimental, and calibrated by consequence rather than adjective."""
         else:
             user_prompt = f"""## INPUTS
 

@@ -2552,7 +2552,7 @@ async def quick_report_proto_analyse_endpoint(
         generate_ephemeral_skill_sheet,
         log_analyser_run,
         new_run_id,
-        ANALYSER_PROMPT_VERSION,
+        analyser_prompt_version,
     )
     from .database import create_ephemeral_skill_sheet
 
@@ -2561,9 +2561,9 @@ async def quick_report_proto_analyse_endpoint(
         if not request.scan_type.strip():
             return {"success": False, "error": "Scan type is required"}
 
-        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
-        if not api_key:
-            return {"success": False, "error": "Cerebras API key not configured"}
+        # api_key passes through for Cerebras-backed analysers; Anthropic-backed
+        # analysers ignore this and fetch ANTHROPIC_API_KEY inside the call.
+        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY') or ""
 
         result = await generate_ephemeral_skill_sheet(
             scan_type=request.scan_type,
@@ -2583,7 +2583,7 @@ async def quick_report_proto_analyse_endpoint(
                 skill_sheet_markdown=result.get("skill_sheet", ""),
                 analyser_model=result.get("model_used", ""),
                 analyser_latency_ms=result.get("latency_ms"),
-                analyser_prompt_version=ANALYSER_PROMPT_VERSION,
+                analyser_prompt_version=result.get("prompt_version") or analyser_prompt_version(result.get("model_used", "zai-glm-4.7")),
                 run_id=run_id,
             )
             sheet_id = str(sheet_row.id)
@@ -3495,171 +3495,59 @@ async def enhance_report(
             for i, f in enumerate(prefetch_output.consolidated_findings if prefetch_output else [])
         ]
 
-        # ── Audit phase: branch on dual-candidate vs single-candidate ──────
-        # Dual-candidate path (quick-report ephemeral flow with two generator
-        # outputs): run the full 9-criterion audit (phase 1a + 1b + 2) against
-        # each candidate's content in parallel, and persist one ReportAudit row
-        # per candidate tagged by audited_candidate_model. This lets the UI
-        # toggle audit state in lockstep with the candidate toggle without
-        # paying for a second prefetch/synthesis cycle.
-        #
-        # Single-candidate path (templated/auto reports, or quick reports where
-        # only one candidate succeeded): current behaviour — phase 2 only,
-        # appended to the existing phase 1 audit row created by /api/audit.
-        candidate_reports_list: list = report.candidate_reports or []
-        _valid_candidates = [
-            c for c in candidate_reports_list
-            if isinstance(c, dict) and c.get("content") and not c.get("error")
-        ]
-        is_dual_candidate = len(_valid_candidates) >= 2
-
+        # ── Audit phase ────────────────────────────────────────────────────
+        # Single-generator flow: Phase 2 (four additional criteria) appended to
+        # the existing Phase 1 audit row created by /api/audit. The earlier
+        # dual-candidate branch (one audit row per generator) is gone now that
+        # /generate produces a single GLM candidate.
         phase2_criteria_list = []
         audit_id = None
         candidate_audits_response: list = []
 
-        if is_dual_candidate:
-            from .enhancement_utils import run_full_audit as _run_full_audit
-            from .database.crud import create_report_audit as _create_report_audit
+        try:
+            from .enhancement_utils import run_audit_phase2
 
-            _prefetch_urgency = prefetch_output.urgency_signals if prefetch_output else []
-            _prefetch_findings = prefetch_output.consolidated_findings if prefetch_output else []
-            _prefetch_labels = prefetch_output.finding_short_labels if prefetch_output else []
+            phase2_criteria_list = await run_audit_phase2(
+                report_content=report_content,
+                scan_type=scan_type,
+                clinical_history=clinical_history,
+                synthesis_cards=guidelines_cards,
+                urgency_signals=prefetch_output.urgency_signals if prefetch_output else [],
+                consolidated_findings=prefetch_output.consolidated_findings if prefetch_output else [],
+                finding_short_labels=prefetch_output.finding_short_labels if prefetch_output else [],
+            )
 
-            async def _audit_one(candidate: dict) -> dict:
-                """Full 9-criterion audit for one candidate draft. Returns
-                {candidate_model, result_dict, error}."""
-                _t0 = time.perf_counter()
-                try:
-                    result = await _run_full_audit(
-                        report_content=candidate.get("content") or "",
-                        scan_type=scan_type,
-                        clinical_history=clinical_history,
-                        findings_input=findings_input,
-                        other_variables=other_variables,
-                        urgency_signals=_prefetch_urgency,
-                        synthesis_cards=guidelines_cards,
-                        consolidated_findings=_prefetch_findings,
-                        finding_short_labels=_prefetch_labels,
-                    )
-                    _ms = int((time.perf_counter() - _t0) * 1000)
-                    print(
-                        f"[FLOW_TIMING] enhance: per-candidate full audit "
-                        f"model={candidate.get('model')!r} ms={_ms} "
-                        f"criteria={len(result.get('criteria', []))}"
-                    )
-                    return {"candidate_model": candidate.get("model"), "result": result, "error": None}
-                except Exception as _ax:
-                    print(
-                        f"enhance_report: per-candidate audit failed "
-                        f"model={candidate.get('model')!r}: {type(_ax).__name__}: {_ax}"
-                    )
-                    return {"candidate_model": candidate.get("model"), "result": None, "error": str(_ax)}
-
-            _audit_results = await asyncio.gather(*[_audit_one(c) for c in _valid_candidates])
-
-            for entry in _audit_results:
-                cand_model = entry["candidate_model"]
-                result = entry["result"]
-                if not result:
-                    candidate_audits_response.append({
-                        "candidate_model": cand_model,
-                        "audit_id": None,
-                        "error": entry["error"],
-                    })
-                    continue
-                try:
-                    _audit_row = _create_report_audit(
-                        db=db,
-                        report=report,
-                        user_id=str(current_user.id),
-                        audit_result=result,
-                        scan_type=scan_type or "",
-                        clinical_history=clinical_history or "",
-                        model_used="zai-glm-4.7",
-                        audited_candidate_model=cand_model,
-                    )
-                    candidate_audits_response.append({
-                        "candidate_model": cand_model,
-                        "audit_id": str(_audit_row.id),
-                        "overall_status": result.get("overall_status"),
-                        "summary": result.get("summary", ""),
-                        "criteria": result.get("criteria", []),
-                    })
-                except Exception as _pex:
-                    print(
-                        f"enhance_report: DB persist failed for candidate "
-                        f"{cand_model!r}: {_pex}"
-                    )
-                    candidate_audits_response.append({
-                        "candidate_model": cand_model,
-                        "audit_id": None,
-                        "overall_status": result.get("overall_status"),
-                        "summary": result.get("summary", ""),
-                        "criteria": result.get("criteria", []),
-                        "error": f"persist_failed: {_pex}",
-                    })
-
-            # Back-compat: populate phase2_criteria_list + audit_id from the
-            # first successful candidate so the legacy response shape and the
-            # ENHANCEMENT_RESULTS cache still carry usable phase-2 data.
-            for entry in candidate_audits_response:
-                if entry.get("criteria") and entry.get("audit_id"):
-                    phase2_criteria_list = [
-                        c for c in entry["criteria"]
-                        if c.get("criterion") in (
-                            "diagnostic_fidelity", "recommendations",
-                            "clinical_flagging", "characterisation_gap",
-                        )
-                    ]
-                    audit_id = entry["audit_id"]
-                    break
-
-        else:
-            # Single-candidate path — unchanged from the pre-dual-model behaviour.
             try:
-                from .enhancement_utils import run_audit_phase2
+                from .database.crud import append_audit_criteria
+                from .database.models import ReportAudit as _RA
 
-                phase2_criteria_list = await run_audit_phase2(
-                    report_content=report_content,
-                    scan_type=scan_type,
-                    clinical_history=clinical_history,
-                    synthesis_cards=guidelines_cards,
-                    urgency_signals=prefetch_output.urgency_signals if prefetch_output else [],
-                    consolidated_findings=prefetch_output.consolidated_findings if prefetch_output else [],
-                    finding_short_labels=prefetch_output.finding_short_labels if prefetch_output else [],
+                existing_audit = (
+                    db.query(_RA)
+                    .filter(_RA.report_id == uuid.UUID(report_id))
+                    .order_by(_RA.created_at.desc())
+                    .first()
                 )
-
-                try:
-                    from .database.crud import append_audit_criteria
-                    from .database.models import ReportAudit as _RA
-
-                    existing_audit = (
-                        db.query(_RA)
-                        .filter(_RA.report_id == uuid.UUID(report_id))
-                        .order_by(_RA.created_at.desc())
-                        .first()
+                if existing_audit:
+                    audit_id = str(existing_audit.id)
+                    all_statuses = [c.status for c in existing_audit.criteria] + [
+                        c.status if hasattr(c, "status") else c.get("status", "pass")
+                        for c in phase2_criteria_list
+                    ]
+                    new_overall = "pass"
+                    if any(s == "flag" for s in all_statuses):
+                        new_overall = "flag"
+                    elif any(s == "warning" for s in all_statuses):
+                        new_overall = "warning"
+                    append_audit_criteria(
+                        db, existing_audit.id, phase2_criteria_list, new_overall,
                     )
-                    if existing_audit:
-                        audit_id = str(existing_audit.id)
-                        all_statuses = [c.status for c in existing_audit.criteria] + [
-                            c.status if hasattr(c, "status") else c.get("status", "pass")
-                            for c in phase2_criteria_list
-                        ]
-                        new_overall = "pass"
-                        if any(s == "flag" for s in all_statuses):
-                            new_overall = "flag"
-                        elif any(s == "warning" for s in all_statuses):
-                            new_overall = "warning"
-                        append_audit_criteria(
-                            db, existing_audit.id, phase2_criteria_list, new_overall,
-                        )
-                    else:
-                        print("enhance_report: no Phase 1 audit row yet — Phase 2 criteria stored in enhancement_json only")
-                except Exception as _pa_ex:
-                    print(f"enhance_report: Phase 2 audit persistence failed: {_pa_ex}")
+                else:
+                    print("enhance_report: no Phase 1 audit row yet — Phase 2 criteria stored in enhancement_json only")
+            except Exception as _pa_ex:
+                print(f"enhance_report: Phase 2 audit persistence failed: {_pa_ex}")
 
-            except Exception as _p2_ex:
-                print(f"enhance_report: Phase 2 audit failed (non-fatal): {_p2_ex}")
+        except Exception as _p2_ex:
+            print(f"enhance_report: Phase 2 audit failed (non-fatal): {_p2_ex}")
 
         # ── Store results & persist ─────────────────────────────────────────
         phase2_criteria_dicts = [
@@ -3696,7 +3584,7 @@ async def enhance_report(
         print(
             f"[FLOW_TIMING] enhance: end report_id={report_id} total_wall_ms={_enh_wall_ms} "
             f"guidelines_cards={len(guidelines_cards)} phase2_criteria={len(phase2_criteria_list)} "
-            f"candidate_audits={len(candidate_audits_response)} dual={is_dual_candidate}"
+            f"candidate_audits={len(candidate_audits_response)}"
         )
 
         return {

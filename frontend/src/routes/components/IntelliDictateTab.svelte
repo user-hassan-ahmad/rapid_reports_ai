@@ -24,25 +24,26 @@ import { readSSEStream } from '$lib/utils/sse';
 	let regenerating = false;
 
 	// ── Quick-report ephemeral-skill-sheet pipeline ──
-	// Fired in parallel with workspace setup so the skill sheet is ready by
-	// the time the radiologist finishes dictating. If /analyse fails or hasn't
-	// completed, /generate falls back to a one-shot path that runs the analyser
-	// inline — so the pipeline works either way.
-	let sheetId = '';
-	// True while /analyse is in flight. The Generate button disables during
-	// this window to prevent racing the scaffolding — if the user hit Generate
-	// while analyse was still working, the fallback path would work but would
-	// take ~2× the expected latency (analyser inline + generator sequential).
+	// Speculative-parallel: backend fires FAST (GLM, ~9s) and BEST (Haiku, ~40s)
+	// analysers concurrently and streams an `analyser_ready` event per variant.
+	// /generate uses whichever sheet is available at click time — preferring
+	// best. If both /analyse variants fail, /generate has a one-shot fallback
+	// that runs the analyser inline from scan_type + clinical_history.
+	let fastSheetId = '';
+	let bestSheetId = '';
+	// True while /analyse is streaming. The Generate button disables until at
+	// least one sheet is ready (either variant enables it).
 	let analyseLoading = false;
 	// Monotonic token so stale /analyse responses (from superseded workspace
-	// setups) can't overwrite fresh ones. Every triggerSheetAnalyse call
-	// takes a version; only commits its result if the version is still current.
+	// setups) can't overwrite fresh ones.
 	let analyseVersion = 0;
+	$: analyserReady = Boolean(fastSheetId || bestSheetId);
+	$: bestSheetReady = Boolean(bestSheetId);
 
-	// ── Phase 3: dual-model candidates ──
-	// /generate streams two candidate reports (GLM-4.7 + Claude Sonnet 4.6)
-	// via SSE. The first to arrive populates `response` immediately. The
-	// second becomes available via an alt-candidate toggle once it lands.
+	// ── /generate SSE candidate ──
+	// /generate streams a single GLM-4.7 candidate via SSE: one `candidate`
+	// event carries the report content, then a `done` event carries the
+	// persisted report_id.
 	interface Candidate {
 		model: string;
 		content: string;
@@ -52,10 +53,6 @@ import { readSSEStream } from '$lib/utils/sse';
 		error: string | null;
 		description?: string | null;
 	}
-	let candidates: Candidate[] = [];
-	let activeCandidateIdx = 0;
-	// True from the moment first candidate renders until done event arrives
-	let waitingForAlternative = false;
 
 	interface IntelliPrompt { question: string; source_text: string; rationale?: string; }
 
@@ -133,19 +130,21 @@ import { readSSEStream } from '$lib/utils/sse';
 	$: allChecklistSections = prePoppedSections;
 
 	/**
-	 * Fire the quick-report analyser in the background. Runs in parallel
-	 * with the sections call so the ephemeral skill sheet is ready by the
-	 * time the radiologist finishes dictating. Silent on failure — the
-	 * /generate endpoint has a fallback path that runs the analyser inline
-	 * if sheet_id is missing.
+	 * Fire the speculative-parallel quick-report analyser in the background.
+	 * Backend streams `analyser_ready` events as each variant completes (FAST
+	 * first, BEST second). Runs in parallel with the sections call so at least
+	 * one skill sheet is ready by the time the radiologist finishes dictating.
+	 * Silent on failure — the /generate endpoint has a fallback path that runs
+	 * the analyser inline if neither sheet is available.
 	 *
 	 * Version-tokenised: if a subsequent triggerSheetAnalyse call fires while
 	 * this one is still in flight (e.g. the user re-clicks "Set up workspace"
-	 * after editing scan type), this call's response is discarded on return.
+	 * after editing scan type), this call's events are discarded on return.
 	 */
 	async function triggerSheetAnalyse() {
 		const thisVersion = ++analyseVersion;
-		sheetId = '';
+		fastSheetId = '';
+		bestSheetId = '';
 		if (!scanType.trim() || !clinicalHistory.trim()) return;
 		analyseLoading = true;
 		try {
@@ -153,22 +152,26 @@ import { readSSEStream } from '$lib/utils/sse';
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
 			const res = await fetch(`${API_URL}/api/quick-report/analyse`, {
 				method: 'POST',
-				headers,
+				headers: { ...headers, Accept: 'text/event-stream' },
 				body: JSON.stringify({
 					scan_type: scanType.trim(),
 					clinical_history: clinicalHistory.trim()
 				})
 			});
-			const data = await res.json();
-			// Discard stale response — a newer analyse has superseded this one
-			if (thisVersion !== analyseVersion) return;
-			if (data?.success && data.sheet_id) {
-				sheetId = data.sheet_id;
-			}
+			if (!res.ok) return;
+			await readSSEStream(res, (eventName, data) => {
+				// Discard stale events — a newer analyse has superseded this one
+				if (thisVersion !== analyseVersion) return;
+				if (eventName === 'analyser_ready') {
+					if (data?.error || !data?.sheet_id) return;
+					if (data.variant === 'fast') fastSheetId = data.sheet_id;
+					else if (data.variant === 'best') bestSheetId = data.sheet_id;
+				}
+				// `done` and `error` events are logged implicitly via loading flag.
+			});
 		} catch {
 			// Silent — /generate fallback handles this case
 		} finally {
-			// Only clear loading if we're still the latest call
 			if (thisVersion === analyseVersion) analyseLoading = false;
 		}
 	}
@@ -304,23 +307,18 @@ import { readSSEStream } from '$lib/utils/sse';
 		responseModel = null;
 		applicableGuidelines = [];
 
-		// Reset dual-candidate state
-		candidates = [];
-		activeCandidateIdx = 0;
-		waitingForAlternative = true;
-
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
 
 			// Quick-report ephemeral-skill-sheet pipeline.
-			// Prefer sheet_id if the analyser already completed in parallel
-			// with workspace setup. Otherwise fall back to one-shot mode: the
-			// /generate endpoint runs the analyser inline from scan_type +
-			// clinical_history.
+			// Prefer the BEST sheet (Haiku); fall back to FAST (GLM) if BEST
+			// hasn't landed yet. If neither is ready, /generate runs the
+			// analyser inline from scan_type + clinical_history.
+			const bestAvailable = bestSheetId || fastSheetId;
 			const body: Record<string, unknown> = { findings: content };
-			if (sheetId) {
-				body.sheet_id = sheetId;
+			if (bestAvailable) {
+				body.sheet_id = bestAvailable;
 			} else {
 				body.scan_type = scanType.trim();
 				body.clinical_history = clinicalHistory.trim();
@@ -335,60 +333,42 @@ import { readSSEStream } from '$lib/utils/sse';
 			if (!res.ok) {
 				error = `Failed to generate report (HTTP ${res.status}). Please try again.`;
 				loading = false;
-				waitingForAlternative = false;
 				return;
 			}
 
 			// SSE stream — backend emits:
-			//   event: candidate  (once per model, in completion order)
-			//   event: done       (after both complete and persist to DB)
-			//   event: error      (upstream failure before models fire)
+			//   event: candidate  (single GLM candidate)
+			//   event: done       (after persist to DB)
+			//   event: error      (upstream failure before the generator fires)
+			let generatorErrored = false;
 			await readSSEStream(res, (eventName, data) => {
 				if (eventName === 'candidate') {
 					const cand: Candidate = data;
-					candidates = [...candidates, cand];
-
-					// Render the first successful candidate immediately.
-					// If the first to land errored, wait for the other. If
-					// both error, the `done` event still fires.
-					if (response === null && !cand.error && cand.content) {
-						response = cand.content;
-						responseModel = cand.model;
-						activeCandidateIdx = candidates.length - 1;
-						hasResponseEver = true;
-						findingsAtReportGeneration = content;
-						// Flip loading off as soon as the first candidate is
-						// rendered — UX immediately actionable. The alt
-						// candidate continues in the background.
-						loading = false;
+					if (cand.error || !cand.content) {
+						generatorErrored = true;
+						error = cand.error || 'Generator failed to produce a report. Please try again.';
+						return;
 					}
+					response = cand.content;
+					responseModel = cand.model;
+					hasResponseEver = true;
+					findingsAtReportGeneration = content;
+					loading = false;
 				} else if (eventName === 'done') {
 					reportId = data?.report_id ?? null;
-					if (data?.sheet_id && !sheetId) sheetId = data.sheet_id;
-					waitingForAlternative = false;
-					// If nothing rendered yet (e.g. first candidate errored),
-					// fall back now — there may be an errored entry we can
-					// show an error message for, or the alt succeeded later.
-					if (response === null) {
-						const succeeded = candidates.find((c) => !c.error && c.content);
-						if (succeeded) {
-							response = succeeded.content;
-							responseModel = succeeded.model;
-							activeCandidateIdx = candidates.indexOf(succeeded);
-							hasResponseEver = true;
-							findingsAtReportGeneration = content;
-						} else {
-							const firstError = candidates.find((c) => c.error);
-							error = firstError?.error || 'Both models failed to generate. Please try again.';
-						}
-						loading = false;
+					// If /generate ran the analyser inline (no sheet_id sent),
+					// capture the sheet_id it created so subsequent regenerate
+					// flows see a warm fast sheet.
+					if (data?.sheet_id && !fastSheetId && !bestSheetId) fastSheetId = data.sheet_id;
+					if (response === null && !generatorErrored) {
+						error = 'Generator completed without content. Please try again.';
 					}
+					loading = false;
 					draftStore.clearIntelliTab();
 					dispatch('historyUpdate', { count: 1 });
 				} else if (eventName === 'error') {
 					error = data?.error || 'Failed to generate report. Please try again.';
 					loading = false;
-					waitingForAlternative = false;
 				}
 			});
 
@@ -396,40 +376,6 @@ import { readSSEStream } from '$lib/utils/sse';
 		} catch (e) {
 			error = 'Failed to connect. Please try again.';
 			loading = false;
-			waitingForAlternative = false;
-		}
-	}
-
-	/**
-	 * Switch the displayed report to a different candidate. Records the
-	 * selection with the backend so the feedback signal captures which model
-	 * the radiologist preferred.
-	 */
-	async function switchToCandidate(idx: number) {
-		if (idx < 0 || idx >= candidates.length) return;
-		if (idx === activeCandidateIdx) return;
-		const cand = candidates[idx];
-		if (cand.error || !cand.content) return;
-
-		response = cand.content;
-		responseModel = cand.model;
-		activeCandidateIdx = idx;
-
-		// Best-effort: record the selection. Not critical to the UX — if it
-		// fails, the user still sees the chosen report; only the telemetry
-		// signal is lost.
-		if (reportId) {
-			try {
-				const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-				if ($token) headers['Authorization'] = `Bearer ${$token}`;
-				await fetch(`${API_URL}/api/quick-report/reports/${reportId}/select`, {
-					method: 'PATCH',
-					headers,
-					body: JSON.stringify({ selected_model: cand.model })
-				});
-			} catch {
-				// silent — data capture convenience
-			}
 		}
 	}
 
@@ -441,9 +387,6 @@ import { readSSEStream } from '$lib/utils/sse';
 		hasResponseEver = false;
 		responseVisible = false;
 		findingsAtReportGeneration = '';
-		candidates = [];
-		activeCandidateIdx = 0;
-		waitingForAlternative = false;
 		dispatch('clearResponse');
 	}
 
@@ -842,21 +785,22 @@ import { readSSEStream } from '$lib/utils/sse';
 	</div>
 
 			<!-- Generate Report — full width spanning editor + side panel -->
-			<!-- analyseLoading gate: disables the button briefly while the
-			     ephemeral skill sheet is being prepared (runs in parallel with
-			     dictation). Keeps expected generate latency predictable. -->
+			<!-- Speculative-parallel gate: the button enables as soon as the
+			     first (FAST) sheet lands. While the BEST (Haiku) sheet is still
+			     pending, a subtle indicator shows the higher-quality option is
+			     still incoming — but the user can click through anytime. -->
 			<button
 				type="button"
 				onclick={() => handleGenerateReport()}
-				disabled={isRecording || loading || analyseLoading || !scratchpadContent.trim() || sectionsDirty}
+				disabled={isRecording || loading || (analyseLoading && !analyserReady) || !scratchpadContent.trim() || sectionsDirty}
 				class="btn-primary-subtle w-full px-6 py-3 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+				class:best-ready={bestSheetReady && !loading}
 			>
 				{#if loading}
 					<div class="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
 					<span>Generating...</span>
-				{:else if analyseLoading}
-					<div class="w-4 h-4 border-2 border-gray-500 border-t-gray-300 rounded-full animate-spin opacity-70"></div>
-					<span>Getting ready...</span>
+				{:else if analyseLoading && !analyserReady}
+					<span>Start dictating findings</span>
 				{:else}
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -866,40 +810,6 @@ import { readSSEStream } from '$lib/utils/sse';
 			</button>
 
 		</div><!-- end workspace flex-col -->
-	{/if}
-
-	<!-- Candidate switcher: appears when dual-model generated multiple reports.
-	     Minimal Phase 3 UX — Phase 4 will replace this with side-by-side cards. -->
-	{#if candidates.length > 0 && (candidates.length >= 2 || waitingForAlternative)}
-		<div
-			class="flex items-center gap-3 px-4 py-2 border-b border-white/[0.06] bg-black/20 shrink-0"
-			in:fade={{ duration: 200 }}
-		>
-			<span class="text-[11px] uppercase tracking-wider text-gray-500">
-				{candidates.length >= 2 ? 'Reports' : 'Report'}
-			</span>
-			{#each candidates as cand, i (cand.run_id)}
-				{#if !cand.error && cand.content}
-					<button
-						type="button"
-						onclick={() => switchToCandidate(i)}
-						class="text-[11px] px-2 py-1 rounded border transition-colors
-							{i === activeCandidateIdx
-								? 'border-purple-500/40 bg-purple-500/10 text-purple-300'
-								: 'border-white/10 hover:border-white/20 text-gray-400 hover:text-gray-200'}"
-						title={cand.latency_ms ? `${(cand.latency_ms / 1000).toFixed(1)}s` : undefined}
-					>
-						Option {String.fromCharCode(65 + i)}
-					</button>
-				{/if}
-			{/each}
-			{#if waitingForAlternative}
-				<span class="flex items-center gap-1.5 text-[11px] text-gray-600 ml-1">
-					<span class="inline-block w-2.5 h-2.5 border border-gray-600 border-t-transparent rounded-full animate-spin"></span>
-					alternative coming...
-				</span>
-			{/if}
-		</div>
 	{/if}
 
 	<!-- Report Response Viewer -->
@@ -921,7 +831,7 @@ import { readSSEStream } from '$lib/utils/sse';
 		{applicableGuidelines}
 		caseDetailsDirty={sectionsDirty}
 		{findingsStale}
-		activeCandidateModel={candidates.length >= 2 ? (candidates[activeCandidateIdx]?.model ?? null) : null}
+		activeCandidateModel={null}
 		on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
 	on:auditStateChange={(e) => dispatch('auditStateChange', e.detail)}
 	on:openVersionHistory={() => dispatch('openVersionHistory')}

@@ -44,3 +44,6 @@ smtp-test.log
 *.sublime-project
 *.sublime-workspace
 
+# Ephemeral test suite outputs (timestamped per-run dirs)
+test_output/
+
