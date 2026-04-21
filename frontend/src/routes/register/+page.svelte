@@ -33,7 +33,9 @@
 	});
 
 	function validate() {
+		if (!fullName.trim()) return 'Please enter your full name.';
 		if (!role) return 'Please select your role.';
+		if (!institution.trim()) return 'Please enter your institution.';
 		if (signupReason.trim().length < 10) return 'Please tell us a bit more (at least 10 characters).';
 		if (signupReason.length > 1000) return 'Reason is too long (max 1000 characters).';
 		return '';
@@ -60,7 +62,7 @@
 					password,
 					full_name: fullName,
 					role,
-					institution: institution || null,
+					institution,
 					signup_reason: signupReason
 				})
 			});
@@ -131,11 +133,14 @@
 			<form onsubmit={(e) => { e.preventDefault(); handleRegister(); }}>
 				<div class="mb-4">
 					<label class="block text-sm font-medium text-gray-300 mb-1">
-						Full Name
+						Full Name <span class="text-red-400">*</span>
 					</label>
 					<input
 						type="text"
 						bind:value={fullName}
+						required
+						minlength="1"
+						maxlength="200"
 						class="input-dark"
 						placeholder="John Doe"
 					/>
@@ -168,11 +173,13 @@
 
 				<div class="mb-4">
 					<label class="block text-sm font-medium text-gray-300 mb-1">
-						Institution <span class="text-gray-500">(optional)</span>
+						Institution <span class="text-red-400">*</span>
 					</label>
 					<input
 						type="text"
 						bind:value={institution}
+						required
+						minlength="1"
 						maxlength="200"
 						class="input-dark"
 						placeholder="e.g. Guy's and St Thomas'"

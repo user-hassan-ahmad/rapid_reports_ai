@@ -602,7 +602,7 @@ async def regenerate_report_with_actions(
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=200)
-    full_name: Optional[str] = None
+    full_name: str = Field(min_length=1, max_length=200)
     role: Literal[
         "consultant_radiologist",
         "registrar",
@@ -611,7 +611,7 @@ class RegisterRequest(BaseModel):
         "other_healthcare_professional",
         "other",
     ]
-    institution: Optional[str] = Field(default=None, max_length=200)
+    institution: str = Field(min_length=1, max_length=200)
     signup_reason: str = Field(min_length=10, max_length=1000)
 
 class ResetPasswordRequest(BaseModel):
