@@ -148,7 +148,7 @@
 
 				<div class="mb-4">
 					<label class="block text-sm font-medium text-gray-300 mb-1">
-						Email
+						Email <span class="text-red-400">*</span>
 					</label>
 					<input
 						type="email"
@@ -204,15 +204,17 @@
 
 				<div class="mb-6">
 					<label class="block text-sm font-medium text-gray-300 mb-1">
-						Password
+						Password <span class="text-red-400">*</span>
 					</label>
 					<input
 						type="password"
 						bind:value={password}
 						required
+						minlength="8"
 						class="input-dark"
 						placeholder="••••••••"
 					/>
+					<p class="text-xs text-gray-500 mt-1">At least 8 characters</p>
 				</div>
 
 				<button
