@@ -9,9 +9,21 @@
 	let email = '';
 	let password = '';
 	let fullName = '';
+	let role = '';
+	let institution = '';
+	let signupReason = '';
 	let error = '';
 	let loading = false;
 	let message = '';
+
+	const ROLE_OPTIONS = [
+		{ value: 'consultant_radiologist', label: 'Consultant radiologist' },
+		{ value: 'registrar', label: 'Registrar' },
+		{ value: 'reporting_radiographer', label: 'Reporting radiographer' },
+		{ value: 'medical_student', label: 'Medical student' },
+		{ value: 'other_healthcare_professional', label: 'Other healthcare professional' },
+		{ value: 'other', label: 'Other' }
+	];
 
 	// Redirect if already logged in
 	onMount(() => {
@@ -20,24 +32,47 @@
 		}
 	});
 
+	function validate() {
+		if (!role) return 'Please select your role.';
+		if (signupReason.trim().length < 10) return 'Please tell us a bit more (at least 10 characters).';
+		if (signupReason.length > 1000) return 'Reason is too long (max 1000 characters).';
+		return '';
+	}
+
 	async function handleRegister() {
 		loading = true;
 		error = '';
 		message = '';
 
+		const clientErr = validate();
+		if (clientErr) {
+			error = clientErr;
+			loading = false;
+			return;
+		}
+
 		try {
 			const res = await fetch(`${API_URL}/api/auth/register`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ email, password, full_name: fullName })
+				body: JSON.stringify({
+					email,
+					password,
+					full_name: fullName,
+					role,
+					institution: institution || null,
+					signup_reason: signupReason
+				})
 			});
 
 			const data = await res.json();
 
 			if (res.ok && data.success) {
-				message = data.message || 'Registration successful! Please check your email to verify your account.';
+				message = data.message || "Thanks — your account is pending admin approval. We'll email you when it's approved.";
+			} else if (res.status === 422) {
+				error = 'Please check the form — some fields look invalid.';
 			} else {
-				error = 'Registration failed. Please try again.';
+				error = data.error || 'Registration failed. Please try again.';
 			}
 		} catch (err) {
 			const errorMessage = err instanceof Error ? err.message : String(err);
@@ -117,6 +152,47 @@
 						class="input-dark"
 						placeholder="you@example.com"
 					/>
+				</div>
+
+				<div class="mb-4">
+					<label class="block text-sm font-medium text-gray-300 mb-1">
+						Role <span class="text-red-400">*</span>
+					</label>
+					<select bind:value={role} required class="input-dark">
+						<option value="" disabled>Select your role…</option>
+						{#each ROLE_OPTIONS as opt}
+							<option value={opt.value}>{opt.label}</option>
+						{/each}
+					</select>
+				</div>
+
+				<div class="mb-4">
+					<label class="block text-sm font-medium text-gray-300 mb-1">
+						Institution <span class="text-gray-500">(optional)</span>
+					</label>
+					<input
+						type="text"
+						bind:value={institution}
+						maxlength="200"
+						class="input-dark"
+						placeholder="e.g. Guy's and St Thomas'"
+					/>
+				</div>
+
+				<div class="mb-4">
+					<label class="block text-sm font-medium text-gray-300 mb-1">
+						Why do you want to use Radflow? <span class="text-red-400">*</span>
+					</label>
+					<textarea
+						bind:value={signupReason}
+						required
+						minlength="10"
+						maxlength="1000"
+						rows="4"
+						class="input-dark"
+						placeholder="What made you try Radflow? What are you hoping to use it for?"
+					></textarea>
+					<p class="text-xs text-gray-500 mt-1">{signupReason.length} / 1000</p>
 				</div>
 
 				<div class="mb-6">
