@@ -10,6 +10,7 @@
 	let email = '';
 	let password = '';
 	let error = '';
+	let pendingApproval = false;
 	let loading = false;
 	let showResendLink = false;
 
@@ -23,6 +24,7 @@
 	async function handleLogin() {
 		loading = true;
 		error = '';
+		pendingApproval = false;
 		showResendLink = false;
 
 		try {
@@ -45,9 +47,13 @@
 			await goto('/');
 			// Navigation will unmount component, so loading will naturally reset
 			return; // Exit early on success
+		} else if (data.error && data.error.toLowerCase().includes('pending admin approval')) {
+			// Distinct info (not error) state: account exists but is awaiting admin sign-off.
+			pendingApproval = true;
+			loading = false;
 		} else {
-			error = 'Login failed. Please try again.';
-			
+			error = data.error || 'Login failed. Please try again.';
+
 			// Check if error is about email verification
 			if (data.error && data.error.toLowerCase().includes('verify your email')) {
 				showResendLink = true;
@@ -90,10 +96,16 @@
 		<div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-[0_8px_32px_rgba(139,92,246,0.1)] p-8">
 			<h2 class="text-2xl font-bold mb-6 text-white">Login</h2>
 
+		{#if pendingApproval}
+			<div class="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 text-blue-300 rounded-lg">
+				Your account is still awaiting admin approval. You'll receive an email once it's approved.
+			</div>
+		{/if}
+
 		{#if error}
 			<div class="mb-4 p-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg">
 				{error}
-				
+
 				{#if showResendLink}
 					<div class="mt-3 pt-3 border-t border-red-500/30">
 						<p class="text-sm mb-2 text-red-300">Didn't receive the verification email? Check your spam/junk folder.</p>
