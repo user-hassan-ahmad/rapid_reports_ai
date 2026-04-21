@@ -58,7 +58,7 @@ UPDATE users SET is_approved = TRUE;
 |---|---|---|---|
 | `is_approved` | `BOOLEAN NOT NULL DEFAULT FALSE` | No | Admin approval gate. New sign-ups default `FALSE`; migration backfills existing rows to `TRUE`. |
 | `signup_reason` | `TEXT` | Yes | Free text answer to "Why do you want to use Radflow?" Required at API layer (min 10, max 1000 chars), nullable at DB layer to permit grandfathered rows. |
-| `role` | `VARCHAR(32)` | Yes | One of `consultant_radiologist`, `registrar`, `medical_student`, `other_healthcare_professional`, `other`. Required at API layer. Nullable at DB layer for grandfathered rows. |
+| `role` | `VARCHAR(32)` | Yes | One of `consultant_radiologist`, `registrar`, `reporting_radiographer`, `medical_student`, `other_healthcare_professional`, `other`. Required at API layer. Nullable at DB layer for grandfathered rows. |
 | `institution` | `VARCHAR(200)` | Yes | Optional free text (e.g. "Guy's and St Thomas'"). |
 
 No indexes added at current scale.
@@ -73,9 +73,10 @@ Standard Alembic `downgrade` drops the four columns. Data in `signup_reason`, `r
 
 Add three controls above the existing password field:
 
-1. **Role** — required dropdown with five options:
+1. **Role** — required dropdown with six options:
    - Consultant radiologist
    - Registrar
+   - Reporting radiographer
    - Medical student
    - Other healthcare professional
    - Other
@@ -103,6 +104,7 @@ class RegisterRequest(BaseModel):
     role: Literal[
         "consultant_radiologist",
         "registrar",
+        "reporting_radiographer",
         "medical_student",
         "other_healthcare_professional",
         "other",
