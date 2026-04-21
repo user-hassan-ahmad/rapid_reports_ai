@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, File, UploadFile, HTTPException
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Dict, Optional, List, Any, Literal
 import copy
 import hashlib
@@ -74,7 +74,7 @@ from .auth import (
     SECRET_KEY,
     ALGORITHM,
 )
-from .email_utils import send_magic_link_email
+from .email_utils import send_magic_link_email, send_admin_signup_notification
 from .encryption import encrypt_api_key, decrypt_api_key, get_system_api_key
 from .canvas_routes import canvas_router
 from .agentic_routes import agentic_router
@@ -600,9 +600,19 @@ async def regenerate_report_with_actions(
 # ============================================================================
 
 class RegisterRequest(BaseModel):
-    email: str
-    password: str
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=200)
     full_name: Optional[str] = None
+    role: Literal[
+        "consultant_radiologist",
+        "registrar",
+        "reporting_radiographer",
+        "medical_student",
+        "other_healthcare_professional",
+        "other",
+    ]
+    institution: Optional[str] = Field(default=None, max_length=200)
+    signup_reason: str = Field(min_length=10, max_length=1000)
 
 class ResetPasswordRequest(BaseModel):
     token: str
@@ -1176,23 +1186,25 @@ Apply each fix while preserving grammatical completeness and report structure.""
 
 @app.post("/api/auth/register")
 async def register(request: RegisterRequest, db: Session = Depends(get_db)):
-    """Register a new user and send email verification"""
+    """Register a new user. Creates an unapproved account, emails the user for
+    verification, and emails the admin for approval."""
     try:
-        # Check if user exists
         existing_user = get_user_by_email(db, request.email)
         if existing_user:
             return {"success": False, "error": "Email already registered"}
-        
-        # Create user
+
         password_hash = get_password_hash(request.password)
         user = create_user(
             db=db,
             email=request.email,
             password_hash=password_hash,
             full_name=request.full_name,
+            role=request.role,
+            institution=request.institution,
+            signup_reason=request.signup_reason,
         )
-        
-        # Generate email verification token
+
+        # Email verification token (user flow — unchanged)
         verification_token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
         create_reset_token(
@@ -1202,14 +1214,22 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
             expires_at=expires_at,
             token_type="email_verification",
         )
-        
-        # Send verification email (or print to console in dev)
         send_magic_link_email(request.email, verification_token, "email_verification")
-        
+
+        # Admin notification — best-effort; failure must not block registration.
+        try:
+            send_admin_signup_notification(user)
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"[register] admin notification failed: {exc}")
+
         return {
             "success": True,
-            "message": "User created successfully. Please check your email (including spam/junk folder) to verify your account.",
-            "user_id": str(user.id)
+            "message": (
+                "Thanks — your account is pending admin approval. "
+                "You'll receive an email once approved. "
+                "We've also sent a verification email so you can confirm your address in the meantime."
+            ),
+            "user_id": str(user.id),
         }
     except Exception as e:
         return {"success": False, "error": str(e)}

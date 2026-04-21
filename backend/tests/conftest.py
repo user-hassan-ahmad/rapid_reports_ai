@@ -14,6 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 # Set env BEFORE importing the app so any module-level config reads test values.
 os.environ.setdefault("SECRET_KEY", "test-secret-do-not-use-in-prod")
@@ -41,6 +42,7 @@ def db_engine():
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
+        poolclass=StaticPool,  # all connections share the same in-memory DB
     )
     Base.metadata.create_all(bind=engine, tables=_TEST_TABLES)
     try:
