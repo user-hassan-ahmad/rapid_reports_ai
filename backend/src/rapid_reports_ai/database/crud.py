@@ -27,14 +27,21 @@ def create_user(
     email: str,
     password_hash: str,
     full_name: Optional[str] = None,
+    role: Optional[str] = None,
+    institution: Optional[str] = None,
+    signup_reason: Optional[str] = None,
 ) -> User:
-    """Create a new user"""
+    """Create a new user. New sign-ups default to is_approved=False."""
     user = User(
         email=email,
         password_hash=password_hash,
         full_name=full_name,
         is_active=True,
         is_verified=False,
+        is_approved=False,
+        role=role,
+        institution=institution,
+        signup_reason=signup_reason,
     )
     db.add(user)
     db.commit()

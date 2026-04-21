@@ -49,7 +49,15 @@ class User(Base):
     # Auth metadata
     is_active = Column(Boolean, default=True, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)
-    
+
+    # Admin approval gate
+    is_approved = Column(Boolean, default=False, nullable=False)
+
+    # Signup context (captured for admin triage)
+    signup_reason = Column(Text, nullable=True)
+    role = Column(String(32), nullable=True)
+    institution = Column(String(200), nullable=True)
+
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     last_login = Column(DateTime, nullable=True)
@@ -71,6 +79,9 @@ class User(Base):
             "settings": self.settings or {},
             "is_active": self.is_active,
             "is_verified": self.is_verified,
+            "is_approved": self.is_approved,
+            "role": self.role,
+            "institution": self.institution,
             "created_at": self.created_at.isoformat(),
             "last_login": self.last_login.isoformat() if self.last_login else None,
         }
