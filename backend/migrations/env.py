@@ -60,9 +60,18 @@ def run_migrations_online() -> None:
     In this scenario we need to create an Engine
     and associate a connection with the context.
 
+    If the alembic config has an explicit sqlalchemy.url set (e.g. from tests),
+    honour it. Otherwise fall back to the application's configured engine.
     """
-    from rapid_reports_ai.database.connection import engine as app_engine
-    connectable = app_engine
+    from sqlalchemy import create_engine
+
+    configured_url = config.get_main_option("sqlalchemy.url")
+    # Ignore the placeholder URL shipped in alembic.ini; only honour a real override.
+    if configured_url and "driver://user:pass" not in configured_url:
+        connectable = create_engine(configured_url)
+    else:
+        from rapid_reports_ai.database.connection import engine as app_engine
+        connectable = app_engine
 
     with connectable.connect() as connection:
         context.configure(
