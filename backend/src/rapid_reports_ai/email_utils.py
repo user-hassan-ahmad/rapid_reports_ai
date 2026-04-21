@@ -195,7 +195,114 @@ def send_magic_link_email(email: str, token: str, link_type: str = "password_res
         
         print(f"✅ Email sent via SMTP to {email}")
         return True
-        
+
     except Exception as e:
         print(f"❌ Failed to send email to {email}: {str(e)}")
         return False
+
+
+# ---------------------------------------------------------------------------
+# Admin notification on new sign-up
+# ---------------------------------------------------------------------------
+
+_ROLE_LABELS = {
+    "consultant_radiologist": "Consultant radiologist",
+    "registrar": "Registrar",
+    "reporting_radiographer": "Reporting radiographer",
+    "medical_student": "Medical student",
+    "other_healthcare_professional": "Other healthcare professional",
+    "other": "Other",
+}
+
+
+def _humanise_role(role: Optional[str]) -> str:
+    if not role:
+        return "Unknown"
+    return _ROLE_LABELS.get(role, role)
+
+
+def _send_plain_email(to: str, subject: str, body: str) -> bool:
+    """Send a plain-text email via Resend, falling back to SMTP. Returns success."""
+    resend_api_key = os.getenv("RESEND_API_KEY")
+    if RESEND_AVAILABLE and resend_api_key:
+        try:
+            resend.api_key = resend_api_key
+            from_email = os.getenv("RESEND_FROM_EMAIL", "RadFlow <onboarding@resend.dev>")
+            emails = resend.emails._emails.Emails()
+            emails.send({
+                "from": from_email,
+                "to": [to],
+                "subject": subject,
+                "text": body,
+            })
+            return True
+        except Exception as exc:
+            print(f"[admin-email] Resend failed: {exc}; falling back to SMTP")
+
+    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    if not smtp_user or not smtp_password:
+        print("[admin-email] No SMTP credentials; email not sent.")
+        return False
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = smtp_user
+        msg["To"] = to
+        msg.attach(MIMEText(body, "plain"))
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as exc:
+        print(f"[admin-email] SMTP failed: {exc}")
+        return False
+
+
+def build_admin_signup_notification(user) -> tuple[str, str]:
+    """Return (subject, body) for the admin notification email for a new user.
+
+    `user` must have id, email, full_name, role, institution, signup_reason
+    attributes. We import the signer lazily to avoid a circular import.
+    """
+    from .auth import sign_admin_action  # local import to avoid cycles
+
+    role_label = _humanise_role(user.role)
+    subject = f"[Radflow] New sign-up: {user.full_name or user.email} ({role_label})"
+
+    api_base = os.getenv("ADMIN_API_BASE_URL", "https://radflow.app")
+    approve_token = sign_admin_action(user.id, "approve")
+    reject_token = sign_admin_action(user.id, "reject")
+    approve_url = f"{api_base}/api/admin/approve?uid={user.id}&token={approve_token}"
+    reject_url = f"{api_base}/api/admin/reject?uid={user.id}&token={reject_token}"
+
+    body = (
+        "A new user signed up for Radflow:\n"
+        "\n"
+        f"Name:        {user.full_name or '-'}\n"
+        f"Email:       {user.email}\n"
+        f"Role:        {role_label}\n"
+        f"Institution: {user.institution or '-'}\n"
+        "\n"
+        "Why Radflow?\n"
+        f"{user.signup_reason or '-'}\n"
+        "\n"
+        f"Approve:  {approve_url}\n"
+        f"Reject:   {reject_url}\n"
+    )
+    return subject, body
+
+
+def send_admin_signup_notification(user) -> bool:
+    """Send the admin signup notification. Returns True on success."""
+    admin_email = os.getenv("ADMIN_NOTIFICATION_EMAIL")
+    if not admin_email:
+        print("[admin-email] ADMIN_NOTIFICATION_EMAIL not set; skipping notification.")
+        return False
+    subject, body = build_admin_signup_notification(user)
+    return _send_plain_email(admin_email, subject, body)
