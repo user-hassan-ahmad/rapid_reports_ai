@@ -16,7 +16,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 # Set env BEFORE importing the app so any module-level config reads test values.
-os.environ.setdefault("JWT_SECRET_KEY", "test-secret-do-not-use-in-prod")
+os.environ.setdefault("SECRET_KEY", "test-secret-do-not-use-in-prod")
 os.environ.setdefault("ADMIN_NOTIFICATION_EMAIL", "admin@test.local")
 os.environ.setdefault("ADMIN_API_BASE_URL", "http://test.local")
 os.environ.setdefault("FRONTEND_URL", "http://test.local")

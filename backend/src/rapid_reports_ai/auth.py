@@ -79,3 +79,37 @@ async def get_current_user(
         raise credentials_exception
     return user
 
+
+# ---------------------------------------------------------------------------
+# Admin action URL signing (approve / reject from email)
+# ---------------------------------------------------------------------------
+import hmac as _hmac
+import hashlib as _hashlib
+from typing import Literal as _Literal
+import uuid as _uuid
+
+AdminAction = _Literal["approve", "reject"]
+_ALLOWED_ADMIN_ACTIONS: tuple[str, ...] = ("approve", "reject")
+
+
+def _admin_hmac(user_id: _uuid.UUID, action: str) -> str:
+    secret = os.getenv("SECRET_KEY", "")
+    if not secret:
+        raise RuntimeError("SECRET_KEY not set; cannot sign admin action token")
+    msg = f"{user_id}:{action}".encode()
+    return _hmac.new(secret.encode(), msg, _hashlib.sha256).hexdigest()
+
+
+def sign_admin_action(user_id: _uuid.UUID, action: AdminAction) -> str:
+    """Produce an HMAC token authorising a one-off admin action for a user."""
+    if action not in _ALLOWED_ADMIN_ACTIONS:
+        raise ValueError(f"Unknown admin action: {action}")
+    return _admin_hmac(user_id, action)
+
+
+def verify_admin_token(user_id: _uuid.UUID, action: AdminAction, token: str) -> bool:
+    """Constant-time compare of a supplied token against the expected HMAC."""
+    if action not in _ALLOWED_ADMIN_ACTIONS:
+        return False
+    expected = _admin_hmac(user_id, action)
+    return _hmac.compare_digest(expected, token)
