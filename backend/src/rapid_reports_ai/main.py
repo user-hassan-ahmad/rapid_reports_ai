@@ -1252,7 +1252,16 @@ async def login(
         
         if not user.is_active:
             return {"success": False, "error": "Account is inactive"}
-        
+
+        # Admin approval gate takes priority over email verification so the user
+        # is told the actionable blocker (waiting on admin) rather than being
+        # misdirected to verify email.
+        if not user.is_approved:
+            return {
+                "success": False,
+                "error": "Account pending admin approval. You'll receive an email once it's approved.",
+            }
+
         # Check if email is verified
         if not user.is_verified:
             return {
