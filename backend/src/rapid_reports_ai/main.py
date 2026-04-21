@@ -150,6 +150,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",  # Vite dev
+        "http://localhost:5174",  # Vite dev (alt port when 5173 is busy)
         "http://localhost:4173",  # Vite preview
         "https://rad-flow.uk",  # Main domain (frontend)
         "https://api.rad-flow.uk",  # API subdomain (backend - for docs/swagger)
