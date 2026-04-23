@@ -281,6 +281,7 @@ async def _run_one_generator(
     scan_type: str,
     clinical_history: str,
     skill_sheet_markdown: str,
+    user_signature: str | None = None,
 ) -> dict:
     """Run a single generator and return a candidate-record dict.
 
@@ -293,7 +294,7 @@ async def _run_one_generator(
         result = await tm.generate_report_from_config(
             template_config=template_config,
             user_inputs=user_inputs,
-            user_signature=None,
+            user_signature=user_signature,
             model_override=model_name,
         )
         latency_ms = int((time.time() - t0) * 1000)
@@ -362,6 +363,7 @@ async def generate(
     # Resolve user_id now — SSE generator body closes over Session which is
     # scoped to the request; current_user.id stays valid within the generator.
     user_id_str = str(current_user.id)
+    user_signature = current_user.signature
 
     async def event_stream():
         run_id_base = new_run_id()
@@ -443,6 +445,7 @@ async def generate(
                 scan_type=scan_type,
                 clinical_history=clinical_history,
                 skill_sheet_markdown=skill_sheet_markdown,
+                user_signature=user_signature,
             )
 
             logger.info(
