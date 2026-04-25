@@ -78,6 +78,7 @@ from .email_utils import send_magic_link_email, send_admin_signup_notification
 from .encryption import encrypt_api_key, decrypt_api_key, get_system_api_key
 from .canvas_routes import canvas_router
 from .agentic_routes import agentic_router
+from .chat_prompt import build_chat_system_prompt
 from .enhancement_utils import (
     generate_auto_report,
     generate_templated_report,
@@ -3660,14 +3661,53 @@ class StructuredActionItem(BaseModel):
 
 class ChatStructuredActionItem(BaseModel):
     """Chat tool action: title + details only. Patch omitted to avoid JSON escaping issues (e.g. quotes in text)."""
-    title: str = Field(..., description="Brief title describing what this action does")
-    details: str = Field(..., description="What to change and why, based on conversation context")
+    title: str = Field(
+        ...,
+        description=(
+            "One-line description of what this action changes — e.g. "
+            "'Update TNM staging to T2N0M0', 'Tighten Findings into a "
+            "single paragraph', 'Insert follow-up recommendation after "
+            "liver finding'."
+        ),
+    )
+    details: str = Field(
+        ...,
+        description=(
+            "What to change and why. Any prose you write here that is "
+            "intended for insertion into the report body must follow "
+            "Principle 2 — no source attribution: no society names "
+            "(NICE, ACR, Fleischner, RCR), no guideline numbers (e.g. "
+            "NG147, 1.3.10), no 'per X' or 'as per X' phrasing. The "
+            "radiologist's voice owns the report; the reasoning portion "
+            "of this field may reference sources for justification, but "
+            "the prose-to-insert must stand alone.\n\n"
+            "For placeholder fills ('xxx mm', '{VARIABLE}'): use an "
+            "explicit value from the report findings if present; "
+            "otherwise apply a clinically appropriate normal/reference "
+            "value for the anatomy and modality, and note in this field "
+            "whether the value was taken from the report or is a "
+            "reference value requiring verification. Never refuse to "
+            "fill a placeholder — always apply something and surface "
+            "the basis."
+        ),
+    )
 
 
 class ChatStructuredActionsRequest(BaseModel):
     """Chat tool schema: actions with title and details only."""
-    actions: List[ChatStructuredActionItem] = Field(..., description="List of actions to apply. Each needs title and details.")
-    conversation_summary: Optional[str] = Field(None, description="Brief summary of the conversation context (optional)")
+    actions: List[ChatStructuredActionItem] = Field(
+        ...,
+        description="List of actions to apply. Each needs title and details.",
+    )
+    conversation_summary: Optional[str] = Field(
+        None,
+        description=(
+            "Optional 1-2 sentence summary of relevant prior turns. "
+            "Helps the executor model understand context the current "
+            "message alone doesn't carry. Skip if the user's current "
+            "message is self-contained."
+        ),
+    )
 
 
 class SearchExternalGuidelinesRequest(BaseModel):
@@ -3691,6 +3731,49 @@ class StructuredActionsRequest(BaseModel):
     """Tool for applying structured actions to the report."""
     actions: List[StructuredActionItem] = Field(..., description="List of specific actions to apply to the report. Each action should be a focused, surgical edit.")
     conversation_summary: Optional[str] = Field(None, description="Brief summary of the conversation context that led to these edits (optional but helpful)")
+
+
+def _apply_structured_actions_tool_def() -> Dict[str, Any]:
+    """
+    Single source of truth for the apply_structured_actions tool definition,
+    shared between the primary chat tools list and the salvage path's forced
+    re-prompt. Routing is owned by Principle 3 of the chat preamble; this
+    description only describes what the tool *does*, not when to use it.
+    """
+    return {
+        "type": "function",
+        "function": {
+            "name": "apply_structured_actions",
+            "description": (
+                "Propose a structured set of edits to the radiology report. "
+                "Each action is one focused change with a title and a "
+                "details field. Use when the user's message describes a "
+                "change to the report — alter, add, remove, restructure, "
+                "or rewrite content. Do not use for clinical questions "
+                "or evidence retrieval."
+            ),
+            "parameters": ChatStructuredActionsRequest.model_json_schema(),
+        },
+    }
+
+
+def _search_external_guidelines_tool_def() -> Dict[str, Any]:
+    """Single source of truth for the search_external_guidelines tool definition."""
+    return {
+        "type": "function",
+        "function": {
+            "name": "search_external_guidelines",
+            "description": (
+                "Search authoritative web sources for UK-relevant imaging "
+                "guidance. Use only when Active Context's evidence does "
+                "not cover the topic (e.g. specific staging, "
+                "classification, society guideline). Do not use for "
+                "report edits or questions already answered by available "
+                "evidence."
+            ),
+            "parameters": SearchExternalGuidelinesRequest.model_json_schema(),
+        },
+    }
 
 
 def _groq_assistant_to_dict(message: Any) -> Dict[str, Any]:
@@ -3916,75 +3999,12 @@ async def chat_about_report(
 
         print(f"📚 Chat context: {len(guidelines)} guideline(s), {len(guideline_sources)} source(s) | report={report_id[:8]}…")
 
-        system_prompt = (
-            "You are a radiology reporting assistant. Use British English throughout. "
-            "Be concise and evidence-based; say so if unsure.\n\n"
-            "## User-facing reply (mandatory)\n"
-            "- Address the clinician only: clinical content, practical implications, and clear language.\n"
-            "- Use light Markdown when it helps readability: **bold** for society names and key thresholds, "
-            "short bullet lists for multiple recommendations, optional `###` subheadings in longer answers.\n"
-            "- Never mention or allude to: \"EVIDENCE CONTEXT\", internal blocks, tools, searches, retrieval, "
-            "the UI Sources list, filtering, pipelines, or whether you did or did not call a function.\n"
-            "- Do not end with system-style lines such as \"no additional action is required\", "
-            "\"the context fully covers…\", \"no search was needed\", or similar meta commentary.\n\n"
-            "## EVIDENCE CONTEXT (priority)\n"
-            "For questions about guidelines, staging, classifications, measurements, or follow-up imaging, "
-            "ground answers in the source evidence passages below first. If the evidence is insufficient or missing "
-            "the topic, call `search_external_guidelines` with 1–3 focused queries — do not invent citations.\n"
-            "Do not write inline [1], [2] or similar numbered citation markers.\n\n"
-            "## Evidence context use\n"
-            "How you surface the evidence depends on what your output becomes:\n"
-            "- **Conversational reply to the clinician.** You may name sources naturally — society names, document titles, "
-            "and years **exactly as written in the evidence**. That is how you answer the clinician faithfully.\n"
-            "- **Content that lands in the report body** (via `apply_structured_actions`, or as revised report text). "
-            "Integrate the evidence as clinical judgement, not as attribution. Report prose is the radiologist's own voice — "
-            "it does not cite the paper, name the society, or quote the guideline. The evidence informs what you write; "
-            "the report must not read as if the evidence wrote it.\n\n"
-            + "## Source attribution (mandatory)\n"
-            "After your complete reply, on its own line, output exactly:\n"
-            "<SOURCES_USED>[\"https://url1\", \"https://url2\"]</SOURCES_USED>\n"
-            "List only the URLs you directly drew on. Use the exact URL strings from the evidence passages above. "
-            "Omit URLs from sources you did not draw on. Output an empty array [] if no external sources were used.\n\n"
-            + "## Tool: `search_external_guidelines`\n"
-            "Call only when authoritative imaging/radiology guidance is needed and not adequately covered in ENHANCEMENT CONTEXT.\n"
-            "Do not call for: report edits, laterality fixes, typos, chit-chat, or questions fully answered below.\n"
-            "Do not call `search_external_guidelines` in the **same** assistant message as `apply_structured_actions` — "
-            "finish retrieval first, then call apply in a follow-up assistant message if still needed.\n\n"
-            "## Tool use: `apply_structured_actions`\n\n"
-            "**Apply immediately** (no preamble, no confirmation) when the message:\n"
-            "- States the exact correction ('change right to left', 'it should be 12 mm', 'fix the laterality')\n"
-            "- Ends with an apply instruction ('apply it now', 'go ahead and apply', 'apply to the report now')\n"
-            "- Explicitly asks you to modify/update/implement/apply after prior discussion\n\n"
-            "**Discuss first, then offer to apply** when the message:\n"
-            "- Asks for assessment, review, or opinion without specifying a fix\n"
-            "- Flags a potential issue without saying what the correction should be\n"
-            "- Asks a question ('is this correct?', 'what should I change?')\n"
-            "→ Analyse, recommend, then end with: 'Would you like me to apply this edit?'\n"
-            "→ Only call the tool once the user confirms ('yes', 'go ahead', 'do it').\n\n"
-            "**Never use the tool** for pure questions, explanations, or general discussion.\n"
-            "**Never output the report text** in the chat message when calling the tool.\n\n"
-            "## Filling placeholders\n\n"
-            "When asked to fill a placeholder (e.g. 'xxx mm', '{VARIABLE}'):\n"
-            "- If the value is explicit in the report findings, use it.\n"
-            "- If not, apply a clinically appropriate normal/reference value for the anatomy and modality.\n"
-            "- **Never refuse to fill a placeholder** — always apply something and state in `details` whether the value was taken from the report or is a reference value requiring verification.\n\n"
-            "When calling the tool, decompose the request into focused actions, each with:\n"
-            "- `title`: one-line description\n"
-            "- `details`: what to change and why (state if a reference value was used)\n\n"
-            "**Composing `details` — no attribution in prescribed text.**\n"
-            "The `details` field describes a change that will land in the report body. Apply the same "
-            "voice rule from **Evidence context use** above: any text you prescribe for insertion into "
-            "the report (whether written inline or wrapped in quotes like `Insert 'X'`) must NOT embed "
-            "source citations — no society names (NICE, ACR, Fleischner), no guideline numbers (NG147, "
-            "1.3.10), no 'per X' phrases, no document titles. State the clinical substance in the "
-            "radiologist's own voice. You may reference the source in the *reasoning* portion of "
-            "`details` (e.g. 'supports addition because…'), but the text to be inserted into the "
-            "report must stand alone as clinical prose.\n\n"
-            f"## Report\n{report.report_content}"
-            f"{enhancement_context}"
-            f"{audit_memory_block}"
-            f"{audit_holistic_block}"
-            f"{audit_fix_block}"
+        system_prompt = build_chat_system_prompt(
+            report_content=report.report_content,
+            enhancement_context=enhancement_context,
+            audit_memory_block=audit_memory_block,
+            audit_holistic_block=audit_holistic_block,
+            audit_fix_block=audit_fix_block,
         )
         
         messages = [
@@ -4008,30 +4028,12 @@ async def chat_about_report(
         })
         
         tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "apply_structured_actions",
-                    "description": "ONLY use this tool when the user explicitly asks you to MODIFY, UPDATE, CHANGE, IMPLEMENT, or APPLY changes to the report. Do NOT use for questions, discussions, or requests for opinions (e.g., 'thoughts on...', 'review of...', 'what do you think?'). Only use when user says 'implement', 'apply', 'make changes', 'update', etc.",
-                    "parameters": ChatStructuredActionsRequest.model_json_schema()
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "search_external_guidelines",
-                    "description": (
-                        "Search authoritative web sources for UK-relevant radiology/imaging guidance when ENHANCEMENT CONTEXT "
-                        "does not cover the user's question (e.g. specific staging, classification, society guideline). "
-                        "Do not use for report text edits or questions already answered in ENHANCEMENT CONTEXT."
-                    ),
-                    "parameters": SearchExternalGuidelinesRequest.model_json_schema(),
-                }
-            },
+            _apply_structured_actions_tool_def(),
+            _search_external_guidelines_tool_def(),
         ]
 
         # Edit-only subset for the post-search follow-up turn (must not loop search).
-        tools_edit_only = [tools[0]]
+        tools_edit_only = [_apply_structured_actions_tool_def()]
 
         print(f"\n💬 Chat request received:")
         print(f"  Model: qwen/qwen3-32b (Groq)")
@@ -4284,19 +4286,9 @@ async def chat_about_report(
                             }
                         ]
                     )
-                    salvage_tools = [
-                        {
-                            "type": "function",
-                            "function": {
-                                "name": "apply_structured_actions",
-                                "description": (
-                                    "Apply structured edits to the report. Each action is a focused, "
-                                    "surgical edit described by a title and details field."
-                                ),
-                                "parameters": ChatStructuredActionsRequest.model_json_schema(),
-                            },
-                        }
-                    ]
+                    # Reuse the canonical tool definition so descriptions and
+                    # field schemas can't drift between primary and salvage.
+                    salvage_tools = [_apply_structured_actions_tool_def()]
                     salvage_response = client.chat.completions.create(
                         model="qwen/qwen3-32b",
                         max_tokens=4096,
