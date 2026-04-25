@@ -3650,9 +3650,6 @@ class ComparisonRequest(BaseModel):
 class ApplyComparisonRequest(BaseModel):
     revised_report: str
 
-class ReportUpdate(BaseModel):
-    """Tool for updating the report content."""
-    content: str = Field(..., description="The ENTIRE text of the updated radiology report. Do NOT provide a diff or snippet. You must provide the FULL report content.")
 
 class StructuredActionItem(BaseModel):
     """Single structured action for report editing."""
@@ -3710,6 +3707,97 @@ def _groq_assistant_to_dict(message: Any) -> Dict[str, Any]:
             for tc in tcs
         ]
     return d
+
+
+def _looks_like_report_rewrite(
+    response_text: Optional[str],
+    report_content: Optional[str],
+) -> Dict[str, Any]:
+    """
+    Detect whether a chat assistant response looks like the model rewrote the
+    report inline as prose instead of emitting an apply_structured_actions
+    tool call.
+
+    Multi-signal evidence-based detector — runs on what the model actually
+    produced, not on the user's input. Three signals combined:
+
+      1. Section markers — radiology section headers (FINDINGS / IMPRESSION /
+         COMPARISON / TECHNIQUE / CONCLUSION / INDICATION / HISTORY) in plain
+         text, **bold**, or markdown-heading form, case-insensitive.
+      2. Overlap ratio — difflib.SequenceMatcher.ratio() between the
+         response and the report body. Rewrites typically score >= 0.4;
+         discussion turns score much lower.
+      3. Length — chat replies that aren't rewrites rarely exceed ~400 chars.
+
+    Trigger when ANY of:
+      - 2+ section markers (very likely a structured rewrite)
+      - 1+ section marker AND overlap >= 0.4 (rewrite that names the section
+        being changed)
+      - length > 400 AND overlap >= 0.5 (long, content-heavy paraphrase)
+
+    Returns a dict with is_rewrite + each signal's value + a reason string,
+    so the caller can log the full forensic record for any salvage decision.
+    """
+    import difflib
+
+    info: Dict[str, Any] = {
+        "is_rewrite": False,
+        "markers": [],
+        "overlap_ratio": 0.0,
+        "length": 0,
+        "reason": "",
+    }
+    if not response_text or not response_text.strip():
+        info["reason"] = "empty response"
+        return info
+    if not report_content or not report_content.strip():
+        info["reason"] = "no report to compare against"
+        return info
+
+    text = response_text
+    info["length"] = len(text)
+
+    section_words = [
+        "FINDINGS", "IMPRESSION", "COMPARISON", "TECHNIQUE",
+        "CONCLUSION", "INDICATION", "HISTORY",
+    ]
+    text_upper = text.upper()
+    found_markers: List[str] = []
+    for word in section_words:
+        patterns = [
+            rf"\b{word}\s*:",          # FINDINGS:
+            rf"\*\*\s*{word}\s*\*\*",  # **FINDINGS**
+            rf"#{{1,3}}\s+{word}\b",   # ## FINDINGS
+        ]
+        for pat in patterns:
+            if re.search(pat, text_upper):
+                found_markers.append(word)
+                break
+    info["markers"] = found_markers
+
+    try:
+        ratio = difflib.SequenceMatcher(None, text, report_content).ratio()
+    except Exception:
+        ratio = 0.0
+    info["overlap_ratio"] = round(ratio, 3)
+
+    n_markers = len(found_markers)
+    reasons: List[str] = []
+    if n_markers >= 2:
+        reasons.append(f"{n_markers} section markers ({', '.join(found_markers)})")
+    if n_markers >= 1 and ratio >= 0.4:
+        reasons.append(f"{n_markers} section marker(s) + overlap {ratio:.2f}")
+    if info["length"] > 400 and ratio >= 0.5:
+        reasons.append(f"long ({info['length']} chars) + overlap {ratio:.2f}")
+
+    if reasons:
+        info["is_rewrite"] = True
+        info["reason"] = "; ".join(reasons)
+    else:
+        info["reason"] = (
+            f"insufficient signal — markers={n_markers}, overlap={ratio:.2f}, length={info['length']}"
+        )
+    return info
 
 
 def _strip_report_chat_meta_phrases(text: Optional[str]) -> str:
@@ -3931,14 +4019,6 @@ async def chat_about_report(
             {
                 "type": "function",
                 "function": {
-                    "name": "update_report",
-                    "description": "DEPRECATED: Updates the full content of the radiology report. Use apply_structured_actions instead.",
-                    "parameters": ReportUpdate.model_json_schema()
-                }
-            },
-            {
-                "type": "function",
-                "function": {
                     "name": "search_external_guidelines",
                     "description": (
                         "Search authoritative web sources for UK-relevant radiology/imaging guidance when ENHANCEMENT CONTEXT "
@@ -3950,7 +4030,8 @@ async def chat_about_report(
             },
         ]
 
-        tools_edit_only = tools[:2]
+        # Edit-only subset for the post-search follow-up turn (must not loop search).
+        tools_edit_only = [tools[0]]
 
         print(f"\n💬 Chat request received:")
         print(f"  Model: qwen/qwen3-32b (Groq)")
@@ -4136,115 +4217,164 @@ async def chat_about_report(
                         print(f"{'='*80}\n")
                 
                 elif tool_call.function.name == "update_report":
-                    # Backward compatibility: handle old update_report tool
-                    print(f"\n{'='*80}")
-                    print(f"⚠️ DEPRECATED tool call detected: update_report")
-                    print(f"   Falling back to legacy full-report regeneration")
-                    print(f"{'='*80}")
-                    print(f"User request: {request.message[:200]}")
-                    print(f"Chat history length: {len(request.history) if request.history else 0}")
-                    
-                    # Try GPT OSS first for report generation
-                    try:
-                        from .enhancement_utils import (
-                            MODEL_CONFIG,
-                            _get_model_provider,
-                            _get_api_key_for_provider,
-                            _run_agent_with_model,
-                        )
-                        from .enhancement_models import ReportOutput
-                        import asyncio
-                        import time
-                        
-                        gpt_oss_start = time.time()
-                        model_name = MODEL_CONFIG["ACTION_APPLIER"]
-                        provider = _get_model_provider(model_name)
-                        api_key = _get_api_key_for_provider(provider)
-                        
-                        print(f"📊 Using GPT OSS for report update (legacy mode):")
-                        print(f"  Model: {model_name}")
-                        print(f"  Provider: {provider}")
-                        
-                        system_prompt = (
-                            "CRITICAL: You MUST use British English spelling and terminology throughout all output.\n\n"
-                            "You are a radiology reporting assistant. Generate the COMPLETE updated report text "
-                            "incorporating the user's requested changes. Preserve exact structure, formatting style, and organization. "
-                            "Return ONLY the full report text. No commentary, no thinking blocks, no tags—just the complete revised report."
-                        )
-                        
-                        user_prompt = f"""ORIGINAL REPORT:
-{report.report_content}
-{enhancement_context}
-
-USER REQUEST:
-{request.message}
-
-TASK: Generate the complete updated report incorporating the requested changes.
-Maintain the same structure, formatting, and style as the original report."""
-                        
-                        model_settings = {"temperature": 0.3}
-                        if provider == 'cerebras':
-                            model_settings["max_completion_tokens"] = 4096
-                            model_settings["reasoning_effort"] = "high"
-                            print(f"  Settings: reasoning_effort=high, max_completion_tokens=4096")
-                        else:
-                            model_settings["max_tokens"] = 4096
-                            print(f"  Settings: {model_settings}")
-                        
-                        # Call GPT OSS with timeout protection
-                        print(f"⏳ Calling GPT OSS (timeout: 60s)...")
-                        result = await asyncio.wait_for(
-                            _run_agent_with_model(
-                                model_name=model_name,
-                                output_type=ReportOutput,
-                                system_prompt=system_prompt,
-                                user_prompt=user_prompt,
-                                api_key=api_key,
-                                use_thinking=False,
-                                model_settings=model_settings
-                            ),
-                            timeout=60.0  # 60 second timeout
-                        )
-                        
-                        edit_proposal = result.output.report_content
-                        gpt_oss_elapsed = time.time() - gpt_oss_start
-                        
-                        print(f"✅ GPT OSS report update completed in {gpt_oss_elapsed:.2f}s")
-                        print(f"  └─ Updated report length: {len(edit_proposal)} chars")
-                        print(f"{'='*80}\n")
-                        
-                    except asyncio.TimeoutError:
-                        print(f"⏱️ GPT OSS timeout after 60s, falling back to Qwen tool call")
-                        print(f"{'='*80}\n")
-                        # Fallback to Qwen's tool call
-                        try:
-                            args = json.loads(tool_call.function.arguments)
-                            edit_proposal = args.get("content")
-                            if edit_proposal:
-                                print(f"✅ Using Qwen fallback (length: {len(edit_proposal)} chars)")
-                        except json.JSONDecodeError as e:
-                            print(f"❌ Failed to parse Qwen tool call: {e}")
-                            
-                    except Exception as e:
-                        import traceback
-                        print(f"❌ GPT OSS report update failed: {type(e).__name__}")
-                        print(f"  Error: {str(e)[:500]}")
-                        print(f"  Falling back to Qwen tool call...")
-                        traceback.print_exc()
-                        print(f"{'='*80}\n")
-                        # Fallback to Qwen's tool call
-                        try:
-                            args = json.loads(tool_call.function.arguments)
-                            edit_proposal = args.get("content")
-                            if edit_proposal:
-                                print(f"✅ Using Qwen fallback (length: {len(edit_proposal)} chars)")
-                        except json.JSONDecodeError as e:
-                            print(f"❌ Failed to parse Qwen tool call: {e}")
+                    # update_report is no longer exposed in the chat tools list. If
+                    # the model hallucinates the name we silently ignore — the salvage
+                    # path below picks up rewrite intent from response_text instead.
+                    print(f"⚠️ Ignoring stale update_report tool call (no longer exposed to the model)")
                 elif tool_call.function.name == search_tool_name:
                     print(f"⚠️ Ignoring unexpected {search_tool_name} in follow-up turn")
                 else:
                     print(f"⚠️ Unexpected tool call: {tool_call.function.name}")
-        
+
+        # ─────────────────────────────────────────────────────────────────────
+        # Salvage Path B — recover when qwen rewrites the report as prose
+        # ─────────────────────────────────────────────────────────────────────
+        # The known qwen3-32b/Groq failure mode: the model produces a 200 OK
+        # response with no tool_calls and writes the revised report inline as
+        # the assistant message instead of calling apply_structured_actions.
+        #
+        # We detect this AFTER the fact (evidence-based on the model's output,
+        # not predictive on the user's input) using three signals — radiology
+        # section markers, content overlap with the report body, response
+        # length — combined in `_looks_like_report_rewrite`.
+        #
+        # When detected, re-prompt qwen ONCE with tool_choice forced to
+        # apply_structured_actions and only that tool exposed. Qwen then has
+        # no choice but to emit the structured tool call, which routes through
+        # the normal regenerate_report_with_actions executor.
+        #
+        # Failure modes degrade gracefully:
+        #   - Detector misses a rewrite      → today's behaviour (text reply).
+        #   - Detector false-positive        → one extra forced tool call that
+        #                                      still produces a valid edit.
+        #   - Re-prompt also yields no tool  → fall through to text reply.
+        # ─────────────────────────────────────────────────────────────────────
+        if not edit_proposal and not tool_calls and response_text:
+            # Strip <think>...</think> locally before running detection so
+            # reasoning tokens don't inflate length/overlap signals.
+            detection_text = re.sub(
+                r'<think>.*?</think>', '', response_text,
+                flags=re.DOTALL | re.IGNORECASE,
+            ).strip()
+            rewrite_signals = _looks_like_report_rewrite(detection_text, report.report_content)
+            print(f"\n{'─'*80}")
+            print(f"🛟 SALVAGE: Rewrite-as-prose detector")
+            print(f"{'─'*80}")
+            print(f"   is_rewrite     : {rewrite_signals['is_rewrite']}")
+            print(f"   markers        : {rewrite_signals['markers']}")
+            print(f"   overlap_ratio  : {rewrite_signals['overlap_ratio']}")
+            print(f"   length         : {rewrite_signals['length']}")
+            print(f"   reason         : {rewrite_signals['reason']}")
+            if rewrite_signals["is_rewrite"]:
+                print(f"\n🛟 SALVAGE: Triggered — re-prompting qwen with tool_choice=required")
+                try:
+                    salvage_messages = (
+                        messages
+                        + [_groq_assistant_to_dict(message)]
+                        + [
+                            {
+                                "role": "user",
+                                "content": (
+                                    "Your previous reply contained a revised version of the report written as prose. "
+                                    "Re-emit the same intent as a structured tool call to apply_structured_actions. "
+                                    "Do not write any conversational reply this turn — only the tool call. "
+                                    "Decompose the changes into focused actions, each with a one-line title and a "
+                                    "details field describing what to change and why."
+                                ),
+                            }
+                        ]
+                    )
+                    salvage_tools = [
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": "apply_structured_actions",
+                                "description": (
+                                    "Apply structured edits to the report. Each action is a focused, "
+                                    "surgical edit described by a title and details field."
+                                ),
+                                "parameters": ChatStructuredActionsRequest.model_json_schema(),
+                            },
+                        }
+                    ]
+                    salvage_response = client.chat.completions.create(
+                        model="qwen/qwen3-32b",
+                        max_tokens=4096,
+                        temperature=0.2,
+                        messages=salvage_messages,
+                        tools=salvage_tools,
+                        tool_choice={"type": "function", "function": {"name": "apply_structured_actions"}},
+                        stop=None,
+                    )
+                    salvage_message = salvage_response.choices[0].message
+                    salvage_tool_calls = salvage_message.tool_calls or []
+                    print(f"🛟 SALVAGE: Second-pass tool calls returned: {len(salvage_tool_calls)}")
+                    for stc in salvage_tool_calls:
+                        if stc.function.name != "apply_structured_actions":
+                            print(f"🛟 SALVAGE: ⚠️ Unexpected tool name in second pass: {stc.function.name}")
+                            continue
+                        print(f"🛟 SALVAGE: Raw arguments length: {len(stc.function.arguments or '')} chars")
+                        try:
+                            sargs = json.loads(stc.function.arguments)
+                            salvage_actions_data = ChatStructuredActionsRequest(**sargs)
+                            print(f"🛟 SALVAGE: Parsed {len(salvage_actions_data.actions)} action(s):")
+                            for i, a in enumerate(salvage_actions_data.actions, 1):
+                                print(f"   {i}. {a.title}")
+                                preview = a.details[:200] if len(a.details) > 200 else a.details
+                                print(f"      details: {preview}")
+
+                            actions_payload = []
+                            for idx, action in enumerate(salvage_actions_data.actions):
+                                actions_payload.append({
+                                    "id": f"chat_action_salvage_{idx}",
+                                    "title": action.title,
+                                    "details": action.details,
+                                    "patch": "",
+                                })
+                            conversation_summary = salvage_actions_data.conversation_summary
+                            if not conversation_summary and request.history:
+                                recent_messages = (
+                                    request.history[-3:] if len(request.history) > 3 else request.history
+                                )
+                                conversation_summary = "Recent conversation context:\n"
+                                for msg in recent_messages:
+                                    role = msg.get('role', 'user')
+                                    content = msg.get('content', '')
+                                    if content:
+                                        conversation_summary += f"{role.upper()}: {content[:200]}\n"
+
+                            print(f"🛟 SALVAGE: Routing to regenerate_report_with_actions (executor=GPT-OSS)…")
+                            edit_proposal = await regenerate_report_with_actions(
+                                report=report,
+                                actions=actions_payload,
+                                additional_context=conversation_summary,
+                                current_user=current_user,
+                            )
+                            actions_applied = actions_payload
+                            print(f"🛟 SALVAGE: ✅ Recovered — edit_proposal {len(edit_proposal)} chars")
+                            # Replace the prose-rewrite that was about to be shown
+                            # to the clinician with a brief acknowledgement; the
+                            # structured edit panel surfaces the actual change.
+                            response_text = (
+                                "I've drafted these edits as structured actions — please review and apply below."
+                            )
+                            break
+                        except json.JSONDecodeError as se:
+                            print(f"🛟 SALVAGE: ❌ JSON decode error on second-pass args: {se}")
+                        except Exception as se:
+                            import traceback
+                            print(f"🛟 SALVAGE: ❌ Failed to apply second-pass actions: "
+                                  f"{type(se).__name__}: {str(se)[:300]}")
+                            traceback.print_exc()
+                    if not edit_proposal:
+                        print(f"🛟 SALVAGE: ❌ Second pass produced no usable tool call — "
+                              f"falling back to original text reply")
+                except Exception as se:
+                    import traceback
+                    print(f"🛟 SALVAGE: ❌ Re-prompt raised {type(se).__name__}: {str(se)[:300]}")
+                    traceback.print_exc()
+            print(f"{'─'*80}\n")
+
         # DEBUG: Log final state before returning
         print(f"\n{'='*80}")
         print(f"🔍 DEBUG: Final Response State")
@@ -4254,20 +4384,20 @@ Maintain the same structure, formatting, and style as the original report."""
         print(f"Edit proposal length: {len(edit_proposal) if edit_proposal else 0} chars")
         print(f"Response text exists: {response_text is not None and response_text.strip() != ''}")
         print(f"Response text length: {len(response_text) if response_text else 0} chars")
-        
+
         # If no tool calls but Qwen might have provided content in response
         if not edit_proposal and not tool_calls:
-            print(f"💬 Chat response only (no tool calls)")
+            print(f"💬 Chat response only (no tool calls, salvage did not recover)")
             print(f"  Response length: {len(response_text) if response_text else 0} chars")
             print(f"  Response preview: {response_text[:300] if response_text else 'None'}...")
-        
-        # Check if response_text contains report-like content (potential issue)
+
+        # Double-emission signal: tool was called AND chat reply contains report-like
+        # prose. Different failure mode from the salvage path — flag for inspection.
         if response_text and edit_proposal:
-            # Check for common report indicators in response_text
             report_indicators = ['Comparison:', 'Findings:', 'Impression:', '---', '-----']
             found_indicators = [ind for ind in report_indicators if ind in response_text]
             if found_indicators:
-                print(f"\n⚠️ WARNING: Response text contains report-like content!")
+                print(f"\n⚠️ WARNING: Tool called AND chat reply contains report-like content")
                 print(f"  Found indicators: {found_indicators}")
                 print(f"  Response text snippet: {response_text[:500]}...")
         
