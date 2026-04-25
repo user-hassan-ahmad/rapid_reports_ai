@@ -1394,6 +1394,28 @@ def create_quick_report_with_candidates(
     db.add(report)
     db.commit()
     db.refresh(report)
+
+    # Lay down a baseline ReportVersion v1 ("Initial generation") so the
+    # version-history chain starts at the generated draft, mirroring the legacy
+    # auto-report path in create_report() above. Without this, the first chat
+    # edit creates v1 alone, leaves historyCount at 1, and the frontend
+    # `historyCount > 1` gate keeps the Version History tab disabled.
+    #
+    # Note: the dual-candidate re-anchor logic in set_quick_report_selection
+    # gated on `if not report.versions` is a no-op for the current
+    # single-candidate production flow (report_content already equals the
+    # only candidate). If dual-candidate generation is re-enabled, that logic
+    # will need to update the baseline snapshot's content too.
+    try:
+        create_report_version(
+            db,
+            report=report,
+            actions_applied=None,
+            notes="Initial generation",
+        )
+    except Exception as exc:  # noqa: BLE001 — match create_report's swallow
+        print(f"Warning: failed to create initial report version for quick report {report.id}: {exc}")
+
     return report
 
 
