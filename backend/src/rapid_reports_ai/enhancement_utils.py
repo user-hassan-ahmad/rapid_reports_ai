@@ -212,6 +212,9 @@ MODEL_CONFIG = {
 
     # Knowledge Maintenance Agent
     "KNOWLEDGE_MAINTENANCE": "gpt-oss-120b",  # Async agent: populate knowledge_links from skill sheet
+
+    # Quality Scoring (admin analytics — offline batch judge)
+    "QUALITY_JUDGE": "claude-haiku-4-5-20251001",  # Report quality judge (Anthropic; ≠ GLM generator → avoids self-preference bias)
 }
 
 # Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
