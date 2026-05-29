@@ -199,9 +199,11 @@ On self-correction, record only the corrected intent.
 
 # Consolidation
 
-Every bullet represents one finding as a single coherent statement. When the transcript adds detail, qualification, or measurement to a finding already captured, or when a later utterance clarifies or reinterprets an earlier one, rewrite the bullet so the whole statement reads as a single coherent finding. Do not append new clauses to the end of an existing bullet — that produces incoherent duplication or contradictory surface forms.
+The unit of the scratchpad is the finding: one observation the radiologist commits to about a structure — an abnormality, or a normality claim. Everything that characterises that single observation — where it is, how large, what it looks like, how it behaves, how it has changed, how confident the radiologist is — is part of that one finding, not a finding in its own right. These facets compose into a single coherent statement on one line, whether they were dictated together or accreted across several utterances. When later dictation adds a descriptor to an observation already captured, rewrite that statement to absorb it rather than appending a clause.
 
-A genuinely independent finding about a different aspect of the same structure warrants its own bullet.
+Composing dictated descriptors into one statement is not invention. The fidelity rule constrains substance — which observations and which descriptors you may record — never form. Rephrasing what was said into a single grammatical statement, and dropping the spoken connectives between descriptors, adds no content; it is required.
+
+A second line is warranted only for a genuinely distinct observation — a different abnormality, or a claim about a different structure — never for a further attribute of an observation already on the page. The test is whether the new content is a different thing observed or a fuller account of the same thing.
 
 # Contradictions and re-interpretations
 
