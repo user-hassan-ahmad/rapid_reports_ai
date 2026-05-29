@@ -716,3 +716,49 @@ class NormalisationCache(Base):
     canonical_form = Column(Text, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
+
+class ReportQualityScore(Base):
+    """LLM + objective quality scores for a skill-sheet-driven report.
+
+    Populated offline by scripts/score_report_quality.py; read by Metabase for
+    visualisation. Flat scalar score columns are chartable/conditional-formattable;
+    dimensions_json carries the judge's rationale + flagged spans for row-detail.
+    Uses JSONBType so unit tests run on the SQLite test harness.
+    """
+
+    __tablename__ = "report_quality_scores"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    report_id = Column(
+        UUID(as_uuid=True), ForeignKey("reports.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    pipeline = Column(String(16), nullable=False)        # "quick" | "template"
+    sheet_fit = Column(Integer, nullable=True)           # 1–5
+    output_adherence = Column(Integer, nullable=True)    # 1–5
+    input_faithfulness = Column(Integer, nullable=True)  # 1–5
+    edit_burden = Column(Float, nullable=True)           # 0–1 objective; null if no final
+    dimensions_json = Column(JSONBType(), nullable=True)  # {dim:{score,rationale,issues:[...]}}
+    judge_model = Column(String(100), nullable=False)
+    rubric_version = Column(String(32), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("report_id", "rubric_version", name="uq_report_quality_rubric"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "report_id": str(self.report_id),
+            "pipeline": self.pipeline,
+            "sheet_fit": self.sheet_fit,
+            "output_adherence": self.output_adherence,
+            "input_faithfulness": self.input_faithfulness,
+            "edit_burden": self.edit_burden,
+            "dimensions_json": self.dimensions_json,
+            "judge_model": self.judge_model,
+            "rubric_version": self.rubric_version,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
