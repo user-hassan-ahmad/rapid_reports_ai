@@ -2698,7 +2698,6 @@ async def quick_report_proto_generate_endpoint(
             "claude-sonnet-4-6",                 # Anthropic Claude Sonnet 4.6
             # Open source
             "gpt-oss-120b",                      # Cerebras GPT-OSS 120B
-            "qwen-3-235b-a22b-instruct-2507",    # Cerebras Qwen 3 235B
             "llama-3.3-70b-versatile",           # Groq Llama 3.3 70B
             "qwen/qwen3-32b",                    # Groq Qwen 3 32B
         }

@@ -182,8 +182,8 @@ MODEL_CONFIG = {
     "CANVAS_SECTIONS_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for section generation (Groq Llama)
     "CANVAS_SECTIONS_FROM_TEMPLATE": "gpt-oss-120b",  # Extract sections from template (Cerebras)
     "CANVAS_SECTIONS_FROM_TEMPLATE_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for template section extraction (Groq Llama)
-    "CANVAS_PROCESS": "qwen-3-235b-a22b-instruct-2507",  # Transcript → scratchpad (Cerebras Qwen3-235B instruct)
-    "CANVAS_COVERAGE": "qwen-3-235b-a22b-instruct-2507",  # Coverage check (Cerebras Qwen3-235B instruct)
+    "CANVAS_PROCESS": "qwen/qwen3-32b",  # Transcript → scratchpad (Groq Qwen3-32B, non-thinking)
+    "CANVAS_COVERAGE": "qwen/qwen3-32b",  # Coverage check (Groq Qwen3-32B, non-thinking)
     "CANVAS_INTELLIPROMPTS": "qwen/qwen3-32b",  # IntelliPrompts generation (Groq Qwen)
 
     # Agentic Report Pipeline Models
@@ -236,7 +236,6 @@ MODEL_PROVIDERS = {
     # Cerebras models
     "gpt-oss-120b": "cerebras",
     "zai-glm-4.7": "cerebras",
-    "qwen-3-235b-a22b-instruct-2507": "cerebras",  # Cerebras-hosted Qwen for linguistic validation
 
     # Fireworks models
     "accounts/fireworks/models/glm-5p1": "fireworks",
@@ -3836,8 +3835,6 @@ async def _run_agent_with_model(
                 disable_reasoning = (final_model_settings.get('extra_body') or {}).get('disable_reasoning', 'not set')
                 mode_label = "REASONING OFF" if disable_reasoning else "REASONING ON"
                 print(f"  └─ GLM mode: {mode_label} (disable_reasoning={disable_reasoning})")
-            elif model_name == "qwen-3-235b-a22b-instruct-2507":
-                print(f"  └─ Qwen3 mode: thinking auto-hidden for JSON schema (no extra_body needed)")
             else:
                 reasoning_effort = final_model_settings.get('reasoning_effort')
                 if reasoning_effort:
@@ -4080,12 +4077,6 @@ async def generate_auto_report(
                     model_settings["temperature"] = 0.5
                     model_settings["extra_body"] = {"disable_reasoning": True}
                     print(f"  └─ GLM mode: REASONING OFF — temperature=0.5, max_completion_tokens=6000")
-            elif primary_model == "qwen-3-235b-a22b-instruct-2507":
-                # Qwen3: thinking is automatically hidden for JSON schema requests by Cerebras
-                # No extra_body needed — Cerebras rejects enable_thinking on this endpoint
-                model_settings["max_completion_tokens"] = 6000
-                model_settings["temperature"] = 0.7
-                print(f"  └─ Using Qwen3-235B — temperature=0.7, max_completion_tokens=6000 (thinking auto-hidden for JSON schema)")
             elif primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
@@ -4157,7 +4148,7 @@ async def generate_auto_report(
         # LINGUISTIC VALIDATION disabled for quick reports — primary model handles style natively.
         # Template reports (generate_templated_report) still run the validator.
         # Re-enable by changing `if False` back to `if primary_model in (...)`.
-        if False and primary_model in ("zai-glm-4.7", "qwen-3-235b-a22b-instruct-2507"):
+        if False and primary_model in ("zai-glm-4.7",):
             import os
             ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
             
@@ -4293,10 +4284,6 @@ async def generate_templated_report(
                     model_settings["temperature"] = 0.5
                     model_settings["extra_body"] = {"disable_reasoning": True}
                     print(f"  └─ GLM mode: REASONING OFF — temperature=0.5, max_completion_tokens=6000")
-            elif primary_model == "qwen-3-235b-a22b-instruct-2507":
-                model_settings["max_completion_tokens"] = 6000
-                model_settings["temperature"] = 0.7
-                print(f"  └─ Using Qwen3-235B — temperature=0.7, max_completion_tokens=6000 (thinking auto-hidden for JSON schema)")
             elif primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 6500
                 model_settings["reasoning_effort"] = "high"
@@ -4356,7 +4343,7 @@ async def generate_templated_report(
         print(f"{'='*80}\n")
         
         # LINGUISTIC VALIDATION for non-Anthropic Cerebras models (conditionally enabled)
-        if primary_model in ("zai-glm-4.7", "qwen-3-235b-a22b-instruct-2507"):
+        if primary_model in ("zai-glm-4.7",):
             import os
             ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
             

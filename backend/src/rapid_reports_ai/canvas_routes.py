@@ -523,7 +523,10 @@ async def process_transcript(
             user_prompt=user_prompt,
             api_key=api_key,
             use_thinking=False,
-            model_settings={"temperature": 0.7, "top_p": 0.8, "max_completion_tokens": 4000},
+            # Non-thinking mode: reasoning_effort="none" disables thinking (must go via
+            # extra_body — pydantic-ai's GroqModelSettings has no field for it). Groq does
+            # not accept top_k/min_p, so only temperature/top_p from the Qwen recipe apply.
+            model_settings={"temperature": 0.7, "top_p": 0.8, "max_tokens": 8000, "extra_body": {"reasoning_effort": "none"}},
         )
         return result.output
     except Exception as e:
@@ -564,7 +567,9 @@ async def review_scratchpad(
 
     async def run_coverage() -> list[str]:
         import time as _time
-        coverage_model_settings = {"temperature": 0.1, "top_p": 0.8, "max_completion_tokens": 500}
+        # Non-thinking mode via extra_body reasoning_effort="none". Temperature kept low —
+        # coverage is deterministic checklist classification, not open dialogue.
+        coverage_model_settings = {"temperature": 0.1, "top_p": 0.8, "max_tokens": 1500, "extra_body": {"reasoning_effort": "none"}}
         scratchpad_preview = request.scratchpad_content[:200].replace('\n', ' | ')
         print(f"\n[COVERAGE] ── New call ──────────────────────────")
         print(f"[COVERAGE] Model: {coverage_model} | Scratchpad: {len(request.scratchpad_content)} chars")
