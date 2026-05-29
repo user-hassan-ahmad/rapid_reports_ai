@@ -155,9 +155,17 @@ def send_magic_link_email(email: str, token: str, link_type: str = "password_res
     print(f"   SMTP_PASSWORD set: {bool(smtp_password)}")
     
     if not smtp_user or not smtp_password:
-        # In development, print the magic link to console instead of sending
+        # No SMTP fallback configured.
+        if RESEND_AVAILABLE and resend_api_key:
+            # Resend WAS configured but failed above, and there is no SMTP
+            # fallback — do not report success, or the failure stays invisible
+            # in production (caller/logs would think the email was sent).
+            print(f"❌ Email NOT sent to {email}: Resend failed and no SMTP fallback configured.")
+            return False
+        # Pure local dev with no email provider at all: print the link to the
+        # console so the flow is still testable.
         print(f"\n" + "="*60)
-        print(f"📧 MAGIC LINK FOR {email}")
+        print(f"📧 MAGIC LINK FOR {email} (dev console — no email provider configured)")
         print(f"="*60)
         print(f"Link Type: {link_type}")
         print(f"URL: {magic_url}")
