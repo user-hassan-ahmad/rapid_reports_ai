@@ -92,9 +92,17 @@ def _format_input_data(input_data) -> str:
 
 
 def _assemble_case(db, report) -> dict:
-    """Pull the input / skill-sheet / output / final text for one report."""
-    from .database.models import ReportFeedback  # local: avoid import cost when unused
+    """Pull the input / skill-sheet / output / final text for one report.
 
+    ``ai_output`` is always ``report.report_content`` (reliable, same-report).
+    ``final`` is only used where it is trustworthy:
+      - quick:    ``report.final_report_content`` (stored on the row, same report);
+      - template: ``None`` — ``report_feedback.final_output`` is NOT used because the
+        global copy-capture can record text from a *different* report (verified:
+        a trauma report whose feedback final_output was an unrelated lumbar study).
+        Until template edit-capture is fixed, templates have no reliable final, so
+        edit_burden is null and the judge assesses ``report_content``.
+    """
     ai_output = report.report_content or ""
     if report.report_type == "auto":
         pipeline = "quick"
@@ -108,18 +116,10 @@ def _assemble_case(db, report) -> dict:
     else:
         pipeline = "template"
         tmpl = report.template
-        cfg = (tmpl.template_config or {}) if tmpl else {}
+        cfg = (tmpl.template_config or {}) if tmpl and isinstance(tmpl.template_config, dict) else {}
         inputs = _format_input_data(report.input_data)
-        skill_sheet = cfg.get("skill_sheet") if isinstance(cfg, dict) else None
-        if not skill_sheet:
-            skill_sheet = str(cfg)
-        fb = (
-            db.query(ReportFeedback)
-            .filter(ReportFeedback.report_id == report.id)
-            .order_by(ReportFeedback.updated_at.desc())
-            .first()
-        )
-        final = fb.final_output if fb else None
+        skill_sheet = cfg.get("skill_sheet") or ""
+        final = None  # report_feedback.final_output is unreliable (cross-report copy capture)
     return {
         "pipeline": pipeline,
         "inputs": inputs or "",

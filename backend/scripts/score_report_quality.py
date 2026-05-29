@@ -37,6 +37,17 @@ def main() -> None:
         print('ERROR: DATABASE_URL not set. Prefix with DATABASE_URL="$DATABASE_PUBLIC_URL".')
         sys.exit(1)
 
+    # Fill judge/API keys from .env if the shell doesn't already have them, WITHOUT
+    # clobbering the explicitly-passed DATABASE_URL (which selects the target DB).
+    try:
+        from dotenv import dotenv_values
+        _env = dotenv_values(os.path.join(os.path.dirname(__file__), "..", ".env"))
+        for k in ("ANTHROPIC_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY", "FIREWORKS_API_KEY"):
+            if _env.get(k) and not os.environ.get(k):
+                os.environ[k] = _env[k]
+    except Exception:
+        pass  # .env optional; keys may already be in the environment
+
     # Import after DATABASE_URL is set (connection.py builds the engine at import).
     from rapid_reports_ai.database.connection import SessionLocal
     from rapid_reports_ai.analytics_scope import in_scope_reports
