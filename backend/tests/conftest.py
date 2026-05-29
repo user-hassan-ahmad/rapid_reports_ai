@@ -27,13 +27,25 @@ from rapid_reports_ai.database import Base, get_db  # noqa: E402
 from rapid_reports_ai.database.models import (  # noqa: E402
     User,
     PasswordResetToken,
+    Report,
+    EphemeralSkillSheet,
+    Template,
+    ReportQualityScore,
 )
 from rapid_reports_ai.main import app  # noqa: E402
 
-# SQLite cannot compile Postgres-specific column types (TSVECTOR, JSONB) used by
-# other tables in the schema. The approval-gate feature only touches users and
-# password_reset_tokens, so we create exactly those two against SQLite.
-_TEST_TABLES = [User.__table__, PasswordResetToken.__table__]
+# SQLite cannot compile Postgres-specific column types (TSVECTOR, Vector, ARRAY).
+# We create the subset of tables whose columns are SQLite-compatible — enough for
+# the approval-gate and quality-scoring tests. (report_feedback uses ARRAY and is
+# intentionally excluded; JSONBType falls back to JSON on SQLite.)
+_TEST_TABLES = [
+    User.__table__,
+    PasswordResetToken.__table__,
+    Template.__table__,
+    EphemeralSkillSheet.__table__,
+    Report.__table__,
+    ReportQualityScore.__table__,
+]
 
 
 @pytest.fixture
