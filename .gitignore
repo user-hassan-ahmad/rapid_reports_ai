@@ -15,6 +15,7 @@ Thumbs.db
 # Claude Code
 .claude/
 memory/
+.superpowers/
 
 # IDE
 .vscode/
