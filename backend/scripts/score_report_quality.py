@@ -59,7 +59,7 @@ def main() -> None:
         if args.limit is not None:
             reports = reports[: args.limit]
 
-        print(f"In-scope reports: {len(reports)} (pipeline={args.pipeline}, rubric={qs.RUBRIC_VERSION})")
+        print(f"In-scope reports: {len(reports)} (pipeline={args.pipeline}, rubric={qs.RUBRIC_VERSION_V2})")
         ok = err = 0
         for r in reports:
             label = "quick" if r.report_type == "auto" else "template"

@@ -83,6 +83,82 @@ _PROMPTS = {
 }
 
 
+# ============================================================================
+# Rubric v2 — recalibrated to the system's design (global_style_guide.py):
+#   the report is DESIGNED to add skill-sheet-sanctioned normals for un-dictated
+#   structures; the dictation is the source of truth for all factual content.
+#   So faithfulness splits into:
+#     - dictation_fidelity: dictated content preserved exactly (strict)
+#     - normal_fill_appropriateness: added normals are sanctioned + in-scope
+#   sheet_fit is retired (not comparable across pipelines). The judge is given
+#   the skill sheet so it can tell a sanctioned normal from a fabrication.
+# ============================================================================
+RUBRIC_VERSION_V2 = "v2"
+DIMENSIONS_V2 = ("output_adherence", "dictation_fidelity", "normal_fill_appropriateness")
+
+DICTATION_FIDELITY_PROMPT = (
+    "# Role\n"
+    "You verify that a generated report preserves the radiologist's DICTATED findings without corruption.\n\n"
+    "# What you are given\n"
+    "The dictation (the radiologist's source-of-truth observations), the skill sheet (which defines the "
+    "sanctioned conventional normal statements and any reference-value thresholds), and the report.\n\n"
+    "# Dimension: dictation fidelity\n"
+    "This measures ONLY the fidelity of DICTATED content. The report is expected and permitted to ADD "
+    "conventional normal/negative statements sanctioned by the skill sheet for structures the radiologist did "
+    "not dictate — do NOT penalise those here; they are not dictated content. Penalise, most heavily first:\n"
+    "- altering any dictated value, unit, laterality, severity, or qualifier (e.g. presenting a dictated "
+    "absolute value as a derived/indexed one, or attaching a qualifier the dictation did not give);\n"
+    "- fabricating a reference value or threshold the skill sheet does not define, or borrowing a qualifier "
+    "from a different parameter;\n"
+    "- adding a diagnosis or interpretation the dictation did not state;\n"
+    "- dropping a finding the dictation provided;\n"
+    "- asserting normality that contradicts a dictated positive.\n\n"
+    "Score 1 (dictated content materially corrupted, safety-relevant) to 5 (every dictated finding preserved "
+    "exactly). Give a one-sentence rationale and list verbatim offending spans."
+)
+
+NORMAL_FILL_PROMPT = (
+    "# Role\n"
+    "You assess whether the report's ADDED normal statements (those not from the dictation) are appropriate.\n\n"
+    "# What you are given\n"
+    "The dictation, the skill sheet (which defines which normal/negative statements are conventional for this "
+    "template and the structures in scope), and the report.\n\n"
+    "# Dimension: normal-fill appropriateness\n"
+    "The report is DESIGNED to pad un-dictated structures with conventional normal statements — reward "
+    "appropriate, skill-sheet-sanctioned normal-filling. Penalise ONLY:\n"
+    "- normal/negative statements not sanctioned by the skill sheet's conventions (invented boilerplate);\n"
+    "- asserting a structure or region is normal when it falls OUTSIDE the study's actual scope (a "
+    "complete-looking but unsupported assertion about something not examined);\n"
+    "- fabricated reference ranges presented to imply normality or abnormality.\n\n"
+    "Score 1 (pervasive unsanctioned or out-of-scope normal-filling) to 5 (all added normals are conventional "
+    "and in scope). Give a one-sentence rationale and list verbatim offending spans."
+)
+
+_PROMPTS_V2 = {
+    "output_adherence": OUTPUT_ADHERENCE_PROMPT,
+    "dictation_fidelity": DICTATION_FIDELITY_PROMPT,
+    "normal_fill_appropriateness": NORMAL_FILL_PROMPT,
+}
+
+
+def _case_text_v2(dimension: str, case: dict) -> str:
+    """v2 case text — always includes the skill sheet so the judge can tell a
+    sanctioned normal from a fabrication."""
+    report = case["final_output"] or case["ai_output"]
+    inputs, sheet = case["inputs"], case["skill_sheet"]
+    if dimension == "output_adherence":
+        return f"## Skill sheet\n{sheet}\n\n## Report\n{report}"
+    if dimension == "dictation_fidelity":
+        return (f"## Dictation (source of truth)\n{inputs}\n\n"
+                f"## Skill sheet (defines sanctioned normals & reference values)\n{sheet}\n\n"
+                f"## Report\n{report}")
+    if dimension == "normal_fill_appropriateness":
+        return (f"## Dictation\n{inputs}\n\n"
+                f"## Skill sheet (defines conventional normals & scope)\n{sheet}\n\n"
+                f"## Report\n{report}")
+    raise ValueError(f"unknown v2 dimension: {dimension}")
+
+
 # --- Case assembly + judging -------------------------------------------------
 
 def _format_input_data(input_data) -> str:
@@ -162,8 +238,15 @@ def _default_judge(prompt: str, case_text: str) -> JudgeScore:
     return result.output
 
 
+# All score columns on the row; score_report sets whichever the rubric produced.
+_SCORE_COLUMNS = (
+    "sheet_fit", "output_adherence", "input_faithfulness",
+    "dictation_fidelity", "normal_fill_appropriateness",
+)
+
+
 def upsert_score(db, *, report_id, pipeline, scores: dict, edit_burden,
-                 dimensions: dict, judge_model: str, rubric_version: str = RUBRIC_VERSION):
+                 dimensions: dict, judge_model: str, rubric_version: str = RUBRIC_VERSION_V2):
     """Insert or update the score row for (report_id, rubric_version)."""
     import uuid as _uuid
     from .database.models import ReportQualityScore
@@ -178,9 +261,8 @@ def upsert_score(db, *, report_id, pipeline, scores: dict, edit_burden,
                                  rubric_version=rubric_version)
         db.add(row)
     row.pipeline = pipeline
-    row.sheet_fit = scores.get("sheet_fit")
-    row.output_adherence = scores.get("output_adherence")
-    row.input_faithfulness = scores.get("input_faithfulness")
+    for col in _SCORE_COLUMNS:
+        setattr(row, col, scores.get(col))  # dimensions not in this rubric stay None
     row.edit_burden = edit_burden
     row.dimensions_json = dimensions
     row.judge_model = judge_model
@@ -188,28 +270,37 @@ def upsert_score(db, *, report_id, pipeline, scores: dict, edit_burden,
     return row
 
 
-def score_report(db, report, *, rescore: bool = False, judge=None):
-    """Score one report on all rubric dimensions + edit_burden and upsert the row.
+def _rubric(version: str):
+    """Return (dimensions, prompts, case_text_fn) for a rubric version."""
+    if version == RUBRIC_VERSION_V2:
+        return DIMENSIONS_V2, _PROMPTS_V2, _case_text_v2
+    return DIMENSIONS, _PROMPTS, _case_text
 
-    ``judge`` is a callable ``(prompt, case_text) -> JudgeScore`` (injected in tests);
-    defaults to the real model-backed judge.
+
+def score_report(db, report, *, rescore: bool = False, judge=None,
+                 version: str = RUBRIC_VERSION_V2):
+    """Score one report on the rubric's dimensions + edit_burden and upsert the row.
+
+    Defaults to rubric v2. ``judge`` is a callable ``(prompt, case_text) -> JudgeScore``
+    (injected in tests); defaults to the real model-backed judge.
     """
     from .database.models import ReportQualityScore
     from .enhancement_utils import MODEL_CONFIG
 
     existing = (
         db.query(ReportQualityScore)
-        .filter_by(report_id=report.id, rubric_version=RUBRIC_VERSION)
+        .filter_by(report_id=report.id, rubric_version=version)
         .one_or_none()
     )
     if existing is not None and not rescore:
         return existing
 
     judge = judge or _default_judge
+    dimensions_set, prompts, case_fn = _rubric(version)
     case = _assemble_case(db, report)
     scores, dimensions = {}, {}
-    for dim in DIMENSIONS:
-        js = judge(_PROMPTS[dim], _case_text(dim, case))
+    for dim in dimensions_set:
+        js = judge(prompts[dim], case_fn(dim, case))
         scores[dim] = js.score
         dimensions[dim] = {
             "score": js.score,
@@ -220,7 +311,7 @@ def score_report(db, report, *, rescore: bool = False, judge=None):
     return upsert_score(
         db, report_id=report.id, pipeline=case["pipeline"], scores=scores,
         edit_burden=edit_burden, dimensions=dimensions,
-        judge_model=MODEL_CONFIG["QUALITY_JUDGE"],
+        judge_model=MODEL_CONFIG["QUALITY_JUDGE"], rubric_version=version,
     )
 
 

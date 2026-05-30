@@ -214,7 +214,7 @@ MODEL_CONFIG = {
     "KNOWLEDGE_MAINTENANCE": "gpt-oss-120b",  # Async agent: populate knowledge_links from skill sheet
 
     # Quality Scoring (admin analytics — offline batch judge)
-    "QUALITY_JUDGE": "claude-haiku-4-5-20251001",  # Report quality judge (Anthropic; ≠ GLM generator → avoids self-preference bias)
+    "QUALITY_JUDGE": "claude-haiku-4-5-20251001",  # Report quality judge (Anthropic; reliable/fast; ≠ GLM generator). OpenRouter/DeepSeek wired for future scale.
 }
 
 # Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
@@ -242,6 +242,10 @@ MODEL_PROVIDERS = {
 
     # Fireworks models
     "accounts/fireworks/models/glm-5p1": "fireworks",
+
+    # OpenRouter models (OpenAI-compatible gateway)
+    "deepseek/deepseek-v4-pro": "openrouter",
+    "deepseek/deepseek-v4-flash": "openrouter",
 }
 
 
@@ -399,8 +403,13 @@ def _get_api_key_for_provider(provider: str, fallback_api_key: str = None) -> st
         if not api_key:
             raise ValueError("Fireworks API key not configured. Please set FIREWORKS_API_KEY environment variable.")
         return api_key
+    elif provider == 'openrouter':
+        api_key = os.environ.get('OPENROUTER_API_KEY')
+        if not api_key:
+            raise ValueError("OpenRouter API key not configured. Please set OPENROUTER_API_KEY environment variable.")
+        return api_key
     else:
-        raise ValueError(f"Unknown provider: {provider}. Must be 'groq', 'anthropic', 'cerebras', or 'fireworks'.")
+        raise ValueError(f"Unknown provider: {provider}. Must be 'groq', 'anthropic', 'cerebras', 'fireworks', or 'openrouter'.")
 
 
 def with_retry(max_retries=3, base_delay=2.0):
@@ -3205,6 +3214,7 @@ REASONING WORKFLOW (for high-reasoning models like GPT-OSS 120B):
         'anthropic': 'ANTHROPIC_API_KEY',
         'cerebras': 'CEREBRAS_API_KEY',
         'fireworks': 'FIREWORKS_API_KEY',
+        'openrouter': 'OPENROUTER_API_KEY',
     }
     env_var_name = env_var_map[provider]
     old_api_key = os.environ.get(env_var_name)
@@ -3742,6 +3752,12 @@ def _create_pydantic_model(model_name: str, api_key: str, use_thinking: bool = F
             api_key=api_key,
         )
         return OpenAIModel(model_name, provider=provider_obj)
+    elif provider == 'openrouter':
+        provider_obj = OpenAIProvider(
+            base_url='https://openrouter.ai/api/v1',
+            api_key=api_key,
+        )
+        return OpenAIModel(model_name, provider=provider_obj)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -3782,6 +3798,7 @@ async def _run_agent_with_model(
         'anthropic': 'ANTHROPIC_API_KEY',
         'cerebras': 'CEREBRAS_API_KEY',
         'fireworks': 'FIREWORKS_API_KEY',
+        'openrouter': 'OPENROUTER_API_KEY',
     }
     env_var_name = env_var_map[provider]
     

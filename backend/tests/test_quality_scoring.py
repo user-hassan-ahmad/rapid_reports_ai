@@ -75,13 +75,15 @@ def test_score_report_quick_path_with_fake_judge(db_session):
         captured.append(case_text)
         return qs.JudgeScore(score=4, rationale="adequate", issues=[])
 
-    row = qs.score_report(db_session, r, judge=fake_judge)
+    row = qs.score_report(db_session, r, judge=fake_judge)  # defaults to rubric v2
     assert row.pipeline == "quick"
-    assert (row.sheet_fit, row.output_adherence, row.input_faithfulness) == (4, 4, 4)
+    assert row.rubric_version == "v2"
+    assert (row.output_adherence, row.dictation_fidelity, row.normal_fill_appropriateness) == (4, 4, 4)
+    assert row.sheet_fit is None and row.input_faithfulness is None  # retired/split in v2
     assert row.edit_burden is not None and row.edit_burden > 0  # final differs from draft
-    assert set(row.dimensions_json) == {"sheet_fit", "output_adherence", "input_faithfulness"}
+    assert set(row.dimensions_json) == {"output_adherence", "dictation_fidelity", "normal_fill_appropriateness"}
     assert len(captured) == 3                     # one judge call per dimension
-    assert "check lungs" in captured[0]           # skill sheet shown to sheet_fit judge
+    assert "check lungs" in captured[0]           # skill sheet shown to the v2 judge
 
 
 def test_score_report_skips_existing_unless_rescore(db_session):

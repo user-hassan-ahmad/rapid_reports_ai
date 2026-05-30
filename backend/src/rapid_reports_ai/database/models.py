@@ -734,9 +734,11 @@ class ReportQualityScore(Base):
         nullable=False, index=True,
     )
     pipeline = Column(String(16), nullable=False)        # "quick" | "template"
-    sheet_fit = Column(Integer, nullable=True)           # 1–5
+    sheet_fit = Column(Integer, nullable=True)           # 1–5 (v1 only; retired in v2)
     output_adherence = Column(Integer, nullable=True)    # 1–5
-    input_faithfulness = Column(Integer, nullable=True)  # 1–5
+    input_faithfulness = Column(Integer, nullable=True)  # 1–5 (v1 only; split in v2)
+    dictation_fidelity = Column(Integer, nullable=True)  # 1–5 (v2: dictated content preserved exactly)
+    normal_fill_appropriateness = Column(Integer, nullable=True)  # 1–5 (v2: added normals sanctioned + in-scope)
     edit_burden = Column(Float, nullable=True)           # 0–1 objective; null if no final
     dimensions_json = Column(JSONBType(), nullable=True)  # {dim:{score,rationale,issues:[...]}}
     judge_model = Column(String(100), nullable=False)
@@ -755,6 +757,8 @@ class ReportQualityScore(Base):
             "sheet_fit": self.sheet_fit,
             "output_adherence": self.output_adherence,
             "input_faithfulness": self.input_faithfulness,
+            "dictation_fidelity": self.dictation_fidelity,
+            "normal_fill_appropriateness": self.normal_fill_appropriateness,
             "edit_burden": self.edit_burden,
             "dimensions_json": self.dimensions_json,
             "judge_model": self.judge_model,
