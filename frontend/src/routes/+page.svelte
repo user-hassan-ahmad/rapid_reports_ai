@@ -805,8 +805,10 @@ $: if (!isEnhancementContext && sidebarVisible) {
 	closeCopilot();
 }
 
-// Auto-open Copilot once per report when guideline enhancement finishes loading (QA tab first)
-$: if (enhancementsLoaded && !copilotAutoOpened && !sidebarVisible && isEnhancementContext) {
+// Auto-open Copilot once per report when guideline enhancement finishes loading (QA tab first).
+// Gate on viewingReport (not just isEnhancementContext) so it does not pop open over the
+// templates list view, where currentReportId is preserved but no report is being viewed.
+$: if (enhancementsLoaded && !copilotAutoOpened && !sidebarVisible && viewingReport) {
 	const autoOpenEnabled = (() => {
 		try {
 			return localStorage.getItem('copilotAutoOpen') !== 'false';
@@ -825,7 +827,7 @@ $: if (
 	enhancementError &&
 	!copilotAutoOpened &&
 	!sidebarVisible &&
-	isEnhancementContext
+	viewingReport
 ) {
 	copilotAutoOpened = true;
 	openCopilot({ tab: 'qa' });
@@ -1143,8 +1145,10 @@ $: if (
 		{/if}
 	</main>
 
-	<!-- Mount when a report exists so /enhance + prefetch can run before Copilot is opened. -->
-	{#if isEnhancementContext && currentReportId}
+	<!-- Mount when a report is being viewed so /enhance + prefetch can run before Copilot is
+	     opened. Uses viewingReport (not just currentReportId) so the panel unmounts on the
+	     templates list view, where the report id is preserved for fast re-entry. -->
+	{#if viewingReport}
 		<aside
 			class="fixed inset-0 z-[10000] flex min-h-0 w-full flex-col border-l border-white/10 bg-black/70 backdrop-blur-2xl overflow-hidden shadow-2xl shadow-purple-500/10 transition-[width] duration-300 ease-in-out md:inset-y-0 md:left-auto md:right-0 md:z-[35] {!sidebarVisible ? 'hidden' : ''}"
 			style={browser && viewportWidth >= 768
