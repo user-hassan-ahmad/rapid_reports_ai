@@ -100,21 +100,29 @@ DICTATION_FIDELITY_PROMPT = (
     "# Role\n"
     "You verify that a generated report preserves the radiologist's DICTATED findings without corruption.\n\n"
     "# What you are given\n"
-    "The dictation (the radiologist's source-of-truth observations), the skill sheet (which defines the "
-    "sanctioned conventional normal statements and any reference-value thresholds), and the report.\n\n"
+    "The dictation (the radiologist's source-of-truth observations — clinical history and dictated findings), "
+    "the skill sheet (which defines sanctioned conventional normal statements and any reference-value "
+    "thresholds), and the report.\n\n"
     "# Dimension: dictation fidelity\n"
-    "This measures ONLY the fidelity of DICTATED content. The report is expected and permitted to ADD "
-    "conventional normal/negative statements sanctioned by the skill sheet for structures the radiologist did "
-    "not dictate — do NOT penalise those here; they are not dictated content. Penalise, most heavily first:\n"
+    "This measures ONLY the fidelity of DICTATED content. Two additions are EXPECTED and must NOT be penalised:\n"
+    "1. Conventional normal/negative statements sanctioned by the skill sheet for structures the radiologist "
+    "did not dictate (the system's job).\n"
+    "2. A diagnosis or interpretation that a radiologist would reasonably draw FROM a dictated finding — "
+    "grounded diagnostic synthesis, where a dictated descriptive finding directly supports the stated reading. "
+    "The system is DESIGNED to synthesise findings into diagnoses; reward grounded synthesis, do not score it "
+    "as fabrication.\n\n"
+    "Penalise ONLY genuine corruption of dictated content, most heavily first:\n"
     "- altering any dictated value, unit, laterality, severity, or qualifier (e.g. presenting a dictated "
     "absolute value as a derived/indexed one, or attaching a qualifier the dictation did not give);\n"
     "- fabricating a reference value or threshold the skill sheet does not define, or borrowing a qualifier "
     "from a different parameter;\n"
-    "- adding a diagnosis or interpretation the dictation did not state;\n"
+    "- introducing a NEW positive observation with no basis in any dictated finding (an invented finding — as "
+    "distinct from a grounded interpretation OF a dictated finding), or any claim that CONTRADICTS the dictation;\n"
     "- dropping a finding the dictation provided;\n"
     "- asserting normality that contradicts a dictated positive.\n\n"
     "Score 1 (dictated content materially corrupted, safety-relevant) to 5 (every dictated finding preserved "
-    "exactly). Give a one-sentence rationale and list verbatim offending spans."
+    "exactly, with only grounded synthesis and sanctioned normals added). Give a one-sentence rationale and "
+    "list verbatim offending spans."
 )
 
 NORMAL_FILL_PROMPT = (
@@ -162,9 +170,27 @@ def _case_text_v2(dimension: str, case: dict) -> str:
 # --- Case assembly + judging -------------------------------------------------
 
 def _format_input_data(input_data) -> str:
-    if not input_data or not isinstance(input_data, dict):
+    """Clean dictation text from a report's input_data.
+
+    The dictation fields are nested under ``input_data['variables']`` (CLINICAL_HISTORY,
+    SCAN_TYPE, FINDINGS). Earlier this stringified the whole nested dict, which the judge
+    mis-read — so this now extracts the dictation as labelled plain text.
+    """
+    if not isinstance(input_data, dict):
         return ""
-    return "\n".join(f"{k}: {v}" for k, v in input_data.items() if v)
+    v = input_data.get("variables") if isinstance(input_data.get("variables"), dict) else input_data
+    if not isinstance(v, dict):
+        return ""
+    parts = []
+    if v.get("SCAN_TYPE"):
+        parts.append(f"Scan type: {v['SCAN_TYPE']}")
+    if v.get("CLINICAL_HISTORY"):
+        parts.append(f"Clinical history: {v['CLINICAL_HISTORY']}")
+    if v.get("FINDINGS"):
+        parts.append(f"Dictated findings: {v['FINDINGS']}")
+    if not parts:  # fallback: any scalar fields
+        parts = [f"{k}: {val}" for k, val in v.items() if val and not isinstance(val, (dict, list))]
+    return "\n".join(parts)
 
 
 def _assemble_case(db, report) -> dict:
@@ -180,20 +206,18 @@ def _assemble_case(db, report) -> dict:
         edit_burden is null and the judge assesses ``report_content``.
     """
     ai_output = report.report_content or ""
+    inputs = _format_input_data(report.input_data)  # dictation lives here for BOTH pipelines
     if report.report_type == "auto":
         pipeline = "quick"
         ess = report.ephemeral_skill_sheet
-        inputs = (
-            f"Scan type: {ess.scan_type}\nClinical history: {ess.clinical_history}"
-            if ess else ""
-        )
         skill_sheet = ess.skill_sheet_markdown if ess else ""
+        if not inputs and ess:  # fallback if input_data is sparse
+            inputs = f"Scan type: {ess.scan_type}\nClinical history: {ess.clinical_history}"
         final = report.final_report_content
     else:
         pipeline = "template"
         tmpl = report.template
         cfg = (tmpl.template_config or {}) if tmpl and isinstance(tmpl.template_config, dict) else {}
-        inputs = _format_input_data(report.input_data)
         skill_sheet = cfg.get("skill_sheet") or ""
         final = None  # report_feedback.final_output is unreliable (cross-report copy capture)
     return {
