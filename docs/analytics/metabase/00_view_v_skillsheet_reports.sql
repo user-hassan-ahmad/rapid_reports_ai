@@ -5,10 +5,12 @@
 --
 -- Apply (idempotent):  psql "$DATABASE_PUBLIC_URL" -f 00_view_v_skillsheet_reports.sql
 --
--- Quality scoring: prefers rubric v2 (dictation_fidelity + normal_fill_appropriateness;
--- sheet_fit retired) and falls back to v1 per report. input_faithfulness is kept as a
--- back-compat alias for the strict fidelity dimension (= dictation_fidelity in v2).
--- quality_core = mean(output_adherence, fidelity) — the cross-pipeline comparable quality.
+-- Quality scoring: prefers rubric v2.1 (Sonnet judge, fixed inputs) then v2 (Haiku) then v1.
+-- input_faithfulness is kept as a back-compat alias for the strict fidelity dimension
+-- (= dictation_fidelity in v2/v2.1).
+-- quality_core = mean(output_adherence, dictation_fidelity, normal_fill_appropriateness)
+-- when all three are present (v2 / v2.1); falls back to mean(output_adherence, fidelity)
+-- for v1 rows that lack NF.
 
 DROP VIEW IF EXISTS v_skillsheet_reports;
 CREATE VIEW v_skillsheet_reports AS
@@ -34,9 +36,14 @@ SELECT
   q.dictation_fidelity,
   q.normal_fill_appropriateness,
   q.edit_burden,
-  CASE WHEN q.output_adherence IS NOT NULL
-        AND COALESCE(q.dictation_fidelity, q.input_faithfulness) IS NOT NULL
-       THEN round((q.output_adherence + COALESCE(q.dictation_fidelity, q.input_faithfulness)) / 2.0, 2)
+  CASE
+    WHEN q.output_adherence IS NOT NULL
+     AND q.dictation_fidelity IS NOT NULL
+     AND q.normal_fill_appropriateness IS NOT NULL
+      THEN round((q.output_adherence + q.dictation_fidelity + q.normal_fill_appropriateness) / 3.0, 2)
+    WHEN q.output_adherence IS NOT NULL
+     AND COALESCE(q.dictation_fidelity, q.input_faithfulness) IS NOT NULL
+      THEN round((q.output_adherence + COALESCE(q.dictation_fidelity, q.input_faithfulness)) / 2.0, 2)
   END                                    AS quality_core,
   q.judge_model,
   q.rubric_version,
@@ -48,10 +55,14 @@ JOIN users u ON u.id = r.user_id AND lower(u.email) NOT IN ('hassan.ahmad.ucl@gm
 LEFT JOIN ephemeral_skill_sheets ess ON ess.id = r.ephemeral_skill_sheet_id
 LEFT JOIN templates t ON t.id = r.template_id
 LEFT JOIN LATERAL (
-  -- prefer the v2 score row, fall back to v1
+  -- prefer the v2.1 (Sonnet) score row, then v2 (Haiku), then v1
   SELECT * FROM report_quality_scores s
   WHERE s.report_id = r.id
-  ORDER BY CASE s.rubric_version WHEN 'v2' THEN 2 WHEN 'v1' THEN 1 ELSE 0 END DESC
+  ORDER BY CASE s.rubric_version
+    WHEN 'v2.1' THEN 3
+    WHEN 'v2'   THEN 2
+    WHEN 'v1'   THEN 1
+    ELSE 0 END DESC
   LIMIT 1
 ) q ON true
 LEFT JOIN latest_audit la ON la.report_id = r.id

@@ -93,8 +93,20 @@ _PROMPTS = {
 #   sheet_fit is retired (not comparable across pipelines). The judge is given
 #   the skill sheet so it can tell a sanctioned normal from a fabrication.
 # ============================================================================
-RUBRIC_VERSION_V2 = "v2"
+RUBRIC_VERSION_V2 = "v2.1"
 DIMENSIONS_V2 = ("output_adherence", "dictation_fidelity", "normal_fill_appropriateness")
+
+# v2.1 OA prompt: same role/dimension, plus a clause telling the judge to use the
+# dictation (now provided) to tell "model dropped a mandated item" from "dictation
+# didn't supply input for a conditional item". v2 (Haiku) saw only sheet + report
+# and could not make this distinction → over-penalised undictated conditionals.
+OUTPUT_ADHERENCE_PROMPT_V2 = OUTPUT_ADHERENCE_PROMPT + (
+    "\n\nThe dictation is also provided so you can distinguish two cases:\n"
+    "- A sheet item that is ALWAYS REQUIRED (mandatory negative, mandatory structural section): "
+    "absence in the report is a real omission and lowers the score.\n"
+    "- A sheet item that is CONDITIONAL on a finding (e.g. characterise X if present, measure Y if abnormal): "
+    "if the dictation provides no basis for the conditional, the report not addressing it is NOT an omission."
+)
 
 DICTATION_FIDELITY_PROMPT = (
     "# Role\n"
@@ -143,7 +155,7 @@ NORMAL_FILL_PROMPT = (
 )
 
 _PROMPTS_V2 = {
-    "output_adherence": OUTPUT_ADHERENCE_PROMPT,
+    "output_adherence": OUTPUT_ADHERENCE_PROMPT_V2,
     "dictation_fidelity": DICTATION_FIDELITY_PROMPT,
     "normal_fill_appropriateness": NORMAL_FILL_PROMPT,
 }
@@ -151,11 +163,15 @@ _PROMPTS_V2 = {
 
 def _case_text_v2(dimension: str, case: dict) -> str:
     """v2 case text — always includes the skill sheet so the judge can tell a
-    sanctioned normal from a fabrication."""
+    sanctioned normal from a fabrication. v2.1 also gives output_adherence the
+    dictation so the judge can distinguish 'model dropped a mandated item' from
+    'dictation didn't supply input for a conditional item'."""
     report = case["final_output"] or case["ai_output"]
     inputs, sheet = case["inputs"], case["skill_sheet"]
     if dimension == "output_adherence":
-        return f"## Skill sheet\n{sheet}\n\n## Report\n{report}"
+        return (f"## Dictation\n{inputs}\n\n"
+                f"## Skill sheet\n{sheet}\n\n"
+                f"## Report\n{report}")
     if dimension == "dictation_fidelity":
         return (f"## Dictation (source of truth)\n{inputs}\n\n"
                 f"## Skill sheet (defines sanctioned normals & reference values)\n{sheet}\n\n"
@@ -182,8 +198,13 @@ def _format_input_data(input_data) -> str:
     if not isinstance(v, dict):
         return ""
     parts = []
-    if v.get("SCAN_TYPE"):
-        parts.append(f"Scan type: {v['SCAN_TYPE']}")
+    # Quick reports store scan type at variables.SCAN_TYPE; template reports store
+    # it at input_data.extracted_scan_type (top-level). Read both so the judge
+    # always sees a scan type — without this template judge calls began with
+    # "Clinical history: ..." and the judge had to infer the modality from the sheet.
+    scan_type = v.get("SCAN_TYPE") or input_data.get("extracted_scan_type")
+    if scan_type:
+        parts.append(f"Scan type: {scan_type}")
     if v.get("CLINICAL_HISTORY"):
         parts.append(f"Clinical history: {v['CLINICAL_HISTORY']}")
     if v.get("FINDINGS"):

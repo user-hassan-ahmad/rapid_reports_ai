@@ -214,7 +214,7 @@ MODEL_CONFIG = {
     "KNOWLEDGE_MAINTENANCE": "gpt-oss-120b",  # Async agent: populate knowledge_links from skill sheet
 
     # Quality Scoring (admin analytics — offline batch judge)
-    "QUALITY_JUDGE": "claude-haiku-4-5-20251001",  # Report quality judge (Anthropic; reliable/fast; ≠ GLM generator). OpenRouter/DeepSeek wired for future scale.
+    "QUALITY_JUDGE": "claude-sonnet-4-5-20250929",  # Report quality judge — Sonnet 4.5 calibrates ~+1.5 over Haiku on the v2.1 inputs (validated 2026-05-30 against the 28 'likely-real-failure' cohort).
 }
 
 # Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
@@ -234,6 +234,7 @@ MODEL_PROVIDERS = {
     # Anthropic models
     "claude-sonnet-4-20250514": "anthropic",
     "claude-sonnet-4-6": "anthropic",
+    "claude-sonnet-4-5-20250929": "anthropic",  # Sonnet 4.5 — quality judge (well-calibrated for rubric scoring)
     "claude-haiku-4-5-20251001": "anthropic",  # Haiku 4.5 — fast/cheap analyser variant
     
     # Cerebras models
