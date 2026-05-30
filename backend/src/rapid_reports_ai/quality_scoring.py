@@ -217,8 +217,13 @@ def _case_text(dimension: str, case: dict) -> str:
 
 
 def _default_judge(prompt: str, case_text: str) -> JudgeScore:
-    """Real judge: one model call per dimension via the shared agent runner."""
+    """Real judge: one model call per dimension via the shared agent runner.
+
+    Hardened for unattended batch use: a per-call timeout (so a hung provider
+    request can't stall the whole batch) and a short retry on transient errors.
+    """
     import asyncio
+    import time as _time
     from .enhancement_utils import (
         MODEL_CONFIG, _get_model_provider, _get_api_key_for_provider, _run_agent_with_model,
     )
@@ -226,16 +231,26 @@ def _default_judge(prompt: str, case_text: str) -> JudgeScore:
     model = MODEL_CONFIG["QUALITY_JUDGE"]
     provider = _get_model_provider(model)
     api_key = _get_api_key_for_provider(provider)
-    result = asyncio.run(_run_agent_with_model(
-        model_name=model,
-        output_type=JudgeScore,
-        system_prompt=prompt,
-        user_prompt=case_text,
-        api_key=api_key,
-        use_thinking=False,
-        model_settings={"temperature": 0.0, "max_tokens": 800},
-    ))
-    return result.output
+
+    async def _run():
+        return await asyncio.wait_for(
+            _run_agent_with_model(
+                model_name=model, output_type=JudgeScore,
+                system_prompt=prompt, user_prompt=case_text, api_key=api_key,
+                use_thinking=False, model_settings={"temperature": 0.0, "max_tokens": 1500},
+            ),
+            timeout=60,
+        )
+
+    last = None
+    for attempt in range(3):
+        try:
+            return asyncio.run(_run()).output
+        except Exception as exc:
+            last = exc
+            if attempt < 2:
+                _time.sleep(2.0 * (attempt + 1))
+    raise last
 
 
 # All score columns on the row; score_report sets whichever the rubric produced.
