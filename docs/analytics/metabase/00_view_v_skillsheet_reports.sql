@@ -10,7 +10,8 @@
 -- back-compat alias for the strict fidelity dimension (= dictation_fidelity in v2).
 -- quality_core = mean(output_adherence, fidelity) — the cross-pipeline comparable quality.
 
-CREATE OR REPLACE VIEW v_skillsheet_reports AS
+DROP VIEW IF EXISTS v_skillsheet_reports;
+CREATE VIEW v_skillsheet_reports AS
 WITH latest_audit AS (
   SELECT DISTINCT ON (report_id) report_id, overall_status
   FROM report_audits
