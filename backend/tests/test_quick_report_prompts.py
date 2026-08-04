@@ -16,6 +16,7 @@ from rapid_reports_ai.quick_report_analyser import (
     ANALYSER_SYSTEM_PROMPT_GLM,
     ANALYSER_SYSTEM_PROMPT_SONNET,
 )
+from rapid_reports_ai.quick_report_hardening import QUICK_REPORT_HARDENING_PREAMBLE
 
 BOTH_ANALYSER_PROMPTS = [
     pytest.param(ANALYSER_SYSTEM_PROMPT_SONNET, id="sonnet"),
@@ -55,3 +56,34 @@ def test_co_acquisition_is_not_visibility(prompt: str):
     """Guards the exact failure seen: trauma co-ordering made the analyser
     emit a cervical-spine normal on a vertex-to-skull-base head CT."""
     assert "Co-acquisition convention" in prompt
+
+
+# ── Generator-side override licence (Principle 12) ──────────────────────────
+# The analyser-side rules above only shape sheets generated from now on.
+# Principle 12 is what reaches the sheets already cached in
+# ephemeral_skill_sheets, because it licenses the generator to override them.
+
+
+def test_preamble_has_evidence_override_principle():
+    assert "**12. A canonical line from the skill sheet is a proposal" in (
+        QUICK_REPORT_HARDENING_PREAMBLE
+    )
+
+
+def test_principle_12_names_both_override_conditions():
+    """Out-of-volume and companion-contradiction are the two triggers."""
+    assert "outside the declared imaged volume" in QUICK_REPORT_HARDENING_PREAMBLE
+    assert "companion of a dictated positive" in QUICK_REPORT_HARDENING_PREAMBLE
+
+
+def test_principle_12_preserves_coverage():
+    assert "Dropping an assertion is not dropping the structure" in (
+        QUICK_REPORT_HARDENING_PREAMBLE
+    )
+
+
+def test_principle_11_gender_rule_not_clobbered():
+    """Regression guard — Principle 12 is appended, not substituted."""
+    assert "**11. Gender-specific structures require an explicit gender " in (
+        QUICK_REPORT_HARDENING_PREAMBLE
+    )
