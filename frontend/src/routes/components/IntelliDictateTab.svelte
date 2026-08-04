@@ -297,6 +297,62 @@ import { readSSEStream } from '$lib/utils/sse';
 		return raw.replace(/\n{3,}/g, '\n\n').trim();
 	}
 
+	// ── Dictation integrity gate ──
+	// Deterministic backend check (regex only, no LLM) for dictation that ends
+	// mid-clause. A truncated dictation generates a fluent, complete-looking
+	// report with a missing detail, and the radiologist has no signal anything
+	// went wrong — so a high-severity flag gates Generate until acknowledged.
+	// The acknowledgement is deliberately re-earned on every edit: it attests to
+	// the text as it stood, not to the flag as a category.
+	interface IntegrityFlag {
+		kind: string;
+		severity: string;
+		excerpt: string;
+		message: string;
+	}
+	let integrityFlags: IntegrityFlag[] = [];
+	let integrityGate = false;
+	let integrityAcknowledged = false;
+	let integrityTimer: ReturnType<typeof setTimeout> | null = null;
+	// Monotonic token so a slow response can't overwrite a newer one.
+	let integritySeq = 0;
+
+	$: scheduleIntegrityCheck(scratchpadContent);
+
+	function scheduleIntegrityCheck(content: string) {
+		if (integrityTimer) clearTimeout(integrityTimer);
+		integrityAcknowledged = false;
+		if (!content?.trim()) {
+			integrityFlags = [];
+			integrityGate = false;
+			return;
+		}
+		integrityTimer = setTimeout(() => runIntegrityCheck(content), 600);
+	}
+
+	async function runIntegrityCheck(content: string) {
+		const seq = ++integritySeq;
+		try {
+			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+			if ($token) headers['Authorization'] = `Bearer ${$token}`;
+			const res = await fetch(`${API_URL}/api/dictation/check`, {
+				method: 'POST',
+				headers,
+				body: JSON.stringify({ findings: scratchpadToFindings(content) })
+			});
+			if (!res.ok || seq !== integritySeq) return;
+			const data = await res.json();
+			if (seq !== integritySeq) return;
+			integrityFlags = data.flags ?? [];
+			integrityGate = Boolean(data.should_gate);
+		} catch {
+			// Non-blocking by design: a failed check must never strand the
+			// radiologist behind a gate it cannot clear.
+			integrityFlags = [];
+			integrityGate = false;
+		}
+	}
+
 	async function handleGenerateReport() {
 		if (!scratchpadRef) return;
 
@@ -784,6 +840,38 @@ import { readSSEStream } from '$lib/utils/sse';
 		/>
 	</div>
 
+			<!-- Dictation integrity — surfaces a truncated or incomplete dictation
+			     before it becomes a confident report. Amber, not red: this is a
+			     "look at this" not a "you broke something". -->
+			{#if integrityFlags.length > 0 && !integrityAcknowledged}
+				{@const flag = integrityFlags[0]}
+				<div
+					role="alert"
+					class="shrink-0 flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.07] px-4 py-3"
+				>
+					<svg class="w-4 h-4 mt-0.5 shrink-0 text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+					</svg>
+					<div class="min-w-0 flex-1">
+						<p class="text-sm text-amber-100/90 leading-relaxed">{flag.message}</p>
+						{#if flag.excerpt}
+							<p class="mt-1.5 font-mono text-xs text-amber-200/60 truncate" title={flag.excerpt}>
+								…{flag.excerpt}
+							</p>
+						{/if}
+					</div>
+					{#if integrityGate}
+						<button
+							type="button"
+							onclick={() => (integrityAcknowledged = true)}
+							class="self-start shrink-0 rounded-md border border-amber-500/40 px-3 py-1.5 text-xs font-medium text-amber-100/90 transition-colors hover:bg-amber-500/15"
+						>
+							Generate anyway
+						</button>
+					{/if}
+				</div>
+			{/if}
+
 			<!-- Generate Report — full width spanning editor + side panel -->
 			<!-- Speculative-parallel gate: the button enables as soon as the
 			     first (FAST) sheet lands. While the BEST (Haiku) sheet is still
@@ -792,7 +880,7 @@ import { readSSEStream } from '$lib/utils/sse';
 			<button
 				type="button"
 				onclick={() => handleGenerateReport()}
-				disabled={isRecording || loading || (analyseLoading && !analyserReady) || !scratchpadContent.trim() || sectionsDirty}
+				disabled={isRecording || loading || (analyseLoading && !analyserReady) || !scratchpadContent.trim() || sectionsDirty || (integrityGate && !integrityAcknowledged)}
 				class="btn-primary-subtle w-full px-6 py-3 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
 				class:best-ready={bestSheetReady && !loading}
 			>
@@ -801,6 +889,8 @@ import { readSSEStream } from '$lib/utils/sse';
 					<span>Generating...</span>
 				{:else if analyseLoading && !analyserReady}
 					<span>Start dictating findings</span>
+				{:else if integrityGate && !integrityAcknowledged}
+					<span>Check dictation to continue</span>
 				{:else}
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
