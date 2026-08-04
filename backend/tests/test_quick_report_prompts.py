@@ -82,6 +82,31 @@ def test_principle_12_preserves_coverage():
     )
 
 
+def test_principle_12_exempts_mandatory_negatives():
+    """Regression guard for a real over-fire found in behavioural testing.
+
+    The first version of Principle 12 keyed the override on "the Companion
+    Matrix names this region". The Companion Matrix holds BOTH in-scope
+    companions AND mandatory negatives, so the rule accidentally licensed
+    dropping mandatory negatives — and both analyser variants promptly did,
+    losing the four-compartment haemorrhage negative on a query-haemorrhage
+    head CT. Mandatory negatives answer the clinical question; they are never
+    silent-case filler.
+    """
+    assert "Mandatory negatives are outside this principle" in (
+        QUICK_REPORT_HARDENING_PREAMBLE
+    )
+    assert "Never drop a mandatory negative under this principle" in (
+        QUICK_REPORT_HARDENING_PREAMBLE
+    )
+
+
+@pytest.mark.parametrize("prompt", BOTH_ANALYSER_PROMPTS)
+def test_analyser_defeasibility_exempts_mandatory_negatives(prompt: str):
+    """The sheet must not author the over-suppression either."""
+    assert "mandatory negatives are never" in prompt
+
+
 def test_principle_11_gender_rule_not_clobbered():
     """Regression guard — Principle 12 is appended, not substituted."""
     assert "**11. Gender-specific structures require an explicit gender " in (
