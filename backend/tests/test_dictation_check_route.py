@@ -1,0 +1,75 @@
+"""Route tests for POST /api/dictation/check.
+
+Uses the shared SQLite TestClient harness from conftest.py. conftest provides
+no auth fixture and no prior test authenticates a protected route, so the
+authed_client fixture below is defined locally. It overrides the
+get_current_user dependency rather than minting a JWT — the route's behaviour
+under test is the integrity check, not token validation.
+"""
+from __future__ import annotations
+
+import uuid
+
+import pytest
+
+from rapid_reports_ai.auth import get_current_user
+from rapid_reports_ai.database.models import User
+from rapid_reports_ai.main import app
+
+
+@pytest.fixture
+def authed_client(client, db_session):
+    """TestClient whose requests resolve to a real persisted user."""
+    user = User(
+        id=uuid.uuid4(),
+        email=f"{uuid.uuid4()}@nhs.net",
+        password_hash="x",
+        full_name="Test Radiologist",
+        is_active=True,
+        is_verified=True,
+        is_approved=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: user
+    yield client
+    app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_clean_dictation_reports_ok(authed_client):
+    r = authed_client.post(
+        "/api/dictation/check",
+        json={"findings": "- lungs clear\n- no effusion"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["success"] is True
+    assert body["flags"] == []
+    assert body["should_gate"] is False
+
+
+def test_truncated_dictation_reports_a_gating_flag(authed_client):
+    r = authed_client.post(
+        "/api/dictation/check",
+        json={"findings": "There is a new destructive osseous lesion in the"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["success"] is True
+    assert len(body["flags"]) == 1
+    assert body["flags"][0]["kind"] == "truncation"
+    assert body["flags"][0]["message"]
+    assert body["should_gate"] is True
+
+
+def test_empty_findings_is_clean(authed_client):
+    r = authed_client.post("/api/dictation/check", json={"findings": ""})
+    assert r.status_code == 200
+    assert r.json()["flags"] == []
+
+
+def test_route_requires_authentication(client):
+    """Plain `client` — no dependency override, so real JWT validation runs."""
+    r = client.post("/api/dictation/check", json={"findings": "anything"})
+    assert r.status_code == 401
