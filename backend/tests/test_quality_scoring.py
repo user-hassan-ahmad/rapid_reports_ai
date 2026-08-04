@@ -75,9 +75,9 @@ def test_score_report_quick_path_with_fake_judge(db_session):
         captured.append(case_text)
         return qs.JudgeScore(score=4, rationale="adequate", issues=[])
 
-    row = qs.score_report(db_session, r, judge=fake_judge)  # defaults to rubric v2
+    row = qs.score_report(db_session, r, judge=fake_judge)  # defaults to current rubric
     assert row.pipeline == "quick"
-    assert row.rubric_version == "v2"
+    assert row.rubric_version == qs.RUBRIC_VERSION_V2
     assert (row.output_adherence, row.dictation_fidelity, row.normal_fill_appropriateness) == (4, 4, 4)
     assert row.sheet_fit is None and row.input_faithfulness is None  # retired/split in v2
     assert row.edit_burden is not None and row.edit_burden > 0  # final differs from draft
