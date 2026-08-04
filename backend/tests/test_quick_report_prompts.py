@@ -42,3 +42,16 @@ def test_coverage_obligation_survives_defeasibility(prompt: str):
     Regression guard: the fix must not swing the pendulum into under-coverage.
     """
     assert "Coverage of the structure remains obligatory" in prompt
+
+
+@pytest.mark.parametrize("prompt", BOTH_ANALYSER_PROMPTS)
+def test_secondary_regions_must_lie_inside_imaged_volume(prompt: str):
+    """A region outside the declared imaged volume cannot carry a normal line."""
+    assert "must lie within the declared Imaged volume" in prompt
+
+
+@pytest.mark.parametrize("prompt", BOTH_ANALYSER_PROMPTS)
+def test_co_acquisition_is_not_visibility(prompt: str):
+    """Guards the exact failure seen: trauma co-ordering made the analyser
+    emit a cervical-spine normal on a vertex-to-skull-base head CT."""
+    assert "Co-acquisition convention" in prompt

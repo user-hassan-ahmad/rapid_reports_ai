@@ -242,7 +242,7 @@ Write concrete values throughout. No angle brackets or curly braces in the emitt
 - **Primary region:** <...>
 - **Imaged volume:** <...>
 - **In-scope:** <...>
-- **Secondary visible regions:** <region> → "<canonical default-normal line>"  (emit a line ONLY when the phrasing is case-specific — a region that would default to "unremarkable" is omitted; the generator already carries that default. Emit when the region has a canonical radiological phrasing that differs from "unremarkable", e.g. "The visualised lung bases are clear")
+- **Secondary visible regions:** <region> → "<canonical default-normal line>"  (emit a line ONLY when the phrasing is case-specific — a region that would default to "unremarkable" is omitted; the generator already carries that default. Emit when the region has a canonical radiological phrasing that differs from "unremarkable", e.g. "The visualised lung bases are clear". CONTAINMENT: every region named here must lie within the declared Imaged volume. A region outside that volume is not a secondary visible region — it belongs in Out of scope, with no canonical line. Co-acquisition convention is not visibility: regions commonly scanned in the same sitting as this study, or implied by the clinical context, are not visible in this study's volume unless the volume contains them. Emitting a canonical normal for a region outside the imaged volume produces a confident assertion about anatomy the study cannot evaluate.)
 - **Out of scope:** <...>  (emit only specific structures at plausible risk of being confused with in-scope anatomy on this modality; generic anatomical exclusions that apply to every scan of this type are omitted)
 - **Contrast:** <...>
 - **Modality non-assessables:** <...>  (emit only if there is a case-relevant non-assessable a consultant would actively guard against on this specific scan type and clinical question; generic modality limitations the radiologist would not write in practice are omitted)
@@ -553,7 +553,7 @@ Write concrete values throughout. No angle brackets or curly braces in the emitt
 - **Primary region:** <...>
 - **Imaged volume:** <anatomical start to anatomical end>
 - **In-scope:** <...>
-- **Secondary visible regions:**
+- **Secondary visible regions:**  (CONTAINMENT: every region named here must lie within the declared Imaged volume. A region outside that volume is not a secondary visible region — it belongs in Out of scope, with no canonical line. Co-acquisition convention is not visibility: regions commonly scanned in the same sitting as this study, or implied by the clinical context, are not visible in this study's volume unless the volume contains them. Emitting a canonical normal for a region outside the imaged volume produces a confident assertion about anatomy the study cannot evaluate.)
   - <region> → "<canonical default-normal line>"
 - **Out of scope:** <item> (requires <alternative test>); <item> (requires <alternative test>)
 - **Contrast:** <inferred from scan-type naming>
