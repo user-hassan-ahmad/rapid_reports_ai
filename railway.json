@@ -4,7 +4,7 @@
     "builder": "RAILPACK"
   },
   "deploy": {
-    "startCommand": "export PYTHONPATH=/app/src:$PYTHONPATH && poetry run python fix_migration_state.py && poetry run uvicorn rapid_reports_ai.main:app --host 0.0.0.0 --port $PORT",
+    "startCommand": "export PYTHONPATH=/app/src:$PYTHONPATH && /app/.venv/bin/python fix_migration_state.py && /app/.venv/bin/python -m uvicorn rapid_reports_ai.main:app --host 0.0.0.0 --port $PORT",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
