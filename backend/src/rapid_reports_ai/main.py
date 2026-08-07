@@ -759,6 +759,11 @@ class QuickReportProtoGenerateRequest(BaseModel):
 
 class DictationCheckRequest(BaseModel):
     findings: str
+    # Tier 2 (LLM) checks are opt-in: they cost a model call, so the frontend
+    # runs them at natural pauses rather than on every keystroke-idle.
+    include_semantic: bool = False
+    scan_type: Optional[str] = None
+    clinical_history: Optional[str] = None
 
 
 # Feedback request models
@@ -2585,6 +2590,17 @@ async def dictation_check_endpoint(
     from .dictation_integrity import check_dictation
 
     flags = check_dictation(request.findings)
+
+    # Tier 2 runs only when asked, and only when tier 1 is clean: a truncated
+    # dictation is already gated, so spending a model call to also tell the
+    # radiologist it reads oddly is noise on top of a blocker.
+    if request.include_semantic and not flags:
+        from .dictation_semantic import check_semantic
+
+        flags = flags + check_semantic(
+            request.scan_type or "", request.clinical_history or "", request.findings
+        )
+
     return {
         "success": True,
         "flags": [

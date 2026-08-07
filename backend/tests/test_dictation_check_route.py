@@ -73,3 +73,59 @@ def test_route_requires_authentication(client):
     """Plain `client` — no dependency override, so real JWT validation runs."""
     r = client.post("/api/dictation/check", json={"findings": "anything"})
     assert r.status_code == 401
+
+
+# --- Tier 2 (semantic) opt-in -----------------------------------------------
+
+
+def test_semantic_is_off_by_default(authed_client, monkeypatch):
+    """The idle path must never spend a model call."""
+    called = []
+    import rapid_reports_ai.dictation_semantic as ds
+    monkeypatch.setattr(ds, "check_semantic", lambda *a, **k: called.append(1) or [])
+
+    r = authed_client.post(
+        "/api/dictation/check", json={"findings": "- lungs are clear."}
+    )
+    assert r.status_code == 200
+    assert called == []
+
+
+def test_semantic_skipped_when_tier1_already_flagged(authed_client, monkeypatch):
+    """A truncated dictation is already gated — don't also pay for tier 2."""
+    called = []
+    import rapid_reports_ai.dictation_semantic as ds
+    monkeypatch.setattr(ds, "check_semantic", lambda *a, **k: called.append(1) or [])
+
+    r = authed_client.post(
+        "/api/dictation/check",
+        json={
+            "findings": "- There is a lesion in the",
+            "include_semantic": True,
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["flags"][0]["kind"] == "truncation"
+    assert called == []
+
+
+def test_semantic_flags_do_not_gate(authed_client, monkeypatch):
+    """Model-judged issues advise; they must never block generation."""
+    from rapid_reports_ai.dictation_integrity import IntegrityFlag
+    import rapid_reports_ai.dictation_semantic as ds
+
+    monkeypatch.setattr(
+        ds, "check_semantic",
+        lambda *a, **k: [IntegrityFlag(
+            kind="laterality_conflict", severity="medium", excerpt="left ankle",
+            message="left vs right", start=0, end=10,
+        )],
+    )
+
+    r = authed_client.post(
+        "/api/dictation/check",
+        json={"findings": "left ankle is clear.", "include_semantic": True},
+    )
+    body = r.json()
+    assert body["flags"][0]["kind"] == "laterality_conflict"
+    assert body["should_gate"] is False

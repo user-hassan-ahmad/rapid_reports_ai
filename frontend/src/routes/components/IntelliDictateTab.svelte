@@ -319,6 +319,10 @@ import { readSSEStream } from '$lib/utils/sse';
 	let integrityGate = false;
 	let integrityAcknowledged = false;
 	let integrityTimer: ReturnType<typeof setTimeout> | null = null;
+	// Tier 2 (LLM) runs on a longer settle than tier 1: it costs a model call,
+	// so it should fire when the radiologist has genuinely paused, not between
+	// words. Tier 1 stays on the short debounce because it is free.
+	let semanticTimer: ReturnType<typeof setTimeout> | null = null;
 	// Monotonic token so a slow response can't overwrite a newer one.
 	let integritySeq = 0;
 
@@ -326,6 +330,7 @@ import { readSSEStream } from '$lib/utils/sse';
 
 	function scheduleIntegrityCheck(content: string) {
 		if (integrityTimer) clearTimeout(integrityTimer);
+		if (semanticTimer) clearTimeout(semanticTimer);
 		integrityAcknowledged = false;
 		if (!content?.trim()) {
 			integrityFlags = [];
@@ -334,9 +339,10 @@ import { readSSEStream } from '$lib/utils/sse';
 			return;
 		}
 		integrityTimer = setTimeout(() => runIntegrityCheck(content), 600);
+		semanticTimer = setTimeout(() => runIntegrityCheck(content, true), 2500);
 	}
 
-	async function runIntegrityCheck(content: string) {
+	async function runIntegrityCheck(content: string, includeSemantic = false) {
 		const seq = ++integritySeq;
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -347,7 +353,12 @@ import { readSSEStream } from '$lib/utils/sse';
 				// Raw document text, NOT scratchpadToFindings(): normalising
 				// collapses blank lines and trims, which would shift every
 				// offset out of alignment with the editor.
-				body: JSON.stringify({ findings: content })
+				body: JSON.stringify({
+					findings: content,
+					include_semantic: includeSemantic,
+					scan_type: includeSemantic ? scanType.trim() : undefined,
+					clinical_history: includeSemantic ? clinicalHistory.trim() : undefined
+				})
 			});
 			if (!res.ok || seq !== integritySeq) return;
 			const data = await res.json();
