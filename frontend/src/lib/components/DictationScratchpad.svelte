@@ -42,6 +42,30 @@
 		provide: (f) => EditorView.decorations.from(f)
 	});
 
+	// Dictation-integrity marks. A separate field from the IntelliPrompt
+	// highlight above, not a reuse of it: the two have different lifetimes
+	// (integrity persists while the dictation is flagged; the prompt highlight
+	// is transient on click) and must be able to coexist without one clearing
+	// the other. Ranges are mapped through document changes so the mark tracks
+	// the token as the radiologist keeps typing.
+	const setIntegrityMarks = StateEffect.define<{ from: number; to: number }[]>();
+	const integrityField = StateField.define<DecorationSet>({
+		create: () => Decoration.none,
+		update(deco, tr) {
+			deco = deco.map(tr.changes);
+			for (const e of tr.effects) {
+				if (e.is(setIntegrityMarks)) {
+					deco = Decoration.set(
+						e.value.map((r) =>
+							Decoration.mark({ class: 'cm-integrity-flag' }).range(r.from, r.to)
+						)
+					);
+				}
+			}
+			return deco;
+		},
+		provide: (f) => EditorView.decorations.from(f)
+	});
 
 	let editorContainer: HTMLDivElement;
 	let editor: EditorView | null = null;
@@ -212,6 +236,31 @@
 	export function clearHighlight(): void {
 		if (!editor) return;
 		editor.dispatch({ effects: setHighlight.of(null) });
+	}
+
+	/**
+	 * Decorate the spans a dictation-integrity check flagged.
+	 *
+	 * Ranges are character offsets into the editor document — the check is sent
+	 * the raw document text precisely so these map 1:1 and need no re-derivation
+	 * here. Out-of-range values are dropped rather than throwing: a response can
+	 * land after the radiologist has already deleted the text it describes.
+	 */
+	export function setIntegrityRanges(ranges: { from: number; to: number }[]): void {
+		if (!editor) return;
+		const len = editor.state.doc.length;
+		const safe = ranges
+			.filter((r) => r.from >= 0 && r.to <= len && r.from < r.to)
+			.map((r) => ({ from: r.from, to: r.to }));
+		editor.dispatch({ effects: setIntegrityMarks.of(safe) });
+	}
+
+	export function revealIntegrityRange(range: { from: number; to: number }): void {
+		if (!editor) return;
+		const len = editor.state.doc.length;
+		if (range.from < 0 || range.to > len) return;
+		editor.dispatch({ selection: { anchor: range.from, head: range.to }, scrollIntoView: true });
+		editor.focus();
 	}
 
 	async function processTranscript(): Promise<void> {
@@ -505,6 +554,7 @@
 					editableCompartment.of(EditorView.editable.of(true)),
 					darkTheme,
 					highlightField,
+					integrityField,
 					EditorView.updateListener.of((update) => {
 				if (update.docChanged) {
 					const content = update.state.doc.toString();
@@ -729,6 +779,17 @@
 		background: rgba(251, 191, 36, 0.22);
 		border-radius: 2px;
 		outline: 1px solid rgba(251, 191, 36, 0.4);
+	}
+
+	/* Dictation-integrity mark. Deliberately a squiggle rather than the block
+	   fill used above: the two can appear at once, and the proofreading idiom
+	   reads as "look here" without claiming the text is wrong. */
+	:global(.cm-integrity-flag) {
+		text-decoration: underline wavy rgba(251, 146, 60, 0.85);
+		text-decoration-skip-ink: none;
+		text-underline-offset: 3px;
+		background: rgba(251, 146, 60, 0.1);
+		border-radius: 2px;
 	}
 
 </style>
