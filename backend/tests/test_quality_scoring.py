@@ -77,12 +77,13 @@ def test_score_report_quick_path_with_fake_judge(db_session):
 
     row = qs.score_report(db_session, r, judge=fake_judge)  # defaults to current rubric
     assert row.pipeline == "quick"
-    assert row.rubric_version == qs.RUBRIC_VERSION_V2
+    assert row.rubric_version == qs.RUBRIC_VERSION_CURRENT
     assert (row.output_adherence, row.dictation_fidelity, row.normal_fill_appropriateness) == (4, 4, 4)
     assert row.sheet_fit is None and row.input_faithfulness is None  # retired/split in v2
     assert row.edit_burden is not None and row.edit_burden > 0  # final differs from draft
-    assert set(row.dimensions_json) == {"output_adherence", "dictation_fidelity", "normal_fill_appropriateness"}
-    assert len(captured) == 3                     # one judge call per dimension
+    # v2.2 adds unwarranted_assertion, which has no DB column and lives here only.
+    assert set(row.dimensions_json) == set(qs.DIMENSIONS_V22)
+    assert len(captured) == len(qs.DIMENSIONS_V22)   # one judge call per dimension
     assert "check lungs" in captured[0]           # skill sheet shown to the v2 judge
 
 
@@ -100,7 +101,7 @@ def test_score_report_skips_existing_unless_rescore(db_session):
     qs.score_report(db_session, r, judge=fake_judge)            # exists -> skip
     assert calls["n"] == first
     qs.score_report(db_session, r, judge=fake_judge, rescore=True)  # forced re-run
-    assert calls["n"] == first + 3
+    assert calls["n"] == first + len(qs.DIMENSIONS_V22)  # one call per dimension
 
 
 def test_edit_burden_zero_when_identical():

@@ -5,12 +5,27 @@
 --
 -- Apply (idempotent):  psql "$DATABASE_PUBLIC_URL" -f 00_view_v_skillsheet_reports.sql
 --
--- Quality scoring: prefers rubric v2.1 (Sonnet judge, fixed inputs) then v2 (Haiku) then v1.
+-- Quality scoring: prefers rubric v2.2, then v2.1 (Sonnet judge, fixed inputs), then v2
+-- (Haiku), then v1.
 -- input_faithfulness is kept as a back-compat alias for the strict fidelity dimension
--- (= dictation_fidelity in v2/v2.1).
+-- (= dictation_fidelity in v2/v2.1/v2.2).
 -- quality_core = mean(output_adherence, dictation_fidelity, normal_fill_appropriateness)
--- when all three are present (v2 / v2.1); falls back to mean(output_adherence, fidelity)
+-- when all three are present (v2 / v2.1 / v2.2); falls back to mean(output_adherence, fidelity)
 -- for v1 rows that lack NF.
+--
+-- v2.2 splits normal-fill into two questions. normal_fill_appropriateness now scores
+-- CONVENTIONALITY only ("is this a plausible normal for this scan type?"), and the new
+-- unwarranted_assertion scores WARRANT ("did we put words in the radiologist's mouth?" —
+-- out-of-volume claims, normals contradicting a dictated positive, and negatives the
+-- radiologist never indicated they reviewed). v2.1's single NF conflated both and sat at
+-- a near-ceiling 4.92 while human review found real defects in the same reports.
+--
+-- unwarranted_assertion has NO DB column — it is read out of dimensions_json, which
+-- already carries per-dimension detail. This avoided a migration.
+--
+-- quality_core deliberately still excludes unwarranted_assertion so the metric stays
+-- comparable across v2/v2.1/v2.2 cohorts. Track it as its own column; fold it into a
+-- headline score only once enough v2.2 rows exist to recalibrate against.
 
 DROP VIEW IF EXISTS v_skillsheet_reports;
 CREATE VIEW v_skillsheet_reports AS
@@ -35,6 +50,9 @@ SELECT
   COALESCE(q.dictation_fidelity, q.input_faithfulness) AS input_faithfulness,  -- strict fidelity (v2 or v1)
   q.dictation_fidelity,
   q.normal_fill_appropriateness,
+  -- v2.2 only; NULL on older rubric rows, which is the correct signal that the
+  -- question was never asked of them rather than that they passed it.
+  (q.dimensions_json -> 'unwarranted_assertion' ->> 'score')::int AS unwarranted_assertion,
   q.edit_burden,
   CASE
     WHEN q.output_adherence IS NOT NULL
@@ -55,10 +73,11 @@ JOIN users u ON u.id = r.user_id AND lower(u.email) NOT IN ('hassan.ahmad.ucl@gm
 LEFT JOIN ephemeral_skill_sheets ess ON ess.id = r.ephemeral_skill_sheet_id
 LEFT JOIN templates t ON t.id = r.template_id
 LEFT JOIN LATERAL (
-  -- prefer the v2.1 (Sonnet) score row, then v2 (Haiku), then v1
+  -- prefer the v2.2 (split normal-fill) row, then v2.1 (Sonnet), then v2 (Haiku), then v1
   SELECT * FROM report_quality_scores s
   WHERE s.report_id = r.id
   ORDER BY CASE s.rubric_version
+    WHEN 'v2.2' THEN 4
     WHEN 'v2.1' THEN 3
     WHEN 'v2'   THEN 2
     WHEN 'v1'   THEN 1

@@ -160,6 +160,94 @@ _PROMPTS_V2 = {
     "normal_fill_appropriateness": NORMAL_FILL_PROMPT,
 }
 
+# ============================================================================
+# RUBRIC v2.2 — split normal-fill into two questions
+#
+#   v2.1's normal_fill_appropriateness conflated:
+#     (a) "is this a plausible normal for this scan type?"  -> genuinely ~5.0
+#     (b) "did we put words in the radiologist's mouth?"    -> never measured
+#
+#   It sat at 4.92/5.0 while human review of the same reports found real
+#   defects: a cervical-spine normal on a vertex-to-skull-base head CT, clear
+#   basal cisterns asserted beside a dictated 3mm midline shift, and negatives
+#   about structures the radiologist never indicated they had reviewed. A
+#   dimension that scores near-ceiling while those pass is not measuring them.
+#
+#   v2.2 keeps (a) as normal_fill_appropriateness, narrowed to conventionality
+#   alone, and adds unwarranted_assertion for (b). Every filled normal is a
+#   statement the signing radiologist implicitly certifies; that deserves its
+#   own number.
+#
+#   Storage: unwarranted_assertion has no DB column — it lives in
+#   dimensions_json, which already carries per-dimension detail. No migration.
+# ============================================================================
+RUBRIC_VERSION_V22 = "v2.2"
+RUBRIC_VERSION_CURRENT = RUBRIC_VERSION_V22
+DIMENSIONS_V22 = DIMENSIONS_V2 + ("unwarranted_assertion",)
+
+# Narrowed: the out-of-scope clause moves to unwarranted_assertion. Scoring the
+# same defect in both dimensions would double-penalise it and defeat the split.
+NORMAL_FILL_PROMPT_V22 = (
+    "# Role\n"
+    "You assess whether the report's ADDED normal statements (those not from the dictation) follow "
+    "this study's reporting conventions.\n\n"
+    "# What you are given\n"
+    "The dictation, the skill sheet (which defines which normal/negative statements are conventional for "
+    "this template), and the report.\n\n"
+    "# Dimension: normal-fill conventionality\n"
+    "The report is DESIGNED to pad un-dictated structures with conventional normal statements — reward "
+    "appropriate, skill-sheet-sanctioned normal-filling. This dimension judges CONVENTIONALITY ONLY: "
+    "whether an added normal is phrased and placed the way a consultant would for this study type.\n\n"
+    "Penalise ONLY:\n"
+    "- normal/negative statements not sanctioned by the skill sheet's conventions (invented boilerplate);\n"
+    "- normal statements phrased in a way a consultant would not use for this study;\n"
+    "- fabricated reference ranges presented to imply normality or abnormality.\n\n"
+    "Do NOT penalise here whether an assertion was WARRANTED by the evidence — that is judged separately. "
+    "A normal line can be perfectly conventional and still unwarranted; score only the convention.\n\n"
+    "Score 1 (pervasive unsanctioned or unconventional normal-filling) to 5 (all added normals are "
+    "conventional). Give a one-sentence rationale and list verbatim offending spans."
+)
+
+UNWARRANTED_ASSERTION_PROMPT = (
+    "# Role\n"
+    "You find statements the report asserts as verified that the study or the dictation does not support.\n\n"
+    "# What you are given\n"
+    "The dictation, the skill sheet (which declares the study's imaged volume, in-scope structures, and "
+    "the companion findings associated with each pathology), and the report.\n\n"
+    "# Dimension: unwarranted assertion\n"
+    "Every normal statement in a report is a claim the signing radiologist certifies. This dimension asks "
+    "one question: does the report state as checked-and-normal anything that was not, or could not have "
+    "been, checked?\n\n"
+    "Penalise, most heavily first:\n"
+    "- ASSERTIONS OUTSIDE THE IMAGED VOLUME: a normal statement about a region the skill sheet's declared "
+    "imaged volume does not contain. A study cannot evaluate what it did not cover, however conventional "
+    "the phrasing. Regions conventionally co-acquired with this study are NOT in the volume unless the "
+    "volume contains them.\n"
+    "- ASSERTIONS THAT CONTRADICT A DICTATED FINDING: stating a structure is clear or normal when a "
+    "dictated positive implicates it — for example, the skill sheet's companion matrix names it as a "
+    "secondary effect or complication of a finding the radiologist reported. Such a normal asserts as "
+    "settled something the dictation puts in question.\n"
+    "- UNSOLICITED CERTIFICATION: negatives beyond the skill sheet's mandatory and conventional set, about "
+    "structures the radiologist did not indicate they reviewed. A mandatory negative that answers the "
+    "clinical question is warranted and must NOT be penalised; a volunteered negative about an unrelated "
+    "structure is the report putting words in the radiologist's mouth.\n\n"
+    "Do NOT penalise conventional, in-volume, uncontradicted normal-filling — that is the system working "
+    "as designed and is scored elsewhere.\n\n"
+    "Score 1 (multiple unwarranted assertions, at least one safety-relevant) to 5 (every assertion is "
+    "within the imaged volume, consistent with the dictation, and earned). Give a one-sentence rationale "
+    "and list verbatim offending spans.\n\n"
+    "SCORE AND EVIDENCE MUST AGREE. If you list no offending spans, the score is 5. Never deduct on a "
+    "general impression without naming the span you object to — an unevidenced deduction is the same "
+    "failure this dimension exists to detect."
+)
+
+_PROMPTS_V22 = {
+    "output_adherence": OUTPUT_ADHERENCE_PROMPT_V2,
+    "dictation_fidelity": DICTATION_FIDELITY_PROMPT,
+    "normal_fill_appropriateness": NORMAL_FILL_PROMPT_V22,
+    "unwarranted_assertion": UNWARRANTED_ASSERTION_PROMPT,
+}
+
 
 def _case_text_v2(dimension: str, case: dict) -> str:
     """v2 case text — always includes the skill sheet so the judge can tell a
@@ -179,6 +267,14 @@ def _case_text_v2(dimension: str, case: dict) -> str:
     if dimension == "normal_fill_appropriateness":
         return (f"## Dictation\n{inputs}\n\n"
                 f"## Skill sheet (defines conventional normals & scope)\n{sheet}\n\n"
+                f"## Report\n{report}")
+    if dimension == "unwarranted_assertion":
+        # The sheet header is labelled to point the judge at the two fields it
+        # must actually consult — the declared imaged volume and the companion
+        # matrix — rather than reading it as a style reference.
+        return (f"## Dictation (what the radiologist actually reported)\n{inputs}\n\n"
+                f"## Skill sheet (declares the imaged volume, in-scope structures, "
+                f"and companion findings)\n{sheet}\n\n"
                 f"## Report\n{report}")
     raise ValueError(f"unknown v2 dimension: {dimension}")
 
@@ -332,13 +428,18 @@ def upsert_score(db, *, report_id, pipeline, scores: dict, edit_burden,
 
 def _rubric(version: str):
     """Return (dimensions, prompts, case_text_fn) for a rubric version."""
+    if version == RUBRIC_VERSION_V22:
+        # v2.2 reuses the v2.1 case text: every dimension needs dictation +
+        # skill sheet + report, and unwarranted_assertion needs exactly the
+        # same three (imaged volume and companions come from the sheet).
+        return DIMENSIONS_V22, _PROMPTS_V22, _case_text_v2
     if version == RUBRIC_VERSION_V2:
         return DIMENSIONS_V2, _PROMPTS_V2, _case_text_v2
     return DIMENSIONS, _PROMPTS, _case_text
 
 
 def score_report(db, report, *, rescore: bool = False, judge=None,
-                 version: str = RUBRIC_VERSION_V2):
+                 version: str = RUBRIC_VERSION_CURRENT):
     """Score one report on the rubric's dimensions + edit_burden and upsert the row.
 
     Defaults to rubric v2. ``judge`` is a callable ``(prompt, case_text) -> JudgeScore``

@@ -31,6 +31,10 @@ def main() -> None:
     p.add_argument("--limit", type=int, default=None, help="Max reports to process.")
     p.add_argument("--rescore", action="store_true", help="Re-score reports that already have a row.")
     p.add_argument("--dry-run", action="store_true", help="List targets; no model calls, no writes.")
+    p.add_argument("--version", default=None,
+                   help="Rubric version to score with (default: current). Rows are keyed by "
+                        "(report_id, rubric_version), so scoring a new version leaves earlier "
+                        "cohorts intact and comparable.")
     args = p.parse_args()
 
     if not os.getenv("DATABASE_URL"):
@@ -59,7 +63,8 @@ def main() -> None:
         if args.limit is not None:
             reports = reports[: args.limit]
 
-        print(f"In-scope reports: {len(reports)} (pipeline={args.pipeline}, rubric={qs.RUBRIC_VERSION_V2})")
+        version = args.version or qs.RUBRIC_VERSION_CURRENT
+        print(f"In-scope reports: {len(reports)} (pipeline={args.pipeline}, rubric={version})")
         ok = err = 0
         for r in reports:
             label = "quick" if r.report_type == "auto" else "template"
@@ -67,7 +72,7 @@ def main() -> None:
                 print(f"  [dry-run] would score {r.id} ({label})")
                 continue
             try:
-                qs.score_report(db, r, rescore=args.rescore)
+                qs.score_report(db, r, rescore=args.rescore, version=version)
                 ok += 1
                 print(f"  scored {r.id} ({label})")
             except Exception as e:  # keep going; one bad report shouldn't abort the batch
