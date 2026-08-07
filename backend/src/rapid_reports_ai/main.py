@@ -757,10 +757,6 @@ class QuickReportProtoGenerateRequest(BaseModel):
     sheet_id: Optional[str] = None # persisted ephemeral_skill_sheets.id from /analyse — links the report row to the sheet
 
 
-class DictationCheckRequest(BaseModel):
-    findings: str
-
-
 # Feedback request models
 class FeedbackCaptureRequest(BaseModel):
     report_id: Optional[str] = None
@@ -2570,39 +2566,6 @@ async def extract_coverage_endpoint(
 # Generator: skill_sheet + findings → report (same skill_sheet_guided path as
 # production templates)
 # All runs logged to /tmp/radflow_quick_proto.log (separate from /tmp/radflow.log)
-
-@app.post("/api/dictation/check")
-async def dictation_check_endpoint(
-    request: DictationCheckRequest,
-    current_user: User = Depends(get_current_user),
-):
-    """Deterministic integrity check on raw dictation, before generation.
-
-    Cheap (regex only, no LLM) so the frontend can call it on idle. Returns
-    ``should_gate`` when a high-severity flag means the radiologist should
-    confirm before a report is generated from this dictation.
-    """
-    from .dictation_integrity import check_dictation
-
-    flags = check_dictation(request.findings)
-    return {
-        "success": True,
-        "flags": [
-            {
-                "kind": f.kind,
-                "severity": f.severity,
-                "excerpt": f.excerpt,
-                "message": f.message,
-                # Offsets index `findings` exactly as sent, so the editor can
-                # decorate the span without re-deriving it by string search.
-                "start": f.start,
-                "end": f.end,
-            }
-            for f in flags
-        ],
-        "should_gate": any(f.severity == "high" for f in flags),
-    }
-
 
 @app.post("/api/quick-report-proto/analyse")
 async def quick_report_proto_analyse_endpoint(
