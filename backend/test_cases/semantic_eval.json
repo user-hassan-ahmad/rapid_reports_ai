@@ -1,0 +1,51 @@
+[
+  {
+    "name": "clean_ct_head",
+    "expect": "clean",
+    "scan_type": "CT head non-contrast",
+    "clinical_history": "Elderly fall on anticoagulation, reduced GCS.",
+    "findings": "- acute subdural haematoma along the right cerebral convexity, maximal thickness 8 mm, with 3 mm of midline shift to the left\n- no skull vault fracture\n- age-related involutional change"
+  },
+  {
+    "name": "clean_ct_tavi_multisystem",
+    "expect": "clean",
+    "scan_type": "CT TAVI",
+    "clinical_history": "severe as",
+    "findings": "Left-sided pacemaker in situ. Severe coronary artery calcification and severe aortic valve calcification. The oesophagus is patulous and fluid-filled throughout its course. Small sliding hiatus hernia. There is diffuse sigmoid uncomplicated diverticulosis. Right total hip replacement noted. Severe degenerative change within the left hip."
+  },
+  {
+    "name": "clean_mri_ankle_fragments",
+    "expect": "clean",
+    "scan_type": "MRI Ankle Lt",
+    "clinical_history": "left ankle osteochondral defect",
+    "findings": "Mild to moderate ankle joint effusion noted.\n\nThere is osteochondral fracture of the posteromedial talar dome with reactive bone oedema in the talus.\n\nThe medial ligaments and posterior tendons are unremarkable.\n\nThe peroneal tendons are intact."
+  },
+  {
+    "name": "laterality_conflict",
+    "expect": "flag",
+    "scan_type": "MRI Ankle Rt",
+    "clinical_history": "Right ankle pain following inversion injury.",
+    "findings": "- MRI of the right ankle demonstrates a moderate joint effusion.\n- There is high signal within the anterior talofibular ligament.\n- Bone marrow oedema is seen within the left talar dome."
+  },
+  {
+    "name": "internal_contradiction",
+    "expect": "flag",
+    "scan_type": "CT abdomen and pelvis with contrast",
+    "clinical_history": "Abdominal pain.",
+    "findings": "- No free intraperitoneal fluid is seen.\n- The liver is normal.\n- There is a moderate volume of free fluid within the pelvis."
+  },
+  {
+    "name": "measurement_mismatch",
+    "expect": "flag",
+    "scan_type": "CT abdomen and pelvis with contrast",
+    "clinical_history": "Renal colic.",
+    "findings": "- There is a tiny non-obstructing calculus in the lower pole of the right kidney measuring 4.2 cm.\n- No hydronephrosis."
+  },
+  {
+    "name": "truncation_is_tier1_not_tier2",
+    "expect": "clean",
+    "scan_type": "CT lumbar spine",
+    "clinical_history": "Metastatic colonic cancer, reduced mobility.",
+    "findings": "- Comparison made to previous study dated 23/01/2026\n- There is a new destructive expansile osseous lesion in the"
+  }
+]
