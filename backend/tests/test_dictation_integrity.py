@@ -83,6 +83,49 @@ def test_flag_carries_an_excerpt_for_the_ui():
 
 def test_flag_is_immutable():
     import pytest
-    flag = IntegrityFlag(kind="truncation", severity="high", excerpt="x", message="y")
+    flag = IntegrityFlag(kind="truncation", severity="high", excerpt="x",
+                         message="y", start=0, end=1)
     with pytest.raises(Exception):
         flag.kind = "other"
+
+
+# --- Offsets ---------------------------------------------------------------
+# The offsets are what let the editor decorate the exact dangling token rather
+# than making the radiologist hunt for it. They must index the text EXACTLY as
+# supplied, so slicing the original string by [start:end] returns the token.
+
+
+def test_offsets_select_the_dangling_word():
+    text = "- There is a new destructive expansile osseous lesion in the"
+    flag = check_dictation(text)[0]
+    assert text[flag.start:flag.end] == "the"
+
+
+def test_offsets_are_correct_on_a_later_line():
+    """Multi-line: offsets must account for every preceding line."""
+    text = (
+        "- Comparison made to previous study dated 23/01/2026\n"
+        "- There is a new destructive expansile osseous lesion in the"
+    )
+    flag = check_dictation(text)[0]
+    assert text[flag.start:flag.end] == "the"
+
+
+def test_offsets_point_at_the_last_occurrence_not_the_first():
+    """The whole reason for offsets over text-search: 'the' appears earlier."""
+    text = "- the liver is normal\n- there is a mass in the"
+    flag = check_dictation(text)[0]
+    assert text[flag.start:flag.end] == "the"
+    assert flag.start > text.index("the")  # not the first "the"
+
+
+def test_offsets_survive_leading_whitespace_and_blank_lines():
+    text = "\n\n   - there is a mass in the\n\n   \n"
+    flag = check_dictation(text)[0]
+    assert text[flag.start:flag.end] == "the"
+
+
+def test_offsets_select_the_dangling_measurement():
+    text = "Large high-density focus measuring up to 46 x"
+    flag = check_dictation(text)[0]
+    assert text[flag.start:flag.end].strip() == "46 x"

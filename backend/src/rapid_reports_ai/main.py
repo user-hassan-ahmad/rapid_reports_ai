@@ -2593,6 +2593,10 @@ async def dictation_check_endpoint(
                 "severity": f.severity,
                 "excerpt": f.excerpt,
                 "message": f.message,
+                # Offsets index `findings` exactly as sent, so the editor can
+                # decorate the span without re-deriving it by string search.
+                "start": f.start,
+                "end": f.end,
             }
             for f in flags
         ],

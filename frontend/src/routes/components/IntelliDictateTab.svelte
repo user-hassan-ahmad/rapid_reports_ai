@@ -74,6 +74,8 @@ import { readSSEStream } from '$lib/utils/sse';
 		reset: (doc: string) => void;
 		highlightSource: (text: string) => void;
 		clearHighlight: () => void;
+		setIntegrityRanges: (ranges: { from: number; to: number }[]) => void;
+		revealIntegrityRange: (range: { from: number; to: number }) => void;
 	} | null = null;
 
 	// Checklist: covered sections from Qwen API response
@@ -309,6 +311,9 @@ import { readSSEStream } from '$lib/utils/sse';
 		severity: string;
 		excerpt: string;
 		message: string;
+		// Character offsets into the raw scratchpad document.
+		start: number;
+		end: number;
 	}
 	let integrityFlags: IntegrityFlag[] = [];
 	let integrityGate = false;
@@ -325,6 +330,7 @@ import { readSSEStream } from '$lib/utils/sse';
 		if (!content?.trim()) {
 			integrityFlags = [];
 			integrityGate = false;
+			scratchpadRef?.setIntegrityRanges([]);
 			return;
 		}
 		integrityTimer = setTimeout(() => runIntegrityCheck(content), 600);
@@ -338,18 +344,25 @@ import { readSSEStream } from '$lib/utils/sse';
 			const res = await fetch(`${API_URL}/api/dictation/check`, {
 				method: 'POST',
 				headers,
-				body: JSON.stringify({ findings: scratchpadToFindings(content) })
+				// Raw document text, NOT scratchpadToFindings(): normalising
+				// collapses blank lines and trims, which would shift every
+				// offset out of alignment with the editor.
+				body: JSON.stringify({ findings: content })
 			});
 			if (!res.ok || seq !== integritySeq) return;
 			const data = await res.json();
 			if (seq !== integritySeq) return;
 			integrityFlags = data.flags ?? [];
 			integrityGate = Boolean(data.should_gate);
+			scratchpadRef?.setIntegrityRanges(
+				integrityFlags.map((f) => ({ from: f.start, to: f.end }))
+			);
 		} catch {
 			// Non-blocking by design: a failed check must never strand the
 			// radiologist behind a gate it cannot clear.
 			integrityFlags = [];
 			integrityGate = false;
+			scratchpadRef?.setIntegrityRanges([]);
 		}
 	}
 
@@ -855,9 +868,16 @@ import { readSSEStream } from '$lib/utils/sse';
 					<div class="min-w-0 flex-1">
 						<p class="text-sm text-amber-100/90 leading-relaxed">{flag.message}</p>
 						{#if flag.excerpt}
-							<p class="mt-1.5 font-mono text-xs text-amber-200/60 truncate" title={flag.excerpt}>
+							<!-- Click jumps to the flagged span, mirroring how the audit
+							     sidebar links back into the report body. -->
+							<button
+								type="button"
+								onclick={() => scratchpadRef?.revealIntegrityRange({ from: flag.start, to: flag.end })}
+								class="mt-1.5 block w-full truncate text-left font-mono text-xs text-amber-200/60 underline decoration-dotted underline-offset-2 transition-colors hover:text-amber-100"
+								title="Jump to this point in the dictation"
+							>
 								…{flag.excerpt}
-							</p>
+							</button>
 						{/if}
 					</div>
 					{#if integrityGate}
