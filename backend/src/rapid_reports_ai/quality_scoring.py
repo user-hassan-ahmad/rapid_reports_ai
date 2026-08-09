@@ -11,7 +11,7 @@ Scores are persisted to ``report_quality_scores`` and read by Metabase.
 from __future__ import annotations
 
 import difflib
-from typing import Optional
+from typing import Iterable, Optional
 
 from pydantic import BaseModel, Field
 
@@ -486,3 +486,15 @@ def compute_edit_burden(ai_text: str, final_text: Optional[str]) -> Optional[flo
         return None
     ratio = difflib.SequenceMatcher(None, ai_text or "", final_text).ratio()
     return round(1.0 - ratio, 4)
+
+
+def zero_edit_rate(edit_burdens: Iterable[Optional[float]]) -> Optional[float]:
+    """Fraction of reports signed with no edits (edit_burden == 0.0).
+
+    Ignores ``None`` (no final text to compare against). Returns ``None`` when
+    there is no comparable report.
+    """
+    scored = [b for b in edit_burdens if b is not None]
+    if not scored:
+        return None
+    return round(sum(1 for b in scored if b == 0.0) / len(scored), 4)
