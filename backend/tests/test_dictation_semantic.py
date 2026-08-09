@@ -11,6 +11,7 @@ from rapid_reports_ai.dictation_semantic import (
     SemanticIssue,
     SemanticFindings,
     check_semantic,
+    _locate_flags,
 )
 
 
@@ -27,8 +28,7 @@ FINDINGS = (
 )
 
 
-def test_no_issues_returns_empty():
-    assert check_semantic("MRI ankle", "pain", FINDINGS, analyse=_fake([])) == []
+# --- pure locating logic (_locate_flags) ------------------------------------
 
 
 def test_issue_is_located_and_offsets_are_exact():
@@ -37,7 +37,7 @@ def test_issue_is_located_and_offsets_are_exact():
         quote="left ankle mortise",
         message="Findings mention both a right and a left ankle.",
     )
-    flags = check_semantic("MRI ankle", "right ankle pain", FINDINGS, analyse=_fake([issue]))
+    flags = _locate_flags(FINDINGS, SemanticFindings(issues=[issue]))
     assert len(flags) == 1
     f = flags[0]
     assert FINDINGS[f.start:f.end] == "left ankle mortise"
@@ -51,7 +51,7 @@ def test_semantic_issues_are_advisory_not_gating():
     generating — it should draw the eye and nothing more.
     """
     issue = SemanticIssue(kind="laterality_conflict", quote="left ankle mortise", message="m")
-    flags = check_semantic("MRI ankle", "", FINDINGS, analyse=_fake([issue]))
+    flags = _locate_flags(FINDINGS, SemanticFindings(issues=[issue]))
     assert flags[0].severity == "medium"
     assert not any(f.severity == "high" for f in flags)
 
@@ -64,34 +64,52 @@ def test_hallucinated_span_is_dropped():
         quote="the spleen is enlarged",   # never appears in FINDINGS
         message="m",
     )
-    assert check_semantic("MRI ankle", "", FINDINGS, analyse=_fake([issue])) == []
+    assert _locate_flags(FINDINGS, SemanticFindings(issues=[issue])) == []
 
 
 def test_last_occurrence_is_used_for_repeated_quotes():
     text = "- left ankle reviewed\n- oedema within the left ankle"
     issue = SemanticIssue(kind="laterality_conflict", quote="left ankle", message="m")
-    f = check_semantic("MRI ankle", "", text, analyse=_fake([issue]))[0]
+    f = _locate_flags(text, SemanticFindings(issues=[issue]))[0]
     assert text[f.start:f.end] == "left ankle"
     assert f.start == text.rfind("left ankle")
 
 
-def test_blank_dictation_never_calls_the_model():
+# --- async check_semantic behaviour (injected analyser) ---------------------
+
+
+async def test_no_issues_returns_empty():
+    assert await check_semantic("MRI ankle", "pain", FINDINGS, analyse=_fake([])) == []
+
+
+async def test_located_flag_via_injected_analyser():
+    issue = SemanticIssue(
+        kind="laterality_conflict",
+        quote="left ankle mortise",
+        message="Findings mention both a right and a left ankle.",
+    )
+    flags = await check_semantic("MRI ankle", "", FINDINGS, analyse=_fake([issue]))
+    assert len(flags) == 1
+    assert FINDINGS[flags[0].start:flags[0].end] == "left ankle mortise"
+
+
+async def test_blank_dictation_never_calls_the_model():
     called = []
 
     def _spy(scan_type, clinical_history, findings):
         called.append(1)
         return SemanticFindings(issues=[])
 
-    assert check_semantic("MRI ankle", "", "   \n ", analyse=_spy) == []
+    assert await check_semantic("MRI ankle", "", "   \n ", analyse=_spy) == []
     assert called == []
 
 
-def test_model_failure_is_non_blocking():
+async def test_model_failure_is_non_blocking():
     """A provider outage must not strand the radiologist or surface an error."""
     def _boom(scan_type, clinical_history, findings):
         raise RuntimeError("provider down")
 
-    assert check_semantic("MRI ankle", "", FINDINGS, analyse=_boom) == []
+    assert await check_semantic("MRI ankle", "", FINDINGS, analyse=_boom) == []
 
 
 def test_issue_kinds_are_constrained():

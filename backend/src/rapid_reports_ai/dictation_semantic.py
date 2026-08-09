@@ -24,6 +24,7 @@ for the natural pauses: when dictation settles, or immediately before generate.
 """
 from __future__ import annotations
 
+import inspect
 from typing import Callable, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -90,10 +91,10 @@ SEMANTIC_SYSTEM_PROMPT = (
 _MEDIUM = "medium"
 
 
-def _default_analyse(
+async def _default_analyse(
     scan_type: str, clinical_history: str, findings: str
 ) -> SemanticFindings:
-    """Real analyser: one model call via the shared agent runner.
+    """Real analyser: one model call via the shared agent runner, on the caller's loop.
 
     Uses the STRUCTURE_VALIDATOR slot (a fast Cerebras model) rather than the
     judge tier — this runs in a user-facing pause, not an offline batch, so
@@ -117,53 +118,33 @@ def _default_analyse(
         f"Dictation:\n{findings}"
     )
 
-    async def _run():
-        return await asyncio.wait_for(
-            _run_agent_with_model(
-                model_name=model,
-                output_type=SemanticFindings,
-                system_prompt=SEMANTIC_SYSTEM_PROMPT,
-                user_prompt=user_prompt,
-                api_key=api_key,
-                use_thinking=False,
-                model_settings={"temperature": 0.0, "max_tokens": 800},
-            ),
-            timeout=20,
-        )
-
-    return asyncio.run(_run()).output
+    result = await asyncio.wait_for(
+        _run_agent_with_model(
+            model_name=model,
+            output_type=SemanticFindings,
+            system_prompt=SEMANTIC_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            api_key=api_key,
+            use_thinking=False,
+            model_settings={"temperature": 0.0, "max_tokens": 800},
+        ),
+        timeout=20,
+    )
+    return result.output
 
 
-def check_semantic(
-    scan_type: str,
-    clinical_history: str,
-    findings: str | None,
-    *,
-    analyse: Optional[Callable[[str, str, str], SemanticFindings]] = None,
-) -> list[IntegrityFlag]:
-    """Return advisory flags for semantic problems. Empty list means clean.
+def _locate_flags(findings: str, result: SemanticFindings) -> list[IntegrityFlag]:
+    """Turn model-reported issues into located advisory flags (pure, no I/O).
 
-    ``analyse`` is injected in tests; it defaults to the model-backed analyser.
-    Any failure returns an empty list — a degraded check must never block or
-    surface an error to a radiologist mid-dictation.
+    Drops any issue whose quote is not a verbatim substring of ``findings`` — an
+    unplaceable flag is worse than none. Uses rfind so a repeated phrase resolves
+    to the later (contradicting) restatement.
     """
-    if not findings or not findings.strip():
-        return []
-
-    try:
-        result = (analyse or _default_analyse)(
-            scan_type or "", clinical_history or "", findings
-        )
-    except Exception:
-        return []
-
     flags: list[IntegrityFlag] = []
     for issue in result.issues:
         quote = (issue.quote or "").strip()
         if not quote:
             continue
-        # rfind: when a phrase repeats, the later mention is the one the model
-        # is almost always objecting to (the contradicting restatement).
         start = findings.rfind(quote)
         if start == -1:
             continue  # not verbatim — drop rather than approximate
@@ -178,3 +159,31 @@ def check_semantic(
             )
         )
     return flags
+
+
+async def check_semantic(
+    scan_type: str,
+    clinical_history: str,
+    findings: str | None,
+    *,
+    analyse: Optional[Callable[[str, str, str], SemanticFindings]] = None,
+) -> list[IntegrityFlag]:
+    """Return advisory flags for semantic problems. Empty list means clean.
+
+    ``analyse`` is injected in tests; it defaults to the model-backed analyser
+    and may be sync or async. Any failure returns an empty list — a degraded
+    check must never block or surface an error to a radiologist mid-dictation.
+    """
+    if not findings or not findings.strip():
+        return []
+
+    try:
+        result = (analyse or _default_analyse)(
+            scan_type or "", clinical_history or "", findings
+        )
+        if inspect.isawaitable(result):
+            result = await result
+    except Exception:
+        return []
+
+    return _locate_flags(findings, result)
