@@ -1,6 +1,8 @@
 """Canvas routes for intelligent dictation — section generation and transcript processing."""
 
 import asyncio
+import logging
+import time as _time
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -12,6 +14,8 @@ from .enhancement_utils import (
     _get_model_provider,
     _run_agent_with_model,
 )
+
+logger = logging.getLogger(__name__)
 
 canvas_router = APIRouter(prefix="/api/canvas", tags=["canvas"])
 
@@ -517,6 +521,7 @@ async def process_transcript(
         session_transcript=request.session_transcript,
     )
 
+    t0 = _time.perf_counter()
     try:
         result = await _run_agent_with_model(
             model_name=model_name,
@@ -530,10 +535,16 @@ async def process_transcript(
             # not accept top_k/min_p, so only temperature/top_p from the Qwen recipe apply.
             model_settings={"temperature": 0.7, "top_p": 0.8, "max_tokens": 8000, "extra_body": {"reasoning_effort": "none"}},
         )
+        elapsed = _time.perf_counter() - t0
+        logger.info(
+            "[canvas.process] %.2fs model=%s transcript_chars=%d scratchpad_chars=%d",
+            elapsed, model_name, len(request.session_transcript or ""), len(request.scratchpad_content or ""),
+        )
         return result.output
     except Exception as e:
+        elapsed = _time.perf_counter() - t0
         import traceback
-        print(f"[CANVAS-PROCESS] ❌ {type(e).__name__}: {e}")
+        logger.error("[canvas.process] ❌ %.2fs %s: %s", elapsed, type(e).__name__, e)
         traceback.print_exc()
         return CanvasProcessResponse(scratchpad=request.scratchpad_content, covered_sections=[])
 
