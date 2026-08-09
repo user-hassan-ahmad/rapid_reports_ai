@@ -631,11 +631,11 @@ async def review_scratchpad(
                     f"[COVERAGE] 🔧 normalised raw={raw_covered} "
                     f"split={split_count} dropped={dropped}"
                 )
-            print(f"[COVERAGE] ✅ {elapsed:.2f}s → {covered}")
+            logger.info("[canvas.coverage] %.2fs → %s", elapsed, covered)
             return covered
         except Exception as e:
             elapsed = _time.perf_counter() - t0
-            print(f"[COVERAGE] ❌ {elapsed:.2f}s → {type(e).__name__}: {e}")
+            logger.error("[canvas.coverage] ❌ %.2fs %s: %s", elapsed, type(e).__name__, e)
             return []
 
     async def run_intelliprompts() -> list[IntelliPrompt]:
@@ -669,7 +669,7 @@ async def review_scratchpad(
                     validated.append(IntelliPrompt(question=p.question, source_text="", rationale=p.rationale))
                 else:
                     validated.append(p)
-            print(f"[INTELLIPROMPTS] {label} {elapsed:.2f}s → {len(validated)} prompts")
+            logger.info("[canvas.intelliprompts] %s %.2fs → %d prompts", label, elapsed, len(validated))
             for p in validated:
                 rationale_preview = (p.rationale[:80] + "…") if p.rationale and len(p.rationale) > 80 else (p.rationale or "⚠️ NO RATIONALE")
                 print(f"[INTELLIPROMPTS]   • {p.question}")

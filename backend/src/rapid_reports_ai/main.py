@@ -4887,6 +4887,10 @@ async def websocket_transcribe(websocket: WebSocket):
     """
     await websocket.accept()
     print("WebSocket transcription connection accepted")
+
+    import time as _perf
+    _t_session = _perf.perf_counter()
+    _finals = [0]  # finalised utterances (mutable so the nested forwarder can bump it)
     
     # Extract token from query parameters (FastAPI WebSocket doesn't support query params in signature)
     token = websocket.query_params.get("token")
@@ -5006,6 +5010,7 @@ async def websocket_transcribe(websocket: WebSocket):
 
                                         # Only log finalised, non-empty utterances — skip interim / empty frames.
                                         if is_final and transcript:
+                                            _finals[0] += 1
                                             print(f"📝 {transcript!r} (speech_final={speech_final})")
 
                                         if transcript:
@@ -5036,6 +5041,7 @@ async def websocket_transcribe(websocket: WebSocket):
                     forward_to_deepgram(),
                     forward_from_deepgram()
                 )
+                logger.info("[transcribe] session %.1fs finals=%d", _perf.perf_counter() - _t_session, _finals[0])
     
     except Exception as e:
         print(f"Error in WebSocket transcription: {e}")
