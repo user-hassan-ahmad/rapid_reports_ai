@@ -2597,7 +2597,7 @@ async def dictation_check_endpoint(
     if request.include_semantic and not flags:
         from .dictation_semantic import check_semantic
 
-        flags = flags + check_semantic(
+        flags = flags + await check_semantic(
             request.scan_type or "", request.clinical_history or "", request.findings
         )
 

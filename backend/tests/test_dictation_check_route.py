@@ -82,7 +82,11 @@ def test_semantic_is_off_by_default(authed_client, monkeypatch):
     """The idle path must never spend a model call."""
     called = []
     import rapid_reports_ai.dictation_semantic as ds
-    monkeypatch.setattr(ds, "check_semantic", lambda *a, **k: called.append(1) or [])
+    async def _fake_check(*a, **k):
+        called.append(1)
+        return []
+
+    monkeypatch.setattr(ds, "check_semantic", _fake_check)
 
     r = authed_client.post(
         "/api/dictation/check", json={"findings": "- lungs are clear."}
@@ -95,7 +99,11 @@ def test_semantic_skipped_when_tier1_already_flagged(authed_client, monkeypatch)
     """A truncated dictation is already gated — don't also pay for tier 2."""
     called = []
     import rapid_reports_ai.dictation_semantic as ds
-    monkeypatch.setattr(ds, "check_semantic", lambda *a, **k: called.append(1) or [])
+    async def _fake_check(*a, **k):
+        called.append(1)
+        return []
+
+    monkeypatch.setattr(ds, "check_semantic", _fake_check)
 
     r = authed_client.post(
         "/api/dictation/check",
@@ -114,13 +122,13 @@ def test_semantic_flags_do_not_gate(authed_client, monkeypatch):
     from rapid_reports_ai.dictation_integrity import IntegrityFlag
     import rapid_reports_ai.dictation_semantic as ds
 
-    monkeypatch.setattr(
-        ds, "check_semantic",
-        lambda *a, **k: [IntegrityFlag(
+    async def _fake_check(*a, **k):
+        return [IntegrityFlag(
             kind="laterality_conflict", severity="medium", excerpt="left ankle",
             message="left vs right", start=0, end=10,
-        )],
-    )
+        )]
+
+    monkeypatch.setattr(ds, "check_semantic", _fake_check)
 
     r = authed_client.post(
         "/api/dictation/check",
