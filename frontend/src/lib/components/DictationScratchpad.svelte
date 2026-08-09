@@ -107,8 +107,9 @@
 		}
 	}
 
-	// Sliding window of recent dictation — last 600 chars. The scratchpad is the persistent
-	// memory; Qwen only needs recent context to resolve the current utterance.
+	// Sliding window of recent dictation — last SESSION_TRANSCRIPT_WINDOW chars. The
+	// scratchpad is the persistent memory; the model only needs recent context to
+	// resolve the current utterance.
 	let sessionTranscript = '';
 	const SESSION_TRANSCRIPT_WINDOW = 2500;
 
@@ -216,10 +217,6 @@
 			if (typingDebounceTimer) { clearTimeout(typingDebounceTimer); typingDebounceTimer = null; }
 			processReview();
 		}
-	}
-
-	export function getFindingCount(): number {
-		return (getContent().match(/^- /gm) || []).length;
 	}
 
 	export function highlightSource(text: string): void {

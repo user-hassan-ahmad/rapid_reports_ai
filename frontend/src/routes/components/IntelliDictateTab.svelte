@@ -70,7 +70,6 @@ import { readSSEStream } from '$lib/utils/sse';
 	$: caseDetailsExpanded = !workspaceOpen || caseDetailsManuallyExpanded || sectionsDirty;
 	let scratchpadRef: {
 		getContent: () => string;
-		getFindingCount: () => number;
 		reset: (doc: string) => void;
 		highlightSource: (text: string) => void;
 		clearHighlight: () => void;
