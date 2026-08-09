@@ -614,12 +614,80 @@ git commit -m "chore(dictation): fix stale window comment; remove dead getFindin
 
 ---
 
+## Task 7: Zero-edit baseline via the existing `edit_burden` signal (reuse, no new infra)
+
+The spec's per-session zero-edit metric reuses `compute_edit_burden()` (`quality_scoring.py:479`), where `edit_burden == 0.0` means the AI draft was signed unchanged — already persisted on `ReportQualityScore.edit_burden` by the offline scorer. Phase 1 adds a deterministic aggregate so the pre-Phase-2 baseline is computable. This is a whole-pipeline (report-level) proxy; a dictation-isolated scratchpad-edit signal remains the deferred frontend-emitter option.
+
+**Files:**
+- Modify: `backend/src/rapid_reports_ai/quality_scoring.py` (add `zero_edit_rate` beside `compute_edit_burden`)
+- Create: `backend/tests/test_zero_edit_rate.py`
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# backend/tests/test_zero_edit_rate.py
+from rapid_reports_ai.quality_scoring import zero_edit_rate
+
+
+def test_zero_edit_rate_ignores_none_and_rounds():
+    # 4 comparable (2 zero-edit) → 0.5; the None is excluded
+    assert zero_edit_rate([0.0, 0.0, 0.2, None, 0.5]) == 0.5
+
+
+def test_zero_edit_rate_all_none_is_none():
+    assert zero_edit_rate([None, None]) is None
+
+
+def test_zero_edit_rate_empty_is_none():
+    assert zero_edit_rate([]) is None
+```
+
+- [ ] **Step 2: Run it and confirm it fails**
+
+Run: `poetry run pytest tests/test_zero_edit_rate.py -v`
+Expected: FAIL — `ImportError: cannot import name 'zero_edit_rate'`.
+
+- [ ] **Step 3: Implement `zero_edit_rate`**
+
+Add beside `compute_edit_burden` in `quality_scoring.py` (ensure `Iterable` is imported from `typing`):
+
+```python
+def zero_edit_rate(edit_burdens: Iterable[Optional[float]]) -> Optional[float]:
+    """Fraction of reports signed with no edits (edit_burden == 0.0).
+
+    Ignores ``None`` (no final text to compare against). Returns ``None`` when
+    there is no comparable report.
+    """
+    scored = [b for b in edit_burdens if b is not None]
+    if not scored:
+        return None
+    return round(sum(1 for b in scored if b == 0.0) / len(scored), 4)
+```
+
+- [ ] **Step 4: Run the test to green**
+
+Run: `poetry run pytest tests/test_zero_edit_rate.py -v`
+Expected: PASS.
+
+- [ ] **Step 5: Surface it in Metabase (analytics, no app code)**
+
+Add a card over `report_quality_scores` restricted to in-scope reports (see `analytics_scope.in_scope_reports`), e.g. `SELECT pipeline, AVG((edit_burden = 0)::int) AS zero_edit_rate, COUNT(*) FROM report_quality_scores WHERE edit_burden IS NOT NULL GROUP BY pipeline;` (confirm exact column/scope join against `docs/analytics/metabase/build_dashboard.py`). Confirm the offline scorer populates `edit_burden` for dictation-pipeline reports so the baseline is non-empty before Phase 2 ships.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add backend/src/rapid_reports_ai/quality_scoring.py backend/tests/test_zero_edit_rate.py
+git commit -m "feat(dictation): zero_edit_rate aggregate over existing edit_burden signal"
+```
+
+---
+
 ## Self-Review
 
 **Spec coverage (Phase 1):**
 - §7.1 tier-2 fix → Tasks 1–3. ✅ (with a regression test that reproduces the exact bug)
 - §7.2 per-stage latency on `/process` and `/transcribe` → Tasks 4–5. ✅
-- §7.2 zero-edit metric → **Deferred, decision raised to user** (see Scope note). ⚠️ Not built here.
+- §7.2 zero-edit metric → Task 7 (deterministic aggregate reusing `edit_burden` + Metabase card). ✅ Report-level baseline; dictation-isolated scratchpad-edit signal still deferred to the frontend-emitter option.
 - §8 hygiene (stale comment, dead `getFindingCount`) → Task 6. ✅
 
 **Placeholder scan:** No "TBD"/"add error handling"/"similar to". The one non-code judgement (whether to convert the per-utterance transcribe `print`) is called out explicitly with both options, not left vague. The frontend type-check command is flagged to confirm against `package.json` (the deletion is verified independently by the Step-4 grep).

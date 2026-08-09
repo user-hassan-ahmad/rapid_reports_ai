@@ -198,7 +198,7 @@ A small routing layer: `task-class → {primary, fallback, params}` with health-
 ### 7.7 Other
 - **Merge coverage + IntelliPrompts** into one `/review` call with a combined structured output (both re-read the same scratchpad).
 - **Grounding verifier (atomic-fact critic pass)**: after cleaning, decompose the output into atomic claims and check each for entailment against the raw transcript (+ prior scratchpad); keep only supported claims, flag/withhold the rest — the strongest evidenced clinical-scribe guardrail (Nabla atomic-fact verification; Abridge detector+corrector). Cheaper first cut: diff/span-align the cleaned output against the raw transcript and flag introduced clinical entities. Companion to the existing truncation detector + defeasible normal-fill.
-- **Evidence-linking (future UX):** attach each scratchpad/report line to its transcript span — a trust surface for the radiologist and the best correction-capture signal (Abridge "Linked Evidence"; Suki grounding). Not in the phased scope; noted as the natural review-UX evolution.
+- **Evidence-linking & provenance (future UX, forward-compat now):** attach each scratchpad/report line to its origin — its transcript span (Abridge "Linked Evidence"; Suki grounding) and, at the report layer, whether it was **dictated vs system-added/default-fill** (*provenance tagging*: render fills at lower visual weight so a skim-reading radiologist's eye is drawn to statements they're certifying but didn't dictate). These are the **same structured-metadata mechanism** — per-sentence origin carried *alongside* the text, never as inline `[fill]` markers (a stray marker reaching RIS/PACS is worse than the problem), with the copy path guaranteed to emit clean prose. The §7.7 grounding verifier is the natural producer of the dictated-vs-added signal (it already span-aligns output to the transcript — "stop discarding information it already has"). **Decision to bank now:** keep the scratchpad/report output contract able to carry per-span origin metadata, so provenance can land later without a rework. Provenance itself is a **report-generation-layer** feature (it edits the live generation prompt — the same surface as the mandatory-negatives regression), with its own copy-path hazard; it warrants a **separate spec** reconciled with the existing parallel branch, not a fold-in here.
 - **Case key-terms**: inject `scan_type`/`clinical_history`-derived vocabulary as **Deepgram key-terms** (not only LLM context) to move WER on the terms that matter.
 
 ---
@@ -292,6 +292,7 @@ Adopted from clinical-scribe best practice (Nabla, Abridge, and two independent 
 - Manual bullet toggle in Clean mode — ship in Phase 2 or defer? (Voice is the primary control; toggle is convenience-only.)
 - Does Structured mode also honour dictated breaks, or only Clean? (Current lean: Clean only; Structured keeps its anatomical layout.)
 - Zero-edit metric definition — any keystroke, or clinically-meaningful edits only?
+- Provenance/evidence-linking: spec it as a sibling workstream (reconciled with the existing parallel branch) before Phase 2's grounding verifier, or after it — given the verifier is the natural signal producer?
 
 ---
 
