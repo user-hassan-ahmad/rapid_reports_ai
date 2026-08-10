@@ -262,10 +262,14 @@
 		editor.focus();
 	}
 
+	let processAbort: AbortController | null = null;
+
 	async function processTranscript(): Promise<void> {
 		if (!editor) return;
 		isProcessing = true;
 		recordingError = '';
+		const controller = new AbortController();
+		processAbort = controller;
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) {
@@ -274,6 +278,7 @@
 			const res = await fetch(`${API_URL}/api/canvas/process`, {
 				method: 'POST',
 				headers,
+				signal: controller.signal,
 				body: JSON.stringify({
 					session_transcript: sessionTranscript,
 					scratchpad_content: editor.state.doc.toString(),
@@ -305,8 +310,9 @@
 			onCoveredSectionsChange(data.covered_sections);
 		}
 		} catch {
-			// Keep raw transcript in feed on error
+			// Superseded (AbortError) or network error — keep raw transcript, surface nothing.
 		} finally {
+			if (processAbort === controller) processAbort = null;
 			isProcessing = false;
 		}
 	}
@@ -314,6 +320,7 @@
 	async function processTranscriptQueue(): Promise<void> {
 		if (isProcessingQueue) {
 			pendingProcess = true;
+			processAbort?.abort();  // cancel the now-stale in-flight polish; the loop re-runs fresh
 			return;
 		}
 		isProcessingQueue = true;
@@ -480,8 +487,10 @@
 									? appended.slice(appended.length - SESSION_TRANSCRIPT_WINDOW)
 									: appended;
 
-							// Trigger on every is_final with content — latest-wins queue prevents flooding
-							processTranscriptQueue();
+							// Phase 2b.1: fire the polish only at a pause (speech_final), not every
+							// is_final — UtteranceEnd (above) is the long-pause backup. Cuts redundant
+							// full regenerations; the transcript still accumulates on every chunk.
+							if (data.speech_final) processTranscriptQueue();
 						}
 					}
 				} catch {
@@ -527,6 +536,9 @@
 			websocket = null;
 		}
 		stream = null;
+		// Flush: the polish trigger is gated on speech_final, so a quick stop mid-utterance
+		// could otherwise drop the last words. Process the final accumulated transcript once.
+		if (sessionTranscript.trim()) processTranscriptQueue();
 		if (editor) {
 			editor.dispatch({
 				effects: editableCompartment.reconfigure(EditorView.editable.of(true))
