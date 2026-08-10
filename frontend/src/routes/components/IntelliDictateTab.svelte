@@ -16,6 +16,7 @@ import { readSSEStream } from '$lib/utils/sse';
 
 	let clinicalHistory = '';
 	let scanType = '';
+	let polishMode: 'clean' | 'structured' = 'clean';
 	let prePoppedSections: string[] = [];
 	let sectionsLoading = false;
 	let sectionsError = '';
@@ -545,7 +546,7 @@ import { readSSEStream } from '$lib/utils/sse';
 			scanType.trim().length > 0 ||
 			scratchpadContent.trim().length > 0;
 		if (hasContent) {
-			draftStore.saveIntelliTab(clinicalHistory, scanType, prePoppedSections, scratchpadContent);
+			draftStore.saveIntelliTab(clinicalHistory, scanType, prePoppedSections, scratchpadContent, polishMode);
 		}
 	}
 
@@ -553,6 +554,7 @@ import { readSSEStream } from '$lib/utils/sse';
 		const draft = $draftStore;
 		clinicalHistory = draft.intelliTab.clinicalHistory;
 		scanType = draft.intelliTab.scanType;
+		polishMode = draft.intelliTab.mode ?? 'clean';
 		// Restore sections so the workspace re-opens
 		prePoppedSections = [...(draft.intelliTab.prePoppedSections ?? [])];
 		// Mark as not-dirty so workspace doesn't show the "regenerate" overlay
@@ -853,6 +855,8 @@ import { readSSEStream } from '$lib/utils/sse';
 			{activePrompts}
 			{scanType}
 			{clinicalHistory}
+			{polishMode}
+			onModeChange={(m) => { polishMode = m; }}
 			{apiKeyStatus}
 			onContentChange={(c) => { scratchpadContent = c; }}
 			onRecordingChange={(recording) => { isRecording = recording; }}
