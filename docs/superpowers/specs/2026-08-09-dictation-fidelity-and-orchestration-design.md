@@ -83,7 +83,7 @@ Fixing (1) and (2) is necessary but not sufficient; (3) must be addressed for a 
 | D3 | **Dictated `\n`/`\n\n` are authoritative**; auto-format for clarity only in gaps; **voice is the formatting control surface** (no primary UI layout selector) | The formatting intent already exists in the transcript; radiologists already control layout by voice (Dragon/PowerScribe convention) |
 | D4 | Robustness = **instruction + validation** (verify dictated-break structure survived; repair/re-run on violation) | Guarantees commands land without freezing text (needed for corrections) |
 | D5 | **Corrections are surgical** — minimal in-place edit, everything else verbatim; `scratch that` folded in | Keeps the smart context-finding, drops the rewrite |
-| D6 | **Model plan**: fix fidelity on current Groq Qwen3-32B; evaluate Gemma-4 31B (Cerebras) as a separate benchmarked spike behind a fallback | Over-refinement is prompt+temp+orchestration, orthogonal to the model; Gemma-4 is public-preview ("evaluation only") and `zai-glm-4.7` deprecates 2026-08-17 |
+| D6 | **Model plan (updated 2026-08-10)**: Gemma-4 31B (Cerebras) is now the **production** polish model + `gpt-oss-120b` fallback — pulled forward when Groq retired `qwen/qwen3-32b` (see §10). Phase 2 tunes fidelity **on Gemma 4**, not Qwen | Migrating early avoided leaving prod on a dead model, and tuning on the shipping model beats tuning on Qwen then swapping |
 | D7 | **Freeze settled text / incremental processing** | Biggest single fidelity + efficiency win; industry-standard (see §9) |
 
 ---
@@ -166,10 +166,14 @@ Retained as-is behaviourally, with one tuning change: `temperature 0.7 → 0.3` 
 - **Deterministic erase/select lexicon** added alongside the LLM behaviour: `scratch that` / `delete that` handled in the command layer (extend `process_dictation_transcript` or a dedicated command pass) so they never survive as literal words. (Radiology-incumbent pattern; see §9.)
 
 ### 6.6 Decoding params
-| Mode | temperature | top_p | notes |
-|------|-------------|-------|-------|
-| Clean | 0.15 | 0.8 | minimal paraphrase, max fidelity |
-| Structured | 0.3 | 0.8 | down from 0.7 |
+Model is now **Cerebras Gemma 4 31B** (`gemma-4-31b`) primary + `gpt-oss-120b` fallback, via `_run_canvas_with_fallback` (added 2026-08-10). Cerebras settings form — `max_completion_tokens` + `reasoning_effort`, **no** `top_p`/`extra_body` (those were Groq-isms). `reasoning_effort: "low"` for the polish (both Gemma and the gpt-oss fallback accept it; minimal thinking keeps it fast and literal).
+
+| Mode | temperature | reasoning_effort | notes |
+|------|-------------|------------------|-------|
+| Clean | 0.15 | low | minimal paraphrase, max fidelity |
+| Structured | 0.3 | low | down from the current 0.7 |
+
+(`max_completion_tokens: 8000` both modes.)
 
 ---
 
@@ -251,9 +255,9 @@ Load-bearing recommendations are anchored to *verified* engineering, not vendor 
 
 ---
 
-## 10. Gemma-4 evaluation plan (Phase 3 spike)
+## 10. Gemma-4 — now the production polish model (migrated 2026-08-10)
 
-Benchmark **Gemma-4 31B on Cerebras** (`gemma-4-31b`; multimodal, 131K ctx, function-calling + JSON structured output) against Groq Qwen3-32B on the **finalised** Clean + Structured prompts:
+**Update:** Gemma-4 31B (Cerebras) was promoted to production early — Groq retired `qwen/qwen3-32b`, 404-ing the polish and silently breaking dictation, so the canvas models were migrated to `gemma-4-31b` primary + `gpt-oss-120b` fallback (via `_run_canvas_with_fallback`), confirmed serving at ~0.25 s. The original "spike vs Qwen" is moot; what remains is **ongoing quality validation on Gemma 4** (the Phase 2 eval basket runs against it):
 - **Metrics:** per-stage latency (vs sub-6 s clinical budget), fidelity metric, structured-output reliability, correction/comparison basket pass-rate.
 - **Guardrails:** keep Qwen (or `gpt-oss-120b`) as fallback; Gemma-4 is **public-preview** ("evaluation only, may be discontinued on short notice") — not on the clinical critical path without a fallback; `zai-glm-4.7` deprecates 2026-08-17 (independent migration reason).
 - **Decision:** production model chosen from A/B telemetry via the §7.6 router.
