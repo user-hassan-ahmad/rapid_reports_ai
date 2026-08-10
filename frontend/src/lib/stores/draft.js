@@ -3,7 +3,7 @@ import { browser } from '$app/environment';
 
 const STORAGE_KEY = 'rr_draft';
 const DEBOUNCE_MS = 400;
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const EMPTY_STATE = {
 	version: SCHEMA_VERSION,
@@ -11,13 +11,15 @@ const EMPTY_STATE = {
 		clinicalHistory: '',
 		scanType: '',
 		prePoppedSections: [],
-		scratchpadContent: ''
+		scratchpadContent: '',
+		mode: 'clean'
 	},
 	templateTab: {
 		templateId: null,
 		variables: {},
 		prePoppedSections: [],
-		scratchpadContent: ''
+		scratchpadContent: '',
+		mode: 'clean'
 	},
 	savedAt: null
 };
@@ -57,12 +59,12 @@ function createDraftStore() {
 	return {
 		subscribe,
 
-		saveIntelliTab(clinicalHistory, scanType, prePoppedSections, scratchpadContent) {
+		saveIntelliTab(clinicalHistory, scanType, prePoppedSections, scratchpadContent, mode = 'clean') {
 			let latest;
 			update((draft) => {
 				latest = {
 					...draft,
-					intelliTab: { clinicalHistory, scanType, prePoppedSections: prePoppedSections ?? [], scratchpadContent },
+					intelliTab: { clinicalHistory, scanType, prePoppedSections: prePoppedSections ?? [], scratchpadContent, mode },
 					savedAt: Date.now()
 				};
 				return latest;
@@ -73,7 +75,7 @@ function createDraftStore() {
 			}
 		},
 
-		saveTemplateTab(templateId, variables, prePoppedSections, scratchpadContent) {
+		saveTemplateTab(templateId, variables, prePoppedSections, scratchpadContent, mode = 'clean') {
 			let latest;
 			update((draft) => {
 				latest = {
@@ -82,7 +84,8 @@ function createDraftStore() {
 						templateId,
 						variables: { ...variables },
 						prePoppedSections: prePoppedSections ?? [],
-						scratchpadContent: scratchpadContent ?? ''
+						scratchpadContent: scratchpadContent ?? '',
+						mode
 					},
 					savedAt: Date.now()
 				};
