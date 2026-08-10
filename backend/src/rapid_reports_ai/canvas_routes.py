@@ -46,6 +46,9 @@ class CanvasProcessRequest(BaseModel):
     clinical_history: str = ""
     preferred_section_names: list[str] = []
     mode: str = "clean"  # "clean" (Verbatim Clean, default) | "structured"
+    # Incremental mode: when set, scratchpad_content is the ACTIVE tail and
+    # committed_context is the FROZEN prefix (read-only). Absent => full regeneration.
+    committed_context: str | None = None
 
 
 class IntelliPrompt(BaseModel):
@@ -57,6 +60,16 @@ class IntelliPrompt(BaseModel):
 class CanvasProcessResponse(BaseModel):
     scratchpad: str
     covered_sections: list[str] = []
+
+
+class CommittedEdit(BaseModel):
+    original: str   # exact verbatim line from the committed (frozen) zone
+    corrected: str  # its directed correction
+
+
+class CanvasIncrementalResponse(BaseModel):
+    active_scratchpad: str
+    committed_edits: list[CommittedEdit] = []
 
 
 class CanvasReviewRequest(BaseModel):
