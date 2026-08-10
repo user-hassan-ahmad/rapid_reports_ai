@@ -632,6 +632,8 @@ async def process_transcript(
         session_transcript=request.session_transcript,
     )
 
+    system_prompt, model_settings = _canvas_process_config(request.mode)
+
     # Cerebras settings form (max_completion_tokens; no top_p/extra_body). Gemma 4 and the
     # gpt-oss-120b fallback are both Cerebras and accept the same shape.
     t0 = _time.perf_counter()
@@ -640,16 +642,16 @@ async def process_transcript(
             primary_model,
             fallback_model,
             output_type=CanvasProcessResponse,
-            system_prompt=CANVAS_PROCESS_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             user_prompt=user_prompt,
-            model_settings={"temperature": 0.7, "max_completion_tokens": 8000},
+            model_settings=model_settings,
             use_thinking=False,
             label="canvas.process",
         )
         elapsed = _time.perf_counter() - t0
         logger.info(
-            "[canvas.process] %.2fs primary=%s transcript_chars=%d scratchpad_chars=%d",
-            elapsed, primary_model, len(request.session_transcript or ""), len(request.scratchpad_content or ""),
+            "[canvas.process] %.2fs mode=%s primary=%s transcript_chars=%d scratchpad_chars=%d",
+            elapsed, request.mode, primary_model, len(request.session_transcript or ""), len(request.scratchpad_content or ""),
         )
         return output
     except Exception as e:
