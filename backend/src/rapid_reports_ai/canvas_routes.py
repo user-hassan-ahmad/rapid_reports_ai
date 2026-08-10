@@ -447,6 +447,47 @@ Your previous output. Update in place.
 Produce the complete updated scratchpad."""
 
 
+CANVAS_INCREMENTAL_SUFFIX = """
+
+# Incremental mode
+
+The scratchpad is split into two zones:
+
+- COMMITTED — findings the radiologist has already settled. FROZEN context. Do not rewrite, reorder, or re-emit any of it.
+- ACTIVE — the finding(s) currently in flight. This is the ONLY text you rewrite.
+
+Apply the new dictation to the ACTIVE text, following every rule above.
+
+Reaching back: if — and only if — the new dictation explicitly corrects, retracts, or changes something already in COMMITTED (e.g. "actually that was 10 mm", "no, the mass is on the left"), emit a committed_edit giving the exact original COMMITTED line and its corrected version. Never edit committed text for style — only to apply a directed correction. When nothing in COMMITTED is corrected, emit no committed_edits.
+
+# Response shape (incremental — overrides the shape above)
+
+- `active_scratchpad` — the complete updated ACTIVE text, per the rules above
+- `committed_edits` — list of `{original, corrected}` for directed corrections to COMMITTED; empty when none. `original` MUST be copied verbatim from the COMMITTED zone or it will be discarded."""
+
+
+CANVAS_INCREMENTAL_USER_PROMPT_TEMPLATE = """## Reference context — disambiguation only, never a source of findings
+
+- **Scan type:** {scan_type}
+- **Clinical history:** {clinical_history}
+
+## COMMITTED — frozen, context only, do not rewrite
+
+{committed_context}
+
+## ACTIVE — update this
+
+{active_scratchpad}
+
+## Dictation transcript — single source of truth
+
+{session_transcript}
+
+---
+
+Update the ACTIVE text. Emit committed_edits only for directed corrections to COMMITTED."""
+
+
 # -----------------------------------------------------------------------------
 # Endpoints
 # -----------------------------------------------------------------------------
@@ -569,22 +610,22 @@ async def sections_from_template(
             return SectionGenerateResponse(sections=["FINDINGS"])
 
 
-def _canvas_process_config(mode: str) -> tuple[str, dict]:
+def _canvas_process_config(mode: str, incremental: bool = False) -> tuple[str, dict]:
     """Return (system_prompt, model_settings) for the polish mode. Defaults to Clean.
 
     Cerebras settings form (max_completion_tokens + reasoning_effort); reasoning_effort
-    'low' keeps Gemma 4 fast and literal. Both Gemma and the gpt-oss fallback accept it.
+    'low' keeps Gemma 4 fast and literal. When ``incremental`` is set, the incremental
+    suffix (frozen COMMITTED + patch-edit response) is appended to the base prompt.
     """
     if mode == "structured":
-        return (
-            CANVAS_PROCESS_SYSTEM_PROMPT,
-            {"temperature": 0.3, "max_completion_tokens": 8000, "reasoning_effort": "low"},
-        )
-    # Clean is the default for any other/blank value.
-    return (
-        CANVAS_CLEAN_SYSTEM_PROMPT,
-        {"temperature": 0.15, "max_completion_tokens": 8000, "reasoning_effort": "low"},
-    )
+        base_prompt = CANVAS_PROCESS_SYSTEM_PROMPT
+        settings = {"temperature": 0.3, "max_completion_tokens": 8000, "reasoning_effort": "low"}
+    else:
+        base_prompt = CANVAS_CLEAN_SYSTEM_PROMPT
+        settings = {"temperature": 0.15, "max_completion_tokens": 8000, "reasoning_effort": "low"}
+    if incremental:
+        return base_prompt + CANVAS_INCREMENTAL_SUFFIX, settings
+    return base_prompt, settings
 
 
 async def _run_canvas_with_fallback(
