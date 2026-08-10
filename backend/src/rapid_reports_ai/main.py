@@ -1168,7 +1168,7 @@ Apply each fix while preserving grammatical completeness and report structure.""
         model_full_name = {
             "claude": "claude-sonnet-4-6",
             "gemini": "gemini-2.5-pro",
-            "qwen": "qwen/qwen3-32b"
+            "qwen": "qwen/qwen3.6-27b"
         }.get(request.model, request.model)
         
         return {
@@ -1974,7 +1974,7 @@ Apply each fix while preserving grammatical completeness and report structure.""
         model_full_name = {
             "claude": "claude-sonnet-4-6",
             "gemini": "gemini-2.5-pro",
-            "qwen": "qwen/qwen3-32b"
+            "qwen": "qwen/qwen3.6-27b"
         }.get(request.model, request.model)
         
         return {
@@ -2752,7 +2752,7 @@ async def quick_report_proto_generate_endpoint(
             # Open source
             "gpt-oss-120b",                      # Cerebras GPT-OSS 120B
             "llama-3.3-70b-versatile",           # Groq Llama 3.3 70B
-            "qwen/qwen3-32b",                    # Groq Qwen 3 32B
+            "qwen/qwen3.6-27b",                    # Groq Qwen 3 32B
         }
         model_override = request.model if request.model in allowed_models else None
 
@@ -4088,14 +4088,14 @@ async def chat_about_report(
         tools_edit_only = [_apply_structured_actions_tool_def()]
 
         print(f"\n💬 Chat request received:")
-        print(f"  Model: qwen/qwen3-32b (Groq)")
+        print(f"  Model: qwen/qwen3.6-27b (Groq)")
         print(f"  User message: {request.message[:100]}...")
         print(f"  History: {len(request.history) if request.history else 0} messages")
 
         perplexity_sources: List[Dict[str, Any]] = []
 
         response = client.chat.completions.create(
-            model="qwen/qwen3-32b",
+            model="qwen/qwen3.6-27b",
             max_tokens=4096,
             temperature=0.3,
             messages=messages,
@@ -4159,7 +4159,7 @@ async def chat_about_report(
                     )
             messages_followup = messages + [_groq_assistant_to_dict(message)] + tool_messages
             response2 = client.chat.completions.create(
-                model="qwen/qwen3-32b",
+                model="qwen/qwen3.6-27b",
                 max_tokens=4096,
                 temperature=0.3,
                 messages=messages_followup,
@@ -4342,7 +4342,7 @@ async def chat_about_report(
                     # field schemas can't drift between primary and salvage.
                     salvage_tools = [_apply_structured_actions_tool_def()]
                     salvage_response = client.chat.completions.create(
-                        model="qwen/qwen3-32b",
+                        model="qwen/qwen3.6-27b",
                         max_tokens=4096,
                         temperature=0.2,
                         messages=salvage_messages,

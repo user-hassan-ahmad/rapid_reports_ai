@@ -2634,7 +2634,7 @@ Findings: {findings_input}
                 class _Desc(_BM):
                     description: str
 
-                desc_model = "qwen/qwen3-32b"
+                desc_model = "qwen/qwen3.6-27b"
                 desc_provider = _get_model_provider(desc_model)
                 desc_api_key = _get_api_key_for_provider(desc_provider)
                 desc_result = await _run_agent_with_model(

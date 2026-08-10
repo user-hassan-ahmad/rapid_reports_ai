@@ -150,11 +150,11 @@ MODEL_CONFIG = {
     
     # Structure Validation Models
     "STRUCTURE_VALIDATOR": "gpt-oss-120b",  # Structure validation: Check for structural quality violations (Cerebras GPT-OSS-120B with medium reasoning)
-    "STRUCTURE_VALIDATOR_FALLBACK": "qwen/qwen3-32b",  # Fallback for structure validation (Groq Qwen with thinking)
+    "STRUCTURE_VALIDATOR_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for structure validation (Groq Qwen with thinking)
     
     # Enhancement Pipeline Models
     "FINDING_EXTRACTION": "gpt-oss-120b",  # Phase 1: Finding extraction and consolidation (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "FINDING_EXTRACTION_FALLBACK": "qwen/qwen3-32b",  # Fallback for finding extraction (Qwen with thinking)
+    "FINDING_EXTRACTION_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for finding extraction (Qwen with thinking)
     "QUERY_GENERATION": "gpt-oss-120b",  # Query generation primary (Cerebras GPT-OSS-120B with high reasoning)
     "QUERY_GENERATION_FALLBACK": "llama-3.3-70b-versatile",  # Query generation fallback (Llama)
     "GUIDELINE_VALIDATOR": "gpt-oss-120b",  # Guideline compatibility validation (primary - Cerebras GPT-OSS-120B with high reasoning)
@@ -164,18 +164,18 @@ MODEL_CONFIG = {
     "GUIDELINE_SEARCH": "gpt-oss-120b",  # Phase 2: Guideline synthesis (primary - Cerebras GPT-OSS-120B, reliable structured output)
     "GUIDELINE_SEARCH_FALLBACK": "zai-glm-4.7",  # Fallback (GLM cannot reliably generate tool_calls for complex schemas)
     "COMPARISON_ANALYZER": "gpt-oss-120b",  # Interval comparison analysis (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "COMPARISON_ANALYZER_FALLBACK": "qwen/qwen3-32b",  # Fallback for comparison analysis (Qwen)
+    "COMPARISON_ANALYZER_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for comparison analysis (Qwen)
     
     # Action Application Models
     "ACTION_APPLIER": "gpt-oss-120b",  # Apply enhancement actions to reports (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "ACTION_APPLIER_FALLBACK": "qwen/qwen3-32b",  # Fallback for action application (Qwen)
+    "ACTION_APPLIER_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for action application (Qwen)
     
     # Linguistic Validation Models (for zai-glm-4.7 post-processing)
     "ZAI_GLM_LINGUISTIC_VALIDATOR": "llama-3.3-70b-versatile",  # Linguistic/anatomical correction for zai-glm-4.7 output (Groq Llama)
     
     # Audit / QA Analysis Models
     "AUDIT_ANALYZER": "zai-glm-4.7",  # Report audit/QA primary (Cerebras Zai-GLM-4.7)
-    "AUDIT_ANALYZER_FALLBACK": "qwen/qwen3-32b",  # Fallback for audit (Groq Qwen 32B)
+    "AUDIT_ANALYZER_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for audit (Groq Qwen 32B)
     
     # Canvas / IntelliDictate Models
     "CANVAS_SECTIONS": "gpt-oss-120b",  # Section generation from scan type (Cerebras)
@@ -192,7 +192,7 @@ MODEL_CONFIG = {
     # Agentic Report Pipeline Models
     "REPORT_PLANNER": "zai-glm-4.7",        # Phase 1: planning agent (Cerebras, reasoning ON)
     "REPORT_EXECUTOR": "zai-glm-4.7",  # Phase 2: execution agent (Cerebras GLM, reasoning ON)
-    "PLAN_ADHERENCE_CHECKER": "qwen/qwen3-32b",  # Phase 3: cross-check output vs plan (Groq)
+    "PLAN_ADHERENCE_CHECKER": "qwen/qwen3.6-27b",  # Phase 3: cross-check output vs plan (Groq)
 
     # Template Wizard Generation Models
     "TEMPLATE_FINDINGS_GENERATOR": "zai-glm-4.7",     # Wizard: generate FINDINGS section template
@@ -202,7 +202,7 @@ MODEL_CONFIG = {
     # Skill Sheet Models
     "SKILL_SHEET_ANALYZER": "zai-glm-4.7",      # Extract skill sheet from example reports
     "SKILL_SHEET_DIVERSITY_CHECK": "zai-glm-4.7",       # Pre-analysis diversity assessment (primary, Cerebras with reasoning)
-    "SKILL_SHEET_DIVERSITY_CHECK_FALLBACK": "qwen/qwen3-32b",  # Diversity check fallback (Groq Qwen with thinking)
+    "SKILL_SHEET_DIVERSITY_CHECK_FALLBACK": "qwen/qwen3.6-27b",  # Diversity check fallback (Groq Qwen with thinking)
     "SKILL_SHEET_REFINER": "zai-glm-4.7",       # Refine skill sheet via chat
     "SKILL_SHEET_TEST_GENERATE": "zai-glm-4.7", # Test-generate report from skill sheet (Cerebras GLM-4.7)
 
@@ -231,7 +231,7 @@ LLAMA_REPORT_FALLBACK_MODEL = "llama-3.3-70b-versatile"  # Legacy fallback (not 
 # To add a new model, just add an entry here mapping model_name -> provider
 MODEL_PROVIDERS = {
     # Groq models
-    "qwen/qwen3-32b": "groq",
+    "qwen/qwen3.6-27b": "groq",
     "llama-3.3-70b-versatile": "groq",
     
     # Anthropic models
@@ -259,7 +259,7 @@ def _get_model_provider(model_name: str) -> str:
     Get the provider for a given model name.
     
     Args:
-        model_name: The model identifier (e.g., "qwen/qwen3-32b", "gpt-oss-120b")
+        model_name: The model identifier (e.g., "qwen/qwen3.6-27b", "gpt-oss-120b")
     
     Returns:
         Provider string: 'groq', 'anthropic', or 'cerebras'
@@ -1874,7 +1874,7 @@ async def _extract_consolidated_with_model(
     Helper function to extract consolidated findings with a specific model.
     
     Args:
-        model_name: Model identifier (e.g., "qwen/qwen3-32b", "gpt-oss-120b")
+        model_name: Model identifier (e.g., "qwen/qwen3.6-27b", "gpt-oss-120b")
         model_label: Human-readable model name for logging
         report_content: The generated radiology report text
         api_key: API key for the model provider
@@ -3732,7 +3732,7 @@ def _create_pydantic_model(model_name: str, api_key: str, use_thinking: bool = F
     Note: Environment variable management is handled by the caller.
     
     Args:
-        model_name: Model identifier (e.g., "qwen/qwen3-32b", "gpt-oss-120b")
+        model_name: Model identifier (e.g., "qwen/qwen3.6-27b", "gpt-oss-120b")
         api_key: API key for the model provider
         use_thinking: Whether to enable thinking mode (only applies to Groq models)
     
@@ -3822,7 +3822,7 @@ async def _run_agent_with_model(
         # Groq models reject the parameter with HTTP 400, so we gate it by
         # model identifier rather than provider alone.
         GROQ_REASONING_MODELS = {
-            'qwen/qwen3-32b',
+            'qwen/qwen3.6-27b',
         }
         if (
             provider == 'groq'
