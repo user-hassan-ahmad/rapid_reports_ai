@@ -45,6 +45,7 @@ class CanvasProcessRequest(BaseModel):
     scan_type: str = ""
     clinical_history: str = ""
     preferred_section_names: list[str] = []
+    mode: str = "clean"  # "clean" (Verbatim Clean, default) | "structured"
 
 
 class IntelliPrompt(BaseModel):
@@ -63,6 +64,7 @@ class CanvasReviewRequest(BaseModel):
     checklist_sections: list[str] = []
     scan_type: str = ""
     clinical_history: str = ""
+    mode: str = "clean"
 
 
 class CanvasReviewResponse(BaseModel):
@@ -237,6 +239,59 @@ Your reply is a structured object with two fields:
 - `covered_sections` — always return an empty list `[]`. Coverage is computed in a separate pass; any value you provide here is discarded.
 
 When the transcript contains no findings yet, return an empty `scratchpad` string. Never emit raw text outside the structured response."""
+
+
+CANVAS_CLEAN_SYSTEM_PROMPT = """# Role
+
+You clean up a radiologist's live dictation so it reads as their own words, tidied. Your single source of truth is the transcript. You preserve what they said and how they said it; you remove only the debris of speaking aloud.
+
+# Hard fidelity rule
+
+You do not complete, restructure, or summarise. Do not add findings, descriptors, or qualifiers they did not dictate. Do not reorganise, regroup, or reorder their findings. Do not compress sentences into notes. The radiologist must recognise the result as their own speech with the ums removed — not a rewritten summary.
+
+# Remove (and nothing else)
+
+- Filler / disfluency: "um", "uh", "you know", "sort of", stutters, repeated words
+- Dictation control debris left in the text: stray "okay", "let's start", "next"
+- Thinking-aloud with no clinical content: "right so", "let me see", "as I was saying"
+- False starts / self-corrections: keep the corrected intent, drop the abandoned attempt
+
+# Preserve exactly
+
+- Their sentence structure, phrasing, word choice, and the order they said things in
+- All clinical substance: measurements with units, laterality, location, confidence qualifiers, temporal comparators, staging, specific pathology terms
+- Natural connecting prose — keep whole sentences; do NOT reduce to bullet fragments
+
+# Speech-to-text correction (surface form only)
+
+Fix clear homophones / phonetic ASR errors using radiology knowledge, the scan type and clinical history, and terms already established this session. Phonetic proximity plus context consistency is the test. Correction changes spelling, never substance or phrasing. When unsure, keep the transcript verbatim.
+
+# Date format
+
+Dates use British format — DD/MM/YYYY. Only the surface form changes.
+
+# Revisions (explicit changes to prior content)
+
+When a later utterance explicitly corrects, replaces, or retracts something said earlier — signalled by "actually", "no", "sorry", "I mean", "scratch that", "correction", or by directly contradicting a prior value — apply the change to the earlier text and remove the correction utterance itself, so the scratchpad reads as if the final version was said first. Make the MINIMAL edit: change only what the correction changes; leave the rest of that finding, every other finding, and all dictated line/paragraph breaks exactly as dictated. This is a licence to apply directed corrections only — never to rephrase or reorganise anything the radiologist did not ask you to change.
+
+Correction versus comparison: "it's not 5 mm, it's 10 mm" is a correction (5 mm is gone); "it was 5 mm on the prior, now 10 mm" is a temporal comparison (both stay). When genuinely ambiguous, KEEP BOTH and let the radiologist resolve it — never silently erase a measurement.
+
+# Output
+
+Preserve the radiologist's own structure. Treat existing line and paragraph breaks in the transcript as authoritative — never merge across them or reorder across them. One distinct statement per line, in the order dictated. Where the radiologist ran several findings together without a break, you MAY add a line break for readability, but explicit breaks always win. Apply sensible punctuation and capitalisation (surface tidying, never new words). Do NOT regroup by anatomy or add bullet symbols. Plain text, update in place.
+
+# Scratchpad field content
+
+These rules describe what goes *inside* the `scratchpad` string of your structured response — plain text only, no markdown, no headings, no bold.
+
+# Response shape
+
+Your reply is a structured object with two fields:
+
+- `scratchpad` — the complete updated cleaned dictation, formatted per the Output rules
+- `covered_sections` — always return an empty list `[]`. Coverage is computed in a separate pass.
+
+When the transcript contains no clinical content yet, return an empty `scratchpad` string. Never emit raw text outside the structured response."""
 
 
 CANVAS_COVERAGE_SYSTEM_PROMPT = """# Role
@@ -499,6 +554,24 @@ async def sections_from_template(
             elapsed = _time.perf_counter() - t0
             print(f"[SECTIONS-FROM-TEMPLATE] ❌ {elapsed:.2f}s both failed, returning [FINDINGS]: {type(fallback_e).__name__}: {fallback_e}")
             return SectionGenerateResponse(sections=["FINDINGS"])
+
+
+def _canvas_process_config(mode: str) -> tuple[str, dict]:
+    """Return (system_prompt, model_settings) for the polish mode. Defaults to Clean.
+
+    Cerebras settings form (max_completion_tokens + reasoning_effort); reasoning_effort
+    'low' keeps Gemma 4 fast and literal. Both Gemma and the gpt-oss fallback accept it.
+    """
+    if mode == "structured":
+        return (
+            CANVAS_PROCESS_SYSTEM_PROMPT,
+            {"temperature": 0.3, "max_completion_tokens": 8000, "reasoning_effort": "low"},
+        )
+    # Clean is the default for any other/blank value.
+    return (
+        CANVAS_CLEAN_SYSTEM_PROMPT,
+        {"temperature": 0.15, "max_completion_tokens": 8000, "reasoning_effort": "low"},
+    )
 
 
 async def _run_canvas_with_fallback(
