@@ -182,9 +182,12 @@ MODEL_CONFIG = {
     "CANVAS_SECTIONS_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for section generation (Groq Llama)
     "CANVAS_SECTIONS_FROM_TEMPLATE": "gpt-oss-120b",  # Extract sections from template (Cerebras)
     "CANVAS_SECTIONS_FROM_TEMPLATE_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for template section extraction (Groq Llama)
-    "CANVAS_PROCESS": "qwen/qwen3-32b",  # Transcript → scratchpad (Groq Qwen3-32B, non-thinking)
-    "CANVAS_COVERAGE": "qwen/qwen3-32b",  # Coverage check (Groq Qwen3-32B, non-thinking)
-    "CANVAS_INTELLIPROMPTS": "qwen/qwen3-32b",  # IntelliPrompts generation (Groq Qwen)
+    "CANVAS_PROCESS": "gemma-4-31b",  # Transcript → scratchpad (Cerebras Gemma 4 31B; Groq qwen3-32b deprecated Aug 2026)
+    "CANVAS_PROCESS_FALLBACK": "gpt-oss-120b",  # Fallback if Gemma fails (Cerebras GPT-OSS-120B)
+    "CANVAS_COVERAGE": "gemma-4-31b",  # Coverage check (Cerebras Gemma 4 31B)
+    "CANVAS_COVERAGE_FALLBACK": "gpt-oss-120b",  # Fallback (Cerebras GPT-OSS-120B)
+    "CANVAS_INTELLIPROMPTS": "gemma-4-31b",  # IntelliPrompts generation (Cerebras Gemma 4 31B)
+    "CANVAS_INTELLIPROMPTS_FALLBACK": "gpt-oss-120b",  # Fallback (Cerebras GPT-OSS-120B)
 
     # Agentic Report Pipeline Models
     "REPORT_PLANNER": "zai-glm-4.7",        # Phase 1: planning agent (Cerebras, reasoning ON)
@@ -239,6 +242,7 @@ MODEL_PROVIDERS = {
     
     # Cerebras models
     "gpt-oss-120b": "cerebras",
+    "gemma-4-31b": "cerebras",  # Gemma 4 31B (multimodal, reasoning) — canvas primary
     "zai-glm-4.7": "cerebras",
 
     # Fireworks models

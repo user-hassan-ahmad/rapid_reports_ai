@@ -501,18 +501,56 @@ async def sections_from_template(
             return SectionGenerateResponse(sections=["FINDINGS"])
 
 
+async def _run_canvas_with_fallback(
+    primary_model: str,
+    fallback_model: str | None,
+    *,
+    output_type,
+    system_prompt: str,
+    user_prompt: str,
+    model_settings: dict,
+    use_thinking: bool = False,
+    label: str = "canvas",
+):
+    """Run a Canvas agent on ``primary_model``, falling back to ``fallback_model`` on ANY
+    failure (404 / 400 / timeout / outage) — not just 503. Both models are expected to share
+    a settings form (currently both Cerebras). Returns the agent output; raises only if every
+    candidate fails, so the caller decides how to degrade.
+    """
+    candidates = [primary_model]
+    if fallback_model and fallback_model != primary_model:
+        candidates.append(fallback_model)
+    last_exc: Exception | None = None
+    for i, model_name in enumerate(candidates):
+        try:
+            provider = _get_model_provider(model_name)
+            api_key = _get_api_key_for_provider(provider)
+            result = await _run_agent_with_model(
+                model_name=model_name,
+                output_type=output_type,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                api_key=api_key,
+                use_thinking=use_thinking,
+                model_settings=model_settings,
+            )
+            if i > 0:
+                logger.warning("[%s] primary %s failed; served by fallback %s", label, primary_model, model_name)
+            return result.output
+        except Exception as e:
+            last_exc = e
+            logger.error("[%s] ❌ model=%s %s: %s", label, model_name, type(e).__name__, e)
+    raise last_exc if last_exc else RuntimeError(f"[{label}] no model candidates")
+
+
 @canvas_router.post("/process", response_model=CanvasProcessResponse)
 async def process_transcript(
     request: CanvasProcessRequest,
     current_user: User = Depends(get_current_user),
 ):
     """Process the full session transcript and return the complete updated scratchpad plus covered checklist sections."""
-    model_name = MODEL_CONFIG["CANVAS_PROCESS"]
-    try:
-        provider = _get_model_provider(model_name)
-        api_key = _get_api_key_for_provider(provider)
-    except ValueError:
-        raise HTTPException(status_code=503, detail="Service not available. Contact your administrator.")
+    primary_model = MODEL_CONFIG["CANVAS_PROCESS"]
+    fallback_model = MODEL_CONFIG.get("CANVAS_PROCESS_FALLBACK")
 
     user_prompt = CANVAS_PROCESS_USER_PROMPT_TEMPLATE.format(
         scan_type=request.scan_type or "(not specified)",
@@ -521,30 +559,30 @@ async def process_transcript(
         session_transcript=request.session_transcript,
     )
 
+    # Cerebras settings form (max_completion_tokens; no top_p/extra_body). Gemma 4 and the
+    # gpt-oss-120b fallback are both Cerebras and accept the same shape.
     t0 = _time.perf_counter()
     try:
-        result = await _run_agent_with_model(
-            model_name=model_name,
+        output = await _run_canvas_with_fallback(
+            primary_model,
+            fallback_model,
             output_type=CanvasProcessResponse,
             system_prompt=CANVAS_PROCESS_SYSTEM_PROMPT,
             user_prompt=user_prompt,
-            api_key=api_key,
+            model_settings={"temperature": 0.7, "max_completion_tokens": 8000},
             use_thinking=False,
-            # Non-thinking mode: reasoning_effort="none" disables thinking (must go via
-            # extra_body — pydantic-ai's GroqModelSettings has no field for it). Groq does
-            # not accept top_k/min_p, so only temperature/top_p from the Qwen recipe apply.
-            model_settings={"temperature": 0.7, "top_p": 0.8, "max_tokens": 8000, "extra_body": {"reasoning_effort": "none"}},
+            label="canvas.process",
         )
         elapsed = _time.perf_counter() - t0
         logger.info(
-            "[canvas.process] %.2fs model=%s transcript_chars=%d scratchpad_chars=%d",
-            elapsed, model_name, len(request.session_transcript or ""), len(request.scratchpad_content or ""),
+            "[canvas.process] %.2fs primary=%s transcript_chars=%d scratchpad_chars=%d",
+            elapsed, primary_model, len(request.session_transcript or ""), len(request.scratchpad_content or ""),
         )
-        return result.output
+        return output
     except Exception as e:
         elapsed = _time.perf_counter() - t0
         import traceback
-        logger.error("[canvas.process] ❌ %.2fs %s: %s", elapsed, type(e).__name__, e)
+        logger.error("[canvas.process] ❌ %.2fs all models failed %s: %s", elapsed, type(e).__name__, e)
         traceback.print_exc()
         return CanvasProcessResponse(scratchpad=request.scratchpad_content, covered_sections=[])
 
@@ -558,6 +596,8 @@ async def review_scratchpad(
     """Parallel pass: coverage matching and IntelliPrompts generation."""
     coverage_model = MODEL_CONFIG["CANVAS_COVERAGE"]
     intelliprompts_model = MODEL_CONFIG["CANVAS_INTELLIPROMPTS"]
+    coverage_fallback = MODEL_CONFIG.get("CANVAS_COVERAGE_FALLBACK")
+    intelliprompts_fallback = MODEL_CONFIG.get("CANVAS_INTELLIPROMPTS_FALLBACK")
     try:
         coverage_provider = _get_model_provider(coverage_model)
         intelliprompts_provider = _get_model_provider(intelliprompts_model)
@@ -582,7 +622,8 @@ async def review_scratchpad(
         import time as _time
         # Non-thinking mode via extra_body reasoning_effort="none". Temperature kept low —
         # coverage is deterministic checklist classification, not open dialogue.
-        coverage_model_settings = {"temperature": 0.1, "top_p": 0.8, "max_tokens": 1500, "extra_body": {"reasoning_effort": "none"}}
+        # Cerebras settings form (max_completion_tokens; no top_p/extra_body).
+        coverage_model_settings = {"temperature": 0.1, "max_completion_tokens": 1500}
         scratchpad_preview = request.scratchpad_content[:200].replace('\n', ' | ')
         print(f"\n[COVERAGE] ── New call ──────────────────────────")
         print(f"[COVERAGE] Model: {coverage_model} | Scratchpad: {len(request.scratchpad_content)} chars")
@@ -590,15 +631,16 @@ async def review_scratchpad(
         print(f"[COVERAGE] Checklist sections: {request.checklist_sections}")
         t0 = _time.perf_counter()
         try:
-            result = await _run_agent_with_model(
-                model_name=coverage_model,
+            output = await _run_canvas_with_fallback(
+                coverage_model,
+                coverage_fallback,
                 output_type=CoverageOnlyResponse,
                 system_prompt=CANVAS_COVERAGE_SYSTEM_PROMPT,
                 user_prompt=coverage_prompt,
-                api_key=coverage_api_key,
                 model_settings=coverage_model_settings,
+                label="canvas.coverage",
             )
-            raw_covered = result.output.covered_sections
+            raw_covered = output.covered_sections
             elapsed = _time.perf_counter() - t0
 
             # Defensive post-validation — the schema is list[str] so any string is
@@ -684,39 +726,22 @@ async def review_scratchpad(
             elapsed = _time.perf_counter() - t0
             return _validate_and_log(response.prompts, elapsed, "✅")
         except Exception as e:
-            elapsed = _time.perf_counter() - t0
-            error_str = str(e)
-
-            # Detect 503 / Groq busy signals
-            is_infra_failure = "503" in error_str or "queue_exceeded" in error_str
-            if "failed_generation" in error_str:
-                import re as _re
-                generation = ""
-                match = _re.search(r"'failed_generation':\s*'(.*?)'(?:,|\})", error_str, _re.DOTALL)
-                if match:
-                    generation = match.group(1)
-                is_empty = generation.strip() in ("", "[]", "[ ]")
-                if is_empty:
-                    is_infra_failure = True
-
-            # 503/busy: try gpt-oss-120b (Cerebras) once, then resume normal Qwen next call
-            if is_infra_failure:
-                try:
-                    fallback_api_key = _get_api_key_for_provider("cerebras")
-                    response = await _call_model(
-                        "gpt-oss-120b",
-                        fallback_api_key,
-                        False,
-                        {"temperature": 0.1, "max_completion_tokens": 1500, "reasoning_effort": "medium"},
-                    )
-                    elapsed = _time.perf_counter() - t0
-                    return _validate_and_log(response.prompts, elapsed, "⚡ 503→fallback")
-                except Exception as fallback_e:
-                    print(f"[INTELLIPROMPTS] ❌ Fallback also failed: {fallback_e}")
-                    return []
-
-            print(f"[INTELLIPROMPTS] ❌ {elapsed:.2f}s → {type(e).__name__}: {e}")
-            return []
+            # Primary (Gemma 4) failed for ANY reason — try the gpt-oss-120b fallback once.
+            fallback_model = intelliprompts_fallback or "gpt-oss-120b"
+            try:
+                fallback_api_key = _get_api_key_for_provider(_get_model_provider(fallback_model))
+                response = await _call_model(
+                    fallback_model,
+                    fallback_api_key,
+                    False,
+                    {"temperature": 0.1, "max_completion_tokens": 1500, "reasoning_effort": "medium"},
+                )
+                elapsed = _time.perf_counter() - t0
+                logger.warning("[canvas.intelliprompts] primary %s failed (%s); served by fallback %s", intelliprompts_model, type(e).__name__, fallback_model)
+                return _validate_and_log(response.prompts, elapsed, "⚡ fallback")
+            except Exception as fallback_e:
+                logger.error("[canvas.intelliprompts] ❌ both failed: %s: %s", type(fallback_e).__name__, fallback_e)
+                return []
 
     covered, prompts = await asyncio.gather(run_coverage(), run_intelliprompts())
     return CanvasReviewResponse(covered_sections=covered, prompts=prompts)
