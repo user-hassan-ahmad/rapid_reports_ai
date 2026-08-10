@@ -16,6 +16,8 @@
 	export let activePrompts: IntelliPrompt[] = [];
 	export let scanType: string = '';
 	export let clinicalHistory: string = '';
+	export let polishMode: 'clean' | 'structured' = 'clean';
+	export let onModeChange: (mode: 'clean' | 'structured') => void = () => {};
 	export let apiKeyStatus = { deepgram_configured: false, groq_configured: false };
 	export let onContentChange: (content: string) => void = () => {};
 	export let onRecordingChange: (isRecording: boolean) => void = () => {};
@@ -277,7 +279,8 @@
 					scratchpad_content: editor.state.doc.toString(),
 					scan_type: scanType,
 					clinical_history: clinicalHistory,
-					preferred_section_names: checklistSections
+					preferred_section_names: checklistSections,
+					mode: polishMode
 				})
 			});
 			const data = await res.json();
@@ -359,7 +362,8 @@
 					scratchpad_content,
 					checklist_sections: checklistSections,
 					scan_type: scanType,
-					clinical_history: clinicalHistory
+					clinical_history: clinicalHistory,
+					mode: polishMode
 				})
 			});
 			const data = await res.json();
@@ -601,12 +605,35 @@
 		}
 		stopRecording();
 	});
+
+	function setMode(mode: 'clean' | 'structured') {
+		if (mode === polishMode) return;
+		polishMode = mode;
+		onModeChange(mode);
+		// Re-run the polish so the visible scratchpad starts converting to the new mode.
+		// (Full re-derivation of long scratchpads waits on Phase 2b's incremental rework.)
+		if (editor && editor.state.doc.length > 0) processTranscriptQueue();
+	}
 </script>
 
 <div class="flex flex-col flex-1 min-h-0">
 
 	<!-- Floating dictate button — centered, overlaps the top edge of the editor+margin row -->
 	<div class="flex flex-col items-center gap-1.5 relative z-10">
+		<div class="inline-flex bg-white/[0.03] border border-white/10 rounded-lg p-0.5 gap-0.5" role="group" aria-label="Polish mode">
+			<button type="button" onclick={() => setMode('clean')}
+				class={polishMode === 'clean'
+					? 'px-2.5 py-1 text-xs rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+					: 'px-2.5 py-1 text-xs rounded-md text-gray-400 hover:text-gray-300'}>
+				Verbatim
+			</button>
+			<button type="button" onclick={() => setMode('structured')}
+				class={polishMode === 'structured'
+					? 'px-2.5 py-1 text-xs rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+					: 'px-2.5 py-1 text-xs rounded-md text-gray-400 hover:text-gray-300'}>
+				Structured
+			</button>
+		</div>
 		<button
 			type="button"
 			onclick={toggleRecording}
