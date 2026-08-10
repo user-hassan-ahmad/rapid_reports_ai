@@ -670,7 +670,7 @@ async def _run_canvas_with_fallback(
     raise last_exc if last_exc else RuntimeError(f"[{label}] no model candidates")
 
 
-@canvas_router.post("/process", response_model=CanvasProcessResponse)
+@canvas_router.post("/process")
 async def process_transcript(
     request: CanvasProcessRequest,
     current_user: User = Depends(get_current_user),
@@ -678,15 +678,26 @@ async def process_transcript(
     """Process the full session transcript and return the complete updated scratchpad plus covered checklist sections."""
     primary_model = MODEL_CONFIG["CANVAS_PROCESS"]
     fallback_model = MODEL_CONFIG.get("CANVAS_PROCESS_FALLBACK")
+    incremental = request.committed_context is not None
+    system_prompt, model_settings = _canvas_process_config(request.mode, incremental=incremental)
 
-    user_prompt = CANVAS_PROCESS_USER_PROMPT_TEMPLATE.format(
-        scan_type=request.scan_type or "(not specified)",
-        clinical_history=request.clinical_history or "(not specified)",
-        scratchpad_content=request.scratchpad_content,
-        session_transcript=request.session_transcript,
-    )
-
-    system_prompt, model_settings = _canvas_process_config(request.mode)
+    if incremental:
+        user_prompt = CANVAS_INCREMENTAL_USER_PROMPT_TEMPLATE.format(
+            scan_type=request.scan_type or "(not specified)",
+            clinical_history=request.clinical_history or "(not specified)",
+            committed_context=request.committed_context,
+            active_scratchpad=request.scratchpad_content,
+            session_transcript=request.session_transcript,
+        )
+        output_type = CanvasIncrementalResponse
+    else:
+        user_prompt = CANVAS_PROCESS_USER_PROMPT_TEMPLATE.format(
+            scan_type=request.scan_type or "(not specified)",
+            clinical_history=request.clinical_history or "(not specified)",
+            scratchpad_content=request.scratchpad_content,
+            session_transcript=request.session_transcript,
+        )
+        output_type = CanvasProcessResponse
 
     # Cerebras settings form (max_completion_tokens; no top_p/extra_body). Gemma 4 and the
     # gpt-oss-120b fallback are both Cerebras and accept the same shape.
@@ -695,7 +706,7 @@ async def process_transcript(
         output = await _run_canvas_with_fallback(
             primary_model,
             fallback_model,
-            output_type=CanvasProcessResponse,
+            output_type=output_type,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             model_settings=model_settings,
@@ -704,8 +715,9 @@ async def process_transcript(
         )
         elapsed = _time.perf_counter() - t0
         logger.info(
-            "[canvas.process] %.2fs mode=%s primary=%s transcript_chars=%d scratchpad_chars=%d",
-            elapsed, request.mode, primary_model, len(request.session_transcript or ""), len(request.scratchpad_content or ""),
+            "[canvas.process] %.2fs mode=%s incremental=%s primary=%s active_chars=%d committed_chars=%d",
+            elapsed, request.mode, incremental, primary_model,
+            len(request.scratchpad_content or ""), len(request.committed_context or ""),
         )
         return output
     except Exception as e:
@@ -713,6 +725,8 @@ async def process_transcript(
         import traceback
         logger.error("[canvas.process] ❌ %.2fs all models failed %s: %s", elapsed, type(e).__name__, e)
         traceback.print_exc()
+        if incremental:
+            return CanvasIncrementalResponse(active_scratchpad=request.scratchpad_content, committed_edits=[])
         return CanvasProcessResponse(scratchpad=request.scratchpad_content, covered_sections=[])
 
 
