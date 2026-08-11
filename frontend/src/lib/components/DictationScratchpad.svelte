@@ -213,6 +213,8 @@
 		editor.dispatch({
 			changes: { from: 0, to: editor.state.doc.length, insert: newDoc }
 		});
+		// Restored/settled content is frozen; new dictation starts a fresh active tail.
+		committedBoundary = newDoc.length;
 		// Bypass the typing debounce for restored/reset content — kick off the review immediately
 		// so cards appear as soon as the scratchpad is populated rather than waiting 1s + API time.
 		if (newDoc.trim().length > 0) {
@@ -264,51 +266,93 @@
 
 	let processAbort: AbortController | null = null;
 
+	// Phase 2b.2 incremental: [0, committedBoundary) is FROZEN; the rest is the mutable ACTIVE tail.
+	let committedBoundary = 0;
+	// Set on UtteranceEnd (a real pause): freeze the whole active burst after the next polish.
+	let freezeAfterNextProcess = false;
+
+	function incrementalEnabled(): boolean {
+		return typeof localStorage !== 'undefined' && localStorage.getItem('rr_incremental') === '1';
+	}
+
 	async function processTranscript(): Promise<void> {
 		if (!editor) return;
 		isProcessing = true;
 		recordingError = '';
 		const controller = new AbortController();
 		processAbort = controller;
+		const useIncremental = incrementalEnabled();
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) {
 				headers['Authorization'] = `Bearer ${$token}`;
 			}
+			const doc = editor.state.doc.toString();
+			const boundary = useIncremental ? Math.min(committedBoundary, doc.length) : 0;
+			const committed = doc.slice(0, boundary);
+			const active = doc.slice(boundary);
+
+			const body: Record<string, unknown> = {
+				session_transcript: sessionTranscript,
+				scratchpad_content: useIncremental ? active : doc,
+				scan_type: scanType,
+				clinical_history: clinicalHistory,
+				preferred_section_names: checklistSections,
+				mode: polishMode
+			};
+			if (useIncremental) body.committed_context = committed;
+
 			const res = await fetch(`${API_URL}/api/canvas/process`, {
 				method: 'POST',
 				headers,
 				signal: controller.signal,
-				body: JSON.stringify({
-					session_transcript: sessionTranscript,
-					scratchpad_content: editor.state.doc.toString(),
-					scan_type: scanType,
-					clinical_history: clinicalHistory,
-					preferred_section_names: checklistSections,
-					mode: polishMode
-				})
+				body: JSON.stringify(body)
 			});
 			const data = await res.json();
-			if (data.scratchpad != null) {
-				let content = data.scratchpad;
-				// Sanitize: strip any markdown Qwen emits despite instructions
-				content = content
+
+			const sanitize = (s: string): string =>
+				s
 					.split('\n')
 					.filter((line: string) => !/^[-*_]{3,}\s*$/.test(line.trim()))
 					.map((line: string) => line.replace(/\*\*/g, '').replace(/^_{1,2}|_{1,2}$/g, ''))
 					.join('\n');
-				const doc = editor.state.doc.toString();
+
+			let content: string | null = null;
+			let newBoundary = 0;
+			if (useIncremental && data.active_scratchpad != null) {
+				// Apply committed_edits verbatim (drop-if-not-found), then splice the active tail back.
+				// Committed text is already clean from prior passes — only the active tail is sanitized.
+				let editedCommitted = committed;
+				for (const e of (data.committed_edits ?? [])) {
+					if (!e || !e.original) continue;
+					const idx = editedCommitted.lastIndexOf(e.original);
+					if (idx !== -1) {
+						editedCommitted =
+							editedCommitted.slice(0, idx) + (e.corrected ?? '') + editedCommitted.slice(idx + e.original.length);
+					}
+				}
+				content = editedCommitted + sanitize(data.active_scratchpad);
+				newBoundary = editedCommitted.length;
+			} else if (data.scratchpad != null) {
+				content = sanitize(data.scratchpad);
+			}
+
+			if (content != null) {
 				isQwenWriting = true;
 				editor.dispatch({ changes: { from: 0, to: doc.length, insert: content } });
 				isQwenWriting = false;
+				if (useIncremental) {
+					// Freeze-on-pause (rule A): an UtteranceEnd-triggered polish freezes the whole
+					// burst; otherwise keep the boundary at the (possibly edit-shifted) committed end.
+					committedBoundary = freezeAfterNextProcess ? content.length : Math.min(newBoundary, content.length);
+					freezeAfterNextProcess = false;
+				}
 				// Scratchpad is updated — now fire IntelliPrompts analysis in background.
-				// Runs after extraction completes so it reads the final scratchpad state,
-				// not competing with /process on Groq.
 				processReview();
 			}
-		if (data.covered_sections && Array.isArray(data.covered_sections)) {
-			onCoveredSectionsChange(data.covered_sections);
-		}
+			if (data.covered_sections && Array.isArray(data.covered_sections)) {
+				onCoveredSectionsChange(data.covered_sections);
+			}
 		} catch {
 			// Superseded (AbortError) or network error — keep raw transcript, surface nothing.
 		} finally {
@@ -390,6 +434,8 @@
 	}
 
 	async function startRecording(): Promise<void> {
+		// Anything already in the scratchpad is settled — freeze it so dictation never re-authors it.
+		committedBoundary = editor ? editor.state.doc.length : 0;
 		if (!apiKeyStatus?.deepgram_configured) {
 			recordingError = 'Dictation is not available. Contact your administrator.';
 			return;
@@ -467,7 +513,9 @@
 						return;
 					}
 					if (data.utterance_end) {
-						// Deepgram UtteranceEnd: backup trigger for long pauses
+						// Deepgram UtteranceEnd: a real pause — freeze the active burst after the
+						// next polish (commit rule A), and fire the backup polish.
+						freezeAfterNextProcess = true;
 						processTranscriptQueue();
 					} else if (data.transcript) {
 						if (!data.is_final) {
@@ -588,11 +636,14 @@
 						}
 					});
 					if (docNowEmpty) {
+						committedBoundary = 0;
 						if (typingDebounceTimer) { clearTimeout(typingDebounceTimer); typingDebounceTimer = null; }
 						onScratchpadClear();
 					} else if (hasWordChange) {
 						// Cards whose source_text is deleted fade out automatically via the anchor filter
 						// in IntelliPromptsMargin — no need to clear the prompt list eagerly here.
+						// Manual edit: freeze the current doc so dictation never re-authors what was typed.
+						committedBoundary = update.state.doc.length;
 						if (typingDebounceTimer) clearTimeout(typingDebounceTimer);
 						typingDebounceTimer = setTimeout(() => {
 							typingDebounceTimer = null;
