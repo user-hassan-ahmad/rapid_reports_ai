@@ -297,6 +297,50 @@ transcribing more literally, not by judgement.
 the style should survive — but `on_on` has not yet been reviewed. Added as a fourth column for
 review.
 
+### L-17 · What analyser reasoning actually buys in the sheet
+**Verdict: two specifiable things, not diffuse quality.** Confidence: high (5 cases, structural diff).
+
+Structurally the two sheet variants are near-identical: same 10 sections, same sweep-station count
+(7.8 vs 7.8), same style exemplars, clauses, negatives and impression exemplars. The only gross
+difference is **+27% length** (14,743 vs 11,632 chars), and it is not evenly spread:
+
+| section | ON | OFF | delta |
+|---|---|---|---|
+| **Conditional Suppression Rules** | 1,917 | 577 | **+232%** |
+| Impression Exemplars | 2,238 | 1,713 | +31% |
+| Interpretive Clause Rules | 874 | 662 | +32% |
+| Companion Matrix | 1,227 | 974 | +26% |
+| *(everything else)* | — | — | +5% to +14% |
+
+**Difference 1 — suppression rules are general vs case-keyed.** Reasoning-off writes mechanical
+anti-duplication rules bound to this case's findings (*"IF AAA is confirmed in P1, THEN do not
+repeat aortic details"*). Reasoning-on writes transferable principles (*"IF the index finding is
+named with its descriptor in P1, the sweep paragraph for that region names the structure only"*).
+
+**Difference 2 — the defeasibility clause is dropped.** Reasoning-off states normal-fill as an
+unconditional rule: *"IF dictation is silent about a system, THEN render the canonical
+default-normal line."* Reasoning-on carries the qualifier: *"…Silence is not omission — it is the
+default rendering. **This rule is defeasible: if a dictated positive implicates the structure as a
+companion, the canonical line is dropped or rendered contingently.**"*
+
+That missing qualifier is the report-integrity hardening (see `project_report_integrity_hardening`)
+and it is the direct mechanism behind the contradictions observed in Qwen output — "No pneumatosis
+intestinalis" alongside dictated mural gas, "the mesentery is unremarkable with no stranding or
+fluid" alongside large-volume haemoperitoneum.
+
+**Difference 3 — sweep granularity.** Reasoning-on splits coarse stations and adds terminal
+catch-alls (*"…upper abdominal solid organs → retroperitoneum and systemic vasculature → …"*,
+*"…bones/soft tissues → secondary visible regions"*). Reasoning-off collapses to *"Solid organs →
+Peritoneum → Pelvis → Thorax"* and stops. This is L-16's mechanism, now shown to be one instance of
+a general terseness rather than a one-off.
+
+→ **All three are specifiable directives, not emergent judgement.** Given L-03 (125/125 compliance
+on structural directives), encoding them and keeping analyser reasoning OFF is a high-confidence
+bet — the analyser would be *copying* stated rules rather than deriving them, which suits a
+non-reasoning model.
+→ Payoff if it works: analyser 20.1s → 7.9s **and** a 27% shorter sheet, which shrinks generator
+input and therefore generator reasoning. The savings compound.
+
 ---
 
 ## Open questions, in priority order
