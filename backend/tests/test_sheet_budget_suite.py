@@ -439,3 +439,37 @@ def test_defeasibility_modes_are_distinct_and_validated():
         pass
     else:
         raise AssertionError("expected ValueError on an unknown defeasibility mode")
+
+
+# ── Semantic contradiction screen ───────────────────────────────────────────
+
+from rapid_reports_ai.scripts.sheet_budget import contradiction as X
+
+
+def test_contradiction_check_uses_injected_judge_and_shapes_output():
+    seen = {}
+
+    def fake(prompt, case_text):
+        seen["prompt"], seen["case"] = prompt, case_text
+        return X.ContradictionVerdict(conflicts=[
+            X.Conflict(report_span="No pneumatosis intestinalis.",
+                       dictation_span="mural gas", why="same finding, different term")])
+
+    r = X.check(dictation="Duodenum shows mural gas", report="No pneumatosis intestinalis.",
+                judge=fake)
+    assert r["count"] == 1
+    assert r["conflicts"][0]["report_span"] == "No pneumatosis intestinalis."
+    assert "## Dictation" in seen["case"] and "## Report" in seen["case"]
+
+
+def test_contradiction_check_returns_empty_for_a_sound_report():
+    r = X.check(dictation="d", report="r",
+                judge=lambda p, c: X.ContradictionVerdict(conflicts=[]))
+    assert r == {"count": 0, "conflicts": []}
+
+
+def test_screen_excuses_remainder_scoping_in_its_instructions():
+    """The remainder pattern is correct practice - the prompt must say so, and
+    must confine the exemption to the denying statement itself."""
+    assert "remainder" in X.PROMPT.lower()
+    assert "only to the denying statement itself" in X.PROMPT
