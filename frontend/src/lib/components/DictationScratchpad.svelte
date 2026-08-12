@@ -9,6 +9,7 @@
 	import { tags } from '@lezer/highlight';
 	import { token } from '$lib/stores/auth';
 	import { API_URL } from '$lib/config';
+	import { mergeIncremental } from '$lib/utils/incrementalMerge';
 
 	interface IntelliPrompt { question: string; source_text: string; rationale?: string; }
 
@@ -320,19 +321,13 @@
 			let content: string | null = null;
 			let newBoundary = 0;
 			if (useIncremental && data.active_scratchpad != null) {
-				// Apply committed_edits verbatim (drop-if-not-found), then splice the active tail back.
 				// Committed text is already clean from prior passes — only the active tail is sanitized.
-				let editedCommitted = committed;
-				for (const e of (data.committed_edits ?? [])) {
-					if (!e || !e.original) continue;
-					const idx = editedCommitted.lastIndexOf(e.original);
-					if (idx !== -1) {
-						editedCommitted =
-							editedCommitted.slice(0, idx) + (e.corrected ?? '') + editedCommitted.slice(idx + e.original.length);
-					}
-				}
-				content = editedCommitted + sanitize(data.active_scratchpad);
-				newBoundary = editedCommitted.length;
+				// mergeIncremental applies committed_edits verbatim (drop-if-not-found) and rejoins the
+				// zones with the one-statement-per-line separator the model no longer emits (was: the
+				// zones were concatenated raw, producing "lobe.The spleen").
+				const merged = mergeIncremental(committed, sanitize(data.active_scratchpad), data.committed_edits);
+				content = merged.content;
+				newBoundary = merged.boundary;
 			} else if (data.scratchpad != null) {
 				content = sanitize(data.scratchpad);
 			}
