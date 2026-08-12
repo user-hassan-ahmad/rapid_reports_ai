@@ -9,7 +9,7 @@
 	import { tags } from '@lezer/highlight';
 	import { token } from '$lib/stores/auth';
 	import { API_URL } from '$lib/config';
-	import { mergeIncremental } from '$lib/utils/incrementalMerge';
+	import { mergeIncremental, rawInsertSeparator } from '$lib/utils/incrementalMerge';
 
 	interface IntelliPrompt { question: string; source_text: string; rationale?: string; }
 
@@ -363,7 +363,10 @@
 
 			if (content != null) {
 				isQwenWriting = true;
-				editor.dispatch({ changes: { from: 0, to: doc.length, insert: content } });
+				editor.dispatch({
+					changes: { from: 0, to: doc.length, insert: content },
+					effects: useIncremental ? [clearPending.of({ from: 0, to: content.length })] : []
+				});
 				isQwenWriting = false;
 				if (useIncremental) {
 					// Freeze-on-pause (rule A): an UtteranceEnd-triggered polish freezes the whole
@@ -558,6 +561,22 @@
 								appended.length > SESSION_TRANSCRIPT_WINDOW
 									? appended.slice(appended.length - SESSION_TRANSCRIPT_WINDOW)
 									: appended;
+
+							// Phase 2b.3: optimistically drop the raw word-group into the active tail,
+							// rendered faded, so it lands instantly instead of waiting for the polish.
+							// isRecording gates the manual-edit branch, so this never moves the boundary.
+							if (incrementalEnabled() && editor) {
+								const docLength = editor.state.doc.length;
+								const sep = rawInsertSeparator(docLength, committedBoundary);
+								const from = docLength + sep.length;
+								const to = from + data.transcript.length;
+								isQwenWriting = true;
+								editor.dispatch({
+									changes: { from: docLength, insert: sep + data.transcript },
+									effects: markPending.of({ from, to })
+								});
+								isQwenWriting = false;
+							}
 
 							// Phase 2b.1: fire the polish only at a pause (speech_final), not every
 							// is_final — UtteranceEnd (above) is the long-pause backup. Cuts redundant
