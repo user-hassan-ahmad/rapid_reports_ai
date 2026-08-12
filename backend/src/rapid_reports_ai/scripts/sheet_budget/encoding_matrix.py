@@ -60,6 +60,23 @@ recommendation — remains your judgement under the descriptor propagation rule.
 and impression-worthiness are yours to decide. Inclusion is not.
 """
 
+# The analyser now emits both the REMAINDER form and an explicit IF/THEN rule
+# telling the generator to substitute. The generator ignored both and emitted
+# the negative AND the remainder (L-21 smoke). This states the substitution on
+# the generator side, where the failure actually is.
+GENERATOR_SUBSTITUTION_RULE = """
+
+## Mandatory negatives whose class the dictation reports — mandatory
+
+Where the skill sheet pairs a mandatory negative with a `REMAINDER:` form, and the dictation
+reports a positive finding of that negative's class, emit the REMAINDER form **instead of** the
+negative. Never emit both — the negative asserts the absence of precisely what the dictation has
+reported present, and emitting it alongside the positive contradicts the radiologist.
+
+State the positive finding specifically, then cover the rest of that structure with the REMAINDER
+statement. Do not negate, repeat or qualify the positive finding's descriptor.
+"""
+
 CELLS = [
     {"id": "enc_a",   "integrity": True, "floor": False, "defeasibility": "",
      "label": "analyser directives"},
@@ -69,6 +86,13 @@ CELLS = [
     # pairing. The generator floor is off - enc_a showed it is not needed.
     {"id": "enc_cnt", "integrity": True, "floor": False, "defeasibility": "countable",
      "label": "analyser directives + countable defeasibility"},
+    # L-21: mandatory negatives re-scoped to the remainder when their class is
+    # implicated by a dictated positive. The operation the radiologist named.
+    {"id": "enc_rsc", "integrity": True, "floor": False, "defeasibility": "countable",
+     "negatives": "rescope", "label": "+ negative rescoping (sheet only)"},
+    {"id": "enc_rscg", "integrity": True, "floor": False, "defeasibility": "countable",
+     "negatives": "rescope", "substitution": True,
+     "label": "+ negative rescoping + generator substitution rule"},
 ]
 
 
@@ -100,7 +124,7 @@ from rapid_reports_ai.template_manager import TemplateManager  # noqa: E402
 from . import compliance, gate, judge, report as report_mod  # noqa: E402
 
 _CAPTURED: list[dict] = []
-_STATE: dict[str, Any] = {"stage": "?", "floor": False}
+_STATE: dict[str, Any] = {"stage": "?", "floor": False, "substitution": False}
 _ORIG = eu._run_agent_with_model
 
 
@@ -114,8 +138,14 @@ async def _instrumented(**kw):
             extra["reasoning_effort"] = "none"   # generator keeps reasoning on
             settings["extra_body"] = extra
             kw["model_settings"] = settings
-        elif stage == "generator" and _STATE["floor"]:
-            kw["user_prompt"] = (kw.get("user_prompt") or "") + GENERATOR_FLOOR_RULE
+        elif stage == "generator":
+            extra_rules = ""
+            if _STATE["floor"]:
+                extra_rules += GENERATOR_FLOOR_RULE
+            if _STATE.get("substitution"):
+                extra_rules += GENERATOR_SUBSTITUTION_RULE
+            if extra_rules:
+                kw["user_prompt"] = (kw.get("user_prompt") or "") + extra_rules
 
     t0 = time.time()
     result = await _ORIG(**kw)
@@ -146,6 +176,7 @@ def _biggest(stage: str) -> dict:
 async def run_one(case: dict, cell: dict, tm: TemplateManager) -> dict[str, Any]:
     _CAPTURED.clear()
     _STATE["floor"] = cell["floor"]
+    _STATE["substitution"] = cell.get("substitution", False)
     label = f"{cell['id']}/{case['name']}"
 
     _STATE["stage"] = "analyser"
@@ -154,6 +185,7 @@ async def run_one(case: dict, cell: dict, tm: TemplateManager) -> dict[str, Any]
         scan_type=case["scan_type"], clinical_history=case["clinical_history"],
         api_key="", model_override=MODEL, integrity=cell["integrity"],
         defeasibility=cell.get("defeasibility", ""),
+        negatives=cell.get("negatives", ""),
     )
     sheet = sheet_result["skill_sheet"]
     a = _biggest("analyser")
@@ -187,6 +219,7 @@ async def run_one(case: dict, cell: dict, tm: TemplateManager) -> dict[str, Any]
         "integrity": cell["integrity"], "floor": cell["floor"],
         "defeasibility": cell.get("defeasibility", ""),
         "pairing": compliance.defeasibility_pairing(sheet),
+        "neg_pairing": compliance.negatives_rescope_pairing(sheet),
         "sheet_chars": len(sheet), "report_chars": len(report_text),
         "analyser_latency_ms": sheet_result["latency_ms"], "generator_latency_ms": gen_ms,
         "analyser_usage": a, "generator_usage": g,
@@ -203,6 +236,8 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--cell", action="append", default=None)
     p.add_argument("--case", action="append", default=None)
     p.add_argument("--no-judge", action="store_true")
+    p.add_argument("--repeat", type=int, default=1,
+                   help="Draws per case. >1 estimates a rate for stochastic failures.")
     p.add_argument("--output-dir", default=None)
     return p.parse_args()
 
@@ -224,11 +259,15 @@ async def main() -> int:
     for cell in cells:
         print(f"--- {cell['id']}  ({cell['label']}) ---")
         for case in cases:
+          for draw in range(args.repeat):
             try:
-                runs.append(await run_one(case, cell, tm))
+                r = await run_one(case, cell, tm)
+                r["draw"] = draw
+                runs.append(r)
             except Exception as exc:  # noqa: BLE001
                 print(f"  ✗ {cell['id']}/{case['name']}: {exc}")
-                runs.append({"cell": cell["id"], "case": case["name"], "error": str(exc)})
+                runs.append({"cell": cell["id"], "case": case["name"],
+                             "draw": draw, "error": str(exc)})
         print()
 
     if not args.no_judge:

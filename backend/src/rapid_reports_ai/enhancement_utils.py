@@ -249,6 +249,10 @@ MODEL_PROVIDERS = {
     "accounts/fireworks/models/glm-5p1": "fireworks",
 
     # OpenRouter models (OpenAI-compatible gateway)
+    # gpt-oss-120b via OpenRouter is the like-for-like escape from the Cerebras
+    # sunset for every GPT-OSS role: same weights, 20 providers, 16 of them
+    # advertising tools + tool_choice + structured_outputs.
+    "openai/gpt-oss-120b": "openrouter",
     "deepseek/deepseek-v4-pro": "openrouter",
     "deepseek/deepseek-v4-flash": "openrouter",
 }

@@ -431,6 +431,67 @@ narrowing condition naming the dictated finding class that forces it to be resta
 → **Blocked on a clinical input**: what should that negative say when duodenal mural gas is
 dictated? The exemplar the rule points at has to be the radiologist's phrasing, not invented.
 
+### L-21 · Mandatory-negative rescoping — the operation the radiologist named
+**Verdict: encodes cleanly, reduces the rate, not yet proven to eliminate.** Confidence: high on
+compliance, low on the rate (n=2–4 per config).
+
+Consultant radiologist on the correct operation: state the positive specifically
+("duodenal mural gas"), then cover the rest with a **sweeping statement scoped to the remainder**
+("the remaining duodenum is unremarkable") — not a negated restatement of the descriptor.
+
+Encoded as a countable pairing, each mandatory negative carrying a `REMAINDER:` form. The analyser
+complied fully and produced exactly the right phrasing unprompted by example:
+
+> `"No pneumatosis intestinalis or portal venous gas." — REMAINDER: "The remainder of the bowel wall is unremarkable."`
+
+It also wrote the application rule into Conditional Suppression Rules by itself:
+`IF [dictation reports a positive for a mandatory negative class] THEN [replace the mandatory
+negative with its REMAINDER form]`.
+
+**Contradiction rate on ct_tap, every draw pooled:**
+
+| config | contradicted | draws | rate |
+|---|---|---|---|
+| analyser reasoning ON | 0 | 2 | 0% |
+| analyser OFF (baseline) | 1 | 2 | 50% |
+| + integrity directives | 1 | 1 | 100% |
+| + countable defeasibility | 1 | 2 | 50% |
+| **+ negative rescoping (sheet only)** | 1 | 4 | **25%** |
+| **+ rescoping + generator rule** | 0 | 3 | **0%** |
+
+→ **The generator ignores conditional rules the sheet gives it.** In the first rescoping draw the
+sheet carried the REMAINDER form *and* the explicit IF/THEN rule, and the generator emitted the
+negative **and** the remainder. That is a new failure class: everything upstream complied and the
+generator did not apply it. Stating the substitution generator-side is what the last row adds.
+→ **Do not read 0/3 as a fix.** `enc_rsc` also went 0/3 in the same run and is 1/4 pooled; the two
+cannot be separated at these counts. Only analyser reasoning ON is clean on every draw, and that is
+2 draws.
+→ Fourth confirmation of the countable-form principle.
+
+### L-22 · gpt-oss-120b via OpenRouter — the Cerebras escape is like-for-like
+**Verdict: available, cheaper, and verified working.** Confidence: high.
+Roughly 14 role assignments sit on `gpt-oss-120b`, several tool-call-heavy — the capability class
+this programme had never tested. OpenRouter serves the **same weights** across **20 providers**,
+**16 advertising `tools` + `tool_choice` + `structured_outputs`**.
+
+| | in $/M | out $/M | max out |
+|---|---|---|---|
+| Cerebras (dying) | 0.35 | 0.75 | 40,960 |
+| CoreWeave | **0.03** | **0.17** | 131,072 |
+| DeepInfra | 0.04 | 0.17 | 131,072 |
+| Groq | 0.15 | 0.60 | 65,536 |
+
+Verified end-to-end through the existing plumbing — `openrouter` provider, base_url and key
+resolution were already implemented, only the `MODEL_PROVIDERS` entry was missing:
+- **structured output + `reasoning_effort: medium`** → returned a valid typed object, 159 tokens
+- **tool calling** → tool invoked with the right argument, result used in the answer
+
+→ **Same model, different provider: no prompt re-tuning, no capability re-validation.** This
+collapses the largest scope risk — ~14 roles migrate by repointing rather than by replacement, and
+at roughly a tenth of the Cerebras token price on the cheapest providers.
+→ Consider pinning provider order via OpenRouter's `provider` routing rather than accepting the
+default route, since max output tokens and throughput vary widely across the 20.
+
 ---
 
 ## Open questions, in priority order

@@ -708,11 +708,43 @@ and will assert normality for a structure the dictation has already reported as 
 """
 
 
+# Mandatory negatives are exempt from defeasibility by design — the base prompt
+# states they are "never suppressed… since they answer the clinical question
+# rather than fill silence". That exemption is what produced negatives asserting
+# the absence of a finding the dictation had just reported present (L-20).
+#
+# Per consultant radiologist, the correct operation is neither suppression nor
+# a qualified restatement of the descriptor: state the positive specifically,
+# then cover the rest with a sweeping statement scoped to the REMAINING
+# structure. Expressed here as a countable pairing, the form this model obeys.
+NEGATIVES_RESCOPE = """
+**Every mandatory negative must be paired with its remainder form.** A mandatory negative asserts
+the absence of a class of finding. Where the dictation reports a positive of that same class, the
+negative must not be emitted as written — doing so asserts the absence of what was just reported
+present. Nor is it restated with the descriptor qualified. It is re-scoped to the unaffected
+remainder: the positive finding is stated specifically, and the rest of that structure is covered
+by a single sweeping statement that it is unremarkable.
+
+Give every mandatory negative two parts — the negative itself, and a `REMAINDER:` clause carrying
+the sweeping statement that replaces it when a positive of its class is dictated. The remainder
+form names the residual structure and states that it is unremarkable. It does not repeat, negate
+or qualify the descriptor of the positive finding.
+
+Format every entry as:
+
+- "<mandatory negative as written>" — REMAINDER: "<the remaining/remainder of the STRUCTURE is unremarkable>"
+
+Emit exactly as many `REMAINDER:` clauses as there are mandatory negatives. Add one rule to
+Conditional Suppression Rules stating that a mandatory negative whose class is implicated by a
+dictated positive is replaced by its remainder form.
+"""
+
 def get_analyser_prompt(
     model_name: str,
     budget_directive: str = "",
     integrity: bool = False,
     defeasibility: str = "",
+    negatives: str = "",
 ) -> str:
     """Dispatch the analyser system prompt by model identifier.
 
@@ -738,6 +770,10 @@ def get_analyser_prompt(
         prompt += DEFEASIBILITY_COUNTABLE
     elif defeasibility:
         raise ValueError(f"unknown defeasibility mode: {defeasibility!r}")
+    if negatives == "rescope":
+        prompt += NEGATIVES_RESCOPE
+    elif negatives:
+        raise ValueError(f"unknown negatives mode: {negatives!r}")
     return prompt
 
 
@@ -772,6 +808,7 @@ async def generate_ephemeral_skill_sheet(
     budget_directive: str = "",
     integrity: bool = False,
     defeasibility: str = "",
+    negatives: str = "",
 ) -> dict:
     """
     Run the analyser to produce a bespoke skill sheet for one case.
@@ -845,7 +882,7 @@ async def generate_ephemeral_skill_sheet(
         call_api_key = api_key
 
     system_prompt = get_analyser_prompt(
-        model_name, budget_directive, integrity, defeasibility
+        model_name, budget_directive, integrity, defeasibility, negatives
     )
 
     result = await _run_agent_with_model(

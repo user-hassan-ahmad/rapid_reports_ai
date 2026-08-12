@@ -111,3 +111,25 @@ def defeasibility_pairing(sheet: str) -> dict:
         "suppress_conditions": supp,
         "paired": lines > 0 and supp >= lines,
     }
+
+
+_NEGATIVES_BLOCK_FULL = re.compile(
+    r"^-\s+\*\*Mandatory negatives:\*\*(.*?)(?=^-\s+\*\*|^##|\Z)", re.M | re.S
+)
+_REMAINDER = re.compile(r"REMAINDER\s*:", re.I)
+
+
+def negatives_rescope_pairing(sheet: str) -> dict:
+    """Count mandatory negatives against paired REMAINDER forms (ledger L-21).
+
+    Mandatory negatives are exempt from defeasibility by design, so the fix for
+    a negative that contradicts a dictated positive is to re-scope it to the
+    unaffected remainder rather than suppress it.
+    """
+    m = _NEGATIVES_BLOCK_FULL.search(sheet)
+    block = m.group(1) if m else ""
+    # Count entry lines, not quoted strings: a paired entry carries two quotes
+    # (the negative and its remainder), which double-counted the negatives.
+    negs = len(re.findall(r'^\s*-\s+"', block, re.M))
+    rem = len(_REMAINDER.findall(block))
+    return {"negatives": negs, "remainder_forms": rem, "paired": negs > 0 and rem >= negs}
