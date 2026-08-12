@@ -22,8 +22,9 @@ Established from Groq's docs, 2026-08-12. These bound what is tunable at all.
 |---|---|---|
 | `reasoning_effort` | **binary only**: `none` \| `default` | The `low`/`medium`/`high` scale is GPT-OSS-only. Reasoning is an on/off switch for this model, not a dial. |
 | `reasoning_format` | `parsed` \| `raw` \| `hidden` | `parsed` is what we use and it works — no thinking leaked into any of 55 reports measured. |
-| Context / max output | 131,072 / **16,384** | Output ceiling is the binding one; a measured generation reached 15,529. |
-| Groq parameter name | `max_completion_tokens` | `max_tokens` is the deprecated alias. **Ours is not being applied** — see L-04. |
+| Context / max output | 131,072 / **16,384** | Not the binding limit in practice — our own `max_tokens: 8000` bites first. |
+| Our generator cap | `max_tokens: 8000` (`template_manager.py:2604`) | **Is applied**, and is what truncates reports when reasoning runs long — see L-04, L-05. Raising it toward 16,384 is the free fix. |
+| Groq parameter name | `max_completion_tokens` | `max_tokens` is the deprecated alias; worth tidying, not a live bug. |
 | Recommended temperature | 0.5–0.7 | Ours is **0.8** on the Groq branch (`template_manager.py:2604`) — out of spec. Groq warns this risks "repetitions or incoherent outputs". |
 | System prompts | Groq advises **against** for reasoning models | We put everything in `system_prompt`. Untested. Pulls against prompt caching, which wants a large static prefix. |
 | Rate limit | 32,000 OTPM observed, org-level | Killed 4 of 20 cells when 4 Qwen calls ran concurrently. Serialise. Cached tokens don't count toward limits. |
@@ -62,21 +63,37 @@ rather than assumed, and a token cap would truncate mid-section — measuring "h
 truncation hurt" while appearing to measure "how little detail suffices".
 
 ### L-04 · `max_tokens` on the Groq generator path
-**Verdict: not applied.** Confidence: high.
-`template_manager.py:2604` sets `max_tokens: 8000`; an instrumented call on that exact path
-recorded **15,529 output tokens**. Groq's parameter is `max_completion_tokens`.
-→ The generator runs effectively uncapped. Fix before drawing any conclusion that depends on
-output length.
+> **CORRECTED 2026-08-12 — the original verdict below was wrong.**
 
-### L-05 · Intermittent generator truncation
-**Verdict: real, unexplained, ~12%.** Confidence: moderate (3/25).
-Three reports stopped mid-sentence inside FINDINGS, never reaching IMPRESSION. Not tier-related
-(1 at T1, 2 at T5). Caught by the structural gate; the **judge caught none** — a truncated report
-reads as fluent for as long as it lasts.
-**Token-ceiling hypothesis tested and rejected**: re-running the worst failure produced a complete
-report at 6,105 output tokens, 37% of the 16,384 ceiling.
-→ Two separate facts hold: the cap isn't applied (L-04) *and* something intermittent truncates.
-Next diagnostic step is capturing `finish_reason` per generation — not recorded today.
+~~**Verdict: not applied.**~~ An instrumented call recorded 15,529 output tokens against a
+configured `max_tokens: 8000`, which was read as the cap being ignored.
+
+**Corrected verdict: the cap IS applied per call.** Confidence: high.
+`result.usage()` **accumulates across pydantic-ai retries** (`retries=2` in
+`_run_agent_with_model`). The 15,529 figure was one capped 8,000-token attempt plus a 7,529-token
+retry, not a single uncapped call. Confirmed by the reasoning matrix: the only two runs with
+`finish_reason == "length"` reported **exactly 16,000 and 24,000** output tokens — 2.00× and 3.00×
+the cap — while all 18 other runs sat at non-round fractions below it.
+→ **Never read `usage()` as single-call output** on a path with retries enabled.
+→ `max_tokens` vs `max_completion_tokens` is still worth tidying, but it is not a live bug.
+
+### L-05 · Intermittent generator truncation — **SOLVED**
+**Verdict: reasoning exhausts the 8,000-token cap.** Confidence: high.
+Reports stopped mid-sentence inside FINDINGS, never reaching IMPRESSION (3/25 in the sheet-budget
+sweep, 2/20 in the reasoning matrix). Caught by the structural gate; the **judge caught none** — a
+truncated report reads as fluent for as long as it lasts.
+
+Mechanism: long reasoning consumes the whole `max_tokens: 8000` budget → visible output is cut →
+`finish_reason == "length"` → pydantic-ai retries → still truncated → truncated content returned.
+This is why visible length varied (656–1,561 chars): the leftover budget depends on how long the
+reasoning ran. It also explains why a re-run completed — reasoning length is stochastic, so the
+same input sometimes fits.
+
+**Both truncations occurred in reasoning-ON cells. With generator reasoning off, output is
+257–613 tokens — 3–8% of the cap — and truncation is structurally impossible** (5/5 gate pass in
+both reasoning-off cells).
+→ Two independent fixes: raise `max_tokens` toward the model's 16,384 ceiling, and/or disable
+generator reasoning. The first is free and should happen regardless.
 
 ### L-06 · Judge inputs must carry the dictation
 **Verdict: causal, large.** Confidence: high.
@@ -110,16 +127,52 @@ latency problem that L-02 could not touch. **Quality is the open question**, not
 matrix does.
 → This is the L-05 truncation diagnostic. `"length"` confirms a cap; anything else rules it out.
 
+### L-09 · Reasoning on/off, per stage → quality and latency
+**Verdict: the two stages are opposite.** Confidence: moderate (n=4–5/cell, 1 seed).
+2×2, analyser × generator, all other parameters and prompts identical.
+
+| cell | analyser | generator | **quality** | analyser | generator | gen tokens | gate |
+|---|---|---|---|---|---|---|---|
+| `on_on` control | on | on | 4.94 | 20.1s | 13.3s | 6,094 | 4/5 |
+| `off_on` | **off** | on | **5.00** | **7.9s** | 15.7s | 7,291 | 4/5 |
+| `off_off` | off | off | 4.80 | 7.5s | **1.8s** | **370** | 5/5 |
+| `on_off` | on | **off** | **4.45** | 21.4s | 1.9s | 420 | 5/5 |
+
+**Analyser reasoning is free to remove.** Turning it off cost nothing measurable (5.00 vs 4.94)
+and cut the analyser from 20.1s to **7.9s** — a 2.5× saving on the stage whose latency is already
+hidden behind dictation. Sheet shrank only slightly (13,748 → 12,758 chars).
+
+**Generator reasoning is load-bearing.** Removing it cost quality in both cells that did so, and
+the damage is specific: `output_adherence` 4.75 → **4.00** and `normal_fill_appropriateness`
+5.00 → **4.40** in `on_off`. Those are exactly the behaviours the sheet's structural rules and
+normal-fill discipline are meant to drive — the generator's reasoning is what applies them.
+
+**The stages interact.** With generator reasoning off, the reasoning-*on* analyser's denser sheet
+(15,217 ch) scored **worse** (4.45) than the reasoning-off analyser's leaner one (12,418 ch → 4.80).
+Echoes the original bake-off finding that matched pairs beat cross-pairings: a thin generator
+cannot exploit a dense sheet.
+
+→ Prior expectation — "analyser reasoning worth keeping, generator's worth dropping" — was
+**exactly inverted**.
+→ Self-hosted at 115 tok/s: generator reasoning on ≈ **53s**, off ≈ **3.2s**.
+*Caveat: `on_on` and `off_on` are n=4, each having lost its hardest case to truncation, which
+flatters both. `off_on`'s 5.00 in particular excludes the lymphoma case.*
+
 ---
 
 ## Open questions, in priority order
 
-1. **What causes the intermittent truncation?** (L-05) Clinical-safety issue, independent of model
-   or host. Capture `finish_reason`.
-2. **`reasoning_effort: none` → quality and latency.** Reasoning is 93–95% of every generation, so
-   this is the largest available lever. Binary for this model.
-3. **Generator reasoning scaffolds** (`PRE_WRITING_ANALYSIS`, `VERIFICATION_CHECKLIST`) — sent to
-   every non-Anthropic model. Removing them is the other half of the reasoning question.
+1. ~~What causes the intermittent truncation?~~ **Answered — L-05.** Reasoning exhausts the 8k cap.
+2. ~~`reasoning_effort: none` → quality and latency.~~ **Answered — L-07, L-09.**
+3. **Raise `max_tokens` toward 16,384 and re-measure.** Free fix; removes the truncation failure
+   mode without touching reasoning. Do this before any further quality comparison, since two cells
+   above lost their hardest case to it.
+4. **Can generator reasoning be kept but bounded?** L-09 says it is load-bearing for
+   `output_adherence` and `normal_fill_appropriateness`, but it costs ~50s at self-hosted rates.
+   Is there a middle setting — scaffold removal, a shorter thinking budget — that keeps the
+   discipline without the tokens? This is now the central question.
+5. **Generator reasoning scaffolds** (`PRE_WRITING_ANALYSIS`, `VERIFICATION_CHECKLIST`) — sent to
+   every non-Anthropic model. The most likely lever for (4).
 4. **`temperature` 0.8 → 0.6.** Out of Groq's recommended range; the one incoherence failure we
    have is the failure mode Groq's warning names.
 5. **Prompt placement** (system vs user message). Groq advises against system prompts for
