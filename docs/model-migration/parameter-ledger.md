@@ -250,6 +250,53 @@ The remaining quality work is defining *which* incidentals earn a place in FINDI
 a line in the IMPRESSION with an action attached. That is a prompt/skill-sheet question, and it
 needs the radiologist to mark specific calls right or wrong — the judge cannot supply this.
 
+### L-16 · Why the adrenal was dropped — **the sheet, not the generator**
+**Verdict: analyser reasoning OFF produces a shallower anatomical sweep, and findings in the
+missing stations fall through the floor.** Confidence: high (reasoning trace + sheet diff, n=1 case
+traced end to end, corroborated by the cell-level pattern).
+
+The radiologist confirmed the 2.4 cm nodular left adrenal *should* have been reported. Tracing it:
+
+**1. The generator planned to include it.** Its reasoning (off_on / ct_tap, 27,935 chars) contains,
+in the Impression Plan: *"Secondary: Incidental AAA growth (3.8 to 4.6cm), chronic pancreatitis,
+**adrenal nodule**, renal cysts, hiatus hernia, cholelithiasis."* It was never revisited.
+
+**2. Carry-through tracks how often an item is revisited**, across that trace:
+
+| item | mentions in reasoning | in report |
+|---|---|---|
+| cholelithiasis | 5 | yes |
+| renal cysts | 1 | yes |
+| adrenal nodule | 1 | **no** |
+| hiatus hernia | 1 | **no** |
+| faecal loading / encephalomalacia | 0 | **no** |
+
+**3. The sheet gave it nowhere to go.** The `off_on` sheet's sweep is
+`Mesenteric vasculature → Bowel → Mesentery → Aorta/branches → Solid organs → Peritoneum → Pelvis
+→ Thorax`, and its solid-organ station is defined as **"pancreas, liver, spleen, kidneys"** —
+adrenals absent, and absent again from that station's canonical default-normal line. The sheet also
+states P1 does NOT include *"solid organ incidentalomas"* — excluding them from the primary
+paragraph **without providing a destination**. There is no terminal incidental-findings station.
+
+**4. Analyser reasoning ON fixes it.** The `on_on` sheet for the same case sweeps
+`… → upper abdominal solid organs → **retroperitoneum and systemic vasculature** → pelvis …`. That
+retroperitoneum station is where adrenals live, and the `on_on` report duly contains the adrenal
+nodule, the hiatus hernia and the faecal loading.
+
+→ **Partially reverses L-12/L-13.** Analyser reasoning off is *not* free: it costs anatomical sweep
+completeness. The rubric missed this because no dimension measures whether the sweep enumerates all
+in-scope stations.
+→ **It is prompt-fixable**, and independently fixable two ways: (a) restore analyser reasoning —
+20.1s vs 7.9s, and that latency hides behind dictation anyway; (b) require the sweep to enumerate
+in-scope stations exhaustively and add a terminal incidental-findings station so items excluded
+from P1 have a destination. Do both.
+→ **Do NOT read this as an argument for turning generator reasoning off.** The generator's
+reasoning is what identified the incidental in the first place; `off_off` included it by
+transcribing more literally, not by judgement.
+→ Open: the radiologist preferred `off_on`'s prose style. `on_on` shares its generator config, so
+the style should survive — but `on_on` has not yet been reviewed. Added as a fourth column for
+review.
+
 ---
 
 ## Open questions, in priority order
