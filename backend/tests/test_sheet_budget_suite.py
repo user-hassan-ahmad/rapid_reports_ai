@@ -374,3 +374,26 @@ def test_gate_still_flags_a_genuine_two_sentence_contradiction():
     """Guard the fix does not blind the detector - this is the real bake-off failure."""
     result = G.run_gate(CONTRADICTORY)
     assert "self_contradiction" in result["failures"]
+
+
+# ── Sheet integrity block (ledger L-17 encoding experiment) ──────────────────
+
+def test_integrity_block_is_off_by_default_and_production_unchanged():
+    assert qra.get_analyser_prompt("zai-glm-4.7") == qra.ANALYSER_SYSTEM_PROMPT_GLM
+    assert qra.get_analyser_prompt("qwen/qwen3.6-27b") == qra.ANALYSER_SYSTEM_PROMPT_GLM
+
+
+def test_integrity_block_appends_all_three_directives():
+    p = qra.get_analyser_prompt("qwen/qwen3.6-27b", integrity=True)
+    assert p.startswith(qra.ANALYSER_SYSTEM_PROMPT_GLM)
+    tail = p[len(qra.ANALYSER_SYSTEM_PROMPT_GLM):]
+    assert "exhaustive" in tail                 # sweep enumeration
+    assert "general, not case-keyed" in tail    # transferable suppression rules
+    assert "defeasib" in tail                   # the normal-fill qualifier
+
+
+def test_integrity_and_budget_compose():
+    p = qra.get_analyser_prompt("qwen/qwen3.6-27b", "Cover exactly 3 findings.", integrity=True)
+    assert "Cover exactly 3 findings." in p
+    assert "defeasib" in p
+    assert "{{BUDGET_DIRECTIVE}}" not in p

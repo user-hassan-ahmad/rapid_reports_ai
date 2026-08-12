@@ -644,24 +644,66 @@ complete, well-formed sheet at every budget — cover less, never stop early.
 """
 
 
-def get_analyser_prompt(model_name: str, budget_directive: str = "") -> str:
+# Appended when the caller asks for integrity directives. These encode the three
+# differences measured between reasoning-on and reasoning-off sheets (ledger
+# L-17): reasoning-off collapses the sweep and drops its terminal station, writes
+# suppression rules keyed to the case's own findings rather than general ones,
+# and omits the defeasibility qualifier on normal-fill — the last being the
+# direct mechanism behind normals that contradict a dictated positive.
+#
+# Stated structurally and without single-domain clinical examples, so the block
+# applies across scan types (see feedback_case_agnostic_prompts).
+SHEET_INTEGRITY_BLOCK = """
+
+---
+
+## Sheet Integrity Requirements — mandatory
+
+**The sweep order must be exhaustive.** Enumerate every in-scope organ system the imaged volume
+covers as its own named station. Do not collapse several systems into one generic station. The
+sweep must terminate with a station covering secondary visible regions and incidental structures,
+so that a dictated finding belonging to no earlier station still has a defined position to occupy.
+Where a section excludes a class of finding from the primary paragraph, the sweep must name the
+station where that class belongs instead — an exclusion without a destination causes the finding
+to be lost.
+
+**Suppression rules must be general, not case-keyed.** Write each conditional rule so it would
+transfer unchanged to another case of this scan type. A rule that names this case's particular
+findings restates the findings rather than stating a rule, and gives the generator nothing to
+apply when the next case differs.
+
+**The normal-fill rule must carry its defeasibility clause.** Where the sheet states that silence
+in the dictation renders a canonical default-normal line, it must state in the same rule that this
+is defeasible: where a dictated positive implicates the structure, the canonical line is dropped or
+rendered contingently. A normal-fill rule stated unconditionally will produce assertions of
+normality that contradict what was dictated.
+"""
+
+
+def get_analyser_prompt(
+    model_name: str,
+    budget_directive: str = "",
+    integrity: bool = False,
+) -> str:
     """Dispatch the analyser system prompt by model identifier.
 
     - any model starting with "claude" → Sonnet-bespoke principle-led prompt
     - everything else → GLM prompt
 
     ``budget_directive`` appends a structural-budget override block used by the
-    sheet-budget experiment. Empty (the default, and every production caller)
-    returns the prompt byte-identical to its pre-experiment form. Anthropic
-    models ignore the budget — that path is out of the experiment's scope.
+    sheet-budget experiment. ``integrity`` appends the sheet-integrity block used
+    by the encoding experiment. Both default off, so every production caller
+    receives the prompt byte-identical to its pre-experiment form. Anthropic
+    models ignore both — that path is out of the experiments' scope.
     """
     if model_name.startswith("claude"):
         return ANALYSER_SYSTEM_PROMPT_SONNET
+    prompt = ANALYSER_SYSTEM_PROMPT_GLM
     if budget_directive.strip():
-        return ANALYSER_SYSTEM_PROMPT_GLM + BUDGET_OVERRIDE_BLOCK.replace(
-            "{{BUDGET_DIRECTIVE}}", budget_directive
-        )
-    return ANALYSER_SYSTEM_PROMPT_GLM
+        prompt += BUDGET_OVERRIDE_BLOCK.replace("{{BUDGET_DIRECTIVE}}", budget_directive)
+    if integrity:
+        prompt += SHEET_INTEGRITY_BLOCK
+    return prompt
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -693,6 +735,7 @@ async def generate_ephemeral_skill_sheet(
     api_key: str,
     model_override: str | None = None,
     budget_directive: str = "",
+    integrity: bool = False,
 ) -> dict:
     """
     Run the analyser to produce a bespoke skill sheet for one case.
@@ -765,7 +808,7 @@ async def generate_ephemeral_skill_sheet(
         }
         call_api_key = api_key
 
-    system_prompt = get_analyser_prompt(model_name, budget_directive)
+    system_prompt = get_analyser_prompt(model_name, budget_directive, integrity)
 
     result = await _run_agent_with_model(
         model_name=model_name,
