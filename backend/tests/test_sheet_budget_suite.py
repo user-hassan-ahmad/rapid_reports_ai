@@ -78,3 +78,96 @@ def test_validate_rejects_an_increasing_ladder():
         assert "findings" in str(exc)
     else:
         raise AssertionError("expected ValueError on an increasing ladder")
+
+
+# ── Task 3: compliance counter ───────────────────────────────────────────────
+
+from rapid_reports_ai.scripts.sheet_budget import compliance as C
+
+FIXTURE_SHEET = """# Skill Sheet: CT thorax
+
+## Companion Matrix
+- **In-scope companions:** Nodule — long-axis in mm
+- **Mandatory negatives:** "No pleural effusion.", "No bone destruction.", "No contralateral adenopathy."
+- **Out-of-scope suppressed:** cardiac source (requires echocardiography)
+
+## Style Exemplars
+
+For each likely finding, variants:
+
+- **Pulmonary nodule**
+  - Normal: "No pulmonary nodule identified."
+  - Abnormal (uncomplicated): "A 22 mm nodule is present."
+- **Hilar lymphadenopathy**
+  - Normal: "No hilar lymphadenopathy."
+  - Abnormal (uncomplicated): "Right hilar node measures 14 mm."
+
+## Interpretive Clause Rules
+
+- IF [spiculated margin AND pleural tethering] THEN append "suspicious for primary malignancy"
+- IF [short-axis node >10 mm] THEN append "nodal involvement"
+
+## Impression Exemplars
+
+- **Normal exemplar:** "No focal abnormality."
+- **Abnormal exemplar:** "Right upper lobe nodule. Urgent referral."
+"""
+
+
+def test_counts_findings_and_variants():
+    counts = C.count_sheet(FIXTURE_SHEET)
+    assert counts["findings"] == 2
+    assert counts["variants_per_finding"] == 2
+
+
+def test_counts_negatives_clauses_and_impression_exemplars():
+    counts = C.count_sheet(FIXTURE_SHEET)
+    assert counts["mandatory_negatives"] == 3
+    assert counts["interpretive_clauses"] == 2
+    assert counts["impression_exemplars"] == 2
+
+
+def test_compliance_reports_each_field_separately():
+    tier = {"id": "T3", "findings": 3, "variants_per_finding": 3,
+            "impression_exemplars": 2, "interpretive_clauses": 3,
+            "mandatory_negatives": 3, "normal_study_path": "full"}
+    result = C.check(FIXTURE_SHEET, tier)
+    # partial compliance must be visible per-field, not collapsed to pass/fail
+    assert result["findings"] == {"want": 3, "got": 2, "ok": False}
+    assert result["mandatory_negatives"] == {"want": 3, "got": 3, "ok": True}
+
+
+def test_control_tier_is_always_compliant():
+    tier = {"id": "T1", "findings": None, "variants_per_finding": None,
+            "impression_exemplars": None, "interpretive_clauses": None,
+            "mandatory_negatives": None, "normal_study_path": None}
+    result = C.check(FIXTURE_SHEET, tier)
+    assert all(v["ok"] for v in result.values())
+
+
+# Real Qwen output (CLEAN_qwen_matched/ct_ap_lymphoma_aspergillosis) emits the
+# negatives as an indented sub-list rather than inline. Both forms occur across
+# the bake-off corpus, so the counter must handle both.
+SUBLIST_NEGATIVES_SHEET = """## Companion Matrix
+- **In-scope companions:** Collection — volume estimate
+- **Mandatory negatives:** 
+  - "No rim-enhancing fluid collection or gas to suggest intra-abdominal abscess."
+  - "No bowel wall thickening, obstruction, or pneumatosis."
+  - "No new or enlarging lymphadenopathy to suggest progressive lymphoma."
+  - "No splenic or hepatic hypodense lesions."
+  - "No ascites or pleural effusion."
+- **Out-of-scope suppressed:** Thoracic disease (requires CT chest)
+
+## Style Exemplars
+
+- **Collection**
+  - Normal: "No collection."
+"""
+
+
+def test_counts_negatives_emitted_as_a_sublist():
+    assert C.count_sheet(SUBLIST_NEGATIVES_SHEET)["mandatory_negatives"] == 5
+
+
+def test_counts_negatives_emitted_inline():
+    assert C.count_sheet(FIXTURE_SHEET)["mandatory_negatives"] == 3
