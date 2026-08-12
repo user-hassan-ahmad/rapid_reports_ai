@@ -342,3 +342,35 @@ def test_groq_generator_cap_is_within_the_model_ceiling():
 def test_groq_generator_cap_clears_observed_reasoning_peak():
     """Regression guard on L-05: at 8000 this failed and reports truncated."""
     assert tm_mod.GROQ_GENERATOR_MAX_TOKENS > OBSERVED_REASONING_PEAK
+
+
+# ── Gate false-positive regression (real output, REASONING_CAPFIX) ───────────
+
+NEGATED_CLAUSE = """COMPARISON:
+None.
+
+TECHNIQUE:
+CT thorax with contrast.
+
+FINDINGS:
+A 22 mm spiculated nodule with pleural tethering is present in the right upper lobe.
+Right hilar lymphadenopathy is present, with the largest node measuring 14 mm in
+short-axis diameter. No pleural effusion is present. An incidental 4 mm left adrenal
+nodule is noted.
+
+IMPRESSION:
+Right upper lobe nodule. Urgent referral recommended.
+"""
+
+
+def test_gate_does_not_flag_a_negated_clause_as_contradiction():
+    """"No pleural effusion is present" is one negative statement, not a
+    positive finding plus a denial. Real output from REASONING_CAPFIX."""
+    result = G.run_gate(NEGATED_CLAUSE)
+    assert "self_contradiction" not in result["failures"], result["gate"] if False else result["detail"]
+
+
+def test_gate_still_flags_a_genuine_two_sentence_contradiction():
+    """Guard the fix does not blind the detector - this is the real bake-off failure."""
+    result = G.run_gate(CONTRADICTORY)
+    assert "self_contradiction" in result["failures"]

@@ -22,8 +22,8 @@ Established from Groq's docs, 2026-08-12. These bound what is tunable at all.
 |---|---|---|
 | `reasoning_effort` | **binary only**: `none` \| `default` | The `low`/`medium`/`high` scale is GPT-OSS-only. Reasoning is an on/off switch for this model, not a dial. |
 | `reasoning_format` | `parsed` \| `raw` \| `hidden` | `parsed` is what we use and it works — no thinking leaked into any of 55 reports measured. |
-| Context / max output | 131,072 / **16,384** | Not the binding limit in practice — our own `max_tokens: 8000` bites first. |
-| Our generator cap | `max_tokens: 8000` (`template_manager.py:2604`) | **Is applied**, and is what truncates reports when reasoning runs long — see L-04, L-05. Raising it toward 16,384 is the free fix. |
+| Context / max output | 131,072 / **16,384** | The output ceiling; our generator cap now sits at it. |
+| Our generator cap | `GROQ_GENERATOR_MAX_TOKENS = 16384` | **Was 8,000, which truncated reports** when reasoning ran long (L-04, L-05). Raised 2026-08-12; truncation eliminated (L-10). Observed peak since: 7,852 tokens. |
 | Groq parameter name | `max_completion_tokens` | `max_tokens` is the deprecated alias; worth tidying, not a live bug. |
 | Recommended temperature | 0.5–0.7 | Ours is **0.8** on the Groq branch (`template_manager.py:2604`) — out of spec. Groq warns this risks "repetitions or incoherent outputs". |
 | System prompts | Groq advises **against** for reasoning models | We put everything in `system_prompt`. Untested. Pulls against prompt caching, which wants a large static prefix. |
@@ -157,6 +157,55 @@ cannot exploit a dense sheet.
 → Self-hosted at 115 tok/s: generator reasoning on ≈ **53s**, off ≈ **3.2s**.
 *Caveat: `on_on` and `off_on` are n=4, each having lost its hardest case to truncation, which
 flatters both. `off_on`'s 5.00 in particular excludes the lymphoma case.*
+
+### L-10 · Raising the generator cap 8000 → 16384 — **truncation eliminated**
+**Verdict: fixed.** Confidence: high.
+Re-ran both reasoning-ON cells (10 runs) after the change. **`finish_reason == "stop"` on all 10**;
+zero `length`. Both previously-truncating cases completed and scored **5.00**:
+
+| | before (cap 8,000) | after (cap 16,384) |
+|---|---|---|
+| `on_on` / ct_tap | 2,247 ch, `length`, excluded | **2,731 ch, `stop`, 5.00** |
+| `off_on` / ct_ap_lymphoma | 1,725 ch, `length`, excluded | **2,793 ch, `stop`, 5.00** |
+
+Peak single-call generator output is now 7,852 tokens — comfortably inside the new cap, so the
+old 8,000 was marginal rather than generous.
+→ `template_manager.GROQ_GENERATOR_MAX_TOKENS`, guarded by bounds tests.
+→ Both recovered cases scoring 5.00 **removes the exclusion bias** that flattered L-09's
+reasoning-ON cells. The comparison below is now clean at n=5.
+
+### L-11 · Gate false positive on negated clauses — **fixed**
+**Verdict: detector bug, not a model defect.** Confidence: high.
+"No pleural effusion **is present**" contains the positive pattern `effusion is present`, so a
+single clean negative sentence tripped both halves of a contradiction pair and wrongly excluded a
+run from scoring.
+Fix: a positive assertion inside an already-negated clause does not count, and the negation must
+sit in a *different sentence* from the positive finding. Re-validated across the full 85-report
+corpus: 7 flagged, all genuine (5 truncations, 1 real contradiction, 1 missing section), false
+positive gone.
+→ Lesson: an integrity detector needs its own regression corpus. This one was silently
+over-firing and would have biased every subsequent quality comparison downward.
+
+### L-12 · Analyser vs generator reasoning — clean result at n=5
+**Verdict: analyser reasoning is free to remove; generator reasoning is load-bearing.**
+Confidence: moderate-high (n=5/cell, 1 seed, post-fix).
+
+| cell | analyser | generator | quality | analyser | generator | gen tokens |
+|---|---|---|---|---|---|---|
+| `off_on` | **off** | on | **5.00** | **7.9s** | 15.7s | 7,196 |
+| `on_on` control | on | on | 4.90 | 20.1s | 14.3s | 6,264 |
+| `off_off` | off | off | 4.80 | 7.5s | **1.8s** | **370** |
+| `on_off` | on | off | 4.45 | 21.4s | 1.9s | 420 |
+
+`off_on` is a **clean sweep — 5.00 on all four dimensions, all five cases**. Turning analyser
+reasoning off cost nothing and saved 12 seconds on a stage whose latency is already hidden behind
+dictation.
+Removing *generator* reasoning costs `output_adherence` (4.80 → 4.00 in `on_off`) and
+`normal_fill_appropriateness` (5.00 → 4.40) — the behaviours that apply the sheet's structural
+rules.
+→ **Recommended operating point on Groq: analyser reasoning OFF, generator reasoning ON.**
+→ **Unresolved for self-hosted:** generator reasoning is ~7,200 tokens ≈ **63s at 115 tok/s**.
+Turning it off gives ~3.2s but costs ~0.2–0.55 quality. That trade is the open decision.
 
 ---
 

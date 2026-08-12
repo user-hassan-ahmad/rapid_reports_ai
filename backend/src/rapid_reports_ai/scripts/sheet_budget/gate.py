@@ -35,6 +35,33 @@ CONTRADICTION_PAIRS = (
 )
 
 
+# A positive-assertion pattern can match inside an already-negated clause:
+# "No pleural effusion is present" contains "effusion is present". Treating that
+# as a positive finding made a single clean sentence trip both halves of a pair.
+# Look back to the start of the sentence and skip the match if it sits under a
+# negation. (Found in REASONING_CAPFIX on_on/ct_thorax_smoker_lung_nodule.)
+_NEGATED_CLAUSE = re.compile(r"\bno\b[^.]{0,60}$", re.I)
+
+
+def _sentence_start(text: str, pos: int) -> int:
+    """Offset of the start of the sentence containing `pos`."""
+    return text.rfind(".", 0, pos) + 1
+
+
+def _positive_sentences(pattern: str, text: str) -> set[int]:
+    """Sentence offsets holding a genuine positive assertion.
+
+    A match inside an already-negated clause is not a positive finding.
+    """
+    found = set()
+    for m in re.finditer(pattern, text):
+        start = _sentence_start(text, m.start())
+        if _NEGATED_CLAUSE.search(text[start:m.start()]):
+            continue
+        found.add(start)
+    return found
+
+
 def run_gate(report: str) -> dict:
     """Return {passed, failures, detail}. Failures are check names."""
     failures: list[str] = []
@@ -52,8 +79,15 @@ def run_gate(report: str) -> dict:
 
     hits: list[str] = []
     for pos, neg in CONTRADICTION_PAIRS:
-        if re.search(pos, report) and (m := re.search(neg, report)):
-            hits.append(m.group(0))
+        pos_sentences = _positive_sentences(pos, report)
+        if not pos_sentences:
+            continue
+        # The negation must sit in a different sentence from the positive
+        # finding; in the same sentence it is one statement, not two.
+        for m in re.finditer(neg, report):
+            if _sentence_start(report, m.start()) not in pos_sentences:
+                hits.append(m.group(0))
+                break
     if hits:
         failures.append("self_contradiction")
         detail["self_contradiction"] = hits
