@@ -4965,7 +4965,7 @@ async def websocket_transcribe(websocket: WebSocket):
         f"&dictation=true"
         f"&punctuate=true"
         f"&interim_results=true"
-        f"&endpointing=300"
+        f"&endpointing=200"
         f"&utterance_end_ms=1000"
         f"{pcm_params}"
         f"&{keyterm_params}"
