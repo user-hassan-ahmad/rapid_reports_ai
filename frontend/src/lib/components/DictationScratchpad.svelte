@@ -112,7 +112,6 @@
 	let workletNode: AudioWorkletNode | null = null;
 	let stream: MediaStream | null = null;
 	let dummyAudioEl: HTMLAudioElement | null = null;
-	let rawFeed: string[] = [];
 	let currentInterim = '';
 	let recordingError = '';
 
@@ -558,7 +557,6 @@
 						} else {
 							// is_final: word-group committed — update display and trigger Qwen immediately
 							currentInterim = '';
-							rawFeed = [...rawFeed.slice(-1), data.transcript];
 
 							// Accumulate into session transcript
 							const appended = sessionTranscript
@@ -876,19 +874,9 @@
 		</div>
 
 		<!-- Inline transcript feed at the bottom of the box — only when dictation is on -->
-		{#if isRecording && (currentInterim || rawFeed.length > 0)}
+		{#if isRecording && currentInterim}
 			<div class="border-t border-white/[0.05] px-4 py-2 flex flex-col gap-0.5 shrink-0">
-				{#if currentInterim}
-					<p class="text-xs text-gray-600 italic truncate">{currentInterim}</p>
-				{/if}
-				{#each rawFeed.slice(-1) as line}
-					<p class="text-xs text-gray-500 italic truncate flex items-center gap-1.5">
-						{#if isProcessing}
-							<span class="w-2 h-2 border border-purple-400 border-t-transparent rounded-full animate-spin inline-block shrink-0"></span>
-						{/if}
-						{line}{#if isProcessing}…{/if}
-					</p>
-				{/each}
+				<p class="text-xs text-gray-600 italic truncate">{currentInterim}</p>
 			</div>
 		{/if}
 	</div>
