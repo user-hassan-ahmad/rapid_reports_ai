@@ -625,14 +625,42 @@ For each likely finding (top 4–6), three severity-graded variants where clinic
 - **Clinical history must-appear:** <terse phrase-level hooks naming the clinical datum or prior-event marker directly — not narrative prescriptions; every hook must appear in at least one impression exemplar above>"""
 
 
-def get_analyser_prompt(model_name: str) -> str:
+# Appended to the analyser prompt only when a structural budget is supplied.
+# Placed last so it wins on recency against the counts stated in Phases 4-7,
+# and labelled as an override so the contradiction is explicit rather than
+# left for the model to arbitrate.
+BUDGET_OVERRIDE_BLOCK = """
+
+---
+
+## Structural Budget — OVERRIDES all counts stated above
+
+The counts below replace any conflicting quantity given earlier in this prompt.
+Where a section is budgeted, emit exactly the stated number of items. Where a
+budget is not stated for a section, follow the guidance above unchanged. Emit a
+complete, well-formed sheet at every budget — cover less, never stop early.
+
+{{BUDGET_DIRECTIVE}}
+"""
+
+
+def get_analyser_prompt(model_name: str, budget_directive: str = "") -> str:
     """Dispatch the analyser system prompt by model identifier.
 
     - any model starting with "claude" → Sonnet-bespoke principle-led prompt
     - everything else → GLM prompt
+
+    ``budget_directive`` appends a structural-budget override block used by the
+    sheet-budget experiment. Empty (the default, and every production caller)
+    returns the prompt byte-identical to its pre-experiment form. Anthropic
+    models ignore the budget — that path is out of the experiment's scope.
     """
     if model_name.startswith("claude"):
         return ANALYSER_SYSTEM_PROMPT_SONNET
+    if budget_directive.strip():
+        return ANALYSER_SYSTEM_PROMPT_GLM + BUDGET_OVERRIDE_BLOCK.replace(
+            "{{BUDGET_DIRECTIVE}}", budget_directive
+        )
     return ANALYSER_SYSTEM_PROMPT_GLM
 
 
@@ -664,6 +692,7 @@ async def generate_ephemeral_skill_sheet(
     clinical_history: str,
     api_key: str,
     model_override: str | None = None,
+    budget_directive: str = "",
 ) -> dict:
     """
     Run the analyser to produce a bespoke skill sheet for one case.
@@ -736,7 +765,7 @@ async def generate_ephemeral_skill_sheet(
         }
         call_api_key = api_key
 
-    system_prompt = get_analyser_prompt(model_name)
+    system_prompt = get_analyser_prompt(model_name, budget_directive)
 
     result = await _run_agent_with_model(
         model_name=model_name,
