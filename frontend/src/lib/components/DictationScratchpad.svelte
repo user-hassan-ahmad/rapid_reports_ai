@@ -319,7 +319,19 @@
 			const doc = editor.state.doc.toString();
 			const boundary = useIncremental ? Math.min(committedBoundary, doc.length) : 0;
 			const committed = doc.slice(0, boundary);
-			const active = doc.slice(boundary);
+			// Faded raw is display-only: exclude the pending region so the model never
+			// receives raw as its active input and never freezes it — it rebuilds the
+			// finding from session_transcript (as before), and the polish replaces the
+			// raw placeholder. Sending raw here caused misrecognitions to freeze and the
+			// transcript to regenerate duplicate findings.
+			let pendingStart = doc.length;
+			if (useIncremental) {
+				editor.state.field(pendingField, false)?.between(0, doc.length, (markFrom) => {
+					pendingStart = markFrom;
+					return false;
+				});
+			}
+			const active = doc.slice(boundary, Math.max(boundary, pendingStart));
 
 			const body: Record<string, unknown> = {
 				session_transcript: sessionTranscript,
@@ -573,12 +585,14 @@
 							if (incrementalEnabled() && editor) {
 								const docLength = editor.state.doc.length;
 								const sep = rawInsertSeparator(docLength, committedBoundary);
-								const from = docLength + sep.length;
-								const to = from + data.transcript.length;
+								// Mark from the insert point (separator included) so the whole raw region
+								// is display-only: excluded from the model's active input and from the
+								// freeze (see processTranscript). The polish output replaces it.
+								const to = docLength + sep.length + data.transcript.length;
 								isQwenWriting = true;
 								editor.dispatch({
 									changes: { from: docLength, insert: sep + data.transcript },
-									effects: markPending.of({ from, to })
+									effects: markPending.of({ from: docLength, to })
 								});
 								isQwenWriting = false;
 							}
