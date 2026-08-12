@@ -9,7 +9,6 @@
 	import { tags } from '@lezer/highlight';
 	import { token } from '$lib/stores/auth';
 	import { API_URL } from '$lib/config';
-	import { mergeIncremental, rawInsertSeparator } from '$lib/utils/incrementalMerge';
 
 	interface IntelliPrompt { question: string; source_text: string; rationale?: string; }
 
@@ -242,8 +241,6 @@
 		editor.dispatch({
 			changes: { from: 0, to: editor.state.doc.length, insert: newDoc }
 		});
-		// Restored/settled content is frozen; new dictation starts a fresh active tail.
-		committedBoundary = newDoc.length;
 		// Bypass the typing debounce for restored/reset content — kick off the review immediately
 		// so cards appear as soon as the scratchpad is populated rather than waiting 1s + API time.
 		if (newDoc.trim().length > 0) {
@@ -295,12 +292,10 @@
 
 	let processAbort: AbortController | null = null;
 
-	// Phase 2b.2 incremental: [0, committedBoundary) is FROZEN; the rest is the mutable ACTIVE tail.
-	let committedBoundary = 0;
-	// Set on UtteranceEnd (a real pause): freeze the whole active burst after the next polish.
-	let freezeAfterNextProcess = false;
-
-	function incrementalEnabled(): boolean {
+	// Phase 2b.3: faded optimistic render on the full-regeneration path. When enabled,
+	// raw is_final groups are shown faded immediately and the polish rewrites the whole
+	// scratchpad, replacing them with coherent solid text. No freezing.
+	function fadedEnabled(): boolean {
 		return typeof localStorage !== 'undefined' && localStorage.getItem('rr_incremental') === '1';
 	}
 
@@ -310,38 +305,33 @@
 		recordingError = '';
 		const controller = new AbortController();
 		processAbort = controller;
-		const useIncremental = incrementalEnabled();
+		const faded = fadedEnabled();
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) {
 				headers['Authorization'] = `Bearer ${$token}`;
 			}
 			const doc = editor.state.doc.toString();
-			const boundary = useIncremental ? Math.min(committedBoundary, doc.length) : 0;
-			const committed = doc.slice(0, boundary);
-			// Faded raw is display-only: exclude the pending region so the model never
-			// receives raw as its active input and never freezes it — it rebuilds the
-			// finding from session_transcript (as before), and the polish replaces the
-			// raw placeholder. Sending raw here caused misrecognitions to freeze and the
-			// transcript to regenerate duplicate findings.
+			// Full regeneration: the model rewrites the whole scratchpad from the transcript
+			// plus the prior polished text. When faded render is on, exclude the pending
+			// (faded raw) region — it's a display-only placeholder the polish output replaces,
+			// never sent to the model and never frozen.
 			let pendingStart = doc.length;
-			if (useIncremental) {
+			if (faded) {
 				editor.state.field(pendingField, false)?.between(0, doc.length, (markFrom) => {
 					pendingStart = markFrom;
 					return false;
 				});
 			}
-			const active = doc.slice(boundary, Math.max(boundary, pendingStart));
 
 			const body: Record<string, unknown> = {
 				session_transcript: sessionTranscript,
-				scratchpad_content: useIncremental ? active : doc,
+				scratchpad_content: faded ? doc.slice(0, pendingStart) : doc,
 				scan_type: scanType,
 				clinical_history: clinicalHistory,
 				preferred_section_names: checklistSections,
 				mode: polishMode
 			};
-			if (useIncremental) body.committed_context = committed;
 
 			const res = await fetch(`${API_URL}/api/canvas/process`, {
 				method: 'POST',
@@ -358,33 +348,15 @@
 					.map((line: string) => line.replace(/\*\*/g, '').replace(/^_{1,2}|_{1,2}$/g, ''))
 					.join('\n');
 
-			let content: string | null = null;
-			let newBoundary = 0;
-			if (useIncremental && data.active_scratchpad != null) {
-				// Committed text is already clean from prior passes — only the active tail is sanitized.
-				// mergeIncremental applies committed_edits verbatim (drop-if-not-found) and rejoins the
-				// zones with the one-statement-per-line separator the model no longer emits (was: the
-				// zones were concatenated raw, producing "lobe.The spleen").
-				const merged = mergeIncremental(committed, sanitize(data.active_scratchpad), data.committed_edits);
-				content = merged.content;
-				newBoundary = merged.boundary;
-			} else if (data.scratchpad != null) {
-				content = sanitize(data.scratchpad);
-			}
+			const content = data.scratchpad != null ? sanitize(data.scratchpad) : null;
 
 			if (content != null) {
 				isQwenWriting = true;
 				editor.dispatch({
 					changes: { from: 0, to: doc.length, insert: content },
-					effects: useIncremental ? [clearPending.of({ from: 0, to: content.length })] : []
+					effects: faded ? [clearPending.of({ from: 0, to: content.length })] : []
 				});
 				isQwenWriting = false;
-				if (useIncremental) {
-					// Freeze-on-pause (rule A): an UtteranceEnd-triggered polish freezes the whole
-					// burst; otherwise keep the boundary at the (possibly edit-shifted) committed end.
-					committedBoundary = freezeAfterNextProcess ? content.length : Math.min(newBoundary, content.length);
-					freezeAfterNextProcess = false;
-				}
 				// Scratchpad is updated — now fire IntelliPrompts analysis in background.
 				processReview();
 			}
@@ -395,7 +367,7 @@
 			// Superseded aborts set pendingProcess and will re-run, so keep the faded raw.
 			// A real network error won't re-run — promote the faded raw to solid so it
 			// never looks stuck (Phase 2b.3).
-			if (useIncremental && !pendingProcess && editor) {
+			if (faded && !pendingProcess && editor) {
 				editor.dispatch({ effects: clearPending.of(null) });
 			}
 		} finally {
@@ -477,8 +449,6 @@
 	}
 
 	async function startRecording(): Promise<void> {
-		// Anything already in the scratchpad is settled — freeze it so dictation never re-authors it.
-		committedBoundary = editor ? editor.state.doc.length : 0;
 		if (!apiKeyStatus?.deepgram_configured) {
 			recordingError = 'Dictation is not available. Contact your administrator.';
 			return;
@@ -556,11 +526,9 @@
 						return;
 					}
 					if (data.utterance_end) {
-						// Deepgram UtteranceEnd: a real pause — freeze the active burst after the
-						// next polish (commit rule A). If a polish is already in flight, let it pick
-						// up the freeze flag at dispatch rather than aborting + re-firing it, which
-						// wasted a full model call per utterance. Only fire fresh if idle.
-						freezeAfterNextProcess = true;
+						// Deepgram UtteranceEnd (~1s pause) is a backup polish trigger; the primary is
+						// speech_final (~endpointing). Only fire if idle, so we never abort + re-run an
+						// in-flight polish (which wasted a full model call per utterance).
 						if (!isProcessingQueue) processTranscriptQueue();
 					} else if (data.transcript) {
 						if (!data.is_final) {
@@ -579,15 +547,16 @@
 									? appended.slice(appended.length - SESSION_TRANSCRIPT_WINDOW)
 									: appended;
 
-							// Phase 2b.3: optimistically drop the raw word-group into the active tail,
-							// rendered faded, so it lands instantly instead of waiting for the polish.
-							// isRecording gates the manual-edit branch, so this never moves the boundary.
-							if (incrementalEnabled() && editor) {
+							// Phase 2b.3: optimistically drop the raw word-group into the doc, rendered
+							// faded, so it lands instantly instead of waiting for the polish. The whole
+							// raw region is display-only — excluded from the model input and replaced by
+							// the polish (see processTranscript). isRecording gates the manual-edit branch.
+							if (fadedEnabled() && editor) {
 								const docLength = editor.state.doc.length;
-								const sep = rawInsertSeparator(docLength, committedBoundary);
-								// Mark from the insert point (separator included) so the whole raw region
-								// is display-only: excluded from the model's active input and from the
-								// freeze (see processTranscript). The polish output replaces it.
+								const pend = editor.state.field(pendingField, false);
+								const hasPending = !!pend && pend.size > 0;
+								// New utterance starts on its own faded line; groups within one are space-joined.
+								const sep = docLength === 0 ? '' : hasPending ? ' ' : '\n';
 								const to = docLength + sep.length + data.transcript.length;
 								isQwenWriting = true;
 								editor.dispatch({
@@ -702,14 +671,11 @@
 						}
 					});
 					if (docNowEmpty) {
-						committedBoundary = 0;
 						if (typingDebounceTimer) { clearTimeout(typingDebounceTimer); typingDebounceTimer = null; }
 						onScratchpadClear();
 					} else if (hasWordChange) {
 						// Cards whose source_text is deleted fade out automatically via the anchor filter
 						// in IntelliPromptsMargin — no need to clear the prompt list eagerly here.
-						// Manual edit: freeze the current doc so dictation never re-authors what was typed.
-						committedBoundary = update.state.doc.length;
 						if (typingDebounceTimer) clearTimeout(typingDebounceTimer);
 						typingDebounceTimer = setTimeout(() => {
 							typingDebounceTimer = null;
