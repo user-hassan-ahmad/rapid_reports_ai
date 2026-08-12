@@ -546,9 +546,11 @@
 					}
 					if (data.utterance_end) {
 						// Deepgram UtteranceEnd: a real pause — freeze the active burst after the
-						// next polish (commit rule A), and fire the backup polish.
+						// next polish (commit rule A). If a polish is already in flight, let it pick
+						// up the freeze flag at dispatch rather than aborting + re-firing it, which
+						// wasted a full model call per utterance. Only fire fresh if idle.
 						freezeAfterNextProcess = true;
-						processTranscriptQueue();
+						if (!isProcessingQueue) processTranscriptQueue();
 					} else if (data.transcript) {
 						if (!data.is_final) {
 							// Interim: live preview while speaking
