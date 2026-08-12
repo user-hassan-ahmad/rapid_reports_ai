@@ -42,3 +42,39 @@ def test_anthropic_ignores_the_budget():
         qra.get_analyser_prompt("claude-haiku-4-5-20251001", "Cover exactly 3 findings.")
         == qra.ANALYSER_SYSTEM_PROMPT_SONNET
     )
+
+
+# ── Task 2: tier config ──────────────────────────────────────────────────────
+
+from rapid_reports_ai.scripts.sheet_budget import tiers as T
+
+
+def test_tiers_load_all_five():
+    loaded = T.load_tiers()
+    assert [t["id"] for t in loaded] == ["T1", "T2", "T3", "T4", "T5"]
+
+
+def test_t1_is_the_unbudgeted_control():
+    t1 = T.load_tiers()[0]
+    assert t1["findings"] is None
+    assert t1["variants_per_finding"] is None
+    assert T.render_directive(t1) == ""
+
+
+def test_budgets_are_non_increasing_down_the_ladder():
+    T.validate_tiers(T.load_tiers())  # raises if not
+
+
+def test_validate_rejects_an_increasing_ladder():
+    bad = [
+        {"id": "A", "findings": 2, "variants_per_finding": 1, "impression_exemplars": 1,
+         "interpretive_clauses": 2, "mandatory_negatives": 2, "normal_study_path": "full"},
+        {"id": "B", "findings": 4, "variants_per_finding": 1, "impression_exemplars": 1,
+         "interpretive_clauses": 2, "mandatory_negatives": 2, "normal_study_path": "full"},
+    ]
+    try:
+        T.validate_tiers(bad)
+    except ValueError as exc:
+        assert "findings" in str(exc)
+    else:
+        raise AssertionError("expected ValueError on an increasing ladder")

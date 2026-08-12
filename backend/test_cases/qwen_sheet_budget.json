@@ -1,0 +1,17 @@
+[
+  {"id": "T1", "cuts": "control",
+   "findings": null, "variants_per_finding": null, "impression_exemplars": null,
+   "interpretive_clauses": null, "mandatory_negatives": null, "normal_study_path": null},
+  {"id": "T2", "cuts": "breadth",
+   "findings": 4, "variants_per_finding": 3, "impression_exemplars": 2,
+   "interpretive_clauses": 4, "mandatory_negatives": 4, "normal_study_path": "full"},
+  {"id": "T3", "cuts": "breadth",
+   "findings": 3, "variants_per_finding": 3, "impression_exemplars": 2,
+   "interpretive_clauses": 3, "mandatory_negatives": 3, "normal_study_path": "full"},
+  {"id": "T4", "cuts": "depth",
+   "findings": 3, "variants_per_finding": 2, "impression_exemplars": 2,
+   "interpretive_clauses": 3, "mandatory_negatives": 3, "normal_study_path": "full"},
+  {"id": "T5", "cuts": "depth+scaffold",
+   "findings": 2, "variants_per_finding": 1, "impression_exemplars": 1,
+   "interpretive_clauses": 2, "mandatory_negatives": 2, "normal_study_path": "primary_only"}
+]
