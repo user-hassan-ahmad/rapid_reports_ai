@@ -707,14 +707,23 @@ async def generate_ephemeral_skill_sheet(
 
     # Provider-aware model settings. The GLM-on-Cerebras path uses reasoning
     # flags that are invalid on Anthropic; Anthropic's endpoint rejects the
-    # full extra_body block outright. Keep each provider's settings explicit
-    # so the failure modes are localised.
+    # full extra_body block outright. Groq rejects those toggles too and
+    # reaches its reasoning stream via groq_reasoning_format, which
+    # _run_agent_with_model sets from use_thinking. Keep each provider's
+    # settings explicit so the failure modes are localised.
     if provider == "anthropic":
         model_settings = {
             "temperature": 0.5,
             "max_tokens": 16000,
         }
         call_api_key = _get_api_key_for_provider("anthropic")
+    elif provider == "groq":
+        model_settings = {
+            "temperature": 0.5,
+            "top_p": 0.95,
+            "max_tokens": 16000,
+        }
+        call_api_key = _get_api_key_for_provider("groq")
     else:
         model_settings = {
             "temperature": 0.5,
