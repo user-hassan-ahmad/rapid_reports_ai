@@ -381,7 +381,12 @@
 				onCoveredSectionsChange(data.covered_sections);
 			}
 		} catch {
-			// Superseded (AbortError) or network error — keep raw transcript, surface nothing.
+			// Superseded aborts set pendingProcess and will re-run, so keep the faded raw.
+			// A real network error won't re-run — promote the faded raw to solid so it
+			// never looks stuck (Phase 2b.3).
+			if (useIncremental && !pendingProcess && editor) {
+				editor.dispatch({ effects: clearPending.of(null) });
+			}
 		} finally {
 			if (processAbort === controller) processAbort = null;
 			isProcessing = false;
@@ -627,6 +632,9 @@
 			websocket = null;
 		}
 		stream = null;
+		// Phase 2b.3: promote any faded raw to solid before handing control back — no
+		// pending marks survive the end of recording (the flush polish still cleans it).
+		if (editor) editor.dispatch({ effects: clearPending.of(null) });
 		// Flush: the polish trigger is gated on speech_final, so a quick stop mid-utterance
 		// could otherwise drop the last words. Process the final accumulated transcript once.
 		if (sessionTranscript.trim()) processTranscriptQueue();
