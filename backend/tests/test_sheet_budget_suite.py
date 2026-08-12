@@ -285,3 +285,38 @@ def test_format_inputs_mirrors_production_format_input_data():
     }})
     assert produced == reference
     assert "Dictated findings: 22mm nodule RUL" in produced
+
+
+# ── Task 7: curve output ─────────────────────────────────────────────────────
+
+from rapid_reports_ai.scripts.sheet_budget import report as R
+
+RUNS_FIXTURE = [
+    {"tier": "T1", "case": "a", "sheet_tokens_est": 3400, "sheet_chars": 13600,
+     "analyser_latency_ms": 24800, "generator_latency_ms": 12700, "report_chars": 1800,
+     "gate": {"passed": True, "failures": []},
+     "judge": {"output_adherence": {"score": 5}, "dictation_fidelity": {"score": 4},
+               "normal_fill_appropriateness": {"score": 5}, "unwarranted_assertion": {"score": 4}}},
+    {"tier": "T5", "case": "a", "sheet_tokens_est": 700, "sheet_chars": 2800,
+     "analyser_latency_ms": 9000, "generator_latency_ms": 6000, "report_chars": 1200,
+     "gate": {"passed": False, "failures": ["self_contradiction"]}},
+]
+
+
+def test_curve_csv_has_a_row_per_run_and_mean_score(tmp_path):
+    path = tmp_path / "curve.csv"
+    R.write_curve_csv(RUNS_FIXTURE, path)
+    lines = path.read_text().strip().splitlines()
+    assert len(lines) == 3  # header + 2 runs
+    assert "mean_score" in lines[0]
+    assert "4.5" in lines[1]  # (5+4+5+4)/4
+    assert "gate_failures" in lines[0]
+
+
+def test_artifact_html_is_self_contained_and_themed(tmp_path):
+    path = tmp_path / "curve.html"
+    R.write_artifact_html(RUNS_FIXTURE, path)
+    html = path.read_text()
+    assert "<title>" in html
+    assert "prefers-color-scheme" in html
+    assert "http://" not in html and "https://" not in html  # no external assets
