@@ -233,3 +233,55 @@ def test_gate_flags_thinking_leak():
 def test_gate_flags_truncation():
     result = G.run_gate(CLEAN.rstrip(".\n") + " and the patient")
     assert "truncation" in result["failures"]
+
+
+# ── Task 5: ad-hoc v2.2 judge adapter ────────────────────────────────────────
+
+from rapid_reports_ai import quality_scoring as qs
+from rapid_reports_ai.scripts.sheet_budget import judge as J
+
+
+def test_case_dict_matches_assemble_case_keys_exactly():
+    """Guard against drift in _assemble_case's contract."""
+    built = J.build_case(inputs="Scan type: CT head", skill_sheet="# Sheet", report="FINDINGS: ...")
+    assert set(built) == {"pipeline", "inputs", "skill_sheet", "ai_output", "final_output"}
+    assert built["pipeline"] == "quick"
+    assert built["final_output"] is None
+
+
+def test_case_text_renders_for_every_v22_dimension():
+    built = J.build_case(inputs="Scan type: CT head", skill_sheet="# Sheet", report="FINDINGS: x")
+    for dim in qs.DIMENSIONS_V22:
+        text = qs._case_text_v2(dim, built)
+        assert isinstance(text, str) and text.strip()
+
+
+def test_score_case_uses_an_injected_judge_and_returns_all_dimensions():
+    calls = []
+
+    def fake_judge(prompt, case_text):
+        calls.append(case_text)
+        return qs.JudgeScore(score=4, rationale="fixture")
+
+    scores = J.score_case(
+        inputs="Scan type: CT head", skill_sheet="# Sheet",
+        report="FINDINGS: x", judge=fake_judge,
+    )
+    assert set(scores) == set(qs.DIMENSIONS_V22)
+    assert all(v["score"] == 4 for v in scores.values())
+    assert len(calls) == len(qs.DIMENSIONS_V22)
+
+
+def test_format_inputs_mirrors_production_format_input_data():
+    """The judge sees dictation via inputs; omitting it silently breaks
+    dictation_fidelity. Shape must match _format_input_data exactly."""
+    produced = J.format_inputs(
+        scan_type="CT thorax", clinical_history="40 pack-year smoker", findings="22mm nodule RUL"
+    )
+    reference = qs._format_input_data({"variables": {
+        "SCAN_TYPE": "CT thorax",
+        "CLINICAL_HISTORY": "40 pack-year smoker",
+        "FINDINGS": "22mm nodule RUL",
+    }})
+    assert produced == reference
+    assert "Dictated findings: 22mm nodule RUL" in produced
