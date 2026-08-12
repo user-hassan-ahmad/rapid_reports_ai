@@ -133,3 +133,45 @@ def negatives_rescope_pairing(sheet: str) -> dict:
     negs = len(re.findall(r'^\s*-\s+"', block, re.M))
     rem = len(_REMAINDER.findall(block))
     return {"negatives": negs, "remainder_forms": rem, "paired": negs > 0 and rem >= negs}
+
+
+# ── Recommendation scope tagging ────────────────────────────────────────────
+# The remit is diagnostic: clarify uncertainty, guide probabilistic evaluation,
+# direct further imaging. Management belongs to the clinical team. Encoded as a
+# closed tag set because prose exclusions sat 28k chars from the field and were
+# recalled but not applied - the GLM sheet stated the prohibition and violated
+# it inside the same field.
+
+RECOMMENDATION_TAGS = ("IMAGING", "REFERRAL", "MDT", "TISSUE", "CORRELATION")
+
+# Language that is outside radiological remit wherever it appears.
+OUT_OF_REMIT = (
+    r"conservative management", r"conservative (?:and|or) operative", r"immobilis",
+    r"physiotherap", r"rehabilitat", r"analgesi", r"weight-bear",
+    r"treatment protocol", r"drug (?:choice|dosing)", r"surgical technique",
+    r"hardware selection", r"chimney stent", r"protection strategy",
+)
+
+_REC_BLOCK = re.compile(
+    r"^\s*-\s+\*\*Recommendation scope:?\*\*(.*?)(?=^\s*-\s+\*\*|^##|\Z)", re.M | re.S
+)
+_TAGGED = re.compile(r"\b(" + "|".join(RECOMMENDATION_TAGS) + r")\s*:")
+
+
+def recommendation_scope(sheet: str) -> dict:
+    """Are recommendations tagged, and is any out-of-remit language present?"""
+    m = _REC_BLOCK.search(sheet)
+    block = m.group(1) if m else ""
+    entries = [l for l in block.splitlines() if l.strip().startswith("-") or l.strip()]
+    entries = [l for l in entries if l.strip()]
+    tagged = len(_TAGGED.findall(block))
+    breaches = sorted({
+        re.search(pat, sheet, re.I).group(0).lower()
+        for pat in OUT_OF_REMIT if re.search(pat, sheet, re.I)
+    })
+    return {
+        "tagged_entries": tagged,
+        "has_block": bool(m),
+        "out_of_remit": breaches,
+        "clean": tagged > 0 and not breaches,
+    }

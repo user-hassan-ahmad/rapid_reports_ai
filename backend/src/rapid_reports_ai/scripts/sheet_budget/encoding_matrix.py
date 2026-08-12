@@ -85,6 +85,9 @@ CELLS = [
     #   defeasible 100% compliance, rate 50% = baseline (no measured benefit)
     #   rescope    rate 50% -> 25%                      (targets the real failure)
     #   +generator substitution rule                    (fixes an observed mechanism)
+    # The battle-tested reference: analyser reasoning ON, no directives at all.
+    {"id": "abl_ref", "directives": (), "substitution": False,
+     "analyser_reasoning": True, "label": "analyser reasoning ON, no directives"},
     {"id": "abl_sweep", "directives": ("sweep",), "substitution": False,
      "label": "sweep only"},
     {"id": "abl_min", "directives": ("sweep", "rescope"), "substitution": True,
@@ -133,7 +136,7 @@ async def _instrumented(**kw):
     if kw.get("model_name") == MODEL:
         settings = dict(kw.get("model_settings") or {})
         extra = dict(settings.get("extra_body") or {})
-        if stage == "analyser":
+        if stage == "analyser" and not _STATE.get("analyser_reasoning"):
             extra["reasoning_effort"] = "none"   # generator keeps reasoning on
             settings["extra_body"] = extra
             kw["model_settings"] = settings
@@ -197,6 +200,7 @@ async def run_one(case: dict, cell: dict, tm: TemplateManager) -> dict[str, Any]
     _CAPTURED.clear()
     _STATE["floor"] = cell.get("floor", False)
     _STATE["substitution"] = cell.get("substitution", False)
+    _STATE["analyser_reasoning"] = cell.get("analyser_reasoning", False)
     label = f"{cell['id']}/{case['name']}"
 
     _STATE["stage"] = "analyser"
@@ -239,6 +243,7 @@ async def run_one(case: dict, cell: dict, tm: TemplateManager) -> dict[str, Any]
     return {
         "cell": cell["id"], "cell_label": cell["label"], "case": case["name"],
         "directives": list(cell.get("directives", ())),
+        "analyser_reasoning": cell.get("analyser_reasoning", False),
         "substitution": cell.get("substitution", False),
         "pairing": compliance.defeasibility_pairing(sheet),
         "neg_pairing": compliance.negatives_rescope_pairing(sheet),

@@ -492,6 +492,62 @@ at roughly a tenth of the Cerebras token price on the cheapest providers.
 → Consider pinning provider order via OpenRouter's `provider` routing rather than accepting the
 default route, since max output tokens and throughput vary widely across the 20.
 
+### L-23 · DECISION — analyser reasoning ON; reasoning-off tuning dropped
+**Verdict: settled by radiologist review.** Confidence: high.
+Across five unseen cases (2 MRI, cardiac, spine, contradiction trap) the radiologist judged
+reasoning ON "far far better". The four-layer encoded stack chasing a reasoning-off equivalent is
+**abandoned**. Retained in code as opt-in directives with everything defaulting off, so the
+production prompt path is unchanged.
+
+Superseded by this: L-17 (what reasoning buys), L-18/L-19/L-20/L-21 (encoding attempts). They stay
+recorded — the compliance findings inside them (countable ~100% vs prose ~40%) generalise well
+beyond this decision and were reused immediately in L-24.
+
+### L-24 · Recommendation scope — management trespass and US nomenclature
+**Verdict: prompt-drift between the two analyser copies, plus rule-to-field distance.**
+Confidence: high (deterministic, reproduced and fixed).
+
+Two defects the radiologist identified: recommendations trespassing into clinical management
+("Conservative management with immobilisation recommended" on a ligament injury), and non-UK
+referral nomenclature ("Structural heart team review", guideline hooks citing ACC/AHA).
+
+**Aetiology, pinned:**
+
+1. **The language originates in the sheet, not the generator.** In the ankle sheet "conservative"
+   appears 4×, "immobilis" 4×, "physiotherapy" 1×; in the report, once each or not at all. The
+   generator is already filtering — the analyser is the source.
+2. **The GLM prompt had lost a constraint the Sonnet prompt kept.** Sonnet's field template read
+   *"Out of scope: procedural technique, hardware, treatment protocol, drug specifics"*; the GLM
+   template — the one Qwen uses — read only *"<multi-modal, clinical-context-specific list of
+   workup modalities and referrals>"*. Exactly the drift `project_report_integrity_hardening`
+   warns about.
+3. **Rule-to-field distance.** The governing rules sit at **2.6% and 3.1%** of the prompt; the
+   field is filled at **71.9% and 99.0%** — a ~28,000-character gap. The ankle sheet stated the
+   prohibition and violated it *inside the same field*: recall without application, the signature
+   of a prose rule far from its point of use.
+4. **The exemplars then carry it**, and the prompt declares exemplars the generator's imitation
+   target.
+
+**Fix — closed tag set at point-of-use, in both prompts.** Every Recommendation scope entry must
+carry `IMAGING:` / `REFERRAL:` / `MDT:` / `TISSUE:` / `CORRELATION:`; anything untaggable is
+outside radiological remit. UK NHS service names required; guideline hooks prefer UK bodies.
+Countable, so `compliance.recommendation_scope()` can assert it.
+
+**Measured before → after:**
+
+| | out-of-remit terms | tagged entries | impression |
+|---|---|---|---|
+| MRI ankle | 5 → **2** | 0 → **2** | "Conservative management with immobilisation" → **"Orthopaedic review"** |
+| CT TAVI | 2 → **1** | 0 → **3** | "Structural heart team review" → **"Cardiothoracic surgery and interventional cardiology MDT review"** |
+| guideline hooks | — | — | `ACC/AHA/ESC` → **`NICE … EAPCI/ESC`** |
+
+→ Residual terms live in `Clinical Lane` and `Interpretive Clause Rules` and **do not reach the
+report**. One exception worth closing: `protection strategy` persists in the *Abnormal impression
+exemplar's descriptive body*. The new rule constrains the exemplar's recommendation clause only;
+the imitation vector is the whole exemplar.
+→ Remit wording taken from the radiologist: clarify diagnostic uncertainty, guide probabilistic
+evaluation from the imaging, direct further radiological investigation for doubtful elements.
+
 ---
 
 ## Open questions, in priority order

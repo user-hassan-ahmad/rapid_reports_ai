@@ -474,3 +474,43 @@ def test_screen_excuses_remainder_scoping_in_its_instructions():
     must confine the exemption to the denying statement itself."""
     assert "remainder" in X.PROMPT.lower()
     assert "only to the denying statement itself" in X.PROMPT
+
+
+# ── Recommendation scope: radiological remit, UK services ───────────────────
+
+def test_both_analyser_prompts_carry_the_tag_set_at_point_of_use():
+    """The prohibition previously sat ~28k chars from the field and was recalled
+    but not applied. Both prompts must now state it where the field is filled."""
+    for prompt in (qra.ANALYSER_SYSTEM_PROMPT_GLM, qra.ANALYSER_SYSTEM_PROMPT_SONNET):
+        for tag in ("IMAGING", "REFERRAL", "MDT", "TISSUE", "CORRELATION"):
+            assert f"`{tag}:`" in prompt
+        assert "UK NHS services" in prompt
+        assert "Royal College of Radiologists" in prompt
+        assert "imitation target" in prompt          # exemplar loop closed
+
+
+def test_glm_and_sonnet_field_templates_agree():
+    """project_report_integrity_hardening: the analyser prompt exists twice and
+    drift between them is how the GLM copy lost the exclusion Sonnet had."""
+    field = "- **Recommendation scope:** <tagged entries only"
+    assert field in qra.ANALYSER_SYSTEM_PROMPT_GLM
+    assert field in qra.ANALYSER_SYSTEM_PROMPT_SONNET
+
+
+def test_recommendation_scope_counter_flags_out_of_remit_language():
+    bad = """## Impression Exemplars
+- **Recommendation scope:** Orthopaedic referral; physiotherapy/conservative management for partial tears.
+- **Guideline hooks:** none
+"""
+    r = C.recommendation_scope(bad)
+    assert r["clean"] is False
+    assert any("conservative management" in x for x in r["out_of_remit"])
+
+
+def test_recommendation_scope_counter_passes_a_tagged_sheet():
+    good = """## Impression Exemplars
+- **Recommendation scope:** IMAGING: interval CT to resolve indeterminate lesion. REFERRAL: respiratory, urgent. MDT: lung MDT review.
+- **Guideline hooks:** none
+"""
+    r = C.recommendation_scope(good)
+    assert r["tagged_entries"] == 3 and r["out_of_remit"] == [] and r["clean"] is True

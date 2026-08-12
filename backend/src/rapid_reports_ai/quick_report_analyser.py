@@ -208,7 +208,29 @@ Completeness is governed by obligations, not length. A brief impression that ans
 
 **This rule governs the exemplars themselves, not just the generator.** Your abnormal exemplar is the generator's imitation target — whatever pattern the exemplar models, the generator will reproduce. If the exemplar reads *"Acute X. The structure is Y with feature Z and feature W. Urgent referral..."* then the generator will restate diagnostic-criterion descriptors on every case, because that is what you showed. The abnormal exemplar you write MUST demonstrate diagnosis-centric voice: named diagnosis, any action-changing complication or severity tier, any sub-question answered, specialty referral with urgency — and nothing more. Before finalising an exemplar, test it: if you deleted the diagnostic-criterion descriptors after the diagnosis name, would the impression still carry the clinical work? If yes, those descriptors do not belong there. The exemplar must pass this test.
 
-**Recommendation scope.** Typical referrals, further imaging, tissue sampling; what is out of radiological scope.
+**Recommendation scope — radiological remit, closed tag set, UK services.** The remit is to
+clarify diagnostic uncertainty, guide probabilistic evaluation from the imaging, and direct any
+further radiological investigation that would resolve a doubtful element. Management decisions
+belong to the governing clinical team.
+
+Every entry carries one of these tags, and nothing that cannot take a tag may appear:
+
+- `IMAGING:` further radiological investigation, naming what it would resolve
+- `REFERRAL:` named UK NHS specialty service, with urgency tier
+- `MDT:` UK multidisciplinary team review
+- `TISSUE:` tissue sampling, where imaging cannot resolve the question
+- `CORRELATION:` clinical or laboratory correlation
+
+Outside remit, and never emitted: treatment, management strategy, conservative-versus-operative
+choice, procedural technique, surgical approach, device or hardware selection, drugs, dosing,
+immobilisation, rehabilitation. Naming the specialty that should review is in scope; naming what
+that specialty should then do is not.
+
+Name UK NHS services and pathways, not US or international equivalents.
+
+The recommendation clause of every impression exemplar below must be drawn from this tag set —
+the exemplars are the generator's imitation target, so an exemplar carrying management language
+will reproduce it on every case.
 
 **Guideline hooks.** Classification systems likely to apply (Fleischner, Bosniak, RECIST, CAD-RADS, ASPECTS, TNM) — as vocabulary the generator may draw on, not as attributions.
 
@@ -306,8 +328,8 @@ Quoted illustrative impressions modelling voice and cognitive shape. Each exempl
   A clause or sentence between `<Diagnosis>` and the referral is allowed ONLY when it changes the clinician's action — complications that escalate urgency, severity tiers that alter pathway, features that gate a further referral. Diagnostic-criterion descriptors (size, wall thickness, stranding, signal or enhancement features that define the named condition) do NOT earn a slot here; the FINDINGS section carries them and the diagnosis name encodes them. Emit the exemplar as a single quoted string that obeys this shape.
 - **Complicated exemplar:** "<complete impression for a complicated case>"  (emit ONLY when a clinically distinct complicated form exists — multiple concerns with separate referrals, staging implications, or management-altering incidentals. Do NOT emit if the complicated form would just be the abnormal exemplar with more findings)
 - **Descriptor propagation:** <which descriptor classes change management direction on this clinical question — thresholds, complications, severity tiers, features that gate additional referral. Descriptors that merely confirm the diagnostic criteria for the named condition do NOT propagate — the diagnosis name encodes them>
-- **Recommendation scope:** <specialty referrals with urgency tier; further imaging; tissue sampling; MDT review. Out of scope: procedural technique, hardware, treatment protocol, drug specifics>
-- **Guideline hooks:** <classification systems likely to apply>  (emit only when a named system materially applies to this scan type and clinical question; omit if no system meaningfully applies)
+- **Recommendation scope:** <tagged entries only, one per line, each beginning `IMAGING:` / `REFERRAL:` / `MDT:` / `TISSUE:` / `CORRELATION:`. UK NHS service names. No treatment, management strategy, procedural technique, hardware or drug content — anything that cannot take a tag is outside radiological remit>
+- **Guideline hooks:** <classification systems likely to apply; prefer the UK body where one applies (NICE, Royal College of Radiologists, the relevant UK specialty society) over US or international equivalents>  (emit only when a named system materially applies to this scan type and clinical question; omit if no system meaningfully applies)
 - **Clinical history must-appear:** <terse phrase-level hooks naming the clinical datum or prior-event marker directly — not narrative prescriptions about how the impression should be written>"""
 
 
@@ -506,7 +528,29 @@ Completeness is governed by obligations, not length. A brief impression that ans
 
 **This rule governs the exemplars themselves, not just the generator.** Your abnormal exemplar is the generator's imitation target — whatever pattern the exemplar models, the generator will reproduce. If the exemplar reads *"Acute X. The structure is Y with feature Z and feature W. Urgent referral..."* then the generator will restate diagnostic-criterion descriptors on every case, because that is what you showed. The abnormal exemplar you write MUST demonstrate diagnosis-centric voice: named diagnosis, any action-changing complication or severity tier, any sub-question answered, specialty referral with urgency — and nothing more. Before finalising an exemplar, test it: if you deleted the diagnostic-criterion descriptors after the diagnosis name, would the impression still carry the clinical work? If yes, those descriptors do not belong there. The exemplar must pass this test.
 
-**Recommendation scope — multi-modal and clinical-context-specific.** List the specific workup modalities and specialty referrals appropriate to this scan type and clinical question, not generic referral statements. Generic referrals ("urgent referral") leave the generator without scaffold for the specific recommendation language; specific framing tells the generator what modality to recommend for what condition.
+**Recommendation scope — radiological remit, closed tag set, UK services.** The remit is to
+clarify diagnostic uncertainty, guide probabilistic evaluation from the imaging, and direct any
+further radiological investigation that would resolve a doubtful element. Management decisions
+belong to the governing clinical team.
+
+Every entry carries one of these tags, and nothing that cannot take a tag may appear:
+
+- `IMAGING:` further radiological investigation, naming what it would resolve
+- `REFERRAL:` named UK NHS specialty service, with urgency tier
+- `MDT:` UK multidisciplinary team review
+- `TISSUE:` tissue sampling, where imaging cannot resolve the question
+- `CORRELATION:` clinical or laboratory correlation
+
+Outside remit, and never emitted: treatment, management strategy, conservative-versus-operative
+choice, procedural technique, surgical approach, device or hardware selection, drugs, dosing,
+immobilisation, rehabilitation. Naming the specialty that should review is in scope; naming what
+that specialty should then do is not.
+
+Name UK NHS services and pathways, not US or international equivalents.
+
+The recommendation clause of every impression exemplar below must be drawn from this tag set —
+the exemplars are the generator's imitation target, so an exemplar carrying management language
+will reproduce it on every case.
 
 The shape — *modality + indication, with specialty referral named* — is what generalises. The clinical content varies substantially by domain. Illustrative parallel examples across domains:
 
@@ -620,8 +664,8 @@ For each likely finding (top 4–6), three severity-graded variants where clinic
   A clause or sentence between `<Diagnosis>` and the referral is allowed ONLY when it changes the clinician's action — complications that escalate urgency, severity tiers that alter pathway, features that gate a further referral. Diagnostic-criterion descriptors (size, wall thickness, stranding, signal or enhancement features that define the named condition) do NOT earn a slot here; the FINDINGS section carries them and the diagnosis name encodes them. Must-appear clinical history hooks integrate as phrase-level fragments into the diagnosis clause, not as narrative prescriptions. Emit the exemplar as a single quoted string that obeys this shape.
 - **Complicated exemplar:** "<complete impression for a complicated case — multiple concerns framed as separate items>"  (optional, if clinically meaningful)
 - **Descriptor propagation:** <which descriptor classes change management direction on this clinical question — thresholds, complications, severity tiers, features that gate additional referral. Descriptors that merely confirm the diagnostic criteria for the named condition do NOT propagate — the diagnosis name encodes them>
-- **Recommendation scope:** <multi-modal, clinical-context-specific list of workup modalities and referrals>
-- **Guideline hooks:** <standard classification systems named by acronym>
+- **Recommendation scope:** <tagged entries only, one per line, each beginning `IMAGING:` / `REFERRAL:` / `MDT:` / `TISSUE:` / `CORRELATION:`. UK NHS service names. No treatment, management strategy, procedural technique, hardware or drug content — anything that cannot take a tag is outside radiological remit>
+- **Guideline hooks:** <standard classification systems named by acronym; prefer the UK body where one applies (NICE, Royal College of Radiologists, the relevant UK specialty society) over US or international equivalents>
 - **Clinical history must-appear:** <terse phrase-level hooks naming the clinical datum or prior-event marker directly — not narrative prescriptions; every hook must appear in at least one impression exemplar above>"""
 
 
