@@ -341,6 +341,49 @@ non-reasoning model.
 → Payoff if it works: analyser 20.1s → 7.9s **and** a 27% shorter sheet, which shrinks generator
 input and therefore generator reasoning. The savings compound.
 
+### L-18 · Encoding L-17's directives — one worked, one did not
+**Verdict: structural directives comply; prose-qualifier directives do not.** Confidence: high
+(2 cells x 5 cases, against 2 collected baselines).
+
+| config | analyser | sheet | apparent drops (5 cases) | defeasible clause | known contradiction |
+|---|---|---|---|---|---|
+| analyser ON (reference) | 22.3s | 14,822 | 1 | **5/5** | clean |
+| analyser OFF (the problem) | 7.1s | 11,639 | **6** | 0/5 | **present** |
+| **ENC directives** | **8.6s** | **15,772** | **0** | 1/5 | **present** |
+| ENC directives + floor | 8.4s | 14,395 | 1 | 3/5 | **present** |
+
+**The sweep directive worked completely.** Apparent drops fall 6 → **0**, better than analyser
+reasoning ON (1), and it generalises: every case is clean, not just the one that failed. The sheet
+also comes out *larger* than the reasoning-ON sheet (15,772 vs 14,822) at reasoning-OFF speed —
+8.6s against 22.3s, a **2.6x saving on the analyser**.
+
+**The defeasibility directive did not.** Stated outright, it appears in only **4 of 10** encoded
+sheets against 5/5 with reasoning on. (`enc_a` and `enc_ag` share an analyser configuration — the
+floor rule touches only the generator — so their 1/5 vs 3/5 split is sampling noise, and the honest
+figure is 40% compliance with high variance.) The material consequence: the mural-gas /
+"no pneumatosis intestinalis" contradiction **persists in every reasoning-off variant, encoded or
+not**, while analyser reasoning ON is clean on all five cases.
+
+→ **Refines L-03.** Countable structural requirements get ~100% compliance; a requirement to
+include a specific *qualifying clause in prose* gets ~40%. The distinction is what can be counted,
+not how important it is.
+→ **The generator floor rule is not needed.** `enc_a` (directives only) had 0 drops against
+`enc_ag`'s 1. No evidence it helps; prefer the smaller change and leave the production generator
+prompt untouched.
+→ **Not yet a clean substitute for analyser reasoning.** Encoding buys completeness and speed but
+not contradiction safety. Analyser reasoning ON remains the only configuration clean on both.
+
+### L-19 · Next lever — restate defeasibility as a countable requirement
+**Status: open, directly implied by L-18.**
+Prose directives comply at ~40%; countable ones at ~100%. So convert the requirement rather than
+repeat it more loudly: instead of "state that the normal-fill rule is defeasible", require that
+**every canonical default-normal line be paired with an explicit suppression condition naming when
+it is dropped**. That is a countable pairing (N lines → N conditions), verifiable by the compliance
+counter, and it encodes the same semantics.
+If that lands, reasoning-off becomes viable on both axes. If it does not, keep analyser reasoning
+ON — at 22.3s it hides behind dictation anyway, and the 14s is cheap next to a normal that
+contradicts a dictated positive.
+
 ---
 
 ## Open questions, in priority order
