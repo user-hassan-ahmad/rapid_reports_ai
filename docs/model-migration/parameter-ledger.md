@@ -207,6 +207,49 @@ rules.
 → **Unresolved for self-hosted:** generator reasoning is ~7,200 tokens ≈ **63s at 115 tok/s**.
 Turning it off gives ~3.2s but costs ~0.2–0.55 quality. That trade is the open decision.
 
+### L-13 · Radiologist review — `off_on` preferred, omissions were editorial
+**Verdict: sign-off grade.** Confidence: high (consultant radiologist, 5 cases, direct review).
+A consultant radiologist reviewed all five cases side by side — dictation, three configurations,
+aligned by section. Verdict on **`off_on` (analyser reasoning OFF, generator reasoning ON)**:
+
+> "consistently much better reports than either of the variants. Specifically the linguistic style
+> and the prioritisation method being used are far more sophisticated and the impression summary is
+> much more clinically integrated and concise… I would be quite happy to sign those off."
+
+On the omissions flagged in L-12's analysis: **"a lot of the omissions that have been made are for
+those findings that are borderline incidental or insignificant, especially within the context of
+what's being presented."**
+
+→ **Reverses the concern raised in prior analysis.** What looked like dropped findings is
+editorial discrimination — deciding which incidentals earn a place given the clinical question.
+GLM's completeness is not automatically superior; it is less selective.
+
+### L-14 · Do NOT build a dictation-completeness metric
+**Verdict: rejected before implementation.** Confidence: high.
+Naive recall of dictated findings was about to be added to the gate, on the reasoning that neither
+gate nor judge caught the `off_on` omissions. **L-13 shows that metric would have been actively
+harmful**: it scores omission as failure regardless of clinical significance, so optimising against
+it drives the generator toward verbose, undiscriminating reports — the opposite of the behaviour a
+consultant values.
+
+→ Completeness against dictation is **not** a quality proxy for this task. Selectivity is a skill,
+not a defect.
+→ The generalisable lesson: an automatable metric that is easy to compute and intuitively
+appealing can still encode the wrong objective. Where clinical judgement is the target, the
+measurement needs a clinician in the loop — the rubric judge and the structural gate catch
+mechanical faults (truncation, contradiction, leakage), not editorial quality.
+→ Corollary: the two prior analyses that leaned on omission counts should be read as *descriptive*,
+not evaluative.
+
+### L-15 · Next lever is inclusion/exclusion policy, not architecture
+**Status: open, radiologist-directed.**
+> "Perhaps with further prompting tweaks we could get the generation to be a bit sharper in terms
+> of various inclusions and exclusions."
+
+The remaining quality work is defining *which* incidentals earn a place in FINDINGS and which earn
+a line in the IMPRESSION with an action attached. That is a prompt/skill-sheet question, and it
+needs the radiologist to mark specific calls right or wrong — the judge cannot supply this.
+
 ---
 
 ## Open questions, in priority order
