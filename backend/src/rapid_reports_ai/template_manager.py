@@ -7,6 +7,23 @@ from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
 
+# Groq report-generator output cap.
+#
+# Was 8000, which truncated reports. Reasoning-capable models on this path spend
+# most of their output budget on the reasoning stream, so a long think left too
+# little for the report: generation stopped mid-sentence inside FINDINGS with
+# finish_reason == "length", never reaching IMPRESSION. Measured at 3/25 and
+# 2/20 across two experiment runs on 2026-08-12. Visible length varied with how
+# long the reasoning happened to run, which is why it looked intermittent.
+#
+# 16384 is Qwen 3.6 27B's hard output ceiling on Groq — there is no headroom
+# above this to claim, and values beyond it are rejected. Raising the cap trades
+# a truncation failure for a slower worst case, which is the right trade for a
+# clinical report: a late report is recoverable, a silently truncated one is not.
+#
+# See docs/model-migration/parameter-ledger.md, L-04 and L-05.
+GROQ_GENERATOR_MAX_TOKENS = 16384
+
 
 class TemplateManager:
     """Manages custom user-created templates"""
@@ -2605,7 +2622,7 @@ Findings: {findings_input}
             model_settings = {
                 "temperature": 0.8,
                 "top_p": 0.95,
-                "max_tokens": 8000,
+                "max_tokens": GROQ_GENERATOR_MAX_TOKENS,
             }
         elif provider == "cerebras" and model_name == "zai-glm-4.7":
             # GLM-4.7 is the only Cerebras model that accepts clear_thinking.

@@ -320,3 +320,25 @@ def test_artifact_html_is_self_contained_and_themed(tmp_path):
     assert "<title>" in html
     assert "prefers-color-scheme" in html
     assert "http://" not in html and "https://" not in html  # no external assets
+
+
+# ── Generator output cap (ledger L-04 / L-05) ────────────────────────────────
+
+from rapid_reports_ai import template_manager as tm_mod
+
+# Groq's published hard ceiling for qwen/qwen3.6-27b. Values above are rejected.
+QWEN_MAX_OUTPUT_TOKENS = 16384
+
+# Highest single-call generator output observed with reasoning on, across the
+# sheet-budget sweep and the reasoning matrix. The cap must clear this or
+# reasoning exhausts the budget and the report truncates mid-FINDINGS.
+OBSERVED_REASONING_PEAK = 13569
+
+
+def test_groq_generator_cap_is_within_the_model_ceiling():
+    assert tm_mod.GROQ_GENERATOR_MAX_TOKENS <= QWEN_MAX_OUTPUT_TOKENS
+
+
+def test_groq_generator_cap_clears_observed_reasoning_peak():
+    """Regression guard on L-05: at 8000 this failed and reports truncated."""
+    assert tm_mod.GROQ_GENERATOR_MAX_TOKENS > OBSERVED_REASONING_PEAK
