@@ -70,6 +70,35 @@
 		provide: (f) => EditorView.decorations.from(f)
 	});
 
+	// Phase 2b.3 optimistic render: raw is_final text is shown faded (a "pending"
+	// mark) until the polish replaces it with solid text. markPending adds a faded
+	// range; clearPending removes faded marks intersecting [from,to) (null = all).
+	// Marks map through document changes, so a resolve that replaces a faded span
+	// drops its marks; the explicit clear covers boundary-spanning cases and the
+	// promote-to-solid lifecycle points.
+	const markPending = StateEffect.define<{ from: number; to: number }>();
+	const clearPending = StateEffect.define<{ from: number; to: number } | null>();
+	const pendingField = StateField.define<DecorationSet>({
+		create: () => Decoration.none,
+		update(deco, tr) {
+			deco = deco.map(tr.changes);
+			for (const e of tr.effects) {
+				if (e.is(markPending)) {
+					deco = deco.update({
+						add: [Decoration.mark({ class: 'cm-dictation-pending' }).range(e.value.from, e.value.to)]
+					});
+				} else if (e.is(clearPending)) {
+					const range = e.value;
+					deco = range
+						? deco.update({ filter: (from, to) => to <= range.from || from >= range.to })
+						: Decoration.none;
+				}
+			}
+			return deco;
+		},
+		provide: (f) => EditorView.decorations.from(f)
+	});
+
 	let editorContainer: HTMLDivElement;
 	let editor: EditorView | null = null;
 	const editableCompartment = new Compartment();
@@ -611,6 +640,7 @@
 					darkTheme,
 					highlightField,
 					integrityField,
+					pendingField,
 					EditorView.updateListener.of((update) => {
 				if (update.docChanged) {
 					const content = update.state.doc.toString();
@@ -872,6 +902,12 @@
 		text-underline-offset: 3px;
 		background: rgba(251, 146, 60, 0.1);
 		border-radius: 2px;
+	}
+
+	/* Optimistic-render pending mark: raw dictation shown faded until the polish
+	   swaps it for solid text, so it never reads as final. */
+	:global(.cm-dictation-pending) {
+		opacity: 0.45;
 	}
 
 </style>
