@@ -384,6 +384,53 @@ If that lands, reasoning-off becomes viable on both axes. If it does not, keep a
 ON — at 22.3s it hides behind dictation anyway, and the 14s is cheap next to a normal that
 contradicts a dictated positive.
 
+### L-20 · Countable defeasibility — complied perfectly, did not fix the contradiction
+**Verdict: the form works; it was aimed at the wrong category.** Confidence: high on compliance,
+low on the contradiction (n=1–2 per case).
+
+**Compliance, again, is near-perfect.** Every canonical default-normal line carried its own
+`SUPPRESS IF:` clause in **6 of 6 draws**, matching a *variable* target exactly each time —
+9, 4, 6, 5 and 7 lines respectively. Against ~40% for the same requirement stated as prose. The
+countable-form principle (L-03, L-18) is now confirmed twice on independent requirements.
+
+**But the contradiction is not reliably fixed**, and the variance check is the important result:
+
+| draw | config | paired | contradiction |
+|---|---|---|---|
+| 1 (smoke) | enc_cnt / ct_tap | yes | **present** |
+| 2 (full) | enc_cnt / ct_tap | yes | clean |
+
+Same configuration, opposite outcome. **One clean run is not a fix.**
+
+**Why it could not have worked.** The contradicting line — *"No pneumatosis intestinalis or portal
+venous gas to suggest bowel necrosis"* — is a **mandatory negative**, not a canonical
+default-normal line. The base analyser prompt states outright: *"This defeasibility governs
+canonical default-normal lines **only** — mandatory negatives are never suppressed by it, since
+they answer the clinical question rather than fill silence."* The pairing was applied faithfully to
+the category that was never the problem.
+
+The prompt does address the case elsewhere — *"Where a mandatory negative concerns a region a
+dictated positive implicates, state it with the precision the evidence supports — never by
+omitting it"* — i.e. **narrow it**, neither drop nor blanket-assert. A reasoning-ON analyser
+resolves that tension; reasoning-OFF applies the "never suppressed" rule literally.
+
+**Unexpected bonus: it is now the fastest configuration**, not the slowest as the smoke run implied.
+
+| config | sheet | analyser | generator | gen tokens | drops | contradiction |
+|---|---|---|---|---|---|---|
+| analyser ON | 14,822 | 22.3s | 14.3s | 6,264 | 1 | clean 5/5 |
+| analyser OFF | 11,639 | 7.1s | 15.7s | 7,196 | 6 | present |
+| ENC directives | 15,772 | 8.6s | 17.6s | 6,075 | 0 | present |
+| **ENC + countable** | 14,289 | **7.7s** | **13.4s** | **5,694** | **0** | 1 of 2 draws |
+
+End-to-end **21.1s against 36.6s** for analyser-reasoning-ON, with the lowest generator token count
+of any config and gate 5/5. The smoke run's 26.0s / 9,723 tokens was an outlier, not the trend.
+
+→ **Next test is the same principle aimed at mandatory negatives**: each must carry a countable
+narrowing condition naming the dictated finding class that forces it to be restated with precision.
+→ **Blocked on a clinical input**: what should that negative say when duodenal mural gas is
+dictated? The exemplar the rule points at has to be the radiologist's phrasing, not invented.
+
 ---
 
 ## Open questions, in priority order

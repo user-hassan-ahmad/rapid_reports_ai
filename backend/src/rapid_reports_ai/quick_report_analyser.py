@@ -672,6 +672,19 @@ transfer unchanged to another case of this scan type. A rule that names this cas
 findings restates the findings rather than stating a rule, and gives the generator nothing to
 apply when the next case differs.
 
+"""
+
+# Two ways of demanding the same semantics — that a canonical normal line must
+# yield when a dictated positive implicates its structure.
+#
+# PROSE was measured at ~40% compliance (4/10 sheets, ledger L-18), and the
+# contradiction it exists to prevent survived in every sheet that omitted it.
+# COUNTABLE restates it as a pairing — N canonical lines, N suppression
+# conditions — on the strength of L-03/L-18: this model obeys requirements it
+# can count at ~100%, and prose qualifiers at ~40%. Same semantics, countable
+# form, and verifiable by the compliance counter rather than by inspection.
+
+DEFEASIBILITY_PROSE = """
 **The normal-fill rule must carry its defeasibility clause.** Where the sheet states that silence
 in the dictation renders a canonical default-normal line, it must state in the same rule that this
 is defeasible: where a dictated positive implicates the structure, the canonical line is dropped or
@@ -679,11 +692,27 @@ rendered contingently. A normal-fill rule stated unconditionally will produce as
 normality that contradict what was dictated.
 """
 
+DEFEASIBILITY_COUNTABLE = """
+**Every canonical default-normal line must be paired with its own suppression condition.** In the
+Canonical default-normal lines list, each entry carries exactly two parts: the line itself, and a
+`SUPPRESS IF:` clause naming the class of dictated finding that overrides it. Emit exactly as many
+`SUPPRESS IF:` clauses as there are canonical lines — one per line, never a shared or blanket
+condition.
+
+Format every entry as:
+
+- **<system>:** "<canonical normal line>" — SUPPRESS IF: <class of dictated finding that overrides this line>
+
+A canonical line emitted without its own `SUPPRESS IF:` clause will be rendered unconditionally,
+and will assert normality for a structure the dictation has already reported as abnormal.
+"""
+
 
 def get_analyser_prompt(
     model_name: str,
     budget_directive: str = "",
     integrity: bool = False,
+    defeasibility: str = "",
 ) -> str:
     """Dispatch the analyser system prompt by model identifier.
 
@@ -703,6 +732,12 @@ def get_analyser_prompt(
         prompt += BUDGET_OVERRIDE_BLOCK.replace("{{BUDGET_DIRECTIVE}}", budget_directive)
     if integrity:
         prompt += SHEET_INTEGRITY_BLOCK
+    if defeasibility == "prose":
+        prompt += DEFEASIBILITY_PROSE
+    elif defeasibility == "countable":
+        prompt += DEFEASIBILITY_COUNTABLE
+    elif defeasibility:
+        raise ValueError(f"unknown defeasibility mode: {defeasibility!r}")
     return prompt
 
 
@@ -736,6 +771,7 @@ async def generate_ephemeral_skill_sheet(
     model_override: str | None = None,
     budget_directive: str = "",
     integrity: bool = False,
+    defeasibility: str = "",
 ) -> dict:
     """
     Run the analyser to produce a bespoke skill sheet for one case.
@@ -808,7 +844,9 @@ async def generate_ephemeral_skill_sheet(
         }
         call_api_key = api_key
 
-    system_prompt = get_analyser_prompt(model_name, budget_directive, integrity)
+    system_prompt = get_analyser_prompt(
+        model_name, budget_directive, integrity, defeasibility
+    )
 
     result = await _run_agent_with_model(
         model_name=model_name,

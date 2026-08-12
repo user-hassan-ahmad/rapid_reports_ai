@@ -61,8 +61,14 @@ and impression-worthiness are yours to decide. Inclusion is not.
 """
 
 CELLS = [
-    {"id": "enc_a",  "integrity": True, "floor": False, "label": "analyser directives"},
-    {"id": "enc_ag", "integrity": True, "floor": True,  "label": "analyser directives + generator floor"},
+    {"id": "enc_a",   "integrity": True, "floor": False, "defeasibility": "",
+     "label": "analyser directives"},
+    {"id": "enc_ag",  "integrity": True, "floor": True,  "defeasibility": "",
+     "label": "analyser directives + generator floor"},
+    # L-19: the same semantics as the prose clause, restated as a countable
+    # pairing. The generator floor is off - enc_a showed it is not needed.
+    {"id": "enc_cnt", "integrity": True, "floor": False, "defeasibility": "countable",
+     "label": "analyser directives + countable defeasibility"},
 ]
 
 
@@ -91,7 +97,7 @@ from rapid_reports_ai.quick_report_hardening import (  # noqa: E402
 )
 from rapid_reports_ai.template_manager import TemplateManager  # noqa: E402
 
-from . import gate, judge, report as report_mod  # noqa: E402
+from . import compliance, gate, judge, report as report_mod  # noqa: E402
 
 _CAPTURED: list[dict] = []
 _STATE: dict[str, Any] = {"stage": "?", "floor": False}
@@ -147,6 +153,7 @@ async def run_one(case: dict, cell: dict, tm: TemplateManager) -> dict[str, Any]
     sheet_result = await generate_ephemeral_skill_sheet(
         scan_type=case["scan_type"], clinical_history=case["clinical_history"],
         api_key="", model_override=MODEL, integrity=cell["integrity"],
+        defeasibility=cell.get("defeasibility", ""),
     )
     sheet = sheet_result["skill_sheet"]
     a = _biggest("analyser")
@@ -178,6 +185,8 @@ async def run_one(case: dict, cell: dict, tm: TemplateManager) -> dict[str, Any]
     return {
         "cell": cell["id"], "cell_label": cell["label"], "case": case["name"],
         "integrity": cell["integrity"], "floor": cell["floor"],
+        "defeasibility": cell.get("defeasibility", ""),
+        "pairing": compliance.defeasibility_pairing(sheet),
         "sheet_chars": len(sheet), "report_chars": len(report_text),
         "analyser_latency_ms": sheet_result["latency_ms"], "generator_latency_ms": gen_ms,
         "analyser_usage": a, "generator_usage": g,

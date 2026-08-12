@@ -383,13 +383,15 @@ def test_integrity_block_is_off_by_default_and_production_unchanged():
     assert qra.get_analyser_prompt("qwen/qwen3.6-27b") == qra.ANALYSER_SYSTEM_PROMPT_GLM
 
 
-def test_integrity_block_appends_all_three_directives():
+def test_integrity_block_carries_the_two_directives_that_worked():
+    """Defeasibility moved out of this block (L-18: prose form complies ~40%);
+    it is now a separate, independently-testable mode."""
     p = qra.get_analyser_prompt("qwen/qwen3.6-27b", integrity=True)
     assert p.startswith(qra.ANALYSER_SYSTEM_PROMPT_GLM)
     tail = p[len(qra.ANALYSER_SYSTEM_PROMPT_GLM):]
     assert "exhaustive" in tail                 # sweep enumeration
     assert "general, not case-keyed" in tail    # transferable suppression rules
-    assert "defeasib" in tail                   # the normal-fill qualifier
+    assert "SUPPRESS IF" not in tail            # defeasibility is opt-in separately
 
 
 def test_integrity_and_budget_compose():
@@ -397,3 +399,43 @@ def test_integrity_and_budget_compose():
     assert "Cover exactly 3 findings." in p
     assert "defeasib" in p
     assert "{{BUDGET_DIRECTIVE}}" not in p
+
+
+# ── Defeasibility pairing counter (ledger L-19) ─────────────────────────────
+
+PAIRED_SHEET = """## Structural Pattern
+- **Canonical default-normal lines:**
+  - **Mesenteric vasculature:** "The mesenteric vasculature is patent." — SUPPRESS IF: dictated vascular occlusion or thrombus
+  - **Bowel:** "The bowel wall is of normal thickness." — SUPPRESS IF: dictated wall thickening or pneumatosis
+- **Out-of-scope suppressed:** none
+"""
+
+UNPAIRED_SHEET = """## Structural Pattern
+- **Canonical default-normal lines:**
+  - **Mesenteric vasculature:** "The mesenteric vasculature is patent."
+  - **Bowel:** "The bowel wall is of normal thickness."
+- **Out-of-scope suppressed:** none
+"""
+
+
+def test_defeasibility_pairing_detects_a_fully_paired_sheet():
+    r = C.defeasibility_pairing(PAIRED_SHEET)
+    assert r == {"canonical_lines": 2, "suppress_conditions": 2, "paired": True}
+
+
+def test_defeasibility_pairing_detects_an_unpaired_sheet():
+    r = C.defeasibility_pairing(UNPAIRED_SHEET)
+    assert r["canonical_lines"] == 2 and r["suppress_conditions"] == 0
+    assert r["paired"] is False
+
+
+def test_defeasibility_modes_are_distinct_and_validated():
+    countable = qra.get_analyser_prompt("qwen/qwen3.6-27b", defeasibility="countable")
+    prose = qra.get_analyser_prompt("qwen/qwen3.6-27b", defeasibility="prose")
+    assert "SUPPRESS IF" in countable and "SUPPRESS IF" not in prose
+    try:
+        qra.get_analyser_prompt("qwen/qwen3.6-27b", defeasibility="nonsense")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError on an unknown defeasibility mode")

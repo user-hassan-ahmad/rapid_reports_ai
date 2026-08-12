@@ -82,3 +82,32 @@ def check(sheet: str, tier: dict) -> dict[str, dict]:
         else:
             out[field] = {"want": want, "got": got[field], "ok": got[field] == want}
     return out
+
+
+# ── Defeasibility pairing (ledger L-19) ─────────────────────────────────────
+# The prose form of this requirement complies at ~40% even though the base
+# analyser prompt already states it twice. The countable form demands one
+# `SUPPRESS IF:` clause per canonical default-normal line, which is checkable.
+
+_CANONICAL_BLOCK = re.compile(
+    r"^-\s+\*\*Canonical default-normal lines:\*\*(.*?)(?=^-\s+\*\*|^##|\Z)", re.M | re.S
+)
+_CANONICAL_ENTRY = re.compile(r"^\s+-\s+\*\*?[^:*]+\*?\*?:", re.M)
+_SUPPRESS_IF = re.compile(r"SUPPRESS IF\s*:", re.I)
+
+
+def defeasibility_pairing(sheet: str) -> dict:
+    """Count canonical default-normal lines against paired suppression conditions.
+
+    `paired` is True only when every canonical line carries its own condition —
+    a shared or blanket condition does not satisfy the requirement.
+    """
+    m = _CANONICAL_BLOCK.search(sheet)
+    block = m.group(1) if m else ""
+    lines = len(_CANONICAL_ENTRY.findall(block))
+    supp = len(_SUPPRESS_IF.findall(block))
+    return {
+        "canonical_lines": lines,
+        "suppress_conditions": supp,
+        "paired": lines > 0 and supp >= lines,
+    }
