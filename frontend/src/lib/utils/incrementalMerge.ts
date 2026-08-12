@@ -69,3 +69,17 @@ export function mergeIncremental(
 		boundary: editedCommitted.length + separator.length
 	};
 }
+
+/**
+ * Separator to place before a raw is_final group appended to the live document
+ * during optimistic rendering (Phase 2b.3). Mirrors mergeIncremental's boundary
+ * rule so the faded raw reads the same way the polished text will:
+ *   - empty doc                                  -> no separator
+ *   - active tail empty, committed text present  -> newline (fresh statement)
+ *   - active tail already has content            -> space (continuing utterance)
+ */
+export function rawInsertSeparator(docLength: number, committedBoundary: number): string {
+	if (docLength === 0) return '';
+	if (docLength === committedBoundary) return '\n';
+	return ' ';
+}

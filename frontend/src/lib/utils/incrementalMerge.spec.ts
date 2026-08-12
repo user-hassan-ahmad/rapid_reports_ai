@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeIncremental } from './incrementalMerge';
+import { mergeIncremental, rawInsertSeparator } from './incrementalMerge';
 
 describe('mergeIncremental', () => {
 	it('separates a frozen finding from a new active statement with a newline (regression: lobe.The spleen)', () => {
@@ -59,5 +59,24 @@ describe('mergeIncremental', () => {
 		const { content, boundary } = mergeIncremental(committed, active, []);
 		// everything after the boundary is the pure, mutable active tail
 		expect(content.slice(boundary)).toBe(active);
+	});
+});
+
+describe('rawInsertSeparator', () => {
+	it('inserts no separator for the very first words (empty doc)', () => {
+		expect(rawInsertSeparator(0, 0)).toBe('');
+	});
+
+	it('inserts a newline when starting a fresh statement after committed text', () => {
+		// active tail empty (docLength === committedBoundary), committed present
+		expect(rawInsertSeparator(60, 60)).toBe('\n');
+	});
+
+	it('inserts a space when continuing the current utterance', () => {
+		expect(rawInsertSeparator(75, 60)).toBe(' ');
+	});
+
+	it('inserts a space for a continuing first utterance with no committed text', () => {
+		expect(rawInsertSeparator(20, 0)).toBe(' ');
 	});
 });
