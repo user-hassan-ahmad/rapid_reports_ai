@@ -78,22 +78,21 @@ statement. Do not negate, repeat or qualify the positive finding's descriptor.
 """
 
 CELLS = [
-    {"id": "enc_a",   "integrity": True, "floor": False, "defeasibility": "",
-     "label": "analyser directives"},
-    {"id": "enc_ag",  "integrity": True, "floor": True,  "defeasibility": "",
-     "label": "analyser directives + generator floor"},
-    # L-19: the same semantics as the prose clause, restated as a countable
-    # pairing. The generator floor is off - enc_a showed it is not needed.
-    {"id": "enc_cnt", "integrity": True, "floor": False, "defeasibility": "countable",
-     "label": "analyser directives + countable defeasibility"},
-    # L-21: mandatory negatives re-scoped to the remainder when their class is
-    # implicated by a dictated positive. The operation the radiologist named.
-    {"id": "enc_rsc", "integrity": True, "floor": False, "defeasibility": "countable",
-     "negatives": "rescope", "label": "+ negative rescoping (sheet only)"},
-    {"id": "enc_rscg", "integrity": True, "floor": False, "defeasibility": "countable",
-     "negatives": "rescope", "substitution": True,
-     "label": "+ negative rescoping + generator substitution rule"},
+    # Ablation ladder. Each cell adds exactly one layer, so the broad run can
+    # say which layers earn their place rather than shipping all of them.
+    #   sweep      drops 6 -> 0 across 5 cases          (proven)
+    #   general    compliance 1/5 -> 2/6, no effect     (measured ineffective)
+    #   defeasible 100% compliance, rate 50% = baseline (no measured benefit)
+    #   rescope    rate 50% -> 25%                      (targets the real failure)
+    #   +generator substitution rule                    (fixes an observed mechanism)
+    {"id": "abl_sweep", "directives": ("sweep",), "substitution": False,
+     "label": "sweep only"},
+    {"id": "abl_min", "directives": ("sweep", "rescope"), "substitution": True,
+     "label": "sweep + rescope + generator rule (minimal stack)"},
+    {"id": "abl_full", "directives": ("sweep", "general", "defeasible", "rescope"),
+     "substitution": True, "label": "full four-layer stack"},
 ]
+
 
 
 def _load_dotenv() -> None:
@@ -173,19 +172,42 @@ def _biggest(stage: str) -> dict:
     return max(rows, key=lambda c: c["output_tokens"]) if rows else {}
 
 
+async def _with_backoff(factory, *, what: str, attempts: int = 4):
+    """Retry on Groq 429s.
+
+    The raised generator cap (16,384) is *reserved* against the org's 32,000
+    OTPM allowance on every request, so roughly two generations per minute fit
+    in the budget. Sweeps hit this constantly; production single-user does not.
+    """
+    last = None
+    for i in range(attempts):
+        try:
+            return await factory()
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            if "429" not in str(exc) or i == attempts - 1:
+                raise
+            wait = 25.0 * (i + 1)
+            print(f"    429 on {what}; backing off {wait:.0f}s")
+            await asyncio.sleep(wait)
+    raise last
+
+
 async def run_one(case: dict, cell: dict, tm: TemplateManager) -> dict[str, Any]:
     _CAPTURED.clear()
-    _STATE["floor"] = cell["floor"]
+    _STATE["floor"] = cell.get("floor", False)
     _STATE["substitution"] = cell.get("substitution", False)
     label = f"{cell['id']}/{case['name']}"
 
     _STATE["stage"] = "analyser"
     t0 = time.time()
-    sheet_result = await generate_ephemeral_skill_sheet(
-        scan_type=case["scan_type"], clinical_history=case["clinical_history"],
-        api_key="", model_override=MODEL, integrity=cell["integrity"],
-        defeasibility=cell.get("defeasibility", ""),
-        negatives=cell.get("negatives", ""),
+    sheet_result = await _with_backoff(
+        lambda: generate_ephemeral_skill_sheet(
+            scan_type=case["scan_type"], clinical_history=case["clinical_history"],
+            api_key="", model_override=MODEL,
+            directives=tuple(cell.get("directives", ())),
+        ),
+        what=f"{label} analyser",
     )
     sheet = sheet_result["skill_sheet"]
     a = _biggest("analyser")
@@ -195,7 +217,7 @@ async def run_one(case: dict, cell: dict, tm: TemplateManager) -> dict[str, Any]
     _STATE["stage"] = "generator"
     g0 = time.time()
     try:
-        res = await tm.generate_report_from_config(
+        res = await _with_backoff(lambda: tm.generate_report_from_config(
             template_config={
                 "generation_mode": "skill_sheet_guided",
                 "skill_sheet": QUICK_REPORT_HARDENING_PREAMBLE + sheet,
@@ -204,7 +226,7 @@ async def run_one(case: dict, cell: dict, tm: TemplateManager) -> dict[str, Any]
             user_inputs={"FINDINGS": case["findings"],
                          "CLINICAL_HISTORY": case["clinical_history"]},
             model_override=MODEL,
-        )
+        ), what=f"{label} generator")
         report_text = res.get("report_content", "") or ""
         err = None
     except Exception as exc:  # noqa: BLE001
@@ -216,8 +238,8 @@ async def run_one(case: dict, cell: dict, tm: TemplateManager) -> dict[str, Any]
 
     return {
         "cell": cell["id"], "cell_label": cell["label"], "case": case["name"],
-        "integrity": cell["integrity"], "floor": cell["floor"],
-        "defeasibility": cell.get("defeasibility", ""),
+        "directives": list(cell.get("directives", ())),
+        "substitution": cell.get("substitution", False),
         "pairing": compliance.defeasibility_pairing(sheet),
         "neg_pairing": compliance.negatives_rescope_pairing(sheet),
         "sheet_chars": len(sheet), "report_chars": len(report_text),
@@ -236,6 +258,10 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--cell", action="append", default=None)
     p.add_argument("--case", action="append", default=None)
     p.add_argument("--no-judge", action="store_true")
+    p.add_argument("--cases-file", default=str(CASES_PATH),
+                   help="Case corpus. Default: analyser_suite.json (5 CT cases). "
+                        "Use test_cases/broad_suite.json for the 17-case "
+                        "multi-modality corpus.")
     p.add_argument("--repeat", type=int, default=1,
                    help="Draws per case. >1 estimates a rate for stochastic failures.")
     p.add_argument("--output-dir", default=None)
@@ -245,7 +271,7 @@ def _parse_args() -> argparse.Namespace:
 async def main() -> int:
     args = _parse_args()
     cells = [c for c in CELLS if not args.cell or c["id"] in set(args.cell)]
-    cases = json.loads(CASES_PATH.read_text())
+    cases = json.loads(Path(args.cases_file).read_text())
     if args.case:
         cases = [c for c in cases if c["name"] in set(args.case)]
 

@@ -378,24 +378,25 @@ def test_gate_still_flags_a_genuine_two_sentence_contradiction():
 
 # ── Sheet integrity block (ledger L-17 encoding experiment) ──────────────────
 
-def test_integrity_block_is_off_by_default_and_production_unchanged():
+def test_directives_are_off_by_default_and_production_unchanged():
     assert qra.get_analyser_prompt("zai-glm-4.7") == qra.ANALYSER_SYSTEM_PROMPT_GLM
     assert qra.get_analyser_prompt("qwen/qwen3.6-27b") == qra.ANALYSER_SYSTEM_PROMPT_GLM
 
 
-def test_integrity_block_carries_the_two_directives_that_worked():
-    """Defeasibility moved out of this block (L-18: prose form complies ~40%);
-    it is now a separate, independently-testable mode."""
-    p = qra.get_analyser_prompt("qwen/qwen3.6-27b", integrity=True)
+def test_sweep_directive_is_isolated_from_the_others():
+    """Every directive is independently switchable so the ablation can measure
+    each one. 1b ('general') measured ineffective; 2 ('defeasible') complies
+    but bought nothing - both must be droppable without touching the sweep."""
+    p = qra.get_analyser_prompt("qwen/qwen3.6-27b", directives=("sweep",))
     assert p.startswith(qra.ANALYSER_SYSTEM_PROMPT_GLM)
     tail = p[len(qra.ANALYSER_SYSTEM_PROMPT_GLM):]
     assert "exhaustive" in tail                 # sweep enumeration
-    assert "general, not case-keyed" in tail    # transferable suppression rules
     assert "SUPPRESS IF" not in tail            # defeasibility is opt-in separately
+    assert "case-keyed" not in tail             # 1b measured ineffective, now separate
 
 
-def test_integrity_and_budget_compose():
-    p = qra.get_analyser_prompt("qwen/qwen3.6-27b", "Cover exactly 3 findings.", integrity=True)
+def test_directives_and_budget_compose():
+    p = qra.get_analyser_prompt("qwen/qwen3.6-27b", "Cover exactly 3 findings.", directives=("sweep",))
     assert "Cover exactly 3 findings." in p
     assert "defeasib" in p
     assert "{{BUDGET_DIRECTIVE}}" not in p
@@ -430,11 +431,11 @@ def test_defeasibility_pairing_detects_an_unpaired_sheet():
 
 
 def test_defeasibility_modes_are_distinct_and_validated():
-    countable = qra.get_analyser_prompt("qwen/qwen3.6-27b", defeasibility="countable")
-    prose = qra.get_analyser_prompt("qwen/qwen3.6-27b", defeasibility="prose")
+    countable = qra.get_analyser_prompt("qwen/qwen3.6-27b", directives=("defeasible",))
+    prose = qra.get_analyser_prompt("qwen/qwen3.6-27b", directives=("defeasible_prose",))
     assert "SUPPRESS IF" in countable and "SUPPRESS IF" not in prose
     try:
-        qra.get_analyser_prompt("qwen/qwen3.6-27b", defeasibility="nonsense")
+        qra.get_analyser_prompt("qwen/qwen3.6-27b", directives=("nonsense",))
     except ValueError:
         pass
     else:

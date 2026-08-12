@@ -653,7 +653,7 @@ complete, well-formed sheet at every budget — cover less, never stop early.
 #
 # Stated structurally and without single-domain clinical examples, so the block
 # applies across scan types (see feedback_case_agnostic_prompts).
-SHEET_INTEGRITY_BLOCK = """
+DIRECTIVE_SWEEP = """
 
 ---
 
@@ -666,7 +666,13 @@ so that a dictated finding belonging to no earlier station still has a defined p
 Where a section excludes a class of finding from the primary paragraph, the sweep must name the
 station where that class belongs instead — an exclusion without a destination causes the finding
 to be lost.
+"""
 
+# MEASURED INEFFECTIVE (2026-08-12). Moving suppression rules from case-keyed to
+# general phrasing shifted compliance 1/5 -> 2/6 against the unencoded baseline,
+# i.e. noise, and produced no outcome difference. Prose directives comply at
+# ~40% (L-18); this is one. Retained only so the ablation can re-test it.
+DIRECTIVE_GENERAL_RULES = """
 **Suppression rules must be general, not case-keyed.** Write each conditional rule so it would
 transfer unchanged to another case of this scan type. A rule that names this case's particular
 findings restates the findings rather than stating a rule, and gives the generator nothing to
@@ -739,12 +745,19 @@ Conditional Suppression Rules stating that a mandatory negative whose class is i
 dictated positive is replaced by its remainder form.
 """
 
+DIRECTIVES = {
+    "sweep": lambda: DIRECTIVE_SWEEP,
+    "general": lambda: DIRECTIVE_GENERAL_RULES,
+    "defeasible": lambda: DEFEASIBILITY_COUNTABLE,
+    "defeasible_prose": lambda: DEFEASIBILITY_PROSE,
+    "rescope": lambda: NEGATIVES_RESCOPE,
+}
+
+
 def get_analyser_prompt(
     model_name: str,
     budget_directive: str = "",
-    integrity: bool = False,
-    defeasibility: str = "",
-    negatives: str = "",
+    directives: tuple[str, ...] = (),
 ) -> str:
     """Dispatch the analyser system prompt by model identifier.
 
@@ -762,18 +775,12 @@ def get_analyser_prompt(
     prompt = ANALYSER_SYSTEM_PROMPT_GLM
     if budget_directive.strip():
         prompt += BUDGET_OVERRIDE_BLOCK.replace("{{BUDGET_DIRECTIVE}}", budget_directive)
-    if integrity:
-        prompt += SHEET_INTEGRITY_BLOCK
-    if defeasibility == "prose":
-        prompt += DEFEASIBILITY_PROSE
-    elif defeasibility == "countable":
-        prompt += DEFEASIBILITY_COUNTABLE
-    elif defeasibility:
-        raise ValueError(f"unknown defeasibility mode: {defeasibility!r}")
-    if negatives == "rescope":
-        prompt += NEGATIVES_RESCOPE
-    elif negatives:
-        raise ValueError(f"unknown negatives mode: {negatives!r}")
+    for name in directives:
+        if name not in DIRECTIVES:
+            raise ValueError(
+                f"unknown directive {name!r}; known: {sorted(DIRECTIVES)}"
+            )
+        prompt += DIRECTIVES[name]()
     return prompt
 
 
@@ -806,9 +813,7 @@ async def generate_ephemeral_skill_sheet(
     api_key: str,
     model_override: str | None = None,
     budget_directive: str = "",
-    integrity: bool = False,
-    defeasibility: str = "",
-    negatives: str = "",
+    directives: tuple[str, ...] = (),
 ) -> dict:
     """
     Run the analyser to produce a bespoke skill sheet for one case.
@@ -882,7 +887,7 @@ async def generate_ephemeral_skill_sheet(
         call_api_key = api_key
 
     system_prompt = get_analyser_prompt(
-        model_name, budget_directive, integrity, defeasibility, negatives
+        model_name, budget_directive, directives
     )
 
     result = await _run_agent_with_model(
