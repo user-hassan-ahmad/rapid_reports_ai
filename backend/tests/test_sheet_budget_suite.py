@@ -171,3 +171,65 @@ def test_counts_negatives_emitted_as_a_sublist():
 
 def test_counts_negatives_emitted_inline():
     assert C.count_sheet(FIXTURE_SHEET)["mandatory_negatives"] == 3
+
+
+# ── Task 4: structural gate ──────────────────────────────────────────────────
+
+from rapid_reports_ai.scripts.sheet_budget import gate as G
+
+CONTRADICTORY = """COMPARISON:
+None.
+
+TECHNIQUE:
+CT thorax with contrast.
+
+FINDINGS:
+A 22 mm spiculated nodule is present in the right upper lobe. Right hilar
+lymphadenopathy is present, with the largest node measuring 14 mm in short axis.
+No mediastinal or hilar lymphadenopathy. No suspicious pulmonary nodule identified.
+
+IMPRESSION:
+Right upper lobe nodule. Urgent referral recommended.
+"""
+
+CLEAN = """COMPARISON:
+None.
+
+TECHNIQUE:
+CT thorax with contrast.
+
+FINDINGS:
+A 22 mm spiculated nodule is present in the right upper lobe. Right hilar
+lymphadenopathy is present, with the largest node measuring 14 mm in short axis.
+No pleural effusion. No bone destruction.
+
+IMPRESSION:
+Right upper lobe nodule. Urgent referral recommended.
+"""
+
+
+def test_gate_flags_a_self_contradicting_report():
+    result = G.run_gate(CONTRADICTORY)
+    assert result["passed"] is False
+    assert "self_contradiction" in result["failures"]
+
+
+def test_gate_passes_a_clean_report():
+    result = G.run_gate(CLEAN)
+    assert result["passed"] is True
+    assert result["failures"] == []
+
+
+def test_gate_flags_a_missing_section():
+    result = G.run_gate(CLEAN.replace("IMPRESSION:", "SUMMARY:"))
+    assert "missing_section" in result["failures"]
+
+
+def test_gate_flags_thinking_leak():
+    result = G.run_gate(CLEAN + "\n[Done] Output Generation.")
+    assert "thinking_leak" in result["failures"]
+
+
+def test_gate_flags_truncation():
+    result = G.run_gate(CLEAN.rstrip(".\n") + " and the patient")
+    assert "truncation" in result["failures"]
