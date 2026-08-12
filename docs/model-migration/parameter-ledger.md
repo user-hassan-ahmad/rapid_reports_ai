@@ -86,6 +86,30 @@ Omitting the dictation scored a known-good report **3/5 on `dictation_fidelity` 
 → Any ad-hoc judge call must go through `sheet_budget.judge.format_inputs`. A missing dictation
 depresses two of four dimensions uniformly while looking entirely plausible.
 
+### L-07 · `reasoning_effort: none` → latency
+**Verdict: enormous.** Confidence: high (probe + smoke, quality pending).
+`extra_body: {"reasoning_effort": "none"}` **is accepted** on Groq for this model —
+`GroqModelSettings` has no such field, so it must go through `extra_body`, and it works.
+
+| | reasoning default | reasoning off |
+|---|---|---|
+| Isolated probe | 750 tok / 3.0s | **38 tok / 0.2s** |
+| Analyser (real case) | ~17–24s | **7.0s** |
+| Generator (real case) | ~13–17s, ~5,000 tok | **1.6s, 291 tok** |
+
+The generator drops from ~14s to **1.6s** — and the sheet is still full-length (12,239 chars) and
+the report normal-length (1,245 chars), so this is not truncation. `finish_reason == "stop"` on
+both calls.
+→ At 115 tok/s self-hosted, 291 output tokens is **~2.5s**. This lever alone appears to solve the
+latency problem that L-02 could not touch. **Quality is the open question**, not speed.
+
+### L-08 · `finish_reason` is reachable
+**Verdict: available.** Confidence: high.
+`result.all_messages()[-1].finish_reason` on pydantic-ai's `ModelResponse` (also
+`provider_details["finish_reason"]`). The sheet-budget runner did not capture it; the reasoning
+matrix does.
+→ This is the L-05 truncation diagnostic. `"length"` confirms a cap; anything else rules it out.
+
 ---
 
 ## Open questions, in priority order
