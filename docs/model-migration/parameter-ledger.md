@@ -548,6 +548,58 @@ the imitation vector is the whole exemplar.
 → Remit wording taken from the radiologist: clarify diagnostic uncertainty, guide probabilistic
 evaluation from the imaging, direct further radiological investigation for doubtful elements.
 
+### L-25 · Hosting — Groq is 5x faster, and cannot follow the vendor's own spec
+**Verdict: speed and durability are now a binary choice.** Confidence: high.
+
+Measured on identical prompts, generator call only:
+
+| | analyser | **generator (spinner)** | end-to-end |
+|---|---|---|---|
+| Groq | ~20s | **13.1s** | ~33s |
+| OpenRouter / CoreWeave (~90 tok/s) | 83.7s | **65.9s** | ~150s |
+
+Report length was unchanged (1,864 vs 1,881 chars) — CoreWeave is slower, not worse. The linear
+rescale used earlier is validated: 65.9s at 90 tok/s predicts 51.6s at 115, within 3% of the
+earlier projection. At the 100–130 tok/s self-hosted band the spinner is **46–60s** against GLM's
+9.2s today.
+
+**Two OpenRouter traps.** Default routing chose Phala at **15 tok/s** — a 513s analyser call, 30x
+slower than Groq. And provider choice changes *output*, not just speed: Phala produced a 33,703-char
+sheet against CoreWeave's 13,337 on identical input. Pin the provider; never accept the default.
+
+**Groq cannot follow Qwen's published recommendations** (model card, `Qwen/Qwen3.6-27B`):
+
+| parameter | Qwen recommends | we send | |
+|---|---|---|---|
+| `temperature` | 0.6 (thinking, precise) | **0.8** | out of spec on Qwen *and* Groq's own 0.5–0.7 |
+| `top_k` | **20** | **never set** | **no such field on Groq; API does not expose it** |
+| output length | **32,768** | 16,384 | Groq's hard ceiling is half the recommendation |
+
+→ Groq buys 5x speed at the cost of three vendor-recommended settings, two of them structurally
+unreachable there.
+
+### L-26 · Generator reasoning cannot be bounded
+**Verdict: no lever works.** Confidence: high (2 cases, CoreWeave).
+
+| lever | TAVI reasoning | ct_tap reasoning |
+|---|---|---|
+| baseline | 8,313 | 6,153 |
+| `reasoning.effort: low` | 5,080 (−39%) | 5,543 (−10%) |
+| `reasoning.max_tokens: 2000` | **5,943** | **7,108** |
+| scaffolds removed (−89% of user prompt) | 7,142 (−14%) | **7,323 (+19%)** |
+
+**The reasoning budget is silently ignored** — 2,000 requested, 5,943 and 7,108 delivered, the
+second above baseline. OpenRouter accepts the parameter and the provider does not honour it.
+
+**Removing `PRE_WRITING_ANALYSIS` + `VERIFICATION_CHECKLIST` does not reduce reasoning**, and
+raised it 19% on the complex case while shortening the report 20%. The scaffolds do not *cause*
+the thinking, they *organise* it; without them the model derives its own approach, which costs
+more and drops content the checklist enforces. All 8 runs passed the gate.
+
+→ Best available is `effort: low`, at −10% to −39%, inconsistent, still 4–6x GLM's current 9.2s.
+→ Reasoning ON is what the radiologist wants and its cost **cannot be bounded away**. The
+deployment choice is Groq's speed or self-hosted durability, not both.
+
 ---
 
 ## Open questions, in priority order
