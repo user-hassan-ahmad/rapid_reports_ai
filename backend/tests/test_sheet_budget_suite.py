@@ -514,3 +514,34 @@ def test_recommendation_scope_counter_passes_a_tagged_sheet():
 """
     r = C.recommendation_scope(good)
     assert r["tagged_entries"] == 3 and r["out_of_remit"] == [] and r["clean"] is True
+
+
+def test_gate_flags_mural_gas_against_denied_pneumatosis():
+    """Mural gas in a bowel wall is pneumatosis. ~55% of ct_tap generations hit
+    this and the gate missed every one until the pair was added."""
+    report = """TECHNIQUE:
+CT abdomen.
+
+FINDINGS:
+The duodenum (D1/D2) demonstrates wall thickening and mural gas with adjacent fat stranding.
+No pneumatosis intestinalis or portal venous gas to suggest advanced ischaemia.
+
+IMPRESSION:
+Duodenal injury.
+"""
+    r = G.run_gate(report)
+    assert "self_contradiction" in r["failures"]
+
+
+def test_gate_does_not_flag_a_lone_pneumatosis_negative():
+    """A conventional negative with no dictated positive is correct practice."""
+    report = """TECHNIQUE:
+CT abdomen.
+
+FINDINGS:
+The bowel is of normal calibre. No pneumatosis intestinalis or portal venous gas.
+
+IMPRESSION:
+Normal study.
+"""
+    assert "self_contradiction" not in G.run_gate(report)["failures"]

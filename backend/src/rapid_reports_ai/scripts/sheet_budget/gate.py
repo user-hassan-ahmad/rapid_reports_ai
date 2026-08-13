@@ -32,6 +32,13 @@ CONTRADICTION_PAIRS = (
      r"[Nn]o (?:focal )?consolidation"),
     (r"free (?:intraperitoneal )?(?:fluid|gas) is (?:present|noted|identified)",
      r"[Nn]o free (?:intraperitoneal )?(?:fluid|gas)"),
+    # Mural gas in a bowel wall IS pneumatosis intestinalis - different words,
+    # same finding. Measured at ~55% of generations on ct_tap (11/20 Groq draws)
+    # and missed entirely until 2026-08-13 because no pair covered it. The
+    # negated-clause guard keeps "No pneumatosis intestinalis" from counting as
+    # its own positive.
+    (r"mural gas|intramural gas|pneumatosis intestinalis",
+     r"[Nn]o pneumatosis"),
 )
 
 

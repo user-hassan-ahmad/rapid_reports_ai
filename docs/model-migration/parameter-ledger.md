@@ -600,6 +600,49 @@ more and drops content the checklist enforces. All 8 runs passed the gate.
 → Reasoning ON is what the radiologist wants and its cost **cannot be bounded away**. The
 deployment choice is Groq's speed or self-hosted durability, not both.
 
+### L-27 · Temperature and message-role — neither moves the contradiction
+**Verdict: both are noise. The defect is ~55% and unfixed.** Confidence: high on the rate,
+high on the null result.
+
+2x2 on Groq, generator only, sheet held fixed, 4 draws per cell:
+
+| cell | temperature | message roles | contradiction |
+|---|---|---|---|
+| A *(current)* | 0.8 | system + user | 3/4 |
+| B | 0.6 | system + user | 2/4 |
+| C | 0.8 | user-only | 1/4 |
+| D | 0.6 | user-only | 3/4 |
+
+Pooled by lever: temperature 0.8 → 4/8, temperature 0.6 → **5/8** (worse). System+user → 5/8,
+user-only → 4/8. At n=4 against a true rate near 55%, every cell is within binomial noise —
+nothing here is separable.
+
+→ **Qwen's temperature recommendation does not help**, despite 0.8 sitting outside both Qwen's
+0.6 and Groq's 0.5–0.7 guidance. Keep 0.8 or move to 0.6 on principle, but not for this.
+→ **Groq's "avoid system prompts" guidance does not help** either, at least on this failure.
+→ **Pooled Groq rate on ct_tap: 11 contradictions in 20 draws — ~55%.** Earlier text claiming
+Groq showed 0/2 while CoreWeave showed 62% was undersampling; the provider-difference inference
+drawn from it does not hold. Phala's 2.5x sheet-length difference stands; the failure-rate
+difference does not.
+
+### L-28 · The structural gate never covered this contradiction
+**Verdict: detector gap, now closed.** Confidence: high.
+Every one of the 16 draws above reported `gate=pass` while the ad-hoc analysis regex flagged 9.
+`gate.py` carried six contradiction pairs — lymphadenopathy, nodule, haemorrhage, effusion,
+consolidation, free fluid/gas — and **none for pneumatosis**. The one failure mode this programme
+spent the most effort on was invisible to the production-grade detector for the entire session;
+it was only ever caught by throwaway regexes written inline for analysis.
+
+Pair added, with the negated-clause guard preventing "No pneumatosis intestinalis" from counting
+as its own positive. Re-validated across **206 reports** collected this session: 20 flagged,
+concentrated on `ct_tap` (12) as expected.
+
+→ The general lesson is worse than the specific bug: a hand-written pair list only finds modes
+someone already thought of, and its silence reads as safety. Any contradiction class nobody
+encoded has been invisible in **every** rate reported in this ledger.
+→ The semantic screen (L-?, `contradiction.py`) exists precisely to cover unencoded modes and
+should run alongside the gate, not instead of it.
+
 ---
 
 ## Open questions, in priority order
