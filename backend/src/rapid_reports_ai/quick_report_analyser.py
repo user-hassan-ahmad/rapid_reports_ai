@@ -54,10 +54,10 @@ Run all 8 phases internally. Return ONLY the compiled skill sheet markdown, star
 # Per-model system prompts
 # ─────────────────────────────────────────────────────────────────────────────
 # Two active prompts are dispatched by get_analyser_prompt():
-#   - ANALYSER_SYSTEM_PROMPT_SONNET → Anthropic Claude models (Haiku, Sonnet).
+#   - ANALYSER_SYSTEM_PROMPT_ANTHROPIC → Anthropic Claude models (Haiku, Sonnet).
 #     Principle-led, trusts compositional judgement to apply architectural
 #     discipline without extensive counter-example scaffolding.
-#   - ANALYSER_SYSTEM_PROMPT_GLM → Cerebras GLM. Reverse-engineered from
+#   - ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS → Cerebras GLM. Reverse-engineered from
 #     Sonnet's structural patterns, with explicit prescriptions (paired
 #     discriminators, severity-graded exemplars, branched aetiology tier)
 #     that GLM does not reliably produce from first principles.
@@ -66,7 +66,7 @@ Run all 8 phases internally. Return ONLY the compiled skill sheet markdown, star
 # clause discipline established as load-bearing across the session's
 # diagnostic cycles.
 
-ANALYSER_SYSTEM_PROMPT_SONNET = """You are a senior consultant radiologist preparing an ephemeral skill sheet that scaffolds a downstream generator — less capable than you — through producing a consultant-level report from this case's dictation.
+ANALYSER_SYSTEM_PROMPT_ANTHROPIC = """You are a senior consultant radiologist preparing an ephemeral skill sheet that scaffolds a downstream generator — less capable than you — through producing a consultant-level report from this case's dictation.
 
 You are preparing a junior colleague, not writing a teaching reference, a comprehensive protocol, or a quality-assurance document. The sheet's value is the case-specific reasoning it makes visible — no more. **Editorial restraint is the sheet's primary virtue.** Every section and every line in the emitted sheet earns its place by changing what the generator produces on this case. A section filled with generic content a competent generator already carries is bloat — omit it. An exemplar severity tier that isn't clinically distinct from the prior tier is bloat — cut it. A clause that would fire only on presentations vanishingly rare for this scan type is bloat — skip it. A canonical default-normal line for a secondary region that reads simply "unremarkable" is bloat — the generator already defaults to that. Default toward omission; the Output Format template's listed sections are maxima, not minima. Depth is proportional to case signal: branching aetiology earns an aetiology tier; direct clinical questions do not.
 
@@ -340,7 +340,7 @@ Quoted illustrative impressions modelling voice and cognitive shape. Each exempl
 # demonstrating must-appear propagation) — GLM does not reliably reach these
 # from first principles.
 
-ANALYSER_SYSTEM_PROMPT_GLM = """You are a senior consultant radiologist composing an ephemeral skill sheet from a scan type and clinical history. The skill sheet scaffolds a downstream generator through producing a consultant-level report from the radiologist's dictation.
+ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS = """You are a senior consultant radiologist composing an ephemeral skill sheet from a scan type and clinical history. The skill sheet scaffolds a downstream generator through producing a consultant-level report from the radiologist's dictation.
 
 You are designing HOW the report will be organised and phrased — not WHAT the clinical conclusions are. Clinical content comes from dictation at report time. Your job is to pin down the structural discipline before dictation starts.
 
@@ -805,8 +805,13 @@ def get_analyser_prompt(
 ) -> str:
     """Dispatch the analyser system prompt by model identifier.
 
-    - any model starting with "claude" → Sonnet-bespoke principle-led prompt
-    - everything else → GLM prompt
+    The branch is by model FAMILY, not by model. Anthropic models get a
+    principle-led prompt; every other family gets one built around native
+    thinking. Nothing here keys on a specific model, which is why swapping
+    GLM for Qwen needed no prompt change on this path.
+
+    - any model starting with "claude" → Anthropic prompt
+    - everything else (open-weights, native thinking) → open-weights prompt
 
     ``budget_directive`` appends a structural-budget override block used by the
     sheet-budget experiment. ``integrity`` appends the sheet-integrity block used
@@ -815,8 +820,8 @@ def get_analyser_prompt(
     models ignore both — that path is out of the experiments' scope.
     """
     if model_name.startswith("claude"):
-        return ANALYSER_SYSTEM_PROMPT_SONNET
-    prompt = ANALYSER_SYSTEM_PROMPT_GLM
+        return ANALYSER_SYSTEM_PROMPT_ANTHROPIC
+    prompt = ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS
     if budget_directive.strip():
         prompt += BUDGET_OVERRIDE_BLOCK.replace("{{BUDGET_DIRECTIVE}}", budget_directive)
     for name in directives:

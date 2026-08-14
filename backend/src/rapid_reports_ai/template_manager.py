@@ -2624,17 +2624,6 @@ Findings: {findings_input}
                 "top_p": 0.95,
                 "max_tokens": GROQ_GENERATOR_MAX_TOKENS,
             }
-        elif provider == "cerebras" and model_name == "zai-glm-4.7":
-            # GLM-4.7 is the only Cerebras model that accepts clear_thinking.
-            model_settings = {
-                "temperature": 0.8,
-                "top_p": 0.95,
-                "max_tokens": 40960,
-                "extra_body": {
-                    "disable_reasoning": False,
-                    "clear_thinking": False,
-                },
-            }
         else:
             # Other Cerebras models (Qwen-3-235B, GPT-OSS-120B).
             model_settings = {

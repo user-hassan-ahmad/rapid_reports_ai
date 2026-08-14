@@ -150,25 +150,25 @@ MODEL_CONFIG = {
     
     # Structure Validation Models
     "STRUCTURE_VALIDATOR": "gpt-oss-120b",  # Structure validation: Check for structural quality violations (Cerebras GPT-OSS-120B with medium reasoning)
-    "STRUCTURE_VALIDATOR_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for structure validation (Groq Qwen with thinking)
+    "STRUCTURE_VALIDATOR_FALLBACK": "openai/gpt-oss-120b",  # Fallback for structure validation (Groq Qwen with thinking)
     
     # Enhancement Pipeline Models
     "FINDING_EXTRACTION": "gpt-oss-120b",  # Phase 1: Finding extraction and consolidation (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "FINDING_EXTRACTION_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for finding extraction (Qwen with thinking)
+    "FINDING_EXTRACTION_FALLBACK": "openai/gpt-oss-120b",  # Fallback for finding extraction (Qwen with thinking)
     "QUERY_GENERATION": "gpt-oss-120b",  # Query generation primary (Cerebras GPT-OSS-120B with high reasoning)
-    "QUERY_GENERATION_FALLBACK": "qwen/qwen3.6-27b",  # Query generation fallback (Llama)
+    "QUERY_GENERATION_FALLBACK": "openai/gpt-oss-120b",  # Query generation fallback (Llama)
     "GUIDELINE_VALIDATOR": "gpt-oss-120b",  # Guideline compatibility validation (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "GUIDELINE_VALIDATOR_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for guideline validation (Llama)
+    "GUIDELINE_VALIDATOR_FALLBACK": "openai/gpt-oss-120b",  # Fallback for guideline validation (Llama)
     "COMPATIBILITY_FILTER": "gpt-oss-120b",  # Search result compatibility filtering (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "COMPATIBILITY_FILTER_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for compatibility filtering (Llama)
+    "COMPATIBILITY_FILTER_FALLBACK": "openai/gpt-oss-120b",  # Fallback for compatibility filtering (Llama)
     "GUIDELINE_SEARCH": "gpt-oss-120b",  # Phase 2: Guideline synthesis (primary - Cerebras GPT-OSS-120B, reliable structured output)
-    "GUIDELINE_SEARCH_FALLBACK": "qwen/qwen3.6-27b",  # Fallback (GLM cannot reliably generate tool_calls for complex schemas)
+    "GUIDELINE_SEARCH_FALLBACK": "openai/gpt-oss-120b",  # Fallback (GLM cannot reliably generate tool_calls for complex schemas)
     "COMPARISON_ANALYZER": "gpt-oss-120b",  # Interval comparison analysis (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "COMPARISON_ANALYZER_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for comparison analysis (Qwen)
+    "COMPARISON_ANALYZER_FALLBACK": "openai/gpt-oss-120b",  # Fallback for comparison analysis (Qwen)
     
     # Action Application Models
     "ACTION_APPLIER": "gpt-oss-120b",  # Apply enhancement actions to reports (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "ACTION_APPLIER_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for action application (Qwen)
+    "ACTION_APPLIER_FALLBACK": "openai/gpt-oss-120b",  # Fallback for action application (Qwen)
     
     # Linguistic Validation Models (for zai-glm-4.7 post-processing)
     "LINGUISTIC_VALIDATOR": "claude-haiku-4-5-20251001",  # Post-generation linguistic/anatomical correction.
@@ -183,15 +183,15 @@ MODEL_CONFIG = {
     
     # Canvas / IntelliDictate Models
     "CANVAS_SECTIONS": "gpt-oss-120b",  # Section generation from scan type (Cerebras)
-    "CANVAS_SECTIONS_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for section generation (Groq Llama)
+    "CANVAS_SECTIONS_FALLBACK": "openai/gpt-oss-120b",  # Fallback for section generation (Groq Llama)
     "CANVAS_SECTIONS_FROM_TEMPLATE": "gpt-oss-120b",  # Extract sections from template (Cerebras)
-    "CANVAS_SECTIONS_FROM_TEMPLATE_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for template section extraction (Groq Llama)
+    "CANVAS_SECTIONS_FROM_TEMPLATE_FALLBACK": "openai/gpt-oss-120b",  # Fallback for template section extraction (Groq Llama)
     "CANVAS_PROCESS": "gemma-4-31b",  # Transcript → scratchpad (Cerebras Gemma 4 31B; Groq qwen3-32b deprecated Aug 2026)
-    "CANVAS_PROCESS_FALLBACK": "gpt-oss-120b",  # Fallback if Gemma fails (Cerebras GPT-OSS-120B)
+    "CANVAS_PROCESS_FALLBACK": "openai/gpt-oss-120b",  # Fallback if Gemma fails (Cerebras GPT-OSS-120B)
     "CANVAS_COVERAGE": "gemma-4-31b",  # Coverage check (Cerebras Gemma 4 31B)
-    "CANVAS_COVERAGE_FALLBACK": "gpt-oss-120b",  # Fallback (Cerebras GPT-OSS-120B)
+    "CANVAS_COVERAGE_FALLBACK": "openai/gpt-oss-120b",  # Fallback (Cerebras GPT-OSS-120B)
     "CANVAS_INTELLIPROMPTS": "gemma-4-31b",  # IntelliPrompts generation (Cerebras Gemma 4 31B)
-    "CANVAS_INTELLIPROMPTS_FALLBACK": "gpt-oss-120b",  # Fallback (Cerebras GPT-OSS-120B)
+    "CANVAS_INTELLIPROMPTS_FALLBACK": "openai/gpt-oss-120b",  # Fallback (Cerebras GPT-OSS-120B)
 
     # Agentic Report Pipeline Models
     "REPORT_PLANNER": "qwen/qwen3.6-27b",        # Phase 1: planning agent (Cerebras, reasoning ON)
@@ -218,7 +218,8 @@ MODEL_CONFIG = {
     "QUICK_REPORT_ANALYZER_BEST": "claude-haiku-4-5-20251001",
 
     # Knowledge Maintenance Agent
-    "KNOWLEDGE_MAINTENANCE": "gpt-oss-120b",  # Async agent: populate knowledge_links from skill sheet
+    "KNOWLEDGE_MAINTENANCE": "gpt-oss-120b",
+    "KNOWLEDGE_MAINTENANCE_FALLBACK": "openai/gpt-oss-120b",  # Async agent: populate knowledge_links from skill sheet
 
     # Quality Scoring (admin analytics — offline batch judge)
     "QUALITY_JUDGE": "claude-sonnet-4-5-20250929",  # Report quality judge — Sonnet 4.5 calibrates ~+1.5 over Haiku on the v2.1 inputs (validated 2026-05-30 against the 28 'likely-real-failure' cohort).

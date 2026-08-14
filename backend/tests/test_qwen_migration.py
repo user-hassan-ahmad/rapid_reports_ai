@@ -40,11 +40,27 @@ KNOWN_CEREBRAS_DEBT = {
     "GUIDELINE_VALIDATOR", "COMPATIBILITY_FILTER", "GUIDELINE_SEARCH",
     "COMPARISON_ANALYZER", "ACTION_APPLIER", "CANVAS_SECTIONS",
     "CANVAS_SECTIONS_FROM_TEMPLATE", "KNOWLEDGE_MAINTENANCE",
-    "CANVAS_PROCESS_FALLBACK", "CANVAS_COVERAGE_FALLBACK",
-    "CANVAS_INTELLIPROMPTS_FALLBACK",
-    # gemma-4-31b -> no escape route identified yet.
+    # gemma-4-31b -> no like-for-like replacement identified, but each now
+    # fails over to gpt-oss-120b on OpenRouter rather than to another
+    # Cerebras model, so a tier outage degrades instead of stopping.
     "CANVAS_PROCESS", "CANVAS_COVERAGE", "CANVAS_INTELLIPROMPTS",
 }
+
+
+def test_every_cerebras_role_fails_over_off_cerebras():
+    """Whether the Developer Tier sunset removes gpt-oss and gemma is not
+    confirmed - the notice was tier-wide, not per-model. So rather than
+    switching primaries on an assumption, every Cerebras role must have a
+    fallback on a different provider. If Cerebras survives, nothing changes;
+    if it does not, each role degrades to a working path."""
+    off = []
+    for role, model in MODEL_CONFIG.items():
+        if role.endswith("_FALLBACK") or MODEL_PROVIDERS.get(model) != "cerebras":
+            continue
+        fb = MODEL_CONFIG.get(f"{role}_FALLBACK")
+        if fb is None or MODEL_PROVIDERS.get(fb) == "cerebras":
+            off.append(f"{role} -> {fb}")
+    assert not off, f"Cerebras roles with no off-provider fallback: {off}"
 
 
 def test_no_new_role_lands_on_cerebras():

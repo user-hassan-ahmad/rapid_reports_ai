@@ -13,14 +13,14 @@ from __future__ import annotations
 import pytest
 
 from rapid_reports_ai.quick_report_analyser import (
-    ANALYSER_SYSTEM_PROMPT_GLM,
-    ANALYSER_SYSTEM_PROMPT_SONNET,
+    ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS,
+    ANALYSER_SYSTEM_PROMPT_ANTHROPIC,
 )
 from rapid_reports_ai.quick_report_hardening import QUICK_REPORT_HARDENING_PREAMBLE
 
 BOTH_ANALYSER_PROMPTS = [
-    pytest.param(ANALYSER_SYSTEM_PROMPT_SONNET, id="sonnet"),
-    pytest.param(ANALYSER_SYSTEM_PROMPT_GLM, id="glm"),
+    pytest.param(ANALYSER_SYSTEM_PROMPT_ANTHROPIC, id="sonnet"),
+    pytest.param(ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS, id="glm"),
 ]
 
 

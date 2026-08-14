@@ -10,29 +10,29 @@ from rapid_reports_ai import quick_report_analyser as qra
 
 def test_production_prompts_are_byte_identical_without_a_budget():
     """Regression guard: the two production analysers must not change at all."""
-    assert qra.get_analyser_prompt("zai-glm-4.7") == qra.ANALYSER_SYSTEM_PROMPT_GLM
+    assert qra.get_analyser_prompt("zai-glm-4.7") == qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS
     assert (
         qra.get_analyser_prompt("claude-haiku-4-5-20251001")
-        == qra.ANALYSER_SYSTEM_PROMPT_SONNET
+        == qra.ANALYSER_SYSTEM_PROMPT_ANTHROPIC
     )
 
 
 def test_empty_budget_leaves_no_override_block():
     """T1 is a true control - identical to what the bake-off ran."""
-    assert qra.get_analyser_prompt("qwen/qwen3.6-27b", "") == qra.ANALYSER_SYSTEM_PROMPT_GLM
-    assert qra.get_analyser_prompt("qwen/qwen3.6-27b", "   ") == qra.ANALYSER_SYSTEM_PROMPT_GLM
+    assert qra.get_analyser_prompt("qwen/qwen3.6-27b", "") == qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS
+    assert qra.get_analyser_prompt("qwen/qwen3.6-27b", "   ") == qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS
 
 
 def test_budget_directive_is_appended_and_placeholder_is_consumed():
     prompt = qra.get_analyser_prompt("qwen/qwen3.6-27b", "Cover exactly 3 findings.")
     assert "Cover exactly 3 findings." in prompt
     assert "{{BUDGET_DIRECTIVE}}" not in prompt
-    assert prompt.startswith(qra.ANALYSER_SYSTEM_PROMPT_GLM)
+    assert prompt.startswith(qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS)
 
 
 def test_budget_block_declares_itself_an_override():
     prompt = qra.get_analyser_prompt("qwen/qwen3.6-27b", "Cover exactly 3 findings.")
-    tail = prompt[len(qra.ANALYSER_SYSTEM_PROMPT_GLM):]
+    tail = prompt[len(qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS):]
     assert "OVERRIDE" in tail.upper()
 
 
@@ -40,7 +40,7 @@ def test_anthropic_ignores_the_budget():
     """Sonnet path is out of scope for this experiment and must not change."""
     assert (
         qra.get_analyser_prompt("claude-haiku-4-5-20251001", "Cover exactly 3 findings.")
-        == qra.ANALYSER_SYSTEM_PROMPT_SONNET
+        == qra.ANALYSER_SYSTEM_PROMPT_ANTHROPIC
     )
 
 
@@ -379,8 +379,8 @@ def test_gate_still_flags_a_genuine_two_sentence_contradiction():
 # ── Sheet integrity block (ledger L-17 encoding experiment) ──────────────────
 
 def test_directives_are_off_by_default_and_production_unchanged():
-    assert qra.get_analyser_prompt("zai-glm-4.7") == qra.ANALYSER_SYSTEM_PROMPT_GLM
-    assert qra.get_analyser_prompt("qwen/qwen3.6-27b") == qra.ANALYSER_SYSTEM_PROMPT_GLM
+    assert qra.get_analyser_prompt("zai-glm-4.7") == qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS
+    assert qra.get_analyser_prompt("qwen/qwen3.6-27b") == qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS
 
 
 def test_sweep_directive_is_isolated_from_the_others():
@@ -388,8 +388,8 @@ def test_sweep_directive_is_isolated_from_the_others():
     each one. 1b ('general') measured ineffective; 2 ('defeasible') complies
     but bought nothing - both must be droppable without touching the sweep."""
     p = qra.get_analyser_prompt("qwen/qwen3.6-27b", directives=("sweep",))
-    assert p.startswith(qra.ANALYSER_SYSTEM_PROMPT_GLM)
-    tail = p[len(qra.ANALYSER_SYSTEM_PROMPT_GLM):]
+    assert p.startswith(qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS)
+    tail = p[len(qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS):]
     assert "exhaustive" in tail                 # sweep enumeration
     assert "SUPPRESS IF" not in tail            # defeasibility is opt-in separately
     assert "case-keyed" not in tail             # 1b measured ineffective, now separate
@@ -481,7 +481,7 @@ def test_screen_excuses_remainder_scoping_in_its_instructions():
 def test_both_analyser_prompts_carry_the_tag_set_at_point_of_use():
     """The prohibition previously sat ~28k chars from the field and was recalled
     but not applied. Both prompts must now state it where the field is filled."""
-    for prompt in (qra.ANALYSER_SYSTEM_PROMPT_GLM, qra.ANALYSER_SYSTEM_PROMPT_SONNET):
+    for prompt in (qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS, qra.ANALYSER_SYSTEM_PROMPT_ANTHROPIC):
         for tag in ("IMAGING", "REFERRAL", "MDT", "TISSUE", "CORRELATION"):
             assert f"`{tag}:`" in prompt
         assert "UK NHS services" in prompt
@@ -493,8 +493,8 @@ def test_glm_and_sonnet_field_templates_agree():
     """project_report_integrity_hardening: the analyser prompt exists twice and
     drift between them is how the GLM copy lost the exclusion Sonnet had."""
     field = "- **Recommendation scope:** <tagged entries only"
-    assert field in qra.ANALYSER_SYSTEM_PROMPT_GLM
-    assert field in qra.ANALYSER_SYSTEM_PROMPT_SONNET
+    assert field in qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS
+    assert field in qra.ANALYSER_SYSTEM_PROMPT_ANTHROPIC
 
 
 def test_recommendation_scope_counter_flags_out_of_remit_language():
