@@ -655,7 +655,7 @@ class TemplateGenerateRequest(BaseModel):
     user_inputs: Dict[str, str]  # New format: user_inputs dict
     # Legacy format (deprecated)
     variables: Optional[Dict[str, str]] = None
-    model: str = "zai-glm-4.7"  # Uses zai-glm-4.7 as primary
+    model: str = "qwen/qwen3.6-27b"  # Uses zai-glm-4.7 as primary
 
 
 # Wizard assistance request models
@@ -1142,7 +1142,7 @@ Apply each fix while preserving grammatical completeness and report structure.""
         report_id = None
         if should_auto_save(current_user):
             try:
-                model_to_store = report_output.model_used or "zai-glm-4.7"
+                model_to_store = report_output.model_used or "qwen/qwen3.6-27b"
                 saved_report = create_report(
                     db=db,
                     user_id=str(current_user.id),
@@ -1941,7 +1941,7 @@ Apply each fix while preserving grammatical completeness and report structure.""
         report_id = None
         if should_auto_save(current_user):
             try:
-                model_to_store = report_output_dict.get("model_used", "zai-glm-4.7")
+                model_to_store = report_output_dict.get("model_used", "qwen/qwen3.6-27b")
                 input_data_to_save = {
                     "variables": actual_user_inputs,
                     "extracted_scan_type": report_output.scan_type
@@ -2667,7 +2667,7 @@ async def quick_report_proto_analyse_endpoint(
                 skill_sheet_markdown=result.get("skill_sheet", ""),
                 analyser_model=result.get("model_used", ""),
                 analyser_latency_ms=result.get("latency_ms"),
-                analyser_prompt_version=result.get("prompt_version") or analyser_prompt_version(result.get("model_used", "zai-glm-4.7")),
+                analyser_prompt_version=result.get("prompt_version") or analyser_prompt_version(result.get("model_used", "qwen/qwen3.6-27b")),
                 run_id=run_id,
             )
             sheet_id = str(sheet_row.id)
@@ -2747,7 +2747,7 @@ async def quick_report_proto_generate_endpoint(
         # registered in MODEL_PROVIDERS in enhancement_utils.py.
         allowed_models = {
             # Proprietary
-            "zai-glm-4.7",                       # Cerebras GLM-4.7 (current default)
+            "qwen/qwen3.6-27b",                       # Cerebras GLM-4.7 (current default)
             "claude-sonnet-4-6",                 # Anthropic Claude Sonnet 4.6
             # Open source
             "gpt-oss-120b",                      # Cerebras GPT-OSS 120B
@@ -5388,7 +5388,7 @@ async def run_audit(
                     audit_result=result,
                     scan_type=request.scan_type or "",
                     clinical_history=request.clinical_history or "",
-                    model_used="zai-glm-4.7",
+                    model_used="qwen/qwen3.6-27b",
                     audited_candidate_model=request.audited_candidate_model,
                 )
                 audit_id = str(audit.id)

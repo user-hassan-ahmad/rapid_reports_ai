@@ -145,7 +145,7 @@ def _glm_reasoning_enabled() -> bool:
 # Update this dictionary to change models without modifying code throughout the codebase
 MODEL_CONFIG = {
     # Report Generation Models
-    "PRIMARY_REPORT_GENERATOR": "zai-glm-4.7",  # Primary model for report generation (Cerebras GLM-4.7)
+    "PRIMARY_REPORT_GENERATOR": "qwen/qwen3.6-27b",  # Primary model for report generation (Cerebras GLM-4.7)
     "FALLBACK_REPORT_GENERATOR": "claude-sonnet-4-6",  # Fallback model if primary fails (Claude Sonnet 4.6)
     
     # Structure Validation Models
@@ -162,7 +162,7 @@ MODEL_CONFIG = {
     "COMPATIBILITY_FILTER": "gpt-oss-120b",  # Search result compatibility filtering (primary - Cerebras GPT-OSS-120B with high reasoning)
     "COMPATIBILITY_FILTER_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for compatibility filtering (Llama)
     "GUIDELINE_SEARCH": "gpt-oss-120b",  # Phase 2: Guideline synthesis (primary - Cerebras GPT-OSS-120B, reliable structured output)
-    "GUIDELINE_SEARCH_FALLBACK": "zai-glm-4.7",  # Fallback (GLM cannot reliably generate tool_calls for complex schemas)
+    "GUIDELINE_SEARCH_FALLBACK": "qwen/qwen3.6-27b",  # Fallback (GLM cannot reliably generate tool_calls for complex schemas)
     "COMPARISON_ANALYZER": "gpt-oss-120b",  # Interval comparison analysis (primary - Cerebras GPT-OSS-120B with high reasoning)
     "COMPARISON_ANALYZER_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for comparison analysis (Qwen)
     
@@ -174,8 +174,8 @@ MODEL_CONFIG = {
     "ZAI_GLM_LINGUISTIC_VALIDATOR": "llama-3.3-70b-versatile",  # Linguistic/anatomical correction for zai-glm-4.7 output (Groq Llama)
     
     # Audit / QA Analysis Models
-    "AUDIT_ANALYZER": "zai-glm-4.7",  # Report audit/QA primary (Cerebras Zai-GLM-4.7)
-    "AUDIT_ANALYZER_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for audit (Groq Qwen 32B)
+    "AUDIT_ANALYZER": "qwen/qwen3.6-27b",  # Report audit/QA primary (Cerebras Zai-GLM-4.7)
+    "AUDIT_ANALYZER_FALLBACK": "openai/gpt-oss-120b",  # Fallback for audit (Groq Qwen 32B)
     
     # Canvas / IntelliDictate Models
     "CANVAS_SECTIONS": "gpt-oss-120b",  # Section generation from scan type (Cerebras)
@@ -190,27 +190,27 @@ MODEL_CONFIG = {
     "CANVAS_INTELLIPROMPTS_FALLBACK": "gpt-oss-120b",  # Fallback (Cerebras GPT-OSS-120B)
 
     # Agentic Report Pipeline Models
-    "REPORT_PLANNER": "zai-glm-4.7",        # Phase 1: planning agent (Cerebras, reasoning ON)
-    "REPORT_EXECUTOR": "zai-glm-4.7",  # Phase 2: execution agent (Cerebras GLM, reasoning ON)
+    "REPORT_PLANNER": "qwen/qwen3.6-27b",        # Phase 1: planning agent (Cerebras, reasoning ON)
+    "REPORT_EXECUTOR": "qwen/qwen3.6-27b",  # Phase 2: execution agent (Cerebras GLM, reasoning ON)
     "PLAN_ADHERENCE_CHECKER": "qwen/qwen3.6-27b",  # Phase 3: cross-check output vs plan (Groq)
 
     # Template Wizard Generation Models
-    "TEMPLATE_FINDINGS_GENERATOR": "zai-glm-4.7",     # Wizard: generate FINDINGS section template
-    "TEMPLATE_INSTRUCTION_SUGGESTER": "zai-glm-4.7",  # Wizard: suggest section instructions
-    "TEMPLATE_REPORT_GENERATOR": "zai-glm-4.7",       # generate_report_from_config primary model (Cerebras GLM-4.7)
+    "TEMPLATE_FINDINGS_GENERATOR": "qwen/qwen3.6-27b",     # Wizard: generate FINDINGS section template
+    "TEMPLATE_INSTRUCTION_SUGGESTER": "qwen/qwen3.6-27b",  # Wizard: suggest section instructions
+    "TEMPLATE_REPORT_GENERATOR": "qwen/qwen3.6-27b",       # generate_report_from_config primary model (Cerebras GLM-4.7)
 
     # Skill Sheet Models
-    "SKILL_SHEET_ANALYZER": "zai-glm-4.7",      # Extract skill sheet from example reports
-    "SKILL_SHEET_DIVERSITY_CHECK": "zai-glm-4.7",       # Pre-analysis diversity assessment (primary, Cerebras with reasoning)
-    "SKILL_SHEET_DIVERSITY_CHECK_FALLBACK": "qwen/qwen3.6-27b",  # Diversity check fallback (Groq Qwen with thinking)
-    "SKILL_SHEET_REFINER": "zai-glm-4.7",       # Refine skill sheet via chat
-    "SKILL_SHEET_TEST_GENERATE": "zai-glm-4.7", # Test-generate report from skill sheet (Cerebras GLM-4.7)
+    "SKILL_SHEET_ANALYZER": "qwen/qwen3.6-27b",      # Extract skill sheet from example reports
+    "SKILL_SHEET_DIVERSITY_CHECK": "qwen/qwen3.6-27b",       # Pre-analysis diversity assessment (primary, Cerebras with reasoning)
+    "SKILL_SHEET_DIVERSITY_CHECK_FALLBACK": "openai/gpt-oss-120b",  # Diversity check fallback (Groq Qwen with thinking)
+    "SKILL_SHEET_REFINER": "qwen/qwen3.6-27b",       # Refine skill sheet via chat
+    "SKILL_SHEET_TEST_GENERATE": "qwen/qwen3.6-27b", # Test-generate report from skill sheet (Cerebras GLM-4.7)
 
     # Quick Report — ephemeral skill sheet from scan_type + clinical_history.
     # Speculative-parallel pattern: both analysers fire on workspace setup.
     # FAST returns first (GLM on Cerebras, ~9s), BEST returns later (Haiku on
     # Anthropic, ~40s). Generate uses whichever sheet is available at click.
-    "QUICK_REPORT_ANALYZER_FAST": "zai-glm-4.7",
+    "QUICK_REPORT_ANALYZER_FAST": "qwen/qwen3.6-27b",
     "QUICK_REPORT_ANALYZER_BEST": "claude-haiku-4-5-20251001",
 
     # Knowledge Maintenance Agent

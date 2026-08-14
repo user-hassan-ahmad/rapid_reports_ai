@@ -94,6 +94,13 @@ CELLS = [
      "label": "sweep + rescope + generator rule (minimal stack)"},
     {"id": "abl_full", "directives": ("sweep", "general", "defeasible", "rescope"),
      "substitution": True, "label": "full four-layer stack"},
+    # Reasoning ON is the shipped decision (L-23). These two isolate whether the
+    # rescope directive - the only intervention that ever moved the contradiction
+    # - helps on that config. Identical but for the one directive.
+    {"id": "rs_base", "directives": (), "substitution": False,
+     "analyser_reasoning": True, "label": "reasoning ON, current prompt"},
+    {"id": "rs_resc", "directives": ("rescope",), "substitution": False,
+     "analyser_reasoning": True, "label": "reasoning ON + negative rescoping"},
 ]
 
 

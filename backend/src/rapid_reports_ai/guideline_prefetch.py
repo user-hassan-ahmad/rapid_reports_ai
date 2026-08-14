@@ -624,7 +624,7 @@ async def _stage_glm_extract(
     }
 
     result = await _run_agent_with_model(
-        model_name="zai-glm-4.7",
+        model_name="qwen/qwen3.6-27b",
         output_type=_PrefetchContext,
         system_prompt=PREFETCH_SYSTEM_PROMPT,
         user_prompt=user_prompt,
@@ -806,7 +806,7 @@ async def _stage_glm_triage(
     }
 
     result = await _run_agent_with_model(
-        model_name="zai-glm-4.7",
+        model_name="qwen/qwen3.6-27b",
         output_type=_TriageResult,
         system_prompt=TRIAGE_SYSTEM_PROMPT,
         user_prompt=user_prompt,
@@ -875,7 +875,7 @@ async def _run_recovery_triage(
 
     try:
         result = await _run_agent_with_model(
-            model_name="zai-glm-4.7",
+            model_name="qwen/qwen3.6-27b",
             output_type=_TriageResult,
             system_prompt=TRIAGE_RECOVERY_SYSTEM_PROMPT,
             user_prompt=user_prompt,
@@ -1560,7 +1560,7 @@ async def _run_synthesis_passes(
         up = f"{ctx}\n\nEVIDENCE (UK Pathway & Follow-up):\n{ev}"
         try:
             r = await _run_agent_with_model(
-                model_name="zai-glm-4.7", output_type=PathwaySynthesis,
+                model_name="qwen/qwen3.6-27b", output_type=PathwaySynthesis,
                 system_prompt=_PATHWAY_SYNTHESIS_SYSTEM, user_prompt=up,
                 api_key=cerebras_key, model_settings={**ms_s4, "max_completion_tokens": 2000},
             )
@@ -1607,7 +1607,7 @@ async def _run_synthesis_passes(
 
         try:
             r = await _run_agent_with_model(
-                model_name="zai-glm-4.7", output_type=ClassificationSynthesis,
+                model_name="qwen/qwen3.6-27b", output_type=ClassificationSynthesis,
                 system_prompt=_CLASSIFICATION_SYNTHESIS_SYSTEM, user_prompt=up,
                 api_key=cerebras_key, model_settings={**ms_s4, "max_completion_tokens": 3500},
             )
@@ -1623,7 +1623,7 @@ async def _run_synthesis_passes(
         up = f"{ctx}\n\nEVIDENCE (Imaging Features & Differentials):\n{ev}"
         try:
             r = await _run_agent_with_model(
-                model_name="zai-glm-4.7", output_type=DifferentialSynthesis,
+                model_name="qwen/qwen3.6-27b", output_type=DifferentialSynthesis,
                 system_prompt=_DIFFERENTIAL_SYNTHESIS_SYSTEM, user_prompt=up,
                 api_key=cerebras_key, model_settings={**ms_s4, "max_completion_tokens": 2000},
             )

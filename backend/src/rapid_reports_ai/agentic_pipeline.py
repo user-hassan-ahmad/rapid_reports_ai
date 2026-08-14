@@ -496,12 +496,13 @@ async def execute_report_from_plan(
         # error.failed_generation when it is valid ReportOutput JSON.
         model_settings = {"temperature": 0.3, "max_tokens": 6000}
         use_thinking = True
-    elif model_name == "zai-glm-4.7":
+    elif model_name == "qwen/qwen3.6-27b":
+        # Groq: reasoning is on by default and reached via groq_reasoning_format,
+        # not the Cerebras extra_body toggles, which Groq rejects.
         model_settings = {
             "temperature": 0.8,
             "top_p": 0.95,
-            "max_completion_tokens": 16000,
-            "extra_body": {"disable_reasoning": False},
+            "max_tokens": 16384,
         }
         use_thinking = False
     elif model_name == "gpt-oss-120b":

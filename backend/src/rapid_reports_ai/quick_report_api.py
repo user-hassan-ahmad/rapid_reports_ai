@@ -77,7 +77,7 @@ router = APIRouter(prefix="/api/quick-report", tags=["quick-report"])
 # we want, and the richer Haiku skill sheet (running in the analyser tier) now
 # delivers the clinical depth Sonnet used to contribute.
 
-GENERATOR_MODEL = "zai-glm-4.7"
+GENERATOR_MODEL = "qwen/qwen3.6-27b"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -73,8 +73,12 @@ class PromptManager:
                 if zai_cc.exists():
                     template_file = zai_cc
                     print(f"load_prompt: Using zai-glm-4.7-clinical-clusters.json for primary model {primary_model}")
-            elif primary_model == "zai-glm-4.7":
-                # Check for zai-glm-4.7.json first when primary model is zai-glm-4.7
+            elif primary_model in ("zai-glm-4.7", "qwen/qwen3.6-27b"):
+                # Qwen inherits the tuned template. The filename still says
+                # zai-glm-4.7 because agentic_routes' A/B endpoint renders it by
+                # name; renaming would break that. Without this branch Qwen falls
+                # through to unified.json - 6,846 bytes against 25,501 - silently
+                # dropping the report-integrity hardening.
                 zai_glm_file = use_case_dir / "zai-glm-4.7.json"
                 if zai_glm_file.exists():
                     template_file = zai_glm_file
