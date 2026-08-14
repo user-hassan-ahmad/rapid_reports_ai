@@ -107,3 +107,22 @@ def test_linguistic_validator_is_not_the_model_it_validates():
     validator = MODEL_CONFIG["LINGUISTIC_VALIDATOR"]
     assert validator != MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
     assert not validator.startswith("qwen"), "validator must differ from the generator family"
+
+
+def test_no_stale_per_model_prompt_stub_can_be_selected():
+    """qwen.json was a 4,404-byte November 2025 stub from the old monolithic
+    system, sitting next to the 25,501-byte tuned template. `load_prompt` has a
+    legacy `model` arg that loads `{model}.json` directly, so a stub in this
+    directory is one plausible call away from silently replacing the real
+    prompt. llama.json is the same vintage and its model is decommissioned."""
+    import pathlib
+    d = (pathlib.Path(__file__).resolve().parents[1]
+         / "src/rapid_reports_ai/prompts/radiology_report")
+    tuned = (d / "zai-glm-4.7.json").stat().st_size
+    stubs = {f.name: f.stat().st_size for f in d.glob("*.json")
+             if f.name not in {"metadata.json"} and f.stat().st_size < tuned * 0.35}
+    assert "qwen.json" not in stubs, "the stale Qwen stub is back"
+    # llama.json is the same vintage and its model is decommissioned 2026-08-16.
+    # Left in place pending a decision; listed here so it cannot be forgotten.
+    assert set(stubs) <= {"llama.json", "gptoss.json", "unified.json", "claude.json",
+                          "gptoss_old_v2.json"}, f"unexpected prompt stub: {stubs}"

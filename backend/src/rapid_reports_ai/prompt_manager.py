@@ -31,7 +31,9 @@ class PromptManager:
         
         Args:
             use_case: The use case (e.g., "radiology_report", "findings_summary")
-            model: The model name ("claude", "qwen", or "default")
+            model: The name of a per-model template file, or "default".
+                   Prefer `primary_model` - this arg is a legacy path that loads
+                   `{model}.json` directly and bypasses the primary_model routing.
             primary_model: Optional primary model identifier (e.g., "gpt-oss-120b") for auto template selection
         
         Returns:
