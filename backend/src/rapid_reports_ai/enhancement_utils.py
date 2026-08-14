@@ -156,11 +156,11 @@ MODEL_CONFIG = {
     "FINDING_EXTRACTION": "gpt-oss-120b",  # Phase 1: Finding extraction and consolidation (primary - Cerebras GPT-OSS-120B with high reasoning)
     "FINDING_EXTRACTION_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for finding extraction (Qwen with thinking)
     "QUERY_GENERATION": "gpt-oss-120b",  # Query generation primary (Cerebras GPT-OSS-120B with high reasoning)
-    "QUERY_GENERATION_FALLBACK": "llama-3.3-70b-versatile",  # Query generation fallback (Llama)
+    "QUERY_GENERATION_FALLBACK": "qwen/qwen3.6-27b",  # Query generation fallback (Llama)
     "GUIDELINE_VALIDATOR": "gpt-oss-120b",  # Guideline compatibility validation (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "GUIDELINE_VALIDATOR_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for guideline validation (Llama)
+    "GUIDELINE_VALIDATOR_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for guideline validation (Llama)
     "COMPATIBILITY_FILTER": "gpt-oss-120b",  # Search result compatibility filtering (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "COMPATIBILITY_FILTER_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for compatibility filtering (Llama)
+    "COMPATIBILITY_FILTER_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for compatibility filtering (Llama)
     "GUIDELINE_SEARCH": "gpt-oss-120b",  # Phase 2: Guideline synthesis (primary - Cerebras GPT-OSS-120B, reliable structured output)
     "GUIDELINE_SEARCH_FALLBACK": "qwen/qwen3.6-27b",  # Fallback (GLM cannot reliably generate tool_calls for complex schemas)
     "COMPARISON_ANALYZER": "gpt-oss-120b",  # Interval comparison analysis (primary - Cerebras GPT-OSS-120B with high reasoning)
@@ -171,7 +171,11 @@ MODEL_CONFIG = {
     "ACTION_APPLIER_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for action application (Qwen)
     
     # Linguistic Validation Models (for zai-glm-4.7 post-processing)
-    "ZAI_GLM_LINGUISTIC_VALIDATOR": "llama-3.3-70b-versatile",  # Linguistic/anatomical correction for zai-glm-4.7 output (Groq Llama)
+    "LINGUISTIC_VALIDATOR": "claude-haiku-4-5-20251001",  # Post-generation linguistic/anatomical correction.
+    # Haiku deliberately: a validator should be a different family from the generator
+    # it checks, and Llama 3.3 70B (the previous choice) is decommissioned 2026-08-16.
+    # NOTE: this pass was written for zai-glm-4.7-specific defects (translation
+    # artefacts, anatomical slips). Its value against Qwen output is unverified.
     
     # Audit / QA Analysis Models
     "AUDIT_ANALYZER": "qwen/qwen3.6-27b",  # Report audit/QA primary (Cerebras Zai-GLM-4.7)
@@ -179,9 +183,9 @@ MODEL_CONFIG = {
     
     # Canvas / IntelliDictate Models
     "CANVAS_SECTIONS": "gpt-oss-120b",  # Section generation from scan type (Cerebras)
-    "CANVAS_SECTIONS_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for section generation (Groq Llama)
+    "CANVAS_SECTIONS_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for section generation (Groq Llama)
     "CANVAS_SECTIONS_FROM_TEMPLATE": "gpt-oss-120b",  # Extract sections from template (Cerebras)
-    "CANVAS_SECTIONS_FROM_TEMPLATE_FALLBACK": "llama-3.3-70b-versatile",  # Fallback for template section extraction (Groq Llama)
+    "CANVAS_SECTIONS_FROM_TEMPLATE_FALLBACK": "qwen/qwen3.6-27b",  # Fallback for template section extraction (Groq Llama)
     "CANVAS_PROCESS": "gemma-4-31b",  # Transcript → scratchpad (Cerebras Gemma 4 31B; Groq qwen3-32b deprecated Aug 2026)
     "CANVAS_PROCESS_FALLBACK": "gpt-oss-120b",  # Fallback if Gemma fails (Cerebras GPT-OSS-120B)
     "CANVAS_COVERAGE": "gemma-4-31b",  # Coverage check (Cerebras Gemma 4 31B)
@@ -224,7 +228,6 @@ MODEL_CONFIG = {
 QWEN_EXTRACTION_MODEL = MODEL_CONFIG["FINDING_EXTRACTION"]
 LLAMA_GUIDELINE_MODEL = MODEL_CONFIG["GUIDELINE_SEARCH"]
 LLAMA_REPORT_PRIMARY_MODEL = MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"]  # Legacy: was used for fast mode
-LLAMA_REPORT_FALLBACK_MODEL = "llama-3.3-70b-versatile"  # Legacy fallback (not currently used)
 
 # Provider Mapping Dictionary
 # Maps model names to their providers for easy model switching
@@ -4667,7 +4670,7 @@ async def validate_zai_glm_linguistics(
     print(f"[LINGUISTIC VALIDATION]   Scan type: '{scan_type}'")
     
     # Get model and provider
-    model_name = MODEL_CONFIG["ZAI_GLM_LINGUISTIC_VALIDATOR"]
+    model_name = MODEL_CONFIG["LINGUISTIC_VALIDATOR"]
     provider = _get_model_provider(model_name)
     api_key = _get_api_key_for_provider(provider)
     
@@ -4851,7 +4854,7 @@ async def validate_template_linguistics(
     print(f"[TEMPLATE LINGUISTIC VALIDATION]   Template-wide instructions: {bool(template_wide_custom)}")
     
     # Get model and provider
-    model_name = MODEL_CONFIG["ZAI_GLM_LINGUISTIC_VALIDATOR"]  # llama-3.3-70b-versatile
+    model_name = MODEL_CONFIG["LINGUISTIC_VALIDATOR"]  # llama-3.3-70b-versatile
     provider = _get_model_provider(model_name)
     api_key = _get_api_key_for_provider(provider)
     

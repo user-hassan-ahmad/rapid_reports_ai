@@ -2746,13 +2746,10 @@ async def quick_report_proto_generate_endpoint(
         # accept arbitrary strings from the frontend. Every model here must be
         # registered in MODEL_PROVIDERS in enhancement_utils.py.
         allowed_models = {
-            # Proprietary
-            "qwen/qwen3.6-27b",                       # Cerebras GLM-4.7 (current default)
+            "qwen/qwen3.6-27b",                  # Groq Qwen 3.6 27B - current default
             "claude-sonnet-4-6",                 # Anthropic Claude Sonnet 4.6
-            # Open source
-            "gpt-oss-120b",                      # Cerebras GPT-OSS 120B
-            "llama-3.3-70b-versatile",           # Groq Llama 3.3 70B
-            "qwen/qwen3.6-27b",                    # Groq Qwen 3 32B
+            "claude-haiku-4-5-20251001",         # Anthropic Haiku 4.5
+            "openai/gpt-oss-120b",               # OpenRouter GPT-OSS 120B
         }
         model_override = request.model if request.model in allowed_models else None
 

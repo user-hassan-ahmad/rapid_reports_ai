@@ -76,3 +76,34 @@ def test_every_configured_model_resolves_to_a_provider():
 def test_quick_report_generator_is_not_hardcoded_to_a_retiring_model():
     from rapid_reports_ai import quick_report_api
     assert quick_report_api.GENERATOR_MODEL != "zai-glm-4.7"
+
+
+# Groq decommissions Llama 3.3 70B Versatile on 2026-08-16 - one day before the
+# Cerebras Developer Tier sunset, so it lands first.
+DECOMMISSIONED = {"llama-3.3-70b-versatile"}
+
+
+def test_nothing_points_at_a_decommissioned_groq_model():
+    stranded = {k: v for k, v in MODEL_CONFIG.items() if v in DECOMMISSIONED}
+    assert not stranded, f"still on decommissioned Groq models: {stranded}"
+
+
+def test_no_hardcoded_decommissioned_model_outside_the_config():
+    """A config edit does not move hardcoded call sites - knowledge_reify.py
+    held one, and main.py's allow-list held another."""
+    import pathlib
+    src = pathlib.Path(__file__).resolve().parents[1] / "src" / "rapid_reports_ai"
+    offenders = []
+    for f in src.rglob("*.py"):
+        text = f.read_text(errors="replace")
+        for dead in DECOMMISSIONED:
+            if f'"{dead}"' in text and "MODEL_PROVIDERS" not in text.split(f'"{dead}"')[0][-400:]:
+                offenders.append(f"{f.name}: {dead}")
+    assert not offenders, f"hardcoded decommissioned model: {offenders}"
+
+
+def test_linguistic_validator_is_not_the_model_it_validates():
+    """It checks generator output; sharing a family makes it self-review."""
+    validator = MODEL_CONFIG["LINGUISTIC_VALIDATOR"]
+    assert validator != MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
+    assert not validator.startswith("qwen"), "validator must differ from the generator family"

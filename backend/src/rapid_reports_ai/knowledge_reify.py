@@ -89,7 +89,7 @@ async def _llm_normalise(raw_label: str) -> str:
     class CanonicalLabel(BaseModel):
         canonical: str
 
-    model_name = "llama-3.3-70b-versatile"
+    model_name = "qwen/qwen3.6-27b"
     provider = _get_model_provider(model_name)
     api_key = _get_api_key_for_provider(provider)
 
