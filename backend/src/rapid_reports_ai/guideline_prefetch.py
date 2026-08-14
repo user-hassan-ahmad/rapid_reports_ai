@@ -63,6 +63,32 @@ _GEO_BLOCK_SIGNATURES = (
 )
 
 # ── Stage 1 system prompt ─────────────────────────────────────────────────────
+
+# ── Provider-correct key + settings for the prefetch model ──────────────────
+# These call sites previously hardcoded zai-glm-4.7 on Cerebras and read
+# CEREBRAS_API_KEY directly. When the model moved to Groq the key did not move
+# with it, and _run_agent_with_model sets os.environ[<provider key>] = api_key,
+# so the Cerebras key was written over GROQ_API_KEY and every call 401'd.
+# Resolve both from the model so they can never drift apart again.
+
+PREFETCH_MODEL = "qwen/qwen3.6-27b"
+
+
+def _prefetch_key() -> str:
+    from .enhancement_utils import _get_api_key_for_provider, _get_model_provider
+    return _get_api_key_for_provider(_get_model_provider(PREFETCH_MODEL))
+
+
+def _prefetch_settings(base: dict) -> dict:
+    """Drop Cerebras-only parameters when the model is not on Cerebras."""
+    from .enhancement_utils import _get_model_provider
+    s = dict(base)
+    if _get_model_provider(PREFETCH_MODEL) != "cerebras":
+        s.pop("extra_body", None)                      # disable_reasoning is Cerebras-only
+        if "max_completion_tokens" in s:               # Groq's parameter is max_tokens
+            s["max_tokens"] = s.pop("max_completion_tokens")
+    return s
+
 PREFETCH_SYSTEM_PROMPT = """You are a UK clinical guideline specialist and senior radiologist.
 Given radiology scan inputs, extract structured guideline retrieval data in a single reasoning pass.
 
@@ -601,9 +627,9 @@ async def _stage_glm_extract(
     """S1: GLM extraction — returns structured PrefetchContext."""
     from rapid_reports_ai.enhancement_utils import _run_agent_with_model
 
-    cerebras_key = os.environ.get("CEREBRAS_API_KEY", "")
-    if not cerebras_key:
-        raise RuntimeError("CEREBRAS_API_KEY not set")
+    prefetch_key = _prefetch_key()
+    if not prefetch_key:
+        raise RuntimeError(f"no API key configured for {PREFETCH_MODEL}")
 
     user_prompt = (
         f"SCAN TYPE: {scan_type}\n"
@@ -624,12 +650,12 @@ async def _stage_glm_extract(
     }
 
     result = await _run_agent_with_model(
-        model_name="qwen/qwen3.6-27b",
+        model_name=PREFETCH_MODEL,
         output_type=_PrefetchContext,
         system_prompt=PREFETCH_SYSTEM_PROMPT,
         user_prompt=user_prompt,
-        api_key=cerebras_key,
-        model_settings=model_settings,
+        api_key=prefetch_key,
+        model_settings=_prefetch_settings(model_settings),
     )
     return result.output
 
@@ -760,9 +786,9 @@ async def _stage_glm_triage(
     """S2.5: GLM Triage — routes each candidate to deep_extract / use_inline / skip."""
     from rapid_reports_ai.enhancement_utils import _run_agent_with_model
 
-    cerebras_key = os.environ.get("CEREBRAS_API_KEY", "")
-    if not cerebras_key:
-        raise RuntimeError("CEREBRAS_API_KEY not set")
+    prefetch_key = _prefetch_key()
+    if not prefetch_key:
+        raise RuntimeError(f"no API key configured for {PREFETCH_MODEL}")
 
     findings = ctx.consolidated_findings
     guidelines = ctx.applicable_guidelines
@@ -806,12 +832,12 @@ async def _stage_glm_triage(
     }
 
     result = await _run_agent_with_model(
-        model_name="qwen/qwen3.6-27b",
+        model_name=PREFETCH_MODEL,
         output_type=_TriageResult,
         system_prompt=TRIAGE_SYSTEM_PROMPT,
         user_prompt=user_prompt,
-        api_key=cerebras_key,
-        model_settings=model_settings,
+        api_key=prefetch_key,
+        model_settings=_prefetch_settings(model_settings),
     )
     decisions = result.output.decisions
     logger.info(
@@ -832,9 +858,9 @@ async def _run_recovery_triage(
     """Second-pass triage for branches with zero evidence after primary triage."""
     from rapid_reports_ai.enhancement_utils import _run_agent_with_model
 
-    cerebras_key = os.environ.get("CEREBRAS_API_KEY", "")
-    if not cerebras_key:
-        logger.warning("[S2.5] CEREBRAS_API_KEY not set — recovery triage skipped")
+    prefetch_key = _prefetch_key()
+    if not prefetch_key:
+        logger.warning("[S2.5] no API key for %s — recovery triage skipped", PREFETCH_MODEL)
         return []
 
     ctx_summary = (
@@ -875,12 +901,12 @@ async def _run_recovery_triage(
 
     try:
         result = await _run_agent_with_model(
-            model_name="qwen/qwen3.6-27b",
+            model_name=PREFETCH_MODEL,
             output_type=_TriageResult,
             system_prompt=TRIAGE_RECOVERY_SYSTEM_PROMPT,
             user_prompt=user_prompt,
-            api_key=cerebras_key,
-            model_settings=model_settings,
+            api_key=prefetch_key,
+            model_settings=_prefetch_settings(model_settings),
         )
         return result.output.decisions
     except Exception as exc:
@@ -1530,9 +1556,9 @@ async def _run_synthesis_passes(
     """3 parallel GLM passes (pathway / classification / differential) for one finding."""
     from rapid_reports_ai.enhancement_utils import _run_agent_with_model
 
-    cerebras_key = os.environ.get("CEREBRAS_API_KEY", "")
-    if not cerebras_key:
-        raise RuntimeError("CEREBRAS_API_KEY not set")
+    prefetch_key = _prefetch_key()
+    if not prefetch_key:
+        raise RuntimeError(f"no API key configured for {PREFETCH_MODEL}")
 
     ctx = (
         f"PATIENT CONTEXT (use for scope-checking and scan-type awareness — "
@@ -1560,9 +1586,9 @@ async def _run_synthesis_passes(
         up = f"{ctx}\n\nEVIDENCE (UK Pathway & Follow-up):\n{ev}"
         try:
             r = await _run_agent_with_model(
-                model_name="qwen/qwen3.6-27b", output_type=PathwaySynthesis,
+                model_name=PREFETCH_MODEL, output_type=PathwaySynthesis,
                 system_prompt=_PATHWAY_SYNTHESIS_SYSTEM, user_prompt=up,
-                api_key=cerebras_key, model_settings={**ms_s4, "max_completion_tokens": 2000},
+                api_key=prefetch_key, model_settings=_prefetch_settings({**ms_s4, "max_completion_tokens": 2000}),
             )
             return r.output
         except Exception as e:
@@ -1607,9 +1633,9 @@ async def _run_synthesis_passes(
 
         try:
             r = await _run_agent_with_model(
-                model_name="qwen/qwen3.6-27b", output_type=ClassificationSynthesis,
+                model_name=PREFETCH_MODEL, output_type=ClassificationSynthesis,
                 system_prompt=_CLASSIFICATION_SYNTHESIS_SYSTEM, user_prompt=up,
-                api_key=cerebras_key, model_settings={**ms_s4, "max_completion_tokens": 3500},
+                api_key=prefetch_key, model_settings=_prefetch_settings({**ms_s4, "max_completion_tokens": 3500}),
             )
             return r.output
         except Exception as e:
@@ -1623,9 +1649,9 @@ async def _run_synthesis_passes(
         up = f"{ctx}\n\nEVIDENCE (Imaging Features & Differentials):\n{ev}"
         try:
             r = await _run_agent_with_model(
-                model_name="qwen/qwen3.6-27b", output_type=DifferentialSynthesis,
+                model_name=PREFETCH_MODEL, output_type=DifferentialSynthesis,
                 system_prompt=_DIFFERENTIAL_SYNTHESIS_SYSTEM, user_prompt=up,
-                api_key=cerebras_key, model_settings={**ms_s4, "max_completion_tokens": 2000},
+                api_key=prefetch_key, model_settings=_prefetch_settings({**ms_s4, "max_completion_tokens": 2000}),
             )
             return r.output
         except Exception as e:

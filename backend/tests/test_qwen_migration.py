@@ -142,3 +142,30 @@ def test_no_stale_per_model_prompt_stub_can_be_selected():
     # Left in place pending a decision; listed here so it cannot be forgotten.
     assert set(stubs) <= {"llama.json", "gptoss.json", "unified.json", "claude.json",
                           "gptoss_old_v2.json"}, f"unexpected prompt stub: {stubs}"
+
+
+def test_prefetch_key_and_model_cannot_drift_apart():
+    """The 2026-08-14 incident: guideline_prefetch's model moved to Groq while
+    its api_key still read CEREBRAS_API_KEY. _run_agent_with_model does
+    os.environ[<provider key>] = api_key, so the Cerebras key was written over
+    GROQ_API_KEY and every prefetch call returned 401. Key and settings must
+    both derive from the model."""
+    import inspect
+    from rapid_reports_ai import guideline_prefetch as gp
+    src = inspect.getsource(gp)
+    assert 'os.environ.get("CEREBRAS_API_KEY"' not in src, (
+        "prefetch reads a provider key directly again - resolve it from the model"
+    )
+    assert src.count("model_name=PREFETCH_MODEL") >= 6, "a call site bypasses PREFETCH_MODEL"
+
+
+def test_prefetch_settings_strip_cerebras_only_params_off_cerebras():
+    from rapid_reports_ai import guideline_prefetch as gp
+    from rapid_reports_ai.enhancement_utils import _get_model_provider
+    s = gp._prefetch_settings(
+        {"temperature": 0.8, "max_completion_tokens": 5000,
+         "extra_body": {"disable_reasoning": False}}
+    )
+    if _get_model_provider(gp.PREFETCH_MODEL) != "cerebras":
+        assert "extra_body" not in s, "disable_reasoning is Cerebras-only"
+        assert s.get("max_tokens") == 5000 and "max_completion_tokens" not in s
