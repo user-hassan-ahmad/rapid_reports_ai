@@ -97,6 +97,11 @@ Rules for obligations:
 - Templates are complete sentences in final report register, with {braced} blanks only where the
   filler is case data. No template asserts what the dictation may contradict — that is what
   UNASSESSABLE-IF and SUPPRESS-IF-HISTORY are for.
+- Where OBSERVES depends on reading an interface, margin, line or plane, remember what routinely
+  renders such reads impossible: adjacent oedema or haemorrhage, collapse or volume loss,
+  artefact, overlying material. Enumerate the classes plausible for THIS study in
+  UNASSESSABLE-IF. An obligation whose observation can be obscured but which carries no
+  UNASSESSABLE-IF is an incomplete obligation.
 
 ## MEASURE (opt)
 - <finding type>: <dimensions, units, when required> (only where the question turns on it)
@@ -136,10 +141,13 @@ grade, or extend content. Specifically:
 - No graded classification (Grade I–III, Weber, any named tier) unless the dictation states it
   or the sheet's MEASURE maps dictated features to it. Otherwise report the dictated feature.
 - No reference value or threshold not in the sheet.
-- A dictated statement that terminates without completing its clause is NOT completed. Report it
-  to the boundary of what was dictated, and add at the end of FINDINGS:
-  "The dictated description of {finding} is incomplete; {missing element} is not stated."
-  A fabricated completion is a fabricated finding — location above all.
+- A dictated statement that terminates mid-clause — syntactically incomplete, stopping before
+  its object or qualifier — is NOT completed. Do not emit the broken fragment and do not guess
+  the missing element: recast the sentence so it states only what was dictated, and add at the
+  end of FINDINGS: "The dictated description of {finding} is incomplete; {missing element} is
+  not stated." A fabricated completion is a fabricated finding — location above all.
+  This rule fires on syntactic truncation only. Terse dictation that merely omits detail
+  (no dimensions, no chronicity) is not truncation: report it as dictated, flag nothing.
 - Where dictated laterality or site conflicts with the study metadata, preserve the dictated
   content unchanged and add: "The dictation states {dictated}; the study is registered as
   {metadata}. Reported as dictated; correlation advised." Never silently harmonise either way.

@@ -30,6 +30,21 @@ from rapid_reports_ai.report_v2 import (  # noqa: E402
 from . import gate  # noqa: E402
 
 
+async def _bo(factory, what, attempts=4):
+    import asyncio
+    last=None
+    for i in range(attempts):
+        try:
+            return await factory()
+        except Exception as exc:  # noqa: BLE001
+            last=exc
+            if "429" not in str(exc) and "rate" not in str(exc).lower():
+                raise
+            print(f"    429 on {what}; backing off {25*(i+1)}s")
+            await asyncio.sleep(25*(i+1))
+    raise last
+
+
 async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cases-file", default=str(BACKEND_ROOT / "test_cases/broad_suite.json"))
@@ -46,13 +61,13 @@ async def main() -> int:
     for c in cases:
         t0 = time.time()
         try:
-            s = await generate_sheet_v2(c["scan_type"], c["clinical_history"])
+            s = await _bo(lambda: generate_sheet_v2(c["scan_type"], c["clinical_history"]), c["name"]+" sheet")
             v = validate_sheet_v2(s["sheet"])
             print(f"  [{c['name']}] sheet {len(s['sheet']):,}ch {s['latency_ms']/1000:.1f}s "
                   f"obligations={v['obligations']} (Q={v['question_tier']}) "
                   f"unassessable={v['unassessable']} stray_prose={len(v['stray_prose'])} ok={v['ok']}")
-            r = await generate_report_v2(s["sheet"], c["scan_type"],
-                                         c["clinical_history"], c["findings"])
+            r = await _bo(lambda: generate_report_v2(s["sheet"], c["scan_type"],
+                                         c["clinical_history"], c["findings"]), c["name"]+" report")
             g = gate.run_gate(r["report"])
             print(f"  [{c['name']}] report {len(r['report']):,}ch {r['latency_ms']/1000:.1f}s "
                   f"gate={'pass' if g['passed'] else 'FAIL ' + str(g['failures'])}")
