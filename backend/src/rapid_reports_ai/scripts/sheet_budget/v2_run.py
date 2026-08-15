@@ -49,6 +49,8 @@ async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cases-file", default=str(BACKEND_ROOT / "test_cases/broad_suite.json"))
     ap.add_argument("--case", action="append", default=None)
+    ap.add_argument("--model", default=None,
+                    help="Override V2_MODEL for both stages (e.g. gemma-4-31b).")
     ap.add_argument("--output-dir", required=True)
     args = ap.parse_args()
 
@@ -61,17 +63,18 @@ async def main() -> int:
     for c in cases:
         t0 = time.time()
         try:
-            s = await _bo(lambda: generate_sheet_v2(c["scan_type"], c["clinical_history"]), c["name"]+" sheet")
+            s = await _bo(lambda: generate_sheet_v2(c["scan_type"], c["clinical_history"], **({"model":args.model} if args.model else {})), c["name"]+" sheet")
             v = validate_sheet_v2(s["sheet"])
             print(f"  [{c['name']}] sheet {len(s['sheet']):,}ch {s['latency_ms']/1000:.1f}s "
                   f"obligations={v['obligations']} (Q={v['question_tier']}) "
                   f"unassessable={v['unassessable']} stray_prose={len(v['stray_prose'])} ok={v['ok']}")
             r = await _bo(lambda: generate_report_v2(s["sheet"], c["scan_type"],
-                                         c["clinical_history"], c["findings"]), c["name"]+" report")
+                                         c["clinical_history"], c["findings"],
+                                         **({"model":args.model} if args.model else {})), c["name"]+" report")
             g = gate.run_gate(r["report"])
             print(f"  [{c['name']}] report {len(r['report']):,}ch {r['latency_ms']/1000:.1f}s "
                   f"gate={'pass' if g['passed'] else 'FAIL ' + str(g['failures'])}")
-            runs.append({"cell": "v2", "case": c["name"],
+            runs.append({"cell": "v2", "model": args.model or "qwen/qwen3.6-27b", "case": c["name"],
                          "skill_sheet": s["sheet"], "sheet_chars": len(s["sheet"]),
                          "sheet_validation": v,
                          "analyser_latency_ms": s["latency_ms"],
@@ -80,7 +83,7 @@ async def main() -> int:
                          "gate": g, "total_wall_s": round(time.time() - t0, 1)})
         except Exception as exc:  # noqa: BLE001
             print(f"  ✗ {c['name']}: {exc}")
-            runs.append({"cell": "v2", "case": c["name"], "error": str(exc)})
+            runs.append({"cell": "v2", "model": args.model or "qwen/qwen3.6-27b", "case": c["name"], "error": str(exc)})
     (out / "runs.json").write_text(json.dumps(runs, indent=2))
     print(f"\n✅ {len(runs)} runs → {out}")
     return 0

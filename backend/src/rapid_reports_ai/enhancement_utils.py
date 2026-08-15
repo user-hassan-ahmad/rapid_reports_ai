@@ -186,11 +186,11 @@ MODEL_CONFIG = {
     "CANVAS_SECTIONS_FALLBACK": "openai/gpt-oss-120b",  # Fallback for section generation (Groq Llama)
     "CANVAS_SECTIONS_FROM_TEMPLATE": "gpt-oss-120b",  # Extract sections from template (Cerebras)
     "CANVAS_SECTIONS_FROM_TEMPLATE_FALLBACK": "openai/gpt-oss-120b",  # Fallback for template section extraction (Groq Llama)
-    "CANVAS_PROCESS": "gemma-4-31b",  # Transcript → scratchpad (Cerebras Gemma 4 31B; Groq qwen3-32b deprecated Aug 2026)
+    "CANVAS_PROCESS": "qwen/qwen3.6-27b",  # was Cerebras Gemma 4 31B - retires end of Aug 2026
     "CANVAS_PROCESS_FALLBACK": "openai/gpt-oss-120b",  # Fallback if Gemma fails (Cerebras GPT-OSS-120B)
-    "CANVAS_COVERAGE": "gemma-4-31b",  # Coverage check (Cerebras Gemma 4 31B)
+    "CANVAS_COVERAGE": "qwen/qwen3.6-27b",  # was Cerebras Gemma 4 31B - retires end of Aug 2026
     "CANVAS_COVERAGE_FALLBACK": "openai/gpt-oss-120b",  # Fallback (Cerebras GPT-OSS-120B)
-    "CANVAS_INTELLIPROMPTS": "gemma-4-31b",  # IntelliPrompts generation (Cerebras Gemma 4 31B)
+    "CANVAS_INTELLIPROMPTS": "qwen/qwen3.6-27b",  # was Cerebras Gemma 4 31B - retires end of Aug 2026
     "CANVAS_INTELLIPROMPTS_FALLBACK": "openai/gpt-oss-120b",  # Fallback (Cerebras GPT-OSS-120B)
 
     # Agentic Report Pipeline Models

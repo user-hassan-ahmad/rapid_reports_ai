@@ -40,11 +40,10 @@ KNOWN_CEREBRAS_DEBT = {
     "GUIDELINE_VALIDATOR", "COMPATIBILITY_FILTER", "GUIDELINE_SEARCH",
     "COMPARISON_ANALYZER", "ACTION_APPLIER", "CANVAS_SECTIONS",
     "CANVAS_SECTIONS_FROM_TEMPLATE", "KNOWLEDGE_MAINTENANCE",
-    # gemma-4-31b -> no like-for-like replacement identified, but each now
-    # fails over to gpt-oss-120b on OpenRouter rather than to another
-    # Cerebras model, so a tier outage degrades instead of stopping.
-    "CANVAS_PROCESS", "CANVAS_COVERAGE", "CANVAS_INTELLIPROMPTS",
 }
+# 2026-08-15: the three gemma-4-31b canvas roles migrated to qwen/qwen3.6-27b
+# ahead of Gemma's end-of-August retirement on Cerebras. Their fallbacks stay
+# on OpenRouter gpt-oss-120b.
 
 
 def test_every_cerebras_role_fails_over_off_cerebras():

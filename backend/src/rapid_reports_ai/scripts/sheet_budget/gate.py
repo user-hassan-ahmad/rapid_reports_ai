@@ -30,8 +30,13 @@ CONTRADICTION_PAIRS = (
      r"[Nn]o (?:pleural )?effusion"),
     (r"consolidation is (?:present|noted|identified)",
      r"[Nn]o (?:focal )?consolidation"),
-    (r"free (?:intraperitoneal )?(?:fluid|gas) is (?:present|noted|identified)",
-     r"[Nn]o free (?:intraperitoneal )?(?:fluid|gas)"),
+    # Fluid and gas are separate entities and a report may legitimately state a
+    # positive for one and a negative for the other. A single pair allowing
+    # (fluid|gas) on both sides cross-matched them and flagged correct reports.
+    (r"free (?:intraperitoneal )?fluid is (?:present|noted|identified)|moderate volume of free fluid",
+     r"[Nn]o free (?:intraperitoneal )?fluid"),
+    (r"free (?:intraperitoneal )?gas is (?:present|noted|identified)|pneumoperitoneum is (?:present|noted|identified)",
+     r"[Nn]o free (?:intraperitoneal )?gas"),
     # Mural gas in a bowel wall IS pneumatosis intestinalis - different words,
     # same finding. Measured at ~55% of generations on ct_tap (11/20 Groq draws)
     # and missed entirely until 2026-08-13 because no pair covered it. The

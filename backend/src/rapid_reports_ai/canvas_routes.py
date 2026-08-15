@@ -628,6 +628,28 @@ def _canvas_process_config(mode: str, incremental: bool = False) -> tuple[str, d
     return base_prompt, settings
 
 
+def _adapt_canvas_settings(model_name: str, settings: dict) -> dict:
+    """Canvas settings are written in Cerebras form (max_completion_tokens,
+    top-level reasoning_effort). Off Cerebras those break: Groq's qwen rejects
+    reasoning_effort "low" (only none|default, and only via extra_body), and
+    the native client wants max_tokens. Canvas wants minimal reasoning - fast
+    transcript cleanup - so off-Cerebras the intent maps to "none".
+
+    This is the guideline_prefetch lesson applied in advance: settings follow
+    the model, or they break the day the model moves."""
+    from .enhancement_utils import _get_model_provider
+    s = dict(settings)
+    provider = _get_model_provider(model_name)
+    if provider == "cerebras":
+        return s
+    if "max_completion_tokens" in s:
+        s["max_tokens"] = s.pop("max_completion_tokens")
+    if provider == "groq" and s.pop("reasoning_effort", None) is not None:
+        # Groq's qwen accepts only none|default, and only via extra_body.
+        s.setdefault("extra_body", {})["reasoning_effort"] = "none"
+    return s
+
+
 async def _run_canvas_with_fallback(
     primary_model: str,
     fallback_model: str | None,
@@ -640,8 +662,8 @@ async def _run_canvas_with_fallback(
     label: str = "canvas",
 ):
     """Run a Canvas agent on ``primary_model``, falling back to ``fallback_model`` on ANY
-    failure (404 / 400 / timeout / outage) — not just 503. Both models are expected to share
-    a settings form (currently both Cerebras). Returns the agent output; raises only if every
+    failure (404 / 400 / timeout / outage) — not just 503. Settings are adapted per candidate's
+    provider by _adapt_canvas_settings, so primary and fallback may differ. Returns the agent output; raises only if every
     candidate fails, so the caller decides how to degrade.
     """
     candidates = [primary_model]
@@ -659,7 +681,7 @@ async def _run_canvas_with_fallback(
                 user_prompt=user_prompt,
                 api_key=api_key,
                 use_thinking=use_thinking,
-                model_settings=model_settings,
+                model_settings=_adapt_canvas_settings(model_name, model_settings),
             )
             if i > 0:
                 logger.warning("[%s] primary %s failed; served by fallback %s", label, primary_model, model_name)

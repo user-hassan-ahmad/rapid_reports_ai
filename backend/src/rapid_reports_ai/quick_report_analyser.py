@@ -924,16 +924,15 @@ async def generate_ephemeral_skill_sheet(
         }
         call_api_key = _get_api_key_for_provider("groq")
     else:
+        # Cerebras and anything else. disable_reasoning/clear_thinking were
+        # GLM-4.7-only and other Cerebras models reject them; with GLM gone this
+        # branch only ever sees those other models, so the toggles are dropped.
         model_settings = {
             "temperature": 0.5,
             "top_p": 0.95,
             "max_tokens": 16000,
-            "extra_body": {
-                "disable_reasoning": False,
-                "clear_thinking": False,
-            },
         }
-        call_api_key = api_key
+        call_api_key = api_key or _get_api_key_for_provider(provider)
 
     system_prompt = get_analyser_prompt(
         model_name, budget_directive, directives

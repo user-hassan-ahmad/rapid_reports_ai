@@ -101,6 +101,11 @@ CELLS = [
      "analyser_reasoning": True, "label": "reasoning ON, current prompt"},
     {"id": "rs_resc", "directives": ("rescope",), "substitution": False,
      "analyser_reasoning": True, "label": "reasoning ON + negative rescoping"},
+    # Cerebras Gemma 4 31B, both stages. Cerebras is the reason GLM was fast,
+    # so this is the speed comparison against Qwen-on-Groq.
+    {"id": "gemma", "directives": (), "substitution": False,
+     "analyser_reasoning": True, "model": "gemma-4-31b",
+     "label": "Cerebras Gemma 4 31B, both stages"},
 ]
 
 
@@ -140,7 +145,7 @@ _ORIG = eu._run_agent_with_model
 async def _instrumented(**kw):
     """Force analyser reasoning off, append the generator floor rule, record usage."""
     stage = _STATE["stage"]
-    if kw.get("model_name") == MODEL:
+    if kw.get("model_name") == _STATE.get("model", MODEL):
         settings = dict(kw.get("model_settings") or {})
         extra = dict(settings.get("extra_body") or {})
         if stage == "analyser" and not _STATE.get("analyser_reasoning"):
@@ -208,6 +213,7 @@ async def run_one(case: dict, cell: dict, tm: TemplateManager) -> dict[str, Any]
     _STATE["floor"] = cell.get("floor", False)
     _STATE["substitution"] = cell.get("substitution", False)
     _STATE["analyser_reasoning"] = cell.get("analyser_reasoning", False)
+    _STATE["model"] = cell.get("model", MODEL)
     label = f"{cell['id']}/{case['name']}"
 
     _STATE["stage"] = "analyser"
@@ -215,7 +221,7 @@ async def run_one(case: dict, cell: dict, tm: TemplateManager) -> dict[str, Any]
     sheet_result = await _with_backoff(
         lambda: generate_ephemeral_skill_sheet(
             scan_type=case["scan_type"], clinical_history=case["clinical_history"],
-            api_key="", model_override=MODEL,
+            api_key="", model_override=cell.get("model", MODEL),
             directives=tuple(cell.get("directives", ())),
         ),
         what=f"{label} analyser",
@@ -236,7 +242,7 @@ async def run_one(case: dict, cell: dict, tm: TemplateManager) -> dict[str, Any]
             },
             user_inputs={"FINDINGS": case["findings"],
                          "CLINICAL_HISTORY": case["clinical_history"]},
-            model_override=MODEL,
+            model_override=cell.get("model", MODEL),
         ), what=f"{label} generator")
         report_text = res.get("report_content", "") or ""
         err = None
@@ -249,6 +255,7 @@ async def run_one(case: dict, cell: dict, tm: TemplateManager) -> dict[str, Any]
 
     return {
         "cell": cell["id"], "cell_label": cell["label"], "case": case["name"],
+        "model": cell.get("model", MODEL),
         "directives": list(cell.get("directives", ())),
         "analyser_reasoning": cell.get("analyser_reasoning", False),
         "substitution": cell.get("substitution", False),

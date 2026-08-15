@@ -545,3 +545,20 @@ IMPRESSION:
 Normal study.
 """
     assert "self_contradiction" not in G.run_gate(report)["failures"]
+
+
+def test_gate_does_not_cross_match_free_fluid_against_free_gas():
+    """Real Gemma output: pelvic free fluid present, no free intraperitoneal
+    gas. Different entities, both clinically standard. One pair allowing
+    (fluid|gas) on each side flagged it as a contradiction."""
+    report = """TECHNIQUE:
+CT abdomen and pelvis.
+
+FINDINGS:
+A moderate volume of free fluid is present in the pelvis. The pelvic viscera are unremarkable.
+No free intraperitoneal gas to suggest visceral perforation.
+
+IMPRESSION:
+Moderate volume of pelvic free fluid.
+"""
+    assert "self_contradiction" not in G.run_gate(report)["failures"]

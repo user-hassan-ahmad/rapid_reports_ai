@@ -643,6 +643,27 @@ encoded has been invisible in **every** rate reported in this ledger.
 → The semantic screen (L-?, `contradiction.py`) exists precisely to cover unencoded modes and
 should run alongside the gate, not instead of it.
 
+### L-29 · Cerebras roadmap intel; Gemma reasoning discovered, then mooted
+**Status: acted on 2026-08-15.** Per Cerebras (via Hassan): **gemma-4-31b retires end of
+August 2026**, and **Qwen 3.8 arrives on Cerebras soon**.
+
+Actioned immediately: the three canvas primaries (PROCESS, COVERAGE, INTELLIPROMPTS) moved
+gemma → `qwen/qwen3.6-27b` with a provider-aware settings adapter at the canvas funnel — the
+Cerebras form (`max_completion_tokens`, top-level `reasoning_effort`) breaks on Groq, which is the
+guideline_prefetch lesson applied *before* the incident this time. Live probe of the repointed
+process path: structured output OK at **0.5s**.
+
+Recorded for later, though mooted for production by the retirement: Gemma 4 31B **is** a reasoning
+model — on Cerebras it defaults **off**, and engages only via `extra_body: {reasoning_effort: …}`
+(top-level is silently ignored; third occurrence of the accepted-but-not-honoured pattern).
+Reasoning-on cost ~0.6s extra at Cerebras speed. Every Gemma result in this ledger was
+non-reasoning mode.
+
+→ **When Qwen 3.8 lands on Cerebras**: validate v2 on it with one command
+(`v2_run --model <id>`), check the reasoning default with the probe above, and if quality holds it
+collapses the speed/quality trade — Qwen-family reasoning at Cerebras throughput. That is the
+configuration this entire programme has been looking for.
+
 ---
 
 ## Open questions, in priority order
