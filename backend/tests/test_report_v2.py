@@ -64,3 +64,15 @@ def test_prompt_budget_holds():
     creep toward the old sizes (42k + 33k), the rewrite has failed its premise."""
     assert len(v2.ANALYSER_V2) < 12000, f"analyser v2 at {len(v2.ANALYSER_V2)}"
     assert len(v2.GENERATOR_V2) < 10000, f"generator v2 at {len(v2.GENERATOR_V2)}"
+
+
+def test_generator_v2_carries_format_and_impression_discipline():
+    """Ported from v1 after radiologist review: headers drifted (principle 9's
+    job) and impressions ran verbose (principles 3/10 + no-restatement). These
+    constrain form, not the fact-freedom the v2 architecture requires."""
+    p = v2.GENERATOR_V2
+    assert "on its own line, terminated by a colon" in p
+    assert "never a second FINDINGS" in p
+    assert "Admission test" in p
+    assert "Deletion test" in p
+    assert "never reappear here" in p
