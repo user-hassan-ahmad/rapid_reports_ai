@@ -1,0 +1,32 @@
+[
+  {
+    "name": "ctpa_acute_pe_rv_strain",
+    "scan_type": "CTPA",
+    "clinical_history": "58M, sudden onset pleuritic chest pain and dyspnoea, SpO2 91% on air, HR 112, D-dimer 4.2, Wells score 6. Query PE.",
+    "findings": "- Filling defects right main pulmonary artery extending into lower lobe segmental branches\n- Further filling defect left lower lobe segmental artery\n- RV:LV ratio 1.2, interventricular septal flattening\n- Small right pleural effusion\n- Mosaic attenuation right lower lobe, no consolidation\n- No pericardial effusion\n- Incidental 5mm right upper lobe pulmonary nodule\n- Thyroid and imaged upper abdomen unremarkable"
+  },
+  {
+    "name": "mri_lumbar_disc_extrusion",
+    "scan_type": "MRI lumbar spine",
+    "clinical_history": "34F, 6 weeks left leg pain radiating to sole of foot, weak plantarflexion, failed conservative management. Query disc prolapse.",
+    "findings": "- L5/S1 left paracentral disc extrusion with inferior migration\n- Extrusion compresses left S1 nerve root in lateral recess\n- Moderate narrowing left lateral recess, central canal preserved\n- L4/5 mild disc bulge, no root compression\n- Facet joints unremarkable\n- Conus normal, terminates T12/L1\n- Vertebral heights preserved, no marrow lesion"
+  },
+  {
+    "name": "us_abdomen_gallstones",
+    "scan_type": "Ultrasound abdomen",
+    "clinical_history": "42F, recurrent RUQ pain after meals, ALP 180, bilirubin 24. Query gallstones.",
+    "findings": "- Multiple mobile gallstones, largest 14mm\n- Gallbladder wall 2mm, no pericholecystic fluid\n- Negative sonographic Murphy's\n- CBD 5mm, no ductal stone seen\n- No intrahepatic duct dilatation\n- Liver normal echotexture, no focal lesion\n- Pancreatic head visualised and normal, body and tail obscured by bowel gas\n- Kidneys normal, no hydronephrosis\n- Spleen normal\n- No free fluid"
+  },
+  {
+    "name": "ct_head_acute_on_chronic_sdh",
+    "scan_type": "CT head non-contrast",
+    "clinical_history": "81M on apixaban, fall 3 days ago, increasing confusion, GCS 13. Query intracranial haemorrhage.",
+    "findings": "- Left frontoparietal subdural collection, mixed density, maximum depth 18mm\n- 7mm midline shift to the right\n- Effacement of left lateral ventricle\n- Basal cisterns patent, no uncal herniation\n- No subarachnoid or intraparenchymal haemorrhage\n- Chronic small vessel ischaemic change\n- No skull fracture"
+  },
+  {
+    "name": "ct_ap_diverticulitis_abscess",
+    "scan_type": "CT abdomen pelvis with contrast",
+    "clinical_history": "66F, 4 days left iliac fossa pain, fever 38.2, WCC 15, CRP 180. Query diverticulitis.",
+    "findings": "- Sigmoid diverticulosis with segmental wall thickening over 6cm\n- Pericolic fat stranding\n- 3.2cm rim-enhancing pericolic collection adjacent to sigmoid\n- No free intraperitoneal gas\n- Trace pelvic free fluid only\n- Ureters not obstructed\n- Liver, spleen, pancreas, adrenals, kidneys unremarkable\n- No suspicious osseous lesion"
+  }
+]

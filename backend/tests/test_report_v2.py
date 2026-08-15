@@ -72,7 +72,13 @@ def test_generator_v2_carries_format_and_impression_discipline():
     constrain form, not the fact-freedom the v2 architecture requires."""
     p = v2.GENERATOR_V2
     assert "on its own line, terminated by a colon" in p
-    assert "never a second FINDINGS" in p
-    assert "Admission test" in p
-    assert "Deletion test" in p
-    assert "never reappear here" in p
+    # The impression is organised by ONE principle - the handover - not by an
+    # enumeration rule patched with subtraction tests. Radiologist review
+    # 2026-08-15: "answer every question obligation" was the misaligned root
+    # of the verbosity; consequence, not enumeration, governs admission.
+    assert "phone call to the referring clinician" in p
+    assert "nothing else" in p
+    assert "priority, not a\n  checklist" in p or "priority, not a checklist" in p
+    flat = " ".join(p.split())
+    assert "changing what the referrer does" in flat
+    assert "never treatment" in flat
