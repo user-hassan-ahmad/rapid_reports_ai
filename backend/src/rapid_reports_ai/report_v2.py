@@ -76,7 +76,11 @@ The history is your only case-specific input and it does three jobs:
   facts about physics, the only assertions you are permitted)
 
 ## OBLIGATIONS
-One block per obligation. 6–14 total. Every field shown is required unless marked (opt).
+One block per obligation. Coverage is obligatory: **every station in VOLUME/IN carries at least
+one COMPLETENESS obligation whose T-NEG is that station's canonical normal statement** — this is
+the systems review, and a station without an obligation will silently vanish from the report.
+Add QUESTION obligations on top. Typically 10–18 total. Every field shown is required unless
+marked (opt).
 
 - OB<n> | <QUESTION or COMPLETENESS> | <station>
   OBSERVES: <the specific observation this obligation rests on>
@@ -117,8 +121,8 @@ Excluded from every branch: treatment, management strategy, physiotherapy, rehab
 procedural technique, hardware, drugs. A service whose function is treatment delivery is not a
 REFERRAL destination.
 
-Keep the whole sheet under ~120 lines. Density beats bulk: one precise obligation outperforms
-three vague ones."""
+Keep the whole sheet under ~150 lines. Precision within each obligation beats prose around it —
+but never buy brevity by dropping a station's coverage."""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -183,9 +187,10 @@ An unfilled {brace} anywhere is an error.
 ## 3 · FINDINGS composition
 
 Sweep order from the sheet. The primary pathology and its dictated companions open the section
-regardless of station order; remaining stations follow in order. Consolidate adjacent normals
-into single sentences; a positive finding takes its own. Every paragraph reads correctly in
-isolation.
+regardless of station order; remaining stations follow in order. **Every IN station appears** —
+the systems review is visibly complete; a station resolving entirely to normals still appears,
+consolidated with its neighbours into shared sentences rather than dropped. A positive finding
+takes its own sentence. Every paragraph reads correctly in isolation.
 
 ## 4 · IMPRESSION — your synthesis
 
@@ -208,6 +213,11 @@ And its discipline — the impression is synthesis, never a second FINDINGS:
   changes management — a threshold crossed, a complication, a severity tier altering urgency.
   Deletion test: if removing the descriptor after the diagnosis name loses no clinical work,
   it does not belong.
+- Findings that share an aetiology or a management pathway share a sentence. Recommendations
+  attach to their finding as semicolon clauses — "…with right heart strain; urgent respiratory
+  referral recommended." — never as standalone sentences.
+- A separate sentence is earned only by a genuinely different specialty or urgency. A typical
+  impression is one to three sentences; each beyond the first must name different management.
 - Length is set by the obligations, in both directions: a single sentence is complete when it
   carries them; extra sentences must each carry new clinical work, or go.
 
@@ -297,6 +307,6 @@ def validate_sheet_v2(sheet: str) -> dict[str, Any]:
         "history_suppress": len(_HSUP.findall(sheet)),
         "ind_paired": n_ind >= n_unass,
         "stray_prose": stray,
-        "ok": (6 <= len(obs) <= 14 and any(t == "QUESTION" for t in obs)
+        "ok": (8 <= len(obs) <= 20 and any(t == "QUESTION" for t in obs)
                and n_ind >= n_unass and not stray),
     }
