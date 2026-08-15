@@ -82,3 +82,20 @@ def test_generator_v2_carries_format_and_impression_discipline():
     flat = " ".join(p.split())
     assert "changing what the referrer does" in flat
     assert "never treatment" in flat
+
+
+def test_structure_topology_is_declared_in_phase_one_and_rendered_in_phase_two():
+    """Macro-structure (radiologist, 2026-08-15): multi-region and multi-level
+    studies need organised FINDINGS. The DECISION lives in the sheet - phase 1
+    knows the scan type and declares FLAT / COMPARTMENTS / UNITS as a typed
+    field - and phase 2 carries only the rendering contract. Generator-side
+    derivation would be per-draw improvisation; scan-type hardcoding would not
+    generalise. Stated from topology, not worked clinical examples."""
+    a, g = v2.ANALYSER_V2, v2.GENERATOR_V2
+    for token in ("## STRUCTURE", "FLAT", "COMPARTMENTS", "UNITS", "GLOBAL", "PER-UNIT"):
+        assert token in a
+    assert "from topology, not from habit" in a
+    for token in ("COMPARTMENTS", "UNITS", "Never enumerate normal units"):
+        assert token in g
+    flat = " ".join(g.split())
+    assert "reel into one or two sentences" in flat

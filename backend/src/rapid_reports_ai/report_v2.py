@@ -71,6 +71,22 @@ The history is your only case-specific input and it does three jobs:
 - OUT: <structure> => <alternative test> (one line each; only structures the question might
   implicate)
 
+## STRUCTURE
+Declare the macro-structure that mirrors this study's assessment topology — one line:
+- FLAT — a single field of assessment. The default; most studies.
+- COMPARTMENTS: <name> => <its stations> ; <name> => <stations> ... — the study spans anatomically
+  disjoint fields, each effectively its own examination (a multi-region protocol). Every VOLUME/IN
+  station belongs to exactly one compartment.
+- UNITS: GLOBAL => <observations true of the whole structure, stated once — e.g. overall
+  alignment, background signal, where a reference landmark lies> ; PER-UNIT => <the assessment
+  criteria applied to each serial unit> — the study applies the same criteria across repeated
+  units (levels, segments, stations of one organ system).
+Choose from topology, not from habit: a study is COMPARTMENTS only if a clinician would treat its
+regions as separate examinations, UNITS only if the same checklist repeats per unit. When neither
+is clearly true, FLAT. In COMPARTMENTS, every region the dictation could plausibly address has a
+home compartment — a finding in an imaged region is never relegated to a secondary or
+miscellaneous block.
+
 ## LIMITS
 - <what this modality cannot show that bears on the question> — <why> (one line each; these are
   facts about physics, the only assertions you are permitted)
@@ -187,11 +203,21 @@ An unfilled {brace} anywhere is an error.
 
 ## 3 · FINDINGS composition
 
-Sweep order from the sheet. The primary pathology and its dictated companions open the section
-regardless of station order; remaining stations follow in order. **Every IN station appears** —
-the systems review is visibly complete; a station resolving entirely to normals still appears,
-consolidated with its neighbours into shared sentences rather than dropped. A positive finding
-takes its own sentence. Every paragraph reads correctly in isolation.
+Sweep order from the sheet, rendered in the sheet's declared STRUCTURE:
+- FLAT — one continuous section, as now.
+- COMPARTMENTS — each compartment renders as its own block: the compartment name on its own line
+  followed by a colon, content beneath, one blank line between blocks. Within each block the
+  dominant finding leads and that compartment's stations follow — the prioritisation principle
+  applies inside every block, and the most consequential compartment comes first.
+- UNITS — the GLOBAL observations open the section as one paragraph, stated once and never
+  repeated per unit. Then one line per unit the dictation addresses, in anatomical order,
+  applying the PER-UNIT criteria; units the dictation is silent on consolidate into a single
+  remainder sentence. Never enumerate normal units individually. In this mode the sweep stations
+  fold into GLOBAL, the per-unit lines, or the remainder — a station never becomes its own
+  block, and no observation is stated in more than one place.
+**Every IN station appears** — the systems review is visibly complete; a station resolving
+entirely to normals still appears, consolidated with its neighbours rather than dropped. A
+positive finding takes its own sentence. Every paragraph reads correctly in isolation.
 
 ## 4 · IMPRESSION — the handover
 
@@ -210,7 +236,8 @@ spends some of it, and earns its place only by changing what the referrer does o
 - What happens next is part of the conclusion, not an appendix: the recommendation joins its
   finding as a semicolon clause, drawn from RECOMMEND, specialty and urgency named, and within
   radiological remit — what should happen, never how the receiving team should do it, and never
-  treatment.
+  treatment. Several recommendations reel into one or two sentences, grouped by destination and
+  urgency — not every recommendation needs its own flag.
 - Facts unchanged: everything here traces to the dictation or a resolved obligation; synthesis
   is your job, new facts are fabrication; sheet notation and thresholds are never cited.
 
