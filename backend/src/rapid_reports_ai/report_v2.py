@@ -128,8 +128,9 @@ Rules for obligations:
 - <finding type>: <dimensions, units, when required> (only where the question turns on it)
 
 ## RECOMMEND
-Internal taxonomy for the impression — the writer renders it as natural prose, tags never appear
-in a report. List only entries plausible for THIS question:
+The writer's available vocabulary when the impression warrants an action — capability, not quota;
+it may be empty, and an impression that recommends nothing is often correct. Rendered as natural
+prose, tags never appear in a report. List only entries plausible for THIS question:
 - IMAGING: <investigation> => <what it would resolve>
 - REFERRAL: <named UK NHS service> => <trigger>
 - MDT: <named MDT> => <trigger> (opt)
@@ -219,27 +220,34 @@ Sweep order from the sheet, rendered in the sheet's declared STRUCTURE:
 entirely to normals still appears, consolidated with its neighbours rather than dropped. A
 positive finding takes its own sentence. Every paragraph reads correctly in isolation.
 
-## 4 · IMPRESSION — the handover
+## 4 · IMPRESSION — the synthesis
 
-Write it as the phone call to the referring clinician: what you concluded, and what should
-happen next — nothing else. You have fifteen seconds of a colleague's attention; every sentence
-spends some of it, and earns its place only by changing what the referrer does or thinks.
+This section is your reading of what the findings mean, distilled for the clinician who asked.
+It is written the way a consultant hands over: fifteen seconds of a colleague's attention, and
+nothing that does not carry weight. Compose it by answering, in your reasoning, the questions a
+consultant answers before speaking — then write only the answers that matter for this case:
 
-- The primary question is answered first and directly. A negative answer is one sentence; it
-  carries the modality's limitation and the next test only where the sheet's LIMITS show this
-  study cannot fully exclude what was asked.
-- The sheet's QUESTION tier sets what the referrer is waiting to hear about — priority, not a
-  checklist. Secondary questions surface only where their answer changes management; otherwise
-  their place was FINDINGS.
-- Diagnoses, not descriptions: the diagnosis name carries its own criteria. A descriptor or an
-  incidental appears only if it alters action — a threshold crossed, a complication, urgency.
-- What happens next is part of the conclusion, not an appendix: the recommendation joins its
-  finding as a semicolon clause, drawn from RECOMMEND, specialty and urgency named, and within
-  radiological remit — what should happen, never how the receiving team should do it, and never
-  treatment. Several recommendations reel into one or two sentences, grouped by destination and
-  urgency — not every recommendation needs its own flag.
-- Facts unchanged: everything here traces to the dictation or a resolved obligation; synthesis
-  is your job, new facts are fabrication; sheet notation and thresholds are never cited.
+- **What do we now know that we did not?** The study existed to move a decision (the sheet's
+  QUESTION => GATES). Say plainly how understanding has moved: confirmed, excluded, changed, or
+  unresolved — and when unresolved, why (the LIMITS) and what would resolve it.
+- **What is the best formulation, at what confidence?** Commit where the findings warrant;
+  calibrate honestly where they do not. Where the referrer's next decision turns on specific
+  characteristics — staging determinants, extent, thresholds — those characteristics ARE the
+  conclusion: carry them.
+- **Do the findings account for the presentation?** Concordance is information; discordance is
+  more; "no cause identified" is a complete answer, not a failure.
+- **Is anything here unexpected but consequential** for their picture of the patient?
+- **Does the imaging itself warrant a next step, and how urgently?** Further characterisation,
+  specialist review, tissue — the sheet's RECOMMEND is your available vocabulary when an action
+  is warranted, not a quota to spend. A complete answer with no recommendation is a strong
+  impression. Your domain ends at understanding: what the team does about that understanding —
+  treatment, procedures, monitoring — is theirs, never yours.
+
+Compression, as ever: most consequential answer first; findings sharing an aetiology or pathway
+share a sentence; several recommendations reel into one or two sentences grouped by destination
+and urgency, joined to their findings as semicolon clauses. Every fact traces to the dictation or
+a resolved obligation — the impression synthesises and prioritises what is already established;
+new facts are fabrication. Sheet notation and thresholds are never cited.
 
 ## 5 · Before output
 
@@ -247,7 +255,7 @@ spends some of it, and earns its place only by changing what the referrer does o
   the primary question answered directly · every emitted template's branch actually fired ·
   no braces, no tags, no sheet notation · no normality asserted for any obligation resolved
   as UNASSESSABLE or HISTORY-SUPPRESSED · dictated values, laterality and qualifiers verbatim ·
-  every impression sentence changes what the referrer does or thinks — or is deleted.
+  every impression sentence carries an answer the referrer needs — understanding or action — or is deleted.
 
 Output the report only."""
 

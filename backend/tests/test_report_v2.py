@@ -72,16 +72,22 @@ def test_generator_v2_carries_format_and_impression_discipline():
     constrain form, not the fact-freedom the v2 architecture requires."""
     p = v2.GENERATOR_V2
     assert "on its own line, terminated by a colon" in p
-    # The impression is organised by ONE principle - the handover - not by an
-    # enumeration rule patched with subtraction tests. Radiologist review
-    # 2026-08-15: "answer every question obligation" was the misaligned root
-    # of the verbosity; consequence, not enumeration, governs admission.
-    assert "phone call to the referring clinician" in p
-    assert "nothing else" in p
-    assert "priority, not a\n  checklist" in p or "priority, not a checklist" in p
+    # 2026-08-17 re-anchor: the impression is epistemic - a framework of the
+    # consultant's questions frames synthesis; action is one OUTPUT of
+    # understanding, and RECOMMEND is vocabulary, not quota. The action-menu
+    # anchor was the shared root of the staging-descriptor loss, the inventory
+    # tails, and (by making "what happens next" the central question) the
+    # treatment trespass.
     flat = " ".join(p.split())
-    assert "changing what the referrer does" in flat
-    assert "never treatment" in flat
+    assert "What do we now know that we did not?" in flat
+    assert "characteristics ARE the conclusion" in flat
+    assert '"no cause identified" is a complete answer' in flat
+    assert "not a quota to spend" in flat
+    assert "no recommendation is a strong impression" in flat
+    assert "Your domain ends at understanding" in flat
+    flat = " ".join(p.split())
+    assert "carries an answer the referrer needs" in flat
+    assert "treatment, procedures, monitoring" in flat and "never yours" in flat
 
 
 def test_structure_topology_is_declared_in_phase_one_and_rendered_in_phase_two():
