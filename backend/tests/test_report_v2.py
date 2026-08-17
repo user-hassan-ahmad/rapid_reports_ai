@@ -115,6 +115,15 @@ def test_structure_topology_is_declared_in_phase_one_and_rendered_in_phase_two()
     assert "never opens on a peripheral normal" in gf
     assert "never delete a dictated finding" in gf
     assert "most consequential compartment" not in gf
+    # 2026-08-17 radiologist review: FLAT reports rendered as dense monoliths
+    # (v1's paragraph consolidation lost in translation) and impressions opened
+    # on a findings recap. FINDINGS owns detail; the impression opens at the
+    # unifying diagnosis and keeps a value only as a decision determinant.
+    assert "never one solid block" in gf
+    assert "index paragraph" in gf
+    assert "unifying diagnostic statement" in gf
+    assert "never a recap of findings" in gf
+    assert "deleted, not compressed" in gf
     for token in ("COMPARTMENTS", "UNITS", "Never enumerate normal units"):
         assert token in g
     flat = " ".join(g.split())

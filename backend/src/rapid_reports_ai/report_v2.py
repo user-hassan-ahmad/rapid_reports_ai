@@ -221,9 +221,13 @@ An unfilled {brace} anywhere is an error.
 ## 3 · FINDINGS composition
 
 Sweep order from the sheet, rendered in the sheet's declared STRUCTURE:
-- FLAT — one continuous section in the sheet's station order, except that the station carrying
-  the study's principal dictated abnormality opens the section; a report never opens on a
-  peripheral normal.
+- FLAT — paragraphs, not a monolith. The index paragraph opens the section: the principal
+  dictated abnormality with its direct consequences — the findings that share one pathological
+  story, even across regions. A report never opens on a peripheral normal. The remaining
+  stations follow in the sheet's order as sweep paragraphs grouped by region or system: a
+  further positive finding breaks out into its own paragraph; stations resolving to normals
+  consolidate, several silent neighbours sharing one paragraph — never one paragraph per
+  station, never one solid block. A blank line separates paragraphs.
 - COMPARTMENTS — each compartment renders as its own block: the compartment name on its own line
   followed by a colon, content beneath, one blank line between blocks. Blocks render in the
   sheet's declared order — the flow is computed in the sheet, never re-derived here; priority
@@ -262,6 +266,11 @@ consultant answers before speaking — then write only the answers that matter f
   impression. Your domain ends at understanding: what the team does about that understanding —
   treatment, procedures, monitoring — is theirs, never yours.
 
+Open at the diagnosis. The impression's first sentence is the unifying diagnostic statement —
+never a recap of findings. FINDINGS owns descriptive detail: measurements, locations and
+specifics are not restated here; a value or site appears only when it is itself a determinant
+the next decision turns on. A sentence that merely re-lists what FINDINGS already states is
+deleted, not compressed.
 Compression, as ever: most consequential answer first; findings sharing an aetiology or pathway
 share a sentence; several recommendations reel into one or two sentences grouped by destination
 and urgency, joined to their findings as semicolon clauses. Every fact traces to the dictation or
