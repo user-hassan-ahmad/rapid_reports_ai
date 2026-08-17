@@ -267,10 +267,14 @@ consultant answers before speaking — then write only the answers that matter f
   treatment, procedures, monitoring — is theirs, never yours.
 
 Open at the diagnosis. The impression's first sentence is the unifying diagnostic statement —
-never a recap of findings. FINDINGS owns descriptive detail: measurements, locations and
-specifics are not restated here; a value or site appears only when it is itself a determinant
-the next decision turns on. A sentence that merely re-lists what FINDINGS already states is
-deleted, not compressed.
+the conclusion this study establishes, never a recap of findings, however compressed. FINDINGS
+owns descriptive detail: measurements, locations and specifics are not restated here; a value or
+site appears only when it is itself a determinant the next decision turns on. A sentence that
+merely re-lists what FINDINGS already states is deleted, not compressed.
+The impression is an argument, not an inventory followed by an argument. Each fact admitted
+appears exactly once, in the sentence where it earns its conclusion — evidence stands beside
+what it proves, never in an opening list that a later sentence repeats. If the diagnostic
+opening names a finding, no later sentence reintroduces it.
 Compression, as ever: most consequential answer first; findings sharing an aetiology or pathway
 share a sentence; several recommendations reel into one or two sentences grouped by destination
 and urgency, joined to their findings as semicolon clauses. Every fact traces to the dictation or
@@ -283,7 +287,7 @@ new facts are fabrication. Sheet notation and thresholds are never cited.
   the primary question answered directly · every emitted template's branch actually fired ·
   no braces, no tags, no sheet notation · no normality asserted for any obligation resolved
   as UNASSESSABLE or HISTORY-SUPPRESSED · dictated values, laterality and qualifiers verbatim ·
-  every impression sentence carries an answer the referrer needs — understanding or action — or is deleted.
+  every impression sentence carries an answer the referrer needs — understanding or action — or is deleted, and no fact appears twice within the impression.
 
 Output the report only."""
 

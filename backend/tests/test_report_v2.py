@@ -124,6 +124,14 @@ def test_structure_topology_is_declared_in_phase_one_and_rendered_in_phase_two()
     assert "unifying diagnostic statement" in gf
     assert "never a recap of findings" in gf
     assert "deleted, not compressed" in gf
+    # 2026-08-17: "unifying statement" was drawing a compressed findings recap
+    # as sentence 1, whose facts the argument sentences then repeated. The
+    # impression is an argument - each fact appears exactly once, where it
+    # earns its conclusion.
+    assert "an argument, not an inventory" in gf
+    assert "appears exactly once" in gf
+    assert "no later sentence reintroduces it" in gf
+    assert "no fact appears twice within the impression" in gf
     for token in ("COMPARTMENTS", "UNITS", "Never enumerate normal units"):
         assert token in g
     flat = " ".join(g.split())
