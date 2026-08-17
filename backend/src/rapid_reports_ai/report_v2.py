@@ -83,9 +83,21 @@ Declare the macro-structure that mirrors this study's assessment topology — on
   units (levels, segments, stations of one organ system).
 Choose from topology, not from habit: a study is COMPARTMENTS only if a clinician would treat its
 regions as separate examinations, UNITS only if the same checklist repeats per unit. When neither
-is clearly true, FLAT. In COMPARTMENTS, every region the dictation could plausibly address has a
-home compartment — a finding in an imaged region is never relegated to a secondary or
-miscellaneous block.
+is clearly true, FLAT.
+This declaration is also the report's flow, computed here so the writer never re-derives it:
+list compartments and stations IN THE ORDER THE REPORT WILL RENDER THEM.
+- COMPARTMENTS follow anatomical convention — cranio-caudal (head before neck before chest before
+  abdomen before pelvis), appendicular and soft tissue last. Priority lives in the impression,
+  never in block order.
+- FLAT station order is question-directed: the stations the clinical question implicates lead;
+  peripheral stations (bones, scalp, secondary visible regions) are terminal. Generic anatomical
+  order only when the question gives no directional cue.
+Coverage is total: everything the scan images has a home compartment or station. Structures
+that run continuously through several compartments — the vertebral column on any body protocol
+above all — are their own compartment at their anatomical position in the order, never entries
+in a terminal or miscellaneous block. A terminal block holds only soft tissues and true
+incidentals. Scope OUT only what this study genuinely cannot
+demonstrate, never a region another modality would merely show better.
 
 ## LIMITS
 - <what this modality cannot show that bears on the question> — <why> (one line each; these are
@@ -182,6 +194,10 @@ grade, or extend content. Specifically:
   not stated." A fabricated completion is a fabricated finding — location above all.
   This rule fires on syntactic truncation only. Terse dictation that merely omits detail
   (no dimensions, no chronicity) is not truncation: report it as dictated, flag nothing.
+- A dictated finding that matches no obligation, station, or block is still reported in
+  FINDINGS at its natural anatomical position — inside the nearest block, or as its own block
+  when none fits. The sheet scopes expectations, never dictated content — a
+  mis-scoped sheet can never delete a dictated finding.
 - Where dictated laterality or site conflicts with the study metadata, preserve the dictated
   content unchanged and add: "The dictation states {dictated}; the study is registered as
   {metadata}. Reported as dictated; correlation advised." Never silently harmonise either way.
@@ -205,11 +221,14 @@ An unfilled {brace} anywhere is an error.
 ## 3 · FINDINGS composition
 
 Sweep order from the sheet, rendered in the sheet's declared STRUCTURE:
-- FLAT — one continuous section, as now.
+- FLAT — one continuous section in the sheet's station order, except that the station carrying
+  the study's principal dictated abnormality opens the section; a report never opens on a
+  peripheral normal.
 - COMPARTMENTS — each compartment renders as its own block: the compartment name on its own line
-  followed by a colon, content beneath, one blank line between blocks. Within each block the
-  dominant finding leads and that compartment's stations follow — the prioritisation principle
-  applies inside every block, and the most consequential compartment comes first.
+  followed by a colon, content beneath, one blank line between blocks. Blocks render in the
+  sheet's declared order — the flow is computed in the sheet, never re-derived here; priority
+  belongs to the impression. Within each block the dominant dictated finding leads and the
+  block's remaining stations follow as the systems review.
 - UNITS — the GLOBAL observations open the section as one paragraph, stated once and never
   repeated per unit. Then one line per unit the dictation addresses, in anatomical order,
   applying the PER-UNIT criteria; units the dictation is silent on consolidate into a single

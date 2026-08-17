@@ -101,6 +101,20 @@ def test_structure_topology_is_declared_in_phase_one_and_rendered_in_phase_two()
     for token in ("## STRUCTURE", "FLAT", "COMPARTMENTS", "UNITS", "GLOBAL", "PER-UNIT"):
         assert token in a
     assert "from topology, not from habit" in a
+    # 2026-08-17: the flow is computed in phase 1 (v1's "Sweep order:" field,
+    # reconciled back in). Sheet declares blocks/stations in render order -
+    # anatomical convention for COMPARTMENTS, question-directed for FLAT;
+    # the generator renders, never re-derives. Scope can never delete dictation
+    # (an L1 fracture was dropped when the sheet mis-scoped the TL spine OUT).
+    af = " ".join(a.split()); gf = " ".join(g.split())
+    assert "IN THE ORDER THE REPORT WILL RENDER THEM" in af
+    assert "cranio-caudal" in af
+    assert "question-directed" in af
+    assert "never a region another modality would merely show better" in af
+    assert "never re-derived here" in gf
+    assert "never opens on a peripheral normal" in gf
+    assert "never delete a dictated finding" in gf
+    assert "most consequential compartment" not in gf
     for token in ("COMPARTMENTS", "UNITS", "Never enumerate normal units"):
         assert token in g
     flat = " ".join(g.split())
