@@ -733,6 +733,39 @@ the same-day on_on baseline in `test_output/ENCODING_AB_20260822T012941/` (markd
 killed only by the sheet dropping stations (L-16), and this run shows the hardened sheets no
 longer drop stations. Worth ×3 on the same case before touching the analyser default.
 
+### L-32 · off_on under the hardened prompts — closest cell yet; both residual gaps live in the off-sheet
+
+**Verdict: not a config flip, but the gap is now two nameable sheet behaviours.** Confidence:
+moderate (n=3, 1 case, evening Groq load).
+
+`reasoning_matrix --cell off_on` ×3 on ct_tap, scored manually against the same-day on_on
+baseline (manual 4.4) and off_off (manual 3.4). **off_on ≈ 4.1.**
+
+- **Finding coverage was the best of any cell measured today: 7/7 canaries ×3 runs, zero drops**;
+  renal qualifier 3/3, AAA growth in the impression 3/3 (on_on managed 1/3). L-16's
+  sheet-shallowness failure is absent under the hardened prompts.
+- **The reasoning generator's conditional suppression handled 3 of 4 planted collisions every
+  run** — suppressed the extravasation negative, rescoped "no free fluid or air" to "no free
+  intraperitoneal air", stripped "pleural effusion" from a PE negative. The one that slipped is a
+  terminological subtype, not a lexical overlap: mural gas ≡ pneumatosis intestinalis. Two runs
+  emitted a defensible "apart from the focal duodenal mural gas …" carve-out (the gate flags this
+  — arguably gate bluntness); one emitted the negative flat (true contradiction).
+- **Root cause is upstream**: the reasoning-ON analyser wrote "No *pneumoperitoneum* …", leaving
+  room for the mural gas its clinical question makes likely; the off analyser writes textbook
+  negatives blind to collision risk ("pneumatosis", "no free fluid" in a bleed question, "no
+  pleural effusion"). Anticipatory negative-scoping is an analyser-reasoning behaviour.
+- **Must-appear erosion persists**: stroke 0/3, AF 1/3, lactate 2/3 (L-17's case-keyed-vs-generic
+  difference).
+- Economics: analyser 22s→~8.5s, analyser tokens −60%; generator tokens unchanged (~8.3k — same
+  clinical work off a shallower sheet). Net ~30s e2e vs ~37–42s; ~−29% total output tokens.
+
+→ Next cell if pursued: enc-style **analyser OFF + two new directives** — (a) collision-scoped
+mandatory negatives (prefer the discriminating subset; never a negative whose class the clinical
+question makes likely), (b) hardened impression must-appear mandate — then ×3 on ct_tap, and only
+on a clean result widen to the 5-case suite. L-18 applies: directives are a coin-flip until run.
+Also worth fixing regardless: the gate should accept explicitly scoped negatives ("apart from X,
+no Y") instead of flagging them as self-contradiction.
+
 ---
 
 ## Open questions, in priority order
