@@ -664,6 +664,45 @@ non-reasoning mode.
 collapses the speed/quality trade — Qwen-family reasoning at Cerebras throughput. That is the
 configuration this entire programme has been looking for.
 
+### L-30 · YAML sheet encoding — no token win, no reasoning win, slight quality risk
+
+**Verdict: re-encoding the sheet is not a lever; the migration is dead.** Confidence: high on
+tokens (deterministic), moderate on quality (n=3/arm, 1 case).
+
+A/B on `ct_tap_acute_abdomen_gda_bleed`: one fresh analyser sheet, transcoded markdown → YAML
+deterministically (word-bag verified, 0.0% content loss), generator run 3× per arm interleaved,
+params untouched. Runner: `scripts/sheet_budget/sheet_encoding_ab.py`; artifacts:
+`test_output/ENCODING_AB_20260822T012941/`.
+
+| | markdown | yaml |
+|---|---|---|
+| sheet chars | 14,597 | 14,438 (−1.1%) |
+| generator input tokens | 10,488 | **10,472 (−16 tok)** |
+| generator output tokens (mean) | 7,755 | 8,134 (+4.9%, inside spread) |
+| generator latency (median) | ~19.0s | ~19.9s |
+| judge v2.2 (all dims) | 5.00 | 5.00 |
+| manual defect read (mean) | 4.4 | 4.1 |
+
+- The −1.1% char delta collapsed to **−16 input tokens**: markdown's `- **Key:**` syntax tokenizes
+  as cheaply as YAML's indentation+quoting. "Compression" via re-encoding does not exist for this
+  sheet; only content abbreviation would compress, which is an information change, not a format one.
+- Output tokens confirm **L-26 exactly**: reasoning is set by the clinical task, not input bytes.
+- Manual line-by-line scoring found defects in both arms the judge missed entirely (see below).
+  Worst single defect was in the YAML arm: dictated "hypodensities … not fully characterised"
+  reported as "renal cysts" in the impression. Anecdote at n=3: all three YAML runs normal-filled
+  "liver unremarkable" over a known prior fatty liver (defeasibility miss); two of three markdown
+  runs correctly stayed silent — possibly the YAML `canonical_default_normal_lines` list being
+  applied more literally than the same lines in prose. Not established; do not act on it alone.
+
+**Judge saturation is the second finding.** Rubric v2.2 scored 24/24 dimensions at 5.00 across six
+reports that contained, per manual read: one silently dropped dictated finding (background
+atherosclerosis, md#2), one must-appear violation (previous stroke absent from impression, md#3),
+one characterisation overcall (renal "cysts", yaml#2), and repeated stripping of "not fully
+characterised" qualifiers. At ceiling the judge cannot discriminate between arms of *any*
+experiment. Before the next quality-sensitive comparison, either harden the rubric anchors or add
+a defect-checklist pass (dropped-finding sweep, qualifier preservation, must-appear audit) to the
+gate, where it is free and deterministic.
+
 ---
 
 ## Open questions, in priority order
