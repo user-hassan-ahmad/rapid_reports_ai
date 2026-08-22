@@ -703,6 +703,36 @@ experiment. Before the next quality-sensitive comparison, either harden the rubr
 a defect-checklist pass (dropped-finding sweep, qualifier preservation, must-appear audit) to the
 gate, where it is free and deterministic.
 
+### L-31 · off_off under the hardened prompts — fast, cheap, unshippable; the sheet layer held, the generator layer did not
+
+**Verdict: off_off remains dead; L-23 confirmed under current prompts. But the analyser-off half
+now survives.** Confidence: high on the failure mode (deterministic gate, 3/3), moderate on the
+rest (n=3, 1 case).
+
+Re-test motivated by the prompt hardening shipped after the reasoning matrix (L-19/L-20/L-21,
+L-24). `reasoning_matrix --cell off_off --case ct_tap_acute_abdomen_gda_bleed` ×3, judged against
+the same-day on_on baseline in `test_output/ENCODING_AB_20260822T012941/` (markdown arm).
+
+- **Speed/cost is everything L-07 promised**: ~10–12s end-to-end (vs ~37–42s), generator output
+  546–826 tokens (vs 6,900–8,700).
+- **Gate hard-failed 3/3 on self-contradiction**: every run asserted "No pneumatosis intestinalis"
+  alongside dictated duodenal mural gas. The on_on traces show the reasoning generator deliberating
+  per-negative and suppressing contradicted ones. **Conditional negative suppression is a
+  reasoning-executed behaviour** — stating the rule in the sheet (countable, point-of-use) does not
+  make a non-reasoning generator execute the conditional. Same class: "No active contrast
+  extravasation … apart from the identified gastroduodenal arterial bleed" (run 2).
+- **Must-appears collapsed 3/3** (run 1 impression carried zero of five clinical-context items);
+  run 3 silently dropped four dictated findings; "haemodynamic instability/compromise" asserted
+  twice without dictation support; one L-24-class trespass ("endocrine evaluation recommended").
+- **The hardened sheet layer held**: all three analyser-off sheets contained the adrenal / renal /
+  atherosclerosis canaries, and every report kept the adrenal with its qualifier — the exact L-16
+  failure mode, now absent at the sheet level.
+
+→ Generator reasoning is load-bearing and stays ON (L-23 stands). The now-open question is
+**off_on under current prompts**: L-13's radiologist actually preferred off_on prose, it was
+killed only by the sheet dropping stations (L-16), and this run shows the hardened sheets no
+longer drop stations. Worth ×3 on the same case before touching the analyser default.
+
 ---
 
 ## Open questions, in priority order
