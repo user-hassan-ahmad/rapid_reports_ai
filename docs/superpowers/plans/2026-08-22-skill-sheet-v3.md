@@ -228,7 +228,26 @@ git commit -m "feat(v3): global policy layer - register, uncertainty lexicon, ba
 
 ---
 
-## Task 2: Section splitter
+## Task 2: Section splitter ✅ COMMITTED
+
+> **Done. Two changes from the code below, both found by running the splitter over the 223 real
+> reports in `test_output/` before trusting it** — the ledger's own method note, which credits that
+> practice with catching two silent-corruption bugs. It caught two more:
+>
+> 1. **Split on `REPORT_SECTIONS` only, not any uppercase header.** Ten reports render compartment
+>    blocks as headers (`HEAD:`, `CHEST:`, `ABDOMEN:`, `VERTEBRAL COLUMN:`). Promoting those to
+>    top-level sections left `FINDINGS` holding only the text before the first compartment, so every
+>    closure check in Tasks 4–5 would compare the impression against a near-empty body and flag every
+>    multi-region report. The four report sections are the same across v1/v2/v3, so keying on them is
+>    what makes the module version-agnostic rather than breaking it.
+> 2. **`layout_ok()` added.** 19 reports parse to nothing — 15 emitting `COMPARISON` with no colon,
+>    4 putting content on the header line, all 19 from v2 cells and none from v1. An empty dict
+>    reading as "no defects" is L-28's silence-reads-as-safety one layer down, so the empty case has
+>    its own signal. **Task 6's aggregator must fail on `not layout_ok(report)`,** or every check
+>    passes vacuously on exactly the reports most likely to be broken.
+>
+> Worth carrying into Task 8: arm B (v2 bare) will produce unparseable reports at a material rate,
+> and `gate.py`'s `REQUIRED_SECTIONS` substring test passes both malformed forms.
 
 **Files:**
 - Create: `backend/src/rapid_reports_ai/scripts/sheet_budget/report_checks.py`
