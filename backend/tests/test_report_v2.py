@@ -1,22 +1,63 @@
 """Guards for the v2 parallel pipeline."""
 from __future__ import annotations
 
+import ast
 import pathlib
 
 from rapid_reports_ai import report_v2 as v2
+
+
+def _imports_module(path: pathlib.Path, name: str) -> bool:
+    """True when `path` actually imports `name`, in any import form.
+
+    Parsed rather than grepped: a substring scan counts docstrings and comments
+    as dependencies, so a module documenting why it does NOT use v2 would fail
+    the guard. That is a false positive the v3 modules trip by design, since
+    they record the coupling that forced v2 to go self-contained.
+    """
+    try:
+        tree = ast.parse(path.read_text(errors="replace"))
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(name in alias.name for alias in node.names):
+                return True
+        elif isinstance(node, ast.ImportFrom):
+            if node.module and name in node.module:
+                return True
+            if any(name in alias.name for alias in node.names):
+                return True
+    return False
 
 
 def test_production_does_not_import_v2():
     """v2 is a parallel development track; nothing live may depend on it
     until the deliberate swap."""
     src = pathlib.Path(v2.__file__).parent
-    offenders = []
-    for f in src.rglob("*.py"):
-        if f.name in {"report_v2.py"} or "scripts" in f.parts or "test" in f.name:
-            continue
-        if "report_v2" in f.read_text(errors="replace"):
-            offenders.append(f.name)
+    offenders = [
+        f.name for f in src.rglob("*.py")
+        if f.name != "report_v2.py"
+        and "scripts" not in f.parts
+        and "test" not in f.name
+        and _imports_module(f, "report_v2")
+    ]
     assert not offenders, f"production modules import report_v2: {offenders}"
+
+
+def test_the_import_guard_actually_detects_every_import_form(tmp_path):
+    """The guard is only worth having if it still catches a real dependency."""
+    for src in ("from .report_v2 import ANALYSER_V2",
+                "from rapid_reports_ai.report_v2 import ANALYSER_V2",
+                "import rapid_reports_ai.report_v2",
+                "from . import report_v2"):
+        f = tmp_path / "candidate.py"
+        f.write_text(src)
+        assert _imports_module(f, "report_v2"), f"guard missed: {src}"
+
+    f = tmp_path / "candidate.py"
+    f.write_text('"""Mentions report_v2 in prose only."""\nimport re  # report_v2\n')
+    assert not _imports_module(f, "report_v2"), "guard fired on a mere mention"
 
 
 def test_analyser_v2_forbids_assertion_and_requires_typed_output():
