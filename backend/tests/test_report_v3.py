@@ -45,6 +45,65 @@ def test_policy_core_derives_scope_rather_than_listing_forbidden_words():
     assert "Naming the specialty that should review is the first" in flat
 
 
+def test_policy_core_states_its_own_function_before_any_rule():
+    """v1 opened with what the document is for. Rules land differently when the
+    reader knows which layer they belong to."""
+    flat = _flat(pol.POLICY_CORE)
+    assert "This document defines how you write" in flat
+    assert "nothing case-specific licenses breaking them" in flat
+
+
+def test_policy_core_carries_the_v1_principles_that_transfer():
+    """Eleven of v1's sixteen sections transfer once the referent changes. The
+    first pass stripped content that was merely *phrased* with a sheet
+    reference, which is a different thing from being coupled to one."""
+    flat = _flat(pol.POLICY_CORE)
+    # Data authority — the three-tier qualifier precedence
+    assert "the dictated qualifier stands" in flat
+    assert "derived only from an explicit threshold supplied with the case" in flat
+    assert "never fabricate a threshold" in flat
+    # Silence vs fabrication — why normal statements exist at all
+    assert 'A radiologist does not dictate "no pleural effusion"' in flat
+    assert "never write a meta-statement about what the dictation did not say" in flat.lower()
+    # Negatives as a safety surface
+    assert "patient safety error, not a style defect" in flat
+    # Anti-hedging, restored from v1's Recommendations
+    assert "state it and commit" in flat
+
+
+def test_policy_report_carries_the_composition_rules_that_transfer():
+    flat = _flat(pol.POLICY_REPORT)
+    # Findings discipline, including the enforceable instances v1 named
+    assert "Management inference, differential synthesis and symptom attribution" in flat
+    assert '"as described above"' in flat
+    assert '"apart from the described finding"' in flat
+    # Consolidation
+    assert "Do not consolidate across subsystem boundaries" in flat
+    assert "Bilateral findings of the same type and severity" in flat
+    # Impression as synthesis
+    assert "not a sequential restatement of findings" in flat
+    assert "State diagnoses, not re-descriptions" in flat
+    # Consistency
+    assert "never introduces a finding absent from the body" in flat
+
+
+def test_policy_excludes_only_what_is_genuinely_sheet_coupled():
+    """The five v1 sections that do not transfer, and why. Guards against a
+    later pass quietly reinstating them along with the rest."""
+    combined = _flat(pol.POLICY_CORE + pol.POLICY_REPORT)
+    # Skill Sheet Internals — names header:/Structural Pattern
+    assert "header:" not in combined
+    # Conditional Style Application — CLINICAL HISTORY section formatting
+    assert "61M" not in combined and "CLINICAL HISTORY" not in combined
+    # Terminology Enforcement — no preferred/suppressed pairs exist in a v3 sheet
+    assert "suppressed term" not in combined
+    # Parameter Placeholders and Fixed Blocks — neither construct survives
+    assert "placeholder" not in combined
+    # And the one clause deliberately NOT restored: it contradicts the authority
+    # rule and is a plausible mechanism for L-30's qualifier stripping.
+    assert "interpret and reframe" not in combined
+
+
 def test_policy_report_carries_the_incidental_threshold():
     """L-13: omitted incidentals were editorial discrimination, not defects.
     L-15 named inclusion/exclusion as the open lever, so the one explicit test
