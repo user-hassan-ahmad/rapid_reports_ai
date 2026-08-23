@@ -1,31 +1,39 @@
 """Global report policy for the v3 pipeline.
 
-Everything here is scan-type-invariant: the same bytes on every case. It is
-prepended to the stage prompts rather than restated in the decision sheet
-(spec R6 - if a rule is the same for every case, it never belongs in the sheet).
+One document, prepended to both stage prompts. Everything here is
+scan-type-invariant: the same bytes on every case, never restated in the
+decision sheet (spec R6 - if a rule is the same for every case, it never
+belongs in the sheet).
 
 Supersedes, for v3 only, QUICK_REPORT_HARDENING_PREAMBLE and the quick path's
-use of global_style_guide.GLOBAL_STYLE_GUIDE. Production still uses those; this
-module is on the parallel track until a cutover is separately proposed.
+use of global_style_guide. Production still uses those; this module is on the
+parallel track until a cutover is separately proposed.
 
-**This layer must never name a sheet field.** That is the property the whole
-design rests on. GLOBAL_STYLE_GUIDE and QUICK_REPORT_HARDENING_PREAMBLE name v1
+**This document must never name a sheet field.** That is the property the whole
+design rests on. global_style_guide and QUICK_REPORT_HARDENING_PREAMBLE name v1
 fields directly - style exemplars, canonical line, mandatory negatives, fixed
 blocks - so changing the sheet grammar necessarily breaks the layer above it.
-That coupling is why report_v2.py had to go self-contained, and why v2 has never
-once run inside the system scaffolding. Keeping this module grammar-agnostic is
+That coupling is why the v2 module had to go self-contained, and why v2 has
+never once run inside the system scaffolding. Keeping this grammar-agnostic is
 what makes "change only the sheet" a coherent operation. Guarded by
 test_policy_names_no_sheet_fields.
 
-Split in two because the analyser writes report-register templates (so it needs
-the register, the lexicon and the banned list) but never writes a COMPARISON
-section (so the output-format half would be dead tokens on the analyser call).
+It went out as two constants at first, split by audience, on the reasoning that
+the analyser never writes a COMPARISON section or an impression so the
+composition half would be dead tokens. That reasoning was wrong. The analyser
+does not *write* those sections but it *designs the structure they will have*:
+its templates are FINDINGS prose and must obey findings register, and its
+station order is a consolidation plan governed by the consolidation rules. Both
+stages get the whole document.
+
+Ordered principles first, composition second - what governs any sentence in a
+report, then how a report is assembled.
 """
 from __future__ import annotations
 
 import re
 
-POLICY_CORE = """## REPORT POLICY — core
+POLICY = """## REPORT POLICY
 
 This document defines how you write. What you write about comes from the procedure prepared for
 this study and from the radiologist's dictation. These obligations hold on every study and every
@@ -116,9 +124,6 @@ radiologist does not.
 The test for any sentence you are about to write: does it report what the imaging establishes, or
 decide what someone should do about it? Naming the specialty that should review is the first.
 Naming what that specialty should then do is the second.
-"""
-
-POLICY_REPORT = """## REPORT POLICY — the report itself
 
 ### Sections
 Exactly these, in this order: COMPARISON, TECHNIQUE, FINDINGS, IMPRESSION. Each header uppercase,
@@ -158,7 +163,9 @@ Strictly protocol description. Never carries assessment disclosures or limitatio
 ### Findings discipline
 FINDINGS records morphology, anatomy and measurement. Causal or anatomical relationships stated
 naturally — "in keeping with", "consistent with" — belong here. Management inference,
-differential synthesis and symptom attribution belong to the impression alone.
+differential synthesis and symptom attribution belong to the impression alone. Any sentence
+destined for FINDINGS is written in this register, including one drafted before the dictation
+arrives.
 
 Every FINDINGS paragraph must read correctly in isolation. No backward references — "as described
 above" — and no meta-references — "apart from the described finding". Name the structure again if

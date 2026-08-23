@@ -145,6 +145,22 @@ GENERATOR      (absolutes + one real conditional + free composition)
 `report_v3_policy.py` **supersedes** `QUICK_REPORT_HARDENING_PREAMBLE` and ends the quick path's
 use of `GLOBAL_STYLE_GUIDE`. `global_style_guide.py` is left untouched for the templated path,
 which decouples the two paths and removes the contamination above in one move.
+
+**One document, both stages.** It was drafted as two constants split by audience — principles to
+both, composition to the generator only — on the reasoning that the analyser never writes a
+COMPARISON section or an impression. That was wrong. The analyser does not *write* those sections
+but *designs the structure they will have*: its `T-NEG` templates land verbatim in FINDINGS and
+must obey findings register, and `FLOW/ORDER` is a consolidation plan governed by the
+consolidation rules. Withholding either would separate a rule from the field it governs — L-24,
+reproduced. A split with no runtime meaning also invites the next wrong call about what belongs
+where, so there is one `POLICY`, ordered principles-then-composition, and both stages receive all
+of it.
+
+**A structural side-effect worth measuring.** Because the sheet now travels in the *user* message,
+both system prompts are byte-identical on every call. v1 builds the generator's system prompt as
+`SYSTEM_PREAMBLE + GLOBAL_STYLE_GUIDE + hardening + the sheet`, so it varies per case and can
+never be prefix-cached. No claim is made about the size of the win — it has not been measured —
+but v3's arrangement is capable of it and v1's is not. Instrument it alongside §9's experiment.
 `PRE_WRITING_ANALYSIS` and `VERIFICATION_CHECKLIST` are not carried into v3 — ledger
 open-question #5 already names them as the most likely lever on generator reasoning cost, and
 their function is replaced by §6's Checks step plus §7's deterministic gate.
@@ -377,7 +393,7 @@ outright instead. Run §2's editing rule over its fields:
 | urgency tier | **the generator, decisively** — urgency follows from what was found, and the analyser is guessing pre-dictation |
 | which service | the generator; the destination follows from the findings, and it knows UK NHS services |
 | what an investigation resolves | the generator; general medical knowledge |
-| the remit boundary | neither — it is invariant, and now lives in `POLICY_CORE` |
+| the remit boundary | neither — it is invariant, and now lives in `POLICY`'s Scope derivation |
 
 Every case-specific field fails the test. The one thing the section genuinely bought was L-24's
 trespass guardrail, and that is now a banned-vocabulary rule prepended directly to the generator —
@@ -448,7 +464,7 @@ dimensions: renal "cysts" overcall (lexicon + qualifier), stripped "not fully ch
 v3 must not become a third unmeasured iteration, and per §4.0 the previous two were never
 compared on equal footing.
 
-1. **Build the policy layer and the instrument.** `POLICY_CORE`/`POLICY_REPORT`, then the §7
+1. **Build the policy layer and the instrument.** `POLICY`, then the §7
    deterministic checks. Cheap, model-free, and they catch most of what L-30's manual read found.
    Optionally add a policy-driven semantic screen (`gpt-oss-safeguard-20b`, Apache 2.0, already
    served on Groq) *alongside* the gate for unencoded modes per L-28 — as a screen surfacing
@@ -456,13 +472,13 @@ compared on equal footing.
 
 2. **Run the three-arm experiment — and treat it as a gate.** A sheet and its generator are a
    matched pair, so the sheet grammar cannot be A/B'd alone. The policy layer *can* be, precisely
-   because `POLICY_CORE` names no sheet fields:
+   because `POLICY` names no sheet fields:
 
    | arm | composition | what it is |
    |---|---|---|
    | A | v1 sheet + v1 generator + full legacy stack | production as shipped |
    | B | v2 sheet + `GENERATOR_V2`, bare | reproduces the existing artifacts |
-   | C | v2 sheet + `GENERATOR_V2` + `POLICY_CORE` | **v2 as intended — never run** |
+   | C | v2 sheet + `GENERATOR_V2` + `POLICY` | **v2 as intended — never run** |
 
    C vs B answers whether dropping the policy stack cost anything. C vs A is the first fair
    comparison of the two pipelines. Sheets are generated once per case and reused across arms so

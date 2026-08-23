@@ -18,7 +18,7 @@
 
 | File | Responsibility |
 |---|---|
-| `backend/src/rapid_reports_ai/report_v3_policy.py` | **Create.** `POLICY_CORE` (register, lexicon, banned) sent to both stages; `POLICY_REPORT` (sections, COMPARISON) sent to the generator only; `BANNED_PATTERNS` as the machine-readable twin of the prose |
+| `backend/src/rapid_reports_ai/report_v3_policy.py` | **Create.** `POLICY` — one sheet-agnostic document, principles then composition, prepended to both stage prompts. Plus `BANNED_PATTERNS` and `LEXICON_TERMS` as detection heuristics for the gate |
 | `backend/src/rapid_reports_ai/scripts/sheet_budget/report_checks.py` | **Create.** Version-agnostic report checks driven by `BANNED_PATTERNS`. Works on any report, no sheet needed |
 | `backend/src/rapid_reports_ai/report_v3.py` | **Create.** `ANALYSER_V3`, `GENERATOR_V3`, `validate_sheet_v3`, `check_report_against_sheet_v3`, `generate_sheet_v3`, `generate_report_v3` |
 | `backend/src/rapid_reports_ai/scripts/sheet_budget/policy_ab.py` | **Create.** The three-arm experiment of Task 8 |
@@ -30,11 +30,28 @@ Ordering: policy + instrument (Tasks 1–7) → **decision gate** (Task 8) → v
 
 **Why not just build v3.** `v2_run.py` calls `generate_sheet_v2`/`generate_report_v2`, which pass `ANALYSER_V2`/`GENERATOR_V2` bare — no `SYSTEM_PREAMBLE`, no `GLOBAL_STYLE_GUIDE`, no hardening preamble, no scaffolds. Every v1 harness (`runner.py`, `reasoning_matrix.py`, `encoding_matrix.py`, `sheet_encoding_ab.py`) goes through `template_manager` and inherits all of it. So v1 was measured at roughly 42 KB analyser + 33 KB generator context and v2 at roughly 8 KB + 13 KB. **The two generations were never measured on comparable footing**, and the sheet grammar changed in the same step as the entire policy stack. Task 8 separates them before anything else is built.
 
-**Single source of truth:** the banned-phrase list exists once, in `report_v3_policy.BANNED_PATTERNS`. The prose in `POLICY_CORE` and the regexes in `report_checks.py` both derive from it. Do not duplicate the list.
+**Single source of truth:** the banned-phrase list exists once, in `report_v3_policy.BANNED_PATTERNS`, and `report_checks.py` imports it. Note these are *detection heuristics*, not a mirror of `POLICY` — the prompt derives scope from first principles rather than enumerating forbidden words, so `management_trespass` has no prompt-side counterpart by design.
 
 ---
 
-## Task 1: Policy module — core constants
+## Task 1: Policy module ✅ COMMITTED
+
+> **Done — `ff7ad3f` and later. The committed file is authoritative; the code below is the
+> as-designed version and has been superseded by review.** Three changes worth knowing before
+> reading anything downstream:
+>
+> 1. **One constant, not two.** `POLICY_CORE` / `POLICY_REPORT` were split by audience on the
+>    reasoning that the analyser never writes a COMPARISON section or an impression. Wrong — the
+>    analyser does not *write* those sections but *designs the structure they will have*: its
+>    templates are FINDINGS prose, and its station order is a consolidation plan. Both stages get
+>    the whole document, so the split had no runtime meaning. Now a single `POLICY`, 9,904 chars,
+>    16 sections, ordered principles-then-composition.
+> 2. **Scope is derived, not listed.** The management-vocabulary blocklist became a derivation
+>    from what the images contain and who is answerable, ending in a test the model can apply to a
+>    case nobody enumerated. `BANNED_PATTERNS` is no longer a mirror of the prose — it is a screen,
+>    and its hit rate measures whether the principle works.
+> 3. **Eleven of v1's sixteen sections transfer**, not five. The sheet-agnostic constraint governs
+>    vocabulary, not content.
 
 **Files:**
 - Create: `backend/src/rapid_reports_ai/report_v3_policy.py`
@@ -702,18 +719,20 @@ Append to `docs/model-migration/parameter-ledger.md` as **L-33**, recording: num
 
 ### What it settles
 
-A sheet and the generator that consumes it are a matched pair — a sheet is only meaningful to a generator that knows its field names, so the sheet grammar cannot be A/B'd on its own. What *can* be isolated is the policy layer, precisely because `POLICY_CORE` names no sheet fields. Three arms:
+A sheet and the generator that consumes it are a matched pair — a sheet is only meaningful to a generator that knows its field names, so the sheet grammar cannot be A/B'd on its own. What *can* be isolated is the policy layer, precisely because `POLICY` names no sheet fields. Three arms:
 
 | arm | composition | what it is |
 |---|---|---|
 | **A** | v1 sheet + v1 generator + full legacy stack | production exactly as shipped — the true baseline |
 | **B** | v2 sheet + `GENERATOR_V2`, bare | reproduces the existing `V2_FULL` artifacts |
-| **C** | v2 sheet + `GENERATOR_V2` + `POLICY_CORE` | **v2 as it was actually intended** — has never been run |
+| **C** | v2 sheet + `GENERATOR_V2` + `POLICY` | **v2 as it was actually intended** — has never been run |
 
 - **C vs B** answers the question that prompted this plan: did v2 lose something real by dropping the policy stack, or was the stack dead weight?
 - **C vs A** is the first fair comparison of the two pipelines, with policy held constant.
 
-`POLICY_CORE` only — not `POLICY_REPORT`. `GENERATOR_V2` §0 already owns section format, so adding `POLICY_REPORT` would double-state it. `POLICY_CORE` carries the register, uncertainty lexicon and banned constructions, which v2 has **no** equivalent of — and which are exactly what L-30's manual-read defects were about (stripped qualifiers, characterisation overcall).
+Arm C sends the whole of `POLICY`. What it buys is the register, uncertainty lexicon, data authority and scope derivation, none of which v2 has any equivalent of — and which are exactly what L-30's manual-read defects were about (stripped qualifiers, characterisation overcall).
+
+**One known redundancy, accepted deliberately:** `POLICY`'s `### Sections` and `GENERATOR_V2` §0 both state the four-section contract. They agree exactly, so this is duplication rather than contradiction, and stripping a section out of `POLICY` for one arm would mean arm C no longer tests the artefact that ships. Note it in the write-up; do not surgically edit the policy to avoid it.
 
 Sheets are generated **once per case and reused across arms**, so sheet stochasticity cannot confound the generator comparison. This is L-30's method, which caught what a naive design would have missed.
 
@@ -723,7 +742,7 @@ Sheets are generated **once per case and reused across arms**, so sheet stochast
 """Three-arm policy experiment. See plan Task 8.
 
 Isolates the policy layer, which is the only separable variable: a sheet and
-its generator are a matched pair, but POLICY_CORE names no sheet fields.
+its generator are a matched pair, but POLICY names no sheet fields.
 
     poetry run python -m rapid_reports_ai.scripts.sheet_budget.policy_ab \\
         --reps 3 --output-dir test_output/POLICY_AB
@@ -745,7 +764,7 @@ from rapid_reports_ai.quick_report_analyser import (  # noqa: E402
 from rapid_reports_ai.report_v2 import (  # noqa: E402
     GENERATOR_V2, V2_MODEL, generate_sheet_v2,
 )
-from rapid_reports_ai.report_v3_policy import POLICY_CORE  # noqa: E402
+from rapid_reports_ai.report_v3_policy import POLICY  # noqa: E402
 from rapid_reports_ai.template_manager import TemplateManager  # noqa: E402
 from rapid_reports_ai.quick_report_hardening import (  # noqa: E402
     QUICK_REPORT_HARDENING_PREAMBLE,
@@ -759,11 +778,11 @@ BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 
 async def _v2_generator(sheet: str, case: dict, *, policy: bool) -> dict:
-    """Arms B and C: GENERATOR_V2, with or without POLICY_CORE prepended."""
+    """Arms B and C: GENERATOR_V2, with or without POLICY prepended."""
     from rapid_reports_ai.enhancement_utils import (
         _get_api_key_for_provider, _get_model_provider, _run_agent_with_model,
     )
-    system = f"{POLICY_CORE}\n\n{GENERATOR_V2}" if policy else GENERATOR_V2
+    system = f"{POLICY}\n\n{GENERATOR_V2}" if policy else GENERATOR_V2
     user = (f"## DECISION SHEET\n{sheet}\n\n## STUDY METADATA\n"
             f"SCAN TYPE: {case['scan_type']}\n"
             f"CLINICAL HISTORY: {case['clinical_history']}\n\n"
@@ -1040,7 +1059,7 @@ import re
 import time
 from typing import Any
 
-from .report_v3_policy import POLICY_CORE, POLICY_REPORT
+from .report_v3_policy import POLICY
 
 ANALYSER_V3 = """You are a senior consultant radiologist preparing a DECISION SHEET for one study.
 You know the scan type and the clinical history. You have NOT seen the images and you have NOT
@@ -1784,14 +1803,26 @@ def test_production_does_not_import_v3():
 
 
 def test_stage_prompts_compose_the_policy_layer():
-    """The analyser gets the core policy; the generator gets core plus format.
-    Sending the output-format half to the analyser would be dead tokens — it
-    never writes a COMPARISON section."""
-    assert v3.analyser_system_prompt().startswith(v3.POLICY_CORE)
-    assert v3.POLICY_REPORT not in v3.analyser_system_prompt()
+    """Both stages get the whole policy. The analyser does not write a
+    COMPARISON section or an impression, but it designs the structure they will
+    have: its templates are FINDINGS prose bound by findings register, and its
+    station order is a consolidation plan bound by the consolidation rules."""
+    an = v3.analyser_system_prompt()
     gen = v3.generator_system_prompt()
-    assert v3.POLICY_CORE in gen and v3.POLICY_REPORT in gen
-    assert gen.endswith(v3.GENERATOR_V3)
+    assert an.startswith(v3.POLICY) and an.endswith(v3.ANALYSER_V3)
+    assert gen.startswith(v3.POLICY) and gen.endswith(v3.GENERATOR_V3)
+
+
+def test_system_prompts_are_constant_across_cases():
+    """v1 builds the generator's system prompt as preamble + guide + hardening +
+    *the sheet*, so it changes every case and can never be prefix-cached. Under
+    v3 the per-case content lives entirely in the user message."""
+    import inspect
+    for fn in (v3.analyser_system_prompt, v3.generator_system_prompt):
+        assert not inspect.signature(fn).parameters, (
+            f"{fn.__name__} takes an argument — the system prompt must not vary "
+            f"per case, or prefix caching is impossible"
+        )
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1808,13 +1839,22 @@ V3_MODEL = "qwen/qwen3.6-27b"
 
 
 def analyser_system_prompt() -> str:
-    """Core policy plus the sheet contract. No output-format half: the analyser
-    writes report-register templates but never writes report sections."""
-    return f"{POLICY_CORE}\n\n{ANALYSER_V3}"
+    """Policy plus the sheet contract.
+
+    The analyser gets the whole policy, composition rules included. It does not
+    write a COMPARISON section or an impression, but it designs the structure
+    they will have - its T-NEG templates land verbatim in FINDINGS and must obey
+    findings register, and FLOW/ORDER is a consolidation plan. Withholding those
+    rules would separate them from the field they govern, which is L-24.
+
+    Takes no argument: the system prompt must be byte-identical on every call so
+    the per-case content sits entirely in the user message and the prefix caches.
+    """
+    return f"{POLICY}\n\n{ANALYSER_V3}"
 
 
 def generator_system_prompt() -> str:
-    return f"{POLICY_CORE}\n\n{POLICY_REPORT}\n\n{GENERATOR_V3}"
+    return f"{POLICY}\n\n{GENERATOR_V3}"
 
 
 async def generate_sheet_v3(scan_type: str, clinical_history: str,
@@ -2082,8 +2122,8 @@ git commit -m "docs(ledger): L-35 v3 cells against the v2 re-baseline"
 **Deliberate departures from the spec as written**, both settled in review and to be back-ported when the spec is next touched:
 
 1. **`## IMPRESSION` with `VERDICT` + `CARRY` → `## VERDICT` alone, plus `CASE/BEARING`.** A manifest of items gets discharged rather than distilled — the same mechanism that made v2's generator say `RECOMMEND` is "not a quota to spend", and the mechanism v1's own prompt already documents ("the generator copies them verbatim and the impression bloats"). `BEARING` frames the history as what the question turns on, so engaging it is entailed rather than enumerated. The coverage **check** is unchanged: `check_report_against_sheet_v3` still verifies every `BEARING` item reached the impression. Keep the check, remove the slot.
-2. **`## RECOMMEND` deleted.** Urgency and service choice both depend on what was dictated, so they fail §2's editing rule. The remit boundary — the only part the analyser could pre-decide — is invariant and now lives in `POLICY_CORE`'s banned-construction list, prepended directly to the generator, which is closer to the point of use than a sheet section was. Untested, so Task 15 must check `management_trespass` flags specifically: if trespass returns, the guardrail needs restoring somewhere.
+2. **`## RECOMMEND` deleted.** Urgency and service choice both depend on what was dictated, so they fail §2's editing rule. The remit boundary — the only part the analyser could pre-decide — is invariant and now lives in `POLICY`'s derived Scope section, prepended directly to the generator, which is closer to the point of use than a sheet section was. Untested, so Task 15 must check `management_trespass` flags specifically: if trespass returns, the guardrail needs restoring somewhere.
 
 **Not covered by design:** §12.2, the critical-finding communication placeholder, is a product decision awaiting sign-off and has no task. It must not be implemented silently.
 
-**Type consistency.** `sections()` is defined in Task 2 and consumed in Tasks 4, 5, 6 and 12. `BANNED_PATTERNS` and `LEXICON_TERMS` are defined in Task 1 and consumed in Task 3 and Task 8. `POLICY_CORE` is defined in Task 1 and consumed in Tasks 8 and 13. `flow_stations()` is defined in Task 11 and consumed in Task 12. `_STOPWORDS`, `_BEARING`, `_TNEG`, `_EXPECT` are defined in Task 11 and reused in Task 12. `run_report_checks()` from Task 6 is consumed in Tasks 8 and 14; `check_report_against_sheet_v3()` from Task 12 is consumed in Task 14.
+**Type consistency.** `sections()` is defined in Task 2 and consumed in Tasks 4, 5, 6 and 12. `BANNED_PATTERNS` and `LEXICON_TERMS` are defined in Task 1 and consumed in Task 3 and Task 8. `POLICY` is defined in Task 1 and consumed in Tasks 8 and 13. `flow_stations()` is defined in Task 11 and consumed in Task 12. `_STOPWORDS`, `_BEARING`, `_TNEG`, `_EXPECT` are defined in Task 11 and reused in Task 12. `run_report_checks()` from Task 6 is consumed in Tasks 8 and 14; `check_report_against_sheet_v3()` from Task 12 is consumed in Task 14.
