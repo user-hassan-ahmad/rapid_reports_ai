@@ -21,6 +21,34 @@ def test_policy_states_its_own_function_before_any_rule():
     assert "nothing case-specific licenses breaking them" in flat
 
 
+def test_policy_states_what_a_report_is_for_before_stating_any_rule():
+    """Every rule here is downstream of a purpose that went unstated for three
+    drafts. Compression, precision, selectivity and scope all trace to the same
+    fact — a named clinician reads this once, quickly, to make a decision.
+
+    v1's hardening preamble opened on exactly this and it did not survive the
+    migration: "the report is a clinical communication act, not a findings
+    rendering." Restored, and placed before any rule it explains.
+    """
+    flat = _flat(pol.POLICY)
+    assert "A named clinician asked a question and cannot see the images" in flat
+    assert "read once, quickly, by someone deciding what to do next" in flat
+    assert "reconstructing what was known, and when" in flat
+    assert "a clinical communication act, not a rendering of what was seen" in flat
+
+    # The reader model that justifies the impression's narrowness and the
+    # incidental threshold. It was slated to appear once, late, in the generator
+    # prompt; it belongs in the layer whose rules depend on it.
+    assert "attention is finite and the answer has to survive a fast read" in flat
+
+    # A fallback the model can apply where the rules run out. Without this,
+    # Scope is the only section that reasons rather than instructs.
+    assert "Where a rule below does not settle a case" in flat
+
+    # Purpose precedes rules, or it is decoration.
+    assert flat.index("What a report is for") < flat.index("### Register")
+
+
 def test_policy_is_one_document_ordered_principles_then_composition():
     """It shipped as two constants split by audience, on the reasoning that the
     analyser never writes a COMPARISON section or an impression. Wrong: the
@@ -32,6 +60,7 @@ def test_policy_is_one_document_ordered_principles_then_composition():
 
     sections = re.findall(r"^### (.+)$", pol.POLICY, re.M)
     assert sections == [
+        "What a report is for",
         "Register",
         "Data authority",
         "Calibrated uncertainty",
