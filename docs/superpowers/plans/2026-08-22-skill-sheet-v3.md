@@ -334,13 +334,13 @@ def test_management_trespass_and_bare_correlation_flag():
     assert "bare_clinical_correlation" in names
 
 
-def test_stable_without_numbers_flags_and_with_numbers_does_not():
-    bad = "FINDINGS:\nThe right upper lobe nodule is stable.\n"
-    assert rc.check_stable_without_numbers(bad)
-
-    good = ("FINDINGS:\nThe right upper lobe nodule is stable at 6 mm, "
-            "unchanged from 6 mm on 12/02/2026.\n")
-    assert not rc.check_stable_without_numbers(good)
+def test_legitimate_imaging_recommendations_do_not_trip_trespass():
+    """`commence`, `prescribe` and `dosing` were dropped from the pattern in
+    review: "commence surveillance at 12 months" is an imaging recommendation,
+    not management, and a screen that cries wolf gets ignored."""
+    r = ("IMPRESSION:\nPulmonary nodule. Commence surveillance at 12 months "
+         "per Fleischner; respiratory review if it enlarges.\n")
+    assert not rc.check_banned(r)
 ```
 
 - [ ] **Step 2: Run test to verify it fails**

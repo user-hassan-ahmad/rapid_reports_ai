@@ -56,17 +56,46 @@ characterised" is not a cyst. Naming an entity the dictation declined to name is
 however probable the entity. Where genuine uncertainty remains, name what would resolve it — a
 specific test, a prior study, a clinical detail — rather than leaving it open.
 
-### Banned constructions
-- "cannot be excluded" without both a confidence term and a resolution path
-- "clinical correlation recommended" standing alone, with nothing named to correlate
-- "no significant abnormality" — significant to whom
-- "stable" for a measurable lesion without the current value, the prior value and the prior's date
-- management vocabulary: treatment, drugs, dosing, operative versus conservative choice, surgical
-  technique, hardware, immobilisation, physiotherapy, rehabilitation. Naming the specialty that
-  should review is in scope; naming what that specialty should then do is not.
+### Hedging that does no work
+Two constructions are never acceptable, because each defers a judgement without leaving anyone
+able to act on it:
+- "cannot be excluded" without both a confidence term and something that would resolve it
+- "clinical correlation recommended" standing alone, with nothing named to correlate against
+
+### Scope
+A report states what the imaging establishes and stops there. That boundary follows from two
+facts, not from a list of forbidden words: the study contains only what it contains, and the
+radiologist is not the clinician answerable for the patient.
+
+Within scope, because the images bear on it: what is present, absent, or not assessable, and
+where; what it most likely means and at what confidence; whether it accounts for the
+presentation; what would resolve what remains open — a further investigation, tissue, a named
+correlation, a prior study; and who should see this, how urgently.
+
+Outside it, because deciding these needs what the study does not contain: what is then done about
+that understanding. Treatment, drug and dose, operative versus conservative choice, procedural
+technique, hardware, immobilisation, rehabilitation, the intensity and interval of clinical
+monitoring — each turns on physiology, comorbidity, fitness, and the patient's own wishes. The
+images show none of that, and whoever weighs it carries a responsibility the reporting
+radiologist does not.
+
+The test for any sentence you are about to write: does it report what the imaging establishes, or
+decide what someone should do about it? Naming the specialty that should review is the first.
+Naming what that specialty should then do is the second.
 """
 
-POLICY_REPORT = """## REPORT POLICY — output format
+POLICY_REPORT = """## REPORT POLICY — the report itself
+
+### What earns a place in the impression
+FINDINGS documents everything the study shows. The impression is narrower by design: it carries
+what changes the reader's understanding or their next move, and a sentence that does neither
+lengthens the report without improving it.
+
+An incidental therefore reaches the impression when it requires an action, carries malignant
+potential, or crosses a threshold to which a guideline attaches consequence. An incidental
+meeting none of those is fully reported in FINDINGS and belongs nowhere else. Leaving it out of
+the impression is editorial judgement, not an omission — selectivity about what deserves the
+referrer's attention is a skill the report is expected to exercise.
 
 ### Sections
 Exactly these, in this order: COMPARISON, TECHNIQUE, FINDINGS, IMPRESSION. Each header uppercase,
@@ -91,26 +120,38 @@ as a whole — not merely whether a prior is named at the top:
    type or a date, by emitting exactly:
    "Comparison made to previous imaging."
 
-Any lesion under surveillance carries its current measurement and the prior measurement with the
-prior's date.
+COMPARISON names the prior study and its date. Nothing else: no findings, no measurements, no
+interval commentary.
+
+### Interval change
+Where the dictation reports a lesion as changed or unchanged against a prior, the numbers go in
+FINDINGS beside the lesion they describe — "8 mm, previously 6 mm on 12/02/2026" — never
+"stable" on its own. A bare "stable" states a judgement while withholding what it rests on, so
+the reader cannot check it.
 
 ### TECHNIQUE
 Strictly protocol description. Never carries assessment disclosures or limitation commentary.
 """
 
-# Machine-readable twin of the "Banned constructions" prose above. The gate and
-# the prompt must never drift: this tuple is the single source of truth and the
-# prose is its description. Context-sensitive entries (cannot_be_excluded,
-# stable_without_numbers) are matched here and refined in report_checks.py.
+# Detection heuristics for the gate. NOT a mirror of the prose above: the prompt
+# teaches scope from first principles precisely because a blocklist only ever
+# catches what someone already enumerated (L-28's lesson about the contradiction
+# pair list, whose silence read as safety for the whole programme).
+#
+# The two hedging entries do correspond to stated rules. `management_trespass`
+# deliberately does not - it is a cheap screen for the residue the scope
+# principle fails to prevent, and its hit rate is itself a measurement of whether
+# the principle is working. A rising rate means the prose needs strengthening,
+# not that the regex needs more words.
+#
+# `cannot_be_excluded` is context-sensitive and refined in report_checks.py.
 BANNED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("cannot_be_excluded", re.compile(r"cannot be excluded", re.I)),
     ("bare_clinical_correlation", re.compile(
         r"clinical correlation (?:is )?(?:recommended|advised|suggested)", re.I)),
-    ("no_significant_abnormality", re.compile(r"no significant abnormalit", re.I)),
     ("management_trespass", re.compile(
         r"\b(?:physiotherapy|rehabilitation|immobilisation|analgesia|"
-        r"conservative management|operative management|surgical technique|"
-        r"commence|prescribe|dosing)\b", re.I)),
+        r"conservative management|operative management|surgical technique)\b", re.I)),
 )
 
 # Confidence terms from the lexicon, used to decide whether a hedge is calibrated.
