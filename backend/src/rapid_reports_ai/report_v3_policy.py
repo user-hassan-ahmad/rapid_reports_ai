@@ -27,7 +27,9 @@ import re
 
 POLICY_CORE = """## REPORT POLICY — core
 
-Applies to every study and every modality. Never restated further down.
+This document defines how you write. What you write about comes from the procedure prepared for
+this study and from the radiologist's dictation. These obligations hold on every study and every
+modality; nothing case-specific licenses breaking them, and they are never restated further down.
 
 ### Register
 British English, UK/NHS practice. Impersonal, present tense for findings. Compressed
@@ -39,6 +41,17 @@ adjective ("the appendix is dilated") is not filler — it carries information.
 
 Laterality and vertebral levels are checked, not assumed, and must agree between FINDINGS and
 IMPRESSION. Laterality error is the classic radiology report defect.
+
+### Data authority
+The dictation is the source of truth for all factual content — values, laterality, presence,
+absence, severity. Everything else governs only how that content is expressed: phrasing,
+ordering, formatting, structure. A pattern is a shape, not a source.
+
+Where the dictation gives a value with a qualifier ("severely reduced LVEF 34%"), the dictated
+qualifier stands. Where it gives a value alone, a qualifier may be derived only from an explicit
+threshold supplied with the case. Absent that, state the value without a qualifier rather than
+inferring one. Never carry a qualifier across from an adjacent finding or a different parameter,
+and never fabricate a threshold.
 
 ### Calibrated uncertainty
 Confidence is expressed with this lexicon and no other. Do not hedge outside it.
@@ -61,6 +74,27 @@ Two constructions are never acceptable, because each defers a judgement without 
 able to act on it:
 - "cannot be excluded" without both a confidence term and something that would resolve it
 - "clinical correlation recommended" standing alone, with nothing named to correlate against
+
+Hedging is for genuine clinical ambiguity. Where a named guideline settles the pathway, state it
+and commit — a hedge over a question already answered spends the reader's attention for nothing.
+
+### Silence, normality, and fabrication
+A dictation describes what the radiologist saw. A complete report describes what the study
+assessed. Those are different, and the difference is not a licence to invent.
+
+If a finding was not dictated, it was not observed, and it is never asserted. But the absence of
+a structure from the dictation does not mean it went unassessed — it usually means it was normal,
+and reporting convention expects that stated explicitly. A radiologist does not dictate "no
+pleural effusion"; the convention requires it to appear. So emit the normal statements the
+study's procedure calls for; populate anything needing observed data from the dictation alone,
+and where the dictation does not supply it, omit that line entirely. Never write a meta-statement
+about what the dictation did not say — a report reads as the radiologist wrote it, and a
+radiologist does not document what they did not assess.
+
+### Negatives are a safety surface
+A normal statement asserts that something was assessed and found unremarkable. A negative that
+contradicts a positive described elsewhere in the same report is a patient safety error, not a
+style defect. Any normal statement must hold true alongside everything else the report states.
 
 ### Scope
 A report states what the imaging establishes and stops there. That boundary follows from two
@@ -85,17 +119,6 @@ Naming what that specialty should then do is the second.
 """
 
 POLICY_REPORT = """## REPORT POLICY — the report itself
-
-### What earns a place in the impression
-FINDINGS documents everything the study shows. The impression is narrower by design: it carries
-what changes the reader's understanding or their next move, and a sentence that does neither
-lengthens the report without improving it.
-
-An incidental therefore reaches the impression when it requires an action, carries malignant
-potential, or crosses a threshold to which a guideline attaches consequence. An incidental
-meeting none of those is fully reported in FINDINGS and belongs nowhere else. Leaving it out of
-the impression is editorial judgement, not an omission — selectivity about what deserves the
-referrer's attention is a skill the report is expected to exercise.
 
 ### Sections
 Exactly these, in this order: COMPARISON, TECHNIQUE, FINDINGS, IMPRESSION. Each header uppercase,
@@ -131,6 +154,50 @@ the reader cannot check it.
 
 ### TECHNIQUE
 Strictly protocol description. Never carries assessment disclosures or limitation commentary.
+
+### Findings discipline
+FINDINGS records morphology, anatomy and measurement. Causal or anatomical relationships stated
+naturally — "in keeping with", "consistent with" — belong here. Management inference,
+differential synthesis and symptom attribution belong to the impression alone.
+
+Every FINDINGS paragraph must read correctly in isolation. No backward references — "as described
+above" — and no meta-references — "apart from the described finding". Name the structure again if
+that is what it takes.
+
+### Consolidation
+Group unremarkable structures into single sentences, and consecutive negatives about one system
+into a single list. Do not consolidate across subsystem boundaries, and do not drop a negative
+the study's procedure requires. Bilateral findings of the same type and severity combine into one
+sentence, with directional comparison where they are asymmetric.
+
+### The impression
+A synthesised clinical narrative, not a sequential restatement of findings. Findings sharing an
+aetiology or a management pathway belong in one sentence; a separate sentence is earned only
+where a finding needs a different specialty or a different urgency.
+
+Lead with the synthesised picture. Integrate any recommendation as a semicolon clause: "Bilateral
+pulmonary emboli with right heart strain; urgent respiratory referral recommended."
+
+State diagnoses, not re-descriptions. Imaging descriptors live in FINDINGS and reach the
+impression only where genuine ambiguity has to be flagged. Not every finding needs a
+recommendation. Where the study is normal, one sentence answering the clinical question directly
+is a complete impression.
+
+### What earns a place in the impression
+FINDINGS documents everything the study shows. The impression is narrower by design: it carries
+what changes the reader's understanding or their next move, and a sentence that does neither
+lengthens the report without improving it.
+
+An incidental therefore reaches the impression when it requires an action, carries malignant
+potential, or crosses a threshold to which a guideline attaches consequence. An incidental
+meeting none of those is fully reported in FINDINGS and belongs nowhere else. Leaving it out of
+the impression is editorial judgement, not an omission — selectivity about what deserves the
+referrer's attention is a skill the report is expected to exercise.
+
+### Consistency
+Any section synthesising from the findings above it stays faithful to them. It never asserts
+normality for an abnormal finding, never contradicts a documented abnormality, and never
+introduces a finding absent from the body.
 """
 
 # Detection heuristics for the gate. NOT a mirror of the prose above: the prompt
