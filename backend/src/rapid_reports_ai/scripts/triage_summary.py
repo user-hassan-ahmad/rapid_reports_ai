@@ -8,6 +8,7 @@ from statistics import median
 from typing import Any, Optional
 
 from rapid_reports_ai.dictation_triage import TRIAGE_ACTIONS
+from rapid_reports_ai.scripts.bakeoff_stats import bootstrap_quantile_ci, fmt_rate, rate
 
 BUCKETS: tuple[tuple[str, float, float], ...] = (
     ("<0.5", 0.0, 0.5),
@@ -71,16 +72,23 @@ def _candidate_summary(records: list[Record]) -> dict[str, Any]:
         }
     lat = [r.latency_ms for r in ok]
     hard = [r for r in ok if r.hard]
+    correct = sum(r.action == r.expected_action for r in ok)
     out: dict[str, Any] = {
         "n": len(records),
         "errors": len(records) - len(ok),
         "accuracy": _acc(ok),
+        "accuracy_rate": rate(correct, len(ok)),
         "per_action": per_action,
         "confusion": {k: dict(v) for k, v in confusion.items()},
         "latency_p50_ms": int(median(lat)) if lat else 0,
         "latency_p95_ms": _p(lat, 0.95),
+        "latency_p95_ci_ms": list(bootstrap_quantile_ci(lat, 0.95)),
         "cost_usd": round(sum(r.cost_usd or 0.0 for r in records), 8),
-        "hard": {"n": len(hard), "accuracy": _acc(hard)},
+        "hard": {
+            "n": len(hard),
+            "accuracy": _acc(hard),
+            "rate": rate(sum(r.action == r.expected_action for r in hard), len(hard)),
+        },
         "is_correction_accuracy": _aux(ok, "is_correction", "expected_is_correction"),
         "needs_committed_edit_accuracy": _aux(ok, "needs_committed_edit", "expected_needs_committed_edit"),
     }
@@ -105,11 +113,12 @@ def format_summary(summary: dict[str, dict[str, Any]]) -> str:
     lines = []
     for cand, s in summary.items():
         lines.append(
-            f"== {cand}: n={s['n']} errors={s['errors']} accuracy={s['accuracy']:.3f} "
-            f"p50={s['latency_p50_ms']}ms p95={s['latency_p95_ms']}ms cost=${s['cost_usd']:.5f}"
+            f"== {cand}: n={s['n']} errors={s['errors']} accuracy={fmt_rate(s['accuracy_rate'])} "
+            f"p50={s['latency_p50_ms']}ms p95={s['latency_p95_ms']}ms {s['latency_p95_ci_ms']} "
+            f"cost=${s['cost_usd']:.5f}"
         )
         lines.append(
-            f"   hard: n={s['hard']['n']} accuracy={s['hard']['accuracy']:.3f}   "
+            f"   hard: accuracy={fmt_rate(s['hard']['rate'])}   "
             f"is_correction@0.5={s['is_correction_accuracy']}  "
             f"needs_committed_edit@0.5={s['needs_committed_edit_accuracy']}"
         )

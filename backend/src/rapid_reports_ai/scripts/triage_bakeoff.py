@@ -2,7 +2,7 @@
 
 Usage (from backend/, keys in .env):
     set -a; . ./.env; set +a
-    .venv/bin/python -m rapid_reports_ai.scripts.triage_bakeoff [--only jev|qwen] [--concurrency 4]
+    .venv/bin/python -m rapid_reports_ai.scripts.triage_bakeoff [--only code|jev|qwen] [--concurrency 4]
 
 Never run by pytest. Writes docs/model-migration/triage-bakeoff-<date>.json.
 """
@@ -13,10 +13,12 @@ import asyncio
 import json
 import os
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
 from rapid_reports_ai.dictation_triage import TriageState, get_triager
+from rapid_reports_ai.scripts.bakeoff_baselines import baseline_triage
 from rapid_reports_ai.scripts.triage_summary import Record, format_summary, summarise
 
 FIXTURES = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "triage_utterances.jsonl"
@@ -27,11 +29,27 @@ def load_cases() -> list[dict]:
     return [json.loads(line) for line in FIXTURES.read_text().splitlines() if line.strip()]
 
 
+def code_record(case: dict) -> Record:
+    """The plain-code baseline as a candidate row. No confidence (a lexicon has none)."""
+    t0 = time.perf_counter()
+    action = baseline_triage(case["committed"], case["active"], case["utterance"])
+    return Record(
+        id=case["id"], candidate="code", expected_action=case["expected_action"], action=action,
+        confidence=None, latency_ms=int((time.perf_counter() - t0) * 1000), cost_usd=None, hard=case["hard"],
+        error=None, is_correction=1.0 if action == "correct_previous_finding" else 0.0,
+        expected_is_correction=case["expected_is_correction"], needs_committed_edit=None,
+        expected_needs_committed_edit=case["expected_needs_committed_edit"],
+    )
+
+
 async def run_case(case: dict, candidates: list[str], sem: asyncio.Semaphore) -> list[Record]:
     state = TriageState(case["committed"], case["active"], case["utterance"], case.get("scan_type", ""))
     out: list[Record] = []
     async with sem:
         for cand in candidates:  # sequential per case so the two latencies are not contended
+            if cand == "code":
+                out.append(code_record(case))
+                continue
             try:
                 d = await get_triager(cand).classify(state)
                 out.append(Record(
@@ -53,16 +71,16 @@ async def run_case(case: dict, candidates: list[str], sem: asyncio.Semaphore) ->
 
 async def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--only", choices=["jev", "qwen"])
+    ap.add_argument("--only", choices=["code", "jev", "qwen"])
     ap.add_argument("--concurrency", type=int, default=4)
     args = ap.parse_args()
 
-    missing = [k for k in ("OPENROUTER_API_KEY", "CEREBRAS_API_KEY") if not os.environ.get(k)]
+    candidates = [args.only] if args.only else ["code", "jev", "qwen"]
+    needed = {"jev": "OPENROUTER_API_KEY", "qwen": "CEREBRAS_API_KEY"}
+    missing = [needed[c] for c in candidates if c in needed and not os.environ.get(needed[c])]
     if missing:
         print(f"missing env: {', '.join(missing)}", file=sys.stderr)
         return 2
-
-    candidates = [args.only] if args.only else ["jev", "qwen"]
     cases = load_cases()
     sem = asyncio.Semaphore(args.concurrency)
     nested = await asyncio.gather(*(run_case(c, candidates, sem) for c in cases))
