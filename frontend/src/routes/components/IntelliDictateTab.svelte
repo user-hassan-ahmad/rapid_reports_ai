@@ -9,7 +9,8 @@ import ReportResponseViewer from './ReportResponseViewer.svelte';
 import Toast from '$lib/components/Toast.svelte';
 import { API_URL } from '$lib/config';
 import { readSSEStream } from '$lib/utils/sse';
-import type { LabConfig, ProcessTrace } from '$lib/dictation-lab/types';
+import type { CoverageTrace, LabConfig, PillThresholds, ProcessTrace } from '$lib/dictation-lab/types';
+import { pillState } from '$lib/dictation-lab/coverage';
 
 	let toast: { show: (msg: string) => void } | undefined;
 
@@ -116,6 +117,10 @@ import type { LabConfig, ProcessTrace } from '$lib/dictation-lab/types';
 	/** Dictation Lab only; the home page never sets these. */
 	export let labConfig: LabConfig | null = null;
 	export let onProcessTrace: (trace: ProcessTrace) => void = () => {};
+	/** Dictation Lab only: three-state pills from coverage scores. null = binary pills as in production. */
+	export let pillThresholds: PillThresholds | null = null;
+	export let onCoverageTrace: (trace: CoverageTrace) => void = () => {};
+	let coverageScores: Record<string, number> | null = null;
 
 	let applicableGuidelines: Array<{
 		system: string;
@@ -606,6 +611,11 @@ import type { LabConfig, ProcessTrace } from '$lib/dictation-lab/types';
 		scratchpadRef?.injectTranscript(text, speechFinal);
 	}
 
+	/** Dictation Lab: the state a coverage fixture is built from. */
+	export function getCoverageState(): { scratchpad: string; checklist: string[]; scanType: string } {
+		return { scratchpad: scratchpadRef?.getContent() ?? '', checklist: prePoppedSections, scanType };
+	}
+
 	export function handleExternalAuditReaudit() {
 		reportViewerRef?.reauditFromExternal?.();
 	}
@@ -848,11 +858,20 @@ import type { LabConfig, ProcessTrace } from '$lib/dictation-lab/types';
 		<!-- Coverage chip strip -->
 		<div class="flex flex-wrap gap-1.5 transition-opacity duration-300 {isReviewing ? 'opacity-50' : ''} {regenerating ? 'animate-pulse' : ''}">
 			{#each allChecklistSections as section}
-				{@const covered = coveredSections.has(section)}
-				<span class="px-2.5 py-1 rounded-full text-[11px] font-medium transition-all duration-300
-					{covered
+				{@const state = pillThresholds && coverageScores
+					? pillState(coverageScores[section], pillThresholds)
+					: coveredSections.has(section)
+						? 'covered'
+						: 'absent'}
+				<span
+					class="px-2.5 py-1 rounded-full text-[11px] font-medium transition-all duration-300
+					{state === 'covered'
 						? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-						: 'bg-white/[0.04] text-gray-600 border border-white/[0.06]'}">
+						: state === 'partial'
+							? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+							: 'bg-white/[0.04] text-gray-600 border border-white/[0.06]'}"
+					title={coverageScores && coverageScores[section] != null ? coverageScores[section].toFixed(2) : undefined}
+				>
 					{section.replace(/_/g, ' ')}
 				</span>
 			{/each}
@@ -876,6 +895,8 @@ import type { LabConfig, ProcessTrace } from '$lib/dictation-lab/types';
 			onScratchpadClear={() => { coveredSections = new Set(); activePrompts = []; }}
 			{labConfig}
 			{onProcessTrace}
+			onCoverageScoresChange={(s) => { coverageScores = s; }}
+			{onCoverageTrace}
 		/>
 	</div>
 

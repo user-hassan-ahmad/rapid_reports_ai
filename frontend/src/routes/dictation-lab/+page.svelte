@@ -5,10 +5,15 @@
 	import { API_URL } from '$lib/config';
 	import { token } from '$lib/stores/auth';
 	import { labConfig, saveLabConfig } from '$lib/dictation-lab/labConfig';
-	import type { ProcessTrace } from '$lib/dictation-lab/types';
+	import type { CoverageTrace, ProcessTrace } from '$lib/dictation-lab/types';
 
 	// Same bindings the home page gives the tab (src/routes/+page.svelte ~975-1000).
-	let tabRef: { injectTranscript: (text: string, speechFinal?: boolean) => void } | null = null;
+	let tabRef: {
+		injectTranscript: (text: string, speechFinal?: boolean) => void;
+		getCoverageState: () => { scratchpad: string; checklist: string[]; scanType: string };
+	} | null = null;
+	let coverageTrace: CoverageTrace | null = null;
+	let coverageState: { scratchpad: string; checklist: string[]; scanType: string } | null = null;
 	let response: any = null;
 	let responseModel: any = null;
 	let loading = false;
@@ -79,6 +84,11 @@
 				{apiKeyStatus}
 				labConfig={$labConfig}
 				onProcessTrace={pushTrace}
+				pillThresholds={$labConfig.pillThresholds}
+				onCoverageTrace={(t) => {
+					coverageTrace = t;
+					coverageState = tabRef?.getCoverageState?.() ?? null;
+				}}
 				on:resetForm={() => {
 					traces = [];
 				}}
@@ -92,6 +102,8 @@
 			<DictationLabPanel
 				inject={(text) => tabRef?.injectTranscript(text, true)}
 				{traces}
+				{coverageTrace}
+				{coverageState}
 				onClear={() => {
 					traces = [];
 				}}

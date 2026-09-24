@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { computeDelta } from '$lib/dictation-lab/delta';
 	import { toRequestFields } from '$lib/dictation-lab/labConfig';
-	import type { LabConfig, ProcessTrace, TriageTrace } from '$lib/dictation-lab/types';
+	import type { CoverageTrace, LabConfig, ProcessTrace, TriageTrace } from '$lib/dictation-lab/types';
 	import { EditorView, keymap, Decoration, type DecorationSet } from '@codemirror/view';
 	import { EditorState, Compartment, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
@@ -32,6 +32,10 @@
 	export let labConfig: LabConfig | null = null;
 	/** Dictation Lab only. Called once per completed /process call. */
 	export let onProcessTrace: (trace: ProcessTrace) => void = () => {};
+	/** Dictation Lab only. Per-section scores from the selected coverage candidate. */
+	export let onCoverageScoresChange: (scores: Record<string, number> | null) => void = () => {};
+	/** Dictation Lab only. Both candidates' coverage results when coverage_debug is on. */
+	export let onCoverageTrace: (trace: CoverageTrace) => void = () => {};
 
 	// CM6 highlight decoration for IntelliPrompt source linking
 	const setHighlight = StateEffect.define<{ from: number; to: number } | null>();
@@ -508,13 +512,16 @@
 					checklist_sections: checklistSections,
 					scan_type: scanType,
 					clinical_history: clinicalHistory,
-					mode: polishMode
+					mode: polishMode,
+					...(labConfig ? { coverage_debug: labConfig.coverageDebug } : {})
 				})
 			});
 			const data = await res.json();
 			if (data.covered_sections && Array.isArray(data.covered_sections)) {
 				onCoveredSectionsChange(data.covered_sections);
 			}
+			onCoverageScoresChange(data.coverage_scores ?? null);
+			if (data.coverage) onCoverageTrace(data.coverage as CoverageTrace);
 			// Backend now owns the full merge — replace activePrompts with the final merged list
 			if (data.prompts && Array.isArray(data.prompts)) {
 				onPromptsChange(data.prompts);

@@ -4,9 +4,11 @@
 	import { token } from '$lib/stores/auth';
 	import { labConfig } from '$lib/dictation-lab/labConfig';
 	import { buildFixtureLine, suggestId } from '$lib/dictation-lab/fixtureExport';
+	import { buildCoverageFixtureLine, coverageAgreement } from '$lib/dictation-lab/coverage';
 	import { agreementClass, summariseTraces, type AgreementClass } from '$lib/dictation-lab/summary';
 	import {
 		TRIAGE_ACTIONS,
+		type CoverageTrace,
 		type FixtureCase,
 		type ProcessTrace,
 		type TriageAction,
@@ -17,6 +19,44 @@
 	export let inject: (text: string) => void = () => {};
 	export let traces: ProcessTrace[] = [];
 	export let onClear: () => void = () => {};
+	export let coverageTrace: CoverageTrace | null = null;
+	export let coverageState: { scratchpad: string; checklist: string[]; scanType: string } | null = null;
+
+	// ── Coverage ───────────────────────────────────────────────────────────────
+	let coverageBuffer = '';
+	let coverageSeq = 1;
+	let covExp = { expected: new Set<string>(), rule: 'direct-subject', hard: false, note: '' };
+	const RULES = [
+		'direct-subject', 'direct-location', 'direct-modifier', 'collective-group', 'collective-boundary',
+		'specific-overrides-collective', 'bare-mention', 'adjacent-structure', 'parent-not-enumerating',
+		'incidental-co-mention', 'vague-filler', 'abbreviation'
+	];
+	$: sections = coverageState?.checklist ?? [];
+	$: agreement =
+		coverageTrace?.jev?.scores && coverageTrace?.qwen?.covered
+			? coverageAgreement(sections, coverageTrace.jev.scores, coverageTrace.qwen.covered)
+			: ({} as Record<string, string>);
+	function startCoverageExport(): void {
+		const jev = coverageTrace?.jev?.scores ?? {};
+		covExp = { expected: new Set(sections.filter((s) => (jev[s] ?? 0) >= 0.5)), rule: 'direct-subject', hard: false, note: '' };
+	}
+	function toggleExpected(s: string): void {
+		const n = new Set(covExp.expected);
+		if (n.has(s)) n.delete(s);
+		else n.add(s);
+		covExp = { ...covExp, expected: n };
+	}
+	function appendCoverageLine(): void {
+		if (!coverageState) return;
+		const line = buildCoverageFixtureLine(coverageState, {
+			id: `lab-cov-${String(coverageSeq++).padStart(2, '0')}`,
+			expected_covered: sections.filter((s) => covExp.expected.has(s)),
+			rule: covExp.rule,
+			hard: covExp.hard,
+			note: covExp.note
+		});
+		coverageBuffer = coverageBuffer ? `${coverageBuffer}\n${line}` : line;
+	}
 
 	// ── Feeder ─────────────────────────────────────────────────────────────────
 	let feederText = '';
@@ -170,6 +210,64 @@
 			<input type="checkbox" bind:checked={$labConfig.showBoth} />
 			show both candidates (triage_debug)
 		</label>
+	</section>
+
+	<!-- Coverage -->
+	<section class="card-dark space-y-2">
+		<h3 class="font-semibold">
+			Coverage
+			<span class="text-gray-400 font-normal text-xs">
+				{#if coverageTrace}selected={coverageTrace.selected} · jev {coverageTrace.jev?.latency_ms ?? '—'} ms · qwen {coverageTrace.qwen?.latency_ms ?? '—'} ms{/if}
+			</span>
+		</h3>
+		<label class="flex items-center gap-2">
+			<input type="checkbox" bind:checked={$labConfig.coverageDebug} />
+			compare both candidates (coverage_debug)
+		</label>
+		<div class="flex gap-4 text-xs items-center">
+			<label class="flex items-center gap-1">
+				hi <input type="range" min="0.5" max="1" step="0.05" bind:value={$labConfig.pillThresholds.hi} />
+				<span class="tabular-nums">{$labConfig.pillThresholds.hi.toFixed(2)}</span>
+			</label>
+			<label class="flex items-center gap-1">
+				lo <input type="range" min="0" max="0.75" step="0.05" bind:value={$labConfig.pillThresholds.lo} />
+				<span class="tabular-nums">{$labConfig.pillThresholds.lo.toFixed(2)}</span>
+			</label>
+		</div>
+		{#if coverageTrace}
+			<table class="w-full text-xs">
+				<thead><tr class="text-gray-400"><th class="text-left">section</th><th>jev p</th><th>qwen</th><th></th></tr></thead>
+				<tbody>
+					{#each sections as s}
+						{@const p = coverageTrace.jev?.scores?.[s]}
+						{@const q = coverageTrace.qwen?.covered?.includes(s)}
+						<tr class={agreement[s] === 'agree' || !agreement[s] ? '' : agreement[s] === 'jev-only' ? 'text-amber-300' : 'text-red-300'}>
+							<td>{s}</td>
+							<td class="text-center tabular-nums">{p == null ? (coverageTrace.jev?.error ?? '—') : p.toFixed(2)}</td>
+							<td class="text-center">{coverageTrace.qwen?.error ?? (q ? '✓' : '·')}</td>
+							<td class="text-right text-gray-500">{agreement[s] ?? ''}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+			<button class="btn-secondary text-xs" on:click={startCoverageExport} disabled={!coverageState}>Add to coverage fixtures</button>
+			{#if covExp.expected.size > 0 || coverageBuffer}
+				<div class="flex flex-wrap gap-2">
+					{#each sections as s}
+						<label class="text-xs"><input type="checkbox" checked={covExp.expected.has(s)} on:change={() => toggleExpected(s)} /> {s}</label>
+					{/each}
+				</div>
+				<div class="flex flex-wrap gap-2 items-center text-xs">
+					<select class="bg-gray-900 rounded px-1" bind:value={covExp.rule}>
+						{#each RULES as r}<option value={r}>{r}</option>{/each}
+					</select>
+					<label><input type="checkbox" bind:checked={covExp.hard} /> hard</label>
+					<input class="bg-gray-900 rounded px-2 py-1 flex-1" placeholder="note" bind:value={covExp.note} />
+					<button class="btn-primary text-xs" on:click={appendCoverageLine}>Append</button>
+				</div>
+				<textarea class="w-full h-16 bg-gray-900 rounded p-2 font-mono text-xs" readonly value={coverageBuffer}></textarea>
+			{/if}
+		{/if}
 	</section>
 
 	<!-- Feeder -->
