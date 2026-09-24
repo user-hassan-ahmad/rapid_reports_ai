@@ -3167,7 +3167,7 @@ Frontend (new terminal): `cd frontend && bun run dev`
 
 Open `http://localhost:5173/dictation-lab` (log in on `/` first if the status line says so).
 
-- [ ] **Step 5: Smoke in the browser**
+- [x] **Step 5: Smoke in the browser** (done 2026-09-24; mic check left to the user)
 
 1. Paste into the feeder: `there is a six millimetre nodule in the right upper lobe`, `actually make that the left upper lobe`, `um so er`, `new paragraph`, `scratch that`. Strategy: observe, show both. Press *Step* five times. Expect five timeline rows; the "actually" row shows derived=correct with Jev and Qwen both `correct_previous_finding`.
 2. Switch to *route on Jev*, threshold 0.9, Reset feeder, Play. Expect the `um so er`, `new paragraph` and `scratch that` rows to show routed=deterministic with a latency well under the model rows, and the scratchpad to reflect the delete and the paragraph break.
