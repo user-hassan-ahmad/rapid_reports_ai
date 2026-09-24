@@ -23,6 +23,12 @@ from .dictation_triage import (
 )
 from .dictation_triage_labels import agrees, derive_action
 from .dictation_triage_router import route as triage_route_decision
+from .section_coverage import (
+    CoverageDecision,
+    CoverageTrace,
+    decision_to_coverage_trace,
+    get_jev_coverage,
+)
 from .enhancement_utils import (
     MODEL_CONFIG,
     _get_api_key_for_provider,
@@ -116,11 +122,16 @@ class CanvasReviewRequest(BaseModel):
     scan_type: str = ""
     clinical_history: str = ""
     mode: str = "clean"
+    # Lab-only (RR_TRIAGE_DEBUG=1): run both coverage candidates and attach the trace.
+    coverage_debug: bool = False
 
 
 class CanvasReviewResponse(BaseModel):
     covered_sections: list[str]
     prompts: list[IntelliPrompt] = []
+    # Per-section score from the selected coverage candidate (Qwen gives 1.0/0.0).
+    coverage_scores: Optional[dict[str, float]] = None
+    coverage: Optional[CoverageTrace] = None  # lab only
 
 
 class CoverageOnlyResponse(BaseModel):
@@ -963,160 +974,199 @@ async def triage_fixtures(current_user: User = Depends(get_current_user)):
     return {"cases": cases}
 
 
-@canvas_router.post("/review", response_model=CanvasReviewResponse)
-async def review_scratchpad(
-    request: CanvasReviewRequest,
-    current_user: User = Depends(get_current_user),
-):
-    """Parallel pass: coverage matching and IntelliPrompts generation."""
+# -----------------------------------------------------------------------------
+# Coverage candidates (spec 2026-09-24-section-coverage-jev-design.md §4.2)
+# -----------------------------------------------------------------------------
+
+
+def _coverage_candidate() -> Literal["jev", "qwen"]:
+    """RR_COVERAGE_CANDIDATE selects the production coverage path. Defaults to qwen;
+    jev is honoured only when the OpenRouter key exists (warn once otherwise)."""
+    if os.environ.get("RR_COVERAGE_CANDIDATE") == "jev":
+        if os.environ.get("OPENROUTER_API_KEY"):
+            return "jev"
+        if "RR_COVERAGE_CANDIDATE" not in _TRIAGE_WARNED:
+            _TRIAGE_WARNED.add("RR_COVERAGE_CANDIDATE")
+            logger.warning("[canvas.coverage] RR_COVERAGE_CANDIDATE=jev but OPENROUTER_API_KEY is unset; using qwen")
+    return "qwen"
+
+
+async def qwen_coverage(scratchpad: str, sections: list[str], scan_type: str) -> CoverageDecision:
+    """The pre-existing coverage path, lifted out of the review endpoint unchanged in
+    behaviour (prompt, settings, fallback, normaliser). Raises on total failure so the
+    caller decides how to degrade."""
     coverage_model = MODEL_CONFIG["CANVAS_COVERAGE"]
-    intelliprompts_model = MODEL_CONFIG["CANVAS_INTELLIPROMPTS"]
     coverage_fallback = MODEL_CONFIG.get("CANVAS_COVERAGE_FALLBACK")
-    intelliprompts_fallback = MODEL_CONFIG.get("CANVAS_INTELLIPROMPTS_FALLBACK")
-    try:
-        coverage_provider = _get_model_provider(coverage_model)
-        intelliprompts_provider = _get_model_provider(intelliprompts_model)
-        coverage_api_key = _get_api_key_for_provider(coverage_provider)
-        intelliprompts_api_key = _get_api_key_for_provider(intelliprompts_provider)
-    except ValueError:
-        raise HTTPException(status_code=503, detail="Service not available. Contact your administrator.")
-
-    checklist_str = ", ".join(request.checklist_sections) if request.checklist_sections else "(none)"
-
+    checklist_str = ", ".join(sections) if sections else "(none)"
     coverage_prompt = CANVAS_COVERAGE_USER_PROMPT_TEMPLATE.format(
-        scratchpad_content=request.scratchpad_content,
-        checklist_sections=checklist_str,
+        scratchpad_content=scratchpad, checklist_sections=checklist_str,
     )
+    # Temperature kept low — coverage is checklist classification, not open dialogue.
+    coverage_model_settings = {"temperature": 0.1, "max_completion_tokens": 1500}
+    t0 = _time.perf_counter()
+    output = await _run_canvas_with_fallback(
+        coverage_model,
+        coverage_fallback,
+        output_type=CoverageOnlyResponse,
+        system_prompt=CANVAS_COVERAGE_SYSTEM_PROMPT,
+        user_prompt=coverage_prompt,
+        model_settings=coverage_model_settings,
+        label="canvas.coverage",
+    )
+    raw_covered = output.covered_sections
+    latency_ms = int((_time.perf_counter() - t0) * 1000)
+
+    # Defensive post-validation — the schema is list[str] so any string is valid at
+    # the schema layer, but Qwen occasionally comma-concatenates sections or emits a
+    # name that isn't on the checklist. Split when every part matches, then filter.
+    checklist_set = set(sections)
+    normalised: list[str] = []
+    split_count = 0
+    dropped: list[str] = []
+    for item in raw_covered:
+        if "," in item:
+            parts = [p.strip() for p in item.split(",")]
+            if all(p in checklist_set for p in parts):
+                normalised.extend(parts)
+                split_count += 1
+                continue
+        if item in checklist_set:
+            normalised.append(item)
+        else:
+            dropped.append(item)
+    normalised_set = set(normalised)
+    covered = [s for s in sections if s in normalised_set]  # checklist order, deduped
+    if split_count or dropped:
+        logger.info("[canvas.coverage] normalised raw=%s split=%d dropped=%s", raw_covered, split_count, dropped)
+    logger.info("[canvas.coverage] %dms → %s", latency_ms, covered)
+    scores = {s: (1.0 if s in normalised_set else 0.0) for s in sections}
+    return CoverageDecision(
+        candidate="qwen", scores=scores, covered=covered, latency_ms=latency_ms, raw=list(raw_covered)
+    )
+
+
+async def _coverage_safe(name: str, request: CanvasReviewRequest) -> CoverageDecision | BaseException:
+    try:
+        if name == "jev":
+            return await get_jev_coverage().classify(
+                request.scratchpad_content, request.checklist_sections, request.scan_type
+            )
+        return await qwen_coverage(request.scratchpad_content, request.checklist_sections, request.scan_type)
+    except Exception as e:
+        logger.error("[canvas.coverage] ❌ %s %s: %s", name, type(e).__name__, e)
+        return e
+
+
+async def _intelliprompts(request: CanvasReviewRequest) -> list[IntelliPrompt]:
+    """IntelliPrompts generation — unchanged from the previous inline closure."""
+    intelliprompts_model = MODEL_CONFIG["CANVAS_INTELLIPROMPTS"]
+    intelliprompts_fallback = MODEL_CONFIG.get("CANVAS_INTELLIPROMPTS_FALLBACK")
+    intelliprompts_provider = _get_model_provider(intelliprompts_model)
+    intelliprompts_api_key = _get_api_key_for_provider(intelliprompts_provider)
     intelliprompts_prompt = CANVAS_INTELLIPROMPTS_USER_PROMPT_TEMPLATE.format(
         scan_type=request.scan_type or "(not specified)",
         clinical_history=request.clinical_history or "(not specified)",
         scratchpad_content=request.scratchpad_content,
     )
+    if intelliprompts_provider == "cerebras":
+        intelliprompts_model_settings = {"temperature": 0.1, "max_completion_tokens": 1500, "reasoning_effort": "medium"}
+        use_thinking = False
+    else:
+        intelliprompts_model_settings = {"temperature": 0.1, "max_tokens": 3000}
+        use_thinking = True
 
-    async def run_coverage() -> list[str]:
-        import time as _time
-        # Non-thinking mode via extra_body reasoning_effort="none". Temperature kept low —
-        # coverage is deterministic checklist classification, not open dialogue.
-        # Cerebras settings form (max_completion_tokens; no top_p/extra_body).
-        coverage_model_settings = {"temperature": 0.1, "max_completion_tokens": 1500}
-        scratchpad_preview = request.scratchpad_content[:200].replace('\n', ' | ')
-        print(f"\n[COVERAGE] ── New call ──────────────────────────")
-        print(f"[COVERAGE] Model: {coverage_model} | Scratchpad: {len(request.scratchpad_content)} chars")
-        print(f"[COVERAGE] Scratchpad preview: {scratchpad_preview}...")
-        print(f"[COVERAGE] Checklist sections: {request.checklist_sections}")
-        t0 = _time.perf_counter()
+    scratchpad_lower = request.scratchpad_content.lower()
+
+    async def _call_model(model_name: str, api_key: str, thinking: bool, settings: dict) -> PromptsOnlyResponse:
+        result = await _run_agent_with_model(
+            model_name=model_name,
+            output_type=PromptsOnlyResponse,
+            system_prompt=CANVAS_INTELLIPROMPTS_SYSTEM_PROMPT,
+            user_prompt=intelliprompts_prompt,
+            api_key=api_key,
+            use_thinking=thinking,
+            model_settings=settings,
+        )
+        return result.output
+
+    def _validate_and_log(raw: list[IntelliPrompt], elapsed: float, label: str) -> list[IntelliPrompt]:
+        validated = []
+        for p in raw:
+            if p.source_text and p.source_text.lower() not in scratchpad_lower:
+                print(f"[INTELLIPROMPTS] ⚠️  Clearing fabricated source_text: '{p.source_text}'")
+                validated.append(IntelliPrompt(question=p.question, source_text="", rationale=p.rationale))
+            else:
+                validated.append(p)
+        logger.info("[canvas.intelliprompts] %s %.2fs → %d prompts", label, elapsed, len(validated))
+        for p in validated:
+            rationale_preview = (p.rationale[:80] + "…") if p.rationale and len(p.rationale) > 80 else (p.rationale or "⚠️ NO RATIONALE")
+            print(f"[INTELLIPROMPTS]   • {p.question}")
+            print(f"[INTELLIPROMPTS]     ↳ {rationale_preview}")
+        return validated
+
+    print(f"\n[INTELLIPROMPTS] ── New call ──────────────────────────")
+    print(f"[INTELLIPROMPTS] Model: {intelliprompts_model} | use_thinking: {use_thinking} | stateless")
+    t0 = _time.perf_counter()
+    try:
+        response = await _call_model(intelliprompts_model, intelliprompts_api_key, use_thinking, intelliprompts_model_settings)
+        elapsed = _time.perf_counter() - t0
+        return _validate_and_log(response.prompts, elapsed, "✅")
+    except Exception as e:
+        # Primary failed for ANY reason — try the gpt-oss-120b fallback once.
+        fallback_model = intelliprompts_fallback or "gpt-oss-120b"
         try:
-            output = await _run_canvas_with_fallback(
-                coverage_model,
-                coverage_fallback,
-                output_type=CoverageOnlyResponse,
-                system_prompt=CANVAS_COVERAGE_SYSTEM_PROMPT,
-                user_prompt=coverage_prompt,
-                model_settings=coverage_model_settings,
-                label="canvas.coverage",
+            fallback_api_key = _get_api_key_for_provider(_get_model_provider(fallback_model))
+            response = await _call_model(
+                fallback_model,
+                fallback_api_key,
+                False,
+                {"temperature": 0.1, "max_completion_tokens": 1500, "reasoning_effort": "medium"},
             )
-            raw_covered = output.covered_sections
             elapsed = _time.perf_counter() - t0
-
-            # Defensive post-validation — the schema is list[str] so any string is
-            # valid at the schema layer, but Qwen occasionally:
-            #   (a) comma-concatenates multiple sections into one string element
-            #       (e.g. "LUNGS, PLEURA, MEDIASTINAL AND HILAR STRUCTURES")
-            #   (b) emits a section name that isn't on the checklist (hallucination)
-            # Split comma-joined elements when every part matches the checklist,
-            # then filter to sections that are actually on the checklist.
-            checklist_set = set(request.checklist_sections)
-            normalised: list[str] = []
-            split_count = 0
-            dropped: list[str] = []
-            for item in raw_covered:
-                if "," in item:
-                    parts = [p.strip() for p in item.split(",")]
-                    if all(p in checklist_set for p in parts):
-                        normalised.extend(parts)
-                        split_count += 1
-                        continue
-                if item in checklist_set:
-                    normalised.append(item)
-                else:
-                    dropped.append(item)
-            # Dedupe preserving order
-            covered = list(dict.fromkeys(normalised))
-
-            if split_count or dropped:
-                print(
-                    f"[COVERAGE] 🔧 normalised raw={raw_covered} "
-                    f"split={split_count} dropped={dropped}"
-                )
-            logger.info("[canvas.coverage] %.2fs → %s", elapsed, covered)
-            return covered
-        except Exception as e:
-            elapsed = _time.perf_counter() - t0
-            logger.error("[canvas.coverage] ❌ %.2fs %s: %s", elapsed, type(e).__name__, e)
+            logger.warning("[canvas.intelliprompts] primary %s failed (%s); served by fallback %s", intelliprompts_model, type(e).__name__, fallback_model)
+            return _validate_and_log(response.prompts, elapsed, "⚡ fallback")
+        except Exception as fallback_e:
+            logger.error("[canvas.intelliprompts] ❌ both failed: %s: %s", type(fallback_e).__name__, fallback_e)
             return []
 
-    async def run_intelliprompts() -> list[IntelliPrompt]:
-        import time as _time
-        if intelliprompts_provider == "cerebras":
-            intelliprompts_model_settings = {"temperature": 0.1, "max_completion_tokens": 1500, "reasoning_effort": "medium"}
-            use_thinking = False
-        else:
-            intelliprompts_model_settings = {"temperature": 0.1, "max_tokens": 3000}
-            use_thinking = True
 
-        scratchpad_lower = request.scratchpad_content.lower()
+@canvas_router.post("/review", response_model=CanvasReviewResponse)
+async def review_scratchpad(
+    request: CanvasReviewRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Parallel pass: coverage (selected candidate, plus the other in lab debug) and IntelliPrompts."""
+    try:
+        _get_api_key_for_provider(_get_model_provider(MODEL_CONFIG["CANVAS_COVERAGE"]))
+        _get_api_key_for_provider(_get_model_provider(MODEL_CONFIG["CANVAS_INTELLIPROMPTS"]))
+    except ValueError:
+        raise HTTPException(status_code=503, detail="Service not available. Contact your administrator.")
 
-        async def _call_model(model_name: str, api_key: str, thinking: bool, settings: dict) -> PromptsOnlyResponse:
-            result = await _run_agent_with_model(
-                model_name=model_name,
-                output_type=PromptsOnlyResponse,
-                system_prompt=CANVAS_INTELLIPROMPTS_SYSTEM_PROMPT,
-                user_prompt=intelliprompts_prompt,
-                api_key=api_key,
-                use_thinking=thinking,
-                model_settings=settings,
-            )
-            return result.output
+    selected = _coverage_candidate()
+    other = "qwen" if selected == "jev" else "jev"
+    debug = _triage_debug_enabled() and request.coverage_debug
 
-        def _validate_and_log(raw: list[IntelliPrompt], elapsed: float, label: str) -> list[IntelliPrompt]:
-            validated = []
-            for p in raw:
-                if p.source_text and p.source_text.lower() not in scratchpad_lower:
-                    print(f"[INTELLIPROMPTS] ⚠️  Clearing fabricated source_text: '{p.source_text}'")
-                    validated.append(IntelliPrompt(question=p.question, source_text="", rationale=p.rationale))
-                else:
-                    validated.append(p)
-            logger.info("[canvas.intelliprompts] %s %.2fs → %d prompts", label, elapsed, len(validated))
-            for p in validated:
-                rationale_preview = (p.rationale[:80] + "…") if p.rationale and len(p.rationale) > 80 else (p.rationale or "⚠️ NO RATIONALE")
-                print(f"[INTELLIPROMPTS]   • {p.question}")
-                print(f"[INTELLIPROMPTS]     ↳ {rationale_preview}")
-            return validated
+    tasks = [_coverage_safe(selected, request), _intelliprompts(request)]
+    if debug:
+        tasks.append(_coverage_safe(other, request))
+    results = await asyncio.gather(*tasks)
+    primary, prompts = results[0], results[1]
+    secondary = results[2] if debug else None
 
-        print(f"\n[INTELLIPROMPTS] ── New call ──────────────────────────")
-        print(f"[INTELLIPROMPTS] Model: {intelliprompts_model} | use_thinking: {use_thinking} | stateless")
-        t0 = _time.perf_counter()
-        try:
-            response = await _call_model(intelliprompts_model, intelliprompts_api_key, use_thinking, intelliprompts_model_settings)
-            elapsed = _time.perf_counter() - t0
-            return _validate_and_log(response.prompts, elapsed, "✅")
-        except Exception as e:
-            # Primary (Gemma 4) failed for ANY reason — try the gpt-oss-120b fallback once.
-            fallback_model = intelliprompts_fallback or "gpt-oss-120b"
-            try:
-                fallback_api_key = _get_api_key_for_provider(_get_model_provider(fallback_model))
-                response = await _call_model(
-                    fallback_model,
-                    fallback_api_key,
-                    False,
-                    {"temperature": 0.1, "max_completion_tokens": 1500, "reasoning_effort": "medium"},
-                )
-                elapsed = _time.perf_counter() - t0
-                logger.warning("[canvas.intelliprompts] primary %s failed (%s); served by fallback %s", intelliprompts_model, type(e).__name__, fallback_model)
-                return _validate_and_log(response.prompts, elapsed, "⚡ fallback")
-            except Exception as fallback_e:
-                logger.error("[canvas.intelliprompts] ❌ both failed: %s: %s", type(fallback_e).__name__, fallback_e)
-                return []
+    chosen: CoverageDecision | None = primary if isinstance(primary, CoverageDecision) else None
+    if chosen is None and isinstance(secondary, CoverageDecision):
+        logger.warning("[canvas.coverage] selected %s failed; serving %s", selected, other)
+        chosen = secondary
 
-    covered, prompts = await asyncio.gather(run_coverage(), run_intelliprompts())
-    return CanvasReviewResponse(covered_sections=covered, prompts=prompts)
+    trace = None
+    if debug:
+        trace = CoverageTrace(
+            selected=selected,
+            **{selected: decision_to_coverage_trace(primary), other: decision_to_coverage_trace(secondary)},
+        )
+    return CanvasReviewResponse(
+        covered_sections=chosen.covered if chosen else [],
+        prompts=prompts,
+        coverage_scores=chosen.scores if chosen else None,
+        coverage=trace,
+    )
