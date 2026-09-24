@@ -72,7 +72,7 @@ Request shape notes (learned the hard way): endpoint is `POST https://openrouter
 backend process_transcript
   ├─ lab routing  (RR_TRIAGE_DEBUG=1 and triage_route):  triage(selected) → deterministic handler | live model
   ├─ lab debug    (RR_TRIAGE_DEBUG=1 and triage_debug):  gather(live, jev, qwen) → response.triage
-  ├─ shadow       (RR_TRIAGE_SHADOW=1 and last_utterance): live → create_task(jev, qwen, derive, log)
+  ├─ shadow       (RR_TRIAGE_SHADOW=1 and last_utterance): live → BackgroundTasks(jev, qwen, derive, log)
   └─ default:     live model only (identical to today)
 ```
 
@@ -220,7 +220,7 @@ class TriageTrace(BaseModel):
 1. `lab = _triage_debug_enabled() and request.last_utterance` (env `RR_TRIAGE_DEBUG == "1"` read once at import, plus key presence).
 2. **Route mode** (`lab and request.triage_route`): await the selected triager; on success call `route(...)`. If deterministic, build the response with the new active text (incremental: `active_scratchpad`, `committed_edits=[]`; full: `scratchpad`), `triage.mode="route"`, `routed="deterministic"`, and return without calling the live model. Otherwise fall through to step 3 with the decision kept for the trace. A triager exception falls through to the live model and is recorded in the trace.
 3. **Live call** exactly as today. In **debug mode** (`lab and request.triage_debug`, and not already routed deterministically) both triagers run under the same `asyncio.gather` as the live call, so the response waits for `max(live, jev, qwen)`; Jev's 0.3 s hides inside the live call. The trace then carries both candidates, `derived` from before/after, and `live_latency_ms`.
-4. **Shadow** (`_triage_shadow_enabled() and request.last_utterance`, env `RR_TRIAGE_SHADOW == "1"`): after the live result exists (including the fallback-return path), `asyncio.create_task(_shadow_triage(...))`, which runs both candidates, derives the label, and logs one JSON line:
+4. **Shadow** (`_triage_shadow_enabled() and request.last_utterance`, env `RR_TRIAGE_SHADOW == "1"`): after the live result exists (including the fallback-return path), `_shadow_triage(...)` is scheduled with FastAPI `BackgroundTasks` (runs after the response is sent; a bare `asyncio.create_task` would be unreferenced and could be garbage-collected), and it runs both candidates, derives the label, and logs one JSON line:
 
 ```json
 {"event": "canvas.triage.shadow", "mode": "clean", "incremental": true,
@@ -303,7 +303,7 @@ Target 60–100 cases across all six actions, at least eight per action, and a `
 | Lab page without `PUBLIC_ENABLE_DEV_ROUTES=true` | SvelteKit 404 from the load function. |
 | Backend without `RR_TRIAGE_DEBUG=1` receiving lab fields | Fields ignored; `triage=None`; fixtures endpoint 404. |
 
-No path exists by which triage changes a production response or adds latency beyond scheduling a task.
+No path exists by which triage changes a production response or adds latency beyond scheduling a background task.
 
 ## 8. Testing
 
