@@ -1,7 +1,7 @@
 # Section Pill Coverage as System 1 Decisions (Jev) — Design
 
 **Date:** 2026-09-24
-**Status:** Design approved in conversation; awaiting spec review
+**Status:** Implemented on branch `dictation-triage-lab`; bake-off run 1 in §7; production default unchanged (`RR_COVERAGE_CANDIDATE=qwen`)
 **Branch:** dictation-triage-lab (builds on the triage lab; see `2026-09-24-jev-dictation-triage-shadow-design.md`)
 **Parent:** first component of `2026-09-24-decision-first-dictation-design.md`
 
@@ -153,3 +153,21 @@ On the coverage fixture set: per-section F1 ≥ Qwen's, exact-set accuracy ≥ Q
 - **Criteria drift.** The Noul criteria and the Qwen prompt must say the same thing. A test pins the shared phrases; the constant carries a comment pointing at the prompt.
 - **Collective boundaries.** The prompt's hardest rule (solid organs do not cover hollow viscera) is where Jev is least likely to match a reasoning model. The fixture set over-represents it and the bake-off reports it as its own rule.
 - **Cost.** One call per review with N nouls; at ~600 input tokens that is ~$0.00003 per review, and reviews already happen per utterance.
+
+## 7. Bake-off run 1 (2026-09-24, 25 fixtures, 11 hard)
+
+Data: `docs/model-migration/coverage-bakeoff-2026-09-24.json`.
+
+| | Jev 1.13 | Qwen 27B (Groq, current path) |
+|---|---|---|
+| per-section precision / recall | 1.000 / 0.955 | 1.000 / 1.000 |
+| exact-set accuracy (all / hard) | 0.920 / 0.909 | 1.000 / 1.000 |
+| errors | 0 | 0 |
+| p50 / p95 latency | 303 ms / 445 ms | 860 ms / 1669 ms |
+| cost, 25 calls | $0.0013 | $0 |
+| Jev per-section confidence ≥0.8 (n=68) | accuracy 1.000 | n/a |
+| Jev per-section confidence 0.5–0.8 (n=16) | accuracy 0.875 | n/a |
+
+**What it says against §5.** Jev never over-covers (precision 1.0, and no bare mention or out-of-group collective scored ≥ 0.5), clears the p95 bar comfortably, and matches Qwen on ten of twelve rules. It does not yet match Qwen's recall: two collective cases (`cb-02` "thoracic structures" → PLEURA not credited; `so-02` "remaining thoracic structures are normal" → LUNGS not credited) fall just below 0.5. Both misses sit in the 0.5–0.8 confidence band, where the three-state pill renders **partial** rather than absent, so the lab shows them as amber rather than silently missing. Qwen is exact on every case but ~3× slower at p50 and ~4× at p95. The recall gap is the thing to close before flipping the production switch: either sharpen the collective criteria wording (the group-membership sentence) or accept a lower binary threshold for collectives after a larger fixture run.
+
+**Lab check (2026-09-24).** Coverage panel renders Jev probabilities beside Qwen ticks with per-section agreement colouring; thresholds move pill states live; export to the coverage fixture buffer works end to end (see the lab-exported case appended to `coverage_cases.jsonl`).

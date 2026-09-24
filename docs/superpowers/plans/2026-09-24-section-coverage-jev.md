@@ -36,7 +36,7 @@
 - Create: `backend/src/rapid_reports_ai/section_coverage.py`
 - Test: `backend/tests/test_section_coverage.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # backend/tests/test_section_coverage.py
@@ -147,12 +147,12 @@ def test_trace_from_exception():
     assert isinstance(t, CoverageCandidateTrace) and t.error == "TriageError" and t.scores is None
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `/Users/hassan/Code/rapid_reports_ai/backend/.venv/bin/pytest backend/tests/test_section_coverage.py -q --rootdir backend -c backend/pyproject.toml`
 Expected: `ModuleNotFoundError: No module named 'rapid_reports_ai.section_coverage'`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # backend/src/rapid_reports_ai/section_coverage.py
@@ -319,12 +319,12 @@ def decision_to_coverage_trace(result: CoverageDecision | BaseException) -> Cove
 
 `_check_unit` is imported from `dictation_triage`; it is module-private by underscore only. Leave it there (both modules are System 1 clients) rather than duplicating.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `/Users/hassan/Code/rapid_reports_ai/backend/.venv/bin/pytest backend/tests/test_section_coverage.py -q --rootdir backend -c backend/pyproject.toml`
 Expected: all PASS (the phrase test depends on the criteria wording above containing "abbreviation", "normality", "incidental co-mention", "vague filler", "adjacent", "collective", "bare mention"; the Qwen prompt contains each first word).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/rapid_reports_ai/section_coverage.py backend/tests/test_section_coverage.py
@@ -340,7 +340,7 @@ git commit -m "feat(coverage): section coverage as one Jev noul per checklist se
 - Modify: `backend/.env.example` (append)
 - Test: `backend/tests/test_canvas_coverage_modes.py`
 
-- [ ] **Step 1: Write the failing route tests**
+- [x] **Step 1: Write the failing route tests**
 
 ```python
 # backend/tests/test_canvas_coverage_modes.py
@@ -483,12 +483,12 @@ def test_debug_field_ignored_without_flag(authed_client, fakes, monkeypatch):
     assert body.get("coverage") is None and jev.calls == 0
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `/Users/hassan/Code/rapid_reports_ai/backend/.venv/bin/pytest backend/tests/test_canvas_coverage_modes.py -q --rootdir backend -c backend/pyproject.toml`
 Expected: `AttributeError: ... has no attribute 'get_jev_coverage'`
 
-- [ ] **Step 3: Models and imports**
+- [x] **Step 3: Models and imports**
 
 Add to the `from .dictation_triage import (...)` block's neighbourhood in `canvas_routes.py`:
 
@@ -524,7 +524,7 @@ class CanvasReviewResponse(BaseModel):
 
 `CanvasReviewResponse` is never handed to a model as an output schema (the model-facing types are `CoverageOnlyResponse` and `PromptsOnlyResponse`), so adding fields here is safe.
 
-- [ ] **Step 4: Lift the Qwen closure and add candidate selection (insert above `@canvas_router.post("/review"`)**
+- [x] **Step 4: Lift the Qwen closure and add candidate selection (insert above `@canvas_router.post("/review"`)**
 
 ```python
 def _coverage_candidate() -> Literal["jev", "qwen"]:
@@ -599,7 +599,7 @@ async def _coverage_safe(name: str, request: CanvasReviewRequest) -> CoverageDec
         return e
 ```
 
-- [ ] **Step 5: Restructure `review_scratchpad`**
+- [x] **Step 5: Restructure `review_scratchpad`**
 
 Replace the whole function. The IntelliPrompts closure is moved verbatim into a module-level `_intelliprompts(request)` so tests can patch it; nothing inside it changes.
 
@@ -718,7 +718,7 @@ async def review_scratchpad(
 
 Delete the old `review_scratchpad` body entirely (lines 966-1122 in the pre-change file), including the inline `run_coverage` and `run_intelliprompts` closures and the `coverage_*`/`intelliprompts_*` variable setup.
 
-- [ ] **Step 6: Document the env setting**
+- [x] **Step 6: Document the env setting**
 
 Append to `backend/.env.example`:
 
@@ -726,12 +726,12 @@ Append to `backend/.env.example`:
 RR_COVERAGE_CANDIDATE=qwen   # jev = serve checklist pill coverage from Jev nouls (needs OPENROUTER_API_KEY)
 ```
 
-- [ ] **Step 7: Run coverage tests and the whole backend suite**
+- [x] **Step 7: Run coverage tests and the whole backend suite**
 
 Run: `/Users/hassan/Code/rapid_reports_ai/backend/.venv/bin/pytest backend/tests -q --rootdir backend -c backend/pyproject.toml`
 Expected: all pass. Existing canvas tests that call `review_scratchpad` directly, if any, keep working because the signature is unchanged.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add backend/src/rapid_reports_ai/canvas_routes.py backend/.env.example backend/tests/test_canvas_coverage_modes.py
@@ -746,7 +746,7 @@ git commit -m "feat(canvas): coverage candidate selection (RR_COVERAGE_CANDIDATE
 - Create: `backend/tests/fixtures/coverage_cases.jsonl`
 - Test: `backend/tests/test_coverage_fixtures.py`
 
-- [ ] **Step 1: Write the validation test**
+- [x] **Step 1: Write the validation test**
 
 ```python
 # backend/tests/test_coverage_fixtures.py
@@ -790,7 +790,7 @@ def test_every_rule_has_at_least_two_cases():
         assert counts[r] >= 2, r
 ```
 
-- [ ] **Step 2: Write the fixture file (24 cases)**
+- [x] **Step 2: Write the fixture file (24 cases)**
 
 ```jsonl
 {"id": "ds-01", "scan_type": "CT abdomen pelvis", "checklist": ["LIVER", "SPLEEN", "KIDNEYS", "BOWEL"], "scratchpad": "The liver is normal.", "expected_covered": ["LIVER"], "rule": "direct-subject", "hard": false, "note": "structure as subject, normality claim"}
@@ -820,12 +820,12 @@ def test_every_rule_has_at_least_two_cases():
 {"id": "ab-02", "scan_type": "MRI lumbar spine", "checklist": ["VERTEBRAL BODIES", "INTERVERTEBRAL DISCS", "SPINAL CANAL"], "scratchpad": "L4/5 disc bulge.\nCanal capacious.", "expected_covered": ["INTERVERTEBRAL DISCS", "SPINAL CANAL"], "rule": "abbreviation", "hard": true, "note": "level shorthand and canal short form"}
 ```
 
-- [ ] **Step 3: Run the validation test**
+- [x] **Step 3: Run the validation test**
 
 Run: `/Users/hassan/Code/rapid_reports_ai/backend/.venv/bin/pytest backend/tests/test_coverage_fixtures.py -q --rootdir backend -c backend/pyproject.toml`
 Expected: 3 PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/tests/fixtures/coverage_cases.jsonl backend/tests/test_coverage_fixtures.py
@@ -840,7 +840,7 @@ git commit -m "test(coverage): 24 labelled coverage cases, two or more per rule"
 - Create: `backend/src/rapid_reports_ai/scripts/coverage_bakeoff.py`
 - Test: `backend/tests/test_coverage_bakeoff.py`
 
-- [ ] **Step 1: Write the failing test for the pure scorer**
+- [x] **Step 1: Write the failing test for the pure scorer**
 
 ```python
 # backend/tests/test_coverage_bakeoff.py
@@ -864,7 +864,7 @@ def test_score_per_section_and_exact_set():
     assert s["buckets"][">=0.95"]["n"] == 0 and s["buckets"]["0.8-0.95"]["n"] == 3
 ```
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 ```python
 # backend/src/rapid_reports_ai/scripts/coverage_bakeoff.py
@@ -1019,7 +1019,7 @@ if __name__ == "__main__":
     raise SystemExit(asyncio.run(main()))
 ```
 
-- [ ] **Step 3: Run the test and commit**
+- [x] **Step 3: Run the test and commit**
 
 Run: `/Users/hassan/Code/rapid_reports_ai/backend/.venv/bin/pytest backend/tests/test_coverage_bakeoff.py -q --rootdir backend -c backend/pyproject.toml`
 Expected: PASS
@@ -1039,7 +1039,7 @@ git commit -m "feat(coverage): bake-off script scoring both candidates per secti
 - Create: `frontend/src/lib/dictation-lab/coverage.ts`, `coverage.test.ts`
 - Modify: `frontend/src/lib/dictation-lab/labConfig.test.ts` (one expectation)
 
-- [ ] **Step 1: Types (append to `types.ts`)**
+- [x] **Step 1: Types (append to `types.ts`)**
 
 ```ts
 /** Mirrors backend CoverageCandidateTrace / CoverageTrace. */
@@ -1087,7 +1087,7 @@ export interface LabConfig {
 }
 ```
 
-- [ ] **Step 2: labConfig defaults and validation**
+- [x] **Step 2: labConfig defaults and validation**
 
 In `labConfig.ts` set `DEFAULT_LAB_CONFIG` to `{ strategy: 'shadow', threshold: 0.9, showBoth: true, coverageDebug: true, pillThresholds: { hi: 0.8, lo: 0.4 } }`, and extend the `ok` check in `loadLabConfig`:
 
@@ -1113,7 +1113,7 @@ Update `labConfig.test.ts`: every literal `LabConfig` in the tests gains `covera
 	});
 ```
 
-- [ ] **Step 3: Failing coverage helper tests**
+- [x] **Step 3: Failing coverage helper tests**
 
 ```ts
 // frontend/src/lib/dictation-lab/coverage.test.ts
@@ -1156,7 +1156,7 @@ describe('buildCoverageFixtureLine', () => {
 });
 ```
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 ```ts
 // frontend/src/lib/dictation-lab/coverage.ts
@@ -1208,7 +1208,7 @@ export function buildCoverageFixtureLine(
 }
 ```
 
-- [ ] **Step 5: Run and commit**
+- [x] **Step 5: Run and commit**
 
 Run: `cd frontend && bun run test -- --project server src/lib/dictation-lab`
 Expected: all pass (existing 14 plus the new ones).
@@ -1225,7 +1225,7 @@ Commit: `frontend/src/lib/dictation-lab` with message `feat(lab): coverage helpe
 - Modify: `frontend/src/lib/components/DictationLabPanel.svelte` (Coverage section)
 - Modify: `frontend/src/routes/dictation-lab/+page.svelte` (wiring)
 
-- [ ] **Step 1: DictationScratchpad**
+- [x] **Step 1: DictationScratchpad**
 
 Add to the type import: `CoverageTrace`. Add two props after `onProcessTrace`:
 
@@ -1256,7 +1256,7 @@ and after the existing `onCoveredSectionsChange(...)` block:
 			if (data.coverage) onCoverageTrace(data.coverage as CoverageTrace);
 ```
 
-- [ ] **Step 2: IntelliDictateTab**
+- [x] **Step 2: IntelliDictateTab**
 
 Imports: add `CoverageTrace, PillThresholds` to the type import and `import { pillState } from '$lib/dictation-lab/coverage';`. Props after `onProcessTrace`:
 
@@ -1304,7 +1304,7 @@ Also export, next to `injectTranscript`:
 
 Home page passes neither `pillThresholds` nor `onCoverageTrace`, so production pills keep the binary path.
 
-- [ ] **Step 3: Lab panel Coverage section**
+- [x] **Step 3: Lab panel Coverage section**
 
 Add props and state at the top of `DictationLabPanel.svelte`:
 
@@ -1392,7 +1392,7 @@ Insert this section between **Strategy** and **Feeder** in the markup:
 	</section>
 ```
 
-- [ ] **Step 4: Lab page wiring**
+- [x] **Step 4: Lab page wiring**
 
 In `+page.svelte` add state and pass-throughs:
 
@@ -1411,7 +1411,7 @@ In the tab mount add:
 
 Update the page's `tabRef` type to `{ injectTranscript: (text: string, speechFinal?: boolean) => void; getCoverageState: () => { scratchpad: string; checklist: string[]; scanType: string } } | null`, and pass `{coverageTrace} {coverageState}` to `<DictationLabPanel>`.
 
-- [ ] **Step 5: Type-check the touched files and commit**
+- [x] **Step 5: Type-check the touched files and commit**
 
 Run: `cd frontend && bun run check 2>&1 | grep -c 'DictationScratchpad.svelte\|IntelliDictateTab.svelte\|DictationLabPanel.svelte\|dictation-lab/'`
 Expected: `0`
@@ -1422,16 +1422,16 @@ Commit `frontend/src` with message `feat(lab): coverage trace, three-state pills
 
 ### Task 7: Bake-off, lab check, docs
 
-- [ ] **Step 1: Run the coverage bake-off**
+- [x] **Step 1: Run the coverage bake-off**
 
 Run from `backend/`: `PYTHONPATH=src /Users/hassan/Code/rapid_reports_ai/backend/.venv/bin/python -c "from dotenv import load_dotenv; load_dotenv('/Users/hassan/Code/rapid_reports_ai/backend/.env'); import runpy; runpy.run_module('rapid_reports_ai.scripts.coverage_bakeoff', run_name='__main__')"`
 Expected: two candidate blocks, non-exact cases listed, JSON written to `docs/model-migration/`.
 
-- [ ] **Step 2: Lab check**
+- [x] **Step 2: Lab check**
 
 Restart the backend (same command as before, `RR_TRIAGE_DEBUG=1`). In `/dictation-lab`, set up a CT abdomen workspace, feed `the liver is normal`, `the solid organs are unremarkable`, `gallbladder`, `everything else looks fine`. Expect: the Coverage table shows Jev probabilities next to Qwen ticks; LIVER covered; GALLBLADDER absent or partial, never covered; bowel-type sections not covered by the solid-organ collective; sliders move pill states live. Export one coverage case, append it to `coverage_cases.jsonl`, run `test_coverage_fixtures.py`.
 
-- [ ] **Step 3: Record and commit**
+- [x] **Step 3: Record and commit**
 
 Add `## 7. Bake-off run 1 (<date>)` to the coverage spec with the summary block and two sentences against §5; set the spec status to implemented. Commit the JSON, the spec and the fixture line with message `docs(coverage): bake-off run 1 and lab-exported fixture`.
 
