@@ -9,6 +9,7 @@ import ReportResponseViewer from './ReportResponseViewer.svelte';
 import Toast from '$lib/components/Toast.svelte';
 import { API_URL } from '$lib/config';
 import { readSSEStream } from '$lib/utils/sse';
+import type { LabConfig, ProcessTrace } from '$lib/dictation-lab/types';
 
 	let toast: { show: (msg: string) => void } | undefined;
 
@@ -76,6 +77,7 @@ import { readSSEStream } from '$lib/utils/sse';
 		clearHighlight: () => void;
 		setIntegrityRanges: (ranges: { from: number; to: number }[]) => void;
 		revealIntegrityRange: (range: { from: number; to: number }) => void;
+		injectTranscript: (text: string, speechFinal?: boolean) => void;
 	} | null = null;
 
 	// Checklist: covered sections from Qwen API response
@@ -111,6 +113,9 @@ import { readSSEStream } from '$lib/utils/sse';
 		deepgram_configured: false,
 		has_at_least_one_model: false
 	};
+	/** Dictation Lab only; the home page never sets these. */
+	export let labConfig: LabConfig | null = null;
+	export let onProcessTrace: (trace: ProcessTrace) => void = () => {};
 
 	let applicableGuidelines: Array<{
 		system: string;
@@ -596,6 +601,11 @@ import { readSSEStream } from '$lib/utils/sse';
 	export function handleExternalAuditInsertBanner(bannerText: string) {
 		reportViewerRef?.insertBannerFromExternal?.(bannerText);
 	}
+	/** Dictation Lab: feed one utterance into the scratchpad as if dictated. */
+	export function injectTranscript(text: string, speechFinal = true): void {
+		scratchpadRef?.injectTranscript(text, speechFinal);
+	}
+
 	export function handleExternalAuditReaudit() {
 		reportViewerRef?.reauditFromExternal?.();
 	}
@@ -864,6 +874,8 @@ import { readSSEStream } from '$lib/utils/sse';
 			onCoveredSectionsChange={handleCoveredSectionsChange}
 			onPromptsChange={handlePromptsChange}
 			onScratchpadClear={() => { coveredSections = new Set(); activePrompts = []; }}
+			{labConfig}
+			{onProcessTrace}
 		/>
 	</div>
 
