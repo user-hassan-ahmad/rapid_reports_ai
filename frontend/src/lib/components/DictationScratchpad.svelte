@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { computeDelta } from '$lib/dictation-lab/delta';
+	import { toRequestFields } from '$lib/dictation-lab/labConfig';
+	import type { LabConfig, ProcessTrace, TriageTrace } from '$lib/dictation-lab/types';
 	import { EditorView, keymap, Decoration, type DecorationSet } from '@codemirror/view';
 	import { EditorState, Compartment, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
@@ -25,6 +28,10 @@
 	export let onPromptsChange: (prompts: IntelliPrompt[]) => void = () => {};
 	export let onScratchpadClear: () => void = () => {};
 	export let onReviewingChange: (reviewing: boolean) => void = () => {};
+	/** Dictation Lab only. null in production: nothing is added to the request. */
+	export let labConfig: LabConfig | null = null;
+	/** Dictation Lab only. Called once per completed /process call. */
+	export let onProcessTrace: (trace: ProcessTrace) => void = () => {};
 
 	// CM6 highlight decoration for IntelliPrompt source linking
 	const setHighlight = StateEffect.define<{ from: number; to: number } | null>();
@@ -142,6 +149,10 @@
 	// resolve the current utterance.
 	let sessionTranscript = '';
 	const SESSION_TRANSCRIPT_WINDOW = 2500;
+	// Transcript as of the last /process call that completed, so the next call can
+	// send the delta as `last_utterance` (triage only; never affects the live response).
+	let lastSentTranscript = '';
+	let traceSeq = 0;
 
 	// Latest-wins processing: only one Qwen call runs at a time.
 	// If new speech arrives while a call is in flight, we record it as pending
@@ -299,6 +310,54 @@
 		return typeof localStorage !== 'undefined' && localStorage.getItem('rr_incremental') === '1';
 	}
 
+	/**
+	 * One committed word-group from the speech engine (or from the lab feeder).
+	 * Accumulates into the session transcript, renders it faded when Phase 2b.3 is
+	 * on, and fires the polish at a pause. This is the body the websocket handler
+	 * used to hold inline; it moved so the lab can drive it without a microphone.
+	 */
+	function handleFinalTranscript(transcript: string, speechFinal: boolean): void {
+		currentInterim = '';
+
+		// Accumulate into session transcript
+		const appended = sessionTranscript ? `${sessionTranscript} ${transcript}` : transcript;
+		sessionTranscript =
+			appended.length > SESSION_TRANSCRIPT_WINDOW
+				? appended.slice(appended.length - SESSION_TRANSCRIPT_WINDOW)
+				: appended;
+
+		// Phase 2b.3: optimistically drop the raw word-group into the doc, rendered
+		// faded, so it lands instantly instead of waiting for the polish. The whole
+		// raw region is display-only — excluded from the model input and replaced by
+		// the polish (see processTranscript). isRecording gates the manual-edit branch.
+		if (fadedEnabled() && editor) {
+			const docLength = editor.state.doc.length;
+			const pend = editor.state.field(pendingField, false);
+			const hasPending = !!pend && pend.size > 0;
+			// New utterance starts on its own faded line; groups within one are space-joined.
+			const sep = docLength === 0 ? '' : hasPending ? ' ' : '\n';
+			const to = docLength + sep.length + transcript.length;
+			isQwenWriting = true;
+			editor.dispatch({
+				changes: { from: docLength, insert: sep + transcript },
+				effects: markPending.of({ from: docLength, to })
+			});
+			isQwenWriting = false;
+		}
+
+		// Phase 2b.1: fire the polish only at a pause (speech_final), not every
+		// is_final — UtteranceEnd is the long-pause backup. Cuts redundant
+		// full regenerations; the transcript still accumulates on every chunk.
+		if (speechFinal) processTranscriptQueue();
+	}
+
+	/** Dictation Lab: feed text exactly as a Deepgram final word-group would arrive. */
+	export function injectTranscript(text: string, speechFinal = true): void {
+		const t = text.trim();
+		if (!t) return;
+		handleFinalTranscript(t, speechFinal);
+	}
+
 	async function processTranscript(): Promise<void> {
 		if (!editor) return;
 		isProcessing = true;
@@ -324,14 +383,20 @@
 				});
 			}
 
+			const sentTranscript = sessionTranscript;
+			const { delta } = computeDelta(sentTranscript, lastSentTranscript);
+			const activeBefore = faded ? doc.slice(0, pendingStart) : doc;
 			const body: Record<string, unknown> = {
-				session_transcript: sessionTranscript,
-				scratchpad_content: faded ? doc.slice(0, pendingStart) : doc,
+				session_transcript: sentTranscript,
+				scratchpad_content: activeBefore,
 				scan_type: scanType,
 				clinical_history: clinicalHistory,
 				preferred_section_names: checklistSections,
 				mode: polishMode
 			};
+			if (delta) body.last_utterance = delta;
+			if (labConfig) Object.assign(body, toRequestFields(labConfig));
+			const t0 = performance.now();
 
 			const res = await fetch(`${API_URL}/api/canvas/process`, {
 				method: 'POST',
@@ -340,6 +405,9 @@
 				body: JSON.stringify(body)
 			});
 			const data = await res.json();
+			// The call completed: everything up to sentTranscript has been seen by the model.
+			// (An aborted/superseded call never reaches here, so its words stay in the next delta.)
+			lastSentTranscript = sentTranscript;
 
 			const sanitize = (s: string): string =>
 				s
@@ -363,6 +431,17 @@
 			if (data.covered_sections && Array.isArray(data.covered_sections)) {
 				onCoveredSectionsChange(data.covered_sections);
 			}
+			onProcessTrace({
+				seq: ++traceSeq,
+				at: Date.now(),
+				utterance: delta ?? '',
+				committed: '',
+				activeBefore,
+				activeAfter: content ?? activeBefore,
+				scanType,
+				latency_ms: Math.round(performance.now() - t0),
+				triage: (data.triage as TriageTrace | null | undefined) ?? null
+			});
 		} catch {
 			// Superseded aborts set pendingProcess and will re-run, so keep the faded raw.
 			// A real network error won't re-run — promote the faded raw to solid so it
@@ -535,41 +614,7 @@
 							// Interim: live preview while speaking
 							currentInterim = data.transcript;
 						} else {
-							// is_final: word-group committed — update display and trigger Qwen immediately
-							currentInterim = '';
-
-							// Accumulate into session transcript
-							const appended = sessionTranscript
-								? `${sessionTranscript} ${data.transcript}`
-								: data.transcript;
-							sessionTranscript =
-								appended.length > SESSION_TRANSCRIPT_WINDOW
-									? appended.slice(appended.length - SESSION_TRANSCRIPT_WINDOW)
-									: appended;
-
-							// Phase 2b.3: optimistically drop the raw word-group into the doc, rendered
-							// faded, so it lands instantly instead of waiting for the polish. The whole
-							// raw region is display-only — excluded from the model input and replaced by
-							// the polish (see processTranscript). isRecording gates the manual-edit branch.
-							if (fadedEnabled() && editor) {
-								const docLength = editor.state.doc.length;
-								const pend = editor.state.field(pendingField, false);
-								const hasPending = !!pend && pend.size > 0;
-								// New utterance starts on its own faded line; groups within one are space-joined.
-								const sep = docLength === 0 ? '' : hasPending ? ' ' : '\n';
-								const to = docLength + sep.length + data.transcript.length;
-								isQwenWriting = true;
-								editor.dispatch({
-									changes: { from: docLength, insert: sep + data.transcript },
-									effects: markPending.of({ from: docLength, to })
-								});
-								isQwenWriting = false;
-							}
-
-							// Phase 2b.1: fire the polish only at a pause (speech_final), not every
-							// is_final — UtteranceEnd (above) is the long-pause backup. Cuts redundant
-							// full regenerations; the transcript still accumulates on every chunk.
-							if (data.speech_final) processTranscriptQueue();
+							handleFinalTranscript(data.transcript, !!data.speech_final);
 						}
 					}
 				} catch {
