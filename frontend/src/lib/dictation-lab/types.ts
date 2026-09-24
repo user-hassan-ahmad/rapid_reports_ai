@@ -138,6 +138,7 @@ export interface ChunkTrace {
 	viaBackstop: boolean;
 	placement: Placement | null; // Jev's placement for a sent statement
 	placement_confidence: number | null;
+	silence_s: number | null; // > 0 on a silence re-check row
 }
 /** Mirrors backend UtteranceResponse. */
 export interface UtteranceResponse {

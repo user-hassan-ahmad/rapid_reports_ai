@@ -28,7 +28,8 @@
 	let boundaryBuffer = '';
 	let boundarySeq = 1;
 	$: chunkSummary = {
-		chunks: chunkTraces.filter((c) => !c.viaBackstop).length,
+		chunks: chunkTraces.filter((c) => !c.viaBackstop && c.silence_s == null).length,
+		rechecks: chunkTraces.filter((c) => c.silence_s != null && !c.viaBackstop).length,
 		sent: chunkTraces.filter((c) => c.sent !== null).length,
 		backstops: chunkTraces.filter((c) => c.viaBackstop).length,
 		placement: (() => {
@@ -46,7 +47,7 @@
 			return { n, agree };
 		})(),
 		meanLatency: (() => {
-			const xs = chunkTraces.filter((c) => !c.viaBackstop).map((c) => c.latency_ms);
+			const xs = chunkTraces.filter((c) => !c.viaBackstop && c.silence_s == null).map((c) => c.latency_ms);
 			return xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null;
 		})()
 	};
@@ -272,7 +273,7 @@
 				Chunks
 				<span class="text-gray-400 font-normal text-xs">
 					{chunkSummary.chunks} chunks · {chunkSummary.sent} sent · {chunkSummary.chunks - chunkSummary.sent} polish calls saved
-					· {chunkSummary.backstops} backstop · mean {chunkSummary.meanLatency ?? '—'} ms
+					· {chunkSummary.rechecks} silence re-checks · {chunkSummary.backstops} hard limit · mean {chunkSummary.meanLatency ?? '—'} ms
 					· placement agrees {chunkSummary.placement.agree}/{chunkSummary.placement.n}
 				</span>
 			</h3>
@@ -280,7 +281,8 @@
 				{#each chunkTraces as c (c.seq)}
 					<div class="text-xs flex flex-wrap gap-x-2 items-baseline border-l-2 pl-2 {c.sent !== null ? 'border-emerald-500/60' : 'border-gray-700'}">
 						<span class="font-mono truncate max-w-[14rem]">“{c.viaBackstop ? c.buffered : c.chunk}”</span>
-						<span class={c.resolved === 'continues' ? 'text-gray-400' : c.resolved === 'command' ? 'text-blue-300' : 'text-emerald-300'}>{c.viaBackstop ? 'backstop' : c.resolved}</span>
+						{#if c.silence_s != null && !c.viaBackstop}<span class="text-violet-300">silence {c.silence_s}s →</span>{/if}
+						<span class={c.resolved === 'continues' ? 'text-gray-400' : c.resolved === 'command' ? 'text-blue-300' : 'text-emerald-300'}>{c.viaBackstop ? 'hard limit' : c.resolved}</span>
 						{#if c.confidence != null}<span class="tabular-nums text-gray-400">{c.confidence.toFixed(2)}</span>{/if}
 						{#if c.asr_risk != null && c.asr_risk >= 0.5}<span class="text-amber-300">asr {c.asr_risk.toFixed(2)}</span>{/if}
 						<span class="tabular-nums text-gray-500">{c.latency_ms} ms</span>

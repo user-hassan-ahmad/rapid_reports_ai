@@ -31,7 +31,9 @@ async def main() -> int:
     async def run(c):
         async with sem:
             try:
-                d = await get_jev_boundary().classify(c["scan_type"], c["buffered"], c["chunk"], c["scratchpad_tail"])
+                d = await get_jev_boundary().classify(
+                    c["scan_type"], c["buffered"], c["chunk"], c["scratchpad_tail"], c.get("silence_s", 0.0)
+                )
                 return {**c, "raw": d.boundary, "resolved": resolve(d), "confidence": d.confidence,
                         "asr_risk": d.asr_risk, "latency_ms": d.latency_ms, "cost_usd": d.cost_usd, "error": None,
                         "placement_raw": d.placement, "placement": resolve_placement(d),

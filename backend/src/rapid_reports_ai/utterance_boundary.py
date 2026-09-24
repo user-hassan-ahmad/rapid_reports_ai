@@ -40,7 +40,9 @@ BOUNDARY_QUESTIONS: dict[str, dict[str, Any]] = {
         "type": "choice",
         "instructions": (
             "Taking the buffered words and the chunk together as what the radiologist has said since the "
-            "last statement was sent, which is true?"
+            "last statement was sent, which is true? silence_s is how many seconds of silence have followed "
+            "the chunk so far (0 = the chunk has just arrived, no information). A long silence after words "
+            "that could stand alone means the statement is complete; a short silence carries little weight."
         ),
         "criteria": {
             "complete": (
@@ -118,7 +120,9 @@ class JevBoundary:
         self._transport = transport
         self._timeout_s = timeout_s
 
-    async def classify(self, scan_type: str, buffered: str, chunk: str, scratchpad_tail: str) -> BoundaryDecision:
+    async def classify(
+        self, scan_type: str, buffered: str, chunk: str, scratchpad_tail: str, silence_s: float = 0.0
+    ) -> BoundaryDecision:
         body = {
             "model": JEV_MODEL,
             "state": {
@@ -126,6 +130,7 @@ class JevBoundary:
                 "buffered": buffered or "",
                 "chunk": chunk or "",
                 "scratchpad_tail": scratchpad_tail or "",
+                "silence_s": round(float(silence_s or 0.0), 1),
             },
             "questions": BOUNDARY_QUESTIONS,
         }

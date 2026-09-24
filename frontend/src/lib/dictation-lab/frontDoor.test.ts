@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyBoundary, backstopDelay, derivePlacement, flushBuffer, lastNonEmptyLine } from './frontDoor';
+import { applyBoundary, derivePlacement, flushBuffer, lastNonEmptyLine, nextSilenceStep } from './frontDoor';
 
 describe('applyBoundary', () => {
 	it('buffers on continues', () => {
@@ -39,13 +39,11 @@ describe('lastNonEmptyLine', () => {
 	});
 });
 
-describe('backstopDelay', () => {
-	it('waits longer after a confident continues', () => {
-		expect(backstopDelay(0.99)).toBe(9000);
-		expect(backstopDelay(0.5)).toBe(9000);
-		expect(backstopDelay(0.49)).toBe(1500);
-		expect(backstopDelay(null)).toBe(1500);
-		expect(backstopDelay(undefined)).toBe(1500);
+describe('nextSilenceStep', () => {
+	it('walks 2 s, 5 s, then the 9 s hard limit', () => {
+		expect(nextSilenceStep(0)).toEqual({ delayMs: 2000, silenceS: 2 });
+		expect(nextSilenceStep(1)).toEqual({ delayMs: 3000, silenceS: 5 });
+		expect(nextSilenceStep(2)).toEqual({ delayMs: 4000, silenceS: null });
 	});
 });
 

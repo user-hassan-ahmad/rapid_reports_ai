@@ -1185,6 +1185,7 @@ class UtteranceRequest(BaseModel):
     buffered: str = ""
     chunk: str
     scratchpad_tail: str = ""
+    silence_s: float = 0.0  # seconds of silence since the chunk; > 0 on a re-check
 
 
 class UtteranceResponse(BaseModel):
@@ -1210,7 +1211,7 @@ async def classify_utterance(request: UtteranceRequest, current_user: User = Dep
     d: BoundaryDecision | BaseException
     try:
         d = await get_jev_boundary().classify(
-            request.scan_type, request.buffered, request.chunk, request.scratchpad_tail
+            request.scan_type, request.buffered, request.chunk, request.scratchpad_tail, request.silence_s
         )
     except Exception as e:
         logger.error("[canvas.utterance] ❌ %s: %s", type(e).__name__, e)

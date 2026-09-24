@@ -3,7 +3,7 @@
 	import { computeDelta } from '$lib/dictation-lab/delta';
 	import { toRequestFields } from '$lib/dictation-lab/labConfig';
 	import type { ChunkTrace, CoverageTrace, LabConfig, ProcessTrace, TriageTrace, UtteranceResponse } from '$lib/dictation-lab/types';
-	import { applyBoundary, backstopDelay, flushBuffer, lastNonEmptyLine } from '$lib/dictation-lab/frontDoor';
+	import { applyBoundary, flushBuffer, lastNonEmptyLine, nextSilenceStep } from '$lib/dictation-lab/frontDoor';
 	import { EditorView, keymap, Decoration, type DecorationSet } from '@codemirror/view';
 	import { EditorState, Compartment, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
@@ -165,6 +165,7 @@
 	let pendingUtterance: string | null = null;
 	let chunkSeq = 0;
 	let backstopTimer: ReturnType<typeof setTimeout> | null = null;
+	let silenceStep = 0;
 	let classifyChain: Promise<void> = Promise.resolve();
 	function frontDoorIsJev(): boolean {
 		return labConfig?.frontDoor === 'jev';
@@ -379,37 +380,55 @@
 		handleFinalTranscript(t, speechFinal);
 	}
 
-	function armBackstop(delayMs: number): void {
-		if (backstopTimer) clearTimeout(backstopTimer);
-		backstopTimer = setTimeout(() => {
-			backstopTimer = null;
-			const { sends, buffer } = flushBuffer(chunkBuffer);
-			chunkBuffer = buffer;
-			for (const send of sends) {
-				onChunkTrace({
-					seq: ++chunkSeq, at: Date.now(), chunk: '', buffered: send, resolved: 'complete', boundary: null,
-					confidence: null, asr_risk: null, latency_ms: 0, error: null, sent: send, viaBackstop: true,
-					placement: null, placement_confidence: null
-				});
-				enqueueUtterance(send);
-			}
-		}, delayMs);
-	}
-
-	async function classifyChunk(chunk: string): Promise<void> {
+	function clearSilence(): void {
 		if (backstopTimer) {
 			clearTimeout(backstopTimer);
 			backstopTimer = null;
 		}
-		const buffered = chunkBuffer.join(' ');
+		silenceStep = 0;
+	}
+
+	/** After a `continues`: re-ask at each silence milestone; send without asking at the hard limit. */
+	function armSilence(): void {
+		if (backstopTimer) clearTimeout(backstopTimer);
+		const { delayMs, silenceS } = nextSilenceStep(silenceStep);
+		backstopTimer = setTimeout(() => {
+			backstopTimer = null;
+			if (silenceS === null) {
+				forceFlush();
+				return;
+			}
+			silenceStep += 1;
+			classifyChain = classifyChain.then(() => classifyBuffered(silenceS)).catch(() => {});
+		}, delayMs);
+	}
+
+	function forceFlush(): void {
+		const { sends, buffer } = flushBuffer(chunkBuffer);
+		chunkBuffer = buffer;
+		silenceStep = 0;
+		for (const send of sends) {
+			onChunkTrace({
+				seq: ++chunkSeq, at: Date.now(), chunk: '', buffered: send, resolved: 'complete', boundary: null,
+				confidence: null, asr_risk: null, latency_ms: 0, error: null, sent: send, viaBackstop: true,
+				placement: null, placement_confidence: null, silence_s: SILENCE_HARD_LIMIT
+			});
+			enqueueUtterance(send);
+		}
+	}
+	const SILENCE_HARD_LIMIT = 9;
+
+	function scratchpadTail(): string {
 		const doc = editor ? editor.state.doc.toString() : '';
 		let pendingStart = doc.length;
 		editor?.state.field(pendingField, false)?.between(0, doc.length, (from) => {
 			pendingStart = from;
 			return false;
 		});
-		const tail = lastNonEmptyLine(doc.slice(0, pendingStart));
-		const t0 = performance.now();
+		return lastNonEmptyLine(doc.slice(0, pendingStart));
+	}
+
+	async function askBoundary(buffered: string, chunk: string, silenceS: number): Promise<UtteranceResponse> {
 		let data: UtteranceResponse = {
 			resolved: 'complete', boundary: null, confidence: null, probabilities: null, asr_risk: null, latency_ms: null, error: null
 		};
@@ -419,29 +438,53 @@
 			const res = await fetch(`${API_URL}/api/canvas/utterance`, {
 				method: 'POST',
 				headers,
-				body: JSON.stringify({ scan_type: scanType, buffered, chunk, scratchpad_tail: tail })
+				body: JSON.stringify({ scan_type: scanType, buffered, chunk, scratchpad_tail: scratchpadTail(), silence_s: silenceS })
 			});
 			if (res.ok) data = (await res.json()) as UtteranceResponse;
 			else data.error = `http ${res.status}`;
 		} catch (e) {
 			data.error = (e as Error).name;
 		}
-		const { sends, buffer } = applyBoundary(chunkBuffer, chunk, data.resolved);
-		chunkBuffer = buffer;
+		return data;
+	}
+
+	function applyDecision(buffer: string[], chunk: string, data: UtteranceResponse, silenceS: number, buffered: string, t0: number): void {
+		const { sends, buffer: next } = applyBoundary(buffer, chunk, data.resolved);
+		chunkBuffer = next;
 		const send = sends.length ? sends.join(' ‖ ') : null;
 		onChunkTrace({
-			seq: ++chunkSeq, at: Date.now(), chunk, buffered, resolved: data.resolved, boundary: data.boundary,
-			confidence: data.confidence, asr_risk: data.asr_risk, latency_ms: Math.round(performance.now() - t0),
-			error: data.error, sent: send, viaBackstop: false,
+			seq: ++chunkSeq, at: Date.now(), chunk: silenceS > 0 ? '' : chunk, buffered: silenceS > 0 ? [...buffer, chunk].join(' ') : buffered,
+			resolved: data.resolved, boundary: data.boundary, confidence: data.confidence, asr_risk: data.asr_risk,
+			latency_ms: Math.round(performance.now() - t0), error: data.error, sent: send, viaBackstop: false,
 			placement: send !== null ? (data.placement ?? 'new_line') : null,
-			placement_confidence: send !== null ? (data.placement_confidence ?? null) : null
+			placement_confidence: send !== null ? (data.placement_confidence ?? null) : null,
+			silence_s: silenceS > 0 ? silenceS : null
 		});
 		if (sends.length) {
+			silenceStep = 0;
 			for (const s of sends) enqueueUtterance(s);
 		} else {
-			// A confident 'continues' earns a longer wait (see backstopDelay).
-			armBackstop(backstopDelay(data.confidence));
+			armSilence();
 		}
+	}
+
+	/** A new chunk arrived: classify it against the buffer with no silence evidence. */
+	async function classifyChunk(chunk: string): Promise<void> {
+		clearSilence();
+		const buffered = chunkBuffer.join(' ');
+		const t0 = performance.now();
+		const data = await askBoundary(buffered, chunk, 0);
+		applyDecision(chunkBuffer, chunk, data, 0, buffered, t0);
+	}
+
+	/** Silence milestone: re-ask about the same buffer, now with silence as evidence. */
+	async function classifyBuffered(silenceS: number): Promise<void> {
+		if (!chunkBuffer.length) return;
+		const buffer = chunkBuffer.slice(0, -1);
+		const chunk = chunkBuffer[chunkBuffer.length - 1];
+		const t0 = performance.now();
+		const data = await askBoundary(buffer.join(' '), chunk, silenceS);
+		applyDecision(buffer, chunk, data, silenceS, buffer.join(' '), t0);
 	}
 
 	// One polish per statement: utterances queue up and each process call takes exactly one.
@@ -768,10 +811,7 @@
 		if (editor) editor.dispatch({ effects: clearPending.of(null) });
 		// Flush: the polish trigger is gated on speech_final, so a quick stop mid-utterance
 		// could otherwise drop the last words. Process the final accumulated transcript once.
-		if (backstopTimer) {
-			clearTimeout(backstopTimer);
-			backstopTimer = null;
-		}
+		clearSilence();
 		const flushed = flushBuffer(chunkBuffer);
 		chunkBuffer = flushed.buffer;
 		for (const s of flushed.sends) utteranceQueue.push(s);

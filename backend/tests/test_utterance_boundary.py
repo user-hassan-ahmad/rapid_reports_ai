@@ -56,6 +56,7 @@ async def test_request_and_parse():
         "buffered": "further satellite lesions noted in the",
         "chunk": "left lower lobe",
         "scratchpad_tail": "There is a 10 mm nodule.",
+        "silence_s": 0.0,
     }
     assert b["questions"] == BOUNDARY_QUESTIONS
     assert d.boundary == "complete" and d.confidence == 0.9 and d.asr_risk == 0.05 and d.input_tokens == 220
@@ -103,3 +104,14 @@ def test_resolve_placement_defaults_to_new_line():
     low = BoundaryDecision("complete", 0.9, {}, 0.0, 1, None, None, placement="extend_previous_line", placement_confidence=0.4)
     assert resolve_placement(low) == "new_line"
     assert resolve_placement(TriageError("boom")) == "new_line"
+
+
+async def test_silence_is_sent_in_state():
+    captured = {}
+
+    def handler(req):
+        captured["body"] = json.loads(req.content)
+        return httpx.Response(200, json=_resp())
+
+    await JevBoundary(api_key="k", transport=httpx.MockTransport(handler)).classify("CT", "", "x", "", silence_s=5)
+    assert captured["body"]["state"]["silence_s"] == 5.0

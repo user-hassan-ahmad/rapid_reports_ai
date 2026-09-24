@@ -32,19 +32,23 @@ export function lastNonEmptyLine(text: string): string {
 	return lines.length ? lines[lines.length - 1] : '';
 }
 
-export const BACKSTOP_SHORT_MS = 1500;
-export const BACKSTOP_LONG_MS = 9000; // mic run 3: pauses mid-sentence outran 4 s; words are already visible faded, so a fragment gains nothing from an early polish
-// Run 2 (mic): correct continues at 0.66-0.87 got the short wait and were cut mid-sentence.
-export const BACKSTOP_CONFIDENT = 0.5;
-
 /**
- * How long to wait for the next chunk after a `continues` before sending anyway.
- * A confident `continues` earns a longer wait: the words are already on screen
- * (faded render), so the only cost of waiting is a later polish, while sending
- * early splits the sentence. Low confidence or no decision keeps the short wait.
+ * Silence schedule after a `continues`. Instead of a blind timer, the classifier is
+ * asked again at each milestone with `silence_s` as evidence; only at the hard limit
+ * is the buffer sent without asking. The words are already visible faded, so the
+ * cost of waiting is only a later polish.
  */
-export function backstopDelay(confidence: number | null | undefined): number {
-	return confidence != null && confidence >= BACKSTOP_CONFIDENT ? BACKSTOP_LONG_MS : BACKSTOP_SHORT_MS;
+export const SILENCE_MILESTONES_S = [2, 5];
+export const SILENCE_HARD_LIMIT_S = 9;
+
+/** Step n (0-based) of the schedule: how long to wait from the previous step, and the
+ *  silence value to report; `silenceS: null` means the hard limit — send without asking. */
+export function nextSilenceStep(step: number): { delayMs: number; silenceS: number | null } {
+	const prev = step === 0 ? 0 : (SILENCE_MILESTONES_S[step - 1] ?? SILENCE_HARD_LIMIT_S);
+	if (step < SILENCE_MILESTONES_S.length) {
+		return { delayMs: (SILENCE_MILESTONES_S[step] - prev) * 1000, silenceS: SILENCE_MILESTONES_S[step] };
+	}
+	return { delayMs: (SILENCE_HARD_LIMIT_S - prev) * 1000, silenceS: null };
 }
 
 /**

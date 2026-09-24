@@ -4953,13 +4953,18 @@ async def websocket_transcribe(websocket: WebSocket):
         f"keyterm={term.replace(' ', '%20')}" for term in radiology_keyterms
     )
     pcm_params = f"&encoding=linear16&sample_rate={pcm_sample_rate}&channels=1" if use_pcm else ""
+    # Deepgram dictation mode turns spoken punctuation words into symbols. In radiology
+    # "colon" is an organ (and "period" is a word), so the lab runs with it off: the polish
+    # punctuates anyway, and new line / new paragraph / full stop are handled in our own
+    # lexicon. Production keeps the default until the lab shows the timer path is unaffected.
+    dictation_flag = "false" if os.environ.get("DEEPGRAM_DICTATION", "1") == "0" else "true"
     deepgram_url = (
         f"wss://api.deepgram.com/v1/listen"
         f"?model=nova-3-medical"
         f"&language=en-GB"
         f"&smart_format=true"
         f"&measurements=true"
-        f"&dictation=true"
+        f"&dictation={dictation_flag}"
         f"&punctuate=true"
         f"&interim_results=true"
         f"&endpointing=200"

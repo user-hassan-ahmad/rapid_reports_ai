@@ -36,8 +36,8 @@ class Fake:
     def __init__(self, boundary="complete", conf=0.9, raise_=False):
         self.boundary, self.conf, self.raise_, self.calls = boundary, conf, raise_, []
 
-    async def classify(self, scan_type, buffered, chunk, scratchpad_tail):
-        self.calls.append((scan_type, buffered, chunk, scratchpad_tail))
+    async def classify(self, scan_type, buffered, chunk, scratchpad_tail, silence_s=0.0):
+        self.calls.append((scan_type, buffered, chunk, scratchpad_tail, silence_s))
         if self.raise_:
             raise TriageError("boom")
         return BoundaryDecision(self.boundary, self.conf, {self.boundary: 1.0}, 0.1, 250, 200, 8e-06,
@@ -60,7 +60,7 @@ def test_resolved_decision(authed_client, monkeypatch):
     assert body["resolved"] == "continues" and body["boundary"] == "continues" and body["confidence"] == 0.7
     assert body["asr_risk"] == 0.1 and body["latency_ms"] == 250 and body["error"] is None
     assert body["placement"] == "extend_previous_line" and body["placement_confidence"] == 0.7
-    assert fake.calls == [("CT chest", BODY["buffered"], "left lower lobe", "There is a 10 mm nodule.")]
+    assert fake.calls == [("CT chest", BODY["buffered"], "left lower lobe", "There is a 10 mm nodule.", 0.0)]
 
 
 def test_low_confidence_complete_resolves_to_continues(authed_client, monkeypatch):
@@ -77,3 +77,12 @@ def test_error_fails_open(authed_client, monkeypatch):
     body = authed_client.post("/api/canvas/utterance", json=BODY).json()
     assert body["resolved"] == "complete" and body["error"] == "TriageError" and body["boundary"] is None
     assert body["placement"] == "new_line"
+
+
+def test_silence_forwarded(authed_client, monkeypatch):
+    monkeypatch.setenv("RR_TRIAGE_DEBUG", "1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    fake = Fake("complete", 0.9)
+    monkeypatch.setattr(cr, "get_jev_boundary", lambda: fake)
+    authed_client.post("/api/canvas/utterance", json={**BODY, "silence_s": 5})
+    assert fake.calls[0][4] == 5.0
