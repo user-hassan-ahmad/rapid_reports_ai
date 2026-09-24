@@ -9,7 +9,7 @@ import ReportResponseViewer from './ReportResponseViewer.svelte';
 import Toast from '$lib/components/Toast.svelte';
 import { API_URL } from '$lib/config';
 import { readSSEStream } from '$lib/utils/sse';
-import type { CoverageTrace, LabConfig, PillThresholds, ProcessTrace } from '$lib/dictation-lab/types';
+import type { ChunkTrace, CoverageTrace, LabConfig, PillThresholds, ProcessTrace } from '$lib/dictation-lab/types';
 import { pillState } from '$lib/dictation-lab/coverage';
 
 	let toast: { show: (msg: string) => void } | undefined;
@@ -120,6 +120,7 @@ import { pillState } from '$lib/dictation-lab/coverage';
 	/** Dictation Lab only: three-state pills from coverage scores. null = binary pills as in production. */
 	export let pillThresholds: PillThresholds | null = null;
 	export let onCoverageTrace: (trace: CoverageTrace) => void = () => {};
+	export let onChunkTrace: (trace: ChunkTrace) => void = () => {};
 	let coverageScores: Record<string, number> | null = null;
 
 	let applicableGuidelines: Array<{
@@ -897,6 +898,7 @@ import { pillState } from '$lib/dictation-lab/coverage';
 			{onProcessTrace}
 			onCoverageScoresChange={(s) => { coverageScores = s; }}
 			{onCoverageTrace}
+			{onChunkTrace}
 		/>
 	</div>
 

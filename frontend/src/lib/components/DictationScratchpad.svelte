@@ -2,7 +2,8 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { computeDelta } from '$lib/dictation-lab/delta';
 	import { toRequestFields } from '$lib/dictation-lab/labConfig';
-	import type { CoverageTrace, LabConfig, ProcessTrace, TriageTrace } from '$lib/dictation-lab/types';
+	import type { ChunkTrace, CoverageTrace, LabConfig, ProcessTrace, TriageTrace, UtteranceResponse } from '$lib/dictation-lab/types';
+	import { applyBoundary, flushBuffer, lastNonEmptyLine } from '$lib/dictation-lab/frontDoor';
 	import { EditorView, keymap, Decoration, type DecorationSet } from '@codemirror/view';
 	import { EditorState, Compartment, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
@@ -36,6 +37,8 @@
 	export let onCoverageScoresChange: (scores: Record<string, number> | null) => void = () => {};
 	/** Dictation Lab only. Both candidates' coverage results when coverage_debug is on. */
 	export let onCoverageTrace: (trace: CoverageTrace) => void = () => {};
+	/** Dictation Lab only. One record per finalised chunk when the front door is 'jev'. */
+	export let onChunkTrace: (trace: ChunkTrace) => void = () => {};
 
 	// CM6 highlight decoration for IntelliPrompt source linking
 	const setHighlight = StateEffect.define<{ from: number; to: number } | null>();
@@ -157,6 +160,16 @@
 	// send the delta as `last_utterance` (triage only; never affects the live response).
 	let lastSentTranscript = '';
 	let traceSeq = 0;
+	// Front door (lab): chunks held until Jev says the statement is complete.
+	let chunkBuffer: string[] = [];
+	let pendingUtterance: string | null = null;
+	let chunkSeq = 0;
+	let backstopTimer: ReturnType<typeof setTimeout> | null = null;
+	let classifyChain: Promise<void> = Promise.resolve();
+	const BACKSTOP_MS = 1500;
+	function frontDoorIsJev(): boolean {
+		return labConfig?.frontDoor === 'jev';
+	}
 
 	// Latest-wins processing: only one Qwen call runs at a time.
 	// If new speech arrives while a call is in flight, we record it as pending
@@ -352,6 +365,11 @@
 		// Phase 2b.1: fire the polish only at a pause (speech_final), not every
 		// is_final — UtteranceEnd is the long-pause backup. Cuts redundant
 		// full regenerations; the transcript still accumulates on every chunk.
+		if (frontDoorIsJev()) {
+			// Serialise so decisions see the buffer in arrival order.
+			classifyChain = classifyChain.then(() => classifyChunk(transcript)).catch(() => {});
+			return;
+		}
 		if (speechFinal) processTranscriptQueue();
 	}
 
@@ -360,6 +378,68 @@
 		const t = text.trim();
 		if (!t) return;
 		handleFinalTranscript(t, speechFinal);
+	}
+
+	function armBackstop(): void {
+		if (backstopTimer) clearTimeout(backstopTimer);
+		backstopTimer = setTimeout(() => {
+			backstopTimer = null;
+			const { send, buffer } = flushBuffer(chunkBuffer);
+			chunkBuffer = buffer;
+			if (send) {
+				onChunkTrace({
+					seq: ++chunkSeq, at: Date.now(), chunk: '', buffered: send, resolved: 'complete', boundary: null,
+					confidence: null, asr_risk: null, latency_ms: 0, error: null, sent: send, viaBackstop: true
+				});
+				pendingUtterance = send;
+				processTranscriptQueue();
+			}
+		}, BACKSTOP_MS);
+	}
+
+	async function classifyChunk(chunk: string): Promise<void> {
+		if (backstopTimer) {
+			clearTimeout(backstopTimer);
+			backstopTimer = null;
+		}
+		const buffered = chunkBuffer.join(' ');
+		const doc = editor ? editor.state.doc.toString() : '';
+		let pendingStart = doc.length;
+		editor?.state.field(pendingField, false)?.between(0, doc.length, (from) => {
+			pendingStart = from;
+			return false;
+		});
+		const tail = lastNonEmptyLine(doc.slice(0, pendingStart));
+		const t0 = performance.now();
+		let data: UtteranceResponse = {
+			resolved: 'complete', boundary: null, confidence: null, probabilities: null, asr_risk: null, latency_ms: null, error: null
+		};
+		try {
+			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+			if ($token) headers['Authorization'] = `Bearer ${$token}`;
+			const res = await fetch(`${API_URL}/api/canvas/utterance`, {
+				method: 'POST',
+				headers,
+				body: JSON.stringify({ scan_type: scanType, buffered, chunk, scratchpad_tail: tail })
+			});
+			if (res.ok) data = (await res.json()) as UtteranceResponse;
+			else data.error = `http ${res.status}`;
+		} catch (e) {
+			data.error = (e as Error).name;
+		}
+		const { send, buffer } = applyBoundary(chunkBuffer, chunk, data.resolved);
+		chunkBuffer = buffer;
+		onChunkTrace({
+			seq: ++chunkSeq, at: Date.now(), chunk, buffered, resolved: data.resolved, boundary: data.boundary,
+			confidence: data.confidence, asr_risk: data.asr_risk, latency_ms: Math.round(performance.now() - t0),
+			error: data.error, sent: send, viaBackstop: false
+		});
+		if (send !== null) {
+			pendingUtterance = send;
+			processTranscriptQueue();
+		} else {
+			armBackstop();
+		}
 	}
 
 	async function processTranscript(): Promise<void> {
@@ -398,7 +478,9 @@
 				preferred_section_names: checklistSections,
 				mode: polishMode
 			};
-			if (delta) body.last_utterance = delta;
+			const utterance = pendingUtterance ?? delta;
+			pendingUtterance = null;
+			if (utterance) body.last_utterance = utterance;
 			if (labConfig) Object.assign(body, toRequestFields(labConfig));
 			const t0 = performance.now();
 
@@ -438,7 +520,7 @@
 			onProcessTrace({
 				seq: ++traceSeq,
 				at: Date.now(),
-				utterance: delta ?? '',
+				utterance: utterance ?? '',
 				committed: '',
 				activeBefore,
 				activeAfter: content ?? activeBefore,
@@ -615,7 +697,7 @@
 						// Deepgram UtteranceEnd (~1s pause) is a backup polish trigger; the primary is
 						// speech_final (~endpointing). Only fire if idle, so we never abort + re-run an
 						// in-flight polish (which wasted a full model call per utterance).
-						if (!isProcessingQueue) processTranscriptQueue();
+						if (!frontDoorIsJev() && !isProcessingQueue) processTranscriptQueue();
 					} else if (data.transcript) {
 						if (!data.is_final) {
 							// Interim: live preview while speaking
@@ -672,6 +754,13 @@
 		if (editor) editor.dispatch({ effects: clearPending.of(null) });
 		// Flush: the polish trigger is gated on speech_final, so a quick stop mid-utterance
 		// could otherwise drop the last words. Process the final accumulated transcript once.
+		if (backstopTimer) {
+			clearTimeout(backstopTimer);
+			backstopTimer = null;
+		}
+		const flushed = flushBuffer(chunkBuffer);
+		chunkBuffer = flushed.buffer;
+		if (flushed.send) pendingUtterance = flushed.send;
 		if (sessionTranscript.trim()) processTranscriptQueue();
 		if (editor) {
 			editor.dispatch({

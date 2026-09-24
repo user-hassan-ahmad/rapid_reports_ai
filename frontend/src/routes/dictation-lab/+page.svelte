@@ -5,7 +5,7 @@
 	import { API_URL } from '$lib/config';
 	import { token } from '$lib/stores/auth';
 	import { labConfig, saveLabConfig } from '$lib/dictation-lab/labConfig';
-	import type { CoverageTrace, ProcessTrace } from '$lib/dictation-lab/types';
+	import type { ChunkTrace, CoverageTrace, ProcessTrace } from '$lib/dictation-lab/types';
 
 	// Same bindings the home page gives the tab (src/routes/+page.svelte ~975-1000).
 	let tabRef: {
@@ -13,6 +13,7 @@
 		getCoverageState: () => { scratchpad: string; checklist: string[]; scanType: string };
 	} | null = null;
 	let coverageTrace: CoverageTrace | null = null;
+	let chunkTraces: ChunkTrace[] = [];
 	let coverageState: { scratchpad: string; checklist: string[]; scanType: string } | null = null;
 	let response: any = null;
 	let responseModel: any = null;
@@ -89,6 +90,9 @@
 					coverageTrace = t;
 					coverageState = tabRef?.getCoverageState?.() ?? null;
 				}}
+				onChunkTrace={(t) => {
+					chunkTraces = [...chunkTraces, t];
+				}}
 				on:resetForm={() => {
 					traces = [];
 				}}
@@ -104,8 +108,10 @@
 				{traces}
 				{coverageTrace}
 				{coverageState}
+				{chunkTraces}
 				onClear={() => {
 					traces = [];
+					chunkTraces = [];
 				}}
 			/>
 		</aside>
