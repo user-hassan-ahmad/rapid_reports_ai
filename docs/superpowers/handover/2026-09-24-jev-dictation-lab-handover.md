@@ -6,7 +6,7 @@
 
 Replace generation with typed decisions wherever a pipeline step is really a *choice*. Jev 1.13 (TypeSafe, via OpenRouter `POST /api/v1/systemone`, ~300 ms, $0.04/M in) returns calibrated probabilities for Choice / Score / Noul questions over a JSON state; no prose. The language model (Qwen 27B on Cerebras/Groq) runs only when prose is needed. The scratchpad is **capture**, not the report: snappy, fidelity-preserving, fillers cut; heavy formatting belongs to report generation.
 
-Architecture spec (the map for everything below): `docs/superpowers/specs/2026-09-24-decision-first-dictation-design.md` — one decision bundle per utterance, nine components in build order, invariants (thresholds in code; shadow → lab routing → prod behind env; log data never text; fixtures grow from the lab).
+Architecture spec (the map for everything below): `docs/superpowers/specs/2026-09-24-decision-first-dictation-design.md`, **rev 2** — one decision bundle per utterance, verbatim fast-append as the default step, confidence bands instead of floors, parallel-vs-chained Jev patterns, re-ranked build order, invariants (thresholds in code; ask about the page, not the clock; shadow → lab routing → prod behind env; log data never text; baseline + interval in every bake-off).
 
 ## 2. What exists (all specs in `docs/superpowers/specs/`, plans in `docs/superpowers/plans/`, same date prefix)
 
@@ -49,16 +49,19 @@ RR_TRIAGE_DEBUG=1 DEEPGRAM_DICTATION=0 PYTHONPATH=src <main>/backend/.venv/bin/u
 # bake-offs: PYTHONPATH=src python -c "from dotenv import load_dotenv; load_dotenv('.env'); import runpy; runpy.run_module('rapid_reports_ai.scripts.boundary_bakeoff', run_name='__main__')"
 ```
 
-## 6. Outstanding / next steps (in the order I'd take them)
+## 6. Outstanding / next steps — follow decision-first **rev 2**
 
-1. **Read the next mic run** with the punctuation + standalone rules: expect "(punct.)" completes, "silence 2s → complete" rows, few/no hard limits. If sentences still split, the remaining lever is Deepgram `endpointing` (200 ms) now that the faded render hides waits.
-2. **Placement:** give the question the checklist pills as its region vocabulary (new_paragraph = different section from the last line); skip it when action triage says correction; derive at sentence level. Then decide whether to *act* on it (verbatim append to the chosen place = component #2 "fast-append").
-3. **ASR-risk:** try the relative rule on the four sessions' data; tighten the criteria (phonetic-neighbour requirement); then the fast-append spec can gate on it.
-4. **Coverage recall on collectives** (sharpen the group-membership sentence; more collective fixtures from lab exports) → flip `RR_COVERAGE_CANDIDATE=jev` in prod when recall ≥ Qwen's.
-5. **Relabel** disputed boundary fixtures (`cnt-01/02/11`: grammatically complete clauses → complete); keep growing all three fixture sets via the lab export buttons.
-6. **Stop-flush waste:** in front-door mode, the stop-recording flush should only polish when something is buffered or the transcript changed.
-7. **Production shadow** for action triage: set `RR_TRIAGE_SHADOW=1` on Railway; summarise with `scripts/triage_shadow_report.py` (log-only, no text).
-8. Later components per the architecture spec: correction kind/target, app commands, integrity Nouls, IntelliPrompts as retrieval, audit pre-screen, generation plan as decisions.
+The architecture spec was rewritten as rev 2 after this handover (`c12f801`). It retires the front door's complete/continues trigger, the backstop timers and the `placement` question; the front-door spec carries a superseded note. **Do not resume timer or placement tuning.** Build order and exit criteria: rev 2 §4; first experiments: rev 2 §7; when to chain Jev calls: rev 2 §6.
+
+1. **Production shadow** (component 0): set `RR_TRIAGE_SHADOW=1` on Railway; summarise with `scripts/triage_shadow_report.py` after a week. The action mix and confidence distribution set the bands.
+2. **Baselines in every bake-off:** add a plain-code (regex/lexicon) column and 95 % intervals to the triage, coverage and boundary scripts. A quick regex scored 0.816 vs Jev 0.868 on boundary.
+3. **One bundle per utterance** (component 1): merge the triage, boundary (`standalone` only) and coverage question sets into one call; confirm per-question parity and p95 < 500 ms.
+4. **Fast-append + band router** (component 2): offline replay of lab-exported sessions first — polish calls saved, and every correction/ASR case that would have passed verbatim.
+5. **Coverage on Jev per utterance** (component 3): section nouls on the utterance, static collective → section map in code; flip `RR_COVERAGE_CANDIDATE=jev` when recall ≥ Qwen's.
+6. **ASR-repair chain** (rev 2 §6.2 A): gate on Deepgram per-word confidence (currently unused), `asr_sense` noul, phonetic candidates from the scan-type keyterms, Jev choice with an "as heard" option. Test set: the four sessions' known errors plus clean controls.
+7. **Correction chain** (rev 2 §6.2 C): add target-line and kind labels to `triage_utterances.jsonl`.
+8. **Relabel fixtures by what the system should do**, not grammar; keep growing all sets via the lab export buttons.
+9. Later: IntelliPrompts as retrieval (largest measured dictation latency, 2.8–6 s), app commands, audit screen → locate, generation plan as decisions.
 
 ## 7. Jev wire contract (so nobody rediscovers it)
 
