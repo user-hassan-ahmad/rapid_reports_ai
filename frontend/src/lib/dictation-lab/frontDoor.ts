@@ -63,6 +63,8 @@ export function derivePlacement(before: string, after: string): Placement | null
 			: null;
 	}
 	if (al.length > bl.length) {
+		// First line into an empty scratchpad matches the criteria's 'last line is empty' case.
+		if (!bl.length) return 'new_paragraph';
 		// A blank line inserted before the new text means a paragraph break.
 		const tail = a.slice(a.lastIndexOf(al[al.length - 1]) - 1, a.lastIndexOf(al[al.length - 1]));
 		return tail.length && tail[0].trim() === '' && bl.length ? 'new_paragraph' : 'new_line';

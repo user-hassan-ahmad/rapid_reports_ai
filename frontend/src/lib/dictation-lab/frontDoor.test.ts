@@ -59,8 +59,8 @@ describe('derivePlacement', () => {
 	it('new paragraph when a blank line precedes the new text', () => {
 		expect(derivePlacement('- a', '- a\n\n- b')).toBe('new_paragraph');
 	});
-	it('first line into an empty scratchpad is a new line', () => {
-		expect(derivePlacement('', '- a')).toBe('new_line');
+	it('first line into an empty scratchpad is a new paragraph (empty last line)', () => {
+		expect(derivePlacement('', '- a')).toBe('new_paragraph');
 	});
 	it('null when nothing changed', () => {
 		expect(derivePlacement('- a', '- a')).toBeNull();
