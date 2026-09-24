@@ -11,7 +11,8 @@ import type { LabConfig } from './types';
 
 const base: Omit<LabConfig, 'strategy' | 'threshold' | 'showBoth'> = {
 	coverageDebug: true,
-	pillThresholds: { hi: 0.8, lo: 0.4 }
+	pillThresholds: { hi: 0.8, lo: 0.4 },
+	frontDoor: 'timer'
 };
 
 describe('toRequestFields', () => {
@@ -61,7 +62,8 @@ describe('persistence', () => {
 			threshold: 0.75,
 			showBoth: true,
 			coverageDebug: false,
-			pillThresholds: { hi: 0.9, lo: 0.3 }
+			pillThresholds: { hi: 0.9, lo: 0.3 },
+			frontDoor: 'jev'
 		};
 		saveLabConfig(cfg, fake);
 		expect(loadLabConfig(fake)).toEqual(cfg);

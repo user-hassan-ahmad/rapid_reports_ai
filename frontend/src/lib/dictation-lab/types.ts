@@ -25,7 +25,11 @@ export interface LabConfig {
 	showBoth: boolean; // sets triage_debug
 	coverageDebug: boolean; // sets coverage_debug on /review
 	pillThresholds: PillThresholds;
+	frontDoor: FrontDoor; // 'timer' = Deepgram silence timers (production); 'jev' = boundary classifier
 }
+
+export type FrontDoor = 'timer' | 'jev';
+export type Boundary = 'complete' | 'continues' | 'command';
 
 export interface PillThresholds {
 	hi: number; // >= hi → covered
@@ -115,4 +119,30 @@ export interface CoverageFixtureCase {
 	rule: string;
 	hard: boolean;
 	note: string;
+}
+
+/** One finalised Deepgram chunk classified by the front door. */
+export interface ChunkTrace {
+	seq: number;
+	at: number;
+	chunk: string;
+	buffered: string;
+	resolved: Boundary;
+	boundary: Boundary | null;
+	confidence: number | null;
+	asr_risk: number | null;
+	latency_ms: number;
+	error: string | null;
+	sent: string | null; // the merged statement handed to polish, when one was
+	viaBackstop: boolean;
+}
+/** Mirrors backend UtteranceResponse. */
+export interface UtteranceResponse {
+	resolved: Boundary;
+	boundary: Boundary | null;
+	confidence: number | null;
+	probabilities: Record<string, number> | null;
+	asr_risk: number | null;
+	latency_ms: number | null;
+	error: string | null;
 }

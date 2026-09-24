@@ -7,7 +7,8 @@ export const DEFAULT_LAB_CONFIG: LabConfig = {
 	threshold: 0.9,
 	showBoth: true,
 	coverageDebug: true,
-	pillThresholds: { hi: 0.8, lo: 0.4 }
+	pillThresholds: { hi: 0.8, lo: 0.4 },
+	frontDoor: 'timer'
 };
 const STRATEGIES: Strategy[] = ['shadow', 'route:jev', 'route:qwen'];
 
@@ -37,14 +38,16 @@ export function loadLabConfig(store: Storage | undefined = storage()): LabConfig
 			typeof pt?.lo === 'number' &&
 			pt.lo >= 0 &&
 			pt.lo < pt.hi &&
-			pt.hi <= 1;
+			pt.hi <= 1 &&
+			(p?.frontDoor === 'timer' || p?.frontDoor === 'jev');
 		return ok
 			? {
 					strategy: p.strategy,
 					threshold: p.threshold,
 					showBoth: p.showBoth,
 					coverageDebug: p.coverageDebug,
-					pillThresholds: { hi: pt.hi, lo: pt.lo }
+					pillThresholds: { hi: pt.hi, lo: pt.lo },
+					frontDoor: p.frontDoor
 				}
 			: { ...DEFAULT_LAB_CONFIG };
 	} catch {
