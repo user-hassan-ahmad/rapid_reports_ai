@@ -19,8 +19,15 @@ from .dictation_triage import JEV_MODEL, JEV_TIMEOUT_S, JEV_URL, TriageError, _c
 
 Boundary = Literal["complete", "continues", "command"]
 BOUNDARIES: tuple[str, ...] = ("complete", "continues", "command")
-COMPLETE_THRESHOLD = 0.6
-COMMAND_THRESHOLD = 0.8
+# Bake-off run 1 (38 cases): the raw choice is right 0.868 of the time; every threshold
+# above 0.4 only converted correct answers into stalls (the three wrong sends are the same
+# three at any setting). Thresholds are therefore a floor against near-uniform
+# distributions, not a precision lever. Waiting is bounded by the frontend backstop.
+COMPLETE_THRESHOLD = 0.4
+COMMAND_THRESHOLD = 0.3
+# Not acted on yet. On the same run 0.7 separated the three true ASR cases from every
+# clean one (baseline noul sits ~0.5–0.65 on clean text).
+ASR_RISK_THRESHOLD = 0.7
 
 BOUNDARY_QUESTIONS: dict[str, dict[str, Any]] = {
     "boundary": {

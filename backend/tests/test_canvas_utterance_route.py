@@ -64,7 +64,7 @@ def test_resolved_decision(authed_client, monkeypatch):
 def test_low_confidence_complete_resolves_to_continues(authed_client, monkeypatch):
     monkeypatch.setenv("RR_TRIAGE_DEBUG", "1")
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
-    monkeypatch.setattr(cr, "get_jev_boundary", lambda: Fake("complete", 0.5))
+    monkeypatch.setattr(cr, "get_jev_boundary", lambda: Fake("complete", 0.3))
     assert authed_client.post("/api/canvas/utterance", json=BODY).json()["resolved"] == "continues"
 
 
