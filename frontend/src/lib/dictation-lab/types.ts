@@ -23,7 +23,15 @@ export interface LabConfig {
 	strategy: Strategy;
 	threshold: number; // 0.5–1.0
 	showBoth: boolean; // sets triage_debug
+	coverageDebug: boolean; // sets coverage_debug on /review
+	pillThresholds: PillThresholds;
 }
+
+export interface PillThresholds {
+	hi: number; // >= hi → covered
+	lo: number; // >= lo and < hi → partial
+}
+export type PillState = 'covered' | 'partial' | 'absent';
 
 /** Fields merged into the /api/canvas/process body. Mirrors CanvasProcessRequest. */
 export interface LabRequestFields {
@@ -78,6 +86,33 @@ export interface FixtureCase {
 	expected_action: TriageAction;
 	expected_is_correction: boolean;
 	expected_needs_committed_edit: boolean;
+	hard: boolean;
+	note: string;
+}
+
+/** Mirrors backend CoverageCandidateTrace / CoverageTrace. */
+export interface CoverageCandidateTrace {
+	scores: Record<string, number> | null;
+	covered: string[] | null;
+	raw: string[] | null;
+	latency_ms: number | null;
+	input_tokens: number | null;
+	cost_usd: number | null;
+	error: string | null;
+}
+export interface CoverageTrace {
+	selected: Candidate;
+	jev: CoverageCandidateTrace | null;
+	qwen: CoverageCandidateTrace | null;
+}
+/** One line of tests/fixtures/coverage_cases.jsonl. */
+export interface CoverageFixtureCase {
+	id: string;
+	scan_type: string;
+	checklist: string[];
+	scratchpad: string;
+	expected_covered: string[];
+	rule: string;
 	hard: boolean;
 	note: string;
 }
