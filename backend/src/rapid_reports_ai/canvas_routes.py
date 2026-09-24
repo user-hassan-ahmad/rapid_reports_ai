@@ -1,13 +1,28 @@
 """Canvas routes for intelligent dictation — section generation and transcript processing."""
 
 import asyncio
+import hashlib
+import json
 import logging
+import os
 import time as _time
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pathlib import Path
+from typing import Literal, Optional
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from .auth import get_current_user
 from .database.models import User
+from .dictation_triage import (
+    TriageDecision,
+    TriageState,
+    TriageTrace,
+    decision_to_trace,
+    get_triager,
+)
+from .dictation_triage_labels import agrees, derive_action
+from .dictation_triage_router import route as triage_route_decision
 from .enhancement_utils import (
     MODEL_CONFIG,
     _get_api_key_for_provider,
@@ -39,6 +54,11 @@ class SectionGenerateResponse(BaseModel):
     sections: list[str]
 
 
+class TriageRouteConfig(BaseModel):
+    candidate: Literal["jev", "qwen"]
+    threshold: float = Field(0.9, ge=0.0, le=1.0)
+
+
 class CanvasProcessRequest(BaseModel):
     session_transcript: str
     scratchpad_content: str
@@ -49,6 +69,13 @@ class CanvasProcessRequest(BaseModel):
     # Incremental mode: when set, scratchpad_content is the ACTIVE tail and
     # committed_context is the FROZEN prefix (read-only). Absent => full regeneration.
     committed_context: str | None = None
+    # Trimmed transcript delta since the previous process call. Feeds triage only;
+    # never affects the live response.
+    last_utterance: str | None = None
+    # Lab-only (honoured under RR_TRIAGE_DEBUG=1): attach both candidates' decisions.
+    triage_debug: bool = False
+    # Lab-only (honoured under RR_TRIAGE_DEBUG=1): act on the selected candidate.
+    triage_route: TriageRouteConfig | None = None
 
 
 class IntelliPrompt(BaseModel):
@@ -60,6 +87,7 @@ class IntelliPrompt(BaseModel):
 class CanvasProcessResponse(BaseModel):
     scratchpad: str
     covered_sections: list[str] = []
+    triage: Optional[TriageTrace] = None
 
 
 class CommittedEdit(BaseModel):
@@ -70,6 +98,7 @@ class CommittedEdit(BaseModel):
 class CanvasIncrementalResponse(BaseModel):
     active_scratchpad: str
     committed_edits: list[CommittedEdit] = []
+    triage: Optional[TriageTrace] = None
 
 
 class CanvasReviewRequest(BaseModel):
@@ -692,15 +721,88 @@ async def _run_canvas_with_fallback(
     raise last_exc if last_exc else RuntimeError(f"[{label}] no model candidates")
 
 
-@canvas_router.post("/process")
-async def process_transcript(
-    request: CanvasProcessRequest,
-    current_user: User = Depends(get_current_user),
-):
-    """Process the full session transcript and return the complete updated scratchpad plus covered checklist sections."""
+# -----------------------------------------------------------------------------
+# Triage modes (spec 2026-09-24-jev-dictation-triage-shadow-design.md §5.4)
+# -----------------------------------------------------------------------------
+
+_TRIAGE_WARNED: set[str] = set()
+_SHADOW_TASKS: set[asyncio.Task] = set()  # strong refs for the direct-call fallback
+
+
+def _flag_on(env_name: str) -> bool:
+    """A triage flag counts only when set to "1" AND the OpenRouter key exists.
+    Warn once per flag when the key is missing so a misconfigured deploy is visible."""
+    if os.environ.get(env_name) != "1":
+        return False
+    if not os.environ.get("OPENROUTER_API_KEY"):
+        if env_name not in _TRIAGE_WARNED:
+            _TRIAGE_WARNED.add(env_name)
+            logger.warning("[canvas.triage] %s=1 but OPENROUTER_API_KEY is unset; mode disabled", env_name)
+        return False
+    return True
+
+
+def _triage_debug_enabled() -> bool:
+    return _flag_on("RR_TRIAGE_DEBUG")
+
+
+def _triage_shadow_enabled() -> bool:
+    return _flag_on("RR_TRIAGE_SHADOW")
+
+
+def _triage_state(request: CanvasProcessRequest) -> TriageState:
+    return TriageState(
+        committed=request.committed_context or "",
+        active=request.scratchpad_content or "",
+        latest_utterance=request.last_utterance or "",
+        scan_type=request.scan_type or "",
+    )
+
+
+async def _classify_safe(name: str, state: TriageState) -> TriageDecision | BaseException:
+    try:
+        return await get_triager(name).classify(state)
+    except Exception as e:  # a triage failure is data, never a request failure
+        return e
+
+
+def _after_and_edits(output, incremental: bool) -> tuple[str, list[tuple[str, str]]]:
+    if incremental:
+        return output.active_scratchpad, [(e.original, e.corrected) for e in output.committed_edits]
+    return output.scratchpad, []
+
+
+async def _shadow_triage(state: TriageState, before_active: str, output, incremental: bool, mode: str) -> None:
+    """Fire-and-forget: both candidates, derived label, one JSON log line, no text."""
+    try:
+        jev, qwen = await asyncio.gather(_classify_safe("jev", state), _classify_safe("qwen", state))
+        after, edits = _after_and_edits(output, incremental)
+        derived = derive_action(before_active, after, edits)
+
+        def slot(result):
+            t = decision_to_trace(result).model_dump()
+            t["agrees"] = agrees(t["action"], derived) if t["action"] else None
+            return t
+
+        payload = {
+            "event": "canvas.triage.shadow",
+            "mode": mode,
+            "incremental": incremental,
+            "utterance_len": len(state.latest_utterance),
+            "utterance_sha8": hashlib.sha256(state.latest_utterance.encode()).hexdigest()[:8],
+            "derived": derived,
+            "jev": slot(jev),
+            "qwen": slot(qwen),
+        }
+        logger.info("[canvas.triage.shadow] %s", json.dumps(payload))
+    except Exception as e:
+        logger.error("[canvas.triage.shadow] ❌ %s: %s", type(e).__name__, e)
+
+
+async def _run_live_or_fallback(request: CanvasProcessRequest, incremental: bool):
+    """The live path exactly as before this change, including its degrade-to-input behaviour."""
     primary_model = MODEL_CONFIG["CANVAS_PROCESS"]
     fallback_model = MODEL_CONFIG.get("CANVAS_PROCESS_FALLBACK")
-    incremental = request.committed_context is not None
     system_prompt, model_settings = _canvas_process_config(request.mode, incremental=incremental)
 
     if incremental:
@@ -721,8 +823,6 @@ async def process_transcript(
         )
         output_type = CanvasProcessResponse
 
-    # Cerebras settings form (max_completion_tokens; no top_p/extra_body). Gemma 4 and the
-    # gpt-oss-120b fallback are both Cerebras and accept the same shape.
     t0 = _time.perf_counter()
     try:
         output = await _run_canvas_with_fallback(
@@ -751,6 +851,100 @@ async def process_transcript(
             return CanvasIncrementalResponse(active_scratchpad=request.scratchpad_content, committed_edits=[])
         return CanvasProcessResponse(scratchpad=request.scratchpad_content, covered_sections=[])
 
+
+def _deterministic_response(request: CanvasProcessRequest, incremental: bool, new_active: str, trace: TriageTrace):
+    if incremental:
+        return CanvasIncrementalResponse(active_scratchpad=new_active, committed_edits=[], triage=trace)
+    return CanvasProcessResponse(scratchpad=new_active, covered_sections=[], triage=trace)
+
+
+@canvas_router.post("/process")
+async def process_transcript(
+    request: CanvasProcessRequest,
+    background: BackgroundTasks = None,  # injected by FastAPI; None only when called directly (tests)
+    current_user: User = Depends(get_current_user),
+):
+    """Process the session transcript and return the updated scratchpad.
+
+    Three optional, env-gated triage modes ride on top (spec §5.4):
+      route  — lab only: the selected candidate may short-circuit the live model
+      debug  — lab only: both candidates' decisions are attached to the response
+      shadow — production: both candidates run after the response (BackgroundTasks), log-only
+    Without flags this function is behaviourally identical to before.
+    """
+    incremental = request.committed_context is not None
+    lab = _triage_debug_enabled() and bool(request.last_utterance)
+    state = _triage_state(request) if request.last_utterance else None
+    before_active = request.scratchpad_content or ""
+
+    # --- route mode -------------------------------------------------------------
+    route_result: TriageDecision | BaseException | None = None
+    route_cfg = request.triage_route if lab else None
+    if route_cfg and state is not None:
+        route_result = await _classify_safe(route_cfg.candidate, state)
+        if isinstance(route_result, TriageDecision):
+            kind, new_active = triage_route_decision(route_result, route_cfg.threshold, state)
+            if kind == "deterministic" and new_active is not None:
+                trace = TriageTrace(
+                    mode="route", routed="deterministic", routed_by=route_cfg.candidate,
+                    **{route_cfg.candidate: decision_to_trace(route_result)},
+                )
+                logger.info("[canvas.triage.route] deterministic %s by %s", route_result.action, route_cfg.candidate)
+                return _deterministic_response(request, incremental, new_active, trace)
+
+    # --- live call (+ debug candidates concurrently) ----------------------------
+    debug = lab and request.triage_debug and state is not None
+    t0 = _time.perf_counter()
+    if debug:
+        already = {route_cfg.candidate} if route_cfg and route_result is not None else set()
+        names = [n for n in ("jev", "qwen") if n not in already]
+        results = await asyncio.gather(
+            _run_live_or_fallback(request, incremental),
+            *(_classify_safe(n, state) for n in names),
+        )
+        output, candidate_results = results[0], dict(zip(names, results[1:]))
+    else:
+        output = await _run_live_or_fallback(request, incremental)
+        candidate_results = {}
+    live_latency_ms = int((_time.perf_counter() - t0) * 1000)
+
+    if lab and (debug or route_cfg):
+        if route_cfg and route_result is not None:
+            candidate_results[route_cfg.candidate] = route_result
+        after, edits = _after_and_edits(output, incremental)
+        output.triage = TriageTrace(
+            mode="route" if route_cfg else "debug",
+            derived=derive_action(before_active, after, edits),
+            routed="model",
+            routed_by=route_cfg.candidate if route_cfg else None,
+            live_latency_ms=live_latency_ms,
+            jev=decision_to_trace(candidate_results["jev"]) if "jev" in candidate_results else None,
+            qwen=decision_to_trace(candidate_results["qwen"]) if "qwen" in candidate_results else None,
+        )
+    elif state is not None and _triage_shadow_enabled():
+        # BackgroundTasks: runs after the response is sent in production (zero added
+        # latency) and before TestClient returns (deterministic tests). A bare
+        # asyncio.create_task would be unreferenced and could be garbage-collected.
+        if background is not None:
+            background.add_task(_shadow_triage, state, before_active, output, incremental, request.mode)
+        else:
+            task = asyncio.create_task(_shadow_triage(state, before_active, output, incremental, request.mode))
+            _SHADOW_TASKS.add(task)
+            task.add_done_callback(_SHADOW_TASKS.discard)
+
+    return output
+
+
+_TRIAGE_FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "triage_utterances.jsonl"
+
+
+@canvas_router.get("/triage/fixtures")
+async def triage_fixtures(current_user: User = Depends(get_current_user)):
+    """Lab only: the hand-labelled fixture cases, for the feeder. Read-only."""
+    if not _triage_debug_enabled() or not _TRIAGE_FIXTURES.exists():
+        raise HTTPException(status_code=404, detail="Not Found")
+    cases = [json.loads(line) for line in _TRIAGE_FIXTURES.read_text().splitlines() if line.strip()]
+    return {"cases": cases}
 
 
 @canvas_router.post("/review", response_model=CanvasReviewResponse)
