@@ -1,7 +1,7 @@
-# Dictation Utterance Triage — System 1 Shadow Pilot (Jev vs Qwen reasoning-off)
+# Dictation Utterance Triage — System 1 Pilot with a Local Dictation Lab (Jev vs Qwen reasoning-off)
 
 **Date:** 2026-09-24
-**Status:** Design approved in conversation; awaiting spec review
+**Status:** Design approved in conversation (rev 2: adds the Dictation Lab and gated routing experiments); awaiting spec review
 **Branch:** skill-sheet-v3 (spec only; implementation on its own branch)
 **Fills:** Dictation program Phase 3 slots §7.5 "Triage front-door" and §7.6 "Model router" (see `2026-08-09-dictation-fidelity-and-orchestration-design.md`)
 
@@ -14,7 +14,9 @@ Two candidates now exist for a "System 1" classifier — one that returns a type
 - **Jev 1.13** (TypeSafe, via OpenRouter's System One endpoint): a purpose-built decision model. Typed `Choice` / `Score` / `Noul` questions over a JSON state; returns probabilities and a calibrated confidence. $0.042 per 1M input tokens, output free, 32K context, ~0.3 s round trip measured from this machine.
 - **Qwen 27B with reasoning off** (already in production on Cerebras): the same model as the live path, asked a structured question with a tiny output schema and `reasoning_effort: none`.
 
-We do not know which is accurate enough on radiology dictation, how well Jev's confidence is calibrated on our data, or whether Qwen-off is fast enough to make a new vendor unnecessary. This pilot produces that evidence without changing anything the radiologist sees.
+We do not know which is accurate enough on radiology dictation, how well Jev's confidence is calibrated on our data, or whether Qwen-off is fast enough to make a new vendor unnecessary. We also have no fast local loop for iterating on the dictation flow: the only way to exercise the production dictation UI is the home page against a running backend, with a microphone, one utterance at a time.
+
+This pilot delivers three things: the two triage candidates behind one interface; a **Dictation Lab** — a gated dev route that mounts the real production dictation UI beside an instrumentation panel with a scripted utterance feeder and per-utterance triage traces; and a **gated routing experiment mode** so the fast path can be felt in the browser before any production routing is specified. Production traffic sees at most a log-only shadow.
 
 ## 2. Evidence so far (2026-09-24 probes, synthetic text, OpenRouter key)
 
@@ -39,34 +41,42 @@ Request shape notes (learned the hard way): endpoint is `POST https://openrouter
 
 ### Goals
 - Classify each utterance into a fixed action set with two auxiliary yes/no signals, using two interchangeable System 1 candidates behind one interface.
-- Run both candidates in **shadow** on live traffic: zero added latency on the live path, zero behaviour change, one structured log line per call.
-- Derive a ground-truth label from what the live path actually did, deterministically, and record agreement.
-- Ship a hand-labelled fixture set and a bake-off script that reports accuracy, confusion, latency, cost, and Jev confidence calibration per candidate.
-- Define the exit criteria that would justify letting triage route real traffic (a separate spec).
+- A **Dictation Lab** dev route that reuses the production dictation components unchanged (no fork), adds a scripted utterance feeder, and shows a per-utterance trace of live-path latency, derived label, and both candidates' decisions.
+- A **routing experiment mode**, honoured only when a backend env flag is set, in which the selected candidate's decision above a chosen confidence threshold short-circuits the live model for the deterministic classes.
+- A production **shadow** mode (separate env flag): zero added latency, zero behaviour change, one structured log line per call.
+- A hand-labelled fixture set (grown from lab sessions with one click) and a bake-off script that reports accuracy, confusion, latency, cost, and Jev confidence calibration per candidate.
+- Exit criteria that would justify a production routing spec.
 
 ### Non-goals
-- Acting on triage decisions. No routing changes, no deterministic command handling, no skipping the live model.
+- Production routing. Routing is lab-only in this pilot; `RR_TRIAGE_DEBUG` is never set in production.
+- Verbatim fast-append (skipping the model for `append_new_finding`). It forfeits homophone correction and consolidation; it is a later strategy once the classifier is trusted.
 - The audit pre-screen and the coverage-checklist swap. Each gets its own spec if this pilot passes.
 - Fixing the dead tier-2 semantic check (`dictation_semantic`). Separate defect, already tracked.
+- Mounting the copilot sidebar (`ReportEnhancementSidebar`) in the lab. The lab targets the dictation loop; the sidebar is post-generation editing and can be added to the lab page later without touching this design.
 - A persisted shadow table / Metabase card. Logs first; a table is a follow-up if the data proves useful (migrations are gated in this repo).
 - Adopting the TypeSafe SDK. A ~30-line client is enough and avoids a dependency on an alpha SDK.
 
 ## 4. Architecture
 
 ```
-DictationScratchpad.svelte
-  └─ POST /api/canvas/process  { ..., last_utterance }       (new optional field)
-        │
-        ├─ live path (unchanged): Qwen 27B → CanvasIncrementalResponse / CanvasProcessResponse
-        │
-        └─ if RR_TRIAGE_SHADOW=1 and last_utterance:  asyncio.create_task(_shadow_triage(...))
-                 ├─ JevTriager.classify(state)      ──┐  asyncio.gather(return_exceptions=True)
-                 ├─ QwenTriager.classify(state)     ──┘
-                 ├─ derive_action(before_active, after_active, committed_edits)
-                 └─ logger.info("[canvas.triage.shadow] {json}")
+/dictation-lab (+page.ts: requireDevRoute)            production home page (unchanged)
+  ├─ <IntelliDictateTab>  ── real component ──┐          └─ <IntelliDictateTab> (no lab props)
+  │     └─ <DictationScratchpad>              │
+  │           mic → ws /api/transcribe ─┐     │
+  │           injectTranscript(text) ───┴─ handleFinalTranscript() ─ processTranscriptQueue()
+  │                                              │
+  │                          POST /api/canvas/process { ..., last_utterance, triage_debug, triage_route }
+  └─ <DictationLabPanel>  ◄── onProcessTrace ────┘
+        feeder · strategy · threshold · timeline · export-as-fixture
+
+backend process_transcript
+  ├─ lab routing  (RR_TRIAGE_DEBUG=1 and triage_route):  triage(selected) → deterministic handler | live model
+  ├─ lab debug    (RR_TRIAGE_DEBUG=1 and triage_debug):  gather(live, jev, qwen) → response.triage
+  ├─ shadow       (RR_TRIAGE_SHADOW=1 and last_utterance): live → create_task(jev, qwen, derive, log)
+  └─ default:     live model only (identical to today)
 ```
 
-The shadow task is scheduled **after** the live response object exists and is returned; it never blocks or mutates the response.
+The three backend modes are independent flags. Production sets neither debug flag; shadow is the only mode that can run there.
 
 ## 5. Components
 
@@ -120,8 +130,9 @@ class Triager(Protocol):
 - Settings: temperature 0.0, `max_completion_tokens` 120, reasoning **off** via `extra_body: {"reasoning_effort": "none"}` in the Cerebras form. Settings are passed through `canvas_routes._adapt_canvas_settings` so the Groq fallback shape stays correct if the config entry moves provider (ledger L-34 / provider-map comment at `enhancement_utils.py:251`).
 - System prompt: the same six action definitions, verbatim from `TRIAGE_QUESTIONS`, so both candidates answer an identical question. User prompt: the four state fields, labelled.
 - `confidence`, `probabilities`, `cost_usd` are `None`; `is_correction` / `needs_committed_edit` are 0.0 or 1.0.
+- Timeout 8.0 s.
 
-Timeout for Qwen: 8.0 s (it is the same model as the live path; if it is slower than that the bake-off will say so).
+`get_triager(name)` returns the singleton for `"jev"` or `"qwen"`; `run_both(state)` runs them with `asyncio.gather(return_exceptions=True)` and returns `dict[name, TriageDecision | Exception]`.
 
 ### 5.2 `src/rapid_reports_ai/dictation_triage_labels.py` (new)
 
@@ -136,42 +147,84 @@ Pure, deterministic, line-based (the scratchpad is one finding per line):
 2. Normalised `before == after` → `noop`.
 3. `after` lines ⊇ `before` lines and `len(after) > len(before)` → `append`.
 4. `len(after) < len(before)` → `delete`.
-5. Otherwise (same count, ≥1 line differs, or a line replaced) → `correct`.
+5. Otherwise → `correct`.
 
-Normalisation: strip, collapse internal whitespace, drop blank lines, case-fold. Lines are compared as sets for containment and as ordered lists for counts.
+Normalisation: strip, collapse internal whitespace, drop blank lines, case-fold.
 
-Mapping from `TriageAction` to `DerivedAction` for agreement, `AGREEMENT_MAP`:
+`AGREEMENT_MAP` from `TriageAction` to the `DerivedAction`s it agrees with:
 
-| TriageAction | agrees with DerivedAction |
+| TriageAction | agrees with |
 |---|---|
 | append_new_finding | append |
 | correct_previous_finding | correct, committed_edit |
-| restate_existing_finding | noop, correct (absorbed into an existing line) |
+| restate_existing_finding | noop, correct |
 | delete_previous_utterance | delete |
-| formatting_command | noop, append (a line break can add a line) |
+| formatting_command | noop, append |
 | ignore_noise | noop |
 
-`needs_committed_edit` agrees when `(value >= 0.5) == (derived == "committed_edit")`.
+`needs_committed_edit` agrees when `(value >= 0.5) == (derived == "committed_edit")`. The map is lenient by design; the fixture set carries precise labels.
 
-The map is deliberately lenient where the live model's rewrite is not a clean signal; the fixture set is where precise labels live.
-
-### 5.3 Request and route changes (`canvas_routes.py`)
-
-- `CanvasProcessRequest.last_utterance: str | None = None` with a comment: "Trimmed transcript delta since the previous process call. Shadow triage only; never affects the response."
-- In `process_transcript`, after the live `output` is obtained (inside the `try`, before `return output`) and also on the fallback-return path:
+### 5.3 `src/rapid_reports_ai/dictation_triage_router.py` (new) — lab routing
 
 ```python
-if _triage_shadow_enabled() and request.last_utterance:
-    asyncio.create_task(_shadow_triage(request, output, incremental))
+DETERMINISTIC_ACTIONS = {"formatting_command", "delete_previous_utterance", "ignore_noise", "restate_existing_finding"}
+
+def apply_deterministic(action: TriageAction, state: TriageState) -> str | None:
+    """New active text, or None to fall through to the live model."""
 ```
 
-- `_triage_shadow_enabled()` reads `RR_TRIAGE_SHADOW == "1"` once at import and additionally requires `OPENROUTER_API_KEY` to be set; if the flag is on but the key is missing it logs one warning at import and stays off.
-- `_shadow_triage` builds `TriageState(committed=request.committed_context or "", active=request.scratchpad_content, latest_utterance=request.last_utterance, scan_type=request.scan_type)`, runs both triagers with `asyncio.gather(..., return_exceptions=True)`, derives the label from `request.scratchpad_content` → `output.active_scratchpad` (or `output.scratchpad` in full mode) and `output.committed_edits` (or `[]`), and logs:
+- `formatting_command`: map the utterance through the same command lexicon as `main.process_dictation_transcript` (new line → `\n`, new paragraph → `\n\n`, full stop → `.`); if the mapped text is non-empty, append it to `active`; otherwise return `active` unchanged. Never calls the model.
+- `ignore_noise`, `restate_existing_finding`: return `active` unchanged.
+- `delete_previous_utterance`: remove the last non-blank line of `active`; if `active` has no non-blank line, return `None` (the target may be in the committed zone, which only the live model may edit).
+- `append_new_finding`, `correct_previous_finding`: return `None`.
+
+```python
+def route(decision: TriageDecision, threshold: float, state: TriageState) -> tuple[Literal["deterministic", "model"], str | None]
+```
+Deterministic only when `decision.action in DETERMINISTIC_ACTIONS` and `(decision.confidence if decision.confidence is not None else 1.0) >= threshold` and `apply_deterministic(...)` is not `None`. Qwen carries no confidence, so its deterministic decisions always route when selected — measuring the consequence of that is part of the experiment.
+
+### 5.4 Request, response and route changes (`canvas_routes.py`)
+
+```python
+class TriageRouteConfig(BaseModel):
+    candidate: Literal["jev", "qwen"]
+    threshold: float = Field(0.9, ge=0.0, le=1.0)
+
+class CanvasProcessRequest(BaseModel):
+    ...
+    last_utterance: str | None = None     # trimmed transcript delta since the previous call
+    triage_debug: bool = False            # lab: attach both candidates' decisions (RR_TRIAGE_DEBUG=1 only)
+    triage_route: TriageRouteConfig | None = None   # lab: act on triage (RR_TRIAGE_DEBUG=1 only)
+```
+
+Both response models gain `triage: TriageTrace | None = None`:
+
+```python
+class TriageCandidateTrace(BaseModel):
+    action: TriageAction | None; confidence: float | None; probabilities: dict[str, float] | None
+    is_correction: float | None; needs_committed_edit: float | None
+    latency_ms: int | None; input_tokens: int | None; cost_usd: float | None; error: str | None
+
+class TriageTrace(BaseModel):
+    mode: Literal["debug", "route"]
+    derived: DerivedAction | None            # debug: label from live before/after; route: None when deterministic
+    routed: Literal["deterministic", "model"] | None
+    routed_by: Literal["jev", "qwen"] | None
+    live_latency_ms: int | None
+    jev: TriageCandidateTrace | None
+    qwen: TriageCandidateTrace | None
+```
+
+`process_transcript` flow, in order:
+
+1. `lab = _triage_debug_enabled() and request.last_utterance` (env `RR_TRIAGE_DEBUG == "1"` read once at import, plus key presence).
+2. **Route mode** (`lab and request.triage_route`): await the selected triager; on success call `route(...)`. If deterministic, build the response with the new active text (incremental: `active_scratchpad`, `committed_edits=[]`; full: `scratchpad`), `triage.mode="route"`, `routed="deterministic"`, and return without calling the live model. Otherwise fall through to step 3 with the decision kept for the trace. A triager exception falls through to the live model and is recorded in the trace.
+3. **Live call** exactly as today. In **debug mode** (`lab and request.triage_debug`, and not already routed deterministically) both triagers run under the same `asyncio.gather` as the live call, so the response waits for `max(live, jev, qwen)`; Jev's 0.3 s hides inside the live call. The trace then carries both candidates, `derived` from before/after, and `live_latency_ms`.
+4. **Shadow** (`_triage_shadow_enabled() and request.last_utterance`, env `RR_TRIAGE_SHADOW == "1"`): after the live result exists (including the fallback-return path), `asyncio.create_task(_shadow_triage(...))`, which runs both candidates, derives the label, and logs one JSON line:
 
 ```json
 {"event": "canvas.triage.shadow", "mode": "clean", "incremental": true,
- "utterance_len": 41, "utterance_sha8": "3f9a1c2b",
- "derived": "correct",
+ "utterance_len": 41, "utterance_sha8": "3f9a1c2b", "derived": "correct",
  "jev": {"action": "correct_previous_finding", "confidence": 0.97, "is_correction": 0.94,
          "needs_committed_edit": 0.03, "latency_ms": 262, "input_tokens": 578, "cost_usd": 2.4e-05,
          "agrees": true, "error": null},
@@ -180,17 +233,35 @@ if _triage_shadow_enabled() and request.last_utterance:
           "agrees": true, "error": null}}
 ```
 
-The utterance text is **not** logged (length + 8-char SHA-256 prefix only); the scratchpad is not logged. A candidate's exception is captured as `error: "<ExceptionType>"` with `action: null`, never re-raised. The task's own top level catches everything and logs `[canvas.triage.shadow] ❌`.
+The utterance text is **not** logged (length + 8-char SHA-256 prefix only); the scratchpad is not logged. Shadow and debug are not run together for one request (debug already produced the decisions; the lab panel is the sink). Without `RR_TRIAGE_DEBUG`, `triage_debug` and `triage_route` are ignored and `triage` is `None` — the response is byte-identical to today.
 
-### 5.4 Frontend (`DictationScratchpad.svelte`)
+### 5.5 Frontend: production components (small, backward-compatible edits)
 
-- Keep `let lastSentTranscript = ''`.
-- At the process call: `const last_utterance = sessionTranscript.slice(lastSentTranscript.length).trim();` include it in the body when non-empty; on a successful response set `lastSentTranscript = sessionTranscript`.
-- If `sessionTranscript` no longer starts with `lastSentTranscript` (transcript reset), send no `last_utterance` and reset `lastSentTranscript = sessionTranscript` after the call. No other change. Nothing is gated in the frontend; the backend flag decides.
+**`DictationScratchpad.svelte`**
+- Extract the `is_final` branch of the websocket handler into `handleFinalTranscript(transcript: string, speechFinal: boolean)`; the websocket handler calls it; behaviour unchanged.
+- `export function injectTranscript(text: string, speechFinal = true): void` → `handleFinalTranscript(text, speechFinal)`. Works whether or not the mic is running.
+- Keep `let lastSentTranscript = ''`. In `processTranscript`, compute `last_utterance = sessionTranscript.slice(lastSentTranscript.length).trim()` when `sessionTranscript.startsWith(lastSentTranscript)`, include it in the body when non-empty; after the response, `lastSentTranscript = sessionTranscript`. (The transcript window `SESSION_TRANSCRIPT_WINDOW` can drop the prefix; the `startsWith` check handles that by sending no delta that call.)
+- New optional props: `labConfig: { triage_debug: boolean; triage_route: { candidate: 'jev'|'qwen'; threshold: number } | null } | null = null` — when non-null its fields are spread into the request body; and `onProcessTrace: (t: ProcessTrace) => void = () => {}` called once per completed `/process` call with `{ utterance, requestBody (minus transcript text), response, latency_ms, triage }`.
+- Home page passes neither prop; nothing changes there.
 
-### 5.5 Fixtures: `backend/tests/fixtures/triage_utterances.jsonl` (new)
+**`IntelliDictateTab.svelte`**
+- Pass-through props `labConfig` and `onProcessTrace` to the scratchpad; `export function injectTranscript(text, speechFinal)` forwarding to the scratchpad ref. Nothing else.
 
-One JSON object per line:
+**Type file** `src/lib/types/dictationLab.ts`: `ProcessTrace`, `TriageTrace`, `LabConfig`, and `FixtureCase` (mirrors the backend fixture line).
+
+### 5.6 Frontend: the Dictation Lab (`src/routes/dictation-lab/`)
+
+- `+page.ts`: `export const load = () => requireDevRoute();` — first commit, per the dev-route rule.
+- `+page.svelte`: fetches API key status the same way the home page does, mounts `<IntelliDictateTab bind:this={tabRef} {apiKeyStatus} labConfig={$labConfig} onProcessTrace={pushTrace} ...>` with the same bindings as the home page for response, model, loading, error and reportId, no-op handlers for sidebar and hover-popup events, and a two-column layout: production tab left, `DictationLabPanel` right (stacked below at narrow widths).
+- `src/lib/components/DictationLabPanel.svelte`:
+  - **Feeder**: textarea, one utterance per line; buttons *Step* (inject next line, `speechFinal=true`), *Play* with a delay input (default 1500 ms), *Stop*, *Reset feeder*; *Load fixtures* pulls `GET /api/canvas/triage/fixtures` (dev-gated, returns the fixture file) and fills the textarea with its utterances grouped by case.
+  - **Strategy**: radio `shadow (observe)` / `route on Jev` / `route on Qwen`; threshold slider 0.5–1.0 step 0.05 (disabled for Qwen with a note that it has no confidence); toggle *show both candidates* (sets `triage_debug`). Persisted in `localStorage` under `rr_lab_config`, wrapped in try/catch.
+  - **Timeline**: one row per trace, newest last, auto-scroll: utterance, `derived`, live latency, routed-by/handler, Jev action + confidence + latency, Qwen action + latency; agreement colouring (both agree with derived: green; one: amber; neither: red; deterministic route: blue). Click a row to expand the full request/response JSON.
+  - **Export**: per-row *Add to fixtures* opens a small form pre-filled with committed/active/utterance and the candidates' action, lets you set `expected_*`, `hard`, `note`, and appends a JSON line to a textarea buffer; *Copy fixtures* copies the buffer for pasting into `tests/fixtures/triage_utterances.jsonl`. No write endpoint — the file stays under git review.
+  - **Session summary**: counts per routed handler, mean live latency for model vs deterministic rows, agreement rate per candidate. Resets with *Clear timeline*.
+- `GET /api/canvas/triage/fixtures` (backend, `canvas_routes.py`): returns the fixture file as JSON; 404 unless `RR_TRIAGE_DEBUG=1`. Read-only.
+
+### 5.7 Fixtures: `backend/tests/fixtures/triage_utterances.jsonl` (new)
 
 ```json
 {"id": "corr-laterality-01", "committed": "", "active": "- 6 mm nodule right upper lobe",
@@ -199,87 +270,90 @@ One JSON object per line:
  "expected_needs_committed_edit": false, "hard": false, "note": "explicit 'actually' correction"}
 ```
 
-Target 60–100 cases across all six actions, with at least eight per action, and a `hard: true` subset (temporal comparisons, restatements with slight rewording, corrections addressed to the committed zone, negatives dictated as a run-on, homophone-heavy phrasing). Text is synthetic. British spelling, radiology register. Utterances mirror Deepgram output: lower-case, no punctuation unless dictated.
+Target 60–100 cases across all six actions, at least eight per action, and a `hard: true` subset (temporal comparisons, restatements with slight rewording, corrections addressed to the committed zone, negatives dictated as a run-on, homophone-heavy phrasing). Synthetic text, British spelling, radiology register, Deepgram-like surface form. Initial seed of ~40 written by hand; the rest grown from lab sessions via the export buffer.
 
-### 5.6 Bake-off script: `backend/src/rapid_reports_ai/scripts/triage_bakeoff.py` (new)
+### 5.8 Bake-off script: `backend/src/rapid_reports_ai/scripts/triage_bakeoff.py` (new)
 
-- Loads the fixture file, runs every case through both triagers (concurrency 4, Jev and Qwen sequentially per case so latencies are not contended), and writes `docs/model-migration/triage-bakeoff-<date>.json` plus a printed summary:
-  - per candidate: overall accuracy, per-action precision/recall, confusion matrix, `is_correction` and `needs_committed_edit` accuracy at the 0.5 threshold, p50/p95 latency, total cost, error count;
-  - Jev only: accuracy bucketed by confidence (`<0.5`, `0.5–0.8`, `0.8–0.95`, `≥0.95`) and coverage at each threshold (fraction of cases at or above it), so a routing threshold can be read off;
-  - `hard` subset reported separately.
-- Requires `OPENROUTER_API_KEY` and `CEREBRAS_API_KEY`; exits with a clear message otherwise. Never run by pytest.
+- Loads the fixture file, runs every case through both triagers (concurrency 4; Jev and Qwen sequential per case so latencies are not contended), writes `docs/model-migration/triage-bakeoff-<date>.json` and prints:
+  - per candidate: overall accuracy, per-action precision/recall, confusion matrix, `is_correction` and `needs_committed_edit` accuracy at 0.5, p50/p95 latency, total cost, error count;
+  - Jev only: accuracy bucketed by confidence (`<0.5`, `0.5–0.8`, `0.8–0.95`, `≥0.95`) and coverage at each threshold;
+  - `hard` subset separately.
+- Shares `summarise(decisions)` with the shadow-log analysis (`scripts/triage_shadow_report.py`, which reads a log dump and prints the same summary against derived labels).
+- Requires `OPENROUTER_API_KEY` and `CEREBRAS_API_KEY`; never run by pytest.
 
-## 6. Data flow (shadow, per utterance)
+## 6. Data flow
 
-1. Frontend computes the delta and posts the existing body plus `last_utterance`.
-2. Route runs the live path exactly as today and obtains `output`.
-3. Route schedules the shadow task and returns `output`. Response latency is unaffected.
-4. Shadow task runs Jev and Qwen concurrently, derives the label, logs one JSON line.
-5. Railway logs are the data store for the pilot. A `grep '"event": "canvas.triage.shadow"'` over a day of logs feeds the same summary code the bake-off script uses (shared `summarise(decisions)` helper), so live agreement and fixture accuracy are reported in one format.
+**Lab, debug strategy:** feeder or mic → `handleFinalTranscript` → `/process` with `last_utterance` and `triage_debug` → backend gathers live + Jev + Qwen → response with `triage` → `onProcessTrace` → timeline row.
+
+**Lab, route strategy:** same until the backend; the selected triager runs first (~0.3 s Jev); deterministic classes above threshold return immediately with the edited active text and `routed="deterministic"`; everything else falls through to the live model with the decision in the trace.
+
+**Production shadow:** `/process` with `last_utterance` only → live path unchanged → background task → one log line. Railway logs are the data store; `triage_shadow_report.py` summarises a log dump in the bake-off format.
 
 ## 7. Error handling
 
 | Failure | Behaviour |
 |---|---|
-| Flag off, or `last_utterance` absent/empty | No triage. Identical to today. |
-| Flag on, key missing | One warning at import; shadow disabled. |
-| Jev HTTP error, timeout, bad shape, out-of-range value | `JevTriager` raises; captured by `gather`; logged as `error`. Qwen result still logged. |
+| No flags set, or `last_utterance` absent/empty | No triage. Identical to today. |
+| A debug/shadow flag on, key missing | One warning at import; that mode disabled. |
+| Jev HTTP error, timeout, bad shape, out-of-range value | `JevTriager` raises. Debug: recorded as `error` in its trace slot. Route: fall through to the live model, `routed="model"`, error in trace. Shadow: logged as `error`. |
 | Qwen error / timeout | Symmetric. |
-| Derived label raises (should not; pure function) | Caught at task top level; whole line logged as error. |
-| Live path itself fails and returns the fallback response | Shadow still runs (the fallback returns the input unchanged, so `derived` is `noop`; that is real data about what the user saw). |
-| Event loop shutdown with tasks pending | `create_task` results are fire-and-forget; a lost line at shutdown is acceptable for a shadow pilot. |
+| Deterministic delete on empty active | `apply_deterministic` returns `None`; live model runs. |
+| Derived label raises (should not; pure) | Debug: `derived=None`. Shadow: caught at task top level, whole line logged as error. |
+| Live path fails and returns the fallback response | Shadow still runs (derived = `noop`). Debug: trace still attached. |
+| Lab page without `PUBLIC_ENABLE_DEV_ROUTES=true` | SvelteKit 404 from the load function. |
+| Backend without `RR_TRIAGE_DEBUG=1` receiving lab fields | Fields ignored; `triage=None`; fixtures endpoint 404. |
 
-No path exists by which triage changes the response, raises into the request, or adds latency beyond scheduling a task.
+No path exists by which triage changes a production response or adds latency beyond scheduling a task.
 
 ## 8. Testing
 
-All pytest tests are offline; no network, no keys.
+All pytest and frontend tests are offline; no network, no keys.
 
-**`tests/test_dictation_triage.py`**
-- `JevTriager` builds the exact request body (model id, state keys, six criteria, two nouls) — asserted against a captured transport (`httpx.MockTransport`).
-- Parses a canned success response into `TriageDecision` with the right fields and types.
-- Raises on: non-2xx, missing answer id, unknown choice, probability > 1, noul < 0, timeout.
-- `QwenTriager` passes `use_thinking=False`, `reasoning_effort: none` in `extra_body`, temperature 0.0, and the `QwenTriageOutput` type to a monkeypatched `_run_agent_with_model`; maps booleans to 0.0/1.0; `confidence is None`.
-- Both triagers share the same six action definitions (assert the Qwen system prompt contains each Jev criteria description verbatim).
+**Backend**
+- `tests/test_dictation_triage.py`: Jev request body exactness (`httpx.MockTransport`), response parsing, raises on non-2xx / missing id / unknown choice / out-of-range / timeout; Qwen passes `use_thinking=False`, `reasoning_effort: none`, temperature 0.0, `QwenTriageOutput` to a monkeypatched runner and maps booleans to 0.0/1.0 with `confidence None`; both candidates' prompts contain each action description verbatim.
+- `tests/test_dictation_triage_labels.py`: table-driven `derive_action` cases incl. whitespace/case noise, reordering (not a change), blank-line insertion (`noop`), in-place replacement (`correct`), committed edit precedence; `AGREEMENT_MAP` exhaustive over `TriageAction`.
+- `tests/test_dictation_triage_router.py`: `apply_deterministic` per action incl. formatting lexicon mapping, delete of last non-blank line, delete on empty → `None`; `route` threshold logic with and without confidence.
+- `tests/test_canvas_triage_modes.py` (route level, `client` fixture + auth override pattern from `test_dictation_check_route.py`, triagers monkeypatched with sentinels):
+  - no flags: `last_utterance`/`triage_debug`/`triage_route` present → response identical to a request without them; no triager called; `triage` absent.
+  - shadow flag: response byte-identical; both triagers called once with the expected `TriageState`; one `canvas.triage.shadow` log record; utterance text absent from the log; Jev raising → `jev.error` set, `qwen.action` present.
+  - debug flag + `triage_debug`: response carries `triage.mode == "debug"` with both slots, `derived`, `live_latency_ms`; live output unchanged.
+  - debug flag + `triage_route`: deterministic decision above threshold → live model **not** called, active text edited as specified, `routed == "deterministic"`; below threshold or non-deterministic action → live model called, `routed == "model"`; triager exception → live model called, error in trace.
+  - fixtures endpoint: 404 without the flag, JSON list with it.
+- Fixture-file validation test: parses, ids unique, actions valid, ≥ 8 per action.
+- `tests/test_dictation_triage_live.py`, `@pytest.mark.live`, skipped unless `RR_LIVE_TESTS=1` and keys exist; five fixtures through `JevTriager`; asserts shape only.
 
-**`tests/test_dictation_triage_labels.py`**
-- Table-driven cases for each `DerivedAction`, including whitespace/case noise, reordering that must not count as a change, blank-line insertion (`noop`), a line replaced in place (`correct`), and a committed edit taking precedence.
-- `AGREEMENT_MAP` covers every `TriageAction` (exhaustiveness test).
+**Frontend** (vitest, matching the repo's existing test setup)
+- `DictationScratchpad`: `injectTranscript` appends to the session transcript and triggers one `/process` call with `last_utterance` equal to the injected text; a second inject sends only the new delta; `labConfig` fields appear in the body when set and are absent when `null`; `onProcessTrace` fires once with the response's `triage`.
+- `DictationLabPanel`: Step injects the next line; Play respects the delay and Stop halts it; strategy changes update `labConfig`; timeline row colouring per agreement class; export form produces a valid fixture line.
+- `dictation-lab/+page.ts`: 404 when `PUBLIC_ENABLE_DEV_ROUTES` is unset (existing dev-route test pattern).
 
-**`tests/test_canvas_triage_shadow.py`** (route level, using the existing `client` fixture and auth override pattern from `test_dictation_check_route.py`)
-- Flag off: request with `last_utterance` returns the same response as without; no triager called (monkeypatched sentinels).
-- Flag on: response is byte-identical to flag off; both triagers are called once with the expected `TriageState`; one log record with `event == canvas.triage.shadow` is emitted (caplog); the utterance text does not appear in the log.
-- Flag on, Jev raises: response unaffected; log has `jev.error` set and `qwen.action` present.
-- Flag on, `last_utterance` missing: no triager called.
-
-**Fixture-file validation test**: every line parses, ids unique, every `expected_action` in the set, at least eight cases per action.
-
-**Live test**: `tests/test_dictation_triage_live.py` marked `@pytest.mark.live`, skipped unless `RR_LIVE_TESTS=1` and the keys exist; runs the first five fixtures through `JevTriager` only and asserts shape, not answers. Documents the wire contract against the real endpoint.
-
-## 9. Bake-off exit criteria (proposal; decided before any routing spec)
+## 9. Bake-off exit criteria (proposal; decided before any production routing spec)
 
 A candidate is eligible to route real traffic only if, on the fixture set:
 
-- ≥ 0.95 accuracy on `formatting_command`, `delete_previous_utterance`, `ignore_noise` (the classes deterministic handlers would act on);
+- ≥ 0.95 accuracy on `formatting_command`, `delete_previous_utterance`, `ignore_noise`, `restate_existing_finding`;
 - ≥ 0.90 accuracy separating `correct_previous_finding` from `append_new_finding`, and ≥ 0.90 on `needs_committed_edit`;
-- for Jev: accuracy in the `≥ 0.95` confidence bucket ≥ 0.98 with that bucket covering ≥ 70 % of non-hard cases (i.e. a usable threshold exists), and accuracy monotone across buckets;
+- for Jev: accuracy in the `≥ 0.95` confidence bucket ≥ 0.98 with that bucket covering ≥ 70 % of non-hard cases, and accuracy monotone across buckets;
 - p95 latency ≤ 800 ms;
-- and, from at least one week of shadow logs, agreement with the derived label ≥ 0.85 on the non-`noop` classes (the derived label is lenient by construction, so this is a floor, not the target).
+- from at least one week of shadow logs, agreement with the derived label ≥ 0.85 on non-`noop` classes (a floor, since the derived label is lenient);
+- and, from lab sessions in route mode, no deterministic route that a reviewer would have reversed (tracked via the export buffer's `note` field).
 
-If Qwen-off meets the accuracy bars, vendor count wins and Jev is dropped unless its calibration is decisive for the confidence-gated routing design. If neither meets them, the fixture set and the question wording are the first things to revisit, before any model change.
+If Qwen-off meets the accuracy bars, vendor count wins and Jev is dropped unless its calibration is decisive for confidence-gated routing. If neither meets them, the fixture set and question wording are revisited before any model change.
 
 ## 10. Risks and mitigations
 
-- **Jev's calibration is group-level and trained on other domains.** Mitigation: the confidence buckets in the bake-off are the calibration test; no threshold is chosen from the docs.
-- **New sub-processor for dictation text (TypeSafe via OpenRouter).** Same category as the existing Cerebras / Groq / OpenRouter traffic; synthetic fixtures in the repo; shadow logs carry no text. Flag it in the vendor list when the pilot goes live.
-- **Derived label is a heuristic.** It is tested, lenient, and used only for the shadow agreement floor; the fixture set carries the precise labels.
+- **Jev's calibration is group-level and trained elsewhere.** The confidence buckets in the bake-off are the calibration test; no threshold is chosen from the docs.
+- **New sub-processor for dictation text (TypeSafe via OpenRouter).** Same category as existing Cerebras / Groq / OpenRouter traffic; fixtures are synthetic; shadow logs carry no text. Add to the vendor list when shadow goes live.
+- **Lab flags leaking to production.** Two independent gates: the SvelteKit route 404s without the build-time flag, and the backend ignores lab fields without `RR_TRIAGE_DEBUG`. Route-level tests assert byte-identical responses without the flag.
+- **Refactoring the transcript branch could change live behaviour.** The extraction is a pure move; the websocket path is covered by the `injectTranscript` tests exercising the same function.
+- **Derived label is a heuristic.** Tested, lenient, used only as the shadow floor.
 - **`jev-latest` drift.** Pinned to `typesafe/jev-1.13`.
-- **Prompt-injection surface.** Dictation text is user-controlled and goes into `state`, not `instructions`; Jev returns typed values only, so there is nothing to inject into. The Qwen candidate has a fixed 120-token typed schema.
-- **Shadow doubles model calls per utterance during the pilot.** Costs: Jev ≈ $0.00002 per call; Qwen-off is a short call on an already-provisioned provider. Bounded by the flag.
+- **Prompt-injection surface.** Dictation text goes into `state`, not `instructions`; Jev returns typed values; Qwen has a 120-token typed schema.
+- **Cost.** Jev ≈ $0.00002 per call; Qwen-off is a short call on an already-provisioned provider; both bounded by flags.
 
 ## 11. Follow-ups this pilot unlocks (each its own spec)
 
-1. Routing on triage: deterministic handlers for `formatting_command` / `delete_previous_utterance`, skip-model for `ignore_noise` / `restate_existing_finding`, confidence-gated fallthrough to the live model.
+1. Production routing on triage (the lab's route mode, promoted, plus verbatim fast-append if the classifier earns it).
 2. Audit pre-screen: nine Nouls in one Jev call over dictation + report; System 2 only for flagged or uncertain criteria.
 3. Coverage checklist as Nouls, replacing the Qwen coverage call and its output normaliser.
-4. Persisted shadow table + Metabase card if log analysis proves too coarse.
+4. Copilot sidebar in the lab; persisted shadow table + Metabase card.
