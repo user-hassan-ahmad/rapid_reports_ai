@@ -39,6 +39,8 @@ Tests: backend 344 passed (1 live test skipped unless `RR_LIVE_TESTS=1`); fronte
 
 Jev's interval clears the lexicon only on coverage; on triage the intervals overlap, and on boundary and `standalone` the lexicon is ahead. `standalone` under-fires on finished statements split across buffer + chunk or carrying ASR errors (cmp-02/04/10/12/13, asr-01/02 at 0.23–0.48); rev 2 leans on it for line close, so this needs a fix or a code-first rule before component 2. Qwen coverage had one 93.8 s call (lab-cov-01, 14 sections), hence its p95 interval [1191, 93778] ms.
 
+- **Bundle parity (2026-09-24, 114 fixtures, ref→bundle→ref, `utterance_bundle.py` + `scripts/bundle_parity.py`):** **PASS**. Per question (ref vs bundle, bundle-only/ref-only/noise): action 48/49 vs 47/49 (1/0/0, at the allowance of 1; format-07 "comma" at 0.47); is_correction 48/49 vs 48/49 (0/0/0); needs_committed_edit 49/49 vs 49/49; standalone 21/29 vs 24/29 (0/3/2: bundle *better* with the open-line + latest-utterance wording, still under the lexicon's 25/29); coverage sections 96/98 vs 96/98 (1/1/1). Bundle p50/p95 284/361 ms [337, 424] over 228 calls (≤8 q: p95 442; >8 q: p95 337, so checklist length is not the latency lever) vs separate p95 triage 360 / boundary 397 / coverage 352. Commands caught by action: 10/10. Cost $0.0097 for 228 bundle calls. `docs/model-migration/bundle-parity-2026-09-24.json`.
+
 ## 4. What worked / what failed (the insights)
 
 1. **Jev is calibrated and fast; the surrounding rules were the problem every time.** A 0.4 floor demoted correct completes; a 1.5 s backstop cut sentences a radiologist pauses mid-way while reading images; a 9 s backstop then over-waited. Lesson: act on the raw choice; put *time* and *punctuation* in code, not in the model.
@@ -66,8 +68,8 @@ RR_TRIAGE_DEBUG=1 DEEPGRAM_DICTATION=0 PYTHONPATH=src <main>/backend/.venv/bin/u
 The architecture spec was rewritten as rev 2 after this handover (`c12f801`). It retires the front door's complete/continues trigger, the backstop timers and the `placement` question; the front-door spec carries a superseded note. **Do not resume timer or placement tuning.** Build order and exit criteria: rev 2 §4; first experiments: rev 2 §7; when to chain Jev calls: rev 2 §6.
 
 1. **Production shadow** (component 0): set `RR_TRIAGE_SHADOW=1` on Railway; summarise with `scripts/triage_shadow_report.py` after a week. The action mix and confidence distribution set the bands.
-2. **Baselines in every bake-off:** add a plain-code (regex/lexicon) column and 95 % intervals to the triage, coverage and boundary scripts. A quick regex scored 0.816 vs Jev 0.868 on boundary.
-3. **One bundle per utterance** (component 1): merge the triage, boundary (`standalone` only) and coverage question sets into one call; confirm per-question parity and p95 < 500 ms.
+2. **Done 2026-09-24** (§3 table). **Baselines in every bake-off:** add a plain-code (regex/lexicon) column and 95 % intervals to the triage, coverage and boundary scripts. A quick regex scored 0.816 vs Jev 0.868 on boundary.
+3. **Done 2026-09-24 — PASS** (§3; not wired into routes, first consumer is component 2). **One bundle per utterance** (component 1): merge the triage, boundary (`standalone` only) and coverage question sets into one call; confirm per-question parity and p95 < 500 ms.
 4. **Fast-append + band router** (component 2): offline replay of lab-exported sessions first — polish calls saved, and every correction/ASR case that would have passed verbatim.
 5. **Coverage on Jev per utterance** (component 3): section nouls on the utterance, static collective → section map in code; flip `RR_COVERAGE_CANDIDATE=jev` when recall ≥ Qwen's.
 6. **ASR-repair chain** (rev 2 §6.2 A): gate on Deepgram per-word confidence (currently unused), `asr_sense` noul, phonetic candidates from the scan-type keyterms, Jev choice with an "as heard" option. Test set: the four sessions' known errors plus clean controls.
