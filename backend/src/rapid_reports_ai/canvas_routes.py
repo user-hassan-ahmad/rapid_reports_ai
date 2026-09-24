@@ -87,7 +87,6 @@ class IntelliPrompt(BaseModel):
 class CanvasProcessResponse(BaseModel):
     scratchpad: str
     covered_sections: list[str] = []
-    triage: Optional[TriageTrace] = None
 
 
 class CommittedEdit(BaseModel):
@@ -98,6 +97,16 @@ class CommittedEdit(BaseModel):
 class CanvasIncrementalResponse(BaseModel):
     active_scratchpad: str
     committed_edits: list[CommittedEdit] = []
+
+
+# Route return types. These carry the triage trace and are NEVER given to the model
+# as an output schema — the model-facing types above must stay exactly as they were,
+# or the live model starts trying to fill `triage` itself.
+class CanvasProcessResult(CanvasProcessResponse):
+    triage: Optional[TriageTrace] = None
+
+
+class CanvasIncrementalResult(CanvasIncrementalResponse):
     triage: Optional[TriageTrace] = None
 
 
@@ -854,8 +863,14 @@ async def _run_live_or_fallback(request: CanvasProcessRequest, incremental: bool
 
 def _deterministic_response(request: CanvasProcessRequest, incremental: bool, new_active: str, trace: TriageTrace):
     if incremental:
-        return CanvasIncrementalResponse(active_scratchpad=new_active, committed_edits=[], triage=trace)
-    return CanvasProcessResponse(scratchpad=new_active, covered_sections=[], triage=trace)
+        return CanvasIncrementalResult(active_scratchpad=new_active, committed_edits=[], triage=trace)
+    return CanvasProcessResult(scratchpad=new_active, covered_sections=[], triage=trace)
+
+
+def _with_trace(output, incremental: bool, trace: TriageTrace):
+    """Wrap a model-facing output in the route return type that carries the trace."""
+    cls = CanvasIncrementalResult if incremental else CanvasProcessResult
+    return cls(**output.model_dump(), triage=trace)
 
 
 @canvas_router.post("/process")
@@ -912,7 +927,7 @@ async def process_transcript(
         if route_cfg and route_result is not None:
             candidate_results[route_cfg.candidate] = route_result
         after, edits = _after_and_edits(output, incremental)
-        output.triage = TriageTrace(
+        trace = TriageTrace(
             mode="route" if route_cfg else "debug",
             derived=derive_action(before_active, after, edits),
             routed="model",
@@ -921,6 +936,7 @@ async def process_transcript(
             jev=decision_to_trace(candidate_results["jev"]) if "jev" in candidate_results else None,
             qwen=decision_to_trace(candidate_results["qwen"]) if "qwen" in candidate_results else None,
         )
+        return _with_trace(output, incremental, trace)
     elif state is not None and _triage_shadow_enabled():
         # BackgroundTasks: runs after the response is sent in production (zero added
         # latency) and before TestClient returns (deterministic tests). A bare
