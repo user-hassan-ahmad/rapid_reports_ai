@@ -146,3 +146,13 @@ Data: `docs/model-migration/boundary-bakeoff-2026-09-24.json`.
 **Defect found and fixed in this run.** "new paragraph" was glued onto the buffered "in the right upper lobe which is spiculated in nature" and sent as one utterance. Commands now flush the buffer as its own statement first and go out separately (`applyBoundary` returns a list of sends; the utterance queue takes one per polish and never aborts an in-flight call).
 
 **Against §5.** Command accuracy 1.00 and complete 0.88 meet or approach the bars; continues at 0.75 does not, and most of that gap is the label dispute above. Polish per statement in the lab was 1.25 against the 1.2 target. ASR risk needs criteria work before it can gate anything. Next: relabel the disputed fixtures, grow the set from mic sessions via the chunk export, and re-run.
+
+## 8. Run 2 additions (2026-09-24): confidence-scaled backstop and placement
+
+**Backstop.** A mic session (CT head, 12 chunks) showed the classifier right on every chunk but the fixed 1.5 s backstop firing on 6 of them, because a radiologist pauses mid-sentence longer than that while reading the images. The backstop is now confidence-scaled: 4 s after a `continues` at ≥ 0.9, 1.5 s otherwise (`frontDoor.backstopDelay`). The faded render makes the wait invisible. Five of the six backstops in that session followed a `continues` at ≥ 0.98.
+
+**Placement.** The same boundary call now also answers `placement` for a finished statement: `extend_previous_line`, `new_line`, `new_paragraph`. The scratchpad is capture, not the report, so the question is deliberately narrow (no merge-into-earlier-line) and the resolved default below 0.5 confidence is `new_line`, the cheap error. The lab shows Jev's placement per sent statement next to what the polish actually did (derived from the scratchpad before/after) and a running agreement count. Not acted on yet.
+
+Bake-off (same 38 fixtures, 16 with `expected_placement`): boundary unchanged (raw 0.868, p50 291 ms, so the extra question costs nothing); placement raw 0.688, resolved 0.625, with confidence low across the board (0.18–0.71). Of the six misses, two were labelling errors (fixed), two are taste (is pleura a new region after lung lesions?), one is a correction ("actually make that the left upper lobe"), which placement should not be asked about at all since action triage handles corrections, and one is genuinely ambiguous.
+
+**Next for placement.** Give the question the checklist pills as its region vocabulary, so `new_paragraph` means "a different checklist section from the last line" instead of an unanchored notion of region; skip the question when action triage says correction; then re-measure on mic sessions via the chunk export.
