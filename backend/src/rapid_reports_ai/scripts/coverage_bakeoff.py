@@ -16,6 +16,8 @@ from pathlib import Path
 from statistics import median
 from typing import Any, Optional
 
+from rapid_reports_ai.scripts.bakeoff_baselines import baseline_coverage
+from rapid_reports_ai.scripts.bakeoff_stats import bootstrap_quantile_ci, fmt_rate, rate
 from rapid_reports_ai.scripts.triage_summary import BUCKETS, _p
 
 FIXTURES = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "coverage_cases.jsonl"
@@ -39,6 +41,11 @@ class Row:
 def _exact(row: Row, threshold: float = 0.5) -> bool:
     got = {s for s in row.checklist if (row.scores or {}).get(s, 0.0) >= threshold}
     return got == set(row.expected)
+
+
+def code_row(case: dict) -> Row:
+    return Row(case["id"], "code", case["checklist"], case["expected_covered"],
+               baseline_coverage(case["scratchpad"], case["checklist"]), 0, None, case["hard"], case["rule"], None)
 
 
 def score(rows: list[Row], threshold: float = 0.5) -> dict[str, dict[str, Any]]:
@@ -75,12 +82,17 @@ def score(rows: list[Row], threshold: float = 0.5) -> dict[str, dict[str, Any]]:
                     "n": len(items),
                     "accuracy": (sum((p >= threshold) == e for p, e in items) / len(items)) if items else 0.0,
                 }
+        exact_k = sum(_exact(r, threshold) for r in ok)
         out[cand] = {
             "n": len(rs),
             "errors": len(rs) - len(ok),
             "precision": tp / (tp + fp) if tp + fp else 0.0,
             "recall": tp / (tp + fn) if tp + fn else 0.0,
-            "exact_set_accuracy": (sum(_exact(r, threshold) for r in ok) / len(ok)) if ok else 0.0,
+            "exact_set_accuracy": (exact_k / len(ok)) if ok else 0.0,
+            "precision_rate": rate(tp, tp + fp),
+            "recall_rate": rate(tp, tp + fn),
+            "exact_rate": rate(exact_k, len(ok)),
+            "latency_p95_ci_ms": list(bootstrap_quantile_ci(lat, 0.95)),
             "by_rule": by_rule,
             "hard": {"n": len(hard), "exact": (sum(_exact(r, threshold) for r in hard) / len(hard)) if hard else 0.0},
             "latency_p50_ms": int(median(lat)) if lat else 0,
@@ -95,10 +107,11 @@ def fmt(s: dict[str, dict[str, Any]]) -> str:
     lines = []
     for cand, m in s.items():
         lines.append(
-            f"== {cand}: n={m['n']} errors={m['errors']} P={m['precision']:.3f} R={m['recall']:.3f} "
-            f"exact={m['exact_set_accuracy']:.3f} p50={m['latency_p50_ms']}ms p95={m['latency_p95_ms']}ms "
-            f"cost=${m['cost_usd']:.5f}"
+            f"== {cand}: n={m['n']} errors={m['errors']} p50={m['latency_p50_ms']}ms "
+            f"p95={m['latency_p95_ms']}ms {m['latency_p95_ci_ms']} cost=${m['cost_usd']:.5f}"
         )
+        lines.append(f"   P={fmt_rate(m['precision_rate'])}  R={fmt_rate(m['recall_rate'])}")
+        lines.append(f"   exact={fmt_rate(m['exact_rate'])}")
         lines.append(f"   hard: n={m['hard']['n']} exact={m['hard']['exact']:.3f}")
         for rule, v in m["by_rule"].items():
             lines.append(f"   {rule:<30} n={v['n']:<3} exact={v['exact']:.2f}")
@@ -121,6 +134,7 @@ async def main() -> int:
     async def run(case: dict) -> list[Row]:
         rows = []
         async with sem:
+            rows.append(code_row(case))
             for cand in ("jev", "qwen"):
                 try:
                     if cand == "jev":
