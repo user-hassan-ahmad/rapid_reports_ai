@@ -1,11 +1,138 @@
 {
  "summary": {
-  "jev": {
-   "n": 25,
+  "code": {
+   "n": 26,
    "errors": 0,
-   "precision": 1.0,
-   "recall": 0.9545454545454546,
-   "exact_set_accuracy": 0.92,
+   "precision": 0.8928571428571429,
+   "recall": 0.5319148936170213,
+   "exact_set_accuracy": 0.5384615384615384,
+   "precision_rate": {
+    "k": 25,
+    "n": 28,
+    "p": 0.8928571428571429,
+    "ci95": [
+     0.728,
+     0.9629
+    ]
+   },
+   "recall_rate": {
+    "k": 25,
+    "n": 47,
+    "p": 0.5319148936170213,
+    "ci95": [
+     0.3923,
+     0.6667
+    ]
+   },
+   "exact_rate": {
+    "k": 14,
+    "n": 26,
+    "p": 0.5384615384615384,
+    "ci95": [
+     0.3546,
+     0.7124
+    ]
+   },
+   "latency_p95_ci_ms": [
+    0,
+    0
+   ],
+   "by_rule": {
+    "abbreviation": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "adjacent-structure": {
+     "n": 2,
+     "exact": 0.5
+    },
+    "bare-mention": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "collective-boundary": {
+     "n": 3,
+     "exact": 0.0
+    },
+    "collective-group": {
+     "n": 3,
+     "exact": 0.3333333333333333
+    },
+    "direct-location": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "direct-modifier": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "direct-subject": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "incidental-co-mention": {
+     "n": 2,
+     "exact": 0.0
+    },
+    "parent-not-enumerating": {
+     "n": 2,
+     "exact": 0.0
+    },
+    "specific-overrides-collective": {
+     "n": 2,
+     "exact": 0.0
+    },
+    "vague-filler": {
+     "n": 2,
+     "exact": 1.0
+    }
+   },
+   "hard": {
+    "n": 12,
+    "exact": 0.25
+   },
+   "latency_p50_ms": 0,
+   "latency_p95_ms": 0,
+   "cost_usd": 0.0,
+   "buckets": {}
+  },
+  "jev": {
+   "n": 26,
+   "errors": 0,
+   "precision": 0.9787234042553191,
+   "recall": 0.9787234042553191,
+   "exact_set_accuracy": 0.9230769230769231,
+   "precision_rate": {
+    "k": 46,
+    "n": 47,
+    "p": 0.9787234042553191,
+    "ci95": [
+     0.8889,
+     0.9962
+    ]
+   },
+   "recall_rate": {
+    "k": 46,
+    "n": 47,
+    "p": 0.9787234042553191,
+    "ci95": [
+     0.8889,
+     0.9962
+    ]
+   },
+   "exact_rate": {
+    "k": 24,
+    "n": 26,
+    "p": 0.9230769230769231,
+    "ci95": [
+     0.7586,
+     0.9786
+    ]
+   },
+   "latency_p95_ci_ms": [
+    295,
+    1235
+   ],
    "by_rule": {
     "abbreviation": {
      "n": 2,
@@ -21,11 +148,11 @@
     },
     "collective-boundary": {
      "n": 3,
-     "exact": 0.6666666666666666
+     "exact": 1.0
     },
     "collective-group": {
-     "n": 2,
-     "exact": 1.0
+     "n": 3,
+     "exact": 0.6666666666666666
     },
     "direct-location": {
      "n": 2,
@@ -57,37 +184,68 @@
     }
    },
    "hard": {
-    "n": 11,
-    "exact": 0.9090909090909091
+    "n": 12,
+    "exact": 0.9166666666666666
    },
-   "latency_p50_ms": 303,
-   "latency_p95_ms": 445,
-   "cost_usd": 0.0012508,
+   "latency_p50_ms": 274,
+   "latency_p95_ms": 343,
+   "cost_usd": 0.00142846,
    "buckets": {
     "<0.5": {
      "n": 0,
      "accuracy": 0.0
     },
     "0.5-0.8": {
-     "n": 16,
-     "accuracy": 0.875
+     "n": 21,
+     "accuracy": 0.9047619047619048
     },
     "0.8-0.95": {
-     "n": 20,
+     "n": 27,
      "accuracy": 1.0
     },
     ">=0.95": {
-     "n": 48,
+     "n": 50,
      "accuracy": 1.0
     }
    }
   },
   "qwen": {
-   "n": 25,
+   "n": 26,
    "errors": 0,
-   "precision": 1.0,
+   "precision": 0.9791666666666666,
    "recall": 1.0,
-   "exact_set_accuracy": 1.0,
+   "exact_set_accuracy": 0.9615384615384616,
+   "precision_rate": {
+    "k": 47,
+    "n": 48,
+    "p": 0.9791666666666666,
+    "ci95": [
+     0.891,
+     0.9963
+    ]
+   },
+   "recall_rate": {
+    "k": 47,
+    "n": 47,
+    "p": 1.0,
+    "ci95": [
+     0.9244,
+     1.0
+    ]
+   },
+   "exact_rate": {
+    "k": 25,
+    "n": 26,
+    "p": 0.9615384615384616,
+    "ci95": [
+     0.8111,
+     0.9932
+    ]
+   },
+   "latency_p95_ci_ms": [
+    1191,
+    93778
+   ],
    "by_rule": {
     "abbreviation": {
      "n": 2,
@@ -106,8 +264,8 @@
      "exact": 1.0
     },
     "collective-group": {
-     "n": 2,
-     "exact": 1.0
+     "n": 3,
+     "exact": 0.6666666666666666
     },
     "direct-location": {
      "n": 2,
@@ -139,16 +297,40 @@
     }
    },
    "hard": {
-    "n": 11,
-    "exact": 1.0
+    "n": 12,
+    "exact": 0.9166666666666666
    },
-   "latency_p50_ms": 860,
-   "latency_p95_ms": 1669,
+   "latency_p50_ms": 989,
+   "latency_p95_ms": 2228,
    "cost_usd": 0.0,
    "buckets": {}
   }
  },
  "rows": [
+  {
+   "id": "ds-01",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "KIDNEYS",
+    "BOWEL"
+   ],
+   "expected": [
+    "LIVER"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "SPLEEN": 0.0,
+    "KIDNEYS": 0.0,
+    "BOWEL": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-subject",
+   "error": null
+  },
   {
    "id": "ds-01",
    "candidate": "jev",
@@ -163,11 +345,11 @@
    ],
    "scores": {
     "LIVER": 0.98,
-    "SPLEEN": 0.02,
+    "SPLEEN": 0.01,
     "KIDNEYS": 0.01,
     "BOWEL": 0.01
    },
-   "latency_ms": 477,
+   "latency_ms": 267,
    "cost_usd": 5.649e-05,
    "hard": false,
    "rule": "direct-subject",
@@ -191,7 +373,32 @@
     "KIDNEYS": 0.0,
     "BOWEL": 0.0
    },
-   "latency_ms": 550,
+   "latency_ms": 1044,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-subject",
+   "error": null
+  },
+  {
+   "id": "ds-02",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM",
+    "HEART"
+   ],
+   "expected": [
+    "MEDIASTINUM",
+    "HEART"
+   ],
+   "scores": {
+    "LUNGS": 0.0,
+    "PLEURA": 0.0,
+    "MEDIASTINUM": 1.0,
+    "HEART": 1.0
+   },
+   "latency_ms": 0,
    "cost_usd": null,
    "hard": false,
    "rule": "direct-subject",
@@ -216,7 +423,7 @@
     "MEDIASTINUM": 0.98,
     "HEART": 0.98
    },
-   "latency_ms": 445,
+   "latency_ms": 320,
    "cost_usd": 5.712e-05,
    "hard": false,
    "rule": "direct-subject",
@@ -241,10 +448,35 @@
     "MEDIASTINUM": 1.0,
     "HEART": 1.0
    },
-   "latency_ms": 1659,
+   "latency_ms": 1593,
    "cost_usd": null,
    "hard": false,
    "rule": "direct-subject",
+   "error": null
+  },
+  {
+   "id": "dl-01",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "KIDNEYS",
+    "PELVIS"
+   ],
+   "expected": [
+    "LIVER",
+    "PELVIS"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "SPLEEN": 0.0,
+    "KIDNEYS": 0.0,
+    "PELVIS": 1.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-location",
    "error": null
   },
   {
@@ -266,7 +498,7 @@
     "KIDNEYS": 0.02,
     "PELVIS": 0.95
    },
-   "latency_ms": 437,
+   "latency_ms": 233,
    "cost_usd": 5.7204e-05,
    "hard": false,
    "rule": "direct-location",
@@ -291,7 +523,29 @@
     "KIDNEYS": 0.0,
     "PELVIS": 1.0
    },
-   "latency_ms": 728,
+   "latency_ms": 861,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-location",
+   "error": null
+  },
+  {
+   "id": "dl-02",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "LUNGS": 1.0,
+    "PLEURA": 0.0,
+    "MEDIASTINUM": 0.0
+   },
+   "latency_ms": 0,
    "cost_usd": null,
    "hard": false,
    "rule": "direct-location",
@@ -313,7 +567,7 @@
     "PLEURA": 0.02,
     "MEDIASTINUM": 0.02
    },
-   "latency_ms": 397,
+   "latency_ms": 246,
    "cost_usd": 4.641e-05,
    "hard": false,
    "rule": "direct-location",
@@ -335,10 +589,33 @@
     "PLEURA": 0.0,
     "MEDIASTINUM": 0.0
    },
-   "latency_ms": 1669,
+   "latency_ms": 777,
    "cost_usd": null,
    "hard": false,
    "rule": "direct-location",
+   "error": null
+  },
+  {
+   "id": "dm-01",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "scores": {
+    "LUNGS": 0.0,
+    "PLEURA": 1.0,
+    "MEDIASTINUM": 1.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-modifier",
    "error": null
   },
   {
@@ -354,11 +631,11 @@
     "MEDIASTINUM"
    ],
    "scores": {
-    "LUNGS": 0.04,
-    "PLEURA": 0.96,
+    "LUNGS": 0.05,
+    "PLEURA": 0.97,
     "MEDIASTINUM": 0.96
    },
-   "latency_ms": 310,
+   "latency_ms": 280,
    "cost_usd": 4.6536e-05,
    "hard": false,
    "rule": "direct-modifier",
@@ -381,9 +658,32 @@
     "PLEURA": 1.0,
     "MEDIASTINUM": 1.0
    },
-   "latency_ms": 960,
+   "latency_ms": 993,
    "cost_usd": null,
    "hard": false,
+   "rule": "direct-modifier",
+   "error": null
+  },
+  {
+   "id": "dm-02",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "KIDNEYS",
+    "ADRENALS"
+   ],
+   "expected": [
+    "LIVER",
+    "KIDNEYS"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "KIDNEYS": 1.0,
+    "ADRENALS": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
    "rule": "direct-modifier",
    "error": null
   },
@@ -404,7 +704,7 @@
     "KIDNEYS": 0.97,
     "ADRENALS": 0.02
    },
-   "latency_ms": 318,
+   "latency_ms": 266,
    "cost_usd": 4.5864e-05,
    "hard": true,
    "rule": "direct-modifier",
@@ -427,10 +727,36 @@
     "KIDNEYS": 1.0,
     "ADRENALS": 0.0
    },
-   "latency_ms": 707,
+   "latency_ms": 713,
    "cost_usd": null,
    "hard": true,
    "rule": "direct-modifier",
+   "error": null
+  },
+  {
+   "id": "cg-01",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS",
+    "BOWEL"
+   ],
+   "expected": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS"
+   ],
+   "scores": {
+    "LIVER": 0.0,
+    "SPLEEN": 0.0,
+    "PANCREAS": 0.0,
+    "BOWEL": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "collective-group",
    "error": null
   },
   {
@@ -450,10 +776,10 @@
    "scores": {
     "LIVER": 0.89,
     "SPLEEN": 0.86,
-    "PANCREAS": 0.7,
-    "BOWEL": 0.06
+    "PANCREAS": 0.71,
+    "BOWEL": 0.07
    },
-   "latency_ms": 340,
+   "latency_ms": 295,
    "cost_usd": 5.6196e-05,
    "hard": false,
    "rule": "collective-group",
@@ -479,7 +805,33 @@
     "PANCREAS": 1.0,
     "BOWEL": 0.0
    },
-   "latency_ms": 1015,
+   "latency_ms": 1618,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "collective-group",
+   "error": null
+  },
+  {
+   "id": "cg-02",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "BONES",
+    "CHEST WALL"
+   ],
+   "expected": [
+    "LUNGS",
+    "BONES",
+    "CHEST WALL"
+   ],
+   "scores": {
+    "LUNGS": 1.0,
+    "PLEURA": 0.0,
+    "BONES": 1.0,
+    "CHEST WALL": 1.0
+   },
+   "latency_ms": 0,
    "cost_usd": null,
    "hard": false,
    "rule": "collective-group",
@@ -503,9 +855,9 @@
     "LUNGS": 0.95,
     "PLEURA": 0.04,
     "BONES": 0.95,
-    "CHEST WALL": 0.93
+    "CHEST WALL": 0.94
    },
-   "latency_ms": 353,
+   "latency_ms": 268,
    "cost_usd": 5.6532e-05,
    "hard": false,
    "rule": "collective-group",
@@ -531,10 +883,35 @@
     "BONES": 1.0,
     "CHEST WALL": 1.0
    },
-   "latency_ms": 957,
+   "latency_ms": 997,
    "cost_usd": null,
    "hard": false,
    "rule": "collective-group",
+   "error": null
+  },
+  {
+   "id": "cb-01",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "BOWEL",
+    "AORTA"
+   ],
+   "expected": [
+    "LIVER",
+    "SPLEEN"
+   ],
+   "scores": {
+    "LIVER": 0.0,
+    "SPLEEN": 0.0,
+    "BOWEL": 0.0,
+    "AORTA": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-boundary",
    "error": null
   },
   {
@@ -552,8 +929,8 @@
    ],
    "scores": {
     "LIVER": 0.88,
-    "SPLEEN": 0.85,
-    "BOWEL": 0.05,
+    "SPLEEN": 0.86,
+    "BOWEL": 0.06,
     "AORTA": 0.04
    },
    "latency_ms": 269,
@@ -581,7 +958,33 @@
     "BOWEL": 0.0,
     "AORTA": 0.0
    },
-   "latency_ms": 689,
+   "latency_ms": 795,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-boundary",
+   "error": null
+  },
+  {
+   "id": "cb-02",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM",
+    "UPPER ABDOMEN"
+   ],
+   "expected": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "scores": {
+    "LUNGS": 0.0,
+    "PLEURA": 0.0,
+    "MEDIASTINUM": 0.0,
+    "UPPER ABDOMEN": 0.0
+   },
+   "latency_ms": 0,
    "cost_usd": null,
    "hard": true,
    "rule": "collective-boundary",
@@ -602,12 +1005,12 @@
     "MEDIASTINUM"
    ],
    "scores": {
-    "LUNGS": 0.58,
-    "PLEURA": 0.48,
-    "MEDIASTINUM": 0.65,
-    "UPPER ABDOMEN": 0.1
+    "LUNGS": 0.6,
+    "PLEURA": 0.5,
+    "MEDIASTINUM": 0.64,
+    "UPPER ABDOMEN": 0.11
    },
-   "latency_ms": 302,
+   "latency_ms": 246,
    "cost_usd": 5.838e-05,
    "hard": true,
    "rule": "collective-boundary",
@@ -633,7 +1036,32 @@
     "MEDIASTINUM": 1.0,
     "UPPER ABDOMEN": 0.0
    },
-   "latency_ms": 950,
+   "latency_ms": 1054,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-boundary",
+   "error": null
+  },
+  {
+   "id": "cb-03",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "KIDNEYS",
+    "LYMPH NODES",
+    "BONES"
+   ],
+   "expected": [
+    "LIVER",
+    "KIDNEYS"
+   ],
+   "scores": {
+    "LIVER": 0.0,
+    "KIDNEYS": 0.0,
+    "LYMPH NODES": 0.0,
+    "BONES": 0.0
+   },
+   "latency_ms": 0,
    "cost_usd": null,
    "hard": true,
    "rule": "collective-boundary",
@@ -654,11 +1082,11 @@
    ],
    "scores": {
     "LIVER": 0.77,
-    "KIDNEYS": 0.6,
-    "LYMPH NODES": 0.15,
+    "KIDNEYS": 0.62,
+    "LYMPH NODES": 0.16,
     "BONES": 0.06
    },
-   "latency_ms": 354,
+   "latency_ms": 283,
    "cost_usd": 5.6952e-05,
    "hard": true,
    "rule": "collective-boundary",
@@ -683,10 +1111,34 @@
     "LYMPH NODES": 0.0,
     "BONES": 0.0
    },
-   "latency_ms": 874,
+   "latency_ms": 1122,
    "cost_usd": null,
    "hard": true,
    "rule": "collective-boundary",
+   "error": null
+  },
+  {
+   "id": "so-01",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS"
+   ],
+   "expected": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "SPLEEN": 0.0,
+    "PANCREAS": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "specific-overrides-collective",
    "error": null
   },
   {
@@ -704,10 +1156,10 @@
    ],
    "scores": {
     "LIVER": 0.98,
-    "SPLEEN": 0.83,
-    "PANCREAS": 0.84
+    "SPLEEN": 0.84,
+    "PANCREAS": 0.82
    },
-   "latency_ms": 281,
+   "latency_ms": 330,
    "cost_usd": 4.557e-05,
    "hard": false,
    "rule": "specific-overrides-collective",
@@ -731,7 +1183,31 @@
     "SPLEEN": 1.0,
     "PANCREAS": 1.0
    },
-   "latency_ms": 1626,
+   "latency_ms": 1162,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "specific-overrides-collective",
+   "error": null
+  },
+  {
+   "id": "so-02",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "scores": {
+    "LUNGS": 0.0,
+    "PLEURA": 1.0,
+    "MEDIASTINUM": 0.0
+   },
+   "latency_ms": 0,
    "cost_usd": null,
    "hard": false,
    "rule": "specific-overrides-collective",
@@ -751,11 +1227,11 @@
     "MEDIASTINUM"
    ],
    "scores": {
-    "LUNGS": 0.24,
+    "LUNGS": 0.21,
     "PLEURA": 0.97,
-    "MEDIASTINUM": 0.72
+    "MEDIASTINUM": 0.73
    },
-   "latency_ms": 275,
+   "latency_ms": 1235,
    "cost_usd": 4.6494e-05,
    "hard": false,
    "rule": "specific-overrides-collective",
@@ -779,10 +1255,32 @@
     "PLEURA": 1.0,
     "MEDIASTINUM": 1.0
    },
-   "latency_ms": 2595,
+   "latency_ms": 2228,
    "cost_usd": null,
    "hard": false,
    "rule": "specific-overrides-collective",
+   "error": null
+  },
+  {
+   "id": "bm-01",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "GALLBLADDER",
+    "PANCREAS"
+   ],
+   "expected": [
+    "PANCREAS"
+   ],
+   "scores": {
+    "LIVER": 0.0,
+    "GALLBLADDER": 0.0,
+    "PANCREAS": 1.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "bare-mention",
    "error": null
   },
   {
@@ -798,10 +1296,10 @@
    ],
    "scores": {
     "LIVER": 0.02,
-    "GALLBLADDER": 0.07,
+    "GALLBLADDER": 0.08,
     "PANCREAS": 0.97
    },
-   "latency_ms": 280,
+   "latency_ms": 276,
    "cost_usd": 4.6032e-05,
    "hard": false,
    "rule": "bare-mention",
@@ -823,7 +1321,29 @@
     "GALLBLADDER": 0.0,
     "PANCREAS": 1.0
    },
-   "latency_ms": 739,
+   "latency_ms": 774,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "bare-mention",
+   "error": null
+  },
+  {
+   "id": "bm-02",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "HEART"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "LUNGS": 1.0,
+    "PLEURA": 0.0,
+    "HEART": 0.0
+   },
+   "latency_ms": 0,
    "cost_usd": null,
    "hard": false,
    "rule": "bare-mention",
@@ -843,9 +1363,9 @@
    "scores": {
     "LUNGS": 0.94,
     "PLEURA": 0.04,
-    "HEART": 0.07
+    "HEART": 0.06
    },
-   "latency_ms": 332,
+   "latency_ms": 265,
    "cost_usd": 4.4856e-05,
    "hard": false,
    "rule": "bare-mention",
@@ -867,10 +1387,32 @@
     "PLEURA": 0.0,
     "HEART": 0.0
    },
-   "latency_ms": 704,
+   "latency_ms": 779,
    "cost_usd": null,
    "hard": false,
    "rule": "bare-mention",
+   "error": null
+  },
+  {
+   "id": "as-01",
+   "candidate": "code",
+   "checklist": [
+    "GALLBLADDER",
+    "BILE DUCTS",
+    "LIVER"
+   ],
+   "expected": [
+    "GALLBLADDER"
+   ],
+   "scores": {
+    "GALLBLADDER": 1.0,
+    "BILE DUCTS": 0.0,
+    "LIVER": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "adjacent-structure",
    "error": null
   },
   {
@@ -889,7 +1431,7 @@
     "BILE DUCTS": 0.02,
     "LIVER": 0.02
    },
-   "latency_ms": 302,
+   "latency_ms": 291,
    "cost_usd": 4.6788e-05,
    "hard": true,
    "rule": "adjacent-structure",
@@ -911,7 +1453,29 @@
     "BILE DUCTS": 0.0,
     "LIVER": 0.0
    },
-   "latency_ms": 727,
+   "latency_ms": 568,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "adjacent-structure",
+   "error": null
+  },
+  {
+   "id": "as-02",
+   "candidate": "code",
+   "checklist": [
+    "PLEURA",
+    "LUNGS",
+    "CHEST WALL"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "PLEURA": 0.0,
+    "LUNGS": 0.0,
+    "CHEST WALL": 0.0
+   },
+   "latency_ms": 0,
    "cost_usd": null,
    "hard": true,
    "rule": "adjacent-structure",
@@ -931,9 +1495,9 @@
    "scores": {
     "PLEURA": 0.04,
     "LUNGS": 0.93,
-    "CHEST WALL": 0.02
+    "CHEST WALL": 0.03
    },
-   "latency_ms": 268,
+   "latency_ms": 292,
    "cost_usd": 4.5318e-05,
    "hard": true,
    "rule": "adjacent-structure",
@@ -955,10 +1519,36 @@
     "LUNGS": 1.0,
     "CHEST WALL": 0.0
    },
-   "latency_ms": 844,
+   "latency_ms": 809,
    "cost_usd": null,
    "hard": true,
    "rule": "adjacent-structure",
+   "error": null
+  },
+  {
+   "id": "pn-01",
+   "candidate": "code",
+   "checklist": [
+    "KIDNEYS",
+    "ADRENALS",
+    "URETERS",
+    "BLADDER"
+   ],
+   "expected": [
+    "KIDNEYS",
+    "URETERS",
+    "BLADDER"
+   ],
+   "scores": {
+    "KIDNEYS": 0.0,
+    "ADRENALS": 0.0,
+    "URETERS": 0.0,
+    "BLADDER": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "parent-not-enumerating",
    "error": null
   },
   {
@@ -976,12 +1566,12 @@
     "BLADDER"
    ],
    "scores": {
-    "KIDNEYS": 0.77,
+    "KIDNEYS": 0.79,
     "ADRENALS": 0.08,
-    "URETERS": 0.8,
-    "BLADDER": 0.77
+    "URETERS": 0.81,
+    "BLADDER": 0.74
    },
-   "latency_ms": 260,
+   "latency_ms": 246,
    "cost_usd": 5.6826e-05,
    "hard": true,
    "rule": "parent-not-enumerating",
@@ -1007,7 +1597,30 @@
     "URETERS": 1.0,
     "BLADDER": 1.0
    },
-   "latency_ms": 860,
+   "latency_ms": 985,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "parent-not-enumerating",
+   "error": null
+  },
+  {
+   "id": "pn-02",
+   "candidate": "code",
+   "checklist": [
+    "TRACHEA",
+    "MAIN BRONCHI",
+    "LUNGS"
+   ],
+   "expected": [
+    "TRACHEA",
+    "MAIN BRONCHI"
+   ],
+   "scores": {
+    "TRACHEA": 0.0,
+    "MAIN BRONCHI": 0.0,
+    "LUNGS": 0.0
+   },
+   "latency_ms": 0,
    "cost_usd": null,
    "hard": true,
    "rule": "parent-not-enumerating",
@@ -1026,11 +1639,11 @@
     "MAIN BRONCHI"
    ],
    "scores": {
-    "TRACHEA": 0.77,
-    "MAIN BRONCHI": 0.64,
+    "TRACHEA": 0.81,
+    "MAIN BRONCHI": 0.67,
     "LUNGS": 0.03
    },
-   "latency_ms": 291,
+   "latency_ms": 343,
    "cost_usd": 4.5822e-05,
    "hard": true,
    "rule": "parent-not-enumerating",
@@ -1053,10 +1666,32 @@
     "MAIN BRONCHI": 1.0,
     "LUNGS": 0.0
    },
-   "latency_ms": 954,
+   "latency_ms": 1040,
    "cost_usd": null,
    "hard": true,
    "rule": "parent-not-enumerating",
+   "error": null
+  },
+  {
+   "id": "ic-01",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "KIDNEYS",
+    "SPLEEN"
+   ],
+   "expected": [
+    "LIVER"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "KIDNEYS": 1.0,
+    "SPLEEN": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "incidental-co-mention",
    "error": null
   },
   {
@@ -1071,11 +1706,11 @@
     "LIVER"
    ],
    "scores": {
-    "LIVER": 0.95,
-    "KIDNEYS": 0.13,
+    "LIVER": 0.96,
+    "KIDNEYS": 0.16,
     "SPLEEN": 0.02
    },
-   "latency_ms": 336,
+   "latency_ms": 245,
    "cost_usd": 4.5738e-05,
    "hard": true,
    "rule": "incidental-co-mention",
@@ -1097,7 +1732,29 @@
     "KIDNEYS": 0.0,
     "SPLEEN": 0.0
    },
-   "latency_ms": 738,
+   "latency_ms": 1255,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "incidental-co-mention",
+   "error": null
+  },
+  {
+   "id": "ic-02",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "LUNGS": 1.0,
+    "PLEURA": 1.0,
+    "MEDIASTINUM": 0.0
+   },
+   "latency_ms": 0,
    "cost_usd": null,
    "hard": true,
    "rule": "incidental-co-mention",
@@ -1116,10 +1773,10 @@
    ],
    "scores": {
     "LUNGS": 0.95,
-    "PLEURA": 0.32,
+    "PLEURA": 0.34,
     "MEDIASTINUM": 0.02
    },
-   "latency_ms": 295,
+   "latency_ms": 262,
    "cost_usd": 4.6452e-05,
    "hard": true,
    "rule": "incidental-co-mention",
@@ -1141,10 +1798,30 @@
     "PLEURA": 0.0,
     "MEDIASTINUM": 0.0
    },
-   "latency_ms": 840,
+   "latency_ms": 1191,
    "cost_usd": null,
    "hard": true,
    "rule": "incidental-co-mention",
+   "error": null
+  },
+  {
+   "id": "vf-01",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "KIDNEYS"
+   ],
+   "expected": [],
+   "scores": {
+    "LIVER": 0.0,
+    "SPLEEN": 0.0,
+    "KIDNEYS": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "vague-filler",
    "error": null
   },
   {
@@ -1157,11 +1834,11 @@
    ],
    "expected": [],
    "scores": {
-    "LIVER": 0.21,
-    "SPLEEN": 0.28,
-    "KIDNEYS": 0.25
+    "LIVER": 0.25,
+    "SPLEEN": 0.34,
+    "KIDNEYS": 0.24
    },
-   "latency_ms": 308,
+   "latency_ms": 239,
    "cost_usd": 4.5444e-05,
    "hard": false,
    "rule": "vague-filler",
@@ -1181,7 +1858,27 @@
     "SPLEEN": 0.0,
     "KIDNEYS": 0.0
    },
-   "latency_ms": 650,
+   "latency_ms": 777,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "vague-filler",
+   "error": null
+  },
+  {
+   "id": "vf-02",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [],
+   "scores": {
+    "LUNGS": 0.0,
+    "PLEURA": 0.0,
+    "MEDIASTINUM": 0.0
+   },
+   "latency_ms": 0,
    "cost_usd": null,
    "hard": false,
    "rule": "vague-filler",
@@ -1198,10 +1895,10 @@
    "expected": [],
    "scores": {
     "LUNGS": 0.04,
-    "PLEURA": 0.04,
-    "MEDIASTINUM": 0.06
+    "PLEURA": 0.03,
+    "MEDIASTINUM": 0.04
    },
-   "latency_ms": 279,
+   "latency_ms": 276,
    "cost_usd": 4.6032e-05,
    "hard": false,
    "rule": "vague-filler",
@@ -1221,10 +1918,33 @@
     "PLEURA": 0.0,
     "MEDIASTINUM": 0.0
    },
-   "latency_ms": 972,
+   "latency_ms": 677,
    "cost_usd": null,
    "hard": false,
    "rule": "vague-filler",
+   "error": null
+  },
+  {
+   "id": "ab-01",
+   "candidate": "code",
+   "checklist": [
+    "COMMON BILE DUCT",
+    "IVC",
+    "AORTA"
+   ],
+   "expected": [
+    "COMMON BILE DUCT",
+    "IVC"
+   ],
+   "scores": {
+    "COMMON BILE DUCT": 1.0,
+    "IVC": 1.0,
+    "AORTA": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "abbreviation",
    "error": null
   },
   {
@@ -1244,7 +1964,7 @@
     "IVC": 0.96,
     "AORTA": 0.02
    },
-   "latency_ms": 297,
+   "latency_ms": 272,
    "cost_usd": 4.599e-05,
    "hard": false,
    "rule": "abbreviation",
@@ -1267,9 +1987,32 @@
     "IVC": 1.0,
     "AORTA": 0.0
    },
-   "latency_ms": 671,
+   "latency_ms": 712,
    "cost_usd": null,
    "hard": false,
+   "rule": "abbreviation",
+   "error": null
+  },
+  {
+   "id": "ab-02",
+   "candidate": "code",
+   "checklist": [
+    "VERTEBRAL BODIES",
+    "INTERVERTEBRAL DISCS",
+    "SPINAL CANAL"
+   ],
+   "expected": [
+    "INTERVERTEBRAL DISCS",
+    "SPINAL CANAL"
+   ],
+   "scores": {
+    "VERTEBRAL BODIES": 0.0,
+    "INTERVERTEBRAL DISCS": 1.0,
+    "SPINAL CANAL": 1.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
    "rule": "abbreviation",
    "error": null
   },
@@ -1290,7 +2033,7 @@
     "INTERVERTEBRAL DISCS": 0.97,
     "SPINAL CANAL": 0.92
    },
-   "latency_ms": 303,
+   "latency_ms": 284,
    "cost_usd": 4.9602e-05,
    "hard": true,
    "rule": "abbreviation",
@@ -1313,10 +2056,148 @@
     "INTERVERTEBRAL DISCS": 1.0,
     "SPINAL CANAL": 1.0
    },
-   "latency_ms": 1022,
+   "latency_ms": 920,
    "cost_usd": null,
    "hard": true,
    "rule": "abbreviation",
+   "error": null
+  },
+  {
+   "id": "lab-cov-01",
+   "candidate": "code",
+   "checklist": [
+    "GALLBLADDER",
+    "LIVER",
+    "BILIARY TREE",
+    "PANCREAS",
+    "SPLEEN",
+    "ADRENAL GLANDS",
+    "KIDNEYS AND URETERS",
+    "ABDOMINAL AORTA AND IVC",
+    "BOWEL",
+    "BLADDER",
+    "REPRODUCTIVE ORGANS",
+    "LYMPH NODES",
+    "BONES AND JOINTS",
+    "LUNG BASES"
+   ],
+   "expected": [
+    "LIVER",
+    "PANCREAS",
+    "SPLEEN"
+   ],
+   "scores": {
+    "GALLBLADDER": 1.0,
+    "LIVER": 1.0,
+    "BILIARY TREE": 0.0,
+    "PANCREAS": 0.0,
+    "SPLEEN": 0.0,
+    "ADRENAL GLANDS": 0.0,
+    "KIDNEYS AND URETERS": 0.0,
+    "ABDOMINAL AORTA AND IVC": 0.0,
+    "BOWEL": 0.0,
+    "BLADDER": 0.0,
+    "REPRODUCTIVE ORGANS": 0.0,
+    "LYMPH NODES": 0.0,
+    "BONES AND JOINTS": 0.0,
+    "LUNG BASES": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-group",
+   "error": null
+  },
+  {
+   "id": "lab-cov-01",
+   "candidate": "jev",
+   "checklist": [
+    "GALLBLADDER",
+    "LIVER",
+    "BILIARY TREE",
+    "PANCREAS",
+    "SPLEEN",
+    "ADRENAL GLANDS",
+    "KIDNEYS AND URETERS",
+    "ABDOMINAL AORTA AND IVC",
+    "BOWEL",
+    "BLADDER",
+    "REPRODUCTIVE ORGANS",
+    "LYMPH NODES",
+    "BONES AND JOINTS",
+    "LUNG BASES"
+   ],
+   "expected": [
+    "LIVER",
+    "PANCREAS",
+    "SPLEEN"
+   ],
+   "scores": {
+    "GALLBLADDER": 0.12,
+    "LIVER": 0.97,
+    "BILIARY TREE": 0.1,
+    "PANCREAS": 0.62,
+    "SPLEEN": 0.77,
+    "ADRENAL GLANDS": 0.54,
+    "KIDNEYS AND URETERS": 0.33,
+    "ABDOMINAL AORTA AND IVC": 0.1,
+    "BOWEL": 0.25,
+    "BLADDER": 0.22,
+    "REPRODUCTIVE ORGANS": 0.12,
+    "LYMPH NODES": 0.1,
+    "BONES AND JOINTS": 0.08,
+    "LUNG BASES": 0.05
+   },
+   "latency_ms": 314,
+   "cost_usd": 0.00017766,
+   "hard": true,
+   "rule": "collective-group",
+   "error": null
+  },
+  {
+   "id": "lab-cov-01",
+   "candidate": "qwen",
+   "checklist": [
+    "GALLBLADDER",
+    "LIVER",
+    "BILIARY TREE",
+    "PANCREAS",
+    "SPLEEN",
+    "ADRENAL GLANDS",
+    "KIDNEYS AND URETERS",
+    "ABDOMINAL AORTA AND IVC",
+    "BOWEL",
+    "BLADDER",
+    "REPRODUCTIVE ORGANS",
+    "LYMPH NODES",
+    "BONES AND JOINTS",
+    "LUNG BASES"
+   ],
+   "expected": [
+    "LIVER",
+    "PANCREAS",
+    "SPLEEN"
+   ],
+   "scores": {
+    "GALLBLADDER": 0.0,
+    "LIVER": 1.0,
+    "BILIARY TREE": 0.0,
+    "PANCREAS": 1.0,
+    "SPLEEN": 1.0,
+    "ADRENAL GLANDS": 1.0,
+    "KIDNEYS AND URETERS": 0.0,
+    "ABDOMINAL AORTA AND IVC": 0.0,
+    "BOWEL": 0.0,
+    "BLADDER": 0.0,
+    "REPRODUCTIVE ORGANS": 0.0,
+    "LYMPH NODES": 0.0,
+    "BONES AND JOINTS": 0.0,
+    "LUNG BASES": 0.0
+   },
+   "latency_ms": 93778,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-group",
    "error": null
   }
  ]

@@ -27,6 +27,18 @@ Tests: backend 344 passed (1 live test skipped unless `RR_LIVE_TESTS=1`); fronte
 - **Boundary bake-off (38 cases):** raw 0.868, command 1.00; thresholds only add stalls → floors are 0.2 (near-uniform guard). Placement raw 0.69 with low confidence (taste-heavy; new_line default).
 - **Lab mic sessions:** classifier was right on almost every chunk; every failure mode was a *timer or upstream* problem (see §4).
 
+**Baselines + 95 % intervals (rerun 2026-09-24, `scripts/bakeoff_baselines.py`; lexicon drafted after the fixtures, so the code column is an optimistic ceiling):**
+
+| Set | Plain code | Jev | Qwen-off |
+|---|---|---|---|
+| Triage action (n=49) | 0.918 [0.81, 0.97] (45/49) | 0.980 [0.89, 1.00] (48/49) | 0.980 [0.89, 1.00] (48/49) |
+| Coverage exact set (n=26) | 0.538 [0.35, 0.71] (14/26) | 0.923 [0.76, 0.98] (24/26) | 0.962 [0.81, 0.99] (25/26) |
+| Coverage recall (sections) | 0.532 [0.39, 0.67] (25/47) | 0.979 [0.89, 1.00] (46/47) | 1.000 [0.92, 1.00] (47/47) |
+| Boundary 3-way (n=39) | 0.897 [0.76, 0.96] (35/39) | raw 0.846 [0.70, 0.93] (33/39) | — |
+| Standalone@0.5 (n=29, complete/continues) | 0.862 [0.69, 0.94] (25/29) | 0.724 [0.54, 0.85] (21/29) | — |
+
+Jev's interval clears the lexicon only on coverage; on triage the intervals overlap, and on boundary and `standalone` the lexicon is ahead. `standalone` under-fires on finished statements split across buffer + chunk or carrying ASR errors (cmp-02/04/10/12/13, asr-01/02 at 0.23–0.48); rev 2 leans on it for line close, so this needs a fix or a code-first rule before component 2. Qwen coverage had one 93.8 s call (lab-cov-01, 14 sections), hence its p95 interval [1191, 93778] ms.
+
 ## 4. What worked / what failed (the insights)
 
 1. **Jev is calibrated and fast; the surrounding rules were the problem every time.** A 0.4 floor demoted correct completes; a 1.5 s backstop cut sentences a radiologist pauses mid-way while reading images; a 9 s backstop then over-waited. Lesson: act on the raw choice; put *time* and *punctuation* in code, not in the model.
