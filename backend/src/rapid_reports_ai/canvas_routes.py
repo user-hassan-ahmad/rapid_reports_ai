@@ -25,6 +25,7 @@ from .dictation_triage_labels import agrees, derive_action
 from .dictation_triage_router import route as triage_route_decision
 from .utterance_boundary import BoundaryDecision, get_jev_boundary
 from .utterance_boundary import resolve as resolve_boundary
+from .utterance_boundary import resolve_placement
 from .section_coverage import (
     CoverageDecision,
     CoverageTrace,
@@ -1196,6 +1197,9 @@ class UtteranceResponse(BaseModel):
     input_tokens: Optional[int] = None
     cost_usd: Optional[float] = None
     error: Optional[str] = None
+    placement: Literal["extend_previous_line", "new_line", "new_paragraph"] = "new_line"
+    placement_raw: Optional[str] = None
+    placement_confidence: Optional[float] = None
 
 
 @canvas_router.post("/utterance", response_model=UtteranceResponse)
@@ -1220,4 +1224,5 @@ async def classify_utterance(request: UtteranceRequest, current_user: User = Dep
     return UtteranceResponse(
         resolved=resolved, boundary=d.boundary, confidence=d.confidence, probabilities=d.probabilities,
         asr_risk=d.asr_risk, latency_ms=d.latency_ms, input_tokens=d.input_tokens, cost_usd=d.cost_usd,
+        placement=resolve_placement(d), placement_raw=d.placement, placement_confidence=d.placement_confidence,
     )

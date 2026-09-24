@@ -388,7 +388,8 @@
 			for (const send of sends) {
 				onChunkTrace({
 					seq: ++chunkSeq, at: Date.now(), chunk: '', buffered: send, resolved: 'complete', boundary: null,
-					confidence: null, asr_risk: null, latency_ms: 0, error: null, sent: send, viaBackstop: true
+					confidence: null, asr_risk: null, latency_ms: 0, error: null, sent: send, viaBackstop: true,
+					placement: null, placement_confidence: null
 				});
 				enqueueUtterance(send);
 			}
@@ -431,7 +432,9 @@
 		onChunkTrace({
 			seq: ++chunkSeq, at: Date.now(), chunk, buffered, resolved: data.resolved, boundary: data.boundary,
 			confidence: data.confidence, asr_risk: data.asr_risk, latency_ms: Math.round(performance.now() - t0),
-			error: data.error, sent: send, viaBackstop: false
+			error: data.error, sent: send, viaBackstop: false,
+			placement: send !== null ? (data.placement ?? 'new_line') : null,
+			placement_confidence: send !== null ? (data.placement_confidence ?? null) : null
 		});
 		if (sends.length) {
 			for (const s of sends) enqueueUtterance(s);

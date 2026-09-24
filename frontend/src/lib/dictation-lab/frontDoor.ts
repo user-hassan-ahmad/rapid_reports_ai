@@ -1,4 +1,4 @@
-import type { Boundary } from './types';
+import type { Boundary, Placement } from './types';
 
 /**
  * Fold a resolved boundary into the chunk buffer. Pure.
@@ -44,4 +44,27 @@ export const BACKSTOP_CONFIDENT = 0.9;
  */
 export function backstopDelay(confidence: number | null | undefined): number {
 	return confidence != null && confidence >= BACKSTOP_CONFIDENT ? BACKSTOP_LONG_MS : BACKSTOP_SHORT_MS;
+}
+
+/**
+ * What the polish actually did with a statement, from the scratchpad before/after.
+ * Line-count based, like the backend's derived action; used to shadow-compare
+ * Jev's placement decision. null when nothing changed.
+ */
+export function derivePlacement(before: string, after: string): Placement | null {
+	const b = before.split('\n');
+	const a = after.split('\n');
+	const bl = b.filter((l) => l.trim());
+	const al = a.filter((l) => l.trim());
+	if (al.length === bl.length) {
+		return bl.length && al[al.length - 1] !== bl[bl.length - 1] && al[al.length - 1].length > bl[bl.length - 1].length
+			? 'extend_previous_line'
+			: null;
+	}
+	if (al.length > bl.length) {
+		// A blank line inserted before the new text means a paragraph break.
+		const tail = a.slice(a.lastIndexOf(al[al.length - 1]) - 1, a.lastIndexOf(al[al.length - 1]));
+		return tail.length && tail[0].trim() === '' && bl.length ? 'new_paragraph' : 'new_line';
+	}
+	return null;
 }

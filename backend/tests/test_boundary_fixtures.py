@@ -19,6 +19,9 @@ def test_well_formed():
         assert c["expected_boundary"] in {"complete", "continues", "command"}, c["id"]
         assert isinstance(c["expected_asr_risk"], bool) and isinstance(c["hard"], bool)
         assert c["chunk"].strip()
+        if "expected_placement" in c:
+            assert c["expected_placement"] in {"extend_previous_line", "new_line", "new_paragraph"}, c["id"]
+            assert c["expected_boundary"] == "complete", c["id"]
 
 
 def test_ids_unique_and_ten_per_class():

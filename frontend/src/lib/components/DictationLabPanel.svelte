@@ -5,6 +5,7 @@
 	import { labConfig } from '$lib/dictation-lab/labConfig';
 	import { buildFixtureLine, suggestId } from '$lib/dictation-lab/fixtureExport';
 	import { buildCoverageFixtureLine, coverageAgreement } from '$lib/dictation-lab/coverage';
+	import { derivePlacement } from '$lib/dictation-lab/frontDoor';
 	import { agreementClass, summariseTraces, type AgreementClass } from '$lib/dictation-lab/summary';
 	import {
 		TRIAGE_ACTIONS,
@@ -30,6 +31,20 @@
 		chunks: chunkTraces.filter((c) => !c.viaBackstop).length,
 		sent: chunkTraces.filter((c) => c.sent !== null).length,
 		backstops: chunkTraces.filter((c) => c.viaBackstop).length,
+		placement: (() => {
+			// Shadow-compare Jev's placement with what the polish did, matched on the sent text.
+			let n = 0, agree = 0;
+			for (const c of chunkTraces) {
+				if (!c.sent || !c.placement) continue;
+				const p = traces.find((t) => t.utterance === c.sent);
+				if (!p) continue;
+				const d = derivePlacement(p.activeBefore, p.activeAfter);
+				if (!d) continue;
+				n += 1;
+				if (d === c.placement) agree += 1;
+			}
+			return { n, agree };
+		})(),
 		meanLatency: (() => {
 			const xs = chunkTraces.filter((c) => !c.viaBackstop).map((c) => c.latency_ms);
 			return xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null;
@@ -258,6 +273,7 @@
 				<span class="text-gray-400 font-normal text-xs">
 					{chunkSummary.chunks} chunks · {chunkSummary.sent} sent · {chunkSummary.chunks - chunkSummary.sent} polish calls saved
 					· {chunkSummary.backstops} backstop · mean {chunkSummary.meanLatency ?? '—'} ms
+					· placement agrees {chunkSummary.placement.agree}/{chunkSummary.placement.n}
 				</span>
 			</h3>
 			<div class="max-h-56 overflow-y-auto space-y-0.5">
@@ -268,6 +284,13 @@
 						{#if c.confidence != null}<span class="tabular-nums text-gray-400">{c.confidence.toFixed(2)}</span>{/if}
 						{#if c.asr_risk != null && c.asr_risk >= 0.5}<span class="text-amber-300">asr {c.asr_risk.toFixed(2)}</span>{/if}
 						<span class="tabular-nums text-gray-500">{c.latency_ms} ms</span>
+						{#if c.placement}
+							{@const p = traces.find((t) => t.utterance === c.sent)}
+							{@const d = p ? derivePlacement(p.activeBefore, p.activeAfter) : null}
+							<span class={d == null ? 'text-gray-500' : d === c.placement ? 'text-emerald-300' : 'text-amber-300'}>
+								{c.placement.replace(/_/g, ' ')}{c.placement_confidence != null ? ` ${c.placement_confidence.toFixed(2)}` : ''}{d && d !== c.placement ? ` (polish: ${d.replace(/_/g, ' ')})` : ''}
+							</span>
+						{/if}
 						{#if c.error}<span class="text-red-300">{c.error}</span>{/if}
 						{#if !c.viaBackstop}
 							<span class="ml-auto flex gap-1">

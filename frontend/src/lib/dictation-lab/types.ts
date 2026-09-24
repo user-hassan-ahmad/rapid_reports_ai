@@ -30,6 +30,7 @@ export interface LabConfig {
 
 export type FrontDoor = 'timer' | 'jev';
 export type Boundary = 'complete' | 'continues' | 'command';
+export type Placement = 'extend_previous_line' | 'new_line' | 'new_paragraph';
 
 export interface PillThresholds {
 	hi: number; // >= hi → covered
@@ -135,6 +136,8 @@ export interface ChunkTrace {
 	error: string | null;
 	sent: string | null; // the merged statement handed to polish, when one was
 	viaBackstop: boolean;
+	placement: Placement | null; // Jev's placement for a sent statement
+	placement_confidence: number | null;
 }
 /** Mirrors backend UtteranceResponse. */
 export interface UtteranceResponse {
@@ -145,4 +148,7 @@ export interface UtteranceResponse {
 	asr_risk: number | null;
 	latency_ms: number | null;
 	error: string | null;
+	placement?: Placement;
+	placement_raw?: string | null;
+	placement_confidence?: number | null;
 }

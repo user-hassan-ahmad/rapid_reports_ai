@@ -13,10 +13,11 @@ from rapid_reports_ai.utterance_boundary import (
     BoundaryDecision,
     JevBoundary,
     resolve,
+    resolve_placement,
 )
 
 
-def _resp(boundary="complete", conf=0.9, asr=0.05):
+def _resp(boundary="complete", conf=0.9, asr=0.05, placement="new_line", pconf=0.8):
     probs = {"complete": 0.0, "continues": 0.0, "command": 0.0}
     probs[boundary] = 1.0
     return {
@@ -24,13 +25,16 @@ def _resp(boundary="complete", conf=0.9, asr=0.05):
         "answers": {
             "boundary": {"type": "choice", "choice": boundary, "confidence": conf, "probabilities": probs},
             "asr_risk": {"type": "noul", "noul": asr},
+            "placement": {"type": "choice", "choice": placement, "confidence": pconf,
+                          "probabilities": {"extend_previous_line": 0.0, "new_line": 0.0, "new_paragraph": 0.0}},
         },
         "usage": {"input_tokens": 220, "output_tokens": 20, "cost": 9e-06},
     }
 
 
 def test_questions_shape():
-    assert set(BOUNDARY_QUESTIONS) == {"boundary", "asr_risk"}
+    assert set(BOUNDARY_QUESTIONS) == {"boundary", "placement", "asr_risk"}
+    assert set(BOUNDARY_QUESTIONS["placement"]["criteria"]) == {"extend_previous_line", "new_line", "new_paragraph"}
     assert set(BOUNDARY_QUESTIONS["boundary"]["criteria"]) == {"complete", "continues", "command"}
     assert BOUNDARY_QUESTIONS["asr_risk"]["type"] == "noul"
 
@@ -55,6 +59,7 @@ async def test_request_and_parse():
     }
     assert b["questions"] == BOUNDARY_QUESTIONS
     assert d.boundary == "complete" and d.confidence == 0.9 and d.asr_risk == 0.05 and d.input_tokens == 220
+    assert d.placement == "new_line" and d.placement_confidence == 0.8
 
 
 @pytest.mark.parametrize(
@@ -66,6 +71,7 @@ async def test_request_and_parse():
         ),
         lambda: httpx.Response(200, json=_resp(boundary="maybe")),
         lambda: httpx.Response(200, json=_resp(asr=1.5)),
+        lambda: httpx.Response(200, json=_resp(placement="somewhere")),
     ],
 )
 async def test_raises_on_invalid(bad):
@@ -89,3 +95,11 @@ def test_resolve_thresholds():
 
 def test_resolve_fails_open_to_complete():
     assert resolve(TriageError("boom")) == "complete"
+
+
+def test_resolve_placement_defaults_to_new_line():
+    d = BoundaryDecision("complete", 0.9, {}, 0.0, 1, None, None, placement="extend_previous_line", placement_confidence=0.7)
+    assert resolve_placement(d) == "extend_previous_line"
+    low = BoundaryDecision("complete", 0.9, {}, 0.0, 1, None, None, placement="extend_previous_line", placement_confidence=0.4)
+    assert resolve_placement(low) == "new_line"
+    assert resolve_placement(TriageError("boom")) == "new_line"

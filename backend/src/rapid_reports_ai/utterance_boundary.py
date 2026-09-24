@@ -19,6 +19,9 @@ from .dictation_triage import JEV_MODEL, JEV_TIMEOUT_S, JEV_URL, TriageError, _c
 
 Boundary = Literal["complete", "continues", "command"]
 BOUNDARIES: tuple[str, ...] = ("complete", "continues", "command")
+Placement = Literal["extend_previous_line", "new_line", "new_paragraph"]
+PLACEMENTS: tuple[str, ...] = ("extend_previous_line", "new_line", "new_paragraph")
+PLACEMENT_THRESHOLD = 0.5  # below this, the cheap error: a new line
 # Bake-off run 1 (38 cases): the raw choice is right 0.868 of the time; every threshold
 # above 0.4 only converted correct answers into stalls (the three wrong sends are the same
 # three at any setting). Thresholds are therefore a floor against near-uniform
@@ -53,6 +56,27 @@ BOUNDARY_QUESTIONS: dict[str, dict[str, Any]] = {
             ),
         },
     },
+    "placement": {
+        "type": "choice",
+        "instructions": (
+            "If the buffered words plus the chunk are a finished statement, where does it belong in the "
+            "scratchpad relative to the last line? The scratchpad captures dictation as it is spoken; it is "
+            "not the report."
+        ),
+        "criteria": {
+            "extend_previous_line": (
+                "It adds to the same observation as the last line: a descriptor, a measurement, a qualifier, "
+                "a consequence, or a clause such as 'with' or 'which' that continues that finding."
+            ),
+            "new_line": (
+                "It is a separate finding or normality claim about the same region or system as the last line."
+            ),
+            "new_paragraph": (
+                "It moves to a different anatomical region or system from the last line, or the last line is "
+                "empty."
+            ),
+        },
+    },
     "asr_risk": {
         "type": "noul",
         "instructions": (
@@ -73,6 +97,9 @@ class BoundaryDecision:
     latency_ms: int
     input_tokens: Optional[int]
     cost_usd: Optional[float]
+    placement: str = "new_line"
+    placement_confidence: float = 0.0
+    placement_probabilities: dict[str, float] | None = None
 
 
 class JevBoundary:
@@ -114,13 +141,17 @@ class JevBoundary:
         except ValueError as e:
             raise TriageError("jev boundary returned non-JSON") from e
         answers = data.get("answers") or {}
-        if "boundary" not in answers or "asr_risk" not in answers:
+        if "boundary" not in answers or "asr_risk" not in answers or "placement" not in answers:
             raise TriageError("jev boundary answer missing")
         b = answers["boundary"]
         boundary = b.get("choice")
         if boundary not in BOUNDARIES:
             raise TriageError(f"jev boundary unknown choice: {boundary!r}")
         probabilities = {k: _check_unit(v, f"probability[{k}]") for k, v in (b.get("probabilities") or {}).items()}
+        pl = answers["placement"]
+        placement = pl.get("choice")
+        if placement not in PLACEMENTS:
+            raise TriageError(f"jev placement unknown choice: {placement!r}")
         usage = data.get("usage") or {}
         return BoundaryDecision(
             boundary=boundary,
@@ -130,6 +161,9 @@ class JevBoundary:
             latency_ms=latency_ms,
             input_tokens=usage.get("input_tokens"),
             cost_usd=usage.get("cost"),
+            placement=placement,
+            placement_confidence=_check_unit(pl.get("confidence"), "placement confidence"),
+            placement_probabilities={k: _check_unit(v, f"placement[{k}]") for k, v in (pl.get("probabilities") or {}).items()},
         )
 
 
@@ -153,3 +187,12 @@ def get_jev_boundary() -> JevBoundary:
     if _JEV is None:
         _JEV = JevBoundary()
     return _JEV
+
+
+def resolve_placement(result: BoundaryDecision | BaseException) -> Placement:
+    """A new line is the cheap error (easy to see and fix; a wrong merge rewrites a sentence)."""
+    if isinstance(result, BaseException):
+        return "new_line"
+    if result.placement_confidence >= PLACEMENT_THRESHOLD:
+        return result.placement  # type: ignore[return-value]
+    return "new_line"

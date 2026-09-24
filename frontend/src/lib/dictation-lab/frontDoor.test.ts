@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyBoundary, backstopDelay, flushBuffer, lastNonEmptyLine } from './frontDoor';
+import { applyBoundary, backstopDelay, derivePlacement, flushBuffer, lastNonEmptyLine } from './frontDoor';
 
 describe('applyBoundary', () => {
 	it('buffers on continues', () => {
@@ -46,5 +46,23 @@ describe('backstopDelay', () => {
 		expect(backstopDelay(0.89)).toBe(1500);
 		expect(backstopDelay(null)).toBe(1500);
 		expect(backstopDelay(undefined)).toBe(1500);
+	});
+});
+
+describe('derivePlacement', () => {
+	it('extends when the last line grew', () => {
+		expect(derivePlacement('- a nodule', '- a nodule which is spiculated')).toBe('extend_previous_line');
+	});
+	it('new line when a line was added without a blank', () => {
+		expect(derivePlacement('- a', '- a\n- b')).toBe('new_line');
+	});
+	it('new paragraph when a blank line precedes the new text', () => {
+		expect(derivePlacement('- a', '- a\n\n- b')).toBe('new_paragraph');
+	});
+	it('first line into an empty scratchpad is a new line', () => {
+		expect(derivePlacement('', '- a')).toBe('new_line');
+	});
+	it('null when nothing changed', () => {
+		expect(derivePlacement('- a', '- a')).toBeNull();
 	});
 });

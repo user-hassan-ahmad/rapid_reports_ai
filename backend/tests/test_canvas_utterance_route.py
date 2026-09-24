@@ -40,7 +40,8 @@ class Fake:
         self.calls.append((scan_type, buffered, chunk, scratchpad_tail))
         if self.raise_:
             raise TriageError("boom")
-        return BoundaryDecision(self.boundary, self.conf, {self.boundary: 1.0}, 0.1, 250, 200, 8e-06)
+        return BoundaryDecision(self.boundary, self.conf, {self.boundary: 1.0}, 0.1, 250, 200, 8e-06,
+                                placement="extend_previous_line", placement_confidence=0.7)
 
 
 def test_404_without_flag(authed_client, monkeypatch):
@@ -58,6 +59,7 @@ def test_resolved_decision(authed_client, monkeypatch):
     body = r.json()
     assert body["resolved"] == "continues" and body["boundary"] == "continues" and body["confidence"] == 0.7
     assert body["asr_risk"] == 0.1 and body["latency_ms"] == 250 and body["error"] is None
+    assert body["placement"] == "extend_previous_line" and body["placement_confidence"] == 0.7
     assert fake.calls == [("CT chest", BODY["buffered"], "left lower lobe", "There is a 10 mm nodule.")]
 
 
@@ -74,3 +76,4 @@ def test_error_fails_open(authed_client, monkeypatch):
     monkeypatch.setattr(cr, "get_jev_boundary", lambda: Fake(raise_=True))
     body = authed_client.post("/api/canvas/utterance", json=BODY).json()
     assert body["resolved"] == "complete" and body["error"] == "TriageError" and body["boundary"] is None
+    assert body["placement"] == "new_line"

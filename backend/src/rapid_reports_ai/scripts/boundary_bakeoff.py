@@ -15,7 +15,7 @@ from pathlib import Path
 from statistics import median
 
 from rapid_reports_ai.scripts.triage_summary import BUCKETS, _p
-from rapid_reports_ai.utterance_boundary import get_jev_boundary, resolve
+from rapid_reports_ai.utterance_boundary import get_jev_boundary, resolve, resolve_placement
 
 FIXTURES = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "boundary_cases.jsonl"
 OUT_DIR = Path(__file__).resolve().parents[4] / "docs" / "model-migration"
@@ -33,7 +33,9 @@ async def main() -> int:
             try:
                 d = await get_jev_boundary().classify(c["scan_type"], c["buffered"], c["chunk"], c["scratchpad_tail"])
                 return {**c, "raw": d.boundary, "resolved": resolve(d), "confidence": d.confidence,
-                        "asr_risk": d.asr_risk, "latency_ms": d.latency_ms, "cost_usd": d.cost_usd, "error": None}
+                        "asr_risk": d.asr_risk, "latency_ms": d.latency_ms, "cost_usd": d.cost_usd, "error": None,
+                        "placement_raw": d.placement, "placement": resolve_placement(d),
+                        "placement_confidence": d.placement_confidence}
             except Exception as e:
                 return {**c, "raw": None, "resolved": "complete", "confidence": None, "asr_risk": None,
                         "latency_ms": 0, "cost_usd": None, "error": type(e).__name__}
@@ -68,6 +70,15 @@ async def main() -> int:
         if r["resolved"] != r["expected_boundary"]:
             print(f"   {r['id']:<7} expected={r['expected_boundary']:<9} raw={r['raw']:<9} "
                   f"conf={r['confidence']:.2f} resolved={r['resolved']:<9} '{r['buffered']} | {r['chunk']}'")
+    pl = [r for r in ok if r.get("expected_placement")]
+    if pl:
+        print(f"\n-- placement (n={len(pl)}) resolved_acc="
+              f"{sum(r['placement'] == r['expected_placement'] for r in pl) / len(pl):.3f} raw_acc="
+              f"{sum(r['placement_raw'] == r['expected_placement'] for r in pl) / len(pl):.3f}")
+        for r in pl:
+            if r["placement"] != r["expected_placement"]:
+                print(f"   {r['id']:<7} expected={r['expected_placement']:<21} got={r['placement_raw']:<21} "
+                      f"conf={r['placement_confidence']:.2f} tail='{r['scratchpad_tail'][:50]}' | '{r['buffered']} | {r['chunk']}'")
     print("\n-- asr risk --")
     for r in asr:
         if (r["asr_risk"] >= 0.5) != r["expected_asr_risk"] or r["expected_asr_risk"]:
