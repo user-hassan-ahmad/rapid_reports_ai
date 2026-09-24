@@ -34,7 +34,7 @@
 
 **Files:** create `backend/src/rapid_reports_ai/utterance_boundary.py`; test `backend/tests/test_utterance_boundary.py`
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 ```python
 # backend/tests/test_utterance_boundary.py
@@ -111,7 +111,7 @@ def test_resolve_fails_open_to_complete():
     assert resolve(TriageError("boom")) == "complete"
 ```
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 ```python
 # backend/src/rapid_reports_ai/utterance_boundary.py
@@ -233,7 +233,7 @@ def get_jev_boundary() -> JevBoundary:
     return _JEV
 ```
 
-- [ ] **Step 3: Run, commit** — `pytest backend/tests/test_utterance_boundary.py`; commit `feat(boundary): per-chunk boundary + ASR-risk questions and Jev client`.
+- [x] **Step 3: Run, commit** — `pytest backend/tests/test_utterance_boundary.py`; commit `feat(boundary): per-chunk boundary + ASR-risk questions and Jev client`.
 
 ---
 
@@ -241,7 +241,7 @@ def get_jev_boundary() -> JevBoundary:
 
 **Files:** modify `canvas_routes.py`; test `backend/tests/test_canvas_utterance_route.py`
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 ```python
 # backend/tests/test_canvas_utterance_route.py
@@ -317,7 +317,7 @@ def test_error_fails_open(authed_client, monkeypatch):
     assert body["resolved"] == "complete" and body["error"] == "TriageError" and body["boundary"] is None
 ```
 
-- [ ] **Step 2: Implement** — add to the imports `from .utterance_boundary import BoundaryDecision, get_jev_boundary, resolve as resolve_boundary`, and append after the fixtures endpoint:
+- [x] **Step 2: Implement** — add to the imports `from .utterance_boundary import BoundaryDecision, get_jev_boundary, resolve as resolve_boundary`, and append after the fixtures endpoint:
 
 ```python
 class UtteranceRequest(BaseModel):
@@ -359,7 +359,7 @@ async def classify_utterance(request: UtteranceRequest, current_user: User = Dep
                              input_tokens=d.input_tokens, cost_usd=d.cost_usd)
 ```
 
-- [ ] **Step 3: Run the suite, commit** `feat(canvas): lab-gated /api/canvas/utterance boundary endpoint`.
+- [x] **Step 3: Run the suite, commit** `feat(canvas): lab-gated /api/canvas/utterance boundary endpoint`.
 
 ---
 
@@ -367,7 +367,7 @@ async def classify_utterance(request: UtteranceRequest, current_user: User = Dep
 
 **Files:** create `backend/tests/fixtures/boundary_cases.jsonl`, `backend/tests/test_boundary_fixtures.py`, `backend/src/rapid_reports_ai/scripts/boundary_bakeoff.py`
 
-- [ ] **Step 1: Validation test**
+- [x] **Step 1: Validation test**
 
 ```python
 # backend/tests/test_boundary_fixtures.py
@@ -399,7 +399,7 @@ def test_ids_unique_and_ten_per_class():
         assert counts[k] >= 10, k
 ```
 
-- [ ] **Step 2: Fixture file (36 cases)**
+- [x] **Step 2: Fixture file (36 cases)**
 
 ```jsonl
 {"id": "cmp-01", "scan_type": "CT chest", "buffered": "", "chunk": "there is abnormal nodular pleural thickening at the left base", "scratchpad_tail": "Further satellite lesions noted in the left lower lobe.", "expected_boundary": "complete", "expected_asr_risk": false, "hard": false, "note": "single-chunk finding"}
@@ -442,7 +442,7 @@ def test_ids_unique_and_ten_per_class():
 {"id": "asr-04", "scan_type": "CT head", "buffered": "", "chunk": "no acute intracranial hemorrhage or mass affect", "scratchpad_tail": "", "expected_boundary": "complete", "expected_asr_risk": true, "hard": true, "note": "mass affect = mass effect"}
 ```
 
-- [ ] **Step 3: Bake-off script**
+- [x] **Step 3: Bake-off script**
 
 ```python
 # backend/src/rapid_reports_ai/scripts/boundary_bakeoff.py
@@ -520,7 +520,7 @@ if __name__ == "__main__":
     raise SystemExit(asyncio.run(main()))
 ```
 
-- [ ] **Step 4: Run validation, commit** `test(boundary): 36 boundary cases and bake-off script`.
+- [x] **Step 4: Run validation, commit** `test(boundary): 36 boundary cases and bake-off script`.
 
 ---
 
@@ -528,7 +528,7 @@ if __name__ == "__main__":
 
 **Files:** create `frontend/src/lib/dictation-lab/frontDoor.ts` + `frontDoor.test.ts`; modify `types.ts`, `labConfig.ts`, `labConfig.test.ts`
 
-- [ ] **Step 1: Types** (append to `types.ts`; add `frontDoor: FrontDoor` to `LabConfig`)
+- [x] **Step 1: Types** (append to `types.ts`; add `frontDoor: FrontDoor` to `LabConfig`)
 
 ```ts
 export type FrontDoor = 'timer' | 'jev';
@@ -562,7 +562,7 @@ export interface UtteranceResponse {
 
 `labConfig.ts`: `DEFAULT_LAB_CONFIG.frontDoor = 'timer'`; `loadLabConfig` requires `p?.frontDoor === 'timer' || p?.frontDoor === 'jev'` and copies it. `labConfig.test.ts`: `base` gains `frontDoor: 'timer'`, the round-trip config uses `frontDoor: 'jev'`.
 
-- [ ] **Step 2: Failing helper tests**
+- [x] **Step 2: Failing helper tests**
 
 ```ts
 // frontend/src/lib/dictation-lab/frontDoor.test.ts
@@ -598,7 +598,7 @@ describe('lastNonEmptyLine', () => {
 });
 ```
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 // frontend/src/lib/dictation-lab/frontDoor.ts
@@ -621,7 +621,7 @@ export function lastNonEmptyLine(text: string): string {
 }
 ```
 
-- [ ] **Step 4: Run vitest, commit** `feat(lab): front-door helpers and config`.
+- [x] **Step 4: Run vitest, commit** `feat(lab): front-door helpers and config`.
 
 ---
 
@@ -629,7 +629,7 @@ export function lastNonEmptyLine(text: string): string {
 
 **Files:** modify `DictationScratchpad.svelte`, `IntelliDictateTab.svelte`, `DictationLabPanel.svelte`, `dictation-lab/+page.svelte`
 
-- [ ] **Step 1: Scratchpad**
+- [x] **Step 1: Scratchpad**
 
 Imports: `import { applyBoundary, flushBuffer, lastNonEmptyLine } from '$lib/dictation-lab/frontDoor';` and add `ChunkTrace, UtteranceResponse` to the type import. Props after `onCoverageTrace`:
 
@@ -738,16 +738,16 @@ In `stopRecording`, before the existing flush (`if (sessionTranscript.trim()) pr
 		if (flushed.send) pendingUtterance = flushed.send;
 ```
 
-- [ ] **Step 2: Tab** — add `ChunkTrace` to the type import, prop `export let onChunkTrace: (trace: ChunkTrace) => void = () => {};`, and `{onChunkTrace}` on the scratchpad mount.
+- [x] **Step 2: Tab** — add `ChunkTrace` to the type import, prop `export let onChunkTrace: (trace: ChunkTrace) => void = () => {};`, and `{onChunkTrace}` on the scratchpad mount.
 
-- [ ] **Step 3: Panel** — prop `export let chunkTraces: ChunkTrace[] = [];`, a **Front door** radio (`timer` / `jev`) in the Strategy section bound to `$labConfig.frontDoor`, a **Chunks** section listing each chunk (text, resolved, confidence, asr risk, latency, backstop marker, and `→ sent` when a statement went out), a summary line (`chunks`, `statements sent`, `polish calls saved = chunks − sent`, mean latency), and per-chunk **Add to boundary fixtures** producing `{"id","scan_type","buffered","chunk","scratchpad_tail","expected_boundary","expected_asr_risk","hard","note"}` lines into a third buffer. Reuse the existing card/button classes.
+- [x] **Step 3: Panel** — prop `export let chunkTraces: ChunkTrace[] = [];`, a **Front door** radio (`timer` / `jev`) in the Strategy section bound to `$labConfig.frontDoor`, a **Chunks** section listing each chunk (text, resolved, confidence, asr risk, latency, backstop marker, and `→ sent` when a statement went out), a summary line (`chunks`, `statements sent`, `polish calls saved = chunks − sent`, mean latency), and per-chunk **Add to boundary fixtures** producing `{"id","scan_type","buffered","chunk","scratchpad_tail","expected_boundary","expected_asr_risk","hard","note"}` lines into a third buffer. Reuse the existing card/button classes.
 
-- [ ] **Step 4: Page** — `let chunkTraces: ChunkTrace[] = [];`, `onChunkTrace={(t) => { chunkTraces = [...chunkTraces, t]; }}` on the tab, `{chunkTraces}` on the panel, cleared with the timeline.
+- [x] **Step 4: Page** — `let chunkTraces: ChunkTrace[] = [];`, `onChunkTrace={(t) => { chunkTraces = [...chunkTraces, t]; }}` on the tab, `{chunkTraces}` on the panel, cleared with the timeline.
 
-- [ ] **Step 5: svelte-check the touched files (0 diagnostics), commit** `feat(lab): Jev front door — chunk classification, buffering, backstop, chunk traces`.
+- [x] **Step 5: svelte-check the touched files (0 diagnostics), commit** `feat(lab): Jev front door — chunk classification, buffering, backstop, chunk traces`.
 
 ---
 
 ### Task 6: Bake-off, lab check, docs
 
-- [ ] Run `boundary_bakeoff` (same runpy pattern as the others). Restart the backend. In the lab set Front door = jev and dictate one report; expect fragments buffered and one polish per statement, chunk rows in the panel, `polish calls saved` > 0. Export one chunk as a boundary fixture. Record a `## 7. Bake-off run 1` in the spec with the numbers against §5, set the status line, tick the plan, commit.
+- [x] Run `boundary_bakeoff` (same runpy pattern as the others). Restart the backend. In the lab set Front door = jev and dictate one report; expect fragments buffered and one polish per statement, chunk rows in the panel, `polish calls saved` > 0. Export one chunk as a boundary fixture. Record a `## 7. Bake-off run 1` in the spec with the numbers against §5, set the status line, tick the plan, commit.
