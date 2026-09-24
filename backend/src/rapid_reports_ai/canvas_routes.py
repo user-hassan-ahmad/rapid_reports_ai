@@ -23,6 +23,8 @@ from .dictation_triage import (
 )
 from .dictation_triage_labels import agrees, derive_action
 from .dictation_triage_router import route as triage_route_decision
+from .utterance_boundary import BoundaryDecision, get_jev_boundary
+from .utterance_boundary import resolve as resolve_boundary
 from .section_coverage import (
     CoverageDecision,
     CoverageTrace,
@@ -1169,4 +1171,53 @@ async def review_scratchpad(
         prompts=prompts,
         coverage_scores=chosen.scores if chosen else None,
         coverage=trace,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Utterance front door (spec 2026-09-24-utterance-front-door-design.md), lab only
+# -----------------------------------------------------------------------------
+
+
+class UtteranceRequest(BaseModel):
+    scan_type: str = ""
+    buffered: str = ""
+    chunk: str
+    scratchpad_tail: str = ""
+
+
+class UtteranceResponse(BaseModel):
+    resolved: Literal["complete", "continues", "command"]
+    boundary: Optional[str] = None
+    confidence: Optional[float] = None
+    probabilities: Optional[dict[str, float]] = None
+    asr_risk: Optional[float] = None
+    latency_ms: Optional[int] = None
+    input_tokens: Optional[int] = None
+    cost_usd: Optional[float] = None
+    error: Optional[str] = None
+
+
+@canvas_router.post("/utterance", response_model=UtteranceResponse)
+async def classify_utterance(request: UtteranceRequest, current_user: User = Depends(get_current_user)):
+    """Lab only: boundary decision for one finalised chunk."""
+    if not _triage_debug_enabled():
+        raise HTTPException(status_code=404, detail="Not Found")
+    d: BoundaryDecision | BaseException
+    try:
+        d = await get_jev_boundary().classify(
+            request.scan_type, request.buffered, request.chunk, request.scratchpad_tail
+        )
+    except Exception as e:
+        logger.error("[canvas.utterance] ❌ %s: %s", type(e).__name__, e)
+        d = e
+    resolved = resolve_boundary(d)
+    if isinstance(d, BaseException):
+        return UtteranceResponse(resolved=resolved, error=type(d).__name__)
+    logger.info(
+        "[canvas.utterance] %s (%s %.2f) asr=%.2f %dms", resolved, d.boundary, d.confidence, d.asr_risk, d.latency_ms
+    )
+    return UtteranceResponse(
+        resolved=resolved, boundary=d.boundary, confidence=d.confidence, probabilities=d.probabilities,
+        asr_risk=d.asr_risk, latency_ms=d.latency_ms, input_tokens=d.input_tokens, cost_usd=d.cost_usd,
     )
