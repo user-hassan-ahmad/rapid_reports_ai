@@ -1,7 +1,7 @@
 # Dictation Utterance Triage — System 1 Pilot with a Local Dictation Lab (Jev vs Qwen reasoning-off)
 
 **Date:** 2026-09-24
-**Status:** Design approved in conversation (rev 2: adds the Dictation Lab and gated routing experiments); awaiting spec review
+**Status:** Implemented on branch `dictation-triage-lab`; bake-off run 1 and run 2 recorded in §12; in-browser lab smoke pending sign-in
 **Branch:** skill-sheet-v3 (spec only; implementation on its own branch)
 **Fills:** Dictation program Phase 3 slots §7.5 "Triage front-door" and §7.6 "Model router" (see `2026-08-09-dictation-fidelity-and-orchestration-design.md`)
 
@@ -357,3 +357,28 @@ If Qwen-off meets the accuracy bars, vendor count wins and Jev is dropped unless
 2. Audit pre-screen: nine Nouls in one Jev call over dictation + report; System 2 only for flagged or uncertain criteria.
 3. Coverage checklist as Nouls, replacing the Qwen coverage call and its output normaliser.
 4. Copilot sidebar in the lab; persisted shadow table + Metabase card.
+
+## 12. Bake-off runs (2026-09-24, 48 fixtures, 8 per action, 17 hard)
+
+Data: `docs/model-migration/triage-bakeoff-2026-09-24.json` (run 2). Run 1 differed only in Qwen erroring on 11 cases (see below).
+
+| | Jev 1.13 | Qwen 27B reasoning-off (Groq) |
+|---|---|---|
+| accuracy (all / hard) | 0.979 / 0.941 | 0.979 / 0.941 |
+| errors | 0 | 0 (run 1: 11) |
+| p50 / p95 latency | 292 ms / 864 ms | 239 ms / 1285 ms |
+| is_correction @0.5 | 0.979 | 0.813 |
+| needs_committed_edit @0.5 | 1.0 | 1.0 |
+| cost, 48 calls | $0.0012 | $0 (already-provisioned provider) |
+| confidence ≥0.95 bucket | accuracy 1.0, coverage 0.83 | n/a (no confidence) |
+| confidence 0.8–0.95 bucket | accuracy 0.833, n=6 | n/a |
+
+**What it says against §9.** Both candidates clear the accuracy bars on every deterministic class (formatting, delete, noise, restate all at recall 1.0 and precision 1.0) and on correct-vs-append (only one miss each). Jev's calibration is usable: everything at or above 0.95 was right, that bucket covers 83 % of cases, and accuracy is monotone across buckets, so a 0.95 routing threshold is defensible from this set. Neither candidate meets the p95 ≤ 800 ms bar on this run (Jev 864 ms, Qwen 1285 ms); p50 is well under for both. Qwen's `is_correction` signal is noticeably weaker (0.81 vs 0.98).
+
+**The one shared miss** is `append-06`, the temporal comparison ("it was five millimetres on the prior now ten millimetres"): both candidates call it a correction; Jev at 0.93, i.e. below the 0.95 threshold, which is exactly the fall-through-to-System-2 behaviour the design wants.
+
+**Run 1 defect, fixed.** Qwen erred on 11/48 because Groq's tool-call validator rejects the model's `True`/`False` strings for JSON boolean fields; the two aux signals are now yes/no string literals (`dictation_triage.QwenTriageOutput`).
+
+**Live route smoke (real models, TestClient with auth override).** Debug mode attaches both decisions with no added latency over the live call; route mode on Jev at 0.9 answered `um so er`, `new paragraph` and `scratch that` deterministically in 260–290 ms versus 470 ms–8.8 s for model calls. One observation for the routing spec: "scratch that" immediately after "new paragraph" deletes the last finding line (the deterministic delete removes the last non-blank line), not just the paragraph break.
+
+**Next:** grow the fixture set from lab sessions (especially restatements and temporal comparisons), decide the latency bar against real p95 over more runs, and start production shadow (`RR_TRIAGE_SHADOW=1`) to get the derived-label agreement floor.

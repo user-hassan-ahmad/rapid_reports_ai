@@ -56,7 +56,7 @@
 - Create: `backend/src/rapid_reports_ai/dictation_triage.py`
 - Test: `backend/tests/test_dictation_triage.py`
 
-- [ ] **Step 1: Write the failing tests for the Jev client**
+- [x] **Step 1: Write the failing tests for the Jev client**
 
 ```python
 # backend/tests/test_dictation_triage.py
@@ -208,12 +208,12 @@ def test_jev_requires_api_key(monkeypatch):
         JevTriager()
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `cd backend && .venv/bin/pytest tests/test_dictation_triage.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'rapid_reports_ai.dictation_triage'`
 
-- [ ] **Step 3: Create the module with types, questions and the Jev client**
+- [x] **Step 3: Create the module with types, questions and the Jev client**
 
 ```python
 # backend/src/rapid_reports_ai/dictation_triage.py
@@ -399,12 +399,12 @@ class JevTriager:
         )
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `cd backend && .venv/bin/pytest tests/test_dictation_triage.py -v`
 Expected: all 9 tests PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/rapid_reports_ai/dictation_triage.py backend/tests/test_dictation_triage.py
@@ -419,7 +419,7 @@ git commit -m "feat(triage): action set, state/decision types and Jev System One
 - Modify: `backend/src/rapid_reports_ai/dictation_triage.py` (append)
 - Test: `backend/tests/test_dictation_triage.py` (append)
 
-- [ ] **Step 1: Append the failing tests**
+- [x] **Step 1: Append the failing tests**
 
 ```python
 # append to backend/tests/test_dictation_triage.py
@@ -490,12 +490,12 @@ def test_decision_to_trace_handles_exceptions():
     assert t.action is None and t.error == "TriageError"
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `cd backend && .venv/bin/pytest tests/test_dictation_triage.py -v -k "qwen or get_triager or trace"`
 Expected: FAIL with `ImportError: cannot import name 'QWEN_SYSTEM_PROMPT'`
 
-- [ ] **Step 3: Append the Qwen candidate, registry and trace models**
+- [x] **Step 3: Append the Qwen candidate, registry and trace models**
 
 ```python
 # append to backend/src/rapid_reports_ai/dictation_triage.py
@@ -664,12 +664,12 @@ def decision_to_trace(result: TriageDecision | BaseException) -> TriageCandidate
     )
 ```
 
-- [ ] **Step 4: Run the full test file**
+- [x] **Step 4: Run the full test file**
 
 Run: `cd backend && .venv/bin/pytest tests/test_dictation_triage.py -v`
 Expected: all 14 tests PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/rapid_reports_ai/dictation_triage.py backend/tests/test_dictation_triage.py
@@ -684,7 +684,7 @@ git commit -m "feat(triage): Qwen reasoning-off candidate, registry and trace mo
 - Create: `backend/src/rapid_reports_ai/dictation_triage_labels.py`
 - Test: `backend/tests/test_dictation_triage_labels.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # backend/tests/test_dictation_triage_labels.py
@@ -742,12 +742,12 @@ def test_agrees(action, derived, expected):
     assert agrees(action, derived) is expected
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `cd backend && .venv/bin/pytest tests/test_dictation_triage_labels.py -v`
 Expected: FAIL with `ModuleNotFoundError`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # backend/src/rapid_reports_ai/dictation_triage_labels.py
@@ -804,12 +804,12 @@ def agrees(action: str, derived: str) -> bool:
     return derived in AGREEMENT_MAP.get(action, frozenset())
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `cd backend && .venv/bin/pytest tests/test_dictation_triage_labels.py -v`
 Expected: all PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/rapid_reports_ai/dictation_triage_labels.py backend/tests/test_dictation_triage_labels.py
@@ -824,7 +824,7 @@ git commit -m "feat(triage): derived labels from scratchpad before/after"
 - Create: `backend/src/rapid_reports_ai/dictation_triage_router.py`
 - Test: `backend/tests/test_dictation_triage_router.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # backend/tests/test_dictation_triage_router.py
@@ -916,12 +916,12 @@ def test_deterministic_set():
     assert DETERMINISTIC_ACTIONS == {"formatting_command", "delete_previous_utterance", "ignore_noise", "restate_existing_finding"}
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `cd backend && .venv/bin/pytest tests/test_dictation_triage_router.py -v`
 Expected: FAIL with `ModuleNotFoundError`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # backend/src/rapid_reports_ai/dictation_triage_router.py
@@ -992,12 +992,12 @@ def route(
     return "deterministic", new_active
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `cd backend && .venv/bin/pytest tests/test_dictation_triage_router.py -v`
 Expected: all PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/rapid_reports_ai/dictation_triage_router.py backend/tests/test_dictation_triage_router.py
@@ -1012,7 +1012,7 @@ git commit -m "feat(triage): deterministic router for lab routing mode"
 - Create: `backend/tests/fixtures/triage_utterances.jsonl`
 - Test: `backend/tests/test_triage_fixtures.py`
 
-- [ ] **Step 1: Write the failing validation test**
+- [x] **Step 1: Write the failing validation test**
 
 ```python
 # backend/tests/test_triage_fixtures.py
@@ -1059,12 +1059,12 @@ def test_at_least_eight_cases_per_action():
         assert counts[action] >= 8, f"{action}: {counts[action]}"
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `cd backend && .venv/bin/pytest tests/test_triage_fixtures.py -v`
 Expected: FAIL with `FileNotFoundError`
 
-- [ ] **Step 3: Write the seed fixture file (48 cases, 8 per action)**
+- [x] **Step 3: Write the seed fixture file (48 cases, 8 per action)**
 
 ```jsonl
 {"id": "append-01", "committed": "", "active": "", "utterance": "there is a six millimetre nodule in the right upper lobe", "scan_type": "CT chest", "expected_action": "append_new_finding", "expected_is_correction": false, "expected_needs_committed_edit": false, "hard": false, "note": "first finding into empty scratchpad"}
@@ -1119,12 +1119,12 @@ Expected: FAIL with `FileNotFoundError`
 
 Save exactly these lines to `backend/tests/fixtures/triage_utterances.jsonl` (create the `fixtures` directory). The lab's export buffer appends more later.
 
-- [ ] **Step 4: Run the validation tests**
+- [x] **Step 4: Run the validation tests**
 
 Run: `cd backend && .venv/bin/pytest tests/test_triage_fixtures.py -v`
 Expected: 3 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/tests/fixtures/triage_utterances.jsonl backend/tests/test_triage_fixtures.py
@@ -1140,7 +1140,7 @@ git commit -m "test(triage): seed fixture set, 8 cases per action, with validati
 - Modify: `backend/.env.example` (append two lines)
 - Test: `backend/tests/test_canvas_triage_modes.py`
 
-- [ ] **Step 1: Write the failing route tests**
+- [x] **Step 1: Write the failing route tests**
 
 ```python
 # backend/tests/test_canvas_triage_modes.py
@@ -1385,12 +1385,12 @@ def test_fixtures_endpoint_gated(authed_client, monkeypatch):
     assert cases and {"id", "utterance", "expected_action"} <= set(cases[0])
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `cd backend && .venv/bin/pytest tests/test_canvas_triage_modes.py -v`
 Expected: FAIL — `AttributeError: module 'rapid_reports_ai.canvas_routes' has no attribute 'get_triager'` (from the `fakes` fixture) and 404 for the fixtures route.
 
-- [ ] **Step 3: Add imports and models**
+- [x] **Step 3: Add imports and models**
 
 In `backend/src/rapid_reports_ai/canvas_routes.py`, replace the import block (lines 1-20) with:
 
@@ -1474,7 +1474,7 @@ class CanvasIncrementalResponse(BaseModel):
     triage: Optional[TriageTrace] = None
 ```
 
-- [ ] **Step 4: Add the flag helpers and mode helpers just above `@canvas_router.post("/process")`**
+- [x] **Step 4: Add the flag helpers and mode helpers just above `@canvas_router.post("/process")`**
 
 ```python
 # -----------------------------------------------------------------------------
@@ -1613,7 +1613,7 @@ def _deterministic_response(request: CanvasProcessRequest, incremental: bool, ne
     return CanvasProcessResponse(scratchpad=new_active, covered_sections=[], triage=trace)
 ```
 
-- [ ] **Step 5: Replace `process_transcript` (the whole function from `@canvas_router.post("/process")` to just before `@canvas_router.post("/review", ...)`)**
+- [x] **Step 5: Replace `process_transcript` (the whole function from `@canvas_router.post("/process")` to just before `@canvas_router.post("/review", ...)`)**
 
 ```python
 @canvas_router.post("/process")
@@ -1700,7 +1700,7 @@ async def triage_fixtures(current_user: User = Depends(get_current_user)):
     return {"cases": cases}
 ```
 
-- [ ] **Step 6: Document the flags**
+- [x] **Step 6: Document the flags**
 
 Append to `backend/.env.example`:
 
@@ -1710,12 +1710,12 @@ RR_TRIAGE_SHADOW=0   # 1 = log-only shadow of both triage candidates on /api/can
 RR_TRIAGE_DEBUG=0    # 1 = honour lab fields (triage_debug / triage_route) and serve fixtures
 ```
 
-- [ ] **Step 7: Run the new tests and the existing canvas tests**
+- [x] **Step 7: Run the new tests and the existing canvas tests**
 
 Run: `cd backend && .venv/bin/pytest tests/test_canvas_triage_modes.py tests/test_canvas_modes.py tests/test_canvas_incremental.py tests/test_canvas_fallback.py tests/test_canvas_timing.py -v`
 Expected: all PASS. If an existing canvas test monkeypatches something inside the old `process_transcript` body, it still works because `_run_canvas_with_fallback` and `_canvas_process_config` kept their names and signatures.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add backend/src/rapid_reports_ai/canvas_routes.py backend/.env.example backend/tests/test_canvas_triage_modes.py
@@ -1732,7 +1732,7 @@ git commit -m "feat(canvas): env-gated triage modes on /process — route, debug
 - Create: `backend/src/rapid_reports_ai/scripts/triage_shadow_report.py`
 - Test: `backend/tests/test_triage_summary.py`
 
-- [ ] **Step 1: Write the failing test for the pure summary**
+- [x] **Step 1: Write the failing test for the pure summary**
 
 ```python
 # backend/tests/test_triage_summary.py
@@ -1785,12 +1785,12 @@ def test_summarise_aux_signals_at_half():
     assert summarise(records)["jev"]["is_correction_accuracy"] == 0.5
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `cd backend && .venv/bin/pytest tests/test_triage_summary.py -v`
 Expected: FAIL with `ModuleNotFoundError`
 
-- [ ] **Step 3: Implement the summary module**
+- [x] **Step 3: Implement the summary module**
 
 ```python
 # backend/src/rapid_reports_ai/scripts/triage_summary.py
@@ -1912,12 +1912,12 @@ def format_summary(summary: dict[str, dict[str, Any]]) -> str:
     return "\n".join(lines)
 ```
 
-- [ ] **Step 4: Run the summary tests**
+- [x] **Step 4: Run the summary tests**
 
 Run: `cd backend && .venv/bin/pytest tests/test_triage_summary.py -v`
 Expected: 2 PASS
 
-- [ ] **Step 5: Write the bake-off script**
+- [x] **Step 5: Write the bake-off script**
 
 ```python
 # backend/src/rapid_reports_ai/scripts/triage_bakeoff.py
@@ -2008,7 +2008,7 @@ if __name__ == "__main__":
     raise SystemExit(asyncio.run(main()))
 ```
 
-- [ ] **Step 6: Write the shadow-log report**
+- [x] **Step 6: Write the shadow-log report**
 
 ```python
 # backend/src/rapid_reports_ai/scripts/triage_shadow_report.py
@@ -2075,12 +2075,12 @@ if __name__ == "__main__":
     raise SystemExit(main(sys.argv))
 ```
 
-- [ ] **Step 7: Smoke the scripts import cleanly (no network)**
+- [x] **Step 7: Smoke the scripts import cleanly (no network)**
 
 Run: `cd backend && .venv/bin/python -c "import rapid_reports_ai.scripts.triage_bakeoff, rapid_reports_ai.scripts.triage_shadow_report; print('ok')"`
 Expected: `ok`
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add backend/src/rapid_reports_ai/scripts/triage_summary.py backend/src/rapid_reports_ai/scripts/triage_bakeoff.py backend/src/rapid_reports_ai/scripts/triage_shadow_report.py backend/tests/test_triage_summary.py
@@ -2094,7 +2094,7 @@ git commit -m "feat(triage): bake-off script, shadow-log report, shared summary"
 **Files:**
 - Test: `backend/tests/test_dictation_triage_live.py`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 ```python
 # backend/tests/test_dictation_triage_live.py
@@ -2130,7 +2130,7 @@ async def test_jev_live_shape_on_first_five_fixtures():
         assert d.latency_ms < 3000
 ```
 
-- [ ] **Step 2: Run skipped, then run live once**
+- [x] **Step 2: Run skipped, then run live once**
 
 Run: `cd backend && .venv/bin/pytest tests/test_dictation_triage_live.py -v`
 Expected: `1 skipped`
@@ -2138,14 +2138,14 @@ Expected: `1 skipped`
 Run: `cd backend && set -a && . ./.env && set +a && RR_LIVE_TESTS=1 .venv/bin/pytest tests/test_dictation_triage_live.py -v`
 Expected: `1 passed` (network). If `.env` has lines the shell cannot source, export `OPENROUTER_API_KEY` directly instead.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add backend/tests/test_dictation_triage_live.py
 git commit -m "test(triage): opt-in live contract test against Jev"
 ```
 
-- [ ] **Step 4: Run the whole backend suite once before moving to the frontend**
+- [x] **Step 4: Run the whole backend suite once before moving to the frontend**
 
 Run: `cd backend && .venv/bin/pytest -q`
 Expected: all pass (live test skipped).
@@ -2163,7 +2163,7 @@ Expected: all pass (live test skipped).
 
 These are plain TS so the vitest "server" project (node, no browser) runs them: `cd frontend && bun run test -- --project server`.
 
-- [ ] **Step 1: Types**
+- [x] **Step 1: Types**
 
 ```ts
 // frontend/src/lib/dictation-lab/types.ts
@@ -2252,7 +2252,7 @@ export interface FixtureCase {
 }
 ```
 
-- [ ] **Step 2: Write the failing delta test**
+- [x] **Step 2: Write the failing delta test**
 
 ```ts
 // frontend/src/lib/dictation-lab/delta.test.ts
@@ -2276,12 +2276,12 @@ describe('computeDelta', () => {
 });
 ```
 
-- [ ] **Step 3: Run to verify failure**
+- [x] **Step 3: Run to verify failure**
 
 Run: `cd frontend && bun run test -- --project server src/lib/dictation-lab/delta.test.ts`
 Expected: FAIL, cannot resolve `./delta`
 
-- [ ] **Step 4: Implement delta**
+- [x] **Step 4: Implement delta**
 
 ```ts
 // frontend/src/lib/dictation-lab/delta.ts
@@ -2301,7 +2301,7 @@ export function computeDelta(sessionTranscript: string, lastSent: string): { del
 }
 ```
 
-- [ ] **Step 5: Write the failing labConfig test**
+- [x] **Step 5: Write the failing labConfig test**
 
 ```ts
 // frontend/src/lib/dictation-lab/labConfig.test.ts
@@ -2346,7 +2346,7 @@ describe('persistence', () => {
 });
 ```
 
-- [ ] **Step 6: Implement labConfig**
+- [x] **Step 6: Implement labConfig**
 
 ```ts
 // frontend/src/lib/dictation-lab/labConfig.ts
@@ -2402,7 +2402,7 @@ export function toRequestFields(config: LabConfig): LabRequestFields {
 export const labConfig = writable<LabConfig>(loadLabConfig());
 ```
 
-- [ ] **Step 7: Write the failing fixtureExport test**
+- [x] **Step 7: Write the failing fixtureExport test**
 
 ```ts
 // frontend/src/lib/dictation-lab/fixtureExport.test.ts
@@ -2436,7 +2436,7 @@ describe('buildFixtureLine', () => {
 });
 ```
 
-- [ ] **Step 8: Implement fixtureExport**
+- [x] **Step 8: Implement fixtureExport**
 
 ```ts
 // frontend/src/lib/dictation-lab/fixtureExport.ts
@@ -2478,7 +2478,7 @@ export function buildFixtureLine(trace: ProcessTrace, labels: FixtureLabels): st
 }
 ```
 
-- [ ] **Step 9: Write the failing summary test**
+- [x] **Step 9: Write the failing summary test**
 
 ```ts
 // frontend/src/lib/dictation-lab/summary.test.ts
@@ -2525,7 +2525,7 @@ describe('summariseTraces', () => {
 });
 ```
 
-- [ ] **Step 10: Implement summary**
+- [x] **Step 10: Implement summary**
 
 ```ts
 // frontend/src/lib/dictation-lab/summary.ts
@@ -2597,12 +2597,12 @@ export function summariseTraces(traces: ProcessTrace[]): LabSummary {
 }
 ```
 
-- [ ] **Step 11: Run all four test files**
+- [x] **Step 11: Run all four test files**
 
 Run: `cd frontend && bun run test -- --project server src/lib/dictation-lab`
 Expected: all PASS
 
-- [ ] **Step 12: Commit**
+- [x] **Step 12: Commit**
 
 ```bash
 git add frontend/src/lib/dictation-lab
@@ -2619,7 +2619,7 @@ git commit -m "feat(lab): pure dictation-lab helpers — delta, config, fixture 
 
 No component test (the repo's browser-mode vitest needs Playwright); the pure helpers are tested in Task 9 and the wiring is verified in Task 13. Keep every edit a pure move or an additive prop.
 
-- [ ] **Step 1: Add imports and the two new props**
+- [x] **Step 1: Add imports and the two new props**
 
 After the existing imports at the top of the `<script lang="ts">` block add:
 
@@ -2638,7 +2638,7 @@ After `export let onReviewingChange: (reviewing: boolean) => void = () => {};` (
 	export let onProcessTrace: (trace: ProcessTrace) => void = () => {};
 ```
 
-- [ ] **Step 2: Add the delta bookkeeping next to `sessionTranscript`**
+- [x] **Step 2: Add the delta bookkeeping next to `sessionTranscript`**
 
 After `const SESSION_TRANSCRIPT_WINDOW = 2500;` (line 144) add:
 
@@ -2649,7 +2649,7 @@ After `const SESSION_TRANSCRIPT_WINDOW = 2500;` (line 144) add:
 	let traceSeq = 0;
 ```
 
-- [ ] **Step 3: Extract the `is_final` branch into `handleFinalTranscript` and add `injectTranscript`**
+- [x] **Step 3: Extract the `is_final` branch into `handleFinalTranscript` and add `injectTranscript`**
 
 Add these two functions immediately before `async function processTranscript(): Promise<void> {` (line 302):
 
@@ -2713,7 +2713,7 @@ Then replace the websocket `else` branch (the block from `// is_final: word-grou
 
 The surrounding `if (!data.is_final) { currentInterim = data.transcript; }` stays as it is.
 
-- [ ] **Step 4: Send the delta and lab fields, record the trace**
+- [x] **Step 4: Send the delta and lab fields, record the trace**
 
 In `processTranscript`, replace the `const body: Record<string, unknown> = { ... };` literal (the one with `session_transcript: sessionTranscript`) with:
 
@@ -2758,12 +2758,12 @@ Immediately after the `if (data.covered_sections && Array.isArray(data.covered_s
 			});
 ```
 
-- [ ] **Step 5: Type-check and lint**
+- [x] **Step 5: Type-check and lint**
 
 Run: `cd frontend && bun run check`
 Expected: no new errors in `DictationScratchpad.svelte` (pre-existing warnings elsewhere are fine).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/src/lib/components/DictationScratchpad.svelte
@@ -2777,7 +2777,7 @@ git commit -m "feat(scratchpad): extract handleFinalTranscript, add injectTransc
 **Files:**
 - Modify: `frontend/src/routes/components/IntelliDictateTab.svelte` (props ~97-113, `scratchpadRef` type 72-79, exports ~574-600, `<DictationScratchpad` mount)
 
-- [ ] **Step 1: Import the types and add the props**
+- [x] **Step 1: Import the types and add the props**
 
 Add to the script imports:
 
@@ -2793,7 +2793,7 @@ After `export let apiKeyStatus = { ... };` add:
 	export let onProcessTrace: (trace: ProcessTrace) => void = () => {};
 ```
 
-- [ ] **Step 2: Extend the scratchpad ref type and export the feeder entry point**
+- [x] **Step 2: Extend the scratchpad ref type and export the feeder entry point**
 
 Change the `scratchpadRef` type to include the new method:
 
@@ -2818,7 +2818,7 @@ Next to the other `export function handleExternal...` functions add:
 	}
 ```
 
-- [ ] **Step 3: Pass the props through at the mount**
+- [x] **Step 3: Pass the props through at the mount**
 
 In the `<DictationScratchpad ... />` element add two attributes before the closing `/>`:
 
@@ -2827,12 +2827,12 @@ In the `<DictationScratchpad ... />` element add two attributes before the closi
 			{onProcessTrace}
 ```
 
-- [ ] **Step 4: Type-check**
+- [x] **Step 4: Type-check**
 
 Run: `cd frontend && bun run check`
 Expected: clean for this file.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/routes/components/IntelliDictateTab.svelte
@@ -2848,7 +2848,7 @@ git commit -m "feat(dictate-tab): pass lab props through and expose injectTransc
 - Create: `frontend/src/routes/dictation-lab/+page.svelte`
 - Create: `frontend/src/lib/components/DictationLabPanel.svelte`
 
-- [ ] **Step 1: Gate the route (first commit, per the dev-route rule)**
+- [x] **Step 1: Gate the route (first commit, per the dev-route rule)**
 
 ```ts
 // frontend/src/routes/dictation-lab/+page.ts
@@ -2857,7 +2857,7 @@ import { requireDevRoute } from '$lib/guards/dev-route';
 export const load = () => requireDevRoute();
 ```
 
-- [ ] **Step 2: Write the lab panel**
+- [x] **Step 2: Write the lab panel**
 
 ```svelte
 <!-- frontend/src/lib/components/DictationLabPanel.svelte -->
@@ -3060,7 +3060,7 @@ export const load = () => requireDevRoute();
 
 If `btn-primary` / `btn-secondary` / `card-dark` are not global classes in this app (check `src/app.css`), replace them with the Tailwind utilities the other dev routes use (`skill-sheet-proto/+page.svelte` is the reference).
 
-- [ ] **Step 3: Write the lab page**
+- [x] **Step 3: Write the lab page**
 
 ```svelte
 <!-- frontend/src/routes/dictation-lab/+page.svelte -->
@@ -3157,7 +3157,7 @@ If `btn-primary` / `btn-secondary` / `card-dark` are not global classes in this 
 </div>
 ```
 
-- [ ] **Step 4: Type-check and start both servers**
+- [x] **Step 4: Type-check and start both servers**
 
 Run: `cd frontend && bun run check`
 Expected: clean for the new files.
@@ -3175,7 +3175,7 @@ Open `http://localhost:5173/dictation-lab` (log in on `/` first if the status li
 4. Turn the mic on and dictate one sentence: a new timeline row arrives with a real utterance delta.
 5. Stop the backend, restart it **without** `RR_TRIAGE_DEBUG`: rows keep arriving with `triage: null`; the route still works. Restart with the flag for the rest.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/src/routes/dictation-lab frontend/src/lib/components/DictationLabPanel.svelte
@@ -3190,18 +3190,18 @@ git commit -m "feat(lab): /dictation-lab dev route mounting the production tab w
 - Create: `docs/model-migration/triage-bakeoff-<date>.json` (generated)
 - Modify: `docs/superpowers/specs/2026-09-24-jev-dictation-triage-shadow-design.md` (status line only)
 
-- [ ] **Step 1: Run the bake-off once and read the numbers**
+- [x] **Step 1: Run the bake-off once and read the numbers**
 
 Run: `cd backend && set -a && . ./.env && set +a && .venv/bin/python -m rapid_reports_ai.scripts.triage_bakeoff`
 Expected: a per-candidate summary, a disagreements list, and `wrote docs/model-migration/triage-bakeoff-<date>.json`. Paste the summary block into the spec under a new heading `## 12. Bake-off run 1 (<date>)` with two sentences on what it says against §9.
 
-- [ ] **Step 2: Full verification**
+- [x] **Step 2: Full verification**
 
 Run: `cd backend && .venv/bin/pytest -q` → all pass, live skipped.
 Run: `cd frontend && bun run test -- --project server && bun run check` → pass.
 Run: `cd frontend && PUBLIC_ENABLE_DEV_ROUTES= bun run build && bun run preview` and open `/dictation-lab` → 404 (the production gate). Stop preview.
 
-- [ ] **Step 3: Update the spec status and commit**
+- [x] **Step 3: Update the spec status and commit**
 
 Change the spec's `**Status:**` line to `Implemented on branch dictation-triage-lab; bake-off run 1 recorded in §12`.
 
