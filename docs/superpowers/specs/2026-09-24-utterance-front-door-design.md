@@ -1,7 +1,7 @@
 # Utterance Front Door — Boundary Classification with Jev (Design)
 
 **Date:** 2026-09-24
-**Status:** Implemented on branch `dictation-triage-lab` (lab only); bake-off run 1 and lab run in §7
+**Status:** Implemented on branch `dictation-triage-lab` (lab only); bake-off run 1 and lab run in §7. **Superseded in part by decision-first rev 2** (§3.1, §8): the complete/continues choice as send trigger, the backstop timers and the `placement` question are retired in favour of verbatim fast-append with line-close signals (terminal punctuation, `standalone`, hard limit). Kept here as the evidence record.
 **Branch:** dictation-triage-lab
 **Parent:** `2026-09-24-decision-first-dictation-design.md` (this is the per-chunk decision bundle, v1)
 **Evidence:** lab session 2026-09-24 (26 calls; 12 with no new text; sentence fragments triaged with 0.58–0.68 confidence; two ASR errors)
