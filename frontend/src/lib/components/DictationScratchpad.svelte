@@ -3,7 +3,7 @@
 	import { computeDelta } from '$lib/dictation-lab/delta';
 	import { toRequestFields } from '$lib/dictation-lab/labConfig';
 	import type { ChunkTrace, CoverageTrace, LabConfig, ProcessTrace, TriageTrace, UtteranceResponse } from '$lib/dictation-lab/types';
-	import { applyBoundary, flushBuffer, lastNonEmptyLine } from '$lib/dictation-lab/frontDoor';
+	import { applyBoundary, backstopDelay, flushBuffer, lastNonEmptyLine } from '$lib/dictation-lab/frontDoor';
 	import { EditorView, keymap, Decoration, type DecorationSet } from '@codemirror/view';
 	import { EditorState, Compartment, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
@@ -166,7 +166,6 @@
 	let chunkSeq = 0;
 	let backstopTimer: ReturnType<typeof setTimeout> | null = null;
 	let classifyChain: Promise<void> = Promise.resolve();
-	const BACKSTOP_MS = 1500;
 	function frontDoorIsJev(): boolean {
 		return labConfig?.frontDoor === 'jev';
 	}
@@ -380,7 +379,7 @@
 		handleFinalTranscript(t, speechFinal);
 	}
 
-	function armBackstop(): void {
+	function armBackstop(delayMs: number): void {
 		if (backstopTimer) clearTimeout(backstopTimer);
 		backstopTimer = setTimeout(() => {
 			backstopTimer = null;
@@ -393,7 +392,7 @@
 				});
 				enqueueUtterance(send);
 			}
-		}, BACKSTOP_MS);
+		}, delayMs);
 	}
 
 	async function classifyChunk(chunk: string): Promise<void> {
@@ -437,7 +436,8 @@
 		if (sends.length) {
 			for (const s of sends) enqueueUtterance(s);
 		} else {
-			armBackstop();
+			// A confident 'continues' earns a longer wait (see backstopDelay).
+			armBackstop(backstopDelay(data.confidence));
 		}
 	}
 

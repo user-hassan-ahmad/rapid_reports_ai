@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyBoundary, flushBuffer, lastNonEmptyLine } from './frontDoor';
+import { applyBoundary, backstopDelay, flushBuffer, lastNonEmptyLine } from './frontDoor';
 
 describe('applyBoundary', () => {
 	it('buffers on continues', () => {
@@ -36,5 +36,15 @@ describe('lastNonEmptyLine', () => {
 	it('returns the last non-blank line, trimmed', () => {
 		expect(lastNonEmptyLine('- a\n- b  \n\n')).toBe('- b');
 		expect(lastNonEmptyLine('')).toBe('');
+	});
+});
+
+describe('backstopDelay', () => {
+	it('waits longer after a confident continues', () => {
+		expect(backstopDelay(0.99)).toBe(4000);
+		expect(backstopDelay(0.9)).toBe(4000);
+		expect(backstopDelay(0.89)).toBe(1500);
+		expect(backstopDelay(null)).toBe(1500);
+		expect(backstopDelay(undefined)).toBe(1500);
 	});
 });

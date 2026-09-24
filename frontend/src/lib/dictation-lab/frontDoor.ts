@@ -31,3 +31,17 @@ export function lastNonEmptyLine(text: string): string {
 		.filter(Boolean);
 	return lines.length ? lines[lines.length - 1] : '';
 }
+
+export const BACKSTOP_SHORT_MS = 1500;
+export const BACKSTOP_LONG_MS = 4000;
+export const BACKSTOP_CONFIDENT = 0.9;
+
+/**
+ * How long to wait for the next chunk after a `continues` before sending anyway.
+ * A confident `continues` earns a longer wait: the words are already on screen
+ * (faded render), so the only cost of waiting is a later polish, while sending
+ * early splits the sentence. Low confidence or no decision keeps the short wait.
+ */
+export function backstopDelay(confidence: number | null | undefined): number {
+	return confidence != null && confidence >= BACKSTOP_CONFIDENT ? BACKSTOP_LONG_MS : BACKSTOP_SHORT_MS;
+}
