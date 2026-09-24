@@ -26,8 +26,11 @@ PLACEMENT_THRESHOLD = 0.5  # below this, the cheap error: a new line
 # above 0.4 only converted correct answers into stalls (the three wrong sends are the same
 # three at any setting). Thresholds are therefore a floor against near-uniform
 # distributions, not a precision lever. Waiting is bounded by the frontend backstop.
-COMPLETE_THRESHOLD = 0.4
-COMMAND_THRESHOLD = 0.3
+# Run 2 (mic): a 0.4 floor demoted three correct completes at 0.26-0.38 into 1.5 s waits.
+# On a three-way choice confidence sits low whenever two options are plausible; the floor
+# is a near-uniform guard only.
+COMPLETE_THRESHOLD = 0.2
+COMMAND_THRESHOLD = 0.2
 # Not acted on yet. On the same run 0.7 separated the three true ASR cases from every
 # clean one (baseline noul sits ~0.5–0.65 on clean text).
 ASR_RISK_THRESHOLD = 0.7

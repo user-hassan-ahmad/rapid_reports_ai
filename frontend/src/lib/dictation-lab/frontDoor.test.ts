@@ -42,8 +42,8 @@ describe('lastNonEmptyLine', () => {
 describe('backstopDelay', () => {
 	it('waits longer after a confident continues', () => {
 		expect(backstopDelay(0.99)).toBe(4000);
-		expect(backstopDelay(0.9)).toBe(4000);
-		expect(backstopDelay(0.89)).toBe(1500);
+		expect(backstopDelay(0.5)).toBe(4000);
+		expect(backstopDelay(0.49)).toBe(1500);
 		expect(backstopDelay(null)).toBe(1500);
 		expect(backstopDelay(undefined)).toBe(1500);
 	});

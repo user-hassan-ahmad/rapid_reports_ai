@@ -34,7 +34,8 @@ export function lastNonEmptyLine(text: string): string {
 
 export const BACKSTOP_SHORT_MS = 1500;
 export const BACKSTOP_LONG_MS = 4000;
-export const BACKSTOP_CONFIDENT = 0.9;
+// Run 2 (mic): correct continues at 0.66-0.87 got the short wait and were cut mid-sentence.
+export const BACKSTOP_CONFIDENT = 0.5;
 
 /**
  * How long to wait for the next chunk after a `continues` before sending anyway.
