@@ -3,7 +3,14 @@
 	import { computeDelta } from '$lib/dictation-lab/delta';
 	import { toRequestFields } from '$lib/dictation-lab/labConfig';
 	import type { ChunkTrace, CoverageTrace, LabConfig, ProcessTrace, TriageTrace, UtteranceResponse } from '$lib/dictation-lab/types';
-	import { applyBoundary, flushBuffer, lastNonEmptyLine, nextSilenceStep } from '$lib/dictation-lab/frontDoor';
+	import {
+		applyBoundary,
+		endsWithTerminalPunctuation,
+		flushBuffer,
+		lastNonEmptyLine,
+		nextSilenceStep,
+		silenceVerdict
+	} from '$lib/dictation-lab/frontDoor';
 	import { EditorView, keymap, Decoration, type DecorationSet } from '@codemirror/view';
 	import { EditorState, Compartment, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
@@ -411,12 +418,12 @@
 			onChunkTrace({
 				seq: ++chunkSeq, at: Date.now(), chunk: '', buffered: send, resolved: 'complete', boundary: null,
 				confidence: null, asr_risk: null, latency_ms: 0, error: null, sent: send, viaBackstop: true,
-				placement: null, placement_confidence: null, silence_s: SILENCE_HARD_LIMIT
+				placement: null, placement_confidence: null, silence_s: SILENCE_HARD_LIMIT, standalone: null, via: 'hard_limit'
 			});
 			enqueueUtterance(send);
 		}
 	}
-	const SILENCE_HARD_LIMIT = 9;
+	const SILENCE_HARD_LIMIT = 5;
 
 	function scratchpadTail(): string {
 		const doc = editor ? editor.state.doc.toString() : '';
@@ -449,16 +456,28 @@
 	}
 
 	function applyDecision(buffer: string[], chunk: string, data: UtteranceResponse, silenceS: number, buffered: string, t0: number): void {
-		const { sends, buffer: next } = applyBoundary(buffer, chunk, data.resolved);
+		// Time and punctuation are decided here, not by the model.
+		let resolved = data.resolved;
+		let via: 'jev' | 'punctuation' | 'silence' = 'jev';
+		if (silenceS > 0) {
+			if (resolved === 'continues' && silenceVerdict(data.standalone, silenceS) === 'send') resolved = 'complete';
+			via = 'silence';
+		} else if (resolved === 'continues' && endsWithTerminalPunctuation(chunk)) {
+			resolved = 'complete';
+			via = 'punctuation';
+		}
+		const { sends, buffer: next } = applyBoundary(buffer, chunk, resolved);
 		chunkBuffer = next;
 		const send = sends.length ? sends.join(' ‖ ') : null;
 		onChunkTrace({
 			seq: ++chunkSeq, at: Date.now(), chunk: silenceS > 0 ? '' : chunk, buffered: silenceS > 0 ? [...buffer, chunk].join(' ') : buffered,
-			resolved: data.resolved, boundary: data.boundary, confidence: data.confidence, asr_risk: data.asr_risk,
+			resolved, boundary: data.boundary, confidence: data.confidence, asr_risk: data.asr_risk,
 			latency_ms: Math.round(performance.now() - t0), error: data.error, sent: send, viaBackstop: false,
 			placement: send !== null ? (data.placement ?? 'new_line') : null,
 			placement_confidence: send !== null ? (data.placement_confidence ?? null) : null,
-			silence_s: silenceS > 0 ? silenceS : null
+			silence_s: silenceS > 0 ? silenceS : null,
+			standalone: data.standalone ?? null,
+			via
 		});
 		if (sends.length) {
 			silenceStep = 0;

@@ -38,8 +38,9 @@ export function lastNonEmptyLine(text: string): string {
  * is the buffer sent without asking. The words are already visible faded, so the
  * cost of waiting is only a later polish.
  */
-export const SILENCE_MILESTONES_S = [2, 5];
-export const SILENCE_HARD_LIMIT_S = 9;
+export const SILENCE_MILESTONES_S = [2];
+export const SILENCE_HARD_LIMIT_S = 5;
+export const STANDALONE_THRESHOLD = 0.5;
 
 /** Step n (0-based) of the schedule: how long to wait from the previous step, and the
  *  silence value to report; `silenceS: null` means the hard limit — send without asking. */
@@ -74,4 +75,17 @@ export function derivePlacement(before: string, after: string): Placement | null
 		return tail.length && tail[0].trim() === '' && bl.length ? 'new_paragraph' : 'new_line';
 	}
 	return null;
+}
+
+/** Deepgram (punctuate=true, dictation off) closes sentences it is sure of. A terminal
+ *  mark is a precision signal the model has ignored in practice, so it decides in code. */
+export function endsWithTerminalPunctuation(chunk: string): boolean {
+	return /[.?!]["')\]]*\s*$/.test(chunk);
+}
+
+/** At a silence milestone the question is not 'is the speaker finished' (Jev cannot
+ *  weigh time) but 'could this stand alone'; time is applied here. */
+export function silenceVerdict(standalone: number | null | undefined, silenceS: number): 'send' | 'wait' {
+	if (silenceS >= SILENCE_HARD_LIMIT_S) return 'send';
+	return (standalone ?? 0) >= STANDALONE_THRESHOLD ? 'send' : 'wait';
 }

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { applyBoundary, derivePlacement, flushBuffer, lastNonEmptyLine, nextSilenceStep } from './frontDoor';
+import {
+	applyBoundary,
+	derivePlacement,
+	endsWithTerminalPunctuation,
+	flushBuffer,
+	lastNonEmptyLine,
+	nextSilenceStep,
+	silenceVerdict
+} from './frontDoor';
 
 describe('applyBoundary', () => {
 	it('buffers on continues', () => {
@@ -40,10 +48,9 @@ describe('lastNonEmptyLine', () => {
 });
 
 describe('nextSilenceStep', () => {
-	it('walks 2 s, 5 s, then the 9 s hard limit', () => {
+	it('re-checks at 2 s, then the 5 s hard limit', () => {
 		expect(nextSilenceStep(0)).toEqual({ delayMs: 2000, silenceS: 2 });
-		expect(nextSilenceStep(1)).toEqual({ delayMs: 3000, silenceS: 5 });
-		expect(nextSilenceStep(2)).toEqual({ delayMs: 4000, silenceS: null });
+		expect(nextSilenceStep(1)).toEqual({ delayMs: 3000, silenceS: null });
 	});
 });
 
@@ -62,5 +69,24 @@ describe('derivePlacement', () => {
 	});
 	it('null when nothing changed', () => {
 		expect(derivePlacement('- a', '- a')).toBeNull();
+	});
+});
+
+describe('endsWithTerminalPunctuation', () => {
+	it('detects a closed sentence', () => {
+		expect(endsWithTerminalPunctuation('and adjacent foci of gas.')).toBe(true);
+		expect(endsWithTerminalPunctuation('Is there a mass?')).toBe(true);
+		expect(endsWithTerminalPunctuation('measuring 7 mm.  ')).toBe(true);
+		expect(endsWithTerminalPunctuation('The tip is')).toBe(false);
+		expect(endsWithTerminalPunctuation('as does the:')).toBe(false);
+	});
+});
+
+describe('silenceVerdict', () => {
+	it('sends when the words could stand alone, or at the hard limit', () => {
+		expect(silenceVerdict(0.7, 2)).toBe('send');
+		expect(silenceVerdict(0.3, 2)).toBe('wait');
+		expect(silenceVerdict(null, 2)).toBe('wait');
+		expect(silenceVerdict(0.1, 5)).toBe('send');
 	});
 });

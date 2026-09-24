@@ -1201,6 +1201,7 @@ class UtteranceResponse(BaseModel):
     placement: Literal["extend_previous_line", "new_line", "new_paragraph"] = "new_line"
     placement_raw: Optional[str] = None
     placement_confidence: Optional[float] = None
+    standalone: Optional[float] = None
 
 
 @canvas_router.post("/utterance", response_model=UtteranceResponse)
@@ -1226,4 +1227,5 @@ async def classify_utterance(request: UtteranceRequest, current_user: User = Dep
         resolved=resolved, boundary=d.boundary, confidence=d.confidence, probabilities=d.probabilities,
         asr_risk=d.asr_risk, latency_ms=d.latency_ms, input_tokens=d.input_tokens, cost_usd=d.cost_usd,
         placement=resolve_placement(d), placement_raw=d.placement, placement_confidence=d.placement_confidence,
+        standalone=d.standalone,
     )

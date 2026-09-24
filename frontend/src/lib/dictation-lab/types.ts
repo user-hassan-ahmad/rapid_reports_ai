@@ -139,6 +139,8 @@ export interface ChunkTrace {
 	placement: Placement | null; // Jev's placement for a sent statement
 	placement_confidence: number | null;
 	silence_s: number | null; // > 0 on a silence re-check row
+	standalone: number | null;
+	via: 'jev' | 'punctuation' | 'silence' | 'hard_limit';
 }
 /** Mirrors backend UtteranceResponse. */
 export interface UtteranceResponse {
@@ -152,4 +154,5 @@ export interface UtteranceResponse {
 	placement?: Placement;
 	placement_raw?: string | null;
 	placement_confidence?: number | null;
+	standalone?: number | null;
 }

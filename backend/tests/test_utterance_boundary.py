@@ -25,6 +25,7 @@ def _resp(boundary="complete", conf=0.9, asr=0.05, placement="new_line", pconf=0
         "answers": {
             "boundary": {"type": "choice", "choice": boundary, "confidence": conf, "probabilities": probs},
             "asr_risk": {"type": "noul", "noul": asr},
+            "standalone": {"type": "noul", "noul": 0.66},
             "placement": {"type": "choice", "choice": placement, "confidence": pconf,
                           "probabilities": {"extend_previous_line": 0.0, "new_line": 0.0, "new_paragraph": 0.0}},
         },
@@ -33,7 +34,7 @@ def _resp(boundary="complete", conf=0.9, asr=0.05, placement="new_line", pconf=0
 
 
 def test_questions_shape():
-    assert set(BOUNDARY_QUESTIONS) == {"boundary", "placement", "asr_risk"}
+    assert set(BOUNDARY_QUESTIONS) == {"boundary", "placement", "asr_risk", "standalone"}
     assert set(BOUNDARY_QUESTIONS["placement"]["criteria"]) == {"extend_previous_line", "new_line", "new_paragraph"}
     assert set(BOUNDARY_QUESTIONS["boundary"]["criteria"]) == {"complete", "continues", "command"}
     assert BOUNDARY_QUESTIONS["asr_risk"]["type"] == "noul"
@@ -61,6 +62,7 @@ async def test_request_and_parse():
     assert b["questions"] == BOUNDARY_QUESTIONS
     assert d.boundary == "complete" and d.confidence == 0.9 and d.asr_risk == 0.05 and d.input_tokens == 220
     assert d.placement == "new_line" and d.placement_confidence == 0.8
+    assert d.standalone == 0.66
 
 
 @pytest.mark.parametrize(

@@ -82,6 +82,14 @@ BOUNDARY_QUESTIONS: dict[str, dict[str, Any]] = {
             ),
         },
     },
+    "standalone": {
+        "type": "noul",
+        "instructions": (
+            "Ignoring whether more words might follow, the buffered words plus the chunk can be read as a "
+            "complete clinical statement as they stand: a finding, a measurement, a normality claim, or a "
+            "fully specified correction."
+        ),
+    },
     "asr_risk": {
         "type": "noul",
         "instructions": (
@@ -105,6 +113,7 @@ class BoundaryDecision:
     placement: str = "new_line"
     placement_confidence: float = 0.0
     placement_probabilities: dict[str, float] | None = None
+    standalone: float = 0.0
 
 
 class JevBoundary:
@@ -149,7 +158,7 @@ class JevBoundary:
         except ValueError as e:
             raise TriageError("jev boundary returned non-JSON") from e
         answers = data.get("answers") or {}
-        if "boundary" not in answers or "asr_risk" not in answers or "placement" not in answers:
+        if any(k not in answers for k in ("boundary", "asr_risk", "placement", "standalone")):
             raise TriageError("jev boundary answer missing")
         b = answers["boundary"]
         boundary = b.get("choice")
@@ -172,6 +181,7 @@ class JevBoundary:
             placement=placement,
             placement_confidence=_check_unit(pl.get("confidence"), "placement confidence"),
             placement_probabilities={k: _check_unit(v, f"placement[{k}]") for k, v in (pl.get("probabilities") or {}).items()},
+            standalone=_check_unit(answers["standalone"].get("noul"), "standalone"),
         )
 
 

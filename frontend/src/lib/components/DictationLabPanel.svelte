@@ -281,8 +281,9 @@
 				{#each chunkTraces as c (c.seq)}
 					<div class="text-xs flex flex-wrap gap-x-2 items-baseline border-l-2 pl-2 {c.sent !== null ? 'border-emerald-500/60' : 'border-gray-700'}">
 						<span class="font-mono truncate max-w-[14rem]">“{c.viaBackstop ? c.buffered : c.chunk}”</span>
-						{#if c.silence_s != null && !c.viaBackstop}<span class="text-violet-300">silence {c.silence_s}s →</span>{/if}
-						<span class={c.resolved === 'continues' ? 'text-gray-400' : c.resolved === 'command' ? 'text-blue-300' : 'text-emerald-300'}>{c.viaBackstop ? 'hard limit' : c.resolved}</span>
+						{#if c.silence_s != null && !c.viaBackstop}<span class="text-violet-300">silence {c.silence_s}s{c.standalone != null ? ` · standalone ${c.standalone.toFixed(2)}` : ''} →</span>{/if}
+						<span class={c.resolved === 'continues' ? 'text-gray-400' : c.resolved === 'command' ? 'text-blue-300' : 'text-emerald-300'}>{c.viaBackstop ? 'hard limit' : c.resolved}{c.via === 'punctuation' ? ' (punct.)' : c.via === 'silence' && c.resolved === 'complete' ? ' (silence)' : ''}</span>
+						{#if c.boundary && c.boundary !== c.resolved && !c.viaBackstop}<span class="text-gray-500">jev: {c.boundary}</span>{/if}
 						{#if c.confidence != null}<span class="tabular-nums text-gray-400">{c.confidence.toFixed(2)}</span>{/if}
 						{#if c.asr_risk != null && c.asr_risk >= 0.5}<span class="text-amber-300">asr {c.asr_risk.toFixed(2)}</span>{/if}
 						<span class="tabular-nums text-gray-500">{c.latency_ms} ms</span>

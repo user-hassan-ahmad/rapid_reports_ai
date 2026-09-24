@@ -41,7 +41,7 @@ class Fake:
         if self.raise_:
             raise TriageError("boom")
         return BoundaryDecision(self.boundary, self.conf, {self.boundary: 1.0}, 0.1, 250, 200, 8e-06,
-                                placement="extend_previous_line", placement_confidence=0.7)
+                                placement="extend_previous_line", placement_confidence=0.7, standalone=0.55)
 
 
 def test_404_without_flag(authed_client, monkeypatch):
@@ -60,6 +60,7 @@ def test_resolved_decision(authed_client, monkeypatch):
     assert body["resolved"] == "continues" and body["boundary"] == "continues" and body["confidence"] == 0.7
     assert body["asr_risk"] == 0.1 and body["latency_ms"] == 250 and body["error"] is None
     assert body["placement"] == "extend_previous_line" and body["placement_confidence"] == 0.7
+    assert body["standalone"] == 0.55
     assert fake.calls == [("CT chest", BODY["buffered"], "left lower lobe", "There is a 10 mm nodule.", 0.0)]
 
 
