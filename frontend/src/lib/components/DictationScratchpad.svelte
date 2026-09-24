@@ -384,15 +384,14 @@
 		if (backstopTimer) clearTimeout(backstopTimer);
 		backstopTimer = setTimeout(() => {
 			backstopTimer = null;
-			const { send, buffer } = flushBuffer(chunkBuffer);
+			const { sends, buffer } = flushBuffer(chunkBuffer);
 			chunkBuffer = buffer;
-			if (send) {
+			for (const send of sends) {
 				onChunkTrace({
 					seq: ++chunkSeq, at: Date.now(), chunk: '', buffered: send, resolved: 'complete', boundary: null,
 					confidence: null, asr_risk: null, latency_ms: 0, error: null, sent: send, viaBackstop: true
 				});
-				pendingUtterance = send;
-				processTranscriptQueue();
+				enqueueUtterance(send);
 			}
 		}, BACKSTOP_MS);
 	}
@@ -427,19 +426,29 @@
 		} catch (e) {
 			data.error = (e as Error).name;
 		}
-		const { send, buffer } = applyBoundary(chunkBuffer, chunk, data.resolved);
+		const { sends, buffer } = applyBoundary(chunkBuffer, chunk, data.resolved);
 		chunkBuffer = buffer;
+		const send = sends.length ? sends.join(' ‖ ') : null;
 		onChunkTrace({
 			seq: ++chunkSeq, at: Date.now(), chunk, buffered, resolved: data.resolved, boundary: data.boundary,
 			confidence: data.confidence, asr_risk: data.asr_risk, latency_ms: Math.round(performance.now() - t0),
 			error: data.error, sent: send, viaBackstop: false
 		});
-		if (send !== null) {
-			pendingUtterance = send;
-			processTranscriptQueue();
+		if (sends.length) {
+			for (const s of sends) enqueueUtterance(s);
 		} else {
 			armBackstop();
 		}
+	}
+
+	// One polish per statement: utterances queue up and each process call takes exactly one.
+	let utteranceQueue: string[] = [];
+	function enqueueUtterance(s: string): void {
+		utteranceQueue.push(s);
+		// Never abort an in-flight polish for a queued statement (that would drop its triage);
+		// the queue loop picks the next one up when the current call completes.
+		if (isProcessingQueue) pendingProcess = true;
+		else processTranscriptQueue();
 	}
 
 	async function processTranscript(): Promise<void> {
@@ -478,7 +487,9 @@
 				preferred_section_names: checklistSections,
 				mode: polishMode
 			};
-			const utterance = pendingUtterance ?? delta;
+			const queued = utteranceQueue.length ? utteranceQueue.shift()! : null;
+			if (utteranceQueue.length) pendingProcess = true;
+			const utterance = queued ?? pendingUtterance ?? delta;
 			pendingUtterance = null;
 			if (utterance) body.last_utterance = utterance;
 			if (labConfig) Object.assign(body, toRequestFields(labConfig));
@@ -760,7 +771,7 @@
 		}
 		const flushed = flushBuffer(chunkBuffer);
 		chunkBuffer = flushed.buffer;
-		if (flushed.send) pendingUtterance = flushed.send;
+		for (const s of flushed.sends) utteranceQueue.push(s);
 		if (sessionTranscript.trim()) processTranscriptQueue();
 		if (editor) {
 			editor.dispatch({
