@@ -33,7 +33,7 @@ export function lastNonEmptyLine(text: string): string {
 }
 
 export const BACKSTOP_SHORT_MS = 1500;
-export const BACKSTOP_LONG_MS = 4000;
+export const BACKSTOP_LONG_MS = 9000; // mic run 3: pauses mid-sentence outran 4 s; words are already visible faded, so a fragment gains nothing from an early polish
 // Run 2 (mic): correct continues at 0.66-0.87 got the short wait and were cut mid-sentence.
 export const BACKSTOP_CONFIDENT = 0.5;
 
