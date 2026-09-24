@@ -13,16 +13,23 @@ Never run by pytest. Writes docs/model-migration/bundle-parity-<date>.json; exit
 """
 from __future__ import annotations
 
+import argparse
+import asyncio
+import json
+import os
+import sys
 from dataclasses import dataclass
+from datetime import date
 from math import ceil
+from pathlib import Path
 from statistics import median
 from typing import Any
 
-from rapid_reports_ai.dictation_triage import TriageDecision
-from rapid_reports_ai.scripts.bakeoff_stats import bootstrap_quantile_ci, quantile, rate
-from rapid_reports_ai.section_coverage import CoverageDecision
-from rapid_reports_ai.utterance_boundary import BoundaryDecision
-from rapid_reports_ai.utterance_bundle import BundleDecision, BundleState
+from rapid_reports_ai.dictation_triage import TriageDecision, TriageError, TriageState, get_triager
+from rapid_reports_ai.scripts.bakeoff_stats import bootstrap_quantile_ci, fmt_rate, quantile, rate
+from rapid_reports_ai.section_coverage import CoverageDecision, get_jev_coverage
+from rapid_reports_ai.utterance_boundary import BoundaryDecision, get_jev_boundary
+from rapid_reports_ai.utterance_bundle import BundleDecision, BundleState, get_jev_bundle
 
 CONFIDENT = 0.95
 LATENCY_LIMIT_MS = 500
@@ -130,3 +137,130 @@ def latency_gate(latencies: list[int], limit_ms: int = LATENCY_LIMIT_MS) -> dict
         "limit_ms": limit_ms,
         "pass": bool(latencies) and p95 < limit_ms,
     }
+
+
+# --- live runner ------------------------------------------------------------------
+
+FIXTURES = Path(__file__).resolve().parents[3] / "tests" / "fixtures"
+OUT_DIR = Path(__file__).resolve().parents[4] / "docs" / "model-migration"
+COMMAND_ACTIONS = ("delete_previous_utterance", "formatting_command")
+
+
+async def _ref_triage(c: dict) -> TriageDecision:
+    return await get_triager("jev").classify(TriageState(c["committed"], c["active"], c["utterance"], c["scan_type"]))
+
+
+async def _ref_boundary(c: dict) -> BoundaryDecision:
+    return await get_jev_boundary().classify(c["scan_type"], c["buffered"], c["chunk"], c["scratchpad_tail"], 0.0)
+
+
+async def _ref_coverage(c: dict) -> CoverageDecision:
+    return await get_jev_coverage().classify(c["scratchpad"], c["checklist"], c["scan_type"])
+
+
+KINDS = {
+    "triage": ("triage_utterances.jsonl", triage_state, _ref_triage, triage_units),
+    "boundary": ("boundary_cases.jsonl", boundary_state, _ref_boundary, standalone_units),
+    "coverage": ("coverage_cases.jsonl", coverage_state, _ref_coverage, coverage_units),
+}
+
+
+async def run_case(kind: str, c: dict, sem: asyncio.Semaphore, repeats: int) -> dict[str, Any]:
+    _, to_state, ref_fn, to_units = KINDS[kind]
+    state = to_state(c)
+    rec: dict[str, Any] = {"kind": kind, "id": c["id"], "error": None, "units": [], "bundle_latencies": []}
+    async with sem:
+        try:
+            ref = await ref_fn(c)
+            b = await get_jev_bundle().classify(state)
+            ref2 = await ref_fn(c)
+            extra = [(await get_jev_bundle().classify(state)).latency_ms for _ in range(repeats - 1)]
+        except TriageError as e:
+            rec["error"] = f"{type(e).__name__}: {e}"[:200]
+            return rec
+    rec["units"] = [u.__dict__ for u in to_units(c, ref, ref2, b)]
+    rec["bundle_latencies"] = [b.latency_ms, *extra]
+    rec["ref_latencies"] = [ref.latency_ms, ref2.latency_ms]
+    rec["n_questions"] = b.n_questions
+    rec["bundle_cost_usd"] = b.cost_usd
+    if kind == "boundary" and c["expected_boundary"] == "command":
+        rec["command_action"] = b.triage.action  # informational: commands are not a bundle question yet
+    return rec
+
+
+def summarise(recs: list[dict[str, Any]]) -> dict[str, Any]:
+    units = [Unit(**u) for r in recs for u in r["units"]]
+    questions = sorted({u.question for u in units})
+    per_q = {q: verdict([u for u in units if u.question == q]) for q in questions}
+    bundle_lat = [l for r in recs for l in r["bundle_latencies"]]
+    small = [l for r in recs if r.get("n_questions", 0) <= 8 for l in r["bundle_latencies"]]
+    large = [l for r in recs if r.get("n_questions", 0) > 8 for l in r["bundle_latencies"]]
+    ref_lat = {k: latency_gate([l for r in recs if r["kind"] == k for l in r.get("ref_latencies", [])])
+               for k in KINDS}
+    errors = [r for r in recs if r["error"]]
+    cmds = [r for r in recs if "command_action" in r]
+    gate = latency_gate(bundle_lat)
+    return {
+        "questions": per_q,
+        "latency": gate,
+        "latency_by_size": {"<=8 questions": latency_gate(small), ">8 questions": latency_gate(large)},
+        "ref_latency": ref_lat,
+        "errors": len(errors),
+        "commands_caught_by_action": rate(sum(r["command_action"] in COMMAND_ACTIONS for r in cmds), len(cmds)),
+        "bundle_cost_usd": round(sum(r.get("bundle_cost_usd") or 0.0 for r in recs), 8),
+        "pass": all(v["pass"] for v in per_q.values()) and gate["pass"] and not errors,
+    }
+
+
+def fmt(s: dict[str, Any]) -> str:
+    lines = [f"== bundle parity: {'PASS' if s['pass'] else 'FAIL'}  errors={s['errors']}  cost=${s['bundle_cost_usd']:.5f}"]
+    for q, v in s["questions"].items():
+        lines.append(
+            f"   {q:<22} {'PASS' if v['pass'] else 'FAIL'}  ref={fmt_rate(v['ref'])}  bundle={fmt_rate(v['bundle'])}  "
+            f"bundle-only={v['bundle_only_wrong']} ref-only={v['ref_only_wrong']} noise={v['noise_discordant']} "
+            f"allowed={v['allowed_net_loss']} confident-new={v['confident_new_wrong']}"
+        )
+    g = s["latency"]
+    lines.append(f"   latency (bundle)       {'PASS' if g['pass'] else 'FAIL'}  n={g['n']} p50={g['p50']}ms "
+                 f"p95={g['p95']}ms {g['p95_ci']} limit<{g['limit_ms']}ms")
+    for k, v in s["latency_by_size"].items():
+        lines.append(f"     {k:<20} n={v['n']} p50={v['p50']}ms p95={v['p95']}ms")
+    for k, v in s["ref_latency"].items():
+        lines.append(f"   latency (separate {k:<8}) n={v['n']} p50={v['p50']}ms p95={v['p95']}ms")
+    lines.append(f"   commands caught by action (info): {fmt_rate(s['commands_caught_by_action'])}")
+    return "\n".join(lines)
+
+
+async def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--repeats", type=int, default=2, help="bundle calls per fixture (accuracy uses the first)")
+    ap.add_argument("--concurrency", type=int, default=1, help="1 = one utterance at a time, as in the app")
+    args = ap.parse_args(sys.argv[1:])
+    if not os.environ.get("OPENROUTER_API_KEY"):
+        print("missing OPENROUTER_API_KEY", file=sys.stderr)
+        return 2
+    sem = asyncio.Semaphore(args.concurrency)
+    jobs = []
+    for kind, (fname, *_rest) in KINDS.items():
+        for c in (json.loads(l) for l in (FIXTURES / fname).read_text().splitlines() if l.strip()):
+            jobs.append(run_case(kind, c, sem, max(1, args.repeats)))
+    recs = await asyncio.gather(*jobs)
+    s = summarise(recs)
+    print(fmt(s))
+    print("\n-- bundle-only misses --")
+    for r in recs:
+        for u in r["units"]:
+            if u["ref_ok"] and not u["bundle_ok"]:
+                print(f"   {u['question']:<22} {u['case_id']:<24} bundle_conf={u['bundle_conf']:.2f}")
+    for r in recs:
+        if r["error"]:
+            print(f"   ERROR {r['kind']:<8} {r['id']:<14} {r['error']}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out = OUT_DIR / f"bundle-parity-{date.today().isoformat()}.json"
+    out.write_text(json.dumps({"summary": s, "records": recs}, indent=1))
+    print(f"\nwrote {out}")
+    return 0 if s["pass"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(asyncio.run(main()))
