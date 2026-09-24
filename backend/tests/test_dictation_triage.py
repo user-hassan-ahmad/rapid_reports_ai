@@ -160,13 +160,13 @@ class _FakeResult:
         self.output = output
 
 
-async def test_qwen_passes_reasoning_off_schema_and_maps_booleans():
+async def test_qwen_passes_reasoning_off_schema_and_maps_yes_no():
     captured = {}
 
     async def runner(**kwargs):
         captured.update(kwargs)
         return _FakeResult(
-            QwenTriageOutput(action="delete_previous_utterance", is_correction=True, needs_committed_edit=False)
+            QwenTriageOutput(action="delete_previous_utterance", is_correction="yes", needs_committed_edit="no")
         )
 
     triager = QwenTriager(runner=runner, model_name="qwen/qwen3.6-27b", api_key="ck")

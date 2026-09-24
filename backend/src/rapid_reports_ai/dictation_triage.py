@@ -183,12 +183,19 @@ class JevTriager:
 # --- Qwen candidate ---------------------------------------------------------------
 
 
+YesNo = Literal["yes", "no"]
+
+
 class QwenTriageOutput(BaseModel):
-    """Tiny typed schema: three fields, nothing that invites prose."""
+    """Tiny typed schema: three fields, nothing that invites prose.
+
+    The two signals are yes/no string literals, not JSON booleans: Groq's tool-call
+    validator rejects the "True"/"False" strings the model emits for bool fields
+    (seen on 11 of 48 fixtures in the first bake-off)."""
 
     action: TriageAction
-    is_correction: bool
-    needs_committed_edit: bool
+    is_correction: YesNo
+    needs_committed_edit: YesNo
 
 
 def _build_qwen_system_prompt() -> str:
@@ -201,8 +208,8 @@ def _build_qwen_system_prompt() -> str:
         lines.append(f"- {action}: {desc}")
     lines += [
         "",
-        "is_correction: true when " + TRIAGE_QUESTIONS["is_correction"]["instructions"].lower(),
-        "needs_committed_edit: true when " + TRIAGE_QUESTIONS["needs_committed_edit"]["instructions"].lower(),
+        "is_correction: yes when " + TRIAGE_QUESTIONS["is_correction"]["instructions"].lower() + " Otherwise no.",
+        "needs_committed_edit: yes when " + TRIAGE_QUESTIONS["needs_committed_edit"]["instructions"].lower() + " Otherwise no.",
         "",
         "Do not explain. Do not reason. Output the fields only.",
     ]
@@ -293,8 +300,8 @@ class QwenTriager:
             action=out.action,
             confidence=None,
             probabilities=None,
-            is_correction=1.0 if out.is_correction else 0.0,
-            needs_committed_edit=1.0 if out.needs_committed_edit else 0.0,
+            is_correction=1.0 if out.is_correction == "yes" else 0.0,
+            needs_committed_edit=1.0 if out.needs_committed_edit == "yes" else 0.0,
             latency_ms=latency_ms,
             input_tokens=None,
             cost_usd=None,
