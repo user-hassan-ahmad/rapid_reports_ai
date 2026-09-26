@@ -12,12 +12,13 @@ import {
 } from './decisionFirst';
 
 describe('joinSeparator', () => {
-	it('starts an empty scratchpad with nothing', () => expect(joinSeparator('', true)).toBe(''));
-	it('joins the open line with a space', () => expect(joinSeparator('there is a', true)).toBe(' '));
-	it('starts a new line when the last one is closed', () => expect(joinSeparator('No effusion.', false)).toBe('\n'));
-	it('never doubles a newline already there', () => expect(joinSeparator('No effusion.\n', false)).toBe(''));
-	it('does not glue onto a line that ended in a newline even if marked open', () =>
-		expect(joinSeparator('Lungs\n', true)).toBe(''));
+	it('starts an empty scratchpad with nothing', () => expect(joinSeparator('')).toBe(''));
+	it('continues the text with a space after a finished sentence', () =>
+		expect(joinSeparator('No effusion.')).toBe(' '));
+	it('continues an unfinished sentence with a space', () => expect(joinSeparator('there is a')).toBe(' '));
+	it('adds nothing after a newline (a command started the new line)', () =>
+		expect(joinSeparator('No effusion.\n')).toBe(''));
+	it('adds nothing after trailing whitespace', () => expect(joinSeparator('No effusion. ')).toBe(''));
 });
 
 describe('changedRange', () => {

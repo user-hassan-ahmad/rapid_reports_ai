@@ -402,7 +402,15 @@
 			const pend = editor.state.field(pendingField, false);
 			const hasPending = !!pend && pend.size > 0;
 			// New utterance starts on its own faded line; groups within one are space-joined.
-			const sep = docLength === 0 ? '' : hasPending ? ' ' : '\n';
+			// Decision-first continues the text instead, so a fast-append lands where it showed.
+			const sep =
+				docLength === 0
+					? ''
+					: decisionFirst()
+						? /\s$/.test(editor.state.doc.toString()) ? '' : ' '
+						: hasPending
+							? ' '
+							: '\n';
 			const to = docLength + sep.length + transcript.length;
 			isQwenWriting = true;
 			editor.dispatch({
@@ -770,7 +778,7 @@
 			let insert: string;
 			let closedBy: LineClosedBy | null = null;
 			if (route === 'fast_append') {
-				insert = joinSeparator(solid, lineOpen) + data.text;
+				insert = joinSeparator(solid) + data.text;
 				if (data.closes_line) closedBy = data.text.endsWith('\n') ? 'newline' : 'punctuation';
 			} else {
 				insert = solid ? data.insert : '';

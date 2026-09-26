@@ -69,10 +69,12 @@ export interface OutcomeEvent {
 	at: number;
 }
 
-/** What goes between the solid scratchpad and a fast-appended utterance. */
-export function joinSeparator(solid: string, lineOpen: boolean): string {
-	if (!solid || solid.endsWith('\n')) return '';
-	return lineOpen ? ' ' : '\n';
+/** What goes between the solid scratchpad and a fast-appended utterance. Dictation
+ *  continues the text: a finished sentence is not a new line (the open-line close only
+ *  tells Jev a statement ended). New lines come from commands, as the radiologist says them. */
+export function joinSeparator(solid: string): string {
+	if (!solid || /\s$/.test(solid)) return '';
+	return ' ';
 }
 
 /** The span of `after` that differs from `before` (common prefix/suffix trimmed),
