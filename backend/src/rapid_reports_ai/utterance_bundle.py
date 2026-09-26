@@ -58,6 +58,7 @@ class BundleDecision:
     n_questions: int
     input_tokens: Optional[int]
     cost_usd: Optional[float]
+    qset: str = QSET_VERSION  # the question-set wording this decision was asked with
 
 
 class JevBundle:
