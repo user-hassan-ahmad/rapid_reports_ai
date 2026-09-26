@@ -17,7 +17,7 @@ from typing import Literal
 
 from .dictation_triage_router import _FORMATTING_RULES, map_formatting
 from .jev_questions import FAST_APPEND_BANDS
-from .spoken_format import apply_spoken_format, heading_only, resolve_colon, starts_paragraph
+from .spoken_format import apply_spoken_format, ends_with_heading, heading_only, resolve_colon, starts_paragraph
 from .utterance_bundle import BundleDecision
 
 Route = Literal["fast_append", "command", "polish", "skip"]
@@ -128,7 +128,7 @@ def route_bundle(
         if colon_ambiguous:
             return polish("colon_ambiguous")  # organ or punctuation: the context does not say
         return RouteResult("fast_append", "append_confident", text, "", closes_line(text), on_silence,
-                           starts_paragraph=starts_paragraph(text))
+                           starts_paragraph=starts_paragraph(text) and not ends_with_heading(preceding))
     if t.action == "formatting_command":
         if confidence < b["command_act"]:
             return polish("command_low_confidence")

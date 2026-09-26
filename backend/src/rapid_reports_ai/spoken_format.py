@@ -126,3 +126,11 @@ def heading_only(text: str) -> str | None:
     if s in HEADINGS:
         return s[0].upper() + s[1:] + ":"
     return None
+
+
+_ENDS_WITH_HEADING = re.compile(r"(?:^|\n)\s*(?:" + _HEADING_RE + r")\s*:\s*$", _I)
+
+
+def ends_with_heading(preceding: str) -> bool:
+    """The scratchpad's last line is a bare heading ('Conclusion:'): what follows is its content."""
+    return bool(_ENDS_WITH_HEADING.search(preceding or ""))

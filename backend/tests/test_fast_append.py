@@ -241,3 +241,8 @@ def test_a_heading_opens_a_paragraph():
 
 def test_an_ordinary_finding_does_not():
     assert route_bundle(_bundle(), "The conus terminates at L1 with normal signal.").starts_paragraph is False
+
+
+def test_text_right_after_a_heading_stays_on_the_heading_line():
+    r = route_bundle(_bundle(), "L5 S1 left paracentral disc extrusion", preceding="Unremarkable.\n\nConclusion:")
+    assert (r.text, r.starts_paragraph) == ("L5/S1 left paracentral disc extrusion", False)
