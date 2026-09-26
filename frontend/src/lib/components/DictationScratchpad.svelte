@@ -16,6 +16,7 @@
 		REDICTATE_WINDOW_MS,
 		asrFields,
 		changedRange,
+		commandInsert,
 		hash8,
 		isRedictation,
 		joinSeparator,
@@ -787,7 +788,7 @@
 				insert = joinSeparator(solid) + data.text;
 				if (data.closes_line) closedBy = data.text.endsWith('\n') ? 'newline' : 'punctuation';
 			} else {
-				insert = solid ? data.insert : '';
+				insert = commandInsert(solid, data.insert);
 				closedBy = data.insert.includes('\n') ? 'newline' : 'punctuation';
 			}
 			isQwenWriting = true;

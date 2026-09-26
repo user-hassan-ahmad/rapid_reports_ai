@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	asrFields,
+	commandInsert,
 	buildSessionExport,
 	changedRange,
 	hash8,
@@ -112,4 +113,11 @@ describe('Deepgram confidence in the export', () => {
 		});
 		expect(asrFields({ transcript: 'x' })).toEqual({ asr_conf: null, asr_min_conf: null, asr_word_confs: null });
 	});
+});
+
+describe('commandInsert', () => {
+	it('adds a full stop to an unpunctuated line', () => expect(commandInsert('no effusion', '.')).toBe('.'));
+	it('never doubles a full stop', () => expect(commandInsert('No effusion.', '.')).toBe(''));
+	it('never starts an empty scratchpad with a command', () => expect(commandInsert('', '\n\n')).toBe(''));
+	it('passes newlines through', () => expect(commandInsert('No effusion.', '\n')).toBe('\n'));
 });

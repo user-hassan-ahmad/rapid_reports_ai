@@ -53,6 +53,21 @@ def is_filler_only(utterance: str) -> bool:
     return not clean_verbatim(utterance).strip() and not map_formatting(utterance)
 
 
+_BARE_MARK = re.compile(r"^\s*([.?!])\s*$")
+
+
+def code_route(utterance: str) -> "RouteResult | None":
+    """Utterances decided by code, Jev never asked. A final that is only a terminal mark
+    is a spoken "full stop" the websocket already converted (cleaning would drop it as
+    stray punctuation); filler-only finals are skipped. None: ask Jev."""
+    m = _BARE_MARK.match(utterance or "")
+    if m:
+        return RouteResult("command", "punctuation_mark", "", m.group(1), True, False)
+    if is_filler_only(utterance):
+        return RouteResult("skip", "empty_after_clean", "", "", False, False)
+    return None
+
+
 @dataclass(frozen=True)
 class RouteResult:
     route: Route
@@ -65,8 +80,9 @@ class RouteResult:
 
 def route_bundle(decision: BundleDecision | BaseException, utterance: str) -> RouteResult:
     text = clean_verbatim(utterance)
-    if is_filler_only(utterance):
-        return RouteResult("skip", "empty_after_clean", "", "", False, False)
+    pre = code_route(utterance)
+    if pre is not None:
+        return pre
     if isinstance(decision, BaseException):
         return RouteResult("polish", "jev_error", "", "", True, False)
 

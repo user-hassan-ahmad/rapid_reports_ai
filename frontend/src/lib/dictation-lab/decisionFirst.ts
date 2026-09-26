@@ -97,6 +97,14 @@ export function joinSeparator(solid: string): string {
 	return ' ';
 }
 
+/** What a command writes after the solid scratchpad: nothing into an empty one, and a
+ *  terminal mark only where the text does not already end with one. */
+export function commandInsert(solid: string, insert: string): string {
+	if (!solid) return '';
+	if (/^[.?!]$/.test(insert) && /[.?!]["')\]]*\s*$/.test(solid)) return '';
+	return insert;
+}
+
 /** The span of `after` that differs from `before` (common prefix/suffix trimmed),
  *  and the text of `before` it replaced. Used to attribute edits and undo a polish. */
 export function changedRange(before: string, after: string): { from: number; to: number; before: string } {

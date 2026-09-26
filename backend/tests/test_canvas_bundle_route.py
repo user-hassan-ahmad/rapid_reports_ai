@@ -150,3 +150,10 @@ def test_without_deepgram_confidence_the_log_says_so(authed_client, lab, caplog)
     line = next(r.getMessage() for r in caplog.records if "canvas.bundle.decision" in r.getMessage())
     p = json.loads(line.split(" ", 1)[1])
     assert (p["asr_conf"], p["asr_min_conf"], p["asr_n_words"]) == (None, None, None)
+
+
+def test_a_bare_full_stop_is_a_command_without_asking_jev(authed_client, lab):
+    fake = lab(FakeBundle())
+    d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": ". "}).json()
+    assert (d["route"], d["reason"], d["insert"]) == ("command", "punctuation_mark", ".")
+    assert fake.states == []

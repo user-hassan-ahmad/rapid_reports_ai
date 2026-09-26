@@ -145,3 +145,23 @@ def test_asr_confidence_is_numbers_only():
 @pytest.mark.parametrize("alt", [{}, {"words": []}, {"words": [{"word": "x"}]}, {"words": "bad"}])
 def test_asr_confidence_without_word_scores_is_none(alt):
     assert asr_confidence(alt) is None
+
+
+# --- a bare terminal mark (the websocket turns a spoken "full stop" into ".") ---------
+
+from rapid_reports_ai.fast_append import code_route  # noqa: E402
+
+
+@pytest.mark.parametrize("utt, mark", [(".", "."), (" . ", "."), ("?", "?"), ("!", "!")])
+def test_a_bare_terminal_mark_is_a_command_decided_by_code(utt, mark):
+    r = code_route(utt)
+    assert (r.route, r.reason, r.insert, r.closes_line) == ("command", "punctuation_mark", mark, True)
+
+
+def test_filler_only_is_also_decided_by_code():
+    assert code_route("um, uh").route == "skip"
+
+
+@pytest.mark.parametrize("utt", ["No effusion.", "new line", "full stop"])
+def test_everything_else_goes_to_jev(utt):
+    assert code_route(utt) is None

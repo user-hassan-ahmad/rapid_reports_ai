@@ -24,7 +24,7 @@ from .dictation_triage import (
 )
 from .dictation_triage_labels import agrees, derive_action
 from .dictation_triage_router import route as triage_route_decision
-from .fast_append import is_filler_only, route_bundle
+from .fast_append import code_route, route_bundle
 from .jev_questions import FAST_APPEND_BANDS, QSET_VERSION, ROUTE_THRESHOLD_DEFAULT
 from .utterance_bundle import BundleDecision, BundleState, get_jev_bundle
 from .utterance_boundary import BoundaryDecision, get_jev_boundary
@@ -1338,7 +1338,7 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
     decision_id = uuid.uuid4().hex[:12]
     d: BundleDecision | BaseException | None = None
     t0 = _time.perf_counter()
-    if not is_filler_only(request.latest_utterance):  # filler-only: decided by code, Jev never asked
+    if code_route(request.latest_utterance) is None:  # bare mark / filler: decided by code
         try:
             d = await get_jev_bundle().classify(BundleState(
                 scan_type=request.scan_type, committed=request.committed, active=request.active,
