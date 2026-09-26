@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from .dictation_triage import JEV_MODEL, JEV_TIMEOUT_S, TriageError, _check_unit
 from .jev_client import jev_post
-from .jev_questions import BINARY_THRESHOLD, COVERAGE_CRITERIA, coverage_questions  # noqa: F401
+from .jev_questions import BINARY_THRESHOLD, COVERAGE_CRITERIA, QSET_VERSION, coverage_questions  # noqa: F401
 
 Candidate = Literal["jev", "qwen"]
 @dataclass(frozen=True)
@@ -112,6 +112,7 @@ class CoverageCandidateTrace(BaseModel):
 
 class CoverageTrace(BaseModel):
     selected: Candidate
+    qset: str = QSET_VERSION
     jev: Optional[CoverageCandidateTrace] = None
     qwen: Optional[CoverageCandidateTrace] = None
 

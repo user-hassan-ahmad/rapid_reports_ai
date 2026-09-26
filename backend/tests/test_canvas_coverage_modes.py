@@ -2,11 +2,14 @@
 Both candidates and IntelliPrompts are faked; wiring is under test."""
 from __future__ import annotations
 
+import json
+import logging
 import uuid
 
 import pytest
 
 import rapid_reports_ai.canvas_routes as cr
+from rapid_reports_ai.jev_questions import QSET_VERSION
 from rapid_reports_ai.auth import get_current_user
 from rapid_reports_ai.database.models import User
 from rapid_reports_ai.dictation_triage import TriageError
@@ -145,3 +148,34 @@ def test_debug_field_ignored_without_flag(authed_client, fakes, monkeypatch):
     jev, _, _ = fakes
     body = _post(authed_client, coverage_debug=True).json()
     assert body.get("coverage") is None and jev.calls == 0
+
+
+def _coverage_lines(caplog):
+    return [json.loads(m.getMessage().split(" ", 1)[1]) for m in caplog.records
+            if m.getMessage().startswith("[canvas.coverage.decision]")]
+
+
+def test_jev_decision_logged_with_qset_and_scores(authed_client, fakes, monkeypatch, caplog):
+    monkeypatch.setenv("RR_COVERAGE_CANDIDATE", "jev")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    caplog.set_level(logging.INFO, logger="rapid_reports_ai.canvas_routes")
+    _post(authed_client)
+    lines = _coverage_lines(caplog)
+    assert len(lines) == 1
+    assert lines[0] == {"event": "canvas.coverage.decision", "qset": QSET_VERSION, "selected": "jev",
+                        "jev": {"LUNGS": 0.2, "PLEURA": 0.95, "MEDIASTINUM": 0.6}, "qwen": None,
+                        "latency_ms": {"jev": 300, "qwen": None}, "errors": {"jev": None, "qwen": None}}
+
+
+def test_default_qwen_logs_no_jev_decision(authed_client, fakes, monkeypatch, caplog):
+    monkeypatch.delenv("RR_COVERAGE_CANDIDATE", raising=False)
+    caplog.set_level(logging.INFO, logger="rapid_reports_ai.canvas_routes")
+    _post(authed_client)
+    assert _coverage_lines(caplog) == []
+
+
+def test_debug_trace_carries_qset(authed_client, fakes, monkeypatch):
+    monkeypatch.setenv("RR_TRIAGE_DEBUG", "1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    body = _post(authed_client, coverage_debug=True).json()
+    assert body["coverage"]["qset"] == QSET_VERSION

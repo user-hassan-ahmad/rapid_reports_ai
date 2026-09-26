@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from rapid_reports_ai.dictation_triage import JEV_MODEL, TRIAGE_QUESTIONS, TriageError
+from rapid_reports_ai.jev_questions import QSET_VERSION
 from rapid_reports_ai.section_coverage import coverage_questions
 from rapid_reports_ai.utterance_boundary import BOUNDARY_QUESTIONS
 from rapid_reports_ai.utterance_bundle import BundleState, JevBundle, bundle_questions
@@ -65,6 +66,7 @@ async def test_request_and_parse():
     assert d.standalone == 0.81
     assert d.coverage == {"LUNGS": 0.9, "PLEURA": 0.2}
     assert d.n_questions == 6 and d.cost_usd == 3.6e-05 and d.latency_ms >= 0
+    assert d.qset == QSET_VERSION
 
 
 async def test_missing_section_answer_raises():

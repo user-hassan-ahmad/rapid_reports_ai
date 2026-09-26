@@ -310,6 +310,7 @@ class TriageCandidateTrace(BaseModel):
 
 class TriageTrace(BaseModel):
     mode: Literal["debug", "route"]
+    qset: str = QSET_VERSION
     derived: Optional[str] = None
     routed: Optional[Literal["deterministic", "model"]] = None
     routed_by: Optional[Candidate] = None

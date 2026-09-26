@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
+import logging
 import uuid
 
 import pytest
 
 import rapid_reports_ai.canvas_routes as cr
+from rapid_reports_ai.jev_questions import QSET_VERSION
 from rapid_reports_ai.auth import get_current_user
 from rapid_reports_ai.database.models import User
 from rapid_reports_ai.dictation_triage import TriageError
@@ -87,3 +90,19 @@ def test_silence_forwarded(authed_client, monkeypatch):
     monkeypatch.setattr(cr, "get_jev_boundary", lambda: fake)
     authed_client.post("/api/canvas/utterance", json={**BODY, "silence_s": 5})
     assert fake.calls[0][4] == 5.0
+
+
+def test_decision_logged_with_qset_and_distributions(authed_client, monkeypatch, caplog):
+    monkeypatch.setenv("RR_TRIAGE_DEBUG", "1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    caplog.set_level(logging.INFO, logger="rapid_reports_ai.canvas_routes")
+    monkeypatch.setattr(cr, "get_jev_boundary", lambda: Fake("complete", 0.9))
+    body = authed_client.post("/api/canvas/utterance", json=BODY).json()
+    assert body["qset"] == QSET_VERSION
+    msgs = [m.getMessage() for m in caplog.records if m.getMessage().startswith("[canvas.utterance.decision]")]
+    assert len(msgs) == 1
+    d = json.loads(msgs[0].split(" ", 1)[1])
+    assert d["qset"] == QSET_VERSION and d["resolved"] == "complete"
+    assert d["probabilities"] == {"complete": 1.0} and d["standalone"] == 0.55 and d["asr_risk"] == 0.1
+    assert d["placement"] == "extend_previous_line" and d["chunk_len"] == len(BODY["chunk"])
+    assert BODY["chunk"] not in msgs[0] and BODY["buffered"] not in msgs[0]

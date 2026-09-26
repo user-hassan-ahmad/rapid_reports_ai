@@ -14,6 +14,7 @@ import uuid
 import pytest
 
 import rapid_reports_ai.canvas_routes as cr
+from rapid_reports_ai.jev_questions import QSET_VERSION
 from rapid_reports_ai.auth import get_current_user
 from rapid_reports_ai.database.models import User
 from rapid_reports_ai.dictation_triage import TriageDecision, TriageError, TriageState
@@ -58,7 +59,8 @@ class FakeTriager:
         return TriageDecision(
             candidate=self.name, action=self.action,
             confidence=self.confidence if self.name == "jev" else None,
-            probabilities=None, is_correction=0.9, needs_committed_edit=0.1,
+            probabilities={self.action: self.confidence, "ignore_noise": 1 - self.confidence} if self.name == "jev" else None,
+            is_correction=0.9, needs_committed_edit=0.1,
             latency_ms=5, input_tokens=None, cost_usd=None,
         )
 
@@ -132,6 +134,8 @@ def test_shadow_runs_both_and_logs_without_text(authed_client, fakes, live, monk
     assert payload["utterance_len"] == len(UTTERANCE)
     assert UTTERANCE not in records[0]
     assert ACTIVE not in records[0]
+    assert payload["qset"] == QSET_VERSION
+    assert payload["jev"]["probabilities"] == {"correct_previous_finding": 0.97, "ignore_noise": pytest.approx(0.03)}
 
 
 def test_shadow_jev_error_is_recorded_and_qwen_still_logged(authed_client, fakes, live, monkeypatch, caplog):
@@ -242,3 +246,47 @@ def test_fixtures_endpoint_gated(authed_client, monkeypatch):
     assert r.status_code == 200
     cases = r.json()["cases"]
     assert cases and {"id", "utterance", "expected_action"} <= set(cases[0])
+
+
+# --- decision log (D-10): version + full probabilities, never text ---------------
+
+def _decision_lines(caplog):
+    return [json.loads(m.getMessage().split(" ", 1)[1]) for m in caplog.records
+            if m.getMessage().startswith("[canvas.triage.decision]")]
+
+
+def test_debug_logs_decision_with_qset_and_probabilities(authed_client, fakes, live, monkeypatch, caplog):
+    monkeypatch.setenv("RR_TRIAGE_DEBUG", "1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    caplog.set_level(logging.INFO, logger="rapid_reports_ai.canvas_routes")
+    body = _post(authed_client, last_utterance=UTTERANCE, triage_debug=True).json()
+    assert body["triage"]["qset"] == QSET_VERSION
+    lines = _decision_lines(caplog)
+    assert len(lines) == 1
+    d = lines[0]
+    assert d["qset"] == QSET_VERSION and d["mode"] == "debug" and d["routed"] == "model"
+    assert d["jev"]["probabilities"]["correct_previous_finding"] == 0.97
+    assert d["utterance_len"] == len(UTTERANCE)
+    raw = [m.getMessage() for m in caplog.records if "canvas.triage.decision" in m.getMessage()][0]
+    assert UTTERANCE not in raw and ACTIVE not in raw
+
+
+def test_route_deterministic_logs_decision(authed_client, fakes, live, monkeypatch, caplog):
+    monkeypatch.setenv("RR_TRIAGE_DEBUG", "1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    caplog.set_level(logging.INFO, logger="rapid_reports_ai.canvas_routes")
+    jev, _ = fakes
+    jev.action = "delete_previous_utterance"
+    _post(authed_client, last_utterance="scratch that", scratchpad_content=ACTIVE + "\n- no pleural effusion",
+          triage_route={"candidate": "jev", "threshold": 0.9})
+    d = _decision_lines(caplog)[0]
+    assert d["routed"] == "deterministic" and d["qset"] == QSET_VERSION
+    assert d["jev"]["probabilities"]["delete_previous_utterance"] == 0.97
+
+
+def test_no_flags_logs_no_decision(authed_client, fakes, live, monkeypatch, caplog):
+    for k in ("RR_TRIAGE_DEBUG", "RR_TRIAGE_SHADOW"):
+        monkeypatch.delenv(k, raising=False)
+    caplog.set_level(logging.INFO, logger="rapid_reports_ai.canvas_routes")
+    _post(authed_client, last_utterance=UTTERANCE, triage_debug=True)
+    assert _decision_lines(caplog) == []

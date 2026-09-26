@@ -810,6 +810,7 @@ async def _shadow_triage(state: TriageState, before_active: str, output, increme
 
         payload = {
             "event": "canvas.triage.shadow",
+            "qset": QSET_VERSION,
             "mode": mode,
             "incremental": incremental,
             "utterance_len": len(state.latest_utterance),
@@ -876,6 +877,18 @@ async def _run_live_or_fallback(request: CanvasProcessRequest, incremental: bool
         return CanvasProcessResponse(scratchpad=request.scratchpad_content, covered_sections=[])
 
 
+def _log_triage_decision(trace: TriageTrace, state: TriageState) -> None:
+    """One JSON line per lab triage decision: question-set version, every candidate's
+    full distribution and nouls, never text (length + hash only)."""
+    payload = {
+        "event": "canvas.triage.decision",
+        **trace.model_dump(),
+        "utterance_len": len(state.latest_utterance),
+        "utterance_sha8": hashlib.sha256(state.latest_utterance.encode()).hexdigest()[:8],
+    }
+    logger.info("[canvas.triage.decision] %s", json.dumps(payload))
+
+
 def _deterministic_response(request: CanvasProcessRequest, incremental: bool, new_active: str, trace: TriageTrace):
     if incremental:
         return CanvasIncrementalResult(active_scratchpad=new_active, committed_edits=[], triage=trace)
@@ -920,6 +933,7 @@ async def process_transcript(
                     **{route_cfg.candidate: decision_to_trace(route_result)},
                 )
                 logger.info("[canvas.triage.route] deterministic %s by %s", route_result.action, route_cfg.candidate)
+                _log_triage_decision(trace, state)
                 return _deterministic_response(request, incremental, new_active, trace)
 
     # --- live call (+ debug candidates concurrently) ----------------------------
@@ -951,6 +965,7 @@ async def process_transcript(
             jev=decision_to_trace(candidate_results["jev"]) if "jev" in candidate_results else None,
             qwen=decision_to_trace(candidate_results["qwen"]) if "qwen" in candidate_results else None,
         )
+        _log_triage_decision(trace, state)
         return _with_trace(output, incremental, trace)
     elif state is not None and _triage_shadow_enabled():
         # BackgroundTasks: runs after the response is sent in production (zero added
@@ -1162,6 +1177,23 @@ async def review_scratchpad(
         logger.warning("[canvas.coverage] selected %s failed; serving %s", selected, other)
         chosen = secondary
 
+    by_name = {selected: primary, other: secondary}
+    if by_name.get("jev") is not None:
+        def _scores(r):
+            return r.scores if isinstance(r, CoverageDecision) else None
+
+        logger.info("[canvas.coverage.decision] %s", json.dumps({
+            "event": "canvas.coverage.decision",
+            "qset": QSET_VERSION,
+            "selected": selected,
+            "jev": _scores(by_name.get("jev")),
+            "qwen": _scores(by_name.get("qwen")),
+            "latency_ms": {k: (r.latency_ms if isinstance(r, CoverageDecision) else None)
+                           for k, r in (("jev", by_name.get("jev")), ("qwen", by_name.get("qwen")))},
+            "errors": {k: (type(r).__name__ if isinstance(r, BaseException) else None)
+                       for k, r in (("jev", by_name.get("jev")), ("qwen", by_name.get("qwen")))},
+        }))
+
     trace = None
     if debug:
         trace = CoverageTrace(
@@ -1203,6 +1235,7 @@ class UtteranceResponse(BaseModel):
     placement_raw: Optional[str] = None
     placement_confidence: Optional[float] = None
     standalone: Optional[float] = None
+    qset: str = QSET_VERSION
 
 
 @canvas_router.post("/utterance", response_model=UtteranceResponse)
@@ -1224,6 +1257,22 @@ async def classify_utterance(request: UtteranceRequest, current_user: User = Dep
     logger.info(
         "[canvas.utterance] %s (%s %.2f) asr=%.2f %dms", resolved, d.boundary, d.confidence, d.asr_risk, d.latency_ms
     )
+    logger.info("[canvas.utterance.decision] %s", json.dumps({
+        "event": "canvas.utterance.decision",
+        "qset": QSET_VERSION,
+        "resolved": resolved,
+        "boundary": d.boundary,
+        "confidence": d.confidence,
+        "probabilities": d.probabilities,
+        "standalone": d.standalone,
+        "asr_risk": d.asr_risk,
+        "placement": d.placement,
+        "placement_probabilities": d.placement_probabilities,
+        "silence_s": request.silence_s,
+        "chunk_len": len(request.chunk or ""),
+        "buffered_len": len(request.buffered or ""),
+        "latency_ms": d.latency_ms,
+    }))
     return UtteranceResponse(
         resolved=resolved, boundary=d.boundary, confidence=d.confidence, probabilities=d.probabilities,
         asr_risk=d.asr_risk, latency_ms=d.latency_ms, input_tokens=d.input_tokens, cost_usd=d.cost_usd,
