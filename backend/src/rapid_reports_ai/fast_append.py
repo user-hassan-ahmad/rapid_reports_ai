@@ -53,7 +53,8 @@ def is_filler_only(utterance: str) -> bool:
     return not clean_verbatim(utterance).strip() and not map_formatting(utterance)
 
 
-_BARE_MARK = re.compile(r"^\s*([.?!])\s*$")
+# Deepgram punctuates "Full stop." itself, so the websocket's conversion arrives as "..".
+_BARE_MARK = re.compile(r"^\s*([.?!])[.?!\s]*$")
 
 
 def code_route(utterance: str) -> "RouteResult | None":

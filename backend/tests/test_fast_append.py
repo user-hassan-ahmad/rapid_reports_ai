@@ -152,7 +152,7 @@ def test_asr_confidence_without_word_scores_is_none(alt):
 from rapid_reports_ai.fast_append import code_route  # noqa: E402
 
 
-@pytest.mark.parametrize("utt, mark", [(".", "."), (" . ", "."), ("?", "?"), ("!", "!")])
+@pytest.mark.parametrize("utt, mark", [(".", "."), (" . ", "."), ("?", "?"), ("!", "!"), ("..", "."), (". .", ".")])  # ".." = Deepgram's stop + ours
 def test_a_bare_terminal_mark_is_a_command_decided_by_code(utt, mark):
     r = code_route(utt)
     assert (r.route, r.reason, r.insert, r.closes_line) == ("command", "punctuation_mark", mark, True)

@@ -38,6 +38,15 @@ describe('re-dictation', () => {
 	it('does not match a different finding', () => {
 		expect(isRedictation(tokenSet('no pleural effusion'), tokenSet('the liver is normal'))).toBe(false);
 	});
+	it('matches the same line said again, extended', () => {
+		expect(isRedictation(tokenSet('There is no free fluid.'), tokenSet('There is no free fluid in the pelvis.'))).toBe(true);
+	});
+	it('does not match the other side (a word of the earlier line is missing)', () => {
+		expect(isRedictation(tokenSet('no left pleural effusion'), tokenSet('no right pleural effusion'))).toBe(false);
+	});
+	it('does not match on containment of a short line', () => {
+		expect(isRedictation(tokenSet('no fracture'), tokenSet('no fracture of the left femur is seen today'))).toBe(false);
+	});
 	it('ignores one-word utterances', () => {
 		expect(isRedictation(tokenSet('normal'), tokenSet('normal'))).toBe(false);
 	});

@@ -120,11 +120,17 @@ export function tokenSet(text: string): Set<string> {
 	return new Set((text.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter(Boolean));
 }
 
-/** A later utterance that says the affected line again (Jaccard over word tokens). */
+/** Every word of an earlier line of at least this many words reappearing counts too. */
+export const REDICTATE_CONTAIN_MIN_WORDS = 3;
+
+/** A later utterance that says the affected line again: word overlap (Jaccard) ≥ 0.7, or
+ *  the whole earlier line repeated inside a longer one ("no free fluid" → "no free fluid
+ *  in the pelvis"). The other side ("left" → "right") fails both: a word is missing. */
 export function isRedictation(prev: Set<string>, next: Set<string>): boolean {
 	if (Math.min(prev.size, next.size) < 2) return false;
 	let inter = 0;
 	for (const t of prev) if (next.has(t)) inter++;
+	if (inter === prev.size && prev.size >= REDICTATE_CONTAIN_MIN_WORDS) return true;
 	const union = prev.size + next.size - inter;
 	return union > 0 && inter / union >= REDICTATE_MIN_OVERLAP;
 }
