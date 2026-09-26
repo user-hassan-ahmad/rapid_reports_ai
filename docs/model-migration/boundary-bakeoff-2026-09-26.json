@@ -1,0 +1,2727 @@
+{
+ "summary": {
+  "n": 39,
+  "errors": 0,
+  "jev_raw": {
+   "k": 33,
+   "n": 39,
+   "p": 0.8461538461538461,
+   "ci95": [
+    0.7027,
+    0.9275
+   ]
+  },
+  "jev_resolved": {
+   "k": 33,
+   "n": 39,
+   "p": 0.8461538461538461,
+   "ci95": [
+    0.7027,
+    0.9275
+   ]
+  },
+  "code": {
+   "k": 35,
+   "n": 39,
+   "p": 0.8974358974358975,
+   "ci95": [
+    0.7642,
+    0.9594
+   ]
+  },
+  "by_class": {
+   "complete": {
+    "jev_raw": {
+     "k": 14,
+     "n": 17,
+     "p": 0.8235294117647058,
+     "ci95": [
+      0.5897,
+      0.9381
+     ]
+    },
+    "code": {
+     "k": 17,
+     "n": 17,
+     "p": 1.0,
+     "ci95": [
+      0.8157,
+      1.0
+     ]
+    }
+   },
+   "continues": {
+    "jev_raw": {
+     "k": 9,
+     "n": 12,
+     "p": 0.75,
+     "ci95": [
+      0.4677,
+      0.9111
+     ]
+    },
+    "code": {
+     "k": 8,
+     "n": 12,
+     "p": 0.6666666666666666,
+     "ci95": [
+      0.3906,
+      0.8619
+     ]
+    }
+   },
+   "command": {
+    "jev_raw": {
+     "k": 10,
+     "n": 10,
+     "p": 1.0,
+     "ci95": [
+      0.7225,
+      1.0
+     ]
+    },
+    "code": {
+     "k": 10,
+     "n": 10,
+     "p": 1.0,
+     "ci95": [
+      0.7225,
+      1.0
+     ]
+    }
+   }
+  },
+  "standalone_jev": {
+   "k": 21,
+   "n": 29,
+   "p": 0.7241379310344828,
+   "ci95": [
+    0.5428,
+    0.853
+   ]
+  },
+  "standalone_code": {
+   "k": 25,
+   "n": 29,
+   "p": 0.8620689655172413,
+   "ci95": [
+    0.6944,
+    0.945
+   ]
+  },
+  "latency_p50_ms": 247,
+  "latency_p95_ms": 324,
+  "latency_p95_ci_ms": [
+   282,
+   434
+  ],
+  "cost_usd": 0.00142573,
+  "qwen_lp_raw": {
+   "k": 29,
+   "n": 39,
+   "p": 0.7435897435897436,
+   "ci95": [
+    0.5892,
+    0.8543
+   ]
+  },
+  "calibration": [
+   {
+    "question": "boundary",
+    "kind": "choice",
+    "candidates": {
+     "jev": {
+      "n": 39,
+      "accuracy": {
+       "k": 33,
+       "n": 39,
+       "p": 0.8461538461538461,
+       "ci95": [
+        0.7027,
+        0.9275
+       ]
+      },
+      "brier": 0.2149641025641026,
+      "brier_ci": [
+       0.10583589743589744,
+       0.3383692307692308
+      ],
+      "ece": 0.13487179487179482,
+      "ece_ci": [
+       0.07487179487179488,
+       0.23564102564102563
+      ],
+      "reliability": [
+       {
+        "lo": 0.0,
+        "hi": 0.1,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.1,
+        "hi": 0.2,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.2,
+        "hi": 0.3,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.3,
+        "hi": 0.4,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.4,
+        "hi": 0.5,
+        "n": 1,
+        "mean_p": 0.45999999999999996,
+        "freq": 0.0
+       },
+       {
+        "lo": 0.5,
+        "hi": 0.6,
+        "n": 3,
+        "mean_p": 0.5566666666666666,
+        "freq": 1.0
+       },
+       {
+        "lo": 0.6,
+        "hi": 0.7,
+        "n": 2,
+        "mean_p": 0.645,
+        "freq": 1.0
+       },
+       {
+        "lo": 0.7,
+        "hi": 0.8,
+        "n": 7,
+        "mean_p": 0.74,
+        "freq": 0.5714285714285714
+       },
+       {
+        "lo": 0.8,
+        "hi": 0.9,
+        "n": 6,
+        "mean_p": 0.8366666666666666,
+        "freq": 0.6666666666666666
+       },
+       {
+        "lo": 0.9,
+        "hi": 1.0,
+        "n": 20,
+        "mean_p": 0.9720000000000001,
+        "freq": 1.0
+       }
+      ]
+     },
+     "qwen-lp": {
+      "n": 39,
+      "accuracy": {
+       "k": 29,
+       "n": 39,
+       "p": 0.7435897435897436,
+       "ci95": [
+        0.5892,
+        0.8543
+       ]
+      },
+      "brier": 0.3863568983342829,
+      "brier_ci": [
+       0.2029385569700378,
+       0.5895608252347211
+      ],
+      "ece": 0.1492433973721408,
+      "ece_ci": [
+       0.07939881060180257,
+       0.3095259085642673
+      ],
+      "reliability": [
+       {
+        "lo": 0.0,
+        "hi": 0.1,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.1,
+        "hi": 0.2,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.2,
+        "hi": 0.3,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.3,
+        "hi": 0.4,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.4,
+        "hi": 0.5,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.5,
+        "hi": 0.6,
+        "n": 4,
+        "mean_p": 0.5497843111132268,
+        "freq": 0.5
+       },
+       {
+        "lo": 0.6,
+        "hi": 0.7,
+        "n": 2,
+        "mean_p": 0.6429456748990858,
+        "freq": 1.0
+       },
+       {
+        "lo": 0.7,
+        "hi": 0.8,
+        "n": 4,
+        "mean_p": 0.7494657658248345,
+        "freq": 0.5
+       },
+       {
+        "lo": 0.8,
+        "hi": 0.9,
+        "n": 9,
+        "mean_p": 0.8434077826461688,
+        "freq": 0.7777777777777778
+       },
+       {
+        "lo": 0.9,
+        "hi": 1.0,
+        "n": 20,
+        "mean_p": 0.965935674787195,
+        "freq": 0.8
+       }
+      ]
+     }
+    },
+    "vs_jev": {
+     "qwen-lp": {
+      "brier_diff": 0.1713927957701803,
+      "brier_diff_ci": [
+       -0.025288020767830155,
+       0.36557605683413175
+      ],
+      "ece_diff": 0.01437160250034597,
+      "ece_diff_ci": [
+       -0.08897136732584243,
+       0.16497019808120827
+      ],
+      "verdict": "not shown"
+     }
+    }
+   },
+   {
+    "question": "standalone",
+    "kind": "noul",
+    "candidates": {
+     "jev": {
+      "n": 29,
+      "accuracy": {
+       "k": 21,
+       "n": 29,
+       "p": 0.7241379310344828,
+       "ci95": [
+        0.5428,
+        0.853
+       ]
+      },
+      "brier": 0.18634827586206895,
+      "brier_ci": [
+       0.1256620689655172,
+       0.2542758620689655
+      ],
+      "ece": 0.2596551724137931,
+      "ece_ci": [
+       0.1693103448275862,
+       0.39241379310344826
+      ],
+      "reliability": [
+       {
+        "lo": 0.0,
+        "hi": 0.1,
+        "n": 4,
+        "mean_p": 0.075,
+        "freq": 0.0
+       },
+       {
+        "lo": 0.1,
+        "hi": 0.2,
+        "n": 4,
+        "mean_p": 0.1275,
+        "freq": 0.0
+       },
+       {
+        "lo": 0.2,
+        "hi": 0.3,
+        "n": 3,
+        "mean_p": 0.24,
+        "freq": 0.6666666666666666
+       },
+       {
+        "lo": 0.3,
+        "hi": 0.4,
+        "n": 5,
+        "mean_p": 0.34,
+        "freq": 0.8
+       },
+       {
+        "lo": 0.4,
+        "hi": 0.5,
+        "n": 2,
+        "mean_p": 0.45499999999999996,
+        "freq": 0.5
+       },
+       {
+        "lo": 0.5,
+        "hi": 0.6,
+        "n": 6,
+        "mean_p": 0.5616666666666666,
+        "freq": 0.8333333333333334
+       },
+       {
+        "lo": 0.6,
+        "hi": 0.7,
+        "n": 3,
+        "mean_p": 0.6633333333333334,
+        "freq": 1.0
+       },
+       {
+        "lo": 0.7,
+        "hi": 0.8,
+        "n": 1,
+        "mean_p": 0.79,
+        "freq": 1.0
+       },
+       {
+        "lo": 0.8,
+        "hi": 0.9,
+        "n": 1,
+        "mean_p": 0.8,
+        "freq": 1.0
+       },
+       {
+        "lo": 0.9,
+        "hi": 1.0,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       }
+      ]
+     },
+     "qwen-lp": {
+      "n": 29,
+      "accuracy": {
+       "k": 23,
+       "n": 29,
+       "p": 0.7931034482758621,
+       "ci95": [
+        0.6161,
+        0.9015
+       ]
+      },
+      "brier": 0.1603425058456197,
+      "brier_ci": [
+       0.06382810823809225,
+       0.2751851383459391
+      ],
+      "ece": 0.17054644223026805,
+      "ece_ci": [
+       0.08965773592130592,
+       0.3207945916142217
+      ],
+      "reliability": [
+       {
+        "lo": 0.0,
+        "hi": 0.1,
+        "n": 10,
+        "mean_p": 0.009510907841257365,
+        "freq": 0.1
+       },
+       {
+        "lo": 0.1,
+        "hi": 0.2,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.2,
+        "hi": 0.3,
+        "n": 2,
+        "mean_p": 0.2466949638069782,
+        "freq": 1.0
+       },
+       {
+        "lo": 0.3,
+        "hi": 0.4,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.4,
+        "hi": 0.5,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.5,
+        "hi": 0.6,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.6,
+        "hi": 0.7,
+        "n": 2,
+        "mean_p": 0.6296641399680156,
+        "freq": 1.0
+       },
+       {
+        "lo": 0.7,
+        "hi": 0.8,
+        "n": 2,
+        "mean_p": 0.7384964693435023,
+        "freq": 0.5
+       },
+       {
+        "lo": 0.8,
+        "hi": 0.9,
+        "n": 3,
+        "mean_p": 0.8755747875416754,
+        "freq": 0.6666666666666666
+       },
+       {
+        "lo": 0.9,
+        "hi": 1.0,
+        "n": 10,
+        "mean_p": 0.9689956809328304,
+        "freq": 0.9
+       }
+      ]
+     }
+    },
+    "vs_jev": {
+     "qwen-lp": {
+      "brier_diff": -0.026005770016449242,
+      "brier_diff_ci": [
+       -0.12377489035714245,
+       0.08253690371321362
+      ],
+      "ece_diff": -0.08910873018352505,
+      "ece_diff_ci": [
+       -0.2370356250992895,
+       0.089092099304067
+      ],
+      "verdict": "not shown"
+     }
+    }
+   },
+   {
+    "question": "asr_risk",
+    "kind": "noul",
+    "candidates": {
+     "jev": {
+      "n": 39,
+      "accuracy": {
+       "k": 24,
+       "n": 39,
+       "p": 0.6153846153846154,
+       "ci95": [
+        0.459,
+        0.7511
+       ]
+      },
+      "brier": 0.23416410256410258,
+      "brier_ci": [
+       0.19389743589743588,
+       0.2707051282051282
+      ],
+      "ece": 0.4635897435897436,
+      "ece_ci": [
+       0.41743589743589743,
+       0.5066666666666667
+      ],
+      "reliability": [
+       {
+        "lo": 0.0,
+        "hi": 0.1,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.1,
+        "hi": 0.2,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.2,
+        "hi": 0.3,
+        "n": 3,
+        "mean_p": 0.25333333333333335,
+        "freq": 0.0
+       },
+       {
+        "lo": 0.3,
+        "hi": 0.4,
+        "n": 2,
+        "mean_p": 0.33499999999999996,
+        "freq": 0.0
+       },
+       {
+        "lo": 0.4,
+        "hi": 0.5,
+        "n": 15,
+        "mean_p": 0.4633333333333333,
+        "freq": 0.0
+       },
+       {
+        "lo": 0.5,
+        "hi": 0.6,
+        "n": 8,
+        "mean_p": 0.5549999999999999,
+        "freq": 0.0
+       },
+       {
+        "lo": 0.6,
+        "hi": 0.7,
+        "n": 7,
+        "mean_p": 0.6371428571428571,
+        "freq": 0.0
+       },
+       {
+        "lo": 0.7,
+        "hi": 0.8,
+        "n": 1,
+        "mean_p": 0.73,
+        "freq": 1.0
+       },
+       {
+        "lo": 0.8,
+        "hi": 0.9,
+        "n": 3,
+        "mean_p": 0.8233333333333334,
+        "freq": 1.0
+       },
+       {
+        "lo": 0.9,
+        "hi": 1.0,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       }
+      ]
+     },
+     "qwen-lp": {
+      "n": 39,
+      "accuracy": {
+       "k": 36,
+       "n": 39,
+       "p": 0.9230769230769231,
+       "ci95": [
+        0.7968,
+        0.9735
+       ]
+      },
+      "brier": 0.0601124756940609,
+      "brier_ci": [
+       0.030175719515478087,
+       0.09649440679871138
+      ],
+      "ece": 0.1422885177086042,
+      "ece_ci": [
+       0.10133912939938204,
+       0.20311300172710908
+      ],
+      "reliability": [
+       {
+        "lo": 0.0,
+        "hi": 0.1,
+        "n": 11,
+        "mean_p": 0.07339194287269774,
+        "freq": 0.0
+       },
+       {
+        "lo": 0.1,
+        "hi": 0.2,
+        "n": 14,
+        "mean_p": 0.15775091497902866,
+        "freq": 0.0
+       },
+       {
+        "lo": 0.2,
+        "hi": 0.3,
+        "n": 10,
+        "mean_p": 0.237569193433342,
+        "freq": 0.1
+       },
+       {
+        "lo": 0.3,
+        "hi": 0.4,
+        "n": 2,
+        "mean_p": 0.3432329382616724,
+        "freq": 0.5
+       },
+       {
+        "lo": 0.4,
+        "hi": 0.5,
+        "n": 1,
+        "mean_p": 0.46598335554926174,
+        "freq": 1.0
+       },
+       {
+        "lo": 0.5,
+        "hi": 0.6,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.6,
+        "hi": 0.7,
+        "n": 1,
+        "mean_p": 0.6898146929313257,
+        "freq": 1.0
+       },
+       {
+        "lo": 0.7,
+        "hi": 0.8,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.8,
+        "hi": 0.9,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       },
+       {
+        "lo": 0.9,
+        "hi": 1.0,
+        "n": 0,
+        "mean_p": null,
+        "freq": null
+       }
+      ]
+     }
+    },
+    "vs_jev": {
+     "qwen-lp": {
+      "brier_diff": -0.1740516268700417,
+      "brier_diff_ci": [
+       -0.23043239962750806,
+       -0.11000883039057154
+      ],
+      "ece_diff": -0.3213012258811394,
+      "ece_diff_ci": [
+       -0.37686523533099303,
+       -0.2323687499875214
+      ],
+      "verdict": "other better"
+     }
+    }
+   }
+  ]
+ },
+ "rows": [
+  {
+   "id": "cmp-01",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "there is abnormal nodular pleural thickening at the left base",
+   "scratchpad_tail": "Further satellite lesions noted in the left lower lobe.",
+   "expected_boundary": "complete",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "single-chunk finding",
+   "expected_placement": "new_paragraph",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.76,
+   "probabilities": {
+    "continues": 0.16,
+    "complete": 0.84,
+    "command": 0.0
+   },
+   "asr_risk": 0.49,
+   "standalone": 0.59,
+   "latency_ms": 263,
+   "cost_usd": 3.6918e-05,
+   "error": null,
+   "placement_raw": "new_line",
+   "placement": "new_line",
+   "placement_confidence": 0.53,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "complete",
+     "confidence": 0.7451617286080681,
+     "probabilities": {
+      "complete": 0.7451617286080681,
+      "continues": 0.2535285019395349,
+      "command": 0.001309769452397021
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.9764699002187793
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.21442895271683748
+    },
+    "latency_ms": 384
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmp-02",
+   "scan_type": "CT chest",
+   "buffered": "there is a 10 millimeter nodule",
+   "chunk": "in the right upper lobe which is spiculated in nature",
+   "scratchpad_tail": "",
+   "expected_boundary": "complete",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "buffer + closing chunk",
+   "expected_placement": "new_line",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.79,
+   "probabilities": {
+    "continues": 0.14,
+    "complete": 0.86,
+    "command": 0.0
+   },
+   "asr_risk": 0.35,
+   "standalone": 0.43,
+   "latency_ms": 307,
+   "cost_usd": 3.6876e-05,
+   "error": null,
+   "placement_raw": "extend_previous_line",
+   "placement": "new_line",
+   "placement_confidence": 0.32,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.7177817065131664,
+     "probabilities": {
+      "complete": 0.2810873633732869,
+      "continues": 0.7177817065131664,
+      "command": 0.0011309301135466313
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.9115850510752118
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.2067909368732563
+    },
+    "latency_ms": 262
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmp-03",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "the mediastinum is unremarkable",
+   "scratchpad_tail": "There is abnormal nodular pleural thickening at the left base.",
+   "expected_boundary": "complete",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "normality claim",
+   "expected_placement": "new_paragraph",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.97,
+   "probabilities": {
+    "complete": 0.98,
+    "continues": 0.02,
+    "command": 0.0
+   },
+   "asr_risk": 0.48,
+   "standalone": 0.64,
+   "latency_ms": 322,
+   "cost_usd": 3.6876e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_paragraph",
+   "placement_confidence": 0.88,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "complete",
+     "confidence": 0.8233055320648863,
+     "probabilities": {
+      "complete": 0.8233055320648863,
+      "continues": 0.17529186829089347,
+      "command": 0.0014025996442202375
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.9847145139151383
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.15980158581203868
+    },
+    "latency_ms": 324
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmp-04",
+   "scan_type": "CT chest",
+   "buffered": "further satellite lesions noted in the left lower lobe",
+   "chunk": "the largest measuring 8 mm in size",
+   "scratchpad_tail": "There is a 10 mm nodule in the right upper lobe.",
+   "expected_boundary": "complete",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "measurement closes",
+   "expected_placement": "new_line",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.67,
+   "probabilities": {
+    "complete": 0.78,
+    "continues": 0.22,
+    "command": 0.0
+   },
+   "asr_risk": 0.63,
+   "standalone": 0.34,
+   "latency_ms": 263,
+   "cost_usd": 3.7338e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_paragraph",
+   "placement_confidence": 0.7,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.9211791707244079,
+     "probabilities": {
+      "complete": 0.07680575838170013,
+      "continues": 0.9211791707244079,
+      "command": 0.002015070893891931
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.7167718749350184
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.2007656626190992
+    },
+    "latency_ms": 222
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmp-05",
+   "scan_type": "CT abdomen pelvis",
+   "buffered": "",
+   "chunk": "the liver is normal",
+   "scratchpad_tail": "",
+   "expected_boundary": "complete",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "short normality",
+   "expected_placement": "new_paragraph",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.96,
+   "probabilities": {
+    "continues": 0.03,
+    "complete": 0.97,
+    "command": 0.0
+   },
+   "asr_risk": 0.32,
+   "standalone": 0.8,
+   "latency_ms": 222,
+   "cost_usd": 3.612e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_paragraph",
+   "placement_confidence": 0.93,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "complete",
+     "confidence": 0.8160449932255236,
+     "probabilities": {
+      "complete": 0.8160449932255236,
+      "continues": 0.1820842473134687,
+      "command": 0.0018707594610077433
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.9963834455054045
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.13511585634199666
+    },
+    "latency_ms": 212
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmp-06",
+   "scan_type": "CT chest",
+   "buffered": "actually",
+   "chunk": "make that the left upper lobe",
+   "scratchpad_tail": "There is a 10 mm nodule in the right upper lobe.",
+   "expected_boundary": "complete",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "correction fully specified",
+   "expected_placement": "extend_previous_line",
+   "code": "complete",
+   "raw": "continues",
+   "resolved": "continues",
+   "confidence": 0.2,
+   "probabilities": {
+    "complete": 0.45,
+    "continues": 0.45999999999999996,
+    "command": 0.09
+   },
+   "asr_risk": 0.61,
+   "standalone": 0.55,
+   "latency_ms": 282,
+   "cost_usd": 3.6876e-05,
+   "error": null,
+   "placement_raw": "extend_previous_line",
+   "placement": "new_line",
+   "placement_confidence": 0.25,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.9152586502079998,
+     "probabilities": {
+      "complete": 0.07631210960353148,
+      "continues": 0.9152586502079998,
+      "command": 0.008429240188468707
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.6307140718089289
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.3269772696393569
+    },
+    "latency_ms": 185
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmp-07",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "no pleural effusion no pneumothorax",
+   "scratchpad_tail": "",
+   "expected_boundary": "complete",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "run-on negatives",
+   "expected_placement": "new_paragraph",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.91,
+   "probabilities": {
+    "command": 0.0,
+    "continues": 0.06,
+    "complete": 0.94
+   },
+   "asr_risk": 0.43,
+   "standalone": 0.57,
+   "latency_ms": 221,
+   "cost_usd": 3.6372e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_paragraph",
+   "placement_confidence": 0.62,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "complete",
+     "confidence": 0.6130778712118984,
+     "probabilities": {
+      "complete": 0.6130778712118984,
+      "continues": 0.38365432844682884,
+      "command": 0.003267800341272749
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.9875550931434075
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.14802741313347587
+    },
+    "latency_ms": 307
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmp-08",
+   "scan_type": "CT chest",
+   "buffered": "the adrenal glands",
+   "chunk": "are unremarkable as well as the remaining visualised upper abdominal viscera",
+   "scratchpad_tail": "Several mixed lytic and sclerotic lesions in the ribs.",
+   "expected_boundary": "complete",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "long closing chunk",
+   "expected_placement": "new_paragraph",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.92,
+   "probabilities": {
+    "continues": 0.05,
+    "command": 0.0,
+    "complete": 0.95
+   },
+   "asr_risk": 0.59,
+   "standalone": 0.55,
+   "latency_ms": 223,
+   "cost_usd": 3.7254e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_paragraph",
+   "placement_confidence": 0.66,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.5308687011520354,
+     "probabilities": {
+      "complete": 0.4684899844457785,
+      "continues": 0.5308687011520354,
+      "command": 0.000641314402186047
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.9554023449062571
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.2138302885937002
+    },
+    "latency_ms": 381
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmp-09",
+   "scan_type": "MRI lumbar spine",
+   "buffered": "",
+   "chunk": "L4 L5 disc bulge without nerve root compression",
+   "scratchpad_tail": "",
+   "expected_boundary": "complete",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "level + negative",
+   "expected_placement": "new_paragraph",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.97,
+   "probabilities": {
+    "command": 0.0,
+    "continues": 0.02,
+    "complete": 0.98
+   },
+   "asr_risk": 0.27,
+   "standalone": 0.79,
+   "latency_ms": 252,
+   "cost_usd": 3.6414e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_paragraph",
+   "placement_confidence": 0.67,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "complete",
+     "confidence": 0.7788383585271955,
+     "probabilities": {
+      "complete": 0.7788383585271955,
+      "continues": 0.2196814397515297,
+      "command": 0.0014802017212747884
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.9942305553555009
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.17205979790277295
+    },
+    "latency_ms": 194
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmp-10",
+   "scan_type": "CT chest",
+   "buffered": "several mixed lytic and sclerotic lesions in the ribs",
+   "chunk": "and upper thoracic spine",
+   "scratchpad_tail": "The mediastinum is unremarkable.",
+   "expected_boundary": "complete",
+   "expected_asr_risk": false,
+   "hard": true,
+   "note": "'and X' can close a list; placement relabelled after run 1 (ribs after mediastinum = new region)",
+   "expected_placement": "new_paragraph",
+   "code": "complete",
+   "raw": "continues",
+   "resolved": "continues",
+   "confidence": 0.57,
+   "probabilities": {
+    "command": 0.0,
+    "continues": 0.71,
+    "complete": 0.29
+   },
+   "asr_risk": 0.53,
+   "standalone": 0.21,
+   "latency_ms": 281,
+   "cost_usd": 3.7086e-05,
+   "error": null,
+   "placement_raw": "extend_previous_line",
+   "placement": "new_line",
+   "placement_confidence": 0.25,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.9413295861634685,
+     "probabilities": {
+      "complete": 0.05742147609732586,
+      "continues": 0.9413295861634685,
+      "command": 0.0012489377392056035
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.22394118781898578
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.19586912781469562
+    },
+    "latency_ms": 201
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmp-11",
+   "scan_type": "US abdomen",
+   "buffered": "",
+   "chunk": "gallbladder wall thickened with pericholecystic fluid",
+   "scratchpad_tail": "",
+   "expected_boundary": "complete",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "two features one claim",
+   "expected_placement": "new_paragraph",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.92,
+   "probabilities": {
+    "complete": 0.95,
+    "continues": 0.05,
+    "command": 0.0
+   },
+   "asr_risk": 0.23,
+   "standalone": 0.67,
+   "latency_ms": 227,
+   "cost_usd": 3.654e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_paragraph",
+   "placement_confidence": 0.72,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "complete",
+     "confidence": 0.5917412225960103,
+     "probabilities": {
+      "complete": 0.5917412225960103,
+      "continues": 0.4066973981089001,
+      "command": 0.0015613792950897106
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.983818220835641
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.2336867385324424
+    },
+    "latency_ms": 184
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmp-12",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "it was five millimetres on the prior now ten millimetres",
+   "scratchpad_tail": "There is a nodule in the right upper lobe.",
+   "expected_boundary": "complete",
+   "expected_asr_risk": false,
+   "hard": true,
+   "note": "temporal comparison is a whole statement",
+   "expected_placement": "extend_previous_line",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.4,
+   "probabilities": {
+    "continues": 0.4,
+    "complete": 0.6,
+    "command": 0.0
+   },
+   "asr_risk": 0.62,
+   "standalone": 0.31,
+   "latency_ms": 229,
+   "cost_usd": 3.696e-05,
+   "error": null,
+   "placement_raw": "extend_previous_line",
+   "placement": "extend_previous_line",
+   "placement_confidence": 0.97,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.5111170157499264,
+     "probabilities": {
+      "complete": 0.48771126351885846,
+      "continues": 0.5111170157499264,
+      "command": 0.001171720731215072
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.8707402329467934
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.26584488471644047
+    },
+    "latency_ms": 181
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cnt-01",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "there is a 10 millimeter nodule",
+   "scratchpad_tail": "",
+   "expected_boundary": "continues",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "noun phrase, location pending",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.57,
+   "probabilities": {
+    "continues": 0.29,
+    "command": 0.0,
+    "complete": 0.71
+   },
+   "asr_risk": 0.5,
+   "standalone": 0.48,
+   "latency_ms": 356,
+   "cost_usd": 3.633e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_paragraph",
+   "placement_confidence": 0.85,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.8089990859981947,
+     "probabilities": {
+      "complete": 0.1891750604203587,
+      "continues": 0.8089990859981947,
+      "command": 0.0018258535814466488
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.7602210637519862
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.18883033458047963
+    },
+    "latency_ms": 207
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cnt-02",
+   "scan_type": "CT chest",
+   "buffered": "there is a 10 millimeter nodule",
+   "chunk": "in the right upper lobe",
+   "scratchpad_tail": "",
+   "expected_boundary": "continues",
+   "expected_asr_risk": false,
+   "hard": true,
+   "note": "could close, but 'which is' followed in session; treat location-only as complete? No: pause pattern says more coming",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.71,
+   "probabilities": {
+    "complete": 0.81,
+    "continues": 0.19,
+    "command": 0.0
+   },
+   "asr_risk": 0.58,
+   "standalone": 0.32,
+   "latency_ms": 210,
+   "cost_usd": 3.6582e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_line",
+   "placement_confidence": 0.38,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.8307883929223443,
+     "probabilities": {
+      "complete": 0.1661681322973039,
+      "continues": 0.8307883929223443,
+      "command": 0.0030434747803518057
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.8574296964341784
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.15707960911989502
+    },
+    "latency_ms": 269
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cnt-03",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "further satellite lesions noted in the",
+   "scratchpad_tail": "There is a 10 mm nodule.",
+   "expected_boundary": "continues",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "ends on article",
+   "code": "continues",
+   "raw": "continues",
+   "resolved": "continues",
+   "confidence": 0.99,
+   "probabilities": {
+    "continues": 1.0,
+    "complete": 0.0,
+    "command": 0.0
+   },
+   "asr_risk": 0.64,
+   "standalone": 0.1,
+   "latency_ms": 240,
+   "cost_usd": 3.6582e-05,
+   "error": null,
+   "placement_raw": "new_line",
+   "placement": "new_line",
+   "placement_confidence": 0.63,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.9971496121590452,
+     "probabilities": {
+      "complete": 0.0022156060730682556,
+      "continues": 0.9971496121590452,
+      "command": 0.0006347817678866241
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.0029727380172703145
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.23725829444758134
+    },
+    "latency_ms": 195
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cnt-04",
+   "scan_type": "CT chest",
+   "buffered": "further satellite lesions noted in the",
+   "chunk": "left lower lobe the largest measuring",
+   "scratchpad_tail": "There is a 10 mm nodule.",
+   "expected_boundary": "continues",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "measurement unfinished",
+   "code": "continues",
+   "raw": "continues",
+   "resolved": "continues",
+   "confidence": 0.99,
+   "probabilities": {
+    "complete": 0.01,
+    "continues": 0.99,
+    "command": 0.0
+   },
+   "asr_risk": 0.67,
+   "standalone": 0.1,
+   "latency_ms": 246,
+   "cost_usd": 3.6876e-05,
+   "error": null,
+   "placement_raw": "extend_previous_line",
+   "placement": "new_line",
+   "placement_confidence": 0.49,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.9971801697392377,
+     "probabilities": {
+      "complete": 0.0013438737217329006,
+      "continues": 0.9971801697392377,
+      "command": 0.0014759565390294188
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.005145743952725373
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.2911008320103109
+    },
+    "latency_ms": 182
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cnt-05",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "the",
+   "scratchpad_tail": "There is abnormal nodular pleural thickening.",
+   "expected_boundary": "continues",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "single article",
+   "code": "continues",
+   "raw": "continues",
+   "resolved": "continues",
+   "confidence": 0.85,
+   "probabilities": {
+    "command": 0.0,
+    "continues": 0.9,
+    "complete": 0.1
+   },
+   "asr_risk": 0.49,
+   "standalone": 0.09,
+   "latency_ms": 273,
+   "cost_usd": 3.6372e-05,
+   "error": null,
+   "placement_raw": "extend_previous_line",
+   "placement": "new_line",
+   "placement_confidence": 0.25,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.9856908862088622,
+     "probabilities": {
+      "complete": 0.011122472163384247,
+      "continues": 0.9856908862088622,
+      "command": 0.003186641627753523
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.016620744175375266
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.07451703923289806
+    },
+    "latency_ms": 198
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cnt-06",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "several",
+   "scratchpad_tail": "The mediastinum is unremarkable.",
+   "expected_boundary": "continues",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "single quantifier",
+   "code": "continues",
+   "raw": "continues",
+   "resolved": "continues",
+   "confidence": 0.38,
+   "probabilities": {
+    "command": 0.06,
+    "complete": 0.35,
+    "continues": 0.59
+   },
+   "asr_risk": 0.62,
+   "standalone": 0.18,
+   "latency_ms": 220,
+   "cost_usd": 3.6372e-05,
+   "error": null,
+   "placement_raw": "new_line",
+   "placement": "new_line",
+   "placement_confidence": 0.27,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.990583362034025,
+     "probabilities": {
+      "complete": 0.007563196864050725,
+      "continues": 0.990583362034025,
+      "command": 0.0018534411019243413
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.008196363854367028
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.09027771210062596
+    },
+    "latency_ms": 190
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cnt-07",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "actually",
+   "scratchpad_tail": "There is a 10 mm nodule in the right upper lobe.",
+   "expected_boundary": "continues",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "correction opener",
+   "code": "continues",
+   "raw": "continues",
+   "resolved": "continues",
+   "confidence": 0.99,
+   "probabilities": {
+    "complete": 0.0,
+    "continues": 1.0,
+    "command": 0.0
+   },
+   "asr_risk": 0.44,
+   "standalone": 0.07,
+   "latency_ms": 268,
+   "cost_usd": 3.6582e-05,
+   "error": null,
+   "placement_raw": "extend_previous_line",
+   "placement": "new_line",
+   "placement_confidence": 0.29,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.9965853977077187,
+     "probabilities": {
+      "complete": 0.0009826126433424888,
+      "continues": 0.9965853977077187,
+      "command": 0.00243198964893886
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.012547612016961184
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.14507123475900088
+    },
+    "latency_ms": 183
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cnt-08",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "the adrenal glands",
+   "scratchpad_tail": "Several lesions in the ribs.",
+   "expected_boundary": "continues",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "subject without predicate",
+   "code": "complete",
+   "raw": "continues",
+   "resolved": "continues",
+   "confidence": 0.89,
+   "probabilities": {
+    "complete": 0.07,
+    "continues": 0.93,
+    "command": 0.0
+   },
+   "asr_risk": 0.45,
+   "standalone": 0.13,
+   "latency_ms": 296,
+   "cost_usd": 3.6246e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_paragraph",
+   "placement_confidence": 0.84,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.9848501218909892,
+     "probabilities": {
+      "complete": 0.012205229463761657,
+      "continues": 0.9848501218909892,
+      "command": 0.0029446486452492484
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.018810830634896147
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.18760530663411293
+    },
+    "latency_ms": 192
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cnt-09",
+   "scan_type": "CT abdomen pelvis",
+   "buffered": "there is a",
+   "chunk": "2 centimetre simple cyst in the",
+   "scratchpad_tail": "",
+   "expected_boundary": "continues",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "ends on preposition",
+   "code": "continues",
+   "raw": "continues",
+   "resolved": "continues",
+   "confidence": 1.0,
+   "probabilities": {
+    "continues": 1.0,
+    "command": 0.0,
+    "complete": 0.0
+   },
+   "asr_risk": 0.56,
+   "standalone": 0.24,
+   "latency_ms": 232,
+   "cost_usd": 3.6414e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_paragraph",
+   "placement_confidence": 0.76,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.995833516973425,
+     "probabilities": {
+      "complete": 0.002885881066224141,
+      "continues": 0.995833516973425,
+      "command": 0.0012806019603508812
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.00189229199932319
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.17497857524240068
+    },
+    "latency_ms": 217
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cnt-10",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "make that",
+   "scratchpad_tail": "There is a 10 mm nodule in the right upper lobe.",
+   "expected_boundary": "continues",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "correction without value",
+   "code": "continues",
+   "raw": "continues",
+   "resolved": "continues",
+   "confidence": 0.8,
+   "probabilities": {
+    "continues": 0.87,
+    "complete": 0.0,
+    "command": 0.13
+   },
+   "asr_risk": 0.59,
+   "standalone": 0.09,
+   "latency_ms": 220,
+   "cost_usd": 3.6624e-05,
+   "error": null,
+   "placement_raw": "extend_previous_line",
+   "placement": "new_line",
+   "placement_confidence": 0.42,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.9976861626255391,
+     "probabilities": {
+      "complete": 0.0005873930858437171,
+      "continues": 0.9976861626255391,
+      "command": 0.0017264442886171434
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.01586905573744078
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.10977605228224477
+    },
+    "latency_ms": 222
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cnt-11",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "there is abnormal nodular pleural thickening",
+   "scratchpad_tail": "Further satellite lesions noted in the left lower lobe.",
+   "expected_boundary": "continues",
+   "expected_asr_risk": false,
+   "hard": true,
+   "note": "grammatically complete but location typically follows; session showed 'at the left base' next",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.7,
+   "probabilities": {
+    "command": 0.0,
+    "complete": 0.8,
+    "continues": 0.2
+   },
+   "asr_risk": 0.46,
+   "standalone": 0.57,
+   "latency_ms": 233,
+   "cost_usd": 3.675e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_line",
+   "placement_confidence": 0.23,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.565410304954935,
+     "probabilities": {
+      "complete": 0.4335151185014617,
+      "continues": 0.565410304954935,
+      "command": 0.0010745765436032725
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.9090156479393368
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.23838079322027242
+    },
+    "latency_ms": 292
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cnt-12",
+   "scan_type": "MRI lumbar spine",
+   "buffered": "",
+   "chunk": "at L4 L5 there is",
+   "scratchpad_tail": "",
+   "expected_boundary": "continues",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "verb without object",
+   "code": "continues",
+   "raw": "continues",
+   "resolved": "continues",
+   "confidence": 1.0,
+   "probabilities": {
+    "continues": 1.0,
+    "complete": 0.0,
+    "command": 0.0
+   },
+   "asr_risk": 0.57,
+   "standalone": 0.05,
+   "latency_ms": 247,
+   "cost_usd": 3.6246e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_paragraph",
+   "placement_confidence": 0.58,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.9974352345273984,
+     "probabilities": {
+      "complete": 0.0019866247193570945,
+      "continues": 0.9974352345273984,
+      "command": 0.0005781407532445033
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.0033636483756527362
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.1195714813222723
+    },
+    "latency_ms": 180
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmd-01",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "scratch that",
+   "scratchpad_tail": "The heart size is normal.",
+   "expected_boundary": "command",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "delete",
+   "code": "command",
+   "raw": "command",
+   "resolved": "command",
+   "confidence": 0.94,
+   "probabilities": {
+    "continues": 0.02,
+    "complete": 0.01,
+    "command": 0.97
+   },
+   "asr_risk": 0.44,
+   "standalone": 0.14,
+   "latency_ms": 266,
+   "cost_usd": 3.6204e-05,
+   "error": null,
+   "placement_raw": "new_line",
+   "placement": "new_line",
+   "placement_confidence": 0.47,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "command",
+     "confidence": 0.9288951402384356,
+     "probabilities": {
+      "complete": 0.05846164530163437,
+      "continues": 0.012643214459930068,
+      "command": 0.9288951402384356
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.28881817364916595
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.12689312770168923
+    },
+    "latency_ms": 225
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmd-02",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "new paragraph",
+   "scratchpad_tail": "No pleural effusion.",
+   "expected_boundary": "command",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "formatting",
+   "code": "command",
+   "raw": "command",
+   "resolved": "command",
+   "confidence": 0.76,
+   "probabilities": {
+    "complete": 0.14,
+    "continues": 0.02,
+    "command": 0.84
+   },
+   "asr_risk": 0.48,
+   "standalone": 0.26,
+   "latency_ms": 232,
+   "cost_usd": 3.6246e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_line",
+   "placement_confidence": 0.34,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "command",
+     "confidence": 0.9682177199339196,
+     "probabilities": {
+      "complete": 0.019783176794002447,
+      "continues": 0.011999103272077965,
+      "command": 0.9682177199339196
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.09237197048730379
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.04852992138710695
+    },
+    "latency_ms": 174
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmd-03",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "new line",
+   "scratchpad_tail": "No pleural effusion.",
+   "expected_boundary": "command",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "formatting",
+   "code": "command",
+   "raw": "command",
+   "resolved": "command",
+   "confidence": 0.68,
+   "probabilities": {
+    "command": 0.78,
+    "continues": 0.02,
+    "complete": 0.2
+   },
+   "asr_risk": 0.49,
+   "standalone": 0.29,
+   "latency_ms": 228,
+   "cost_usd": 3.6246e-05,
+   "error": null,
+   "placement_raw": "new_line",
+   "placement": "new_line",
+   "placement_confidence": 0.5,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "command",
+     "confidence": 0.9430450171274597,
+     "probabilities": {
+      "complete": 0.028477491436270198,
+      "continues": 0.028477491436270198,
+      "command": 0.9430450171274597
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.1454148480008419
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.05589417965768371
+    },
+    "latency_ms": 169
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmd-04",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "generate report",
+   "scratchpad_tail": "No pleural effusion.",
+   "expected_boundary": "command",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "app command",
+   "code": "command",
+   "raw": "command",
+   "resolved": "command",
+   "confidence": 0.96,
+   "probabilities": {
+    "complete": 0.02,
+    "continues": 0.01,
+    "command": 0.97
+   },
+   "asr_risk": 0.48,
+   "standalone": 0.17,
+   "latency_ms": 244,
+   "cost_usd": 3.6246e-05,
+   "error": null,
+   "placement_raw": "new_line",
+   "placement": "new_line",
+   "placement_confidence": 0.31,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "command",
+     "confidence": 0.9674617451789315,
+     "probabilities": {
+      "complete": 0.0227525169057371,
+      "continues": 0.00978573791533139,
+      "command": 0.9674617451789315
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.03389187279955565
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.0631255960941019
+    },
+    "latency_ms": 262
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmd-05",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "delete that",
+   "scratchpad_tail": "The heart size is normal.",
+   "expected_boundary": "command",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "delete",
+   "code": "command",
+   "raw": "command",
+   "resolved": "command",
+   "confidence": 0.99,
+   "probabilities": {
+    "command": 1.0,
+    "continues": 0.0,
+    "complete": 0.0
+   },
+   "asr_risk": 0.43,
+   "standalone": 0.15,
+   "latency_ms": 434,
+   "cost_usd": 3.6204e-05,
+   "error": null,
+   "placement_raw": "new_line",
+   "placement": "new_line",
+   "placement_confidence": 0.3,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "command",
+     "confidence": 0.9209489358532846,
+     "probabilities": {
+      "complete": 0.04444065063329927,
+      "continues": 0.034610413513416205,
+      "command": 0.9209489358532846
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.2528627516872111
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.08152416571484722
+    },
+    "latency_ms": 223
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmd-06",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "full stop",
+   "scratchpad_tail": "No pleural effusion",
+   "expected_boundary": "command",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "punctuation",
+   "code": "command",
+   "raw": "command",
+   "resolved": "command",
+   "confidence": 0.63,
+   "probabilities": {
+    "command": 0.75,
+    "continues": 0.03,
+    "complete": 0.22
+   },
+   "asr_risk": 0.67,
+   "standalone": 0.27,
+   "latency_ms": 240,
+   "cost_usd": 3.6204e-05,
+   "error": null,
+   "placement_raw": "new_line",
+   "placement": "new_line",
+   "placement_confidence": 0.27,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "command",
+     "confidence": 0.9547588409768524,
+     "probabilities": {
+      "complete": 0.03588103245972512,
+      "continues": 0.00936012656342245,
+      "command": 0.9547588409768524
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.2339084607276419
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.09274365888365368
+    },
+    "latency_ms": 212
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmd-07",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "switch to structured mode",
+   "scratchpad_tail": "",
+   "expected_boundary": "command",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "mode switch",
+   "code": "command",
+   "raw": "command",
+   "resolved": "command",
+   "confidence": 1.0,
+   "probabilities": {
+    "command": 1.0,
+    "complete": 0.0,
+    "continues": 0.0
+   },
+   "asr_risk": 0.46,
+   "standalone": 0.05,
+   "latency_ms": 233,
+   "cost_usd": 3.6036e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_paragraph",
+   "placement_confidence": 0.81,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "command",
+     "confidence": 0.9602180784567695,
+     "probabilities": {
+      "complete": 0.02991650520883513,
+      "continues": 0.00986541633439542,
+      "command": 0.9602180784567695
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.05515639145778531
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.08953402837790564
+    },
+    "latency_ms": 233
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmd-08",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "undo that",
+   "scratchpad_tail": "The heart size is normal.",
+   "expected_boundary": "command",
+   "expected_asr_risk": false,
+   "hard": true,
+   "note": "undo phrasing",
+   "code": "command",
+   "raw": "command",
+   "resolved": "command",
+   "confidence": 0.97,
+   "probabilities": {
+    "complete": 0.01,
+    "command": 0.98,
+    "continues": 0.01
+   },
+   "asr_risk": 0.46,
+   "standalone": 0.13,
+   "latency_ms": 324,
+   "cost_usd": 3.6204e-05,
+   "error": null,
+   "placement_raw": "new_line",
+   "placement": "new_line",
+   "placement_confidence": 0.41,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "command",
+     "confidence": 0.6728134785862734,
+     "probabilities": {
+      "complete": 0.20842789869798814,
+      "continues": 0.11875862271573848,
+      "command": 0.6728134785862734
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.24777643555844808
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.08514285574895374
+    },
+    "latency_ms": 184
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmd-09",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "next paragraph",
+   "scratchpad_tail": "No pleural effusion.",
+   "expected_boundary": "command",
+   "expected_asr_risk": false,
+   "hard": true,
+   "note": "variant phrasing",
+   "code": "command",
+   "raw": "command",
+   "resolved": "command",
+   "confidence": 0.32,
+   "probabilities": {
+    "complete": 0.35,
+    "continues": 0.1,
+    "command": 0.55
+   },
+   "asr_risk": 0.47,
+   "standalone": 0.35,
+   "latency_ms": 258,
+   "cost_usd": 3.6246e-05,
+   "error": null,
+   "placement_raw": "new_line",
+   "placement": "new_line",
+   "placement_confidence": 0.35,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "command",
+     "confidence": 0.8937272854025676,
+     "probabilities": {
+      "complete": 0.06177665744664846,
+      "continues": 0.0444960571507839,
+      "command": 0.8937272854025676
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.04528493152559701
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.058011512196800605
+    },
+    "latency_ms": 428
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmd-10",
+   "scan_type": "CT chest",
+   "buffered": "",
+   "chunk": "strike that",
+   "scratchpad_tail": "The heart size is normal.",
+   "expected_boundary": "command",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "delete variant",
+   "code": "command",
+   "raw": "command",
+   "resolved": "command",
+   "confidence": 0.92,
+   "probabilities": {
+    "command": 0.95,
+    "continues": 0.04,
+    "complete": 0.01
+   },
+   "asr_risk": 0.52,
+   "standalone": 0.19,
+   "latency_ms": 236,
+   "cost_usd": 3.6204e-05,
+   "error": null,
+   "placement_raw": "new_line",
+   "placement": "new_line",
+   "placement_confidence": 0.38,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "command",
+     "confidence": 0.8188831982198574,
+     "probabilities": {
+      "complete": 0.11797130991225334,
+      "continues": 0.06314549186788924,
+      "command": 0.8188831982198574
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.23324324151558853
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.06801070220509768
+    },
+    "latency_ms": 175
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "asr-01",
+   "scan_type": "CT chest",
+   "buffered": "there is abnormal nodular pleural thickening",
+   "chunk": "at the white base",
+   "scratchpad_tail": "Further satellite lesions noted in the left lower lobe.",
+   "expected_boundary": "complete",
+   "expected_asr_risk": true,
+   "hard": true,
+   "note": "white base = left base; placement relabelled after run 1 (pleural finding after lung lesions)",
+   "expected_placement": "new_line",
+   "code": "complete",
+   "raw": "continues",
+   "resolved": "continues",
+   "confidence": 0.57,
+   "probabilities": {
+    "continues": 0.71,
+    "complete": 0.29,
+    "command": 0.0
+   },
+   "asr_risk": 0.8,
+   "standalone": 0.27,
+   "latency_ms": 253,
+   "cost_usd": 3.6918e-05,
+   "error": null,
+   "placement_raw": "new_line",
+   "placement": "new_line",
+   "placement_confidence": 0.07,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.8413344438947936,
+     "probabilities": {
+      "complete": 0.15563123017915026,
+      "continues": 0.8413344438947936,
+      "command": 0.0030343259260561936
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.26944873979497064
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.6898146929313257
+    },
+    "latency_ms": 249
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "asr-02",
+   "scan_type": "CT chest",
+   "buffered": "there is a 10 millimeter nodule in the right upper lobe",
+   "chunk": "which is speculated in nature",
+   "scratchpad_tail": "",
+   "expected_boundary": "complete",
+   "expected_asr_risk": true,
+   "hard": true,
+   "note": "speculated = spiculated",
+   "expected_placement": "extend_previous_line",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.53,
+   "probabilities": {
+    "continues": 0.31,
+    "complete": 0.69,
+    "command": 0.0
+   },
+   "asr_risk": 0.8,
+   "standalone": 0.39,
+   "latency_ms": 259,
+   "cost_usd": 3.6834e-05,
+   "error": null,
+   "placement_raw": "extend_previous_line",
+   "placement": "extend_previous_line",
+   "placement_confidence": 0.57,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.8919556577388771,
+     "probabilities": {
+      "complete": 0.10487732156938637,
+      "continues": 0.8919556577388771,
+      "command": 0.0031670206917365547
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.6286142081271023
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.35948860688398787
+    },
+    "latency_ms": 301
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "asr-03",
+   "scan_type": "CT abdomen pelvis",
+   "buffered": "",
+   "chunk": "there is a hepatic haemangioma in segment seven",
+   "scratchpad_tail": "",
+   "expected_boundary": "complete",
+   "expected_asr_risk": false,
+   "hard": false,
+   "note": "correct term, no risk",
+   "expected_placement": "new_paragraph",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.97,
+   "probabilities": {
+    "continues": 0.02,
+    "complete": 0.98,
+    "command": 0.0
+   },
+   "asr_risk": 0.26,
+   "standalone": 0.68,
+   "latency_ms": 215,
+   "cost_usd": 3.6456e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_paragraph",
+   "placement_confidence": 0.87,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "complete",
+     "confidence": 0.8656314543484736,
+     "probabilities": {
+      "complete": 0.8656314543484736,
+      "continues": 0.1327488968283256,
+      "command": 0.0016196488232008517
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.9907820364336266
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.1878333070593261
+    },
+    "latency_ms": 172
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "asr-04",
+   "scan_type": "CT head",
+   "buffered": "",
+   "chunk": "no acute intracranial hemorrhage or mass affect",
+   "scratchpad_tail": "",
+   "expected_boundary": "complete",
+   "expected_asr_risk": true,
+   "hard": true,
+   "note": "mass affect = mass effect",
+   "expected_placement": "new_paragraph",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.61,
+   "probabilities": {
+    "complete": 0.74,
+    "continues": 0.26,
+    "command": 0.0
+   },
+   "asr_risk": 0.73,
+   "standalone": 0.54,
+   "latency_ms": 273,
+   "cost_usd": 3.6414e-05,
+   "error": null,
+   "placement_raw": "new_paragraph",
+   "placement": "new_line",
+   "placement_confidence": 0.47,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.9544061470161289,
+     "probabilities": {
+      "complete": 0.04326479418503748,
+      "continues": 0.9544061470161289,
+      "command": 0.0023290587988336097
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.009690049648561627
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.27360455060347955
+    },
+    "latency_ms": 173
+   },
+   "qwen_lp_error": null
+  },
+  {
+   "id": "cmp-13",
+   "scan_type": "MRCP",
+   "buffered": "tery radical congestion and dilatation of the distal cbd actually all of the cbd to about",
+   "chunk": "11 millimeters",
+   "scratchpad_tail": "There is a 5 mm calculus impacted at the distal CBD.",
+   "expected_boundary": "complete",
+   "expected_asr_risk": true,
+   "expected_placement": "extend_previous_line",
+   "hard": true,
+   "note": "lab mic run 3: measurement closes the statement; Jev said continues 0.79. ASR: biliary heard as upstream/tery",
+   "code": "complete",
+   "raw": "complete",
+   "resolved": "complete",
+   "confidence": 0.3,
+   "probabilities": {
+    "complete": 0.53,
+    "continues": 0.47,
+    "command": 0.0
+   },
+   "asr_risk": 0.87,
+   "standalone": 0.34,
+   "latency_ms": 263,
+   "cost_usd": 3.7464e-05,
+   "error": null,
+   "placement_raw": "extend_previous_line",
+   "placement": "extend_previous_line",
+   "placement_confidence": 0.56,
+   "qwen_lp": {
+    "boundary": {
+     "type": "choice",
+     "choice": "continues",
+     "confidence": 0.756081269650908,
+     "probabilities": {
+      "complete": 0.24165808855935286,
+      "continues": 0.756081269650908,
+      "command": 0.0022606417897391325
+     }
+    },
+    "standalone": {
+     "type": "noul",
+     "noul": 0.8985544332440545
+    },
+    "asr_risk": {
+     "type": "noul",
+     "noul": 0.46598335554926174
+    },
+    "latency_ms": 203
+   },
+   "qwen_lp_error": null
+  }
+ ]
+}

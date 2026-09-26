@@ -1,0 +1,3247 @@
+{
+ "summary": {
+  "code": {
+   "n": 26,
+   "errors": 0,
+   "precision": 0.8928571428571429,
+   "recall": 0.5319148936170213,
+   "exact_set_accuracy": 0.5384615384615384,
+   "precision_rate": {
+    "k": 25,
+    "n": 28,
+    "p": 0.8928571428571429,
+    "ci95": [
+     0.728,
+     0.9629
+    ]
+   },
+   "recall_rate": {
+    "k": 25,
+    "n": 47,
+    "p": 0.5319148936170213,
+    "ci95": [
+     0.3923,
+     0.6667
+    ]
+   },
+   "exact_rate": {
+    "k": 14,
+    "n": 26,
+    "p": 0.5384615384615384,
+    "ci95": [
+     0.3546,
+     0.7124
+    ]
+   },
+   "latency_p95_ci_ms": [
+    0,
+    0
+   ],
+   "by_rule": {
+    "abbreviation": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "adjacent-structure": {
+     "n": 2,
+     "exact": 0.5
+    },
+    "bare-mention": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "collective-boundary": {
+     "n": 3,
+     "exact": 0.0
+    },
+    "collective-group": {
+     "n": 3,
+     "exact": 0.3333333333333333
+    },
+    "direct-location": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "direct-modifier": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "direct-subject": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "incidental-co-mention": {
+     "n": 2,
+     "exact": 0.0
+    },
+    "parent-not-enumerating": {
+     "n": 2,
+     "exact": 0.0
+    },
+    "specific-overrides-collective": {
+     "n": 2,
+     "exact": 0.0
+    },
+    "vague-filler": {
+     "n": 2,
+     "exact": 1.0
+    }
+   },
+   "hard": {
+    "n": 12,
+    "exact": 0.25
+   },
+   "latency_p50_ms": 0,
+   "latency_p95_ms": 0,
+   "cost_usd": 0.0,
+   "buckets": {}
+  },
+  "jev": {
+   "n": 26,
+   "errors": 0,
+   "precision": 0.9782608695652174,
+   "recall": 0.9574468085106383,
+   "exact_set_accuracy": 0.8846153846153846,
+   "precision_rate": {
+    "k": 45,
+    "n": 46,
+    "p": 0.9782608695652174,
+    "ci95": [
+     0.8866,
+     0.9962
+    ]
+   },
+   "recall_rate": {
+    "k": 45,
+    "n": 47,
+    "p": 0.9574468085106383,
+    "ci95": [
+     0.8575,
+     0.9883
+    ]
+   },
+   "exact_rate": {
+    "k": 23,
+    "n": 26,
+    "p": 0.8846153846153846,
+    "ci95": [
+     0.7102,
+     0.96
+    ]
+   },
+   "latency_p95_ci_ms": [
+    306,
+    410
+   ],
+   "by_rule": {
+    "abbreviation": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "adjacent-structure": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "bare-mention": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "collective-boundary": {
+     "n": 3,
+     "exact": 0.6666666666666666
+    },
+    "collective-group": {
+     "n": 3,
+     "exact": 0.6666666666666666
+    },
+    "direct-location": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "direct-modifier": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "direct-subject": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "incidental-co-mention": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "parent-not-enumerating": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "specific-overrides-collective": {
+     "n": 2,
+     "exact": 0.5
+    },
+    "vague-filler": {
+     "n": 2,
+     "exact": 1.0
+    }
+   },
+   "hard": {
+    "n": 12,
+    "exact": 0.8333333333333334
+   },
+   "latency_p50_ms": 260,
+   "latency_p95_ms": 347,
+   "cost_usd": 0.00142846,
+   "buckets": {
+    "<0.5": {
+     "n": 0,
+     "accuracy": 0.0
+    },
+    "0.5-0.8": {
+     "n": 22,
+     "accuracy": 0.8636363636363636
+    },
+    "0.8-0.95": {
+     "n": 25,
+     "accuracy": 1.0
+    },
+    ">=0.95": {
+     "n": 51,
+     "accuracy": 1.0
+    }
+   }
+  },
+  "qwen": {
+   "n": 26,
+   "errors": 0,
+   "precision": 0.9791666666666666,
+   "recall": 1.0,
+   "exact_set_accuracy": 0.9615384615384616,
+   "precision_rate": {
+    "k": 47,
+    "n": 48,
+    "p": 0.9791666666666666,
+    "ci95": [
+     0.891,
+     0.9963
+    ]
+   },
+   "recall_rate": {
+    "k": 47,
+    "n": 47,
+    "p": 1.0,
+    "ci95": [
+     0.9244,
+     1.0
+    ]
+   },
+   "exact_rate": {
+    "k": 25,
+    "n": 26,
+    "p": 0.9615384615384616,
+    "ci95": [
+     0.8111,
+     0.9932
+    ]
+   },
+   "latency_p95_ci_ms": [
+    981,
+    3093
+   ],
+   "by_rule": {
+    "abbreviation": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "adjacent-structure": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "bare-mention": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "collective-boundary": {
+     "n": 3,
+     "exact": 1.0
+    },
+    "collective-group": {
+     "n": 3,
+     "exact": 0.6666666666666666
+    },
+    "direct-location": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "direct-modifier": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "direct-subject": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "incidental-co-mention": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "parent-not-enumerating": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "specific-overrides-collective": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "vague-filler": {
+     "n": 2,
+     "exact": 1.0
+    }
+   },
+   "hard": {
+    "n": 12,
+    "exact": 0.9166666666666666
+   },
+   "latency_p50_ms": 802,
+   "latency_p95_ms": 1976,
+   "cost_usd": 0.0,
+   "buckets": {}
+  },
+  "qwen-lp": {
+   "n": 26,
+   "errors": 0,
+   "precision": 1.0,
+   "recall": 0.7021276595744681,
+   "exact_set_accuracy": 0.6538461538461539,
+   "precision_rate": {
+    "k": 33,
+    "n": 33,
+    "p": 1.0,
+    "ci95": [
+     0.8957,
+     1.0
+    ]
+   },
+   "recall_rate": {
+    "k": 33,
+    "n": 47,
+    "p": 0.7021276595744681,
+    "ci95": [
+     0.5602,
+     0.8135
+    ]
+   },
+   "exact_rate": {
+    "k": 17,
+    "n": 26,
+    "p": 0.6538461538461539,
+    "ci95": [
+     0.4622,
+     0.8059
+    ]
+   },
+   "latency_p95_ci_ms": [
+    294,
+    445
+   ],
+   "by_rule": {
+    "abbreviation": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "adjacent-structure": {
+     "n": 2,
+     "exact": 0.5
+    },
+    "bare-mention": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "collective-boundary": {
+     "n": 3,
+     "exact": 0.0
+    },
+    "collective-group": {
+     "n": 3,
+     "exact": 0.3333333333333333
+    },
+    "direct-location": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "direct-modifier": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "direct-subject": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "incidental-co-mention": {
+     "n": 2,
+     "exact": 1.0
+    },
+    "parent-not-enumerating": {
+     "n": 2,
+     "exact": 0.0
+    },
+    "specific-overrides-collective": {
+     "n": 2,
+     "exact": 0.5
+    },
+    "vague-filler": {
+     "n": 2,
+     "exact": 1.0
+    }
+   },
+   "hard": {
+    "n": 12,
+    "exact": 0.4166666666666667
+   },
+   "latency_p50_ms": 227,
+   "latency_p95_ms": 387,
+   "cost_usd": 0.0,
+   "buckets": {}
+  }
+ },
+ "calibration": {
+  "question": "coverage section",
+  "kind": "noul",
+  "candidates": {
+   "jev": {
+    "n": 98,
+    "accuracy": {
+     "k": 95,
+     "n": 98,
+     "p": 0.9693877551020408,
+     "ci95": [
+      0.9138,
+      0.9895
+     ]
+    },
+    "brier": 0.033325510204081636,
+    "brier_ci": [
+     0.014640206185567013,
+     0.0519875
+    ],
+    "ece": 0.09418367346938776,
+    "ece_ci": [
+     0.07127659574468086,
+     0.13587786259541984
+    ],
+    "reliability": [
+     {
+      "lo": 0.0,
+      "hi": 0.1,
+      "n": 35,
+      "mean_p": 0.03457142857142857,
+      "freq": 0.0
+     },
+     {
+      "lo": 0.1,
+      "hi": 0.2,
+      "n": 8,
+      "mean_p": 0.12,
+      "freq": 0.0
+     },
+     {
+      "lo": 0.2,
+      "hi": 0.3,
+      "n": 5,
+      "mean_p": 0.246,
+      "freq": 0.2
+     },
+     {
+      "lo": 0.3,
+      "hi": 0.4,
+      "n": 3,
+      "mean_p": 0.35333333333333333,
+      "freq": 0.0
+     },
+     {
+      "lo": 0.4,
+      "hi": 0.5,
+      "n": 1,
+      "mean_p": 0.49,
+      "freq": 1.0
+     },
+     {
+      "lo": 0.5,
+      "hi": 0.6,
+      "n": 2,
+      "mean_p": 0.575,
+      "freq": 0.5
+     },
+     {
+      "lo": 0.6,
+      "hi": 0.7,
+      "n": 4,
+      "mean_p": 0.6325000000000001,
+      "freq": 1.0
+     },
+     {
+      "lo": 0.7,
+      "hi": 0.8,
+      "n": 7,
+      "mean_p": 0.7628571428571428,
+      "freq": 1.0
+     },
+     {
+      "lo": 0.8,
+      "hi": 0.9,
+      "n": 6,
+      "mean_p": 0.8516666666666666,
+      "freq": 1.0
+     },
+     {
+      "lo": 0.9,
+      "hi": 1.0,
+      "n": 27,
+      "mean_p": 0.9596296296296296,
+      "freq": 1.0
+     }
+    ]
+   },
+   "qwen": {
+    "n": 98,
+    "accuracy": {
+     "k": 97,
+     "n": 98,
+     "p": 0.9897959183673469,
+     "ci95": [
+      0.9444,
+      0.9982
+     ]
+    },
+    "brier": 0.01020408163265306,
+    "brier_ci": [
+     0.0,
+     0.02564102564102564
+    ],
+    "ece": 0.01020408163265308,
+    "ece_ci": [
+     0.0,
+     0.025641025641025657
+    ],
+    "reliability": [
+     {
+      "lo": 0.0,
+      "hi": 0.1,
+      "n": 50,
+      "mean_p": 0.0,
+      "freq": 0.0
+     },
+     {
+      "lo": 0.1,
+      "hi": 0.2,
+      "n": 0,
+      "mean_p": null,
+      "freq": null
+     },
+     {
+      "lo": 0.2,
+      "hi": 0.3,
+      "n": 0,
+      "mean_p": null,
+      "freq": null
+     },
+     {
+      "lo": 0.3,
+      "hi": 0.4,
+      "n": 0,
+      "mean_p": null,
+      "freq": null
+     },
+     {
+      "lo": 0.4,
+      "hi": 0.5,
+      "n": 0,
+      "mean_p": null,
+      "freq": null
+     },
+     {
+      "lo": 0.5,
+      "hi": 0.6,
+      "n": 0,
+      "mean_p": null,
+      "freq": null
+     },
+     {
+      "lo": 0.6,
+      "hi": 0.7,
+      "n": 0,
+      "mean_p": null,
+      "freq": null
+     },
+     {
+      "lo": 0.7,
+      "hi": 0.8,
+      "n": 0,
+      "mean_p": null,
+      "freq": null
+     },
+     {
+      "lo": 0.8,
+      "hi": 0.9,
+      "n": 0,
+      "mean_p": null,
+      "freq": null
+     },
+     {
+      "lo": 0.9,
+      "hi": 1.0,
+      "n": 48,
+      "mean_p": 1.0,
+      "freq": 0.9791666666666666
+     }
+    ]
+   },
+   "qwen-lp": {
+    "n": 98,
+    "accuracy": {
+     "k": 84,
+     "n": 98,
+     "p": 0.8571428571428571,
+     "ci95": [
+      0.7744,
+      0.913
+     ]
+    },
+    "brier": 0.09141741409293994,
+    "brier_ci": [
+     0.04331553010748902,
+     0.15177286079402022
+    ],
+    "ece": 0.1494215301707696,
+    "ece_ci": [
+     0.08626283174446042,
+     0.23039613345619234
+    ],
+    "reliability": [
+     {
+      "lo": 0.0,
+      "hi": 0.1,
+      "n": 46,
+      "mean_p": 0.02294559284239955,
+      "freq": 0.0
+     },
+     {
+      "lo": 0.1,
+      "hi": 0.2,
+      "n": 7,
+      "mean_p": 0.14404574808466056,
+      "freq": 0.5714285714285714
+     },
+     {
+      "lo": 0.2,
+      "hi": 0.3,
+      "n": 4,
+      "mean_p": 0.258049778831836,
+      "freq": 0.75
+     },
+     {
+      "lo": 0.3,
+      "hi": 0.4,
+      "n": 1,
+      "mean_p": 0.32654783043632973,
+      "freq": 0.0
+     },
+     {
+      "lo": 0.4,
+      "hi": 0.5,
+      "n": 7,
+      "mean_p": 0.4487268186912193,
+      "freq": 1.0
+     },
+     {
+      "lo": 0.5,
+      "hi": 0.6,
+      "n": 8,
+      "mean_p": 0.5319496724128491,
+      "freq": 1.0
+     },
+     {
+      "lo": 0.6,
+      "hi": 0.7,
+      "n": 1,
+      "mean_p": 0.6859500521600846,
+      "freq": 1.0
+     },
+     {
+      "lo": 0.7,
+      "hi": 0.8,
+      "n": 0,
+      "mean_p": null,
+      "freq": null
+     },
+     {
+      "lo": 0.8,
+      "hi": 0.9,
+      "n": 0,
+      "mean_p": null,
+      "freq": null
+     },
+     {
+      "lo": 0.9,
+      "hi": 1.0,
+      "n": 24,
+      "mean_p": 0.9839825262595795,
+      "freq": 1.0
+     }
+    ]
+   }
+  },
+  "vs_jev": {
+   "qwen": {
+    "brier_diff": -0.023121428571428577,
+    "brier_diff_ci": [
+     -0.04696516853932584,
+     -0.006919999999999999
+    ],
+    "ece_diff": -0.08397959183673467,
+    "ece_diff_ci": [
+     -0.12908045977011492,
+     -0.06773809523809522
+    ],
+    "verdict": "other better"
+   },
+   "qwen-lp": {
+    "brier_diff": 0.0580919038888583,
+    "brier_diff_ci": [
+     0.018444877883857225,
+     0.10950953608043063
+    ],
+    "ece_diff": 0.05523785670138183,
+    "ece_diff_ci": [
+     -0.008594585008205771,
+     0.10466416219548749
+    ],
+    "verdict": "jev better"
+   }
+  }
+ },
+ "rows": [
+  {
+   "id": "ds-01",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "KIDNEYS",
+    "BOWEL"
+   ],
+   "expected": [
+    "LIVER"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "SPLEEN": 0.0,
+    "KIDNEYS": 0.0,
+    "BOWEL": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-subject",
+   "error": null
+  },
+  {
+   "id": "ds-01",
+   "candidate": "jev",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "KIDNEYS",
+    "BOWEL"
+   ],
+   "expected": [
+    "LIVER"
+   ],
+   "scores": {
+    "LIVER": 0.98,
+    "SPLEEN": 0.01,
+    "KIDNEYS": 0.01,
+    "BOWEL": 0.01
+   },
+   "latency_ms": 276,
+   "cost_usd": 5.649e-05,
+   "hard": false,
+   "rule": "direct-subject",
+   "error": null
+  },
+  {
+   "id": "ds-01",
+   "candidate": "qwen",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "KIDNEYS",
+    "BOWEL"
+   ],
+   "expected": [
+    "LIVER"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "SPLEEN": 0.0,
+    "KIDNEYS": 0.0,
+    "BOWEL": 0.0
+   },
+   "latency_ms": 448,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-subject",
+   "error": null
+  },
+  {
+   "id": "ds-01",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "KIDNEYS",
+    "BOWEL"
+   ],
+   "expected": [
+    "LIVER"
+   ],
+   "scores": {
+    "LIVER": 0.9990460357479015,
+    "SPLEEN": 0.007091053590745173,
+    "KIDNEYS": 0.004615462553503582,
+    "BOWEL": 0.005207874756372605
+   },
+   "latency_ms": 254,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-subject",
+   "error": null
+  },
+  {
+   "id": "ds-02",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM",
+    "HEART"
+   ],
+   "expected": [
+    "MEDIASTINUM",
+    "HEART"
+   ],
+   "scores": {
+    "LUNGS": 0.0,
+    "PLEURA": 0.0,
+    "MEDIASTINUM": 1.0,
+    "HEART": 1.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-subject",
+   "error": null
+  },
+  {
+   "id": "ds-02",
+   "candidate": "jev",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM",
+    "HEART"
+   ],
+   "expected": [
+    "MEDIASTINUM",
+    "HEART"
+   ],
+   "scores": {
+    "LUNGS": 0.02,
+    "PLEURA": 0.02,
+    "MEDIASTINUM": 0.98,
+    "HEART": 0.98
+   },
+   "latency_ms": 410,
+   "cost_usd": 5.712e-05,
+   "hard": false,
+   "rule": "direct-subject",
+   "error": null
+  },
+  {
+   "id": "ds-02",
+   "candidate": "qwen",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM",
+    "HEART"
+   ],
+   "expected": [
+    "MEDIASTINUM",
+    "HEART"
+   ],
+   "scores": {
+    "LUNGS": 0.0,
+    "PLEURA": 0.0,
+    "MEDIASTINUM": 1.0,
+    "HEART": 1.0
+   },
+   "latency_ms": 711,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-subject",
+   "error": null
+  },
+  {
+   "id": "ds-02",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM",
+    "HEART"
+   ],
+   "expected": [
+    "MEDIASTINUM",
+    "HEART"
+   ],
+   "scores": {
+    "LUNGS": 0.01171784929008392,
+    "PLEURA": 0.011543317378180701,
+    "MEDIASTINUM": 0.9976284338799364,
+    "HEART": 0.9957392034019426
+   },
+   "latency_ms": 294,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-subject",
+   "error": null
+  },
+  {
+   "id": "dl-01",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "KIDNEYS",
+    "PELVIS"
+   ],
+   "expected": [
+    "LIVER",
+    "PELVIS"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "SPLEEN": 0.0,
+    "KIDNEYS": 0.0,
+    "PELVIS": 1.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-location",
+   "error": null
+  },
+  {
+   "id": "dl-01",
+   "candidate": "jev",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "KIDNEYS",
+    "PELVIS"
+   ],
+   "expected": [
+    "LIVER",
+    "PELVIS"
+   ],
+   "scores": {
+    "LIVER": 0.98,
+    "SPLEEN": 0.02,
+    "KIDNEYS": 0.02,
+    "PELVIS": 0.95
+   },
+   "latency_ms": 253,
+   "cost_usd": 5.7204e-05,
+   "hard": false,
+   "rule": "direct-location",
+   "error": null
+  },
+  {
+   "id": "dl-01",
+   "candidate": "qwen",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "KIDNEYS",
+    "PELVIS"
+   ],
+   "expected": [
+    "LIVER",
+    "PELVIS"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "SPLEEN": 0.0,
+    "KIDNEYS": 0.0,
+    "PELVIS": 1.0
+   },
+   "latency_ms": 809,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-location",
+   "error": null
+  },
+  {
+   "id": "dl-01",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "KIDNEYS",
+    "PELVIS"
+   ],
+   "expected": [
+    "LIVER",
+    "PELVIS"
+   ],
+   "scores": {
+    "LIVER": 0.9973270752934422,
+    "SPLEEN": 0.00930121079124505,
+    "KIDNEYS": 0.0074566482429076165,
+    "PELVIS": 0.9917735142154268
+   },
+   "latency_ms": 191,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-location",
+   "error": null
+  },
+  {
+   "id": "dl-02",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "LUNGS": 1.0,
+    "PLEURA": 0.0,
+    "MEDIASTINUM": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-location",
+   "error": null
+  },
+  {
+   "id": "dl-02",
+   "candidate": "jev",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "LUNGS": 0.97,
+    "PLEURA": 0.02,
+    "MEDIASTINUM": 0.02
+   },
+   "latency_ms": 323,
+   "cost_usd": 4.641e-05,
+   "hard": false,
+   "rule": "direct-location",
+   "error": null
+  },
+  {
+   "id": "dl-02",
+   "candidate": "qwen",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "LUNGS": 1.0,
+    "PLEURA": 0.0,
+    "MEDIASTINUM": 0.0
+   },
+   "latency_ms": 744,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-location",
+   "error": null
+  },
+  {
+   "id": "dl-02",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "LUNGS": 0.9795109860156334,
+    "PLEURA": 0.008680065858001955,
+    "MEDIASTINUM": 0.004873280459163952
+   },
+   "latency_ms": 302,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-location",
+   "error": null
+  },
+  {
+   "id": "dm-01",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "scores": {
+    "LUNGS": 0.0,
+    "PLEURA": 1.0,
+    "MEDIASTINUM": 1.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-modifier",
+   "error": null
+  },
+  {
+   "id": "dm-01",
+   "candidate": "jev",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "scores": {
+    "LUNGS": 0.04,
+    "PLEURA": 0.97,
+    "MEDIASTINUM": 0.96
+   },
+   "latency_ms": 251,
+   "cost_usd": 4.6536e-05,
+   "hard": false,
+   "rule": "direct-modifier",
+   "error": null
+  },
+  {
+   "id": "dm-01",
+   "candidate": "qwen",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "scores": {
+    "LUNGS": 0.0,
+    "PLEURA": 1.0,
+    "MEDIASTINUM": 1.0
+   },
+   "latency_ms": 796,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-modifier",
+   "error": null
+  },
+  {
+   "id": "dm-01",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "scores": {
+    "LUNGS": 0.025338569984345062,
+    "PLEURA": 0.9930470271081543,
+    "MEDIASTINUM": 0.988959461439464
+   },
+   "latency_ms": 336,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "direct-modifier",
+   "error": null
+  },
+  {
+   "id": "dm-02",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "KIDNEYS",
+    "ADRENALS"
+   ],
+   "expected": [
+    "LIVER",
+    "KIDNEYS"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "KIDNEYS": 1.0,
+    "ADRENALS": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "direct-modifier",
+   "error": null
+  },
+  {
+   "id": "dm-02",
+   "candidate": "jev",
+   "checklist": [
+    "LIVER",
+    "KIDNEYS",
+    "ADRENALS"
+   ],
+   "expected": [
+    "LIVER",
+    "KIDNEYS"
+   ],
+   "scores": {
+    "LIVER": 0.96,
+    "KIDNEYS": 0.97,
+    "ADRENALS": 0.02
+   },
+   "latency_ms": 237,
+   "cost_usd": 4.5864e-05,
+   "hard": true,
+   "rule": "direct-modifier",
+   "error": null
+  },
+  {
+   "id": "dm-02",
+   "candidate": "qwen",
+   "checklist": [
+    "LIVER",
+    "KIDNEYS",
+    "ADRENALS"
+   ],
+   "expected": [
+    "LIVER",
+    "KIDNEYS"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "KIDNEYS": 1.0,
+    "ADRENALS": 0.0
+   },
+   "latency_ms": 728,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "direct-modifier",
+   "error": null
+  },
+  {
+   "id": "dm-02",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LIVER",
+    "KIDNEYS",
+    "ADRENALS"
+   ],
+   "expected": [
+    "LIVER",
+    "KIDNEYS"
+   ],
+   "scores": {
+    "LIVER": 0.9500560089596465,
+    "KIDNEYS": 0.9850085297223304,
+    "ADRENALS": 0.016417836228584202
+   },
+   "latency_ms": 251,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "direct-modifier",
+   "error": null
+  },
+  {
+   "id": "cg-01",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS",
+    "BOWEL"
+   ],
+   "expected": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS"
+   ],
+   "scores": {
+    "LIVER": 0.0,
+    "SPLEEN": 0.0,
+    "PANCREAS": 0.0,
+    "BOWEL": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "collective-group",
+   "error": null
+  },
+  {
+   "id": "cg-01",
+   "candidate": "jev",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS",
+    "BOWEL"
+   ],
+   "expected": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS"
+   ],
+   "scores": {
+    "LIVER": 0.9,
+    "SPLEEN": 0.87,
+    "PANCREAS": 0.74,
+    "BOWEL": 0.06
+   },
+   "latency_ms": 347,
+   "cost_usd": 5.6196e-05,
+   "hard": false,
+   "rule": "collective-group",
+   "error": null
+  },
+  {
+   "id": "cg-01",
+   "candidate": "qwen",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS",
+    "BOWEL"
+   ],
+   "expected": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "SPLEEN": 1.0,
+    "PANCREAS": 1.0,
+    "BOWEL": 0.0
+   },
+   "latency_ms": 981,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "collective-group",
+   "error": null
+  },
+  {
+   "id": "cg-01",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS",
+    "BOWEL"
+   ],
+   "expected": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS"
+   ],
+   "scores": {
+    "LIVER": 0.5178750805196785,
+    "SPLEEN": 0.46907368722735293,
+    "PANCREAS": 0.4448778658740557,
+    "BOWEL": 0.037171332842219434
+   },
+   "latency_ms": 387,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "collective-group",
+   "error": null
+  },
+  {
+   "id": "cg-02",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "BONES",
+    "CHEST WALL"
+   ],
+   "expected": [
+    "LUNGS",
+    "BONES",
+    "CHEST WALL"
+   ],
+   "scores": {
+    "LUNGS": 1.0,
+    "PLEURA": 0.0,
+    "BONES": 1.0,
+    "CHEST WALL": 1.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "collective-group",
+   "error": null
+  },
+  {
+   "id": "cg-02",
+   "candidate": "jev",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "BONES",
+    "CHEST WALL"
+   ],
+   "expected": [
+    "LUNGS",
+    "BONES",
+    "CHEST WALL"
+   ],
+   "scores": {
+    "LUNGS": 0.95,
+    "PLEURA": 0.03,
+    "BONES": 0.95,
+    "CHEST WALL": 0.94
+   },
+   "latency_ms": 225,
+   "cost_usd": 5.6532e-05,
+   "hard": false,
+   "rule": "collective-group",
+   "error": null
+  },
+  {
+   "id": "cg-02",
+   "candidate": "qwen",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "BONES",
+    "CHEST WALL"
+   ],
+   "expected": [
+    "LUNGS",
+    "BONES",
+    "CHEST WALL"
+   ],
+   "scores": {
+    "LUNGS": 1.0,
+    "PLEURA": 0.0,
+    "BONES": 1.0,
+    "CHEST WALL": 1.0
+   },
+   "latency_ms": 852,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "collective-group",
+   "error": null
+  },
+  {
+   "id": "cg-02",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "BONES",
+    "CHEST WALL"
+   ],
+   "expected": [
+    "LUNGS",
+    "BONES",
+    "CHEST WALL"
+   ],
+   "scores": {
+    "LUNGS": 0.9517177516023743,
+    "PLEURA": 0.010992320038131434,
+    "BONES": 0.9724345559830758,
+    "CHEST WALL": 0.9698992206015661
+   },
+   "latency_ms": 185,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "collective-group",
+   "error": null
+  },
+  {
+   "id": "cb-01",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "BOWEL",
+    "AORTA"
+   ],
+   "expected": [
+    "LIVER",
+    "SPLEEN"
+   ],
+   "scores": {
+    "LIVER": 0.0,
+    "SPLEEN": 0.0,
+    "BOWEL": 0.0,
+    "AORTA": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-boundary",
+   "error": null
+  },
+  {
+   "id": "cb-01",
+   "candidate": "jev",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "BOWEL",
+    "AORTA"
+   ],
+   "expected": [
+    "LIVER",
+    "SPLEEN"
+   ],
+   "scores": {
+    "LIVER": 0.87,
+    "SPLEEN": 0.87,
+    "BOWEL": 0.05,
+    "AORTA": 0.05
+   },
+   "latency_ms": 216,
+   "cost_usd": 5.6154e-05,
+   "hard": true,
+   "rule": "collective-boundary",
+   "error": null
+  },
+  {
+   "id": "cb-01",
+   "candidate": "qwen",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "BOWEL",
+    "AORTA"
+   ],
+   "expected": [
+    "LIVER",
+    "SPLEEN"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "SPLEEN": 1.0,
+    "BOWEL": 0.0,
+    "AORTA": 0.0
+   },
+   "latency_ms": 744,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-boundary",
+   "error": null
+  },
+  {
+   "id": "cb-01",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "BOWEL",
+    "AORTA"
+   ],
+   "expected": [
+    "LIVER",
+    "SPLEEN"
+   ],
+   "scores": {
+    "LIVER": 0.5335223303438494,
+    "SPLEEN": 0.4348061001774659,
+    "BOWEL": 0.02874760742260981,
+    "AORTA": 0.03976671413751083
+   },
+   "latency_ms": 191,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-boundary",
+   "error": null
+  },
+  {
+   "id": "cb-02",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM",
+    "UPPER ABDOMEN"
+   ],
+   "expected": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "scores": {
+    "LUNGS": 0.0,
+    "PLEURA": 0.0,
+    "MEDIASTINUM": 0.0,
+    "UPPER ABDOMEN": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-boundary",
+   "error": null
+  },
+  {
+   "id": "cb-02",
+   "candidate": "jev",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM",
+    "UPPER ABDOMEN"
+   ],
+   "expected": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "scores": {
+    "LUNGS": 0.57,
+    "PLEURA": 0.49,
+    "MEDIASTINUM": 0.62,
+    "UPPER ABDOMEN": 0.1
+   },
+   "latency_ms": 292,
+   "cost_usd": 5.838e-05,
+   "hard": true,
+   "rule": "collective-boundary",
+   "error": null
+  },
+  {
+   "id": "cb-02",
+   "candidate": "qwen",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM",
+    "UPPER ABDOMEN"
+   ],
+   "expected": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "scores": {
+    "LUNGS": 1.0,
+    "PLEURA": 1.0,
+    "MEDIASTINUM": 1.0,
+    "UPPER ABDOMEN": 0.0
+   },
+   "latency_ms": 969,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-boundary",
+   "error": null
+  },
+  {
+   "id": "cb-02",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM",
+    "UPPER ABDOMEN"
+   ],
+   "expected": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "scores": {
+    "LUNGS": 0.13939819463392975,
+    "PLEURA": 0.12488880798496217,
+    "MEDIASTINUM": 0.1266681850170148,
+    "UPPER ABDOMEN": 0.026459863942248286
+   },
+   "latency_ms": 188,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-boundary",
+   "error": null
+  },
+  {
+   "id": "cb-03",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "KIDNEYS",
+    "LYMPH NODES",
+    "BONES"
+   ],
+   "expected": [
+    "LIVER",
+    "KIDNEYS"
+   ],
+   "scores": {
+    "LIVER": 0.0,
+    "KIDNEYS": 0.0,
+    "LYMPH NODES": 0.0,
+    "BONES": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-boundary",
+   "error": null
+  },
+  {
+   "id": "cb-03",
+   "candidate": "jev",
+   "checklist": [
+    "LIVER",
+    "KIDNEYS",
+    "LYMPH NODES",
+    "BONES"
+   ],
+   "expected": [
+    "LIVER",
+    "KIDNEYS"
+   ],
+   "scores": {
+    "LIVER": 0.78,
+    "KIDNEYS": 0.6,
+    "LYMPH NODES": 0.16,
+    "BONES": 0.07
+   },
+   "latency_ms": 237,
+   "cost_usd": 5.6952e-05,
+   "hard": true,
+   "rule": "collective-boundary",
+   "error": null
+  },
+  {
+   "id": "cb-03",
+   "candidate": "qwen",
+   "checklist": [
+    "LIVER",
+    "KIDNEYS",
+    "LYMPH NODES",
+    "BONES"
+   ],
+   "expected": [
+    "LIVER",
+    "KIDNEYS"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "KIDNEYS": 1.0,
+    "LYMPH NODES": 0.0,
+    "BONES": 0.0
+   },
+   "latency_ms": 1065,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-boundary",
+   "error": null
+  },
+  {
+   "id": "cb-03",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LIVER",
+    "KIDNEYS",
+    "LYMPH NODES",
+    "BONES"
+   ],
+   "expected": [
+    "LIVER",
+    "KIDNEYS"
+   ],
+   "scores": {
+    "LIVER": 0.2101048401731559,
+    "KIDNEYS": 0.12908332437513192,
+    "LYMPH NODES": 0.027111569201040964,
+    "BONES": 0.018872162135601705
+   },
+   "latency_ms": 216,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-boundary",
+   "error": null
+  },
+  {
+   "id": "so-01",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS"
+   ],
+   "expected": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "SPLEEN": 0.0,
+    "PANCREAS": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "specific-overrides-collective",
+   "error": null
+  },
+  {
+   "id": "so-01",
+   "candidate": "jev",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS"
+   ],
+   "expected": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS"
+   ],
+   "scores": {
+    "LIVER": 0.98,
+    "SPLEEN": 0.84,
+    "PANCREAS": 0.84
+   },
+   "latency_ms": 223,
+   "cost_usd": 4.557e-05,
+   "hard": false,
+   "rule": "specific-overrides-collective",
+   "error": null
+  },
+  {
+   "id": "so-01",
+   "candidate": "qwen",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS"
+   ],
+   "expected": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "SPLEEN": 1.0,
+    "PANCREAS": 1.0
+   },
+   "latency_ms": 895,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "specific-overrides-collective",
+   "error": null
+  },
+  {
+   "id": "so-01",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS"
+   ],
+   "expected": [
+    "LIVER",
+    "SPLEEN",
+    "PANCREAS"
+   ],
+   "scores": {
+    "LIVER": 0.990182830565398,
+    "SPLEEN": 0.5937415377807149,
+    "PANCREAS": 0.5307539420112554
+   },
+   "latency_ms": 181,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "specific-overrides-collective",
+   "error": null
+  },
+  {
+   "id": "so-02",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "scores": {
+    "LUNGS": 0.0,
+    "PLEURA": 1.0,
+    "MEDIASTINUM": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "specific-overrides-collective",
+   "error": null
+  },
+  {
+   "id": "so-02",
+   "candidate": "jev",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "scores": {
+    "LUNGS": 0.25,
+    "PLEURA": 0.97,
+    "MEDIASTINUM": 0.72
+   },
+   "latency_ms": 240,
+   "cost_usd": 4.6494e-05,
+   "hard": false,
+   "rule": "specific-overrides-collective",
+   "error": null
+  },
+  {
+   "id": "so-02",
+   "candidate": "qwen",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "scores": {
+    "LUNGS": 1.0,
+    "PLEURA": 1.0,
+    "MEDIASTINUM": 1.0
+   },
+   "latency_ms": 1976,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "specific-overrides-collective",
+   "error": null
+  },
+  {
+   "id": "so-02",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "scores": {
+    "LUNGS": 0.29933384652057166,
+    "PLEURA": 0.9754840957370987,
+    "MEDIASTINUM": 0.2766107275350842
+   },
+   "latency_ms": 258,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "specific-overrides-collective",
+   "error": null
+  },
+  {
+   "id": "bm-01",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "GALLBLADDER",
+    "PANCREAS"
+   ],
+   "expected": [
+    "PANCREAS"
+   ],
+   "scores": {
+    "LIVER": 0.0,
+    "GALLBLADDER": 0.0,
+    "PANCREAS": 1.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "bare-mention",
+   "error": null
+  },
+  {
+   "id": "bm-01",
+   "candidate": "jev",
+   "checklist": [
+    "LIVER",
+    "GALLBLADDER",
+    "PANCREAS"
+   ],
+   "expected": [
+    "PANCREAS"
+   ],
+   "scores": {
+    "LIVER": 0.02,
+    "GALLBLADDER": 0.07,
+    "PANCREAS": 0.97
+   },
+   "latency_ms": 276,
+   "cost_usd": 4.6032e-05,
+   "hard": false,
+   "rule": "bare-mention",
+   "error": null
+  },
+  {
+   "id": "bm-01",
+   "candidate": "qwen",
+   "checklist": [
+    "LIVER",
+    "GALLBLADDER",
+    "PANCREAS"
+   ],
+   "expected": [
+    "PANCREAS"
+   ],
+   "scores": {
+    "LIVER": 0.0,
+    "GALLBLADDER": 0.0,
+    "PANCREAS": 1.0
+   },
+   "latency_ms": 820,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "bare-mention",
+   "error": null
+  },
+  {
+   "id": "bm-01",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LIVER",
+    "GALLBLADDER",
+    "PANCREAS"
+   ],
+   "expected": [
+    "PANCREAS"
+   ],
+   "scores": {
+    "LIVER": 0.02313687528029094,
+    "GALLBLADDER": 0.16590577601317077,
+    "PANCREAS": 0.9940143172347057
+   },
+   "latency_ms": 182,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "bare-mention",
+   "error": null
+  },
+  {
+   "id": "bm-02",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "HEART"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "LUNGS": 1.0,
+    "PLEURA": 0.0,
+    "HEART": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "bare-mention",
+   "error": null
+  },
+  {
+   "id": "bm-02",
+   "candidate": "jev",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "HEART"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "LUNGS": 0.94,
+    "PLEURA": 0.04,
+    "HEART": 0.06
+   },
+   "latency_ms": 259,
+   "cost_usd": 4.4856e-05,
+   "hard": false,
+   "rule": "bare-mention",
+   "error": null
+  },
+  {
+   "id": "bm-02",
+   "candidate": "qwen",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "HEART"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "LUNGS": 1.0,
+    "PLEURA": 0.0,
+    "HEART": 0.0
+   },
+   "latency_ms": 839,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "bare-mention",
+   "error": null
+  },
+  {
+   "id": "bm-02",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "HEART"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "LUNGS": 0.9931121502348912,
+    "PLEURA": 0.015386917759251415,
+    "HEART": 0.08282834985029822
+   },
+   "latency_ms": 188,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "bare-mention",
+   "error": null
+  },
+  {
+   "id": "as-01",
+   "candidate": "code",
+   "checklist": [
+    "GALLBLADDER",
+    "BILE DUCTS",
+    "LIVER"
+   ],
+   "expected": [
+    "GALLBLADDER"
+   ],
+   "scores": {
+    "GALLBLADDER": 1.0,
+    "BILE DUCTS": 0.0,
+    "LIVER": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "adjacent-structure",
+   "error": null
+  },
+  {
+   "id": "as-01",
+   "candidate": "jev",
+   "checklist": [
+    "GALLBLADDER",
+    "BILE DUCTS",
+    "LIVER"
+   ],
+   "expected": [
+    "GALLBLADDER"
+   ],
+   "scores": {
+    "GALLBLADDER": 0.98,
+    "BILE DUCTS": 0.02,
+    "LIVER": 0.02
+   },
+   "latency_ms": 262,
+   "cost_usd": 4.6788e-05,
+   "hard": true,
+   "rule": "adjacent-structure",
+   "error": null
+  },
+  {
+   "id": "as-01",
+   "candidate": "qwen",
+   "checklist": [
+    "GALLBLADDER",
+    "BILE DUCTS",
+    "LIVER"
+   ],
+   "expected": [
+    "GALLBLADDER"
+   ],
+   "scores": {
+    "GALLBLADDER": 1.0,
+    "BILE DUCTS": 0.0,
+    "LIVER": 0.0
+   },
+   "latency_ms": 553,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "adjacent-structure",
+   "error": null
+  },
+  {
+   "id": "as-01",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "GALLBLADDER",
+    "BILE DUCTS",
+    "LIVER"
+   ],
+   "expected": [
+    "GALLBLADDER"
+   ],
+   "scores": {
+    "GALLBLADDER": 0.9968700522748752,
+    "BILE DUCTS": 0.011073215720904228,
+    "LIVER": 0.01261250824159672
+   },
+   "latency_ms": 229,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "adjacent-structure",
+   "error": null
+  },
+  {
+   "id": "as-02",
+   "candidate": "code",
+   "checklist": [
+    "PLEURA",
+    "LUNGS",
+    "CHEST WALL"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "PLEURA": 0.0,
+    "LUNGS": 0.0,
+    "CHEST WALL": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "adjacent-structure",
+   "error": null
+  },
+  {
+   "id": "as-02",
+   "candidate": "jev",
+   "checklist": [
+    "PLEURA",
+    "LUNGS",
+    "CHEST WALL"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "PLEURA": 0.04,
+    "LUNGS": 0.92,
+    "CHEST WALL": 0.02
+   },
+   "latency_ms": 250,
+   "cost_usd": 4.5318e-05,
+   "hard": true,
+   "rule": "adjacent-structure",
+   "error": null
+  },
+  {
+   "id": "as-02",
+   "candidate": "qwen",
+   "checklist": [
+    "PLEURA",
+    "LUNGS",
+    "CHEST WALL"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "PLEURA": 0.0,
+    "LUNGS": 1.0,
+    "CHEST WALL": 0.0
+   },
+   "latency_ms": 569,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "adjacent-structure",
+   "error": null
+  },
+  {
+   "id": "as-02",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "PLEURA",
+    "LUNGS",
+    "CHEST WALL"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "PLEURA": 0.020291224185960594,
+    "LUNGS": 0.42767347774464215,
+    "CHEST WALL": 0.00479588051548963
+   },
+   "latency_ms": 189,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "adjacent-structure",
+   "error": null
+  },
+  {
+   "id": "pn-01",
+   "candidate": "code",
+   "checklist": [
+    "KIDNEYS",
+    "ADRENALS",
+    "URETERS",
+    "BLADDER"
+   ],
+   "expected": [
+    "KIDNEYS",
+    "URETERS",
+    "BLADDER"
+   ],
+   "scores": {
+    "KIDNEYS": 0.0,
+    "ADRENALS": 0.0,
+    "URETERS": 0.0,
+    "BLADDER": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "parent-not-enumerating",
+   "error": null
+  },
+  {
+   "id": "pn-01",
+   "candidate": "jev",
+   "checklist": [
+    "KIDNEYS",
+    "ADRENALS",
+    "URETERS",
+    "BLADDER"
+   ],
+   "expected": [
+    "KIDNEYS",
+    "URETERS",
+    "BLADDER"
+   ],
+   "scores": {
+    "KIDNEYS": 0.79,
+    "ADRENALS": 0.09,
+    "URETERS": 0.82,
+    "BLADDER": 0.76
+   },
+   "latency_ms": 326,
+   "cost_usd": 5.6826e-05,
+   "hard": true,
+   "rule": "parent-not-enumerating",
+   "error": null
+  },
+  {
+   "id": "pn-01",
+   "candidate": "qwen",
+   "checklist": [
+    "KIDNEYS",
+    "ADRENALS",
+    "URETERS",
+    "BLADDER"
+   ],
+   "expected": [
+    "KIDNEYS",
+    "URETERS",
+    "BLADDER"
+   ],
+   "scores": {
+    "KIDNEYS": 1.0,
+    "ADRENALS": 0.0,
+    "URETERS": 1.0,
+    "BLADDER": 1.0
+   },
+   "latency_ms": 837,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "parent-not-enumerating",
+   "error": null
+  },
+  {
+   "id": "pn-01",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "KIDNEYS",
+    "ADRENALS",
+    "URETERS",
+    "BLADDER"
+   ],
+   "expected": [
+    "KIDNEYS",
+    "URETERS",
+    "BLADDER"
+   ],
+   "scores": {
+    "KIDNEYS": 0.45771974647864516,
+    "ADRENALS": 0.09303807753565332,
+    "URETERS": 0.5575239134980406,
+    "BLADDER": 0.5025921176457838
+   },
+   "latency_ms": 445,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "parent-not-enumerating",
+   "error": null
+  },
+  {
+   "id": "pn-02",
+   "candidate": "code",
+   "checklist": [
+    "TRACHEA",
+    "MAIN BRONCHI",
+    "LUNGS"
+   ],
+   "expected": [
+    "TRACHEA",
+    "MAIN BRONCHI"
+   ],
+   "scores": {
+    "TRACHEA": 0.0,
+    "MAIN BRONCHI": 0.0,
+    "LUNGS": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "parent-not-enumerating",
+   "error": null
+  },
+  {
+   "id": "pn-02",
+   "candidate": "jev",
+   "checklist": [
+    "TRACHEA",
+    "MAIN BRONCHI",
+    "LUNGS"
+   ],
+   "expected": [
+    "TRACHEA",
+    "MAIN BRONCHI"
+   ],
+   "scores": {
+    "TRACHEA": 0.79,
+    "MAIN BRONCHI": 0.68,
+    "LUNGS": 0.03
+   },
+   "latency_ms": 213,
+   "cost_usd": 4.5822e-05,
+   "hard": true,
+   "rule": "parent-not-enumerating",
+   "error": null
+  },
+  {
+   "id": "pn-02",
+   "candidate": "qwen",
+   "checklist": [
+    "TRACHEA",
+    "MAIN BRONCHI",
+    "LUNGS"
+   ],
+   "expected": [
+    "TRACHEA",
+    "MAIN BRONCHI"
+   ],
+   "scores": {
+    "TRACHEA": 1.0,
+    "MAIN BRONCHI": 1.0,
+    "LUNGS": 0.0
+   },
+   "latency_ms": 1103,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "parent-not-enumerating",
+   "error": null
+  },
+  {
+   "id": "pn-02",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "TRACHEA",
+    "MAIN BRONCHI",
+    "LUNGS"
+   ],
+   "expected": [
+    "TRACHEA",
+    "MAIN BRONCHI"
+   ],
+   "scores": {
+    "TRACHEA": 0.5064394088487639,
+    "MAIN BRONCHI": 0.41437906560215637,
+    "LUNGS": 0.02431631619551717
+   },
+   "latency_ms": 249,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "parent-not-enumerating",
+   "error": null
+  },
+  {
+   "id": "ic-01",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "KIDNEYS",
+    "SPLEEN"
+   ],
+   "expected": [
+    "LIVER"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "KIDNEYS": 1.0,
+    "SPLEEN": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "incidental-co-mention",
+   "error": null
+  },
+  {
+   "id": "ic-01",
+   "candidate": "jev",
+   "checklist": [
+    "LIVER",
+    "KIDNEYS",
+    "SPLEEN"
+   ],
+   "expected": [
+    "LIVER"
+   ],
+   "scores": {
+    "LIVER": 0.96,
+    "KIDNEYS": 0.13,
+    "SPLEEN": 0.02
+   },
+   "latency_ms": 291,
+   "cost_usd": 4.5738e-05,
+   "hard": true,
+   "rule": "incidental-co-mention",
+   "error": null
+  },
+  {
+   "id": "ic-01",
+   "candidate": "qwen",
+   "checklist": [
+    "LIVER",
+    "KIDNEYS",
+    "SPLEEN"
+   ],
+   "expected": [
+    "LIVER"
+   ],
+   "scores": {
+    "LIVER": 1.0,
+    "KIDNEYS": 0.0,
+    "SPLEEN": 0.0
+   },
+   "latency_ms": 789,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "incidental-co-mention",
+   "error": null
+  },
+  {
+   "id": "ic-01",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LIVER",
+    "KIDNEYS",
+    "SPLEEN"
+   ],
+   "expected": [
+    "LIVER"
+   ],
+   "scores": {
+    "LIVER": 0.995865168428681,
+    "KIDNEYS": 0.17103020338143965,
+    "SPLEEN": 0.010847136621706594
+   },
+   "latency_ms": 199,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "incidental-co-mention",
+   "error": null
+  },
+  {
+   "id": "ic-02",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "LUNGS": 1.0,
+    "PLEURA": 1.0,
+    "MEDIASTINUM": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "incidental-co-mention",
+   "error": null
+  },
+  {
+   "id": "ic-02",
+   "candidate": "jev",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "LUNGS": 0.95,
+    "PLEURA": 0.36,
+    "MEDIASTINUM": 0.02
+   },
+   "latency_ms": 239,
+   "cost_usd": 4.6452e-05,
+   "hard": true,
+   "rule": "incidental-co-mention",
+   "error": null
+  },
+  {
+   "id": "ic-02",
+   "candidate": "qwen",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "LUNGS": 1.0,
+    "PLEURA": 0.0,
+    "MEDIASTINUM": 0.0
+   },
+   "latency_ms": 774,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "incidental-co-mention",
+   "error": null
+  },
+  {
+   "id": "ic-02",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [
+    "LUNGS"
+   ],
+   "scores": {
+    "LUNGS": 0.6859500521600846,
+    "PLEURA": 0.1513457451869748,
+    "MEDIASTINUM": 0.005741893238516013
+   },
+   "latency_ms": 181,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "incidental-co-mention",
+   "error": null
+  },
+  {
+   "id": "vf-01",
+   "candidate": "code",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "KIDNEYS"
+   ],
+   "expected": [],
+   "scores": {
+    "LIVER": 0.0,
+    "SPLEEN": 0.0,
+    "KIDNEYS": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "vague-filler",
+   "error": null
+  },
+  {
+   "id": "vf-01",
+   "candidate": "jev",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "KIDNEYS"
+   ],
+   "expected": [],
+   "scores": {
+    "LIVER": 0.25,
+    "SPLEEN": 0.34,
+    "KIDNEYS": 0.28
+   },
+   "latency_ms": 270,
+   "cost_usd": 4.5444e-05,
+   "hard": false,
+   "rule": "vague-filler",
+   "error": null
+  },
+  {
+   "id": "vf-01",
+   "candidate": "qwen",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "KIDNEYS"
+   ],
+   "expected": [],
+   "scores": {
+    "LIVER": 0.0,
+    "SPLEEN": 0.0,
+    "KIDNEYS": 0.0
+   },
+   "latency_ms": 660,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "vague-filler",
+   "error": null
+  },
+  {
+   "id": "vf-01",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LIVER",
+    "SPLEEN",
+    "KIDNEYS"
+   ],
+   "expected": [],
+   "scores": {
+    "LIVER": 0.004620953065389567,
+    "SPLEEN": 0.003533719771365564,
+    "KIDNEYS": 0.0033625196189982953
+   },
+   "latency_ms": 197,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "vague-filler",
+   "error": null
+  },
+  {
+   "id": "vf-02",
+   "candidate": "code",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [],
+   "scores": {
+    "LUNGS": 0.0,
+    "PLEURA": 0.0,
+    "MEDIASTINUM": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "vague-filler",
+   "error": null
+  },
+  {
+   "id": "vf-02",
+   "candidate": "jev",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [],
+   "scores": {
+    "LUNGS": 0.04,
+    "PLEURA": 0.03,
+    "MEDIASTINUM": 0.05
+   },
+   "latency_ms": 303,
+   "cost_usd": 4.6032e-05,
+   "hard": false,
+   "rule": "vague-filler",
+   "error": null
+  },
+  {
+   "id": "vf-02",
+   "candidate": "qwen",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [],
+   "scores": {
+    "LUNGS": 0.0,
+    "PLEURA": 0.0,
+    "MEDIASTINUM": 0.0
+   },
+   "latency_ms": 789,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "vague-filler",
+   "error": null
+  },
+  {
+   "id": "vf-02",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "LUNGS",
+    "PLEURA",
+    "MEDIASTINUM"
+   ],
+   "expected": [],
+   "scores": {
+    "LUNGS": 0.0017162629438316924,
+    "PLEURA": 0.0028427561273920944,
+    "MEDIASTINUM": 0.00234276502104007
+   },
+   "latency_ms": 225,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "vague-filler",
+   "error": null
+  },
+  {
+   "id": "ab-01",
+   "candidate": "code",
+   "checklist": [
+    "COMMON BILE DUCT",
+    "IVC",
+    "AORTA"
+   ],
+   "expected": [
+    "COMMON BILE DUCT",
+    "IVC"
+   ],
+   "scores": {
+    "COMMON BILE DUCT": 1.0,
+    "IVC": 1.0,
+    "AORTA": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "abbreviation",
+   "error": null
+  },
+  {
+   "id": "ab-01",
+   "candidate": "jev",
+   "checklist": [
+    "COMMON BILE DUCT",
+    "IVC",
+    "AORTA"
+   ],
+   "expected": [
+    "COMMON BILE DUCT",
+    "IVC"
+   ],
+   "scores": {
+    "COMMON BILE DUCT": 0.97,
+    "IVC": 0.96,
+    "AORTA": 0.02
+   },
+   "latency_ms": 217,
+   "cost_usd": 4.599e-05,
+   "hard": false,
+   "rule": "abbreviation",
+   "error": null
+  },
+  {
+   "id": "ab-01",
+   "candidate": "qwen",
+   "checklist": [
+    "COMMON BILE DUCT",
+    "IVC",
+    "AORTA"
+   ],
+   "expected": [
+    "COMMON BILE DUCT",
+    "IVC"
+   ],
+   "scores": {
+    "COMMON BILE DUCT": 1.0,
+    "IVC": 1.0,
+    "AORTA": 0.0
+   },
+   "latency_ms": 624,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "abbreviation",
+   "error": null
+  },
+  {
+   "id": "ab-01",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "COMMON BILE DUCT",
+    "IVC",
+    "AORTA"
+   ],
+   "expected": [
+    "COMMON BILE DUCT",
+    "IVC"
+   ],
+   "scores": {
+    "COMMON BILE DUCT": 0.9743246083740773,
+    "IVC": 0.9964046322089324,
+    "AORTA": 0.012915938902682675
+   },
+   "latency_ms": 236,
+   "cost_usd": null,
+   "hard": false,
+   "rule": "abbreviation",
+   "error": null
+  },
+  {
+   "id": "ab-02",
+   "candidate": "code",
+   "checklist": [
+    "VERTEBRAL BODIES",
+    "INTERVERTEBRAL DISCS",
+    "SPINAL CANAL"
+   ],
+   "expected": [
+    "INTERVERTEBRAL DISCS",
+    "SPINAL CANAL"
+   ],
+   "scores": {
+    "VERTEBRAL BODIES": 0.0,
+    "INTERVERTEBRAL DISCS": 1.0,
+    "SPINAL CANAL": 1.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "abbreviation",
+   "error": null
+  },
+  {
+   "id": "ab-02",
+   "candidate": "jev",
+   "checklist": [
+    "VERTEBRAL BODIES",
+    "INTERVERTEBRAL DISCS",
+    "SPINAL CANAL"
+   ],
+   "expected": [
+    "INTERVERTEBRAL DISCS",
+    "SPINAL CANAL"
+   ],
+   "scores": {
+    "VERTEBRAL BODIES": 0.03,
+    "INTERVERTEBRAL DISCS": 0.97,
+    "SPINAL CANAL": 0.93
+   },
+   "latency_ms": 306,
+   "cost_usd": 4.9602e-05,
+   "hard": true,
+   "rule": "abbreviation",
+   "error": null
+  },
+  {
+   "id": "ab-02",
+   "candidate": "qwen",
+   "checklist": [
+    "VERTEBRAL BODIES",
+    "INTERVERTEBRAL DISCS",
+    "SPINAL CANAL"
+   ],
+   "expected": [
+    "INTERVERTEBRAL DISCS",
+    "SPINAL CANAL"
+   ],
+   "scores": {
+    "VERTEBRAL BODIES": 0.0,
+    "INTERVERTEBRAL DISCS": 1.0,
+    "SPINAL CANAL": 1.0
+   },
+   "latency_ms": 824,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "abbreviation",
+   "error": null
+  },
+  {
+   "id": "ab-02",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "VERTEBRAL BODIES",
+    "INTERVERTEBRAL DISCS",
+    "SPINAL CANAL"
+   ],
+   "expected": [
+    "INTERVERTEBRAL DISCS",
+    "SPINAL CANAL"
+   ],
+   "scores": {
+    "VERTEBRAL BODIES": 0.023454594965177832,
+    "INTERVERTEBRAL DISCS": 0.9493663710783218,
+    "SPINAL CANAL": 0.9802850708989445
+   },
+   "latency_ms": 244,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "abbreviation",
+   "error": null
+  },
+  {
+   "id": "lab-cov-01",
+   "candidate": "code",
+   "checklist": [
+    "GALLBLADDER",
+    "LIVER",
+    "BILIARY TREE",
+    "PANCREAS",
+    "SPLEEN",
+    "ADRENAL GLANDS",
+    "KIDNEYS AND URETERS",
+    "ABDOMINAL AORTA AND IVC",
+    "BOWEL",
+    "BLADDER",
+    "REPRODUCTIVE ORGANS",
+    "LYMPH NODES",
+    "BONES AND JOINTS",
+    "LUNG BASES"
+   ],
+   "expected": [
+    "LIVER",
+    "PANCREAS",
+    "SPLEEN"
+   ],
+   "scores": {
+    "GALLBLADDER": 1.0,
+    "LIVER": 1.0,
+    "BILIARY TREE": 0.0,
+    "PANCREAS": 0.0,
+    "SPLEEN": 0.0,
+    "ADRENAL GLANDS": 0.0,
+    "KIDNEYS AND URETERS": 0.0,
+    "ABDOMINAL AORTA AND IVC": 0.0,
+    "BOWEL": 0.0,
+    "BLADDER": 0.0,
+    "REPRODUCTIVE ORGANS": 0.0,
+    "LYMPH NODES": 0.0,
+    "BONES AND JOINTS": 0.0,
+    "LUNG BASES": 0.0
+   },
+   "latency_ms": 0,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-group",
+   "error": null
+  },
+  {
+   "id": "lab-cov-01",
+   "candidate": "jev",
+   "checklist": [
+    "GALLBLADDER",
+    "LIVER",
+    "BILIARY TREE",
+    "PANCREAS",
+    "SPLEEN",
+    "ADRENAL GLANDS",
+    "KIDNEYS AND URETERS",
+    "ABDOMINAL AORTA AND IVC",
+    "BOWEL",
+    "BLADDER",
+    "REPRODUCTIVE ORGANS",
+    "LYMPH NODES",
+    "BONES AND JOINTS",
+    "LUNG BASES"
+   ],
+   "expected": [
+    "LIVER",
+    "PANCREAS",
+    "SPLEEN"
+   ],
+   "scores": {
+    "GALLBLADDER": 0.1,
+    "LIVER": 0.97,
+    "BILIARY TREE": 0.12,
+    "PANCREAS": 0.63,
+    "SPLEEN": 0.76,
+    "ADRENAL GLANDS": 0.58,
+    "KIDNEYS AND URETERS": 0.36,
+    "ABDOMINAL AORTA AND IVC": 0.1,
+    "BOWEL": 0.23,
+    "BLADDER": 0.22,
+    "REPRODUCTIVE ORGANS": 0.13,
+    "LYMPH NODES": 0.12,
+    "BONES AND JOINTS": 0.08,
+    "LUNG BASES": 0.04
+   },
+   "latency_ms": 291,
+   "cost_usd": 0.00017766,
+   "hard": true,
+   "rule": "collective-group",
+   "error": null
+  },
+  {
+   "id": "lab-cov-01",
+   "candidate": "qwen",
+   "checklist": [
+    "GALLBLADDER",
+    "LIVER",
+    "BILIARY TREE",
+    "PANCREAS",
+    "SPLEEN",
+    "ADRENAL GLANDS",
+    "KIDNEYS AND URETERS",
+    "ABDOMINAL AORTA AND IVC",
+    "BOWEL",
+    "BLADDER",
+    "REPRODUCTIVE ORGANS",
+    "LYMPH NODES",
+    "BONES AND JOINTS",
+    "LUNG BASES"
+   ],
+   "expected": [
+    "LIVER",
+    "PANCREAS",
+    "SPLEEN"
+   ],
+   "scores": {
+    "GALLBLADDER": 0.0,
+    "LIVER": 1.0,
+    "BILIARY TREE": 0.0,
+    "PANCREAS": 1.0,
+    "SPLEEN": 1.0,
+    "ADRENAL GLANDS": 1.0,
+    "KIDNEYS AND URETERS": 0.0,
+    "ABDOMINAL AORTA AND IVC": 0.0,
+    "BOWEL": 0.0,
+    "BLADDER": 0.0,
+    "REPRODUCTIVE ORGANS": 0.0,
+    "LYMPH NODES": 0.0,
+    "BONES AND JOINTS": 0.0,
+    "LUNG BASES": 0.0
+   },
+   "latency_ms": 3093,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-group",
+   "error": null
+  },
+  {
+   "id": "lab-cov-01",
+   "candidate": "qwen-lp",
+   "checklist": [
+    "GALLBLADDER",
+    "LIVER",
+    "BILIARY TREE",
+    "PANCREAS",
+    "SPLEEN",
+    "ADRENAL GLANDS",
+    "KIDNEYS AND URETERS",
+    "ABDOMINAL AORTA AND IVC",
+    "BOWEL",
+    "BLADDER",
+    "REPRODUCTIVE ORGANS",
+    "LYMPH NODES",
+    "BONES AND JOINTS",
+    "LUNG BASES"
+   ],
+   "expected": [
+    "LIVER",
+    "PANCREAS",
+    "SPLEEN"
+   ],
+   "scores": {
+    "GALLBLADDER": 0.06692853932243098,
+    "LIVER": 0.997523529223088,
+    "BILIARY TREE": 0.044551327380173,
+    "PANCREAS": 0.49255778773421655,
+    "SPLEEN": 0.5131490486547059,
+    "ADRENAL GLANDS": 0.32654783043632973,
+    "KIDNEYS AND URETERS": 0.24614970109853218,
+    "ABDOMINAL AORTA AND IVC": 0.04295128665088913,
+    "BOWEL": 0.0712956292209015,
+    "BLADDER": 0.0429920192674899,
+    "REPRODUCTIVE ORGANS": 0.03049311283765212,
+    "LYMPH NODES": 0.033794378177494214,
+    "BONES AND JOINTS": 0.03557491212766371,
+    "LUNG BASES": 0.026693421352125796
+   },
+   "latency_ms": 315,
+   "cost_usd": null,
+   "hard": true,
+   "rule": "collective-group",
+   "error": null
+  }
+ ]
+}
