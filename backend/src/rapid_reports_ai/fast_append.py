@@ -48,6 +48,11 @@ def closes_line(text: str) -> bool:
     return bool(_TERMINAL.search((text or "").rstrip(" \t")))
 
 
+def is_filler_only(utterance: str) -> bool:
+    """Nothing left after cleaning and no command in it: skipped by code, Jev not asked."""
+    return not clean_verbatim(utterance).strip() and not map_formatting(utterance)
+
+
 @dataclass(frozen=True)
 class RouteResult:
     route: Route
@@ -60,7 +65,7 @@ class RouteResult:
 
 def route_bundle(decision: BundleDecision | BaseException, utterance: str) -> RouteResult:
     text = clean_verbatim(utterance)
-    if not text.strip() and not map_formatting(utterance):
+    if is_filler_only(utterance):
         return RouteResult("skip", "empty_after_clean", "", "", False, False)
     if isinstance(decision, BaseException):
         return RouteResult("polish", "jev_error", "", "", True, False)

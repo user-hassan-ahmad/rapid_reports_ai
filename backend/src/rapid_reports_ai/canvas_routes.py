@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import time as _time
+import uuid
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -23,7 +24,9 @@ from .dictation_triage import (
 )
 from .dictation_triage_labels import agrees, derive_action
 from .dictation_triage_router import route as triage_route_decision
-from .jev_questions import QSET_VERSION, ROUTE_THRESHOLD_DEFAULT
+from .fast_append import is_filler_only, route_bundle
+from .jev_questions import FAST_APPEND_BANDS, QSET_VERSION, ROUTE_THRESHOLD_DEFAULT
+from .utterance_bundle import BundleDecision, BundleState, get_jev_bundle
 from .utterance_boundary import BoundaryDecision, get_jev_boundary
 from .utterance_boundary import resolve as resolve_boundary
 from .utterance_boundary import resolve_placement
@@ -1279,3 +1282,94 @@ async def classify_utterance(request: UtteranceRequest, current_user: User = Dep
         placement=resolve_placement(d), placement_raw=d.placement, placement_confidence=d.placement_confidence,
         standalone=d.standalone,
     )
+
+
+# -----------------------------------------------------------------------------
+# Decision-first dictation, live in the lab (work-order step 5; rev 2 component 2)
+# -----------------------------------------------------------------------------
+
+
+class BundleRequest(BaseModel):
+    scan_type: str = ""
+    committed: str = ""
+    active: str = ""  # solid scratchpad text, faded raw excluded
+    open_line: str = ""  # the unclosed last line, when one is open
+    latest_utterance: str  # one Deepgram final, as delivered
+    checklist: list[str] = []
+
+
+class BundleLineClose(BaseModel):
+    silence_s: float
+    hard_limit_s: float
+
+
+class BundleRouteResponse(BaseModel):
+    decision_id: str
+    route: Literal["fast_append", "command", "polish", "skip"]
+    reason: str
+    text: str = ""
+    insert: str = ""
+    closes_line: bool = False
+    close_on_silence: bool = False
+    line_close: BundleLineClose
+    action: Optional[str] = None
+    confidence: Optional[float] = None
+    probabilities: Optional[dict[str, float]] = None
+    is_correction: Optional[float] = None
+    needs_committed_edit: Optional[float] = None
+    standalone: Optional[float] = None
+    coverage: Optional[dict[str, float]] = None
+    latency_ms: Optional[int] = None
+    error: Optional[str] = None
+    qset: str = QSET_VERSION
+
+
+@canvas_router.post("/bundle", response_model=BundleRouteResponse)
+async def route_utterance_bundle(request: BundleRequest, current_user: User = Depends(get_current_user)):
+    """Lab only: one Jev bundle per Deepgram final, then the band router. Any failure
+    routes to polish; the response never errors because of Jev."""
+    if not _triage_debug_enabled():
+        raise HTTPException(status_code=404, detail="Not Found")
+    decision_id = uuid.uuid4().hex[:12]
+    d: BundleDecision | BaseException | None = None
+    t0 = _time.perf_counter()
+    if not is_filler_only(request.latest_utterance):  # filler-only: decided by code, Jev never asked
+        try:
+            d = await get_jev_bundle().classify(BundleState(
+                scan_type=request.scan_type, committed=request.committed, active=request.active,
+                open_line=request.open_line, latest_utterance=request.latest_utterance,
+                checklist=list(request.checklist),
+            ))
+        except Exception as e:  # fail open: polish
+            logger.error("[canvas.bundle] ❌ %s: %s", type(e).__name__, e)
+            d = e
+    r = route_bundle(d if d is not None else RuntimeError("not asked"), request.latest_utterance)
+    ok = isinstance(d, BundleDecision)
+    t = d.triage if ok else None
+    resp = BundleRouteResponse(
+        decision_id=decision_id, route=r.route, reason=r.reason, text=r.text, insert=r.insert,
+        closes_line=r.closes_line, close_on_silence=r.close_on_silence,
+        line_close=BundleLineClose(
+            silence_s=FAST_APPEND_BANDS["line_close_silence_s"],
+            hard_limit_s=FAST_APPEND_BANDS["line_close_hard_limit_s"],
+        ),
+        action=t.action if t else None, confidence=t.confidence if t else None,
+        probabilities=t.probabilities if t else None, is_correction=t.is_correction if t else None,
+        needs_committed_edit=t.needs_committed_edit if t else None,
+        standalone=d.standalone if ok else None, coverage=d.coverage if ok else None,
+        latency_ms=d.latency_ms if ok else (int((_time.perf_counter() - t0) * 1000) if d is not None else None),
+        error=type(d).__name__ if isinstance(d, BaseException) else None,
+    )
+    utt = request.latest_utterance or ""
+    logger.info("[canvas.bundle.decision] %s", json.dumps({
+        "event": "canvas.bundle.decision",
+        **resp.model_dump(exclude={"text", "insert", "coverage", "line_close"}),
+        "coverage_scores": list(d.coverage.values()) if ok else None,  # section names can be dictated text
+        "n_questions": d.n_questions if ok else None,
+        "cost_usd": d.cost_usd if ok else None,
+        "utterance_len": len(utt),
+        "utterance_sha8": hashlib.sha256(utt.encode()).hexdigest()[:8],
+        "open_line_len": len(request.open_line or ""),
+        "active_len": len(request.active or ""),
+    }))
+    return resp
