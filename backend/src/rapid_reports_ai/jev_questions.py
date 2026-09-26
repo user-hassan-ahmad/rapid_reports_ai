@@ -15,7 +15,7 @@ from typing import Any
 
 from .jev_client import JEV_MODEL  # noqa: F401  (the wording is written for this model)
 
-QSET_VERSION = "2026-09-26.2"  # .2: step 5 fast-append bands added; wording unchanged
+QSET_VERSION = "2026-09-26.3"  # .2: step 5 fast-append bands; .3: Deepgram word-confidence gate; wording unchanged
 
 # --- triage (dictation_triage) ------------------------------------------------------
 
@@ -59,6 +59,11 @@ FAST_APPEND_BANDS: dict[str, float] = {
     # ...and only while the is_correction noul stays below this (correction ↔ append is
     # the expensive confusion: a silent duplicate or a lost finding)
     "append_max_is_correction": 0.50,
+    # ...and only while Deepgram's lowest word confidence in the final is at least this
+    # (when it sent word scores). Three real reports: every misheard word that reached
+    # fast-append ("vas effect", "smooth vessel", "scold vault") sat below 0.70; 3 of 31
+    # clean appends did too. Jev reads fluent mishearings as confident appends.
+    "append_min_asr_conf": 0.70,
     # action == formatting_command at or above this, with a lexicon mapping → deterministic
     "command_act": 0.80,
     # open line closes at the silence milestone when standalone is at or above this...

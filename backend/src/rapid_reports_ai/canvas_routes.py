@@ -1297,7 +1297,7 @@ class BundleRequest(BaseModel):
     latest_utterance: str  # one Deepgram final, as delivered
     checklist: list[str] = []
     # Deepgram's confidences for this final (lab websocket; absent from the feeder).
-    # Logged for step 7; the router does not read them.
+    # asr_min_conf gates fast-append (FAST_APPEND_BANDS["append_min_asr_conf"]).
     asr_conf: Optional[float] = None
     asr_min_conf: Optional[float] = None
     asr_word_confs: Optional[list[float]] = None
@@ -1348,7 +1348,8 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
         except Exception as e:  # fail open: polish
             logger.error("[canvas.bundle] ❌ %s: %s", type(e).__name__, e)
             d = e
-    r = route_bundle(d if d is not None else RuntimeError("not asked"), request.latest_utterance)
+    r = route_bundle(d if d is not None else RuntimeError("not asked"), request.latest_utterance,
+                     asr_min_conf=request.asr_min_conf)
     ok = isinstance(d, BundleDecision)
     t = d.triage if ok else None
     resp = BundleRouteResponse(

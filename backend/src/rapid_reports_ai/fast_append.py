@@ -79,7 +79,9 @@ class RouteResult:
     close_on_silence: bool  # standalone ≥ τ: the open line may close at the silence milestone
 
 
-def route_bundle(decision: BundleDecision | BaseException, utterance: str) -> RouteResult:
+def route_bundle(
+    decision: BundleDecision | BaseException, utterance: str, asr_min_conf: float | None = None
+) -> RouteResult:
     text = clean_verbatim(utterance)
     pre = code_route(utterance)
     if pre is not None:
@@ -102,6 +104,8 @@ def route_bundle(decision: BundleDecision | BaseException, utterance: str) -> Ro
             return polish("correction_signal")
         if not text.strip():
             return polish("append_no_words")  # a bare command read as an append
+        if asr_min_conf is not None and asr_min_conf < b["append_min_asr_conf"]:
+            return polish("asr_low_confidence")  # a fluent mishearing reads as a confident append
         return RouteResult("fast_append", "append_confident", text, "", closes_line(text), on_silence)
     if t.action == "formatting_command":
         if confidence < b["command_act"]:

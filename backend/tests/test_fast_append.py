@@ -165,3 +165,26 @@ def test_filler_only_is_also_decided_by_code():
 @pytest.mark.parametrize("utt", ["No effusion.", "new line", "full stop"])
 def test_everything_else_goes_to_jev(utt):
     assert code_route(utt) is None
+
+
+# --- Deepgram word-confidence gate on fast-append (QSET 2026-09-26.3) ------------------
+
+def test_a_low_confidence_word_sends_a_confident_append_to_polish():
+    # three real reports: every misheard word in a fast-appended line ("vas effect",
+    # "smooth vessel", "scold vault") had its lowest word below 0.70
+    r = route_bundle(_bundle(), "mild vas effect", asr_min_conf=0.66)
+    assert (r.route, r.reason) == ("polish", "asr_low_confidence")
+
+
+def test_at_the_gate_it_still_fast_appends():
+    r = route_bundle(_bundle(), "mild mass effect", asr_min_conf=FAST_APPEND_BANDS["append_min_asr_conf"])
+    assert r.route == "fast_append"
+
+
+def test_without_deepgram_confidence_the_gate_does_not_apply():
+    assert route_bundle(_bundle(), "mild mass effect").route == "fast_append"  # feeder / no word scores
+
+
+def test_the_gate_does_not_touch_commands():
+    r = route_bundle(_bundle(action="formatting_command", confidence=0.95), "new paragraph", asr_min_conf=0.3)
+    assert r.route == "command"
