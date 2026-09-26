@@ -188,3 +188,41 @@ def test_without_deepgram_confidence_the_gate_does_not_apply():
 def test_the_gate_does_not_touch_commands():
     r = route_bundle(_bundle(action="formatting_command", confidence=0.95), "new paragraph", asr_min_conf=0.3)
     assert r.route == "command"
+
+
+# --- spoken formatting in the fast path -----------------------------------------------
+
+def test_spine_levels_and_spoken_punctuation_are_cleaned():
+    r = route_bundle(_bundle(), "L3 slash four There is mild disc desiccation comma no stenosis.")
+    assert (r.route, r.text) == ("fast_append", "L3/4 There is mild disc desiccation, no stenosis.")
+
+
+def test_a_heading_colon_becomes_punctuation():
+    r = route_bundle(_bundle(), "Conclusion, colon, acute appendicitis")
+    assert (r.route, r.text) == ("fast_append", "Conclusion: acute appendicitis")
+
+
+def test_the_organ_colon_stays():
+    r = route_bundle(_bundle(), "The sigmoid colon is unremarkable.")
+    assert (r.route, r.text) == ("fast_append", "The sigmoid colon is unremarkable.")
+
+
+def test_an_ambiguous_colon_fails_open_to_polish():
+    r = route_bundle(_bundle(), "Colon, mild diffuse thickening", preceding="The appendix is normal.")
+    assert (r.route, r.reason) == ("polish", "colon_ambiguous")
+
+
+def test_a_bare_colon_after_a_level_is_a_command_decided_by_code():
+    r = code_route("colon", preceding="Normal marrow.\n\nL5/S1")
+    assert (r.route, r.reason, r.insert) == ("command", "spoken_colon", ":")
+
+
+def test_a_bare_colon_without_a_heading_before_it_goes_to_jev():
+    assert code_route("Colon.", preceding="The appendix is normal.") is None
+
+
+@pytest.mark.parametrize("utt", ["Conclusion.", "Conclusion, colon,", "impression"])
+def test_a_heading_on_its_own_is_written_by_code(utt):
+    r = code_route(utt)
+    assert (r.route, r.reason, r.text[-1]) == ("fast_append", "heading", ":")
+    assert r.closes_line is True

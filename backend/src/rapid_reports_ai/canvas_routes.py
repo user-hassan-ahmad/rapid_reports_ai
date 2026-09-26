@@ -1338,7 +1338,7 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
     decision_id = uuid.uuid4().hex[:12]
     d: BundleDecision | BaseException | None = None
     t0 = _time.perf_counter()
-    if code_route(request.latest_utterance) is None:  # bare mark / filler: decided by code
+    if code_route(request.latest_utterance, request.active) is None:  # bare mark / filler: decided by code
         try:
             d = await get_jev_bundle().classify(BundleState(
                 scan_type=request.scan_type, committed=request.committed, active=request.active,
@@ -1349,7 +1349,7 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
             logger.error("[canvas.bundle] ❌ %s: %s", type(e).__name__, e)
             d = e
     r = route_bundle(d if d is not None else RuntimeError("not asked"), request.latest_utterance,
-                     asr_min_conf=request.asr_min_conf)
+                     asr_min_conf=request.asr_min_conf, preceding=request.active)
     ok = isinstance(d, BundleDecision)
     t = d.triage if ok else None
     resp = BundleRouteResponse(

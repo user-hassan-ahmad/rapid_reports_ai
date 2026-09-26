@@ -17,6 +17,7 @@ from typing import Literal
 
 from .dictation_triage_router import _FORMATTING_RULES, map_formatting
 from .jev_questions import FAST_APPEND_BANDS
+from .spoken_format import apply_spoken_format, heading_only, resolve_colon
 from .utterance_bundle import BundleDecision
 
 Route = Literal["fast_append", "command", "polish", "skip"]
@@ -28,10 +29,12 @@ _TERMINAL = re.compile(r"(?:[.?!][\"')\]]*|\n)$")
 
 
 def clean_verbatim(text: str) -> str:
-    """Deepgram text → scratchpad text: lexicon, fillers out, whitespace tidied."""
+    """Deepgram text → scratchpad text: lexicon, spoken punctuation and disc levels,
+    fillers out, whitespace tidied. The context-dependent 'colon' is resolved later."""
     s = text or ""
     for pattern, replacement in _FORMATTING_RULES:
         s = pattern.sub(replacement, s)
+    s = apply_spoken_format(s)
     s = _FILLER.sub("", s)
     s = re.sub(r"[ \t]+", " ", s)
     s = re.sub(r" *\n *", "\n", s)
@@ -57,13 +60,25 @@ def is_filler_only(utterance: str) -> bool:
 _BARE_MARK = re.compile(r"^\s*([.?!])[.?!\s]*$")
 
 
-def code_route(utterance: str) -> "RouteResult | None":
+_BARE_COLON = re.compile(r"^[\s,.]*colon[\s,.:]*$", re.IGNORECASE)
+
+
+def code_route(utterance: str, preceding: str = "") -> "RouteResult | None":
     """Utterances decided by code, Jev never asked. A final that is only a terminal mark
     is a spoken "full stop" the websocket already converted (cleaning would drop it as
-    stray punctuation); filler-only finals are skipped. None: ask Jev."""
+    stray punctuation); a bare 'colon' right after a heading or disc level is ':'; a
+    heading said on its own is written as one; filler-only finals are skipped. None: ask Jev."""
     m = _BARE_MARK.match(utterance or "")
     if m:
         return RouteResult("command", "punctuation_mark", "", m.group(1), True, False)
+    if _BARE_COLON.match(utterance or ""):
+        resolved, ambiguous = resolve_colon("colon", preceding)
+        if resolved == ":" and not ambiguous:
+            return RouteResult("command", "spoken_colon", "", ":", False, False)
+        return None
+    heading = heading_only(utterance)
+    if heading:
+        return RouteResult("fast_append", "heading", heading, "", True, False)
     if is_filler_only(utterance):
         return RouteResult("skip", "empty_after_clean", "", "", False, False)
     return None
@@ -80,10 +95,13 @@ class RouteResult:
 
 
 def route_bundle(
-    decision: BundleDecision | BaseException, utterance: str, asr_min_conf: float | None = None
+    decision: BundleDecision | BaseException,
+    utterance: str,
+    asr_min_conf: float | None = None,
+    preceding: str = "",
 ) -> RouteResult:
-    text = clean_verbatim(utterance)
-    pre = code_route(utterance)
+    text, colon_ambiguous = resolve_colon(clean_verbatim(utterance), preceding)
+    pre = code_route(utterance, preceding)
     if pre is not None:
         return pre
     if isinstance(decision, BaseException):
@@ -106,6 +124,8 @@ def route_bundle(
             return polish("append_no_words")  # a bare command read as an append
         if asr_min_conf is not None and asr_min_conf < b["append_min_asr_conf"]:
             return polish("asr_low_confidence")  # a fluent mishearing reads as a confident append
+        if colon_ambiguous:
+            return polish("colon_ambiguous")  # organ or punctuation: the context does not say
         return RouteResult("fast_append", "append_confident", text, "", closes_line(text), on_silence)
     if t.action == "formatting_command":
         if confidence < b["command_act"]:

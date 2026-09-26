@@ -163,3 +163,10 @@ def test_the_route_applies_the_deepgram_gate(authed_client, lab):
     lab(FakeBundle())
     d = authed_client.post("/api/canvas/bundle", json={**BODY, "asr_min_conf": 0.62}).json()
     assert (d["route"], d["reason"]) == ("polish", "asr_low_confidence")
+
+
+def test_the_colon_is_read_against_the_scratchpad_before_it(authed_client, lab):
+    fake = lab(FakeBundle())
+    d = authed_client.post("/api/canvas/bundle", json={**BODY, "active": "Normal marrow.\n\nL5/S1",
+                                                         "latest_utterance": "colon"}).json()
+    assert (d["route"], d["insert"]) == ("command", ":") and fake.states == []
