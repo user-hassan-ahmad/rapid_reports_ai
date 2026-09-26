@@ -25,10 +25,11 @@ export interface LabConfig {
 	showBoth: boolean; // sets triage_debug
 	coverageDebug: boolean; // sets coverage_debug on /review
 	pillThresholds: PillThresholds;
-	frontDoor: FrontDoor; // 'timer' = Deepgram silence timers (production); 'jev' = boundary classifier
+	frontDoor: FrontDoor; // 'timer' = Deepgram silence timers (production); 'jev' = boundary classifier;
+	// 'decision' = decision-first live: Jev bundle per final, fast-append + band router (step 5)
 }
 
-export type FrontDoor = 'timer' | 'jev';
+export type FrontDoor = 'timer' | 'jev' | 'decision';
 export type Boundary = 'complete' | 'continues' | 'command';
 export type Placement = 'extend_previous_line' | 'new_line' | 'new_paragraph';
 

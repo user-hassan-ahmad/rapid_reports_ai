@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import type { LabConfig, LabRequestFields, Strategy } from './types';
+import type { FrontDoor, LabConfig, LabRequestFields, Strategy } from './types';
 
 export const LAB_CONFIG_KEY = 'rr_lab_config';
 export const DEFAULT_LAB_CONFIG: LabConfig = {
@@ -11,6 +11,7 @@ export const DEFAULT_LAB_CONFIG: LabConfig = {
 	frontDoor: 'timer'
 };
 const STRATEGIES: Strategy[] = ['shadow', 'route:jev', 'route:qwen'];
+const FRONT_DOORS: FrontDoor[] = ['timer', 'jev', 'decision'];
 
 function storage(): Storage | undefined {
 	try {
@@ -39,7 +40,7 @@ export function loadLabConfig(store: Storage | undefined = storage()): LabConfig
 			pt.lo >= 0 &&
 			pt.lo < pt.hi &&
 			pt.hi <= 1 &&
-			(p?.frontDoor === 'timer' || p?.frontDoor === 'jev');
+			FRONT_DOORS.includes(p?.frontDoor);
 		return ok
 			? {
 					strategy: p.strategy,

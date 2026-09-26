@@ -12,7 +12,7 @@ export type OutcomeKind = 'undo' | 'edit' | 'redictate';
 /** Outcome windows: what counts as a consequence of a decision. */
 export const EDIT_WINDOW_MS = 10_000;
 export const REDICTATE_WINDOW_MS = 15_000;
-export const REDICTATE_MIN_OVERLAP = 0.6;
+export const REDICTATE_MIN_OVERLAP = 0.7; // "no left…" vs "no right pleural effusion" is 0.6: a new finding, not a re-dictation
 
 /** Mirrors backend canvas_routes.BundleRouteResponse. */
 export interface BundleRouteResponse {
@@ -52,6 +52,7 @@ export interface DecisionRecord {
 	latency_ms: number | null; // Jev bundle, server-measured
 	roundtrip_ms: number | null; // browser → route decision
 	polish_called: boolean;
+	polish_ms?: number | null; // the polish call this decision caused, when one ran
 	utterance_len: number;
 	utterance_hash: string;
 	applied_len: number; // characters written by the automatic action

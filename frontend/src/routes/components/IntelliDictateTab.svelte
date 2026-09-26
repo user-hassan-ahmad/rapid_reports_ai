@@ -10,6 +10,7 @@ import Toast from '$lib/components/Toast.svelte';
 import { API_URL } from '$lib/config';
 import { readSSEStream } from '$lib/utils/sse';
 import type { ChunkTrace, CoverageTrace, LabConfig, PillThresholds, ProcessTrace } from '$lib/dictation-lab/types';
+import type { DecisionRecord, OutcomeEvent } from '$lib/dictation-lab/decisionFirst';
 import { pillState } from '$lib/dictation-lab/coverage';
 
 	let toast: { show: (msg: string) => void } | undefined;
@@ -121,6 +122,9 @@ import { pillState } from '$lib/dictation-lab/coverage';
 	export let pillThresholds: PillThresholds | null = null;
 	export let onCoverageTrace: (trace: CoverageTrace) => void = () => {};
 	export let onChunkTrace: (trace: ChunkTrace) => void = () => {};
+	/** Dictation Lab only: decision-first records (upserted by id) and their outcomes. */
+	export let onDecision: (record: DecisionRecord, display: string) => void = () => {};
+	export let onOutcome: (event: OutcomeEvent) => void = () => {};
 	let coverageScores: Record<string, number> | null = null;
 
 	let applicableGuidelines: Array<{
@@ -899,6 +903,8 @@ import { pillState } from '$lib/dictation-lab/coverage';
 			onCoverageScoresChange={(s) => { coverageScores = s; }}
 			{onCoverageTrace}
 			{onChunkTrace}
+			{onDecision}
+			{onOutcome}
 		/>
 	</div>
 

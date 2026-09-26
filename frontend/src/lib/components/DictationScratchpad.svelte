@@ -11,8 +11,22 @@
 		nextSilenceStep,
 		silenceVerdict
 	} from '$lib/dictation-lab/frontDoor';
-	import { EditorView, keymap, Decoration, type DecorationSet } from '@codemirror/view';
-	import { EditorState, Compartment, StateEffect, StateField } from '@codemirror/state';
+	import {
+		EDIT_WINDOW_MS,
+		REDICTATE_WINDOW_MS,
+		changedRange,
+		hash8,
+		isRedictation,
+		joinSeparator,
+		tokenSet,
+		type BundleRouteResponse,
+		type DecisionRecord,
+		type FastRoute,
+		type LineClosedBy,
+		type OutcomeEvent
+	} from '$lib/dictation-lab/decisionFirst';
+	import { EditorView, keymap, Decoration, type DecorationSet, type ViewUpdate } from '@codemirror/view';
+	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
@@ -46,6 +60,11 @@
 	export let onCoverageTrace: (trace: CoverageTrace) => void = () => {};
 	/** Dictation Lab only. One record per finalised chunk when the front door is 'jev'. */
 	export let onChunkTrace: (trace: ChunkTrace) => void = () => {};
+	/** Dictation Lab only, front door 'decision': one record per routed utterance, re-sent
+	 *  (same id) when it changes. `display` is the utterance for the panel; never exported. */
+	export let onDecision: (record: DecisionRecord, display: string) => void = () => {};
+	/** Dictation Lab only, front door 'decision': undo / edit / re-dictation against a decision id. */
+	export let onOutcome: (event: OutcomeEvent) => void = () => {};
 
 	// CM6 highlight decoration for IntelliPrompt source linking
 	const setHighlight = StateEffect.define<{ from: number; to: number } | null>();
@@ -112,6 +131,28 @@
 					deco = range
 						? deco.update({ filter: (from, to) => to <= range.from || from >= range.to })
 						: Decoration.none;
+				}
+			}
+			return deco;
+		},
+		provide: (f) => EditorView.decorations.from(f)
+	});
+
+	// Decision-first (lab): text written by an automatic action (fast-append, command) is
+	// marked for the edit window, so what the machine did is visible while it can still be
+	// undone. Same map-through-changes lifecycle as the pending mark.
+	const markAuto = StateEffect.define<{ from: number; to: number }>();
+	const clearAuto = StateEffect.define<{ from: number; to: number }>();
+	const autoField = StateField.define<DecorationSet>({
+		create: () => Decoration.none,
+		update(deco, tr) {
+			deco = deco.map(tr.changes);
+			for (const e of tr.effects) {
+				if (e.is(markAuto)) {
+					deco = deco.update({ add: [Decoration.mark({ class: 'cm-dictation-auto' }).range(e.value.from, e.value.to)] });
+				} else if (e.is(clearAuto)) {
+					const r = e.value;
+					deco = deco.update({ filter: (from, to) => to <= r.from || from >= r.to });
 				}
 			}
 			return deco;
@@ -331,6 +372,8 @@
 	// raw is_final groups are shown faded immediately and the polish rewrites the whole
 	// scratchpad, replacing them with coherent solid text. No freezing.
 	function fadedEnabled(): boolean {
+		// Decision-first always renders faded: every final shows before its route is known.
+		if (decisionFirst()) return true;
 		return typeof localStorage !== 'undefined' && localStorage.getItem('rr_incremental') === '1';
 	}
 
@@ -372,6 +415,13 @@
 		// Phase 2b.1: fire the polish only at a pause (speech_final), not every
 		// is_final — UtteranceEnd is the long-pause backup. Cuts redundant
 		// full regenerations; the transcript still accumulates on every chunk.
+		if (decisionFirst()) {
+			// New speech: the silence the line-close timers were counting has ended.
+			clearLineTimers();
+			const arrivedAt = Date.now();
+			decisionChain = decisionChain.then(() => decideUtterance(transcript, arrivedAt)).catch(() => {});
+			return;
+		}
 		if (frontDoorIsJev()) {
 			// Serialise so decisions see the buffer in arrival order.
 			classifyChain = classifyChain.then(() => classifyChunk(transcript)).catch(() => {});
@@ -506,14 +556,289 @@
 		applyDecision(buffer, chunk, data, silenceS, buffer.join(' '), t0);
 	}
 
+	// ── Decision-first (lab, front door 'decision'; work-order step 5) ────────────────
+	// Every Deepgram final → one Jev bundle → band router (backend). fast_append and
+	// command are applied here verbatim; polish goes to today's /process path (fail open).
+	// Each applied action keeps its affected range so undo, edits and re-dictation can be
+	// logged against the decision id. Text never leaves this component in a record.
+	function decisionFirst(): boolean {
+		return labConfig?.frontDoor === 'decision';
+	}
+	let decisionChain: Promise<void> = Promise.resolve();
+	let decisionSeq = 0;
+	let localDecisionSeq = 0;
+	let lineOpen = false;
+	let openLineDecisionId: string | null = null;
+	let lineTimers: ReturnType<typeof setTimeout>[] = [];
+	const decisionRecords = new Map<string, { rec: DecisionRecord; display: string }>();
+	interface Affected {
+		id: string;
+		route: FastRoute;
+		at: number;
+		from: number;
+		to: number;
+		before: string; // text the action replaced; restored by undo
+		lineOpenBefore: boolean;
+		tokens: Set<string>; // in memory only, for re-dictation matching
+		intact: boolean; // nothing but the user has touched the range since
+		edited: boolean;
+		redictated: boolean;
+	}
+	let affected: Affected[] = [];
+	let lastAction: Affected | null = null;
+
+	function emitDecision(rec: DecisionRecord, display: string): void {
+		decisionRecords.set(rec.id, { rec, display });
+		onDecision({ ...rec }, display);
+	}
+	function patchDecision(id: string, patch: Partial<DecisionRecord>): void {
+		const d = decisionRecords.get(id);
+		if (!d) return;
+		d.rec = { ...d.rec, ...patch };
+		onDecision({ ...d.rec }, d.display);
+	}
+	function outcome(a: Affected, kind: OutcomeEvent['kind']): void {
+		const now = Date.now();
+		onOutcome({ decision_id: a.id, kind, route: a.route, ms_since: now - a.at, at: now });
+	}
+
+	function clearLineTimers(): void {
+		for (const t of lineTimers) clearTimeout(t);
+		lineTimers = [];
+	}
+	function closeLine(by: LineClosedBy): void {
+		clearLineTimers();
+		if (!lineOpen) return;
+		lineOpen = false;
+		if (openLineDecisionId) patchDecision(openLineDecisionId, { line_closed_by: by });
+		openLineDecisionId = null;
+	}
+	/** Time is code: close at the silence milestone if standalone ≥ τ (decided by the
+	 *  backend), and at the hard limit regardless. Silence counts from the final's arrival. */
+	function armLineTimers(closeOnSilence: boolean, lc: BundleRouteResponse['line_close'], arrivedAt: number): void {
+		clearLineTimers();
+		const since = Date.now() - arrivedAt;
+		if (closeOnSilence) lineTimers.push(setTimeout(() => closeLine('standalone'), Math.max(0, lc.silence_s * 1000 - since)));
+		lineTimers.push(setTimeout(() => closeLine('hard_limit'), Math.max(0, lc.hard_limit_s * 1000 - since)));
+	}
+
+	function firstPendingRange(): { from: number; to: number } | null {
+		if (!editor) return null;
+		let found: { from: number; to: number } | null = null;
+		editor.state.field(pendingField, false)?.between(0, editor.state.doc.length, (from, to) => {
+			found = { from, to };
+			return false;
+		});
+		return found;
+	}
+
+	function track(a: Affected): void {
+		affected = [...affected, a];
+		lastAction = a;
+	}
+
+	/** Map every affected range through a document change; attribute user edits. */
+	function trackChanges(update: ViewUpdate, byUser: boolean): void {
+		const now = Date.now();
+		const doc0 = update.startState.doc;
+		if (byUser) lastAction = null; // Mod-Z now belongs to the user's own typing
+		for (const a of affected) {
+			let hit = false;
+			let lineHit = false;
+			const ls = doc0.lineAt(Math.min(a.from, doc0.length)).from;
+			const le = doc0.lineAt(Math.min(a.to, doc0.length)).to;
+			update.changes.iterChangedRanges((fromA, toA) => {
+				if (fromA < a.to && toA > a.from) hit = true;
+				if (fromA <= le && toA >= ls) lineHit = true;
+			});
+			if (byUser && lineHit && a.intact && !a.edited && now - a.at <= EDIT_WINDOW_MS) {
+				a.edited = true;
+				outcome(a, 'edit');
+			}
+			if (hit || (byUser && lineHit)) a.intact = false;
+			a.from = update.changes.mapPos(a.from, 1);
+			a.to = Math.max(a.from, update.changes.mapPos(a.to, -1));
+		}
+		const keep = Math.max(EDIT_WINDOW_MS, REDICTATE_WINDOW_MS);
+		affected = affected.filter((a) => a === lastAction || now - a.at <= keep);
+	}
+
+	function noteRedictation(chunk: string, now: number): void {
+		const toks = tokenSet(chunk);
+		for (const a of affected) {
+			if (a.redictated || now - a.at > REDICTATE_WINDOW_MS) continue;
+			if (isRedictation(a.tokens, toks)) {
+				a.redictated = true;
+				outcome(a, 'redictate');
+			}
+		}
+	}
+
+	/** One-step undo of the latest action (any route), while its range is intact. */
+	export function undoLast(): boolean {
+		const a = lastAction;
+		if (!editor || !a || !a.intact) return false;
+		isQwenWriting = true;
+		editor.dispatch({
+			changes: { from: a.from, to: a.to, insert: a.before },
+			effects: clearAuto.of({ from: a.from, to: a.to })
+		});
+		isQwenWriting = false;
+		a.intact = false;
+		lastAction = null;
+		clearLineTimers();
+		lineOpen = a.lineOpenBefore;
+		outcome(a, 'undo');
+		return true;
+	}
+
+	async function askBundle(chunk: string, solid: string): Promise<{ data: BundleRouteResponse | null; error: string | null }> {
+		try {
+			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+			if ($token) headers['Authorization'] = `Bearer ${$token}`;
+			const res = await fetch(`${API_URL}/api/canvas/bundle`, {
+				method: 'POST',
+				headers,
+				body: JSON.stringify({
+					scan_type: scanType,
+					committed: '',
+					active: solid,
+					open_line: lineOpen ? lastNonEmptyLine(solid) : '',
+					latest_utterance: chunk,
+					checklist: checklistSections
+				})
+			});
+			if (!res.ok) return { data: null, error: `http ${res.status}` };
+			return { data: (await res.json()) as BundleRouteResponse, error: null };
+		} catch (e) {
+			return { data: null, error: (e as Error).name };
+		}
+	}
+
+	async function decideUtterance(chunk: string, arrivedAt: number): Promise<void> {
+		if (!editor) return;
+		noteRedictation(chunk, Date.now());
+		const pend0 = firstPendingRange();
+		const doc0 = editor.state.doc.toString();
+		const t0 = performance.now();
+		const { data, error } = await askBundle(chunk, doc0.slice(0, pend0 ? pend0.from : doc0.length));
+		const roundtrip = Math.round(performance.now() - t0);
+		if (!editor) return;
+
+		let route: FastRoute = data?.route ?? 'polish';
+		let reason = data?.reason ?? `request_error:${error}`;
+		// The document as it is now, not as it was when the bundle was asked.
+		const pend = firstPendingRange();
+		const doc = editor.state.doc.toString();
+		const pendingText = pend ? doc.slice(pend.from, pend.to).trim() : null;
+		if ((route === 'fast_append' || route === 'command' || route === 'skip') && pendingText !== chunk.trim()) {
+			route = 'polish';
+			reason = pend ? 'pending_mismatch' : 'pending_lost';
+		} else if ((route === 'fast_append' || route === 'command') && (isProcessingQueue || utteranceQueue.length > 0)) {
+			// A full-regeneration polish rewrites a range fixed at request time; writing
+			// under it would be overwritten or duplicated. Join the polish instead.
+			route = 'polish';
+			reason = 'polish_in_flight';
+		}
+
+		const rec: DecisionRecord = {
+			id: data?.decision_id ?? `local-${++localDecisionSeq}`,
+			seq: ++decisionSeq,
+			at: Date.now(),
+			route,
+			reason,
+			qset: data?.qset ?? null,
+			action: data?.action ?? null,
+			confidence: data?.confidence ?? null,
+			probabilities: data?.probabilities ?? null,
+			is_correction: data?.is_correction ?? null,
+			standalone: data?.standalone ?? null,
+			latency_ms: data?.latency_ms ?? null,
+			roundtrip_ms: roundtrip,
+			polish_called: route === 'polish',
+			polish_ms: null,
+			utterance_len: chunk.length,
+			utterance_hash: hash8(chunk),
+			applied_len: 0,
+			closes_line: false,
+			line_closed_by: null,
+			error: data?.error ?? error
+		};
+
+		if ((route === 'fast_append' || route === 'command') && data && pend) {
+			const solid = doc.slice(0, pend.from);
+			let insert: string;
+			let closedBy: LineClosedBy | null = null;
+			if (route === 'fast_append') {
+				insert = joinSeparator(solid, lineOpen) + data.text;
+				if (data.closes_line) closedBy = data.text.endsWith('\n') ? 'newline' : 'punctuation';
+			} else {
+				insert = solid ? data.insert : '';
+				closedBy = data.insert.includes('\n') ? 'newline' : 'punctuation';
+			}
+			isQwenWriting = true;
+			editor.dispatch({
+				changes: { from: pend.from, to: pend.to, insert },
+				effects: [
+					clearPending.of({ from: pend.from, to: pend.to }),
+					...(insert ? [markAuto.of({ from: pend.from, to: pend.from + insert.length })] : [])
+				]
+			});
+			isQwenWriting = false;
+			const a: Affected = {
+				id: rec.id, route, at: rec.at, from: pend.from, to: pend.from + insert.length, before: '',
+				lineOpenBefore: lineOpen, tokens: tokenSet(route === 'fast_append' ? data.text : ''),
+				intact: true, edited: false, redictated: false
+			};
+			track(a);
+			setTimeout(() => editor?.dispatch({ effects: clearAuto.of({ from: a.from, to: a.to }) }), EDIT_WINDOW_MS);
+			rec.applied_len = insert.length;
+			rec.closes_line = closedBy !== null;
+			if (closedBy) {
+				closeLine(closedBy); // closes the previous open line, if any, as part of this one
+				rec.line_closed_by = closedBy;
+				lineOpen = false;
+			} else {
+				lineOpen = true;
+				openLineDecisionId = rec.id;
+				armLineTimers(data.close_on_silence, data.line_close, arrivedAt);
+			}
+			emitDecision(rec, chunk);
+			processReview();
+			return;
+		}
+		if (route === 'skip' && pend) {
+			isQwenWriting = true;
+			editor.dispatch({ changes: { from: pend.from, to: pend.to, insert: '' }, effects: clearPending.of({ from: pend.from, to: pend.to }) });
+			isQwenWriting = false;
+			emitDecision(rec, chunk);
+			return;
+		}
+		// polish: today's path. The open line closes (the polish rewrites the scratchpad).
+		rec.route = 'polish';
+		rec.polish_called = true;
+		closeLine('polish');
+		emitDecision(rec, chunk);
+		enqueueUtterance(chunk, rec.id);
+	}
+
 	// One polish per statement: utterances queue up and each process call takes exactly one.
 	let utteranceQueue: string[] = [];
-	function enqueueUtterance(s: string): void {
+	// Decision-first: the decision id behind each queued utterance (null on other front doors).
+	let utteranceDecisionIds: (string | null)[] = [];
+	function enqueueUtterance(s: string, decisionId: string | null = null): void {
 		utteranceQueue.push(s);
+		utteranceDecisionIds.push(decisionId);
 		// Never abort an in-flight polish for a queued statement (that would drop its triage);
 		// the queue loop picks the next one up when the current call completes.
 		if (isProcessingQueue) pendingProcess = true;
 		else processTranscriptQueue();
+	}
+
+	/** Queue without starting a call (the stop-time flush starts one itself). */
+	function enqueueLater(s: string): void {
+		utteranceQueue.push(s);
+		utteranceDecisionIds.push(null);
 	}
 
 	async function processTranscript(): Promise<void> {
@@ -552,6 +877,7 @@
 				preferred_section_names: checklistSections,
 				mode: polishMode
 			};
+			const queuedDecisionId = utteranceQueue.length ? (utteranceDecisionIds.shift() ?? null) : null;
 			const queued = utteranceQueue.length ? utteranceQueue.shift()! : null;
 			if (utteranceQueue.length) pendingProcess = true;
 			const utterance = queued ?? pendingUtterance ?? delta;
@@ -587,6 +913,17 @@
 					effects: faded ? [clearPending.of({ from: 0, to: content.length })] : []
 				});
 				isQwenWriting = false;
+				if (queuedDecisionId) {
+					// Decision-first: the polish is undoable and edit-tracked like any route,
+					// so its undo/edit rate is the baseline the automatic routes are held to.
+					const r = changedRange(activeBefore, content);
+					track({
+						id: queuedDecisionId, route: 'polish', at: Date.now(), from: r.from, to: r.to, before: r.before,
+						lineOpenBefore: false, tokens: tokenSet(utterance ?? ''), intact: true, edited: false, redictated: false
+					});
+					lineOpen = false;
+					patchDecision(queuedDecisionId, { polish_ms: Math.round(performance.now() - t0) });
+				}
 				// Scratchpad is updated — now fire IntelliPrompts analysis in background.
 				processReview();
 			}
@@ -754,7 +1091,9 @@
 				isRecording = true;
 				onRecordingChange(true);
 				isConnecting = false;
-				if (editor) {
+				// Decision-first keeps the editor editable: a manual fix of an automatic
+				// action is one of the outcomes it measures.
+				if (editor && !decisionFirst()) {
 					editor.dispatch({
 						effects: editableCompartment.reconfigure(EditorView.editable.of(false))
 					});
@@ -773,7 +1112,7 @@
 						// Deepgram UtteranceEnd (~1s pause) is a backup polish trigger; the primary is
 						// speech_final (~endpointing). Only fire if idle, so we never abort + re-run an
 						// in-flight polish (which wasted a full model call per utterance).
-						if (!frontDoorIsJev() && !isProcessingQueue) processTranscriptQueue();
+						if (!frontDoorIsJev() && !decisionFirst() && !isProcessingQueue) processTranscriptQueue();
 					} else if (data.transcript) {
 						if (!data.is_final) {
 							// Interim: live preview while speaking
@@ -825,6 +1164,15 @@
 			websocket = null;
 		}
 		stream = null;
+		// Decision-first: undecided finals keep their faded raw until their route lands;
+		// the decision chain, not a flush polish, finishes them.
+		if (decisionFirst()) {
+			closeLine('stop');
+			if (editor) {
+				editor.dispatch({ effects: editableCompartment.reconfigure(EditorView.editable.of(true)) });
+			}
+			return;
+		}
 		// Phase 2b.3: promote any faded raw to solid before handing control back — no
 		// pending marks survive the end of recording (the flush polish still cleans it).
 		if (editor) editor.dispatch({ effects: clearPending.of(null) });
@@ -833,7 +1181,7 @@
 		clearSilence();
 		const flushed = flushBuffer(chunkBuffer);
 		chunkBuffer = flushed.buffer;
-		for (const s of flushed.sends) utteranceQueue.push(s);
+		for (const s of flushed.sends) enqueueLater(s);
 		if (sessionTranscript.trim()) processTranscriptQueue();
 		if (editor) {
 			editor.dispatch({
@@ -856,6 +1204,9 @@
 				doc: '',
 				extensions: [
 					history(),
+					// Decision-first: Mod-Z undoes the latest routed action first; with none
+					// (or after the user typed) it falls through to ordinary history undo.
+					Prec.highest(keymap.of([{ key: 'Mod-z', run: () => decisionFirst() && undoLast() }])),
 					keymap.of([...defaultKeymap, ...historyKeymap]),
 					markdown(),
 					syntaxHighlighting(markdownHighlightStyle),
@@ -865,7 +1216,9 @@
 					highlightField,
 					integrityField,
 					pendingField,
+					autoField,
 					EditorView.updateListener.of((update) => {
+				if (update.docChanged && decisionFirst() && affected.length) trackChanges(update, !isQwenWriting);
 				if (update.docChanged) {
 					const content = update.state.doc.toString();
 					onContentChange(content);
@@ -984,6 +1337,17 @@
 		</button>
 		{#if recordingError}
 			<p class="text-xs text-red-400">{recordingError}</p>
+		{/if}
+		{#if labConfig?.frontDoor === 'decision'}
+			<button
+				type="button"
+				onclick={() => undoLast()}
+				disabled={!lastAction?.intact}
+				class="text-xs px-2 py-0.5 rounded border border-white/10 text-gray-300 disabled:opacity-30"
+				title="Undo the latest routed action (⌘Z)"
+			>
+				Undo last{lastAction ? ` (${lastAction.route.replace('_', '-')})` : ''}
+			</button>
 		{/if}
 
 		<!-- Mic device picker — shown below the button when not recording -->
@@ -1119,6 +1483,12 @@
 	   swaps it for solid text, so it never reads as final. */
 	:global(.cm-dictation-pending) {
 		opacity: 0.45;
+	}
+
+	/* Decision-first: text an automatic action wrote, marked while it can be undone. */
+	:global(.cm-dictation-auto) {
+		background: rgba(16, 185, 129, 0.1);
+		border-bottom: 1px dotted rgba(16, 185, 129, 0.6);
 	}
 
 </style>

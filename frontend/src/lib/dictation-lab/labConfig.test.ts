@@ -80,6 +80,18 @@ describe('persistence', () => {
 		} as unknown as Storage;
 		expect(loadLabConfig(fake)).toEqual(DEFAULT_LAB_CONFIG);
 	});
+	it('round-trips the decision-first front door', () => {
+		const mem: Record<string, string> = {};
+		const fake = {
+			getItem: (k: string) => mem[k] ?? null,
+			setItem: (k: string, v: string) => {
+				mem[k] = v;
+			}
+		} as unknown as Storage;
+		const cfg: LabConfig = { ...DEFAULT_LAB_CONFIG, frontDoor: 'decision' };
+		saveLabConfig(cfg, fake);
+		expect(loadLabConfig(fake)).toEqual(cfg);
+	});
 	it('exposes a store seeded from defaults', () => {
 		expect(get(labConfig)).toEqual(DEFAULT_LAB_CONFIG);
 	});
