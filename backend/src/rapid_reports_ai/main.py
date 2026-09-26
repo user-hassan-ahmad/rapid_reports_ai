@@ -143,6 +143,9 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
 
+    from rapid_reports_ai import jev_client
+    await jev_client.aclose()
+
 
 app = FastAPI(title="Rapid Reports AI API", lifespan=lifespan)
 
@@ -4884,6 +4887,11 @@ async def websocket_transcribe(websocket: WebSocket):
     """
     await websocket.accept()
     print("WebSocket transcription connection accepted")
+
+    # Open the pooled Jev connection while the radiologist starts talking. Only when a
+    # Jev path is switched on (RR_TRIAGE_DEBUG/SHADOW, RR_COVERAGE_CANDIDATE=jev).
+    from rapid_reports_ai import jev_client
+    jev_client.schedule_warm_up()
 
     import time as _perf
     _t_session = _perf.perf_counter()
