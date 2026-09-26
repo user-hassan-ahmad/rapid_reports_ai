@@ -65,6 +65,8 @@ RR_TRIAGE_DEBUG=1 DEEPGRAM_DICTATION=0 PYTHONPATH=src <main>/backend/.venv/bin/u
 
 ## 6. Outstanding / next steps — follow decision-first **rev 2**
 
+> **2026-09-26: the working sequence is now `docs/superpowers/plans/2026-09-26-jev-work-order.md`** (15 steps from the Jev field research, `docs/superpowers/research/2026-09-26-jev-field-research.md`). It folds in the items below and adds shared client, calibration metrics, question registry, governance before shadow, and interim-transcript commands. Update its status column as steps land.
+
 The architecture spec was rewritten as rev 2 after this handover (`c12f801`). It retires the front door's complete/continues trigger, the backstop timers and the `placement` question; the front-door spec carries a superseded note. **Do not resume timer or placement tuning.** Build order and exit criteria: rev 2 §4; first experiments: rev 2 §7; when to chain Jev calls: rev 2 §6.
 
 1. **Production shadow** (component 0): set `RR_TRIAGE_SHADOW=1` on Railway; summarise with `scripts/triage_shadow_report.py` after a week. The action mix and confidence distribution set the bands.

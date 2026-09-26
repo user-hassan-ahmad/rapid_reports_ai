@@ -164,6 +164,8 @@ Before production default-on, answer: does sending de-identified dictation text 
 
 ## 7. Suggested order of work (fits rev 2's build order; doesn't replace it)
 
+> **Superseded by the full sequence in `../plans/2026-09-26-jev-work-order.md`** (15 steps, side tracks, default-on gate, status column). The table below is the original short list, kept for reference.
+
 | # | Item | Why now | Exit |
 |---|---|---|---|
 | 1 | **D-01** shared client + warm-up | Hours; changes every latency number we report | p50/p95 with intervals, before vs after |
