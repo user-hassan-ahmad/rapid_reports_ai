@@ -136,3 +136,35 @@ async def test_aclose(built):
     await jev_client.aclose()
     assert c.is_closed and jev_client._SHARED is None
     await jev_client.aclose()  # idempotent
+
+
+def _all_answers():
+    choice = lambda c, opts: {"choice": c, "confidence": 0.9, "probabilities": {o: (0.9 if o == c else 0.02) for o in opts}}
+    from rapid_reports_ai.dictation_triage import TRIAGE_ACTIONS
+    from rapid_reports_ai.utterance_boundary import BOUNDARIES, PLACEMENTS
+    noul = {"noul": 0.2}
+    return {"answers": {
+        "action": choice("append_new_finding", TRIAGE_ACTIONS), "is_correction": noul, "needs_committed_edit": noul,
+        "standalone": noul, "section_0": noul, "LUNGS": noul, "asr_risk": noul,
+        "boundary": choice("complete", BOUNDARIES), "placement": choice("new_line", PLACEMENTS),
+    }, "usage": {}}
+
+
+async def test_all_four_callers_share_one_client(built):
+    from rapid_reports_ai.dictation_triage import JevTriager, TriageState
+    from rapid_reports_ai.section_coverage import JevCoverage
+    from rapid_reports_ai.utterance_boundary import JevBoundary
+    from rapid_reports_ai.utterance_bundle import BundleState, JevBundle
+
+    made, state = built
+    state["handler"] = lambda req: httpx.Response(200, json=_all_answers())
+    calls = [
+        lambda: JevTriager(api_key="k").classify(TriageState("", "", "a nodule", "CT chest")),
+        lambda: JevBundle(api_key="k").classify(BundleState("CT chest", "", "", "", "a nodule", ["LUNGS"])),
+        lambda: JevCoverage(api_key="k").classify("lungs clear", ["LUNGS"], "CT chest"),
+        lambda: JevBoundary(api_key="k").classify("CT chest", "", "a nodule", ""),
+    ]
+    for call in calls:
+        await call()
+        await call()
+    assert len(made) == 1

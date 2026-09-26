@@ -23,6 +23,8 @@ from typing import Any, Awaitable, Callable, Literal, Optional, Protocol, get_ar
 import httpx
 from pydantic import BaseModel
 
+from .jev_client import JEV_MODEL, JEV_URL, jev_post  # noqa: F401  (re-exported)
+
 TriageAction = Literal[
     "append_new_finding",
     "correct_previous_finding",
@@ -60,8 +62,6 @@ TRIAGE_QUESTIONS: dict[str, dict[str, Any]] = {
     },
 }
 
-JEV_MODEL = "typesafe/jev-1.13"  # pinned; jev-latest redirects and would drift mid-pilot
-JEV_URL = "https://openrouter.ai/api/v1/systemone"
 JEV_TIMEOUT_S = 3.0
 QWEN_TIMEOUT_S = 8.0
 
@@ -135,11 +135,9 @@ class JevTriager:
         return {"model": JEV_MODEL, "state": state.as_payload(), "questions": TRIAGE_QUESTIONS}
 
     async def classify(self, state: TriageState) -> TriageDecision:
-        headers = {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
         t0 = time.perf_counter()
         try:
-            async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout_s) as client:
-                resp = await client.post(JEV_URL, json=self.build_request(state), headers=headers)
+            resp = await jev_post(self.build_request(state), self._api_key, self._timeout_s, self._transport)
         except httpx.HTTPError as e:
             raise TriageError(f"jev transport failure: {type(e).__name__}") from e
         latency_ms = int((time.perf_counter() - t0) * 1000)

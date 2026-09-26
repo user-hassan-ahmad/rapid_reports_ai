@@ -15,7 +15,8 @@ from typing import Any, Literal, Optional
 
 import httpx
 
-from .dictation_triage import JEV_MODEL, JEV_TIMEOUT_S, JEV_URL, TriageError, _check_unit
+from .dictation_triage import JEV_MODEL, JEV_TIMEOUT_S, TriageError, _check_unit
+from .jev_client import jev_post
 
 Boundary = Literal["complete", "continues", "command"]
 BOUNDARIES: tuple[str, ...] = ("complete", "continues", "command")
@@ -143,11 +144,9 @@ class JevBoundary:
             },
             "questions": BOUNDARY_QUESTIONS,
         }
-        headers = {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
         t0 = time.perf_counter()
         try:
-            async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout_s) as client:
-                resp = await client.post(JEV_URL, json=body, headers=headers)
+            resp = await jev_post(body, self._api_key, self._timeout_s, self._transport)
         except httpx.HTTPError as e:
             raise TriageError(f"jev boundary transport failure: {type(e).__name__}") from e
         latency_ms = int((time.perf_counter() - t0) * 1000)

@@ -21,13 +21,13 @@ import httpx
 from .dictation_triage import (
     JEV_MODEL,
     JEV_TIMEOUT_S,
-    JEV_URL,
     TRIAGE_QUESTIONS,
     JevTriager,
     TriageDecision,
     TriageError,
     _check_unit,
 )
+from .jev_client import jev_post
 from .section_coverage import coverage_questions
 from .utterance_boundary import BOUNDARY_QUESTIONS
 
@@ -100,11 +100,9 @@ class JevBundle:
     async def classify(self, state: BundleState) -> BundleDecision:
         questions = bundle_questions(state.checklist)
         body = {"model": JEV_MODEL, "state": state.as_payload(), "questions": questions}
-        headers = {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
         t0 = time.perf_counter()
         try:
-            async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout_s) as client:
-                resp = await client.post(JEV_URL, json=body, headers=headers)
+            resp = await jev_post(body, self._api_key, self._timeout_s, self._transport)
         except httpx.HTTPError as e:
             raise TriageError(f"jev bundle transport failure: {type(e).__name__}") from e
         latency_ms = int((time.perf_counter() - t0) * 1000)

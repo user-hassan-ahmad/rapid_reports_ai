@@ -16,7 +16,8 @@ from typing import Any, Literal, Optional
 import httpx
 from pydantic import BaseModel
 
-from .dictation_triage import JEV_MODEL, JEV_TIMEOUT_S, JEV_URL, TriageError, _check_unit
+from .dictation_triage import JEV_MODEL, JEV_TIMEOUT_S, TriageError, _check_unit
+from .jev_client import jev_post
 
 Candidate = Literal["jev", "qwen"]
 BINARY_THRESHOLD = 0.5
@@ -95,11 +96,9 @@ class JevCoverage:
             "state": {"scan_type": scan_type or "", "checklist": list(sections), "scratchpad": scratchpad or ""},
             "questions": coverage_questions(sections),
         }
-        headers = {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
         t0 = time.perf_counter()
         try:
-            async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout_s) as client:
-                resp = await client.post(JEV_URL, json=body, headers=headers)
+            resp = await jev_post(body, self._api_key, self._timeout_s, self._transport)
         except httpx.HTTPError as e:
             raise TriageError(f"jev coverage transport failure: {type(e).__name__}") from e
         latency_ms = int((time.perf_counter() - t0) * 1000)
