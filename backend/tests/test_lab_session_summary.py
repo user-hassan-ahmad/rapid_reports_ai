@@ -90,3 +90,10 @@ def test_overall_keeps_outcomes_with_their_own_session():
     fa, po = o["routes"]["fast_append"], o["routes"]["polish"]
     assert (fa["n"], fa["undo"]["k"], fa["redictate"]["k"]) == (3, 1, 1)
     assert (po["n"], po["undo"]["k"], po["edit"]["k"]) == (2, 0, 1)
+
+
+def test_one_session_has_no_session_clustered_interval():
+    """Resampling one cluster always returns it: [p, p] would look precise and is not."""
+    r = report([("a.json", S1)])
+    assert r["overall"]["polish_per_utterance_session_ci95"] is None
+    assert "needs ≥ 2 sessions" in format_report(r)

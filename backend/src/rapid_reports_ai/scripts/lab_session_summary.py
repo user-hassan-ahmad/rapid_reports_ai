@@ -94,7 +94,7 @@ def report(sessions: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
         [round(x, 4) for x in bootstrap_stat_ci(
             [bool(d.get("polish_called")) for d in all_dec],
             lambda xs: sum(xs) / len(xs), groups=groups)]
-        if all_dec else None
+        if len(sessions) >= 2 else None  # one cluster resamples to itself: [p, p]
     )
     return {"sessions": per, "overall": overall}
 
@@ -104,9 +104,12 @@ def _fmt_summary(title: str, s: dict[str, Any]) -> list[str]:
     red = s["reduction_vs_baseline"]
     lines.append(f"  polish calls / utterance  {fmt_rate(s['polish_calls'])}  vs baseline 1.000"
                  + (f"  (−{red:.0%})" if red is not None else ""))
-    if "polish_per_utterance_session_ci95" in s and s["polish_per_utterance_session_ci95"]:
-        lo, hi = s["polish_per_utterance_session_ci95"]
-        lines.append(f"    session-clustered 95 % [{lo:.2f}, {hi:.2f}] over {s['sessions']} sessions")
+    if "polish_per_utterance_session_ci95" in s:
+        if s["polish_per_utterance_session_ci95"]:
+            lo, hi = s["polish_per_utterance_session_ci95"]
+            lines.append(f"    session-clustered 95 % [{lo:.2f}, {hi:.2f}] over {s['sessions']} sessions")
+        else:
+            lines.append(f"    session-clustered interval needs ≥ 2 sessions (have {s['sessions']})")
     b = s["bundle_ms"]
     if b["n"]:
         lines.append(f"  bundle p50 {b['p50']} ms [{b['p50_ci95'][0]}, {b['p50_ci95'][1]}]"
