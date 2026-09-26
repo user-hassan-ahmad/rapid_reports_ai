@@ -5,11 +5,12 @@
 ## Ordering rules
 
 1. **Truthful measurement before tuning.** Latency and calibration numbers feed every later decision.
-2. **Start slow clocks early.** The production shadow needs a week of real data, so it starts while other work runs.
+2. **Learn from consequences, not just predictions.** *(Revised 2026-09-26.)* Decisions run live in the Dictation Lab, so every undo, manual fix or re-dictation labels the decision that caused it. A production shadow only sees what Jev *would* have done; it moves to the pre-launch gate.
 3. **Backbone before features.** Fast-append is where appends, corrections and ASR fixes all land.
 4. **De-risk in parallel.** Uncertain ideas get an offline measurement on a side track so the main track never waits on an unknown.
+5. **Don't over-calibrate early.** Provisional thresholds live in the registry with a version; real sessions set the final bands.
 
-Standing rules for every step: question wording and lexicon frozen unless the step is explicitly about wording; production behaviour env-gated and off by default; every number with a plain-code baseline and a 95 % interval; fixtures grow from lab exports; tuning is scored only on sessions it has not seen.
+Standing rules for every step: question wording and lexicon frozen unless the step is explicitly about wording; production behaviour env-gated and off by default; every number with a plain-code baseline and a 95 % interval; fixtures grow from lab exports; tuning is scored only on sessions it has not seen; every automatic action fails open to today's polish path and is visible and undoable.
 
 ## Phase A — Make the numbers true
 
@@ -19,30 +20,32 @@ Standing rules for every step: question wording and lexicon frozen unless the st
 | 2 | **D-03** Brier, ECE (10 bins + counts) and reliability table in `bakeoff_stats`, printed per question for Jev and Qwen-off | Rev 2 §2 rests on calibration. If Jev is not better calibrated than Qwen-off, the plan changes here | Calibration table for all three sets, with a plain verdict | **done 2026-09-26**: **not shown**. vs qwen-lp (logprobs): Jev better 1 (coverage), qwen-lp better 2 (needs_committed_edit, asr_risk; offset, AUC 1.0), 4 not shown. Rev 2 §2: vendor not earned on calibration → **your decision before step 5** |
 | 3 | **D-10** Question registry with `QSET_VERSION`, logged per decision; also log full `probabilities` (enables D-07 later) | The shadow must be attributable to a wording, and its week of data must carry distributions | Parity still PASS with unchanged wording; logs carry version + probabilities | **done 2026-09-26**: `jev_questions.py`, `QSET_VERSION 2026-09-26.1`; wording digest unchanged across the move; parity PASS, 0 errors, bundle p95 338 [306, 359] ms; qset + full probabilities on shadow, triage, coverage and utterance decision lines |
 
-**Phase A outcome (2026-09-26):** numbers now true. Calibration did *not* come out in Jev's favour (handover §3), so before step 5 decide: keep Jev (earned on one call for all questions and on ranking, not on calibration), or shadow Qwen-off as well. Unblocked now: step 4 (needs you), S1 (after 3), S2 (after 2).
+**Phase A outcome (2026-09-26):** numbers now true. Calibration did *not* come out in Jev's favour (handover §3), decided in step 4: keep Jev for the bundle on one-call-many-questions and ranking, with Qwen-off kept as the contrast. Next: step 5, live in the lab.
 
-## Phase B — Start the real-world clock
-
-| # | Item | Why here | Exit | Status |
-|---|---|---|---|---|
-| 4 | **X-09** Governance decision on sending dictation text to TypeSafe via OpenRouter | The shadow sends real text, so this is needed *before* step 5, not before default-on | Written decision: what may be sent, in what form (text, redacted, hashed) | todo |
-| 5 | **Component 0** Production shadow (`RR_TRIAGE_SHADOW=1`), summarised with `scripts/triage_shadow_report.py` | Takes a week; the action mix and confidence distributions set the bands in step 7 | One week of data + summary | todo |
-
-## Phase C — Fix known weak spots while the shadow runs
+## Phase B — Live in the lab *(revised 2026-09-26; replaces "start the production shadow")*
 
 | # | Item | Why here | Exit | Status |
 |---|---|---|---|---|
-| 6 | **D-05 + D-08** (arms: criteria examples, statement-form nouls; D-09 double-ask and D-11 `addressed_to_system` as extra arms) | Fast-append closes lines on `standalone`, which under-fires today. Needs **new lab mic sessions** as the test set | Beats the frozen lexicon on unseen sessions | todo |
+| 4 | **Decision record:** keep Jev for the per-utterance bundle; keep Qwen-off as the contrast candidate. Lab sessions (own, practice or de-identified dictation) run without the X-09 decision; X-09 moves to the gate | Phase A showed Jev's case is many typed probabilities in one ~250–330 ms call with good ranking, not calibration. Qwen-off matched it on triage alone (p50 214 vs 255 ms) but returns hard labels and needs one call per question for probabilities | Written here | **done 2026-09-26** |
+| 5 | **Component 2 live in the lab:** bundle on every Deepgram final, verbatim fast-append as the default op, band router with **provisional** thresholds (confident append → fast-append; command → deterministic; correct / restate / delete, low confidence or any Jev error → today's polish), **outcome logging** (decision id; undo, manual edit of the line within 10 s, re-dictation logged against it; data only, never text), lab panel counters, session summary script | Real dictation produces consequence labels the shadow cannot; moves the user-visible win (fewer polish calls) forward four steps | Lab strategy behind a lab-only flag; a week of mic sessions summarised: polish calls per utterance vs polish-everything baseline, undo/edit rate per route, bundle p50/p95, all with intervals | todo |
 
-**Side track S1 (any time after 3):** **D-02 offline.** Label correction fixtures with target line + kind (handover item 7), write the candidate-span extractor (laterality, measurements, negations per section), measure Jev's target pick against a code-only baseline with intervals. Decides whether component 5 is viable. No production wiring.
-
-**Side track S2 (any time after 2):** **OpenJev bake-off column.** Governance fallback and a third calibration reference.
-
-## Phase D — The backbone
+## Phase C — Tune from live data
 
 | # | Item | Why here | Exit | Status |
 |---|---|---|---|---|
-| 7 | **Component 2** Verbatim fast-append + band router, offline replay of lab sessions first | Bands come from shadow (5) + calibration (2); every later operation plugs in here | Polish calls/utterance ↓ ≥ 60 %; zero-edit rate ≥ today | todo |
+| 6 | **D-05 + D-08** (arms: criteria examples, statement-form nouls; D-09 double-ask and D-11 `addressed_to_system` as extra arms) | Fast-append closes lines on `standalone`, which under-fires today. Test set: **live-lab sessions** not used for tuning | Beats the frozen lexicon on unseen sessions | todo |
+| 7 | **Set the bands from outcomes:** per decision type, thresholds from undo/edit rate at each confidence level (risk–coverage), not from ECE; thresholds versioned in the registry | Replaces "bands from shadow + calibration" | Polish calls/utterance ↓ ≥ 60 % vs baseline; undo/edit rate on automatic actions no worse than polish's | todo |
+
+**Side track S1 (any time):** **D-02 offline.** Label correction fixtures with target line + kind (handover item 7), write the candidate-span extractor (laterality, measurements, negations per section), measure Jev's target pick against a code-only baseline with intervals. Decides whether component 5 is viable. No production wiring.
+
+**Side track S2 (any time):** **OpenJev bake-off column.** Governance fallback and a third reference.
+
+**Side track S3 (small, before step 7):** **risk–coverage** (accuracy when acting on the top X % most confident) in `bakeoff_stats`, and **per-session offset drift** per noul in the session summary. These are the metrics the bands actually consume; asr_risk's baseline drifted 0.5–0.8 across sessions.
+
+## Phase D — The backbone, completed
+
+| # | Item | Why here | Exit | Status |
+|---|---|---|---|---|
 | 8 | **Component 3** Section coverage per utterance on Jev + static collective→section map in code | Corrections need section selection to narrow candidates; replaces the Qwen coverage call | Recall ≥ Qwen's incl. lab-exported collectives | todo |
 
 ## Phase E — Latency off the path, and corrections
@@ -50,7 +53,7 @@ Standing rules for every step: question wording and lexicon frozen unless the st
 | # | Item | Why here | Exit | Status |
 |---|---|---|---|---|
 | 9 | **D-04 + component 7** Bundle on Deepgram interim results; closed-set commands may act early, free text waits for the final | Needs the registry's command question and the router | Command precision 1.0 on fixtures + lab; perceived command latency ≈ 0 | todo |
-| 10 | **D-02 + D-06 / component 5** Span-copy corrections with numbered-badge fallback | Needs fast-append (7), section selection (8) and the S1 result | Laterality / measurement / negation fixed with no model call | todo |
+| 10 | **D-02 + D-06 / component 5** Span-copy corrections with numbered-badge fallback | Needs fast-append (5), section selection (8) and the S1 result | Laterality / measurement / negation fixed with no model call | todo |
 | 11 | **Component 4** ASR repair chain (code proposes candidates, Jev picks, "as heard" mandatory) | Same mechanism as step 10 | ≥ polish's fix rate on lab ASR cases, zero introduced errors | todo |
 
 ## Phase F — Beyond dictation
@@ -62,10 +65,15 @@ Standing rules for every step: question wording and lexicon frozen unless the st
 | 14 | **X-06** Normal-fill as selection (with component 9) | Changes generation, so it follows the integrity check that would catch regressions | Quality rubric v2.1 parity | todo |
 | 15 | Backlog: **X-05** corpus analytics, **X-07** critical tier, **X-08** prior comparison, **X-02 / X-03** routing and agent guards | Each needs its own labelled set | Per item | backlog |
 
-## Gate before any production default-on
+## Gate before any production default-on *(revised 2026-09-26)*
 
-All four: X-09 decision written; shadow week reviewed; calibration measured (step 2); a blind radiologist-labelled sample scored (not fixtures we wrote).
+All five:
+1. **X-09** governance decision written (framed as adding one sub-processor, TypeSafe via OpenRouter; the same dictation text already goes to US language-model providers for polish and generation).
+2. **Production shadow week** (`RR_TRIAGE_SHADOW=1`, Jev and Qwen-off side by side, `scripts/triage_shadow_report.py`) reviewed: action mix, per-question offset drift, latency.
+3. **Live-lab outcome targets** met (step 7 exit).
+4. A **blind radiologist-labelled sample** scored (not fixtures we wrote).
+5. Calibration and risk–coverage reported for the shipped thresholds (Phase A tooling + S3).
 
 ## Minimum path
 
-Steps 1–3 and 5 give truthful data; step 7 delivers the user-visible win. Everything else refines or extends those two.
+Steps 1–3 made the numbers true. **Step 5 (live lab) is now the shortest route to a user-visible win**; step 7 turns its data into bands. Everything else refines or extends those two.
