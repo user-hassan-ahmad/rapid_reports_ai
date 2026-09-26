@@ -170,3 +170,9 @@ def test_the_colon_is_read_against_the_scratchpad_before_it(authed_client, lab):
     d = authed_client.post("/api/canvas/bundle", json={**BODY, "active": "Normal marrow.\n\nL5/S1",
                                                          "latest_utterance": "colon"}).json()
     assert (d["route"], d["insert"]) == ("command", ":") and fake.states == []
+
+
+def test_the_response_says_when_a_paragraph_starts(authed_client, lab):
+    lab(FakeBundle())
+    d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "L3 slash four mild desiccation"}).json()
+    assert (d["text"], d["starts_paragraph"]) == ("L3/4 mild desiccation", True)

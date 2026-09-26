@@ -1316,6 +1316,7 @@ class BundleRouteResponse(BaseModel):
     insert: str = ""
     closes_line: bool = False
     close_on_silence: bool = False
+    starts_paragraph: bool = False
     line_close: BundleLineClose
     action: Optional[str] = None
     confidence: Optional[float] = None
@@ -1354,7 +1355,7 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
     t = d.triage if ok else None
     resp = BundleRouteResponse(
         decision_id=decision_id, route=r.route, reason=r.reason, text=r.text, insert=r.insert,
-        closes_line=r.closes_line, close_on_silence=r.close_on_silence,
+        closes_line=r.closes_line, close_on_silence=r.close_on_silence, starts_paragraph=r.starts_paragraph,
         line_close=BundleLineClose(
             silence_s=FAST_APPEND_BANDS["line_close_silence_s"],
             hard_limit_s=FAST_APPEND_BANDS["line_close_hard_limit_s"],

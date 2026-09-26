@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	asrFields,
 	commandInsert,
+	separatorFor,
 	buildSessionExport,
 	changedRange,
 	hash8,
@@ -129,4 +130,20 @@ describe('commandInsert', () => {
 	it('never doubles a full stop', () => expect(commandInsert('No effusion.', '.')).toBe(''));
 	it('never starts an empty scratchpad with a command', () => expect(commandInsert('', '\n\n')).toBe(''));
 	it('passes newlines through', () => expect(commandInsert('No effusion.', '\n')).toBe('\n'));
+});
+
+describe('separatorFor', () => {
+	it('opens a paragraph for a disc level or heading', () => {
+		expect(separatorFor('Normal marrow signal.', 'L3/4 mild desiccation', true)).toBe('\n\n');
+		expect(separatorFor('Normal marrow signal.\n', 'L3/4', true)).toBe('\n');
+		expect(separatorFor('Normal marrow signal.\n\n', 'L3/4', true)).toBe('');
+		expect(separatorFor('', 'Conclusion:', true)).toBe('');
+	});
+	it('attaches leading punctuation to the text before it', () => {
+		expect(separatorFor('L5/S1', ': left paracentral extrusion', false)).toBe('');
+		expect(separatorFor('mild bulge', ', no stenosis', false)).toBe('');
+	});
+	it('otherwise continues the text', () => {
+		expect(separatorFor('No effusion.', 'The heart is normal.', false)).toBe(' ');
+	});
 });

@@ -226,3 +226,18 @@ def test_a_heading_on_its_own_is_written_by_code(utt):
     r = code_route(utt)
     assert (r.route, r.reason, r.text[-1]) == ("fast_append", "heading", ":")
     assert r.closes_line is True
+
+
+# --- structure: disc levels and headings open a paragraph ------------------------------
+
+def test_a_disc_level_opens_a_paragraph():
+    assert route_bundle(_bundle(), "L4-five there is a broad based disc bulge").starts_paragraph is True
+
+
+def test_a_heading_opens_a_paragraph():
+    assert route_bundle(_bundle(), "Conclusion, colon, acute appendicitis").starts_paragraph is True
+    assert code_route("Conclusion.").starts_paragraph is True
+
+
+def test_an_ordinary_finding_does_not():
+    assert route_bundle(_bundle(), "The conus terminates at L1 with normal signal.").starts_paragraph is False

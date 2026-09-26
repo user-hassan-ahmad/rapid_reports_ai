@@ -17,7 +17,7 @@ from typing import Literal
 
 from .dictation_triage_router import _FORMATTING_RULES, map_formatting
 from .jev_questions import FAST_APPEND_BANDS
-from .spoken_format import apply_spoken_format, heading_only, resolve_colon
+from .spoken_format import apply_spoken_format, heading_only, resolve_colon, starts_paragraph
 from .utterance_bundle import BundleDecision
 
 Route = Literal["fast_append", "command", "polish", "skip"]
@@ -78,7 +78,7 @@ def code_route(utterance: str, preceding: str = "") -> "RouteResult | None":
         return None
     heading = heading_only(utterance)
     if heading:
-        return RouteResult("fast_append", "heading", heading, "", True, False)
+        return RouteResult("fast_append", "heading", heading, "", True, False, starts_paragraph=True)
     if is_filler_only(utterance):
         return RouteResult("skip", "empty_after_clean", "", "", False, False)
     return None
@@ -92,6 +92,7 @@ class RouteResult:
     insert: str  # characters a command stands for (command); "" otherwise
     closes_line: bool
     close_on_silence: bool  # standalone ≥ τ: the open line may close at the silence milestone
+    starts_paragraph: bool = False  # the text opens with a disc level or a heading
 
 
 def route_bundle(
@@ -126,7 +127,8 @@ def route_bundle(
             return polish("asr_low_confidence")  # a fluent mishearing reads as a confident append
         if colon_ambiguous:
             return polish("colon_ambiguous")  # organ or punctuation: the context does not say
-        return RouteResult("fast_append", "append_confident", text, "", closes_line(text), on_silence)
+        return RouteResult("fast_append", "append_confident", text, "", closes_line(text), on_silence,
+                           starts_paragraph=starts_paragraph(text))
     if t.action == "formatting_command":
         if confidence < b["command_act"]:
             return polish("command_low_confidence")

@@ -19,7 +19,7 @@
 		commandInsert,
 		hash8,
 		isRedictation,
-		joinSeparator,
+		separatorFor,
 		tokenSet,
 		type AsrFields,
 		type BundleRouteResponse,
@@ -785,11 +785,12 @@
 			let insert: string;
 			let closedBy: LineClosedBy | null = null;
 			if (route === 'fast_append') {
-				insert = joinSeparator(solid) + data.text;
+				insert = separatorFor(solid, data.text, !!data.starts_paragraph) + data.text;
 				if (data.closes_line) closedBy = data.text.endsWith('\n') ? 'newline' : 'punctuation';
 			} else {
 				insert = commandInsert(solid, data.insert);
-				closedBy = data.insert.includes('\n') ? 'newline' : 'punctuation';
+				// a spoken colon (L5/S1:) leaves the line open; newlines and stops close it
+				closedBy = !data.closes_line ? null : data.insert.includes('\n') ? 'newline' : 'punctuation';
 			}
 			isQwenWriting = true;
 			editor.dispatch({

@@ -23,6 +23,7 @@ export interface BundleRouteResponse {
 	insert: string;
 	closes_line: boolean;
 	close_on_silence: boolean;
+	starts_paragraph?: boolean;
 	line_close: { silence_s: number; hard_limit_s: number };
 	action: string | null;
 	confidence: number | null;
@@ -95,6 +96,16 @@ export function asrFields(msg: Record<string, unknown>): AsrFields {
 export function joinSeparator(solid: string): string {
 	if (!solid || /\s$/.test(solid)) return '';
 	return ' ';
+}
+
+/** Separator for a fast-appended text: a disc level or heading opens a paragraph (the
+ *  backend says which); leading punctuation (': …' after 'L5/S1') attaches directly;
+ *  anything else continues the text. */
+export function separatorFor(solid: string, text: string, startsParagraph: boolean): string {
+	if (!solid) return '';
+	if (startsParagraph) return solid.endsWith('\n\n') ? '' : solid.endsWith('\n') ? '\n' : '\n\n';
+	if (/^[:;,.?!)]/.test(text)) return '';
+	return joinSeparator(solid);
 }
 
 /** What a command writes after the solid scratchpad: nothing into an empty one, and a
