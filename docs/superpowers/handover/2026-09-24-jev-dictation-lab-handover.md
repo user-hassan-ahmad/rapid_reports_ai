@@ -85,7 +85,7 @@ Process-first call (DNS included) 430 ms; live warm-up 522 → 250 → 227 ms. B
 
 ```
 # backend (worktree/backend)
-RR_TRIAGE_DEBUG=1 DEEPGRAM_DICTATION=0 DEEPGRAM_UK_SPELLING=1 PYTHONPATH=src <main>/backend/.venv/bin/uvicorn rapid_reports_ai.main:app --port 8000
+RR_TRIAGE_DEBUG=1 DEEPGRAM_DICTATION=0 DEEPGRAM_UK_SPELLING=1 DEEPGRAM_SPOKEN_FORMAT=1 PYTHONPATH=src <main>/backend/.venv/bin/uvicorn rapid_reports_ai.main:app --port 8000
 # frontend (worktree/frontend)   bun run dev      → sign in, open /dictation-lab
 # in the tab: localStorage rr_incremental=1 (faded optimistic render), Strategy → front door = Jev boundary
 # bake-offs: PYTHONPATH=src python -c "from dotenv import load_dotenv; load_dotenv('.env'); import runpy; runpy.run_module('rapid_reports_ai.scripts.boundary_bakeoff', run_name='__main__')"
@@ -116,6 +116,8 @@ PYTHONPATH=src <main>/backend/.venv/bin/python -m rapid_reports_ai.scripts.lab_s
 Routing (provisional, `jev_questions.FAST_APPEND_BANDS`, QSET `2026-09-26.3`): append ≥ 0.90 with `is_correction` < 0.50 and Deepgram's lowest word confidence ≥ 0.70 (when present) → fast-append; formatting_command ≥ 0.80 with a lexicon mapping → command; everything else, any Jev or network error, a pending-text mismatch, or a polish already queued or running → polish. The line closes on terminal punctuation or newline, at 2 s silence if `standalone` ≥ 0.50, and at 5 s regardless. **Line close is a statement boundary, not layout** (first mic session, 2026-09-26): Deepgram ends nearly every final with a full stop, so starting a new line on close put each fragment on its own line until a polish reflowed it. Fast-append now always continues the text with a space; new lines come only from commands. Close still sets Jev's `open_line` and the logged `line_closed_by`. Backend log: one `canvas.bundle.decision` line per decision (id, qset, route, reason, probabilities, lengths, hash). "Clear" in the panel starts a new session (new start time, counters reset).
 
 British spelling: Deepgram returns US spelling even with `language=en-GB` (its docs); `DEEPGRAM_UK_SPELLING=1` adds its `replace` find-and-replace with a radiology US→UK list (`deepgram_spelling.py`, checked live on the streaming websocket) and restores sentence-initial capitals. Off by default; production unchanged.
+
+Spoken formatting (`spoken_format.py`, 2026-09-26, deliberate lexicon change): slash, comma, semicolon, hyphen, brackets and question mark always convert; disc levels normalise to L3/4, L5/S1 (adjacent levels and the C7/T1, T12/L1, L5/S1 junctions; Deepgram's formatter glues "L3 slash 4" into "L3four"). `colon` is ':' after a heading or disc level (read across finals against the scratchpad), the organ after a modifier or before a verb, otherwise ambiguous → polish. A heading said alone is written by code ("Conclusion:"); a disc level or heading opens its own paragraph. `DEEPGRAM_SPOKEN_FORMAT=1` applies the unambiguous part at the websocket for every path; the colon rule runs in the bundle route only.
 
 Known limits: manual edits made while a polish is running are overwritten by it (same as today's path); undo is one step, and only while the range is untouched; `ignore_noise` goes to polish; `standalone` sits just under 0.5 on complete statements (live smoke 0.47–0.48), so expect `⏎ hard_limit` more than `⏎ standalone` on unpunctuated lines.
 

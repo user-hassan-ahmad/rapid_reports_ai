@@ -4973,6 +4973,11 @@ async def websocket_transcribe(websocket: WebSocket):
     from rapid_reports_ai.deepgram_spelling import restore_sentence_case, uk_spelling_params
     uk_spelling = os.environ.get("DEEPGRAM_UK_SPELLING") == "1"
     uk_params = f"&{uk_spelling_params()}" if uk_spelling else ""
+    # Spoken punctuation words and disc levels, converted in code for every path (the
+    # context-dependent 'colon' is resolved later, against the scratchpad). Off unless
+    # DEEPGRAM_SPOKEN_FORMAT=1.
+    from rapid_reports_ai.spoken_format import apply_spoken_format
+    spoken_format = os.environ.get("DEEPGRAM_SPOKEN_FORMAT") == "1"
     deepgram_url = (
         f"wss://api.deepgram.com/v1/listen"
         f"?model=nova-3-medical"
@@ -5027,6 +5032,8 @@ async def websocket_transcribe(websocket: WebSocket):
                                         transcript = process_dictation_transcript(raw_transcript)
                                         if uk_spelling:
                                             transcript = restore_sentence_case(transcript)
+                                        if spoken_format:
+                                            transcript = apply_spoken_format(transcript)
 
                                         # Only log finalised, non-empty utterances — skip interim / empty frames.
                                         if is_final and transcript:

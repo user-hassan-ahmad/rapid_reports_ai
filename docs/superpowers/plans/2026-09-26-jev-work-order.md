@@ -10,7 +10,7 @@
 4. **De-risk in parallel.** Uncertain ideas get an offline measurement on a side track so the main track never waits on an unknown.
 5. **Don't over-calibrate early.** Provisional thresholds live in the registry with a version; real sessions set the final bands.
 
-Standing rules for every step: question wording and lexicon frozen unless the step is explicitly about wording; production behaviour env-gated and off by default; every number with a plain-code baseline and a 95 % interval; fixtures grow from lab exports; tuning is scored only on sessions it has not seen; every automatic action fails open to today's polish path and is visible and undoable.
+Standing rules for every step: question wording and lexicon frozen unless the step is explicitly about wording (2026-09-26, deliberate: spoken punctuation, disc levels, colon rule and headings added from lab sessions; `spoken_format.py`); production behaviour env-gated and off by default; every number with a plain-code baseline and a 95 % interval; fixtures grow from lab exports; tuning is scored only on sessions it has not seen; every automatic action fails open to today's polish path and is visible and undoable.
 
 ## Phase A — Make the numbers true
 
