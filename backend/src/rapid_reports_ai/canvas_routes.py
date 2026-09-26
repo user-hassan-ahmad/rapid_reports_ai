@@ -23,6 +23,7 @@ from .dictation_triage import (
 )
 from .dictation_triage_labels import agrees, derive_action
 from .dictation_triage_router import route as triage_route_decision
+from .jev_questions import QSET_VERSION, ROUTE_THRESHOLD_DEFAULT
 from .utterance_boundary import BoundaryDecision, get_jev_boundary
 from .utterance_boundary import resolve as resolve_boundary
 from .utterance_boundary import resolve_placement
@@ -65,7 +66,7 @@ class SectionGenerateResponse(BaseModel):
 
 class TriageRouteConfig(BaseModel):
     candidate: Literal["jev", "qwen"]
-    threshold: float = Field(0.9, ge=0.0, le=1.0)
+    threshold: float = Field(ROUTE_THRESHOLD_DEFAULT, ge=0.0, le=1.0)
 
 
 class CanvasProcessRequest(BaseModel):

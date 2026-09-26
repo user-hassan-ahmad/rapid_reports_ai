@@ -2,7 +2,7 @@
 
 Replaces Deepgram's silence timers as the trigger for polish in the lab. One Jev
 call per finalised chunk answers boundary (complete/continues/command) and records
-an ASR-risk signal. Thresholds live here, not in the model.
+an ASR-risk signal. Thresholds live in code (jev_questions), not in the model.
 
 Spec: docs/superpowers/specs/2026-09-24-utterance-front-door-design.md
 """
@@ -17,91 +17,18 @@ import httpx
 
 from .dictation_triage import JEV_MODEL, JEV_TIMEOUT_S, TriageError, _check_unit
 from .jev_client import jev_post
+from .jev_questions import (  # noqa: F401  (re-exported)
+    ASR_RISK_THRESHOLD,
+    BOUNDARY_QUESTIONS,
+    COMMAND_THRESHOLD,
+    COMPLETE_THRESHOLD,
+    PLACEMENT_THRESHOLD,
+)
 
 Boundary = Literal["complete", "continues", "command"]
 BOUNDARIES: tuple[str, ...] = ("complete", "continues", "command")
 Placement = Literal["extend_previous_line", "new_line", "new_paragraph"]
 PLACEMENTS: tuple[str, ...] = ("extend_previous_line", "new_line", "new_paragraph")
-PLACEMENT_THRESHOLD = 0.5  # below this, the cheap error: a new line
-# Bake-off run 1 (38 cases): the raw choice is right 0.868 of the time; every threshold
-# above 0.4 only converted correct answers into stalls (the three wrong sends are the same
-# three at any setting). Thresholds are therefore a floor against near-uniform
-# distributions, not a precision lever. Waiting is bounded by the frontend backstop.
-# Run 2 (mic): a 0.4 floor demoted three correct completes at 0.26-0.38 into 1.5 s waits.
-# On a three-way choice confidence sits low whenever two options are plausible; the floor
-# is a near-uniform guard only.
-COMPLETE_THRESHOLD = 0.2
-COMMAND_THRESHOLD = 0.2
-# Not acted on yet. On the same run 0.7 separated the three true ASR cases from every
-# clean one (baseline noul sits ~0.5–0.65 on clean text).
-ASR_RISK_THRESHOLD = 0.7
-
-BOUNDARY_QUESTIONS: dict[str, dict[str, Any]] = {
-    "boundary": {
-        "type": "choice",
-        "instructions": (
-            "Taking the buffered words and the chunk together as what the radiologist has said since the "
-            "last statement was sent, which is true? silence_s is how many seconds of silence have followed "
-            "the chunk so far (0 = the chunk has just arrived, no information). A long silence after words "
-            "that could stand alone means the statement is complete; a short silence carries little weight."
-        ),
-        "criteria": {
-            "complete": (
-                "The buffered words plus the chunk form a finished clinical statement a radiologist would end "
-                "here: a finding, a measurement, a normality claim, or a correction that is fully specified."
-            ),
-            "continues": (
-                "The statement is still in progress: it ends on a preposition, article, conjunction, a verb "
-                "without its object, an unfinished measurement, an unfinished correction such as 'actually' or "
-                "'make that', or otherwise needs more words to be a claim."
-            ),
-            "command": (
-                "The chunk is an instruction to the application or a dictation command rather than report "
-                "content: scratch that, delete that, new paragraph, new line, full stop, generate report, "
-                "switch mode, and similar."
-            ),
-        },
-    },
-    "placement": {
-        "type": "choice",
-        "instructions": (
-            "If the buffered words plus the chunk are a finished statement, where does it belong in the "
-            "scratchpad relative to the last line? The scratchpad captures dictation as it is spoken; it is "
-            "not the report."
-        ),
-        "criteria": {
-            "extend_previous_line": (
-                "It adds to the same observation as the last line: a descriptor, a measurement, a qualifier, "
-                "a consequence, or a clause such as 'with' or 'which' that continues that finding."
-            ),
-            "new_line": (
-                "It is a separate finding or normality claim about the same region or system as the last line."
-            ),
-            "new_paragraph": (
-                "It moves to a different anatomical region or system from the last line, or the last line is "
-                "empty."
-            ),
-        },
-    },
-    "standalone": {
-        "type": "noul",
-        "instructions": (
-            "Ignoring whether more words might follow, the buffered words plus the chunk can be read as a "
-            "complete clinical statement as they stand: a finding, a measurement, a normality claim, or a "
-            "fully specified correction."
-        ),
-    },
-    "asr_risk": {
-        "type": "noul",
-        "instructions": (
-            "The buffered words plus the chunk contain a likely speech-to-text error: a word that is "
-            "phonetically close to a radiological term the scan type or the scratchpad makes expected, and "
-            "that makes no clinical sense as heard."
-        ),
-    },
-}
-
-
 @dataclass(frozen=True)
 class BoundaryDecision:
     boundary: str

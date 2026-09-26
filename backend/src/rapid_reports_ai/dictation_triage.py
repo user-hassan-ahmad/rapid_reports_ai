@@ -24,6 +24,7 @@ import httpx
 from pydantic import BaseModel
 
 from .jev_client import JEV_MODEL, JEV_URL, jev_post  # noqa: F401  (re-exported)
+from .jev_questions import ACTION_DESCRIPTIONS, QSET_VERSION, TRIAGE_QUESTIONS  # noqa: F401  (re-exported)
 
 TriageAction = Literal[
     "append_new_finding",
@@ -34,33 +35,6 @@ TriageAction = Literal[
     "ignore_noise",
 ]
 TRIAGE_ACTIONS: tuple[str, ...] = get_args(TriageAction)
-
-# One sentence per option. Both candidates receive exactly these words, so they
-# answer the same question. Edit here, nowhere else.
-ACTION_DESCRIPTIONS: dict[str, str] = {
-    "append_new_finding": "The utterance states a new clinical observation or normality claim that is not yet in the scratchpad",
-    "correct_previous_finding": "The utterance revises, replaces or retracts a value or descriptor of something already in the scratchpad",
-    "restate_existing_finding": "The utterance repeats something already captured in the scratchpad, with no new information",
-    "delete_previous_utterance": "The utterance asks to remove the immediately preceding statement, such as scratch that or delete that",
-    "formatting_command": "The utterance is a formatting instruction such as new line, new paragraph or full stop",
-    "ignore_noise": "The utterance is filler, hesitation or thinking aloud with no clinical content",
-}
-
-TRIAGE_QUESTIONS: dict[str, dict[str, Any]] = {
-    "action": {
-        "type": "choice",
-        "instructions": "What should the dictation scratchpad system do with the latest utterance?",
-        "criteria": ACTION_DESCRIPTIONS,
-    },
-    "is_correction": {
-        "type": "noul",
-        "instructions": "The latest utterance revises or corrects something said earlier.",
-    },
-    "needs_committed_edit": {
-        "type": "noul",
-        "instructions": "Applying the latest utterance requires changing text in the COMMITTED (frozen) section rather than the ACTIVE section.",
-    },
-}
 
 JEV_TIMEOUT_S = 3.0
 QWEN_TIMEOUT_S = 8.0

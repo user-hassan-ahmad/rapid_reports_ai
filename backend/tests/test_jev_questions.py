@@ -6,17 +6,26 @@ from __future__ import annotations
 import hashlib
 import json
 
+from rapid_reports_ai import dictation_triage, section_coverage, utterance_boundary, utterance_bundle
 from rapid_reports_ai.canvas_routes import TriageRouteConfig
-from rapid_reports_ai.dictation_triage import ACTION_DESCRIPTIONS, JEV_MODEL, QWEN_SYSTEM_PROMPT, TRIAGE_QUESTIONS
-from rapid_reports_ai.section_coverage import BINARY_THRESHOLD, COVERAGE_CRITERIA, coverage_questions
-from rapid_reports_ai.utterance_boundary import (
+from rapid_reports_ai.dictation_triage import QWEN_SYSTEM_PROMPT
+from rapid_reports_ai.jev_questions import (
+    ACTION_DESCRIPTIONS,
     ASR_RISK_THRESHOLD,
+    BINARY_THRESHOLD,
     BOUNDARY_QUESTIONS,
     COMMAND_THRESHOLD,
     COMPLETE_THRESHOLD,
+    COVERAGE_CRITERIA,
+    JEV_MODEL,
     PLACEMENT_THRESHOLD,
+    QSET_VERSION,
+    ROUTE_THRESHOLD_DEFAULT,
+    STANDALONE_QUESTION,
+    TRIAGE_QUESTIONS,
+    bundle_questions,
+    coverage_questions,
 )
-from rapid_reports_ai.utterance_bundle import STANDALONE_QUESTION, bundle_questions
 
 QSET_DIGEST_2026_09_26_1 = "8ff8ce5b46562f0bfebde4fcd3da31843de7a7c3e25b9e7c9ae07d8d27e9fb1b"
 
@@ -46,3 +55,18 @@ def qset_digest() -> str:
 
 def test_qset_digest_pins_wording():
     assert qset_digest() == QSET_DIGEST_2026_09_26_1
+
+
+def test_old_modules_reexport_the_registry_objects():
+    assert dictation_triage.TRIAGE_QUESTIONS is TRIAGE_QUESTIONS
+    assert dictation_triage.ACTION_DESCRIPTIONS is ACTION_DESCRIPTIONS
+    assert utterance_boundary.BOUNDARY_QUESTIONS is BOUNDARY_QUESTIONS
+    assert utterance_boundary.COMPLETE_THRESHOLD == COMPLETE_THRESHOLD
+    assert section_coverage.COVERAGE_CRITERIA is COVERAGE_CRITERIA
+    assert section_coverage.coverage_questions is coverage_questions
+    assert utterance_bundle.bundle_questions is bundle_questions
+    assert TriageRouteConfig(candidate="jev").threshold == ROUTE_THRESHOLD_DEFAULT
+
+
+def test_qset_version_is_named():
+    assert isinstance(QSET_VERSION, str) and QSET_VERSION

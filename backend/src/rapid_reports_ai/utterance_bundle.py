@@ -21,37 +21,13 @@ import httpx
 from .dictation_triage import (
     JEV_MODEL,
     JEV_TIMEOUT_S,
-    TRIAGE_QUESTIONS,
     JevTriager,
     TriageDecision,
     TriageError,
     _check_unit,
 )
 from .jev_client import jev_post
-from .section_coverage import coverage_questions
-from .utterance_boundary import BOUNDARY_QUESTIONS
-
-STANDALONE_QUESTION: dict[str, Any] = {
-    **BOUNDARY_QUESTIONS["standalone"],
-    "instructions": BOUNDARY_QUESTIONS["standalone"]["instructions"].replace(
-        "the buffered words plus the chunk", "the open line plus the latest utterance"
-    ),
-}
-
-
-def section_key(i: int) -> str:
-    return f"section_{i}"
-
-
-def bundle_questions(checklist: list[str]) -> dict[str, dict[str, Any]]:
-    questions: dict[str, dict[str, Any]] = {**TRIAGE_QUESTIONS, "standalone": STANDALONE_QUESTION}
-    for i, (_, q) in enumerate(coverage_questions(checklist).items()):
-        questions[section_key(i)] = {
-            **q,
-            "instructions": q["instructions"].replace("The scratchpad", "The scratchpad (COMMITTED plus ACTIVE)", 1),
-        }
-    return questions
-
+from .jev_questions import QSET_VERSION, STANDALONE_QUESTION, bundle_questions, section_key  # noqa: F401
 
 @dataclass(frozen=True)
 class BundleState:

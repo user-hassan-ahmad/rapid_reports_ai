@@ -1,7 +1,7 @@
 """Checklist pill coverage as System 1 decisions: one Noul per section, one call.
 
 The criteria reproduce the rules in canvas_routes.CANVAS_COVERAGE_SYSTEM_PROMPT so
-that Jev and the Qwen path answer the same question. Edit COVERAGE_CRITERIA and that
+that Jev and the Qwen path answer the same question. Edit COVERAGE_CRITERIA (jev_questions) and that
 prompt together; test_section_coverage pins the shared phrases.
 
 Spec: docs/superpowers/specs/2026-09-24-section-coverage-jev-design.md
@@ -18,44 +18,9 @@ from pydantic import BaseModel
 
 from .dictation_triage import JEV_MODEL, JEV_TIMEOUT_S, TriageError, _check_unit
 from .jev_client import jev_post
+from .jev_questions import BINARY_THRESHOLD, COVERAGE_CRITERIA, coverage_questions  # noqa: F401
 
 Candidate = Literal["jev", "qwen"]
-BINARY_THRESHOLD = 0.5
-
-COVERAGE_CRITERIA: dict[str, str] = {
-    "true": (
-        "The scratchpad contains a definitive clinical claim about {SECTION} or a standard radiological "
-        "abbreviation of it: a finding, a measurement, a qualifier, or an explicit normality statement. "
-        "The claim may be direct ({SECTION} is the grammatical subject, the location via a prepositional "
-        "phrase, or an adjectival modifier of the subject) or collective (a definitive claim over a "
-        "recognisable anatomical group that {SECTION} genuinely belongs to, such as normality or absence "
-        "of pathology). A specific claim about {SECTION} counts even when a collective also exists."
-    ),
-    "false": (
-        "There is no definitive claim about {SECTION}: only a bare mention with nothing asserted; a claim "
-        "about an adjacent but distinct structure; a parent-structure claim that does not enumerate "
-        "{SECTION} when the checklist lists it separately; an incidental co-mention inside a statement "
-        "about another structure; a vague filler with no anatomical scope; or a collective whose group "
-        "{SECTION} does not clearly belong to. When in doubt, this is the answer."
-    ),
-}
-
-
-def coverage_questions(sections: list[str]) -> dict[str, dict[str, Any]]:
-    """One noul per checklist section, keyed by the exact section string."""
-    return {
-        s: {
-            "type": "noul",
-            "instructions": f"The scratchpad meaningfully addresses the checklist section {s}.",
-            "criteria": {
-                "true": COVERAGE_CRITERIA["true"].replace("{SECTION}", s),
-                "false": COVERAGE_CRITERIA["false"].replace("{SECTION}", s),
-            },
-        }
-        for s in sections
-    }
-
-
 @dataclass(frozen=True)
 class CoverageDecision:
     candidate: Candidate
