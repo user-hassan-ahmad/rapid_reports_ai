@@ -93,7 +93,29 @@ RR_TRIAGE_DEBUG=1 DEEPGRAM_DICTATION=0 PYTHONPATH=src <main>/backend/.venv/bin/u
 #   bundle_parity, jev_latency_ab (fresh vs shared client). RR_JEV_FRESH_CLIENT=1 restores per-request clients.
 ```
 
-Tests (2026-09-26, after Phase A): backend 439 passed, 1 skipped.
+Tests (2026-09-26, after Phase A): backend 439 passed, 1 skipped. After step 5: backend 490 passed, 1 skipped; frontend `src/lib/dictation-lab` 48.
+
+### Decision-first live (work-order step 5, built 2026-09-26, not yet exercised)
+
+Plan: `plans/2026-09-26-live-lab-fast-append.md`. Production unchanged: `/api/canvas/bundle` returns 404 unless `RR_TRIAGE_DEBUG=1`, and the scratchpad path runs only with the lab's front door set to `decision`.
+
+```
+# backend: same command as above (RR_TRIAGE_DEBUG=1 DEEPGRAM_DICTATION=0 …); needs OPENROUTER_API_KEY
+# frontend: bun run dev → sign in → /dictation-lab
+# panel → Strategy → front door → "decision-first (live)"   (faded render is automatic in this mode)
+# dictate. Each Deepgram final: faded → one Jev bundle → route:
+#   fast-append (green dotted mark, 10 s)  |  command (\n, \n\n, .)  |  polish (today's /process)  |  skip (filler only)
+# undo the latest action (any route, incl. polish): ⌘Z in the scratchpad or "Undo last" under the mic button
+# the editor stays editable while recording: fix a line by hand within 10 s and it counts as an edit
+# say a line again within 15 s (≥ 0.7 token overlap) and it counts as a re-dictation
+# panel → Decision-first → "Export session" writes lab-session-<start>.json (data only, no text)
+# after a batch of sessions:
+PYTHONPATH=src <main>/backend/.venv/bin/python -m rapid_reports_ai.scripts.lab_session_summary ~/Downloads/lab-session-*.json [--json out.json]
+```
+
+Routing (provisional, `jev_questions.FAST_APPEND_BANDS`, QSET `2026-09-26.2`): append ≥ 0.90 with `is_correction` < 0.50 → fast-append; formatting_command ≥ 0.80 with a lexicon mapping → command; everything else, any Jev or network error, a pending-text mismatch, or a polish already queued or running → polish. The line closes on terminal punctuation or newline, at 2 s silence if `standalone` ≥ 0.50, and at 5 s regardless. Backend log: one `canvas.bundle.decision` line per decision (id, qset, route, reason, probabilities, lengths, hash). "Clear" in the panel starts a new session (new start time, counters reset).
+
+Known limits: manual edits made while a polish is running are overwritten by it (same as today's path); undo is one step, and only while the range is untouched; `ignore_noise` goes to polish; `standalone` sits just under 0.5 on complete statements (live smoke 0.47–0.48), so expect `⏎ hard_limit` more than `⏎ standalone` on unpunctuated lines.
 
 ## 6. Outstanding / next steps — follow decision-first **rev 2**
 
