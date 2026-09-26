@@ -15,7 +15,7 @@ from typing import Any
 
 from .jev_client import JEV_MODEL  # noqa: F401  (the wording is written for this model)
 
-QSET_VERSION = "2026-09-26.1"
+QSET_VERSION = "2026-09-26.2"  # .2: step 5 fast-append bands added; wording unchanged
 
 # --- triage (dictation_triage) ------------------------------------------------------
 
@@ -48,6 +48,25 @@ TRIAGE_QUESTIONS: dict[str, dict[str, Any]] = {
 
 # Default confidence floor for lab route mode (canvas_routes.TriageRouteConfig).
 ROUTE_THRESHOLD_DEFAULT = 0.9
+
+# --- fast-append band router (fast_append, work-order step 5) ------------------------
+
+# PROVISIONAL. Set by hand for the live lab, not calibrated; step 7 replaces them with
+# bands read off live-lab outcomes (undo / edit rate per confidence level).
+FAST_APPEND_BANDS: dict[str, float] = {
+    # action == append_new_finding at or above this confidence → verbatim fast-append
+    "append_act": 0.90,
+    # ...and only while the is_correction noul stays below this (correction ↔ append is
+    # the expensive confusion: a silent duplicate or a lost finding)
+    "append_max_is_correction": 0.50,
+    # action == formatting_command at or above this, with a lexicon mapping → deterministic
+    "command_act": 0.80,
+    # open line closes at the silence milestone when standalone is at or above this...
+    "line_close_standalone": 0.50,
+    "line_close_silence_s": 2.0,
+    # ...and regardless at the hard limit (time is code, never asked of Jev)
+    "line_close_hard_limit_s": 5.0,
+}
 
 # --- boundary / front door (utterance_boundary) -------------------------------------
 

@@ -70,3 +70,18 @@ def test_old_modules_reexport_the_registry_objects():
 
 def test_qset_version_is_named():
     assert isinstance(QSET_VERSION, str) and QSET_VERSION
+
+
+def test_fast_append_bands_are_pinned_to_the_qset_version():
+    """Step 5 provisional bands. Changing any value means a new QSET_VERSION."""
+    from rapid_reports_ai import jev_questions as jq
+
+    assert jq.QSET_VERSION == "2026-09-26.2"
+    assert jq.FAST_APPEND_BANDS == {
+        "append_act": 0.90,
+        "append_max_is_correction": 0.50,
+        "command_act": 0.80,
+        "line_close_standalone": 0.50,
+        "line_close_silence_s": 2.0,
+        "line_close_hard_limit_s": 5.0,
+    }
