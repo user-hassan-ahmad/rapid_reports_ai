@@ -1,0 +1,4400 @@
+{
+ "summary": {
+  "questions": {
+   "action": {
+    "n": 49,
+    "ref": {
+     "k": 48,
+     "n": 49,
+     "p": 0.9795918367346939,
+     "ci95": [
+      0.8931,
+      0.9964
+     ]
+    },
+    "ref2": {
+     "k": 48,
+     "n": 49,
+     "p": 0.9795918367346939,
+     "ci95": [
+      0.8931,
+      0.9964
+     ]
+    },
+    "bundle": {
+     "k": 47,
+     "n": 49,
+     "p": 0.9591836734693877,
+     "ci95": [
+      0.8629,
+      0.9887
+     ]
+    },
+    "bundle_only_wrong": 1,
+    "ref_only_wrong": 0,
+    "noise_discordant": 0,
+    "allowed_net_loss": 1,
+    "confident_new_wrong": 0,
+    "pass": true
+   },
+   "coverage": {
+    "n": 98,
+    "ref": {
+     "k": 95,
+     "n": 98,
+     "p": 0.9693877551020408,
+     "ci95": [
+      0.9138,
+      0.9895
+     ]
+    },
+    "ref2": {
+     "k": 95,
+     "n": 98,
+     "p": 0.9693877551020408,
+     "ci95": [
+      0.9138,
+      0.9895
+     ]
+    },
+    "bundle": {
+     "k": 95,
+     "n": 98,
+     "p": 0.9693877551020408,
+     "ci95": [
+      0.9138,
+      0.9895
+     ]
+    },
+    "bundle_only_wrong": 1,
+    "ref_only_wrong": 1,
+    "noise_discordant": 0,
+    "allowed_net_loss": 2,
+    "confident_new_wrong": 0,
+    "pass": true
+   },
+   "is_correction": {
+    "n": 49,
+    "ref": {
+     "k": 48,
+     "n": 49,
+     "p": 0.9795918367346939,
+     "ci95": [
+      0.8931,
+      0.9964
+     ]
+    },
+    "ref2": {
+     "k": 48,
+     "n": 49,
+     "p": 0.9795918367346939,
+     "ci95": [
+      0.8931,
+      0.9964
+     ]
+    },
+    "bundle": {
+     "k": 48,
+     "n": 49,
+     "p": 0.9795918367346939,
+     "ci95": [
+      0.8931,
+      0.9964
+     ]
+    },
+    "bundle_only_wrong": 0,
+    "ref_only_wrong": 0,
+    "noise_discordant": 0,
+    "allowed_net_loss": 1,
+    "confident_new_wrong": 0,
+    "pass": true
+   },
+   "needs_committed_edit": {
+    "n": 49,
+    "ref": {
+     "k": 49,
+     "n": 49,
+     "p": 1.0,
+     "ci95": [
+      0.9273,
+      1.0
+     ]
+    },
+    "ref2": {
+     "k": 49,
+     "n": 49,
+     "p": 1.0,
+     "ci95": [
+      0.9273,
+      1.0
+     ]
+    },
+    "bundle": {
+     "k": 48,
+     "n": 49,
+     "p": 0.9795918367346939,
+     "ci95": [
+      0.8931,
+      0.9964
+     ]
+    },
+    "bundle_only_wrong": 1,
+    "ref_only_wrong": 0,
+    "noise_discordant": 0,
+    "allowed_net_loss": 1,
+    "confident_new_wrong": 0,
+    "pass": true
+   },
+   "standalone": {
+    "n": 29,
+    "ref": {
+     "k": 20,
+     "n": 29,
+     "p": 0.6896551724137931,
+     "ci95": [
+      0.5077,
+      0.8272
+     ]
+    },
+    "ref2": {
+     "k": 21,
+     "n": 29,
+     "p": 0.7241379310344828,
+     "ci95": [
+      0.5428,
+      0.853
+     ]
+    },
+    "bundle": {
+     "k": 24,
+     "n": 29,
+     "p": 0.8275862068965517,
+     "ci95": [
+      0.6545,
+      0.924
+     ]
+    },
+    "bundle_only_wrong": 0,
+    "ref_only_wrong": 4,
+    "noise_discordant": 1,
+    "allowed_net_loss": 1,
+    "confident_new_wrong": 0,
+    "pass": true
+   }
+  },
+  "latency": {
+   "n": 228,
+   "p50": 243,
+   "p95": 338,
+   "p95_ci": [
+    306,
+    359
+   ],
+   "limit_ms": 500,
+   "pass": true
+  },
+  "latency_by_size": {
+   "<=8 questions": {
+    "n": 80,
+    "p50": 253,
+    "p95": 324,
+    "p95_ci": [
+     299,
+     359
+    ],
+    "limit_ms": 500,
+    "pass": true
+   },
+   ">8 questions": {
+    "n": 148,
+    "p50": 240,
+    "p95": 338,
+    "p95_ci": [
+     303,
+     394
+    ],
+    "limit_ms": 500,
+    "pass": true
+   }
+  },
+  "ref_latency": {
+   "triage": {
+    "n": 98,
+    "p50": 239,
+    "p95": 303,
+    "p95_ci": [
+     289,
+     325
+    ],
+    "limit_ms": 500,
+    "pass": true
+   },
+   "boundary": {
+    "n": 78,
+    "p50": 240,
+    "p95": 305,
+    "p95_ci": [
+     280,
+     316
+    ],
+    "limit_ms": 500,
+    "pass": true
+   },
+   "coverage": {
+    "n": 52,
+    "p50": 250,
+    "p95": 302,
+    "p95_ci": [
+     277,
+     314
+    ],
+    "limit_ms": 500,
+    "pass": true
+   }
+  },
+  "errors": 0,
+  "commands_caught_by_action": {
+   "k": 10,
+   "n": 10,
+   "p": 1.0,
+   "ci95": [
+    0.7225,
+    1.0
+   ]
+  },
+  "bundle_cost_usd": 0.00973363,
+  "pass": true
+ },
+ "records": [
+  {
+   "kind": "triage",
+   "id": "append-01",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "append-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "append-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.89
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "append-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.76
+    }
+   ],
+   "bundle_latencies": [
+    228,
+    229
+   ],
+   "ref_latencies": [
+    296,
+    233
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4924e-05
+  },
+  {
+   "kind": "triage",
+   "id": "append-02",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "append-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.99
+    },
+    {
+     "question": "is_correction",
+     "case_id": "append-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.87
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "append-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.6699999999999999
+    }
+   ],
+   "bundle_latencies": [
+    231,
+    269
+   ],
+   "ref_latencies": [
+    217,
+    293
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5218e-05
+  },
+  {
+   "kind": "triage",
+   "id": "append-03",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "append-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.99
+    },
+    {
+     "question": "is_correction",
+     "case_id": "append-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9199999999999999
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "append-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.88
+    }
+   ],
+   "bundle_latencies": [
+    212,
+    252
+   ],
+   "ref_latencies": [
+    204,
+    209
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5218e-05
+  },
+  {
+   "kind": "triage",
+   "id": "append-04",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "append-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "append-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "append-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.76
+    }
+   ],
+   "bundle_latencies": [
+    225,
+    211
+   ],
+   "ref_latencies": [
+    243,
+    220
+   ],
+   "n_questions": 12,
+   "bundle_cost_usd": 0.000120372
+  },
+  {
+   "kind": "triage",
+   "id": "append-05",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "append-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "append-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.84
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "append-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.74
+    }
+   ],
+   "bundle_latencies": [
+    220,
+    268
+   ],
+   "ref_latencies": [
+    214,
+    252
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.665e-05
+  },
+  {
+   "kind": "triage",
+   "id": "append-06",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "append-06",
+     "ref_ok": false,
+     "ref2_ok": false,
+     "bundle_ok": false,
+     "bundle_conf": 0.91
+    },
+    {
+     "question": "is_correction",
+     "case_id": "append-06",
+     "ref_ok": false,
+     "ref2_ok": false,
+     "bundle_ok": false,
+     "bundle_conf": 0.79
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "append-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.69
+    }
+   ],
+   "bundle_latencies": [
+    214,
+    407
+   ],
+   "ref_latencies": [
+    212,
+    210
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5302e-05
+  },
+  {
+   "kind": "triage",
+   "id": "append-07",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "append-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    },
+    {
+     "question": "is_correction",
+     "case_id": "append-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.69
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "append-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.7
+    }
+   ],
+   "bundle_latencies": [
+    259,
+    220
+   ],
+   "ref_latencies": [
+    257,
+    284
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.7784e-05
+  },
+  {
+   "kind": "triage",
+   "id": "append-08",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "append-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "append-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.87
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "append-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.78
+    }
+   ],
+   "bundle_latencies": [
+    293,
+    207
+   ],
+   "ref_latencies": [
+    256,
+    230
+   ],
+   "n_questions": 10,
+   "bundle_cost_usd": 9.7944e-05
+  },
+  {
+   "kind": "triage",
+   "id": "correct-01",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "correct-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "correct-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.97
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "correct-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.85
+    }
+   ],
+   "bundle_latencies": [
+    215,
+    293
+   ],
+   "ref_latencies": [
+    218,
+    229
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.505e-05
+  },
+  {
+   "kind": "triage",
+   "id": "correct-02",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "correct-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "correct-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.95
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "correct-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.79
+    }
+   ],
+   "bundle_latencies": [
+    237,
+    221
+   ],
+   "ref_latencies": [
+    223,
+    208
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4924e-05
+  },
+  {
+   "kind": "triage",
+   "id": "correct-03",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "correct-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "correct-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "correct-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.6
+    }
+   ],
+   "bundle_latencies": [
+    238,
+    303
+   ],
+   "ref_latencies": [
+    221,
+    246
+   ],
+   "n_questions": 12,
+   "bundle_cost_usd": 0.000120204
+  },
+  {
+   "kind": "triage",
+   "id": "correct-04",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "correct-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "correct-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.97
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "correct-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.77
+    }
+   ],
+   "bundle_latencies": [
+    286,
+    272
+   ],
+   "ref_latencies": [
+    276,
+    264
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.526e-05
+  },
+  {
+   "kind": "triage",
+   "id": "correct-05",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "correct-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "correct-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.93
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "correct-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.88
+    }
+   ],
+   "bundle_latencies": [
+    242,
+    240
+   ],
+   "ref_latencies": [
+    232,
+    247
+   ],
+   "n_questions": 12,
+   "bundle_cost_usd": 0.000120918
+  },
+  {
+   "kind": "triage",
+   "id": "correct-06",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "correct-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "correct-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "correct-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.83
+    }
+   ],
+   "bundle_latencies": [
+    345,
+    235
+   ],
+   "ref_latencies": [
+    286,
+    214
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5554e-05
+  },
+  {
+   "kind": "triage",
+   "id": "correct-07",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "correct-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "correct-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.94
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "correct-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.79
+    }
+   ],
+   "bundle_latencies": [
+    272,
+    313
+   ],
+   "ref_latencies": [
+    216,
+    255
+   ],
+   "n_questions": 6,
+   "bundle_cost_usd": 5.1282e-05
+  },
+  {
+   "kind": "triage",
+   "id": "correct-08",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "correct-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "correct-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "correct-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.83
+    }
+   ],
+   "bundle_latencies": [
+    230,
+    273
+   ],
+   "ref_latencies": [
+    246,
+    241
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.791e-05
+  },
+  {
+   "kind": "triage",
+   "id": "restate-01",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "restate-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    },
+    {
+     "question": "is_correction",
+     "case_id": "restate-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.91
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "restate-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.81
+    }
+   ],
+   "bundle_latencies": [
+    271,
+    211
+   ],
+   "ref_latencies": [
+    287,
+    219
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5344e-05
+  },
+  {
+   "kind": "triage",
+   "id": "restate-02",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "restate-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "is_correction",
+     "case_id": "restate-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.84
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "restate-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.75
+    }
+   ],
+   "bundle_latencies": [
+    251,
+    306
+   ],
+   "ref_latencies": [
+    320,
+    268
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4756e-05
+  },
+  {
+   "kind": "triage",
+   "id": "restate-03",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "restate-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.99
+    },
+    {
+     "question": "is_correction",
+     "case_id": "restate-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9199999999999999
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "restate-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.71
+    }
+   ],
+   "bundle_latencies": [
+    287,
+    247
+   ],
+   "ref_latencies": [
+    254,
+    216
+   ],
+   "n_questions": 12,
+   "bundle_cost_usd": 0.000120078
+  },
+  {
+   "kind": "triage",
+   "id": "restate-04",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "restate-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.99
+    },
+    {
+     "question": "is_correction",
+     "case_id": "restate-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.89
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "restate-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.6599999999999999
+    }
+   ],
+   "bundle_latencies": [
+    306,
+    229
+   ],
+   "ref_latencies": [
+    260,
+    261
+   ],
+   "n_questions": 12,
+   "bundle_cost_usd": 0.000120498
+  },
+  {
+   "kind": "triage",
+   "id": "restate-05",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "restate-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "is_correction",
+     "case_id": "restate-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.86
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "restate-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.78
+    }
+   ],
+   "bundle_latencies": [
+    226,
+    230
+   ],
+   "ref_latencies": [
+    221,
+    226
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.644e-05
+  },
+  {
+   "kind": "triage",
+   "id": "restate-06",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "restate-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "restate-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.89
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "restate-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.8
+    }
+   ],
+   "bundle_latencies": [
+    228,
+    281
+   ],
+   "ref_latencies": [
+    221,
+    235
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4756e-05
+  },
+  {
+   "kind": "triage",
+   "id": "restate-07",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "restate-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.99
+    },
+    {
+     "question": "is_correction",
+     "case_id": "restate-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "restate-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.79
+    }
+   ],
+   "bundle_latencies": [
+    251,
+    282
+   ],
+   "ref_latencies": [
+    239,
+    223
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.547e-05
+  },
+  {
+   "kind": "triage",
+   "id": "restate-08",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "restate-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    },
+    {
+     "question": "is_correction",
+     "case_id": "restate-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.86
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "restate-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.81
+    }
+   ],
+   "bundle_latencies": [
+    217,
+    244
+   ],
+   "ref_latencies": [
+    218,
+    209
+   ],
+   "n_questions": 10,
+   "bundle_cost_usd": 9.786e-05
+  },
+  {
+   "kind": "triage",
+   "id": "delete-01",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "delete-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.97
+    },
+    {
+     "question": "is_correction",
+     "case_id": "delete-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "delete-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.71
+    }
+   ],
+   "bundle_latencies": [
+    233,
+    230
+   ],
+   "ref_latencies": [
+    246,
+    207
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5134e-05
+  },
+  {
+   "kind": "triage",
+   "id": "delete-02",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "delete-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "delete-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.87
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "delete-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.88
+    }
+   ],
+   "bundle_latencies": [
+    217,
+    291
+   ],
+   "ref_latencies": [
+    257,
+    214
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4798e-05
+  },
+  {
+   "kind": "triage",
+   "id": "delete-03",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "delete-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "delete-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "delete-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.75
+    }
+   ],
+   "bundle_latencies": [
+    291,
+    219
+   ],
+   "ref_latencies": [
+    255,
+    207
+   ],
+   "n_questions": 12,
+   "bundle_cost_usd": 0.000120162
+  },
+  {
+   "kind": "triage",
+   "id": "delete-04",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "delete-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.87
+    },
+    {
+     "question": "is_correction",
+     "case_id": "delete-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.63
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "delete-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.8
+    }
+   ],
+   "bundle_latencies": [
+    254,
+    236
+   ],
+   "ref_latencies": [
+    291,
+    215
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.6272e-05
+  },
+  {
+   "kind": "triage",
+   "id": "delete-05",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "delete-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "delete-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.91
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "delete-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9199999999999999
+    }
+   ],
+   "bundle_latencies": [
+    224,
+    243
+   ],
+   "ref_latencies": [
+    214,
+    298
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.77e-05
+  },
+  {
+   "kind": "triage",
+   "id": "delete-06",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "delete-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.99
+    },
+    {
+     "question": "is_correction",
+     "case_id": "delete-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "delete-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.74
+    }
+   ],
+   "bundle_latencies": [
+    225,
+    268
+   ],
+   "ref_latencies": [
+    240,
+    222
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5134e-05
+  },
+  {
+   "kind": "triage",
+   "id": "delete-07",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "delete-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.95
+    },
+    {
+     "question": "is_correction",
+     "case_id": "delete-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.93
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "delete-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.81
+    }
+   ],
+   "bundle_latencies": [
+    302,
+    241
+   ],
+   "ref_latencies": [
+    238,
+    308
+   ],
+   "n_questions": 10,
+   "bundle_cost_usd": 9.7692e-05
+  },
+  {
+   "kind": "triage",
+   "id": "delete-08",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "delete-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "delete-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.87
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "delete-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.94
+    }
+   ],
+   "bundle_latencies": [
+    264,
+    236
+   ],
+   "ref_latencies": [
+    212,
+    303
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4924e-05
+  },
+  {
+   "kind": "triage",
+   "id": "format-01",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "format-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "format-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.91
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "format-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.77
+    }
+   ],
+   "bundle_latencies": [
+    229,
+    235
+   ],
+   "ref_latencies": [
+    269,
+    235
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4798e-05
+  },
+  {
+   "kind": "triage",
+   "id": "format-02",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "format-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "format-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.86
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "format-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.71
+    }
+   ],
+   "bundle_latencies": [
+    224,
+    297
+   ],
+   "ref_latencies": [
+    292,
+    325
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4798e-05
+  },
+  {
+   "kind": "triage",
+   "id": "format-03",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "format-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.99
+    },
+    {
+     "question": "is_correction",
+     "case_id": "format-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.91
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "format-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.74
+    }
+   ],
+   "bundle_latencies": [
+    217,
+    239
+   ],
+   "ref_latencies": [
+    267,
+    343
+   ],
+   "n_questions": 12,
+   "bundle_cost_usd": 0.000119826
+  },
+  {
+   "kind": "triage",
+   "id": "format-04",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "format-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "format-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9299999999999999
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "format-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.73
+    }
+   ],
+   "bundle_latencies": [
+    238,
+    238
+   ],
+   "ref_latencies": [
+    238,
+    248
+   ],
+   "n_questions": 12,
+   "bundle_cost_usd": 0.000119826
+  },
+  {
+   "kind": "triage",
+   "id": "format-05",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "format-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.85
+    },
+    {
+     "question": "is_correction",
+     "case_id": "format-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.64
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "format-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": false,
+     "bundle_conf": 0.51
+    }
+   ],
+   "bundle_latencies": [
+    245,
+    240
+   ],
+   "ref_latencies": [
+    264,
+    252
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.6146e-05
+  },
+  {
+   "kind": "triage",
+   "id": "format-06",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "format-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "format-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.87
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "format-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.74
+    }
+   ],
+   "bundle_latencies": [
+    241,
+    278
+   ],
+   "ref_latencies": [
+    260,
+    236
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.7658e-05
+  },
+  {
+   "kind": "triage",
+   "id": "format-07",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "format-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": false,
+     "bundle_conf": 0.4
+    },
+    {
+     "question": "is_correction",
+     "case_id": "format-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.88
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "format-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.75
+    }
+   ],
+   "bundle_latencies": [
+    223,
+    222
+   ],
+   "ref_latencies": [
+    209,
+    217
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4504e-05
+  },
+  {
+   "kind": "triage",
+   "id": "format-08",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "format-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "format-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.88
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "format-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.76
+    }
+   ],
+   "bundle_latencies": [
+    226,
+    236
+   ],
+   "ref_latencies": [
+    232,
+    266
+   ],
+   "n_questions": 10,
+   "bundle_cost_usd": 9.7692e-05
+  },
+  {
+   "kind": "triage",
+   "id": "noise-01",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "noise-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "noise-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "noise-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.83
+    }
+   ],
+   "bundle_latencies": [
+    286,
+    222
+   ],
+   "ref_latencies": [
+    221,
+    277
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4966e-05
+  },
+  {
+   "kind": "triage",
+   "id": "noise-02",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "noise-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "noise-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9299999999999999
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "noise-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.84
+    }
+   ],
+   "bundle_latencies": [
+    235,
+    263
+   ],
+   "ref_latencies": [
+    274,
+    244
+   ],
+   "n_questions": 12,
+   "bundle_cost_usd": 0.00011991
+  },
+  {
+   "kind": "triage",
+   "id": "noise-03",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "noise-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "noise-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9199999999999999
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "noise-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.72
+    }
+   ],
+   "bundle_latencies": [
+    254,
+    223
+   ],
+   "ref_latencies": [
+    248,
+    232
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.6104e-05
+  },
+  {
+   "kind": "triage",
+   "id": "noise-04",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "noise-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.99
+    },
+    {
+     "question": "is_correction",
+     "case_id": "noise-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.95
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "noise-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.86
+    }
+   ],
+   "bundle_latencies": [
+    301,
+    256
+   ],
+   "ref_latencies": [
+    239,
+    206
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.7826e-05
+  },
+  {
+   "kind": "triage",
+   "id": "noise-05",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "noise-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.87
+    },
+    {
+     "question": "is_correction",
+     "case_id": "noise-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9199999999999999
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "noise-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.73
+    }
+   ],
+   "bundle_latencies": [
+    244,
+    421
+   ],
+   "ref_latencies": [
+    211,
+    281
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.463e-05
+  },
+  {
+   "kind": "triage",
+   "id": "noise-06",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "noise-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "noise-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.94
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "noise-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.87
+    }
+   ],
+   "bundle_latencies": [
+    221,
+    396
+   ],
+   "ref_latencies": [
+    242,
+    456
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4378e-05
+  },
+  {
+   "kind": "triage",
+   "id": "noise-07",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "noise-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 1.0
+    },
+    {
+     "question": "is_correction",
+     "case_id": "noise-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9299999999999999
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "noise-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.83
+    }
+   ],
+   "bundle_latencies": [
+    239,
+    240
+   ],
+   "ref_latencies": [
+    235,
+    211
+   ],
+   "n_questions": 10,
+   "bundle_cost_usd": 9.765e-05
+  },
+  {
+   "kind": "triage",
+   "id": "noise-08",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "noise-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.99
+    },
+    {
+     "question": "is_correction",
+     "case_id": "noise-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "noise-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.88
+    }
+   ],
+   "bundle_latencies": [
+    239,
+    262
+   ],
+   "ref_latencies": [
+    199,
+    230
+   ],
+   "n_questions": 12,
+   "bundle_cost_usd": 0.000119994
+  },
+  {
+   "kind": "triage",
+   "id": "delete-lab-01",
+   "error": null,
+   "units": [
+    {
+     "question": "action",
+     "case_id": "delete-lab-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.99
+    },
+    {
+     "question": "is_correction",
+     "case_id": "delete-lab-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.87
+    },
+    {
+     "question": "needs_committed_edit",
+     "case_id": "delete-lab-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.77
+    }
+   ],
+   "bundle_latencies": [
+    307,
+    219
+   ],
+   "ref_latencies": [
+    272,
+    289
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5974e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cmp-01",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cmp-01",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.5
+    }
+   ],
+   "bundle_latencies": [
+    226,
+    226
+   ],
+   "ref_latencies": [
+    201,
+    231
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5344e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cmp-02",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cmp-02",
+     "ref_ok": false,
+     "ref2_ok": false,
+     "bundle_ok": true,
+     "bundle_conf": 0.64
+    }
+   ],
+   "bundle_latencies": [
+    327,
+    252
+   ],
+   "ref_latencies": [
+    214,
+    297
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5302e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cmp-03",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cmp-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.58
+    }
+   ],
+   "bundle_latencies": [
+    210,
+    338
+   ],
+   "ref_latencies": [
+    233,
+    205
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5302e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cmp-04",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cmp-04",
+     "ref_ok": false,
+     "ref2_ok": false,
+     "bundle_ok": false,
+     "bundle_conf": 0.69
+    }
+   ],
+   "bundle_latencies": [
+    226,
+    366
+   ],
+   "ref_latencies": [
+    249,
+    228
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5764e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cmp-05",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cmp-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.72
+    }
+   ],
+   "bundle_latencies": [
+    253,
+    215
+   ],
+   "ref_latencies": [
+    252,
+    295
+   ],
+   "n_questions": 12,
+   "bundle_cost_usd": 0.000119784
+  },
+  {
+   "kind": "boundary",
+   "id": "cmp-06",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cmp-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.54
+    }
+   ],
+   "bundle_latencies": [
+    250,
+    265
+   ],
+   "ref_latencies": [
+    229,
+    263
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5302e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cmp-07",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cmp-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.56
+    }
+   ],
+   "bundle_latencies": [
+    225,
+    255
+   ],
+   "ref_latencies": [
+    246,
+    265
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4798e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cmp-08",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cmp-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.69
+    }
+   ],
+   "bundle_latencies": [
+    256,
+    231
+   ],
+   "ref_latencies": [
+    206,
+    215
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.568e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cmp-09",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cmp-09",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.69
+    }
+   ],
+   "bundle_latencies": [
+    231,
+    217
+   ],
+   "ref_latencies": [
+    252,
+    204
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.7742e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cmp-10",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cmp-10",
+     "ref_ok": false,
+     "ref2_ok": false,
+     "bundle_ok": false,
+     "bundle_conf": 0.75
+    }
+   ],
+   "bundle_latencies": [
+    253,
+    234
+   ],
+   "ref_latencies": [
+    222,
+    239
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5512e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cmp-11",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cmp-11",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.63
+    }
+   ],
+   "bundle_latencies": [
+    341,
+    227
+   ],
+   "ref_latencies": [
+    207,
+    273
+   ],
+   "n_questions": 10,
+   "bundle_cost_usd": 9.7902e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cmp-12",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cmp-12",
+     "ref_ok": false,
+     "ref2_ok": false,
+     "bundle_ok": false,
+     "bundle_conf": 0.6699999999999999
+    }
+   ],
+   "bundle_latencies": [
+    248,
+    245
+   ],
+   "ref_latencies": [
+    240,
+    229
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5386e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cnt-01",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cnt-01",
+     "ref_ok": false,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.5900000000000001
+    }
+   ],
+   "bundle_latencies": [
+    230,
+    219
+   ],
+   "ref_latencies": [
+    226,
+    232
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4756e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cnt-02",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cnt-02",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.53
+    }
+   ],
+   "bundle_latencies": [
+    250,
+    243
+   ],
+   "ref_latencies": [
+    241,
+    269
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5008e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cnt-03",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cnt-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.94
+    }
+   ],
+   "bundle_latencies": [
+    284,
+    215
+   ],
+   "ref_latencies": [
+    233,
+    210
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5008e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cnt-04",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cnt-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9199999999999999
+    }
+   ],
+   "bundle_latencies": [
+    214,
+    241
+   ],
+   "ref_latencies": [
+    216,
+    254
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5302e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cnt-05",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cnt-05",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.95
+    }
+   ],
+   "bundle_latencies": [
+    226,
+    394
+   ],
+   "ref_latencies": [
+    236,
+    316
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4798e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cnt-06",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cnt-06",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9299999999999999
+    }
+   ],
+   "bundle_latencies": [
+    230,
+    233
+   ],
+   "ref_latencies": [
+    240,
+    218
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4798e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cnt-07",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cnt-07",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.94
+    }
+   ],
+   "bundle_latencies": [
+    227,
+    215
+   ],
+   "ref_latencies": [
+    267,
+    214
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5008e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cnt-08",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cnt-08",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.89
+    }
+   ],
+   "bundle_latencies": [
+    244,
+    261
+   ],
+   "ref_latencies": [
+    312,
+    261
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4672e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cnt-09",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cnt-09",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.78
+    }
+   ],
+   "bundle_latencies": [
+    242,
+    283
+   ],
+   "ref_latencies": [
+    214,
+    214
+   ],
+   "n_questions": 12,
+   "bundle_cost_usd": 0.000120078
+  },
+  {
+   "kind": "boundary",
+   "id": "cnt-10",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cnt-10",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.94
+    }
+   ],
+   "bundle_latencies": [
+    230,
+    214
+   ],
+   "ref_latencies": [
+    247,
+    244
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.505e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cnt-11",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cnt-11",
+     "ref_ok": false,
+     "ref2_ok": false,
+     "bundle_ok": true,
+     "bundle_conf": 0.53
+    }
+   ],
+   "bundle_latencies": [
+    222,
+    239
+   ],
+   "ref_latencies": [
+    224,
+    225
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5176e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cnt-12",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cnt-12",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.94
+    }
+   ],
+   "bundle_latencies": [
+    226,
+    218
+   ],
+   "ref_latencies": [
+    235,
+    206
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.7574e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cmd-01",
+   "error": null,
+   "units": [],
+   "bundle_latencies": [
+    221,
+    228
+   ],
+   "ref_latencies": [
+    222,
+    253
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.463e-05,
+   "command_action": "delete_previous_utterance"
+  },
+  {
+   "kind": "boundary",
+   "id": "cmd-02",
+   "error": null,
+   "units": [],
+   "bundle_latencies": [
+    256,
+    246
+   ],
+   "ref_latencies": [
+    261,
+    237
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4672e-05,
+   "command_action": "formatting_command"
+  },
+  {
+   "kind": "boundary",
+   "id": "cmd-03",
+   "error": null,
+   "units": [],
+   "bundle_latencies": [
+    256,
+    328
+   ],
+   "ref_latencies": [
+    225,
+    258
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4672e-05,
+   "command_action": "formatting_command"
+  },
+  {
+   "kind": "boundary",
+   "id": "cmd-04",
+   "error": null,
+   "units": [],
+   "bundle_latencies": [
+    258,
+    284
+   ],
+   "ref_latencies": [
+    254,
+    265
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4672e-05,
+   "command_action": "formatting_command"
+  },
+  {
+   "kind": "boundary",
+   "id": "cmd-05",
+   "error": null,
+   "units": [],
+   "bundle_latencies": [
+    238,
+    221
+   ],
+   "ref_latencies": [
+    256,
+    260
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.463e-05,
+   "command_action": "delete_previous_utterance"
+  },
+  {
+   "kind": "boundary",
+   "id": "cmd-06",
+   "error": null,
+   "units": [],
+   "bundle_latencies": [
+    242,
+    269
+   ],
+   "ref_latencies": [
+    305,
+    245
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.463e-05,
+   "command_action": "formatting_command"
+  },
+  {
+   "kind": "boundary",
+   "id": "cmd-07",
+   "error": null,
+   "units": [],
+   "bundle_latencies": [
+    215,
+    257
+   ],
+   "ref_latencies": [
+    227,
+    267
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4462e-05,
+   "command_action": "formatting_command"
+  },
+  {
+   "kind": "boundary",
+   "id": "cmd-08",
+   "error": null,
+   "units": [],
+   "bundle_latencies": [
+    250,
+    240
+   ],
+   "ref_latencies": [
+    239,
+    254
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.463e-05,
+   "command_action": "delete_previous_utterance"
+  },
+  {
+   "kind": "boundary",
+   "id": "cmd-09",
+   "error": null,
+   "units": [],
+   "bundle_latencies": [
+    232,
+    250
+   ],
+   "ref_latencies": [
+    266,
+    236
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.4672e-05,
+   "command_action": "formatting_command"
+  },
+  {
+   "kind": "boundary",
+   "id": "cmd-10",
+   "error": null,
+   "units": [],
+   "bundle_latencies": [
+    221,
+    235
+   ],
+   "ref_latencies": [
+    280,
+    266
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.463e-05,
+   "command_action": "delete_previous_utterance"
+  },
+  {
+   "kind": "boundary",
+   "id": "asr-01",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "asr-01",
+     "ref_ok": false,
+     "ref2_ok": false,
+     "bundle_ok": false,
+     "bundle_conf": 0.8
+    }
+   ],
+   "bundle_latencies": [
+    207,
+    261
+   ],
+   "ref_latencies": [
+    204,
+    289
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.5344e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "asr-02",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "asr-02",
+     "ref_ok": false,
+     "ref2_ok": false,
+     "bundle_ok": true,
+     "bundle_conf": 0.61
+    }
+   ],
+   "bundle_latencies": [
+    277,
+    241
+   ],
+   "ref_latencies": [
+    339,
+    209
+   ],
+   "n_questions": 9,
+   "bundle_cost_usd": 8.526e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "asr-03",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "asr-03",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.65
+    }
+   ],
+   "bundle_latencies": [
+    226,
+    246
+   ],
+   "ref_latencies": [
+    293,
+    233
+   ],
+   "n_questions": 12,
+   "bundle_cost_usd": 0.00012012
+  },
+  {
+   "kind": "boundary",
+   "id": "asr-04",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "asr-04",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.65
+    }
+   ],
+   "bundle_latencies": [
+    258,
+    233
+   ],
+   "ref_latencies": [
+    309,
+    267
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.623e-05
+  },
+  {
+   "kind": "boundary",
+   "id": "cmp-13",
+   "error": null,
+   "units": [
+    {
+     "question": "standalone",
+     "case_id": "cmp-13",
+     "ref_ok": false,
+     "ref2_ok": false,
+     "bundle_ok": false,
+     "bundle_conf": 0.5900000000000001
+    }
+   ],
+   "bundle_latencies": [
+    263,
+    215
+   ],
+   "ref_latencies": [
+    264,
+    224
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.6524e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "ds-01",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "ds-01/LIVER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.97
+    },
+    {
+     "question": "coverage",
+     "case_id": "ds-01/SPLEEN",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    },
+    {
+     "question": "coverage",
+     "case_id": "ds-01/KIDNEYS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    },
+    {
+     "question": "coverage",
+     "case_id": "ds-01/BOWEL",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    }
+   ],
+   "bundle_latencies": [
+    262,
+    231
+   ],
+   "ref_latencies": [
+    240,
+    231
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.3332e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "ds-02",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "ds-02/LUNGS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    },
+    {
+     "question": "coverage",
+     "case_id": "ds-02/PLEURA",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    },
+    {
+     "question": "coverage",
+     "case_id": "ds-02/MEDIASTINUM",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.97
+    },
+    {
+     "question": "coverage",
+     "case_id": "ds-02/HEART",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.97
+    }
+   ],
+   "bundle_latencies": [
+    225,
+    267
+   ],
+   "ref_latencies": [
+    250,
+    230
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.3962e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "dl-01",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "dl-01/LIVER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.97
+    },
+    {
+     "question": "coverage",
+     "case_id": "dl-01/SPLEEN",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    },
+    {
+     "question": "coverage",
+     "case_id": "dl-01/KIDNEYS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    },
+    {
+     "question": "coverage",
+     "case_id": "dl-01/PELVIS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.93
+    }
+   ],
+   "bundle_latencies": [
+    299,
+    252
+   ],
+   "ref_latencies": [
+    250,
+    302
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.4046e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "dl-02",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "dl-02/LUNGS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "coverage",
+     "case_id": "dl-02/PLEURA",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    },
+    {
+     "question": "coverage",
+     "case_id": "dl-02/MEDIASTINUM",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    }
+   ],
+   "bundle_latencies": [
+    265,
+    259
+   ],
+   "ref_latencies": [
+    235,
+    217
+   ],
+   "n_questions": 7,
+   "bundle_cost_usd": 6.2958e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "dm-01",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "dm-01/LUNGS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "coverage",
+     "case_id": "dm-01/PLEURA",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "coverage",
+     "case_id": "dm-01/MEDIASTINUM",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.95
+    }
+   ],
+   "bundle_latencies": [
+    224,
+    218
+   ],
+   "ref_latencies": [
+    257,
+    206
+   ],
+   "n_questions": 7,
+   "bundle_cost_usd": 6.3084e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "dm-02",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "dm-02/LIVER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "coverage",
+     "case_id": "dm-02/KIDNEYS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "coverage",
+     "case_id": "dm-02/ADRENALS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    }
+   ],
+   "bundle_latencies": [
+    253,
+    211
+   ],
+   "ref_latencies": [
+    288,
+    239
+   ],
+   "n_questions": 7,
+   "bundle_cost_usd": 6.2412e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "cg-01",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "cg-01/LIVER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.82
+    },
+    {
+     "question": "coverage",
+     "case_id": "cg-01/SPLEEN",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.81
+    },
+    {
+     "question": "coverage",
+     "case_id": "cg-01/PANCREAS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.72
+    },
+    {
+     "question": "coverage",
+     "case_id": "cg-01/BOWEL",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.89
+    }
+   ],
+   "bundle_latencies": [
+    341,
+    250
+   ],
+   "ref_latencies": [
+    270,
+    267
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.3038e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "cg-02",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "cg-02/LUNGS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.94
+    },
+    {
+     "question": "coverage",
+     "case_id": "cg-02/PLEURA",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.95
+    },
+    {
+     "question": "coverage",
+     "case_id": "cg-02/BONES",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.93
+    },
+    {
+     "question": "coverage",
+     "case_id": "cg-02/CHEST WALL",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.92
+    }
+   ],
+   "bundle_latencies": [
+    214,
+    247
+   ],
+   "ref_latencies": [
+    208,
+    271
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.3374e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "cb-01",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "cb-01/LIVER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.81
+    },
+    {
+     "question": "coverage",
+     "case_id": "cb-01/SPLEEN",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.8
+    },
+    {
+     "question": "coverage",
+     "case_id": "cb-01/BOWEL",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9199999999999999
+    },
+    {
+     "question": "coverage",
+     "case_id": "cb-01/AORTA",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9
+    }
+   ],
+   "bundle_latencies": [
+    254,
+    339
+   ],
+   "ref_latencies": [
+    225,
+    226
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.2996e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "cb-02",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "cb-02/LUNGS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.66
+    },
+    {
+     "question": "coverage",
+     "case_id": "cb-02/PLEURA",
+     "ref_ok": false,
+     "ref2_ok": false,
+     "bundle_ok": false,
+     "bundle_conf": 0.52
+    },
+    {
+     "question": "coverage",
+     "case_id": "cb-02/MEDIASTINUM",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.65
+    },
+    {
+     "question": "coverage",
+     "case_id": "cb-02/UPPER ABDOMEN",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9
+    }
+   ],
+   "bundle_latencies": [
+    218,
+    230
+   ],
+   "ref_latencies": [
+    263,
+    265
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.5222e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "cb-03",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "cb-03/LIVER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.71
+    },
+    {
+     "question": "coverage",
+     "case_id": "cb-03/KIDNEYS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.58
+    },
+    {
+     "question": "coverage",
+     "case_id": "cb-03/LYMPH NODES",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.77
+    },
+    {
+     "question": "coverage",
+     "case_id": "cb-03/BONES",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.94
+    }
+   ],
+   "bundle_latencies": [
+    263,
+    282
+   ],
+   "ref_latencies": [
+    266,
+    284
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.3794e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "so-01",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "so-01/LIVER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "coverage",
+     "case_id": "so-01/SPLEEN",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.77
+    },
+    {
+     "question": "coverage",
+     "case_id": "so-01/PANCREAS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.65
+    }
+   ],
+   "bundle_latencies": [
+    359,
+    274
+   ],
+   "ref_latencies": [
+    209,
+    227
+   ],
+   "n_questions": 7,
+   "bundle_cost_usd": 6.2118e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "so-02",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "so-02/LUNGS",
+     "ref_ok": false,
+     "ref2_ok": false,
+     "bundle_ok": false,
+     "bundle_conf": 0.7
+    },
+    {
+     "question": "coverage",
+     "case_id": "so-02/PLEURA",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "coverage",
+     "case_id": "so-02/MEDIASTINUM",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.65
+    }
+   ],
+   "bundle_latencies": [
+    274,
+    209
+   ],
+   "ref_latencies": [
+    253,
+    237
+   ],
+   "n_questions": 7,
+   "bundle_cost_usd": 6.3042e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "bm-01",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "bm-01/LIVER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    },
+    {
+     "question": "coverage",
+     "case_id": "bm-01/GALLBLADDER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.91
+    },
+    {
+     "question": "coverage",
+     "case_id": "bm-01/PANCREAS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    }
+   ],
+   "bundle_latencies": [
+    275,
+    274
+   ],
+   "ref_latencies": [
+    241,
+    256
+   ],
+   "n_questions": 7,
+   "bundle_cost_usd": 6.258e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "bm-02",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "bm-02/LUNGS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.94
+    },
+    {
+     "question": "coverage",
+     "case_id": "bm-02/PLEURA",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.91
+    },
+    {
+     "question": "coverage",
+     "case_id": "bm-02/HEART",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.91
+    }
+   ],
+   "bundle_latencies": [
+    289,
+    254
+   ],
+   "ref_latencies": [
+    262,
+    305
+   ],
+   "n_questions": 7,
+   "bundle_cost_usd": 6.1404e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "as-01",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "as-01/GALLBLADDER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.97
+    },
+    {
+     "question": "coverage",
+     "case_id": "as-01/BILE DUCTS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    },
+    {
+     "question": "coverage",
+     "case_id": "as-01/LIVER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    }
+   ],
+   "bundle_latencies": [
+    244,
+    210
+   ],
+   "ref_latencies": [
+    219,
+    220
+   ],
+   "n_questions": 7,
+   "bundle_cost_usd": 6.3336e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "as-02",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "as-02/PLEURA",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.97
+    },
+    {
+     "question": "coverage",
+     "case_id": "as-02/LUNGS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.93
+    },
+    {
+     "question": "coverage",
+     "case_id": "as-02/CHEST WALL",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    }
+   ],
+   "bundle_latencies": [
+    245,
+    293
+   ],
+   "ref_latencies": [
+    232,
+    290
+   ],
+   "n_questions": 7,
+   "bundle_cost_usd": 6.1866e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "pn-01",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "pn-01/KIDNEYS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.7
+    },
+    {
+     "question": "coverage",
+     "case_id": "pn-01/ADRENALS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9199999999999999
+    },
+    {
+     "question": "coverage",
+     "case_id": "pn-01/URETERS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.7
+    },
+    {
+     "question": "coverage",
+     "case_id": "pn-01/BLADDER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.79
+    }
+   ],
+   "bundle_latencies": [
+    284,
+    254
+   ],
+   "ref_latencies": [
+    261,
+    202
+   ],
+   "n_questions": 8,
+   "bundle_cost_usd": 7.3668e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "pn-02",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "pn-02/TRACHEA",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.74
+    },
+    {
+     "question": "coverage",
+     "case_id": "pn-02/MAIN BRONCHI",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.67
+    },
+    {
+     "question": "coverage",
+     "case_id": "pn-02/LUNGS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.97
+    }
+   ],
+   "bundle_latencies": [
+    320,
+    262
+   ],
+   "ref_latencies": [
+    242,
+    314
+   ],
+   "n_questions": 7,
+   "bundle_cost_usd": 6.237e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "ic-01",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "ic-01/LIVER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.94
+    },
+    {
+     "question": "coverage",
+     "case_id": "ic-01/KIDNEYS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.84
+    },
+    {
+     "question": "coverage",
+     "case_id": "ic-01/SPLEEN",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    }
+   ],
+   "bundle_latencies": [
+    246,
+    291
+   ],
+   "ref_latencies": [
+    233,
+    208
+   ],
+   "n_questions": 7,
+   "bundle_cost_usd": 6.2286e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "ic-02",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "ic-02/LUNGS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.92
+    },
+    {
+     "question": "coverage",
+     "case_id": "ic-02/PLEURA",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.52
+    },
+    {
+     "question": "coverage",
+     "case_id": "ic-02/MEDIASTINUM",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    }
+   ],
+   "bundle_latencies": [
+    220,
+    283
+   ],
+   "ref_latencies": [
+    272,
+    258
+   ],
+   "n_questions": 7,
+   "bundle_cost_usd": 6.3e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "vf-01",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "vf-01/LIVER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.8
+    },
+    {
+     "question": "coverage",
+     "case_id": "vf-01/SPLEEN",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.73
+    },
+    {
+     "question": "coverage",
+     "case_id": "vf-01/KIDNEYS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.79
+    }
+   ],
+   "bundle_latencies": [
+    324,
+    304
+   ],
+   "ref_latencies": [
+    277,
+    257
+   ],
+   "n_questions": 7,
+   "bundle_cost_usd": 6.1992e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "vf-02",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "vf-02/LUNGS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "coverage",
+     "case_id": "vf-02/PLEURA",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.95
+    },
+    {
+     "question": "coverage",
+     "case_id": "vf-02/MEDIASTINUM",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.95
+    }
+   ],
+   "bundle_latencies": [
+    217,
+    200
+   ],
+   "ref_latencies": [
+    296,
+    269
+   ],
+   "n_questions": 7,
+   "bundle_cost_usd": 6.258e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "ab-01",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "ab-01/COMMON BILE DUCT",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "coverage",
+     "case_id": "ab-01/IVC",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "coverage",
+     "case_id": "ab-01/AORTA",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.98
+    }
+   ],
+   "bundle_latencies": [
+    226,
+    399
+   ],
+   "ref_latencies": [
+    214,
+    205
+   ],
+   "n_questions": 7,
+   "bundle_cost_usd": 6.2538e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "ab-02",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "ab-02/VERTEBRAL BODIES",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.97
+    },
+    {
+     "question": "coverage",
+     "case_id": "ab-02/INTERVERTEBRAL DISCS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "coverage",
+     "case_id": "ab-02/SPINAL CANAL",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.93
+    }
+   ],
+   "bundle_latencies": [
+    233,
+    278
+   ],
+   "ref_latencies": [
+    365,
+    273
+   ],
+   "n_questions": 7,
+   "bundle_cost_usd": 6.615e-05
+  },
+  {
+   "kind": "coverage",
+   "id": "lab-cov-01",
+   "error": null,
+   "units": [
+    {
+     "question": "coverage",
+     "case_id": "lab-cov-01/GALLBLADDER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.83
+    },
+    {
+     "question": "coverage",
+     "case_id": "lab-cov-01/LIVER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.96
+    },
+    {
+     "question": "coverage",
+     "case_id": "lab-cov-01/BILIARY TREE",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9199999999999999
+    },
+    {
+     "question": "coverage",
+     "case_id": "lab-cov-01/PANCREAS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": false,
+     "bundle_conf": 0.62
+    },
+    {
+     "question": "coverage",
+     "case_id": "lab-cov-01/SPLEEN",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.61
+    },
+    {
+     "question": "coverage",
+     "case_id": "lab-cov-01/ADRENAL GLANDS",
+     "ref_ok": false,
+     "ref2_ok": false,
+     "bundle_ok": true,
+     "bundle_conf": 0.74
+    },
+    {
+     "question": "coverage",
+     "case_id": "lab-cov-01/KIDNEYS AND URETERS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.7
+    },
+    {
+     "question": "coverage",
+     "case_id": "lab-cov-01/ABDOMINAL AORTA AND IVC",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9
+    },
+    {
+     "question": "coverage",
+     "case_id": "lab-cov-01/BOWEL",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.74
+    },
+    {
+     "question": "coverage",
+     "case_id": "lab-cov-01/BLADDER",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.83
+    },
+    {
+     "question": "coverage",
+     "case_id": "lab-cov-01/REPRODUCTIVE ORGANS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.88
+    },
+    {
+     "question": "coverage",
+     "case_id": "lab-cov-01/LYMPH NODES",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.9199999999999999
+    },
+    {
+     "question": "coverage",
+     "case_id": "lab-cov-01/BONES AND JOINTS",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.95
+    },
+    {
+     "question": "coverage",
+     "case_id": "lab-cov-01/LUNG BASES",
+     "ref_ok": true,
+     "ref2_ok": true,
+     "bundle_ok": true,
+     "bundle_conf": 0.97
+    }
+   ],
+   "bundle_latencies": [
+    251,
+    238
+   ],
+   "ref_latencies": [
+    237,
+    230
+   ],
+   "n_questions": 18,
+   "bundle_cost_usd": 0.000197442
+  }
+ ]
+}

@@ -15,9 +15,11 @@ Standing rules for every step: question wording and lexicon frozen unless the st
 
 | # | Item | Why here | Exit | Status |
 |---|---|---|---|---|
-| 1 | **D-01** One shared keep-alive Jev client + warm-up on dictation socket open | Every latency figure afterwards depends on it; hours of work | Bundle parity p50/p95 with intervals, before vs after; cold first call measured separately | todo |
-| 2 | **D-03** Brier, ECE (10 bins + counts) and reliability table in `bakeoff_stats`, printed per question for Jev and Qwen-off | Rev 2 §2 rests on calibration. If Jev is not better calibrated than Qwen-off, the plan changes here | Calibration table for all three sets, with a plain verdict | todo |
-| 3 | **D-10** Question registry with `QSET_VERSION`, logged per decision; also log full `probabilities` (enables D-07 later) | The shadow must be attributable to a wording, and its week of data must carry distributions | Parity still PASS with unchanged wording; logs carry version + probabilities | todo |
+| 1 | **D-01** One shared keep-alive Jev client + warm-up on dictation socket open | Every latency figure afterwards depends on it; hours of work | Bundle parity p50/p95 with intervals, before vs after; cold first call measured separately | **done 2026-09-26**: bundle p50 288 [285, 292] → 247 [243, 250] ms, p95 378 [356, 399] → 331 [304, 349] ms; parity fresh FAIL (1 ReadTimeout) → shared PASS; cold first call p50 328 [283, 351] ms; ~40–50 ms, not 400 |
+| 2 | **D-03** Brier, ECE (10 bins + counts) and reliability table in `bakeoff_stats`, printed per question for Jev and Qwen-off | Rev 2 §2 rests on calibration. If Jev is not better calibrated than Qwen-off, the plan changes here | Calibration table for all three sets, with a plain verdict | **done 2026-09-26**: **not shown**. vs qwen-lp (logprobs): Jev better 1 (coverage), qwen-lp better 2 (needs_committed_edit, asr_risk; offset, AUC 1.0), 4 not shown. Rev 2 §2: vendor not earned on calibration → **your decision before step 5** |
+| 3 | **D-10** Question registry with `QSET_VERSION`, logged per decision; also log full `probabilities` (enables D-07 later) | The shadow must be attributable to a wording, and its week of data must carry distributions | Parity still PASS with unchanged wording; logs carry version + probabilities | **done 2026-09-26**: `jev_questions.py`, `QSET_VERSION 2026-09-26.1`; wording digest unchanged across the move; parity PASS, 0 errors, bundle p95 338 [306, 359] ms; qset + full probabilities on shadow, triage, coverage and utterance decision lines |
+
+**Phase A outcome (2026-09-26):** numbers now true. Calibration did *not* come out in Jev's favour (handover §3), so before step 5 decide: keep Jev (earned on one call for all questions and on ranking, not on calibration), or shadow Qwen-off as well. Unblocked now: step 4 (needs you), S1 (after 3), S2 (after 2).
 
 ## Phase B — Start the real-world clock
 

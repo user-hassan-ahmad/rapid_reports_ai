@@ -41,6 +41,34 @@ Jev's interval clears the lexicon only on coverage; on triage the intervals over
 
 - **Bundle parity (2026-09-24, 114 fixtures, ref→bundle→ref, `utterance_bundle.py` + `scripts/bundle_parity.py`):** **PASS**. Per question (ref vs bundle, bundle-only/ref-only/noise): action 48/49 vs 47/49 (1/0/0, at the allowance of 1; format-07 "comma" at 0.47); is_correction 48/49 vs 48/49 (0/0/0); needs_committed_edit 49/49 vs 49/49; standalone 21/29 vs 24/29 (0/3/2: bundle *better* with the open-line + latest-utterance wording, still under the lexicon's 25/29); coverage sections 96/98 vs 96/98 (1/1/1). Bundle p50/p95 284/361 ms [337, 424] over 228 calls (≤8 q: p95 442; >8 q: p95 337, so checklist length is not the latency lever) vs separate p95 triage 360 / boundary 397 / coverage 352. Commands caught by action: 10/10. Cost $0.0097 for 228 bundle calls. `docs/model-migration/bundle-parity-2026-09-24.json`.
 
+### Phase A (work order steps 1–3), 2026-09-26 — plan `plans/2026-09-26-jev-phase-a-client-calibration-registry.md`
+
+**D-01 shared client** (`jev_client.py`; four callers, not three: boundary had one too). Interleaved A/B, same bundle bodies, 60 rounds (`scripts/jev_latency_ab.py`, `jev-client-latency-2026-09-26.json`):
+
+| Arm | p50 [95 % CI] | p95 [95 % CI] |
+|---|---|---|
+| fresh client per call (before) | 303 ms [293, 320] | 377 ms [342, 411] |
+| shared keep-alive (after) | 268 ms [260, 274] | 328 ms [303, 349] |
+| cold: first call on a new client (n=20) | 328 ms [283, 351] | 390 ms [351, 595] |
+
+Process-first call (DNS included) 430 ms; live warm-up 522 → 250 → 227 ms. Bundle parity back to back: **fresh FAIL** (every question PASS, but one 3 s ReadTimeout on lab-cov-01), bundle p50/p95 288 [285, 292] / 378 [356, 399] ms; **shared PASS**, 0 errors, 247 [243, 250] / 331 [304, 349] ms; separate calls p95 363 → 297 ms. Gain is ~40 ms at p50 and ~50 ms at p95 with non-overlapping p50 intervals: real, but far smaller than the voice browser's 700 → 300 ms. Our handshake was never the big cost. Warm-up fires on `/api/transcribe` open only when a Jev flag is on.
+
+**D-03 calibration** (`bakeoff_stats`: Brier, ECE 10 bins, reliability table, case-level bootstrap; `calibration-2026-09-26.json`). Qwen-off has no probabilities as shipped (Groq qwen3.6 rejects `logprobs`), so two contrasts: **qwen** = shipped, hard labels scored as certainty; **qwen-lp** = Cerebras qwen-3.8-27b reasoning off, one call per question, first-token logprobs (different model version and prompt form; eval only). Differences are other − Jev with paired 95 % intervals; positive = Jev better.
+
+| Set / question | Accuracy jev · qwen · qwen-lp | Brier jev | qwen − jev | qwen-lp − jev | Verdict vs qwen-lp |
+|---|---|---|---|---|---|
+| triage action (n=49) | 48 · 48 · 48 /49 | 0.050 | −0.009 [−0.035, +0.010] | +0.008 [−0.022, +0.036] | not shown |
+| triage is_correction | 48 · 39 · 47 /49 | 0.038 | **+0.166 [+0.063, +0.270]** | −0.013 [−0.034, +0.006] | not shown |
+| triage needs_committed_edit | 49 · 49 · 49 /49 | 0.061 | **−0.061** [−0.071, −0.052] | **−0.027** [−0.039, −0.014] | **qwen-lp better** |
+| coverage section (98 units, 26 cases) | 95 · 97 · 84 /98 | 0.033 | **−0.023** [−0.047, −0.007] | **+0.058 [+0.018, +0.110]** | **Jev better** |
+| boundary 3-way (n=39) | 33 · — · 29 /39 | 0.215 | — | +0.171 [−0.025, +0.366] | not shown |
+| standalone (n=29) | 21 · — · 23 /29 | 0.186 | — | −0.026 [−0.124, +0.083] | not shown |
+| asr_risk (n=39) | 24 · — · 36 /39 | 0.234 | — | **−0.174** [−0.230, −0.110] | **qwen-lp better** |
+
+**Verdict: no. On our data Jev is not shown to be better calibrated than Qwen-off.** Against the logprob contrast: Jev better on 1 question (coverage), qwen-lp better on 2, 4 not shown. Against shipped hard-label Qwen: Jev better only on is_correction, and that is an accuracy gap (0.98 vs 0.80), not calibration; hard Qwen scores better on needs_committed_edit and coverage because it is right and certain there. Where Jev loses on nouls the loss is an **offset, not ranking**: clean negatives sit at a median 0.25 (needs_committed_edit) and asr_risk's baseline is ~0.5, yet AUC is 1.0 on both (only 2 and 4 positives, so weak evidence). A threshold set in code absorbs an offset; ECE and Brier punish it. Triage action has 1 miss in 49 for every candidate, so calibration there is untestable at this n. Rev 2 §2's rule therefore says the vendor is **not earned on calibration**; what remains to earn it is one call for every question (qwen-lp needs one call per question: triage p95 1243 ms [615, 1279] for three parallel calls vs Jev bundle p95 331 ms) and ranking quality. **The keep-or-drop call is yours, before step 5.** Jev triage p95 in this run was 882 ms [297, 904]: one tail, not repeated in parity.
+
+**D-10 registry** (`jev_questions.py`, `QSET_VERSION = "2026-09-26.1"`): every question, criteria map and threshold (triage, boundary, coverage, bundle, route default 0.9), moved verbatim; the old modules re-export. `tests/test_jev_questions.py` pins the wording by a digest computed *before* the move, unchanged after. Every decision log line carries `qset` and full probabilities, never text: `canvas.triage.shadow` (+qset), new `canvas.triage.decision` (debug/route), `canvas.coverage.decision` (only when Jev ran), `canvas.utterance.decision`; `TriageTrace`, `CoverageTrace`, `UtteranceResponse` and `BundleDecision` carry `qset`. Parity after the move: **PASS**, 0 errors, bundle p50/p95 243 / 338 [306, 359] ms (`bundle-parity-2026-09-26-registry.json`); one new bundle-only miss (needs_committed_edit format-05 at 0.51) within the allowance of 1, which is noise on unchanged wording.
+
 ## 4. What worked / what failed (the insights)
 
 1. **Jev is calibrated and fast; the surrounding rules were the problem every time.** A 0.4 floor demoted correct completes; a 1.5 s backstop cut sentences a radiologist pauses mid-way while reading images; a 9 s backstop then over-waited. Lesson: act on the raw choice; put *time* and *punctuation* in code, not in the model.
@@ -61,7 +89,11 @@ RR_TRIAGE_DEBUG=1 DEEPGRAM_DICTATION=0 PYTHONPATH=src <main>/backend/.venv/bin/u
 # frontend (worktree/frontend)   bun run dev      → sign in, open /dictation-lab
 # in the tab: localStorage rr_incremental=1 (faded optimistic render), Strategy → front door = Jev boundary
 # bake-offs: PYTHONPATH=src python -c "from dotenv import load_dotenv; load_dotenv('.env'); import runpy; runpy.run_module('rapid_reports_ai.scripts.boundary_bakeoff', run_name='__main__')"
+#   same form for triage_bakeoff, coverage_bakeoff (print calibration; need OPENROUTER, GROQ and CEREBRAS keys),
+#   bundle_parity, jev_latency_ab (fresh vs shared client). RR_JEV_FRESH_CLIENT=1 restores per-request clients.
 ```
+
+Tests (2026-09-26, after Phase A): backend 439 passed, 1 skipped.
 
 ## 6. Outstanding / next steps — follow decision-first **rev 2**
 
