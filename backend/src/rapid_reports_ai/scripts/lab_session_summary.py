@@ -82,7 +82,27 @@ def summarise(decisions: list[dict[str, Any]], outcomes: list[dict[str, Any]]) -
     }
 
 
+def dedupe_cumulative(sessions: list[tuple[str, dict[str, Any]]]) -> list[tuple[str, dict[str, Any]]]:
+    """An export taken without clearing the panel repeats earlier decisions. Backend ids
+    (uuid hex) are unique across sessions: each is kept in the first file it appears in,
+    and its outcomes from any file follow it there (an undo can land after an export).
+    local-<n> ids (request failed) restart per page load, so they stay per file."""
+    owner: dict[str, int] = {}
+    for k, (_, s) in enumerate(sessions):
+        for d in s["decisions"]:
+            if not d["id"].startswith("local-"):
+                owner.setdefault(d["id"], k)
+    decs: list[list[dict[str, Any]]] = [[] for _ in sessions]
+    outs: list[list[dict[str, Any]]] = [[] for _ in sessions]
+    for k, (_, s) in enumerate(sessions):
+        decs[k] = [d for d in s["decisions"] if owner.get(d["id"], k) == k]
+        for o in s["outcomes"]:
+            outs[owner.get(o["decision_id"], k)].append(o)
+    return [(name, {**s, "decisions": decs[k], "outcomes": outs[k]}) for k, (name, s) in enumerate(sessions)]
+
+
 def report(sessions: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
+    sessions = dedupe_cumulative(sessions)
     per = [{"file": name, **summarise(s["decisions"], s["outcomes"])} for name, s in sessions]
     # ids are unique within a session only: namespace them before pooling
     all_dec = [{**d, "id": f"{name}:{d['id']}"} for name, s in sessions for d in s["decisions"]]

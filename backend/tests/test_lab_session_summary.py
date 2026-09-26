@@ -7,9 +7,9 @@ import pytest
 from rapid_reports_ai.scripts.lab_session_summary import format_report, load_sessions, report, summarise
 
 
-def _dec(i, route, latency=250, polish=None):
+def _dec(i, route, latency=250, polish=None, sid="d"):
     return {
-        "id": f"d{i}", "seq": i, "at": i, "route": route, "reason": "r", "qset": "2026-09-26.2",
+        "id": f"{sid}{i}", "seq": i, "at": i, "route": route, "reason": "r", "qset": "2026-09-26.2",
         "action": None, "confidence": None, "probabilities": None, "is_correction": None, "standalone": None,
         "latency_ms": latency, "roundtrip_ms": None,
         "polish_called": route == "polish" if polish is None else polish,
@@ -19,8 +19,8 @@ def _dec(i, route, latency=250, polish=None):
     }
 
 
-def _out(i, kind, route):
-    return {"decision_id": f"d{i}", "kind": kind, "route": route, "ms_since": 1500, "at": 0}
+def _out(i, kind, route, sid="d"):
+    return {"decision_id": f"{sid}{i}", "kind": kind, "route": route, "ms_since": 1500, "at": 0}
 
 
 def _session(decisions, outcomes):
@@ -33,7 +33,9 @@ S1 = _session(
      _dec(5, "skip", None)],
     [_out(1, "undo", "fast_append"), _out(1, "undo", "fast_append"), _out(3, "edit", "polish")],
 )
-S2 = _session([_dec(1, "polish", 320), _dec(2, "fast_append", 230)], [_out(2, "redictate", "fast_append")])
+# backend ids are unique across sessions
+S2 = _session([_dec(1, "polish", 320, sid="e"), _dec(2, "fast_append", 230, sid="e")],
+              [_out(2, "redictate", "fast_append", sid="e")])
 
 
 def test_polish_calls_against_the_polish_everything_baseline():
@@ -85,8 +87,11 @@ def test_load_sessions_reads_files_and_directories_and_rejects_other_json(tmp_pa
 
 
 def test_overall_keeps_outcomes_with_their_own_session():
-    """Decision ids are unique per session only; pooled outcomes must not cross over."""
-    o = report([("a.json", S1), ("b.json", S2)])["overall"]
+    """local- ids repeat across page loads; pooled outcomes must not cross over."""
+    loc = lambda sess: _session(
+        [{**d, "id": d["id"].replace("d", "local-").replace("e", "local-")} for d in sess["decisions"]],
+        [{**o, "decision_id": o["decision_id"].replace("d", "local-").replace("e", "local-")} for o in sess["outcomes"]])
+    o = report([("a.json", loc(S1)), ("b.json", loc(S2))])["overall"]
     fa, po = o["routes"]["fast_append"], o["routes"]["polish"]
     assert (fa["n"], fa["undo"]["k"], fa["redictate"]["k"]) == (3, 1, 1)
     assert (po["n"], po["undo"]["k"], po["edit"]["k"]) == (2, 0, 1)
@@ -97,3 +102,25 @@ def test_one_session_has_no_session_clustered_interval():
     r = report([("a.json", S1)])
     assert r["overall"]["polish_per_utterance_session_ci95"] is None
     assert "needs ≥ 2 sessions" in format_report(r)
+
+
+def test_a_cumulative_export_counts_each_decision_once():
+    """Exporting again without clearing the panel repeats earlier decisions; backend ids
+    are unique across sessions, so a repeat is dropped. local- ids are per page load."""
+    first = _session([_dec(1, "fast_append"), {**_dec(2, "polish"), "id": "local-1"}], [_out(1, "undo", "fast_append")])
+    later = _session(first["decisions"] + [_dec(3, "polish"), {**_dec(4, "fast_append"), "id": "local-1"}],
+                     first["outcomes"] + [_out(3, "edit", "polish")])
+    r = report([("a.json", first), ("b.json", later)])
+    assert [s["utterances"] for s in r["sessions"]] == [2, 3]
+    o = r["overall"]
+    assert o["utterances"] == 5
+    assert o["routes"]["fast_append"]["undo"]["k"] == 1
+    assert o["routes"]["polish"]["edit"]["k"] == 1
+
+
+def test_an_outcome_after_the_first_export_follows_its_decision():
+    first = _session([_dec(1, "fast_append")], [])
+    later = _session([_dec(1, "fast_append"), _dec(2, "polish")], [_out(1, "undo", "fast_append")])
+    r = report([("a.json", first), ("b.json", later)])
+    assert r["sessions"][0]["routes"]["fast_append"]["undo"]["k"] == 1
+    assert r["sessions"][1]["utterances"] == 1
