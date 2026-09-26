@@ -17,6 +17,7 @@
 		asrFields,
 		changedRange,
 		commandInsert,
+		openStatement,
 		hash8,
 		isRedictation,
 		separatorFor,
@@ -715,7 +716,9 @@
 					scan_type: scanType,
 					committed: '',
 					active: solid,
-					open_line: lineOpen ? lastNonEmptyLine(solid) : '',
+					// The unfinished statement, read from the text (not the line-open flag, which
+					// Deepgram's full stops and every polish reset, leaving it empty in practice).
+					open_line: openStatement(solid),
 					latest_utterance: chunk,
 					checklist: checklistSections,
 					...(asr ?? {})

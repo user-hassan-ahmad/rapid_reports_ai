@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	asrFields,
 	commandInsert,
+	openStatement,
 	separatorFor,
 	substituteLast,
 	buildSessionExport,
@@ -160,5 +161,33 @@ describe('cleaned text for polish', () => {
 	});
 	it('a text that starts with a line break attaches directly', () => {
 		expect(separatorFor('No effusion.', '\nThe heart', false)).toBe('');
+	});
+});
+
+describe('openStatement', () => {
+	it('is the unfinished sentence after the last full stop', () => {
+		expect(openStatement('Normal marrow signal. L4/5 there is a broad based disc bulge causing')).toBe(
+			'L4/5 there is a broad based disc bulge causing'
+		);
+	});
+	it('is empty when the text ends a sentence', () => {
+		expect(openStatement('No effusion.')).toBe('');
+		expect(openStatement('Is this new?')).toBe('');
+		expect(openStatement('Conclusion:')).toBe('');
+		expect(openStatement('No effusion.\n\n')).toBe('');
+	});
+	it('stops at a line break, not just a full stop', () => {
+		expect(openStatement('No effusion.\n\nL3/4 mild desiccation with')).toBe('L3/4 mild desiccation with');
+	});
+	it('a trailing line or paragraph break closes the statement, even without a full stop', () => {
+		expect(openStatement('no contact on the exiting L5 nerve root\n\n')).toBe('');
+		expect(openStatement('no contact on the exiting L5 nerve root\n')).toBe('');
+	});
+	it('does not split on a decimal point', () => {
+		expect(openStatement('The lesion measures 4.5')).toBe('The lesion measures 4.5');
+	});
+	it('is the whole text when nothing has ended yet', () => {
+		expect(openStatement('There are five lumbar type')).toBe('There are five lumbar type');
+		expect(openStatement('')).toBe('');
 	});
 });

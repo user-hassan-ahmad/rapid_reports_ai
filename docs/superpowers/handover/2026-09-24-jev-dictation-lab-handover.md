@@ -119,6 +119,8 @@ British spelling: Deepgram returns US spelling even with `language=en-GB` (its d
 
 Spoken formatting (`spoken_format.py`, 2026-09-26, deliberate lexicon change): slash, comma, semicolon, hyphen, brackets and question mark always convert; disc levels normalise to L3/4, L5/S1 (adjacent levels and the C7/T1, T12/L1, L5/S1 junctions; Deepgram's formatter glues "L3 slash 4" into "L3four"). `colon` is ':' after a heading or disc level (read across finals against the scratchpad), the organ after a modifier or before a verb, otherwise ambiguous → polish. A heading said alone is written by code ("Conclusion:"); a disc level or heading opens its own paragraph. `DEEPGRAM_SPOKEN_FORMAT=1` applies the unambiguous part at the websocket for every path; the colon rule runs in the bundle route only.
 
+`open_line` (2026-09-27): read from the text — the statement after the last . ? ! (not a decimal point), colon or line break — instead of the line-open flag. The flag was reset by Deepgram's full stops and by every polish, so in the fragment-heavy spine session Jev got no open line on 32/32 decisions; replayed with the new rule, 22/32 carry their unfinished sentence.
+
 Known limits: manual edits made while a polish is running are overwritten by it (same as today's path); undo is one step, and only while the range is untouched; `ignore_noise` goes to polish; `standalone` sits just under 0.5 on complete statements (live smoke 0.47–0.48), so expect `⏎ hard_limit` more than `⏎ standalone` on unpunctuated lines.
 
 ## 6. Outstanding / next steps — follow decision-first **rev 2**

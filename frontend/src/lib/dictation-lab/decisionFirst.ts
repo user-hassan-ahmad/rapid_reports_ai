@@ -91,6 +91,19 @@ export function asrFields(msg: Record<string, unknown>): AsrFields {
 	return { asr_conf: num(msg.asr_conf), asr_min_conf: num(msg.asr_min_conf), asr_word_confs: list };
 }
 
+/** The unfinished statement at the end of the scratchpad: everything after the last
+ *  sentence end (. ? ! not inside a number), colon or line break. Empty when the text
+ *  ends a statement. Read from the text itself, so a polish or a timer cannot lose it. */
+export function openStatement(solid: string): string {
+	if (/\n[ \t]*$/.test(solid)) return ''; // a line or paragraph break closed it
+	const text = solid.replace(/\s+$/, '');
+	if (!text || /[.?!:]["')\]]*$/.test(text)) return '';
+	const re = /[.?!:](?!\d)["')\]]*\s+|\n/g;
+	let start = 0;
+	for (let m = re.exec(text); m; m = re.exec(text)) start = m.index + m[0].length;
+	return text.slice(start).trim();
+}
+
 /** What goes between the solid scratchpad and a fast-appended utterance. Dictation
  *  continues the text: a finished sentence is not a new line (the open-line close only
  *  tells Jev a statement ended). New lines come from commands, as the radiologist says them. */
