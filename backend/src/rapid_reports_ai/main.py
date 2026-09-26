@@ -4968,6 +4968,11 @@ async def websocket_transcribe(websocket: WebSocket):
     # punctuates anyway, and new line / new paragraph / full stop are handled in our own
     # lexicon. Production keeps the default until the lab shows the timer path is unaffected.
     dictation_flag = "false" if os.environ.get("DEEPGRAM_DICTATION", "1") == "0" else "true"
+    # Deepgram returns American spelling even with language=en-GB; its find-and-replace
+    # gives British spelling (deepgram_spelling). Off unless DEEPGRAM_UK_SPELLING=1.
+    from rapid_reports_ai.deepgram_spelling import restore_sentence_case, uk_spelling_params
+    uk_spelling = os.environ.get("DEEPGRAM_UK_SPELLING") == "1"
+    uk_params = f"&{uk_spelling_params()}" if uk_spelling else ""
     deepgram_url = (
         f"wss://api.deepgram.com/v1/listen"
         f"?model=nova-3-medical"
@@ -4981,6 +4986,7 @@ async def websocket_transcribe(websocket: WebSocket):
         f"&utterance_end_ms=1000"
         f"{pcm_params}"
         f"&{keyterm_params}"
+        f"{uk_params}"
     )
     print(f"🎙️ Deepgram mode: {'PCM linear16 @ ' + str(pcm_sample_rate) + ' Hz' if use_pcm else 'auto-detect container'}")
     
@@ -5019,6 +5025,8 @@ async def websocket_transcribe(websocket: WebSocket):
 
                                         # Process dictation commands (convert <\n> to actual newlines, etc.)
                                         transcript = process_dictation_transcript(raw_transcript)
+                                        if uk_spelling:
+                                            transcript = restore_sentence_case(transcript)
 
                                         # Only log finalised, non-empty utterances — skip interim / empty frames.
                                         if is_final and transcript:
