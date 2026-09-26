@@ -1,4 +1,6 @@
-"""Score both coverage candidates on tests/fixtures/coverage_cases.jsonl.
+"""Score the coverage candidates on tests/fixtures/coverage_cases.jsonl: code, jev, qwen
+(shipped, hard 0/1) and qwen-lp (Cerebras qwen-3.8 first-token logprobs, eval only),
+with per-section calibration for jev, qwen and qwen-lp (cases resampled as units).
 
 Usage (from backend/, keys loaded):
     PYTHONPATH=src python -c "from dotenv import load_dotenv; load_dotenv('.env'); import runpy; runpy.run_module('rapid_reports_ai.scripts.coverage_bakeoff', run_name='__main__')"
@@ -18,6 +20,8 @@ from typing import Any, Optional
 
 from rapid_reports_ai.scripts.bakeoff_baselines import baseline_coverage
 from rapid_reports_ai.scripts.bakeoff_stats import bootstrap_quantile_ci, fmt_rate, rate
+from rapid_reports_ai.scripts.calibration_report import calibration_block
+from rapid_reports_ai.scripts.qwen_logprob import QWEN_LP_LABEL, QwenLogprob
 from rapid_reports_ai.scripts.triage_summary import BUCKETS, _p
 
 FIXTURES = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "coverage_cases.jsonl"
@@ -46,6 +50,26 @@ def _exact(row: Row, threshold: float = 0.5) -> bool:
 def code_row(case: dict) -> Row:
     return Row(case["id"], "code", case["checklist"], case["expected_covered"],
                baseline_coverage(case["scratchpad"], case["checklist"]), 0, None, case["hard"], case["rule"], None)
+
+
+CALIBRATED = ("jev", "qwen", "qwen-lp")
+
+
+def coverage_calibration(rows: list[Row]) -> tuple[dict[str, Any], str]:
+    """One noul per (case, section), over cases every calibrated candidate answered;
+    qwen's scores are already 1.0/0.0. Groups = case, so a case's sections move together."""
+    by: dict[str, dict[str, Row]] = defaultdict(dict)
+    for r in rows:
+        if r.candidate in CALIBRATED:
+            by[r.id][r.candidate] = r
+    present = [k for k in CALIBRATED if any(k in c for c in by.values())]
+    cases = [c for c in by.values() if all(k in c and c[k].error is None and c[k].scores is not None for k in present)]
+    units = [(c, s) for c in cases for s in c["jev"].checklist]
+    groups = [c["jev"].id for c, _ in units]
+    return calibration_block("coverage section", "noul", {
+        k: ([c[k].scores.get(s, 0.0) for c, s in units], [int(s in set(c[k].expected)) for c, s in units])
+        for k in present
+    }, groups=groups)
 
 
 def score(rows: list[Row], threshold: float = 0.5) -> dict[str, dict[str, Any]]:
@@ -124,19 +148,30 @@ async def main() -> int:
     from rapid_reports_ai.canvas_routes import qwen_coverage
     from rapid_reports_ai.section_coverage import get_jev_coverage
 
-    missing = [k for k in ("OPENROUTER_API_KEY", "CEREBRAS_API_KEY") if not os.environ.get(k)]
+    from rapid_reports_ai.section_coverage import coverage_questions
+
+    missing = [k for k in ("OPENROUTER_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY") if not os.environ.get(k)]
     if missing:
         print(f"missing env: {', '.join(missing)}", file=sys.stderr)
         return 2
     cases = [json.loads(l) for l in FIXTURES.read_text().splitlines() if l.strip()]
     sem = asyncio.Semaphore(4)
+    qwen_lp = QwenLogprob()
 
     async def run(case: dict) -> list[Row]:
         rows = []
         async with sem:
             rows.append(code_row(case))
-            for cand in ("jev", "qwen"):
+            for cand in ("jev", "qwen", "qwen-lp"):
                 try:
+                    if cand == "qwen-lp":
+                        state = {"scan_type": case["scan_type"] or "", "checklist": list(case["checklist"]),
+                                 "scratchpad": case["scratchpad"] or ""}
+                        a = await qwen_lp.answer(state, coverage_questions(case["checklist"]))
+                        rows.append(Row(case["id"], cand, case["checklist"], case["expected_covered"],
+                                        {x: a[x]["noul"] for x in case["checklist"]}, a["latency_ms"], None,
+                                        case["hard"], case["rule"], None))
+                        continue
                     if cand == "jev":
                         d = await get_jev_coverage().classify(case["scratchpad"], case["checklist"], case["scan_type"])
                     else:
@@ -152,6 +187,10 @@ async def main() -> int:
     rows = [r for rs in nested for r in rs]
     s = score(rows)
     print(fmt(s))
+    cal, cal_text = coverage_calibration(rows)
+    print(f"\n== calibration (qwen = shipped, hard 0/1; {QWEN_LP_LABEL})")
+    print(cal_text)
+    await qwen_lp.aclose()
     print("\n-- non-exact cases --")
     for r in rows:
         if r.error is None and not _exact(r):
@@ -164,7 +203,7 @@ async def main() -> int:
             print(f"   {r.candidate:<4} {r.id:<6} {r.error}")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out = OUT_DIR / f"coverage-bakeoff-{date.today().isoformat()}.json"
-    out.write_text(json.dumps({"summary": s, "rows": [r.__dict__ for r in rows]}, indent=1))
+    out.write_text(json.dumps({"summary": s, "calibration": cal, "rows": [r.__dict__ for r in rows]}, indent=1))
     print(f"\nwrote {out}")
     return 0
 

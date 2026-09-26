@@ -40,3 +40,21 @@ def test_code_row_is_the_baseline():
     r = code_row(case)
     assert r.candidate == "code" and r.scores == {"LIVER": 1.0, "SPLEEN": 0.0} and r.error is None
     assert score([r])["code"]["exact_set_accuracy"] == 1.0
+
+
+def test_coverage_calibration_groups_sections_by_case():
+    from rapid_reports_ai.scripts.coverage_bakeoff import coverage_calibration
+
+    def row(cid, cand, scores, err=None):
+        return Row(cid, cand, ["LUNGS", "PLEURA"], ["LUNGS"], scores, 1, None, False, "direct", err)
+
+    rows = [
+        row("c1", "jev", {"LUNGS": 0.9, "PLEURA": 0.2}), row("c1", "qwen", {"LUNGS": 1.0, "PLEURA": 0.0}),
+        row("c1", "qwen-lp", {"LUNGS": 0.8, "PLEURA": 0.4}), row("c1", "code", {"LUNGS": 1.0, "PLEURA": 0.0}),
+        row("c2", "jev", {"LUNGS": 0.6, "PLEURA": 0.7}), row("c2", "qwen", {"LUNGS": 1.0, "PLEURA": 1.0}),
+        row("c2", "qwen-lp", None, err="QwenLogprobError"),
+    ]
+    s, text = coverage_calibration(rows)
+    assert set(s["candidates"]) == {"jev", "qwen", "qwen-lp"}
+    assert s["candidates"]["jev"]["n"] == 2  # c2 dropped: qwen-lp failed on it
+    assert "1 cases" in text

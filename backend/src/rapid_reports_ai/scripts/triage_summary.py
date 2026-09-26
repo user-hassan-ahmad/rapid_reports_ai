@@ -33,6 +33,7 @@ class Record:
     expected_is_correction: Optional[bool]
     needs_committed_edit: Optional[float]
     expected_needs_committed_edit: Optional[bool]
+    probabilities: Optional[dict[str, float]] = None  # the full action distribution, when stated
 
 
 def _p(values: list[int], q: float) -> int:

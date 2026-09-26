@@ -75,3 +75,31 @@ def test_code_record_uses_the_baseline():
     r = code_record(case)
     assert r.candidate == "code" and r.action == "delete_previous_utterance" and r.error is None
     assert r.confidence is None and r.is_correction == 0.0 and r.needs_committed_edit is None
+
+
+def test_triage_calibration_aligns_cases_across_candidates():
+    from rapid_reports_ai.scripts.triage_bakeoff import triage_calibration
+
+    def rec(cid, cand, action, probs=None, ic=0.1, err=None):
+        return Record(
+            id=cid, candidate=cand, expected_action="append_new_finding", action=action, confidence=None,
+            latency_ms=1, cost_usd=None, hard=False, error=err, is_correction=ic, expected_is_correction=False,
+            needs_committed_edit=ic, expected_needs_committed_edit=False, probabilities=probs,
+        )
+
+    p = {"append_new_finding": 0.9, "correct_previous_finding": 0.1}
+    records = [
+        rec("a", "jev", "append_new_finding", p), rec("a", "qwen", "append_new_finding", ic=0.0),
+        rec("a", "qwen-lp", "append_new_finding", p),
+        rec("b", "jev", "append_new_finding", p), rec("b", "qwen", "correct_previous_finding", ic=1.0),
+        rec("b", "qwen-lp", "append_new_finding", p),
+        rec("c", "jev", "append_new_finding", p), rec("c", "qwen", "append_new_finding", ic=0.0),
+        rec("c", "qwen-lp", None, err="QwenLogprobError"),  # dropped for every candidate
+        rec("c", "code", "append_new_finding"),  # code states no probability: never in calibration
+    ]
+    blocks = {s["question"]: s for s, _ in triage_calibration(records)}
+    assert set(blocks) == {"action", "is_correction", "needs_committed_edit"}
+    a = blocks["action"]["candidates"]
+    assert set(a) == {"jev", "qwen", "qwen-lp"} and a["jev"]["n"] == 2
+    assert a["qwen"]["accuracy"]["k"] == 1  # hard label, one wrong
+    assert blocks["is_correction"]["candidates"]["qwen"]["brier"] == 0.5  # 0 and 1 against two False labels

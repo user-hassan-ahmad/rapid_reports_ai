@@ -2,7 +2,11 @@
 
 Usage (from backend/, keys in .env):
     set -a; . ./.env; set +a
-    .venv/bin/python -m rapid_reports_ai.scripts.triage_bakeoff [--only code|jev|qwen] [--concurrency 4]
+    .venv/bin/python -m rapid_reports_ai.scripts.triage_bakeoff [--only code|jev|qwen|qwen-lp] [--concurrency 4]
+
+Candidates: code (lexicon), jev, qwen (shipped: Groq qwen3.6, hard labels) and qwen-lp
+(Cerebras qwen-3.8 first-token logprobs, eval only). Calibration is printed per question
+for jev, qwen and qwen-lp over the cases all three answered.
 
 Never run by pytest. Writes docs/model-migration/triage-bakeoff-<date>.json.
 """
@@ -17,8 +21,10 @@ import time
 from datetime import date
 from pathlib import Path
 
-from rapid_reports_ai.dictation_triage import TriageState, get_triager
+from rapid_reports_ai.dictation_triage import TRIAGE_QUESTIONS, TriageState, get_triager
 from rapid_reports_ai.scripts.bakeoff_baselines import baseline_triage
+from rapid_reports_ai.scripts.calibration_report import calibration_block, hard_choice, hard_noul
+from rapid_reports_ai.scripts.qwen_logprob import QWEN_LP_LABEL, QwenLogprob
 from rapid_reports_ai.scripts.triage_summary import Record, format_summary, summarise
 
 FIXTURES = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "triage_utterances.jsonl"
@@ -42,6 +48,58 @@ def code_record(case: dict) -> Record:
     )
 
 
+CALIBRATED = ("jev", "qwen", "qwen-lp")
+
+
+def triage_calibration(records: list[Record]) -> list[tuple[dict, str]]:
+    """Per question, over the cases every calibrated candidate answered. Hard labels
+    (qwen) enter as certainty; code states no probability and is left out."""
+    by: dict[str, dict[str, Record]] = {}
+    for r in records:
+        if r.candidate in CALIBRATED:
+            by.setdefault(r.id, {})[r.candidate] = r
+    cases = [c for c in by.values() if all(k in c and c[k].error is None for k in CALIBRATED)]
+    present = [k for k in CALIBRATED if any(k in c for c in by.values())]
+    out = []
+
+    def dist(r: Record) -> dict[str, float]:
+        return r.probabilities if r.probabilities else hard_choice(r.action)
+
+    out.append(calibration_block("action", "choice", {
+        k: ([dist(c[k]) for c in cases], [c[k].expected_action for c in cases]) for k in present
+    }))
+    for q, exp in (("is_correction", "expected_is_correction"),
+                   ("needs_committed_edit", "expected_needs_committed_edit")):
+        rows = [c for c in cases if getattr(c["jev"], exp) is not None]
+
+        def val(r: Record, q: str = q) -> float:
+            v = getattr(r, q)
+            return hard_noul(v) if r.candidate == "qwen" else v
+
+        out.append(calibration_block(q, "noul", {
+            k: ([val(c[k]) for c in rows], [int(getattr(c[k], exp)) for c in rows]) for k in present
+        }))
+    return out
+
+
+_QWEN_LP: QwenLogprob | None = None
+
+
+async def qwen_lp_record(case: dict, state: TriageState) -> Record:
+    global _QWEN_LP
+    if _QWEN_LP is None:
+        _QWEN_LP = QwenLogprob()
+    a = await _QWEN_LP.answer(state.as_payload(), TRIAGE_QUESTIONS)
+    return Record(
+        id=case["id"], candidate="qwen-lp", expected_action=case["expected_action"], action=a["action"]["choice"],
+        confidence=a["action"]["confidence"], latency_ms=a["latency_ms"], cost_usd=None, hard=case["hard"],
+        error=None, is_correction=a["is_correction"]["noul"], expected_is_correction=case["expected_is_correction"],
+        needs_committed_edit=a["needs_committed_edit"]["noul"],
+        expected_needs_committed_edit=case["expected_needs_committed_edit"],
+        probabilities=a["action"]["probabilities"],
+    )
+
+
 async def run_case(case: dict, candidates: list[str], sem: asyncio.Semaphore) -> list[Record]:
     state = TriageState(case["committed"], case["active"], case["utterance"], case.get("scan_type", ""))
     out: list[Record] = []
@@ -51,6 +109,9 @@ async def run_case(case: dict, candidates: list[str], sem: asyncio.Semaphore) ->
                 out.append(code_record(case))
                 continue
             try:
+                if cand == "qwen-lp":
+                    out.append(await qwen_lp_record(case, state))
+                    continue
                 d = await get_triager(cand).classify(state)
                 out.append(Record(
                     id=case["id"], candidate=cand, expected_action=case["expected_action"], action=d.action,
@@ -58,6 +119,7 @@ async def run_case(case: dict, candidates: list[str], sem: asyncio.Semaphore) ->
                     error=None, is_correction=d.is_correction, expected_is_correction=case["expected_is_correction"],
                     needs_committed_edit=d.needs_committed_edit,
                     expected_needs_committed_edit=case["expected_needs_committed_edit"],
+                    probabilities=d.probabilities,
                 ))
             except Exception as e:
                 out.append(Record(
@@ -71,12 +133,12 @@ async def run_case(case: dict, candidates: list[str], sem: asyncio.Semaphore) ->
 
 async def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--only", choices=["code", "jev", "qwen"])
+    ap.add_argument("--only", choices=["code", "jev", "qwen", "qwen-lp"])
     ap.add_argument("--concurrency", type=int, default=4)
     args = ap.parse_args()
 
-    candidates = [args.only] if args.only else ["code", "jev", "qwen"]
-    needed = {"jev": "OPENROUTER_API_KEY", "qwen": "CEREBRAS_API_KEY"}
+    candidates = [args.only] if args.only else ["code", "jev", "qwen", "qwen-lp"]
+    needed = {"jev": "OPENROUTER_API_KEY", "qwen": "GROQ_API_KEY", "qwen-lp": "CEREBRAS_API_KEY"}
     missing = [needed[c] for c in candidates if c in needed and not os.environ.get(needed[c])]
     if missing:
         print(f"missing env: {', '.join(missing)}", file=sys.stderr)
@@ -88,6 +150,12 @@ async def main() -> int:
 
     summary = summarise(records)
     print(format_summary(summary))
+    blocks = triage_calibration(records) if len(candidates) > 1 else []
+    calibration = [s for s, _ in blocks]
+    if blocks:
+        print(f"\n== calibration (qwen = shipped Groq qwen3.6, hard labels; {QWEN_LP_LABEL})")
+        for _, text in blocks:
+            print(text)
     wrong = [r for r in records if r.error is None and r.action != r.expected_action]
     if wrong:
         print("\n-- disagreements --")
@@ -101,7 +169,7 @@ async def main() -> int:
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out = OUT_DIR / f"triage-bakeoff-{date.today().isoformat()}.json"
-    out.write_text(json.dumps({"summary": summary, "records": [r.__dict__ for r in records]}, indent=1))
+    out.write_text(json.dumps({"summary": summary, "calibration": calibration, "records": [r.__dict__ for r in records]}, indent=1))
     print(f"\nwrote {out}")
     return 0
 
