@@ -17,7 +17,15 @@ from typing import Literal
 
 from .dictation_triage_router import _FORMATTING_RULES, map_formatting
 from .jev_questions import FAST_APPEND_BANDS
-from .spoken_format import apply_spoken_format, ends_with_heading, heading_only, resolve_colon, starts_paragraph
+from .spoken_format import (
+    apply_spoken_format,
+    ends_with_heading,
+    format_heading_lines,
+    heading_only,
+    level_only,
+    resolve_colon,
+    starts_paragraph,
+)
 from .utterance_bundle import BundleDecision
 
 Route = Literal["fast_append", "command", "polish", "skip"]
@@ -38,6 +46,7 @@ def clean_verbatim(text: str) -> str:
     s = _FILLER.sub("", s)
     s = re.sub(r"[ \t]+", " ", s)
     s = re.sub(r" *\n *", "\n", s)
+    s = re.sub(r"\n[ ,.;:]+", "\n", s)  # "New paragraph." → "\n\n." : no stray mark after a break
     s = re.sub(r" +([.,;:?!])", r"\1", s)
     s = re.sub(r",+([.?!])", r"\1", s)
     s = re.sub(r"([.?!])\.+", r"\1", s)
@@ -76,9 +85,12 @@ def code_route(utterance: str, preceding: str = "") -> "RouteResult | None":
         if resolved == ":" and not ambiguous:
             return RouteResult("command", "spoken_colon", "", ":", False, False)
         return None
+    level = level_only(utterance)
+    if level:
+        return RouteResult("fast_append", "level", level, "", False, False, starts_paragraph=True, clean_text=level)
     heading = heading_only(utterance)
     if heading:
-        return RouteResult("fast_append", "heading", heading, "", True, False, starts_paragraph=True)
+        return RouteResult("fast_append", "heading", heading, "", True, False, starts_paragraph=True, clean_text=heading)
     if is_filler_only(utterance):
         return RouteResult("skip", "empty_after_clean", "", "", False, False)
     return None
@@ -93,6 +105,7 @@ class RouteResult:
     closes_line: bool
     close_on_silence: bool  # standalone ≥ τ: the open line may close at the silence milestone
     starts_paragraph: bool = False  # the text opens with a disc level or a heading
+    clean_text: str = ""  # the cleaned, resolved utterance: what polish is given too
 
 
 def route_bundle(
@@ -102,11 +115,12 @@ def route_bundle(
     preceding: str = "",
 ) -> RouteResult:
     text, colon_ambiguous = resolve_colon(clean_verbatim(utterance), preceding)
+    text = format_heading_lines(text)
     pre = code_route(utterance, preceding)
     if pre is not None:
         return pre
     if isinstance(decision, BaseException):
-        return RouteResult("polish", "jev_error", "", "", True, False)
+        return RouteResult("polish", "jev_error", "", "", True, False, clean_text=text)
 
     b = FAST_APPEND_BANDS
     t = decision.triage
@@ -114,27 +128,46 @@ def route_bundle(
     on_silence = decision.standalone >= b["line_close_standalone"]
 
     def polish(reason: str) -> RouteResult:
-        return RouteResult("polish", reason, "", "", True, on_silence)
+        return RouteResult("polish", reason, "", "", True, on_silence, clean_text=text)
+
+    def append(reason: str, body: str, paragraph: bool) -> RouteResult:
+        return RouteResult("fast_append", reason, body, "", closes_line(body), on_silence,
+                           starts_paragraph=paragraph, clean_text=body)
+
+    def unsafe_to_append() -> str | None:
+        if (t.is_correction or 0.0) >= b["append_max_is_correction"]:
+            return "correction_signal"
+        if asr_min_conf is not None and asr_min_conf < b["append_min_asr_conf"]:
+            return "asr_low_confidence"  # a fluent mishearing reads as a confident append
+        if colon_ambiguous:
+            return "colon_ambiguous"  # organ or punctuation: the context does not say
+        return None
 
     if t.action == "append_new_finding":
         if confidence < b["append_act"]:
             return polish("append_low_confidence")
-        if (t.is_correction or 0.0) >= b["append_max_is_correction"]:
-            return polish("correction_signal")
         if not text.strip():
             return polish("append_no_words")  # a bare command read as an append
-        if asr_min_conf is not None and asr_min_conf < b["append_min_asr_conf"]:
-            return polish("asr_low_confidence")  # a fluent mishearing reads as a confident append
-        if colon_ambiguous:
-            return polish("colon_ambiguous")  # organ or punctuation: the context does not say
-        return RouteResult("fast_append", "append_confident", text, "", closes_line(text), on_silence,
-                           starts_paragraph=starts_paragraph(text) and not ends_with_heading(preceding))
+        unsafe = unsafe_to_append()
+        if unsafe:
+            return polish(unsafe)
+        return append("append_confident", text, starts_paragraph(text) and not ends_with_heading(preceding))
     if t.action == "formatting_command":
         if confidence < b["command_act"]:
             return polish("command_low_confidence")
         insert = map_formatting(utterance)
         if not insert:
             return polish("command_unmapped")
+        if re.search(r"\w", text):
+            # command and content in one final ("New paragraph. Conclusion."): the command
+            # alone would drop the content. The cleaned text already carries the command.
+            unsafe = unsafe_to_append()
+            if unsafe:
+                return polish(unsafe)
+            lead = text.startswith("\n\n")
+            body = text.lstrip("\n") if lead else text
+            return append("command_with_text", body,
+                          lead or (starts_paragraph(body) and not ends_with_heading(preceding)))
         return RouteResult("command", "command_lexicon", "", insert, True, on_silence)
     return polish(f"action:{t.action}")
 

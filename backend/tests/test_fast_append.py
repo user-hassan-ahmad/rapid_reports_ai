@@ -64,7 +64,8 @@ def _bundle(action="append_new_finding", confidence=0.97, is_correction=0.05, st
 def test_confident_append_fast_appends_the_cleaned_text():
     r = route_bundle(_bundle(), "um no pleural effusion.")
     assert r == RouteResult(route="fast_append", reason="append_confident", text="no pleural effusion.",
-                            insert="", closes_line=True, close_on_silence=True)
+                            insert="", closes_line=True, close_on_silence=True,
+                            clean_text="no pleural effusion.")
 
 
 def test_append_below_the_band_goes_to_polish():
@@ -246,3 +247,45 @@ def test_an_ordinary_finding_does_not():
 def test_text_right_after_a_heading_stays_on_the_heading_line():
     r = route_bundle(_bundle(), "L5 S1 left paracentral disc extrusion", preceding="Unremarkable.\n\nConclusion:")
     assert (r.text, r.starts_paragraph) == ("L5/S1 left paracentral disc extrusion", False)
+
+
+# --- a command and content in one final: the content is never dropped --------------------
+
+def test_a_command_with_text_keeps_the_text():
+    # lab session: "New paragraph. Conclusion." as one final lost "Conclusion."
+    r = route_bundle(_bundle(action="formatting_command", confidence=0.89), "New paragraph. Conclusion.")
+    assert (r.route, r.reason, r.text, r.starts_paragraph) == ("fast_append", "command_with_text", "Conclusion:", True)
+
+
+def test_text_then_a_command_keeps_both():
+    r = route_bundle(_bundle(action="formatting_command", confidence=0.95), "No effusion new line")
+    assert (r.route, r.text, r.closes_line) == ("fast_append", "No effusion\n", True)
+
+
+def test_a_command_with_text_and_a_correction_signal_fails_open():
+    r = route_bundle(_bundle(action="formatting_command", confidence=0.95, is_correction=0.8),
+                     "new paragraph actually the left kidney")
+    assert r.route == "polish"
+
+
+# --- polish is given the cleaned text ------------------------------------------------------
+
+def test_polish_gets_the_cleaned_text():
+    r = route_bundle(_bundle(action="correct_previous_finding"), "um L3 slash four, colon, mild desiccation")
+    assert (r.route, r.clean_text) == ("polish", "L3/4: mild desiccation")
+
+
+def test_fast_append_clean_text_is_its_text():
+    r = route_bundle(_bundle(), "L5 S1 colon left paracentral extrusion")
+    assert r.clean_text == r.text == "L5/S1: left paracentral extrusion"
+
+
+@pytest.mark.parametrize("utt, text", [("L3/4, colon,", "L3/4:"), ("L4/5,", "L4/5"), ("L5 S1", "L5/S1"),
+                                       ("L3 slash four colon", "L3/4:")])
+def test_a_disc_level_on_its_own_is_written_by_code(utt, text):
+    r = code_route(utt)
+    assert (r.route, r.reason, r.text, r.starts_paragraph) == ("fast_append", "level", text, True)
+
+
+def test_a_level_with_findings_still_goes_to_jev():
+    assert code_route("L4/5 there is a broad based disc bulge") is None

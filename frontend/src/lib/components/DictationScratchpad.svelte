@@ -20,6 +20,7 @@
 		hash8,
 		isRedictation,
 		separatorFor,
+		substituteLast,
 		tokenSet,
 		type AsrFields,
 		type BundleRouteResponse,
@@ -753,6 +754,12 @@
 			reason = 'polish_in_flight';
 		}
 
+		// Polish (now or later) is given the cleaned text, not the raw final: the code-side
+		// fixes (levels, spoken punctuation, colon, headings) must survive a polish.
+		if (data?.clean_text && (route === 'fast_append' || route === 'polish')) {
+			sessionTranscript = substituteLast(sessionTranscript, chunk, data.clean_text);
+		}
+
 		const rec: DecisionRecord = {
 			id: data?.decision_id ?? `local-${++localDecisionSeq}`,
 			seq: ++decisionSeq,
@@ -835,7 +842,7 @@
 		rec.polish_called = true;
 		closeLine('polish');
 		emitDecision(rec, chunk);
-		enqueueUtterance(chunk, rec.id);
+		enqueueUtterance(data?.clean_text || chunk, rec.id);
 	}
 
 	// One polish per statement: utterances queue up and each process call takes exactly one.

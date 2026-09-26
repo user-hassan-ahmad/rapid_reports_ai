@@ -21,6 +21,7 @@ export interface BundleRouteResponse {
 	reason: string;
 	text: string;
 	insert: string;
+	clean_text?: string;
 	closes_line: boolean;
 	close_on_silence: boolean;
 	starts_paragraph?: boolean;
@@ -104,8 +105,15 @@ export function joinSeparator(solid: string): string {
 export function separatorFor(solid: string, text: string, startsParagraph: boolean): string {
 	if (!solid) return '';
 	if (startsParagraph) return solid.endsWith('\n\n') ? '' : solid.endsWith('\n') ? '\n' : '\n\n';
-	if (/^[:;,.?!)]/.test(text)) return '';
+	if (/^[:;,.?!)\n]/.test(text)) return '';
 	return joinSeparator(solid);
+}
+
+/** Swap the raw final for its cleaned text in the session transcript, so a polish call
+ *  sees 'L3/4: mild', not 'L3/4, colon, mild'. Last occurrence; unchanged if absent. */
+export function substituteLast(transcript: string, raw: string, clean: string): string {
+	const i = transcript.lastIndexOf(raw);
+	return i < 0 ? transcript : transcript.slice(0, i) + clean + transcript.slice(i + raw.length);
 }
 
 /** What a command writes after the solid scratchpad: nothing into an empty one, and a

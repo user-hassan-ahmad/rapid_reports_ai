@@ -3,6 +3,7 @@ import {
 	asrFields,
 	commandInsert,
 	separatorFor,
+	substituteLast,
 	buildSessionExport,
 	changedRange,
 	hash8,
@@ -145,5 +146,19 @@ describe('separatorFor', () => {
 	});
 	it('otherwise continues the text', () => {
 		expect(separatorFor('No effusion.', 'The heart is normal.', false)).toBe(' ');
+	});
+});
+
+describe('cleaned text for polish', () => {
+	it('replaces the last occurrence of the raw final in the session transcript', () => {
+		expect(substituteLast('a L3/4, colon, b. L3/4, colon, mild', 'L3/4, colon, mild', 'L3/4: mild')).toBe(
+			'a L3/4, colon, b. L3/4: mild'
+		);
+	});
+	it('leaves the transcript alone when the final is not in it (window moved on)', () => {
+		expect(substituteLast('abc', 'zzz', 'y')).toBe('abc');
+	});
+	it('a text that starts with a line break attaches directly', () => {
+		expect(separatorFor('No effusion.', '\nThe heart', false)).toBe('');
 	});
 });

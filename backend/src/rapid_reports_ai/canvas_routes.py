@@ -1314,6 +1314,7 @@ class BundleRouteResponse(BaseModel):
     reason: str
     text: str = ""
     insert: str = ""
+    clean_text: str = ""  # the cleaned, resolved utterance, for polish as well
     closes_line: bool = False
     close_on_silence: bool = False
     starts_paragraph: bool = False
@@ -1354,7 +1355,7 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
     ok = isinstance(d, BundleDecision)
     t = d.triage if ok else None
     resp = BundleRouteResponse(
-        decision_id=decision_id, route=r.route, reason=r.reason, text=r.text, insert=r.insert,
+        decision_id=decision_id, route=r.route, reason=r.reason, text=r.text, insert=r.insert, clean_text=r.clean_text,
         closes_line=r.closes_line, close_on_silence=r.close_on_silence, starts_paragraph=r.starts_paragraph,
         line_close=BundleLineClose(
             silence_s=FAST_APPEND_BANDS["line_close_silence_s"],
@@ -1370,7 +1371,7 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
     utt = request.latest_utterance or ""
     logger.info("[canvas.bundle.decision] %s", json.dumps({
         "event": "canvas.bundle.decision",
-        **resp.model_dump(exclude={"text", "insert", "coverage", "line_close"}),
+        **resp.model_dump(exclude={"text", "insert", "clean_text", "coverage", "line_close"}),
         "coverage_scores": list(d.coverage.values()) if ok else None,  # section names can be dictated text
         "n_questions": d.n_questions if ok else None,
         "cost_usd": d.cost_usd if ok else None,

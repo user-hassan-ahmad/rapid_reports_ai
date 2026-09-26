@@ -176,3 +176,9 @@ def test_the_response_says_when_a_paragraph_starts(authed_client, lab):
     lab(FakeBundle())
     d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "L3 slash four mild desiccation"}).json()
     assert (d["text"], d["starts_paragraph"]) == ("L3/4 mild desiccation", True)
+
+
+def test_the_response_carries_the_cleaned_text_for_polish(authed_client, lab):
+    lab(FakeBundle("correct_previous_finding", 0.99))
+    d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "L3 slash four, colon, mild"}).json()
+    assert (d["route"], d["clean_text"]) == ("polish", "L3/4: mild")

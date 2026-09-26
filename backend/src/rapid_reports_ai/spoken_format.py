@@ -134,3 +134,21 @@ _ENDS_WITH_HEADING = re.compile(r"(?:^|\n)\s*(?:" + _HEADING_RE + r")\s*:\s*$", 
 def ends_with_heading(preceding: str) -> bool:
     """The scratchpad's last line is a bare heading ('Conclusion:'): what follows is its content."""
     return bool(_ENDS_WITH_HEADING.search(preceding or ""))
+
+
+def format_heading_lines(text: str) -> str:
+    """A line that is only a heading ('Conclusion.') is written as one ('Conclusion:')."""
+    return "\n".join(heading_only(line) or line if line.strip() else line for line in (text or "").split("\n"))
+
+
+_LEVEL_ONLY = re.compile(r"^([CTLS]\d{1,2}/(?:[CTLS])?\d{1,2})\s*(:)?$", _I)
+
+
+def level_only(text: str) -> str | None:
+    """A disc level said on its own ('L3/4, colon,', 'L4/5,', 'L5 S1') → 'L3/4:', 'L4/5',
+    'L5/S1': structure, written by code. A spoken colon is kept; none is invented."""
+    s = apply_spoken_format(text or "")
+    s = re.sub(r",?\s*\bcolon\b\s*,?", ":", s, flags=_I)
+    s = re.sub(r"[\s,.]+$", "", s.strip())
+    m = _LEVEL_ONLY.match(s)
+    return (m.group(1).upper() + (m.group(2) or "")) if m else None
