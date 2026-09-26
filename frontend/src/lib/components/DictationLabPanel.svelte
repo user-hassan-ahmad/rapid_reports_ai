@@ -336,6 +336,7 @@
 						<span class="text-gray-500">{d.rec.reason}</span>
 						{#if d.rec.confidence != null}<span class="tabular-nums text-gray-400">{d.rec.action?.split('_')[0]} {d.rec.confidence.toFixed(2)}</span>{/if}
 						{#if d.rec.standalone != null}<span class="tabular-nums text-gray-500">sa {d.rec.standalone.toFixed(2)}</span>{/if}
+						{#if d.rec.asr_min_conf != null}<span class="tabular-nums {d.rec.asr_min_conf < 0.8 ? 'text-orange-300' : 'text-gray-500'}" title="lowest Deepgram word confidence">asr {d.rec.asr_min_conf.toFixed(2)}</span>{/if}
 						<span class="tabular-nums text-gray-500">{d.rec.latency_ms ?? '—'} ms</span>
 						{#if d.rec.polish_ms != null}<span class="tabular-nums text-amber-200/70">polish {d.rec.polish_ms} ms</span>{/if}
 						{#if d.rec.line_closed_by}<span class="text-violet-300">⏎ {d.rec.line_closed_by}</span>{/if}

@@ -130,3 +130,23 @@ def test_decision_log_line_carries_data_never_text(authed_client, lab, caplog):
     assert payload["utterance_len"] == len(BODY["latest_utterance"])
     assert len(payload["utterance_sha8"]) == 8
     assert "pleural" not in lines[0] and "nodule" not in lines[0]
+
+
+def test_deepgram_confidence_is_logged_not_routed(authed_client, lab, caplog):
+    lab(FakeBundle())
+    body = {**BODY, "asr_conf": 0.91, "asr_min_conf": 0.61, "asr_word_confs": [0.99, 0.61, 0.97]}
+    with caplog.at_level(logging.INFO, logger=cr.logger.name):
+        d = authed_client.post("/api/canvas/bundle", json=body).json()
+    assert d["route"] == "fast_append"  # recorded only; the router does not read it yet
+    line = next(r.getMessage() for r in caplog.records if "canvas.bundle.decision" in r.getMessage())
+    p = json.loads(line.split(" ", 1)[1])
+    assert (p["asr_conf"], p["asr_min_conf"], p["asr_n_words"]) == (0.91, 0.61, 3)
+
+
+def test_without_deepgram_confidence_the_log_says_so(authed_client, lab, caplog):
+    lab(FakeBundle())
+    with caplog.at_level(logging.INFO, logger=cr.logger.name):
+        authed_client.post("/api/canvas/bundle", json=BODY)
+    line = next(r.getMessage() for r in caplog.records if "canvas.bundle.decision" in r.getMessage())
+    p = json.loads(line.split(" ", 1)[1])
+    assert (p["asr_conf"], p["asr_min_conf"], p["asr_n_words"]) == (None, None, None)

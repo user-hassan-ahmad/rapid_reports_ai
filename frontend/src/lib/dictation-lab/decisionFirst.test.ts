@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	asrFields,
 	buildSessionExport,
 	changedRange,
 	hash8,
@@ -95,5 +96,20 @@ describe('buildSessionExport', () => {
 		expect(out.qsets).toEqual(['2026-09-26.2']);
 		const json = JSON.stringify(out);
 		expect(json).not.toMatch(/"(text|utterance|activeBefore|activeAfter)"/);
+	});
+});
+
+describe('Deepgram confidence in the export', () => {
+	it('carries the numbers through, and nothing else', () => {
+		const r = { ...rec('a', 'polish', 250), asr_conf: 0.91, asr_min_conf: 0.61, asr_word_confs: [0.99, 0.61] };
+		const out = buildSessionExport([r], [], { scanType: '', startedAt: 0, exportedAt: 1 });
+		expect(out.decisions[0].asr_min_conf).toBe(0.61);
+		expect(out.decisions[0].asr_word_confs).toEqual([0.99, 0.61]);
+	});
+	it('picks only the confidence fields off a websocket message', () => {
+		expect(asrFields({ transcript: 'x', is_final: true, asr_conf: 0.9, asr_min_conf: 0.6, asr_word_confs: [0.6] })).toEqual({
+			asr_conf: 0.9, asr_min_conf: 0.6, asr_word_confs: [0.6]
+		});
+		expect(asrFields({ transcript: 'x' })).toEqual({ asr_conf: null, asr_min_conf: null, asr_word_confs: null });
 	});
 });

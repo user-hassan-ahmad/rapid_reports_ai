@@ -94,3 +94,23 @@ def route_bundle(decision: BundleDecision | BaseException, utterance: str) -> Ro
             return polish("command_unmapped")
         return RouteResult("command", "command_lexicon", "", insert, True, on_silence)
     return polish(f"action:{t.action}")
+
+
+def asr_confidence(alternative: dict) -> dict | None:
+    """Deepgram's confidence for one final, as numbers only (never the words): the
+    alternative's score and each word's, in order. Rev 2 plans word confidence as the
+    ASR gate; step 5 only records it so step 7 can test whether it separates misheard
+    fragments from clean ones. None when Deepgram sent no word scores."""
+    words = alternative.get("words") if isinstance(alternative, dict) else None
+    if not isinstance(words, list):
+        return None
+    confs = [round(float(w["confidence"]), 4) for w in words
+             if isinstance(w, dict) and isinstance(w.get("confidence"), (int, float))]
+    if not confs:
+        return None
+    conf = alternative.get("confidence")
+    return {
+        "asr_conf": round(float(conf), 4) if isinstance(conf, (int, float)) else None,
+        "asr_word_confs": confs,
+        "asr_min_conf": min(confs),
+    }

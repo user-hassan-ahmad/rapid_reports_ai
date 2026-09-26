@@ -1296,6 +1296,11 @@ class BundleRequest(BaseModel):
     open_line: str = ""  # the unclosed last line, when one is open
     latest_utterance: str  # one Deepgram final, as delivered
     checklist: list[str] = []
+    # Deepgram's confidences for this final (lab websocket; absent from the feeder).
+    # Logged for step 7; the router does not read them.
+    asr_conf: Optional[float] = None
+    asr_min_conf: Optional[float] = None
+    asr_word_confs: Optional[list[float]] = None
 
 
 class BundleLineClose(BaseModel):
@@ -1369,6 +1374,9 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
         "cost_usd": d.cost_usd if ok else None,
         "utterance_len": len(utt),
         "utterance_sha8": hashlib.sha256(utt.encode()).hexdigest()[:8],
+        "asr_conf": request.asr_conf,
+        "asr_min_conf": request.asr_min_conf,
+        "asr_n_words": len(request.asr_word_confs) if request.asr_word_confs is not None else None,
         "open_line_len": len(request.open_line or ""),
         "active_len": len(request.active or ""),
     }))

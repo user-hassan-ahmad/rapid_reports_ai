@@ -14,11 +14,13 @@
 	import {
 		EDIT_WINDOW_MS,
 		REDICTATE_WINDOW_MS,
+		asrFields,
 		changedRange,
 		hash8,
 		isRedictation,
 		joinSeparator,
 		tokenSet,
+		type AsrFields,
 		type BundleRouteResponse,
 		type DecisionRecord,
 		type FastRoute,
@@ -383,7 +385,7 @@
 	 * on, and fires the polish at a pause. This is the body the websocket handler
 	 * used to hold inline; it moved so the lab can drive it without a microphone.
 	 */
-	function handleFinalTranscript(transcript: string, speechFinal: boolean): void {
+	function handleFinalTranscript(transcript: string, speechFinal: boolean, asr: AsrFields | null = null): void {
 		currentInterim = '';
 
 		// Accumulate into session transcript
@@ -427,7 +429,7 @@
 			// New speech: the silence the line-close timers were counting has ended.
 			clearLineTimers();
 			const arrivedAt = Date.now();
-			decisionChain = decisionChain.then(() => decideUtterance(transcript, arrivedAt)).catch(() => {});
+			decisionChain = decisionChain.then(() => decideUtterance(transcript, arrivedAt, asr)).catch(() => {});
 			return;
 		}
 		if (frontDoorIsJev()) {
@@ -700,7 +702,7 @@
 		return true;
 	}
 
-	async function askBundle(chunk: string, solid: string): Promise<{ data: BundleRouteResponse | null; error: string | null }> {
+	async function askBundle(chunk: string, solid: string, asr: AsrFields | null): Promise<{ data: BundleRouteResponse | null; error: string | null }> {
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
@@ -713,7 +715,8 @@
 					active: solid,
 					open_line: lineOpen ? lastNonEmptyLine(solid) : '',
 					latest_utterance: chunk,
-					checklist: checklistSections
+					checklist: checklistSections,
+					...(asr ?? {})
 				})
 			});
 			if (!res.ok) return { data: null, error: `http ${res.status}` };
@@ -723,13 +726,13 @@
 		}
 	}
 
-	async function decideUtterance(chunk: string, arrivedAt: number): Promise<void> {
+	async function decideUtterance(chunk: string, arrivedAt: number, asr: AsrFields | null): Promise<void> {
 		if (!editor) return;
 		noteRedictation(chunk, Date.now());
 		const pend0 = firstPendingRange();
 		const doc0 = editor.state.doc.toString();
 		const t0 = performance.now();
-		const { data, error } = await askBundle(chunk, doc0.slice(0, pend0 ? pend0.from : doc0.length));
+		const { data, error } = await askBundle(chunk, doc0.slice(0, pend0 ? pend0.from : doc0.length), asr);
 		const roundtrip = Math.round(performance.now() - t0);
 		if (!editor) return;
 
@@ -770,7 +773,10 @@
 			applied_len: 0,
 			closes_line: false,
 			line_closed_by: null,
-			error: data?.error ?? error
+			error: data?.error ?? error,
+			asr_conf: asr?.asr_conf ?? null,
+			asr_min_conf: asr?.asr_min_conf ?? null,
+			asr_word_confs: asr?.asr_word_confs ?? null
 		};
 
 		if ((route === 'fast_append' || route === 'command') && data && pend) {
@@ -1126,7 +1132,7 @@
 							// Interim: live preview while speaking
 							currentInterim = data.transcript;
 						} else {
-							handleFinalTranscript(data.transcript, !!data.speech_final);
+							handleFinalTranscript(data.transcript, !!data.speech_final, asrFields(data));
 						}
 					}
 				} catch {

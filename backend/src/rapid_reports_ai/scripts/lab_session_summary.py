@@ -79,7 +79,28 @@ def summarise(decisions: list[dict[str, Any]], outcomes: list[dict[str, Any]]) -
         },
         "polish_ms_p50": quantile(polish_ms, 0.5) if polish_ms else None,
         "qsets": sorted({d["qset"] for d in decisions if d.get("qset")}),
+        "asr": _asr_by_reason(decisions),
     }
+
+
+# Descriptive only: where Deepgram's lowest word confidence sits for each routing reason.
+# 0.8 is a reporting cut, not a band; step 7 sets any gate from outcomes.
+ASR_LOW = 0.8
+
+
+def _asr_by_reason(decisions: list[dict[str, Any]]) -> dict[str, Any]:
+    by: dict[str, list[float]] = {}
+    for d in decisions:
+        if d.get("asr_min_conf") is not None:
+            by.setdefault(d["reason"], []).append(float(d["asr_min_conf"]))
+    out = {}
+    for reason, xs in sorted(by.items()):
+        s = sorted(xs)
+        mid = len(s) // 2
+        median = s[mid] if len(s) % 2 else (s[mid - 1] + s[mid]) / 2
+        out[reason] = {"n": len(s), "median_min_conf": round(median, 4),
+                       "below_0_8": rate(sum(1 for x in s if x < ASR_LOW), len(s))}
+    return out
 
 
 def dedupe_cumulative(sessions: list[tuple[str, dict[str, Any]]]) -> list[tuple[str, dict[str, Any]]]:
@@ -145,6 +166,9 @@ def _fmt_summary(title: str, s: dict[str, Any]) -> list[str]:
         lines.append(f"  {r:<12} n={row['n']:<4} undo {fmt_rate(row['undo'])}  edit {fmt_rate(row['edit'])}"
                      f"  re-dictated {fmt_rate(row['redictate'])}")
         lines.append(f"  {'':<12} reasons {row['reasons']}")
+    for reason, a in s.get("asr", {}).items():
+        lines.append(f"  asr {reason:<34} n={a['n']:<4} median min word conf {a['median_min_conf']:.2f}"
+                     f"  below {ASR_LOW}: {fmt_rate(a['below_0_8'])}")
     return lines
 
 

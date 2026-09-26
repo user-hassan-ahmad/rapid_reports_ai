@@ -142,3 +142,19 @@ def test_sessions_left_empty_by_dedupe_do_not_count_as_clusters():
     r = report([("a.json", a), ("b.json", b)])
     assert r["overall"]["sessions"] == 1
     assert r["overall"]["polish_per_utterance_session_ci95"] is None
+
+
+def test_deepgram_confidence_by_route_and_reason():
+    decs = [{**_dec(1, "fast_append"), "reason": "append_confident", "asr_min_conf": 0.95},
+            {**_dec(2, "polish"), "reason": "append_low_confidence", "asr_min_conf": 0.55},
+            {**_dec(3, "polish"), "reason": "append_low_confidence", "asr_min_conf": 0.92},
+            {**_dec(4, "polish"), "reason": "append_low_confidence"}]  # feeder: no confidence
+    a = summarise(decs, [])["asr"]
+    assert a["append_confident"]["n"] == 1 and a["append_confident"]["median_min_conf"] == 0.95
+    low = a["append_low_confidence"]
+    assert low["n"] == 2 and low["below_0_8"]["k"] == 1
+    assert "asr" in format_report(report([("s.json", _session(decs, []))]))
+
+
+def test_no_deepgram_confidence_means_no_asr_section():
+    assert summarise(S1["decisions"], [])["asr"] == {}

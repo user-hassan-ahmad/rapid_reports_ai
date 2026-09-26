@@ -4892,6 +4892,8 @@ async def websocket_transcribe(websocket: WebSocket):
     # Jev path is switched on (RR_TRIAGE_DEBUG/SHADOW, RR_COVERAGE_CANDIDATE=jev).
     from rapid_reports_ai import jev_client
     jev_client.schedule_warm_up()
+    from rapid_reports_ai.fast_append import asr_confidence
+    _lab_asr = os.environ.get("RR_TRIAGE_DEBUG") == "1"
 
     import time as _perf
     _t_session = _perf.perf_counter()
@@ -5024,11 +5026,17 @@ async def websocket_transcribe(websocket: WebSocket):
                                             print(f"📝 {transcript!r} (speech_final={speech_final})")
 
                                         if transcript:
-                                            await websocket.send_json({
+                                            out = {
                                                 "transcript": transcript,
                                                 "is_final": is_final,
                                                 "speech_final": speech_final
-                                            })
+                                            }
+                                            # Lab only: Deepgram's word confidences (numbers, no words)
+                                            # for the decision-first outcome log. Production messages
+                                            # are unchanged.
+                                            if is_final and _lab_asr:
+                                                out.update(asr_confidence(alternatives[0]) or {})
+                                            await websocket.send_json(out)
                                 elif transcript_data.get("type") == "UtteranceEnd":
                                     # Signal the frontend that a natural utterance boundary was detected
                                     await websocket.send_json({"utterance_end": True})

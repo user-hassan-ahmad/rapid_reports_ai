@@ -126,3 +126,22 @@ def test_open_line_closes_on_silence_only_when_standalone_reaches_tau():
 def test_a_bare_command_read_as_append_fails_open():
     r = route_bundle(_bundle(action="append_new_finding", confidence=0.95), "full stop")
     assert (r.route, r.reason) == ("polish", "append_no_words")
+
+
+# --- Deepgram word confidence (numbers only, never the words) -------------------------
+
+from rapid_reports_ai.fast_append import asr_confidence  # noqa: E402
+
+
+def test_asr_confidence_is_numbers_only():
+    alt = {"transcript": "5 cm intraperitoneal bleed", "confidence": 0.91,
+           "words": [{"word": "5", "confidence": 0.99}, {"word": "cm", "confidence": 0.98},
+                     {"word": "intraperitoneal", "confidence": 0.612345}, {"word": "bleed", "confidence": 0.97}]}
+    c = asr_confidence(alt)
+    assert c == {"asr_conf": 0.91, "asr_word_confs": [0.99, 0.98, 0.6123, 0.97], "asr_min_conf": 0.6123}
+    assert "intraperitoneal" not in repr(c)
+
+
+@pytest.mark.parametrize("alt", [{}, {"words": []}, {"words": [{"word": "x"}]}, {"words": "bad"}])
+def test_asr_confidence_without_word_scores_is_none(alt):
+    assert asr_confidence(alt) is None

@@ -53,6 +53,11 @@ export interface DecisionRecord {
 	roundtrip_ms: number | null; // browser → route decision
 	polish_called: boolean;
 	polish_ms?: number | null; // the polish call this decision caused, when one ran
+	// Deepgram's confidences for this final (mic only; null from the feeder). Recorded for
+	// step 7, which tests whether they separate misheard fragments; not used to route.
+	asr_conf?: number | null;
+	asr_min_conf?: number | null;
+	asr_word_confs?: number[] | null;
 	utterance_len: number;
 	utterance_hash: string;
 	applied_len: number; // characters written by the automatic action
@@ -67,6 +72,21 @@ export interface OutcomeEvent {
 	route: FastRoute;
 	ms_since: number;
 	at: number;
+}
+
+export interface AsrFields {
+	asr_conf: number | null;
+	asr_min_conf: number | null;
+	asr_word_confs: number[] | null;
+}
+
+/** The confidence fields the lab websocket adds to a final (numbers only). */
+export function asrFields(msg: Record<string, unknown>): AsrFields {
+	const num = (v: unknown) => (typeof v === 'number' ? v : null);
+	const list = Array.isArray(msg.asr_word_confs) && msg.asr_word_confs.every((x) => typeof x === 'number')
+		? (msg.asr_word_confs as number[])
+		: null;
+	return { asr_conf: num(msg.asr_conf), asr_min_conf: num(msg.asr_min_conf), asr_word_confs: list };
 }
 
 /** What goes between the solid scratchpad and a fast-appended utterance. Dictation
