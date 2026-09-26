@@ -102,7 +102,9 @@ def dedupe_cumulative(sessions: list[tuple[str, dict[str, Any]]]) -> list[tuple[
 
 
 def report(sessions: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
-    sessions = dedupe_cumulative(sessions)
+    # export order, not file name: a browser re-download "x (1).json" sorts before "x.json"
+    ordered = sorted(sessions, key=lambda ns: (ns[1].get("exported_at") or 0, ns[0]))
+    sessions = [ns for ns in dedupe_cumulative(ordered) if ns[1]["decisions"]]
     per = [{"file": name, **summarise(s["decisions"], s["outcomes"])} for name, s in sessions]
     # ids are unique within a session only: namespace them before pooling
     all_dec = [{**d, "id": f"{name}:{d['id']}"} for name, s in sessions for d in s["decisions"]]

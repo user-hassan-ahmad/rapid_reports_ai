@@ -124,3 +124,21 @@ def test_an_outcome_after_the_first_export_follows_its_decision():
     r = report([("a.json", first), ("b.json", later)])
     assert r["sessions"][0]["routes"]["fast_append"]["undo"]["k"] == 1
     assert r["sessions"][1]["utterances"] == 1
+
+
+def test_exports_are_ordered_by_export_time_not_file_name():
+    """Browsers name a re-download 'x (1).json', which sorts before 'x.json'."""
+    first = {**_session([_dec(1, "fast_append")], []), "exported_at": 100}
+    later = {**_session([_dec(1, "fast_append"), _dec(2, "polish"), _dec(3, "polish")], []), "exported_at": 200}
+    r = report([("x (1).json", later), ("x.json", first)])
+    assert [(s["file"], s["utterances"]) for s in r["sessions"]] == [("x.json", 1), ("x (1).json", 2)]
+    lo, hi = r["overall"]["polish_per_utterance_session_ci95"]
+    assert lo < hi
+
+
+def test_sessions_left_empty_by_dedupe_do_not_count_as_clusters():
+    a = {**_session([_dec(1, "polish")], []), "exported_at": 100}
+    b = {**_session([_dec(1, "polish")], []), "exported_at": 200}
+    r = report([("a.json", a), ("b.json", b)])
+    assert r["overall"]["sessions"] == 1
+    assert r["overall"]["polish_per_utterance_session_ci95"] is None
