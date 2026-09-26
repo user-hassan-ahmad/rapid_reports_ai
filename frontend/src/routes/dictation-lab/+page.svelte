@@ -6,6 +6,7 @@
 	import { token } from '$lib/stores/auth';
 	import { labConfig, saveLabConfig } from '$lib/dictation-lab/labConfig';
 	import type { ChunkTrace, CoverageTrace, ProcessTrace } from '$lib/dictation-lab/types';
+	import type { DecisionRecord, OutcomeEvent } from '$lib/dictation-lab/decisionFirst';
 
 	// Same bindings the home page gives the tab (src/routes/+page.svelte ~975-1000).
 	let tabRef: {
@@ -28,6 +29,15 @@
 		has_at_least_one_model: false
 	};
 	let statusError = '';
+
+	// Decision-first (front door 'decision'): records upserted by id; display text stays in the page.
+	let decisions: { rec: DecisionRecord; display: string }[] = [];
+	let outcomes: OutcomeEvent[] = [];
+	let sessionStartedAt = Date.now();
+	function upsertDecision(rec: DecisionRecord, display: string): void {
+		const i = decisions.findIndex((d) => d.rec.id === rec.id);
+		decisions = i >= 0 ? decisions.map((d, j) => (j === i ? { rec, display } : d)) : [...decisions, { rec, display }];
+	}
 
 	let traces: ProcessTrace[] = [];
 	function pushTrace(t: ProcessTrace): void {
@@ -93,6 +103,10 @@
 				onChunkTrace={(t) => {
 					chunkTraces = [...chunkTraces, t];
 				}}
+				onDecision={upsertDecision}
+				onOutcome={(e) => {
+					outcomes = [...outcomes, e];
+				}}
 				on:resetForm={() => {
 					traces = [];
 				}}
@@ -109,9 +123,15 @@
 				{coverageTrace}
 				{coverageState}
 				{chunkTraces}
+				{decisions}
+				{outcomes}
+				{sessionStartedAt}
 				onClear={() => {
 					traces = [];
 					chunkTraces = [];
+					decisions = [];
+					outcomes = [];
+					sessionStartedAt = Date.now();
 				}}
 			/>
 		</aside>

@@ -8,6 +8,13 @@
 	import { derivePlacement } from '$lib/dictation-lab/frontDoor';
 	import { agreementClass, summariseTraces, type AgreementClass } from '$lib/dictation-lab/summary';
 	import {
+		FAST_ROUTES,
+		buildSessionExport,
+		summariseDecisions,
+		type DecisionRecord,
+		type OutcomeEvent
+	} from '$lib/dictation-lab/decisionFirst';
+	import {
 		TRIAGE_ACTIONS,
 		type ChunkTrace,
 		type CoverageTrace,
@@ -23,6 +30,38 @@
 	export let onClear: () => void = () => {};
 	export let coverageTrace: CoverageTrace | null = null;
 	export let chunkTraces: ChunkTrace[] = [];
+	export let decisions: { rec: DecisionRecord; display: string }[] = [];
+	export let outcomes: OutcomeEvent[] = [];
+	export let sessionStartedAt = 0;
+
+	// ── Decision-first ─────────────────────────────────────────────────────────
+	$: decisionSummary = summariseDecisions(decisions.map((d) => d.rec), outcomes);
+	$: outcomeKinds = (() => {
+		const m = new Map<string, Set<string>>();
+		for (const o of outcomes) m.set(o.decision_id, (m.get(o.decision_id) ?? new Set()).add(o.kind));
+		return m;
+	})();
+	const pct = (k: number, n: number): string => (n ? `${Math.round((100 * k) / n)}%` : '—');
+	const ROUTE_CLASS: Record<string, string> = {
+		fast_append: 'text-emerald-300',
+		command: 'text-blue-300',
+		polish: 'text-amber-300',
+		skip: 'text-gray-400'
+	};
+	/** Data only (no text): the input to scripts/lab_session_summary.py. */
+	function downloadSession(): void {
+		const out = buildSessionExport(decisions.map((d) => d.rec), outcomes, {
+			scanType: coverageState?.scanType ?? '',
+			startedAt: sessionStartedAt,
+			exportedAt: Date.now()
+		});
+		const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+		const a = document.createElement('a');
+		a.href = URL.createObjectURL(blob);
+		a.download = `lab-session-${new Date(sessionStartedAt).toISOString().replace(/[:.]/g, '-')}.json`;
+		a.click();
+		URL.revokeObjectURL(a.href);
+	}
 
 	// ── Front door ─────────────────────────────────────────────────────────────
 	let boundaryBuffer = '';
@@ -253,7 +292,7 @@
 		</label>
 		<div class="flex flex-wrap gap-3">
 			<span class="text-gray-400">front door</span>
-			{#each [['timer', 'silence timers'], ['jev', 'Jev boundary']] as [value, label]}
+			{#each [['timer', 'silence timers'], ['jev', 'Jev boundary'], ['decision', 'decision-first (live)']] as [value, label]}
 				<label class="flex items-center gap-1">
 					<input type="radio" bind:group={$labConfig.frontDoor} {value} />
 					{label}
@@ -265,6 +304,48 @@
 			show both candidates (triage_debug)
 		</label>
 	</section>
+
+	<!-- Decision-first (front door 'decision') -->
+	{#if $labConfig.frontDoor === 'decision' || decisions.length > 0}
+		<section class="card-dark space-y-2">
+			<h3 class="font-semibold flex items-baseline gap-2">
+				Decision-first
+				<span class="text-gray-400 font-normal text-xs">
+					{decisionSummary.utterances} utterances · {decisionSummary.polishCalls} polish calls (baseline {decisionSummary.utterances})
+					· {decisionSummary.avoided} avoided ({pct(decisionSummary.avoided, decisionSummary.utterances)})
+					· bundle p50 {decisionSummary.bundleP50 ?? '—'} / p95 {decisionSummary.bundleP95 ?? '—'} ms
+				</span>
+				<button class="btn-secondary text-xs ml-auto" on:click={downloadSession} disabled={!decisions.length}>Export session</button>
+			</h3>
+			<div class="grid grid-cols-5 gap-x-2 text-xs tabular-nums">
+				<span class="text-gray-400">route</span><span class="text-gray-400">n</span><span class="text-gray-400">undo</span>
+				<span class="text-gray-400">edit ≤10 s</span><span class="text-gray-400">re-dictated</span>
+				{#each FAST_ROUTES as r}
+					{@const c = decisionSummary.byRoute[r]}
+					<span class={ROUTE_CLASS[r]}>{r.replace('_', '-')}</span><span>{c.n}</span>
+					<span>{c.undo} ({pct(c.undo, c.n)})</span><span>{c.edit} ({pct(c.edit, c.n)})</span><span>{c.redictate} ({pct(c.redictate, c.n)})</span>
+				{/each}
+			</div>
+			<div class="max-h-56 overflow-y-auto space-y-0.5">
+				{#each decisions as d (d.rec.id)}
+					{@const k = outcomeKinds.get(d.rec.id)}
+					<div class="text-xs flex flex-wrap gap-x-2 items-baseline border-l-2 pl-2 border-gray-700">
+						<span class="text-gray-500 tabular-nums">#{d.rec.seq}</span>
+						<span class="font-mono truncate max-w-[12rem]">“{d.display}”</span>
+						<span class={ROUTE_CLASS[d.rec.route]}>{d.rec.route.replace('_', '-')}</span>
+						<span class="text-gray-500">{d.rec.reason}</span>
+						{#if d.rec.confidence != null}<span class="tabular-nums text-gray-400">{d.rec.action?.split('_')[0]} {d.rec.confidence.toFixed(2)}</span>{/if}
+						{#if d.rec.standalone != null}<span class="tabular-nums text-gray-500">sa {d.rec.standalone.toFixed(2)}</span>{/if}
+						<span class="tabular-nums text-gray-500">{d.rec.latency_ms ?? '—'} ms</span>
+						{#if d.rec.polish_ms != null}<span class="tabular-nums text-amber-200/70">polish {d.rec.polish_ms} ms</span>{/if}
+						{#if d.rec.line_closed_by}<span class="text-violet-300">⏎ {d.rec.line_closed_by}</span>{/if}
+						{#if k}{#each [...k] as kind}<span class="text-red-300">{kind}</span>{/each}{/if}
+						{#if d.rec.error}<span class="text-red-300">{d.rec.error}</span>{/if}
+					</div>
+				{/each}
+			</div>
+		</section>
+	{/if}
 
 	<!-- Chunks (front door) -->
 	{#if $labConfig.frontDoor === 'jev' || chunkTraces.length > 0}
