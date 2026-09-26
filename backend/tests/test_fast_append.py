@@ -1,0 +1,128 @@
+from __future__ import annotations
+
+import pytest
+
+from rapid_reports_ai.dictation_triage import TriageDecision, TriageError
+from rapid_reports_ai.fast_append import RouteResult, clean_verbatim, closes_line, route_bundle
+from rapid_reports_ai.jev_questions import FAST_APPEND_BANDS
+from rapid_reports_ai.utterance_bundle import BundleDecision
+
+
+# --- clean_verbatim ---------------------------------------------------------------
+
+@pytest.mark.parametrize("raw, clean", [
+    ("No pleural effusion.", "No pleural effusion."),
+    ("um no pleural effusion", "no pleural effusion"),
+    ("There is, uh, a 5 mm nodule", "There is, a 5 mm nodule"),
+    ("erm the liver er is normal", "the liver is normal"),
+    ("Hmm. Ah, okay", "okay"),
+    ("ER positive mass", "ER positive mass"),  # oestrogen receptor, not a filler
+    ("5 mm and 3 mm", "5 mm and 3 mm"),  # millimetres, not a filler
+    ("no effusion new line", "no effusion\n"),
+    ("no effusion new paragraph", "no effusion\n\n"),
+    ("no effusion full stop", "no effusion."),
+    ("no effusion. full stop", "no effusion."),
+    ("no effusion<\\n>", "no effusion\n"),
+    ("  spaced   out  ", "spaced out"),
+    ("um uh", ""),
+])
+def test_clean_verbatim(raw, clean):
+    assert clean_verbatim(raw) == clean
+
+
+def test_clean_verbatim_leaves_other_words_alone():
+    s = "Umbilical hernia, erythema, ahead of the uterus"
+    assert clean_verbatim(s) == s
+
+
+@pytest.mark.parametrize("text, closed", [
+    ("No effusion.", True),
+    ("Is there a nodule?", True),
+    ("no effusion\n", True),
+    ("there is a", False),
+    ("5 mm", False),
+    ('"quoted."', True),
+    ("", False),
+])
+def test_closes_line(text, closed):
+    assert closes_line(text) is closed
+
+
+# --- route_bundle -------------------------------------------------------------------
+
+def _bundle(action="append_new_finding", confidence=0.97, is_correction=0.05, standalone=0.8):
+    return BundleDecision(
+        triage=TriageDecision(
+            candidate="jev", action=action, confidence=confidence,
+            probabilities={action: confidence}, is_correction=is_correction,
+            needs_committed_edit=0.1, latency_ms=250, input_tokens=900, cost_usd=3e-5,
+        ),
+        standalone=standalone, coverage={}, latency_ms=250, n_questions=4, input_tokens=900, cost_usd=3e-5,
+    )
+
+
+def test_confident_append_fast_appends_the_cleaned_text():
+    r = route_bundle(_bundle(), "um no pleural effusion.")
+    assert r == RouteResult(route="fast_append", reason="append_confident", text="no pleural effusion.",
+                            insert="", closes_line=True, close_on_silence=True)
+
+
+def test_append_below_the_band_goes_to_polish():
+    r = route_bundle(_bundle(confidence=FAST_APPEND_BANDS["append_act"] - 0.01), "no effusion")
+    assert (r.route, r.reason) == ("polish", "append_low_confidence")
+
+
+def test_append_with_a_correction_signal_goes_to_polish():
+    r = route_bundle(_bundle(is_correction=FAST_APPEND_BANDS["append_max_is_correction"]), "no effusion")
+    assert (r.route, r.reason) == ("polish", "correction_signal")
+
+
+@pytest.mark.parametrize("action", [
+    "correct_previous_finding", "restate_existing_finding", "delete_previous_utterance", "ignore_noise",
+])
+def test_non_append_actions_go_to_polish(action):
+    r = route_bundle(_bundle(action=action, confidence=0.99), "actually make that 6 mm")
+    assert (r.route, r.reason) == ("polish", f"action:{action}")
+
+
+def test_confident_command_with_a_lexicon_mapping_is_deterministic():
+    r = route_bundle(_bundle(action="formatting_command", confidence=0.95), "new paragraph")
+    assert (r.route, r.reason, r.insert, r.text) == ("command", "command_lexicon", "\n\n", "")
+    assert r.closes_line is True
+
+
+def test_full_stop_command_closes_the_line():
+    r = route_bundle(_bundle(action="formatting_command", confidence=0.95), "full stop")
+    assert (r.route, r.insert, r.closes_line) == ("command", ".", True)
+
+
+def test_command_without_a_lexicon_mapping_goes_to_polish():
+    r = route_bundle(_bundle(action="formatting_command", confidence=0.99), "bold that")
+    assert (r.route, r.reason) == ("polish", "command_unmapped")
+
+
+def test_command_below_its_band_goes_to_polish():
+    r = route_bundle(_bundle(action="formatting_command", confidence=FAST_APPEND_BANDS["command_act"] - 0.01),
+                     "new line")
+    assert (r.route, r.reason) == ("polish", "command_low_confidence")
+
+
+def test_any_jev_error_fails_open_to_polish():
+    r = route_bundle(TriageError("jev bundle http 502"), "no effusion")
+    assert (r.route, r.reason) == ("polish", "jev_error")
+
+
+def test_filler_only_is_skipped_before_any_decision():
+    r = route_bundle(_bundle(), "um, uh")
+    assert (r.route, r.reason, r.text) == ("skip", "empty_after_clean", "")
+
+
+def test_open_line_closes_on_silence_only_when_standalone_reaches_tau():
+    tau = FAST_APPEND_BANDS["line_close_standalone"]
+    assert route_bundle(_bundle(standalone=tau), "there is a nodule").close_on_silence is True
+    assert route_bundle(_bundle(standalone=tau - 0.01), "there is a").close_on_silence is False
+
+
+def test_a_bare_command_read_as_append_fails_open():
+    r = route_bundle(_bundle(action="append_new_finding", confidence=0.95), "full stop")
+    assert (r.route, r.reason) == ("polish", "append_no_words")
