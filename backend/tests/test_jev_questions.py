@@ -76,11 +76,11 @@ def test_fast_append_bands_are_pinned_to_the_qset_version():
     """Step 5 provisional bands. Changing any value means a new QSET_VERSION."""
     from rapid_reports_ai import jev_questions as jq
 
-    assert jq.QSET_VERSION == "2026-09-26.3"
+    assert jq.QSET_VERSION == "2026-09-27.1"
     assert jq.FAST_APPEND_BANDS == {
         "append_act": 0.90,
         "append_max_is_correction": 0.50,
-        "append_min_asr_conf": 0.70,
+        "append_min_asr_conf": 0.80,
         "command_act": 0.80,
         "line_close_standalone": 0.50,
         "line_close_silence_s": 2.0,
