@@ -1440,6 +1440,9 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
 # -----------------------------------------------------------------------------
 
 
+LEAN_MAX_OUTPUT_TOKENS = 1024
+
+
 class PolishSpanRequest(BaseModel):
     scan_type: str = ""
     context: str = ""  # frozen text before the span (current paragraph)
@@ -1531,6 +1534,9 @@ async def polish_span(request: PolishSpanRequest, current_user: User = Depends(g
     out, err = None, None
     try:
         _, settings = _canvas_process_config("clean", incremental=True)
+        # One span out (≤ 252 tokens seen): Groq counts the requested max against its per-minute
+        # output limit, and at 8000 a few raced finals hit 429 and a 13–20 s fallback.
+        settings = {**settings, "max_completion_tokens": LEAN_MAX_OUTPUT_TOKENS}
         out = await _run_canvas_with_fallback(
             MODEL_CONFIG["CANVAS_PROCESS"], MODEL_CONFIG.get("CANVAS_PROCESS_FALLBACK"),
             output_type=CanvasIncrementalResponse, system_prompt=LEAN_SYSTEM_PROMPT,

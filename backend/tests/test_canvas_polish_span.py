@@ -35,7 +35,7 @@ def lab(monkeypatch):
 
     async def fake(primary, fallback, *, output_type, system_prompt, user_prompt, model_settings,
                    use_thinking=False, label="canvas", usage_out=None):
-        calls.append({"system": system_prompt, "user": user_prompt, "label": label})
+        calls.append({"system": system_prompt, "user": user_prompt, "label": label, "settings": model_settings})
         if usage_out is not None:
             usage_out.update(model="m", input_tokens=410, output_tokens=30)
         return output_type(active_scratchpad="Mild mass effect with 7 mm of midline shift.",
@@ -164,3 +164,12 @@ def test_a_sentence_already_in_the_span_is_never_dropped(authed_client, lab, mon
     d = authed_client.post("/api/canvas/polish-span", json={
         **BODY, "span": "The liver lesion measures 18 mm.", "new": "Correction. The liver lesion measures 18 mm. No free fluid."}).json()
     assert d["active_scratchpad"] == "The liver lesion measures 18 mm. No free fluid."
+
+
+def test_the_lean_polish_reserves_few_output_tokens(authed_client, lab):
+    # Groq counts the requested max tokens against the per-minute output limit (32k): at the
+    # clean polish's 8000, four raced finals in a minute hit 429 and waited 13–20 s on the
+    # fallback (lab, 2026-09-27). The lean output is one span: 252 tokens at most seen.
+    authed_client.post("/api/canvas/polish-span", json=BODY)
+    assert lab[0]["settings"]["max_completion_tokens"] <= 1024
+    assert cr._canvas_process_config("clean", incremental=True)[1]["max_completion_tokens"] == 8000  # /process unchanged
