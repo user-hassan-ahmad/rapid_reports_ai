@@ -246,6 +246,7 @@ MODEL_PROVIDERS = {
     
     # Cerebras models
     "gpt-oss-120b": "cerebras",
+    "qwen-3.8-27b": "cerebras",  # Qwen 3.8 27B on Cerebras; reasoning ON by default, reasoning_effort none/low/default/high (same mapping as skill-sheet-v3)
     "gemma-4-31b": "cerebras",  # Gemma 4 31B (multimodal, reasoning) — canvas primary
     "zai-glm-4.7": "cerebras",
 

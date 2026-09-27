@@ -35,7 +35,8 @@ def lab(monkeypatch):
 
     async def fake(primary, fallback, *, output_type, system_prompt, user_prompt, model_settings,
                    use_thinking=False, label="canvas", usage_out=None):
-        calls.append({"system": system_prompt, "user": user_prompt, "label": label, "settings": model_settings})
+        calls.append({"system": system_prompt, "user": user_prompt, "label": label, "settings": model_settings,
+                      "primary": primary, "fallback": fallback})
         if usage_out is not None:
             usage_out.update(model="m", input_tokens=410, output_tokens=30)
         return output_type(active_scratchpad="Mild mass effect with 7 mm of midline shift.",
@@ -171,5 +172,19 @@ def test_the_lean_polish_reserves_few_output_tokens(authed_client, lab):
     # clean polish's 8000, four raced finals in a minute hit 429 and waited 13–20 s on the
     # fallback (lab, 2026-09-27). The lean output is one span: 252 tokens at most seen.
     authed_client.post("/api/canvas/polish-span", json=BODY)
-    assert lab[0]["settings"]["max_completion_tokens"] <= 1024
+    assert lab[0]["settings"]["max_tokens"] <= 1024
     assert cr._canvas_process_config("clean", incremental=True)[1]["max_completion_tokens"] == 8000  # /process unchanged
+
+
+def test_the_lean_polish_runs_on_cerebras_qwen_with_reasoning_off_and_groq_fallback(authed_client, lab):
+    # Bake-off 2026-09-27, 167 lab finals: Cerebras qwen-3.8-27b reasoning off p50 311 ms,
+    # 73 output tokens, fewer leftover cues/mishearings than Groq qwen3.6-27b (p50 257 ms).
+    # Settings in the shape pydantic-ai forwards: top-level reasoning_effort and
+    # max_completion_tokens are dropped (Cerebras then reasons at 'high', up to 18k tokens).
+    authed_client.post("/api/canvas/polish-span", json=BODY)
+    c = lab[0]
+    assert c["primary"] == "qwen-3.8-27b" and c["fallback"] == "qwen/qwen3.6-27b"
+    assert c["settings"]["extra_body"] == {"reasoning_effort": "none"}
+    assert "reasoning_effort" not in c["settings"] and "max_completion_tokens" not in c["settings"]
+    # the Groq fallback accepts the same dict: max_tokens, and reasoning_effort none via extra_body
+    assert cr._adapt_canvas_settings("qwen/qwen3.6-27b", c["settings"])["extra_body"] == {"reasoning_effort": "none"}

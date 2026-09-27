@@ -1441,6 +1441,16 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
 
 
 LEAN_MAX_OUTPUT_TOKENS = 1024
+# Lab lean polish: Cerebras Qwen 3.8, reasoning off (bake-off 2026-09-27 on 167 lab finals:
+# p50 311 ms, 73 output tokens, fewer leftover cues and mishearings than Groq qwen3.6-27b,
+# and off Groq's per-minute output limit), Groq qwen3.6-27b as the fallback. The settings are
+# in the shape pydantic-ai forwards to both: max_tokens, and reasoning_effort in extra_body.
+# Top-level reasoning_effort / max_completion_tokens are dropped, and Cerebras then reasons
+# at its default 'high' (up to 18k tokens seen). One span out: ≤ 252 tokens seen; Groq
+# counts the requested maximum against its limit (8000 each → 429 and a 13–20 s fallback).
+LEAN_MODEL = "qwen-3.8-27b"
+LEAN_FALLBACK_MODEL = "qwen/qwen3.6-27b"
+LEAN_SETTINGS = {"temperature": 0.15, "max_tokens": LEAN_MAX_OUTPUT_TOKENS, "extra_body": {"reasoning_effort": "none"}}
 
 
 class PolishSpanRequest(BaseModel):
@@ -1533,16 +1543,12 @@ async def polish_span(request: PolishSpanRequest, current_user: User = Depends(g
     t0 = _time.perf_counter()
     out, err = None, None
     try:
-        _, settings = _canvas_process_config("clean", incremental=True)
-        # One span out (≤ 252 tokens seen): Groq counts the requested max against its per-minute
-        # output limit, and at 8000 a few raced finals hit 429 and a 13–20 s fallback.
-        settings = {**settings, "max_completion_tokens": LEAN_MAX_OUTPUT_TOKENS}
         out = await _run_canvas_with_fallback(
-            MODEL_CONFIG["CANVAS_PROCESS"], MODEL_CONFIG.get("CANVAS_PROCESS_FALLBACK"),
+            LEAN_MODEL, LEAN_FALLBACK_MODEL,
             output_type=CanvasIncrementalResponse, system_prompt=LEAN_SYSTEM_PROMPT,
             user_prompt=LEAN_USER_TEMPLATE.format(scan_type=request.scan_type or "(not specified)",
                                                   context=request.context, span=request.span, new=new_for_model),
-            model_settings=settings, use_thinking=False, label="canvas.polish_span", usage_out=usage,
+            model_settings=LEAN_SETTINGS, use_thinking=False, label="canvas.polish_span", usage_out=usage,
         )
     except Exception as e:  # fail open: the scratchpad falls back to the full polish
         err = type(e).__name__
