@@ -18,6 +18,7 @@
 		changedRange,
 		commandInsert,
 		committedEditChanges,
+		isUnfinishedCorrection,
 		jevContext,
 		openStatement,
 		splitSpan,
@@ -419,10 +420,15 @@
 			clearLineTimers();
 			const arrivedAt = Date.now();
 			const rangeId = chunkRangeSeq;
+			if (heldCorrection) clearTimeout(heldCorrection.timer); // speech resumed: the next decision joins it
 			decisionChain = decisionChain
 				.then(() => decideUtterance(transcript, arrivedAt, asr, rangeId))
 				.catch(() => {})
-				.finally(() => chunkRanges.delete(rangeId));
+				.finally(() => {
+					for (const k of [...chunkRanges.keys()]) {
+						if (k <= rangeId && k !== heldCorrection?.rangeId) chunkRanges.delete(k);
+					}
+				});
 			return;
 		}
 		if (frontDoorIsJev()) {
@@ -568,6 +574,20 @@
 		return labConfig?.frontDoor === 'decision';
 	}
 	let decisionChain: Promise<void> = Promise.resolve();
+	// A correction whose corrected statement was unfinished, waiting for the next final.
+	const HOLD_CORRECTION_MS = 4000;
+	let heldCorrection: { text: string; rangeId: number; recId: string; timer: ReturnType<typeof setTimeout> } | null =
+		null;
+	/** Nothing followed in time (or recording stopped): polish the held correction alone. */
+	function flushHeld(): void {
+		const h = heldCorrection;
+		if (!h) return;
+		heldCorrection = null;
+		clearTimeout(h.timer);
+		const prev = decisionRecords.get(h.recId)?.rec.reason ?? '';
+		patchDecision(h.recId, { polish_called: true, reason: `${prev}; flushed alone` });
+		enqueueUtterance(h.text, h.recId);
+	}
 	// Where each undecided final sits in the document (faded), keyed by arrival.
 	const chunkRanges = new Map<number, { from: number; to: number }>();
 	let chunkRangeSeq = 0;
@@ -763,7 +783,8 @@
 		lean: LeanResult,
 		split: { span: string; spanFrom: number },
 		solid0: string,
-		chunk: string,
+		utterance: string,
+		to: number,
 		rec: DecisionRecord
 	): string | null {
 		if (!editor) return 'no_editor';
@@ -771,10 +792,11 @@
 		if (lean.data.skipped) return 'lean_skipped';
 		if (lean.data.error) return `lean_${lean.data.error}`;
 		if (isProcessingQueue || utteranceQueue.length > 0) return 'full_polish_in_flight';
-		const pend = firstPendingRange();
 		const doc = editor.state.doc.toString();
-		if (!pend || doc.slice(pend.from, pend.to).trim() !== chunk.trim()) return 'pending_moved';
-		if (doc.slice(0, pend.from) !== solid0) return 'span_changed';
+		const norm = (x: string) => x.replace(/\s+/g, ' ').trim();
+		if (doc.slice(0, solid0.length) !== solid0) return 'span_changed';
+		if (to <= solid0.length || norm(doc.slice(solid0.length, to)) !== norm(utterance)) return 'pending_moved';
+		const pend = { to };
 		const out = lean.data.active_scratchpad;
 		const insert = (split.span ? '' : separatorFor(solid0, out, false)) + out;
 		const edits = committedEditChanges(doc, split.spanFrom, lean.data.committed_edits ?? []);
@@ -787,7 +809,7 @@
 		const r = changedRange(split.span, insert);
 		track({
 			id: rec.id, route: 'polish', at: Date.now(), from: from + r.from, to: from + r.to, before: r.before,
-			lineOpenBefore: false, tokens: tokenSet(chunk), intact: true, edited: false, redictated: false
+			lineOpenBefore: false, tokens: tokenSet(utterance), intact: true, edited: false, redictated: false
 		});
 		rec.polish_kind = 'lean';
 		rec.polish_ms = lean.ms;
@@ -803,6 +825,14 @@
 		rangeId: number | null = null
 	): Promise<void> {
 		if (!editor) return;
+		// A correction held back from the previous final is decided together with this one.
+		const heldNow = heldCorrection;
+		if (heldNow) {
+			clearTimeout(heldNow.timer);
+			heldCorrection = null;
+		}
+		const utterance = heldNow ? `${heldNow.text} ${chunk}` : chunk;
+		const firstRangeId = heldNow ? heldNow.rangeId : rangeId;
 		noteRedictation(chunk, Date.now());
 		const pend0 = firstPendingRange();
 		const doc0 = editor.state.doc.toString();
@@ -810,16 +840,21 @@
 		const t0 = performance.now();
 		// Racing: the lean polish starts now, alongside the bundle; Jev's route decides whether it is used.
 		const split = racing() ? splitSpan(solid0) : null;
-		const leanP = split ? askLean(split, chunk) : null;
+		const leanP = split ? askLean(split, utterance) : null;
 		// Jev sees everything before this final, including earlier faded finals still waiting
 		// for a polish; the racing span and fast-append placement keep using the solid text.
-		const context = jevContext(doc0, rangeId !== null ? (chunkRanges.get(rangeId) ?? null) : null, chunk, solid0.length);
-		const { data, error } = await askBundle(chunk, context, asr);
+		const firstRange = firstRangeId !== null ? (chunkRanges.get(firstRangeId) ?? null) : null;
+		const context = jevContext(doc0, firstRange, heldNow ? heldNow.text : chunk, solid0.length);
+		const { data, error } = await askBundle(utterance, context, asr);
 		const roundtrip = Math.round(performance.now() - t0);
 		if (!editor) return;
 
 		let route: FastRoute = data?.route ?? 'polish';
 		let reason = data?.reason ?? `request_error:${error}`;
+		if (heldNow) {
+			route = 'polish'; // the joined correction is always polished, whatever the fragment looked like
+			reason = `held_correction_joined (${reason})`;
+		}
 		// The document as it is now, not as it was when the bundle was asked.
 		const pend = firstPendingRange();
 		const doc = editor.state.doc.toString();
@@ -836,7 +871,7 @@
 
 		// Polish (now or later) is given the cleaned text, not the raw final: the code-side
 		// fixes (levels, spoken punctuation, colon, headings) must survive a polish.
-		if (data?.clean_text && (route === 'fast_append' || route === 'polish')) {
+		if (!heldNow && data?.clean_text && (route === 'fast_append' || route === 'polish')) {
 			sessionTranscript = substituteLast(sessionTranscript, chunk, data.clean_text);
 		}
 
@@ -921,10 +956,21 @@
 		// polish. Racing: use the lean result already in flight; otherwise (or if it cannot be
 		// applied) today's full polish. The open line closes either way.
 		rec.route = 'polish';
+		// An unfinished correction ("Correction. The nodule is in the") waits for the next
+		// final, so the polish sees the whole corrected statement once.
+		if (!heldNow && rangeId !== null && isUnfinishedCorrection(data?.clean_text || chunk)) {
+			rec.reason = `${rec.reason}; held for next final`;
+			rec.polish_called = false;
+			heldCorrection = { text: chunk, rangeId, recId: rec.id, timer: setTimeout(flushHeld, HOLD_CORRECTION_MS) };
+			emitDecision(rec, chunk);
+			return;
+		}
 		rec.polish_called = true;
 		closeLine('polish');
 		if (split && leanP) {
-			const why = applyLean(await leanP, split, solid0, chunk, rec);
+			const own = rangeId !== null ? (chunkRanges.get(rangeId) ?? null) : null;
+			const to = own && own.to > own.from ? own.to : (firstPendingRange()?.to ?? -1);
+			const why = applyLean(await leanP, split, solid0, utterance, to, rec);
 			if (why === null) {
 				emitDecision(rec, chunk);
 				processReview();
@@ -932,8 +978,8 @@
 			}
 			rec.reason = `${rec.reason}; full:${why}`;
 		}
-		emitDecision(rec, chunk);
-		enqueueUtterance(data?.clean_text || chunk, rec.id);
+		emitDecision(rec, heldNow ? utterance : chunk);
+		enqueueUtterance(data?.clean_text || utterance, rec.id);
 	}
 
 	// One polish per statement: utterances queue up and each process call takes exactly one.
@@ -1287,6 +1333,7 @@
 		// the decision chain, not a flush polish, finishes them.
 		if (decisionFirst()) {
 			closeLine('stop');
+			decisionChain = decisionChain.then(flushHeld);
 			if (editor) {
 				editor.dispatch({ effects: editableCompartment.reconfigure(EditorView.editable.of(true)) });
 			}

@@ -123,6 +123,20 @@ export function jevContext(
 	return doc.slice(0, solidEnd);
 }
 
+/** A correction whose corrected statement is not finished yet: a cue (correction, sorry,
+ *  actually, I mean) with no sentence end after it. Deepgram splits "Correction. The nodule
+ *  is in the | right lower lobe."; polishing the first half alone left "The nodule is in
+ *  the" behind, which the second half then completed into a duplicate. Such a final waits
+ *  for the next one and both are polished together. */
+export function isUnfinishedCorrection(text: string): boolean {
+	const re = /\b(correction|sorry|actually|i mean)\b/gi;
+	let last = -1;
+	for (let m = re.exec(text); m; m = re.exec(text)) last = m.index + m[0].length;
+	if (last < 0) return false;
+	const after = text.slice(last).replace(/^[\s,.:;]+/, '');
+	return !/[.?!]|\n/.test(after);
+}
+
 /** Racing: the part of the scratchpad the lean polish may rewrite. The last `n` sentences
  *  of the current line (never across a line break), plus up to `maxContext` characters of
  *  frozen text before it. Chosen by code because the polish is fired before Jev answers. */

@@ -3,6 +3,7 @@ import {
 	asrFields,
 	commandInsert,
 	committedEditChanges,
+	isUnfinishedCorrection,
 	jevContext,
 	splitSpan,
 	openStatement,
@@ -274,5 +275,24 @@ describe('jevContext', () => {
 		expect(jevContext(doc, { from: 0, to: 8 }, 'The right ventricle meshes', 41)).toBe(
 			'The main pulmonary artery is not dilated.'
 		);
+	});
+});
+
+describe('isUnfinishedCorrection', () => {
+	it('holds a correction whose corrected statement has not finished', () => {
+		expect(isUnfinishedCorrection('Correction. The nodule is in the')).toBe(true);
+		expect(isUnfinishedCorrection('Sorry. Three enlarged')).toBe(true);
+		expect(isUnfinishedCorrection('Correction.')).toBe(true); // a bare cue: the correction follows
+		expect(isUnfinishedCorrection('Actually, make that')).toBe(true);
+	});
+	it('does not hold a finished correction, even with an unfinished finding after it', () => {
+		expect(isUnfinishedCorrection('Actually, make that 7 cm.')).toBe(false);
+		expect(isUnfinishedCorrection("Sorry, that's the right kidney.")).toBe(false);
+		expect(isUnfinishedCorrection('Correction. The lesion measures 18 mm. There is a 6 mm nodule in the left')).toBe(false);
+		expect(isUnfinishedCorrection('Actually make that 7 cm.\n\n')).toBe(false);
+	});
+	it('ignores text with no correction cue', () => {
+		expect(isUnfinishedCorrection('There is a small left pleural')).toBe(false);
+		expect(isUnfinishedCorrection('No pneumothorax')).toBe(false);
 	});
 });
