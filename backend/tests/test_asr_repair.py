@@ -78,3 +78,11 @@ def test_a_fix_never_reduces_the_number_of_words():
                  ("Further, supplemental emboli are seen.", "supplemental"), ("The liver contains a 14 millimetre high lesion.", "high")]:
         for c in candidates(u, f, L):
             assert len(c.replacement.split()) >= len(c.heard.split()), (c.heard, c.replacement)
+
+
+def test_a_fix_never_doubles_a_neighbouring_word():
+    from rapid_reports_ai.asr_repair import apply_fix
+    u = "The common bowel duct measures 15 mm."
+    for c in candidates(u, "bowel", build_lexicon([])):
+        fixed = apply_fix(u, c).lower().split()
+        assert all(a != b for a, b in zip(fixed, fixed[1:])), apply_fix(u, c)
