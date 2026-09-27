@@ -135,3 +135,32 @@ def test_an_unrelated_last_sentence_is_kept_even_with_an_edit(authed_client, lab
     d = authed_client.post("/api/canvas/polish-span", json={
         **BODY, "span": "The spleen measures 10 centimetres.", "new": "Actually the duct is 15 mm. No free fluid."}).json()
     assert d["active_scratchpad"].endswith("No free fluid.")
+
+
+def test_a_repeated_correction_in_the_middle_is_dropped_and_the_new_finding_kept(authed_client, lab, monkeypatch):
+    # re-test session: 'Correction. The liver lesion measures 18 millimetres. There is a 6 mm nodule in the left'
+    _model_returning(monkeypatch,
+                     "The spleen is normal. The adrenal glands are normal. The liver lesion measures 18 millimetres. "
+                     "There is a 6 mm nodule in the left",
+                     [{"original": "a 14 millimetre", "corrected": "an 18 millimetre"}])
+    d = authed_client.post("/api/canvas/polish-span", json={
+        **BODY, "span": "The spleen is normal. The adrenal glands are normal.",
+        "new": "Correction. The liver lesion measures 18 millimetres. There is a 6 mm nodule in the left"}).json()
+    assert d["active_scratchpad"] == "The spleen is normal. The adrenal glands are normal. There is a 6 mm nodule in the left"
+
+
+def test_a_cue_led_correction_sentence_is_dropped_and_the_rest_kept(authed_client, lab, monkeypatch):
+    _model_returning(monkeypatch, "The kidneys are normal. The nodule is in the right lower lobe. No pneumothorax.",
+                     [{"original": "the left lower lobe", "corrected": "the right lower lobe"}])
+    d = authed_client.post("/api/canvas/polish-span", json={
+        **BODY, "span": "The kidneys are normal.",
+        "new": "Correction, the nodule is in the right lower lobe. No pneumothorax."}).json()
+    assert d["active_scratchpad"] == "The kidneys are normal. No pneumothorax."
+
+
+def test_a_sentence_already_in_the_span_is_never_dropped(authed_client, lab, monkeypatch):
+    _model_returning(monkeypatch, "The liver lesion measures 18 mm. No free fluid.",
+                     [{"original": "a 14 mm", "corrected": "an 18 mm"}])
+    d = authed_client.post("/api/canvas/polish-span", json={
+        **BODY, "span": "The liver lesion measures 18 mm.", "new": "Correction. The liver lesion measures 18 mm. No free fluid."}).json()
+    assert d["active_scratchpad"] == "The liver lesion measures 18 mm. No free fluid."

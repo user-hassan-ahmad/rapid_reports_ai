@@ -1426,22 +1426,58 @@ class PolishSpanResponse(BaseModel):
     error: Optional[str] = None
 
 
+_UNITS = {"millimetre": "mm", "millimetres": "mm", "millimeter": "mm", "millimeters": "mm",
+          "centimetre": "cm", "centimetres": "cm", "centimeter": "cm", "centimeters": "cm"}
+_CUE = re.compile(r"^\W*(?:correction|sorry|actually|i mean)\b[\s,.:;]*", re.IGNORECASE)
+_SENTENCE = re.compile(r"[^.?!]+[.?!]*")
+
+
 def _words(text: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]+", text.lower()))
+    return {_UNITS.get(w, w) for w in re.findall(r"[a-z0-9]+", text.lower())}
 
 
-def _drop_repeated_correction(active: str, new: str) -> str:
+def _sentences(text: str) -> list[str]:
+    return [m.group(0).strip() for m in _SENTENCE.finditer(text or "") if m.group(0).strip()]
+
+
+def _corrected_statements(span: str, new: str) -> list[str]:
+    """The statements in NEW that a correction cue points at: a sentence that starts with a
+    cue (cue removed), the sentence after a cue-only sentence, and the first sentence when
+    the cue was left dangling at the end of the span."""
+    out, pending = [], bool(_sentences(span)) and bool(_CUE.match(_sentences(span)[-1])) and \
+        not _CUE.sub("", _sentences(span)[-1]).strip(" .,")
+    for sent in _sentences(new):
+        if _CUE.match(sent):
+            rest = _CUE.sub("", sent).strip()
+            if rest.strip(" .,"):
+                out.append(rest)
+                pending = False
+            else:
+                pending = True  # cue on its own: the next sentence is the correction
+        elif pending:
+            out.append(sent)
+            pending = False
+    return out
+
+
+def _drop_repeated_correction(active: str, span: str, new: str) -> str:
     """When the correction went to an earlier line (a committed_edit), the model sometimes
-    also appends the new words as a sentence (lab 2026-09-27: 14 → 15 mm edited AND "The
-    common bile duct measures 15 millimetres." added, 3/3 runs, prompt rule ignored). Drop
-    the last sentence when it repeats the new words (word overlap ≥ 0.7)."""
-    parts = re.split(r"(?<=[.?!])\s+", active.rstrip())
-    last, nw = _words(parts[-1]), _words(new)
-    if len(parts) < 2 or not last or not nw:
+    also writes the corrected statement again as a sentence (lab 2026-09-27, three shapes:
+    last sentence, middle sentence, cue-led sentence). Drop any output sentence not already
+    in the span that repeats a corrected statement (word overlap ≥ 0.7, units normalised).
+    Other new sentences in the same final are kept."""
+    targets = [_words(t) for t in _corrected_statements(span, new)]
+    if not targets:
         return active
-    if len(last & nw) / len(last | nw) >= 0.7:
-        return active.rstrip()[: len(active.rstrip()) - len(parts[-1])].rstrip()
-    return active
+    in_span = {" ".join(x.split()) for x in _sentences(span)}
+    out = active
+    for sent in _sentences(active):
+        if " ".join(sent.split()) in in_span:
+            continue
+        w = _words(sent)
+        if w and any(len(w & t) / len(w | t) >= 0.7 for t in targets):
+            out = re.sub(r"\s*" + re.escape(sent), "", out, count=1)
+    return out.strip() if out.strip() else active
 
 
 @canvas_router.post("/polish-span", response_model=PolishSpanResponse)
@@ -1487,7 +1523,7 @@ async def polish_span(request: PolishSpanRequest, current_user: User = Depends(g
         return PolishSpanResponse(error=err, latency_ms=latency_ms, usage=usage or None)
     active = out.active_scratchpad
     if out.committed_edits:
-        active = _drop_repeated_correction(active, new_for_model)
+        active = _drop_repeated_correction(active, request.span, new_for_model)
     if trailing_break:
         active = active.rstrip("\n") + trailing_break
     return PolishSpanResponse(active_scratchpad=active, committed_edits=out.committed_edits,
