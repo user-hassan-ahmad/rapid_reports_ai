@@ -1259,10 +1259,10 @@
 		if (currentHash === lastReviewedHash) return;
 
 		onReviewingChange(true);
-		try {
-			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-			if ($token) headers['Authorization'] = `Bearer ${$token}`;
-			const res = await fetch(`${API_URL}/api/canvas/review`, {
+		const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+		if ($token) headers['Authorization'] = `Bearer ${$token}`;
+		const review = (parts: 'coverage' | 'prompts') =>
+			fetch(`${API_URL}/api/canvas/review`, {
 				method: 'POST',
 				headers,
 				body: JSON.stringify({
@@ -1271,20 +1271,28 @@
 					scan_type: scanType,
 					clinical_history: clinicalHistory,
 					mode: polishMode,
-					...(labConfig ? { coverage_debug: labConfig.coverageDebug } : {})
+					parts,
+					...(labConfig && parts === 'coverage' ? { coverage_debug: labConfig.coverageDebug } : {})
 				})
-			});
-			const data = await res.json();
+			}).then((r) => r.json());
+		// Two halves in parallel, each applied as it lands: the section pills (coverage,
+		// sub-second) never wait for the IntelliPrompts call.
+		const coverage = review('coverage').then((data) => {
 			if (data.covered_sections && Array.isArray(data.covered_sections)) {
 				onCoveredSectionsChange(data.covered_sections);
 			}
 			onCoverageScoresChange(data.coverage_scores ?? null);
 			if (data.coverage) onCoverageTrace(data.coverage as CoverageTrace);
+		});
+		const prompts = review('prompts').then((data) => {
 			// Backend now owns the full merge — replace activePrompts with the final merged list
 			if (data.prompts && Array.isArray(data.prompts)) {
 				onPromptsChange(data.prompts);
 			}
-			lastReviewedHash = currentHash;
+		});
+		try {
+			const [c, p] = await Promise.allSettled([coverage, prompts]);
+			if (c.status === 'fulfilled' && p.status === 'fulfilled') lastReviewedHash = currentHash;
 		} catch {
 			// silently ignore review errors
 		} finally {

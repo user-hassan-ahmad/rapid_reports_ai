@@ -139,6 +139,9 @@ class CanvasReviewRequest(BaseModel):
     mode: str = "clean"
     # Lab-only (RR_TRIAGE_DEBUG=1): run both coverage candidates and attach the trace.
     coverage_debug: bool = False
+    # "coverage" / "prompts": run one half only, so the section pills never wait for the
+    # IntelliPrompts call (the scratchpad sends both halves in parallel). "all": as before.
+    parts: Literal["all", "coverage", "prompts"] = "all"
 
 
 class CanvasReviewResponse(BaseModel):
@@ -1188,7 +1191,15 @@ async def review_scratchpad(
     other = "qwen" if selected == "jev" else "jev"
     debug = _triage_debug_enabled() and request.coverage_debug
 
-    tasks = [_coverage_safe(selected, request), _intelliprompts(request)]
+    want_coverage = request.parts in ("all", "coverage")
+    want_prompts = request.parts in ("all", "prompts")
+    if not want_coverage:
+        return CanvasReviewResponse(covered_sections=[], prompts=await _intelliprompts(request))
+
+    async def _no_prompts() -> list[IntelliPrompt]:
+        return []
+
+    tasks = [_coverage_safe(selected, request), _intelliprompts(request) if want_prompts else _no_prompts()]
     if debug:
         tasks.append(_coverage_safe(other, request))
     results = await asyncio.gather(*tasks)

@@ -179,3 +179,33 @@ def test_debug_trace_carries_qset(authed_client, fakes, monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
     body = _post(authed_client, coverage_debug=True).json()
     assert body["coverage"]["qset"] == QSET_VERSION
+
+
+def test_coverage_only_review_does_not_wait_for_intelliprompts(authed_client, fakes, monkeypatch):
+    # The section pills waited for IntelliPrompts (35–137 s on its fallback, lab 2026-09-27).
+    called = []
+
+    async def slow_prompts(request):
+        called.append(1)
+        return [cr.IntelliPrompt(question="q?", source_text="")]
+
+    monkeypatch.setattr(cr, "_intelliprompts", slow_prompts)
+    d = _post(authed_client, parts="coverage").json()
+    assert d["covered_sections"] == ["PLEURA"] and d["prompts"] == [] and called == []
+
+
+def test_prompts_only_review_runs_no_coverage(authed_client, fakes, monkeypatch):
+    jev, qwen_calls, _ = fakes
+
+    async def prompts(request):
+        return [cr.IntelliPrompt(question="Liver lesion characterised?", source_text="")]
+
+    monkeypatch.setattr(cr, "_intelliprompts", prompts)
+    d = _post(authed_client, parts="prompts").json()
+    assert [p["question"] for p in d["prompts"]] == ["Liver lesion characterised?"]
+    assert d["covered_sections"] == [] and qwen_calls == [] and jev.calls == 0
+
+
+def test_review_without_parts_runs_both_as_before(authed_client, fakes):
+    d = _post(authed_client).json()
+    assert d["covered_sections"] == ["PLEURA"]
