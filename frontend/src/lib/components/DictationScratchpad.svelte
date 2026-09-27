@@ -396,21 +396,27 @@
 	 * here. Out-of-range values are dropped rather than throwing: a response can
 	 * land after the radiologist has already deleted the text it describes.
 	 */
+	// The check runs on the text on screen (onContentChange follows the view), so its offsets
+	// index the visible editor; the hidden one is cleared.
 	export function setIntegrityRanges(ranges: { from: number; to: number }[]): void {
-		if (!editor) return;
-		const len = editor.state.doc.length;
+		const view = visibleEditor();
+		if (!view) return;
+		const len = view.state.doc.length;
 		const safe = ranges
 			.filter((r) => r.from >= 0 && r.to <= len && r.from < r.to)
 			.map((r) => ({ from: r.from, to: r.to }));
-		editor.dispatch({ effects: setIntegrityMarks.of(safe) });
+		view.dispatch({ effects: setIntegrityMarks.of(safe) });
+		const hidden = view === editor ? structuredEditor : editor;
+		hidden?.dispatch({ effects: setIntegrityMarks.of([]) });
 	}
 
 	export function revealIntegrityRange(range: { from: number; to: number }): void {
-		if (!editor) return;
-		const len = editor.state.doc.length;
+		const view = visibleEditor();
+		if (!view) return;
+		const len = view.state.doc.length;
 		if (range.from < 0 || range.to > len) return;
-		editor.dispatch({ selection: { anchor: range.from, head: range.to }, scrollIntoView: true });
-		editor.focus();
+		view.dispatch({ selection: { anchor: range.from, head: range.to }, scrollIntoView: true });
+		view.focus();
 	}
 
 	let processAbort: AbortController | null = null;
@@ -1648,6 +1654,7 @@
 					EditorView.lineWrapping,
 					darkTheme,
 					highlightField,
+					integrityField,
 					EditorView.updateListener.of((update) => {
 						if (!update.docChanged || writingStructured) return;
 						const text = update.state.doc.toString();
