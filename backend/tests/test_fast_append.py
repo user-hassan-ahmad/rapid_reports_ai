@@ -200,7 +200,7 @@ def test_spine_levels_and_spoken_punctuation_are_cleaned():
 
 def test_a_heading_colon_becomes_punctuation():
     r = route_bundle(_bundle(), "Conclusion, colon, acute appendicitis")
-    assert (r.route, r.text) == ("fast_append", "Conclusion: acute appendicitis")
+    assert (r.route, r.text) == ("fast_append", "Conclusion: Acute appendicitis")
 
 
 def test_the_organ_colon_stays():
@@ -277,7 +277,7 @@ def test_polish_gets_the_cleaned_text():
 
 def test_fast_append_clean_text_is_its_text():
     r = route_bundle(_bundle(), "L5 S1 colon left paracentral extrusion")
-    assert r.clean_text == r.text == "L5/S1: left paracentral extrusion"
+    assert r.clean_text == r.text == "L5/S1: Left paracentral extrusion"
 
 
 @pytest.mark.parametrize("utt, text", [("L3/4, colon,", "L3/4:"), ("L4/5,", "L4/5"), ("L5 S1", "L5/S1"),
@@ -289,3 +289,7 @@ def test_a_disc_level_on_its_own_is_written_by_code(utt, text):
 
 def test_a_level_with_findings_still_goes_to_jev():
     assert code_route("L4/5 there is a broad based disc bulge") is None
+
+
+def test_fast_append_capitalises_after_a_level():
+    assert route_bundle(_bundle(), "L4-five there is a broad based disc bulge").text == "L4/5 There is a broad based disc bulge"

@@ -119,3 +119,16 @@ def test_apply_spoken_format_is_idempotent():
     for s in ["L3 slash four and slash or", "L5 S1, mild comma diffuse", "open bracket x close bracket"]:
         once = apply_spoken_format(s)
         assert apply_spoken_format(once) == once
+
+
+@pytest.mark.parametrize("text, cased", [
+    ("L4/5 there is a broad based disc bulge", "L4/5 There is a broad based disc bulge"),
+    ("L5/S1: left paracentral extrusion", "L5/S1: Left paracentral extrusion"),
+    ("Conclusion: acute appendicitis", "Conclusion: Acute appendicitis"),
+    ("L3/4 mild desiccation", "L3/4 Mild desiccation"),
+    ("The conus terminates at L1 with normal signal.", "The conus terminates at L1 with normal signal."),
+    ("L4/5 5 mm bulge", "L4/5 5 mm bulge"),
+])
+def test_capital_after_a_leading_level_or_heading(text, cased):
+    from rapid_reports_ai.spoken_format import capitalise_after_label
+    assert capitalise_after_label(text) == cased

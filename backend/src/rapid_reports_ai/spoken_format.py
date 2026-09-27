@@ -152,3 +152,12 @@ def level_only(text: str) -> str | None:
     s = re.sub(r"[\s,.]+$", "", s.strip())
     m = _LEVEL_ONLY.match(s)
     return (m.group(1).upper() + (m.group(2) or "")) if m else None
+
+
+_LABEL_THEN_WORD = re.compile(
+    r"^(\s*(?:[CTLS]\d{1,2}/(?:[CTLS])?\d{1,2}\s*:?|(?:" + _HEADING_RE + r")\s*:)\s+)([a-z])", _I)
+
+
+def capitalise_after_label(text: str) -> str:
+    """'L4/5 there is' → 'L4/5 There is'; 'Conclusion: acute' → 'Conclusion: Acute'."""
+    return _LABEL_THEN_WORD.sub(lambda m: m.group(1) + m.group(2).upper(), text or "", count=1)

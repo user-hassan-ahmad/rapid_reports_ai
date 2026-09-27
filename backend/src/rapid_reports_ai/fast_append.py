@@ -19,6 +19,7 @@ from .dictation_triage_router import _FORMATTING_RULES, map_formatting
 from .jev_questions import FAST_APPEND_BANDS
 from .spoken_format import (
     apply_spoken_format,
+    capitalise_after_label,
     ends_with_heading,
     format_heading_lines,
     heading_only,
@@ -131,6 +132,8 @@ def route_bundle(
         return RouteResult("polish", reason, "", "", True, on_silence, clean_text=text)
 
     def append(reason: str, body: str, paragraph: bool) -> RouteResult:
+        if paragraph:  # 'L4/5 there is' opening a paragraph → 'L4/5 There is'; not mid-sentence
+            body = capitalise_after_label(body)
         return RouteResult("fast_append", reason, body, "", closes_line(body), on_silence,
                            starts_paragraph=paragraph, clean_text=body)
 
