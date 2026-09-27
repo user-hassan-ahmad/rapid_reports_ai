@@ -25,6 +25,7 @@ from .dictation_triage import (
 from .dictation_triage_labels import agrees, derive_action
 from .dictation_triage_router import route as triage_route_decision
 from .fast_append import code_route, route_bundle
+from .lean_polish import LEAN_SYSTEM_PROMPT, LEAN_USER_TEMPLATE
 from .jev_questions import FAST_APPEND_BANDS, QSET_VERSION, ROUTE_THRESHOLD_DEFAULT
 from .utterance_bundle import BundleDecision, BundleState, get_jev_bundle
 from .utterance_boundary import BoundaryDecision, get_jev_boundary
@@ -1400,3 +1401,62 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
         "active_len": len(request.active or ""),
     }))
     return resp
+
+
+# -----------------------------------------------------------------------------
+# Lean scoped polish, raced against the Jev bundle (lab; plan 2026-09-27-lean-race)
+# -----------------------------------------------------------------------------
+
+
+class PolishSpanRequest(BaseModel):
+    scan_type: str = ""
+    context: str = ""  # frozen text before the span (current paragraph)
+    span: str = ""  # the text the model may rewrite (last sentences before the new words)
+    new: str  # the Deepgram final just said
+
+
+class PolishSpanResponse(BaseModel):
+    active_scratchpad: str = ""
+    committed_edits: list[CommittedEdit] = []
+    skipped: bool = False  # decided by code: no model call
+    usage: Optional[dict] = None
+    latency_ms: Optional[int] = None
+    error: Optional[str] = None
+
+
+@canvas_router.post("/polish-span", response_model=PolishSpanResponse)
+async def polish_span(request: PolishSpanRequest, current_user: User = Depends(get_current_user)):
+    """Lab only: rewrite one span with the lean prompt. Fired together with /bundle; the
+    bundle's route decides whether the result is used. Never errors because of the model."""
+    if not _triage_debug_enabled():
+        raise HTTPException(status_code=404, detail="Not Found")
+    preceding = "\n\n".join(x for x in (request.context, request.span) if x)
+    if code_route(request.new, preceding) is not None:
+        return PolishSpanResponse(skipped=True)
+    usage: dict = {}
+    t0 = _time.perf_counter()
+    out, err = None, None
+    try:
+        _, settings = _canvas_process_config("clean", incremental=True)
+        out = await _run_canvas_with_fallback(
+            MODEL_CONFIG["CANVAS_PROCESS"], MODEL_CONFIG.get("CANVAS_PROCESS_FALLBACK"),
+            output_type=CanvasIncrementalResponse, system_prompt=LEAN_SYSTEM_PROMPT,
+            user_prompt=LEAN_USER_TEMPLATE.format(scan_type=request.scan_type or "(not specified)",
+                                                  context=request.context, span=request.span, new=request.new),
+            model_settings=settings, use_thinking=False, label="canvas.polish_span", usage_out=usage,
+        )
+    except Exception as e:  # fail open: the scratchpad falls back to the full polish
+        err = type(e).__name__
+        logger.error("[canvas.polish_span] ❌ %s: %s", err, e)
+    latency_ms = int((_time.perf_counter() - t0) * 1000)
+    logger.info("[canvas.polish_span] %s", json.dumps({
+        "event": "canvas.polish_span", "latency_ms": latency_ms, "error": err,
+        "context_len": len(request.context), "span_len": len(request.span), "new_len": len(request.new),
+        "out_len": len(out.active_scratchpad) if out else None,
+        "committed_edits": len(out.committed_edits) if out else None,
+        "model": usage.get("model"), "input_tokens": usage.get("input_tokens"), "output_tokens": usage.get("output_tokens"),
+    }))
+    if out is None:
+        return PolishSpanResponse(error=err, latency_ms=latency_ms, usage=usage or None)
+    return PolishSpanResponse(active_scratchpad=out.active_scratchpad, committed_edits=out.committed_edits,
+                              usage=usage or None, latency_ms=latency_ms)
