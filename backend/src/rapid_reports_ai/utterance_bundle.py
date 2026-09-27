@@ -27,7 +27,9 @@ from .dictation_triage import (
     _check_unit,
 )
 from .jev_client import jev_post
-from .jev_questions import QSET_VERSION, STANDALONE_QUESTION, bundle_questions, section_key  # noqa: F401
+from .asr_repair import content_words
+from .jev_questions import QSET_VERSION, STANDALONE_QUESTION, WORD_SENSE_MAX_WORDS, bundle_questions, section_key  # noqa: F401
+from .jev_questions import word_sense_question
 
 @dataclass(frozen=True)
 class BundleState:
@@ -59,6 +61,7 @@ class BundleDecision:
     input_tokens: Optional[int]
     cost_usd: Optional[float]
     qset: str = QSET_VERSION  # the question-set wording this decision was asked with
+    word_sense: tuple[tuple[str, float], ...] = ()  # (word, "makes clinical sense as heard") when asked
 
 
 class JevBundle:
@@ -74,8 +77,11 @@ class JevBundle:
         self._transport = transport
         self._timeout_s = timeout_s
 
-    async def classify(self, state: BundleState) -> BundleDecision:
+    async def classify(self, state: BundleState, word_sense: bool = False) -> BundleDecision:
         questions = bundle_questions(state.checklist)
+        words = [w for w, _, _ in content_words(state.latest_utterance, WORD_SENSE_MAX_WORDS)] if word_sense else []
+        for i, w in enumerate(words):
+            questions[f"word_sense_{i}"] = word_sense_question(w)
         body = {"model": JEV_MODEL, "state": state.as_payload(), "questions": questions}
         t0 = time.perf_counter()
         try:
@@ -100,6 +106,11 @@ class JevBundle:
                 raise TriageError(f"jev bundle answer missing: {key}")
             coverage[s] = _check_unit(answers[key].get("noul"), f"coverage[{s}]")
         usage = data.get("usage") or {}
+        senses = []
+        for i, w in enumerate(words):
+            a = answers.get(f"word_sense_{i}")
+            if a is not None:  # a missing word-sense answer is data lost, not a failed decision
+                senses.append((w, _check_unit(a.get("noul"), f"word_sense[{i}]")))
         return BundleDecision(
             triage=triage,
             standalone=_check_unit(answers["standalone"].get("noul"), "standalone"),
@@ -108,6 +119,7 @@ class JevBundle:
             n_questions=len(questions),
             input_tokens=usage.get("input_tokens"),
             cost_usd=usage.get("cost"),
+            word_sense=tuple(senses),
         )
 
 

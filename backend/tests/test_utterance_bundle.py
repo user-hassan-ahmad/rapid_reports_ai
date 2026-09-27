@@ -87,3 +87,33 @@ def test_missing_key_raises(monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     with pytest.raises(TriageError):
         JevBundle()
+
+
+async def test_word_sense_questions_are_asked_and_parsed_when_requested():
+    state = BundleState(scan_type="CT", committed="", active="The spleen is normal.", open_line="",
+                        latest_utterance="The renal glands are also normal.", checklist=[])
+    captured = {}
+
+    def handler(req):
+        captured["body"] = json.loads(req.content)
+        data = _resp(sections=())
+        for k in captured["body"]["questions"]:
+            if k.startswith("word_sense_"):
+                data["answers"][k] = {"type": "noul", "noul": 0.37 if k == "word_sense_1" else 0.9}
+        return httpx.Response(200, json=data)
+
+    d = await JevBundle(api_key="k", transport=httpx.MockTransport(handler)).classify(state, word_sense=True)
+    qs = captured["body"]["questions"]
+    assert "'renal'" in qs["word_sense_0"]["instructions"] and "'glands'" in qs["word_sense_1"]["instructions"]
+    assert d.word_sense == (("renal", 0.9), ("glands", 0.37), ("normal", 0.9))  # "also" is a function word
+
+
+async def test_word_sense_is_not_asked_by_default():
+    captured = {}
+
+    def handler(req):
+        captured["body"] = json.loads(req.content)
+        return httpx.Response(200, json=_resp())
+
+    d = await JevBundle(api_key="k", transport=httpx.MockTransport(handler)).classify(STATE)
+    assert not any(k.startswith("word_sense_") for k in captured["body"]["questions"]) and d.word_sense == ()
