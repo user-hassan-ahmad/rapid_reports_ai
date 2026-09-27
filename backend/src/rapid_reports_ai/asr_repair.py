@@ -296,5 +296,14 @@ async def repair(
         text = apply_fix(text, c)
         last_start = c.start
         applied.append({"heard": c.heard, "replacement": c.replacement, "confidence": conf})
-    return RepairResult(text, applied, _underlined(flags, fixed_words, picked_words), len(questions), latency_ms, None,
-                        tuple(decisions), tuple(proposals))
+    # a word scoring low only because its neighbour was misheard is not shown once that
+    # neighbour is fixed ('nipple' → 'no pleural' also cleared 'effusion')
+    toks = [m.group(0).lower() for m in _TOKEN.finditer(sentence)]
+    near = set()
+    for c, _conf in chosen:
+        span = [m.group(0).lower() for m in _TOKEN.finditer(c.heard)]
+        for i in range(len(toks)):
+            if toks[i:i + len(span)] == span:
+                near.update(toks[max(0, i - 1): i + len(span) + 1])
+    shown = [f for f in _underlined(flags, fixed_words, picked_words) if f["word"].lower() not in near]
+    return RepairResult(text, applied, shown, len(questions), latency_ms, None, tuple(decisions), tuple(proposals))

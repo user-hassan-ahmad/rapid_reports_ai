@@ -203,3 +203,11 @@ async def test_a_picked_but_unaccepted_fix_is_underlined_even_above_the_underlin
     r = await repair("The renal glands are also normal.", (("glands", 0.46),), state=STATE,
                      lexicon=build_lexicon(CAP), api_key="k", transport=_jev("adrenal", confidence=0.5))
     assert r.fixes == [] and [f["word"] for f in r.flags] == ["glands"]
+
+
+async def test_a_neighbour_of_an_applied_fix_is_not_underlined():
+    # live: 'nipple' → 'no pleural' applied, but 'effusion' (0.19, low only because of its
+    # misheard neighbour) was still underlined
+    r = await repair("There is nipple effusion.", (("nipple", 0.1), ("effusion", 0.19)), state=STATE,
+                     lexicon=build_lexicon(["LUNGS", "PLEURA"]), api_key="k", transport=_jev("no pleural"))
+    assert r.text == "There is no pleural effusion." and r.flags == []
