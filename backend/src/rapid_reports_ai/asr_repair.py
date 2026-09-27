@@ -18,7 +18,9 @@ from .deepgram_spelling import UK_SPELLING
 
 _STOP = set("""a an the of in on at to for from by with without and or but is are was were be been being there this
 that these those it its as into onto over under than then also which who whose any some no not nor very
-measuring measures measured measure seen noted demonstrated identified present shows show""".split())
+measuring measures measured measure seen noted demonstrated identified present shows show
+sorry actually correction correct make let see scratch delete new paragraph line full stop colon comma slash
+okay yes just now mean""".split())  # commands, corrections and discourse: never asked about
 _UNITS = set("mm cm mls ml millimetre millimetres millimeter millimeters centimetre centimetres centimeter centimeters".split())
 
 # Broad radiology vocabulary across body systems and modalities (anatomy, descriptors,
@@ -190,6 +192,13 @@ class RepairResult:
     error: str | None
 
 
+def _underlined(flags: list[dict], fixed: set[str]) -> list[dict]:
+    """Unfixed flagged words scoring below the underline band: shown to the radiologist."""
+    from .jev_questions import WORD_SENSE_BANDS
+
+    return [f for f in flags if f["word"] not in fixed and f["score"] < WORD_SENSE_BANDS["word_sense_underline"]]
+
+
 def _find_word(sentence: str, word: str) -> str | None:
     """The flagged word as it appears in the (cleaned) sentence, matching case-insensitively."""
     for m in _TOKEN.finditer(sentence):
@@ -240,7 +249,7 @@ async def repair(
             options_by_q[f"fix_{j}"] = by_option
     flags = [{"word": w, "score": s} for w, s in flagged]
     if not questions:
-        return RepairResult(sentence, [], flags, 0, None, None)
+        return RepairResult(sentence, [], _underlined(flags, set()), 0, None, None)
     body = {"model": JEV_MODEL, "state": {**state, "latest_utterance": sentence}, "questions": questions}
     t0 = time.perf_counter()
     try:
@@ -248,7 +257,8 @@ async def repair(
         resp.raise_for_status()
         answers = resp.json().get("answers") or {}
     except (httpx.HTTPError, ValueError) as e:
-        return RepairResult(sentence, [], flags, len(questions), int((time.perf_counter() - t0) * 1000), type(e).__name__)
+        return RepairResult(sentence, [], _underlined(flags, set()), len(questions),
+                            int((time.perf_counter() - t0) * 1000), type(e).__name__)
     latency_ms = int((time.perf_counter() - t0) * 1000)
     chosen: list[tuple[Candidate, float]] = []
     fixed_words = set()
@@ -266,4 +276,4 @@ async def repair(
         text = apply_fix(text, c)
         last_start = c.start
         applied.append({"heard": c.heard, "replacement": c.replacement, "confidence": conf})
-    return RepairResult(text, applied, [f for f in flags if f["word"] not in fixed_words], len(questions), latency_ms, None)
+    return RepairResult(text, applied, _underlined(flags, fixed_words), len(questions), latency_ms, None)

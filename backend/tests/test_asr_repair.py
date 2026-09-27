@@ -129,27 +129,31 @@ async def test_a_confident_choice_fixes_the_sentence():
 
 
 async def test_a_hesitant_choice_flags_instead():
-    r = await repair("The renal glands are also normal.", (("glands", 0.37),), state=STATE,
+    r = await repair("The renal glands are also normal.", (("glands", 0.2),), state=STATE,
                      lexicon=build_lexicon(CAP), api_key="k", transport=_jev("adrenal", confidence=0.6))
     assert r.text == "The renal glands are also normal." and [f["word"] for f in r.flags] == ["glands"]
 
 
 async def test_as_heard_is_respected():
-    r = await repair("The renal glands are also normal.", (("glands", 0.37),), state=STATE,
+    r = await repair("The renal glands are also normal.", (("glands", 0.2),), state=STATE,
                      lexicon=build_lexicon(CAP), api_key="k", transport=_jev(None))
     assert r.text == "The renal glands are also normal." and r.fixes == [] and len(r.flags) == 1
 
 
-async def test_a_word_with_no_candidates_is_flagged_without_a_call():
+async def test_a_word_with_no_candidates_is_underlined_only_when_very_low_and_never_calls():
     calls = []
     r = await repair("The liver contains a 14 mm high lesion.", (("high", 0.38),), state=STATE,
+                     lexicon=build_lexicon(CAP), api_key="k", transport=_jev(None, calls=calls))
+    # 2026-09-27.3 trade-off: 'high' (hypo- or hyperdense) scored 0.38–0.44, above the underline band
+    assert calls == [] and r.flags == []
+    r = await repair("The liver contains a 14 mm high lesion.", (("high", 0.2),), state=STATE,
                      lexicon=build_lexicon(CAP), api_key="k", transport=_jev(None, calls=calls))
     assert calls == [] and [f["word"] for f in r.flags] == ["high"]
 
 
 async def test_a_jev_failure_leaves_the_text_and_flags():
     t = _httpx.MockTransport(lambda req: _httpx.Response(502, text="bad"))
-    r = await repair("The renal glands are also normal.", (("glands", 0.37),), state=STATE,
+    r = await repair("The renal glands are also normal.", (("glands", 0.2),), state=STATE,
                      lexicon=build_lexicon(CAP), api_key="k", transport=t)
     assert r.text == "The renal glands are also normal." and r.error and len(r.flags) == 1
 
@@ -164,3 +168,15 @@ async def test_the_chosen_option_maps_to_its_own_candidate(monkeypatch):
     r = await repair("The renal glands are normal.", (("glands", 0.37),), state=STATE, lexicon=[],
                      api_key="k", transport=_jev("glandz"))
     assert r.text == "The renal glandz are normal."
+
+
+def test_command_correction_and_discourse_words_are_never_asked_about():
+    words = [w.lower() for w, _, _ in content_words("Sorry, let me see. Actually make that correction. Scratch that. New paragraph.")]
+    assert words == []
+
+
+async def test_only_a_very_low_score_is_underlined_when_nothing_was_fixed():
+    r = await repair("The infundibulum is patent and the hepatic veins are normal.",
+                     (("infundibulum", 0.45), ("hepatic", 0.2)), state=STATE, lexicon=build_lexicon([]),
+                     api_key="k", transport=_jev(None))
+    assert [f["word"] for f in r.flags] == ["hepatic"]  # 0.45 was searched for a fix but not underlined

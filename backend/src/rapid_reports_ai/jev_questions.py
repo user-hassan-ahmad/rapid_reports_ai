@@ -15,7 +15,7 @@ from typing import Any
 
 from .jev_client import JEV_MODEL  # noqa: F401  (the wording is written for this model)
 
-QSET_VERSION = "2026-09-27.2"  # 09-26.2 bands; .3 gate 0.70; 09-27.1 gate 0.80; 09-27.2 word-sense spotter/fixer added
+QSET_VERSION = "2026-09-27.3"  # 09-26.2 bands; .3 gate 0.70; 09-27.1 gate 0.80; 09-27.2 word-sense; .3 underline band
 
 # --- triage (dictation_triage) ------------------------------------------------------
 
@@ -81,7 +81,10 @@ FAST_APPEND_BANDS: dict[str, float] = {
 # PROVISIONAL. Probe 2026-09-27: misheard words (or their neighbour) scored 0.06–0.59,
 # every word of clean controls ≥ 0.73. A fix is applied only when Jev picks a candidate
 # sentence over "as heard" at or above word_fix_accept; otherwise the word is flagged.
-WORD_SENSE_BANDS: dict[str, float] = {"word_sense_flag": 0.6, "word_fix_accept": 0.8}
+# 2026-09-27.3 (eval, 260 finals from 12 scripted lab sessions): below 0.6 a fix is looked
+# for (0 wrong fixes); only below 0.35 is an unfixed word underlined — at 0.6, 26 % of clean
+# lines were underlined (rarer correct terms score in the middle), at 0.35 about 2 %.
+WORD_SENSE_BANDS: dict[str, float] = {"word_sense_flag": 0.6, "word_sense_underline": 0.35, "word_fix_accept": 0.8}
 WORD_SENSE_MAX_WORDS = 12
 
 
