@@ -948,7 +948,12 @@
 						lineOpenBefore: false, tokens: tokenSet(utterance ?? ''), intact: true, edited: false, redictated: false
 					});
 					lineOpen = false;
-					patchDecision(queuedDecisionId, { polish_ms: Math.round(performance.now() - t0) });
+					patchDecision(queuedDecisionId, {
+						polish_ms: Math.round(performance.now() - t0),
+						polish_kind: 'full',
+						polish_tokens_in: data.polish_usage?.input_tokens ?? null,
+						polish_tokens_out: data.polish_usage?.output_tokens ?? null
+					});
 				}
 				// Scratchpad is updated — now fire IntelliPrompts analysis in background.
 				processReview();

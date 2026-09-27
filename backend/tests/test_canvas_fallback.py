@@ -62,3 +62,38 @@ async def test_raises_when_all_candidates_fail(monkeypatch):
     monkeypatch.setattr(cr, "_run_agent_with_model", _run)
     with pytest.raises(RuntimeError):
         await _call()
+
+
+class _U:
+    input_tokens, output_tokens = 1234, 56
+
+
+class _RU(_R):
+    def usage(self):
+        return _U()
+
+
+async def test_usage_is_reported_when_asked(monkeypatch):
+    _stub_providers(monkeypatch)
+
+    async def _run(**kw):
+        return _RU("x")
+
+    monkeypatch.setattr(cr, "_run_agent_with_model", _run)
+    usage: dict = {}
+    await _run_canvas_with_fallback("gemma-4-31b", None, output_type=CanvasProcessResponse, system_prompt="s",
+                                    user_prompt="u", model_settings={}, label="t", usage_out=usage)
+    assert usage == {"model": "gemma-4-31b", "input_tokens": 1234, "output_tokens": 56}
+
+
+async def test_a_result_without_usage_leaves_it_empty(monkeypatch):
+    _stub_providers(monkeypatch)
+
+    async def _run(**kw):
+        return _R("x")
+
+    monkeypatch.setattr(cr, "_run_agent_with_model", _run)
+    usage: dict = {}
+    await _run_canvas_with_fallback("gemma-4-31b", None, output_type=CanvasProcessResponse, system_prompt="s",
+                                    user_prompt="u", model_settings={}, label="t", usage_out=usage)
+    assert usage == {"model": "gemma-4-31b"}

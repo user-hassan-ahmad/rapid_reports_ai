@@ -55,7 +55,7 @@ def test_incremental_structured_appends_suffix():
 async def test_full_path_when_no_committed_context(monkeypatch):
     captured = {}
 
-    async def _stub(primary, fallback, *, output_type, system_prompt, user_prompt, model_settings, use_thinking=False, label=""):
+    async def _stub(primary, fallback, *, output_type, system_prompt, user_prompt, model_settings, use_thinking=False, label="", usage_out=None):
         captured["output_type"] = output_type
         return CanvasProcessResponse(scratchpad="- full", covered_sections=[])
 
@@ -70,7 +70,7 @@ async def test_full_path_when_no_committed_context(monkeypatch):
 async def test_incremental_path_when_committed_context_present(monkeypatch):
     captured = {}
 
-    async def _stub(primary, fallback, *, output_type, system_prompt, user_prompt, model_settings, use_thinking=False, label=""):
+    async def _stub(primary, fallback, *, output_type, system_prompt, user_prompt, model_settings, use_thinking=False, label="", usage_out=None):
         captured["output_type"] = output_type
         captured["system_prompt"] = system_prompt
         captured["user_prompt"] = user_prompt

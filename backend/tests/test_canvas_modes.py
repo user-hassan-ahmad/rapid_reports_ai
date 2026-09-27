@@ -41,7 +41,7 @@ async def _capture_process(mode, monkeypatch):
     """Call process_transcript with _run_canvas_with_fallback stubbed to record args."""
     captured = {}
 
-    async def _stub(primary, fallback, *, output_type, system_prompt, user_prompt, model_settings, use_thinking=False, label=""):
+    async def _stub(primary, fallback, *, output_type, system_prompt, user_prompt, model_settings, use_thinking=False, label="", usage_out=None):
         captured["system_prompt"] = system_prompt
         captured["model_settings"] = model_settings
         return CanvasProcessResponse(scratchpad="- ok", covered_sections=[])

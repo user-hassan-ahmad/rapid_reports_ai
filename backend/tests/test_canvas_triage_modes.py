@@ -78,7 +78,7 @@ def live(monkeypatch):
     calls = []
 
     async def fake_live(primary, fallback, *, output_type, system_prompt, user_prompt, model_settings,
-                        use_thinking=False, label="canvas"):
+                        use_thinking=False, label="canvas", usage_out=None):
         calls.append(label)
         return output_type(scratchpad=ACTIVE.replace("right", "left"), covered_sections=[])
 

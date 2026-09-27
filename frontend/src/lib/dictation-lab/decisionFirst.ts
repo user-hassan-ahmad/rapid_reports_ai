@@ -55,6 +55,9 @@ export interface DecisionRecord {
 	roundtrip_ms: number | null; // browser → route decision
 	polish_called: boolean;
 	polish_ms?: number | null; // the polish call this decision caused, when one ran
+	polish_kind?: 'full' | 'lean' | null; // which polish produced the text (racing: lean)
+	polish_tokens_in?: number | null;
+	polish_tokens_out?: number | null;
 	// Deepgram's confidences for this final (mic only; null from the feeder). Recorded for
 	// step 7, which tests whether they separate misheard fragments; not used to route.
 	asr_conf?: number | null;

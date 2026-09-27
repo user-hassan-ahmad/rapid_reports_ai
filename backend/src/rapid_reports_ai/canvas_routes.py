@@ -117,10 +117,12 @@ class CanvasIncrementalResponse(BaseModel):
 # or the live model starts trying to fill `triage` itself.
 class CanvasProcessResult(CanvasProcessResponse):
     triage: Optional[TriageTrace] = None
+    polish_usage: Optional[dict] = None  # lab only: {model, input_tokens, output_tokens}
 
 
 class CanvasIncrementalResult(CanvasIncrementalResponse):
     triage: Optional[TriageTrace] = None
+    polish_usage: Optional[dict] = None
 
 
 class CanvasReviewRequest(BaseModel):
@@ -716,6 +718,7 @@ async def _run_canvas_with_fallback(
     model_settings: dict,
     use_thinking: bool = False,
     label: str = "canvas",
+    usage_out: dict | None = None,
 ):
     """Run a Canvas agent on ``primary_model``, falling back to ``fallback_model`` on ANY
     failure (404 / 400 / timeout / outage) — not just 503. Settings are adapted per candidate's
@@ -741,6 +744,13 @@ async def _run_canvas_with_fallback(
             )
             if i > 0:
                 logger.warning("[%s] primary %s failed; served by fallback %s", label, primary_model, model_name)
+            if usage_out is not None:
+                usage_out["model"] = model_name
+                usage_fn = getattr(result, "usage", None)
+                if callable(usage_fn):
+                    u = usage_fn()
+                    usage_out["input_tokens"] = u.input_tokens
+                    usage_out["output_tokens"] = u.output_tokens
             return result.output
         except Exception as e:
             last_exc = e
@@ -827,7 +837,7 @@ async def _shadow_triage(state: TriageState, before_active: str, output, increme
         logger.error("[canvas.triage.shadow] ❌ %s: %s", type(e).__name__, e)
 
 
-async def _run_live_or_fallback(request: CanvasProcessRequest, incremental: bool):
+async def _run_live_or_fallback(request: CanvasProcessRequest, incremental: bool, usage_out: dict | None = None):
     """The live path exactly as before this change, including its degrade-to-input behaviour."""
     primary_model = MODEL_CONFIG["CANVAS_PROCESS"]
     fallback_model = MODEL_CONFIG.get("CANVAS_PROCESS_FALLBACK")
@@ -862,12 +872,15 @@ async def _run_live_or_fallback(request: CanvasProcessRequest, incremental: bool
             model_settings=model_settings,
             use_thinking=False,
             label="canvas.process",
+            usage_out=usage_out,
         )
         elapsed = _time.perf_counter() - t0
         logger.info(
-            "[canvas.process] %.2fs mode=%s incremental=%s primary=%s active_chars=%d committed_chars=%d",
+            "[canvas.process] %.2fs mode=%s incremental=%s primary=%s active_chars=%d committed_chars=%d"
+            " in_tokens=%s out_tokens=%s",
             elapsed, request.mode, incremental, primary_model,
             len(request.scratchpad_content or ""), len(request.committed_context or ""),
+            (usage_out or {}).get("input_tokens"), (usage_out or {}).get("output_tokens"),
         )
         return output
     except Exception as e:
@@ -898,10 +911,10 @@ def _deterministic_response(request: CanvasProcessRequest, incremental: bool, ne
     return CanvasProcessResult(scratchpad=new_active, covered_sections=[], triage=trace)
 
 
-def _with_trace(output, incremental: bool, trace: TriageTrace):
+def _with_trace(output, incremental: bool, trace: TriageTrace | None, usage: dict | None = None):
     """Wrap a model-facing output in the route return type that carries the trace."""
     cls = CanvasIncrementalResult if incremental else CanvasProcessResult
-    return cls(**output.model_dump(), triage=trace)
+    return cls(**output.model_dump(), triage=trace, polish_usage=usage or None)
 
 
 @canvas_router.post("/process")
@@ -940,18 +953,19 @@ async def process_transcript(
                 return _deterministic_response(request, incremental, new_active, trace)
 
     # --- live call (+ debug candidates concurrently) ----------------------------
+    usage: dict = {}  # polish token usage; returned to the lab only
     debug = lab and request.triage_debug and state is not None
     t0 = _time.perf_counter()
     if debug:
         already = {route_cfg.candidate} if route_cfg and route_result is not None else set()
         names = [n for n in ("jev", "qwen") if n not in already]
         results = await asyncio.gather(
-            _run_live_or_fallback(request, incremental),
+            _run_live_or_fallback(request, incremental, usage),
             *(_classify_safe(n, state) for n in names),
         )
         output, candidate_results = results[0], dict(zip(names, results[1:]))
     else:
-        output = await _run_live_or_fallback(request, incremental)
+        output = await _run_live_or_fallback(request, incremental, usage)
         candidate_results = {}
     live_latency_ms = int((_time.perf_counter() - t0) * 1000)
 
@@ -969,7 +983,7 @@ async def process_transcript(
             qwen=decision_to_trace(candidate_results["qwen"]) if "qwen" in candidate_results else None,
         )
         _log_triage_decision(trace, state)
-        return _with_trace(output, incremental, trace)
+        return _with_trace(output, incremental, trace, usage)
     elif state is not None and _triage_shadow_enabled():
         # BackgroundTasks: runs after the response is sent in production (zero added
         # latency) and before TestClient returns (deterministic tests). A bare
@@ -981,6 +995,8 @@ async def process_transcript(
             _SHADOW_TASKS.add(task)
             task.add_done_callback(_SHADOW_TASKS.discard)
 
+    if _triage_debug_enabled():
+        return _with_trace(output, incremental, None, usage)  # lab: carry polish usage
     return output
 
 
