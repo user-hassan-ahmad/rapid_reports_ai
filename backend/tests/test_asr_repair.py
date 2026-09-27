@@ -130,7 +130,7 @@ async def test_a_confident_choice_fixes_the_sentence():
 
 async def test_a_hesitant_choice_flags_instead():
     r = await repair("The renal glands are also normal.", (("glands", 0.2),), state=STATE,
-                     lexicon=build_lexicon(CAP), api_key="k", transport=_jev("adrenal", confidence=0.6))
+                     lexicon=build_lexicon(CAP), api_key="k", transport=_jev("adrenal", confidence=0.5))
     assert r.text == "The renal glands are also normal." and [f["word"] for f in r.flags] == ["glands"]
 
 
@@ -180,3 +180,26 @@ async def test_only_a_very_low_score_is_underlined_when_nothing_was_fixed():
                      (("infundibulum", 0.45), ("hepatic", 0.2)), state=STATE, lexicon=build_lexicon([]),
                      api_key="k", transport=_jev(None))
     assert [f["word"] for f in r.flags] == ["hepatic"]  # 0.45 was searched for a fix but not underlined
+
+
+def test_an_expansion_never_keeps_the_misheard_word_beside_its_correction():
+    for heard, repl in _best("The renal glands are also normal.", "glands"):
+        assert "renal adrenal" not in f"The renal glands".replace(heard, repl, 1).lower() or heard != "glands"
+    fixed = [__import__("rapid_reports_ai.asr_repair", fromlist=["apply_fix"]).apply_fix("The renal glands are also normal.", c)
+             for c in candidates("The renal glands are also normal.", "glands", build_lexicon(CAP))]
+    assert not any("renal adrenal" in f.lower() for f in fixed)
+
+
+async def test_each_choice_is_recorded_as_numbers():
+    r = await repair("The renal glands are also normal.", (("glands", 0.2),), state=STATE,
+                     lexicon=build_lexicon(CAP), api_key="k", transport=_jev("adrenal", confidence=0.9))
+    assert len(r.decisions) == 1
+    d = r.decisions[0]
+    assert d["picked_candidate"] is True and d["probability"] == 0.9 and d["confidence"] == 0.9 and d["options"] >= 2
+
+
+async def test_a_picked_but_unaccepted_fix_is_underlined_even_above_the_underline_band():
+    # live: Jev chose 'adrenal' at p 0.77–0.81 but confidence 0.68–0.74; 'glands' scored 0.46
+    r = await repair("The renal glands are also normal.", (("glands", 0.46),), state=STATE,
+                     lexicon=build_lexicon(CAP), api_key="k", transport=_jev("adrenal", confidence=0.5))
+    assert r.fixes == [] and [f["word"] for f in r.flags] == ["glands"]

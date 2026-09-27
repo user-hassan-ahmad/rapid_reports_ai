@@ -15,7 +15,7 @@ from typing import Any
 
 from .jev_client import JEV_MODEL  # noqa: F401  (the wording is written for this model)
 
-QSET_VERSION = "2026-09-27.3"  # 09-26.2 bands; .3 gate 0.70; 09-27.1 gate 0.80; 09-27.2 word-sense; .3 underline band
+QSET_VERSION = "2026-09-27.4"  # 09-26.2 bands; .3 gate 0.70; 09-27.1 gate 0.80; 09-27.2 word-sense; .3 underline; .4 fix 0.65
 
 # --- triage (dictation_triage) ------------------------------------------------------
 
@@ -84,7 +84,11 @@ FAST_APPEND_BANDS: dict[str, float] = {
 # 2026-09-27.3 (eval, 260 finals from 12 scripted lab sessions): below 0.6 a fix is looked
 # for (0 wrong fixes); only below 0.35 is an unfixed word underlined — at 0.6, 26 % of clean
 # lines were underlined (rarer correct terms score in the middle), at 0.35 about 2 %.
-WORD_SENSE_BANDS: dict[str, float] = {"word_sense_flag": 0.6, "word_sense_underline": 0.35, "word_fix_accept": 0.8}
+# 2026-09-27.4: fix accepted at Jev confidence ≥ 0.65 (was 0.8). Sweep over the eval's 22
+# proposals: ≥ 0.8 applied 13 (13 right), ≥ 0.65 applied 15 (15 right, 0 wrong); the first
+# wrong proposal sits at 0.57 ('meshes' → 'mass'). Confidence separates better than the
+# chosen option's probability (≥ 0.7 on probability already lets one wrong fix through).
+WORD_SENSE_BANDS: dict[str, float] = {"word_sense_flag": 0.6, "word_sense_underline": 0.35, "word_fix_accept": 0.65}
 WORD_SENSE_MAX_WORDS = 12
 
 

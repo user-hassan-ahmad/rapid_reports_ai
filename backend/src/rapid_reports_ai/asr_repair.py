@@ -161,6 +161,8 @@ def candidates(utterance: str, flagged: str, lexicon: list[str], k: int = 5, cut
                 continue  # unchanged, or only deletes a heard word: not a fix
             if len(t_words) < len(h_words):
                 continue  # a fix replaces words; it never drops one ('common bowel' → 'bile')
+            if len(t_words) > len(h_words) and _echoes_neighbour(toks, a, b, h_words, t_words):
+                continue  # 'glands' → 'adrenal glands' after 'renal' would read 'renal adrenal glands'
             hs = utterance.find(h, start)
             c = Candidate(hs, hs + len(h), h, t, sc)
             words_after = apply_fix(utterance, c).lower().split()
@@ -170,6 +172,13 @@ def candidates(utterance: str, flagged: str, lexicon: list[str], k: int = 5, cut
             if key not in best or best[key].score < sc:
                 best[key] = c
     return sorted(best.values(), key=lambda c: -c.score)[:k]
+
+
+def _echoes_neighbour(toks, a: int, b: int, h_words: list[str], t_words: list[str]) -> bool:
+    """An expansion whose added word sounds like the word just outside the heard span."""
+    added = [w for w in t_words if w not in {x.lower() for x in h_words}]
+    neighbours = [toks[i][0] for i in (a - 1, b + 1) if 0 <= i < len(toks)]
+    return any(similarity(w, n) >= 0.6 for w in added for n in neighbours)
 
 
 def apply_fix(utterance: str, c: Candidate) -> str:
@@ -190,13 +199,17 @@ class RepairResult:
     asked: int  # flagged words that had candidates (one Jev question each)
     latency_ms: int | None
     error: str | None
+    decisions: tuple = ()  # per question, numbers only: picked_candidate, probability, confidence, options
+    proposals: tuple = ()  # per question: (Candidate Jev preferred or None, probability, confidence); not logged
 
 
-def _underlined(flags: list[dict], fixed: set[str]) -> list[dict]:
-    """Unfixed flagged words scoring below the underline band: shown to the radiologist."""
+def _underlined(flags: list[dict], fixed: set[str], picked: set[str] = frozenset()) -> list[dict]:
+    """Unfixed flagged words shown to the radiologist: below the underline band, or any word
+    for which Jev preferred a candidate without enough confidence to apply it."""
     from .jev_questions import WORD_SENSE_BANDS
 
-    return [f for f in flags if f["word"] not in fixed and f["score"] < WORD_SENSE_BANDS["word_sense_underline"]]
+    return [f for f in flags if f["word"] not in fixed
+            and (f["score"] < WORD_SENSE_BANDS["word_sense_underline"] or f["word"] in picked)]
 
 
 def _find_word(sentence: str, word: str) -> str | None:
@@ -261,13 +274,20 @@ async def repair(
                             int((time.perf_counter() - t0) * 1000), type(e).__name__)
     latency_ms = int((time.perf_counter() - t0) * 1000)
     chosen: list[tuple[Candidate, float]] = []
-    fixed_words = set()
+    fixed_words, picked_words, decisions, proposals = set(), set(), [], []
     for q, opts in options_by_q.items():
         a = answers.get(q) or {}
         choice, conf = a.get("choice"), a.get("confidence") or 0.0
+        prob = (a.get("probabilities") or {}).get(choice, 0.0)
+        word = flagged[int(q.split("_")[1])][0]
+        decisions.append({"picked_candidate": choice in opts, "probability": prob, "confidence": conf,
+                          "options": len(opts) + 1})
+        proposals.append((opts.get(choice), prob, conf))
+        if choice in opts:
+            picked_words.add(word)  # Jev preferred a candidate: never dropped silently
         if choice in opts and conf >= WORD_SENSE_BANDS["word_fix_accept"]:
             chosen.append((opts[choice], conf))
-            fixed_words.add(flagged[int(q.split("_")[1])][0])
+            fixed_words.add(word)
     text, last_start = sentence, len(sentence) + 1
     applied = []
     for c, conf in sorted(chosen, key=lambda x: -x[0].start):
@@ -276,4 +296,5 @@ async def repair(
         text = apply_fix(text, c)
         last_start = c.start
         applied.append({"heard": c.heard, "replacement": c.replacement, "confidence": conf})
-    return RepairResult(text, applied, _underlined(flags, fixed_words), len(questions), latency_ms, None)
+    return RepairResult(text, applied, _underlined(flags, fixed_words, picked_words), len(questions), latency_ms, None,
+                        tuple(decisions), tuple(proposals))
