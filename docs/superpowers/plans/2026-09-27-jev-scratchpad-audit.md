@@ -23,3 +23,15 @@ Flag at noul ≤ 0.20 (≥ 0.80 that it is a problem). Unsure (0.20–0.50) esca
 4. `/api/dictation/check`: `RR_AUDIT_CANDIDATE=jev` (lab) → Jev first, escalation, comparison log. Tests.
 5. Lab frontend: tier 2 rides the 600 ms tier-1 call when Jev decides (no 2.5 s wait).
 6. Eval Jev against the baseline; docs.
+
+## Result (2026-09-27) — not adopted; the model tier stays
+
+On the 33 labelled cases (17 planted, 16 clean), same scoring (a flag or its other half overlapping the planted statement):
+
+| Tier 2 | Caught | Clean cases flagged | Stray flags on issue cases | p50 |
+|---|---|---|---|---|
+| Model (STRUCTURE_VALIDATOR, with `other_quote`) | 15/17 | 0/16 | 1 | 301 ms |
+| Jev, band 0.20 (as planned) | 11/17 | 1/16 | 5 | 251 ms |
+| Jev, band 0.35 (tuned on this same set) | 15/17 | 1/16 | 5 | 239 ms |
+
+Code proposes 16/17 planted issues. Jev's side-conflict scores sit just above the line (0.26–0.33); it reads "previously noted effusion has resolved" as contradicting "no pleural effusion" (0.14). Scores also vary between runs (band 0.40 caught fewer than 0.35). The model tier was already sub-second: the lag was the frontend's 2.5 s wait, now removed in the lab. `jev_audit.py` / `audit_candidates.py` stay as a lab experiment, not wired into `/api/dictation/check`; rerun with `scripts/audit_eval.py jev`.
