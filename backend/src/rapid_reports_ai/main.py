@@ -4944,54 +4944,26 @@ async def websocket_transcribe(websocket: WebSocket):
     # Connect to Deepgram WebSocket API with Nova-3 Medical model
     # Using nova-3-medical for optimized medical transcription
     # punctuate=true is required for dictation commands (full stop, new line, etc.) to work
-    # Radiology keyterms — boost recall on terms the model may mishear in dictation
-    radiology_keyterms = [
-        "spiculated", "appendicolith", "periappendiceal", "Bosniak", "hydronephrosis",
-        "haemorrhage", "oedema", "atelectasis", "consolidation", "ground-glass opacity",
-        "pneumothorax", "pleural effusion", "lymphadenopathy", "cardiomegaly",
-        "hepatomegaly", "splenomegaly", "pericardial effusion", "aortic aneurysm",
-        "dissection", "pulmonary embolism", "deep vein thrombosis", "mesenteric ischaemia",
-        "cholecystitis", "choledocholithiasis", "pancreatitis", "appendicitis",
-        "diverticulitis", "intussusception", "volvulus", "ileus", "pneumoperitoneum",
-        "ascites", "retroperitoneal", "mediastinal", "hilar", "subphrenic",
-        "interstitial", "parenchymal", "cortical", "corticomedullary",
-        "nephrolithiasis", "ureterolithiasis", "hydronephrosis", "hydroureter",
-        "sacroiliitis", "spondylolisthesis", "spondylosis", "foraminal stenosis",
-        "canal stenosis", "listhesis", "discitis", "vertebral body",
-    ]
-    keyterm_params = "&".join(
-        f"keyterm={term.replace(' ', '%20')}" for term in radiology_keyterms
-    )
-    pcm_params = f"&encoding=linear16&sample_rate={pcm_sample_rate}&channels=1" if use_pcm else ""
     # Deepgram dictation mode turns spoken punctuation words into symbols. In radiology
     # "colon" is an organ (and "period" is a word), so the lab runs with it off: the polish
     # punctuates anyway, and new line / new paragraph / full stop are handled in our own
     # lexicon. Production keeps the default until the lab shows the timer path is unaffected.
-    dictation_flag = "false" if os.environ.get("DEEPGRAM_DICTATION", "1") == "0" else "true"
+    dictation_on = os.environ.get("DEEPGRAM_DICTATION", "1") != "0"
     # Deepgram returns American spelling even with language=en-GB; its find-and-replace
     # gives British spelling (deepgram_spelling). Off unless DEEPGRAM_UK_SPELLING=1.
-    from rapid_reports_ai.deepgram_spelling import restore_sentence_case, uk_spelling_params
+    from rapid_reports_ai.deepgram_spelling import restore_sentence_case
     uk_spelling = os.environ.get("DEEPGRAM_UK_SPELLING") == "1"
-    uk_params = f"&{uk_spelling_params()}" if uk_spelling else ""
     # Spoken punctuation words and disc levels, converted in code for every path (the
     # context-dependent 'colon' is resolved later, against the scratchpad). Off unless
     # DEEPGRAM_SPOKEN_FORMAT=1.
     from rapid_reports_ai.spoken_format import apply_spoken_format
     spoken_format = os.environ.get("DEEPGRAM_SPOKEN_FORMAT") == "1"
-    deepgram_url = (
-        f"wss://api.deepgram.com/v1/listen"
-        f"?model=nova-3-medical"
-        f"&language=en-GB"
-        f"&smart_format=true"
-        f"&measurements=true"
-        f"&dictation={dictation_flag}"
-        f"&punctuate=true"
-        f"&interim_results=true"
-        f"&endpointing=200"
-        f"&utterance_end_ms=1000"
-        f"{pcm_params}"
-        f"&{keyterm_params}"
-        f"{uk_params}"
+    # Model, language, formatting, keyterms and privacy settings: deepgram_config (tested).
+    from rapid_reports_ai.deepgram_config import deepgram_listen_url
+    deepgram_url = deepgram_listen_url(
+        sample_rate=pcm_sample_rate if use_pcm else None,
+        dictation=dictation_on,
+        uk_spelling=uk_spelling,
     )
     print(f"🎙️ Deepgram mode: {'PCM linear16 @ ' + str(pcm_sample_rate) + ' Hz' if use_pcm else 'auto-detect container'}")
     
@@ -5265,8 +5237,10 @@ async def transcribe_pre_recorded(
             "language": "en-GB",
             "smart_format": "true",
             "measurements": "true",
+            "numerals": "true",
             "dictation": "true",
-            "punctuate": "true"  # Required for dictation commands (full stop, new line, etc.) to work
+            # smart_format enables punctuation (Deepgram docs); commands verified without punctuate
+            "mip_opt_out": "true",  # not in Deepgram's Model Improvement Program (patient audio)
         }
         headers = {
             "Authorization": f"Token {deepgram_api_key}",
