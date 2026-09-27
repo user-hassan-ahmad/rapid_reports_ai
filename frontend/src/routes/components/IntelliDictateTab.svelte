@@ -353,6 +353,12 @@ import { pillState } from '$lib/dictation-lab/coverage';
 			scratchpadRef?.setIntegrityRanges([]);
 			return;
 		}
+		// Lab: the model check (~0.6 s p50 on the labelled audit cases) rides the 600 ms call,
+		// so a flag lands ~1.2 s after a pause instead of 2.5 s + model. Production: unchanged.
+		if (labConfig) {
+			integrityTimer = setTimeout(() => runIntegrityCheck(content, true), 600);
+			return;
+		}
 		integrityTimer = setTimeout(() => runIntegrityCheck(content), 600);
 		semanticTimer = setTimeout(() => runIntegrityCheck(content, true), 2500);
 	}
