@@ -158,3 +158,19 @@ def test_deepgram_confidence_by_route_and_reason():
 
 def test_no_deepgram_confidence_means_no_asr_section():
     assert summarise(S1["decisions"], [])["asr"] == {}
+
+
+def test_polish_time_and_tokens_by_kind():
+    decs = [{**_dec(1, "polish"), "polish_kind": "lean", "polish_ms": 280, "polish_tokens_in": 400, "polish_tokens_out": 30},
+            {**_dec(2, "polish"), "polish_kind": "lean", "polish_ms": 300, "polish_tokens_in": 420, "polish_tokens_out": 40},
+            {**_dec(3, "polish"), "polish_kind": "full", "polish_ms": 700, "polish_tokens_in": 1500, "polish_tokens_out": 300},
+            _dec(4, "fast_append")]
+    s = summarise(decs, [])
+    assert s["polish_by_kind"]["lean"] == {"n": 2, "ms_p50": 280, "tokens_in": 820, "tokens_out": 70}
+    assert s["polish_by_kind"]["full"]["n"] == 1 and s["polish_by_kind"]["full"]["tokens_in"] == 1500
+    assert "lean" in format_report(report([("s.json", _session(decs, []))]))
+
+
+def test_older_records_without_a_kind_count_as_full():
+    s = summarise([_dec(1, "polish")], [])
+    assert s["polish_by_kind"]["full"]["n"] == 1 and s["polish_by_kind"]["full"]["tokens_in"] is None

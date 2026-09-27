@@ -80,7 +80,27 @@ def summarise(decisions: list[dict[str, Any]], outcomes: list[dict[str, Any]]) -
         "polish_ms_p50": quantile(polish_ms, 0.5) if polish_ms else None,
         "qsets": sorted({d["qset"] for d in decisions if d.get("qset")}),
         "asr": _asr_by_reason(decisions),
+        "polish_by_kind": _polish_by_kind(decisions),
     }
+
+
+def _polish_by_kind(decisions: list[dict[str, Any]]) -> dict[str, Any]:
+    """Polish time and tokens per kind: 'full' (today's rewrite) or 'lean' (raced span).
+    Records from before racing carry no kind: they were full polishes."""
+    out: dict[str, Any] = {}
+    for d in decisions:
+        if not d.get("polish_called"):
+            continue
+        k = d.get("polish_kind") or "full"
+        out.setdefault(k, []).append(d)
+    res = {}
+    for k, ds in sorted(out.items()):
+        ms = [int(d["polish_ms"]) for d in ds if d.get("polish_ms") is not None]
+        tin = [d["polish_tokens_in"] for d in ds if d.get("polish_tokens_in") is not None]
+        tout = [d["polish_tokens_out"] for d in ds if d.get("polish_tokens_out") is not None]
+        res[k] = {"n": len(ds), "ms_p50": quantile(ms, 0.5) if ms else None,
+                  "tokens_in": sum(tin) if tin else None, "tokens_out": sum(tout) if tout else None}
+    return res
 
 
 # Descriptive only: where Deepgram's lowest word confidence sits for each routing reason.
@@ -166,6 +186,8 @@ def _fmt_summary(title: str, s: dict[str, Any]) -> list[str]:
         lines.append(f"  {r:<12} n={row['n']:<4} undo {fmt_rate(row['undo'])}  edit {fmt_rate(row['edit'])}"
                      f"  re-dictated {fmt_rate(row['redictate'])}")
         lines.append(f"  {'':<12} reasons {row['reasons']}")
+    for kind, p in s.get("polish_by_kind", {}).items():
+        lines.append(f"  polish {kind:<5} n={p['n']:<4} p50 {p['ms_p50']} ms  tokens in/out {p['tokens_in']}/{p['tokens_out']}")
     for reason, a in s.get("asr", {}).items():
         lines.append(f"  asr {reason:<34} n={a['n']:<4} median min word conf {a['median_min_conf']:.2f}"
                      f"  below {ASR_LOW}: {fmt_rate(a['below_0_8'])}")
