@@ -27,7 +27,10 @@ export interface LabConfig {
 	pillThresholds: PillThresholds;
 	frontDoor: FrontDoor; // 'timer' = Deepgram silence timers (production); 'jev' = boundary classifier;
 	// 'decision' = decision-first live: Jev bundle per final, fast-append + band router (step 5)
+	polish: PolishStrategy; // decision-first only: 'race' fires a lean scoped polish together with Jev
 }
+
+export type PolishStrategy = 'full' | 'race';
 
 export type FrontDoor = 'timer' | 'jev' | 'decision';
 export type Boundary = 'complete' | 'continues' | 'command';

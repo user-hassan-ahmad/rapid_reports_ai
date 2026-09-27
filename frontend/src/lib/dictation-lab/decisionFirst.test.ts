@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
 	asrFields,
 	commandInsert,
+	committedEditChanges,
+	splitSpan,
 	openStatement,
 	separatorFor,
 	substituteLast,
@@ -189,5 +191,65 @@ describe('openStatement', () => {
 	it('is the whole text when nothing has ended yet', () => {
 		expect(openStatement('There are five lumbar type')).toBe('There are five lumbar type');
 		expect(openStatement('')).toBe('');
+	});
+});
+
+describe('splitSpan', () => {
+	it('takes the last two sentences as the span and earlier text as context', () => {
+		const solid = 'The lungs are clear. No effusion. The heart is normal. There is a';
+		const s = splitSpan(solid);
+		expect(s.span).toBe('The heart is normal. There is a');
+		expect(s.context).toBe('The lungs are clear. No effusion.');
+		expect(solid.slice(s.spanFrom)).toBe(s.span);
+	});
+	it('never reaches back past a line break', () => {
+		const solid = 'Findings above.\n\nL3/4 There is mild desiccation';
+		const s = splitSpan(solid);
+		expect(s.span).toBe('L3/4 There is mild desiccation');
+		expect(s.context).toBe('Findings above.');
+	});
+	it('does not split on a decimal point', () => {
+		expect(splitSpan('A 4.5 mm nodule. It is stable').span).toBe('A 4.5 mm nodule. It is stable');
+	});
+	it('is empty after a paragraph break, with the previous text as context', () => {
+		const s = splitSpan('No effusion.\n\n');
+		expect(s.span).toBe('');
+		expect(s.spanFrom).toBe('No effusion.\n\n'.length);
+		expect(s.context).toBe('No effusion.');
+	});
+	it('keeps at most 600 characters of context', () => {
+		const long = 'Word word word. '.repeat(100) + 'A. B.';
+		expect(splitSpan(long).context.length).toBeLessThanOrEqual(600);
+	});
+});
+
+describe('committedEditChanges', () => {
+	it('replaces an original found exactly once before the span', () => {
+		const doc = 'The appendix measures 11 mm. No gas. The rest.';
+		expect(committedEditChanges(doc, 36, [{ original: 'measures 11 mm', corrected: 'measures 12 mm' }])).toEqual([
+			{ from: 13, to: 27, insert: 'measures 12 mm' }
+		]);
+	});
+	it('skips an original that is missing, repeated, or inside the span', () => {
+		const doc = 'No gas. No gas. Tail.';
+		expect(committedEditChanges(doc, 16, [{ original: 'No gas.', corrected: 'x' }])).toEqual([]);
+		expect(committedEditChanges(doc, 16, [{ original: 'absent', corrected: 'x' }])).toEqual([]);
+		expect(committedEditChanges(doc, 5, [{ original: 'Tail.', corrected: 'x' }])).toEqual([]);
+	});
+});
+
+describe('committedEditChanges, overlaps', () => {
+	it('keeps the first of two overlapping edits and returns them sorted', () => {
+		const doc = 'Left kidney 9 mm cyst. Spleen 11 cm. Tail.';
+		expect(
+			committedEditChanges(doc, 36, [
+				{ original: 'Spleen 11 cm', corrected: 'Spleen 13 cm' },
+				{ original: 'kidney 9 mm', corrected: 'kidney 10 mm' },
+				{ original: '9 mm cyst', corrected: '9 mm lesion' }
+			])
+		).toEqual([
+			{ from: 5, to: 16, insert: 'kidney 10 mm' },
+			{ from: 23, to: 35, insert: 'Spleen 13 cm' }
+		]);
 	});
 });

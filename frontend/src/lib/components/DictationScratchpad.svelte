@@ -17,7 +17,9 @@
 		asrFields,
 		changedRange,
 		commandInsert,
+		committedEditChanges,
 		openStatement,
+		splitSpan,
 		hash8,
 		isRedictation,
 		separatorFor,
@@ -731,13 +733,92 @@
 		}
 	}
 
+	/** Racing (lab switch): the lean scoped polish, fired together with the bundle. */
+	interface LeanResult {
+		data: {
+			active_scratchpad: string;
+			committed_edits: { original: string; corrected: string }[];
+			skipped: boolean;
+			usage: { input_tokens?: number; output_tokens?: number } | null;
+			error: string | null;
+		} | null;
+		error: string | null;
+		ms: number;
+	}
+	async function askLean(split: { context: string; span: string }, chunk: string): Promise<LeanResult> {
+		const t0 = performance.now();
+		try {
+			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+			if ($token) headers['Authorization'] = `Bearer ${$token}`;
+			const res = await fetch(`${API_URL}/api/canvas/polish-span`, {
+				method: 'POST',
+				headers,
+				body: JSON.stringify({ scan_type: scanType, context: split.context, span: split.span, new: chunk })
+			});
+			const ms = Math.round(performance.now() - t0);
+			if (!res.ok) return { data: null, error: `http ${res.status}`, ms };
+			return { data: await res.json(), error: null, ms };
+		} catch (e) {
+			return { data: null, error: (e as Error).name, ms: Math.round(performance.now() - t0) };
+		}
+	}
+	function racing(): boolean {
+		return labConfig?.polish === 'race' && polishMode === 'clean';
+	}
+
+	/** Apply a raced lean polish to its span: [span start, end of this final's faded text].
+	 *  Returns why it could not, so the caller falls back to the full polish. */
+	function applyLean(
+		lean: LeanResult,
+		split: { span: string; spanFrom: number },
+		solid0: string,
+		chunk: string,
+		rec: DecisionRecord
+	): string | null {
+		if (!editor) return 'no_editor';
+		if (!lean.data) return `lean_${lean.error ?? 'error'}`;
+		if (lean.data.skipped) return 'lean_skipped';
+		if (lean.data.error) return `lean_${lean.data.error}`;
+		if (isProcessingQueue || utteranceQueue.length > 0) return 'full_polish_in_flight';
+		const pend = firstPendingRange();
+		const doc = editor.state.doc.toString();
+		if (!pend || doc.slice(pend.from, pend.to).trim() !== chunk.trim()) return 'pending_moved';
+		if (doc.slice(0, pend.from) !== solid0) return 'span_changed';
+		const out = lean.data.active_scratchpad;
+		const insert = (split.span ? '' : separatorFor(solid0, out, false)) + out;
+		const edits = committedEditChanges(doc, split.spanFrom, lean.data.committed_edits ?? []);
+		isQwenWriting = true;
+		editor.dispatch({
+			changes: [...edits, { from: split.spanFrom, to: pend.to, insert }],
+			effects: clearPending.of({ from: split.spanFrom, to: pend.to })
+		});
+		isQwenWriting = false;
+		// Undo restores the span as it was (committed edits, if any, stay: they were asked for).
+		const shift = edits.reduce((n, e) => n + e.insert.length - (e.to - e.from), 0);
+		const from = split.spanFrom + shift;
+		const r = changedRange(split.span, insert);
+		track({
+			id: rec.id, route: 'polish', at: Date.now(), from: from + r.from, to: from + r.to, before: r.before,
+			lineOpenBefore: false, tokens: tokenSet(chunk), intact: true, edited: false, redictated: false
+		});
+		rec.polish_kind = 'lean';
+		rec.polish_ms = lean.ms;
+		rec.polish_tokens_in = lean.data.usage?.input_tokens ?? null;
+		rec.polish_tokens_out = lean.data.usage?.output_tokens ?? null;
+		return null;
+	}
+
 	async function decideUtterance(chunk: string, arrivedAt: number, asr: AsrFields | null): Promise<void> {
 		if (!editor) return;
 		noteRedictation(chunk, Date.now());
 		const pend0 = firstPendingRange();
 		const doc0 = editor.state.doc.toString();
+		const solid0 = doc0.slice(0, pend0 ? pend0.from : doc0.length);
 		const t0 = performance.now();
-		const { data, error } = await askBundle(chunk, doc0.slice(0, pend0 ? pend0.from : doc0.length), asr);
+		// Racing: the lean polish starts now, alongside the bundle; Jev's route decides whether it is used.
+		const split = racing() ? splitSpan(solid0) : null;
+		const leanP = split ? askLean(split, chunk) : null;
+		const { data, error } = await askBundle(chunk, solid0, asr);
 		const roundtrip = Math.round(performance.now() - t0);
 		if (!editor) return;
 
@@ -840,10 +921,20 @@
 			emitDecision(rec, chunk);
 			return;
 		}
-		// polish: today's path. The open line closes (the polish rewrites the scratchpad).
+		// polish. Racing: use the lean result already in flight; otherwise (or if it cannot be
+		// applied) today's full polish. The open line closes either way.
 		rec.route = 'polish';
 		rec.polish_called = true;
 		closeLine('polish');
+		if (split && leanP) {
+			const why = applyLean(await leanP, split, solid0, chunk, rec);
+			if (why === null) {
+				emitDecision(rec, chunk);
+				processReview();
+				return;
+			}
+			rec.reason = `${rec.reason}; full:${why}`;
+		}
 		emitDecision(rec, chunk);
 		enqueueUtterance(data?.clean_text || chunk, rec.id);
 	}

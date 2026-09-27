@@ -8,7 +8,8 @@ export const DEFAULT_LAB_CONFIG: LabConfig = {
 	showBoth: true,
 	coverageDebug: true,
 	pillThresholds: { hi: 0.8, lo: 0.4 },
-	frontDoor: 'timer'
+	frontDoor: 'timer',
+	polish: 'full'
 };
 const STRATEGIES: Strategy[] = ['shadow', 'route:jev', 'route:qwen'];
 const FRONT_DOORS: FrontDoor[] = ['timer', 'jev', 'decision'];
@@ -48,7 +49,8 @@ export function loadLabConfig(store: Storage | undefined = storage()): LabConfig
 					showBoth: p.showBoth,
 					coverageDebug: p.coverageDebug,
 					pillThresholds: { hi: pt.hi, lo: pt.lo },
-					frontDoor: p.frontDoor
+					frontDoor: p.frontDoor,
+					polish: p.polish === 'race' ? 'race' : 'full' // absent in older saved configs
 				}
 			: { ...DEFAULT_LAB_CONFIG };
 	} catch {

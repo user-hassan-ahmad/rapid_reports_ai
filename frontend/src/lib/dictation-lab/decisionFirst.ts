@@ -107,6 +107,51 @@ export function openStatement(solid: string): string {
 	return text.slice(start).trim();
 }
 
+/** Racing: the part of the scratchpad the lean polish may rewrite. The last `n` sentences
+ *  of the current line (never across a line break), plus up to `maxContext` characters of
+ *  frozen text before it. Chosen by code because the polish is fired before Jev answers. */
+export function splitSpan(
+	solid: string,
+	n = 2,
+	maxContext = 600
+): { context: string; span: string; spanFrom: number } {
+	const lineStart = solid.lastIndexOf('\n') + 1;
+	const line = solid.slice(lineStart);
+	const starts = [0];
+	const re = /[.?!:](?!\d)["')\]]*\s+/g;
+	for (let m = re.exec(line); m; m = re.exec(line)) {
+		const next = m.index + m[0].length;
+		if (next < line.length) starts.push(next);
+	}
+	const spanFrom = lineStart + starts[Math.max(0, starts.length - n)];
+	return {
+		context: solid.slice(Math.max(0, spanFrom - maxContext), spanFrom).trim(),
+		span: solid.slice(spanFrom),
+		spanFrom
+	};
+}
+
+/** A lean polish's corrections to frozen text, as editor changes: only where the original
+ *  occurs exactly once before `before` (the span start); anything else is skipped. */
+export function committedEditChanges(
+	doc: string,
+	before: number,
+	edits: { original: string; corrected: string }[]
+): { from: number; to: number; insert: string }[] {
+	const region = doc.slice(0, before);
+	const out: { from: number; to: number; insert: string }[] = [];
+	for (const e of edits) {
+		if (!e.original) continue;
+		const i = region.indexOf(e.original);
+		if (i < 0 || region.indexOf(e.original, i + 1) >= 0) continue;
+		const c = { from: i, to: i + e.original.length, insert: e.corrected };
+		// the editor rejects overlapping changes: the first edit given wins
+		if (out.some((o) => c.from < o.to && o.from < c.to)) continue;
+		out.push(c);
+	}
+	return out.sort((a, b) => a.from - b.from);
+}
+
 /** What goes between the solid scratchpad and a fast-appended utterance. Dictation
  *  continues the text: a finished sentence is not a new line (the open-line close only
  *  tells Jev a statement ended). New lines come from commands, as the radiologist says them. */

@@ -12,7 +12,8 @@ import type { LabConfig } from './types';
 const base: Omit<LabConfig, 'strategy' | 'threshold' | 'showBoth'> = {
 	coverageDebug: true,
 	pillThresholds: { hi: 0.8, lo: 0.4 },
-	frontDoor: 'timer'
+	frontDoor: 'timer',
+	polish: 'full'
 };
 
 describe('toRequestFields', () => {
@@ -63,7 +64,8 @@ describe('persistence', () => {
 			showBoth: true,
 			coverageDebug: false,
 			pillThresholds: { hi: 0.9, lo: 0.3 },
-			frontDoor: 'jev'
+			frontDoor: 'jev',
+			polish: 'full'
 		};
 		saveLabConfig(cfg, fake);
 		expect(loadLabConfig(fake)).toEqual(cfg);
@@ -91,6 +93,21 @@ describe('persistence', () => {
 		const cfg: LabConfig = { ...DEFAULT_LAB_CONFIG, frontDoor: 'decision' };
 		saveLabConfig(cfg, fake);
 		expect(loadLabConfig(fake)).toEqual(cfg);
+	});
+	it('round-trips the racing polish switch, and older saved configs default to full', () => {
+		const mem: Record<string, string> = {};
+		const fake = {
+			getItem: (k: string) => mem[k] ?? null,
+			setItem: (k: string, v: string) => {
+				mem[k] = v;
+			}
+		} as unknown as Storage;
+		const cfg: LabConfig = { ...DEFAULT_LAB_CONFIG, frontDoor: 'decision', polish: 'race' };
+		saveLabConfig(cfg, fake);
+		expect(loadLabConfig(fake)).toEqual(cfg);
+		const { polish: _drop, ...old } = cfg;
+		mem['rr_lab_config'] = JSON.stringify(old);
+		expect(loadLabConfig(fake).polish).toBe('full');
 	});
 	it('exposes a store seeded from defaults', () => {
 		expect(get(labConfig)).toEqual(DEFAULT_LAB_CONFIG);

@@ -299,6 +299,18 @@
 				</label>
 			{/each}
 		</div>
+		{#if $labConfig.frontDoor === 'decision'}
+			<div class="flex flex-wrap gap-3">
+				<span class="text-gray-400">polish</span>
+				{#each [['full', 'full rewrite (today)'], ['race', 'lean span, raced with Jev']] as [value, label]}
+					<label class="flex items-center gap-1">
+						<input type="radio" bind:group={$labConfig.polish} {value} />
+						{label}
+					</label>
+				{/each}
+				<span class="text-gray-500 text-xs">(race: Verbatim mode only)</span>
+			</div>
+		{/if}
 		<label class="flex items-center gap-2">
 			<input type="checkbox" bind:checked={$labConfig.showBoth} />
 			show both candidates (triage_debug)
@@ -338,7 +350,7 @@
 						{#if d.rec.standalone != null}<span class="tabular-nums text-gray-500">sa {d.rec.standalone.toFixed(2)}</span>{/if}
 						{#if d.rec.asr_min_conf != null}<span class="tabular-nums {d.rec.asr_min_conf < 0.8 ? 'text-orange-300' : 'text-gray-500'}" title="lowest Deepgram word confidence">asr {d.rec.asr_min_conf.toFixed(2)}</span>{/if}
 						<span class="tabular-nums text-gray-500">{d.rec.latency_ms ?? '—'} ms</span>
-						{#if d.rec.polish_ms != null}<span class="tabular-nums text-amber-200/70">polish {d.rec.polish_ms} ms</span>{/if}
+						{#if d.rec.polish_ms != null}<span class="tabular-nums text-amber-200/70">{d.rec.polish_kind ?? 'polish'} {d.rec.polish_ms} ms{d.rec.polish_tokens_in != null ? ` · ${d.rec.polish_tokens_in}+${d.rec.polish_tokens_out ?? 0} tok` : ''}</span>{/if}
 						{#if d.rec.line_closed_by}<span class="text-violet-300">⏎ {d.rec.line_closed_by}</span>{/if}
 						{#if k}{#each [...k] as kind}<span class="text-red-300">{kind}</span>{/each}{/if}
 						{#if d.rec.error}<span class="text-red-300">{d.rec.error}</span>{/if}
