@@ -16,7 +16,9 @@
 		REDICTATE_WINDOW_MS,
 		asrFields,
 		changedRange,
+		applyAsrFixes,
 		commandInsert,
+		flagRanges,
 		committedEditChanges,
 		isUnfinishedCorrection,
 		jevContext,
@@ -148,6 +150,29 @@
 		},
 		provide: (f) => EditorView.decorations.from(f)
 	});
+
+	// Word-sense spotter (lab): words Jev says make no clinical sense as heard and that no
+	// fix was found for, underlined so the radiologist checks them. Mapped through edits.
+	const markAsrFlag = StateEffect.define<{ from: number; to: number }>();
+	const asrFlagField = StateField.define<DecorationSet>({
+		create: () => Decoration.none,
+		update(deco, tr) {
+			deco = deco.map(tr.changes);
+			for (const e of tr.effects) {
+				if (e.is(markAsrFlag)) {
+					deco = deco.update({ add: [Decoration.mark({ class: 'cm-asr-flag' }).range(e.value.from, e.value.to)] });
+				}
+			}
+			return deco;
+		},
+		provide: (f) => EditorView.decorations.from(f)
+	});
+	function underlineFlags(at: number, text: string, flags: { word: string }[] | undefined): number {
+		if (!editor || !flags?.length) return 0;
+		const ranges = flagRanges(text, flags).map((r) => markAsrFlag.of({ from: at + r.from, to: at + r.to }));
+		if (ranges.length) editor.dispatch({ effects: ranges });
+		return ranges.length;
+	}
 
 	let editorContainer: HTMLDivElement;
 	let editor: EditorView | null = null;
@@ -785,7 +810,8 @@
 		solid0: string,
 		utterance: string,
 		to: number,
-		rec: DecisionRecord
+		rec: DecisionRecord,
+		asr: { fixes?: { heard: string; replacement: string }[]; flags?: { word: string }[] } = {}
 	): string | null {
 		if (!editor) return 'no_editor';
 		if (!lean.data) return `lean_${lean.error ?? 'error'}`;
@@ -797,7 +823,8 @@
 		if (doc.slice(0, solid0.length) !== solid0) return 'span_changed';
 		if (to <= solid0.length || norm(doc.slice(solid0.length, to)) !== norm(utterance)) return 'pending_moved';
 		const pend = { to };
-		const out = lean.data.active_scratchpad;
+		// Word-sense fixes apply to the polish's output too, where the heard words survived it.
+		const out = applyAsrFixes(lean.data.active_scratchpad, asr.fixes ?? []);
 		const insert = (split.span ? '' : separatorFor(solid0, out, false)) + out;
 		const edits = committedEditChanges(doc, split.spanFrom, lean.data.committed_edits ?? []);
 		isQwenWriting = true;
@@ -811,6 +838,7 @@
 			id: rec.id, route: 'polish', at: Date.now(), from: from + r.from, to: from + r.to, before: r.before,
 			lineOpenBefore: false, tokens: tokenSet(utterance), intact: true, edited: false, redictated: false
 		});
+		rec.asr_flag_count = underlineFlags(from, insert, asr.flags);
 		rec.polish_kind = 'lean';
 		rec.polish_ms = lean.ms;
 		rec.polish_tokens_in = lean.data.usage?.input_tokens ?? null;
@@ -897,6 +925,9 @@
 			closes_line: false,
 			line_closed_by: null,
 			error: data?.error ?? error,
+			asr_fix_count: data?.asr_fixes?.length ?? 0,
+			asr_flag_count: 0,
+			repair_ms: data?.repair_ms ?? null,
 			asr_conf: asr?.asr_conf ?? null,
 			asr_min_conf: asr?.asr_min_conf ?? null,
 			asr_word_confs: asr?.asr_word_confs ?? null
@@ -942,6 +973,7 @@
 				openLineDecisionId = rec.id;
 				armLineTimers(data.close_on_silence, data.line_close, arrivedAt);
 			}
+			if (route === 'fast_append') rec.asr_flag_count = underlineFlags(pend.from, insert, data.asr_flags);
 			emitDecision(rec, chunk);
 			processReview();
 			return;
@@ -970,7 +1002,10 @@
 		if (split && leanP) {
 			const own = rangeId !== null ? (chunkRanges.get(rangeId) ?? null) : null;
 			const to = own && own.to > own.from ? own.to : (firstPendingRange()?.to ?? -1);
-			const why = applyLean(await leanP, split, solid0, utterance, to, rec);
+			const why = applyLean(await leanP, split, solid0, utterance, to, rec, {
+				fixes: data?.asr_fixes,
+				flags: data?.asr_flags
+			});
 			if (why === null) {
 				emitDecision(rec, chunk);
 				processReview();
@@ -1383,6 +1418,7 @@
 					integrityField,
 					pendingField,
 					autoField,
+					asrFlagField,
 					EditorView.updateListener.of((update) => {
 				if (update.docChanged && decisionFirst() && affected.length) trackChanges(update, !isQwenWriting);
 				if (update.docChanged && chunkRanges.size) {
@@ -1655,6 +1691,13 @@
 	   swaps it for solid text, so it never reads as final. */
 	:global(.cm-dictation-pending) {
 		opacity: 0.45;
+	}
+
+	/* Word-sense spotter: a word that makes no clinical sense as heard, left for the radiologist. */
+	:global(.cm-asr-flag) {
+		text-decoration: underline wavy rgba(250, 204, 21, 0.9);
+		text-decoration-skip-ink: none;
+		text-underline-offset: 3px;
 	}
 
 	/* Decision-first: text an automatic action wrote, marked while it can be undone. */

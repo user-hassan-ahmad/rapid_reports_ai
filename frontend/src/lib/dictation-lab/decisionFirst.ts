@@ -36,6 +36,9 @@ export interface BundleRouteResponse {
 	latency_ms: number | null;
 	error: string | null;
 	qset: string;
+	asr_fixes?: { heard: string; replacement: string; confidence: number }[];
+	asr_flags?: { word: string; score: number }[];
+	repair_ms?: number | null;
 }
 
 /** One routed utterance. No text. */
@@ -56,6 +59,9 @@ export interface DecisionRecord {
 	polish_called: boolean;
 	polish_ms?: number | null; // the polish call this decision caused, when one ran
 	polish_kind?: 'full' | 'lean' | null; // which polish produced the text (racing: lean)
+	asr_fix_count?: number; // word-sense fixes applied to this line
+	asr_flag_count?: number; // words underlined as not making clinical sense
+	repair_ms?: number | null; // the chained word-fix call, when one ran
 	polish_tokens_in?: number | null;
 	polish_tokens_out?: number | null;
 	// Deepgram's confidences for this final (mic only; null from the feeder). Recorded for
@@ -135,6 +141,34 @@ export function isUnfinishedCorrection(text: string): boolean {
 	if (last < 0) return false;
 	const after = text.slice(last).replace(/^[\s,.:;]+/, '');
 	return !/[.?!]|\n/.test(after);
+}
+
+function escapeRe(s: string): string {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Word-sense fixes from /bundle, applied to text about to be written (fast-append, or the
+ *  lean polish's output): whole words only, capital kept; a no-op when the polish already
+ *  changed the heard words. */
+export function applyAsrFixes(text: string, fixes: { heard: string; replacement: string }[]): string {
+	let out = text;
+	for (const f of fixes) {
+		const re = new RegExp(`\\b${escapeRe(f.heard)}\\b`, 'gi');
+		out = out.replace(re, (m) => (m[0] === m[0].toUpperCase() ? f.replacement[0].toUpperCase() + f.replacement.slice(1) : f.replacement));
+	}
+	return out;
+}
+
+/** Where to underline each flagged word in `text`: its last whole-word occurrence. */
+export function flagRanges(text: string, flags: { word: string }[]): { from: number; to: number }[] {
+	const out: { from: number; to: number }[] = [];
+	for (const f of flags) {
+		const re = new RegExp(`\\b${escapeRe(f.word)}\\b`, 'gi');
+		let last: RegExpExecArray | null = null;
+		for (let m = re.exec(text); m; m = re.exec(text)) last = m;
+		if (last) out.push({ from: last.index, to: last.index + last[0].length });
+	}
+	return out;
 }
 
 /** Racing: the part of the scratchpad the lean polish may rewrite. The last `n` sentences

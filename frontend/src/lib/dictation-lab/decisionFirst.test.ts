@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+	applyAsrFixes,
 	asrFields,
+	flagRanges,
 	commandInsert,
 	committedEditChanges,
 	isUnfinishedCorrection,
@@ -294,5 +296,27 @@ describe('isUnfinishedCorrection', () => {
 	it('ignores text with no correction cue', () => {
 		expect(isUnfinishedCorrection('There is a small left pleural')).toBe(false);
 		expect(isUnfinishedCorrection('No pneumothorax')).toBe(false);
+	});
+});
+
+describe('word-sense fixes and flags in written text', () => {
+	it('applies a fix to a whole word, keeping the capital', () => {
+		expect(applyAsrFixes('Renal glands are normal. The renal glands too.', [{ heard: 'renal', replacement: 'adrenal' }])).toBe(
+			'Adrenal glands are normal. The adrenal glands too.'
+		);
+	});
+	it('never touches part of a longer word', () => {
+		expect(applyAsrFixes('The adrenal glands are normal.', [{ heard: 'renal', replacement: 'adrenal' }])).toBe(
+			'The adrenal glands are normal.'
+		);
+	});
+	it('does nothing when the heard words are no longer there (the polish changed them)', () => {
+		expect(applyAsrFixes('No paraspinal abnormality.', [{ heard: 'varospinal', replacement: 'paraspinal' }])).toBe(
+			'No paraspinal abnormality.'
+		);
+	});
+	it('finds the last whole-word occurrence of each flagged word', () => {
+		expect(flagRanges('the meshes and the meshes', [{ word: 'meshes' }])).toEqual([{ from: 19, to: 25 }]);
+		expect(flagRanges('the thyroid gland', [{ word: 'roid' }])).toEqual([]);
 	});
 });
