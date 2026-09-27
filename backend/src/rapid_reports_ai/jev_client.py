@@ -24,6 +24,19 @@ logger = logging.getLogger(__name__)
 
 JEV_MODEL = "typesafe/jev-1.13"  # pinned; jev-latest redirects and would drift mid-pilot
 JEV_URL = "https://openrouter.ai/api/v1/systemone"
+# TypeSafe direct (RR_JEV_ROUTE=direct + JEV_API_KEY): ~25 ms faster at p50 than OpenRouter,
+# same answers (A/B 2026-09-27). Same model, versioned name. Default stays OpenRouter:
+# going direct changes the sub-processor story in the pre-launch governance item.
+JEV_DIRECT_URL = "https://api.typesafe.ai/v1/systemone"
+JEV_DIRECT_MODEL = "jev-1.13.0"
+
+
+def _route(body: dict[str, Any], api_key: str) -> tuple[str, dict[str, Any], str]:
+    direct_key = os.environ.get("JEV_API_KEY", "")
+    if os.environ.get("RR_JEV_ROUTE") == "direct" and direct_key:
+        model = JEV_DIRECT_MODEL if body.get("model") == JEV_MODEL else body.get("model")
+        return JEV_DIRECT_URL, {**body, "model": model}, direct_key
+    return JEV_URL, body, api_key
 WARM_UP_TIMEOUT_S = 5.0
 LIMITS = httpx.Limits(max_connections=20, max_keepalive_connections=20, keepalive_expiry=60.0)
 
@@ -55,11 +68,12 @@ async def jev_post(
     timeout_s: float,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> httpx.Response:
+    url, body, api_key = _route(body, api_key)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     if transport is not None or _fresh_per_request():
         async with _build_client(transport) as client:
-            return await client.post(JEV_URL, json=body, headers=headers, timeout=timeout_s)
-    return await shared_client().post(JEV_URL, json=body, headers=headers, timeout=timeout_s)
+            return await client.post(url, json=body, headers=headers, timeout=timeout_s)
+    return await shared_client().post(url, json=body, headers=headers, timeout=timeout_s)
 
 
 async def warm_up(api_key: str | None = None) -> int | None:

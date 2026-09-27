@@ -168,3 +168,48 @@ async def test_all_four_callers_share_one_client(built):
         await call()
         await call()
     assert len(made) == 1
+
+
+# --- route setting: OpenRouter (default) or TypeSafe direct --------------------------------
+
+import json as _json
+
+import httpx as _httpx
+
+from rapid_reports_ai import jev_client as _jc
+
+
+def _capture():
+    seen = {}
+
+    def handler(request):
+        seen["url"] = str(request.url)
+        seen["auth"] = request.headers["Authorization"]
+        seen["body"] = _json.loads(request.content)
+        return _httpx.Response(200, json={"answers": {}})
+    return seen, _httpx.MockTransport(handler)
+
+
+async def test_default_route_is_openrouter(monkeypatch):
+    monkeypatch.delenv("RR_JEV_ROUTE", raising=False)
+    seen, t = _capture()
+    await _jc.jev_post({"model": _jc.JEV_MODEL, "state": {}, "questions": {}}, "or-key", 2.0, t)
+    assert seen["url"] == "https://openrouter.ai/api/v1/systemone"
+    assert seen["auth"] == "Bearer or-key" and seen["body"]["model"] == "typesafe/jev-1.13"
+
+
+async def test_direct_route_uses_typesafe_url_key_and_model_name(monkeypatch):
+    monkeypatch.setenv("RR_JEV_ROUTE", "direct")
+    monkeypatch.setenv("JEV_API_KEY", "ts-key")
+    seen, t = _capture()
+    await _jc.jev_post({"model": _jc.JEV_MODEL, "state": {}, "questions": {}}, "or-key", 2.0, t)
+    assert seen["url"] == "https://api.typesafe.ai/v1/systemone"
+    assert seen["auth"] == "Bearer ts-key" and seen["body"]["model"] == "jev-1.13.0"
+
+
+async def test_direct_without_its_key_stays_on_openrouter(monkeypatch):
+    monkeypatch.setenv("RR_JEV_ROUTE", "direct")
+    monkeypatch.delenv("JEV_API_KEY", raising=False)
+    seen, t = _capture()
+    await _jc.jev_post({"model": _jc.JEV_MODEL, "state": {}, "questions": {}}, "or-key", 2.0, t)
+    assert seen["url"] == "https://openrouter.ai/api/v1/systemone"
