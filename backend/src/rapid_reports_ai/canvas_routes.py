@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time as _time
 import uuid
 from pathlib import Path
@@ -24,7 +25,8 @@ from .dictation_triage import (
 )
 from .dictation_triage_labels import agrees, derive_action
 from .dictation_triage_router import route as triage_route_decision
-from .fast_append import code_route, route_bundle
+from .fast_append import clean_verbatim, code_route, route_bundle
+from .spoken_format import format_heading_lines
 from .lean_polish import LEAN_SYSTEM_PROMPT, LEAN_USER_TEMPLATE
 from .jev_questions import FAST_APPEND_BANDS, QSET_VERSION, ROUTE_THRESHOLD_DEFAULT
 from .utterance_bundle import BundleDecision, BundleState, get_jev_bundle
@@ -1424,6 +1426,24 @@ class PolishSpanResponse(BaseModel):
     error: Optional[str] = None
 
 
+def _words(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", text.lower()))
+
+
+def _drop_repeated_correction(active: str, new: str) -> str:
+    """When the correction went to an earlier line (a committed_edit), the model sometimes
+    also appends the new words as a sentence (lab 2026-09-27: 14 → 15 mm edited AND "The
+    common bile duct measures 15 millimetres." added, 3/3 runs, prompt rule ignored). Drop
+    the last sentence when it repeats the new words (word overlap ≥ 0.7)."""
+    parts = re.split(r"(?<=[.?!])\s+", active.rstrip())
+    last, nw = _words(parts[-1]), _words(new)
+    if len(parts) < 2 or not last or not nw:
+        return active
+    if len(last & nw) / len(last | nw) >= 0.7:
+        return active.rstrip()[: len(active.rstrip()) - len(parts[-1])].rstrip()
+    return active
+
+
 @canvas_router.post("/polish-span", response_model=PolishSpanResponse)
 async def polish_span(request: PolishSpanRequest, current_user: User = Depends(get_current_user)):
     """Lab only: rewrite one span with the lean prompt. Fired together with /bundle; the
@@ -1433,6 +1453,13 @@ async def polish_span(request: PolishSpanRequest, current_user: User = Depends(g
     preceding = "\n\n".join(x for x in (request.context, request.span) if x)
     if code_route(request.new, preceding) is not None:
         return PolishSpanResponse(skipped=True)
+    # Commands are code, not words for the model: the lexicon turns "New paragraph" into a
+    # real break before the prompt, and a break at the end of the final is re-attached in
+    # code if the model drops it (lab: one lost with "…make that 14 mm. New paragraph.").
+    new_clean = format_heading_lines(clean_verbatim(request.new))
+    trailing = re.search(r"\n+$", new_clean)
+    trailing_break = trailing.group(0) if trailing else ""
+    new_for_model = new_clean.rstrip("\n")
     usage: dict = {}
     t0 = _time.perf_counter()
     out, err = None, None
@@ -1442,7 +1469,7 @@ async def polish_span(request: PolishSpanRequest, current_user: User = Depends(g
             MODEL_CONFIG["CANVAS_PROCESS"], MODEL_CONFIG.get("CANVAS_PROCESS_FALLBACK"),
             output_type=CanvasIncrementalResponse, system_prompt=LEAN_SYSTEM_PROMPT,
             user_prompt=LEAN_USER_TEMPLATE.format(scan_type=request.scan_type or "(not specified)",
-                                                  context=request.context, span=request.span, new=request.new),
+                                                  context=request.context, span=request.span, new=new_for_model),
             model_settings=settings, use_thinking=False, label="canvas.polish_span", usage_out=usage,
         )
     except Exception as e:  # fail open: the scratchpad falls back to the full polish
@@ -1458,5 +1485,10 @@ async def polish_span(request: PolishSpanRequest, current_user: User = Depends(g
     }))
     if out is None:
         return PolishSpanResponse(error=err, latency_ms=latency_ms, usage=usage or None)
-    return PolishSpanResponse(active_scratchpad=out.active_scratchpad, committed_edits=out.committed_edits,
+    active = out.active_scratchpad
+    if out.committed_edits:
+        active = _drop_repeated_correction(active, new_for_model)
+    if trailing_break:
+        active = active.rstrip("\n") + trailing_break
+    return PolishSpanResponse(active_scratchpad=active, committed_edits=out.committed_edits,
                               usage=usage or None, latency_ms=latency_ms)

@@ -79,3 +79,59 @@ def test_log_line_is_data_only(authed_client, lab, caplog):
     p = json.loads(line.split(" ", 1)[1])
     assert p["span_len"] == len(BODY["span"]) and p["input_tokens"] == 410
     assert "midline" not in line and "cisterns" not in line
+
+
+def test_a_trailing_command_is_code_not_words_and_survives(authed_client, lab):
+    # lab: "…make that 14 millimetres. New paragraph." as one final lost its paragraph break
+    body = {**BODY, "new": "Actually make that 14 mm. New paragraph."}
+    d = authed_client.post("/api/canvas/polish-span", json=body).json()
+    assert "New paragraph" not in lab[0]["user"] and "NEW:\nActually make that 14 mm." in lab[0]["user"]
+    assert d["active_scratchpad"].endswith("\n\n")  # the model's output had no break; code adds it
+
+
+def test_no_break_is_added_when_none_was_said(authed_client, lab):
+    d = authed_client.post("/api/canvas/polish-span", json=BODY).json()
+    assert not d["active_scratchpad"].endswith("\n")
+
+
+def test_the_prompt_keeps_finished_sentences_and_places_dangling_cues():
+    assert "never join it onto the finished sentence" in LEAN_SYSTEM_PROMPT
+    assert "dangling" in LEAN_SYSTEM_PROMPT
+
+
+def test_the_prompt_says_a_correction_is_never_also_added():
+    assert "never also add it as a new sentence" in LEAN_SYSTEM_PROMPT
+
+
+def _model_returning(monkeypatch, active, edits):
+    async def fake(primary, fallback, *, output_type, system_prompt, user_prompt, model_settings,
+                   use_thinking=False, label="canvas", usage_out=None):
+        return output_type(active_scratchpad=active, committed_edits=edits)
+    monkeypatch.setattr(cr, "_run_canvas_with_fallback", fake)
+
+
+def test_a_correction_applied_to_an_earlier_line_is_not_also_appended(authed_client, lab, monkeypatch):
+    # lab + live check: the edit (14 → 15 mm) was made AND the sentence was added again
+    _model_returning(monkeypatch,
+                     "No free fluid. The spleen measures 10 centimetres. The common bile duct measures 15 millimetres.",
+                     [{"original": "measuring 14 millimetres.", "corrected": "measuring 15 millimetres."}])
+    d = authed_client.post("/api/canvas/polish-span", json={
+        **BODY, "span": "No free fluid. The spleen measures 10 centimetres. Correction.",
+        "new": "The common bowel duct measures 15 millimetres."}).json()
+    assert d["active_scratchpad"] == "No free fluid. The spleen measures 10 centimetres."
+    assert len(d["committed_edits"]) == 1
+
+
+def test_without_an_earlier_edit_the_new_sentence_stays(authed_client, lab, monkeypatch):
+    _model_returning(monkeypatch, "The spleen measures 10 centimetres. The common bile duct measures 6 mm.", [])
+    d = authed_client.post("/api/canvas/polish-span", json={
+        **BODY, "span": "The spleen measures 10 centimetres.", "new": "The common bile duct measures 6 mm."}).json()
+    assert d["active_scratchpad"].endswith("The common bile duct measures 6 mm.")
+
+
+def test_an_unrelated_last_sentence_is_kept_even_with_an_edit(authed_client, lab, monkeypatch):
+    _model_returning(monkeypatch, "The spleen measures 10 centimetres. No free fluid.",
+                     [{"original": "measuring 14 mm", "corrected": "measuring 15 mm"}])
+    d = authed_client.post("/api/canvas/polish-span", json={
+        **BODY, "span": "The spleen measures 10 centimetres.", "new": "Actually the duct is 15 mm. No free fluid."}).json()
+    assert d["active_scratchpad"].endswith("No free fluid.")

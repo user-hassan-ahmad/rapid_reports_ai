@@ -16,6 +16,9 @@ Return SPAN with NEW applied:
 - Fix a word only when it is a clear speech-to-text error for a radiology term ("vas effect" -> "mass effect"); if unsure, keep it as heard.
 - If NEW corrects earlier text ("actually", "sorry", "I mean", "make that", "correction"), change only the corrected value and drop the correction words. A comparison with a prior study is not a correction: keep both.
 - "Scratch that" or "delete that" removes only the one statement said just before it.
+- If SPAN ends with a finished sentence (a full stop), NEW starts a new sentence, even when NEW is itself incomplete: never join it onto the finished sentence.
+- A correction cue left dangling at the end of SPAN ("Correction.", "Sorry,", "Actually") belongs to NEW: NEW is the corrected version of an earlier statement in SPAN or CONTEXT. Apply it there and drop the cue.
+- A correction replaces the statement it corrects: apply it where that statement is and never also add it as a new sentence.
 - Never add, reword, reorder or summarise findings.
 If a correction targets CONTEXT, do not rewrite CONTEXT: add a committed_edit {original: the exact CONTEXT line, corrected}.
 Reply with active_scratchpad (the whole updated SPAN, plain text) and committed_edits (usually empty)."""
