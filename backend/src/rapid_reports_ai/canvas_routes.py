@@ -27,6 +27,7 @@ from .dictation_triage import (
 from .dictation_triage_labels import agrees, derive_action
 from .dictation_triage_router import route as triage_route_decision
 from .asr_repair import build_lexicon, repair
+from .case_keyterms import KEYTERM_SYSTEM_PROMPT, KEYTERM_USER_TEMPLATE, filter_keyterms
 from .fast_append import clean_verbatim, code_route, route_bundle
 from .spoken_format import format_heading_lines
 from .lean_polish import LEAN_SYSTEM_PROMPT, LEAN_USER_TEMPLATE
@@ -1557,3 +1558,62 @@ async def polish_span(request: PolishSpanRequest, current_user: User = Depends(g
         active = active.rstrip("\n") + trailing_break
     return PolishSpanResponse(active_scratchpad=active, committed_edits=out.committed_edits,
                               usage=usage or None, latency_ms=latency_ms)
+
+
+# -----------------------------------------------------------------------------
+# Per-case Deepgram keyterms (lab; plan 2026-09-27-deepgram-params-keyterms-scratch)
+# -----------------------------------------------------------------------------
+
+
+class KeytermRequest(BaseModel):
+    scan_type: str = ""
+    clinical_history: str = ""
+    sections: list[str] = []
+
+
+class KeytermList(BaseModel):
+    # No maxItems: the model overshoots it (57–65 items) and the provider then rejects the
+    # call, costing a 25 s fallback. The prompt asks for 40; filter_keyterms caps the rest.
+    terms: list[str] = []
+
+
+class KeytermResponse(BaseModel):
+    terms: list[str] = []
+    source: Literal["model", "cache", "none"] = "none"
+    latency_ms: Optional[int] = None
+    error: Optional[str] = None
+
+
+_KEYTERM_CACHE: dict[str, list[str]] = {}
+
+
+@canvas_router.post("/keyterms", response_model=KeytermResponse)
+async def case_keyterms(request: KeytermRequest, current_user: User = Depends(get_current_user)):
+    """Lab only: keyterms for this case, generated once when the workspace is set up
+    (never on the dictation path), filtered by code, cached per case."""
+    if not _triage_debug_enabled():
+        raise HTTPException(status_code=404, detail="Not Found")
+    key = hashlib.sha256(json.dumps([request.scan_type, request.clinical_history, request.sections]).encode()).hexdigest()
+    if key in _KEYTERM_CACHE:
+        return KeytermResponse(terms=_KEYTERM_CACHE[key], source="cache")
+    t0 = _time.perf_counter()
+    try:
+        out = await _run_canvas_with_fallback(
+            MODEL_CONFIG["CANVAS_PROCESS"], MODEL_CONFIG.get("CANVAS_PROCESS_FALLBACK"),
+            output_type=KeytermList, system_prompt=KEYTERM_SYSTEM_PROMPT,
+            user_prompt=KEYTERM_USER_TEMPLATE.format(
+                scan_type=request.scan_type or "(not specified)",
+                clinical_history=request.clinical_history or "(not specified)",
+                sections=", ".join(request.sections) or "(none)"),
+            model_settings={"temperature": 0.2, "max_completion_tokens": 1500, "reasoning_effort": "low"},
+            use_thinking=False, label="canvas.keyterms",
+        )
+    except Exception as e:  # recording falls back to the core list
+        logger.error("[canvas.keyterms] ❌ %s: %s", type(e).__name__, e)
+        return KeytermResponse(error=type(e).__name__, latency_ms=int((_time.perf_counter() - t0) * 1000))
+    terms = filter_keyterms(out.terms)
+    _KEYTERM_CACHE[key] = terms
+    latency_ms = int((_time.perf_counter() - t0) * 1000)
+    logger.info("[canvas.keyterms] %s", json.dumps({"event": "canvas.keyterms", "proposed": len(out.terms),
+                                                    "kept": len(terms), "latency_ms": latency_ms}))
+    return KeytermResponse(terms=terms, source="model", latency_ms=latency_ms)

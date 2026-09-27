@@ -4960,11 +4960,18 @@ async def websocket_transcribe(websocket: WebSocket):
     spoken_format = os.environ.get("DEEPGRAM_SPOKEN_FORMAT") == "1"
     # Model, language, formatting, keyterms and privacy settings: deepgram_config (tested).
     from rapid_reports_ai.deepgram_config import deepgram_listen_url
+    # Per-case keyterms (lab): generated at workspace setup, passed as kt=…; the core list
+    # otherwise. Only with DEEPGRAM_CASE_KEYTERMS=1.
+    from rapid_reports_ai.case_keyterms import keyterms_for_socket
+    case_keyterms = keyterms_for_socket(websocket.query_params.getlist("kt"),
+                                        os.environ.get("DEEPGRAM_CASE_KEYTERMS") == "1")
     deepgram_url = deepgram_listen_url(
         sample_rate=pcm_sample_rate if use_pcm else None,
         dictation=dictation_on,
+        keyterms=case_keyterms,
         uk_spelling=uk_spelling,
     )
+    print(f"🎙️ Deepgram keyterms: {'case ' + str(len(case_keyterms)) if case_keyterms else 'core'}")
     print(f"🎙️ Deepgram mode: {'PCM linear16 @ ' + str(pcm_sample_rate) + ' Hz' if use_pcm else 'auto-detect container'}")
     
     try:
