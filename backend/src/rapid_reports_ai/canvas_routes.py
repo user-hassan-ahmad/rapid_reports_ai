@@ -1332,7 +1332,7 @@ class BundleLineClose(BaseModel):
 
 class BundleRouteResponse(BaseModel):
     decision_id: str
-    route: Literal["fast_append", "command", "polish", "skip"]
+    route: Literal["fast_append", "command", "polish", "skip", "delete"]
     reason: str
     text: str = ""
     insert: str = ""

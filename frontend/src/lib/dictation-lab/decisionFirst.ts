@@ -4,8 +4,8 @@
  * 8-hex hashes, probabilities, qset, route, latency.
  */
 
-export type FastRoute = 'fast_append' | 'command' | 'polish' | 'skip';
-export const FAST_ROUTES: FastRoute[] = ['fast_append', 'command', 'polish', 'skip'];
+export type FastRoute = 'fast_append' | 'command' | 'polish' | 'skip' | 'delete';
+export const FAST_ROUTES: FastRoute[] = ['fast_append', 'command', 'polish', 'skip', 'delete'];
 export type LineClosedBy = 'punctuation' | 'newline' | 'standalone' | 'hard_limit' | 'polish' | 'stop';
 export type OutcomeKind = 'undo' | 'edit' | 'redictate';
 
@@ -381,4 +381,19 @@ export function keytermQuery(terms: string[] | null | undefined): string {
 /** Keyterms are fetched once per case: this key changes when the case does. */
 export function keytermCaseKey(scanType: string, history: string, sections: string[]): string {
 	return JSON.stringify([scanType.trim(), history.trim(), sections]);
+}
+
+/** "Scratch that" on its own (route `delete`, decided by code): undo what the previous
+ *  utterance wrote, restoring what it replaced, while nothing else has touched it. The
+ *  command's own faded text is the caller's main change; these are the other edits.
+ *  Otherwise the reason it cannot, and the utterance goes to polish as before. */
+export function deletePrevious(
+	last: { from: number; to: number; before: string; intact: boolean; route: FastRoute } | null,
+	pend: { from: number; to: number },
+	polishBusy: boolean
+): { edits: { from: number; to: number; insert: string }[]; reason: null } | { edits: null; reason: string } {
+	if (polishBusy) return { edits: null, reason: 'delete_polish_in_flight' };
+	if (!last || !last.intact || last.to > pend.from) return { edits: null, reason: 'delete_nothing_intact' };
+	if (last.route === 'command') return { edits: null, reason: 'delete_after_command' };
+	return { edits: [{ from: last.from, to: last.to, insert: last.before }], reason: null };
 }

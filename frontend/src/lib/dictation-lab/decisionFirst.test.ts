@@ -21,7 +21,7 @@ import {
 	type DecisionRecord,
 	type OutcomeEvent
 } from './decisionFirst';
-import { keytermQuery, keytermCaseKey } from './decisionFirst';
+import { keytermQuery, keytermCaseKey, deletePrevious } from './decisionFirst';
 
 describe('joinSeparator', () => {
 	it('starts an empty scratchpad with nothing', () => expect(joinSeparator('')).toBe(''));
@@ -342,5 +342,29 @@ describe('keytermCaseKey', () => {
 		expect(keytermCaseKey('CT chest', 'cough', ['LUNGS'])).toBe(a);
 		expect(keytermCaseKey('CT chest', 'cough', ['LUNGS', 'PLEURA'])).not.toBe(a);
 		expect(keytermCaseKey('CT head', 'cough', ['LUNGS'])).not.toBe(a);
+	});
+});
+
+describe('deletePrevious ("scratch that")', () => {
+	// doc: "The liver is normal. There is a small hiatus hernia. scratch that"
+	//       0                   20                               52 53
+	const last = { from: 20, to: 52, before: '', intact: true, route: 'fast_append' as const };
+	const pend = { from: 52, to: 65 };
+	it("removes the previous utterance's text and the command's own faded text", () => {
+		expect(deletePrevious(last, pend, false)).toEqual({
+			edits: [{ from: 20, to: 52, insert: '' }],
+			reason: null
+		});
+	});
+	it('restores what a polish replaced', () => {
+		const p = { ...last, route: 'polish' as const, before: ' There is no hernia.' };
+		expect(deletePrevious(p, pend, false).edits).toEqual([{ from: 20, to: 52, insert: ' There is no hernia.' }]);
+	});
+	it('falls back to polish when the previous text was touched, is a command, or a polish is in flight', () => {
+		expect(deletePrevious(null, pend, false).reason).toBe('delete_nothing_intact');
+		expect(deletePrevious({ ...last, intact: false }, pend, false).reason).toBe('delete_nothing_intact');
+		expect(deletePrevious({ ...last, route: 'command' }, pend, false).reason).toBe('delete_after_command');
+		expect(deletePrevious(last, pend, true).reason).toBe('delete_polish_in_flight');
+		expect(deletePrevious({ ...last, to: 60 }, pend, false).reason).toBe('delete_nothing_intact');
 	});
 });

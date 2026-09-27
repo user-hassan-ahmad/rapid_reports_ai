@@ -27,6 +27,7 @@
 		hash8,
 		isRedictation,
 		keytermQuery,
+		deletePrevious,
 		keytermCaseKey,
 		separatorFor,
 		substituteLast,
@@ -923,7 +924,10 @@
 		const pend = firstPendingRange();
 		const doc = editor.state.doc.toString();
 		const pendingText = pend ? doc.slice(pend.from, pend.to).trim() : null;
-		if ((route === 'fast_append' || route === 'command' || route === 'skip') && pendingText !== chunk.trim()) {
+		if (
+			(route === 'fast_append' || route === 'command' || route === 'skip' || route === 'delete') &&
+			pendingText !== chunk.trim()
+		) {
 			route = 'polish';
 			reason = pend ? 'pending_mismatch' : 'pending_lost';
 		} else if ((route === 'fast_append' || route === 'command') && (isProcessingQueue || utteranceQueue.length > 0)) {
@@ -1013,6 +1017,29 @@
 			emitDecision(rec, chunk);
 			processReview();
 			return;
+		}
+		if (route === 'delete' && pend) {
+			// "Scratch that": undo the previous utterance's text by code, and drop the command's
+			// own faded words. Anything else (touched, a command, a polish pending) → polish.
+			const del = deletePrevious(lastAction, pend, isProcessingQueue || utteranceQueue.length > 0);
+			if (del.edits) {
+				const prev = lastAction as Affected;
+				isQwenWriting = true;
+				const spec = replaceAndClear({ from: pend.from, to: pend.to, insert: '' }, del.edits);
+				editor.dispatch({ ...spec, effects: [...[spec.effects ?? []].flat(), clearAuto.of({ from: prev.from, to: prev.to })] });
+				isQwenWriting = false;
+				prev.intact = false;
+				lastAction = null;
+				clearLineTimers();
+				lineOpen = prev.lineOpenBefore;
+				// Not logged as an 'undo' outcome: the speaker retracted their own words, which says
+				// nothing about whether the previous automatic action was right.
+				emitDecision(rec, chunk);
+				return;
+			}
+			route = 'polish';
+			rec.route = 'polish';
+			rec.reason = `${reason}; ${del.reason}`;
 		}
 		if (route === 'skip' && pend) {
 			isQwenWriting = true;

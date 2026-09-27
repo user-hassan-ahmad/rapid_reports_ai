@@ -22,7 +22,7 @@ from typing import Any
 from .bakeoff_stats import bootstrap_quantile_ci, bootstrap_stat_ci, fmt_rate, quantile, rate
 
 SCHEMA = "rr-lab-session/1"
-ROUTES = ("fast_append", "command", "polish", "skip")
+ROUTES = ("fast_append", "command", "polish", "skip", "delete")
 KINDS = ("undo", "edit", "redictate")
 
 

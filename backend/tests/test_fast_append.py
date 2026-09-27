@@ -293,3 +293,15 @@ def test_a_level_with_findings_still_goes_to_jev():
 
 def test_fast_append_capitalises_after_a_level():
     assert route_bundle(_bundle(), "L4-five there is a broad based disc bulge").text == "L4/5 There is a broad based disc bulge"
+
+
+@pytest.mark.parametrize("utt", ["Scratch that.", "scratch that", "Delete that.", "Strike that!", " scratch that , "])
+def test_a_bare_delete_command_is_decided_by_code(utt):
+    r = code_route(utt, "The liver is normal. There is a small hiatus hernia.")
+    assert r.route == "delete" and r.reason == "delete_previous" and r.text == "" and r.insert == ""
+
+
+@pytest.mark.parametrize("utt", ["Scratch that, there is no hernia.", "Delete that sentence about the hernia.",
+                                 "The scratch that was seen"])
+def test_delete_with_content_still_goes_to_jev_and_polish(utt):
+    assert code_route(utt, "There is a small hiatus hernia.") is None

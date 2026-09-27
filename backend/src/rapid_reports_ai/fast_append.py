@@ -29,7 +29,7 @@ from .spoken_format import (
 )
 from .utterance_bundle import BundleDecision
 
-Route = Literal["fast_append", "command", "polish", "skip"]
+Route = Literal["fast_append", "command", "polish", "skip", "delete"]
 
 # Hesitation tokens only, as whole words. Lowercase or capitalised forms, never all caps
 # ("ER" is oestrogen receptor); "mm" is never a filler (millimetres).
@@ -70,6 +70,9 @@ def is_filler_only(utterance: str) -> bool:
 _BARE_MARK = re.compile(r"^\s*([.?!])[.?!\s]*$")
 
 
+# "Scratch that" on its own: the scratchpad removes what the previous utterance wrote. A lab
+# session lost a finding when the lean polish deleted two statements on it (2026-09-27).
+_BARE_DELETE = re.compile(r"^[\s,.]*(?:scratch|delete|strike)\s+that[\s,.!?]*$", re.IGNORECASE)
 _BARE_COLON = re.compile(r"^[\s,.]*colon[\s,.:]*$", re.IGNORECASE)
 
 
@@ -81,6 +84,8 @@ def code_route(utterance: str, preceding: str = "") -> "RouteResult | None":
     m = _BARE_MARK.match(utterance or "")
     if m:
         return RouteResult("command", "punctuation_mark", "", m.group(1), True, False)
+    if _BARE_DELETE.match(utterance or ""):
+        return RouteResult("delete", "delete_previous", "", "", False, False)
     if _BARE_COLON.match(utterance or ""):
         resolved, ambiguous = resolve_colon("colon", preceding)
         if resolved == ":" and not ambiguous:
