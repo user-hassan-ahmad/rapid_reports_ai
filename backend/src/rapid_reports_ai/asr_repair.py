@@ -161,6 +161,9 @@ def candidates(utterance: str, flagged: str, lexicon: list[str], k: int = 5, cut
                 continue  # a fix replaces words; it never drops one ('common bowel' → 'bile')
             hs = utterance.find(h, start)
             c = Candidate(hs, hs + len(h), h, t, sc)
+            words_after = apply_fix(utterance, c).lower().split()
+            if any(x == y for x, y in zip(words_after, words_after[1:])):
+                continue  # 'bowel' → 'bile duct' next to 'duct' would read 'bile duct duct'
             key = f"{h.lower()}→{t}"
             if key not in best or best[key].score < sc:
                 best[key] = c
