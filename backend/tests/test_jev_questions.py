@@ -76,7 +76,7 @@ def test_fast_append_bands_are_pinned_to_the_qset_version():
     """Step 5 provisional bands. Changing any value means a new QSET_VERSION."""
     from rapid_reports_ai import jev_questions as jq
 
-    assert jq.QSET_VERSION == "2026-09-27.1"
+    assert jq.QSET_VERSION == "2026-09-27.2"
     assert jq.FAST_APPEND_BANDS == {
         "append_act": 0.90,
         "append_max_is_correction": 0.50,
@@ -86,3 +86,14 @@ def test_fast_append_bands_are_pinned_to_the_qset_version():
         "line_close_silence_s": 2.0,
         "line_close_hard_limit_s": 5.0,
     }
+
+
+def test_word_sense_bands_and_wording_are_pinned():
+    from rapid_reports_ai import jev_questions as jq
+
+    assert jq.WORD_SENSE_BANDS == {"word_sense_flag": 0.6, "word_fix_accept": 0.8}
+    assert jq.WORD_SENSE_MAX_WORDS == 12
+    q = jq.word_sense_question("renal")
+    assert q["type"] == "noul" and "'renal'" in q["instructions"] and "makes clinical sense as heard" in q["instructions"]
+    c = jq.word_fix_question({"as_heard": "The renal glands are normal.", "candidate_1": "The adrenal glands are normal."})
+    assert c["type"] == "choice" and c["criteria"]["as_heard"] == "The renal glands are normal."

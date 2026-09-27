@@ -15,7 +15,7 @@ from typing import Any
 
 from .jev_client import JEV_MODEL  # noqa: F401  (the wording is written for this model)
 
-QSET_VERSION = "2026-09-27.1"  # 09-26.2 fast-append bands; .3 word-confidence gate 0.70; 09-27.1 gate 0.80; wording unchanged
+QSET_VERSION = "2026-09-27.2"  # 09-26.2 bands; .3 gate 0.70; 09-27.1 gate 0.80; 09-27.2 word-sense spotter/fixer added
 
 # --- triage (dictation_triage) ------------------------------------------------------
 
@@ -75,6 +75,38 @@ FAST_APPEND_BANDS: dict[str, float] = {
     # ...and regardless at the hard limit (time is code, never asked of Jev)
     "line_close_hard_limit_s": 5.0,
 }
+
+# --- word-sense spotter + fixer (asr_repair; plan 2026-09-27-jev-word-sense-spotter-fixer) --
+
+# PROVISIONAL. Probe 2026-09-27: misheard words (or their neighbour) scored 0.06–0.59,
+# every word of clean controls ≥ 0.73. A fix is applied only when Jev picks a candidate
+# sentence over "as heard" at or above word_fix_accept; otherwise the word is flagged.
+WORD_SENSE_BANDS: dict[str, float] = {"word_sense_flag": 0.6, "word_fix_accept": 0.8}
+WORD_SENSE_MAX_WORDS = 12
+
+
+def word_sense_question(word: str) -> dict[str, Any]:
+    return {
+        "type": "noul",
+        "instructions": (
+            f"In the latest utterance, the word '{word}' makes clinical sense as heard for this scan, "
+            "given the checklist sections and the surrounding words."
+        ),
+    }
+
+
+def word_fix_question(options: dict[str, str]) -> dict[str, Any]:
+    """options: {"as_heard": sentence, "candidate_1": sentence, ...}."""
+    return {
+        "type": "choice",
+        "instructions": (
+            "Which sentence is what the radiologist most likely dictated, given the scan type, the checklist "
+            "sections and the scratchpad? Speech-to-text may have misheard a word; if the sentence as heard "
+            "makes sense, choose it."
+        ),
+        "criteria": dict(options),
+    }
+
 
 # --- boundary / front door (utterance_boundary) -------------------------------------
 
