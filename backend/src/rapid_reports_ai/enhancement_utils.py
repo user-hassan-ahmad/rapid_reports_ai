@@ -190,8 +190,8 @@ MODEL_CONFIG = {
     "CANVAS_PROCESS_FALLBACK": "openai/gpt-oss-120b",  # Fallback if Gemma fails (Cerebras GPT-OSS-120B)
     "CANVAS_COVERAGE": "qwen/qwen3.6-27b",  # was Cerebras Gemma 4 31B - retires end of Aug 2026
     "CANVAS_COVERAGE_FALLBACK": "openai/gpt-oss-120b",  # Fallback (Cerebras GPT-OSS-120B)
-    "CANVAS_INTELLIPROMPTS": "qwen/qwen3.6-27b",  # was Cerebras Gemma 4 31B - retires end of Aug 2026
-    "CANVAS_INTELLIPROMPTS_FALLBACK": "openai/gpt-oss-120b",  # Fallback (Cerebras GPT-OSS-120B)
+    "CANVAS_INTELLIPROMPTS": "qwen-3.8-27b",  # Cerebras Qwen 3.8, reasoning off (2026-09-27: reasoning on failed every structured answer → 35–137 s fallback)
+    "CANVAS_INTELLIPROMPTS_FALLBACK": "qwen/qwen3.6-27b",  # Groq Qwen, reasoning off
 
     # Agentic Report Pipeline Models
     "REPORT_PLANNER": "qwen/qwen3.6-27b",        # Phase 1: planning agent (Cerebras, reasoning ON)

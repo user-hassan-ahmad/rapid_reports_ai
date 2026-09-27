@@ -1101,6 +1101,9 @@ async def _coverage_safe(name: str, request: CanvasReviewRequest) -> CoverageDec
         return e
 
 
+INTELLIPROMPTS_SETTINGS = {"temperature": 0.1, "max_tokens": 1500, "extra_body": {"reasoning_effort": "none"}}
+
+
 async def _intelliprompts(request: CanvasReviewRequest) -> list[IntelliPrompt]:
     """IntelliPrompts generation — unchanged from the previous inline closure."""
     intelliprompts_model = MODEL_CONFIG["CANVAS_INTELLIPROMPTS"]
@@ -1112,12 +1115,12 @@ async def _intelliprompts(request: CanvasReviewRequest) -> list[IntelliPrompt]:
         clinical_history=request.clinical_history or "(not specified)",
         scratchpad_content=request.scratchpad_content,
     )
-    if intelliprompts_provider == "cerebras":
-        intelliprompts_model_settings = {"temperature": 0.1, "max_completion_tokens": 1500, "reasoning_effort": "medium"}
-        use_thinking = False
-    else:
-        intelliprompts_model_settings = {"temperature": 0.1, "max_tokens": 3000}
-        use_thinking = True
+    # Reasoning off on both models: with it on, every structured answer failed (Groq qwen
+    # thinking: tool_use_failed after ~6.5 s; Cerebras qwen 'low': parser_error) and the
+    # fallback took 35–137 s (lab log 2026-09-27). Off: Cerebras 0.66–0.95 s, Groq 1.5–1.9 s.
+    # The shape pydantic-ai forwards: max_tokens, and reasoning_effort in extra_body.
+    intelliprompts_model_settings = INTELLIPROMPTS_SETTINGS
+    use_thinking = False
 
     scratchpad_lower = request.scratchpad_content.lower()
 
@@ -1156,16 +1159,11 @@ async def _intelliprompts(request: CanvasReviewRequest) -> list[IntelliPrompt]:
         elapsed = _time.perf_counter() - t0
         return _validate_and_log(response.prompts, elapsed, "✅")
     except Exception as e:
-        # Primary failed for ANY reason — try the gpt-oss-120b fallback once.
-        fallback_model = intelliprompts_fallback or "gpt-oss-120b"
+        # Primary failed for ANY reason — try the fallback once.
+        fallback_model = intelliprompts_fallback or "qwen/qwen3.6-27b"
         try:
             fallback_api_key = _get_api_key_for_provider(_get_model_provider(fallback_model))
-            response = await _call_model(
-                fallback_model,
-                fallback_api_key,
-                False,
-                {"temperature": 0.1, "max_completion_tokens": 1500, "reasoning_effort": "medium"},
-            )
+            response = await _call_model(fallback_model, fallback_api_key, False, INTELLIPROMPTS_SETTINGS)
             elapsed = _time.perf_counter() - t0
             logger.warning("[canvas.intelliprompts] primary %s failed (%s); served by fallback %s", intelliprompts_model, type(e).__name__, fallback_model)
             return _validate_and_log(response.prompts, elapsed, "⚡ fallback")

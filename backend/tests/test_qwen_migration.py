@@ -40,6 +40,9 @@ KNOWN_CEREBRAS_DEBT = {
     "GUIDELINE_VALIDATOR", "COMPATIBILITY_FILTER", "GUIDELINE_SEARCH",
     "COMPARISON_ANALYZER", "ACTION_APPLIER", "CANVAS_SECTIONS",
     "CANVAS_SECTIONS_FROM_TEMPLATE", "KNOWLEDGE_MAINTENANCE",
+    # 2026-09-27 (user-approved): IntelliPrompts on Cerebras qwen-3.8-27b, reasoning off;
+    # its Groq qwen fallback keeps it off-provider (test above).
+    "CANVAS_INTELLIPROMPTS",
 }
 # 2026-08-15: the three gemma-4-31b canvas roles migrated to qwen/qwen3.6-27b
 # ahead of Gemma's end-of-August retirement on Cerebras. Their fallbacks stay
