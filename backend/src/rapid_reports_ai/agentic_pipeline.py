@@ -509,7 +509,7 @@ async def execute_report_from_plan(
         model_settings = {
             "temperature": 1,
             "max_completion_tokens": 6500,
-            "reasoning_effort": "high",
+            "reasoning_effort": "medium",  # gpt-oss has always run at medium: 'high' here was dropped until 2026-09-27 (normalise_model_settings)
         }
         use_thinking = False
     else:

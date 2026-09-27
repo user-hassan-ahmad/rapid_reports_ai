@@ -978,8 +978,8 @@ async def generate_radiology_search_queries(finding: str, api_key: str) -> tuple
             }
             if primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 500  # Generous token limit for Cerebras
-                model_settings["reasoning_effort"] = "high"
-                print(f"generate_radiology_search_queries: Using Cerebras reasoning_effort=high, max_completion_tokens=500 for {primary_model}")
+                model_settings["reasoning_effort"] = "medium"  # gpt-oss has always run at medium: 'high' here was dropped until 2026-09-27 (normalise_model_settings)
+                print(f"generate_radiology_search_queries: Using Cerebras reasoning_effort=medium for {primary_model}")
             else:
                 model_settings["max_tokens"] = 300
             
@@ -1938,8 +1938,8 @@ async def _extract_consolidated_with_model(
     }
     if model_name == "gpt-oss-120b":
         model_settings["max_completion_tokens"] = 2500  # Generous token limit for Cerebras
-        model_settings["reasoning_effort"] = "high"
-        print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=2500 for {model_name}")
+        model_settings["reasoning_effort"] = "medium"  # gpt-oss has always run at medium: 'high' here was dropped until 2026-09-27 (normalise_model_settings)
+        print(f"  └─ Using Cerebras reasoning_effort=medium for {model_name}")
         use_thinking = False  # Cerebras uses reasoning_effort instead
     else:
         model_settings["max_tokens"] = 2048
@@ -3244,9 +3244,9 @@ REASONING WORKFLOW (for high-reasoning models like GPT-OSS 120B):
                 # Run Stage 1 agent with optimized settings for analysis
                 model_settings = {"temperature": 0.2}  # Lower for precise analysis
                 if provider == 'cerebras':
-                    model_settings["reasoning_effort"] = "high"
+                    model_settings["reasoning_effort"] = "medium"  # gpt-oss has always run at medium: 'high' here was dropped until 2026-09-27 (normalise_model_settings)
                     model_settings["max_tokens"] = 5000  # Increased for comprehensive analysis
-                    print(f"  └─ Using Cerebras reasoning_effort=high, max_tokens=5000, temperature=0.2")
+                    print(f"  └─ Using Cerebras reasoning_effort=medium, max_tokens=5000, temperature=0.2")
                 else:
                     model_settings["max_tokens"] = 5000
                     print(f"  └─ Using model settings: {model_settings}")
@@ -3775,6 +3775,30 @@ def _create_pydantic_model(model_name: str, api_key: str, use_thinking: bool = F
         raise ValueError(f"Unknown provider: {provider}")
 
 
+# pydantic-ai (1.14) forwards only `max_tokens` and `extra_body` (and `openai_reasoning_effort`)
+# from model settings. A top-level `reasoning_effort` or `max_completion_tokens` was silently
+# dropped, so calls ran at the provider's default reasoning (gpt-oss: medium) with no cap
+# (measured 2026-09-27). normalise_model_settings puts both where they are read.
+REASONING_EFFORT_MODELS = frozenset({"gpt-oss-120b", "openai/gpt-oss-120b", "qwen-3.8-27b"})
+# Caps written as max_completion_tokens were never enforced; several are far too small for a
+# reasoning model (reasoning counts toward the cap). The floor keeps anything that works
+# today from being cut off; caps above it now apply.
+TOKEN_CAP_FLOOR = 16384
+
+
+def normalise_model_settings(model_name: str, settings: dict | None) -> dict:
+    s = dict(settings or {})
+    effort = s.pop("reasoning_effort", None)
+    cap = s.pop("max_completion_tokens", None)
+    if cap is not None and "max_tokens" not in s:
+        s["max_tokens"] = max(int(cap), TOKEN_CAP_FLOOR)
+    if effort is not None and model_name in REASONING_EFFORT_MODELS:
+        extra = dict(s.get("extra_body") or {})
+        extra.setdefault("reasoning_effort", effort)
+        s["extra_body"] = extra
+    return s
+
+
 async def _run_agent_with_model(
     model_name: str,
     output_type,
@@ -3850,7 +3874,7 @@ async def _run_agent_with_model(
         )
         
         # Build final model settings dict
-        final_model_settings = model_settings or {}
+        final_model_settings = normalise_model_settings(model_name, model_settings)
         
         # Log model settings for Cerebras to verify reasoning_effort is included
         if provider == 'cerebras':
@@ -3869,7 +3893,8 @@ async def _run_agent_with_model(
                 mode_label = "REASONING OFF" if disable_reasoning else "REASONING ON"
                 print(f"  └─ GLM mode: {mode_label} (disable_reasoning={disable_reasoning})")
             else:
-                reasoning_effort = final_model_settings.get('reasoning_effort')
+                # what is actually sent (normalise_model_settings moved it into extra_body)
+                reasoning_effort = (final_model_settings.get('extra_body') or {}).get('reasoning_effort')
                 if reasoning_effort:
                     print(f"  └─ reasoning_effort: {reasoning_effort} ✅")
                 else:
@@ -4112,8 +4137,8 @@ async def generate_auto_report(
                     print(f"  └─ GLM mode: REASONING OFF — temperature=0.5, max_completion_tokens=6000")
             elif primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 6500
-                model_settings["reasoning_effort"] = "high"
-                print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=6500 for {primary_model}")
+                model_settings["reasoning_effort"] = "medium"  # gpt-oss has always run at medium: 'high' here was dropped until 2026-09-27 (normalise_model_settings)
+                print(f"  └─ Using Cerebras reasoning_effort=medium for {primary_model}")
             elif provider == "fireworks":
                 model_settings["max_tokens"] = 16000
                 model_settings["temperature"] = 0.6
@@ -4319,8 +4344,8 @@ async def generate_templated_report(
                     print(f"  └─ GLM mode: REASONING OFF — temperature=0.5, max_completion_tokens=6000")
             elif primary_model == "gpt-oss-120b":
                 model_settings["max_completion_tokens"] = 6500
-                model_settings["reasoning_effort"] = "high"
-                print(f"  └─ Using Cerebras reasoning_effort=high, max_completion_tokens=6500 for {primary_model}")
+                model_settings["reasoning_effort"] = "medium"  # gpt-oss has always run at medium: 'high' here was dropped until 2026-09-27 (normalise_model_settings)
+                print(f"  └─ Using Cerebras reasoning_effort=medium for {primary_model}")
             elif provider == "anthropic":
                 model_settings["max_tokens"] = 8000
                 model_settings["anthropic_thinking"] = {
