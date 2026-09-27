@@ -34,6 +34,7 @@
 		type OutcomeEvent
 	} from '$lib/dictation-lab/decisionFirst';
 	import { EditorView, keymap, Decoration, type DecorationSet, type ViewUpdate } from '@codemirror/view';
+	import { clearPending, markPending, pendingField, replaceAndClear } from '$lib/dictation-lab/pendingMarks';
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import { markdown } from '@codemirror/lang-markdown';
@@ -123,28 +124,7 @@
 	// Marks map through document changes, so a resolve that replaces a faded span
 	// drops its marks; the explicit clear covers boundary-spanning cases and the
 	// promote-to-solid lifecycle points.
-	const markPending = StateEffect.define<{ from: number; to: number }>();
-	const clearPending = StateEffect.define<{ from: number; to: number } | null>();
-	const pendingField = StateField.define<DecorationSet>({
-		create: () => Decoration.none,
-		update(deco, tr) {
-			deco = deco.map(tr.changes);
-			for (const e of tr.effects) {
-				if (e.is(markPending)) {
-					deco = deco.update({
-						add: [Decoration.mark({ class: 'cm-dictation-pending' }).range(e.value.from, e.value.to)]
-					});
-				} else if (e.is(clearPending)) {
-					const range = e.value;
-					deco = range
-						? deco.update({ filter: (from, to) => to <= range.from || from >= range.to })
-						: Decoration.none;
-				}
-			}
-			return deco;
-		},
-		provide: (f) => EditorView.decorations.from(f)
-	});
+	// markPending / clearPending / pendingField live in $lib/dictation-lab/pendingMarks.
 
 	// Decision-first (lab): text written by an automatic action (fast-append, command) is
 	// marked for the edit window, so what the machine did is visible while it can still be
@@ -799,10 +779,7 @@
 		const insert = (split.span ? '' : separatorFor(solid0, out, false)) + out;
 		const edits = committedEditChanges(doc, split.spanFrom, lean.data.committed_edits ?? []);
 		isQwenWriting = true;
-		editor.dispatch({
-			changes: [...edits, { from: split.spanFrom, to: pend.to, insert }],
-			effects: clearPending.of({ from: split.spanFrom, to: pend.to })
-		});
+		editor.dispatch(replaceAndClear({ from: split.spanFrom, to: pend.to, insert }, edits));
 		isQwenWriting = false;
 		// Undo restores the span as it was (committed edits, if any, stay: they were asked for).
 		const shift = edits.reduce((n, e) => n + e.insert.length - (e.to - e.from), 0);
@@ -903,10 +880,11 @@
 				closedBy = !data.closes_line ? null : data.insert.includes('\n') ? 'newline' : 'punctuation';
 			}
 			isQwenWriting = true;
+			const spec = replaceAndClear({ from: pend.from, to: pend.to, insert });
 			editor.dispatch({
-				changes: { from: pend.from, to: pend.to, insert },
+				...spec,
 				effects: [
-					clearPending.of({ from: pend.from, to: pend.to }),
+					...[spec.effects ?? []].flat(),
 					...(insert ? [markAuto.of({ from: pend.from, to: pend.from + insert.length })] : [])
 				]
 			});
@@ -935,7 +913,7 @@
 		}
 		if (route === 'skip' && pend) {
 			isQwenWriting = true;
-			editor.dispatch({ changes: { from: pend.from, to: pend.to, insert: '' }, effects: clearPending.of({ from: pend.from, to: pend.to }) });
+			editor.dispatch(replaceAndClear({ from: pend.from, to: pend.to, insert: '' }));
 			isQwenWriting = false;
 			emitDecision(rec, chunk);
 			return;
