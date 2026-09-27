@@ -107,6 +107,22 @@ export function openStatement(solid: string): string {
 	return text.slice(start).trim();
 }
 
+/** What Jev is shown as the scratchpad for one final: everything on screen before it,
+ *  including earlier finals still faded while they wait for a polish (otherwise a polish
+ *  queue leaves Jev deciding on a stale page). Falls back to the solid text when this
+ *  final's tracked range has been overwritten or no longer holds it. */
+export function jevContext(
+	doc: string,
+	own: { from: number; to: number } | null,
+	chunk: string,
+	solidEnd: number
+): string {
+	if (own && own.to > own.from && doc.slice(own.from, own.to).trim() === chunk.trim()) {
+		return doc.slice(0, own.from).replace(/[ \t]+$/, '');
+	}
+	return doc.slice(0, solidEnd);
+}
+
 /** Racing: the part of the scratchpad the lean polish may rewrite. The last `n` sentences
  *  of the current line (never across a line break), plus up to `maxContext` characters of
  *  frozen text before it. Chosen by code because the polish is fired before Jev answers. */

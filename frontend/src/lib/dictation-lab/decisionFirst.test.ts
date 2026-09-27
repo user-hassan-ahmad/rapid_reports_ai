@@ -3,6 +3,7 @@ import {
 	asrFields,
 	commandInsert,
 	committedEditChanges,
+	jevContext,
 	splitSpan,
 	openStatement,
 	separatorFor,
@@ -251,5 +252,27 @@ describe('committedEditChanges, overlaps', () => {
 			{ from: 5, to: 16, insert: 'kidney 10 mm' },
 			{ from: 23, to: 35, insert: 'Spleen 13 cm' }
 		]);
+	});
+});
+
+describe('jevContext', () => {
+	// solid text, then two faded finals still queued for polish, then this final (faded)
+	const doc = 'The main pulmonary artery is not dilated. Measuring 27 millimetres. The right ventricle meshes';
+	const own = { from: doc.indexOf(' The right'), to: doc.length };
+	it('includes earlier faded words, up to where this final starts', () => {
+		expect(jevContext(doc, own, 'The right ventricle meshes', 41)).toBe(
+			'The main pulmonary artery is not dilated. Measuring 27 millimetres.'
+		);
+	});
+	it('falls back to the solid text when this final has been overwritten', () => {
+		expect(jevContext(doc, { from: 10, to: 10 }, 'The right ventricle meshes', 41)).toBe(
+			'The main pulmonary artery is not dilated.'
+		);
+		expect(jevContext(doc, null, 'The right ventricle meshes', 41)).toBe('The main pulmonary artery is not dilated.');
+	});
+	it('falls back when the tracked range no longer holds this final', () => {
+		expect(jevContext(doc, { from: 0, to: 8 }, 'The right ventricle meshes', 41)).toBe(
+			'The main pulmonary artery is not dilated.'
+		);
 	});
 });

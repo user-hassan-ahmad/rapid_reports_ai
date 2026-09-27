@@ -18,6 +18,7 @@
 		changedRange,
 		commandInsert,
 		committedEditChanges,
+		jevContext,
 		openStatement,
 		splitSpan,
 		hash8,
@@ -425,6 +426,9 @@
 				effects: markPending.of({ from: docLength, to })
 			});
 			isQwenWriting = false;
+			// Decision-first: remember where this final sits (mapped through later changes),
+			// so its decision can show Jev everything before it, faded words included.
+			if (decisionFirst()) chunkRanges.set(++chunkRangeSeq, { from: docLength + sep.length, to });
 		}
 
 		// Phase 2b.1: fire the polish only at a pause (speech_final), not every
@@ -434,7 +438,11 @@
 			// New speech: the silence the line-close timers were counting has ended.
 			clearLineTimers();
 			const arrivedAt = Date.now();
-			decisionChain = decisionChain.then(() => decideUtterance(transcript, arrivedAt, asr)).catch(() => {});
+			const rangeId = chunkRangeSeq;
+			decisionChain = decisionChain
+				.then(() => decideUtterance(transcript, arrivedAt, asr, rangeId))
+				.catch(() => {})
+				.finally(() => chunkRanges.delete(rangeId));
 			return;
 		}
 		if (frontDoorIsJev()) {
@@ -580,6 +588,9 @@
 		return labConfig?.frontDoor === 'decision';
 	}
 	let decisionChain: Promise<void> = Promise.resolve();
+	// Where each undecided final sits in the document (faded), keyed by arrival.
+	const chunkRanges = new Map<number, { from: number; to: number }>();
+	let chunkRangeSeq = 0;
 	let decisionSeq = 0;
 	let localDecisionSeq = 0;
 	let lineOpen = false;
@@ -808,7 +819,12 @@
 		return null;
 	}
 
-	async function decideUtterance(chunk: string, arrivedAt: number, asr: AsrFields | null): Promise<void> {
+	async function decideUtterance(
+		chunk: string,
+		arrivedAt: number,
+		asr: AsrFields | null,
+		rangeId: number | null = null
+	): Promise<void> {
 		if (!editor) return;
 		noteRedictation(chunk, Date.now());
 		const pend0 = firstPendingRange();
@@ -818,7 +834,10 @@
 		// Racing: the lean polish starts now, alongside the bundle; Jev's route decides whether it is used.
 		const split = racing() ? splitSpan(solid0) : null;
 		const leanP = split ? askLean(split, chunk) : null;
-		const { data, error } = await askBundle(chunk, solid0, asr);
+		// Jev sees everything before this final, including earlier faded finals still waiting
+		// for a polish; the racing span and fast-append placement keep using the solid text.
+		const context = jevContext(doc0, rangeId !== null ? (chunkRanges.get(rangeId) ?? null) : null, chunk, solid0.length);
+		const { data, error } = await askBundle(chunk, context, asr);
 		const roundtrip = Math.round(performance.now() - t0);
 		if (!editor) return;
 
@@ -1341,6 +1360,12 @@
 					autoField,
 					EditorView.updateListener.of((update) => {
 				if (update.docChanged && decisionFirst() && affected.length) trackChanges(update, !isQwenWriting);
+				if (update.docChanged && chunkRanges.size) {
+					for (const r of chunkRanges.values()) {
+						r.from = update.changes.mapPos(r.from, 1);
+						r.to = Math.max(r.from, update.changes.mapPos(r.to, -1));
+					}
+				}
 				if (update.docChanged) {
 					const content = update.state.doc.toString();
 					onContentChange(content);
