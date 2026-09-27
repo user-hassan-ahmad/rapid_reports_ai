@@ -30,6 +30,7 @@ from .asr_repair import build_lexicon, repair
 from .case_keyterms import KEYTERM_SYSTEM_PROMPT, KEYTERM_USER_TEMPLATE, filter_keyterms
 from .fast_append import clean_verbatim, code_route, route_bundle
 from .spoken_format import format_heading_lines
+from .lean_fidelity import fidelity_violation, verbatim_append
 from .lean_polish import LEAN_SYSTEM_PROMPT, LEAN_USER_TEMPLATE
 from .jev_questions import FAST_APPEND_BANDS, QSET_VERSION, ROUTE_THRESHOLD_DEFAULT
 from .utterance_bundle import BundleDecision, BundleState, get_jev_bundle
@@ -1476,6 +1477,7 @@ class PolishSpanResponse(BaseModel):
     usage: Optional[dict] = None
     latency_ms: Optional[int] = None
     error: Optional[str] = None
+    fidelity: Optional[str] = None  # why the model's text was set aside (lean_fidelity), if it was
 
 
 _UNITS = {"millimetre": "mm", "millimetres": "mm", "millimeter": "mm", "millimeters": "mm",
@@ -1563,15 +1565,26 @@ async def polish_span(request: PolishSpanRequest, current_user: User = Depends(g
         err = type(e).__name__
         logger.error("[canvas.polish_span] ❌ %s: %s", err, e)
     latency_ms = int((_time.perf_counter() - t0) * 1000)
+    # Without a correction cue nothing dictated may be lost (numbers, sides, statements); on a
+    # violation keep the span and append the new words as said (lean_fidelity).
+    fidelity = fidelity_violation(request.span, request.new, out.active_scratchpad,
+                                  out.committed_edits or []) if out is not None else None
     logger.info("[canvas.polish_span] %s", json.dumps({
         "event": "canvas.polish_span", "latency_ms": latency_ms, "error": err,
         "context_len": len(request.context), "span_len": len(request.span), "new_len": len(request.new),
         "out_len": len(out.active_scratchpad) if out else None,
         "committed_edits": len(out.committed_edits) if out else None,
         "model": usage.get("model"), "input_tokens": usage.get("input_tokens"), "output_tokens": usage.get("output_tokens"),
+        "fidelity": fidelity,
     }))
     if out is None:
         return PolishSpanResponse(error=err, latency_ms=latency_ms, usage=usage or None)
+    if fidelity:
+        active = verbatim_append(request.span, new_for_model)
+        if trailing_break:
+            active = active.rstrip("\n") + trailing_break
+        return PolishSpanResponse(active_scratchpad=active, committed_edits=[], usage=usage or None,
+                                  latency_ms=latency_ms, fidelity=fidelity)
     active = out.active_scratchpad
     if out.committed_edits:
         active = _drop_repeated_correction(active, request.span, new_for_model)

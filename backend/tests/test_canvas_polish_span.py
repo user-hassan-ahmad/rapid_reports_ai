@@ -188,3 +188,23 @@ def test_the_lean_polish_runs_on_cerebras_qwen_with_reasoning_off_and_groq_fallb
     assert "reasoning_effort" not in c["settings"] and "max_completion_tokens" not in c["settings"]
     # the Groq fallback accepts the same dict: max_tokens, and reasoning_effort none via extra_body
     assert cr._adapt_canvas_settings("qwen/qwen3.6-27b", c["settings"])["extra_body"] == {"reasoning_effort": "none"}
+
+
+def test_a_lossy_lean_output_is_replaced_by_the_span_with_the_new_words_appended(authed_client, monkeypatch, caplog):
+    monkeypatch.setenv("RR_TRIAGE_DEBUG", "1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+
+    async def lossy(primary, fallback, *, output_type, system_prompt, user_prompt, model_settings,
+                    use_thinking=False, label="canvas", usage_out=None):
+        return output_type(active_scratchpad="No disc extrusion. Modic type 1 endplate change at L5/S1.",
+                           committed_edits=[])
+    monkeypatch.setattr(cr, "_run_canvas_with_fallback", lossy)
+    body = {"scan_type": "MRI lumbar spine", "context": "",
+            "span": "The extrusion measures 7 mm. Modic type 1 endplate change at L5/S1.", "new": "No disc extrusion."}
+    with caplog.at_level(logging.INFO, logger="rapid_reports_ai.canvas_routes"):
+        d = authed_client.post("/api/canvas/polish-span", json=body).json()
+    assert d["active_scratchpad"] == "The extrusion measures 7 mm. Modic type 1 endplate change at L5/S1. No disc extrusion."
+    assert d["committed_edits"] == [] and d["fidelity"] == "lost_number"  # the 7 went first
+    logged = [json.loads(r.message.split("] ", 1)[1]) for r in caplog.records if "canvas.polish_span" in r.message]
+    assert logged[-1]["fidelity"] == "lost_number"
+    assert "extrusion" not in json.dumps(logged[-1])  # counts and reasons only, never text
