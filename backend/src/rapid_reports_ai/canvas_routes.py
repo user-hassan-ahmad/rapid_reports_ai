@@ -1,6 +1,7 @@
 """Canvas routes for intelligent dictation — section generation and transcript processing."""
 
 import asyncio
+import dataclasses
 import hashlib
 import json
 import logging
@@ -25,6 +26,7 @@ from .dictation_triage import (
 )
 from .dictation_triage_labels import agrees, derive_action
 from .dictation_triage_router import route as triage_route_decision
+from .asr_repair import build_lexicon, repair
 from .fast_append import clean_verbatim, code_route, route_bundle
 from .spoken_format import format_heading_lines
 from .lean_polish import LEAN_SYSTEM_PROMPT, LEAN_USER_TEMPLATE
@@ -1348,6 +1350,10 @@ class BundleRouteResponse(BaseModel):
     latency_ms: Optional[int] = None
     error: Optional[str] = None
     qset: str = QSET_VERSION
+    # word-sense spotter + fixer (lab): applied fixes and remaining flags, for the scratchpad
+    asr_fixes: list[dict] = []
+    asr_flags: list[dict] = []
+    repair_ms: Optional[int] = None
 
 
 @canvas_router.post("/bundle", response_model=BundleRouteResponse)
@@ -1365,13 +1371,25 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
                 scan_type=request.scan_type, committed=request.committed, active=request.active,
                 open_line=request.open_line, latest_utterance=request.latest_utterance,
                 checklist=list(request.checklist),
-            ))
+            ), word_sense=True)
         except Exception as e:  # fail open: polish
             logger.error("[canvas.bundle] ❌ %s: %s", type(e).__name__, e)
             d = e
     r = route_bundle(d if d is not None else RuntimeError("not asked"), request.latest_utterance,
                      asr_min_conf=request.asr_min_conf, preceding=request.active)
     ok = isinstance(d, BundleDecision)
+    # Word-sense spotter + fixer: Jev flagged words that make no clinical sense as heard;
+    # code proposes sound-alikes, Jev chooses the sentence, a confident choice is applied.
+    rep = None
+    if ok and d.word_sense and r.route in ("fast_append", "polish"):
+        sentence = r.text if r.route == "fast_append" else r.clean_text
+        if sentence:
+            rep = await repair(sentence, d.word_sense,
+                               state={"scan_type": request.scan_type, "checklist": list(request.checklist),
+                                      "scratchpad": request.active},
+                               lexicon=build_lexicon(request.checklist), api_key=os.environ.get("OPENROUTER_API_KEY", ""))
+            if rep.text != sentence:
+                r = dataclasses.replace(r, text=rep.text if r.route == "fast_append" else r.text, clean_text=rep.text)
     t = d.triage if ok else None
     resp = BundleRouteResponse(
         decision_id=decision_id, route=r.route, reason=r.reason, text=r.text, insert=r.insert, clean_text=r.clean_text,
@@ -1386,11 +1404,14 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
         standalone=d.standalone if ok else None, coverage=d.coverage if ok else None,
         latency_ms=d.latency_ms if ok else (int((_time.perf_counter() - t0) * 1000) if d is not None else None),
         error=type(d).__name__ if isinstance(d, BaseException) else None,
+        asr_fixes=rep.fixes if rep else [],
+        asr_flags=rep.flags if rep else [],
+        repair_ms=rep.latency_ms if rep else None,
     )
     utt = request.latest_utterance or ""
     logger.info("[canvas.bundle.decision] %s", json.dumps({
         "event": "canvas.bundle.decision",
-        **resp.model_dump(exclude={"text", "insert", "clean_text", "coverage", "line_close"}),
+        **resp.model_dump(exclude={"text", "insert", "clean_text", "coverage", "line_close", "asr_fixes", "asr_flags"}),
         "coverage_scores": list(d.coverage.values()) if ok else None,  # section names can be dictated text
         "n_questions": d.n_questions if ok else None,
         "cost_usd": d.cost_usd if ok else None,
@@ -1401,6 +1422,14 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
         "asr_n_words": len(request.asr_word_confs) if request.asr_word_confs is not None else None,
         "open_line_len": len(request.open_line or ""),
         "active_len": len(request.active or ""),
+        # word-sense spotter + fixer: numbers only, never the words
+        "word_sense": [round(s, 3) for _, s in d.word_sense] if ok else None,
+        "word_sense_min": min((s for _, s in d.word_sense), default=None) if ok else None,
+        "asr_flag_count": len(rep.flags) if rep else 0,
+        "asr_fix_count": len(rep.fixes) if rep else 0,
+        "asr_fix_confidence": [f["confidence"] for f in rep.fixes] if rep else [],
+        "repair_asked": rep.asked if rep else 0,
+        "repair_error": rep.error if rep else None,
     }))
     return resp
 

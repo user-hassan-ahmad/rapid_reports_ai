@@ -40,8 +40,9 @@ class FakeBundle:
     def __init__(self, action="append_new_finding", conf=0.97, raise_=False):
         self.action, self.conf, self.raise_, self.states = action, conf, raise_, []
 
-    async def classify(self, state: BundleState) -> BundleDecision:
+    async def classify(self, state: BundleState, word_sense: bool = False) -> BundleDecision:
         self.states.append(state)
+        self.word_sense_asked = word_sense
         if self.raise_:
             raise TriageError("jev bundle http 502")
         return BundleDecision(
@@ -97,7 +98,7 @@ def test_jev_error_fails_open_to_polish(authed_client, lab):
 
 def test_unexpected_exception_also_fails_open(authed_client, lab):
     class Broken:
-        async def classify(self, state):
+        async def classify(self, state, word_sense=False):
             raise RuntimeError("anything")
     lab(Broken())
     d = authed_client.post("/api/canvas/bundle", json=BODY).json()
@@ -182,3 +183,43 @@ def test_the_response_carries_the_cleaned_text_for_polish(authed_client, lab):
     lab(FakeBundle("correct_previous_finding", 0.99))
     d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "L3 slash four, colon, mild"}).json()
     assert (d["route"], d["clean_text"]) == ("polish", "L3/4: mild")
+
+
+
+class SenseBundle(FakeBundle):
+    async def classify(self, state, word_sense=False):
+        from dataclasses import replace
+        d = await super().classify(state, word_sense)
+        return replace(d, word_sense=(("renal", 0.81), ("glands", 0.37), ("normal", 0.9)))
+
+
+def test_the_route_asks_word_sense_and_applies_a_confident_fix(authed_client, lab, monkeypatch):
+    from rapid_reports_ai.asr_repair import RepairResult
+    fake = lab(SenseBundle())
+    seen = {}
+
+    async def fake_repair(sentence, word_sense, **kw):
+        seen["sentence"], seen["senses"] = sentence, word_sense
+        return RepairResult(sentence.replace("renal", "adrenal"), [{"heard": "renal", "replacement": "adrenal", "confidence": 0.93}],
+                            [], 1, 240, None)
+    monkeypatch.setattr(cr, "repair", fake_repair)
+    d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "The renal glands are also normal."}).json()
+    assert fake.word_sense_asked is True and seen["sentence"] == "The renal glands are also normal."
+    assert d["route"] == "fast_append" and d["text"] == d["clean_text"] == "The adrenal glands are also normal."
+    assert d["asr_fixes"] == [{"heard": "renal", "replacement": "adrenal", "confidence": 0.93}] and d["repair_ms"] == 240
+
+
+def test_flags_are_returned_and_the_log_has_no_words(authed_client, lab, monkeypatch, caplog):
+    from rapid_reports_ai.asr_repair import RepairResult
+    lab(SenseBundle())
+
+    async def fake_repair(sentence, word_sense, **kw):
+        return RepairResult(sentence, [], [{"word": "glands", "score": 0.37}], 0, None, None)
+    monkeypatch.setattr(cr, "repair", fake_repair)
+    with caplog.at_level(logging.INFO, logger=cr.logger.name):
+        d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "The renal glands are also normal."}).json()
+    assert d["asr_flags"] == [{"word": "glands", "score": 0.37}] and d["text"] == "The renal glands are also normal."
+    line = next(r.getMessage() for r in caplog.records if "canvas.bundle.decision" in r.getMessage())
+    p = json.loads(line.split(" ", 1)[1])
+    assert p["asr_flag_count"] == 1 and p["asr_fix_count"] == 0 and p["word_sense_min"] == 0.37
+    assert "glands" not in line and "renal" not in line
