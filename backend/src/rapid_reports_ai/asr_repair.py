@@ -175,3 +175,95 @@ def apply_fix(utterance: str, c: Candidate) -> str:
     if c.heard[:1].isupper():
         rep = rep[:1].upper() + rep[1:]
     return utterance[: c.start] + rep + utterance[c.end:]
+
+
+# --- the chained choice ------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RepairResult:
+    text: str
+    fixes: list[dict]  # {heard, replacement, confidence}
+    flags: list[dict]  # {word, score}: flagged and not fixed
+    asked: int  # flagged words that had candidates (one Jev question each)
+    latency_ms: int | None
+    error: str | None
+
+
+def _find_word(sentence: str, word: str) -> str | None:
+    """The flagged word as it appears in the (cleaned) sentence, matching case-insensitively."""
+    for m in _TOKEN.finditer(sentence):
+        if m.group(0).lower() == word.lower():
+            return m.group(0)
+    return None
+
+
+async def repair(
+    sentence: str,
+    word_sense: tuple[tuple[str, float], ...],
+    *,
+    state: dict,
+    lexicon: list[str],
+    api_key: str,
+    transport=None,
+    max_words: int = 2,
+) -> RepairResult:
+    """Flag words below the word-sense band; for those with sound-alike candidates, one Jev
+    choice per word over whole sentences ("as heard" always included); apply a candidate
+    only at or above the fix band. Everything else stays as heard and is flagged."""
+    import time
+
+    import httpx
+
+    from .jev_client import JEV_MODEL, jev_post
+    from .jev_questions import WORD_SENSE_BANDS, word_fix_question
+
+    flagged = sorted((ws for ws in word_sense if ws[1] < WORD_SENSE_BANDS["word_sense_flag"]), key=lambda x: x[1])
+    flagged = flagged[:max_words]
+    if not flagged:
+        return RepairResult(sentence, [], [], 0, None, None)
+    questions, options_by_q = {}, {}
+    for j, (w, _score) in enumerate(flagged):
+        found = _find_word(sentence, w)
+        cands = candidates(sentence, found, lexicon) if found else []
+        options: dict[str, str] = {"as_heard": sentence}
+        by_option: dict[str, Candidate] = {}
+        for c in cands:
+            v = apply_fix(sentence, c)
+            if v in options.values():
+                continue  # same sentence as an option already offered
+            key = f"candidate_{len(by_option)}"
+            options[key] = v
+            by_option[key] = c
+        if by_option:
+            questions[f"fix_{j}"] = word_fix_question(options)
+            options_by_q[f"fix_{j}"] = by_option
+    flags = [{"word": w, "score": s} for w, s in flagged]
+    if not questions:
+        return RepairResult(sentence, [], flags, 0, None, None)
+    body = {"model": JEV_MODEL, "state": {**state, "latest_utterance": sentence}, "questions": questions}
+    t0 = time.perf_counter()
+    try:
+        resp = await jev_post(body, api_key, 3.0, transport)
+        resp.raise_for_status()
+        answers = resp.json().get("answers") or {}
+    except (httpx.HTTPError, ValueError) as e:
+        return RepairResult(sentence, [], flags, len(questions), int((time.perf_counter() - t0) * 1000), type(e).__name__)
+    latency_ms = int((time.perf_counter() - t0) * 1000)
+    chosen: list[tuple[Candidate, float]] = []
+    fixed_words = set()
+    for q, opts in options_by_q.items():
+        a = answers.get(q) or {}
+        choice, conf = a.get("choice"), a.get("confidence") or 0.0
+        if choice in opts and conf >= WORD_SENSE_BANDS["word_fix_accept"]:
+            chosen.append((opts[choice], conf))
+            fixed_words.add(flagged[int(q.split("_")[1])][0])
+    text, last_start = sentence, len(sentence) + 1
+    applied = []
+    for c, conf in sorted(chosen, key=lambda x: -x[0].start):
+        if c.end > last_start:
+            continue  # overlaps a fix already applied to its right
+        text = apply_fix(text, c)
+        last_start = c.start
+        applied.append({"heard": c.heard, "replacement": c.replacement, "confidence": conf})
+    return RepairResult(text, applied, [f for f in flags if f["word"] not in fixed_words], len(questions), latency_ms, None)

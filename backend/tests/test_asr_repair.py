@@ -86,3 +86,81 @@ def test_a_fix_never_doubles_a_neighbouring_word():
     for c in candidates(u, "bowel", build_lexicon([])):
         fixed = apply_fix(u, c).lower().split()
         assert all(a != b for a, b in zip(fixed, fixed[1:])), apply_fix(u, c)
+
+
+# --- the chained choice: Jev picks the sentence -----------------------------------------------
+
+import json as _json
+
+import httpx as _httpx
+
+from rapid_reports_ai.asr_repair import repair
+
+STATE = {"scan_type": "CT chest, abdomen and pelvis", "checklist": CAP, "scratchpad": "The spleen is normal."}
+
+
+def _jev(pick_containing: str | None, confidence: float = 0.9, calls: list | None = None):
+    def handler(req):
+        body = _json.loads(req.content)
+        if calls is not None:
+            calls.append(body)
+        answers = {}
+        for k, q in body["questions"].items():
+            opts = q["criteria"]
+            choice = next((o for o, s in opts.items() if pick_containing and pick_containing in s), "as_heard")
+            answers[k] = {"type": "choice", "choice": choice, "confidence": confidence,
+                          "probabilities": {o: (confidence if o == choice else 0.0) for o in opts}}
+        return _httpx.Response(200, json={"answers": answers})
+    return _httpx.MockTransport(handler)
+
+
+async def test_no_flagged_word_means_no_call():
+    calls = []
+    r = await repair("The kidneys are normal.", (("kidneys", 0.97), ("normal", 0.96)), state=STATE,
+                     lexicon=build_lexicon(CAP), api_key="k", transport=_jev(None, calls=calls))
+    assert (r.text, r.fixes, r.flags, calls) == ("The kidneys are normal.", [], [], [])
+
+
+async def test_a_confident_choice_fixes_the_sentence():
+    r = await repair("The renal glands are also normal.", (("renal", 0.81), ("glands", 0.37), ("normal", 0.73)),
+                     state=STATE, lexicon=build_lexicon(CAP), api_key="k", transport=_jev("adrenal"))
+    assert r.text == "The adrenal glands are also normal."
+    assert [(f["heard"], f["replacement"]) for f in r.fixes] == [("renal", "adrenal")] and r.flags == []
+
+
+async def test_a_hesitant_choice_flags_instead():
+    r = await repair("The renal glands are also normal.", (("glands", 0.37),), state=STATE,
+                     lexicon=build_lexicon(CAP), api_key="k", transport=_jev("adrenal", confidence=0.6))
+    assert r.text == "The renal glands are also normal." and [f["word"] for f in r.flags] == ["glands"]
+
+
+async def test_as_heard_is_respected():
+    r = await repair("The renal glands are also normal.", (("glands", 0.37),), state=STATE,
+                     lexicon=build_lexicon(CAP), api_key="k", transport=_jev(None))
+    assert r.text == "The renal glands are also normal." and r.fixes == [] and len(r.flags) == 1
+
+
+async def test_a_word_with_no_candidates_is_flagged_without_a_call():
+    calls = []
+    r = await repair("The liver contains a 14 mm high lesion.", (("high", 0.38),), state=STATE,
+                     lexicon=build_lexicon(CAP), api_key="k", transport=_jev(None, calls=calls))
+    assert calls == [] and [f["word"] for f in r.flags] == ["high"]
+
+
+async def test_a_jev_failure_leaves_the_text_and_flags():
+    t = _httpx.MockTransport(lambda req: _httpx.Response(502, text="bad"))
+    r = await repair("The renal glands are also normal.", (("glands", 0.37),), state=STATE,
+                     lexicon=build_lexicon(CAP), api_key="k", transport=t)
+    assert r.text == "The renal glands are also normal." and r.error and len(r.flags) == 1
+
+
+async def test_the_chosen_option_maps_to_its_own_candidate(monkeypatch):
+    # two candidates can produce the same sentence; the option → candidate map must stay aligned
+    import rapid_reports_ai.asr_repair as ar
+    c1 = ar.Candidate(4, 9, "renal", "adrenal", 0.9)
+    c2 = ar.Candidate(4, 9, "renal", "adrenal", 0.8)  # same sentence as c1: collapsed into one option
+    c3 = ar.Candidate(10, 16, "glands", "glandz", 0.7)
+    monkeypatch.setattr(ar, "candidates", lambda s, w, lex, **kw: [c1, c2, c3])
+    r = await repair("The renal glands are normal.", (("glands", 0.37),), state=STATE, lexicon=[],
+                     api_key="k", transport=_jev("glandz"))
+    assert r.text == "The renal glandz are normal."
