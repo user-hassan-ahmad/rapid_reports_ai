@@ -368,3 +368,17 @@ export function buildSessionExport(
 		outcomes: outcomes.map((o) => ({ ...o }))
 	};
 }
+
+/** Per-case Deepgram keyterms go on the websocket URL as repeated `kt` parameters (the
+ *  backend filters them again and uses them only with DEEPGRAM_CASE_KEYTERMS=1). */
+export function keytermQuery(terms: string[] | null | undefined): string {
+	return (terms ?? [])
+		.slice(0, 50)
+		.map((t) => `&kt=${encodeURIComponent(t)}`)
+		.join('');
+}
+
+/** Keyterms are fetched once per case: this key changes when the case does. */
+export function keytermCaseKey(scanType: string, history: string, sections: string[]): string {
+	return JSON.stringify([scanType.trim(), history.trim(), sections]);
+}

@@ -21,6 +21,7 @@ import {
 	type DecisionRecord,
 	type OutcomeEvent
 } from './decisionFirst';
+import { keytermQuery, keytermCaseKey } from './decisionFirst';
 
 describe('joinSeparator', () => {
 	it('starts an empty scratchpad with nothing', () => expect(joinSeparator('')).toBe(''));
@@ -318,5 +319,28 @@ describe('word-sense fixes and flags in written text', () => {
 	it('finds the last whole-word occurrence of each flagged word', () => {
 		expect(flagRanges('the meshes and the meshes', [{ word: 'meshes' }])).toEqual([{ from: 19, to: 25 }]);
 		expect(flagRanges('the thyroid gland', [{ word: 'roid' }])).toEqual([]);
+	});
+});
+
+describe('keytermQuery', () => {
+	it('encodes each term as a repeated kt parameter', () => {
+		expect(keytermQuery(['adrenal glands', "McConnell's sign"])).toBe("&kt=adrenal%20glands&kt=McConnell's%20sign");
+	});
+	it('is empty with no terms (the backend then uses the core list)', () => {
+		expect(keytermQuery([])).toBe('');
+		expect(keytermQuery(null)).toBe('');
+	});
+	it('caps at 50 terms', () => {
+		const q = keytermQuery(Array.from({ length: 70 }, (_, i) => `t${i}`));
+		expect(q.split('&kt=').length - 1).toBe(50);
+	});
+});
+
+describe('keytermCaseKey', () => {
+	it('changes when the scan, history or checklist changes', () => {
+		const a = keytermCaseKey('CT chest', 'cough', ['LUNGS']);
+		expect(keytermCaseKey('CT chest', 'cough', ['LUNGS'])).toBe(a);
+		expect(keytermCaseKey('CT chest', 'cough', ['LUNGS', 'PLEURA'])).not.toBe(a);
+		expect(keytermCaseKey('CT head', 'cough', ['LUNGS'])).not.toBe(a);
 	});
 });

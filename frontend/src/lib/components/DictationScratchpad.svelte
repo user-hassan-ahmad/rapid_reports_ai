@@ -26,6 +26,8 @@
 		splitSpan,
 		hash8,
 		isRedictation,
+		keytermQuery,
+		keytermCaseKey,
 		separatorFor,
 		substituteLast,
 		tokenSet,
@@ -781,6 +783,40 @@
 		error: string | null;
 		ms: number;
 	}
+	// Per-case Deepgram keyterms (lab): fetched once per case when the workspace is set up,
+	// never on the dictation path. Recording waits at most KEYTERM_WAIT_MS for them, then
+	// starts with the core list (fail open).
+	const KEYTERM_WAIT_MS = 1500;
+	let keytermKey = '';
+	let keytermFetch: Promise<string[]> | null = null;
+	function prefetchKeyterms(): Promise<string[]> | null {
+		if (!labConfig || !scanType.trim()) return null;
+		const key = keytermCaseKey(scanType, clinicalHistory, checklistSections);
+		if (key !== keytermKey || !keytermFetch) {
+			keytermKey = key;
+			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+			if ($token) headers['Authorization'] = `Bearer ${$token}`;
+			keytermFetch = fetch(`${API_URL}/api/canvas/keyterms`, {
+				method: 'POST',
+				headers,
+				body: JSON.stringify({ scan_type: scanType, clinical_history: clinicalHistory, sections: checklistSections })
+			})
+				.then((r) => (r.ok ? r.json() : { terms: [] }))
+				.then((d) => (Array.isArray(d?.terms) ? d.terms : []))
+				.catch(() => []);
+		}
+		return keytermFetch;
+	}
+	// Prefetch when the scan type is set; a history or checklist edit after that is picked up
+	// at record start (the case key differs, so it refetches) rather than on every keystroke.
+	$: if (labConfig && scanType) prefetchKeyterms();
+	async function caseKeyterms(): Promise<string[]> {
+		const f = prefetchKeyterms();
+		if (!f) return [];
+		const timeout = new Promise<string[]>((r) => setTimeout(() => r([]), KEYTERM_WAIT_MS));
+		return Promise.race([f, timeout]);
+	}
+
 	async function askLean(split: { context: string; span: string }, chunk: string): Promise<LeanResult> {
 		const t0 = performance.now();
 		try {
@@ -1277,7 +1313,8 @@
 			const tokenPart = $token
 				? `?token=${encodeURIComponent($token)}&pcm=1&sr=${sr}`
 				: `?pcm=1&sr=${sr}`;
-			const wsUrl = `${wsUrlBase}/api/transcribe${tokenPart}`;
+			const kt = labConfig ? keytermQuery(await caseKeyterms()) : '';
+			const wsUrl = `${wsUrlBase}/api/transcribe${tokenPart}${kt}`;
 			websocket = new WebSocket(wsUrl);
 
 			workletNode.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
