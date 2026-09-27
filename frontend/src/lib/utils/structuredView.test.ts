@@ -16,20 +16,23 @@ describe('structured view state', () => {
 	});
 
 	it('is current once a build for the present verbatim text lands (trailing whitespace ignored)', () => {
-		const r = acceptBuild(startBuild(emptyStructured(), V), V, S, V + '\n');
+		const r = acceptBuild(startBuild(emptyStructured(), V), V, S);
 		expect(r).not.toBeNull();
 		expect(r!.state.text).toBe(S);
-		expect(isCurrent(r!.state, V)).toBe(true);
+		expect(isCurrent(r!.state, V + '\n')).toBe(true);
 		expect(shouldBuild(r!.state, V, { wanted: true, busy: false })).toBe(false);
 	});
 
-	it('discards a build whose verbatim text has since changed', () => {
-		const s = startBuild(emptyStructured(), V);
-		expect(acceptBuild(s, V, S, V + ' Small hiatus hernia.')).toBeNull();
+	it('shows a build whose verbatim text has since changed, but not as current (it rebuilds)', () => {
+		const V2 = V + ' Small hiatus hernia.';
+		const r = acceptBuild(startBuild(emptyStructured(), V), V, S)!;
+		expect(r.state.text).toBe(S);
+		expect(isCurrent(r.state, V2)).toBe(false);
+		expect(shouldBuild(r.state, V2, { wanted: true, busy: false })).toBe(true);
 	});
 
 	it('keeps hand edits while the verbatim text is unchanged', () => {
-		const built = acceptBuild(startBuild(emptyStructured(), V), V, S, V)!.state;
+		const built = acceptBuild(startBuild(emptyStructured(), V), V, S)!.state;
 		const edited = noteEdit(built, S + '\n- edited by hand');
 		expect(edited.edited).toBe(true);
 		expect(isCurrent(edited, V)).toBe(true);
@@ -37,18 +40,18 @@ describe('structured view state', () => {
 	});
 
 	it('replaces hand edits once the verbatim text changes, and says so', () => {
-		const built = acceptBuild(startBuild(emptyStructured(), V), V, S, V)!.state;
+		const built = acceptBuild(startBuild(emptyStructured(), V), V, S)!.state;
 		const edited = noteEdit(built, S + '\n- edited by hand');
 		const V2 = V + ' Small hiatus hernia.';
 		expect(shouldBuild(edited, V2, { wanted: true, busy: false })).toBe(true);
-		const r = acceptBuild(startBuild(edited, V2), V2, S + '\n- Small hiatus hernia', V2)!;
+		const r = acceptBuild(startBuild(edited, V2), V2, S + '\n- Small hiatus hernia')!;
 		expect(r.replacedEdits).toBe(true);
 		expect(r.state.edited).toBe(false);
 	});
 
 	it('a failed build clears the in-flight marker so the next settle retries', () => {
 		const s = startBuild(emptyStructured(), V);
-		const r = acceptBuild(s, V, null, V);
+		const r = acceptBuild(s, V, null);
 		expect(r).toBeNull();
 		expect(shouldBuild({ ...s, building: null }, V, { wanted: true, busy: false })).toBe(true);
 	});

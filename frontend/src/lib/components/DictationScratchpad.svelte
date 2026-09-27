@@ -48,6 +48,7 @@
 	import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
 	import { tags } from '@lezer/highlight';
 	import { token } from '$lib/stores/auth';
+	import { acceptBuild, emptyStructured, isCurrent, noteEdit, shouldBuild, startBuild, type StructuredState } from '$lib/utils/structuredView';
 	import { API_URL } from '$lib/config';
 
 	interface IntelliPrompt { question: string; source_text: string; rationale?: string; }
@@ -178,7 +179,28 @@
 	}
 
 	let editorContainer: HTMLDivElement;
-	let editor: EditorView | null = null;
+	let editor: EditorView | null = null; // always the verbatim text: dictation, polish and undo work here
+
+	// Structured view: a second editor holding text derived from the verbatim text, so the
+	// toggle never re-polishes (or loses) either one. Plan: 2026-09-27-verbatim-structured-views.md
+	let structuredContainer: HTMLDivElement;
+	let structuredEditor: EditorView | null = null;
+	let structured: StructuredState = emptyStructured();
+	let structuredWanted = polishMode === 'structured'; // no background rebuilds until Structured is used
+	let structuredTimer: ReturnType<typeof setTimeout> | null = null;
+	let writingStructured = false;
+	let structuredNotice = '';
+	let verbatimNow = '';
+	const STRUCTURE_DEBOUNCE_MS = 1500;
+	$: structuredStale = polishMode === 'structured' && !!verbatimNow.trim() && !isCurrent(structured, verbatimNow);
+	// The parent can set the mode too (a draft restored in Structured view): build for it.
+	$: if (polishMode === 'structured' && editor) {
+		structuredWanted = true;
+		scheduleStructure(0);
+	}
+	function visibleEditor(): EditorView | null {
+		return polishMode === 'structured' ? structuredEditor : editor;
+	}
 	const editableCompartment = new Compartment();
 
 	// Audio pipeline state
@@ -325,12 +347,18 @@
 		}
 	});
 
+	/** The view on screen (Generate Report uses what the user is looking at). */
 	export function getContent(): string {
+		if (polishMode === 'structured' && structuredEditor && structured.text !== null) {
+			return structuredEditor.state.doc.toString();
+		}
 		return editor ? editor.state.doc.toString() : '';
 	}
 
 	export function reset(newDoc: string): void {
 		if (!editor) return;
+		structured = emptyStructured();
+		showStructured('');
 		editor.dispatch({
 			changes: { from: 0, to: editor.state.doc.length, insert: newDoc }
 		});
@@ -343,19 +371,21 @@
 	}
 
 	export function highlightSource(text: string): void {
-		if (!editor || !text) return;
-		const doc = editor.state.doc.toString();
+		const view = visibleEditor();
+		if (!view || !text) return;
+		const doc = view.state.doc.toString();
 		const idx = doc.toLowerCase().indexOf(text.toLowerCase());
 		if (idx === -1) return;
-		editor.dispatch({
+		view.dispatch({
 			effects: setHighlight.of({ from: idx, to: idx + text.length }),
 			scrollIntoView: true
 		});
 	}
 
 	export function clearHighlight(): void {
-		if (!editor) return;
-		editor.dispatch({ effects: setHighlight.of(null) });
+		const view = visibleEditor();
+		if (!view) return;
+		view.dispatch({ effects: setHighlight.of(null) });
 	}
 
 	/**
@@ -836,7 +866,7 @@
 		}
 	}
 	function racing(): boolean {
-		return labConfig?.polish === 'race' && polishMode === 'clean';
+		return labConfig?.polish === 'race';
 	}
 
 	/** Apply a raced lean polish to its span: [span start, end of this final's faded text].
@@ -1133,7 +1163,7 @@
 				scan_type: scanType,
 				clinical_history: clinicalHistory,
 				preferred_section_names: checklistSections,
-				mode: polishMode
+				mode: 'clean' // the live polish always writes the verbatim text; Structured is derived from it
 			};
 			const queuedDecisionId = utteranceQueue.length ? (utteranceDecisionIds.shift() ?? null) : null;
 			const queued = utteranceQueue.length ? utteranceQueue.shift()! : null;
@@ -1155,14 +1185,7 @@
 			// (An aborted/superseded call never reaches here, so its words stay in the next delta.)
 			lastSentTranscript = sentTranscript;
 
-			const sanitize = (s: string): string =>
-				s
-					.split('\n')
-					.filter((line: string) => !/^[-*_]{3,}\s*$/.test(line.trim()))
-					.map((line: string) => line.replace(/\*\*/g, '').replace(/^_{1,2}|_{1,2}$/g, ''))
-					.join('\n');
-
-			const content = data.scratchpad != null ? sanitize(data.scratchpad) : null;
+			const content = data.scratchpad != null ? sanitizeScratchpad(data.scratchpad) : null;
 
 			if (content != null) {
 				isQwenWriting = true;
@@ -1251,6 +1274,79 @@
 		isReviewing = false;
 	}
 
+	function sanitizeScratchpad(s: string): string {
+		return s
+			.split('\n')
+			.filter((line: string) => !/^[-*_]{3,}\s*$/.test(line.trim()))
+			.map((line: string) => line.replace(/\*\*/g, '').replace(/^_{1,2}|_{1,2}$/g, ''))
+			.join('\n');
+	}
+
+	// --- Structured view -------------------------------------------------------------
+	function showStructured(text: string): void {
+		if (!structuredEditor || structuredEditor.state.doc.toString() === text) return;
+		writingStructured = true;
+		structuredEditor.dispatch({ changes: { from: 0, to: structuredEditor.state.doc.length, insert: text } });
+		writingStructured = false;
+	}
+	function structureBusy(): boolean {
+		return !!firstPendingRange() || isProcessingQueue || utteranceQueue.length > 0 || !!heldCorrection;
+	}
+	function scheduleStructure(delay = STRUCTURE_DEBOUNCE_MS): void {
+		if (!structuredWanted) return;
+		if (structuredTimer) clearTimeout(structuredTimer);
+		structuredTimer = setTimeout(() => {
+			structuredTimer = null;
+			void buildStructured();
+		}, delay);
+	}
+	/** Derive the structured text from the verbatim text: /process in structured mode, the
+	 *  verbatim text as the transcript, an empty scratchpad. Never while a final is faded or a
+	 *  polish is pending (it would structure half a statement); the next settle retries. */
+	async function buildStructured(): Promise<void> {
+		if (!editor) return;
+		const verbatim = editor.state.doc.toString();
+		const busy = structureBusy();
+		if (!shouldBuild(structured, verbatim, { wanted: structuredWanted, busy })) {
+			if (busy && structuredWanted && verbatim.trim() && !isCurrent(structured, verbatim)) scheduleStructure();
+			return;
+		}
+		structured = startBuild(structured, verbatim);
+		let text: string | null = null;
+		try {
+			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+			if ($token) headers['Authorization'] = `Bearer ${$token}`;
+			const res = await fetch(`${API_URL}/api/canvas/process`, {
+				method: 'POST',
+				headers,
+				body: JSON.stringify({
+					session_transcript: verbatim,
+					scratchpad_content: '',
+					scan_type: scanType,
+					clinical_history: clinicalHistory,
+					preferred_section_names: checklistSections,
+					mode: 'structured'
+				})
+			});
+			if (res.ok) {
+				const data = await res.json();
+				if (typeof data.scratchpad === 'string') text = sanitizeScratchpad(data.scratchpad);
+			}
+		} catch {
+			// fail open: the previous structured text stays; the next settle retries
+		}
+		const r = acceptBuild(structured, verbatim, text);
+		if (!r) {
+			structured = { ...structured, building: null };
+			return;
+		}
+		structured = r.state;
+		if (r.replacedEdits) structuredNotice = 'Structured view refreshed from new dictation: your edits there were replaced.';
+		showStructured(r.state.text ?? '');
+		if (polishMode === 'structured') onContentChange(r.state.text ?? '');
+		if (editor && !isCurrent(structured, editor.state.doc.toString())) scheduleStructure();
+	}
+
 	async function _runReview(): Promise<void> {
 		if (!editor) return;
 		const scratchpad_content = editor.state.doc.toString();
@@ -1270,7 +1366,7 @@
 					checklist_sections: checklistSections,
 					scan_type: scanType,
 					clinical_history: clinicalHistory,
-					mode: polishMode,
+					mode: 'clean', // review reads the verbatim text
 					parts,
 					...(labConfig && parts === 'coverage' ? { coverage_debug: labConfig.coverageDebug } : {})
 				})
@@ -1501,7 +1597,12 @@
 				}
 				if (update.docChanged) {
 					const content = update.state.doc.toString();
-					onContentChange(content);
+					verbatimNow = content;
+					if (polishMode === 'clean') onContentChange(content);
+					if (!content.trim()) {
+						structured = emptyStructured();
+						showStructured('');
+					} else scheduleStructure();
 					if (!isRecording && !isQwenWriting) {
 					let hasWordChange = false;
 					let charsDeleted = 0;
@@ -1536,7 +1637,29 @@
 			}),
 			parent: editorContainer
 		});
-		editor.focus();
+		structuredEditor = new EditorView({
+			state: EditorState.create({
+				doc: '',
+				extensions: [
+					history(),
+					keymap.of([...defaultKeymap, ...historyKeymap]),
+					markdown(),
+					syntaxHighlighting(markdownHighlightStyle),
+					EditorView.lineWrapping,
+					darkTheme,
+					highlightField,
+					EditorView.updateListener.of((update) => {
+						if (!update.docChanged || writingStructured) return;
+						const text = update.state.doc.toString();
+						structured = noteEdit(structured, text); // kept until the verbatim text changes
+						if (polishMode === 'structured') onContentChange(text);
+					})
+				]
+			}),
+			parent: structuredContainer
+		});
+		if (polishMode === 'structured') structuredEditor.focus();
+		else editor.focus();
 	});
 
 	onDestroy(() => {
@@ -1545,6 +1668,9 @@
 			editor.destroy();
 			editor = null;
 		}
+		if (structuredTimer) clearTimeout(structuredTimer);
+		structuredEditor?.destroy();
+		structuredEditor = null;
 		stopRecording();
 	});
 
@@ -1552,9 +1678,20 @@
 		if (mode === polishMode) return;
 		polishMode = mode;
 		onModeChange(mode);
-		// Re-run the polish so the visible scratchpad starts converting to the new mode.
-		// (Full re-derivation of long scratchpads waits on Phase 2b's incremental rework.)
-		if (editor && editor.state.doc.length > 0) processTranscriptQueue();
+		structuredNotice = '';
+		// Switching shows the other stored view; nothing is re-polished or overwritten.
+		if (mode === 'structured') {
+			structuredWanted = true;
+			onContentChange(structured.text ?? editor?.state.doc.toString() ?? '');
+			void buildStructured(); // no-op when already current
+		} else {
+			onContentChange(editor?.state.doc.toString() ?? '');
+		}
+		requestAnimationFrame(() => {
+			const view = visibleEditor();
+			view?.requestMeasure();
+			view?.focus();
+		});
 	}
 </script>
 
@@ -1622,7 +1759,7 @@
 			<button
 				type="button"
 				onclick={() => undoLast()}
-				disabled={!lastAction?.intact}
+				disabled={!lastAction?.intact || polishMode === 'structured'}
 				class="text-xs px-2 py-0.5 rounded border border-white/10 text-gray-300 disabled:opacity-30"
 				title="Undo the latest routed action (⌘Z)"
 			>
@@ -1681,7 +1818,7 @@
 		class="scratchpad-wrapper -mt-[22px] flex-1 rounded-xl border overflow-hidden transition-all duration-300 min-h-[360px] flex flex-col cursor-text {isRecording
 			? 'border-purple-500/50 dictation-glow'
 			: 'border-white/10 bg-black/40'}"
-		onclick={(e) => { if (e.target === e.currentTarget || !(e.target as Element).closest('.cm-editor')) editor?.focus(); }}
+		onclick={(e) => { if (e.target === e.currentTarget || !(e.target as Element).closest('.cm-editor')) visibleEditor()?.focus(); }}
 	>
 		<!-- Scroll container — holds both the editor and the margin so they scroll together.
 		     This means card overflow is never clipped: the area simply becomes scrollable. -->
@@ -1690,7 +1827,13 @@
 
 				<!-- Editor column -->
 				<div class="flex-1 min-h-full pl-4 pr-4">
-					<div bind:this={editorContainer} class="min-h-full"></div>
+					{#if polishMode === 'structured' && (structuredStale || structuredNotice)}
+						<div class="mb-2 text-xs {structuredNotice ? 'text-amber-300/80' : 'text-gray-400'}" aria-live="polite">
+							{structuredNotice || (structured.text === null ? 'Structuring…' : 'Updating structured view…')}
+						</div>
+					{/if}
+					<div bind:this={editorContainer} class="min-h-full" class:hidden={polishMode === 'structured'}></div>
+					<div bind:this={structuredContainer} class="min-h-full" class:hidden={polishMode !== 'structured'}></div>
 				</div>
 
 				<!-- Margin column — width animates open/closed; stops click bubbling to editor focus handler -->
@@ -1701,7 +1844,7 @@
 				>
 					<IntelliPromptsMargin
 						{activePrompts}
-						{editor}
+						editor={polishMode === 'structured' ? structuredEditor : editor}
 						{isReviewing}
 						onHighlight={highlightSource}
 						onClearHighlight={clearHighlight}

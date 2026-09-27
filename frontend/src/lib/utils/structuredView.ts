@@ -34,17 +34,18 @@ export function startBuild(s: StructuredState, verbatim: string): StructuredStat
 	return { ...s, building: key(verbatim) };
 }
 
-/** A build result: null when it failed or its verbatim text has since changed (the caller
- *  clears `building` and lets the next settle retry). */
+/** A build result: null when it failed (the caller clears `building` and the next settle
+ *  retries). A result whose verbatim text has since changed is still newer than what is on
+ *  show, so it is shown, but it is not current: the next settle rebuilds. */
 export function acceptBuild(
 	s: StructuredState,
 	source: string,
-	text: string | null,
-	verbatimNow: string
+	text: string | null
 ): { state: StructuredState; replacedEdits: boolean } | null {
-	if (text === null || key(source) !== key(verbatimNow)) return null;
+	if (text === null) return null;
+	const stillBuilding = s.building !== null && s.building !== key(source) ? s.building : null;
 	return {
-		state: { text, source: key(source), edited: false, building: null },
+		state: { text, source: key(source), edited: false, building: stillBuilding },
 		replacedEdits: s.edited && s.text !== null
 	};
 }
