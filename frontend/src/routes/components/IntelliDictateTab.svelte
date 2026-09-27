@@ -77,7 +77,7 @@ import { pillState } from '$lib/dictation-lab/coverage';
 		reset: (doc: string) => void;
 		highlightSource: (text: string) => void;
 		clearHighlight: () => void;
-		setIntegrityRanges: (ranges: { from: number; to: number }[]) => void;
+		setIntegrityRanges: (flags: IntegrityFlag[]) => void;
 		revealIntegrityRange: (range: { from: number; to: number }) => void;
 		injectTranscript: (text: string, speechFinal?: boolean) => void;
 	} | null = null;
@@ -329,6 +329,9 @@ import { pillState } from '$lib/dictation-lab/coverage';
 		// Character offsets into the raw scratchpad document.
 		start: number;
 		end: number;
+		// The other statement of a conflict (tier 2), when there is one.
+		related_start?: number | null;
+		related_end?: number | null;
 	}
 	let integrityFlags: IntegrityFlag[] = [];
 	let integrityGate = false;
@@ -386,9 +389,7 @@ import { pillState } from '$lib/dictation-lab/coverage';
 			if (seq !== integritySeq) return;
 			integrityFlags = data.flags ?? [];
 			integrityGate = Boolean(data.should_gate);
-			scratchpadRef?.setIntegrityRanges(
-				integrityFlags.map((f) => ({ from: f.start, to: f.end }))
-			);
+			scratchpadRef?.setIntegrityRanges(integrityFlags);
 		} catch {
 			// Non-blocking by design: a failed check must never strand the
 			// radiologist behind a gate it cannot clear.
@@ -918,7 +919,6 @@ import { pillState } from '$lib/dictation-lab/coverage';
 			     before it becomes a confident report. Amber, not red: this is a
 			     "look at this" not a "you broke something". -->
 			{#if integrityFlags.length > 0 && !integrityAcknowledged}
-				{@const flag = integrityFlags[0]}
 				<div
 					role="alert"
 					class="shrink-0 flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.07] px-4 py-3"
@@ -926,20 +926,23 @@ import { pillState } from '$lib/dictation-lab/coverage';
 					<svg class="w-4 h-4 mt-0.5 shrink-0 text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
 					</svg>
-					<div class="min-w-0 flex-1">
-						<p class="text-sm text-amber-100/90 leading-relaxed">{flag.message}</p>
-						{#if flag.excerpt}
-							<!-- Click jumps to the flagged span, mirroring how the audit
-							     sidebar links back into the report body. -->
-							<button
-								type="button"
-								onclick={() => scratchpadRef?.revealIntegrityRange({ from: flag.start, to: flag.end })}
-								class="mt-1.5 block w-full truncate text-left font-mono text-xs text-amber-200/60 underline decoration-dotted underline-offset-2 transition-colors hover:text-amber-100"
-								title="Jump to this point in the dictation"
-							>
-								…{flag.excerpt}
-							</button>
-						{/if}
+					<div class="min-w-0 flex-1 space-y-2">
+						<!-- Every flag, each linking to its span (hover a mark in the editor for the same message). -->
+						{#each integrityFlags as flag}
+							<div>
+								<p class="text-sm text-amber-100/90 leading-relaxed">{flag.message}</p>
+								{#if flag.excerpt}
+									<button
+										type="button"
+										onclick={() => scratchpadRef?.revealIntegrityRange({ from: flag.start, to: flag.end })}
+										class="mt-1 block w-full truncate text-left font-mono text-xs text-amber-200/60 underline decoration-dotted underline-offset-2 transition-colors hover:text-amber-100"
+										title="Jump to this point in the dictation"
+									>
+										…{flag.excerpt}
+									</button>
+								{/if}
+							</div>
+						{/each}
 					</div>
 					{#if integrityGate}
 						<button

@@ -39,7 +39,8 @@
 		type LineClosedBy,
 		type OutcomeEvent
 	} from '$lib/dictation-lab/decisionFirst';
-	import { EditorView, keymap, Decoration, type DecorationSet, type ViewUpdate } from '@codemirror/view';
+	import { EditorView, keymap, Decoration, hoverTooltip, type DecorationSet, type ViewUpdate } from '@codemirror/view';
+	import { editTouches, integrityMarks, type FlagLike, type IntegrityMark } from '$lib/utils/integrityMarks';
 	import { clearPending, markPending, pendingField, replaceAndClear } from '$lib/dictation-lab/pendingMarks';
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
@@ -106,23 +107,57 @@
 	// is transient on click) and must be able to coexist without one clearing
 	// the other. Ranges are mapped through document changes so the mark tracks
 	// the token as the radiologist keeps typing.
-	const setIntegrityMarks = StateEffect.define<{ from: number; to: number }[]>();
+	const setIntegrityMarks = StateEffect.define<IntegrityMark[]>();
 	const integrityField = StateField.define<DecorationSet>({
 		create: () => Decoration.none,
 		update(deco, tr) {
-			deco = deco.map(tr.changes);
+			if (tr.docChanged) {
+				// A flag goes as soon as its text is edited; the next check decides afresh.
+				const edits: [number, number][] = [];
+				tr.changes.iterChangedRanges((fromA, toA) => edits.push([fromA, toA]));
+				deco = deco.update({ filter: (from, to) => !edits.some(([a, b]) => editTouches(a, b, from, to)) });
+				deco = deco.map(tr.changes);
+			}
 			for (const e of tr.effects) {
 				if (e.is(setIntegrityMarks)) {
 					deco = Decoration.set(
-						e.value.map((r) =>
-							Decoration.mark({ class: 'cm-integrity-flag' }).range(r.from, r.to)
-						)
+						e.value.map((m) =>
+							Decoration.mark({
+								class: `cm-integrity-flag cm-integrity-${m.kind}${m.related ? ' cm-integrity-related' : ''}`,
+								attributes: { 'data-integrity-message': m.message }
+							}).range(m.from, m.to)
+						),
+						true
 					);
 				}
 			}
 			return deco;
 		},
 		provide: (f) => EditorView.decorations.from(f)
+	});
+	// Hovering a flagged span shows its message.
+	const integrityTooltip = hoverTooltip((view, pos) => {
+		let hit: { from: number; to: number; message: string } | null = null;
+		view.state.field(integrityField, false)?.between(pos, pos, (from, to, value) => {
+			const message = value.spec.attributes?.['data-integrity-message'];
+			if (message) {
+				hit = { from, to, message };
+				return false;
+			}
+		});
+		const h = hit as { from: number; to: number; message: string } | null;
+		if (!h) return null;
+		return {
+			pos: h.from,
+			end: h.to,
+			above: true,
+			create: () => {
+				const dom = document.createElement('div');
+				dom.className = 'cm-integrity-tooltip';
+				dom.textContent = h.message;
+				return { dom };
+			}
+		};
 	});
 
 	// Phase 2b.3 optimistic render: raw is_final text is shown faded (a "pending"
@@ -398,14 +433,10 @@
 	 */
 	// The check runs on the text on screen (onContentChange follows the view), so its offsets
 	// index the visible editor; the hidden one is cleared.
-	export function setIntegrityRanges(ranges: { from: number; to: number }[]): void {
+	export function setIntegrityRanges(flags: FlagLike[]): void {
 		const view = visibleEditor();
 		if (!view) return;
-		const len = view.state.doc.length;
-		const safe = ranges
-			.filter((r) => r.from >= 0 && r.to <= len && r.from < r.to)
-			.map((r) => ({ from: r.from, to: r.to }));
-		view.dispatch({ effects: setIntegrityMarks.of(safe) });
+		view.dispatch({ effects: setIntegrityMarks.of(integrityMarks(flags, view.state.doc.length)) });
 		const hidden = view === editor ? structuredEditor : editor;
 		hidden?.dispatch({ effects: setIntegrityMarks.of([]) });
 	}
@@ -1590,6 +1621,7 @@
 					darkTheme,
 					highlightField,
 					integrityField,
+					integrityTooltip,
 					pendingField,
 					autoField,
 					asrFlagField,
@@ -1655,6 +1687,7 @@
 					darkTheme,
 					highlightField,
 					integrityField,
+					integrityTooltip,
 					EditorView.updateListener.of((update) => {
 						if (!update.docChanged || writingStructured) return;
 						const text = update.state.doc.toString();
@@ -1901,11 +1934,31 @@
 	/* Dictation-integrity mark. Deliberately a squiggle rather than the block
 	   fill used above: the two can appear at once, and the proofreading idiom
 	   reads as "look here" without claiming the text is wrong. */
+	/* Per kind: truncation / dangling measurement keep the amber squiggle below; model or
+	   Jev findings get their own hue, and the other half of a conflict a lighter dotted line. */
+	:global(.cm-integrity-internal_contradiction) { --integrity: 244, 114, 182; }
+	:global(.cm-integrity-laterality_conflict) { --integrity: 167, 139, 250; }
+	:global(.cm-integrity-measurement_mismatch),
+	:global(.cm-integrity-unit_anomaly) { --integrity: 56, 189, 248; }
+	:global(.cm-integrity-related) {
+		text-decoration-style: dotted !important;
+		background: transparent !important;
+	}
+	:global(.cm-integrity-tooltip) {
+		max-width: 320px;
+		padding: 6px 10px;
+		font-size: 12px;
+		line-height: 1.4;
+		color: rgb(254, 243, 199);
+		background: rgb(28, 25, 23);
+		border: 1px solid rgba(251, 146, 60, 0.35);
+		border-radius: 6px;
+	}
 	:global(.cm-integrity-flag) {
-		text-decoration: underline wavy rgba(251, 146, 60, 0.85);
+		text-decoration: underline wavy rgba(var(--integrity, 251, 146, 60), 0.85);
 		text-decoration-skip-ink: none;
 		text-underline-offset: 3px;
-		background: rgba(251, 146, 60, 0.1);
+		background: rgba(var(--integrity, 251, 146, 60), 0.1);
 		border-radius: 2px;
 	}
 

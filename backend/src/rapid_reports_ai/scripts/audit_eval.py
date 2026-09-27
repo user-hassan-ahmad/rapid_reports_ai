@@ -28,8 +28,17 @@ def score_case(case: dict, flags: list[dict]) -> dict:
     """flags: [{start, end, kind}]. Pure; used by the tests too."""
     text = case["findings"]
     spans = [(text.find(i["quote"]), text.find(i["quote"]) + len(i["quote"])) for i in case["issues"]]
-    caught = [any(f["start"] < e and f["end"] > s for f in flags) for s, e in spans]
-    stray = [f for f in flags if not any(f["start"] < e and f["end"] > s for s, e in spans)]
+    def halves(f: dict) -> list[tuple[int, int]]:
+        out = [(f["start"], f["end"])]
+        if f.get("related_start") is not None:
+            out.append((f["related_start"], f["related_end"]))
+        return out  # both halves are marked in the editor
+
+    def hits(f: dict, s: int, e: int) -> bool:
+        return any(a < e and b > s for a, b in halves(f))
+
+    caught = [any(hits(f, s, e) for f in flags) for s, e in spans]
+    stray = [f for f in flags if not any(hits(f, s, e) for s, e in spans)]
     return {"id": case["id"], "issues": len(spans), "caught": sum(caught), "stray": len(stray),
             "clean": not spans}
 
@@ -43,7 +52,9 @@ async def _run(checker: str, case: dict) -> tuple[list[dict], int]:
         from rapid_reports_ai.jev_audit import jev_semantic
         flags = await jev_semantic(case["scan_type"], case["clinical_history"], case["findings"])
     ms = int((time.perf_counter() - t0) * 1000)
-    return [{"start": f.start, "end": f.end, "kind": f.kind} for f in flags], ms
+    return [{"start": f.start, "end": f.end, "kind": f.kind,
+             "related_start": getattr(f, "related_start", None), "related_end": getattr(f, "related_end", None)}
+            for f in flags], ms
 
 
 async def main(argv: list[str]) -> None:

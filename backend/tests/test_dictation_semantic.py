@@ -116,3 +116,26 @@ def test_issue_kinds_are_constrained():
     import pytest
     with pytest.raises(Exception):
         SemanticIssue(kind="not_a_real_kind", quote="x", message="m")
+
+
+# --- the other half of a conflict (rendering both statements) ----------------
+
+def test_other_quote_locates_the_conflicting_statement():
+    issue = SemanticIssue(kind="laterality_conflict", quote="left ankle mortise",
+                          other_quote="MRI of the right ankle", message="Side differs.")
+    [f] = _locate_flags(FINDINGS, SemanticFindings(issues=[issue]))
+    assert FINDINGS[f.start:f.end] == "left ankle mortise"
+    assert FINDINGS[f.related_start:f.related_end] == "MRI of the right ankle"
+
+
+def test_a_non_verbatim_other_quote_is_dropped_but_the_flag_kept():
+    issue = SemanticIssue(kind="internal_contradiction", quote="left ankle mortise",
+                          other_quote="MRI of the RIGHT ankle", message="x")
+    [f] = _locate_flags(FINDINGS, SemanticFindings(issues=[issue]))
+    assert f.related_start is None and f.related_end is None
+
+
+def test_other_quote_is_optional():
+    issue = SemanticIssue(kind="unit_anomaly", quote="joint effusion", message="x")
+    [f] = _locate_flags(FINDINGS, SemanticFindings(issues=[issue]))
+    assert f.related_start is None

@@ -60,6 +60,9 @@ class IntegrityFlag:
     message: str
     start: int
     end: int
+    # The other statement of a conflict (tier 2), so the editor can mark both halves.
+    related_start: int | None = None
+    related_end: int | None = None
 
 
 def _last_content_line(text: str) -> tuple[str, int]:

@@ -47,6 +47,11 @@ class SemanticIssue(BaseModel):
         description="The exact substring of the dictation the issue refers to, "
                     "copied character-for-character."
     )
+    other_quote: str = Field(
+        default="",
+        description="For a conflict between two statements: the exact substring of the "
+                    "other statement, copied character-for-character. Empty otherwise."
+    )
     message: str = Field(description="One sentence a radiologist can act on.")
 
 
@@ -79,6 +84,10 @@ SEMANTIC_SYSTEM_PROMPT = (
     "anything you merely think could have been phrased better. Silence is the "
     "correct answer for a clean dictation, and the overwhelming majority of "
     "dictations are clean.\n"
+    "\n"
+    "When the issue is a conflict between two statements, `quote` is the later one "
+    "and `other_quote` is the earlier one it conflicts with; otherwise leave "
+    "`other_quote` empty.\n"
     "\n"
     "For each issue, `quote` MUST be copied verbatim from the dictation — the "
     "exact characters, not a paraphrase and not a reconstruction. An issue "
@@ -148,6 +157,8 @@ def _locate_flags(findings: str, result: SemanticFindings) -> list[IntegrityFlag
         start = findings.rfind(quote)
         if start == -1:
             continue  # not verbatim — drop rather than approximate
+        other = (issue.other_quote or "").strip()
+        o = findings.find(other) if other else -1  # the earlier statement: first occurrence
         flags.append(
             IntegrityFlag(
                 kind=issue.kind,
@@ -156,6 +167,8 @@ def _locate_flags(findings: str, result: SemanticFindings) -> list[IntegrityFlag
                 message=issue.message,
                 start=start,
                 end=start + len(quote),
+                related_start=o if o != -1 and o != start else None,
+                related_end=o + len(other) if o != -1 and o != start else None,
             )
         )
     return flags

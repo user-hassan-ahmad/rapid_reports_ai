@@ -20,3 +20,9 @@ def test_the_fixture_quotes_are_verbatim_and_clean_cases_exist():
     cases = load_cases()
     assert all(i["quote"] in c["findings"] for c in cases for i in c["issues"])
     assert sum(1 for c in cases if not c["issues"]) >= 10
+
+
+def test_a_conflict_marked_on_its_other_half_still_counts():
+    # both halves are marked in the editor, so either overlapping the planted statement is a catch
+    r = score_case(CASE, [{"start": 0, "end": 20, "kind": "internal_contradiction", "related_start": 21, "related_end": 49}])
+    assert r["caught"] == 1 and r["stray"] == 0

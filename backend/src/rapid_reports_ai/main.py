@@ -2616,6 +2616,8 @@ async def dictation_check_endpoint(
                 # decorate the span without re-deriving it by string search.
                 "start": f.start,
                 "end": f.end,
+                "related_start": f.related_start,
+                "related_end": f.related_end,
             }
             for f in flags
         ],
