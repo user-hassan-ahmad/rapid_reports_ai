@@ -18,6 +18,10 @@ LEAK_MARKERS = (
     "Final check",
 )
 
+# Skill-sheet recommendation tags rendered into the report, inline or as a
+# header (L-35: "REFERRAL: urgent IR review" and a CORRELATION: section).
+TAG_LEAK = re.compile(r"\b(?:IMAGING|REFERRAL|MDT|TISSUE|CORRELATION):")
+
 # (positive assertion, blanket negation of the same entity)
 CONTRADICTION_PAIRS = (
     (r"lymphadenopathy is present|lymphadenopathy[^.]*measur|enlarged .{0,20}node",
@@ -103,6 +107,11 @@ def run_gate(report: str) -> dict:
     if hits:
         failures.append("self_contradiction")
         detail["self_contradiction"] = hits
+
+    tags = sorted({m.group(0) for m in TAG_LEAK.finditer(report)})
+    if tags:
+        failures.append("tag_leak")
+        detail["tag_leak"] = tags
 
     stripped = report.strip()
     if stripped and stripped[-1] not in '.)]”"':

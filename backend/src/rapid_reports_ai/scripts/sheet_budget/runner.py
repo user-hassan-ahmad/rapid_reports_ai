@@ -26,8 +26,8 @@ BACKEND_ROOT = SCRIPT_DIR.parents[3]
 CASES_PATH = BACKEND_ROOT / "test_cases" / "analyser_suite.json"
 OUTPUT_ROOT = BACKEND_ROOT / "test_output"
 
-ANALYSER_MODEL = "qwen-3.8-27b"
-GENERATOR_MODEL = "qwen-3.8-27b"
+ANALYSER_MODEL = "qwen/qwen3.8-27b"
+GENERATOR_MODEL = "qwen/qwen3.8-27b"
 
 # NOT WIRED: spec section 4 asks for a fixed seed. GroqModelSettings exposes
 # `seed`, but neither generate_ephemeral_skill_sheet nor

@@ -40,7 +40,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 BACKEND_ROOT = SCRIPT_DIR.parents[3]
 CASES_PATH = BACKEND_ROOT / "test_cases" / "analyser_suite.json"
 OUTPUT_ROOT = BACKEND_ROOT / "test_output"
-MODEL = "qwen-3.8-27b"
+MODEL = "qwen/qwen3.8-27b"
 
 # Injected into the generator's user prompt. A floor on inclusion, not a
 # constraint on judgement: the generator keeps discretion over placement and
