@@ -35,6 +35,8 @@ from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.groq import GroqModel, GroqModelSettings
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.providers.anthropic import AnthropicProvider
+from pydantic_ai.providers.groq import GroqProvider
 
 from .enhancement_models import (
     Finding,
@@ -3688,50 +3690,41 @@ async def _generate_report_with_claude_model(
     # Log the exact inputs being fed to the model
     _log_model_inputs(model_label, system_prompt, final_prompt)
     
-    old_api_key = os.environ.get('ANTHROPIC_API_KEY')
-    os.environ['ANTHROPIC_API_KEY'] = api_key
+    pydantic_model = AnthropicModel(model_name, provider=AnthropicProvider(api_key=_get_api_key_for_provider('anthropic')))
     
-    try:
-        pydantic_model = AnthropicModel(model_name)
-        
-        agent = Agent(
-            pydantic_model,
-            output_type=ReportOutput,
-            system_prompt=system_prompt,
-        )
-        
-        result = await agent.run(
-            final_prompt,
-            model_settings={
-                "temperature": 1,
-                "max_tokens": 6500,
-                "anthropic_thinking": {
-                    "type": "enabled",
-                    "budget_tokens": 2048
-                }
+    agent = Agent(
+        pydantic_model,
+        output_type=ReportOutput,
+        system_prompt=system_prompt,
+    )
+    
+    result = await agent.run(
+        final_prompt,
+        model_settings={
+            "temperature": 1,
+            "max_tokens": 6500,
+            "anthropic_thinking": {
+                "type": "enabled",
+                "budget_tokens": 2048
             }
-        )
-        
-        # Log thinking parts (backend only - not sent to frontend)
-        _log_thinking_parts(result, f"{model_label} - Claude")
-        
-        report_output: ReportOutput = result.output
-        
-        # Append signature programmatically if provided
-        report_output = _append_signature_to_report(report_output, signature)
-        
-        report_output.model_used = model_name
-        elapsed = time.time() - start_time
-        print(f"generate_auto_report: ✅ Completed with {model_label} in {elapsed:.2f}s")
-        print(f"  └─ Report length: {len(report_output.report_content)} chars")
-        print(f"  └─ Description: {report_output.description}")
-        
-        return report_output
-    finally:
-        if old_api_key is not None:
-            os.environ['ANTHROPIC_API_KEY'] = old_api_key
-        else:
-            os.environ.pop('ANTHROPIC_API_KEY', None)
+        }
+    )
+    
+    # Log thinking parts (backend only - not sent to frontend)
+    _log_thinking_parts(result, f"{model_label} - Claude")
+    
+    report_output: ReportOutput = result.output
+    
+    # Append signature programmatically if provided
+    report_output = _append_signature_to_report(report_output, signature)
+    
+    report_output.model_used = model_name
+    elapsed = time.time() - start_time
+    print(f"generate_auto_report: ✅ Completed with {model_label} in {elapsed:.2f}s")
+    print(f"  └─ Report length: {len(report_output.report_content)} chars")
+    print(f"  └─ Description: {report_output.description}")
+    
+    return report_output
 
 
 def _create_pydantic_model(model_name: str, api_key: str, use_thinking: bool = False):
@@ -3750,9 +3743,9 @@ def _create_pydantic_model(model_name: str, api_key: str, use_thinking: bool = F
     provider = _get_model_provider(model_name)
     
     if provider == 'groq':
-        return GroqModel(model_name)
+        return GroqModel(model_name, provider=GroqProvider(api_key=api_key))
     elif provider == 'anthropic':
-        return AnthropicModel(model_name)
+        return AnthropicModel(model_name, provider=AnthropicProvider(api_key=api_key))
     elif provider == 'cerebras':
         provider_obj = OpenAIProvider(
             base_url='https://api.cerebras.ai/v1',
@@ -3828,244 +3821,150 @@ async def _run_agent_with_model(
     import os
     
     provider = _get_model_provider(model_name)
-    
-    # Determine which environment variable to manage
-    env_var_map = {
-        'groq': 'GROQ_API_KEY',
-        'anthropic': 'ANTHROPIC_API_KEY',
-        'cerebras': 'CEREBRAS_API_KEY',
-        'fireworks': 'FIREWORKS_API_KEY',
-        'openrouter': 'OPENROUTER_API_KEY',
-    }
-    env_var_name = env_var_map[provider]
-    
-    # Save old value and set new API key
-    old_api_key = os.environ.get(env_var_name)
-    os.environ[env_var_name] = api_key
-    
-    try:
-        # Create model
-        pydantic_model = _create_pydantic_model(model_name, api_key, use_thinking)
-        
-        # Create agent settings
-        agent_model_settings = None
-        # Groq's reasoning_format parameter is only supported by Groq's
-        # reasoning-capable models (Qwen family). Llama and other non-reasoning
-        # Groq models reject the parameter with HTTP 400, so we gate it by
-        # model identifier rather than provider alone.
-        GROQ_REASONING_MODELS = {
-            'qwen/qwen3.6-27b',
-        }
-        if (
-            provider == 'groq'
-            and use_thinking
-            and model_name in GROQ_REASONING_MODELS
-        ):
-            agent_model_settings = GroqModelSettings(groq_reasoning_format='parsed')
-        
-        # Create agent (with optional tools)
-        agent = Agent(
-            pydantic_model,
-            output_type=output_type,
-            system_prompt=system_prompt,
-            model_settings=agent_model_settings,
-            tools=tools or [],
-            retries=2,
-        )
-        
-        # Build final model settings dict
-        final_model_settings = normalise_model_settings(model_name, model_settings)
-        
-        # Log model settings for Cerebras to verify reasoning_effort is included
-        if provider == 'cerebras':
-            print(f"\n🔧 CEREBRAS MODEL SETTINGS ({model_name}):")
-            print(f"  └─ temperature: {final_model_settings.get('temperature', 'not set')}")
-            print(f"  └─ top_p: {final_model_settings.get('top_p', 'not set')}")
-            if 'max_completion_tokens' in final_model_settings:
-                print(f"  └─ max_completion_tokens: {final_model_settings.get('max_completion_tokens', 'not set')}")
-            else:
-                print(f"  └─ max_tokens: {final_model_settings.get('max_tokens', 'not set')}")
-            if 'extra_body' in final_model_settings:
-                print(f"  └─ extra_body: {final_model_settings.get('extra_body')}")
-            # reasoning_effort is GPT-OSS only; GLM/Qwen3 use extra_body toggles
-            if model_name == "zai-glm-4.7":
-                disable_reasoning = (final_model_settings.get('extra_body') or {}).get('disable_reasoning', 'not set')
-                mode_label = "REASONING OFF" if disable_reasoning else "REASONING ON"
-                print(f"  └─ GLM mode: {mode_label} (disable_reasoning={disable_reasoning})")
-            else:
-                # what is actually sent (normalise_model_settings moved it into extra_body)
-                reasoning_effort = (final_model_settings.get('extra_body') or {}).get('reasoning_effort')
-                if reasoning_effort:
-                    print(f"  └─ reasoning_effort: {reasoning_effort} ✅")
-                else:
-                    print(f"  └─ reasoning_effort: NOT SET ⚠️  (check if parameter is supported)")
-        
-        if provider == 'fireworks':
-            print(f"\n🔧 FIREWORKS MODEL SETTINGS ({model_name}):")
-            print(f"  └─ temperature: {final_model_settings.get('temperature', 'not set')}")
-            print(f"  └─ top_p: {final_model_settings.get('top_p', 'not set')}")
-            print(f"  └─ max_tokens: {final_model_settings.get('max_tokens', 'not set')}")
-            reasoning_effort = final_model_settings.get('reasoning_effort', 'not set')
-            print(f"  └─ reasoning_effort: {reasoning_effort}")
+    # The key follows the model's provider, not the caller: call sites fetched the
+    # Cerebras key for roles that have since moved to Groq (prod 401, 2026-09-28).
+    # The client carries it explicitly; the process env is never written.
+    api_key = _get_api_key_for_provider(provider)
 
-        # Run agent with concurrency guard for Cerebras
-        try:
-            if provider == 'cerebras':
-                async with _cerebras_semaphore:
-                    result = await agent.run(
-                        user_prompt,
-                        model_settings=final_model_settings
-                    )
+    # Create model
+    pydantic_model = _create_pydantic_model(model_name, api_key, use_thinking)
+    
+    # Create agent settings
+    agent_model_settings = None
+    # Groq's reasoning_format parameter is only supported by Groq's
+    # reasoning-capable models (Qwen family). Llama and other non-reasoning
+    # Groq models reject the parameter with HTTP 400, so we gate it by
+    # model identifier rather than provider alone.
+    GROQ_REASONING_MODELS = {
+        'qwen/qwen3.6-27b',
+    }
+    if (
+        provider == 'groq'
+        and use_thinking
+        and model_name in GROQ_REASONING_MODELS
+    ):
+        agent_model_settings = GroqModelSettings(groq_reasoning_format='parsed')
+    
+    # Create agent (with optional tools)
+    agent = Agent(
+        pydantic_model,
+        output_type=output_type,
+        system_prompt=system_prompt,
+        model_settings=agent_model_settings,
+        tools=tools or [],
+        retries=2,
+    )
+    
+    # Build final model settings dict
+    final_model_settings = normalise_model_settings(model_name, model_settings)
+    
+    # Log model settings for Cerebras to verify reasoning_effort is included
+    if provider == 'cerebras':
+        print(f"\n🔧 CEREBRAS MODEL SETTINGS ({model_name}):")
+        print(f"  └─ temperature: {final_model_settings.get('temperature', 'not set')}")
+        print(f"  └─ top_p: {final_model_settings.get('top_p', 'not set')}")
+        if 'max_completion_tokens' in final_model_settings:
+            print(f"  └─ max_completion_tokens: {final_model_settings.get('max_completion_tokens', 'not set')}")
+        else:
+            print(f"  └─ max_tokens: {final_model_settings.get('max_tokens', 'not set')}")
+        if 'extra_body' in final_model_settings:
+            print(f"  └─ extra_body: {final_model_settings.get('extra_body')}")
+        # reasoning_effort is GPT-OSS only; GLM/Qwen3 use extra_body toggles
+        if model_name == "zai-glm-4.7":
+            disable_reasoning = (final_model_settings.get('extra_body') or {}).get('disable_reasoning', 'not set')
+            mode_label = "REASONING OFF" if disable_reasoning else "REASONING ON"
+            print(f"  └─ GLM mode: {mode_label} (disable_reasoning={disable_reasoning})")
+        else:
+            # what is actually sent (normalise_model_settings moved it into extra_body)
+            reasoning_effort = (final_model_settings.get('extra_body') or {}).get('reasoning_effort')
+            if reasoning_effort:
+                print(f"  └─ reasoning_effort: {reasoning_effort} ✅")
             else:
+                print(f"  └─ reasoning_effort: NOT SET ⚠️  (check if parameter is supported)")
+    
+    if provider == 'fireworks':
+        print(f"\n🔧 FIREWORKS MODEL SETTINGS ({model_name}):")
+        print(f"  └─ temperature: {final_model_settings.get('temperature', 'not set')}")
+        print(f"  └─ top_p: {final_model_settings.get('top_p', 'not set')}")
+        print(f"  └─ max_tokens: {final_model_settings.get('max_tokens', 'not set')}")
+        reasoning_effort = final_model_settings.get('reasoning_effort', 'not set')
+        print(f"  └─ reasoning_effort: {reasoning_effort}")
+
+    # Run agent with concurrency guard for Cerebras
+    try:
+        if provider == 'cerebras':
+            async with _cerebras_semaphore:
                 result = await agent.run(
                     user_prompt,
                     model_settings=final_model_settings
                 )
-            
-            # Log thinking parts for Groq models
-            if provider == 'groq' and use_thinking:
-                _log_thinking_parts(result, f"{model_name} - {provider}")
-            
-            return result
-        except Exception as e:
-            # For Cerebras, try to capture raw output before validation fails
-            if provider == 'cerebras':
-                print(f"\n{'='*80}")
-                print(f"🔍 CEREBRAS RAW OUTPUT DEBUG ({model_name})")
-                print(f"{'='*80}")
-                print(f"Error type: {type(e).__name__}")
-                print(f"Error message: {str(e)}")
-                
-                # Try to extract raw response from exception if available
-                if hasattr(e, 'args') and e.args:
-                    print(f"Error args: {e.args}")
-                if hasattr(e, '__cause__') and e.__cause__:
-                    print(f"Error cause: {type(e.__cause__).__name__}: {str(e.__cause__)}")
-                if hasattr(e, '__context__') and e.__context__:
-                    print(f"Error context: {type(e.__context__).__name__}: {str(e.__context__)}")
-                
-                # Check for pydantic_ai specific attributes
-                if hasattr(e, 'response'):
-                    print(f"Exception has 'response' attribute: {e.response}")
-                if hasattr(e, 'raw_response'):
-                    print(f"Exception has 'raw_response' attribute: {e.raw_response}")
-                if hasattr(e, 'data'):
-                    print(f"Exception has 'data' attribute: {e.data}")
-                if hasattr(e, 'body'):
-                    print(f"Exception has 'body' attribute: {e.body}")
-                if hasattr(e, 'text'):
-                    print(f"Exception has 'text' attribute: {e.text}")
-                
-                # Print all exception attributes for debugging
-                print(f"\nException attributes: {[attr for attr in dir(e) if not attr.startswith('_')]}")
-                
-                # Check if exception has response data
-                error_str = str(e)
-                print(f"\nFull error string (first 2000 chars):")
-                print(f"{error_str[:2000]}")
-                
-                # Try to access any response data from the exception
-                import traceback
-                tb_str = traceback.format_exc()
-                print(f"\nFull traceback (may contain response data):")
-                print(tb_str[:4000])  # Print first 4000 chars of traceback
-                
-                print(f"{'='*80}\n")
-
-            if provider == "groq" and output_type is ReportOutput:
-                recovered = _recover_report_output_from_groq_tool_use_failed(e)
-                if recovered is not None:
-                    print(
-                        "[groq] Recovered ReportOutput from tool_use_failed "
-                        "(model emitted JSON in message body; Groq rejected non-tool format)"
-                    )
-                    return SimpleNamespace(output=recovered)
-
-            # Re-raise the exception
-            raise
-    finally:
-        # Restore environment variable
-        if old_api_key is not None:
-            os.environ[env_var_name] = old_api_key
         else:
-            os.environ.pop(env_var_name, None)
-
-
-async def _generate_report_with_groq_model(
-    model_name: str,
-    model_label: str,
-    final_prompt: str,
-    system_prompt: str,
-    api_key: str
-) -> ReportOutput:
-    """
-    Helper function to generate report with a specific Groq model.
-    
-    Args:
-        model_name: Groq model identifier
-        model_label: Human-readable model name for logging
-        final_prompt: The user prompt (with signature applied)
-        system_prompt: System prompt
-        api_key: Groq API key
-    
-    Returns:
-        ReportOutput with report_content and description
-    """
-    import os
-    
-    start_time = time.time()
-    print(f"generate_auto_report: Attempting with {model_label}...")
-    
-    # Log the exact inputs being fed to the model
-    _log_model_inputs(model_label, system_prompt, final_prompt)
-    
-    old_api_key = os.environ.get('GROQ_API_KEY')
-    os.environ['GROQ_API_KEY'] = api_key
-    
-    try:
-        # Create Groq model with thinking enabled
-        groq_settings = GroqModelSettings(groq_reasoning_format='parsed')
-        pydantic_model = GroqModel(model_name)
-        
-        agent = Agent(
-            pydantic_model,
-            output_type=ReportOutput,
-            system_prompt=system_prompt,
-            model_settings=groq_settings,
-        )
-        
-        try:
             result = await agent.run(
-                final_prompt,
-                model_settings={
-                    "temperature": 0.3,
-                    "max_tokens": 4096,
-                }
+                user_prompt,
+                model_settings=final_model_settings
             )
-        except Exception as run_exc:
-            recovered = _recover_report_output_from_groq_tool_use_failed(run_exc)
-            if recovered is None:
-                raise run_exc
-            print(
-                f"generate_auto_report: Recovered {model_label} output from Groq tool_use_failed"
-            )
-            report_output = recovered
-        else:
-            # Log thinking parts (backend only - not sent to frontend)
-            _log_thinking_parts(result, f"{model_label} - Groq/Qwen")
-            report_output = result.output
         
-        elapsed = time.time() - start_time
-        print(f"generate_auto_report: ✅ Completed with {model_label} in {elapsed:.2f}s")
-        print(f"  └─ Report length: {len(report_output.report_content)} chars")
-        print(f"  └─ Description: {report_output.description}")
+        # Log thinking parts for Groq models
+        if provider == 'groq' and use_thinking:
+            _log_thinking_parts(result, f"{model_name} - {provider}")
         
-        return report_output
-    finally:
-        if old_api_key is not None:
-            os.environ['GROQ_API_KEY'] = old_api_key
-        else:
-            os.environ.pop('GROQ_API_KEY', None)
+        return result
+    except Exception as e:
+        # For Cerebras, try to capture raw output before validation fails
+        if provider == 'cerebras':
+            print(f"\n{'='*80}")
+            print(f"🔍 CEREBRAS RAW OUTPUT DEBUG ({model_name})")
+            print(f"{'='*80}")
+            print(f"Error type: {type(e).__name__}")
+            print(f"Error message: {str(e)}")
+            
+            # Try to extract raw response from exception if available
+            if hasattr(e, 'args') and e.args:
+                print(f"Error args: {e.args}")
+            if hasattr(e, '__cause__') and e.__cause__:
+                print(f"Error cause: {type(e.__cause__).__name__}: {str(e.__cause__)}")
+            if hasattr(e, '__context__') and e.__context__:
+                print(f"Error context: {type(e.__context__).__name__}: {str(e.__context__)}")
+            
+            # Check for pydantic_ai specific attributes
+            if hasattr(e, 'response'):
+                print(f"Exception has 'response' attribute: {e.response}")
+            if hasattr(e, 'raw_response'):
+                print(f"Exception has 'raw_response' attribute: {e.raw_response}")
+            if hasattr(e, 'data'):
+                print(f"Exception has 'data' attribute: {e.data}")
+            if hasattr(e, 'body'):
+                print(f"Exception has 'body' attribute: {e.body}")
+            if hasattr(e, 'text'):
+                print(f"Exception has 'text' attribute: {e.text}")
+            
+            # Print all exception attributes for debugging
+            print(f"\nException attributes: {[attr for attr in dir(e) if not attr.startswith('_')]}")
+            
+            # Check if exception has response data
+            error_str = str(e)
+            print(f"\nFull error string (first 2000 chars):")
+            print(f"{error_str[:2000]}")
+            
+            # Try to access any response data from the exception
+            import traceback
+            tb_str = traceback.format_exc()
+            print(f"\nFull traceback (may contain response data):")
+            print(tb_str[:4000])  # Print first 4000 chars of traceback
+            
+            print(f"{'='*80}\n")
+
+        if provider == "groq" and output_type is ReportOutput:
+            recovered = _recover_report_output_from_groq_tool_use_failed(e)
+            if recovered is not None:
+                print(
+                    "[groq] Recovered ReportOutput from tool_use_failed "
+                    "(model emitted JSON in message body; Groq rejected non-tool format)"
+                )
+                return SimpleNamespace(output=recovered)
+
+        # Re-raise the exception
+        raise
 
 
 async def generate_auto_report(
