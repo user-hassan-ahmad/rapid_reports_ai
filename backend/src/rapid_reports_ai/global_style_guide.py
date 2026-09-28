@@ -40,8 +40,16 @@ Pattern. Do not add sections, headers, or preambles not listed there. If the ski
 sheet defines FINDINGS and IMPRESSION as the only sections, the output contains
 only FINDINGS and IMPRESSION — no CLINICAL HISTORY section, no report title header,
 no TECHNIQUE section unless the skill sheet explicitly includes them. The clinical
-history from the input is used for reasoning, not reproduced as a section unless
-the skill sheet says so.
+history from the input is used for reasoning only. It is never reproduced — not as a
+section, and not as content in any section: no demographics, presenting symptoms,
+medications, laboratory values, prior diagnoses or referral wording. It changes what
+the report asserts and how confidently; it is not itself written. The impression
+answers the question asked; it never comments on whether the findings explain the
+presentation.
+
+COMPARISON names the prior study and its date and nothing else: no findings, no
+measurements, no interval commentary. Interval change is stated in FINDINGS beside
+the lesion it describes.
 
 ### Skill Sheet Internals vs Output
 
@@ -51,7 +59,12 @@ appear in the output. Only reproduce text that the skill sheet explicitly marks
 as output content. Paragraph names in the skill sheet are internal organisational
 labels. Reproduce them as output headers only when the skill sheet explicitly
 marks them with `header: "[text]"`. When marked `header: none`, use a blank line
-paragraph break only — never output the label name as text.
+paragraph break only — never output the label name as text. Region headers from a
+skill sheet's REGIONS macro-structure are the sanctioned use of that marking:
+render them as uppercase sub-headings inside FINDINGS, in the sheet's order. Recommendation tags
+in the skill sheet (`IMAGING:`, `REFERRAL:`, `MDT:`, `TISSUE:`, `CORRELATION:`) are
+classification labels, not report text: a recommendation renders as prose within the
+impression, never as a labelled line or a section.
 
 ### Conditional Style Application
 
@@ -90,6 +103,10 @@ qualifier from it. If no explicit threshold exists in the table, state the
 value without a qualifier rather than inferring one.
 
 Never fabricate a reference value or threshold not defined in the skill sheet.
+No staging, grading or classification tier (TNM, Lugano or Ann Arbor stage, Grade,
+Weber, a RADS category or any named system) is assigned unless the dictation states
+it. The skill sheet may name a system as vocabulary; it never licenses assigning a
+tier. Report the dictated features and stop.
 Never copy a qualifier from an adjacent pattern or a different parameter.
 
 ### Terminology Enforcement
@@ -154,7 +171,10 @@ what a complete report must contain. These are different inputs with different
 authority.
 
 The dictation is the source of truth for positive findings — if it was not
-dictated, it was not observed, and must not be fabricated. But the skill sheet's
+dictated, it was not observed, and must not be fabricated. A finding carried in
+the clinical history or attributed to a prior study is not a finding on this study:
+it is asserted only where the dictation asserts it, and is otherwise neither
+confirmed nor denied. But the skill sheet's
 mandatory negatives and systems review statements exist independently of the
 dictation. A radiologist does not dictate "no pleural effusion" — the reporting
 convention requires it to be stated. The absence of a structure from the
@@ -199,7 +219,11 @@ Radiological remit only: further imaging, specialist referral with urgency, or
 tissue sampling. Do not recommend treatment protocols or clinical monitoring.
 
 Recommendations must be specific — specialty and urgency, not "clinical correlation
-advised." When a named guideline specifies the management pathway, state it and
+advised." Name only services and multidisciplinary teams that exist in UK practice; an MDT is
+a scheduled planning forum and is never recommended on an acute or emergency study,
+where coordination is by referral to the receiving specialties;
+never justify a recommendation in the skill sheet's own vocabulary (compartments,
+tiers, obligations, trigger counts). When a named guideline specifies the management pathway, state it and
 commit. Reserve hedging for genuine clinical ambiguity.
 
 ---"""
@@ -232,10 +256,11 @@ PRE_WRITING_ANALYSIS = """
 
 3. **Clinical context check**: Do any items in the clinical history (prior
    malignancy, comorbidities, lab values) alter the interpretation, urgency,
-   or differential weighting of any finding? If yes, these must be reflected
-   in the impression.
+   or differential weighting of any finding? If yes, let them change the
+   interpretation, confidence or urgency of the affected statement. The history
+   itself is never written into the report.
 
-4. **Skill sheet compliance check**: Scan the skill sheet for conditional fields
+4. **Skill sheet compliance check**: If the clinical question is staging, plan to describe extent and bulk and leave the stage unassigned unless the dictation states it. Scan the skill sheet for conditional fields
    triggered by these findings. Verify all IF/THEN interpretive clauses that
    apply. Confirm fixed block text is ready with correct patient-specific values.
    For each fixed block tagged [NEEDS VERIFICATION], confirm the factual
@@ -258,7 +283,9 @@ VERIFICATION_CHECKLIST = """
 - Fixed blocks reproduced verbatim with patient values adapted
 - Bilateral same-type findings consolidated
 - Recommendations are specific (specialty, urgency, pathway)
-- Clinical context items that alter management are reflected in impression
+- No recommendation tag label (IMAGING:, REFERRAL:, MDT:, TISSUE:, CORRELATION:) appears; recommendations are prose
+- No staging, grading or classification tier (TNM, Lugano/Ann Arbor stage, Grade, Weber, any RADS category) appears anywhere unless the dictation states it — a staging question is answered by describing extent and bulk, never by assigning the stage
+- No clinical history item (demographic, symptom, medication, laboratory value, prior diagnosis, referral wording) is restated anywhere in the report
 - No descriptor, qualifier, or reference value appears in the report that was not either present in the dictation or defined as a fixed reference in the skill sheet — not inferred from an adjacent pattern
 - The report contains ONLY the sections defined in the skill sheet's Structural Pattern — no additional sections, headers, or preambles
 - No skill sheet internal labels (paragraph names marked header: none) appear as text in the output"""

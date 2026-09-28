@@ -1,0 +1,41 @@
+[
+  {
+    "name": "ct_head_cspine_fall_anticoagulated",
+    "scan_type": "CT head and CT cervical spine",
+    "clinical_history": "81F mechanical fall at home on apixaban for AF. GCS 14, right-sided scalp haematoma, midline cervical tenderness. Query intracranial haemorrhage, query cervical spine fracture.",
+    "findings": "- Thin acute subdural haematoma over the right frontal convexity, 6mm maximal thickness, no midline shift\n- Small right frontal scalp haematoma, no underlying skull fracture\n- Old left lacunar infarcts in the basal ganglia\n- Generalised involutional change and chronic small vessel disease\n- Minimally displaced type II odontoid peg fracture, 2mm anterior displacement, no retropulsion into the canal\n- Alignment otherwise maintained, prevertebral soft tissues normal\n- Multilevel cervical spondylosis, most marked C5/6 and C6/7\n- Lung apices clear",
+    "input_tier": "mid",
+    "synthetic": true
+  },
+  {
+    "name": "ct_ncap_lymphoma_staging",
+    "scan_type": "CT neck, chest, abdomen and pelvis with contrast",
+    "clinical_history": "45M, 3 months of painless left neck lump, night sweats and 6kg weight loss. Core biopsy: classical Hodgkin lymphoma. Staging.",
+    "findings": "- Bilateral cervical lymphadenopathy, largest left level II node 3.2cm, conglomerate left level III-IV nodes\n- Anterior mediastinal nodal mass 6.5cm with bilateral hilar nodes\n- No pleural or pericardial effusion, lungs clear\n- Splenomegaly 16cm with two hypodense splenic lesions largest 1.8cm\n- Retroperitoneal and para-aortic lymphadenopathy, largest 2.4cm short axis\n- Liver normal, no focal lesion\n- No pelvic or inguinal lymphadenopathy\n- No focal bone lesion",
+    "input_tier": "mid",
+    "synthetic": true
+  },
+  {
+    "name": "mri_brain_whole_spine_demyelination",
+    "scan_type": "MRI brain and whole spine with contrast",
+    "clinical_history": "29F, painful loss of vision right eye 2 weeks ago, now bilateral leg paraesthesia and urgency. Query demyelination.",
+    "findings": "- Multiple ovoid periventricular and juxtacortical T2/FLAIR hyperintense lesions, several perpendicular to the callososeptal interface\n- One right periventricular lesion shows ring enhancement\n- Right optic nerve mildly swollen with enhancement in the intraorbital segment\n- No infratentorial lesion\n- Short segment intramedullary T2 hyperintense lesion at C3, dorsal cord, less than one vertebral body, non-enhancing\n- Further small lesion at T5, non-enhancing\n- No cord expansion or atrophy\n- Conus normal, terminates L1, no cauda equina abnormality\n- No vertebral or disc abnormality",
+    "input_tier": "mid",
+    "synthetic": true
+  },
+  {
+    "name": "ct_aortogram_runoff_acute_limb",
+    "scan_type": "CT aortogram thorax abdomen pelvis with lower limb run-off",
+    "clinical_history": "70M sudden onset painful cold pale left leg 4 hours, absent left pedal pulses, known AF not anticoagulated. Query acute limb ischaemia.",
+    "findings": "- Abrupt occlusion of the left superficial femoral artery at the adductor canal with reconstitution of the popliteal artery via collaterals\n- Left tibial vessels opacify faintly, two vessel run-off\n- Right lower limb arteries patent with mild diffuse atheroma\n- Thoracic and abdominal aorta normal calibre, mild atheroma, no dissection or aneurysm\n- Iliac arteries patent\n- Incidental 4.1cm heterogeneously enhancing left renal mass, upper pole\n- Lungs clear, no PE on this study\n- Bones unremarkable",
+    "input_tier": "mid",
+    "synthetic": true
+  },
+  {
+    "name": "clean_ct_tavi_multisystem",
+    "scan_type": "CT TAVI",
+    "clinical_history": "severe as",
+    "findings": "Left-sided pacemaker in situ. Severe coronary artery calcification and severe aortic valve calcification. The oesophagus is patulous and fluid-filled throughout its course. Small sliding hiatus hernia. There is diffuse sigmoid uncomplicated diverticulosis. Right total hip replacement noted. Severe degenerative change within the left hip.",
+    "input_tier": "mid"
+  }
+]
