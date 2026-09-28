@@ -849,7 +849,8 @@ def analyser_prompt_version(model_name: str) -> str:
 
 
 # Back-compat default for callers that don't know which model they are using.
-ANALYSER_PROMPT_VERSION = analyser_prompt_version("zai-glm-4.7")
+from .enhancement_utils import MODEL_CONFIG as _MODEL_CONFIG  # noqa: E402
+ANALYSER_PROMPT_VERSION = analyser_prompt_version(_MODEL_CONFIG["QUICK_REPORT_ANALYZER_FAST"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -887,16 +888,10 @@ async def generate_ephemeral_skill_sheet(
             'prompt_chars': int,  # user prompt length after substitution
         }
     """
-    from .enhancement_utils import (
-        MODEL_CONFIG,
-        MODEL_PROVIDERS,
-        _run_agent_with_model,
-        _get_api_key_for_provider,
-    )
+    from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model
 
     t0 = time.time()
-    model_name = model_override or MODEL_CONFIG.get("QUICK_REPORT_ANALYZER_BEST", "claude-haiku-4-5-20251001")
-    provider = MODEL_PROVIDERS.get(model_name, "cerebras")
+    model_name = model_override or MODEL_CONFIG["QUICK_REPORT_ANALYZER_BEST"]
 
     user_prompt = (
         ANALYSER_USER_TEMPLATE
@@ -904,49 +899,36 @@ async def generate_ephemeral_skill_sheet(
         .replace("{{CLINICAL_HISTORY}}", clinical_history or "")
     )
 
-    # Provider-aware model settings. The GLM-on-Cerebras path uses reasoning
-    # flags that are invalid on Anthropic; Anthropic's endpoint rejects the
-    # full extra_body block outright. Groq rejects those toggles too and
-    # reaches its reasoning stream via groq_reasoning_format, which
-    # _run_agent_with_model sets from use_thinking. Keep each provider's
-    # settings explicit so the failure modes are localised.
-    if provider == "anthropic":
-        model_settings = {
-            "temperature": 0.5,
-            "max_tokens": 16000,
-        }
-        call_api_key = _get_api_key_for_provider("anthropic")
-    elif provider == "groq":
-        model_settings = {
-            "temperature": 0.5,
-            "top_p": 0.95,
-            "max_tokens": 16000,
-        }
-        call_api_key = _get_api_key_for_provider("groq")
-    else:
-        # Cerebras and anything else. disable_reasoning/clear_thinking were
-        # GLM-4.7-only and other Cerebras models reject them; with GLM gone this
-        # branch only ever sees those other models, so the toggles are dropped.
-        model_settings = {
-            "temperature": 0.5,
-            "top_p": 0.95,
-            "max_tokens": 16000,
-        }
-        call_api_key = api_key or _get_api_key_for_provider(provider)
+    # One settings dict for every provider; normalise_model_settings fits it (Cerebras
+    # Qwen: medium, 64k - reasoning counts toward the cap and 16k truncated sheets, L-33;
+    # Groq Qwen: low, clamped to its 16,384 ceiling; Sonnet: no sampling params).
+    model_settings = {"temperature": 0.5, "top_p": 0.95, "max_tokens": 65536}
 
-    system_prompt = get_analyser_prompt(
-        model_name, budget_directive, directives
-    )
+    async def _analyse(model: str):
+        return await _run_agent_with_model(
+            model_name=model,
+            output_type=str,
+            system_prompt=get_analyser_prompt(model, budget_directive, directives),
+            user_prompt=user_prompt,
+            api_key="",
+            use_thinking=True,
+            model_settings=model_settings,
+        )
 
-    result = await _run_agent_with_model(
-        model_name=model_name,
-        output_type=str,
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        api_key=call_api_key,
-        use_thinking=True,
-        model_settings=model_settings,
+    # One hop to the configured fallback when the primary raises (L-41).
+    fallback = next(
+        (MODEL_CONFIG.get(f"{role}_FALLBACK") for role in ("QUICK_REPORT_ANALYZER_FAST", "QUICK_REPORT_ANALYZER_BEST")
+         if MODEL_CONFIG.get(role) == model_name),
+        None,
     )
+    try:
+        result = await _analyse(model_name)
+    except Exception as e:
+        if not fallback:
+            raise
+        proto_logger.warning(f"[ANALYSER] {model_name} failed ({type(e).__name__}); falling back to {fallback}")
+        model_name = fallback
+        result = await _analyse(model_name)
 
     skill_sheet = result.output if hasattr(result, "output") else str(result)
     latency_ms = int((time.time() - t0) * 1000)

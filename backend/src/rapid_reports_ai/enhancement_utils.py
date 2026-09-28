@@ -30,7 +30,7 @@ _CEREBRAS_MAX_CONCURRENT = int(os.environ.get("CEREBRAS_MAX_CONCURRENT", "4"))
 _cerebras_semaphore = asyncio.Semaphore(_CEREBRAS_MAX_CONCURRENT)
 
 from perplexity import Perplexity
-from pydantic_ai import Agent
+from pydantic_ai import Agent, PromptedOutput
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.groq import GroqModel, GroqModelSettings
 from pydantic_ai.models.openai import OpenAIModel
@@ -130,137 +130,107 @@ async def _batch_embed(texts: List[str]) -> Optional[List[List[float]]]:
     return result  # type: ignore[return-value]
 
 
-# ── GLM Reasoning Mode Toggle ──────────────────────────────────────────────────
-# Cerebras docs: temperature >= 0.8 required when reasoning is enabled.
-# If reasoning is disabled, temperature can go below 0.8 for more deterministic output.
-#   Reasoning ON  → temperature=0.8, max_completion_tokens=16000 (budget for reasoning + report)
-#   Reasoning OFF → temperature=0.5, max_completion_tokens=6000  (no reasoning overhead)
-# Toggle without restarting: edit GLM_REASONING_ENABLED in backend/.env — read fresh on every request.
-def _glm_reasoning_enabled() -> bool:
-    """Read GLM_REASONING_ENABLED from .env on every call so changes take effect without a server restart."""
-    from dotenv import dotenv_values
-    env = dotenv_values()
-    return env.get("GLM_REASONING_ENABLED", "false").lower() == "true"
-
 # Central Model Configuration Dictionary
-# Maps generic roles to specific model identifiers for easy model swapping
-# Update this dictionary to change models without modifying code throughout the codebase
+# Maps generic roles to specific model identifiers for easy model swapping.
+# Reasoning effort per model is set in MODEL_DEFAULT_EFFORT / normalise_model_settings;
+# a role that needs a different effort sets it at its call site.
+#
+# Division of labour (2026-09-28):
+#   Report writing & analysis  -> Cerebras Qwen 3.8, reasoning medium; Groq Qwen 3.8 (low) fallback.
+#                                 Generator reasoning is load-bearing (L-12, L-31); medium halves
+#                                 cost against the provider default of high (L-34).
+#   Fast interactive (canvas)  -> Cerebras Qwen 3.8, reasoning none (set at the call site); Groq
+#                                 Qwen 3.8 fallback. Reasoning on broke IntelliPrompts' structured
+#                                 output on both providers; off answers in 0.7-0.95s.
+#   Structured reasoning/tools -> Cerebras gpt-oss-120b; Groq gpt-oss-120b (same weights) fallback.
+#     and checks                  Chosen for reliable structured output and tool calls, and a
+#                                 different family from the Qwen generator it checks.
+#   Light background           -> Groq Qwen 3.8, reasoning low/none; Cerebras Qwen 3.8 fallback.
+#   Anthropic                  -> Sonnet 5.5 only: failsafe report generator, validator, judge.
+_Q_CEREBRAS = "qwen-3.8-27b"
+_Q_GROQ = "qwen/qwen3.8-27b"
+_OSS_CEREBRAS = "gpt-oss-120b"
+_OSS_GROQ = "openai/gpt-oss-120b"
+_SONNET = "claude-sonnet-5-5"
+
 MODEL_CONFIG = {
-    # Report Generation Models
-    "PRIMARY_REPORT_GENERATOR": "qwen/qwen3.6-27b",  # Primary model for report generation (Cerebras GLM-4.7)
-    "FALLBACK_REPORT_GENERATOR": "claude-sonnet-4-6",  # Fallback model if primary fails (Claude Sonnet 4.6)
-    
-    # Structure Validation Models
-    "STRUCTURE_VALIDATOR": "gpt-oss-120b",  # Structure validation: Check for structural quality violations (Cerebras GPT-OSS-120B with medium reasoning)
-    "STRUCTURE_VALIDATOR_FALLBACK": "openai/gpt-oss-120b",  # Fallback for structure validation (Groq Qwen with thinking)
-    
-    # Enhancement Pipeline Models
-    "FINDING_EXTRACTION": "gpt-oss-120b",  # Phase 1: Finding extraction and consolidation (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "FINDING_EXTRACTION_FALLBACK": "openai/gpt-oss-120b",  # Fallback for finding extraction (Qwen with thinking)
-    "QUERY_GENERATION": "gpt-oss-120b",  # Query generation primary (Cerebras GPT-OSS-120B with high reasoning)
-    "QUERY_GENERATION_FALLBACK": "openai/gpt-oss-120b",  # Query generation fallback (Llama)
-    "GUIDELINE_VALIDATOR": "gpt-oss-120b",  # Guideline compatibility validation (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "GUIDELINE_VALIDATOR_FALLBACK": "openai/gpt-oss-120b",  # Fallback for guideline validation (Llama)
-    "COMPATIBILITY_FILTER": "gpt-oss-120b",  # Search result compatibility filtering (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "COMPATIBILITY_FILTER_FALLBACK": "openai/gpt-oss-120b",  # Fallback for compatibility filtering (Llama)
-    "GUIDELINE_SEARCH": "gpt-oss-120b",  # Phase 2: Guideline synthesis (primary - Cerebras GPT-OSS-120B, reliable structured output)
-    "GUIDELINE_SEARCH_FALLBACK": "openai/gpt-oss-120b",  # Fallback (GLM cannot reliably generate tool_calls for complex schemas)
-    "COMPARISON_ANALYZER": "gpt-oss-120b",  # Interval comparison analysis (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "COMPARISON_ANALYZER_FALLBACK": "openai/gpt-oss-120b",  # Fallback for comparison analysis (Qwen)
-    
-    # Action Application Models
-    "ACTION_APPLIER": "gpt-oss-120b",  # Apply enhancement actions to reports (primary - Cerebras GPT-OSS-120B with high reasoning)
-    "ACTION_APPLIER_FALLBACK": "openai/gpt-oss-120b",  # Fallback for action application (Qwen)
-    
-    # Linguistic Validation Models (for zai-glm-4.7 post-processing)
-    "LINGUISTIC_VALIDATOR": "claude-haiku-4-5-20251001",  # Post-generation linguistic/anatomical correction.
-    # Haiku deliberately: a validator should be a different family from the generator
-    # it checks, and Llama 3.3 70B (the previous choice) is decommissioned 2026-08-16.
-    # NOTE: this pass was written for zai-glm-4.7-specific defects (translation
-    # artefacts, anatomical slips). Its value against Qwen output is unverified.
-    
-    # Audit / QA Analysis Models
-    "AUDIT_ANALYZER": "qwen/qwen3.6-27b",  # Report audit/QA primary (Cerebras Zai-GLM-4.7)
-    "AUDIT_ANALYZER_FALLBACK": "openai/gpt-oss-120b",  # Fallback for audit (Groq Qwen 32B)
-    
-    # Canvas / IntelliDictate Models
-    "CANVAS_SECTIONS": "gpt-oss-120b",  # Section generation from scan type (Cerebras)
-    "CANVAS_SECTIONS_FALLBACK": "openai/gpt-oss-120b",  # Fallback for section generation (Groq Llama)
-    "CANVAS_SECTIONS_FROM_TEMPLATE": "gpt-oss-120b",  # Extract sections from template (Cerebras)
-    "CANVAS_SECTIONS_FROM_TEMPLATE_FALLBACK": "openai/gpt-oss-120b",  # Fallback for template section extraction (Groq Llama)
-    "CANVAS_PROCESS": "qwen/qwen3.6-27b",  # was Cerebras Gemma 4 31B - retires end of Aug 2026
-    "CANVAS_PROCESS_FALLBACK": "openai/gpt-oss-120b",  # Fallback if Gemma fails (Cerebras GPT-OSS-120B)
-    "CANVAS_COVERAGE": "qwen/qwen3.6-27b",  # was Cerebras Gemma 4 31B - retires end of Aug 2026
-    "CANVAS_COVERAGE_FALLBACK": "openai/gpt-oss-120b",  # Fallback (Cerebras GPT-OSS-120B)
-    "CANVAS_INTELLIPROMPTS": "qwen/qwen3.6-27b",  # was Cerebras Gemma 4 31B - retires end of Aug 2026
-    "CANVAS_INTELLIPROMPTS_FALLBACK": "openai/gpt-oss-120b",  # Fallback (Cerebras GPT-OSS-120B)
+    # --- Report writing & analysis: Cerebras Qwen 3.8, medium ---------------------------
+    "PRIMARY_REPORT_GENERATOR": _Q_CEREBRAS,
+    "FALLBACK_REPORT_GENERATOR": _SONNET,  # failsafe off both open-weights providers
+    "TEMPLATE_REPORT_GENERATOR": _Q_CEREBRAS,
+    "TEMPLATE_REPORT_GENERATOR_FALLBACK": _Q_GROQ,
+    "QUICK_REPORT_ANALYZER_FAST": _Q_CEREBRAS,
+    "QUICK_REPORT_ANALYZER_FAST_FALLBACK": _Q_GROQ,
+    "QUICK_REPORT_ANALYZER_BEST": _Q_CEREBRAS,
+    "QUICK_REPORT_ANALYZER_BEST_FALLBACK": _Q_GROQ,
+    "REPORT_PLANNER": _Q_CEREBRAS,
+    "REPORT_EXECUTOR": _Q_CEREBRAS,
+    "SKILL_SHEET_ANALYZER": _Q_CEREBRAS,
+    "SKILL_SHEET_REFINER": _Q_CEREBRAS,
+    "SKILL_SHEET_TEST_GENERATE": _Q_CEREBRAS,
 
-    # Agentic Report Pipeline Models
-    "REPORT_PLANNER": "qwen/qwen3.6-27b",        # Phase 1: planning agent (Cerebras, reasoning ON)
-    "REPORT_EXECUTOR": "qwen/qwen3.6-27b",  # Phase 2: execution agent (Cerebras GLM, reasoning ON)
-    "PLAN_ADHERENCE_CHECKER": "qwen/qwen3.6-27b",  # Phase 3: cross-check output vs plan (Groq)
+    # --- Fast interactive (IntelliDictate): Cerebras Qwen 3.8, reasoning none ------------
+    "CANVAS_SECTIONS": _Q_CEREBRAS,
+    "CANVAS_SECTIONS_FALLBACK": _Q_GROQ,
+    "CANVAS_SECTIONS_FROM_TEMPLATE": _Q_CEREBRAS,
+    "CANVAS_SECTIONS_FROM_TEMPLATE_FALLBACK": _Q_GROQ,
+    "CANVAS_PROCESS": _Q_CEREBRAS,
+    "CANVAS_PROCESS_FALLBACK": _Q_GROQ,
+    "CANVAS_COVERAGE": _Q_CEREBRAS,
+    "CANVAS_COVERAGE_FALLBACK": _Q_GROQ,
+    "CANVAS_INTELLIPROMPTS": _Q_CEREBRAS,
+    "CANVAS_INTELLIPROMPTS_FALLBACK": _Q_GROQ,
 
-    # Template Wizard Generation Models
-    "TEMPLATE_FINDINGS_GENERATOR": "qwen/qwen3.6-27b",     # Wizard: generate FINDINGS section template
-    "TEMPLATE_INSTRUCTION_SUGGESTER": "qwen/qwen3.6-27b",  # Wizard: suggest section instructions
-    "TEMPLATE_REPORT_GENERATOR": "qwen/qwen3.6-27b",       # generate_report_from_config primary model (Cerebras GLM-4.7)
+    # --- Structured reasoning, tools & checks: gpt-oss-120b ------------------------------
+    "FINDING_EXTRACTION": _OSS_CEREBRAS,
+    "FINDING_EXTRACTION_FALLBACK": _OSS_GROQ,
+    "QUERY_GENERATION": _OSS_CEREBRAS,
+    "QUERY_GENERATION_FALLBACK": _OSS_GROQ,
+    "GUIDELINE_SEARCH": _OSS_CEREBRAS,
+    "GUIDELINE_SEARCH_FALLBACK": _OSS_GROQ,
+    "GUIDELINE_VALIDATOR": _OSS_CEREBRAS,
+    "GUIDELINE_VALIDATOR_FALLBACK": _OSS_GROQ,
+    "COMPATIBILITY_FILTER": _OSS_CEREBRAS,
+    "COMPATIBILITY_FILTER_FALLBACK": _OSS_GROQ,
+    "COMPARISON_ANALYZER": _OSS_CEREBRAS,
+    "COMPARISON_ANALYZER_FALLBACK": _OSS_GROQ,
+    "ACTION_APPLIER": _OSS_CEREBRAS,
+    "ACTION_APPLIER_FALLBACK": _OSS_GROQ,
+    "AUDIT_ANALYZER": _OSS_CEREBRAS,
+    "AUDIT_ANALYZER_FALLBACK": _OSS_GROQ,
+    "STRUCTURE_VALIDATOR": _OSS_CEREBRAS,
+    "STRUCTURE_VALIDATOR_FALLBACK": _OSS_GROQ,
+    "PLAN_ADHERENCE_CHECKER": _OSS_CEREBRAS,
 
-    # Skill Sheet Models
-    "SKILL_SHEET_ANALYZER": "qwen/qwen3.6-27b",      # Extract skill sheet from example reports
-    "SKILL_SHEET_DIVERSITY_CHECK": "qwen/qwen3.6-27b",       # Pre-analysis diversity assessment (primary, Cerebras with reasoning)
-    "SKILL_SHEET_DIVERSITY_CHECK_FALLBACK": "openai/gpt-oss-120b",  # Diversity check fallback (Groq Qwen with thinking)
-    "SKILL_SHEET_REFINER": "qwen/qwen3.6-27b",       # Refine skill sheet via chat
-    "SKILL_SHEET_TEST_GENERATE": "qwen/qwen3.6-27b", # Test-generate report from skill sheet (Cerebras GLM-4.7)
+    # --- Light background: Groq Qwen 3.8, low (none where set at the call site) ----------
+    "GUIDELINE_PREFETCH": _Q_GROQ,
+    "KNOWLEDGE_MAINTENANCE": _Q_GROQ,
+    "KNOWLEDGE_MAINTENANCE_FALLBACK": _Q_CEREBRAS,
+    "REPORT_DESCRIPTION": _Q_GROQ,
+    "SKILL_SHEET_DIVERSITY_CHECK": _Q_GROQ,
+    "SKILL_SHEET_DIVERSITY_CHECK_FALLBACK": _Q_CEREBRAS,
+    "TEMPLATE_FINDINGS_GENERATOR": _Q_GROQ,
+    "TEMPLATE_INSTRUCTION_SUGGESTER": _Q_GROQ,
+    # Report chat/edit: raw Groq SDK with tool calls (main.py), so Groq only.
+    "CHAT_ASSISTANT": _Q_GROQ,
 
-    # Quick Report — ephemeral skill sheet from scan_type + clinical_history.
-    # Speculative-parallel pattern: both analysers fire on workspace setup.
-    # FAST returns first (GLM on Cerebras, ~9s), BEST returns later (Haiku on
-    # Anthropic, ~40s). Generate uses whichever sheet is available at click.
-    "QUICK_REPORT_ANALYZER_FAST": "qwen/qwen3.6-27b",
-    "QUICK_REPORT_ANALYZER_BEST": "claude-haiku-4-5-20251001",
-
-    # Knowledge Maintenance Agent
-    "KNOWLEDGE_MAINTENANCE": "gpt-oss-120b",
-    "KNOWLEDGE_MAINTENANCE_FALLBACK": "openai/gpt-oss-120b",  # Async agent: populate knowledge_links from skill sheet
-
-    # Quality Scoring (admin analytics — offline batch judge)
-    "QUALITY_JUDGE": "claude-sonnet-4-5-20250929",  # Report quality judge — Sonnet 4.5 calibrates ~+1.5 over Haiku on the v2.1 inputs (validated 2026-05-30 against the 28 'likely-real-failure' cohort).
+    # --- Anthropic: Sonnet 5.5 -----------------------------------------------------------
+    # A validator should be a different family from the generator it checks. Written for
+    # GLM-specific defects; its value against Qwen output is unverified.
+    "LINGUISTIC_VALIDATOR": _SONNET,
+    # Offline batch judge. Moved from Sonnet 4.5 on 2026-09-28: scores are not comparable
+    # across the change; judge_model is stored per row.
+    "QUALITY_JUDGE": _SONNET,
 }
 
-# Legacy constants for backward compatibility (deprecated - use MODEL_CONFIG instead)
-QWEN_EXTRACTION_MODEL = MODEL_CONFIG["FINDING_EXTRACTION"]
-LLAMA_GUIDELINE_MODEL = MODEL_CONFIG["GUIDELINE_SEARCH"]
-LLAMA_REPORT_PRIMARY_MODEL = MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"]  # Legacy: was used for fast mode
-
-# Provider Mapping Dictionary
-# Maps model names to their providers for easy model switching
-# To add a new model, just add an entry here mapping model_name -> provider
+# Provider Mapping Dictionary: model name -> provider. Every model here was live on
+# 2026-09-28; retired models are removed rather than left to fail at request time.
 MODEL_PROVIDERS = {
-    # Groq models
-    "qwen/qwen3.6-27b": "groq",
-    "llama-3.3-70b-versatile": "groq",
-    
-    # Anthropic models
-    "claude-sonnet-4-20250514": "anthropic",
-    "claude-sonnet-4-6": "anthropic",
-    "claude-sonnet-4-5-20250929": "anthropic",  # Sonnet 4.5 — quality judge (well-calibrated for rubric scoring)
-    "claude-haiku-4-5-20251001": "anthropic",  # Haiku 4.5 — fast/cheap analyser variant
-    
-    # Cerebras models
-    "gpt-oss-120b": "cerebras",
-    "gemma-4-31b": "cerebras",  # Gemma 4 31B (multimodal, reasoning) — canvas primary
-    "zai-glm-4.7": "cerebras",
-
-    # Fireworks models
-    "accounts/fireworks/models/glm-5p1": "fireworks",
-
-    # OpenRouter models (OpenAI-compatible gateway)
-    # gpt-oss-120b via OpenRouter is the like-for-like escape from the Cerebras
-    # sunset for every GPT-OSS role: same weights, 20 providers, 16 of them
-    # advertising tools + tool_choice + structured_outputs.
-    "openai/gpt-oss-120b": "openrouter",
-    "deepseek/deepseek-v4-pro": "openrouter",
-    "deepseek/deepseek-v4-flash": "openrouter",
+    _Q_CEREBRAS: "cerebras",  # reasoning default HIGH; effort none|low|medium|high
+    _OSS_CEREBRAS: "cerebras",  # effort low|medium|high; cannot disable
+    _Q_GROQ: "groq",  # effort none|default|low|medium|high; 16,384 output ceiling
+    _OSS_GROQ: "groq",  # same gpt-oss weights as Cerebras; 65,536 output
+    _SONNET: "anthropic",  # adaptive thinking + effort; no budget_tokens/temperature
 }
 
 
@@ -269,7 +239,7 @@ def _get_model_provider(model_name: str) -> str:
     Get the provider for a given model name.
     
     Args:
-        model_name: The model identifier (e.g., "qwen/qwen3.6-27b", "gpt-oss-120b")
+        model_name: The model identifier (e.g., "qwen-3.8-27b", "gpt-oss-120b")
     
     Returns:
         Provider string: 'groq', 'anthropic', or 'cerebras'
@@ -413,18 +383,8 @@ def _get_api_key_for_provider(provider: str, fallback_api_key: str = None) -> st
         if not api_key:
             raise ValueError("Cerebras API key not configured. Please set CEREBRAS_API_KEY environment variable.")
         return api_key
-    elif provider == 'fireworks':
-        api_key = os.environ.get('FIREWORKS_API_KEY')
-        if not api_key:
-            raise ValueError("Fireworks API key not configured. Please set FIREWORKS_API_KEY environment variable.")
-        return api_key
-    elif provider == 'openrouter':
-        api_key = os.environ.get('OPENROUTER_API_KEY')
-        if not api_key:
-            raise ValueError("OpenRouter API key not configured. Please set OPENROUTER_API_KEY environment variable.")
-        return api_key
     else:
-        raise ValueError(f"Unknown provider: {provider}. Must be 'groq', 'anthropic', 'cerebras', 'fireworks', or 'openrouter'.")
+        raise ValueError(f"Unknown provider: {provider}. Must be 'groq', 'anthropic' or 'cerebras'.")
 
 
 def with_retry(max_retries=3, base_delay=2.0):
@@ -1884,7 +1844,7 @@ async def _extract_consolidated_with_model(
     Helper function to extract consolidated findings with a specific model.
     
     Args:
-        model_name: Model identifier (e.g., "qwen/qwen3.6-27b", "gpt-oss-120b")
+        model_name: Model identifier (e.g., "qwen-3.8-27b", "gpt-oss-120b")
         model_label: Human-readable model name for logging
         report_content: The generated radiology report text
         api_key: API key for the model provider
@@ -2775,20 +2735,8 @@ async def search_guidelines_for_findings(
 
             def _synthesis_model_settings(model: str, provider: str) -> dict:
                 """Build correct model settings per provider/model for synthesis."""
-                settings: dict = {"temperature": 0.2}
-                if model == "zai-glm-4.7":
-                    # GLM uses extra_body reasoning toggle, NOT reasoning_effort
-                    settings["max_completion_tokens"] = 8000
-                    settings["extra_body"] = {"disable_reasoning": False}  # reasoning ON for complex schema
-                    print(f"      └─ GLM mode: REASONING ON, max_completion_tokens=8000 for {model}")
-                elif provider == "cerebras":
-                    # gpt-oss-120b and other Cerebras models use reasoning_effort
-                    settings["max_completion_tokens"] = 6000
-                    settings["reasoning_effort"] = "medium"
-                    print(f"      └─ Using Cerebras reasoning_effort=medium, max_completion_tokens=6000 for {model}")
-                else:
-                    settings["max_tokens"] = 4000
-                return settings
+                # gpt-oss on either provider; reasoning counts toward the cap.
+                return {"temperature": 0.2, "max_completion_tokens": 6000, "reasoning_effort": "medium"}
 
             try:
                 @with_retry(max_retries=3, base_delay=2.0)
@@ -3228,8 +3176,6 @@ REASONING WORKFLOW (for high-reasoning models like GPT-OSS 120B):
         'groq': 'GROQ_API_KEY',
         'anthropic': 'ANTHROPIC_API_KEY',
         'cerebras': 'CEREBRAS_API_KEY',
-        'fireworks': 'FIREWORKS_API_KEY',
-        'openrouter': 'OPENROUTER_API_KEY',
     }
     env_var_name = env_var_map[provider]
     old_api_key = os.environ.get(env_var_name)
@@ -3694,20 +3640,13 @@ async def _generate_report_with_claude_model(
     
     agent = Agent(
         pydantic_model,
-        output_type=ReportOutput,
+        output_type=_output_type_for("anthropic", ReportOutput),
         system_prompt=system_prompt,
     )
     
     result = await agent.run(
         final_prompt,
-        model_settings={
-            "temperature": 1,
-            "max_tokens": 6500,
-            "anthropic_thinking": {
-                "type": "enabled",
-                "budget_tokens": 2048
-            }
-        }
+        model_settings=normalise_model_settings(model_name, _report_generator_settings(model_name)),
     )
     
     # Log thinking parts (backend only - not sent to frontend)
@@ -3733,7 +3672,7 @@ def _create_pydantic_model(model_name: str, api_key: str, use_thinking: bool = F
     Note: Environment variable management is handled by the caller.
     
     Args:
-        model_name: Model identifier (e.g., "qwen/qwen3.6-27b", "gpt-oss-120b")
+        model_name: Model identifier (e.g., "qwen-3.8-27b", "gpt-oss-120b")
         api_key: API key for the model provider
         use_thinking: Whether to enable thinking mode (only applies to Groq models)
     
@@ -3752,18 +3691,6 @@ def _create_pydantic_model(model_name: str, api_key: str, use_thinking: bool = F
             api_key=api_key,
         )
         return OpenAIModel(model_name, provider=provider_obj)
-    elif provider == 'fireworks':
-        provider_obj = OpenAIProvider(
-            base_url='https://api.fireworks.ai/inference/v1',
-            api_key=api_key,
-        )
-        return OpenAIModel(model_name, provider=provider_obj)
-    elif provider == 'openrouter':
-        provider_obj = OpenAIProvider(
-            base_url='https://openrouter.ai/api/v1',
-            api_key=api_key,
-        )
-        return OpenAIModel(model_name, provider=provider_obj)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -3772,24 +3699,74 @@ def _create_pydantic_model(model_name: str, api_key: str, use_thinking: bool = F
 # from model settings. A top-level `reasoning_effort` or `max_completion_tokens` was silently
 # dropped, so calls ran at the provider's default reasoning (gpt-oss: medium) with no cap
 # (measured 2026-09-27). normalise_model_settings puts both where they are read.
-REASONING_EFFORT_MODELS = frozenset({"gpt-oss-120b", "openai/gpt-oss-120b", "qwen-3.8-27b"})
+# Every model that takes a graded reasoning_effort, and what it runs at when the caller sets
+# none. Cerebras qwen-3.8-27b defaults to HIGH on the provider side (L-34), so leaving it
+# unset is never neutral. Groq qwen reasons into a 16,384 output ceiling, so it runs at low
+# at most (L-41). gpt-oss cannot disable reasoning.
+MODEL_DEFAULT_EFFORT = {
+    "qwen-3.8-27b": "medium",
+    "qwen/qwen3.8-27b": "low",
+    "gpt-oss-120b": "medium",
+    "openai/gpt-oss-120b": "medium",
+}
+REASONING_EFFORT_MODELS = frozenset(MODEL_DEFAULT_EFFORT)
 # Caps written as max_completion_tokens were never enforced; several are far too small for a
 # reasoning model (reasoning counts toward the cap). The floor keeps anything that works
 # today from being cut off; caps above it now apply.
 TOKEN_CAP_FLOOR = 16384
+GROQ_QWEN_MAX_TOKENS = 16384  # Groq's hard output ceiling for qwen/qwen3.8-27b
+ANTHROPIC_MIN_MAX_TOKENS = 16000  # adaptive thinking counts toward max_tokens
+# GLM-era reasoning toggles; no current model reads them.
+_GLM_REASONING_KEYS = ("disable_reasoning", "clear_thinking")
 
 
 def normalise_model_settings(model_name: str, settings: dict | None) -> dict:
+    """A role's settings, in the shape its model's provider accepts."""
     s = dict(settings or {})
-    effort = s.pop("reasoning_effort", None)
+    extra = dict(s.pop("extra_body", None) or {})
+    effort = extra.pop("reasoning_effort", None) or s.pop("reasoning_effort", None)
+    s.pop("reasoning_effort", None)
+    if extra.pop("disable_reasoning", None) is True and effort is None:
+        effort = "none"
+    for key in _GLM_REASONING_KEYS:
+        extra.pop(key, None)
     cap = s.pop("max_completion_tokens", None)
     if cap is not None and "max_tokens" not in s:
         s["max_tokens"] = max(int(cap), TOKEN_CAP_FLOOR)
-    if effort is not None and model_name in REASONING_EFFORT_MODELS:
-        extra = dict(s.get("extra_body") or {})
-        extra.setdefault("reasoning_effort", effort)
+
+    if model_name in REASONING_EFFORT_MODELS:
+        effort = effort or MODEL_DEFAULT_EFFORT[model_name]
+        if model_name.startswith("qwen/"):
+            if effort in ("medium", "high"):
+                effort = "low"
+            if "max_tokens" in s:
+                s["max_tokens"] = min(s["max_tokens"], GROQ_QWEN_MAX_TOKENS)
+        elif model_name.startswith("qwen-"):
+            if effort != "none" and s.get("max_tokens", TOKEN_CAP_FLOOR) < TOKEN_CAP_FLOOR:
+                s["max_tokens"] = TOKEN_CAP_FLOOR
+        elif effort == "none":  # gpt-oss
+            effort = "low"
+        extra["reasoning_effort"] = effort
+    elif _get_model_provider(model_name) == "anthropic":
+        # Sonnet 5.5: budget_tokens and non-default sampling are HTTP 400.
+        for key in ("temperature", "top_p", "top_k"):
+            s.pop(key, None)
+        s["anthropic_thinking"] = {"type": "adaptive"}
+        effort = "low" if effort == "none" else (effort or "medium")
+        extra["output_config"] = {**extra.get("output_config", {}), "effort": effort}
+        s["max_tokens"] = max(s.get("max_tokens", 0), ANTHROPIC_MIN_MAX_TOKENS)
+
+    if extra:
         s["extra_body"] = extra
     return s
+
+
+def _output_type_for(provider: str, output_type):
+    """Sonnet 5.5 rejects forced tool_choice (HTTP 400), which pydantic-ai 1.14 sends for a
+    structured output_type. Prompted output asks for the JSON in text and validates it."""
+    if provider == "anthropic" and output_type is not str and not isinstance(output_type, PromptedOutput):
+        return PromptedOutput(output_type)
+    return output_type
 
 
 async def _run_agent_with_model(
@@ -3831,24 +3808,15 @@ async def _run_agent_with_model(
     
     # Create agent settings
     agent_model_settings = None
-    # Groq's reasoning_format parameter is only supported by Groq's
-    # reasoning-capable models (Qwen family). Llama and other non-reasoning
-    # Groq models reject the parameter with HTTP 400, so we gate it by
-    # model identifier rather than provider alone.
-    GROQ_REASONING_MODELS = {
-        'qwen/qwen3.6-27b',
-    }
-    if (
-        provider == 'groq'
-        and use_thinking
-        and model_name in GROQ_REASONING_MODELS
-    ):
+    # reasoning_format is a Groq Qwen parameter (gpt-oss on Groq rejects it); `parsed`
+    # keeps reasoning out of the content. `raw` is a 400 with tools.
+    if provider == 'groq' and use_thinking and model_name == 'qwen/qwen3.8-27b':
         agent_model_settings = GroqModelSettings(groq_reasoning_format='parsed')
-    
+
     # Create agent (with optional tools)
     agent = Agent(
         pydantic_model,
-        output_type=output_type,
+        output_type=_output_type_for(provider, output_type),
         system_prompt=system_prompt,
         model_settings=agent_model_settings,
         tools=tools or [],
@@ -3869,26 +3837,8 @@ async def _run_agent_with_model(
             print(f"  └─ max_tokens: {final_model_settings.get('max_tokens', 'not set')}")
         if 'extra_body' in final_model_settings:
             print(f"  └─ extra_body: {final_model_settings.get('extra_body')}")
-        # reasoning_effort is GPT-OSS only; GLM/Qwen3 use extra_body toggles
-        if model_name == "zai-glm-4.7":
-            disable_reasoning = (final_model_settings.get('extra_body') or {}).get('disable_reasoning', 'not set')
-            mode_label = "REASONING OFF" if disable_reasoning else "REASONING ON"
-            print(f"  └─ GLM mode: {mode_label} (disable_reasoning={disable_reasoning})")
-        else:
-            # what is actually sent (normalise_model_settings moved it into extra_body)
-            reasoning_effort = (final_model_settings.get('extra_body') or {}).get('reasoning_effort')
-            if reasoning_effort:
-                print(f"  └─ reasoning_effort: {reasoning_effort} ✅")
-            else:
-                print(f"  └─ reasoning_effort: NOT SET ⚠️  (check if parameter is supported)")
-    
-    if provider == 'fireworks':
-        print(f"\n🔧 FIREWORKS MODEL SETTINGS ({model_name}):")
-        print(f"  └─ temperature: {final_model_settings.get('temperature', 'not set')}")
-        print(f"  └─ top_p: {final_model_settings.get('top_p', 'not set')}")
-        print(f"  └─ max_tokens: {final_model_settings.get('max_tokens', 'not set')}")
-        reasoning_effort = final_model_settings.get('reasoning_effort', 'not set')
-        print(f"  └─ reasoning_effort: {reasoning_effort}")
+        # what is actually sent (normalise_model_settings moved it into extra_body)
+        print(f"  └─ reasoning_effort: {(final_model_settings.get('extra_body') or {}).get('reasoning_effort')}")
 
     # Run agent with concurrency guard for Cerebras
     try:
@@ -3967,6 +3917,17 @@ async def _run_agent_with_model(
         raise
 
 
+def _report_generator_settings(model_name: str) -> dict:
+    """Settings for writing a report. Generator reasoning is load-bearing (L-12, L-31); the
+    effort and provider-specific caps come from normalise_model_settings."""
+    if model_name.startswith("qwen"):
+        # As validated on the quick-report pipeline (L-40): Cerebras medium, 64k cap.
+        return {"temperature": 0.8, "top_p": 0.95, "max_tokens": 65536}
+    if _get_model_provider(model_name) == "anthropic":
+        return {"max_tokens": 16000}
+    return {"temperature": 1, "max_tokens": 6500, "reasoning_effort": "medium"}
+
+
 async def generate_auto_report(
     model: str,
     user_prompt: str,
@@ -4015,44 +3976,7 @@ async def generate_auto_report(
         # Wrap primary model call with retry logic
         @with_retry(max_retries=3, base_delay=2.0)
         async def _try_primary():
-            # Build model settings with conditional reasoning_effort and max_completion_tokens for Cerebras
-            model_settings = {
-                "temperature": 1,
-            }
-            if primary_model == "zai-glm-4.7":
-                if _glm_reasoning_enabled():
-                    # Reasoning ON: temperature 0.8 (instruction-following), top_p per Z.ai guidance
-                    # 16k tokens: headroom for full reasoning trace + JSON report without truncation
-                    model_settings["max_completion_tokens"] = 16000
-                    model_settings["temperature"] = 0.8
-                    model_settings["top_p"] = 0.95
-                    model_settings["extra_body"] = {"disable_reasoning": False}
-                    print(f"  └─ GLM mode: REASONING ON — temperature=0.8, top_p=0.95, max_completion_tokens=16000")
-                else:
-                    # Reasoning OFF: no temp floor, use lower value for more deterministic output
-                    model_settings["max_completion_tokens"] = 6000
-                    model_settings["temperature"] = 0.5
-                    model_settings["extra_body"] = {"disable_reasoning": True}
-                    print(f"  └─ GLM mode: REASONING OFF — temperature=0.5, max_completion_tokens=6000")
-            elif primary_model == "gpt-oss-120b":
-                model_settings["max_completion_tokens"] = 6500
-                model_settings["reasoning_effort"] = "medium"  # gpt-oss has always run at medium: 'high' here was dropped until 2026-09-27 (normalise_model_settings)
-                print(f"  └─ Using Cerebras reasoning_effort=medium for {primary_model}")
-            elif provider == "fireworks":
-                model_settings["max_tokens"] = 16000
-                model_settings["temperature"] = 0.6
-                model_settings["top_p"] = 0.95
-                model_settings["reasoning_effort"] = "high"
-                print(f"  └─ Using Fireworks GLM-5.1 — temperature=0.6, reasoning_effort=high, max_tokens=16000")
-            elif provider == "anthropic":
-                model_settings["max_tokens"] = 8000
-                model_settings["anthropic_thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": 2048
-                }
-                print(f"  └─ Using Claude with thinking enabled, budget_tokens=2048, temperature=1 for {primary_model}")
-            else:
-                model_settings["max_tokens"] = 8000
+            model_settings = _report_generator_settings(primary_model)
             
             result = await _run_agent_with_model(
                 model_name=primary_model,
@@ -4070,8 +3994,6 @@ async def generate_auto_report(
         # Log thinking/reasoning for all supported reasoning models
         if provider == "anthropic":
             _log_thinking_parts(result, f"{primary_model} (Primary) - Claude Extended Thinking")
-        elif primary_model == "zai-glm-4.7":
-            _log_glm_reasoning(result, f"{primary_model} (Primary) - GLM Reasoning")
         
         report_output = result.output
         
@@ -4164,9 +4086,6 @@ async def generate_auto_report(
         
         # Fallback to configured fallback model (Claude Sonnet 4)
         try:
-            if not api_key:
-                raise Exception(f"{primary_model} failed and no fallback API key available. Original error: {e}") from e
-            
             return await _generate_report_with_claude_model(
                 fallback_model,
                 f"{fallback_model} (fallback)",
@@ -4182,198 +4101,6 @@ async def generate_auto_report(
             print(traceback.format_exc())
             raise Exception(f"Report generation failed with both {primary_model} and {fallback_model}. Original error: {e}") from e
 
-
-async def generate_templated_report(
-    model: str,
-    user_prompt: str,
-    system_prompt: str,
-    api_key: str,
-    signature: str | None = None
-) -> ReportOutput:
-    """
-    Generate a templated radiology report using configured primary model with automatic fallback.
-    Model selection is driven by MODEL_CONFIG - just change PRIMARY_REPORT_GENERATOR
-    to swap models (supports Groq/Qwen, Anthropic/Claude, or Cerebras).
-    
-    Args:
-        model: Model identifier (kept for API compatibility, actual model from MODEL_CONFIG)
-        user_prompt: The task-specific user prompt from TemplateManager
-        system_prompt: The persistent system prompt from TemplateManager
-        api_key: API key (provider-specific, will be determined automatically)
-        signature: Optional user signature to inject
-        
-    Returns:
-        ReportOutput with report_content and description
-    """
-    import os
-    
-    start_time = time.time()
-    # Templated reports use zai-glm-4.7 as primary, Claude as fallback
-    primary_model = "zai-glm-4.7"
-    fallback_model = MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"]
-    provider = _get_model_provider(primary_model)
-    
-    print(f"generate_templated_report: Starting with {primary_model} ({provider}), fallback: {fallback_model}")
-    
-    # Use prompt as-is (signature will be appended programmatically after generation)
-    final_prompt = user_prompt
-    
-    # Try primary model with retry logic
-    try:
-        # Get API key for primary model
-        primary_api_key = _get_api_key_for_provider(provider, api_key)
-        
-        # Wrap primary model call with retry logic
-        @with_retry(max_retries=3, base_delay=2.0)
-        async def _try_primary():
-            # Build model settings with conditional reasoning_effort and max_completion_tokens for Cerebras
-            model_settings = {
-                "temperature": 0.7,
-            }
-            if primary_model == "zai-glm-4.7":
-                if _glm_reasoning_enabled():
-                    model_settings["max_completion_tokens"] = 16000
-                    model_settings["temperature"] = 0.8
-                    model_settings["extra_body"] = {"disable_reasoning": False}
-                    print(f"  └─ GLM mode: REASONING ON — temperature=0.8, max_completion_tokens=16000")
-                else:
-                    model_settings["max_completion_tokens"] = 6000
-                    model_settings["temperature"] = 0.5
-                    model_settings["extra_body"] = {"disable_reasoning": True}
-                    print(f"  └─ GLM mode: REASONING OFF — temperature=0.5, max_completion_tokens=6000")
-            elif primary_model == "gpt-oss-120b":
-                model_settings["max_completion_tokens"] = 6500
-                model_settings["reasoning_effort"] = "medium"  # gpt-oss has always run at medium: 'high' here was dropped until 2026-09-27 (normalise_model_settings)
-                print(f"  └─ Using Cerebras reasoning_effort=medium for {primary_model}")
-            elif provider == "anthropic":
-                model_settings["max_tokens"] = 8000
-                model_settings["anthropic_thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": 2048
-                }
-                print(f"  └─ Using Claude with thinking enabled, budget_tokens=2048, temperature=0.7 for {primary_model}")
-            else:
-                model_settings["max_tokens"] = 8000
-            
-            result = await _run_agent_with_model(
-                model_name=primary_model,
-                output_type=ReportOutput,
-                system_prompt=system_prompt,
-                user_prompt=final_prompt,
-                api_key=primary_api_key,
-                use_thinking=(provider == 'groq'),  # Enable thinking for Groq models
-                model_settings=model_settings
-            )
-            return result
-        
-        result = await _try_primary()
-        
-        # Log thinking/reasoning for all supported reasoning models
-        if provider == 'groq':
-            _log_thinking_parts(result, f"{primary_model} (Primary) - Groq")
-        elif primary_model == "zai-glm-4.7":
-            _log_glm_reasoning(result, f"{primary_model} (Primary) - GLM Reasoning")
-        
-        report_output = result.output
-        
-        # Normalise literal \n sequences (same fix as generate_auto_report)
-        if report_output.report_content and '\\n' in report_output.report_content:
-            report_output.report_content = report_output.report_content.replace('\\n', '\n')
-            print(f"  └─ Normalised literal \\n sequences in report content")
-        
-        # Don't append signature yet - will append after validation
-        
-        elapsed = time.time() - start_time
-        print(f"generate_templated_report: ✅ Completed with {primary_model} (primary) in {elapsed:.2f}s")
-        print(f"  └─ Report length: {len(report_output.report_content)} chars")
-        print(f"  └─ Description: {report_output.description}")
-        
-        # DETAILED LOGGING FOR DEBUGGING
-        print(f"\n{'='*80}")
-        print(f"RAW OUTPUT DEBUG - generate_templated_report ({primary_model})")
-        print(f"{'='*80}")
-        print(f"Report length: {len(report_output.report_content)} chars")
-        print(f"Newline count: {report_output.report_content.count(chr(10))}")
-        print(f"Double newline count: {report_output.report_content.count(chr(10)+chr(10))}")
-        print(f"\nFull report content:")
-        print(report_output.report_content)
-        print(f"{'='*80}\n")
-        
-        # LINGUISTIC VALIDATION for non-Anthropic Cerebras models (conditionally enabled)
-        if primary_model in ("zai-glm-4.7",):
-            import os
-            ENABLE_LINGUISTIC_VALIDATION = os.getenv("ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION", "true").lower() == "true"
-            
-            if ENABLE_LINGUISTIC_VALIDATION:
-                try:
-                    print(f"\n{'='*80}")
-                    print(f"🔍 LINGUISTIC VALIDATION - Starting for {primary_model}")
-                    print(f"{'='*80}")
-                    
-                    validated_content = await validate_zai_glm_linguistics(
-                        report_content=report_output.report_content,
-                        scan_type=report_output.scan_type or "",
-                        description=report_output.description or "",
-                        clinical_history=clinical_history
-                    )
-                    
-                    report_output.report_content = validated_content
-                    print(f"✅ LINGUISTIC VALIDATION COMPLETE")
-                    print(f"{'='*80}")
-                    print(f"📋 POST-VALIDATION OUTPUT DEBUG")
-                    print(f"{'='*80}")
-                    print(f"Report length: {len(validated_content)} chars")
-                    print(f"\nFull validated report content:")
-                    print(validated_content)
-                    print(f"{'='*80}\n")
-                except Exception as e:
-                    print(f"\n{'='*80}")
-                    print(f"⚠️ LINGUISTIC VALIDATION FAILED - continuing with original report")
-                    print(f"{'='*80}")
-                    print(f"[ERROR] Exception type: {type(e).__name__}")
-                    print(f"[ERROR] Error message: {str(e)[:300]}")
-                    import traceback
-                    print(f"[ERROR] Traceback:")
-                    print(traceback.format_exc()[:500])
-                    print(f"[DEBUG] Returning original report (validation skipped)")
-                    print(f"{'='*80}\n")
-            else:
-                print(f"[DEBUG] Linguistic validation disabled (ENABLE_ZAI_GLM_LINGUISTIC_VALIDATION=false)")
-        
-        # Append signature AFTER validation (or if validation disabled)
-        if signature:
-            report_output = _append_signature_to_report(report_output, signature)
-        
-        return report_output
-        
-    except Exception as e:
-        # Primary failed - determine why and fallback to Claude
-        if _is_parsing_error(e):
-            print(f"⚠️ {primary_model} parsing error detected - immediate fallback to {fallback_model}")
-            print(f"  Error: {type(e).__name__}: {str(e)[:200]}")
-        else:
-            print(f"⚠️ {primary_model} failed after retries ({type(e).__name__}) - falling back to {fallback_model}")
-            print(f"  Error: {str(e)[:200]}")
-        
-        # Fallback to Claude Sonnet 4
-        try:
-            if not api_key:
-                raise Exception(f"{primary_model} failed and no fallback API key available. Original error: {e}") from e
-            
-            return await _generate_report_with_claude_model(
-                fallback_model,
-                f"{fallback_model} (fallback)",
-                final_prompt,
-                system_prompt,
-                api_key,
-                signature
-            )
-        except Exception as fallback_error:
-            # Both models failed - re-raise the original error with context
-            print(f"❌ Fallback model also failed: {type(fallback_error).__name__}")
-            import traceback
-            print(traceback.format_exc())
-            raise Exception(f"Templated report generation failed with both {primary_model} and {fallback_model}. Original error: {e}") from e
 
 @with_retry(max_retries=3, base_delay=2.0)
 async def validate_report_structure(
@@ -6251,6 +5978,17 @@ def _build_synthesis_evidence_block(
     return "\n\n".join(parts)
 
 
+async def _run_audit_agent(**kwargs):
+    """Audit call on AUDIT_ANALYZER, one hop to AUDIT_ANALYZER_FALLBACK on failure."""
+    primary = MODEL_CONFIG["AUDIT_ANALYZER"]
+    try:
+        return await _run_agent_with_model(model_name=primary, **kwargs)
+    except Exception as e:
+        fallback = MODEL_CONFIG["AUDIT_ANALYZER_FALLBACK"]
+        print(f"[AUDIT] {primary} failed ({type(e).__name__}: {str(e)[:150]}) - falling back to {fallback}")
+        return await _run_agent_with_model(model_name=fallback, **kwargs)
+
+
 async def run_audit_phase1(
     report_content: str,
     scan_type: str,
@@ -6306,8 +6044,7 @@ async def run_audit_phase1(
             f"ORIGINAL INPUT faithfully represented in the FINAL REPORT?"
         )
         try:
-            result = await _run_agent_with_model(
-                model_name="zai-glm-4.7",
+            result = await _run_audit_agent(
                 output_type=Phase1aOutput,
                 system_prompt=_PHASE1A_SYSTEM,
                 user_prompt=user_prompt,
@@ -6327,14 +6064,13 @@ async def run_audit_phase1(
             print(f"[AUDIT] Phase 1a failed: {e}")
             return _AC(
                 criterion="input_fidelity",
-                status="pass",
+                status="warning",
                 rationale=f"Input fidelity check could not be completed: {str(e)[:200]}",
             )
 
     async def _phase1b() -> list:
         try:
-            result = await _run_agent_with_model(
-                model_name="zai-glm-4.7",
+            result = await _run_audit_agent(
                 output_type=Phase1bOutput,
                 system_prompt=_build_phase1b_system(scan_type, clinical_history),
                 user_prompt=_build_phase1b_user(
@@ -6413,8 +6149,7 @@ async def run_audit_phase2(
     }
 
     try:
-        result = await _run_agent_with_model(
-            model_name="zai-glm-4.7",
+        result = await _run_audit_agent(
             output_type=Phase2Output,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
@@ -6512,8 +6247,7 @@ async def run_full_audit(
             f"ORIGINAL INPUT faithfully represented in the FINAL REPORT?"
         )
         try:
-            result = await _run_agent_with_model(
-                model_name="zai-glm-4.7",
+            result = await _run_audit_agent(
                 output_type=Phase1aOutput,
                 system_prompt=_PHASE1A_SYSTEM,
                 user_prompt=user_prompt,
@@ -6533,14 +6267,13 @@ async def run_full_audit(
             print(f"[AUDIT] Phase 1a failed: {e}")
             return _AC(
                 criterion="input_fidelity",
-                status="pass",
+                status="warning",
                 rationale=f"Input fidelity check could not be completed: {str(e)[:200]}",
             )
 
     async def _phase1b() -> list:
         try:
-            result = await _run_agent_with_model(
-                model_name="zai-glm-4.7",
+            result = await _run_audit_agent(
                 output_type=Phase1bOutput,
                 system_prompt=_build_phase1b_system(scan_type, clinical_history),
                 user_prompt=_build_phase1b_user(
@@ -6575,8 +6308,7 @@ async def run_full_audit(
             f"clinical_flagging, characterisation_gap."
         )
         try:
-            result = await _run_agent_with_model(
-                model_name="zai-glm-4.7",
+            result = await _run_audit_agent(
                 output_type=Phase2Output,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,

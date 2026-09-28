@@ -51,13 +51,12 @@ class PromptManager:
             metadata = self._load_json(metadata_file)
             
             # Load template - check primary_model first for auto template selection
-            # If primary_model is "claude-sonnet-4-20250514", use claude.json
-            # If primary_model is "gpt-oss-120b", use gptoss.json
-            # If primary_model is "zai-glm-4.7", use zai-glm-4.7.json
+            # Claude models use claude.json; gpt-oss-120b uses gptoss.json; Qwen (either
+            # provider) and the "zai-glm-4.7" prompt name use zai-glm-4.7.json.
             # Otherwise fallback to unified.json
             template_file = None
             
-            if primary_model in ("claude-sonnet-4-20250514", "claude-sonnet-4-6"):
+            if primary_model and primary_model.startswith("claude-"):
                 # Check for claude.json first when primary model is Claude
                 claude_file = use_case_dir / "claude.json"
                 if claude_file.exists():
@@ -75,7 +74,7 @@ class PromptManager:
                 if zai_cc.exists():
                     template_file = zai_cc
                     print(f"load_prompt: Using zai-glm-4.7-clinical-clusters.json for primary model {primary_model}")
-            elif primary_model in ("zai-glm-4.7", "qwen/qwen3.6-27b"):
+            elif primary_model == "zai-glm-4.7" or (primary_model or "").startswith(("qwen-", "qwen/")):
                 # Qwen inherits the tuned template. The filename still says
                 # zai-glm-4.7 because agentic_routes' A/B endpoint renders it by
                 # name; renaming would break that. Without this branch Qwen falls

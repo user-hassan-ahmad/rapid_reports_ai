@@ -159,7 +159,7 @@ async def compare_pipelines(
     # Render prompts for the current pipeline — replicates main.py /api/chat logic
     # (lines 535-568: PromptManager load + render before passing to generate_auto_report)
     pm = get_prompt_manager()
-    primary_model = MODEL_CONFIG.get("PRIMARY_REPORT_GENERATOR", "zai-glm-4.7")
+    primary_model = MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
     prompt_data = pm.load_prompt("radiology_report", "default", primary_model=primary_model)
     system_prompt = prompt_data.get("system_prompt", "")
     variables = {

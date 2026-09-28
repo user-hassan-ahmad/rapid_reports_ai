@@ -77,7 +77,7 @@ router = APIRouter(prefix="/api/quick-report", tags=["quick-report"])
 # we want, and the richer Haiku skill sheet (running in the analyser tier) now
 # delivers the clinical depth Sonnet used to contribute.
 
-GENERATOR_MODEL = "qwen/qwen3.6-27b"
+GENERATOR_MODEL = MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -171,12 +171,11 @@ async def analyse(
             yield _sse("error", {"error": "Scan type is required"})
             return
 
-        # Cerebras key is only meaningful for the GLM (FAST) path; the
-        # Anthropic (BEST) path fetches ANTHROPIC_API_KEY inside the call.
+        # Keys are resolved from each model's provider inside the call.
         api_key = get_system_api_key("cerebras", "CEREBRAS_API_KEY") or ""
 
-        fast_model = MODEL_CONFIG.get("QUICK_REPORT_ANALYZER_FAST", "zai-glm-4.7")
-        best_model = MODEL_CONFIG.get("QUICK_REPORT_ANALYZER_BEST", "claude-haiku-4-5-20251001")
+        fast_model = MODEL_CONFIG["QUICK_REPORT_ANALYZER_FAST"]
+        best_model = MODEL_CONFIG["QUICK_REPORT_ANALYZER_BEST"]
 
         async def _run_variant(variant: str, model_name: str) -> dict:
             run_id = f"{run_id_base}-{variant}"
@@ -410,7 +409,7 @@ async def generate(
                     skill_sheet_markdown=analyser_result.get("skill_sheet", ""),
                     analyser_model=analyser_result.get("model_used", ""),
                     analyser_latency_ms=analyser_result.get("latency_ms"),
-                    analyser_prompt_version=analyser_result.get("prompt_version") or analyser_prompt_version(analyser_result.get("model_used", "zai-glm-4.7")),
+                    analyser_prompt_version=analyser_result.get("prompt_version") or analyser_prompt_version(analyser_result.get("model_used") or MODEL_CONFIG["QUICK_REPORT_ANALYZER_FAST"]),
                     run_id=run_id_base,
                 )
                 skill_sheet_markdown = sheet_row.skill_sheet_markdown

@@ -39,7 +39,7 @@ async def test_a_groq_model_uses_the_groq_key_even_when_handed_the_cerebras_key(
 
     monkeypatch.setattr(eu, "_create_pydantic_model", fake_create)
     await eu._run_agent_with_model(
-        model_name="qwen/qwen3.6-27b", output_type=_Out, system_prompt="s",
+        model_name="qwen/qwen3.8-27b", output_type=_Out, system_prompt="s",
         user_prompt="u", api_key="cerebras-key",
     )
     assert seen["key"] == "groq-key"
@@ -47,10 +47,11 @@ async def test_a_groq_model_uses_the_groq_key_even_when_handed_the_cerebras_key(
 
 
 @pytest.mark.parametrize("model_name,expected", [
-    ("qwen/qwen3.6-27b", "groq-key"),
-    ("claude-haiku-4-5-20251001", "anthropic-key"),
+    ("qwen/qwen3.8-27b", "groq-key"),
+    ("claude-sonnet-5-5", "anthropic-key"),
+    ("qwen-3.8-27b", "cerebras-key"),
     ("gpt-oss-120b", "cerebras-key"),
-    ("openai/gpt-oss-120b", "openrouter-key"),
+    ("openai/gpt-oss-120b", "groq-key"),
 ])
 def test_every_provider_client_carries_its_key_explicitly(keys, monkeypatch, model_name, expected):
     # Nothing may depend on the process env holding the right key at request time.

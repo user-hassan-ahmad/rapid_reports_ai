@@ -494,8 +494,11 @@ Update the ACTIVE text. Emit committed_edits only for directed corrections to CO
 
 
 # Shared model settings for section extraction (both scan-type and template)
-_SECTIONS_MODEL_SETTINGS_CEREBRAS = {"temperature": 0.1, "max_completion_tokens": 1000}
-_SECTIONS_MODEL_SETTINGS_GROQ = {"temperature": 0.1, "max_tokens": 1000}
+# IntelliDictate is latency-bound: every canvas call runs Qwen 3.8 with reasoning off on
+# both providers. Reasoning on broke IntelliPrompts' structured output (Groq thinking:
+# tool_use_failed; Cerebras low: parser_error); off answers in 0.7-0.95s on Cerebras.
+_SECTIONS_MODEL_SETTINGS_CEREBRAS = {"temperature": 0.1, "max_tokens": 1000, "reasoning_effort": "none"}
+_SECTIONS_MODEL_SETTINGS_GROQ = _SECTIONS_MODEL_SETTINGS_CEREBRAS
 
 
 @canvas_router.post("/sections", response_model=SectionGenerateResponse)
@@ -613,40 +616,27 @@ async def sections_from_template(
 def _canvas_process_config(mode: str, incremental: bool = False) -> tuple[str, dict]:
     """Return (system_prompt, model_settings) for the polish mode. Defaults to Clean.
 
-    Cerebras settings form (max_completion_tokens + reasoning_effort); reasoning_effort
-    'low' keeps Gemma 4 fast and literal. When ``incremental`` is set, the incremental
+    Reasoning is off (see _SECTIONS_MODEL_SETTINGS_CEREBRAS). When ``incremental`` is set, the incremental
     suffix (frozen COMMITTED + patch-edit response) is appended to the base prompt.
     """
     if mode == "structured":
         base_prompt = CANVAS_PROCESS_SYSTEM_PROMPT
-        settings = {"temperature": 0.3, "max_completion_tokens": 8000, "reasoning_effort": "low"}
+        settings = {"temperature": 0.3, "max_tokens": 8000, "reasoning_effort": "none"}
     else:
         base_prompt = CANVAS_CLEAN_SYSTEM_PROMPT
-        settings = {"temperature": 0.15, "max_completion_tokens": 8000, "reasoning_effort": "low"}
+        settings = {"temperature": 0.15, "max_tokens": 8000, "reasoning_effort": "none"}
     if incremental:
         return base_prompt + CANVAS_INCREMENTAL_SUFFIX, settings
     return base_prompt, settings
 
 
 def _adapt_canvas_settings(model_name: str, settings: dict) -> dict:
-    """Canvas settings are written in Cerebras form (max_completion_tokens,
-    top-level reasoning_effort). Off Cerebras those break: Groq's qwen rejects
-    reasoning_effort "low" (only none|default, and only via extra_body), and
-    the native client wants max_tokens. Canvas wants minimal reasoning - fast
-    transcript cleanup - so off-Cerebras the intent maps to "none".
-
-    This is the guideline_prefetch lesson applied in advance: settings follow
-    the model, or they break the day the model moves."""
-    from .enhancement_utils import _get_model_provider
+    """Canvas settings for either provider: reasoning off, and max_tokens rather than
+    max_completion_tokens (which normalise_model_settings floors at 16k for reasoning)."""
     s = dict(settings)
-    provider = _get_model_provider(model_name)
-    if provider == "cerebras":
-        return s
     if "max_completion_tokens" in s:
         s["max_tokens"] = s.pop("max_completion_tokens")
-    if provider == "groq" and s.pop("reasoning_effort", None) is not None:
-        # Groq's qwen accepts only none|default, and only via extra_body.
-        s.setdefault("extra_body", {})["reasoning_effort"] = "none"
+    s["reasoning_effort"] = "none"
     return s
 
 
@@ -721,8 +711,7 @@ async def process_transcript(
         )
         output_type = CanvasProcessResponse
 
-    # Cerebras settings form (max_completion_tokens; no top_p/extra_body). Gemma 4 and the
-    # gpt-oss-120b fallback are both Cerebras and accept the same shape.
+    # Settings are fitted per provider by _adapt_canvas_settings (reasoning off).
     t0 = _time.perf_counter()
     try:
         output = await _run_canvas_with_fallback(
@@ -788,7 +777,7 @@ async def review_scratchpad(
         # Non-thinking mode via extra_body reasoning_effort="none". Temperature kept low —
         # coverage is deterministic checklist classification, not open dialogue.
         # Cerebras settings form (max_completion_tokens; no top_p/extra_body).
-        coverage_model_settings = {"temperature": 0.1, "max_completion_tokens": 1500}
+        coverage_model_settings = {"temperature": 0.1, "max_tokens": 1500, "reasoning_effort": "none"}
         scratchpad_preview = request.scratchpad_content[:200].replace('\n', ' | ')
         print(f"\n[COVERAGE] ── New call ──────────────────────────")
         print(f"[COVERAGE] Model: {coverage_model} | Scratchpad: {len(request.scratchpad_content)} chars")
@@ -847,12 +836,8 @@ async def review_scratchpad(
 
     async def run_intelliprompts() -> list[IntelliPrompt]:
         import time as _time
-        if intelliprompts_provider == "cerebras":
-            intelliprompts_model_settings = {"temperature": 0.1, "max_completion_tokens": 1500, "reasoning_effort": "medium"}
-            use_thinking = False
-        else:
-            intelliprompts_model_settings = {"temperature": 0.1, "max_tokens": 3000}
-            use_thinking = True
+        intelliprompts_model_settings = {"temperature": 0.1, "max_tokens": 1500, "reasoning_effort": "none"}
+        use_thinking = False
 
         scratchpad_lower = request.scratchpad_content.lower()
 
@@ -891,15 +876,15 @@ async def review_scratchpad(
             elapsed = _time.perf_counter() - t0
             return _validate_and_log(response.prompts, elapsed, "✅")
         except Exception as e:
-            # Primary (Gemma 4) failed for ANY reason — try the gpt-oss-120b fallback once.
-            fallback_model = intelliprompts_fallback or "gpt-oss-120b"
+            # Primary failed for ANY reason — try the configured fallback once.
+            fallback_model = intelliprompts_fallback or MODEL_CONFIG["CANVAS_INTELLIPROMPTS_FALLBACK"]
             try:
                 fallback_api_key = _get_api_key_for_provider(_get_model_provider(fallback_model))
                 response = await _call_model(
                     fallback_model,
                     fallback_api_key,
                     False,
-                    {"temperature": 0.1, "max_completion_tokens": 1500, "reasoning_effort": "medium"},
+                    intelliprompts_model_settings,
                 )
                 elapsed = _time.perf_counter() - t0
                 logger.warning("[canvas.intelliprompts] primary %s failed (%s); served by fallback %s", intelliprompts_model, type(e).__name__, fallback_model)

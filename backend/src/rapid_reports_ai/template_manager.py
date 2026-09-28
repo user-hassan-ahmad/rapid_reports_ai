@@ -2542,7 +2542,6 @@ No user input provided. Omit this section entirely from output.
             _get_api_key_for_provider,
             _run_agent_with_model,
             _append_signature_to_report,
-            _log_glm_reasoning,
         )
         from .global_style_guide import (
             SYSTEM_PREAMBLE, GLOBAL_STYLE_GUIDE,
@@ -2603,34 +2602,9 @@ Findings: {findings_input}
 
 {VERIFICATION_CHECKLIST}"""
 
-        # Per-provider model settings. clear_thinking is GLM-4.7-specific (other
-        # Cerebras models reject it); Anthropic's non-streaming max_tokens ceiling
-        # is tighter than Cerebras's; Groq has its own tighter budget.
-        if provider == "fireworks":
-            model_settings = {
-                "temperature": 0.6,
-                "top_p": 0.95,
-                "max_tokens": 40960,
-                "reasoning_effort": "high",
-            }
-        elif provider == "anthropic":
-            model_settings = {
-                "temperature": 0.8,
-                "max_tokens": 16000,
-            }
-        elif provider == "groq":
-            model_settings = {
-                "temperature": 0.8,
-                "top_p": 0.95,
-                "max_tokens": GROQ_GENERATOR_MAX_TOKENS,
-            }
-        else:
-            # Other Cerebras models (Qwen-3-235B, GPT-OSS-120B).
-            model_settings = {
-                "temperature": 0.8,
-                "top_p": 0.95,
-                "max_tokens": 16000,
-            }
+        # One settings dict; normalise_model_settings fits it per provider (Cerebras Qwen:
+        # medium, 64k; Groq Qwen: low, 16,384 ceiling; Sonnet: no sampling params).
+        model_settings = {"temperature": 0.8, "top_p": 0.95, "max_tokens": 65536}
 
         async def _generate_description():
             """Parallel lightweight call to summarise findings for the history tab."""
@@ -2640,7 +2614,7 @@ Findings: {findings_input}
                 class _Desc(_BM):
                     description: str
 
-                desc_model = "qwen/qwen3.6-27b"
+                desc_model = MODEL_CONFIG["REPORT_DESCRIPTION"]
                 desc_provider = _get_model_provider(desc_model)
                 desc_api_key = _get_api_key_for_provider(desc_provider)
                 desc_result = await _run_agent_with_model(
@@ -2649,28 +2623,39 @@ Findings: {findings_input}
                     system_prompt="You generate brief radiology report descriptions for a history tab. Return a JSON object with a single key 'description' containing 5-15 words summarising the key findings. No scan type, no patient demographics. British English.",
                     user_prompt=f"Clinical history: {clinical_history}\nFindings: {findings_input}",
                     api_key=desc_api_key,
-                    use_thinking=True,
-                    model_settings={"temperature": 0.1, "max_tokens": 3000},
+                    use_thinking=False,
+                    model_settings={"temperature": 0.1, "max_tokens": 300, "reasoning_effort": "none"},
                 )
                 return desc_result.output.description.strip()[:150]
             except Exception:
                 return f"Report for {scan_type}"
 
         import asyncio
-        report_task = _run_agent_with_model(
-            model_name=model_name,
-            output_type=str,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            api_key=api_key,
-            use_thinking=True,
-            model_settings=model_settings,
-        )
-        desc_task = _generate_description()
 
-        result, description = await asyncio.gather(report_task, desc_task)
+        async def _write(model: str):
+            return await _run_agent_with_model(
+                model_name=model,
+                output_type=str,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                api_key=api_key,
+                use_thinking=True,
+                model_settings=model_settings,
+            )
 
-        _log_glm_reasoning(result, f"{model_name} (Skill Sheet Report) - GLM Reasoning")
+        async def _write_with_fallback():
+            nonlocal model_name
+            try:
+                return await _write(model_name)
+            except Exception as e:
+                fallback = MODEL_CONFIG.get("TEMPLATE_REPORT_GENERATOR_FALLBACK")
+                if model_override or not fallback or _get_model_provider(fallback) == "anthropic":
+                    raise
+                print(f"[skill-sheet generator] {model_name} failed ({type(e).__name__}); falling back to {fallback}")
+                model_name = fallback
+                return await _write(model_name)
+
+        result, description = await asyncio.gather(_write_with_fallback(), _generate_description())
         report_content = result.output if hasattr(result, "output") else str(result)
 
         if user_signature:
@@ -2973,9 +2958,9 @@ This applies to any template section that draws on preceding content — whether
 Generate the report now as valid JSON.
 """
         
-        # Generate report: primary zai-glm-4.7 (Cerebras), fallback claude-sonnet-4-6 (Anthropic)
+        # Generate report: TEMPLATE_REPORT_GENERATOR, failsafe FALLBACK_REPORT_GENERATOR (Sonnet 5.5)
         model_name = MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"]
-        fallback_model = MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"]  # claude-sonnet-4-20250514
+        fallback_model = MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"]
         provider = _get_model_provider(model_name)
         api_key = _get_api_key_for_provider(provider)
         anthropic_api_key = None
@@ -3235,10 +3220,7 @@ Skill sheet:
 
 Return a JSON object: {{"sections": ["LIVER", "BILIARY SYSTEM", ...]}}"""
 
-        model_name = MODEL_CONFIG.get(
-            "CANVAS_SECTIONS_FROM_TEMPLATE",
-            MODEL_CONFIG.get("SKILL_SHEET_ANALYZER", "zai-glm-4.7"),
-        )
+        model_name = MODEL_CONFIG["CANVAS_SECTIONS_FROM_TEMPLATE"]
 
         result = await _run_agent_with_model(
             model_name=model_name,
@@ -3246,9 +3228,11 @@ Return a JSON object: {{"sections": ["LIVER", "BILIARY SYSTEM", ...]}}"""
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             api_key=api_key,
+            # Interactive list extraction: reasoning off (Cerebras defaults to high).
             model_settings={
                 "temperature": 0.3,
                 "max_tokens": 1024,
+                "reasoning_effort": "none",
             },
         )
         return result.output.sections
@@ -3829,24 +3813,7 @@ Findings: {findings_input}
 
 {VERIFICATION_CHECKLIST}"""
 
-        provider = _get_model_provider(model_name)
-        if provider == "fireworks":
-            test_model_settings = {
-                "temperature": 0.6,
-                "top_p": 0.95,
-                "max_tokens": 40960,
-                "reasoning_effort": "high",
-            }
-        else:
-            test_model_settings = {
-                "temperature": 0.8,
-                "top_p": 0.95,
-                "max_tokens": 40960,
-                "extra_body": {
-                    "disable_reasoning": False,
-                    "clear_thinking": False,
-                },
-            }
+        test_model_settings = {"temperature": 0.8, "top_p": 0.95, "max_tokens": 40960}
 
         result = await _run_agent_with_model(
             model_name=model_name,

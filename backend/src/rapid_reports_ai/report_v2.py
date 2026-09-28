@@ -296,7 +296,7 @@ Output the report only."""
 # Callers — parallel path, production untouched
 # ─────────────────────────────────────────────────────────────────────────────
 
-V2_MODEL = "qwen/qwen3.6-27b"
+V2_MODEL = "qwen-3.8-27b"  # experimental parallel path; not routed in production
 
 
 async def generate_sheet_v2(scan_type: str, clinical_history: str,

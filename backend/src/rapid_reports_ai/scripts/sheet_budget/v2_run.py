@@ -74,7 +74,7 @@ async def main() -> int:
             g = gate.run_gate(r["report"])
             print(f"  [{c['name']}] report {len(r['report']):,}ch {r['latency_ms']/1000:.1f}s "
                   f"gate={'pass' if g['passed'] else 'FAIL ' + str(g['failures'])}")
-            runs.append({"cell": "v2", "model": args.model or "qwen/qwen3.6-27b", "case": c["name"],
+            runs.append({"cell": "v2", "model": args.model or "qwen-3.8-27b", "case": c["name"],
                          "skill_sheet": s["sheet"], "sheet_chars": len(s["sheet"]),
                          "sheet_validation": v,
                          "analyser_latency_ms": s["latency_ms"],
@@ -83,7 +83,7 @@ async def main() -> int:
                          "gate": g, "total_wall_s": round(time.time() - t0, 1)})
         except Exception as exc:  # noqa: BLE001
             print(f"  ✗ {c['name']}: {exc}")
-            runs.append({"cell": "v2", "model": args.model or "qwen/qwen3.6-27b", "case": c["name"], "error": str(exc)})
+            runs.append({"cell": "v2", "model": args.model or "qwen-3.8-27b", "case": c["name"], "error": str(exc)})
     (out / "runs.json").write_text(json.dumps(runs, indent=2))
     print(f"\n✅ {len(runs)} runs → {out}")
     return 0

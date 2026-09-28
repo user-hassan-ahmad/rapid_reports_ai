@@ -37,7 +37,7 @@ BACKEND_ROOT = SCRIPT_DIR.parents[3]
 CASES_PATH = BACKEND_ROOT / "test_cases" / "analyser_suite.json"
 OUTPUT_ROOT = BACKEND_ROOT / "test_output"
 
-MODEL = "qwen/qwen3.6-27b"
+MODEL = "qwen-3.8-27b"
 
 # The 2x2. `None` means leave the provider default (reasoning on).
 CELLS = [

@@ -23,6 +23,7 @@ from .enhancement_utils import (
     _run_agent_with_model,
     _append_signature_to_report,
     _get_model_provider,
+    _report_generator_settings,
     run_perplexity_search_chat,
     MODEL_CONFIG,
 )
@@ -490,31 +491,10 @@ async def execute_report_from_plan(
 
     model_name = MODEL_CONFIG["REPORT_EXECUTOR"]
     executor_provider = _get_model_provider(model_name)
-    if executor_provider == "groq":
-        # PydanticAI Groq maps max_tokens; use_thinking enables groq_reasoning_format=parsed.
-        # If the API still returns tool_use_failed, _run_agent_with_model recovers from
-        # error.failed_generation when it is valid ReportOutput JSON.
-        model_settings = {"temperature": 0.3, "max_tokens": 6000}
-        use_thinking = True
-    elif model_name == "qwen/qwen3.6-27b":
-        # Groq: reasoning is on by default and reached via groq_reasoning_format,
-        # not the Cerebras extra_body toggles, which Groq rejects.
-        model_settings = {
-            "temperature": 0.8,
-            "top_p": 0.95,
-            "max_tokens": 16384,
-        }
-        use_thinking = False
-    elif model_name == "gpt-oss-120b":
-        model_settings = {
-            "temperature": 1,
-            "max_completion_tokens": 6500,
-            "reasoning_effort": "medium",  # gpt-oss has always run at medium: 'high' here was dropped until 2026-09-27 (normalise_model_settings)
-        }
-        use_thinking = False
-    else:
-        model_settings = {"temperature": 0.3, "max_completion_tokens": 6000}
-        use_thinking = False
+    # Same settings as every other report writer; effort and caps per provider come from
+    # normalise_model_settings. Groq Qwen needs groq_reasoning_format to reason.
+    model_settings = _report_generator_settings(model_name)
+    use_thinking = executor_provider == "groq"
 
     print(f"[agentic_pipeline] Phase 2 — {model_name}")
     result = await _run_agent_with_model(
@@ -591,7 +571,8 @@ async def check_plan_adherence(
 
     model_settings = {
         "temperature": 0.3,
-        "max_tokens": 2000,
+        "max_tokens": 8000,  # gpt-oss reasoning counts toward the cap
+        "reasoning_effort": "low",
     }
 
     print(f"[agentic_pipeline] Phase 3 — {model_name} adherence check")
