@@ -2643,8 +2643,10 @@ Findings: {findings_input}
                 model_settings=model_settings,
             )
 
+        fallback_from = None
+
         async def _write_with_fallback():
-            nonlocal model_name
+            nonlocal model_name, fallback_from
             try:
                 return await _write(model_name)
             except Exception as e:
@@ -2652,7 +2654,7 @@ Findings: {findings_input}
                 if model_override or not fallback or _get_model_provider(fallback) == "anthropic":
                     raise
                 print(f"[skill-sheet generator] {model_name} failed ({type(e).__name__}); falling back to {fallback}")
-                model_name = fallback
+                fallback_from, model_name = model_name, fallback
                 return await _write(model_name)
 
         result, description = await asyncio.gather(_write_with_fallback(), _generate_description())
@@ -2666,6 +2668,7 @@ Findings: {findings_input}
             "description": description,
             "scan_type": scan_type,
             "model_used": model_name,
+            "fallback_from": fallback_from,
         }
 
     # ========================================================================
