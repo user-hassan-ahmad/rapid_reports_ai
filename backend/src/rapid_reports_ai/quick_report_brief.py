@@ -175,17 +175,24 @@ class FindingNegative:
     tag: str   # "core" | "contextual"
 
 
+def _tag(line: str) -> str:
+    """The tag after the quoted negative, however the analyser annotates it: '(core)',
+    '(core — resectability)', '(peritonitis) (core)'. Unreadable means contextual (offered)."""
+    m = re.search(r"\b(core|contextual)\b", line.rsplit('"', 1)[-1])
+    return m.group(1) if m else "contextual"
+
+
 def parse_if_present(lines: List[str]) -> List[FindingNegative]:
     """The If-present bullet as (finding key, negative, tag), one-line or nested shape."""
     out: List[FindingNegative] = []
     key = None
     for line in lines[1:]:
         if m := _CONFIRMED.match(line):
-            out.append(FindingNegative(m.group(1).strip(), m.group(2).strip().rstrip("."), m.group(3) or "contextual"))
+            out.append(FindingNegative(m.group(1).strip(), m.group(2).strip().rstrip("."), _tag(line)))
         elif m := _CONFIRMED_BRANCH.match(line):
             key = m.group(1).strip()
         elif (m := _CONFIRMED_NEG.match(line)) and key:
-            out.append(FindingNegative(key, m.group(1).strip().rstrip("."), m.group(2) or "contextual"))
+            out.append(FindingNegative(key, m.group(1).strip().rstrip("."), _tag(line)))
     return out
 
 

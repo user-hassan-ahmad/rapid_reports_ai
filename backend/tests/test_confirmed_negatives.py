@@ -313,3 +313,14 @@ async def test_bundled_finding_negatives_are_split_and_keep_their_key_and_tag(mo
     assert 'KEEP: "No superior mesenteric vein encasement" (finding: subdural haematoma)' in b.text
     assert 'KEEP: "No portal vein encasement" (finding: subdural haematoma)' in b.text
     assert "vein or portal" not in b.text
+
+
+def test_tags_are_read_when_the_analyser_annotates_them():
+    # Real Qwen lines (2026-09-30): a core vascular negative read as contextual was only offered.
+    lines = ["- **If present:**",
+             "  - Pancreatic head mass →",
+             '    - "No vascular encasement at the superior mesenteric and portal venous confluence." (core — resectability, gates MDT discussion)',
+             '    - "No distant lymphadenopathy." (contextual — staging)',
+             '  - Sigmoid wall thickening → "No free intraperitoneal fluid is identified" (generalised peritonitis) (core)']
+    assert [(c.key, c.tag) for c in qb.parse_if_present(lines)] == [
+        ("Pancreatic head mass", "core"), ("Pancreatic head mass", "contextual"), ("Sigmoid wall thickening", "core")]
