@@ -55,10 +55,10 @@ describe('impression options', () => {
 });
 
 describe('panelOptions', () => {
-	it('keeps impression-section kinds and hides confirmed negatives until the side panel exists', () => {
+	it('keeps impression-section kinds and hides finding negatives until the side panel exists', () => {
 		const opts: ReportOption[] = [
 			{ id: 'opt0', kind: 'recommendation', section: 'IMPRESSION', sentence: 'MRI brain is recommended.' },
-			{ id: 'cn0', kind: 'confirmed_negative', section: 'FINDINGS', sentence: 'No uncal herniation.' }
+			{ id: 'fn0', kind: 'finding_negative', section: 'FINDINGS', sentence: 'No uncal herniation.' }
 		];
 		expect(panelOptions(opts).map((o) => o.id)).toEqual(['opt0']);
 	});

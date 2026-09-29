@@ -1,8 +1,8 @@
-"""Confirmed-branch negatives: calibration dump and A/B runner (ledger L-45).
+"""Finding-linked negatives: coverage check and A/B runner (ledger L-45).
 
     poetry run python -m rapid_reports_ai.scripts.confirmed_negatives_eval --arm A --runs 3
     poetry run python -m rapid_reports_ai.scripts.confirmed_negatives_eval --arm B --runs 3
-    poetry run python -m rapid_reports_ai.scripts.confirmed_negatives_eval --arm B --runs 1 --calibrate
+    poetry run python -m rapid_reports_ai.scripts.confirmed_negatives_eval --arm B --coverage
 
 A = production directives; B = production + finding_negatives. Serial, to stay inside
 provider rate limits. Results go to test_output/confirmed_negatives/.
@@ -42,7 +42,7 @@ async def run_case(case: dict, arm: str) -> dict:
     res = await generate_quick_report(skill_sheet=sheet["skill_sheet"], scan_type=case["scan_type"],
                                       findings=case["findings"], clinical_history=case["clinical_history"])
     report, dec = res["report_content"], res.get("brief_decisions") or {}
-    conf = dec.get("confirmed_negatives", [])
+    conf = dec.get("finding_negatives", [])
     findings = _findings_block(report)
     stated = [c["text"] for c in conf if c["outcome"] == "stated"]
     return {
@@ -50,24 +50,12 @@ async def run_case(case: dict, arm: str) -> dict:
         "analyser_ms": sheet["latency_ms"], "brief_ms": res.get("brief_reconcile_ms"),
         "wall_s": round(time.time() - t0, 1),
         "stated": stated, "stated_in_findings": [s for s in stated if s.lower().rstrip(".") in findings],
-        "offered": [o["sentence"] for o in res.get("brief_options") or [] if o["kind"] == "confirmed_negative"],
+        "offered": [o["sentence"] for o in res.get("brief_options") or [] if o["kind"] == "finding_negative"],
         "do_not_assert": [c["text"] for c in conf if c["outcome"] == "do_not_assert"],
         "carried": (dec.get("impression_plan") or {}).get("carry_negatives", []),
-        "unmatched": dec.get("confirmed_negatives_unmatched", 0),
         "routes": conf, "gate": gate.run_gate(report),
         "report": report, "sheet": sheet["skill_sheet"], "brief": res.get("brief_text"),
     }
-
-
-async def calibrate(case: dict) -> list[dict]:
-    """Jev `present` score for every differential of a B sheet, for hand labelling."""
-    sheet = await generate_ephemeral_skill_sheet(scan_type=case["scan_type"], clinical_history=case["clinical_history"],
-                                                 api_key="", directives=ARMS["B"])
-    diffs = qb.differential_lines(qb.parse_sheet(sheet["skill_sheet"]))
-    state = f"SCAN TYPE: {case['scan_type']}\nDICTATED FINDINGS:\n{case['findings']}"
-    ans = await qb._jev(state, {f"d{k}": {"type": "noul", "instructions": qb.Q_PRESENT + t} for k, t in enumerate(diffs)})
-    return [{"case": case["name"], "branch": t[:90], "present": round(float(ans[f"d{k}"]["noul"]), 3), "label": ""}
-            for k, t in enumerate(diffs)]
 
 
 async def coverage(case: dict) -> dict:
@@ -94,7 +82,6 @@ async def main() -> None:
     p.add_argument("--runs", type=int, default=3)
     p.add_argument("--cases-file", default=str(BACKEND / "test_cases" / "silent_staging.json"))
     p.add_argument("--case", action="append")
-    p.add_argument("--calibrate", action="store_true")
     p.add_argument("--coverage", action="store_true")
     a = p.parse_args()
     cases = [c for c in json.loads(Path(a.cases_file).read_text()) if not a.case or c["name"] in a.case]
@@ -112,14 +99,6 @@ async def main() -> None:
         path.write_text(json.dumps(rows, indent=1))
         print(path)
         return
-    if a.calibrate:
-        rows = [r for c in cases for r in await calibrate(c)]
-        path = out_dir / f"{stamp}_calibration_{Path(a.cases_file).stem}.json"
-        path.write_text(json.dumps(rows, indent=1))
-        for r in rows:
-            print(f"{r['present']:.2f}  {r['case']:<30} {r['branch']}")
-        print(path)
-        return
     rows = []
     for run in range(a.runs):
         for c in cases:
@@ -128,7 +107,7 @@ async def main() -> None:
             rows.append(r)
             print(f"[{a.arm} r{run}] {c['name']:<30} stated={len(r['stated'])} in_findings={len(r['stated_in_findings'])} "
                   f"offered={len(r['offered'])} dna={len(r['do_not_assert'])} carried={len(r['carried'])} "
-                  f"unmatched={r['unmatched']} gate={'ok' if r['gate']['passed'] else r['gate']['failures']} "
+                  f"gate={'ok' if r['gate']['passed'] else r['gate']['failures']} "
                   f"analyser={r['analyser_ms']/1000:.1f}s", flush=True)
     path = out_dir / f"{stamp}_arm{a.arm}_{Path(a.cases_file).stem}.json"
     path.write_text(json.dumps(rows, indent=1, default=str))

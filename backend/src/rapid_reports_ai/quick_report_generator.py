@@ -100,13 +100,13 @@ class _OptionSentences(BaseModel):
 
 async def _write_options(options: List[dict], findings: str, scan_type: str) -> List[dict]:
     """Reporter-choice items. Impression and recommendation items get one sentence each from a
-    writer call beside the generator; confirmed-branch negatives are already in report form and
+    writer call beside the generator; finding-linked negatives are already in report form and
     pass through. On a writer failure only the written items are lost."""
-    direct = [o for o in options if o["kind"] == "confirmed_negative"]
-    to_write = [o for o in options if o["kind"] != "confirmed_negative"]
-    passed = [{"id": f"cn{i}", "kind": o["kind"], "section": o.get("section", "FINDINGS"),
+    direct = [o for o in options if o["kind"] == "finding_negative"]
+    to_write = [o for o in options if o["kind"] != "finding_negative"]
+    passed = [{"id": f"fn{i}", "kind": o["kind"], "section": o.get("section", "FINDINGS"),
                "sentence": o["text"].rstrip(".") + ".", "reason": o.get("reason", ""), "source": o["text"],
-               "branch": o.get("branch", "")}
+               "finding": o.get("finding", "")}
               for i, o in enumerate(direct)]
     if not to_write:
         return passed

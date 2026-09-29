@@ -47,7 +47,7 @@ JEV_TIMEOUT_S = 6.0
 QWEN_TIMEOUT_S = 10.0
 
 DROP_TOP_BULLETS = {"Out of scope", "Modality non-assessables", "In-scope companions", "Out-of-scope suppressed",
-                    "If confirmed"}
+                    "If present"}
 DROP_SECTIONS = {"Conditional Suppression Rules"}
 
 # ── parse ────────────────────────────────────────────────────────────────────
@@ -153,55 +153,16 @@ def _recommendations(section: Optional[Section]) -> List[str]:
     return out
 
 
-# Policy 1 for confirmed branches: a branch Jev finds present brings the negatives the analyser
-# listed for it. Cut-offs on Jev's `present` score; the high one is calibrated (ledger L-45).
+# Policy 1 for dictated findings: a finding Jev finds reported brings the negatives the analyser
+# listed for it. Cut-offs on Jev's score; PRESENT_HIGH sits in the measured gap between clear
+# (0.86-0.99) and hedged (<=0.72) reports (ledger L-45).
 PRESENT_LOW = 0.5
 PRESENT_HIGH = 0.8
-MAX_CONFIRMED_OPTIONS = 4
+MAX_FINDING_OPTIONS = 4
 _CONFIRMED = re.compile(r'^\s+-\s+(.+?)\s*(?:→|->)\s*"([^"]+)"\s*(?:\((core|contextual)\))?')
-# The analyser also nests: the branch on its own line, its negatives as sub-bullets.
+# The analyser also nests: the key on its own line, its negatives as sub-bullets.
 _CONFIRMED_BRANCH = re.compile(r'^\s+-\s+([^"]+?)\s*(?:→|->)\s*$')
 _CONFIRMED_NEG = re.compile(r'^\s+-\s+"([^"]+)"\s*(?:\((core|contextual)\))?')
-
-
-@dataclass
-class Candidate:
-    branch: str
-    text: str
-    tag: str          # "core" | "contextual"
-    diff_index: int   # index into differential_lines(), whose Jev key is f"d{diff_index}"
-
-
-def _name_key(name: str) -> str:
-    """A branch name without its parenthetical: the analyser drops it when it repeats the name."""
-    return re.sub(r"\s*\([^)]*\)", "", name).strip().lower()
-
-
-def _diff_name(line: str) -> str:
-    return _name_key(re.split(r"\s+—\s+|\s+\*\(", line, maxsplit=1)[0])
-
-
-def parse_confirmed(lines: List[str], diffs: List[str]) -> tuple[List[Candidate], int]:
-    """The If-confirmed bullet's lines as candidates matched to a differential by name, in either
-    shape the analyser writes: one line per negative, or the branch with negatives nested."""
-    names = {_diff_name(d): i for i, d in enumerate(diffs)}
-    pairs: List[tuple] = []
-    branch = None
-    for line in lines[1:]:
-        if m := _CONFIRMED.match(line):
-            pairs.append((m.group(1), m.group(2), m.group(3)))
-        elif m := _CONFIRMED_BRANCH.match(line):
-            branch = m.group(1)
-        elif (m := _CONFIRMED_NEG.match(line)) and branch:
-            pairs.append((branch, m.group(1), m.group(2)))
-    cands, unmatched = [], 0
-    for b, text, tag in pairs:
-        k = names.get(_name_key(b))
-        if k is None:
-            unmatched += 1
-            continue
-        cands.append(Candidate(b.strip(), text.strip().rstrip("."), tag or "contextual", k))
-    return cands, unmatched
 
 
 Q_FINDING = "The dictated findings report this imaging finding, in any wording or size: "
@@ -232,8 +193,8 @@ def distinct_keys(cands: List[FindingNegative]) -> List[str]:
     return list(dict.fromkeys(c.key for c in cands))
 
 
-def route_confirmed(label: str, present: float, tag: str) -> str:
-    """Rule C: stated only when the branch is clearly confirmed and the negative is core."""
+def route_finding(label: str, present: float, tag: str) -> str:
+    """Rule C: stated only when the finding is clearly reported and the negative is core."""
     if present < PRESENT_LOW or label == "contradicted":
         return "dropped"
     if label == "expected":
@@ -396,7 +357,7 @@ async def _plan(scan_type: str, clinical_history: str, items: List[str], recs: L
     user = (f"SCAN TYPE: {scan_type}\nCLINICAL QUESTION (context only): {clinical_history or '(not given)'}\n\n"
             "DICTATED FINDINGS:\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(items))
             + "\n\nCANDIDATE RECOMMENDATIONS:\n" + ("\n".join(f"{i}. {t}" for i, t in enumerate(recs)) or "(none)")
-            + "\n\nCANDIDATE NEGATIVES — apply only if their diagnosis is confirmed:\n"
+            + "\n\nCANDIDATE NEGATIVES — apply only if their finding is reported:\n"
             + ("\n".join(f"{i}. {t}" for i, t in enumerate(cand_negs)) or "(none)"))
     r = await asyncio.wait_for(_run_agent_with_model(
         model_name=QWEN, output_type=ImpressionPlan, system_prompt=PLAN_SYS, user_prompt=user, api_key="",
@@ -432,8 +393,9 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     measured = [t for t in _normal_sentences(normal_bullet) if _MEASUREMENT.search(t)]
     normals = [t for t in _normal_sentences(normal_bullet) if not _MEASUREMENT.search(t)]
     diffs = differential_lines(secs)
-    conf_bullet = _bullet(matrix, "If confirmed")
-    cands, unmatched = parse_confirmed(conf_bullet.lines, diffs) if conf_bullet else ([], 0)
+    fb = _bullet(matrix, "If present")
+    cands = parse_if_present(fb.lines) if fb else []
+    keys = distinct_keys(cands)
     recs = _recommendations(imp)
     styles = style.bullets if style else []
     variants = _impression_variants(imp)
@@ -444,6 +406,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     qs.update({f"n{k}": {"type": "noul", "instructions": Q_AFFECTED + t} for k, t in enumerate(normals)})
     qs.update({f"d{k}": {"type": "noul", "instructions": Q_PRESENT + t} for k, t in enumerate(diffs)})
     qs.update({f"r{k}": {"type": "noul", "instructions": Q_REC_UNMET + t} for k, t in enumerate(recs)})
+    qs.update({f"f{i}": {"type": "noul", "instructions": Q_FINDING + k} for i, k in enumerate(keys)})
     qs.update({f"s{k}": {"type": "noul", "instructions": Q_STYLE_MATCH + " ".join(b.lines)} for k, b in enumerate(styles)})
     if len(variants) > 1:
         qs["imp"] = {"type": "choice", "instructions": "Which impression exemplar best matches the shape of this case's findings (severity, number of findings, complications)?",
@@ -463,7 +426,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
 
     decisions: dict = {"negatives": [], "normals": [], "differentials": [], "recommendations": [], "style": [], "measurements": [],
                        "impression_variant": None, "impression_plan": None, "options": [],
-                       "confirmed_negatives": [], "confirmed_negatives_unmatched": unmatched}
+                       "finding_negatives": []}
 
     # Mandatory negatives: one line each, with its action and the dictated finding.
     qneg = {d.index: d for d in qw.negatives}
@@ -481,29 +444,29 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         decisions["negatives"].append({"text": text, "action": action, "dictated_finding": d.dictated_finding if d else "",
                                        "source": "sheet"})
 
-    # Confirmed-branch negatives (policy 1): stated as KEEP, labelled DO NOT ASSERT, or offered.
+    # Finding-linked negatives (policy 1): stated as KEEP, labelled DO NOT ASSERT, or offered.
     stated: List[str] = []
     n_offered = 0
     for j, c in enumerate(cands):
         d = qneg.get(len(negs) + j)
         label = d.action if d else "keep"
-        p = score(f"d{c.diff_index}")
-        outcome = route_confirmed(label, p, c.tag)
+        p = score(f"f{keys.index(c.key)}")
+        outcome = route_finding(label, p, c.tag)
         if outcome == "offered":
-            if n_offered >= MAX_CONFIRMED_OPTIONS:
+            if n_offered >= MAX_FINDING_OPTIONS:
                 outcome = "dropped"
             else:
                 n_offered += 1
-                decisions["options"].append({"kind": "confirmed_negative", "section": "FINDINGS", "text": c.text,
-                                             "branch": c.branch,
-                                             "reason": "contextual" if p >= PRESENT_HIGH else f"branch borderline (p={p:.2f})"})
-        decisions["confirmed_negatives"].append({"branch": c.branch, "text": c.text, "tag": c.tag, "qwen": label,
-                                                 "present": round(p, 3), "outcome": outcome})
+                decisions["options"].append({"kind": "finding_negative", "section": "FINDINGS", "text": c.text,
+                                             "finding": c.key,
+                                             "reason": "contextual" if p >= PRESENT_HIGH else f"finding borderline (p={p:.2f})"})
+        decisions["finding_negatives"].append({"finding": c.key, "text": c.text, "tag": c.tag, "qwen": label,
+                                               "present": round(p, 3), "outcome": outcome})
         if outcome == "stated":
             stated.append(c.text)
-            neg_lines.append(f'  - KEEP: "{c.text}" (confirmed: {c.branch})')
+            neg_lines.append(f'  - KEEP: "{c.text}" (finding: {c.key})')
             decisions["negatives"].append({"text": c.text, "action": "keep", "dictated_finding": "",
-                                           "source": f"confirmed:{c.branch}"})
+                                           "source": f"finding:{c.key}"})
         elif outcome == "do_not_assert":
             neg_lines.append(f'  - DO NOT ASSERT: "{c.text}" — expected consequence of: {d.dictated_finding}')
     if neg_bullet:
@@ -578,7 +541,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     if plan and items:
         pick = lambda idx: [items[i] for i in dict.fromkeys(idx) if 0 <= i < len(items)]
         carry, only = pick(plan.impression), pick(plan.findings_only)
-        # A confirmed negative reaches the impression only if stated and chosen by the plan.
+        # A finding-linked negative reaches the impression only if stated and chosen by the plan.
         carry_negs = [cands[i].text for i in dict.fromkeys(plan.carry_negatives)
                       if 0 <= i < len(cands) and cands[i].text in stated]
         carry = carry + carry_negs
