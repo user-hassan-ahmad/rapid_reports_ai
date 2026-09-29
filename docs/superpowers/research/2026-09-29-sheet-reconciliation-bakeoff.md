@@ -101,3 +101,20 @@ A chain is only as good as its sieve: a stage-1 miss is unrecoverable. Use the p
 → **policy 1: precision 0.91, recall 0.91** (vs 0.44–0.59 for Jev-only designs). The 3 residual errors are branches with part of their sign dictated (tentorial SAH vs aneurysmal pattern, background atherosclerosis, mosaic perfusion). A Jev "partial sign dictated?" gate fixed one (mosaic 0.89) and cost recall (0.78): not adopted.
 
 **Implications.** (1) The analyser should emit, per differential, its visibility on the declared technique; the imaging-silent tag it already writes. (2) Jev asks only text-matching questions. (3) Code decides. (4) Negative clauses: Jev chain with the proven sieve, or Qwen, is equal at 0.88; Jev is cheaper and returns calibrated scores for thresholds.
+
+## Clause splitting — Jev selection vs Qwen extractive rewrite (2026-09-29)
+
+The durable fix is upstream: the analyser now writes one finding per mandatory negative (`feat/analyser-atomic-negatives`, 291399d; bundled negatives 22/37 → 4/40, and only once the rule was mechanical — no "or", no list). This tests the runtime fallback on the residue: 62 bundled negatives from 17 sheets, hand-split gold (alternatives accepted where either reading is right).
+
+**Jev by selection** — code proposes every separator and every candidate shared opening/closing phrase; Jev answers a yes/no per marked separator (call 1, 81 questions, 0.53 s), then a choice of shared opening and closing words among the candidates (call 2, 116 questions, 0.32 s); code rebuilds each clause from source words only.
+
+| | Exactly right | Notes |
+|---|---|---|
+| Jev selection, end to end | 23/62 | cannot reword, by construction |
+| — stage 1: where to split (yes/no per boundary) | **57/62 (92%)** | misses: splits inside a "to suggest A, B, or C" qualifier; leaves "T1 or T2*" whole |
+| — stage 2: shared wording (choice among overlapping spans) | 23/57 (40%) | picks "(none)" for the shared qualifier; picks too-short openings ("No" for "No filling defect in the") |
+| **Qwen 3.8 reasoning off, extractive rewrite** | **60/62 (97%)** | 0 words outside the source; misses are a verb that must change ("are" → "is") and one dropped modifier |
+
+**What generalises about Jev.** Strong: independent yes/no judgements about marked text (split points 92%; relevance AUC 0.989; "present" 10/11) and a choice among semantically distinct options (impression variant 5/5). Weak: a choice among near-identical overlapping spans (40%), and inference about what imaging would show. "Code proposes, Jev classifies" carries forward when each candidate is a distinct judgement; for span extraction use Qwen with a code check that every output word appears in the source.
+
+**Decision:** splitting = analyser atomic rule + Qwen extractive fallback with the source-word check.

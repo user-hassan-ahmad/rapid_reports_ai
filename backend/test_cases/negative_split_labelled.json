@@ -1,0 +1,1202 @@
+[
+ {
+  "case": "ct_head_cerebellar_haemorrhage",
+  "text": "No mass effect, midline shift, or hydrocephalus",
+  "gold": [
+   [
+    "No mass effect",
+    "No midline shift",
+    "No hydrocephalus"
+   ]
+  ],
+  "jev": [
+   "No mass effect",
+   "No midline shift",
+   "No hydrocephalus"
+  ],
+  "qwen": [
+   "No mass effect",
+   "No midline shift",
+   "No hydrocephalus"
+  ]
+ },
+ {
+  "case": "ct_tap_acute_abdomen_gda_bleed",
+  "text": "No filling defect in the SMA, celiac trunk, or IMV to suggest mesenteric arterial occlusion",
+  "gold": [
+   [
+    "No filling defect in the SMA to suggest mesenteric arterial occlusion",
+    "No filling defect in the celiac trunk to suggest mesenteric arterial occlusion",
+    "No filling defect in the IMV to suggest mesenteric arterial occlusion"
+   ]
+  ],
+  "jev": [
+   "No filling defect in the SMA to suggest mesenteric arterial occlusion",
+   "No filling defect in the celiac trunk to suggest mesenteric arterial occlusion",
+   "No filling defect in the IMV to suggest mesenteric arterial occlusion"
+  ],
+  "qwen": [
+   "No filling defect in the SMA to suggest mesenteric arterial occlusion",
+   "No filling defect in the celiac trunk to suggest mesenteric arterial occlusion",
+   "No filling defect in the IMV to suggest mesenteric arterial occlusion"
+  ]
+ },
+ {
+  "case": "ct_tap_acute_abdomen_gda_bleed",
+  "text": "No filling defect in the SMV or IMV to suggest mesenteric venous thrombosis",
+  "gold": [
+   [
+    "No filling defect in the SMV to suggest mesenteric venous thrombosis",
+    "No filling defect in the IMV to suggest mesenteric venous thrombosis"
+   ]
+  ],
+  "jev": [
+   "No filling defect in the SMV",
+   "No filling defect in the IMV to suggest mesenteric venous thrombosis"
+  ],
+  "qwen": [
+   "No filling defect in the SMV to suggest mesenteric venous thrombosis",
+   "No filling defect in the IMV to suggest mesenteric venous thrombosis"
+  ]
+ },
+ {
+  "case": "ct_tap_acute_abdomen_gda_bleed",
+  "text": "No bowel wall enhancement abnormality, pneumatosis, or portal venous gas to suggest bowel ischaemia or infarction",
+  "gold": [
+   [
+    "No bowel wall enhancement abnormality to suggest bowel ischaemia or infarction",
+    "No pneumatosis to suggest bowel ischaemia or infarction",
+    "No portal venous gas to suggest bowel ischaemia or infarction"
+   ]
+  ],
+  "jev": [
+   "No bowel wall enhancement abnormality",
+   "No pneumatosis",
+   "No portal venous gas to suggest bowel ischaemia or infarction"
+  ],
+  "qwen": [
+   "No bowel wall enhancement abnormality to suggest bowel ischaemia or infarction",
+   "No pneumatosis to suggest bowel ischaemia or infarction",
+   "No portal venous gas to suggest bowel ischaemia or infarction"
+  ]
+ },
+ {
+  "case": "ct_tap_acute_abdomen_gda_bleed",
+  "text": "No active contrast extravasation within the GI tract or retroperitoneum to suggest active haemorrhage",
+  "gold": [
+   [
+    "No active contrast extravasation within the GI tract to suggest active haemorrhage",
+    "No active contrast extravasation within the retroperitoneum to suggest active haemorrhage"
+   ]
+  ],
+  "jev": [
+   "No active contrast extravasation within the GI tract to suggest active haemorrhage",
+   "No retroperitoneum to suggest active haemorrhage"
+  ],
+  "qwen": [
+   "No active contrast extravasation within the GI tract to suggest active haemorrhage",
+   "No active contrast extravasation within the retroperitoneum to suggest active haemorrhage"
+  ]
+ },
+ {
+  "case": "ct_tap_acute_abdomen_gda_bleed",
+  "text": "No periaortic haemorrhage, loss of periaortic fat planes, or interval enlargement of the abdominal aorta to suggest aneurysm rupture",
+  "gold": [
+   [
+    "No periaortic haemorrhage to suggest aneurysm rupture",
+    "No loss of periaortic fat planes to suggest aneurysm rupture",
+    "No interval enlargement of the abdominal aorta to suggest aneurysm rupture"
+   ]
+  ],
+  "jev": [
+   "No periaortic haemorrhage",
+   "No periaortic loss of periaortic fat planes",
+   "No periaortic interval enlargement of the abdominal aorta to suggest aneurysm rupture"
+  ],
+  "qwen": [
+   "No periaortic haemorrhage to suggest aneurysm rupture",
+   "No loss of periaortic fat planes to suggest aneurysm rupture",
+   "No interval enlargement of the abdominal aorta to suggest aneurysm rupture"
+  ]
+ },
+ {
+  "case": "ct_head_out_of_volume_and_companion_contradiction",
+  "text": "No hyperdense subdural, epidural, intraparenchymal, or intraventricular haemorrhage",
+  "gold": [
+   [
+    "No hyperdense subdural haemorrhage",
+    "No hyperdense epidural haemorrhage",
+    "No hyperdense intraparenchymal haemorrhage",
+    "No hyperdense intraventricular haemorrhage"
+   ]
+  ],
+  "jev": [
+   "No hyperdense subdural haemorrhage",
+   "No hyperdense epidural haemorrhage",
+   "No hyperdense intraparenchymal haemorrhage",
+   "No hyperdense intraventricular haemorrhage"
+  ],
+  "qwen": [
+   "No hyperdense subdural haemorrhage",
+   "No hyperdense epidural haemorrhage",
+   "No hyperdense intraparenchymal haemorrhage",
+   "No hyperdense intraventricular haemorrhage"
+  ]
+ },
+ {
+  "case": "ct_head_out_of_volume_and_companion_contradiction",
+  "text": "No hyperdense blood in the basal cisterns, sulci, or interhemispheric fissure",
+  "gold": [
+   [
+    "No hyperdense blood in the basal cisterns",
+    "No hyperdense blood in the sulci",
+    "No hyperdense blood in the interhemispheric fissure"
+   ]
+  ],
+  "jev": [
+   "No hyperdense blood in the basal cisterns",
+   "No sulci",
+   "No interhemispheric fissure"
+  ],
+  "qwen": [
+   "No hyperdense blood in the basal cisterns",
+   "No hyperdense blood in the sulci",
+   "No hyperdense blood in the interhemispheric fissure"
+  ]
+ },
+ {
+  "case": "ct_head_out_of_volume_and_companion_contradiction",
+  "text": "No midline shift, ventricular compression, or herniation",
+  "gold": [
+   [
+    "No midline shift",
+    "No ventricular compression",
+    "No herniation"
+   ]
+  ],
+  "jev": [
+   "No midline shift",
+   "No ventricular compression",
+   "No herniation"
+  ],
+  "qwen": [
+   "No midline shift",
+   "No ventricular compression",
+   "No herniation"
+  ]
+ },
+ {
+  "case": "ct_head_out_of_volume_and_companion_contradiction",
+  "text": "No mass lesion or abnormal parenchymal density",
+  "gold": [
+   [
+    "No mass lesion",
+    "No abnormal parenchymal density"
+   ]
+  ],
+  "jev": [
+   "No mass lesion",
+   "No abnormal parenchymal density"
+  ],
+  "qwen": [
+   "No mass lesion",
+   "No abnormal parenchymal density"
+  ]
+ },
+ {
+  "case": "ctpa_acute_pe_rv_strain",
+  "text": "No intimal flap or intramural haematoma in the thoracic aorta",
+  "gold": [
+   [
+    "No intimal flap in the thoracic aorta",
+    "No intramural haematoma in the thoracic aorta"
+   ]
+  ],
+  "jev": [
+   "No intimal flap",
+   "No intramural haematoma in the thoracic aorta"
+  ],
+  "qwen": [
+   "No intimal flap in the thoracic aorta",
+   "No intramural haematoma in the thoracic aorta"
+  ]
+ },
+ {
+  "case": "ctpa_acute_pe_rv_strain",
+  "text": "No consolidation, ground-glass opacity, or interstitial abnormality",
+  "gold": [
+   [
+    "No consolidation",
+    "No ground-glass opacity",
+    "No interstitial abnormality"
+   ]
+  ],
+  "jev": [
+   "No consolidation",
+   "No ground-glass opacity",
+   "No interstitial abnormality"
+  ],
+  "qwen": [
+   "No consolidation",
+   "No ground-glass opacity",
+   "No interstitial abnormality"
+  ]
+ },
+ {
+  "case": "ct_ap_diverticulitis_abscess",
+  "text": "No mass lesion or asymmetric wall thickening to suggest colorectal malignancy",
+  "gold": [
+   [
+    "No mass lesion to suggest colorectal malignancy",
+    "No asymmetric wall thickening to suggest colorectal malignancy"
+   ]
+  ],
+  "jev": [
+   "No mass lesion",
+   "No asymmetric wall thickening to suggest colorectal malignancy"
+  ],
+  "qwen": [
+   "No mass lesion to suggest colorectal malignancy",
+   "No asymmetric wall thickening to suggest colorectal malignancy"
+  ]
+ },
+ {
+  "case": "ct_ap_diverticulitis_abscess",
+  "text": "No hyperdense focus within the ureter or perinephric space to suggest obstructing calculus",
+  "gold": [
+   [
+    "No hyperdense focus within the ureter to suggest obstructing calculus",
+    "No hyperdense focus within the perinephric space to suggest obstructing calculus"
+   ]
+  ],
+  "jev": [
+   "No hyperdense focus within the ureter",
+   "No perinephric space to suggest obstructing calculus"
+  ],
+  "qwen": [
+   "No hyperdense focus within the ureter to suggest obstructing calculus",
+   "No hyperdense focus within the perinephric space to suggest obstructing calculus"
+  ]
+ },
+ {
+  "case": "ct_ap_diverticulitis_abscess",
+  "text": "No adnexal mass or complex free fluid to suggest ovarian pathology",
+  "gold": [
+   [
+    "No adnexal mass to suggest ovarian pathology",
+    "No complex free fluid to suggest ovarian pathology"
+   ]
+  ],
+  "jev": [
+   "No adnexal mass",
+   "No adnexal complex free fluid to suggest ovarian pathology"
+  ],
+  "qwen": [
+   "No adnexal mass to suggest ovarian pathology",
+   "No complex free fluid to suggest ovarian pathology"
+  ]
+ },
+ {
+  "case": "ct_ap_diverticulitis_abscess",
+  "text": "No segmental colonic wall thickening or thumbprinting in a distribution separate from the sigmoid to suggest ischaemic colitis",
+  "gold": [
+   [
+    "No segmental colonic wall thickening in a distribution separate from the sigmoid to suggest ischaemic colitis",
+    "No thumbprinting in a distribution separate from the sigmoid to suggest ischaemic colitis"
+   ]
+  ],
+  "jev": [
+   "No segmental colonic wall thickening or thumbprinting in a distribution separate from the sigmoid to suggest ischaemic colitis"
+  ],
+  "qwen": [
+   "No segmental colonic wall thickening in a distribution separate from the sigmoid to suggest ischaemic colitis",
+   "No thumbprinting in a distribution separate from the sigmoid to suggest ischaemic colitis"
+  ]
+ },
+ {
+  "case": "mri_brain_mets_haemorrhage",
+  "text": "No abnormal T1 or T2* signal to suggest intracranial haemorrhage",
+  "gold": [
+   [
+    "No abnormal T1 signal to suggest intracranial haemorrhage",
+    "No abnormal T2* signal to suggest intracranial haemorrhage"
+   ]
+  ],
+  "jev": [
+   "No abnormal T1 or T2* signal to suggest intracranial haemorrhage"
+  ],
+  "qwen": [
+   "No abnormal T1 signal to suggest intracranial haemorrhage",
+   "No abnormal T2* signal to suggest intracranial haemorrhage"
+  ]
+ },
+ {
+  "case": "mri_spine_mscc",
+  "text": "No disc space abnormality, paravertebral collection, or rim-enhancing fluid to suggest discitis, osteomyelitis, or epidural abscess",
+  "gold": [
+   [
+    "No disc space abnormality to suggest discitis, osteomyelitis, or epidural abscess",
+    "No paravertebral collection to suggest discitis, osteomyelitis, or epidural abscess",
+    "No rim-enhancing fluid to suggest discitis, osteomyelitis, or epidural abscess"
+   ]
+  ],
+  "jev": [
+   "No disc space abnormality",
+   "No paravertebral collection",
+   "No rim-enhancing fluid to suggest discitis",
+   "No osteomyelitis",
+   "No epidural abscess"
+  ],
+  "qwen": [
+   "No disc space abnormality to suggest discitis, osteomyelitis, or epidural abscess",
+   "No paravertebral collection to suggest discitis, osteomyelitis, or epidural abscess",
+   "No rim-enhancing fluid to suggest discitis, osteomyelitis, or epidural abscess"
+  ]
+ },
+ {
+  "case": "mri_spine_mscc",
+  "text": "No intradural mass or leptomeningeal enhancement identified",
+  "gold": [
+   [
+    "No intradural mass identified",
+    "No leptomeningeal enhancement identified"
+   ]
+  ],
+  "jev": [
+   "No intradural mass identified",
+   "No leptomeningeal enhancement identified"
+  ],
+  "qwen": [
+   "No intradural mass identified",
+   "No leptomeningeal enhancement identified"
+  ]
+ },
+ {
+  "case": "mri_spine_mscc",
+  "text": "No degenerative disc disease, ligamentum flavum hypertrophy, or facet arthropathy causing thecal sac compromise at any level",
+  "gold": [
+   [
+    "No degenerative disc disease causing thecal sac compromise at any level",
+    "No ligamentum flavum hypertrophy causing thecal sac compromise at any level",
+    "No facet arthropathy causing thecal sac compromise at any level"
+   ]
+  ],
+  "jev": [
+   "No degenerative disc disease",
+   "No ligamentum flavum hypertrophy",
+   "No facet arthropathy causing thecal sac compromise at any level"
+  ],
+  "qwen": [
+   "No degenerative disc disease causing thecal sac compromise at any level",
+   "No ligamentum flavum hypertrophy causing thecal sac compromise at any level",
+   "No facet arthropathy causing thecal sac compromise at any level"
+  ]
+ },
+ {
+  "case": "mri_spine_mscc",
+  "text": "The conus medullaris and cauda equina are unremarkable",
+  "gold": [
+   [
+    "The conus medullaris is unremarkable",
+    "The cauda equina is unremarkable"
+   ]
+  ],
+  "jev": [
+   "The conus medullaris and cauda equina are unremarkable"
+  ],
+  "qwen": [
+   "The conus medullaris and cauda equina are unremarkable"
+  ]
+ },
+ {
+  "case": "mri_spine_mscc",
+  "text": "No additional paravertebral or epidural soft tissue abnormality at levels other than the primary compressive lesion",
+  "gold": [
+   [
+    "No additional paravertebral soft tissue abnormality at levels other than the primary compressive lesion",
+    "No additional epidural soft tissue abnormality at levels other than the primary compressive lesion"
+   ]
+  ],
+  "jev": [
+   "No additional paravertebral",
+   "No additional epidural soft tissue abnormality at levels other than the primary compressive lesion"
+  ],
+  "qwen": [
+   "No additional paravertebral soft tissue abnormality at levels other than the primary compressive lesion",
+   "No additional epidural soft tissue abnormality at levels other than the primary compressive lesion"
+  ]
+ },
+ {
+  "case": "ct_pancreatic_ca_staging",
+  "text": "No pancreatic calcifications or irregular ductal dilatation to suggest chronic pancreatitis",
+  "gold": [
+   [
+    "No pancreatic calcifications to suggest chronic pancreatitis",
+    "No irregular ductal dilatation to suggest chronic pancreatitis"
+   ],
+   [
+    "No pancreatic calcifications to suggest chronic pancreatitis",
+    "No pancreatic irregular ductal dilatation to suggest chronic pancreatitis"
+   ]
+  ],
+  "jev": [
+   "No pancreatic calcifications to suggest chronic pancreatitis",
+   "No irregular ductal dilatation to suggest chronic pancreatitis"
+  ],
+  "qwen": [
+   "No pancreatic calcifications to suggest chronic pancreatitis",
+   "No irregular ductal dilatation to suggest chronic pancreatitis"
+  ]
+ },
+ {
+  "case": "ct_pancreatic_ca_staging",
+  "text": "No peritoneal or omental deposit to suggest peritoneal carcinomatosis",
+  "gold": [
+   [
+    "No peritoneal deposit to suggest peritoneal carcinomatosis",
+    "No omental deposit to suggest peritoneal carcinomatosis"
+   ]
+  ],
+  "jev": [
+   "No peritoneal",
+   "No omental deposit to suggest peritoneal carcinomatosis"
+  ],
+  "qwen": [
+   "No peritoneal deposit to suggest peritoneal carcinomatosis",
+   "No omental deposit to suggest peritoneal carcinomatosis"
+  ]
+ },
+ {
+  "case": "ct_pancreatic_ca_staging",
+  "text": "No adrenal enlargement or focal lesion to suggest adrenal metastasis",
+  "gold": [
+   [
+    "No adrenal enlargement to suggest adrenal metastasis",
+    "No adrenal focal lesion to suggest adrenal metastasis"
+   ],
+   [
+    "No adrenal enlargement to suggest adrenal metastasis",
+    "No focal lesion to suggest adrenal metastasis"
+   ]
+  ],
+  "jev": [
+   "No adrenal enlargement",
+   "No focal lesion to suggest adrenal metastasis"
+  ],
+  "qwen": [
+   "No adrenal enlargement to suggest adrenal metastasis",
+   "No focal lesion to suggest adrenal metastasis"
+  ]
+ },
+ {
+  "case": "ct_pancreatic_ca_staging",
+  "text": "No lung base nodule or consolidation to suggest pulmonary metastasis",
+  "gold": [
+   [
+    "No lung base nodule to suggest pulmonary metastasis",
+    "No lung base consolidation to suggest pulmonary metastasis"
+   ],
+   [
+    "No lung base nodule to suggest pulmonary metastasis",
+    "No consolidation to suggest pulmonary metastasis"
+   ]
+  ],
+  "jev": [
+   "No lung base nodule to suggest pulmonary metastasis",
+   "No consolidation to suggest pulmonary metastasis"
+  ],
+  "qwen": [
+   "No lung base nodule to suggest pulmonary metastasis",
+   "No consolidation to suggest pulmonary metastasis"
+  ]
+ },
+ {
+  "case": "ct_trauma_pan_scan",
+  "text": "No pneumothorax or hemothorax",
+  "gold": [
+   [
+    "No pneumothorax",
+    "No hemothorax"
+   ]
+  ],
+  "jev": [
+   "No pneumothorax",
+   "No hemothorax"
+  ],
+  "qwen": [
+   "No pneumothorax",
+   "No hemothorax"
+  ]
+ },
+ {
+  "case": "ct_trauma_pan_scan",
+  "text": "No active contrast extravasation in the abdomen or pelvis",
+  "gold": [
+   [
+    "No active contrast extravasation in the abdomen",
+    "No active contrast extravasation in the pelvis"
+   ]
+  ],
+  "jev": [
+   "No active contrast extravasation in the abdomen",
+   "No pelvis"
+  ],
+  "qwen": [
+   "No active contrast extravasation in the abdomen",
+   "No active contrast extravasation in the pelvis"
+  ]
+ },
+ {
+  "case": "ct_trauma_pan_scan",
+  "text": "No aortic or great vessel injury",
+  "gold": [
+   [
+    "No aortic injury",
+    "No great vessel injury"
+   ]
+  ],
+  "jev": [
+   "No aortic injury",
+   "No great vessel injury"
+  ],
+  "qwen": [
+   "No aortic injury",
+   "No great vessel injury"
+  ]
+ },
+ {
+  "case": "ct_trauma_pan_scan",
+  "text": "No C-spine fracture or malalignment",
+  "gold": [
+   [
+    "No C-spine fracture",
+    "No C-spine malalignment"
+   ],
+   [
+    "No C-spine fracture",
+    "No malalignment"
+   ]
+  ],
+  "jev": [
+   "No C-spine fracture",
+   "No malalignment"
+  ],
+  "qwen": [
+   "No C-spine fracture",
+   "No C-spine malalignment"
+  ]
+ },
+ {
+  "case": "ct_thorax_pleural_tethering_stress",
+  "text": "No hilar or mediastinal lymphadenopathy to suggest regional nodal involvement",
+  "gold": [
+   [
+    "No hilar lymphadenopathy to suggest regional nodal involvement",
+    "No mediastinal lymphadenopathy to suggest regional nodal involvement"
+   ]
+  ],
+  "jev": [
+   "No hilar",
+   "No mediastinal lymphadenopathy to suggest regional nodal involvement"
+  ],
+  "qwen": [
+   "No hilar lymphadenopathy to suggest regional nodal involvement",
+   "No mediastinal lymphadenopathy to suggest regional nodal involvement"
+  ]
+ },
+ {
+  "case": "ct_thorax_pleural_tethering_stress",
+  "text": "No additional pulmonary nodule or mass in either lung",
+  "gold": [
+   [
+    "No additional pulmonary nodule in either lung",
+    "No additional pulmonary mass in either lung"
+   ]
+  ],
+  "jev": [
+   "No additional pulmonary nodule in either lung",
+   "No additional mass in either lung"
+  ],
+  "qwen": [
+   "No additional pulmonary nodule in either lung",
+   "No additional mass in either lung"
+  ]
+ },
+ {
+  "case": "ct_thorax_pleural_tethering_stress",
+  "text": "No pleural effusion or pleural-based deposit",
+  "gold": [
+   [
+    "No pleural effusion",
+    "No pleural-based deposit"
+   ]
+  ],
+  "jev": [
+   "No pleural effusion",
+   "No pleural pleural-based deposit"
+  ],
+  "qwen": [
+   "No pleural effusion",
+   "No pleural-based deposit"
+  ]
+ },
+ {
+  "case": "ct_thorax_pleural_tethering_stress",
+  "text": "No osseous destruction or lytic lesion in the visualised thoracic cage",
+  "gold": [
+   [
+    "No osseous destruction in the visualised thoracic cage",
+    "No lytic lesion in the visualised thoracic cage"
+   ]
+  ],
+  "jev": [
+   "No osseous destruction",
+   "No osseous lytic lesion in the visualised thoracic cage"
+  ],
+  "qwen": [
+   "No osseous destruction in the visualised thoracic cage",
+   "No lytic lesion in the visualised thoracic cage"
+  ]
+ },
+ {
+  "case": "ct_thorax_pleural_tethering_stress",
+  "text": "No airway obstruction or post-obstructive change",
+  "gold": [
+   [
+    "No airway obstruction",
+    "No post-obstructive change"
+   ]
+  ],
+  "jev": [
+   "No airway obstruction",
+   "No post-obstructive change"
+  ],
+  "qwen": [
+   "No airway obstruction",
+   "No post-obstructive change"
+  ]
+ },
+ {
+  "case": "ct_thorax_pleural_tethering_stress",
+  "text": "No pericardial effusion or pericardial thickening",
+  "gold": [
+   [
+    "No pericardial effusion",
+    "No pericardial thickening"
+   ]
+  ],
+  "jev": [
+   "No pericardial effusion",
+   "No pericardial pericardial thickening"
+  ],
+  "qwen": [
+   "No pericardial effusion",
+   "No pericardial thickening"
+  ]
+ },
+ {
+  "case": "clean_ct_head",
+  "text": "No subdural, epidural, or intraparenchymal haemorrhage identified",
+  "gold": [
+   [
+    "No subdural haemorrhage identified",
+    "No epidural haemorrhage identified",
+    "No intraparenchymal haemorrhage identified"
+   ]
+  ],
+  "jev": [
+   "No subdural identified",
+   "No epidural identified",
+   "No intraparenchymal haemorrhage identified"
+  ],
+  "qwen": [
+   "No subdural haemorrhage identified",
+   "No epidural haemorrhage identified",
+   "No intraparenchymal haemorrhage identified"
+  ]
+ },
+ {
+  "case": "clean_ct_head",
+  "text": "No subarachnoid haemorrhage in the sulci, cisterns, or Sylvian fissures",
+  "gold": [
+   [
+    "No subarachnoid haemorrhage in the sulci",
+    "No subarachnoid haemorrhage in the cisterns",
+    "No subarachnoid haemorrhage in the Sylvian fissures"
+   ]
+  ],
+  "jev": [
+   "No subarachnoid haemorrhage in the sulci",
+   "No cisterns",
+   "No Sylvian fissures"
+  ],
+  "qwen": [
+   "No subarachnoid haemorrhage in the sulci",
+   "No subarachnoid haemorrhage in the cisterns",
+   "No subarachnoid haemorrhage in the Sylvian fissures"
+  ]
+ },
+ {
+  "case": "clean_ct_head",
+  "text": "No loss of grey-white differentiation or territorial hypodensity to suggest acute ischaemic infarction",
+  "gold": [
+   [
+    "No loss of grey-white differentiation to suggest acute ischaemic infarction",
+    "No territorial hypodensity to suggest acute ischaemic infarction"
+   ]
+  ],
+  "jev": [
+   "No loss of grey-white differentiation",
+   "No territorial hypodensity to suggest acute ischaemic infarction"
+  ],
+  "qwen": [
+   "No loss of grey-white differentiation to suggest acute ischaemic infarction",
+   "No territorial hypodensity to suggest acute ischaemic infarction"
+  ]
+ },
+ {
+  "case": "clean_ct_head",
+  "text": "No midline shift or ventricular compression",
+  "gold": [
+   [
+    "No midline shift",
+    "No ventricular compression"
+   ]
+  ],
+  "jev": [
+   "No midline shift",
+   "No ventricular compression"
+  ],
+  "qwen": [
+   "No midline shift",
+   "No ventricular compression"
+  ]
+ },
+ {
+  "case": "ct_head_cerebellar_haemorrhage",
+  "text": "No hyperdense material within the subarachnoid space, basal cisterns, or Sylvian fissures",
+  "gold": [
+   [
+    "No hyperdense material within the subarachnoid space",
+    "No hyperdense material within the basal cisterns",
+    "No hyperdense material within the Sylvian fissures"
+   ]
+  ],
+  "jev": [
+   "No hyperdense material within the subarachnoid space",
+   "No basal cisterns",
+   "No Sylvian fissures"
+  ],
+  "qwen": [
+   "No hyperdense material within the subarachnoid space",
+   "No hyperdense material within the basal cisterns",
+   "No hyperdense material within the Sylvian fissures"
+  ]
+ },
+ {
+  "case": "ct_head_cerebellar_haemorrhage",
+  "text": "No subdural or epidural collection",
+  "gold": [
+   [
+    "No subdural collection",
+    "No epidural collection"
+   ]
+  ],
+  "jev": [
+   "No subdural",
+   "No epidural collection"
+  ],
+  "qwen": [
+   "No subdural collection",
+   "No epidural collection"
+  ]
+ },
+ {
+  "case": "ct_head_cerebellar_haemorrhage",
+  "text": "No loss of grey-white differentiation or territorial hypodensity",
+  "gold": [
+   [
+    "No loss of grey-white differentiation",
+    "No territorial hypodensity"
+   ]
+  ],
+  "jev": [
+   "No loss of grey-white differentiation",
+   "No territorial hypodensity"
+  ],
+  "qwen": [
+   "No loss of grey-white differentiation",
+   "No territorial hypodensity"
+  ]
+ },
+ {
+  "case": "ct_tap_acute_abdomen_gda_bleed",
+  "text": "No mesenteric vessel occlusion or stenosis",
+  "gold": [
+   [
+    "No mesenteric vessel occlusion",
+    "No mesenteric vessel stenosis"
+   ],
+   [
+    "No mesenteric vessel occlusion",
+    "No stenosis"
+   ]
+  ],
+  "jev": [
+   "No mesenteric vessel occlusion",
+   "No stenosis"
+  ],
+  "qwen": [
+   "No mesenteric vessel occlusion",
+   "No mesenteric vessel stenosis"
+  ]
+ },
+ {
+  "case": "ct_tap_acute_abdomen_gda_bleed",
+  "text": "No bowel wall thickening or loss of mural enhancement",
+  "gold": [
+   [
+    "No bowel wall thickening",
+    "No loss of mural enhancement"
+   ]
+  ],
+  "jev": [
+   "No bowel wall thickening",
+   "No loss of mural enhancement"
+  ],
+  "qwen": [
+   "No bowel wall thickening",
+   "No loss of mural enhancement"
+  ]
+ },
+ {
+  "case": "ct_tap_acute_abdomen_gda_bleed",
+  "text": "No periaortic haematoma or aortic wall disruption",
+  "gold": [
+   [
+    "No periaortic haematoma",
+    "No aortic wall disruption"
+   ]
+  ],
+  "jev": [
+   "No periaortic haematoma",
+   "No aortic wall disruption"
+  ],
+  "qwen": [
+   "No periaortic haematoma",
+   "No aortic wall disruption"
+  ]
+ },
+ {
+  "case": "ct_head_out_of_volume_and_companion_contradiction",
+  "text": "No intraparenchymal haemorrhage or contusion identified",
+  "gold": [
+   [
+    "No intraparenchymal haemorrhage identified",
+    "No contusion identified"
+   ]
+  ],
+  "jev": [
+   "No intraparenchymal haemorrhage identified",
+   "No intraparenchymal contusion identified"
+  ],
+  "qwen": [
+   "No intraparenchymal haemorrhage identified",
+   "No contusion identified"
+  ]
+ },
+ {
+  "case": "ct_head_out_of_volume_and_companion_contradiction",
+  "text": "Grey-white differentiation is preserved throughout the supratentorial and infratentorial compartments",
+  "gold": [
+   [
+    "Grey-white differentiation is preserved throughout the supratentorial and infratentorial compartments"
+   ],
+   [
+    "Grey-white differentiation is preserved throughout the supratentorial compartments",
+    "Grey-white differentiation is preserved throughout the infratentorial compartments"
+   ]
+  ],
+  "jev": [
+   "Grey-white differentiation is preserved throughout the supratentorial and infratentorial compartments"
+  ],
+  "qwen": [
+   "Grey-white differentiation is preserved throughout the supratentorial and infratentorial compartments"
+  ]
+ },
+ {
+  "case": "ctpa_acute_pe_rv_strain",
+  "text": "No filling defect identified in the main, lobar, segmental or subsegmental pulmonary arteries",
+  "gold": [
+   [
+    "No filling defect identified in the main, lobar, segmental or subsegmental pulmonary arteries"
+   ],
+   [
+    "No filling defect identified in the main pulmonary arteries",
+    "No filling defect identified in the lobar pulmonary arteries",
+    "No filling defect identified in the segmental pulmonary arteries",
+    "No filling defect identified in the subsegmental pulmonary arteries"
+   ]
+  ],
+  "jev": [
+   "No filling defect identified in the main pulmonary arteries",
+   "No filling defect identified in the lobar pulmonary arteries",
+   "No filling defect identified in the segmental or subsegmental pulmonary arteries"
+  ],
+  "qwen": [
+   "No filling defect identified in the main pulmonary arteries",
+   "No filling defect identified in the lobar pulmonary arteries",
+   "No filling defect identified in the segmental pulmonary arteries",
+   "No filling defect identified in the subsegmental pulmonary arteries"
+  ]
+ },
+ {
+  "case": "ctpa_acute_pe_rv_strain",
+  "text": "No intimal flap or false lumen identified in the aorta",
+  "gold": [
+   [
+    "No intimal flap identified in the aorta",
+    "No false lumen identified in the aorta"
+   ]
+  ],
+  "jev": [
+   "No intimal flap",
+   "No false lumen identified in the aorta"
+  ],
+  "qwen": [
+   "No intimal flap identified in the aorta",
+   "No false lumen identified in the aorta"
+  ]
+ },
+ {
+  "case": "ctpa_acute_pe_rv_strain",
+  "text": "No consolidation or ground-glass opacity identified in either lung",
+  "gold": [
+   [
+    "No consolidation identified in either lung",
+    "No ground-glass opacity identified in either lung"
+   ]
+  ],
+  "jev": [
+   "No consolidation",
+   "No ground-glass opacity identified in either lung"
+  ],
+  "qwen": [
+   "No consolidation identified in either lung",
+   "No ground-glass opacity identified in either lung"
+  ]
+ },
+ {
+  "case": "ctpa_acute_pe_rv_strain",
+  "text": "No mediastinal mass or lymphadenopathy identified",
+  "gold": [
+   [
+    "No mediastinal mass identified",
+    "No mediastinal lymphadenopathy identified"
+   ],
+   [
+    "No mediastinal mass identified",
+    "No lymphadenopathy identified"
+   ]
+  ],
+  "jev": [
+   "No mediastinal mass identified",
+   "No lymphadenopathy identified"
+  ],
+  "qwen": [
+   "No mediastinal mass identified",
+   "No lymphadenopathy identified"
+  ]
+ },
+ {
+  "case": "ct_ap_diverticulitis_abscess",
+  "text": "No free intraperitoneal air or faeculent material",
+  "gold": [
+   [
+    "No free intraperitoneal air",
+    "No free intraperitoneal faeculent material"
+   ],
+   [
+    "No free intraperitoneal air",
+    "No faeculent material"
+   ]
+  ],
+  "jev": [
+   "No free intraperitoneal air",
+   "No faeculent material"
+  ],
+  "qwen": [
+   "No free intraperitoneal air",
+   "No faeculent material"
+  ]
+ },
+ {
+  "case": "ct_ap_diverticulitis_abscess",
+  "text": "No pericolic or paracolic rim-enhancing fluid collection",
+  "gold": [
+   [
+    "No pericolic rim-enhancing fluid collection",
+    "No paracolic rim-enhancing fluid collection"
+   ]
+  ],
+  "jev": [
+   "No pericolic",
+   "No paracolic rim-enhancing fluid collection"
+  ],
+  "qwen": [
+   "No pericolic rim-enhancing fluid collection",
+   "No paracolic rim-enhancing fluid collection"
+  ]
+ },
+ {
+  "case": "ct_ap_diverticulitis_abscess",
+  "text": "No colonic mural non-enhancement or ischaemic change",
+  "gold": [
+   [
+    "No colonic mural non-enhancement",
+    "No colonic ischaemic change"
+   ],
+   [
+    "No colonic mural non-enhancement",
+    "No ischaemic change"
+   ]
+  ],
+  "jev": [
+   "No colonic mural non-enhancement change",
+   "No ischaemic change"
+  ],
+  "qwen": [
+   "No colonic mural non-enhancement",
+   "No ischaemic change"
+  ]
+ },
+ {
+  "case": "ct_ap_diverticulitis_abscess",
+  "text": "No colonic mass lesion with irregular wall thickening or luminal narrowing",
+  "gold": [
+   [
+    "No colonic mass lesion with irregular wall thickening or luminal narrowing"
+   ],
+   [
+    "No colonic mass lesion with irregular wall thickening",
+    "No colonic mass lesion with luminal narrowing"
+   ]
+  ],
+  "jev": [
+   "No colonic mass lesion with irregular wall thickening",
+   "No luminal narrowing"
+  ],
+  "qwen": [
+   "No colonic mass lesion with irregular wall thickening",
+   "No colonic mass lesion with luminal narrowing"
+  ]
+ },
+ {
+  "case": "ct_ap_diverticulitis_abscess",
+  "text": "No bladder wall thickening or intravesical air",
+  "gold": [
+   [
+    "No bladder wall thickening",
+    "No intravesical air"
+   ]
+  ],
+  "jev": [
+   "No bladder wall thickening",
+   "No intravesical air"
+  ],
+  "qwen": [
+   "No bladder wall thickening",
+   "No intravesical air"
+  ]
+ },
+ {
+  "case": "mri_spine_mscc",
+  "text": "No epidural soft-tissue mass or collection is identified at any level",
+  "gold": [
+   [
+    "No epidural soft-tissue mass is identified at any level",
+    "No epidural collection is identified at any level"
+   ]
+  ],
+  "jev": [
+   "No epidural soft-tissue mass",
+   "No collection is identified at any level"
+  ],
+  "qwen": [
+   "No epidural soft-tissue mass is identified at any level",
+   "No epidural collection is identified at any level"
+  ]
+ },
+ {
+  "case": "mri_spine_mscc",
+  "text": "No vertebral body collapse or retropulsed bony fragment is identified",
+  "gold": [
+   [
+    "No vertebral body collapse is identified",
+    "No retropulsed bony fragment is identified"
+   ]
+  ],
+  "jev": [
+   "No vertebral body collapse is identified",
+   "No vertebral body retropulsed bony fragment is identified"
+  ],
+  "qwen": [
+   "No vertebral body collapse is identified",
+   "No retropulsed bony fragment is identified"
+  ]
+ },
+ {
+  "case": "mri_spine_mscc",
+  "text": "No intramedullary T2 signal abnormality is identified in the spinal cord or conus medullaris",
+  "gold": [
+   [
+    "No intramedullary T2 signal abnormality is identified in the spinal cord",
+    "No intramedullary T2 signal abnormality is identified in the conus medullaris"
+   ]
+  ],
+  "jev": [
+   "No intramedullary T2 signal abnormality is identified in the spinal cord",
+   "No conus medullaris"
+  ],
+  "qwen": [
+   "No intramedullary T2 signal abnormality is identified in the spinal cord",
+   "No intramedullary T2 signal abnormality is identified in the conus medullaris"
+  ]
+ },
+ {
+  "case": "mri_spine_mscc",
+  "text": "No disc-space enhancement or adjacent endplate destruction is identified",
+  "gold": [
+   [
+    "No disc-space enhancement is identified",
+    "No adjacent endplate destruction is identified"
+   ]
+  ],
+  "jev": [
+   "No disc-space enhancement is identified",
+   "No adjacent endplate destruction is identified"
+  ],
+  "qwen": [
+   "No disc-space enhancement is identified",
+   "No adjacent endplate destruction is identified"
+  ]
+ },
+ {
+  "case": "mri_spine_mscc",
+  "text": "No paravertebral or paraspinal soft-tissue mass is identified",
+  "gold": [
+   [
+    "No paravertebral soft-tissue mass is identified",
+    "No paraspinal soft-tissue mass is identified"
+   ]
+  ],
+  "jev": [
+   "No paravertebral",
+   "No paraspinal soft-tissue mass is identified"
+  ],
+  "qwen": [
+   "No paravertebral soft-tissue mass is identified",
+   "No paraspinal soft-tissue mass is identified"
+  ]
+ }
+]
