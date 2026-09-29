@@ -224,11 +224,12 @@ recommendations — decide every candidate by its kind; a candidate whose condit
 Use optional only when a reasonable consultant could go either way on this case. Give a one-line reason.
 
 impression — the numbers of the findings the impression must carry: the finding(s) that answer the clinical question, findings that change management or urgency, and negatives that answer the clinical question.
-optional_impression — findings a reasonable consultant could either carry or leave in FINDINGS.
+optional_impression — findings with a management consequence that a reasonable consultant could either carry or leave in FINDINGS. Never use it for normal structures, devices or negatives.
 findings_only — findings that stay in FINDINGS: incidental or background findings needing no action, devices and procedure notes, normal structures the question did not ask about.
 A finding may be in none of the lists when either placement is acceptable. Never place a number in two lists."""
 PLAN_TIMEOUT_S = 10.0
 MAX_OPTIONS = 3
+_BAR_KINDS = ("IMAGING:", "TISSUE:")
 
 
 QWEN_SYS = (
@@ -416,11 +417,13 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     rb = _bullet(imp, "Recommendation scope")
     pdec = {d.index: d for d in plan.recommendations} if plan else {}
     if rb:
-        kept = []
+        kept, barred = [], []
         for k, t in enumerate(recs):
             d = pdec.get(k)
             if score(f"r{k}") >= 0.5:
                 action = "removed"
+                if t.startswith(_BAR_KINDS):
+                    barred.append(re.sub(r"^[A-Z]+:\s*", "", t))
             elif d is None or d.decision == "include":
                 action = "keep"
             elif d.decision == "optional" and len(decisions["options"]) < MAX_OPTIONS:
@@ -428,15 +431,26 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
                 decisions["options"].append({"kind": "recommendation", "text": t, "reason": d.reason})
             else:
                 action = "removed"
+                if t.startswith(_BAR_KINDS):
+                    barred.append(re.sub(r"^[A-Z]+:\s*", "", t))
             decisions["recommendations"].append({"text": t, "action": action, "reason": d.reason if d else ""})
             if action == "keep":
                 kept.append(f"  - {t}")
+        # A removed investigation is named, not just deleted: the generator refills a missing
+        # test from its priors, a prohibition holds (as for normal lines). Referrals and
+        # correlation items are removed silently — naming them quoted their conditions (and a
+        # duplicate's staging words) back into the brief.
         rb.lines = [rb.lines[0]] + kept
+        if barred:
+            rb.lines.append("- **Do not recommend (this study has answered it, or it falls to the receiving team):** "
+                            + " ".join(f'"{t}"' for t in barred))
 
     # Impression plan: what the impression must carry, and what stays in FINDINGS.
     if plan and items:
         pick = lambda idx: [items[i] for i in dict.fromkeys(idx) if 0 <= i < len(items)]
         carry, only = pick(plan.impression), pick(plan.findings_only)
+        # Optional findings are left unlisted: the generator places them as it would without a
+        # plan (listing them as findings-only dropped findings the impression needed).
         opt = [t for t in pick(plan.optional_impression) if t not in carry]
         room = MAX_OPTIONS - len(decisions["options"])
         decisions["options"].extend({"kind": "impression", "text": t, "reason": ""} for t in opt[:room])
@@ -445,7 +459,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         if carry:
             plan_lines.append("- **Carry forward (the impression addresses each):** " + " ".join(f'"{t}"' for t in carry))
         if only:
-            plan_lines.append("- **Findings only (not in the impression):** " + " ".join(f'"{t}"' for t in only + opt[:room]))
+            plan_lines.append("- **Findings only (not in the impression):** " + " ".join(f'"{t}"' for t in only))
         if plan_lines:
             secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", plan_lines)]))
 

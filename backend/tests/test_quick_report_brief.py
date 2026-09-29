@@ -104,7 +104,7 @@ async def test_compile_labels_removes_and_keeps(monkeypatch):
     # and coagulopathy (imaging-silent) kept; subdural (present) kept
     assert "Epidural" not in t and "Vascular malformation" in t and "Coagulopathy" in t and "Acute subdural" in t
     # recommendations, exemplars, measurements
-    assert "Neurosurgery" in t and "CTA for large vessel occlusion" not in t
+    assert "Neurosurgery" in t and "  - IMAGING: CTA" not in t and '"CTA for large vessel occlusion"' in t.split("Do not recommend")[1]
     assert "Abnormal exemplar" in t and "Normal exemplar" not in t and "Complicated exemplar" not in t
     assert "An 8 mm subdural" in t and "MCA territory infarct" not in t
     assert "Subdural thickness" in t and "Infarct volume" not in t
@@ -151,11 +151,12 @@ async def test_plan_routes_recommendations_and_writes_the_impression_plan(monkey
         recommendations=[qb.RecDecision(index=0, decision="optional", reason="either way"),
                          qb.RecDecision(index=1, decision="include")],
         impression=[0, 1], findings_only=[2])
+
     _stub(monkeypatch, JEV, QWEN, plan)
     b = await qb.compile_brief(SHEET, "CT head non-contrast", findings, "fall on anticoagulation")
     t = b.text
     # Jev's unmet condition wins over Qwen's include; an optional recommendation is offered, not written
-    assert "CTA for large vessel occlusion" not in t and "Neurosurgery" not in t.split("## Impression Plan")[0]
+    assert "  - IMAGING: CTA" not in t and "Neurosurgery" not in t.split("## Impression Plan")[0]
     assert b.decisions["options"] == [{"kind": "recommendation", "text": "REFERRAL: Neurosurgery for haemorrhage with mass effect",
                                        "reason": "either way"}]
     plan_block = t.split("## Impression Plan")[1]
@@ -165,3 +166,14 @@ async def test_plan_routes_recommendations_and_writes_the_impression_plan(monkey
 
 def test_split_findings_numbers_bullets_lines_and_sentences():
     assert qb.split_findings("- A mass. B node\n- No effusion") == ["A mass", "B node", "No effusion"]
+
+
+@pytest.mark.asyncio
+async def test_removed_investigations_are_named_and_referrals_removed_silently(monkeypatch):
+    plan = qb.ImpressionPlan(recommendations=[qb.RecDecision(index=0, decision="exclude", reason="receiving team")],
+                             impression=[0])
+    _stub(monkeypatch, JEV, QWEN, plan)
+    b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural", "fall")
+    # the excluded referral is removed silently; the unmet investigation is named
+    assert "Neurosurgery" not in b.text.split("## Impression Plan")[0]
+    assert 'Do not recommend' in b.text and '"CTA for large vessel occlusion"' in b.text
