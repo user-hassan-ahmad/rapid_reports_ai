@@ -97,3 +97,13 @@ def test_a_blocked_finalize_is_retried_on_the_next_interim():
     assert t.observe(_interim(22.0, 4.0, [("45", 25.0)])) is True
     t.retract()  # the audio said the speaker had started again
     assert t.observe(_interim(22.0, 4.5, [("45", 25.0)])) is True
+
+
+def test_a_word_onset_at_the_end_of_the_window_blocks_the_flush():
+    # lab 2026-09-29: the flush went out 0.1 s into "Actually" — averaged over 0.3 s, 0.2 s of
+    # silence hid the onset, and Deepgram dropped the word
+    lv = AudioLevel(sample_rate=16000)
+    lv.feed(_pcm(-30, 2.0))
+    lv.feed(_pcm(-62, 0.6))
+    lv.feed(_pcm(-35, 0.1))
+    assert lv.quiet() is False

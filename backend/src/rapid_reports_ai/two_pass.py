@@ -27,8 +27,18 @@ _UNITS = {"mm", "cm", "ml", "millimetre", "millimetres", "millimeter", "millimet
 _GUARDED = re.compile(r"\b(?:no|not|without|absent|negative|left|right|bilateral)\b|\d", re.IGNORECASE)
 
 
+_UNIT_NORMAL = [(re.compile(r"\bmillimet(?:re|er)s?\b"), "mm"), (re.compile(r"\bcentimet(?:re|er)s?\b"), "cm"),
+                (re.compile(r"\bmillilit(?:re|er)s?\b"), "ml")]
+
+
 def _tok(text: str) -> list[str]:
-    return re.findall(r"[a-z]+|\d+(?:\.\d+)?", (text or "").lower().replace("-", " "))
+    """Comparable tokens: lower case, hyphens split, units in one written form (the engines
+    write "millimetres", "millimeters" and "mm" for the same word)."""
+    t = (text or "").lower().replace("-", " ")
+    for pattern, unit in _UNIT_NORMAL:
+        t = pattern.sub(unit, t)
+    t = re.sub(r"(\d)(mm|cm|ml)\b", r"\1 \2", t)
+    return re.findall(r"[a-z]+|\d+(?:\.\d+)?", t)
 
 
 def _live_tokens(words: list[dict]) -> list[tuple[str, str]]:
@@ -95,9 +105,11 @@ def switch_allowed(live: str, replacement: str, confidence: float) -> bool:
     return all(m.group(0).lower() in kept for m in _GUARDED.finditer(live))
 
 
-def recovered_prefix(live_words: list[dict], batch_words: list[dict]) -> str | None:
+def recovered_prefix(live_words: list[dict], batch_words: list[dict], other_text: str | None = None) -> str | None:
     """Words the batch pass heard before the live final's first word: speech the stream dropped
-    (lab: a phrase lost at a forced final). Only a confident run of ≥ 2 words."""
+    (lab: a phrase lost at a forced final). A confident run of ≥ 2 words; a single word only
+    when the independent engine (other_text) heard it too (lab: "Actually," dropped after a
+    flush that went out just before the word became audible)."""
     live = [t for t, _ in _live_tokens(live_words)]
     batch = [(t, w) for w in batch_words for t in _tok(w.get("punctuated_word") or w.get("word", ""))]
     tokens = [t for t, _ in batch]
@@ -110,8 +122,12 @@ def recovered_prefix(live_words: list[dict], batch_words: list[dict]) -> str | N
             break
     if lead is None:
         return None
-    if lead < RECOVER_MIN_WORDS:
+    if lead == 0:
         return None
+    if lead < RECOVER_MIN_WORDS:
+        other = _tok(other_text or "")
+        if other[:lead] != tokens[:lead] or other[lead:lead + 2] != live[:2]:
+            return None
     seen, words = set(), []
     for _, w in batch[:lead]:
         if id(w) not in seen:
@@ -209,7 +225,7 @@ class TwoPass:
         if gpt_text:
             others["gpt"] = gpt_text
         spans = disagreements(words, others)
-        recovered = recovered_prefix(words, batch[1]) if batch else None
+        recovered = recovered_prefix(words, batch[1], gpt_text) if batch else None
         switches, suggestions = [], []
         if spans and self._jev:
             body = {"state": {"scan_type": self.scan_type, "dictation": alternative.get("transcript", "")},

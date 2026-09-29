@@ -55,39 +55,39 @@ class AudioLevel:
     """Is the speaker quiet right now? Deepgram reports a word about a second after it is
     said, so the trigger alone fired as "Actually" began (lab 2026-09-29: the flush cut the
     word and Deepgram returned nothing for 9 s; the phrase was lost). The audio itself is
-    immediate: the last recent_s must sit quiet_db below the speaker's level.
+    immediate: every 50 ms frame of the last recent_s must sit quiet_db below the speaker's
+    level. The loudest frame, not the average: 0.1 s of onset averaged with 0.2 s of silence
+    passed as quiet, and another "Actually" was dropped.
     """
 
-    # 18 dB: in the captured session pauses sat 22–33 dB below speech and the onset of the
-    # lost "Actually" 12 dB below; a held flush costs a little delay, a bad one loses words.
+    FRAME_S = 0.05
+
     def __init__(self, sample_rate: int, recent_s: float = 0.3, quiet_db: float = 18.0) -> None:
+        # 18 dB: in the captured session pauses sat 22–33 dB below speech and the onset of the
+        # lost "Actually" 12 dB below; a held flush costs a little delay, a bad one loses words.
         self.sample_rate = sample_rate
         self.quiet_db = quiet_db
-        self._recent: deque[tuple[int, float]] = deque()  # (samples, sum of squares) per chunk
-        self._recent_samples = 0
-        self._recent_limit = int(sample_rate * recent_s)
+        self._frame = max(1, int(sample_rate * self.FRAME_S))
+        self._frames: deque[float] = deque(maxlen=max(1, round(recent_s / self.FRAME_S)))
+        self._pending: list[int] = []  # samples not yet a whole frame
         self.speech_db: float | None = None  # peak-following reference, decays slowly
 
     def feed(self, pcm: bytes) -> None:
         n = len(pcm) // 2
         if not n:
             return
-        view = memoryview(pcm)[: n * 2].cast("h")
-        ss = float(sum(x * x for x in view))
-        self._recent.append((n, ss))
-        self._recent_samples += n
-        while self._recent_samples - self._recent[0][0] >= self._recent_limit:
-            m, _ = self._recent.popleft()
-            self._recent_samples -= m
-        db = _db(ss / n)
-        if self.speech_db is None or db > self.speech_db:
-            self.speech_db = db
-        else:  # decay ~1 dB/s so a loud cough does not set the bar for the whole session
-            self.speech_db -= n / self.sample_rate
+        self._pending.extend(memoryview(pcm)[: n * 2].cast("h"))
+        while len(self._pending) >= self._frame:
+            frame, self._pending = self._pending[: self._frame], self._pending[self._frame:]
+            db = _db(sum(x * x for x in frame) / len(frame))
+            self._frames.append(db)
+            if self.speech_db is None or db > self.speech_db:
+                self.speech_db = db
+            else:  # decay ~1 dB/s so a loud cough does not set the bar for the whole session
+                self.speech_db -= self.FRAME_S
 
     def recent_db(self) -> float:
-        n = sum(m for m, _ in self._recent)
-        return _db(sum(ss for _, ss in self._recent) / n) if n else -120.0
+        return max(self._frames) if self._frames else -120.0
 
     def quiet(self) -> bool:
         if self.speech_db is None or self.speech_db < -55:  # no speech heard yet

@@ -193,3 +193,20 @@ def test_a_reading_the_guard_blocks_is_not_suggested_either():
     tp.feed(b"\x00\x00" * 16000 * 3)
     rev = asyncio.run(tp.revise(1, _alt("No disc extrusion.", [dict(w, start=0.1, end=0.5) for w in live])))
     assert rev["switches"] == [] and rev["suggestions"] == []
+
+
+def test_a_single_dropped_word_is_recovered_when_both_engines_heard_it():
+    # lab 2026-09-29: "Actually," lost after a forced final; batch and gpt-4o both have it
+    live = [_w("Make"), _w("that"), _w("7"), _w("mm.")]
+    batch = [_w("Actually,"), _w("make"), _w("that"), _w("7"), _w("mm.")]
+    assert recovered_prefix(live, batch, "Actually, make that 7 mm.") == "Actually,"
+    assert recovered_prefix(live, batch, "Make that 7 mm.") is None  # gpt did not hear it
+    assert recovered_prefix(live, batch) is None                     # no second hearing
+
+
+def test_units_written_differently_still_align():
+    # lab 2026-09-29, final 8: live "millimetres", batch "mm", gpt "millimeters"
+    live = [_w("Make"), _w("that"), _w("7"), _w("millimetres.")]
+    batch = [_w("Actually,", 0.9), _w("make"), _w("that"), _w("7"), _w("mm.")]
+    assert recovered_prefix(live, batch, "Actually make that 7 millimeters") == "Actually,"
+    assert disagreements(live, {"gpt": "Make that 7 millimeters."}) == []
