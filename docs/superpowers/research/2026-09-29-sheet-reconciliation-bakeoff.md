@@ -178,3 +178,27 @@ Operational note: at 6 concurrent reports, 3/44 reconciliations hit the Qwen/Jev
 - Seen in both arms, minor: bare "clinical correlation" still appears (4 reports, often echoing the dictation), laboratory-test and treatment suggestions (galactomannan, anticoagulation reversal), ultrasound reports drop TECHNIQUE (4/4 missing_section).
 
 **Decision input:** ship `feat/qr-lean`; rework the recommendation-scope fix at the brief level before merging `feat/qr-lean-fixes`.
+
+## Impression plan + three-way recommendations (feat/qr-lean-carry, 2026-09-29)
+
+Qwen (reasoning low, parallel with Jev) plans the impression: per recommendation include / exclude / optional (+ exclude category), and which numbered dictated findings the impression must carry or keep in FINDINGS. Jev keeps condition-met; code routes. Optional items go to a reporter panel (not yet built).
+
+**Classifier.** Tuned set (26 cases, hand labels): recommendations 0.98 (first wording 0.88: "routine next step" swallowed referrals until rules were split by kind), impression must-carry missed 4/112. **Held-out** (9 new cases written before any output): recommendations 87/90, must-carry missed 0/33. Optional recommendations landed exactly on the items labelled "either" by hand.
+
+**End to end** — each fix exposed the next failure:
+
+| Iteration | Change | Outcome |
+|---|---|---|
+| C | plan + removal | MRI-brain gone; leg Doppler re-added from priors 2/2; optional findings forced to findings-only dropped the AAA growth and left "no other calculi" beside unmentioned stones |
+| C2/C3 | name removed recs; optional findings unlisted | Doppler gone, AAA back; naming a duplicate referral quoted "borderline resectable or locally advanced" into the brief → pancreatic mis-staging 2/2; narrowed naming to IMAGING/TISSUE → clean |
+| F (70 reports) | — | no serious errors; but naming unmet-condition investigations suppressed follow-up imaging for pneumonia in a smoker 2/2; a kept surgical referral was not written 2/2 |
+| G | name only `routine_workup` exclusions; checklist requires listed recs | surgical referral back 2/2; pneumonia follow-up 1/2; MRI brain flipped to include 2/2 |
+
+**Insights.**
+1. Deleting an item leaves a gap the generator refills from priors (ventricles, Doppler, CT for occult malignancy); naming it holds.
+2. Naming primes: quoted conditions carry their vocabulary into the brief. Name only what the generator is known to re-add, in minimal wording.
+3. The plan is a floor, never a ceiling — forbidding placement of ambiguous findings caused omissions and a contradiction.
+4. Borderline recommendations flip with small prompt changes even at temperature 0 (MRI brain: exclude → optional → include). They are the reporter-choice tier, not a classifier accuracy problem.
+5. Qwen returns nested object arrays as JSON strings in tool calls; parse before validation (was a retry → timeout path).
+
+**Status:** `feat/qr-lean` merged to main (afc45c3). `feat/qr-lean-carry` (5738fe4) better than lean on Doppler, AAA carry, pancreatic staging and "No PE"; equal on MRI brain; weaker on pneumonia follow-up (1/2 vs 2/2). Hold until the options panel exists, so borderline items have a home.
