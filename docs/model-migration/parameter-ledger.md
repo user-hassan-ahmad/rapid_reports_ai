@@ -1401,3 +1401,47 @@ Smoke before the A/B (prod case, 1 run): SMA/PV encasement and hepatic deposits 
 for: one bundled negative ("SMA or portal vein encasement"); the fallback misjudging coverage
 for the "CBD compression" line; the generator carrying negatives into the impression despite
 `carry_negatives=[]`.
+
+**L-45 A/B results** (2026-09-29). Arm B: silent_staging × 2 runs (22) + varied_10 × 1 (10).
+Arm A: not re-run in full. Production sheets carry no If-present list, so A states none of
+these negatives by construction; prod report 064ff6f1 is the real-case A. A was run on the three
+cases where B lost a section (6 runs). Run count cut from 3 to 2, reusing existing outputs
+(Hassan).
+
+| Prediction | Predicted (B) | Observed (B) | |
+|---|---|---|---|
+| Silent: ≥1 negative stated in FINDINGS | ≥5/6 cases, majority of runs | **5/6 in ≥1 run; 3/6 in both runs** (pancreas 2/2, lung 2/2, diverticulitis 2/2, cerebellar 1/2, PE 1/2, MSCC 0/2) | partly contradicted |
+| Contradicting negative in a report | 0 | **0** (by hand). Qwen dropped every contradicted candidate: varied_10 PE RV dilatation, diverticulitis collection, brain-mets haemorrhage, MSCC epidural | held |
+| Expected-consequence negative anywhere | 0 | 0 | held |
+| Stated negatives in the impression | only when carried | 2 of 32 leaked uncarried (lung atelectasis, diverticulitis obstruction); carried ones (diverticulitis "no abscess/perforation", lung contralateral nodes) change the interpretation | mostly held |
+| Offered per silent case (median) | 1–2 | 1.5 | held |
+| Hedged: stated | 0 | **0/6** (offered 0–3) | held |
+| Controls: new negatives or options | 0 | **0/4** | held |
+| Regression gate | 100% | **29/32**: 3 missing TECHNIQUE (cerebellar ×2, diverticulitis ×1). Their sheets' Sections line omits it. A 0/7 sheets, prod 0/10 in the last 10 days vs B 2/33 sheets | **contradicted: likely directive side effect** |
+| Analyser median | within +1.5 s | 11.0 s (silent), 10.3 s (varied); two outliers of 68/74 s under 2-stream load | held (no A median to compare) |
+| Brief median | within +0.5 s | 1.5 s (silent), 2.5 s (varied); one 10.3 s plan timeout under load | held |
+
+**Quality notes:**
+- The pancreas case is fixed: SMA, SMV and PV encasement plus hepatic deposits stated in 2/2
+  runs, and the impression says "No vascular encasement".
+- Several stated negatives are **bundled** ("SMV *or* portal vein encasement"). The directive's
+  one-finding rule is not always followed, and `_split_bundled` covers only mandatory
+  negatives.
+- **MSCC key misses** in both runs (as in the coverage check): the negatives were only offered.
+- Some offered items are weak or odd ("No liver dome lesion", "No hemothorax", US spelling).
+  They are offered only, and hidden until the side panel exists.
+
+**Bugs found and fixed during the run:**
+- A negative under two keys was stated twice (e.g. diverticulitis);
+- passed-through options started lowercase;
+- **the fallback ran on production sheets** (A offered 3–4 per case), now gated on an
+  If-present list;
+- the plan prompt changed with the directive off, now conditional.
+
+Production's report path is now unchanged until `finding_negatives` joins
+`PRODUCTION_DIRECTIVES`.
+
+**Open before sign-off:**
+1. The TECHNIQUE drop (about 8% of B sheets).
+2. Bundled stated negatives: extend `_split_bundled` to candidates.
+3. MSCC-type misses, where the key is too specific.
