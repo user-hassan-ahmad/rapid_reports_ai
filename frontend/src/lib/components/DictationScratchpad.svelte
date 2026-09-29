@@ -1512,7 +1512,9 @@
 					clinical_history: clinicalHistory,
 					mode: 'clean', // review reads the verbatim text
 					parts,
-					...(labConfig && parts === 'coverage' ? { coverage_debug: labConfig.coverageDebug } : {})
+					...(labConfig && parts === 'coverage'
+						? { coverage_debug: labConfig.coverageDebug, coverage_candidate: 'jev' }
+						: {})
 				})
 			}).then((r) => r.json());
 		// Two halves in parallel, each applied as it lands: the section pills (coverage,
@@ -1590,7 +1592,8 @@
 				: `?pcm=1&sr=${sr}`;
 			const kt = labConfig ? keytermQuery(await caseKeyterms()) : '';
 			const st = labConfig && scanType ? `&st=${encodeURIComponent(scanType)}` : '';
-			const wsUrl = `${wsUrlBase}/api/transcribe${tokenPart}${kt}${st}`;
+			const v2 = labConfig ? '&v2=1' : ''; // the backend's half of the package, per connection
+			const wsUrl = `${wsUrlBase}/api/transcribe${tokenPart}${kt}${st}${v2}`;
 			websocket = new WebSocket(wsUrl);
 
 			workletNode.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {

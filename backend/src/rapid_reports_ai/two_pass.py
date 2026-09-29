@@ -306,10 +306,14 @@ class TwoPass:
         return rev
 
 
-def two_pass_from_env(sample_rate: int, keyterms: list[str] | None, scan_type: str) -> tuple[TwoPass, Any] | None:
-    """(TwoPass, http client to close) with the real engines, or None unless RR_TWO_PASS=1 and
-    RR_TRIAGE_DEBUG=1 (lab). gpt-4o-transcribe is skipped without OPENAI_API_KEY."""
-    if not (os.environ.get("RR_TWO_PASS") == "1" and os.environ.get("RR_TRIAGE_DEBUG") == "1"):
+def two_pass_from_env(sample_rate: int, keyterms: list[str] | None, scan_type: str,
+                      enabled: bool | None = None) -> tuple[TwoPass, Any] | None:
+    """(TwoPass, http client to close) with the real engines, or None when off: `enabled` from the
+    connection's settings (dictation_v2), else the lab env (RR_TWO_PASS=1 with RR_TRIAGE_DEBUG=1).
+    gpt-4o-transcribe is skipped without OPENAI_API_KEY."""
+    if enabled is None:
+        enabled = os.environ.get("RR_TWO_PASS") == "1" and os.environ.get("RR_TRIAGE_DEBUG") == "1"
+    if not enabled:
         return None
     import httpx
     from .deepgram_spelling import UK_SPELLING

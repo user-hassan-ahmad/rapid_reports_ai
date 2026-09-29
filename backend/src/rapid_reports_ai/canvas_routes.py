@@ -30,6 +30,7 @@ from .asr_repair import build_lexicon, repair
 from .case_keyterms import KEYTERM_SYSTEM_PROMPT, KEYTERM_USER_TEMPLATE, filter_keyterms
 from .fast_append import clean_verbatim, code_route, route_bundle
 from .spoken_format import format_heading_lines, opens_with_heading, resolve_colon
+from .dictation_v2 import v2_allowed
 from .lean_fidelity import fidelity_violation, verbatim_append
 from .lean_polish import LEAN_SYSTEM_PROMPT, LEAN_USER_TEMPLATE
 from .jev_questions import FAST_APPEND_BANDS, QSET_VERSION, ROUTE_THRESHOLD_DEFAULT
@@ -140,6 +141,8 @@ class CanvasReviewRequest(BaseModel):
     mode: str = "clean"
     # Lab-only (RR_TRIAGE_DEBUG=1): run both coverage candidates and attach the trace.
     coverage_debug: bool = False
+    # The dictation package asks for Jev pills; honoured only where the package is allowed.
+    coverage_candidate: Optional[Literal["jev", "qwen"]] = None
     # "coverage" / "prompts": run one half only, so the section pills never wait for the
     # IntelliPrompts call (the scratchpad sends both halves in parallel). "all": as before.
     parts: Literal["all", "coverage", "prompts"] = "all"
@@ -1179,6 +1182,8 @@ async def review_scratchpad(
         raise HTTPException(status_code=503, detail="Service not available. Contact your administrator.")
 
     selected = _coverage_candidate()
+    if request.coverage_candidate and v2_allowed() and (request.coverage_candidate != "jev" or os.environ.get("OPENROUTER_API_KEY")):
+        selected = request.coverage_candidate
     other = "qwen" if selected == "jev" else "jev"
     debug = _triage_debug_enabled() and request.coverage_debug
 
@@ -1361,7 +1366,7 @@ class BundleRouteResponse(BaseModel):
 async def route_utterance_bundle(request: BundleRequest, current_user: User = Depends(get_current_user)):
     """Lab only: one Jev bundle per Deepgram final, then the band router. Any failure
     routes to polish; the response never errors because of Jev."""
-    if not _triage_debug_enabled():
+    if not v2_allowed():  # the dictation package (rr_dictation_v2) or the lab
         raise HTTPException(status_code=404, detail="Not Found")
     decision_id = uuid.uuid4().hex[:12]
     d: BundleDecision | BaseException | None = None
@@ -1525,7 +1530,7 @@ def _drop_repeated_correction(active: str, span: str, new: str) -> str:
 async def polish_span(request: PolishSpanRequest, current_user: User = Depends(get_current_user)):
     """Lab only: rewrite one span with the lean prompt. Fired together with /bundle; the
     bundle's route decides whether the result is used. Never errors because of the model."""
-    if not _triage_debug_enabled():
+    if not v2_allowed():  # the dictation package (rr_dictation_v2) or the lab
         raise HTTPException(status_code=404, detail="Not Found")
     preceding = "\n\n".join(x for x in (request.context, request.span) if x)
     if code_route(request.new, preceding) is not None:
@@ -1617,7 +1622,7 @@ _KEYTERM_CACHE: dict[str, list[str]] = {}
 async def case_keyterms(request: KeytermRequest, current_user: User = Depends(get_current_user)):
     """Lab only: keyterms for this case, generated once when the workspace is set up
     (never on the dictation path), filtered by code, cached per case."""
-    if not _triage_debug_enabled():
+    if not v2_allowed():  # the dictation package (rr_dictation_v2) or the lab
         raise HTTPException(status_code=404, detail="Not Found")
     key = hashlib.sha256(json.dumps([request.scan_type, request.clinical_history, request.sections]).encode()).hexdigest()
     if key in _KEYTERM_CACHE:

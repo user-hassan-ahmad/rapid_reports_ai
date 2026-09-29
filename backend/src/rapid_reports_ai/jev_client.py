@@ -107,6 +107,7 @@ def warmup_wanted() -> bool:
         return False
     return (
         os.environ.get("RR_TRIAGE_DEBUG") == "1"
+        or os.environ.get("RR_DICTATION_V2") == "1"  # the dictation package calls Jev per utterance
         or os.environ.get("RR_TRIAGE_SHADOW") == "1"
         or os.environ.get("RR_COVERAGE_CANDIDATE", "").strip().lower() == "jev"
     )

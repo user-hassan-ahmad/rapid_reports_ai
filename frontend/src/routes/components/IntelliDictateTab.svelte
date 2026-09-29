@@ -13,6 +13,7 @@ import { appliedOptionIds, type ReportOption } from '$lib/utils/impressionOption
 import type { ChunkTrace, CoverageTrace, LabConfig, PillThresholds, ProcessTrace } from '$lib/dictation-lab/types';
 import type { DecisionRecord, OutcomeEvent } from '$lib/dictation-lab/decisionFirst';
 import { pillState } from '$lib/dictation-lab/coverage';
+import { effectiveConfig } from '$lib/dictation-lab/package';
 
 	let toast: { show: (msg: string) => void } | undefined;
 
@@ -121,6 +122,9 @@ import { pillState } from '$lib/dictation-lab/coverage';
 	};
 	/** Dictation Lab only; the home page never sets these. */
 	export let labConfig: LabConfig | null = null;
+	// The dictation package: the lab page's config, or the package when rr_dictation_v2 is on,
+	// or null (production dictation as before). Plan 2026-09-29-dictation-v2-release.
+	$: dictationConfig = effectiveConfig(labConfig);
 	export let onProcessTrace: (trace: ProcessTrace) => void = () => {};
 	/** Dictation Lab only: three-state pills from coverage scores. null = binary pills as in production. */
 	export let pillThresholds: PillThresholds | null = null;
@@ -362,7 +366,7 @@ import { pillState } from '$lib/dictation-lab/coverage';
 		}
 		// Lab: the model check (~0.6 s p50 on the labelled audit cases) rides the 600 ms call,
 		// so a flag lands ~1.2 s after a pause instead of 2.5 s + model. Production: unchanged.
-		if (labConfig) {
+		if (dictationConfig) {
 			integrityTimer = setTimeout(() => runIntegrityCheck(content, true), 600);
 			return;
 		}
@@ -916,7 +920,7 @@ import { pillState } from '$lib/dictation-lab/coverage';
 			onCoveredSectionsChange={handleCoveredSectionsChange}
 			onPromptsChange={handlePromptsChange}
 			onScratchpadClear={() => { coveredSections = new Set(); activePrompts = []; }}
-			{labConfig}
+			labConfig={dictationConfig}
 			{onProcessTrace}
 			onCoverageScoresChange={(s) => { coverageScores = s; }}
 			{onCoverageTrace}

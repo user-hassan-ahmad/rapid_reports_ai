@@ -4874,7 +4874,11 @@ async def websocket_transcribe(websocket: WebSocket):
     from rapid_reports_ai import jev_client
     jev_client.schedule_warm_up()
     from rapid_reports_ai.fast_append import asr_confidence
-    _lab_asr = os.environ.get("RR_TRIAGE_DEBUG") == "1"
+    # Per connection: the dictation package (rr_dictation_v2) for a client that asks on a server
+    # that allows it; otherwise the env as before (dictation_v2.socket_settings).
+    from rapid_reports_ai.dictation_v2 import socket_settings
+    sock = socket_settings(websocket.query_params)
+    _lab_asr = sock.asr_fields
 
     import time as _perf
     _t_session = _perf.perf_counter()
@@ -4929,23 +4933,22 @@ async def websocket_transcribe(websocket: WebSocket):
     # "colon" is an organ (and "period" is a word), so the lab runs with it off: the polish
     # punctuates anyway, and new line / new paragraph / full stop are handled in our own
     # lexicon. Production keeps the default until the lab shows the timer path is unaffected.
-    dictation_on = os.environ.get("DEEPGRAM_DICTATION", "1") != "0"
+    dictation_on = sock.dictation
     # Deepgram returns American spelling even with language=en-GB; its find-and-replace
     # gives British spelling (deepgram_spelling). Off unless DEEPGRAM_UK_SPELLING=1.
     from rapid_reports_ai.deepgram_spelling import restore_sentence_case
-    uk_spelling = os.environ.get("DEEPGRAM_UK_SPELLING") == "1"
+    uk_spelling = sock.uk_spelling
     # Spoken punctuation words and disc levels, converted in code for every path (the
     # context-dependent 'colon' is resolved later, against the scratchpad). Off unless
     # DEEPGRAM_SPOKEN_FORMAT=1.
     from rapid_reports_ai.spoken_format import apply_spoken_format
-    spoken_format = os.environ.get("DEEPGRAM_SPOKEN_FORMAT") == "1"
+    spoken_format = sock.spoken_format
     # Model, language, formatting, keyterms and privacy settings: deepgram_config (tested).
     from rapid_reports_ai.deepgram_config import deepgram_listen_url
     # Per-case keyterms (lab): generated at workspace setup, passed as kt=…; the core list
     # otherwise. Only with DEEPGRAM_CASE_KEYTERMS=1.
     from rapid_reports_ai.case_keyterms import keyterms_for_socket
-    case_keyterms = keyterms_for_socket(websocket.query_params.getlist("kt"),
-                                        os.environ.get("DEEPGRAM_CASE_KEYTERMS") == "1")
+    case_keyterms = keyterms_for_socket(websocket.query_params.getlist("kt"), sock.case_keyterms)
     deepgram_url = deepgram_listen_url(
         sample_rate=pcm_sample_rate if use_pcm else None,
         dictation=dictation_on,
@@ -4962,15 +4965,16 @@ async def websocket_transcribe(websocket: WebSocket):
         print(f"🎙️ Lab audio capture: {lab_rec.dir}")
     # Lab: force a final once Deepgram has heard a pause with no new word (deepgram_finalize;
     # its own endpointing let one final run 17 s across two 2-second pauses).
-    from rapid_reports_ai.deepgram_finalize import AudioLevel, FinalizeTrigger, finalize_gap_from_env
-    _gap = finalize_gap_from_env() if _lab_asr else None
+    from rapid_reports_ai.deepgram_finalize import AudioLevel, FinalizeTrigger
+    _gap = sock.finalize_gap_s
     finalize_trigger = FinalizeTrigger(_gap) if _gap else None
     # never flush while the speaker is mid-word: the audio is immediate, Deepgram's words are not
     audio_level = AudioLevel(pcm_sample_rate) if finalize_trigger and use_pcm else None
     # Lab: two-pass ASR — each live final heard again (Deepgram batch + gpt-4o-transcribe) and
     # disagreements settled by Jev; results arrive later as a revision (two_pass; RR_TWO_PASS=1).
     from rapid_reports_ai.two_pass import two_pass_from_env
-    _tp = two_pass_from_env(pcm_sample_rate, case_keyterms, websocket.query_params.get("st", "")) if use_pcm else None
+    _tp = two_pass_from_env(pcm_sample_rate, case_keyterms, websocket.query_params.get("st", ""),
+                            enabled=sock.two_pass) if use_pcm else None
     two_pass, two_pass_http = _tp if _tp else (None, None)
     two_pass_tasks: set = set()
     final_seq = [0]
