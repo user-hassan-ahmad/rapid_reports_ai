@@ -8,7 +8,7 @@ the worst kind of error in a report. The check is code (no model), and it fails 
 violation the span is kept as it was and the new words are appended as said, so the worst
 case is untidy text, which the audit flags if it contradicts.
 
-Only numbers, left/right and whole statements are checked; wording repairs pass.
+Only numbers, left/right, negations and whole statements are checked; wording repairs pass.
 """
 from __future__ import annotations
 
@@ -21,6 +21,8 @@ CORRECTION_CUE = re.compile(
 )
 _NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _SIDE = re.compile(r"\b(left|right)\b", re.IGNORECASE)
+# Words that make a statement negative: losing one flips its meaning ("no effusion" → "effusion").
+_NEGATION = re.compile(r"\b(?:no|not|without|absent|negative)\b", re.IGNORECASE)
 _WORD = re.compile(r"[a-z]{4,}")
 _SPLIT = re.compile(r"(?<=[.?!:])\s+|\n+")
 KEPT_OVERLAP = 0.5  # share of a statement's content words found in one output statement
@@ -72,6 +74,8 @@ def fidelity_violation(span: str, new: str, out: str, committed_edits: list) -> 
         return "lost_number"
     if _lost(_count(_SIDE, before), _count(_SIDE, out)):
         return "lost_side"
+    if _lost(_count(_NEGATION, before), _count(_NEGATION, out)):
+        return "lost_negation"
     out_statements = [set(_WORD.findall(s.lower())) for s in _statements(out)]
     if not all(_kept(s, out_statements) for s in _statements(span)):
         return "lost_statement"

@@ -78,3 +78,17 @@ def test_a_bare_cue_ending_the_span_counts_for_the_next_words():
 def test_a_cue_earlier_in_the_span_does_not():
     assert fidelity_violation("Actually, the spleen is normal. The duct measures 15 mm.", "No free fluid.",
                               "The spleen is normal. No free fluid.", []) is not None
+
+
+def test_a_negative_replaced_by_its_positive_is_caught():
+    # lab 2026-09-29: "Small left pleural effusion." replaced "No pleural effusion." — the
+    # words overlap, so the statement looked kept; the negation did not survive.
+    span = "The spleen measures 14 cm and the liver measures 18 cm. No pleural effusion."
+    assert fidelity_violation(span, "Small left pleural effusion.",
+                              "The spleen measures 14 cm and the liver measures 18 cm. Small left pleural effusion.",
+                              []) == "lost_negation"
+
+
+def test_negations_that_survive_rewording_pass():
+    assert fidelity_violation("There is no pleural effusion.", "No pneumothorax.",
+                              "No pleural effusion. No pneumothorax.", []) is None
