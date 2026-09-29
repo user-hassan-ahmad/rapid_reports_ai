@@ -139,7 +139,8 @@ def test_asr_confidence_is_numbers_only():
            "words": [{"word": "5", "confidence": 0.99}, {"word": "cm", "confidence": 0.98},
                      {"word": "intraperitoneal", "confidence": 0.612345}, {"word": "bleed", "confidence": 0.97}]}
     c = asr_confidence(alt)
-    assert c == {"asr_conf": 0.91, "asr_word_confs": [0.99, 0.98, 0.6123, 0.97], "asr_min_conf": 0.6123}
+    assert c == {"asr_conf": 0.91, "asr_word_confs": [0.99, 0.98, 0.6123, 0.97], "asr_min_conf": 0.6123,
+                 "asr_min_conf_all": 0.6123}
     assert "intraperitoneal" not in repr(c)
 
 
@@ -316,3 +317,38 @@ def test_a_bare_paragraph_is_the_command(utt):
 
 def test_paragraph_inside_a_sentence_is_not_a_command():
     assert code_route("The paragraph structure is normal.", "") is None
+
+
+def _word(w, c):
+    return {"word": w, "punctuated_word": w, "confidence": c}
+
+
+def test_unit_words_do_not_set_the_asr_gate():
+    # lab 2026-09-29: the stream scored "millimetres"/"mm" 0.64–0.79 in nearly every measurement
+    # sentence (batch: 0.97–1.0 on the same audio) — formatting doubt, not mishearing.
+    a = {"confidence": 0.99, "words": [_word("measures", 0.99), _word("23", 0.95), _word("millimetres", 0.64)]}
+    r = asr_confidence(a)
+    assert r["asr_min_conf"] == 0.95 and r["asr_min_conf_all"] == 0.64
+
+
+def test_a_misheard_content_word_still_sets_it():
+    a = {"confidence": 0.9, "words": [_word("hydrodense", 0.41), _word("mm", 0.6)]}
+    assert asr_confidence(a)["asr_min_conf"] == 0.41
+
+
+def test_units_alone_still_count():
+    assert asr_confidence({"words": [_word("mm", 0.6)]})["asr_min_conf"] == 0.6
+
+
+@pytest.mark.parametrize("said,written", [
+    ("measures 23 millimetres, previously 31 millimetres.", "measures 23 mm, previously 31 mm."),
+    ("The spleen measures 14 centimetres.", "The spleen measures 14 cm."),
+    ("a 12 millimeter nodule", "a 12 mm nodule"),
+    ("4.5 centimeters", "4.5 cm"),
+])
+def test_units_after_a_number_are_abbreviated(said, written):
+    assert clean_verbatim(said) == written
+
+
+def test_a_unit_word_without_a_number_is_left_alone():
+    assert clean_verbatim("Measured in millimetres throughout.") == "Measured in millimetres throughout."

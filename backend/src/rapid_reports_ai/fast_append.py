@@ -37,6 +37,16 @@ _FILLER = re.compile(r"(?<![\w'-])(?:[Uu]m+|[Uu]h+m*|[Ee]rm+|[Ee]r|[Aa]h+|[Hh]m+
 _TERMINAL = re.compile(r"(?:[.?!][\"')\]]*|\n)$")
 
 
+_UNIT_WORD = re.compile(r"mm|cm|ml|millimet(?:re|er)s?|centimet(?:re|er)s?|millilit(?:re|er)s?")
+# A unit after a number is written as radiology writes it (Deepgram spells it out or not,
+# inconsistently, on the same audio: lab 2026-09-29).
+_UNIT_AFTER_NUMBER = [
+    (re.compile(r"(\d)\s*millimet(?:re|er)s?\b", re.IGNORECASE), r"\1 mm"),
+    (re.compile(r"(\d)\s*centimet(?:re|er)s?\b", re.IGNORECASE), r"\1 cm"),
+    (re.compile(r"(\d)\s*millilit(?:re|er)s?\b", re.IGNORECASE), r"\1 ml"),
+]
+
+
 def clean_verbatim(text: str) -> str:
     """Deepgram text → scratchpad text: lexicon, spoken punctuation and disc levels,
     fillers out, whitespace tidied. The context-dependent 'colon' is resolved later."""
@@ -44,6 +54,8 @@ def clean_verbatim(text: str) -> str:
     for pattern, replacement in _FORMATTING_RULES:
         s = pattern.sub(replacement, s)
     s = apply_spoken_format(s)
+    for pattern, unit in _UNIT_AFTER_NUMBER:
+        s = pattern.sub(unit, s)
     s = _FILLER.sub("", s)
     s = re.sub(r"[ \t]+", " ", s)
     s = re.sub(r" *\n *", "\n", s)
@@ -192,13 +204,20 @@ def asr_confidence(alternative: dict) -> dict | None:
     words = alternative.get("words") if isinstance(alternative, dict) else None
     if not isinstance(words, list):
         return None
-    confs = [round(float(w["confidence"]), 4) for w in words
-             if isinstance(w, dict) and isinstance(w.get("confidence"), (int, float))]
-    if not confs:
+    scored = [(str(w.get("word", "")), round(float(w["confidence"]), 4)) for w in words
+              if isinstance(w, dict) and isinstance(w.get("confidence"), (int, float))]
+    if not scored:
         return None
+    confs = [c for _, c in scored]
+    # Unit words do not set the gate: the stream scored "millimetres"/"mm" 0.64–0.79 in nearly
+    # every measurement sentence while batch scored the same audio 0.97–1.0 (lab 2026-09-29) —
+    # doubt over the written form, not the sound. A polish cannot hear a unit either; an
+    # implausible one is the audit's job.
+    content = [c for w, c in scored if _UNIT_WORD.fullmatch(w.lower().strip(".,;:")) is None] or confs
     conf = alternative.get("confidence")
     return {
         "asr_conf": round(float(conf), 4) if isinstance(conf, (int, float)) else None,
         "asr_word_confs": confs,
-        "asr_min_conf": min(confs),
+        "asr_min_conf": min(content),
+        "asr_min_conf_all": min(confs),
     }
