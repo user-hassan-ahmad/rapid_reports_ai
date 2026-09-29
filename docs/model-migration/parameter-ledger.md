@@ -1381,3 +1381,23 @@ sits in the gap. n is small (3 hedged), so re-check on the A/B.
 
 **Gate:** the link passes (coverage and false triggers). Whether the negatives are good enough
 is left to the A/B and the hand read, with the Qwen check as the safety net.
+
+**L-45 A/B predictions** (written 2026-09-29 before any A/B run; the brief is rev 2 with the fallback):
+
+| Measure | A | B |
+|---|---|---|
+| Silent (6): ≥1 finding-linked negative stated in FINDINGS | ~0/6 | ≥5/6 cases in the majority of runs |
+| Report negative contradicting the dictation | 0 | 0 |
+| Expected-consequence negative anywhere | n/a | 0 |
+| Negatives in the impression | as generator does today | median ≤1 per case, each changing interpretation |
+| Offered finding negatives per silent case (median) | 0 | 1–2 |
+| Hedged (3): stated finding negatives | 0 | 0 (offered at most) |
+| Controls (2): new negatives or options | 0 | 0 |
+| Regression gate (varied_10) | 100% | 100% |
+| Analyser median latency | baseline | within +1.5 s |
+| Brief reconcile median | baseline | within +0.5 s (fallback in parallel) |
+
+Smoke before the A/B (prod case, 1 run): SMA/PV encasement and hepatic deposits stated. Watch
+for: one bundled negative ("SMA or portal vein encasement"); the fallback misjudging coverage
+for the "CBD compression" line; the generator carrying negatives into the impression despite
+`carry_negatives=[]`.
