@@ -43,5 +43,5 @@
 
 - **Task 1 done** (`cac5468`): `main` merged; 840 → 855 backend and 131 frontend tests pass; the type-check baseline is unchanged. Live on `main`'s models: lean polish 458 ms, bundle 457 ms, Jev pills 251 ms, IntelliPrompts 538 ms.
 - **Task 2 done** (`9fee762`, `2dcf364`). On a server with only `RR_DICTATION_V2=1`, a normal client gets production dictation unchanged, and a `v2=1` client gets the package (forced finals + guard, two-pass revisions, word confidences). No audio capture either way. Engine calls retry once on a dropped connection.
-- **Task 3 deferred to a follow-up PR.** The retired experiments are dormant behind lab-only flags and entangled with shared modules; pruning them inside the release adds risk for no user-facing gain.
-- **Task 4:** the user's smoke test on the normal tab, then the PR.
+- **Task 3 done in a follow-up PR** (branch `chore/prune-dictation-experiments`, 2026-09-29): the Jev tier-2 audit, the boundary front door (`/utterance`), and the `/process` triage route/debug/shadow modes (Qwen candidate, traces, labels, fixture endpoint, lab strategy/summary/export) are removed; about 3,700 lines. Kept: `JevTriager`, the formatting lexicon, the triage and audit fixtures as eval sets, audio capture and the lab page.
+- **Task 4 done:** shipped to production 2026-09-29, default-on, `RR_DICTATION_V2=1` as the kill switch.
