@@ -130,35 +130,18 @@ async def test_borderline_finding_offers_its_core_negatives_with_a_reason(monkey
 
 
 @pytest.mark.asyncio
-async def test_plan_carries_only_stated_negatives_it_chose(monkeypatch):
+async def test_finding_negatives_never_reach_the_impression_plan(monkeypatch):
+    # Negatives stay in FINDINGS by default (2026-09-30): the plan is not shown them and cannot carry them.
     _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(6)])
     seen = {}
-    async def fake_plan(scan_type, history, items, recs, cand_negs=()):
-        seen["cands"] = list(cand_negs)
-        # 0 = "No midline shift" (stated), 1 = "No uncal herniation" (offered): only 0 may be carried
-        return qb.ImpressionPlan(recommendations=[], impression=[0], carry_negatives=[0, 1])
+    async def fake_plan(scan_type, history, items, recs):
+        seen["items"] = list(items)
+        return qb.ImpressionPlan(recommendations=[], impression=[0])
     monkeypatch.setattr(qb, "_plan", fake_plan)
     b = await qb.compile_brief(SHEET_C, "CT head", "10 mm right acute subdural")
-    assert seen["cands"][:2] == ["No midline shift", "No uncal herniation"]
+    assert seen["items"] == ["10 mm right acute subdural"]
     carry = b.text.split("Carry forward")[1].split("\n")[0]
-    assert '"No midline shift"' in carry and "No uncal herniation" not in carry
-    assert b.decisions["impression_plan"]["carry_negatives"] == ["No midline shift"]
-
-
-@pytest.mark.asyncio
-async def test_plan_prompt_changes_only_when_there_are_candidate_negatives(monkeypatch):
-    seen = []
-    async def fake_run(**kw):
-        seen.append((kw["system_prompt"], kw["user_prompt"]))
-        class R:
-            output = qb.ImpressionPlan(recommendations=[], impression=[])
-        return R()
-    monkeypatch.setattr(qb, "_run_agent_with_model", fake_run)
-    await qb._plan("CT", "h", ["A mass"], [])
-    await qb._plan("CT", "h", ["A mass"], [], ["No SMV contact"])
-    (sys0, user0), (sys1, user1) = seen
-    assert "carry_negatives" not in sys0 and "CANDIDATE NEGATIVES" not in user0      # production: byte-identical
-    assert "changes the interpretation of a carried finding" in sys1 and "0. No SMV contact" in user1
+    assert "No midline shift" not in carry and 'KEEP: "No midline shift"' in b.text
 
 
 from rapid_reports_ai import quick_report_generator as qrg
@@ -231,7 +214,7 @@ FINDINGS_R5 = "10 mm right acute subdural. 12 mm left adrenal nodule"
 
 def _stub_fallback(monkeypatch, carried, fallback):
     _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(6)])
-    async def fake_plan(scan_type, history, items, recs, cand_negs=()):
+    async def fake_plan(scan_type, history, items, recs):
         return qb.ImpressionPlan(recommendations=[], impression=carried)
     monkeypatch.setattr(qb, "_plan", fake_plan)
     monkeypatch.setattr(qb, "_fallback", fallback)

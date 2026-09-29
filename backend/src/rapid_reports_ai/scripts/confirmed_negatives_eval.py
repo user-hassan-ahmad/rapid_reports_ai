@@ -53,7 +53,6 @@ async def run_case(case: dict, arm: str) -> dict:
         "stated": stated, "stated_in_findings": [s for s in stated if s.lower().rstrip(".") in findings],
         "offered": [o["sentence"] for o in res.get("brief_options") or [] if o["kind"] == "finding_negative"],
         "do_not_assert": [c["text"] for c in conf if c["outcome"] == "do_not_assert"],
-        "carried": (dec.get("impression_plan") or {}).get("carry_negatives", []),
         "routes": conf, "gate": gate.run_gate(report),
         "report": report, "sheet": sheet["skill_sheet"], "brief": res.get("brief_text"),
     }
@@ -107,7 +106,7 @@ async def main() -> None:
             r["run"] = run
             rows.append(r)
             print(f"[{a.arm} r{run}] {c['name']:<30} stated={len(r['stated'])} in_findings={len(r['stated_in_findings'])} "
-                  f"offered={len(r['offered'])} dna={len(r['do_not_assert'])} carried={len(r['carried'])} "
+                  f"offered={len(r['offered'])} dna={len(r['do_not_assert'])} "
                   f"gate={'ok' if r['gate']['passed'] else r['gate']['failures']} "
                   f"analyser={r['analyser_ms']/1000:.1f}s", flush=True)
     path = out_dir / f"{stamp}_arm{a.arm}_{Path(a.cases_file).stem}.json"

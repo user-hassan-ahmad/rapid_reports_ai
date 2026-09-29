@@ -260,8 +260,7 @@ class ImpressionPlan(BaseModel):
     impression: List[int]
     optional_impression: List[int] = []
     findings_only: List[int] = []
-    carry_negatives: List[int] = []
-    @field_validator("recommendations", "impression", "optional_impression", "findings_only", "carry_negatives", mode="before")
+    @field_validator("recommendations", "impression", "optional_impression", "findings_only", mode="before")
     @classmethod
     def _parse_stringified(cls, v):
         return _unstring(v)
@@ -277,13 +276,11 @@ recommendations — decide every candidate by its kind; a candidate whose condit
 - CORRELATION: include only retrieving prior imaging to compare against; exclude laboratory tests, clinical monitoring, treatment decisions and bare clinical correlation.
 Use optional only when a reasonable consultant could go either way on this case. For every exclude, set exclude_reason: condition_unmet (the findings do not meet its condition), routine_workup (routine workup of a diagnosis this study has already made), not_radiology (laboratory tests, monitoring, treatment, bare correlation) or duplicate. Give a one-line reason.
 
-impression — the numbers of the findings the impression must carry: the finding(s) that answer the clinical question, findings that change management or urgency, and negatives that answer the clinical question.
+impression — the numbers of the findings the impression must carry: the finding(s) that answer the clinical question, findings that change management or urgency, and, only when no dictated positive finding answers the clinical question, the one negative that does. Never carry more than one negative.
 optional_impression — findings with a management consequence that a reasonable consultant could either carry or leave in FINDINGS. Never use it for normal structures, devices or negatives.
 findings_only — findings that stay in FINDINGS: incidental or background findings needing no action, devices and procedure notes, normal structures the question did not ask about.
 A finding may be in none of the lists when either placement is acceptable. Never place a number in two lists."""
-# Appended only when the sheet has finding-linked negatives, so production prompts are unchanged.
-PLAN_NEGATIVES_RULE = """
-carry_negatives — the numbers of CANDIDATE NEGATIVES the impression must carry. A negative is carried only when it changes the interpretation of a carried finding; never carry a negative for any other reason. Most cases carry none."""
+
 PLAN_TIMEOUT_S = 10.0
 MAX_OPTIONS = 3
 _BAR_KINDS = ("IMAGING:", "TISSUE:")
@@ -390,16 +387,12 @@ def split_findings(findings: str) -> List[str]:
     return parts
 
 
-async def _plan(scan_type: str, clinical_history: str, items: List[str], recs: List[str],
-                cand_negs: List[str] = ()) -> ImpressionPlan:
+async def _plan(scan_type: str, clinical_history: str, items: List[str], recs: List[str]) -> ImpressionPlan:
     user = (f"SCAN TYPE: {scan_type}\nCLINICAL QUESTION (context only): {clinical_history or '(not given)'}\n\n"
             "DICTATED FINDINGS:\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(items))
             + "\n\nCANDIDATE RECOMMENDATIONS:\n" + ("\n".join(f"{i}. {t}" for i, t in enumerate(recs)) or "(none)"))
-    if cand_negs:
-        user += ("\n\nCANDIDATE NEGATIVES — apply only if their finding is reported:\n"
-                 + "\n".join(f"{i}. {t}" for i, t in enumerate(cand_negs)))
     r = await asyncio.wait_for(_run_agent_with_model(
-        model_name=QWEN, output_type=ImpressionPlan, system_prompt=PLAN_SYS + (PLAN_NEGATIVES_RULE if cand_negs else ""),
+        model_name=QWEN, output_type=ImpressionPlan, system_prompt=PLAN_SYS,
         user_prompt=user, api_key="",
         model_settings={"temperature": 0, "max_tokens": 8000, "reasoning_effort": "low"}), PLAN_TIMEOUT_S)
     return r.output
@@ -457,7 +450,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
 
     async def plan_or_none():
         try:
-            return await _plan(scan_type, clinical_history, items, recs, [c.text for c in cands])
+            return await _plan(scan_type, clinical_history, items, recs)
         except Exception as e:  # the brief still compiles; recommendations fall back to Jev alone
             logger.warning("impression plan failed (%s: %s)", type(e).__name__, str(e)[:200])
             return None
@@ -596,17 +589,12 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     if plan and items:
         pick = lambda idx: [items[i] for i in dict.fromkeys(idx) if 0 <= i < len(items)]
         carry, only = pick(plan.impression), pick(plan.findings_only)
-        # A finding-linked negative reaches the impression only if stated and chosen by the plan.
-        carry_negs = [cands[i].text for i in dict.fromkeys(plan.carry_negatives)
-                      if 0 <= i < len(cands) and cands[i].text in stated]
-        carry = carry + carry_negs
         # Optional findings are left unlisted: the generator places them as it would without a
         # plan (listing them as findings-only dropped findings the impression needed).
         opt = [t for t in pick(plan.optional_impression) if t not in carry]
         room = MAX_OPTIONS - len(decisions["options"])
         decisions["options"].extend({"kind": "impression", "text": t, "reason": ""} for t in opt[:room])
-        decisions["impression_plan"] = {"carry": carry, "findings_only": only, "optional": opt[:room],
-                                       "carry_negatives": carry_negs}
+        decisions["impression_plan"] = {"carry": carry, "findings_only": only, "optional": opt[:room]}
         plan_lines = []
         if carry:
             plan_lines.append("- **Carry forward (the impression addresses each):** " + " ".join(f'"{t}"' for t in carry))

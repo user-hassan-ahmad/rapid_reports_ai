@@ -68,7 +68,7 @@ def _stub(monkeypatch, jev: dict, qwen: qb.QwenDecisions, plan: qb.ImpressionPla
         return [[n] for n in negs]
     monkeypatch.setattr(qb, "_jev", fake_jev)
     monkeypatch.setattr(qb, "_qwen", fake_qwen)
-    async def fake_plan(scan_type, history, items, recs, cand_negs=()):
+    async def fake_plan(scan_type, history, items, recs):
         if plan is None:
             raise RuntimeError("no plan in this test")
         return plan
