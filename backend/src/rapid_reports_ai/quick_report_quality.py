@@ -166,3 +166,42 @@ async def repair_report(report: str, findings: str, problems: List[str]) -> Repa
         else:
             skipped += 1
     return RepairResult(report=out, applied=applied, skipped=skipped)
+
+
+# ── orchestration ────────────────────────────────────────────────────────────
+
+def enabled() -> bool:
+    """Kill switch: RR_QUALITY_CHECK=0 ships reports exactly as generated."""
+    return os.environ.get("RR_QUALITY_CHECK", "1").strip() not in ("0", "false", "off")
+
+
+def _problem(f: Flag) -> str:
+    if f.kind == "contradiction":
+        return f'The report states "{f.text}", which the dictated findings contradict.'
+    return f'The dictated finding "{f.text}" is missing from the report.'
+
+
+async def run_quality_check(report: str, findings: str, scan_type: str,
+                            options: List[dict]) -> Tuple[str, List[dict], dict]:
+    """Check, then repair only when a report clause or item is flagged. Returns the report, the
+    options with flagged ones dropped, and telemetry. Never raises."""
+    if not enabled():
+        return report, options, {"enabled": False}
+    t0 = time.time()
+    tel: dict = {"enabled": True, "flags": [], "edits_applied": 0, "edits_skipped": 0, "options_dropped": [],
+                 "clauses": 0, "items": 0, "jev_ms": None, "repair_ms": None, "error": None}
+    try:
+        res = await check(report, findings, scan_type, options)
+        tel.update(flags=[f.model_dump() for f in res.flags], clauses=res.n_clauses, items=res.n_items,
+                   jev_ms=int((time.time() - t0) * 1000), error=res.error, options_dropped=res.bad_option_ids)
+        options = [o for o in options if o.get("id") not in set(res.bad_option_ids)]
+        if res.flags:
+            t1 = time.time()
+            rep = await repair_report(report, findings, [_problem(f) for f in res.flags])
+            report = rep.report
+            tel.update(edits_applied=rep.applied, edits_skipped=rep.skipped,
+                       repair_ms=int((time.time() - t1) * 1000), error=rep.error or tel["error"])
+    except Exception as e:  # never blocks the report
+        logger.warning("quality check failed (%s: %s)", type(e).__name__, str(e)[:200])
+        tel["error"] = f"{type(e).__name__}: {str(e)[:200]}"
+    return report, options, tel

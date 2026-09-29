@@ -103,3 +103,12 @@ def client(db_session: Session, monkeypatch) -> Iterator[TestClient]:
         yield test_client
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_live_quality_check(request, monkeypatch):
+    """The post-generation check calls Jev over the network; unit tests outside its own module
+    run the generator with it switched off."""
+    if request.module.__name__.endswith("test_quick_report_quality"):
+        return
+    monkeypatch.setenv("RR_QUALITY_CHECK", "0")

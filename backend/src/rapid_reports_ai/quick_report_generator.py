@@ -22,6 +22,7 @@ from .enhancement_utils import (
     _run_agent_with_model,
 )
 from .quick_report_brief import compile_brief
+from .quick_report_quality import run_quality_check
 from .quick_report_hardening import QUICK_REPORT_HARDENING_PREAMBLE, QUICK_REPORT_HARDENING_PREAMBLE_BRIEF
 from .quick_report_prompts import (
     QR_PRE_WRITING_ANALYSIS,
@@ -182,6 +183,9 @@ async def generate_quick_report(
         _write_with_fallback(), _describe(findings, clinical_history, scan_type),
         _write_options(brief.decisions.get("options", []) if brief else [], findings, scan_type))
     report = result.output if hasattr(result, "output") else str(result)
+    # Jev checks every clause and option against the dictation; one focal Qwen call repairs what
+    # it flags before the report ships (spec 2026-09-30-post-generation-check-design).
+    report, options, quality = await run_quality_check(report, findings, scan_type, options)
     if user_signature:
         report = report.rstrip() + "\n\n" + user_signature
     return {"report_content": report, "description": description, "scan_type": scan_type,
@@ -190,4 +194,5 @@ async def generate_quick_report(
             "brief_reconcile_ms": brief.reconcile_ms if brief else None,
             "brief_decisions": brief.decisions if brief else None,
             "brief_text": brief.text if brief else None,
-            "brief_options": options}
+            "brief_options": options,
+            "quality_check": quality}

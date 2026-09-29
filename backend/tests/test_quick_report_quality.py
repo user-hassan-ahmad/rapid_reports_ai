@@ -129,3 +129,73 @@ async def test_repair_failure_returns_the_report_unchanged(monkeypatch):
     monkeypatch.setattr(qq, "_run_agent_with_model", boom)
     res = await qq.repair_report(REPORT, FINDINGS, ["anything"])
     assert res.report == REPORT and res.applied == 0 and res.error
+
+
+@pytest.mark.asyncio
+async def test_run_quality_check_repairs_on_report_flags_and_drops_bad_options(monkeypatch):
+    async def fake_check(report, findings, scan_type, options):
+        return qq.CheckResult(flags=[qq.Flag(kind="contradiction", text="No portal vein encasement", score=0.8),
+                                     qq.Flag(kind="omission", text="CBD dilated to 12 mm", score=0.2)],
+                              bad_option_ids=["fn0"], n_clauses=9, n_items=3)
+    seen = {}
+    async def fake_repair(report, findings, problems):
+        seen["problems"] = problems
+        return qq.RepairResult(report=report.replace("portal vein encasement, ", ""), applied=1, skipped=1)
+    monkeypatch.setattr(qq, "check", fake_check)
+    monkeypatch.setattr(qq, "repair_report", fake_repair)
+    report, options, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", OPTIONS)
+    assert seen["problems"] == ['The report states "No portal vein encasement", which the dictated findings contradict.',
+                                'The dictated finding "CBD dilated to 12 mm" is missing from the report.']
+    assert "portal vein encasement" not in report
+    assert [o["id"] for o in options] == ["fn1"]
+    assert tel["edits_applied"] == 1 and tel["edits_skipped"] == 1 and tel["options_dropped"] == ["fn0"]
+    assert [f["kind"] for f in tel["flags"]] == ["contradiction", "omission"] and tel["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_no_report_flags_means_no_repair_call(monkeypatch):
+    async def clean(report, findings, scan_type, options):
+        return qq.CheckResult(bad_option_ids=["fn0"])
+    async def must_not_run(*a):
+        raise AssertionError("repair called without a report flag")
+    monkeypatch.setattr(qq, "check", clean)
+    monkeypatch.setattr(qq, "repair_report", must_not_run)
+    report, options, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", OPTIONS)
+    assert report == REPORT and [o["id"] for o in options] == ["fn1"] and tel["repair_ms"] is None
+
+
+@pytest.mark.asyncio
+async def test_kill_switch_and_never_raising(monkeypatch):
+    monkeypatch.setenv("RR_QUALITY_CHECK", "0")
+    report, options, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", OPTIONS)
+    assert report == REPORT and options == OPTIONS and tel == {"enabled": False}
+    monkeypatch.delenv("RR_QUALITY_CHECK")
+    async def boom(*a):
+        raise RuntimeError("unexpected")
+    monkeypatch.setattr(qq, "check", boom)
+    report, options, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", OPTIONS)
+    assert report == REPORT and options == OPTIONS and "unexpected" in tel["error"]
+
+
+@pytest.mark.asyncio
+async def test_generator_runs_the_check_before_the_signature_and_reports_it(monkeypatch):
+    from rapid_reports_ai import quick_report_generator as qrg
+    async def no_brief(*a, **k):
+        raise RuntimeError("no brief in this test")
+    async def fake_run(**kw):
+        from types import SimpleNamespace
+        return SimpleNamespace(output=REPORT.split("\n\nDr ")[0] if kw.get("output_type") is str
+                               else SimpleNamespace(description="d"))
+    seen = {}
+    async def fake_quality(report, findings, scan_type, options):
+        seen["report"] = report
+        return report.replace("The spleen", "The SPLEEN"), options, {"enabled": True, "edits_applied": 1}
+    monkeypatch.setattr(qrg, "compile_brief", no_brief)
+    monkeypatch.setattr(qrg, "_run_agent_with_model", fake_run)
+    monkeypatch.setattr(qrg, "_get_api_key_for_provider", lambda p, fallback_api_key=None: "k")
+    monkeypatch.setattr(qrg, "run_quality_check", fake_quality)
+    out = await qrg.generate_quick_report(skill_sheet="S", scan_type="CT", findings="f", clinical_history="h",
+                                          user_signature="Dr Sig")
+    assert "Dr Sig" not in seen["report"]
+    assert "The SPLEEN" in out["report_content"] and out["report_content"].endswith("Dr Sig")
+    assert out["quality_check"] == {"enabled": True, "edits_applied": 1}
