@@ -1013,3 +1013,127 @@ Expected: all passed.
 Turning the directive on in production (adding `"confirmed_negatives"` to
 `PRODUCTION_DIRECTIVES`) is **not** in this plan. It needs Hassan's sign-off on the L-45
 results (the v1 subtraction rule).
+
+---
+
+## Revision 2 (2026-09-29): key negatives by finding, not branch
+
+**Why:** the first live run of Task 8 stated nothing in any of 8 cases. Imaging confirms
+findings, not diagnoses; the main finding is usually not a differential line; and branch names
+did not match. The spec's revision-2 header gives the detail.
+
+**Status of the tasks above:**
+- **Carried forward unchanged:** Tasks 1–7 (routing, impression plan, options, persistence,
+  frontend) and Task 8's runner and basket.
+- **Superseded:** Task 9 (calibration moves into R3) and Task 10 (becomes R7).
+- **Replaced by R4:** the branch-keyed parts of Tasks 1–3 (directive text, parser, Jev key).
+
+**R4–R7 are written after the R3 gate,** because its result decides how much weight the
+fallback carries.
+
+### R1: Directive `finding_negatives` (replaces `confirmed_negatives`)
+
+**Files:** modify `backend/src/rapid_reports_ai/quick_report_analyser.py`,
+`backend/tests/test_confirmed_negatives.py`
+
+- [ ] **Step 1: Failing test.** In `test_confirmed_negatives_is_an_opt_in_directive`, replace
+  `"confirmed_negatives"` with `"finding_negatives"` and `"**If confirmed:**"` with
+  `"**If present:**"`, then add:
+
+```python
+    assert "never the diagnosis it suggests" in arm_b
+    assert "confirmed_negatives" not in qa.DIRECTIVES
+```
+
+- [ ] **Step 2:** `poetry run pytest tests/test_confirmed_negatives.py -q`. Expect a FAIL
+  (unknown directive).
+- [ ] **Step 3: Implement.** Rename the constant to `FINDING_NEGATIVES`. Its text is the spec's
+  §1 directive, under the heading `## If present — negatives that follow a reported finding`,
+  with the bullet format block from the spec. Rename the DIRECTIVES key to
+  `"finding_negatives"` and update the comment above the constant.
+- [ ] **Step 4:** tests pass. **Step 5:** commit `feat(analyser): finding_negatives directive —
+  negatives keyed by imaging finding`.
+
+### R2: Parser for finding keys
+
+**Files:** modify `backend/src/rapid_reports_ai/quick_report_brief.py`,
+`backend/tests/test_confirmed_negatives.py`
+
+- [ ] **Step 1: Failing test** (append):
+
+```python
+def test_if_present_parses_keys_in_both_shapes():
+    lines = ["- **If present:** (negatives stated only when the dictation reports the finding)",
+             '  - pancreatic head mass → "No superior mesenteric vein contact." (core)',
+             '  - pancreatic head mass -> "No peritoneal deposit"',
+             "  - spiculated lung nodule →",
+             '    - "No chest wall invasion." (core)']
+    cands = qb.parse_if_present(lines)
+    assert [(c.key, c.text, c.tag) for c in cands] == [
+        ("pancreatic head mass", "No superior mesenteric vein contact", "core"),
+        ("pancreatic head mass", "No peritoneal deposit", "contextual"),
+        ("spiculated lung nodule", "No chest wall invasion", "core"),
+    ]
+    assert qb.distinct_keys(cands) == ["pancreatic head mass", "spiculated lung nodule"]
+```
+
+- [ ] **Step 2:** run it; expect `AttributeError: parse_if_present`.
+- [ ] **Step 3: Implement** (next to `parse_confirmed`, reusing its regexes):
+
+```python
+Q_FINDING = "The dictated findings report this imaging finding, in any wording or size: "
+
+
+@dataclass
+class FindingNegative:
+    key: str
+    text: str
+    tag: str   # "core" | "contextual"
+
+
+def parse_if_present(lines: List[str]) -> List[FindingNegative]:
+    """The If-present bullet as (finding key, negative, tag), one-line or nested shape."""
+    out: List[FindingNegative] = []
+    key = None
+    for line in lines[1:]:
+        if m := _CONFIRMED.match(line):
+            out.append(FindingNegative(m.group(1).strip(), m.group(2).strip().rstrip("."), m.group(3) or "contextual"))
+        elif m := _CONFIRMED_BRANCH.match(line):
+            key = m.group(1).strip()
+        elif (m := _CONFIRMED_NEG.match(line)) and key:
+            out.append(FindingNegative(key, m.group(1).strip().rstrip("."), m.group(2) or "contextual"))
+    return out
+
+
+def distinct_keys(cands: List[FindingNegative]) -> List[str]:
+    return list(dict.fromkeys(c.key for c in cands))
+```
+
+- [ ] **Step 4:** tests pass. **Step 5:** commit `feat(brief): parse If-present finding keys`.
+
+### R3: Coverage check (gate)
+
+**Files:** modify `backend/src/rapid_reports_ai/scripts/confirmed_negatives_eval.py` (add
+`--coverage`); modify `backend/test_cases/silent_staging.json` (+3 hedged cases, `kind: "hedged"`)
+
+- [ ] **Step 1: Hedged cases.** Append three cases, each a hedged restatement of a silent case
+  with the same scan and history:
+  - `hedged_panc`: `Possible subtle hypodensity in the region of the pancreatic head, of uncertain significance.`
+  - `hedged_lung`: `Ill-defined opacity in the right upper lobe, possibly a nodule versus vessel.`
+  - `hedged_cerebellar`: `Questionable small hyperdensity in the right cerebellum, possibly artefact.`
+- [ ] **Step 2: `--coverage` mode.** For each case, generate one arm-B sheet
+  (`finding_negatives`), parse the keys, and ask Jev `Q_FINDING + key` for every distinct key
+  in one call. Record: every key with its score; the top key and score; the number of
+  negatives per key with their tags; and the full If-present block. Print one line per case:
+  `case kind top_score top_key n_keys`. Save the JSON to
+  `test_output/confirmed_negatives/<stamp>_coverage_<file>.json`.
+- [ ] **Step 3: Run** on `silent_staging.json` and on `varied_10.json`.
+- [ ] **Step 4: Read by hand**, per case:
+  - Does the top key name the main dictated finding?
+  - For controls, is every score below 0.5?
+  - For hedged vs clear pairs, how do the scores compare?
+  - Are the negatives single-finding, pertinent, and not expected consequences?
+- [ ] **Step 5: Gate.** Report coverage (target ≥90% of silent + `varied_10` cases), false
+  triggers (target 0), the calibration table, and the quality notes to Hassan before writing
+  R4–R7. Commit the runner change and outputs:
+  `eval(finding-negatives): coverage check`.
