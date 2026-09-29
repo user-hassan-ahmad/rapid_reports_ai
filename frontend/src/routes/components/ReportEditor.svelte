@@ -533,6 +533,13 @@
 		return editor ? editor.state.doc.toString() : content;
 	}
 
+	// ─── Public: apply one edit as a user change (undoable; fires 'change') ──────
+
+	export function replaceRange(from: number, to: number, insert: string): void {
+		if (!editor) return;
+		editor.dispatch({ changes: { from, to, insert }, userEvent: 'input' });
+	}
+
 	// ─── Public: discard edits and restore to a given content string ─────────────
 
 	export function resetContent(c: string): void {

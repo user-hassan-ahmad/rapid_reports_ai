@@ -6,6 +6,8 @@
 	import { getAuditState, auditActions as sharedAuditActions } from '$lib/stores/audit';
 	import ReportVersionInline from './ReportVersionInline.svelte';
 	import ReportEditor from './ReportEditor.svelte';
+	import OptionalAdditions from './OptionalAdditions.svelte';
+	import { insertEdit, removeEdit, optionsEnabled, type ReportOption } from '$lib/utils/impressionOptions';
 	import { API_URL } from '$lib/config';
 	import { detectUnfilledPlaceholders, generateChatContext } from '$lib/utils/placeholderDetection';
 	import { applyEditsToReport } from '$lib/utils/reportEditing';
@@ -48,7 +50,17 @@
 	// upstream populates all candidates' audit slots in one go). Null for
 	// single-candidate reports (templated/auto) — audit flow unchanged.
 	export let activeCandidateModel: string | null = null;
-	
+
+	// Quick-report reporter-choice options (behind localStorage rr_discretionary=1).
+	export let options: ReportOption[] = [];
+	const showOptions = optionsEnabled();
+
+	function handleOptionToggle(e: CustomEvent<{ option: ReportOption; checked: boolean }>) {
+		const text = currentEditorContent || response || '';
+		const edit = e.detail.checked ? insertEdit(text, e.detail.option) : removeEdit(text, e.detail.option);
+		if (edit) reportEditorRef?.replaceRange(edit.from, edit.to, edit.insert);
+	}
+
 	// Track previous response to detect manual updates
 	let previousResponse = '';
 
@@ -75,7 +87,10 @@
 	let hasUnsavedChanges = false;
 	let currentEditorContent = '';
 	let lastSavedResponse = '';
-	let reportEditorRef: { resetContent: (c: string) => void } | null = null;
+	let reportEditorRef: {
+		resetContent: (c: string) => void;
+		replaceRange: (from: number, to: number, insert: string) => void;
+	} | null = null;
 	let saveInFlight = false;
 
 	// ─── Audit integration ────────────────────────────────────────────────────
@@ -1034,6 +1049,14 @@
 						on:auditSpanHover={handleAuditSpanHover}
 					on:auditSpanClick={handleAuditSpanClick}
 					/>
+					{#if showOptions && options.length}
+						<OptionalAdditions
+							{options}
+							content={currentEditorContent || response}
+							disabled={generationLoading || updateLoading}
+							on:toggle={handleOptionToggle}
+						/>
+					{/if}
 					{:else}
 						<p class="text-sm text-gray-400">Response will appear here once generated.</p>
 					{/if}
