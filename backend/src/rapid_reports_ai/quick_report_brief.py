@@ -14,8 +14,9 @@ Who decides what (docs/superpowers/research/2026-09-29-sheet-reconciliation-bake
   Qwen  mandatory negatives (contradicted / expected consequence / keep, with the dictated
         finding), normal lines (second opinion), measurement conventions (finding dictated)
   code  policy 1 for differentials (not present AND visible on this technique AND not
-        imaging-silent -> removed); a normal line is removed only when Jev and Qwen agree,
-        otherwise listed as "do not assert"; bundled negatives are split by Qwen with a check
+        imaging-silent -> removed); a normal line either flags is listed as "do not assert",
+        never deleted (a deleted line leaves a gap the generator refills from its priors;
+        an explicit prohibition holds); bundled negatives are split by Qwen with a check
         that every word comes from the source.
 
 Removed outright (lean): Conditional Suppression Rules (generic; replaced by per-item labels),
@@ -294,16 +295,13 @@ async def compile_brief(sheet: str, scan_type: str, findings: str) -> Brief:
     if neg_bullet:
         neg_bullet.lines = neg_lines
 
-    # Normal-study path: unaffected lines verbatim; affected lines listed as not assertable;
-    # removed only when Jev and Qwen agree.
+    # Normal-study path: unaffected lines verbatim; a line either model flags is listed as not
+    # assertable. Never deleted: a missing line is refilled from priors, a prohibition holds.
     if normal_bullet:
         keep, flagged = [], []
         qaff = set(qw.affected_normals)
         for k, t in enumerate(normals):
-            j = score(f"n{k}") >= 0.5
-            if j and k in qaff:
-                decisions["normals"].append({"text": t, "action": "removed"})
-            elif j or k in qaff:
+            if score(f"n{k}") >= 0.5 or k in qaff:
                 flagged.append(t); decisions["normals"].append({"text": t, "action": "do_not_assert"})
             else:
                 keep.append(t); decisions["normals"].append({"text": t, "action": "keep"})

@@ -91,10 +91,10 @@ async def test_compile_labels_removes_and_keeps(monkeypatch):
     assert 'OMIT: "No subdural collection" — the dictation reports: 8 mm right subdural' in t
     assert 'DO NOT ASSERT: "No ventricular compression" — expected consequence of: 3 mm midline shift' in t
     assert 'KEEP: "No skull fracture" (trauma)' in t
-    # normals: orbits kept; ventricles Jev-only -> do not assert; midline Jev AND Qwen -> removed
+    # normals: orbits kept; ventricles (Jev only) and midline (Jev and Qwen) -> do not assert, never deleted
     assert '**Normal-study path:** "The orbits are clear."' in t
-    assert 'Do not assert as normal' in t and '"The ventricles are normal in size."' in t
-    assert "No midline shift." not in t.split("## Companion Matrix")[0]
+    flagged = t.split("Do not assert as normal")[1].split("\n")[0]
+    assert '"The ventricles are normal in size."' in flagged and '"No midline shift."' in flagged
     # differentials, policy 1: epidural (visible, not present) removed; malformation (not visible)
     # and coagulopathy (imaging-silent) kept; subdural (present) kept
     assert "Epidural" not in t and "Vascular malformation" in t and "Coagulopathy" in t and "Acute subdural" in t
