@@ -40,6 +40,7 @@ import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 		deepgram_configured: boolean;
 		has_at_least_one_model: boolean;
 		using_user_keys?: { deepgram: boolean };  // backward compat, same as deepgram_configured
+		dictation_v2?: boolean; // the dictation package is allowed on this server (RR_DICTATION_V2)
 	};
 	type HistoryModalInput = {
 		variables?: Record<string, string>;
@@ -342,7 +343,8 @@ let templatedModel = 'claude'; // Track model for template editor
 						cerebras_configured: data.cerebras_configured || false,
 						deepgram_configured: data.deepgram_configured || false,
 						has_at_least_one_model: Boolean(data.has_at_least_one_model ?? (data.anthropic_configured || data.groq_configured || data.cerebras_configured)),
-						using_user_keys: data.using_user_keys || { deepgram: data.deepgram_configured || false }
+						using_user_keys: data.using_user_keys || { deepgram: data.deepgram_configured || false },
+						dictation_v2: data.dictation_v2 === true
 					};
 				}
 			} else {

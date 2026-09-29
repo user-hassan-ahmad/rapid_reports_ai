@@ -126,3 +126,13 @@ def test_the_package_switch_warms_the_jev_connection(monkeypatch):
     assert warmup_wanted() is False
     monkeypatch.setenv("RR_DICTATION_V2", "1")
     assert warmup_wanted() is True
+
+
+def test_the_status_endpoint_tells_the_browser_whether_the_package_is_allowed(authed_client, monkeypatch):
+    # the browser runs the package only when the server allows it, so RR_DICTATION_V2 is a clean
+    # kill switch: unset, every browser is back on today's dictation (not a package failing open)
+    monkeypatch.delenv("RR_TRIAGE_DEBUG", raising=False)
+    monkeypatch.delenv("RR_DICTATION_V2", raising=False)
+    assert authed_client.get("/api/settings/status").json()["dictation_v2"] is False
+    monkeypatch.setenv("RR_DICTATION_V2", "1")
+    assert authed_client.get("/api/settings/status").json()["dictation_v2"] is True

@@ -3212,6 +3212,7 @@ async def get_api_key_status(
 ):
     """Get API key configuration status - all keys from system env (DEEPGRAM_API_KEY central)"""
     db.refresh(current_user)
+    from rapid_reports_ai.dictation_v2 import v2_allowed
     
     # All API keys are system-wide via environment variables
     has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
@@ -3226,6 +3227,8 @@ async def get_api_key_status(
         "cerebras_configured": has_cerebras,
         "deepgram_configured": has_deepgram,
         "has_at_least_one_model": has_anthropic or has_groq or has_cerebras,
+        # the dictation package (rr_dictation_v2): the browser runs it only when allowed here
+        "dictation_v2": v2_allowed(),
         "using_user_keys": {
             "deepgram": has_deepgram  # backward compat: same as deepgram_configured
         }

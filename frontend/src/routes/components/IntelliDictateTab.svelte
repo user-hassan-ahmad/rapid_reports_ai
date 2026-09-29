@@ -122,9 +122,9 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 	};
 	/** Dictation Lab only; the home page never sets these. */
 	export let labConfig: LabConfig | null = null;
-	// The dictation package: the lab page's config, or the package when rr_dictation_v2 is on,
-	// or null (production dictation as before). Plan 2026-09-29-dictation-v2-release.
-	$: dictationConfig = effectiveConfig(labConfig);
+	// The dictation package: the lab page's config, or the package where the server allows it
+	// (apiKeyStatus.dictation_v2) unless this browser opted out, or null (today's dictation).
+	$: dictationConfig = effectiveConfig(labConfig, undefined, (apiKeyStatus as { dictation_v2?: boolean })?.dictation_v2 === true);
 	export let onProcessTrace: (trace: ProcessTrace) => void = () => {};
 	/** Dictation Lab only: three-state pills from coverage scores. null = binary pills as in production. */
 	export let pillThresholds: PillThresholds | null = null;
