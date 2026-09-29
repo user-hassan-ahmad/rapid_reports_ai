@@ -4,10 +4,18 @@
 
 export interface ReportOption {
 	id: string;
-	kind: 'recommendation' | 'impression';
+	kind: 'recommendation' | 'impression' | 'confirmed_negative';
+	section?: 'IMPRESSION' | 'FINDINGS';
 	sentence: string;
 	reason?: string;
 	source?: string;
+	branch?: string;
+}
+
+/** Options the current below-editor panel can place. It inserts into the IMPRESSION only, so
+ * FINDINGS-scoped confirmed negatives wait for the per-section side panel. */
+export function panelOptions(options: ReportOption[]): ReportOption[] {
+	return options.filter((o) => o.kind !== 'confirmed_negative');
 }
 
 export interface TextEdit {
