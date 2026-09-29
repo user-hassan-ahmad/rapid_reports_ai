@@ -4,7 +4,7 @@
     poetry run python -m rapid_reports_ai.scripts.confirmed_negatives_eval --arm B --runs 3
     poetry run python -m rapid_reports_ai.scripts.confirmed_negatives_eval --arm B --runs 1 --calibrate
 
-A = production directives; B = production + confirmed_negatives. Serial, to stay inside
+A = production directives; B = production + finding_negatives. Serial, to stay inside
 provider rate limits. Results go to test_output/confirmed_negatives/.
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ from rapid_reports_ai.quick_report_analyser import PRODUCTION_DIRECTIVES, genera
 from rapid_reports_ai.quick_report_generator import generate_quick_report  # noqa: E402
 from rapid_reports_ai.scripts.sheet_budget import gate  # noqa: E402
 
-ARMS = {"A": PRODUCTION_DIRECTIVES, "B": PRODUCTION_DIRECTIVES + ("confirmed_negatives",)}
+ARMS = {"A": PRODUCTION_DIRECTIVES, "B": PRODUCTION_DIRECTIVES + ("finding_negatives",)}
 
 
 def _findings_block(report: str) -> str:

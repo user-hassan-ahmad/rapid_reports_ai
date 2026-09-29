@@ -826,29 +826,33 @@ section governs.
   Terminology Rules, Conditional Suppression Rules, Impression Exemplars.
 """
 
-# Policy 1 for confirmed branches (spec 2026-09-29): the sheet is written before anything is
-# dictated, so its mandatory negatives answer the question as asked. The negatives a consultant
-# states once a diagnosis is confirmed (extent, spread, complications) had no carrier. The brief
-# promotes these only when Jev finds the branch confirmed.
-CONFIRMED_NEGATIVES = """
+# Policy 1 for dictated findings (spec 2026-09-29, revision 2): the sheet is written before
+# anything is dictated, so its mandatory negatives answer the question as asked. The negatives a
+# consultant states once a finding is reported (extent, spread, complications) had no carrier.
+# Keyed by imaging finding, not diagnosis: imaging reports findings, and a diagnosis key was
+# almost never matched (L-45). The brief promotes these only when Jev finds the key reported.
+FINDING_NEGATIVES = """
 
 ---
 
-## If confirmed — negatives that follow a confirmed diagnosis
+## If present — negatives that follow a reported finding
 
 Add one bullet to the Companion Matrix, directly after Mandatory negatives:
 
-- **If confirmed:** (negatives stated only when the dictation confirms the branch)
-  - <differential name exactly as written in Differentials in scope> → "<negative in final report form>" (core | contextual)
+- **If present:** (negatives stated only when the dictation reports the finding)
+  - <imaging finding as a radiologist would dictate it> → "<negative in final report form>" (core | contextual)
 
-For each differential tagged *visible on this technique: yes* whose confirmation would change
-management through its extent, spread or complications, list the negatives a consultant states
-once that diagnosis is made: the absence of each extension, spread or complication this
-technique shows and the next management step depends on. One finding per negative: no "or",
-no comma-separated list. Tag each negative core when any consultant states it once the
-diagnosis is made, contextual when stating it depends on the case or on local practice. At most
-three per differential and twelve in total. Never repeat a mandatory negative. Never write a
-negative denying something the confirmed diagnosis is expected to cause.
+List the imaging findings this clinical question anticipates: the primary finding and each
+alternative the study could show. For each, list the negatives a consultant states once that
+finding is reported: the absence of each extension, spread or complication this technique
+shows and the next management step depends on. Write each key as the imaging finding a
+radiologist would dictate, never the diagnosis it suggests, and at the most general level at
+which its negatives still apply. Write every negative on its own line with its key repeated, in
+the form shown. One finding per negative: no "or", no comma-separated list. Tag each negative
+core when any consultant states it once that finding is reported, contextual when stating it
+depends on the case or on local practice. At most three negatives per finding and fifteen in
+total. Never repeat a mandatory negative. Never write a negative denying something the finding
+is expected to cause.
 """
 
 # Directives every production analyser call carries. Harnesses that pass an
@@ -862,7 +866,7 @@ DIRECTIVES = {
     "defeasible_prose": lambda: DEFEASIBILITY_PROSE,
     "rescope": lambda: NEGATIVES_RESCOPE,
     "prune_v1": lambda: PRUNE_V1,
-    "confirmed_negatives": lambda: CONFIRMED_NEGATIVES,
+    "finding_negatives": lambda: FINDING_NEGATIVES,
 }
 
 
