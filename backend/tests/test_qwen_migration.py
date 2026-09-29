@@ -99,7 +99,7 @@ def test_linguistic_validator_is_not_the_model_it_validates():
 
 def test_quick_report_generator_follows_the_config():
     from rapid_reports_ai import quick_report_api
-    assert quick_report_api.GENERATOR_MODEL == MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"]
+    assert quick_report_api.GENERATOR_MODEL == MODEL_CONFIG["QUICK_REPORT_GENERATOR"]
 
 
 def test_prefetch_model_follows_the_config():

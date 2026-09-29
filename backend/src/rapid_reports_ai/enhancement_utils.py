@@ -159,6 +159,10 @@ MODEL_CONFIG = {
     "FALLBACK_REPORT_GENERATOR": _SONNET,  # failsafe off both open-weights providers
     "TEMPLATE_REPORT_GENERATOR": _Q_CEREBRAS,
     "TEMPLATE_REPORT_GENERATOR_FALLBACK": _Q_GROQ,
+    # Quick reports have their own generator (quick_report_generator.py) and role, so the
+    # two paths can move to different models or settings independently.
+    "QUICK_REPORT_GENERATOR": _Q_CEREBRAS,
+    "QUICK_REPORT_GENERATOR_FALLBACK": _Q_GROQ,
     "QUICK_REPORT_ANALYZER_FAST": _Q_CEREBRAS,
     "QUICK_REPORT_ANALYZER_FAST_FALLBACK": _Q_GROQ,
     "QUICK_REPORT_ANALYZER_BEST": _Q_CEREBRAS,

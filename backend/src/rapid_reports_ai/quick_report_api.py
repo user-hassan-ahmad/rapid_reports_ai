@@ -60,8 +60,7 @@ from .quick_report_analyser import (
     log_generator_run,
     new_run_id,
 )
-from .quick_report_hardening import QUICK_REPORT_HARDENING_PREAMBLE
-from .template_manager import TemplateManager
+from .quick_report_generator import generate_quick_report
 
 
 logger = logging.getLogger(__name__)
@@ -77,7 +76,7 @@ router = APIRouter(prefix="/api/quick-report", tags=["quick-report"])
 # we want, and the richer Haiku skill sheet (running in the analyser tier) now
 # delivers the clinical depth Sonnet used to contribute.
 
-GENERATOR_MODEL = MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"]
+GENERATOR_MODEL = MODEL_CONFIG["QUICK_REPORT_GENERATOR"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -272,14 +271,12 @@ async def analyse(
 
 async def _run_one_generator(
     *,
-    tm: TemplateManager,
-    template_config: dict,
-    user_inputs: dict,
+    skill_sheet_markdown: str,
+    findings: str,
     model_name: str,
     run_id: str,
     scan_type: str,
     clinical_history: str,
-    skill_sheet_markdown: str,
     user_signature: str | None = None,
 ) -> dict:
     """Run a single generator and return a candidate-record dict.
@@ -290,9 +287,11 @@ async def _run_one_generator(
     """
     t0 = time.time()
     try:
-        result = await tm.generate_report_from_config(
-            template_config=template_config,
-            user_inputs=user_inputs,
+        result = await generate_quick_report(
+            skill_sheet=skill_sheet_markdown,
+            scan_type=scan_type,
+            findings=findings,
+            clinical_history=clinical_history,
             user_signature=user_signature,
             model_override=model_name,
         )
@@ -304,7 +303,7 @@ async def _run_one_generator(
                 run_id=run_id,
                 scan_type=scan_type,
                 clinical_history=clinical_history,
-                findings=(user_inputs or {}).get("FINDINGS", ""),
+                findings=findings,
                 skill_sheet=skill_sheet_markdown,
                 result=result,
             )
@@ -423,27 +422,14 @@ async def generate(
                 return
 
             # ── Fire the GLM generator ────────────────────────────────────
-            tm = TemplateManager()
-            template_config = {
-                "generation_mode": "skill_sheet_guided",
-                "skill_sheet": QUICK_REPORT_HARDENING_PREAMBLE + skill_sheet_markdown,
-                "scan_type": scan_type,
-            }
-            user_inputs = {
-                "FINDINGS": request.findings,
-                "CLINICAL_HISTORY": clinical_history,
-            }
-
             logger.info("quick-report generate firing model=%s", GENERATOR_MODEL)
             candidate = await _run_one_generator(
-                tm=tm,
-                template_config=template_config,
-                user_inputs=user_inputs,
+                skill_sheet_markdown=skill_sheet_markdown,
+                findings=request.findings,
                 model_name=GENERATOR_MODEL,
                 run_id=f"{run_id_base}-{GENERATOR_MODEL[:8]}",
                 scan_type=scan_type,
                 clinical_history=clinical_history,
-                skill_sheet_markdown=skill_sheet_markdown,
                 user_signature=user_signature,
             )
 

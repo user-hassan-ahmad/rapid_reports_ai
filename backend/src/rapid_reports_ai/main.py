@@ -2705,9 +2705,8 @@ async def quick_report_proto_generate_endpoint(
 ):
     """Generate a report using an ephemeral skill sheet + findings.
 
-    Reuses the same skill_sheet_guided generation path as production templates,
-    so the only difference between this and the templated flow is where the
-    skill sheet came from (ephemeral vs cached in a templates row).
+    Uses the quick-report generator (quick_report_generator.py), the same one as
+    /api/quick-report/generate.
     """
     from .quick_report_analyser import (
         log_generator_run,
@@ -2725,33 +2724,19 @@ async def quick_report_proto_generate_endpoint(
         if not api_key:
             return {"success": False, "error": "Cerebras API key not configured"}
 
-        # Shared preamble — same in production (/api/quick-report/generate)
-        # and proto. Single source of truth at quick_report_hardening.py.
-        from .quick_report_hardening import QUICK_REPORT_HARDENING_PREAMBLE
-        hardening_preamble = QUICK_REPORT_HARDENING_PREAMBLE
-
-        tm = TemplateManager()
-        template_config = {
-            "generation_mode": "skill_sheet_guided",
-            "skill_sheet": hardening_preamble + request.skill_sheet,
-            "scan_type": request.scan_type,
-        }
-        user_inputs = {
-            "FINDINGS": request.findings,
-            "CLINICAL_HISTORY": request.clinical_history,
-        }
-
         # Model override is validated against an allow-list so the proto doesn't
         # accept arbitrary strings from the frontend. Every model here must be
         # registered in MODEL_PROVIDERS in enhancement_utils.py.
         allowed_models = set(MODEL_PROVIDERS)
         model_override = request.model if request.model in allowed_models else None
 
+        from .quick_report_generator import generate_quick_report
         t0 = time.time()
-        result = await tm.generate_report_from_config(
-            template_config=template_config,
-            user_inputs=user_inputs,
-            user_signature=None,
+        result = await generate_quick_report(
+            skill_sheet=request.skill_sheet,
+            scan_type=request.scan_type,
+            findings=request.findings,
+            clinical_history=request.clinical_history,
             model_override=model_override,
         )
         latency_ms = int((time.time() - t0) * 1000)
