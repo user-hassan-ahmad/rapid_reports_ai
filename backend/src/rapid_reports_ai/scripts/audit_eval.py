@@ -3,7 +3,9 @@
 A planted issue is caught when a flag overlaps the statement it quotes; any flag on a clean
 case is a false flag. Prints counts, per-case outcomes and latency.
 
-    PYTHONPATH=src python -m rapid_reports_ai.scripts.audit_eval model|jev [--json out.json]
+    PYTHONPATH=src python -m rapid_reports_ai.scripts.audit_eval model [--json out.json]
+
+(The Jev variant was measured and not adopted, then removed: plan 2026-09-27-jev-scratchpad-audit.)
 
 Plan: docs/superpowers/plans/2026-09-27-jev-scratchpad-audit.md
 """
@@ -45,12 +47,8 @@ def score_case(case: dict, flags: list[dict]) -> dict:
 
 async def _run(checker: str, case: dict) -> tuple[list[dict], int]:
     t0 = time.perf_counter()
-    if checker == "model":
-        from rapid_reports_ai.dictation_semantic import check_semantic
-        flags = await check_semantic(case["scan_type"], case["clinical_history"], case["findings"])
-    else:
-        from rapid_reports_ai.jev_audit import jev_semantic
-        flags = await jev_semantic(case["scan_type"], case["clinical_history"], case["findings"])
+    from rapid_reports_ai.dictation_semantic import check_semantic
+    flags = await check_semantic(case["scan_type"], case["clinical_history"], case["findings"])
     ms = int((time.perf_counter() - t0) * 1000)
     return [{"start": f.start, "end": f.end, "kind": f.kind,
              "related_start": getattr(f, "related_start", None), "related_end": getattr(f, "related_end", None)}
