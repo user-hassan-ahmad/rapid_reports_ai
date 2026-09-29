@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findReading, planRevision, type Revision } from './revisions';
+import { findReading, joinRecovered, planRevision, type Revision } from './revisions';
 
 const rev = (over: Partial<Revision> = {}): Revision => ({
 	final_seq: 1, switches: [], suggestions: [], recovered: null, spans: 1, errors: [], ms: 900, ...over
@@ -52,5 +52,16 @@ describe('two-pass inserts (dropped negations, sides, numbers)', () => {
 	it('neighbours no longer adjacent (a polish reworded them): unmatched', () => {
 		const p = planRevision('There is a pleural effusion.', rev({ inserts: [{ left: 'is', right: 'pleural', text: 'no' }] }), true);
 		expect(p.unmatched).toBe(1);
+	});
+});
+
+describe('joining recovered words to the final', () => {
+	it('mid-sentence recovery lowers the capital the final started with', () => {
+		expect(joinRecovered('There', 'Is no mediastinal lymphadenopathy.')).toEqual({ insert: 'There ', lowerFirst: true });
+	});
+	it('a recovered whole sentence, or an abbreviation / level next, keeps the capital', () => {
+		expect(joinRecovered('The mass measures 45 mm.', 'Make that 54 mm.')).toEqual({ insert: 'The mass measures 45 mm. ', lowerFirst: false });
+		expect(joinRecovered('At', 'L5/S1 there is')).toEqual({ insert: 'At ', lowerFirst: false });
+		expect(joinRecovered('The', 'RV measures 46 mm.')).toEqual({ insert: 'The ', lowerFirst: false });
 	});
 });

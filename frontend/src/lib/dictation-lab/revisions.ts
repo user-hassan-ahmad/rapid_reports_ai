@@ -31,6 +31,15 @@ export interface Revision {
 	ms: number;
 }
 
+/** Recovered words go in front of the final's text. Mid-sentence (no terminal mark), the
+ *  final's first word loses its capital unless it is an abbreviation or a level (RV, L5/S1). */
+export function joinRecovered(recovered: string, following: string): { insert: string; lowerFirst: boolean } {
+	const r = recovered.trim();
+	const midSentence = !/[.?!:]$/.test(r);
+	const first = following.match(/^\S+/)?.[0] ?? '';
+	return { insert: `${r} `, lowerFirst: midSentence && /^[A-Z][a-z]+[,.;:]?$/.test(first) };
+}
+
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** The last place the heard words appear as whole words (tokens may be joined by space or hyphen). */

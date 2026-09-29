@@ -278,3 +278,12 @@ def test_a_restart_or_repeat_of_the_final_is_not_recovered():
     live = [_w("Actually"), _w("make"), _w("that"), _w("54"), _w("mm.")]
     batch = [_w(x) for x in ["Actually,", "make", "that", "54", "mm.", "Actually,", "make", "that", "54", "mm."]]
     assert recovered_prefix(live, batch) is None
+
+
+def test_recovery_restores_exactly_the_dropped_words_when_the_batch_runs_on():
+    # lab 2026-09-29: live dropped "There"; batch ran one word further ("…thickened, but");
+    # the sliding window matched one word late and recovered "There is" ("There is Is no…")
+    live = [_w(x) for x in "Is no mediastinal or hilar lymphadenopathy. The right adrenal gland is thickened".split()]
+    batch = [_w(x) for x in "There is no mediastinal or hilar lymphadenopathy. The right adrenal gland is thickened, but".split()]
+    gpt = "There is no mediastinal or hilar lymphadenopathy. The right adrenal gland is thickened"
+    assert recovered_prefix(live, batch, gpt) == "There"

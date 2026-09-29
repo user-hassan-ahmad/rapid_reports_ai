@@ -43,7 +43,7 @@
 	import { editTouches, integrityMarks, type FlagLike, type IntegrityMark } from '$lib/utils/integrityMarks';
 	import { clearPending, markPending, pendingField, replaceAndClear } from '$lib/dictation-lab/pendingMarks';
 	import { ghostField, setGhost } from '$lib/dictation-lab/ghostText';
-	import { planRevision, type Revision } from '$lib/dictation-lab/revisions';
+	import { joinRecovered, planRevision, type Revision } from '$lib/dictation-lab/revisions';
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import { markdown } from '@codemirror/lang-markdown';
@@ -788,9 +788,15 @@
 		if (rev.recovered && a.intact) {
 			// speech the stream dropped, before this final's words
 			const at = a.from;
-			const insert = `${rev.recovered.trim()} `;
+			const join = joinRecovered(rev.recovered, editor.state.doc.sliceString(a.from, a.to));
+			const insert = join.insert;
+			const changes: { from: number; to?: number; insert: string }[] = [{ from: at, insert }];
+			if (join.lowerFirst) {
+				const c = editor.state.doc.sliceString(at, at + 1);
+				changes.push({ from: at, to: at + 1, insert: c.toLowerCase() });
+			}
 			isQwenWriting = true;
-			editor.dispatch({ changes: { from: at, insert }, effects: markAuto.of({ from: at, to: at + insert.length }) });
+			editor.dispatch({ changes, effects: markAuto.of({ from: at, to: at + insert.length }) });
 			isQwenWriting = false;
 			track({ id: `${id}:2p-recovered`, route: a.route, at: Date.now(), from: at, to: at + insert.length, before: '',
 				lineOpenBefore: lineOpen, tokens: new Set(), intact: true, edited: false, redictated: false });

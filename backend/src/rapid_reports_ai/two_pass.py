@@ -113,15 +113,23 @@ def recovered_prefix(live_words: list[dict], batch_words: list[dict], other_text
     live = [t for t, _ in _live_tokens(live_words)]
     batch = [(t, w) for w in batch_words for t in _tok(w.get("punctuated_word") or w.get("word", ""))]
     tokens = [t for t, _ in batch]
-    # The live final is the latest speech: find where it starts in the batch text from the END
-    # (a repeated phrase would otherwise match its first, dropped, occurrence).
-    lead = None
-    for start in range(len(tokens) - len(live), -1, -1):
-        if difflib.SequenceMatcher(None, tokens[start:start + len(live)], live, autojunk=False).ratio() >= 0.8:
-            lead = start
-            break
-    if lead is None:
+    # Where does the live final start inside the batch text? Align the two word sequences from
+    # the END (the live final is the latest speech: a repeated phrase must not match its first,
+    # dropped, occurrence) and read off the batch position of the live final's first word.
+    # (A sliding "close enough" window matched one word late when the batch ran a word past the
+    # live final, and recovered "There is" before "Is no …", lab 2026-09-29.)
+    if not live or not tokens:
         return None
+    sm = difflib.SequenceMatcher(None, tokens[::-1], live[::-1], autojunk=False)
+    blocks = [b for b in sm.get_matching_blocks() if b.size]
+    if not blocks:
+        return None
+    first = max(blocks, key=lambda b: b.b + b.size)  # the block reaching furthest toward the live start
+    live_start_rev = first.b + first.size - 1  # reversed index of the earliest matched live token
+    unmatched_live = len(live) - 1 - live_start_rev  # live tokens before it that batch did not match
+    if unmatched_live:
+        return None  # the live final begins with words the batch did not hear: not a clean drop
+    lead = len(tokens) - 1 - (first.a + first.size - 1)  # batch tokens before the live final
     if lead == 0:
         return None
     lead_tokens = tokens[:lead]
@@ -189,7 +197,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 CLIP_TAIL_S = 0.3
-ENGINE_TIMEOUT_S = 4.0
+ENGINE_TIMEOUT_S = 6.0  # gpt-4o-transcribe: p50 ~0.8 s, occasional spikes past 4 s (a timeout loses the second opinion)
 
 
 def wav16k(pcm: bytes, sample_rate: int) -> bytes:
