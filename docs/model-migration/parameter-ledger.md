@@ -1337,3 +1337,47 @@ generated one. Suite 210 passed. 12 edits this entry (L-43 follow-through).
 - **Gate before judging.** Free structural checks (contradiction, missing section, thinking leak,
   truncation) catch what the LLM judge does not, and keep judge spend off already-broken runs.
 - **Serialise everything against Groq.** Concurrency at this org's OTPM limit loses cells.
+
+### L-45 · Negatives keyed by reported finding — coverage check (gate), 2026-09-29
+
+Spec `docs/superpowers/specs/2026-09-29-policy1-confirmed-branch-negatives-design.md` (rev 2),
+branch `feat/confirmed-negatives`. Trigger: prod report 064ff6f1 (jaundice, pancreatic head
+mass) omitted every resectability negative.
+
+**Rev 1 (branch-keyed) failed on first contact:** arm B, 8 cases, 0 stated anywhere. Jev scored
+the diagnosis branch 0.68 (pancreatic adenocarcinoma) and 0.35 (lung carcinoma), which is
+correct because imaging reports findings, not diagnoses. The main finding (haemorrhage, PE,
+vertebral metastases) is the primary hypothesis, not an aetiology line. Branch names matched
+0/4 on the cerebellar case.
+
+**Rev 2 coverage** (directive `finding_negatives`, Jev "reports this imaging finding"), one
+sheet per case:
+
+| Set | Main finding keyed ≥0.5 | Notes |
+|---|---|---|
+| silent_staging (6) | 5/6 | MSCC miss 0.10: key "vertebral body lesion *with epidural extension*" too specific |
+| varied_10 (10) | 10/10 | lowest 0.86 (disc extrusion) |
+| controls (2) | 0 false triggers | max 0.03 |
+| **Total** | **15/16 = 94%** (target ≥90%) | |
+
+**Calibration** (clear vs hedged restatements of the same findings): clear 0.86–0.99; hedged
+0.16 (pancreas), 0.72 (lung "nodule versus vessel"), 0.16 (cerebellar). `PRESENT_HIGH = 0.8`
+sits in the gap. n is small (3 hedged), so re-check on the A/B.
+
+**Negatives quality (by hand):**
+- **Good:** pancreas (PV/SMV encasement, distant deposits; core); cerebellar haemorrhage in
+  varied_10 (fourth ventricle, hydrocephalus; core); PE (contralateral filling defect);
+  trauma (flail segment); pancreatic staging (coeliac/SMV encasement).
+- **Varies between sheets for the same finding:** silent cerebellar got only contextual,
+  off-target negatives ("no surrounding mass lesion") where varied_10 got the core ones.
+  Silent lung got no core negatives at all.
+- **Inferential or odd:** "No features of underlying colonic malignancy"; "No feeding vessel
+  from the pulmonary artery".
+- **Contradicted by the dictation:** brain metastases "No haemorrhagic component" beside a
+  dictated haemorrhage; MSCC "No epidural extension" beside dictated epidural disease. The
+  Qwen check must catch these, which makes it load-bearing.
+- **One bundled negative** ("…dilatation or interventricular septal bowing") despite the
+  one-finding rule.
+
+**Gate:** the link passes (coverage and false triggers). Whether the negatives are good enough
+is left to the A/B and the hand read, with the Qwen check as the safety net.

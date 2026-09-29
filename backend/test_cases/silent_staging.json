@@ -62,5 +62,29 @@
   "clinical_history": "abdominal pain",
   "findings": "No acute abnormality in the abdomen or pelvis.",
   "source": "synthetic"
+ },
+ {
+  "name": "hedged_panc",
+  "kind": "hedged",
+  "scan_type": "CT AP with contrast",
+  "clinical_history": "jaundice",
+  "findings": "Possible subtle hypodensity in the region of the pancreatic head, of uncertain significance.",
+  "source": "hedged restatement of prod_jaundice_panc_head"
+ },
+ {
+  "name": "hedged_lung",
+  "kind": "hedged",
+  "scan_type": "CT thorax with IV contrast",
+  "clinical_history": "68M, 40 pack-year smoker. Chronic cough and haemoptysis for 6 weeks. Referred for lung cancer workup. CT thorax with contrast for characterisation of nodule identified on recent chest X-ray.",
+  "findings": "Ill-defined opacity in the right upper lobe, possibly a nodule versus vessel.",
+  "source": "hedged restatement of lung_nodule_silent"
+ },
+ {
+  "name": "hedged_cerebellar",
+  "kind": "hedged",
+  "scan_type": "CT head non-con",
+  "clinical_history": "onset at 13:30 with left facial droop, left arm and leg weakness and slurred speech.\nBP 255/161",
+  "findings": "Questionable small hyperdensity in the right cerebellum, possibly artefact.",
+  "source": "hedged restatement of cerebellar_haem_silent"
  }
 ]

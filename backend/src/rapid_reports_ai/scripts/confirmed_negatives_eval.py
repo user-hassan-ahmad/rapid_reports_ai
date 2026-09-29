@@ -70,6 +70,24 @@ async def calibrate(case: dict) -> list[dict]:
             for k, t in enumerate(diffs)]
 
 
+async def coverage(case: dict) -> dict:
+    """R3 gate: does a key of a B sheet match the dictated finding, and how strongly?"""
+    sheet = await generate_ephemeral_skill_sheet(scan_type=case["scan_type"], clinical_history=case["clinical_history"],
+                                                 api_key="", directives=ARMS["B"])
+    s = sheet["skill_sheet"]
+    b = qb._bullet(qb._section(qb.parse_sheet(s), "Companion Matrix"), "If present")
+    cands = qb.parse_if_present(b.lines) if b else []
+    keys = qb.distinct_keys(cands)
+    state = f"SCAN TYPE: {case['scan_type']}\nDICTATED FINDINGS:\n{case['findings']}"
+    ans = await qb._jev(state, {f"f{i}": {"type": "noul", "instructions": qb.Q_FINDING + k} for i, k in enumerate(keys)}) if keys else {}
+    scores = {k: round(float(ans[f"f{i}"]["noul"]), 3) for i, k in enumerate(keys)}
+    top = max(scores, key=scores.get) if scores else None
+    return {"case": case["name"], "kind": case.get("kind", "silent"), "findings": case["findings"],
+            "keys": scores, "top_key": top, "top_score": scores.get(top, 0.0) if top else 0.0,
+            "negatives": [{"key": c.key, "text": c.text, "tag": c.tag} for c in cands],
+            "block": "\n".join(b.lines) if b else None, "analyser_ms": sheet["latency_ms"]}
+
+
 async def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--arm", choices=ARMS, required=True)
@@ -77,11 +95,23 @@ async def main() -> None:
     p.add_argument("--cases-file", default=str(BACKEND / "test_cases" / "silent_staging.json"))
     p.add_argument("--case", action="append")
     p.add_argument("--calibrate", action="store_true")
+    p.add_argument("--coverage", action="store_true")
     a = p.parse_args()
     cases = [c for c in json.loads(Path(a.cases_file).read_text()) if not a.case or c["name"] in a.case]
     out_dir = BACKEND / "test_output" / "confirmed_negatives"
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    if a.coverage:
+        rows = []
+        for c in cases:
+            r = await coverage(c)
+            rows.append(r)
+            print(f"{r['kind']:<8} {r['top_score']:.2f}  {c['name']:<32} top={r['top_key']!r}  keys={len(r['keys'])} "
+                  f"negs={len(r['negatives'])}", flush=True)
+        path = out_dir / f"{stamp}_coverage_{Path(a.cases_file).stem}.json"
+        path.write_text(json.dumps(rows, indent=1))
+        print(path)
+        return
     if a.calibrate:
         rows = [r for c in cases for r in await calibrate(c)]
         path = out_dir / f"{stamp}_calibration_{Path(a.cases_file).stem}.json"
