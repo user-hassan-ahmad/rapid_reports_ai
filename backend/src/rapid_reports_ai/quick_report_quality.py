@@ -147,25 +147,73 @@ REPAIR_SYS = (
     "dictated. Return JSON {\"edits\": [{\"find\": ..., \"replace\": ...}]}.")
 
 
-async def repair_report(report: str, findings: str, problems: List[str]) -> RepairResult:
-    """One focal Qwen call; each returned edit is applied only when its find occurs exactly once.
-    Shared by the post-generation check and (next) the audit's Fix with AI."""
+_NEGATION = re.compile(r"\b(no|not|without|nor|absent|negative for)\b", re.I)
+INSERT_ONLY_SYS = (" Each problem is an omitted finding: 'replace' must contain 'find' unchanged, with the omitted "
+                   "finding added to it.")
+
+
+def edit_allowed(e: Edit, insert_only: bool) -> bool:
+    """A repair never turns a negated statement into an assertion (L-47: a flagged negative was
+    'corrected' into the malignant finding it denied), and an insertion never rewrites text."""
+    if not e.find or e.find == e.replace:
+        return False
+    if _NEGATION.search(e.find) and not _NEGATION.search(e.replace):
+        return False
+    return not insert_only or e.find in e.replace
+
+
+async def repair_report(report: str, findings: str, problems: List[str], insert_only: bool = False) -> RepairResult:
+    """One focal Qwen call; each returned edit is applied only when allowed and its find occurs
+    exactly once. Shared by the post-generation check and (next) the audit's Fix with AI."""
     user = (f"DICTATED FINDINGS:\n{findings}\n\nREPORT:\n{report}\n\nPROBLEMS:\n"
             + "\n".join(f"{i}. {p}" for i, p in enumerate(problems, 1)))
     try:
         r = await asyncio.wait_for(_run_agent_with_model(
-            model_name=REPAIR_MODEL, output_type=RepairEdits, system_prompt=REPAIR_SYS, user_prompt=user, api_key="",
+            model_name=REPAIR_MODEL, output_type=RepairEdits,
+            system_prompt=REPAIR_SYS + (INSERT_ONLY_SYS if insert_only else ""), user_prompt=user, api_key="",
             model_settings={"temperature": 0, "max_tokens": 3000, "reasoning_effort": "none"}), REPAIR_TIMEOUT_S)
     except Exception as e:  # never blocks the report
         logger.warning("quality repair failed (%s: %s)", type(e).__name__, str(e)[:200])
         return RepairResult(report=report, error=f"{type(e).__name__}: {str(e)[:200]}")
     out, applied, skipped = report, 0, 0
     for e in r.output.edits:
-        if e.find and out.count(e.find) == 1 and e.find != e.replace:
+        if edit_allowed(e, insert_only) and out.count(e.find) == 1:
             out, applied = out.replace(e.find, e.replace), applied + 1
         else:
             skipped += 1
     return RepairResult(report=out, applied=applied, skipped=skipped)
+
+
+# ── deterministic removal of a flagged negative ─────────────────────────────
+
+_NEG_LIST = re.compile(r"^(No|There is no|There are no|Without)\s+(.*?)\.?$", re.I)
+
+
+def is_negative(clause: str) -> bool:
+    return bool(_NEG_LIST.match(clause.strip()))
+
+
+def remove_negative_clause(report: str, clause: str) -> str:
+    """Take one flagged negative out of the report without asserting anything: a whole negative
+    sentence is deleted; one item of a negative list is dropped from the list. No LLM, so a false
+    flag can only lose a negative, never create a finding."""
+    target = clause.strip().rstrip(".")
+    fnd, imp = report_sections(report)
+    for s in _sentences(fnd) + _sentences(imp):
+        if s.rstrip(".") == target:
+            return re.sub(r"[ \t]*" + re.escape(s) + r"[ \t]*", " ", report, count=1).replace(" \n", "\n")
+        m = _NEG_LIST.match(s)
+        if not m:
+            continue
+        parts = [p.strip() for p in re.split(r",\s*(?:or\s+|and\s+)?", m.group(2)) if p.strip()]
+        if len(parts) < 2 or target not in (f"No {p}" for p in parts):
+            continue
+        rest = [p for p in parts if f"No {p}" != target]
+        conj = "and" if re.search(r",\s*and\s+", m.group(2)) else "or"
+        body = rest[0] if len(rest) == 1 else (f"{rest[0]} {conj} {rest[1]}" if len(rest) == 2
+                                                  else ", ".join(rest[:-1]) + f", {conj} {rest[-1]}")
+        return report.replace(s, f"{m.group(1)} {body}.", 1)
+    return report
 
 
 # ── orchestration ────────────────────────────────────────────────────────────
@@ -173,6 +221,19 @@ async def repair_report(report: str, findings: str, problems: List[str]) -> Repa
 def enabled() -> bool:
     """Kill switch: RR_QUALITY_CHECK=0 ships reports exactly as generated."""
     return os.environ.get("RR_QUALITY_CHECK", "1").strip() not in ("0", "false", "off")
+
+
+def _diff_edits(before: str, after: str) -> List[Tuple[str, str]]:
+    """The changed spans between two versions, as (old, new) pairs with a little context."""
+    import difflib
+    sm = difflib.SequenceMatcher(a=before, b=after, autojunk=False)
+    out = []
+    for op, i1, i2, j1, j2 in sm.get_opcodes():
+        if op == "equal":
+            continue
+        lo = max(0, i1 - 40)
+        out.append((before[lo:i2], before[lo:i1] + after[j1:j2]))
+    return out
 
 
 def _problem(f: Flag) -> str:
@@ -188,19 +249,36 @@ async def run_quality_check(report: str, findings: str, scan_type: str,
     if not enabled():
         return report, options, {"enabled": False}
     t0 = time.time()
-    tel: dict = {"enabled": True, "flags": [], "edits_applied": 0, "edits_skipped": 0, "options_dropped": [],
+    tel: dict = {"enabled": True, "flags": [], "clauses_removed": 0, "edits_applied": 0, "edits_skipped": 0, "options_dropped": [],
                  "clauses": 0, "items": 0, "jev_ms": None, "repair_ms": None, "error": None}
     try:
         res = await check(report, findings, scan_type, options)
         tel.update(flags=[f.model_dump() for f in res.flags], clauses=res.n_clauses, items=res.n_items,
                    jev_ms=int((time.time() - t0) * 1000), error=res.error, options_dropped=res.bad_option_ids)
         options = [o for o in options if o.get("id") not in set(res.bad_option_ids)]
-        if res.flags:
+        # A flagged negative is removed in code; a flagged positive statement is corrected, and an
+        # omitted finding inserted, by Qwen under edit_allowed (L-47).
+        removed = 0
+        for f in res.flags:
+            if f.kind == "contradiction" and is_negative(f.text):
+                new = remove_negative_clause(report, f.text)
+                removed += new != report
+                report = new
+        tel["clauses_removed"] = removed
+        fix = [_problem(f) for f in res.flags if f.kind == "contradiction" and not is_negative(f.text)]
+        add = [_problem(f) for f in res.flags if f.kind == "omission"]
+        if fix or add:
             t1 = time.time()
-            rep = await repair_report(report, findings, [_problem(f) for f in res.flags])
-            report = rep.report
-            tel.update(edits_applied=rep.applied, edits_skipped=rep.skipped,
-                       repair_ms=int((time.time() - t1) * 1000), error=rep.error or tel["error"])
+            reps = await asyncio.gather(*[repair_report(report, findings, probs, insert_only=ins)
+                                          for probs, ins in ((fix, False), (add, True)) if probs])
+            base, report = report, reps[0].report
+            for rep in reps[1:]:   # both were made from the same base: replay the second's changes
+                for old_s, new_s in _diff_edits(base, rep.report):
+                    if report.count(old_s) == 1:
+                        report = report.replace(old_s, new_s)
+            tel.update(edits_applied=sum(r.applied for r in reps), edits_skipped=sum(r.skipped for r in reps),
+                       repair_ms=int((time.time() - t1) * 1000),
+                       error=next((r.error for r in reps if r.error), None) or tel["error"])
     except Exception as e:  # never blocks the report
         logger.warning("quality check failed (%s: %s)", type(e).__name__, str(e)[:200])
         tel["error"] = f"{type(e).__name__}: {str(e)[:200]}"

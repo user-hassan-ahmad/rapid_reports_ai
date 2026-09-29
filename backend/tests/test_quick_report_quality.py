@@ -138,15 +138,14 @@ async def test_run_quality_check_repairs_on_report_flags_and_drops_bad_options(m
                                      qq.Flag(kind="omission", text="CBD dilated to 12 mm", score=0.2)],
                               bad_option_ids=["fn0"], n_clauses=9, n_items=3)
     seen = {}
-    async def fake_repair(report, findings, problems):
+    async def fake_repair(report, findings, problems, insert_only=False):
         seen["problems"] = problems
-        return qq.RepairResult(report=report.replace("portal vein encasement, ", ""), applied=1, skipped=1)
+        return qq.RepairResult(report=report, applied=1, skipped=1)
     monkeypatch.setattr(qq, "check", fake_check)
     monkeypatch.setattr(qq, "repair_report", fake_repair)
     report, options, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", OPTIONS)
-    assert seen["problems"] == ['The report states "No portal vein encasement", which the dictated findings contradict.',
-                                'The dictated finding "CBD dilated to 12 mm" is missing from the report.']
-    assert "portal vein encasement" not in report
+    assert seen["problems"] == ['The dictated finding "CBD dilated to 12 mm" is missing from the report.']
+    assert "portal vein encasement" not in report                     # removed in code
     assert [o["id"] for o in options] == ["fn1"]
     assert tel["edits_applied"] == 1 and tel["edits_skipped"] == 1 and tel["options_dropped"] == ["fn0"]
     assert [f["kind"] for f in tel["flags"]] == ["contradiction", "omission"] and tel["error"] is None
@@ -199,3 +198,58 @@ async def test_generator_runs_the_check_before_the_signature_and_reports_it(monk
     assert "Dr Sig" not in seen["report"]
     assert "The SPLEEN" in out["report_content"] and out["report_content"].endswith("Dr Sig")
     assert out["quality_check"] == {"enabled": True, "edits_applied": 1}
+
+
+def test_negative_clauses_are_removed_in_code_never_inverted():
+    rep = ("FINDINGS:\nNo subfalcine or transtentorial herniation, intraventricular haemorrhage, or acute ischaemic "
+           "change identified. No focal mass-like colonic wall thickening is identified. The liver is normal.\n\n"
+           "IMPRESSION:\nHaemorrhage.")
+    out = qq.remove_negative_clause(rep, "No subfalcine or transtentorial herniation")
+    assert "No intraventricular haemorrhage or acute ischaemic change identified." in out
+    out = qq.remove_negative_clause(out, "No focal mass-like colonic wall thickening is identified.")
+    assert "mass-like" not in out and "The liver is normal." in out
+    assert qq.remove_negative_clause(out, "text not present") == out
+
+
+def test_edits_that_drop_a_negation_or_rewrite_on_insert_only_are_rejected():
+    assert not qq.edit_allowed(qq.Edit(find="No focal mass-like colonic wall thickening is identified.",
+                                       replace="Focal mass-like colonic wall thickening is identified."), insert_only=False)
+    assert qq.edit_allowed(qq.Edit(find="mass with encasement of the SMV", replace="mass abutting the SMV"), insert_only=False)
+    assert not qq.edit_allowed(qq.Edit(find="focal active arterial extravasation", replace="focal active arterial blush"),
+                               insert_only=True)
+    assert qq.edit_allowed(qq.Edit(find="compresses the duct.", replace="compresses the duct. The CBD measures 12 mm."),
+                           insert_only=True)
+
+
+@pytest.mark.asyncio
+async def test_run_quality_check_routes_each_flag_to_its_safe_repair(monkeypatch):
+    async def fake_check(report, findings, scan_type, options):
+        return qq.CheckResult(flags=[qq.Flag(kind="contradiction", text="No portal vein encasement", score=0.8),
+                                     qq.Flag(kind="contradiction", text="Pancreatic head mass causing biliary obstruction.", score=0.8),
+                                     qq.Flag(kind="omission", text="CBD dilated to 12 mm", score=0.2)])
+    calls = []
+    async def fake_repair(report, findings, problems, insert_only=False):
+        calls.append((problems, insert_only))
+        return qq.RepairResult(report=report, applied=0, skipped=0)
+    monkeypatch.setattr(qq, "check", fake_check)
+    monkeypatch.setattr(qq, "repair_report", fake_repair)
+    report, _, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", [])
+    assert "portal vein encasement" not in report and "No superior mesenteric vein encasement or hepatic deposit." in report
+    assert calls == [(['The report states "Pancreatic head mass causing biliary obstruction.", which the dictated findings contradict.'], False),
+                     (['The dictated finding "CBD dilated to 12 mm" is missing from the report.'], True)]
+    assert tel["clauses_removed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_correction_and_an_insertion_both_land(monkeypatch):
+    async def fake_check(report, findings, scan_type, options):
+        return qq.CheckResult(flags=[qq.Flag(kind="contradiction", text="Pancreatic head mass causing biliary obstruction.", score=0.8),
+                                     qq.Flag(kind="omission", text="CBD dilated to 12 mm", score=0.2)])
+    async def fake_repair(report, findings, problems, insert_only=False):
+        if insert_only:
+            return qq.RepairResult(report=report.replace("distal common bile duct.", "distal common bile duct, dilated to 12 mm."), applied=1)
+        return qq.RepairResult(report=report.replace("causing biliary obstruction", "compressing the distal bile duct"), applied=1)
+    monkeypatch.setattr(qq, "check", fake_check)
+    monkeypatch.setattr(qq, "repair_report", fake_repair)
+    report, _, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", [])
+    assert "dilated to 12 mm" in report and "compressing the distal bile duct" in report and tel["edits_applied"] == 2
