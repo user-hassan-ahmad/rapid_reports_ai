@@ -67,6 +67,11 @@ Standing rules for every step: question wording and lexicon frozen unless the st
 | 14 | **X-06** Normal-fill as selection (with component 9) | Changes generation, so it follows the integrity check that would catch regressions | Quality rubric v2.1 parity | todo |
 | 15 | Backlog: **X-05** corpus analytics, **X-07** critical tier, **X-08** prior comparison, **X-02 / X-03** routing and agent guards | Each needs its own labelled set | Per item | backlog |
 
+**Parked into X-01 (2026-09-29): pre-sign-off verifier.** Source: prod walkthrough case 1 (`varied_10` · `ct_head_cerebellar_haemorrhage`, sheet `44dee9f0-46f3-425a-9aa5-aa68f260ec48`). Two failure classes reached a production report, and the current audit passed both (2/2 runs):
+- **Technique-term inversion.** The analyser wrote "No hypodense vessel sign" (correct: hyperdense on non-contrast CT). Rare, 1 in 6 sheets, but the generator copies it verbatim: 0/18 corrections across four second-look prompt wordings, while the same model answers correctly when asked directly. Inside generation it checks that a sign is *visible* on the technique, never that its *name* is right.
+- **Unsupported normal of an acted-upon structure.** "The lateral and third ventricles are normal" beside dictated aqueduct and fourth-ventricle effacement. X-01's planned noul ("asserts a normal the radiologist didn't dictate **and the sheet didn't default**") would miss it: the sheet did default the line. The noul must be "asserts a normal of a structure a dictated finding acts on".
+- **Prototype** (one gpt-oss call: list terms and re-derive each from first principles, then reason forward from each finding): unsupported normals 3/3, vessel sign 1/3, plus false flags on correct terms. Direction for the revamp: Jev nouls per sentence for support and normals (fast, every report); technique-term checking needs knowledge, so a System 2 check gated by Jev, enumerating terms first and checking each one separately.
+
 ## Gate before any production default-on *(revised 2026-09-26)*
 
 All five:
