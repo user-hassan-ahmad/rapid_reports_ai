@@ -1520,3 +1520,43 @@ Jev latency: 0.28 s median per call, ≤11 questions.
   - L-39 concordance phrasing.
 - **Not foldable:** impression completeness as phrased, fabricated descriptors, and clinical
   judgement (recommendations, characterisation, flagging).
+
+### L-47 · Post-generation check (Jev flags, focal repair): offline evaluation, 2026-09-30
+
+Spec `docs/superpowers/specs/2026-09-30-post-generation-check-design.md`, branch
+`feat/post-generation-check` (on `feat/confirmed-negatives`). Eval
+`scripts/quality_check_eval.py`:
+- the 32 L-45 rerun reports as generated (clean);
+- plus one perturbed copy each: 14 contradictions injected (a dictated finding negated), 11
+  findings deleted;
+- plus the 4 known-bad fallback options on their cases.
+
+**The first build failed the pass bar dangerously.** Two false-flagged negatives were
+"corrected" by Qwen into the malignant findings they denied: "No focal mass-like colonic wall
+thickening is identified" became "Focal mass-like colonic wall thickening is identified."
+Fixes, each found on hand read and each tested:
+1. A flagged **negative** is removed in code (a list item dropped or the sentence deleted),
+   never by the LLM. A false flag can only lose a negative, never create a finding.
+2. `edit_allowed` rejects any edit that drops a negation.
+3. **Omissions** are inserted by code after an anchor Qwen picks. Asked for insert-only edits,
+   Qwen rewrote the neighbouring sentence (omissions fixed 5/11).
+4. A negative is removed only when a **second Jev question in the same call** confirms the
+   denied finding is dictated. This cut false negative-removals from 3 to 1.
+5. **Duplicate guard:** skip an insertion that restates a report sentence (80% of words, every
+   number, filler words ignored). It stopped a reworded finding and an existing nodule being
+   re-inserted.
+
+**Final** (0f2e28f):
+
+| Measure | Result | Bar |
+|---|---|---|
+| Injected contradictions fixed | **14/14** | ≥90% |
+| Deleted findings restored, where the finding was absent from the whole report | **7/7**. The 4 unrepaired omissions all still had the finding in the impression (2 not flagged; 2 insertions correctly refused as duplicates) | ≥90% |
+| Known-bad options dropped | **6/6** (+6 other options dropped, all plausible: "No acute hydrocephalus" beside dictated aqueduct effacement, …) | — |
+| Clean reports edited | 5/32, by hand: 4 correct ("encasement" → dictated "abutting … no occlusion"; "no focal abdominal lesion" removed beside a dictated hypodensity; herniation negative removed beside dictated herniation; "no other parenchymal abnormality" removed beside a dictated opacity), **1 correct negative lost** ("No focal mass-like colonic wall thickening", diverticulitis) | 0 damaging: **1 near miss** |
+| Fabricated or inverted findings | **0** | 0 |
+| Added latency | median 0.37 s, max 0.74 s (repair included when flagged) | ≤0.8 s |
+
+**Residual risk:** a Jev false flag on a negative whose denied finding shares words with a
+dictated one ("focal mass-like wall thickening" vs "segmental wall thickening") can remove that
+negative. It fails safe: the report loses one negative and asserts nothing new.
