@@ -74,6 +74,9 @@ def _stub(monkeypatch, jev: dict, qwen: qb.QwenDecisions, plan: qb.ImpressionPla
         return plan
     monkeypatch.setattr(qb, "_split_bundled", no_split)
     monkeypatch.setattr(qb, "_plan", fake_plan)
+    async def no_fallback(state, items, keys):
+        return None
+    monkeypatch.setattr(qb, "_fallback", no_fallback)
 
 
 JEV = {"n0": {"noul": 0.9}, "n1": {"noul": 0.1}, "n2": {"noul": 0.8},        # ventricles, orbits, midline

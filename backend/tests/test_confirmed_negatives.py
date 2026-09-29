@@ -206,3 +206,61 @@ def test_if_present_parses_keys_in_both_shapes():
         ("spiculated lung nodule", "No chest wall invasion", "core"),
     ]
     assert qb.distinct_keys(cands) == ["pancreatic head mass", "spiculated lung nodule"]
+
+
+FINDINGS_R5 = "10 mm right acute subdural. 12 mm left adrenal nodule"
+
+
+def _stub_fallback(monkeypatch, carried, fallback):
+    _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(6)])
+    async def fake_plan(scan_type, history, items, recs, cand_negs=()):
+        return qb.ImpressionPlan(recommendations=[], impression=carried)
+    monkeypatch.setattr(qb, "_plan", fake_plan)
+    monkeypatch.setattr(qb, "_fallback", fallback)
+
+
+async def _fb_adrenal(state, items, keys):
+    assert keys == ["subdural haematoma", "extradural haematoma"]
+    return qb.FallbackNegatives(items=[qb.FallbackItem(index=0, covered=True),
+                                       qb.FallbackItem(index=1, covered=False,
+                                                       negatives=["No adrenal haemorrhage.", "No local invasion"])])
+
+
+@pytest.mark.asyncio
+async def test_unanticipated_carried_finding_gets_offered_negatives(monkeypatch):
+    _stub_fallback(monkeypatch, [0, 1], _fb_adrenal)
+    b = await qb.compile_brief(SHEET_C, "CT head", FINDINGS_R5)
+    fb = [o for o in b.decisions["options"] if o.get("reason") == "unanticipated finding"]
+    assert fb == [{"kind": "finding_negative", "section": "FINDINGS", "text": t,
+                   "finding": "12 mm left adrenal nodule", "reason": "unanticipated finding"}
+                  for t in ("No adrenal haemorrhage", "No local invasion")]
+    assert len([o for o in b.decisions["options"] if o["kind"] == "finding_negative"]) <= qb.MAX_FINDING_OPTIONS
+    assert "No adrenal haemorrhage" not in b.text                       # never stated
+    assert all(n["source"] != "fallback" for n in b.decisions["negatives"])
+
+
+@pytest.mark.asyncio
+async def test_fallback_ignores_findings_the_impression_does_not_carry(monkeypatch):
+    _stub_fallback(monkeypatch, [0], _fb_adrenal)
+    b = await qb.compile_brief(SHEET_C, "CT head", FINDINGS_R5)
+    assert not [o for o in b.decisions["options"] if o.get("reason") == "unanticipated finding"]
+
+
+@pytest.mark.asyncio
+async def test_brief_compiles_when_the_fallback_fails(monkeypatch):
+    async def boom(*a):
+        raise RuntimeError("down")
+    _stub_fallback(monkeypatch, [0, 1], boom)
+    b = await qb.compile_brief(SHEET_C, "CT head", FINDINGS_R5)
+    assert 'KEEP: "No midline shift"' in b.text
+    assert not [o for o in b.decisions["options"] if o.get("reason") == "unanticipated finding"]
+
+
+@pytest.mark.asyncio
+async def test_fallback_shares_the_finding_options_cap(monkeypatch):
+    async def many(state, items, keys):
+        return qb.FallbackNegatives(items=[qb.FallbackItem(index=1, covered=False,
+                                                           negatives=["No a", "No b", "No c"])])
+    _stub_fallback(monkeypatch, [0, 1], many)
+    b = await qb.compile_brief(SHEET_C, "CT head", FINDINGS_R5)
+    assert len([o for o in b.decisions["options"] if o["kind"] == "finding_negative"]) == qb.MAX_FINDING_OPTIONS

@@ -340,6 +340,42 @@ async def _qwen(state: str, negs: List[str], normals: List[str], measurements: L
     return r.output
 
 
+class FallbackItem(BaseModel):
+    index: int
+    covered: bool
+    negatives: List[str] = []
+
+
+class FallbackNegatives(BaseModel):
+    items: List[FallbackItem]
+    @field_validator("items", mode="before")
+    @classmethod
+    def _parse_stringified(cls, v):
+        return _unstring(v)
+
+
+# A dictated finding the sheet did not anticipate has no If-present key. Qwen judges coverage
+# (Jev scores keys, not dictated items) and writes negatives for the uncovered; written at
+# reasoning off, these are only ever offered, never stated.
+FALLBACK_SYS = (
+    "You check whether each dictated radiology finding is covered by a prepared list of finding types, and write "
+    "pertinent negatives only for findings that are not. For each numbered dictated finding return covered=true "
+    "when one of the FINDING TYPES describes the same kind of finding in the same place; otherwise covered=false "
+    "and up to three negatives a consultant states once that finding is reported: the absence of each extension, "
+    "spread or complication this technique shows and the next management step depends on. One finding per "
+    "negative, no 'or', no list, final report form. Never deny anything dictated or its expected consequence.")
+FALLBACK_TIMEOUT_S = 6.0
+
+
+async def _fallback(state: str, items: List[str], keys: List[str]) -> FallbackNegatives:
+    r = await asyncio.wait_for(_run_agent_with_model(
+        model_name=QWEN, output_type=FallbackNegatives, system_prompt=FALLBACK_SYS,
+        user_prompt=(f"{state}\n\nNUMBERED DICTATED FINDINGS:\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(items))
+                     + "\n\nFINDING TYPES:\n" + ("\n".join(f"- {k}" for k in keys) or "(none)")),
+        api_key="", model_settings={"temperature": 0, "max_tokens": 3000, "reasoning_effort": "none"}), FALLBACK_TIMEOUT_S)
+    return r.output
+
+
 def split_findings(findings: str) -> List[str]:
     """Dictated findings as numbered items: bullets, lines and sentences."""
     parts = []
@@ -419,9 +455,16 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         except Exception as e:  # the brief still compiles; recommendations fall back to Jev alone
             logger.warning("impression plan failed (%s: %s)", type(e).__name__, str(e)[:200])
             return None
-    jev, qw, plan = await asyncio.gather(_jev(state, qs) if qs else asyncio.sleep(0, {}),
-                                         _qwen(state, [n for n, _ in negs] + [c.text for c in cands], normals, [" ".join(b.lines) for b in measurements]),
-                                         plan_or_none())
+    async def fallback_or_none():
+        try:
+            return await _fallback(state, items, keys) if items else None
+        except Exception as e:  # the brief still compiles; unanticipated findings just get no options
+            logger.warning("finding-negatives fallback failed (%s: %s)", type(e).__name__, str(e)[:200])
+            return None
+    jev, qw, plan, fb_out = await asyncio.gather(
+        _jev(state, qs) if qs else asyncio.sleep(0, {}),
+        _qwen(state, [n for n, _ in negs] + [c.text for c in cands], normals, [" ".join(b.lines) for b in measurements]),
+        plan_or_none(), fallback_or_none())
     score = lambda k: float(jev[k]["noul"])
 
     decisions: dict = {"negatives": [], "normals": [], "differentials": [], "recommendations": [], "style": [], "measurements": [],
@@ -559,6 +602,23 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             plan_lines.append("- **Findings only (not in the impression):** " + " ".join(f'"{t}"' for t in only))
         if plan_lines:
             secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", plan_lines)]))
+
+    # Unanticipated carried findings: offered negatives from the fallback, never stated.
+    if plan and fb_out:
+        seen = {c.text for c in cands}
+        for it in fb_out.items:
+            if it.covered or it.index not in plan.impression or not (0 <= it.index < len(items)):
+                continue
+            for neg in it.negatives[:3]:
+                neg = neg.strip().rstrip(".")
+                if not neg or neg in seen or n_offered >= MAX_FINDING_OPTIONS:
+                    continue
+                seen.add(neg)
+                n_offered += 1
+                decisions["options"].append({"kind": "finding_negative", "section": "FINDINGS", "text": neg,
+                                             "finding": items[it.index], "reason": "unanticipated finding"})
+                decisions["finding_negatives"].append({"finding": items[it.index], "text": neg, "tag": "fallback",
+                                                       "qwen": "n/a", "present": None, "outcome": "offered"})
 
     # Impression exemplars: only the variant matching this case's shape.
     if variants and imp:
