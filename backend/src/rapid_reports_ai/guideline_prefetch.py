@@ -65,13 +65,12 @@ _GEO_BLOCK_SIGNATURES = (
 # ── Stage 1 system prompt ─────────────────────────────────────────────────────
 
 # ── Provider-correct key + settings for the prefetch model ──────────────────
-# These call sites previously hardcoded zai-glm-4.7 on Cerebras and read
-# CEREBRAS_API_KEY directly. When the model moved to Groq the key did not move
-# with it, and _run_agent_with_model sets os.environ[<provider key>] = api_key,
-# so the Cerebras key was written over GROQ_API_KEY and every call 401'd.
-# Resolve both from the model so they can never drift apart again.
+# The model comes from MODEL_CONFIG like every other role; key and settings are
+# resolved from it centrally (_run_agent_with_model, normalise_model_settings), so
+# a model move can no longer strand a provider key here (the 2026-08-14 401).
+from .enhancement_utils import MODEL_CONFIG as _MODEL_CONFIG
 
-PREFETCH_MODEL = "qwen/qwen3.6-27b"
+PREFETCH_MODEL = _MODEL_CONFIG["GUIDELINE_PREFETCH"]
 
 
 def _prefetch_key() -> str:
@@ -80,14 +79,9 @@ def _prefetch_key() -> str:
 
 
 def _prefetch_settings(base: dict) -> dict:
-    """Drop Cerebras-only parameters when the model is not on Cerebras."""
-    from .enhancement_utils import _get_model_provider
-    s = dict(base)
-    if _get_model_provider(PREFETCH_MODEL) != "cerebras":
-        s.pop("extra_body", None)                      # disable_reasoning is Cerebras-only
-        if "max_completion_tokens" in s:               # Groq's parameter is max_tokens
-            s["max_tokens"] = s.pop("max_completion_tokens")
-    return s
+    """Settings pass through; GLM-era reasoning toggles become an effort in
+    normalise_model_settings (disable_reasoning True -> none)."""
+    return dict(base)
 
 PREFETCH_SYSTEM_PROMPT = """You are a UK clinical guideline specialist and senior radiologist.
 Given radiology scan inputs, extract structured guideline retrieval data in a single reasoning pass.

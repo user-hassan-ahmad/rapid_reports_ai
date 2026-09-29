@@ -768,6 +768,545 @@ no Y") instead of flagging them as self-contradiction.
 
 ---
 
+### L-33 · Qwen 3.8 27B on Cerebras — reasoning is graded, speed gain is eaten by reasoning volume, 16k cap truncates
+
+**Verdict: the configuration L-29 waited for is live, but on_on is not faster end to end; the
+lever it does give is a real effort dial.** Confidence: high on the probe, moderate on the runs
+(n=3, 1 case, judge v2.2 secondary).
+
+**Probe** (`qwen-3.8-27b`, short clinical prompt, cap 4000): reasoning defaults **ON** (1,305
+reasoning tokens with no parameter). `reasoning_effort` is **graded**, not binary — `none` 0 /
+`low` 655 / default 1,305 / `high` 3,339 reasoning tokens — and is honoured **top-level as well
+as in `extra_body`**; `disable_reasoning: true` also works. `chat_template_kwargs` is rejected
+(400). Reasoning returns in a separate `reasoning` field, never in `<think>` tags. Throughput
+~1,800 tok/s. Caps of 32,768 / 65,536 / 131,072 all accepted.
+
+**on_on ×3 on ct_tap** (`reasoning_matrix --model qwen-3.8-27b --max-tokens 65536`,
+`test_output/reasoning_q38_cerebras_on_on_cap64k_20260924T123153/`):
+
+| run | sheet | analyser | generator | e2e | gate | judge |
+|---|---|---|---|---|---|---|
+| 1 | 21,693 ch | 16.8s / 30,616 tok | 28.5s / 36,898 tok | 45.3s | pass | 4.50 |
+| 2 | 26,487 ch | 17.6s / 34,813 tok | 14.1s / 19,586 tok | 31.7s | **fail** self_contradiction "No pneumatosis" | — |
+| 3 | 24,460 ch | 22.1s / 38,462 tok | 25.0s / 32,615 tok | 47.2s | pass | 5.00 |
+
+- **Not faster.** Qwen 3.8 reasons 5–6× longer than 3.6 on Groq (analyser 30–38k output tokens vs
+  5–8k; generator 20–37k vs 6–8k). At Cerebras throughput that nets out to 32–47s e2e, the same
+  band as the Groq 3.6 on_on baseline (37–42s). The graded `reasoning_effort` (L-26 said it could
+  not be bounded — that was OpenRouter/Groq; Cerebras honours it) is the untested lever.
+- **The 16k production cap truncates the analyser.** First batch at production settings
+  (`reasoning_q38_cerebras_on_on_20260924T122549/`): 2/3 sheets cut mid-sentence after the
+  Companion Matrix, 5 of 10 sections, `finish_reason == "length"`. pydantic-ai retries on empty
+  content, so `usage()` summed 2–3 attempts (32,000 / 38,113 tokens). **Judge scored both
+  truncated sheets 5.00.** Cerebras branch of analyser and generator settings needs a raised cap
+  before this model is production-adjacent.
+- **Analyser infers non-contrast from the bare scan-type string** ("CT thorax abdomen pelvis") in
+  3/6 sheets, and builds mandatory negatives around it. The generator follows the dictation, but
+  one 16k-batch report was judged 1.50 for "contradicting" the sheet. Either carry the phase in
+  the scan-type input or forbid the inference in the analyser prompt.
+- **Sheets doubled** to 21–26k chars (vs 11–15k on 3.6). Coverage held: adrenal / hiatus /
+  atherosclerosis / renal / faecal loading in 3/3 reports.
+- **L-31/L-32 carve-out recurs**: "No pneumatosis or portal venous gas … elsewhere" beside
+  dictated duodenal mural gas; gate reads the scoped negative as a contradiction (same bluntness).
+- **All 6 reports emitted a LIMITATIONS section** (v1 generator tolerates it; v3 spec does not).
+  Run 3 closed with "pulmonary embolism cannot be excluded … urgent CTPA is recommended" —
+  banned construction plus out-of-remit recommendation on a bleed question.
+
+→ Harness: `reasoning_matrix` now takes `--model`, `--runs`, `--max-tokens`; `qwen-3.8-27b`
+registered in `MODEL_PROVIDERS` as cerebras.
+→ Next: (1) `reasoning_effort: low` on both stages ×3 — if quality holds, that is the compromise
+cell this programme wants; (2) raise the Cerebras cap in production settings; (3) fix the
+scan-type / contrast inference before any cross-model comparison.
+
+---
+
+### L-34 · `reasoning_effort` on Cerebras is graded and defaults to HIGH — medium halves the cost; arm C (POLICY + v2) at medium is the fastest passing cell
+
+**Verdict: the compromise cell exists.** Confidence: moderate (n=3/cell, 1 case, no judge; gate,
+sheet contract, section splitter and canaries only).
+
+Cerebras docs (`/capabilities/reasoning`): `qwen-3.8-27b` **defaults to `high`**; accepts
+`none | low | medium | high`; reasoning tokens count toward `max_completion_tokens`; reasoning
+is returned separately (`message.reasoning`). So every L-33 run was at the most expensive effort.
+Probe on a short clinical prompt: low 607–655 / medium 554 / high 3,339–7,123 reasoning tokens.
+
+Five cells on ct_tap, cap 65,536, reasoning on both stages, mean of 3
+(`test_output/POLICY_RUN_q38_{high,medium,low}/`, `reasoning_q38_cerebras_on_on_medium/`):
+
+| cell | sheet ch | report ch | analyser | generator | **e2e** | A out tok | G out tok | gate |
+|---|---|---|---|---|---|---|---|---|
+| v1 · high (default) | 24,213 | 3,745 | 18.8s | 22.6s | **41.4s** | 34,630 | 29,700 | 2/3 |
+| v1 · medium | 33,813 | 4,227 | 14.8s | 10.5s | **25.4s** | 20,639 | 14,492 | 3/3 |
+| arm C · high | 8,571 | 3,081 | 17.7s | 15.7s | **33.4s** | 20,561 | 21,477 | 3/3 |
+| arm C · medium | 8,872 | 3,278 | 8.1s | 8.5s | **16.6s** | 12,762 | 10,774 | 2/3 |
+| arm C · low | 7,247 | 2,960 | 8.2s | 8.5s | **16.7s** | 11,459 | 10,892 | 2/3 |
+
+Arm C = `POLICY + ANALYSER_V2` / `POLICY + GENERATOR_V2`, system prompts byte-identical per
+stage, per-case content in the user message (plan Task 8 arm C; the v3 analyser prompt of Task 9
+does not exist yet). New runner `scripts/sheet_budget/policy_run.py`; `reasoning_matrix` gained
+`--effort`.
+
+- **Medium halves reasoning on both stacks; low adds nothing over medium** on this case.
+- **Arm C at medium: 16.6s e2e, coverage canaries intact** (adrenal / atherosclerosis / renal /
+  faecal 9/9 across arm C, hiatus 7/9), four-section layout 9/9 with compartment sub-headings.
+- **The arm C gate failure (run 2 at medium and at low) is a real contradiction**: "The small
+  bowel shows normal wall enhancement and calibre with no pneumatosis" beside dictated duodenal
+  mural gas. Duodenum is small bowel. L-31's conditional-negative failure survives POLICY at
+  reduced effort; at high effort arm C passed 3/3.
+- **v1 at medium passed 3/3** but sheets grew to 32–37k chars and reports carry LIMITATIONS
+  (and once CORRELATION) sections and history-restating impressions.
+- **v2 notation leaks**: literal `TERMINAL:` sub-heading in 5/9 arm C reports.
+- **`validate_sheet_v2` fails 8/9 arm C sheets on `stray_prose`** — quoted T-NEG text inside
+  SUPPRESS-IF-HISTORY lines, i.e. the grammar quoting itself. Instrument bluntness; fix the
+  validator before using the contract as a gate.
+- **Must-appear history erosion in arm C**: lactate 1/9, apixaban 0/9 in reports (v1: nearly all).
+  POLICY does not require them; L-13's radiologist preferred less restating. Policy decision.
+- One banned construction ("cannot be excluded") in arm C high run 1; none at medium/low.
+
+→ Candidate operating point: **arm C at medium**, once (a) the small-bowel/duodenum negative is
+handled (rescoping directive or an OBLIGATION-level rule), (b) `TERMINAL` leakage is closed,
+(c) the sheet validator stops flagging its own quoting. Then widen to the 5-case suite and put a
+radiologist on it — the judge was not run and the gate is lexical.
+→ Production Cerebras settings branch must set `reasoning_effort` explicitly (default is high)
+and raise `max_tokens` well above 16,000 before Qwen 3.8 goes near a live route.
+
+---
+
+### L-35 · v1 by subtraction (`prune_v1` directive) — sheet −40%, gate 3/3, the reasoning layer survives; two new leaks
+
+**Verdict: the compromise cell is v1 pruned at medium effort, and it holds.** Confidence: moderate
+(n=3, 1 case, no judge; gate + section splitter + canaries + manual read). Spec:
+`docs/superpowers/specs/2026-09-24-v1-subtraction-design.md`.
+
+Why this cell exists: a side-by-side read of v1 vs arm C on the same dictation (page tab
+"Analysis") traced v1's quality to six instruction-level mechanisms v2/v3 deleted — causal index
+paragraph (P1), differential-targeted atomic mandatory negatives, history modifiers with
+management implications, the hardening preamble's synthesis epistemics, impression exemplars
+carrying must-appear hooks, and "do not copy input phrasing verbatim". Decision: discard the v2
+grammar and the v3 four-purpose sheet; rebuild by subtraction from v1.
+
+`prune_v1` (opt-in, `quick_report_analyser.DIRECTIVES`, production path unchanged) cuts
+Interpretive Clause Rules, two of three exemplar tiers, the Canonical default-normal list
+(Normal-study path is the single source), caps Measurement/Out-of-scope/non-assessables at 3,
+and adds two rules: never infer contrast/phase ("Contrast: per dictation"); never pre-assert a
+history finding in a canonical line.
+
+`reasoning_matrix --model qwen-3.8-27b --cell on_on --effort medium --directive prune_v1
+--max-tokens 65536 --runs 3 --no-judge`, ct_tap
+(`test_output/reasoning_q38_cerebras_on_on_medium_prune/`) vs L-34's v1 medium:
+
+| | sheet ch | report ch | analyser | generator | e2e | A out | G out | gate |
+|---|---|---|---|---|---|---|---|---|
+| v1 · medium | 33,813 | 4,227 | 14.8s | 10.5s | 25.4s | 20,639 | 14,492 | 3/3 |
+| **v1 · medium · prune_v1** | **20,206** | 3,410 | 12.2s | 9.0s | **21.2s** | 18,490 | 12,464 | **3/3** |
+
+Predictions: sheet −35–50% → **−40% ✓**; analyser −20–30% → −18% (≈); gate 3/3 → ✓; impression
+engagement unchanged → mostly ✓ (see below); "Contrast: per dictation" 3/3 → ✓.
+
+- **Directive compliance**: Interpretive Clause Rules absent 3/3, canonical list absent 3/3,
+  contrast line "Per dictation" 3/3, TECHNIQUE correct from dictation 3/3. L-03 holds again.
+- **Shared defects moved**: "no mesenteric fat stranding" beside dictated stranding — gone 3/3
+  (was 1/1 in both v1 and arm C reads). Steatosis asserted from the prior — 1/3 clean (was
+  3/3 asserted); run 2's sheet still carried it in the Normal-study path, run 3's generator
+  inferred it with a clean sheet → **needs a generator-side rule too** (cell 2).
+- **Report quality (manual read, run 1)**: index paragraph opens with the bleed and carries the
+  targeted negatives ("No filling defect in the SMA, IMA, SMV or IMV to suggest mesenteric
+  vascular occlusion", "No free intraperitoneal air to suggest bowel perforation"); numbered
+  impression engages all three questions, reconciles lactate and Hb, names apixaban, refers to
+  IR and vascular, defers renal/adrenal characterisation. Equivalent to the unpruned v1 read.
+- **Two regressions to watch (n=3, could be noise)**: run 1 dropped the colon/faecal-loading
+  station (0/3 drops in the unpruned cells today) — plausibly the canonical list was doing
+  coverage work the Normal-study path alone does not; and no pruned impression recommended
+  general surgical review for the duodenal pneumatosis, where the unpruned v1 medium cell did
+  2/3 (the pruned run-1 match is "vascular surgical review", not general surgery).
+- **New leak**: `REFERRAL:` / `CORRELATION:` tags rendered inline in the impression 3/3 and as
+  section headers 2/3 (unpruned v1 leaked CORRELATION 1/3). The Recommendation-scope tag set
+  and the exemplars that carry it are the source; the exemplar should demonstrate prose.
+
+→ Cell 2 (generator side, one variable): hardening preamble trimmed of global-guide duplicates
++ "a prior's finding is not a current finding" + tags render as prose. Cell 3: sheet to user
+message. Then 5-case suite, then radiologist read.
+
+---
+
+### L-36 · History out of the report, tags out of the report — 24 surgical instruction edits, validated 3/3
+
+**Verdict: both leaks closed at source; no regression on the pruned cell.** Confidence: moderate
+(n=3, 1 case, no judge). Decision by Hassan: a radiology report states what the imaging
+establishes; clinical history is reasoning input that shapes phrasing and confidence and is
+never emitted.
+
+**Root cause was instruction, not drift.** v1 carried a "Clinical history must-appear" hook
+list in the analyser (Phase 7 + Output Format, both variants), a rule that exemplars MUST
+visibly demonstrate every hook, an exemplar skeleton with "[, in the context of <must-appear
+hooks>]", a Phase 2 line that modifiers must be "reflected in the impression", and on the
+generator side PRE_WRITING_ANALYSIS step 3 ("these must be reflected in the impression") and a
+VERIFICATION line to match. The tag leak came from the Recommendation-scope tag set being
+mandated inside the impression exemplars ("must be drawn from this tag set"), so the exemplar
+showed `REFERRAL:` literally and the generator reproduced it.
+
+**Edits (all on branch `skill-sheet-v3`, `git diff` is the audit):**
+
+| # | file · site | change |
+|---|---|---|
+| E1 | analyser Phase 1 (×2 variants) | contrast stated only where the scan-type name states it; never inferred from absence; else "per dictation" |
+| E2 | analyser Output Format · Contrast | placeholder text to match E1 |
+| E3 | analyser Phase 2 · modifiers | "when the modifier must be reflected in the impression" → "how it changes what the impression asserts and at what confidence. The history is reasoning input: the report never restates it." |
+| E4 | analyser Phase 7 · CRITICAL exemplar rule | replaced by "Exemplars carry no clinical history" |
+| E5 | analyser Phase 7 · abnormal exemplar bullet | hooks clause removed |
+| E6 | analyser Phase 7 · must-appear paragraph (×2) | replaced by "Clinical history is never emitted" (concordance stated against the imaging, never by restating the presentation) |
+| E7 | analyser Output Format · must-appear line (×2) | removed |
+| E8 | analyser Phase 8 self-check | "exemplars demonstrate must-appear" → "exemplars carry no clinical history" |
+| E9–E11 | analyser Output Format · exemplar skeleton | "in the context of <hooks>" slot and hook-integration sentence removed; normal exemplar names no history item |
+| E12 | analyser Phase 7 · tag set intro (×2) | tags are sheet notation; a recommendation renders as prose |
+| E13 | analyser Phase 7 · exemplar recommendation clause (×2) | "rendered as prose without the tag label" |
+| E14 | analyser Output Format · Recommendation scope (×2) | "Tags are sheet notation: they never appear in exemplars or in the report" |
+| E15 | analyser Phase 3 · Normal-study path (×2) | a canonical line never asserts a finding the history or a prior study reports |
+| G1 | global guide · Output Structure | history "never reproduced — not as a section, and not as content in any section" |
+| G2 | global guide · Skill Sheet Internals | recommendation tags are classification labels, never a labelled line or a section |
+| G3 | global guide · Missing Data Handling | a history/prior finding is not a finding on this study; asserted only where dictated |
+| G4 | PRE_WRITING_ANALYSIS step 3 | "must be reflected in the impression" → change interpretation/confidence/urgency; history never written |
+| G5 | VERIFICATION_CHECKLIST | history-restatement line replaced; tag-label line added |
+| GT | gate.py | new `tag_leak` check on `IMAGING:|REFERRAL:|MDT:|TISSUE:|CORRELATION:` |
+| D | `prune_v1` directive | its contrast and no-prior-assert bullets removed (now base-prompt rules) |
+
+Full suite 232 passed. Anthropic analyser variant shares E1, E6, E7, E12–E15.
+
+**Validation** — same cell as L-35 (`v1 medium + prune_v1`), rerun ×3 on ct_tap after the edits
+(`test_output/reasoning_q38_cerebras_on_on_medium_prune_v2/`):
+
+| | before (L-35) | after |
+|---|---|---|
+| history items in impression | 5 / 4 / 5 | **0 / 0 / 0** |
+| tag labels in report | 3/3 (REFERRAL:, CORRELATION: incl. as sections) | **0/3** |
+| steatosis asserted from prior | 2/3 | **0/3** |
+| colon/faecal loading covered | 2/3 | **3/3** |
+| gate (now incl. tag_leak) | 3/3 | **3/3** |
+| sheet / report / e2e | 20.2k / 3.4k / 21.2s | 21.2k / 3.4k / 19.9s |
+
+Impressions after: diagnosis-led, negatives answered, referrals as prose, no demographics,
+labs, drugs or presenting symptoms anywhere.
+
+- LIMITATIONS rendered 2/3 ("no arterial phase obtained" in the dictation) — this is the
+  sanctioned path (Phase 6: dictated technical limitation triggers LIMITATIONS), not a leak.
+- Run 1 dropped background atherosclerosis (1/3). Watch.
+- **Open regression, now 0/6 across both pruned cells vs 2/3 unpruned medium**: no general
+  surgical referral for the duodenal pneumatosis; run 1's impression states the duodenal finding
+  without interpretation. Candidate cause is the pruned Interpretive Clause Rules or exemplar
+  tiers. Cell 3 = restore interpretive clauses only.
+- Run 1: "haematology review for anticoagulant management" — names what the specialty should do;
+  scope rule says name the specialty only. Minor; watch.
+
+---
+
+### L-37 · COMPARISON content and impression opening — two per-run analyser drifts, closed at the instruction
+
+**Verdict: both closed; 3/3 on each after the edit.** Confidence: moderate (n=3, 1 case, no judge).
+
+Hassan flagged two aberrancies in L-36 run 1 that runs 2–3 did not show: (a) COMPARISON carried
+a finding and an interval measurement plus an invented "no prior CT TAP available" sentence;
+(b) the impression opened on the negative answer to mesenteric ischaemia rather than the
+confirmed bleed. Traced by pairing each sheet with its report:
+
+- (a) The v1 stack said *whether* COMPARISON acknowledges a prior (three-tier rule) but never
+  *what it contains*. The analyser rewrites that rule per run; run 1 wrote "comparison … where
+  relevant to liver and aortic findings" plus a study-specific fourth branch, and the generator
+  obeyed both. Runs 2–3 restated the three-tier rule and were clean. Fix: the sentence v3's
+  POLICY already had — "COMPARISON names the prior study and its date and nothing else … interval
+  change is stated in FINDINGS beside the lesion" — appended to the analyser's COMPARISON content
+  rule (both variants, C1/C2) and to the global guide's Output Structure (G6).
+- (b) Phase 7's opening convention ("governed by the clinical question, not the magnitude of
+  positive findings") covered single-question studies only. Run 1's sheet ranked mesenteric
+  ischaemia as *the* primary question, demoted the bleed to "secondary", and wrote "clinical
+  answer to the primary question first"; the generator led with the negative. Runs 2–3 bundled
+  the bleed into the primary hypothesis or ranked by acuity. Fix (O1/O2, both variants): any
+  confirmed acute pathology opens the impression whichever question it answers; ranking among
+  questions decides the opening only when every question is negative; output-format placeholder
+  tightened to match.
+
+Validation, same cell (`v1 medium + prune_v1`) ×3, `reasoning_q38_cerebras_on_on_medium_prune_v3/`:
+
+| | L-36 cell | after L-37 |
+|---|---|---|
+| COMPARISON = study + date only | 2/3 | **3/3** ("Abdominal ultrasound, six months ago.") |
+| impression opens on confirmed pathology | 2/3 | **3/3** |
+| sheet opening convention says "index finding when any acute pathology is confirmed" | 0/3 | **3/3** |
+| history in impression / tag labels / steatosis from prior | 0 / 0 / 0 | 0 / 0 / 0 |
+| gate | 3/3 | 3/3 |
+| sheet / report / e2e | 21.2k / 3.4k / 19.9s | 19.8k / 3.1k / 16.8s |
+
+Watch list carried forward: colon/faecal loading dropped in 1/3 (the recurring pruned-cell
+coverage wobble, now 2 drops in 9 pruned runs vs 0 in 6 unpruned); general surgical referral
+for the duodenal pneumatosis 1/3; run 1 "haematology review for anticoagulation management"
+names what the specialty should do; run 1 asserts "no pulmonary embolism" on a portal-venous
+study — a sheet mandatory negative the modality cannot support, worth a rule that mandatory
+negatives are bounded by modality non-assessables.
+
+---
+
+### L-38 · Ten varied CT/MR cases, two input tiers — structure holds 20/20; scanty input exposes the design question
+
+**Verdict: the pruned v1 stack at medium generalises across modality and input quality on every
+structural measure; two content rules still missing.** Confidence: moderate (n=1 per case, 20
+runs, no judge, lexical screens + manual read of impressions).
+
+Suites (`test_cases/varied_10.json`, `varied_10_mixed.json`; outputs
+`test_output/VARIED10_q38_medium_prune/`, `VARIED10MIX_q38_medium_prune/`): CT head haemorrhage,
+CT thorax nodule, CTPA with RV strain, CT trauma pan-scan, CT pancreatic staging, CT AP
+diverticulitis abscess, MRI brain mets, MRI whole spine MSCC, MRI lumbar disc, MRI ankle. Mixed
+suite: 4 scanty (positives only, terse, negatives stripped — pure reductions), 3 fuller (prose
+with conventional negatives added — synthetic, flagged for review), 3 unchanged.
+
+| measure | orig 10 | mixed 10 |
+|---|---|---|
+| gate | 10/10 | 10/10 |
+| four sections, no extras | 10/10 | 10/10 |
+| tag labels | 0 | 0 |
+| history in impression | 0 | 0 |
+| COMPARISON study/date only | 10/10 | 9/10 (thorax scanty: "recent chest radiograph" — from the referral, not the dictation) |
+| impression opens on confirmed finding | 10/10 | 10/10 |
+| dictated mm/cm values carried | all | all |
+| mean wall | 15s | 17s |
+| mean sheet | 16.4k | 16.0k |
+
+- **Scanty input → full report by design.** Trauma scanty asserts cervical spine, aorta, solid
+  organs, bladder, haemothorax as clear; none dictated. This is the canonical default-normal
+  mechanism (silence = normal) doing exactly what v1 specifies. Product decision, not a prompt
+  defect: does a radiologist signing from bullets want the systems review written for them?
+- **Fabricated and incorrect classification**: lung-nodule orig impression "cT2aN2M0" — not
+  dictated, and 22 mm is T1c. v1 stack has no "no staging/grading tier unless dictated or
+  mapped from dictated features" rule; GENERATOR_V2 §1 had one. → one-sentence edit to the
+  global guide's Data Authority.
+- **COMPARISON from the referral** (1/20): needs "a prior counts only when the dictation names
+  it" at the L-37 site.
+- Remit-boundary recommendations (colonoscopy at 6 weeks, malignancy screen post-PE, Doppler):
+  within scope as guideline next steps; read with the scope rule in mind.
+
+---
+
+### L-39 · Three phrasings dissected and closed: concordance sentence (mine), invented trauma MDT, fabricated TNM
+
+**Verdict: all three traced to instruction text and closed; 12 recheck runs clean on each.**
+Confidence: moderate (recheck n=2 per case on the four affected cases; no judge).
+
+- **"Findings sufficient to account for the presentation"** — introduced by the L-36 edit
+  itself: the replacement paragraph quoted the phrase as an example of stating concordance
+  "against the imaging", in both analyser variants and the global guide. A quoted phrase in an
+  instruction is a sanctioned string; 2/17 suite reports copied it. Hassan: concordance
+  statements never belong in a report. Fix (P1, ×3 sites): "The impression answers the question
+  asked; it never comments on whether the findings explain the presentation." Recheck 0/12.
+- **"Trauma MDT for polytrauma involving five compartments"** — two causes. The recommendation
+  scope's closed tag set has an `MDT:` slot and the output format asks for tagged entries with no
+  statement that the slot may be empty, so the analyser filled it on a trauma sheet; and it
+  wrote the trigger in sheet-internal vocabulary ("≥3 compartments"), which the generator quoted
+  as justification. First fix (P2/P3: MDT must exist; never justify in sheet vocabulary) removed
+  the vocabulary leak (0/8) but not the MDT (2/4 trauma reports): the model believes a trauma MDT
+  exists. Second fix, a property not a list (P4, analyser ×2 + guide): an MDT is a scheduled
+  planning forum and is never recommended on an acute or emergency study, where coordination is
+  by referral. Recheck: trauma MDT in reports 0/4 (one sheet wrote "Not applicable for acute
+  trauma"); oncology MDTs on lung / brain cases unchanged and correct.
+- **"cT2aN2M0"** on the lung nodule (not dictated; 22 mm is T1c). No v1 rule forbade assigning a
+  classification tier; the sheet's Guideline hooks offered TNM "as vocabulary". Fix (C1 guide
+  Data Authority; C2 analyser Guideline hooks ×2): no staging/grading/classification tier unless
+  dictated or mapped explicitly by Measurement Conventions. Recheck 0/2 (dictated "Grade III"
+  splenic laceration correctly retained).
+
+Edits this entry: 9, exact-match asserted, 232 tests pass. Outputs `RECHECK4_q38_medium_prune/`,
+`RECHECK_TRAUMA_q38_medium_prune/`.
+
+Watch: "Clinical observation with serial neurological assessment" / "serial neurological
+observation" in 2/8 trauma-original runs — clinical monitoring, already prohibited in the guide's
+Recommendations prose. Candidate countable fix: a VERIFICATION line "no recommendation for
+clinical monitoring, observation, treatment or drugs". Not applied.
+
+---
+
+### L-40 · Production swap — quick-report pipeline on Qwen 3.8 27B / Cerebras / medium / prune_v1; v2 and v3 deleted
+
+**Status: on branch `skill-sheet-v3`, uncommitted, smoke-tested through the production entry
+points.** Decision by Hassan 2026-09-24 after L-33..L-39.
+
+Config (`enhancement_utils.MODEL_CONFIG`, `quick_report_api.GENERATOR_MODEL`):
+
+| role | before | after | fallback (declared, not yet consulted by the routes) |
+|---|---|---|---|
+| QUICK_REPORT_ANALYZER_FAST (production lane) | qwen/qwen3.6-27b (Groq) | **qwen-3.8-27b** (Cerebras) | qwen/qwen3.6-27b |
+| QUICK_REPORT_ANALYZER_BEST (parallel lane, off) | claude-haiku-4-5 | **qwen-3.8-27b** | claude-haiku-4-5 |
+| TEMPLATE_REPORT_GENERATOR + GENERATOR_MODEL | qwen/qwen3.6-27b (Groq) | **qwen-3.8-27b** | qwen/qwen3.6-27b |
+
+Settings, keyed on `model_name == "qwen-3.8-27b"` inside the existing Cerebras branches so
+gpt-oss is untouched: analyser temperature 0.5 / top_p 0.95 / **max_tokens 65536 /
+extra_body reasoning_effort medium**; generator temperature 0.8 / top_p 0.95 / same cap and
+effort. `generate_ephemeral_skill_sheet(directives=None)` now means
+`PRODUCTION_DIRECTIVES = ("prune_v1",)`; `analyser_prompt_version()` hashes with them, so the
+stored prompt version changes (now `3d85a1c0bc3b` for qwen-3.8-27b). Harnesses passing an
+explicit tuple are unaffected; `reasoning_matrix` without `--directive` now mirrors production.
+
+Deleted (git rm; history retains them): `report_v2.py`, `report_v3_policy.py`,
+`sheet_budget/v2_run.py`, `sheet_budget/report_checks.py`, `tests/test_report_v2.py`,
+`tests/test_report_v3.py`, `tests/test_report_checks.py`, the v3 plan and design spec, the
+open-arm spec, `sheet_budget/policy_run.py`. No remaining imports. Suite 204 passed (was 232;
+the 28 removed were the v2/v3 tests). `test_qwen_migration.KNOWN_CEREBRAS_DEBT` lists the three
+quick-report roles as deliberate.
+
+Smoke through the production functions with no overrides (ct_tap): analyser 8.9s, sheet
+20,831 ch, "Contrast: Per dictation", no clause rules / canonical list / must-appear; generator
+9.3s, gate pass, COMPARISON "Abdominal ultrasound, 6 months prior.", impression opens on the
+bleed, no history, no tags; **18.2s end to end** (production before: ~37–42s on Groq 3.6).
+
+Not done here: Railway deploy; wiring the declared `_FALLBACK` roles into the quick-report
+routes; the `_run_agent_with_model` Cerebras log still prints "reasoning_effort: NOT SET" because
+it reads the top-level key while the honoured value is in extra_body (cosmetic).
+
+---
+
+### L-41 · Fallback wired — Groq `qwen/qwen3.8-27b` behind every quick-report role; Groq 3.6 retired from the registry
+
+**Status: implemented and unit-tested; live Groq validation blocked on the console.** Decision by
+Hassan 2026-09-24.
+
+- `MODEL_PROVIDERS`: `qwen/qwen3.6-27b` removed, `qwen/qwen3.8-27b` (Groq) added. Every reference
+  in `src/` and `tests/` renamed mechanically (13 files), including the `prompt_manager` template
+  mapping and `GROQ_REASONING_MODELS`, so the tuned report template still resolves for the Groq
+  model (the L-23-era rename lesson).
+- Fallbacks: `QUICK_REPORT_ANALYZER_FAST/BEST_FALLBACK` and `TEMPLATE_REPORT_GENERATOR_FALLBACK`
+  all `qwen/qwen3.8-27b`. New `enhancement_utils._fallback_model_for(model)` resolves a primary to
+  its declared fallback.
+- Lookup is scoped to the quick-report roles (single hop): a direct Groq call that fails raises rather than inheriting CANVAS_PROCESS_FALLBACK (gpt-oss) — found by the live smoke, fixed, tested.
+- Wiring: `generate_ephemeral_skill_sheet` now builds settings per attempt and retries once on
+  the fallback when the primary raises, returning `fallback_from`; the skill-sheet-guided
+  generator does the same around its report call (description sidecar is not re-run; a generic
+  description is substituted). Every caller — /analyse, /generate inline analyser, the proto
+  endpoint — inherits it.
+- Groq settings for `qwen/qwen3.8-27b`: Groq's docs list `reasoning_effort` none/low/medium/high
+  for this model (3.6 was binary) and a **16,384 output ceiling with reasoning counted**. The
+  pruned analyser at medium averages ~18k output tokens (L-35), so the fallback runs at **low**
+  (analyser max_tokens 16384; generator cap unchanged). Truncation on the fallback path is still
+  possible on long cases; it is a degraded path by construction.
+- Tests: `tests/test_quick_report_fallback.py` (5) stub the agent runner and assert call order,
+  per-model settings and the recorded `fallback_from`. Suite 209 passed.
+- **Blocked**: Groq returns 403 "model blocked at the project level" for `qwen/qwen3.8-27b` on
+  this key. Enable it under Model Permissions in the Groq console; until then the fallback and
+  every renamed non-quick-report Groq role (canvas, audit, planner, skill-sheet tools) will fail
+  with that 403. Do not deploy before enabling.
+- Primary path re-smoked after the refactor: Cerebras analyser 8–9s, `fallback_from=None`.
+- **Live validation after Hassan enabled the model in the Groq console (same day):**
+
+  | path | analyser | generator | e2e | gate | sheet | notes |
+  |---|---|---|---|---|---|---|
+  | Groq direct, ct_tap | 29.6s | 29.1s | 58.8s | pass | 14.1k, 9 sections, ends cleanly | four sections |
+  | Groq direct, ct_head | 17.9s | 21.2s | 39.1s | pass | 13.8k, ends cleanly | four sections |
+  | forced failover (Cerebras primary made to raise), ct_thorax nodule | 23.9s on Groq | on Groq | 40.3s | pass | 13.6k | both stages record `fallback_from=qwen-3.8-27b` |
+
+  At `low` the analyser stays under Groq's 16,384 ceiling on all three cases (no `length`
+  finishes); reports are shorter (1.1–2.5k ch vs 3–4k on the primary) — the expected shape of a
+  degraded path. Groq at ~450 tps is 2–3× slower per stage than Cerebras at medium; e2e 40–60s
+  vs ~18s. The blocker is cleared.
+
+---
+
+### L-42 · REGIONS macro-structure — headed regional blocks for multi-region protocols; FLAT everywhere else
+
+**Verdict: works as specified; single-region studies unaffected.** Confidence: moderate (trauma
+×6, TAP ×3, ten-case suite ×1; no judge).
+
+Hassan's observation on the L-38 trauma report: findings ran spleen → lung → head → spine with no
+map. Cause: v1's only structural rule is causal (Phase 3 "causal, not anatomical"; hardening 2
+"never park a causal companion in a distant sweep paragraph"; hardening 6's unheaded flow), and
+the global guide's `header: "[text]"` rendering hook was never emitted by the ephemeral analyser.
+v2's COMPARTMENTS had the mechanism but applied it to the TAP, which is where it went wrong.
+
+Six edits: Phase 3 + Output Format (both analyser variants) add a **Macro-structure**
+declaration — FLAT by default; REGIONS only for a multi-region protocol read as separate
+examinations, regions in render order (cranio-caudal, vertebral column its own region, soft
+tissues/bones last), each marked `header: "<REGION>"`, causal clustering applied *within* a
+region, priority across regions left to the impression, "when in doubt, FLAT". Hardening 2, 6
+and 9 gain the within-region clause and the sub-heading layout. Global guide names region headers
+as the sanctioned use of the header marking. Suite 210 passed.
+
+| cell | sheet declares | report renders | impression opens | gate |
+|---|---|---|---|---|
+| trauma pan-scan ×3 (`REGIONS_check/`) | REGIONS 3/3 | HEAD / CERVICAL SPINE / CHEST / ABDOMEN / PELVIS (+BONES AND SOFT TISSUES 1/3) 3/3 | splenic laceration 3/3 | 3/3 |
+| trauma scanty ×3 | REGIONS 3/3 | headers 2/3 (run 3's sheet copied the template's backtick syntax into the macro line and the generator rendered no headers) | splenic laceration 3/3 | 3/3 |
+| GDA bleed TAP ×3 | **FLAT 3/3** | none | active extravasation 3/3 | 3/3 |
+| ten-case mixed suite ×1 (`VARIED10MIX_regions/`) | REGIONS only on the pan-scan; FLAT 9/9 | headers only on the pan-scan | — | 10/10 |
+
+Trauma run 1 reads as a regional map with the impression prioritised by acuity (spleen → chest →
+pelvis/L1 → SDH → negatives). Watch: the L1 endplate fracture landed under ABDOMEN in 2/3 rather
+than a spine region (the rule says the vertebral column is its own region; the sheets gave only
+CERVICAL SPINE); one scanty sheet leaked the template's backtick syntax into its macro line
+(1/6) — a placeholder-fidelity wobble, not a design fault.
+
+---
+
+### L-43 · REGIONS on five further multi-region CT/MR protocols — criterion right 3/5, one clear miss, one classification leak
+
+**Verdict: the macro-structure rule generalises, with two edits indicated.** Confidence: low-moderate
+(one pass, four synthetic dictations authored for this test, `test_cases/multiregion_5.json`,
+outputs `test_output/MULTIREGION5/`).
+
+| case | sheet | report headers | impression opens | gate |
+|---|---|---|---|---|
+| CT head + cervical spine (fall, anticoagulated) | REGIONS | HEAD / CERVICAL SPINE | SDH | pass |
+| CT NCAP lymphoma staging | FLAT | none — disease-organised: all nodal stations in one paragraph, then organs | "Stage IVB classical Hodgkin lymphoma" | pass |
+| MRI brain + whole spine (query demyelination) | FLAT | none — FINDINGS opened on the **cord**, then brain, then optic nerve | demyelination | pass |
+| CT aortogram + lower-limb run-off | REGIONS | THORAX / ABDOMEN / PELVIS / BILATERAL LOWER LIMBS | SFA occlusion | pass |
+| CT TAVI | FLAT | none | valve calcification | pass |
+
+- Head + c-spine and run-off are exactly what the rule is for; TAVI correctly FLAT; NCAP FLAT is
+  defensible (a disease-organised staging read) though a radiologist may prefer regions.
+- **Miss: MRI brain + whole spine went FLAT** and the causal rule then led with the cord lesions
+  before the brain. Brain and spine are separate acquisitions read as separate examinations; the
+  analyser read "one disease across two regions" as one field. Edit: the REGIONS test is whether
+  the regions were acquired as separate examinations, not whether one disease spans them.
+- **Classification leak via the exception**: "Stage IVB" was never dictated. The L-39 rule allows
+  a tier "the sheet's Measurement Conventions map dictated features to"; the sheet carried Ann
+  Arbor/Lugano and the generator staged — and the "B" came from history (night sweats, weight
+  loss), which is banned outright. Edit: remove the mapping exception; no stage or grade unless
+  dictated.
+- Scope wobbles (1/5 each): "coagulation status and anticoagulant level should be assessed to
+  inform haemorrhage management" (head + c-spine: management + history); serology and CSF
+  recommendations on the MRI case (laboratory direction, borderline).
+- Structure otherwise held: gate 5/5, four sections, no tags, COMPARISON date-only 5/5.
+
+---
+
+### L-44 · Separate acquisitions are REGIONS; no stage unless dictated — the prose rule lost, the countable one won
+
+**Verdict: both L-43 edits hold, after the staging rule was moved to countable sites.** Confidence:
+moderate (two cases ×3, `test_output/L44_check/` then `L44_check2/`).
+
+**Edit 1** (Phase 3, both variants): the REGIONS test is whether regions were acquired as separate
+examinations, not whether one disease spans them. MRI brain + whole spine: FLAT 1/1 before →
+REGIONS 2/3 after the first pass → **3/3** on the second, BRAIN / SPINE blocks, FINDINGS opening
+on BRAIN (it had opened on the cord). NCAP also moved to NECK / CHEST / ABDOMEN / PELVIS 3/3.
+
+**Edit 2, first attempt — failed.** Hassan asked whether the two staged reports had drawn their
+tier from a verifiable sheet mapping. Audit of all 16 output folders: 2 stages ever assigned, 0
+correct. NCAP "Stage IVB": the sheet's own Lugano rule listed the spleen as *extranodal* (it is
+lymphoid → stage III), and "B" came from history. Lung nodule "cT2aN2M0": no T thresholds in the
+sheet at all; staged from memory; 22 mm is T1c. So the exception ("sheet maps dictated features
+to a tier") was removed from the global guide and both analyser guideline-hook lines. Rerun: NCAP
+still staged **3/3** (III correct once, IV twice; one "IVB"). The history says "Staging", so
+"answer the question asked" beat a prose prohibition — L-03/L-18 again.
+
+**Edit 2, second attempt — held.** Four countable/at-source edits: (a) the Phase 2 example that
+taught the sheet to frame the gate as "stage per applicable system to guide MDT treatment
+planning" now reads "map nodal and extranodal extent and bulk so the MDT can stage"; (b) the
+output-format terminology placeholder says a tier is never impression-permitted unless dictated;
+(c) a VERIFICATION_CHECKLIST line: no staging/grading/classification tier anywhere unless
+dictated — a staging question is answered by describing extent and bulk; (d) PRE_WRITING step 4
+plans it. Rerun: **stage in report 0/3**; impressions describe distribution above and below the
+diaphragm, splenic involvement, bulk and negatives, and recommend PET-CT and the lymphoma MDT.
+Sheets still sketch a Lugano rule 3/3 (harmless now; the generator ignores it). MRI: "dissemination
+in space/time" retained — a radiological criterion statement, not a stage; acceptable.
+
+Decision recorded: staging from an ephemeral, analyser-written mapping is not a verifiable source;
+if staging-from-imaging is wanted later it needs a curated, reviewed threshold table, not a
+generated one. Suite 210 passed. 12 edits this entry (L-43 follow-through).
+
+---
+
 ## Open questions, in priority order
 
 1. ~~What causes the intermittent truncation?~~ **Answered — L-05.** Reasoning exhausts the 8k cap.

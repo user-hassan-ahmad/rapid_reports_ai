@@ -37,7 +37,7 @@ BACKEND_ROOT = SCRIPT_DIR.parents[3]
 CASES_PATH = BACKEND_ROOT / "test_cases" / "analyser_suite.json"
 OUTPUT_ROOT = BACKEND_ROOT / "test_output"
 
-MODEL = "qwen/qwen3.6-27b"
+MODEL = "qwen/qwen3.8-27b"  # default; override with --model (e.g. qwen-3.8-27b on Cerebras)
 
 # The 2x2. `None` means leave the provider default (reasoning on).
 CELLS = [
@@ -84,6 +84,8 @@ from . import gate, judge, report as report_mod  # noqa: E402
 
 _CAPTURED: list[dict] = []
 _REASONING: dict[str, str | None] = {"analyser": None, "generator": None}
+_MAX_TOKENS: dict[str, int | None] = {"override": None}
+_DIRECTIVES: dict[str, list[str]] = {"names": []}
 _STAGE: dict[str, str] = {"current": "?"}
 _ORIG_RUNNER = eu._run_agent_with_model
 
@@ -97,6 +99,13 @@ async def _instrumented(**kw):
         extra = dict(settings.get("extra_body") or {})
         extra["reasoning_effort"] = effort
         settings["extra_body"] = extra
+        kw["model_settings"] = settings
+    if _MAX_TOKENS["override"] and kw.get("model_name") == MODEL:
+        # Qwen 3.8 on Cerebras reasons past the 16k production cap; a `length`
+        # finish with empty content makes pydantic-ai retry, so usage() sums
+        # 2-3 attempts and the surviving sheet can be cut mid-sentence.
+        settings = dict(kw.get("model_settings") or {})
+        settings["max_tokens"] = _MAX_TOKENS["override"]
         kw["model_settings"] = settings
 
     t0 = time.time()
@@ -138,6 +147,7 @@ async def run_one(case: dict, cell: dict, tm: TemplateManager) -> dict[str, Any]
     sheet_result = await generate_ephemeral_skill_sheet(
         scan_type=case["scan_type"], clinical_history=case["clinical_history"],
         api_key="", model_override=MODEL,
+        directives=tuple(_DIRECTIVES["names"]) if _DIRECTIVES["names"] else None,
     )
     sheet = sheet_result["skill_sheet"]
     a_usage = _biggest("analyser")
@@ -187,33 +197,63 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--cell", action="append", default=None,
                    help="Filter to cell id(s): on_on, on_off, off_on, off_off. Repeatable.")
     p.add_argument("--case", action="append", default=None, help="Filter to case name(s).")
+    p.add_argument("--cases-file", default=None, help="Case corpus JSON (default test_cases/analyser_suite.json).")
     p.add_argument("--no-judge", action="store_true", help="Skip the paid v2.2 judge.")
     p.add_argument("--output-dir", default=None)
+    p.add_argument("--model", default=None,
+                   help="Model id for both stages (must be in MODEL_PROVIDERS). Default qwen/qwen3.8-27b on Groq.")
+    p.add_argument("--runs", type=int, default=1, help="Repeat each cell x case N times.")
+    p.add_argument("--effort", default=None,
+                   help="reasoning_effort for every stage marked 'on' (Cerebras: low/medium/high; default = provider default).")
+    p.add_argument("--directive", action="append", default=None,
+                   help="Named analyser directive(s) from quick_report_analyser.DIRECTIVES, e.g. prune_v1. Repeatable.")
+    p.add_argument("--max-tokens", type=int, default=None,
+                   help="Override max_tokens on both stages for --model (Cerebras accepts up to 131072).")
     return p.parse_args()
 
 
 async def main() -> int:
+    global MODEL
     args = _parse_args()
-    cells = [c for c in CELLS if not args.cell or c["id"] in set(args.cell)]
-    cases = json.loads(CASES_PATH.read_text())
+    if args.model:
+        MODEL = args.model
+    _MAX_TOKENS["override"] = args.max_tokens
+    _DIRECTIVES["names"] = list(args.directive or [])
+    cells = [dict(c) for c in CELLS if not args.cell or c["id"] in set(args.cell)]
+    if args.effort:
+        for c in cells:
+            for stage in ("analyser", "generator"):
+                if c[stage] is None:
+                    c[stage] = args.effort
+            c["id"] = f"{c['id']}@{args.effort}"
+    cases = json.loads(Path(args.cases_file).read_text() if args.cases_file else CASES_PATH.read_text())
     if args.case:
         cases = [c for c in cases if c["name"] in set(args.case)]
 
     stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     out_dir = Path(args.output_dir) if args.output_dir else OUTPUT_ROOT / f"reasoning_{stamp}"
     out_dir.mkdir(parents=True, exist_ok=True)
-    print(f"cells: {[c['id'] for c in cells]}\ncases: {len(cases)}\nout:   {out_dir}\n")
+    print(f"model: {MODEL} ({eu._get_model_provider(MODEL)})\ncells: {[c['id'] for c in cells]}\n"
+          f"cases: {len(cases)}\nruns:  {args.runs}\nmax_tokens: {args.max_tokens or 'production default'}\nout:   {out_dir}\n")
 
     tm = TemplateManager()
     runs: list[dict] = []
     for cell in cells:
         print(f"--- {cell['id']}  ({cell['label']}) ---")
         for case in cases:
-            try:
-                runs.append(await run_one(case, cell, tm))
-            except Exception as exc:  # noqa: BLE001
-                print(f"  ✗ {cell['id']}/{case['name']}: {exc}")
-                runs.append({"cell": cell["id"], "case": case["name"], "error": str(exc)})
+            for i in range(args.runs):
+                try:
+                    r = await run_one(case, cell, tm)
+                    r["run_index"] = i
+                    r["model"] = MODEL
+                    r["max_tokens_override"] = args.max_tokens
+                    r["effort"] = args.effort
+                    r["directives"] = list(args.directive or [])
+                    runs.append(r)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"  ✗ {cell['id']}/{case['name']} run {i}: {exc}")
+                    runs.append({"cell": cell["id"], "case": case["name"], "run_index": i,
+                                 "model": MODEL, "error": str(exc)})
         print()
 
     if not args.no_judge:

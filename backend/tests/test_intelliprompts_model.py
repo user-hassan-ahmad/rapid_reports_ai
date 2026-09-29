@@ -4,7 +4,7 @@ import asyncio
 from types import SimpleNamespace
 
 import rapid_reports_ai.canvas_routes as cr
-from rapid_reports_ai.enhancement_utils import MODEL_CONFIG
+from rapid_reports_ai.enhancement_utils import MODEL_CONFIG, normalise_model_settings
 
 REQ = cr.CanvasReviewRequest(scratchpad_content="There is a 9 mm hypodense lesion in segment 8 of the liver.",
                              checklist_sections=["LIVER"], scan_type="CT abdomen", clinical_history="")
@@ -33,16 +33,17 @@ def test_intelliprompts_run_on_cerebras_qwen_with_reasoning_off(monkeypatch):
     out = asyncio.run(cr._intelliprompts(REQ))
     assert [p.question for p in out] == ["Liver lesion characterised?"]
     c = calls[0]
-    assert c["model"] == "qwen-3.8-27b" == MODEL_CONFIG["CANVAS_INTELLIPROMPTS"]
+    assert c["model"] == MODEL_CONFIG["CANVAS_INTELLIPROMPTS"] == "qwen-3.8-27b"
     assert c["thinking"] is False
-    # the shape pydantic-ai forwards (top-level reasoning_effort / max_completion_tokens are dropped)
-    assert c["settings"]["extra_body"] == {"reasoning_effort": "none"}
-    assert "reasoning_effort" not in c["settings"] and "max_completion_tokens" not in c["settings"]
+    # what reaches the provider after normalise_model_settings: reasoning off, a small cap
+    sent = normalise_model_settings(c["model"], c["settings"])
+    assert sent["extra_body"]["reasoning_effort"] == "none" and sent["max_tokens"] == 1500
 
 
 def test_intelliprompts_fall_back_to_groq_qwen_with_reasoning_off(monkeypatch):
     calls = _stub(monkeypatch, fail_primary=True)
     out = asyncio.run(cr._intelliprompts(REQ))
     assert len(out) == 1
-    assert calls[1]["model"] == "qwen/qwen3.6-27b" == MODEL_CONFIG["CANVAS_INTELLIPROMPTS_FALLBACK"]
-    assert calls[1]["thinking"] is False and calls[1]["settings"]["extra_body"] == {"reasoning_effort": "none"}
+    assert calls[1]["model"] == MODEL_CONFIG["CANVAS_INTELLIPROMPTS_FALLBACK"]
+    sent = normalise_model_settings(calls[1]["model"], calls[1]["settings"])
+    assert calls[1]["thinking"] is False and sent["extra_body"]["reasoning_effort"] == "none"

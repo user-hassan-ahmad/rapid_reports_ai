@@ -173,21 +173,20 @@ def test_the_lean_polish_reserves_few_output_tokens(authed_client, lab):
     # fallback (lab, 2026-09-27). The lean output is one span: 252 tokens at most seen.
     authed_client.post("/api/canvas/polish-span", json=BODY)
     assert lab[0]["settings"]["max_tokens"] <= 1024
-    assert cr._canvas_process_config("clean", incremental=True)[1]["max_completion_tokens"] == 8000  # /process unchanged
+    assert cr._canvas_process_config("clean", incremental=True)[1]["max_tokens"] == 8000  # /process unchanged
 
 
-def test_the_lean_polish_runs_on_cerebras_qwen_with_reasoning_off_and_groq_fallback(authed_client, lab):
+def test_the_lean_polish_runs_on_the_canvas_process_role_with_reasoning_off(authed_client, lab):
     # Bake-off 2026-09-27, 167 lab finals: Cerebras qwen-3.8-27b reasoning off p50 311 ms,
-    # 73 output tokens, fewer leftover cues/mishearings than Groq qwen3.6-27b (p50 257 ms).
-    # Settings in the shape pydantic-ai forwards: top-level reasoning_effort and
-    # max_completion_tokens are dropped (Cerebras then reasons at 'high', up to 18k tokens).
+    # 73 output tokens. Models come from main's table (canvas process role and its fallback).
+    from rapid_reports_ai.enhancement_utils import MODEL_CONFIG, normalise_model_settings
     authed_client.post("/api/canvas/polish-span", json=BODY)
     c = lab[0]
-    assert c["primary"] == "qwen-3.8-27b" and c["fallback"] == "qwen/qwen3.6-27b"
-    assert c["settings"]["extra_body"] == {"reasoning_effort": "none"}
-    assert "reasoning_effort" not in c["settings"] and "max_completion_tokens" not in c["settings"]
-    # the Groq fallback accepts the same dict: max_tokens, and reasoning_effort none via extra_body
-    assert cr._adapt_canvas_settings("qwen/qwen3.6-27b", c["settings"])["extra_body"] == {"reasoning_effort": "none"}
+    assert c["primary"] == MODEL_CONFIG["CANVAS_PROCESS"] and c["fallback"] == MODEL_CONFIG["CANVAS_PROCESS_FALLBACK"]
+    for model in (c["primary"], c["fallback"]):
+        sent = normalise_model_settings(model, cr._adapt_canvas_settings(model, c["settings"]))
+        assert sent["extra_body"]["reasoning_effort"] == "none" and sent["max_tokens"] <= 1024
+
 
 
 def test_a_lossy_lean_output_is_replaced_by_the_span_with_the_new_words_appended(authed_client, monkeypatch, caplog):

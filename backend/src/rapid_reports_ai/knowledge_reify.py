@@ -89,7 +89,7 @@ async def _llm_normalise(raw_label: str) -> str:
     class CanonicalLabel(BaseModel):
         canonical: str
 
-    model_name = "qwen/qwen3.6-27b"
+    model_name = MODEL_CONFIG["KNOWLEDGE_MAINTENANCE"]
     provider = _get_model_provider(model_name)
     api_key = _get_api_key_for_provider(provider)
 
@@ -119,7 +119,8 @@ async def _llm_normalise(raw_label: str) -> str:
         user_prompt=f"Normalise: {raw_label}",
         api_key=api_key,
         use_thinking=False,
-        model_settings={"temperature": 0.0, "max_tokens": 100},
+        # A label lookup: reasoning off, or the 100-token cap truncates mid-thought.
+        model_settings={"temperature": 0.0, "max_tokens": 100, "reasoning_effort": "none"},
     )
     return result.output.canonical.strip()
 

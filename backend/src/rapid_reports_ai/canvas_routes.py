@@ -562,8 +562,11 @@ Update the ACTIVE text. Emit committed_edits only for directed corrections to CO
 
 
 # Shared model settings for section extraction (both scan-type and template)
-_SECTIONS_MODEL_SETTINGS_CEREBRAS = {"temperature": 0.1, "max_completion_tokens": 1000}
-_SECTIONS_MODEL_SETTINGS_GROQ = {"temperature": 0.1, "max_tokens": 1000}
+# IntelliDictate is latency-bound: every canvas call runs Qwen 3.8 with reasoning off on
+# both providers. Reasoning on broke IntelliPrompts' structured output (Groq thinking:
+# tool_use_failed; Cerebras low: parser_error); off answers in 0.7-0.95s on Cerebras.
+_SECTIONS_MODEL_SETTINGS_CEREBRAS = {"temperature": 0.1, "max_tokens": 1000, "reasoning_effort": "none"}
+_SECTIONS_MODEL_SETTINGS_GROQ = _SECTIONS_MODEL_SETTINGS_CEREBRAS
 
 
 @canvas_router.post("/sections", response_model=SectionGenerateResponse)
@@ -681,40 +684,27 @@ async def sections_from_template(
 def _canvas_process_config(mode: str, incremental: bool = False) -> tuple[str, dict]:
     """Return (system_prompt, model_settings) for the polish mode. Defaults to Clean.
 
-    Cerebras settings form (max_completion_tokens + reasoning_effort); reasoning_effort
-    'low' keeps Gemma 4 fast and literal. When ``incremental`` is set, the incremental
+    Reasoning is off (see _SECTIONS_MODEL_SETTINGS_CEREBRAS). When ``incremental`` is set, the incremental
     suffix (frozen COMMITTED + patch-edit response) is appended to the base prompt.
     """
     if mode == "structured":
         base_prompt = CANVAS_PROCESS_SYSTEM_PROMPT
-        settings = {"temperature": 0.3, "max_completion_tokens": 8000, "reasoning_effort": "low"}
+        settings = {"temperature": 0.3, "max_tokens": 8000, "reasoning_effort": "none"}
     else:
         base_prompt = CANVAS_CLEAN_SYSTEM_PROMPT
-        settings = {"temperature": 0.15, "max_completion_tokens": 8000, "reasoning_effort": "low"}
+        settings = {"temperature": 0.15, "max_tokens": 8000, "reasoning_effort": "none"}
     if incremental:
         return base_prompt + CANVAS_INCREMENTAL_SUFFIX, settings
     return base_prompt, settings
 
 
 def _adapt_canvas_settings(model_name: str, settings: dict) -> dict:
-    """Canvas settings are written in Cerebras form (max_completion_tokens,
-    top-level reasoning_effort). Off Cerebras those break: Groq's qwen rejects
-    reasoning_effort "low" (only none|default, and only via extra_body), and
-    the native client wants max_tokens. Canvas wants minimal reasoning - fast
-    transcript cleanup - so off-Cerebras the intent maps to "none".
-
-    This is the guideline_prefetch lesson applied in advance: settings follow
-    the model, or they break the day the model moves."""
-    from .enhancement_utils import _get_model_provider
+    """Canvas settings for either provider: reasoning off, and max_tokens rather than
+    max_completion_tokens (which normalise_model_settings floors at 16k for reasoning)."""
     s = dict(settings)
-    provider = _get_model_provider(model_name)
-    if provider == "cerebras":
-        return s
     if "max_completion_tokens" in s:
         s["max_tokens"] = s.pop("max_completion_tokens")
-    if provider == "groq" and s.pop("reasoning_effort", None) is not None:
-        # Groq's qwen accepts only none|default, and only via extra_body.
-        s.setdefault("extra_body", {})["reasoning_effort"] = "none"
+    s["reasoning_effort"] = "none"
     return s
 
 
@@ -1050,7 +1040,7 @@ async def qwen_coverage(scratchpad: str, sections: list[str], scan_type: str) ->
         scratchpad_content=scratchpad, checklist_sections=checklist_str,
     )
     # Temperature kept low — coverage is checklist classification, not open dialogue.
-    coverage_model_settings = {"temperature": 0.1, "max_completion_tokens": 1500}
+    coverage_model_settings = {"temperature": 0.1, "max_tokens": 1500, "reasoning_effort": "none"}
     t0 = _time.perf_counter()
     output = await _run_canvas_with_fallback(
         coverage_model,
@@ -1105,7 +1095,7 @@ async def _coverage_safe(name: str, request: CanvasReviewRequest) -> CoverageDec
         return e
 
 
-INTELLIPROMPTS_SETTINGS = {"temperature": 0.1, "max_tokens": 1500, "extra_body": {"reasoning_effort": "none"}}
+INTELLIPROMPTS_SETTINGS = {"temperature": 0.1, "max_tokens": 1500, "reasoning_effort": "none"}
 
 
 async def _intelliprompts(request: CanvasReviewRequest) -> list[IntelliPrompt]:
@@ -1122,7 +1112,7 @@ async def _intelliprompts(request: CanvasReviewRequest) -> list[IntelliPrompt]:
     # Reasoning off on both models: with it on, every structured answer failed (Groq qwen
     # thinking: tool_use_failed after ~6.5 s; Cerebras qwen 'low': parser_error) and the
     # fallback took 35–137 s (lab log 2026-09-27). Off: Cerebras 0.66–0.95 s, Groq 1.5–1.9 s.
-    # The shape pydantic-ai forwards: max_tokens, and reasoning_effort in extra_body.
+    # normalise_model_settings fits reasoning_effort to each provider (main, f70712a).
     intelliprompts_model_settings = INTELLIPROMPTS_SETTINGS
     use_thinking = False
 
@@ -1164,7 +1154,7 @@ async def _intelliprompts(request: CanvasReviewRequest) -> list[IntelliPrompt]:
         return _validate_and_log(response.prompts, elapsed, "✅")
     except Exception as e:
         # Primary failed for ANY reason — try the fallback once.
-        fallback_model = intelliprompts_fallback or "qwen/qwen3.6-27b"
+        fallback_model = intelliprompts_fallback or MODEL_CONFIG["CANVAS_INTELLIPROMPTS_FALLBACK"]
         try:
             fallback_api_key = _get_api_key_for_provider(_get_model_provider(fallback_model))
             response = await _call_model(fallback_model, fallback_api_key, False, INTELLIPROMPTS_SETTINGS)
@@ -1451,16 +1441,13 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
 
 
 LEAN_MAX_OUTPUT_TOKENS = 1024
-# Lab lean polish: Cerebras Qwen 3.8, reasoning off (bake-off 2026-09-27 on 167 lab finals:
-# p50 311 ms, 73 output tokens, fewer leftover cues and mishearings than Groq qwen3.6-27b,
-# and off Groq's per-minute output limit), Groq qwen3.6-27b as the fallback. The settings are
-# in the shape pydantic-ai forwards to both: max_tokens, and reasoning_effort in extra_body.
-# Top-level reasoning_effort / max_completion_tokens are dropped, and Cerebras then reasons
-# at its default 'high' (up to 18k tokens seen). One span out: ≤ 252 tokens seen; Groq
-# counts the requested maximum against its limit (8000 each → 429 and a 13–20 s fallback).
-LEAN_MODEL = "qwen-3.8-27b"
-LEAN_FALLBACK_MODEL = "qwen/qwen3.6-27b"
-LEAN_SETTINGS = {"temperature": 0.15, "max_tokens": LEAN_MAX_OUTPUT_TOKENS, "extra_body": {"reasoning_effort": "none"}}
+# Lean polish: the canvas process role (main's table: Cerebras qwen-3.8-27b, reasoning off;
+# Groq qwen/qwen3.8-27b fallback). Bake-off 2026-09-27 on 167 lab finals: Cerebras Qwen 3.8
+# p50 311 ms, 73 output tokens. One span out (≤ 252 tokens seen); Groq counts the requested
+# maximum against its per-minute limit (8000 each → 429 and a 13–20 s fallback).
+LEAN_MODEL = MODEL_CONFIG["CANVAS_PROCESS"]  # Cerebras qwen-3.8-27b (main's table)
+LEAN_FALLBACK_MODEL = MODEL_CONFIG["CANVAS_PROCESS_FALLBACK"]  # Groq qwen/qwen3.8-27b
+LEAN_SETTINGS = {"temperature": 0.15, "max_tokens": LEAN_MAX_OUTPUT_TOKENS, "reasoning_effort": "none"}
 
 
 class PolishSpanRequest(BaseModel):
@@ -1644,7 +1631,7 @@ async def case_keyterms(request: KeytermRequest, current_user: User = Depends(ge
                 scan_type=request.scan_type or "(not specified)",
                 clinical_history=request.clinical_history or "(not specified)",
                 sections=", ".join(request.sections) or "(none)"),
-            model_settings={"temperature": 0.2, "max_completion_tokens": 1500, "reasoning_effort": "low"},
+            model_settings={"temperature": 0.2, "max_tokens": 1500, "reasoning_effort": "none"},
             use_thinking=False, label="canvas.keyterms",
         )
     except Exception as e:  # recording falls back to the core list

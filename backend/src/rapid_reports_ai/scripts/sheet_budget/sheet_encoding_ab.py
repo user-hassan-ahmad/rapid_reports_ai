@@ -44,7 +44,7 @@ BACKEND_ROOT = SCRIPT_DIR.parents[3]
 CASES_PATH = BACKEND_ROOT / "test_cases" / "analyser_suite.json"
 OUTPUT_ROOT = BACKEND_ROOT / "test_output"
 STORED_SHEET_RUNS = OUTPUT_ROOT / "REASONING_CAPFIX" / "runs.json"
-MODEL = "qwen/qwen3.6-27b"
+MODEL = "qwen/qwen3.8-27b"
 DEFAULT_CASE = "ct_tap_acute_abdomen_gda_bleed"
 
 

@@ -12,7 +12,7 @@ For each test case in ``backend/test_cases/analyser_suite.json``:
 Usage:
     poetry run python -m rapid_reports_ai.scripts.analyser_test_suite
     poetry run python -m rapid_reports_ai.scripts.analyser_test_suite --case ct_head_cerebellar_haemorrhage
-    poetry run python -m rapid_reports_ai.scripts.analyser_test_suite --variants zai-glm-4.7 claude-haiku-4-5-20251001
+    poetry run python -m rapid_reports_ai.scripts.analyser_test_suite --variants qwen-3.8-27b qwen/qwen3.8-27b
 
 Outputs:
     backend/test_output/<timestamp>/
@@ -84,17 +84,15 @@ from rapid_reports_ai.template_manager import TemplateManager  # noqa: E402
 # MODEL_PROVIDERS in enhancement_utils.py).
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Default analyser variants — the two production paths. Sonnet is kept available
-# via `--variants` for reference-quality comparison runs but is not default.
+# Default analyser variants: the production primary and its fallback.
 ANALYSER_VARIANTS: list[str] = [
-    "zai-glm-4.7",                  # Cerebras GLM — FAST production path
-    "claude-haiku-4-5-20251001",    # Anthropic Haiku 4.5 — BEST production path
+    "qwen-3.8-27b",       # Cerebras Qwen 3.8 - production path
+    "qwen/qwen3.8-27b",   # Groq Qwen 3.8 - fallback
 ]
 
-# Default generator — single GLM, matching production. Sonnet generator was
-# dropped; available via `--generators` flag for side-by-side comparison.
+# Default generator, matching production.
 GENERATOR_MODELS: list[str] = [
-    "zai-glm-4.7",
+    "qwen-3.8-27b",
 ]
 
 

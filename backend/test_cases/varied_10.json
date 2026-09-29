@@ -1,0 +1,62 @@
+[
+  {
+    "name": "ct_head_cerebellar_haemorrhage",
+    "scan_type": "CT head non-con",
+    "clinical_history": "onset at 13:30 with left facial droop, left arm and leg weakness and slurred speech.\nBP 255/161",
+    "findings": "- There is a large area of parenchymal hemorrhage in the right cerebellum measuring 5 cm in diameter with significant peri-lesional vasogenic edema and this is causing major midline shift across the horizontal cerebellar axis with complete effacement of the cerebral aqueduct and fourth ventricle and crowding of the foramen magnum due to ipsilateral tonsillar herniation\n\n- There is some regional subarachnoid and subdural extension of haemorrhage along the tentorium\n\n- The background brain parenchyma otherwise appears unremarkable with no gross areas of infarction\n\n- Background chronic small vessel ischemic changes and age-appropriate involutional atrophy are noted with asymmetric predominance of the right frontal lobe"
+  },
+  {
+    "name": "ct_thorax_smoker_lung_nodule",
+    "scan_type": "CT thorax with IV contrast",
+    "clinical_history": "68M, 40 pack-year smoker. Chronic cough and haemoptysis for 6 weeks. Referred for lung cancer workup. CT thorax with contrast for characterisation of nodule identified on recent chest X-ray.",
+    "findings": "CT thorax with IV contrast.\n22 mm spiculated nodule in the right upper lobe apical segment with pleural tethering. No cavitation.\nRight hilar lymphadenopathy, largest node short-axis 14 mm.\nSubcarinal node, short-axis 16 mm.\nNo contralateral hilar adenopathy.\nNo pulmonary metastases.\nNo pleural effusion.\nBackground upper lobe centrilobular emphysema.\nIncidental 4 mm left adrenal nodule.\nLiver and imaged upper abdomen unremarkable."
+  },
+  {
+    "name": "ctpa_acute_pe_rv_strain",
+    "scan_type": "CTPA",
+    "clinical_history": "58M, sudden onset pleuritic chest pain and dyspnoea, SpO2 91% on air, HR 112, D-dimer 4.2, Wells score 6. Query PE.",
+    "findings": "- Filling defects right main pulmonary artery extending into lower lobe segmental branches\n- Further filling defect left lower lobe segmental artery\n- RV:LV ratio 1.2, interventricular septal flattening\n- Small right pleural effusion\n- Mosaic attenuation right lower lobe, no consolidation\n- No pericardial effusion\n- Incidental 5mm right upper lobe pulmonary nodule\n- Thyroid and imaged upper abdomen unremarkable"
+  },
+  {
+    "name": "ct_ap_diverticulitis_abscess",
+    "scan_type": "CT abdomen pelvis with contrast",
+    "clinical_history": "66F, 4 days left iliac fossa pain, fever 38.2, WCC 15, CRP 180. Query diverticulitis.",
+    "findings": "- Sigmoid diverticulosis with segmental wall thickening over 6cm\n- Pericolic fat stranding\n- 3.2cm rim-enhancing pericolic collection adjacent to sigmoid\n- No free intraperitoneal gas\n- Trace pelvic free fluid only\n- Ureters not obstructed\n- Liver, spleen, pancreas, adrenals, kidneys unremarkable\n- No suspicious osseous lesion"
+  },
+  {
+    "name": "mri_lumbar_disc_extrusion",
+    "scan_type": "MRI lumbar spine",
+    "clinical_history": "34F, 6 weeks left leg pain radiating to sole of foot, weak plantarflexion, failed conservative management. Query disc prolapse.",
+    "findings": "- L5/S1 left paracentral disc extrusion with inferior migration\n- Extrusion compresses left S1 nerve root in lateral recess\n- Moderate narrowing left lateral recess, central canal preserved\n- L4/5 mild disc bulge, no root compression\n- Facet joints unremarkable\n- Conus normal, terminates T12/L1\n- Vertebral heights preserved, no marrow lesion"
+  },
+  {
+    "name": "ct_trauma_pan_scan",
+    "scan_type": "CT trauma pan-scan (head, cervical spine, chest, abdomen, pelvis with contrast)",
+    "clinical_history": "27M motorcyclist vs car at speed. GCS 14 at scene, now 15. Transient hypotension responding to fluids. Chest wall crepitus, pelvic binder in situ. Trauma protocol.",
+    "findings": "- Right frontal thin acute subdural haematoma, 4mm, no midline shift\n- No cervical spine fracture or malalignment\n- Right pneumothorax, moderate, chest drain not yet sited\n- Right 3rd to 7th rib fractures, segmental 4th and 5th\n- Right pulmonary contusions\n- No aortic injury, mediastinal contour normal\n- Grade III splenic laceration with subcapsular haematoma and focal active arterial blush\n- Moderate haemoperitoneum\n- Liver, kidneys, pancreas intact\n- Undisplaced right superior and inferior pubic rami fractures, SI joints intact\n- L1 superior endplate compression fracture, no retropulsion\n- Bladder intact on delayed phase, no contrast extravasation"
+  },
+  {
+    "name": "ct_pancreatic_ca_staging",
+    "scan_type": "CT pancreas protocol (arterial and portal venous phases)",
+    "clinical_history": "68F painless jaundice, 8kg weight loss, bilirubin 180, CA19-9 1200. Staging for suspected pancreatic malignancy.",
+    "findings": "- 3.4cm hypoenhancing mass in pancreatic head and uncinate process\n- Double duct sign: CBD 15mm, pancreatic duct 6mm with abrupt cut-off\n- Mass abuts SMV over approximately 190 degrees with focal narrowing, not occluded\n- SMA fat plane preserved, contact less than 90 degrees\n- Coeliac axis and hepatic artery clear\n- Two hypoenhancing liver lesions, segment VI 8mm and segment VII 11mm, suspicious for metastases\n- Portacaval and peripancreatic nodes, largest 13mm short axis\n- Duodenal wall involvement at D2\n- No peritoneal nodularity or ascites\n- Lung bases clear"
+  },
+  {
+    "name": "mri_brain_mets_haemorrhage",
+    "scan_type": "MRI brain with contrast",
+    "clinical_history": "54F known ER+ breast cancer on letrozole. Two weeks of headaches, acute confusion and vomiting this morning.",
+    "findings": "- Four enhancing lesions: right cerebellar 28mm, left frontal 12mm, right parietal 9mm, left occipital 6mm\n- Right cerebellar lesion contains acute haemorrhage with fluid-fluid level\n- Marked cerebellar oedema with effacement of the fourth ventricle\n- Early obstructive hydrocephalus, temporal horns dilated\n- 5mm tonsillar descent\n- No leptomeningeal enhancement\n- Supratentorial lesions show moderate perilesional oedema, no midline shift\n- No restricted diffusion to suggest infarct\n- Dural venous sinuses patent"
+  },
+  {
+    "name": "mri_spine_mscc",
+    "scan_type": "MRI whole spine with contrast",
+    "clinical_history": "72M metastatic prostate cancer, PSA 85. Three weeks progressive thoracic back pain, 48 hours bilateral leg weakness with two falls, new urinary hesitancy. Query cord compression.",
+    "findings": "- Multilevel vertebral metastases at C7, T3, T7, T9, L2 and L4\n- T7 posterior vertebral body and pedicle involvement with epidural soft tissue component\n- Epidural disease at T7 compresses the cord, with high T2 cord signal at this level\n- Greater than 50% canal compromise at T7\n- T9 epidural disease abuts the cord without compression\n- Conus normal, no cauda equina compromise\n- T7 vertebral height loss 30% with 15 degrees kyphosis\n- L4 pathological fracture, no retropulsion\n- Paraspinal soft tissue mass at T7 extending to the costovertebral junctions"
+  },
+  {
+    "name": "clean_mri_ankle_fragments",
+    "scan_type": "MRI Ankle Lt",
+    "clinical_history": "left ankle osteochondral defect",
+    "findings": "Mild to moderate ankle joint effusion noted.\n\nThere is osteochondral fracture of the posteromedial talar dome with reactive bone oedema in the talus.\n\nThe medial ligaments and posterior tendons are unremarkable.\n\nThe peroneal tendons are intact."
+  }
+]

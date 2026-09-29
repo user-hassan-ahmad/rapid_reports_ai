@@ -34,7 +34,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -60,8 +60,7 @@ from .quick_report_analyser import (
     log_generator_run,
     new_run_id,
 )
-from .quick_report_hardening import QUICK_REPORT_HARDENING_PREAMBLE
-from .template_manager import TemplateManager
+from .quick_report_generator import generate_quick_report
 
 
 logger = logging.getLogger(__name__)
@@ -77,7 +76,7 @@ router = APIRouter(prefix="/api/quick-report", tags=["quick-report"])
 # we want, and the richer Haiku skill sheet (running in the analyser tier) now
 # delivers the clinical depth Sonnet used to contribute.
 
-GENERATOR_MODEL = "qwen/qwen3.6-27b"
+GENERATOR_MODEL = MODEL_CONFIG["QUICK_REPORT_GENERATOR"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -130,6 +129,9 @@ class FinaliseRequest(BaseModel):
     # If not provided, the server computes a unified diff against the persisted
     # candidate content.
     final_edit_diff: Optional[str] = None
+    # Ids of the reporter-choice options ticked into the report (feedback on the
+    # include / optional / exclude routing).
+    applied_option_ids: Optional[List[str]] = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -171,12 +173,11 @@ async def analyse(
             yield _sse("error", {"error": "Scan type is required"})
             return
 
-        # Cerebras key is only meaningful for the GLM (FAST) path; the
-        # Anthropic (BEST) path fetches ANTHROPIC_API_KEY inside the call.
+        # Keys are resolved from each model's provider inside the call.
         api_key = get_system_api_key("cerebras", "CEREBRAS_API_KEY") or ""
 
-        fast_model = MODEL_CONFIG.get("QUICK_REPORT_ANALYZER_FAST", "zai-glm-4.7")
-        best_model = MODEL_CONFIG.get("QUICK_REPORT_ANALYZER_BEST", "claude-haiku-4-5-20251001")
+        fast_model = MODEL_CONFIG["QUICK_REPORT_ANALYZER_FAST"]
+        best_model = MODEL_CONFIG["QUICK_REPORT_ANALYZER_BEST"]
 
         async def _run_variant(variant: str, model_name: str) -> dict:
             run_id = f"{run_id_base}-{variant}"
@@ -273,14 +274,12 @@ async def analyse(
 
 async def _run_one_generator(
     *,
-    tm: TemplateManager,
-    template_config: dict,
-    user_inputs: dict,
+    skill_sheet_markdown: str,
+    findings: str,
     model_name: str,
     run_id: str,
     scan_type: str,
     clinical_history: str,
-    skill_sheet_markdown: str,
     user_signature: str | None = None,
 ) -> dict:
     """Run a single generator and return a candidate-record dict.
@@ -291,9 +290,11 @@ async def _run_one_generator(
     """
     t0 = time.time()
     try:
-        result = await tm.generate_report_from_config(
-            template_config=template_config,
-            user_inputs=user_inputs,
+        result = await generate_quick_report(
+            skill_sheet=skill_sheet_markdown,
+            scan_type=scan_type,
+            findings=findings,
+            clinical_history=clinical_history,
             user_signature=user_signature,
             model_override=model_name,
         )
@@ -305,7 +306,7 @@ async def _run_one_generator(
                 run_id=run_id,
                 scan_type=scan_type,
                 clinical_history=clinical_history,
-                findings=(user_inputs or {}).get("FINDINGS", ""),
+                findings=findings,
                 skill_sheet=skill_sheet_markdown,
                 result=result,
             )
@@ -319,6 +320,8 @@ async def _run_one_generator(
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "error": None,
             "description": result.get("description"),
+            # Reporter-choice items: sentences the reporter can tick into the impression.
+            "options": result.get("brief_options") or [],
         }
     except Exception as e:
         logger.warning("generator %s failed: %s", model_name, e)
@@ -410,7 +413,7 @@ async def generate(
                     skill_sheet_markdown=analyser_result.get("skill_sheet", ""),
                     analyser_model=analyser_result.get("model_used", ""),
                     analyser_latency_ms=analyser_result.get("latency_ms"),
-                    analyser_prompt_version=analyser_result.get("prompt_version") or analyser_prompt_version(analyser_result.get("model_used", "zai-glm-4.7")),
+                    analyser_prompt_version=analyser_result.get("prompt_version") or analyser_prompt_version(analyser_result.get("model_used") or MODEL_CONFIG["QUICK_REPORT_ANALYZER_FAST"]),
                     run_id=run_id_base,
                 )
                 skill_sheet_markdown = sheet_row.skill_sheet_markdown
@@ -424,27 +427,14 @@ async def generate(
                 return
 
             # ── Fire the GLM generator ────────────────────────────────────
-            tm = TemplateManager()
-            template_config = {
-                "generation_mode": "skill_sheet_guided",
-                "skill_sheet": QUICK_REPORT_HARDENING_PREAMBLE + skill_sheet_markdown,
-                "scan_type": scan_type,
-            }
-            user_inputs = {
-                "FINDINGS": request.findings,
-                "CLINICAL_HISTORY": clinical_history,
-            }
-
             logger.info("quick-report generate firing model=%s", GENERATOR_MODEL)
             candidate = await _run_one_generator(
-                tm=tm,
-                template_config=template_config,
-                user_inputs=user_inputs,
+                skill_sheet_markdown=skill_sheet_markdown,
+                findings=request.findings,
                 model_name=GENERATOR_MODEL,
                 run_id=f"{run_id_base}-{GENERATOR_MODEL[:8]}",
                 scan_type=scan_type,
                 clinical_history=clinical_history,
-                skill_sheet_markdown=skill_sheet_markdown,
                 user_signature=user_signature,
             )
 
@@ -539,6 +529,12 @@ async def finalise_report(
 
     if updated is None:
         return {"success": False, "error": "Failed to finalise report"}
+
+    if request.applied_option_ids is not None and updated.candidate_reports:
+        candidates = [dict(c) for c in updated.candidate_reports]
+        candidates[0]["options_applied"] = request.applied_option_ids
+        updated.candidate_reports = candidates
+        db.commit()
 
     return {
         "success": True,

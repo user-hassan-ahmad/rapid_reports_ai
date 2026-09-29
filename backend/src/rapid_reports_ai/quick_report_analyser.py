@@ -88,7 +88,7 @@ Work through the 8 phases in order; each locks a layer the next consumes. Return
 
 Pin the evaluable field. Every downstream phase is gated by it.
 
-Declare: modality and technique (sequences or phases if inferable from scan-type naming); primary region; imaged volume (anatomical start and end); in-scope structures within that volume; secondary visible regions (structures at the edge of the volume — e.g. lung bases on CT abdomen, orbits on CT head — with a canonical default-normal line for each); out-of-scope structures (outside the volume or requiring different modality/phase); contrast status (inferred from scan-type naming, never from clinical indication); modality non-assessables (what this modality cannot evaluate even within the volume).
+Declare: modality and technique (sequences or phases if inferable from scan-type naming); primary region; imaged volume (anatomical start and end); in-scope structures within that volume; secondary visible regions (structures at the edge of the volume — e.g. lung bases on CT abdomen, orbits on CT head — with a canonical default-normal line for each); out-of-scope structures (outside the volume or requiring different modality/phase); contrast status (stated only where the scan-type name states it — never inferred from its absence or from the clinical indication; otherwise "per dictation", with the sheet written to hold under either protocol); modality non-assessables (what this modality cannot evaluate even within the volume).
 
 Modality non-assessables live in Phase 1 as metadata. They only appear in the report if a genuine technical limitation for this specific study required them in LIMITATIONS. Otherwise silent.
 
@@ -105,7 +105,7 @@ Some clinical questions have a primary hypothesis whose confirmation on imaging 
 When the primary hypothesis branches on aetiology, emit both tiers:
 
 - **Triage** — what the imaging is ruling in or out at the level of the primary hypothesis
-- **Aetiology** — given confirmation, what causes the imaging can discriminate, each paired with the imaging discriminator that would support it. Aetiologies the imaging cannot meaningfully discriminate but which the clinical workup must address (e.g. coagulopathy, drug-induced injury) should still be listed and tagged *(imaging-silent — requires clinical/laboratory correlation)* so the generator surfaces them with the deferral framing.
+- **Aetiology** — given confirmation, what causes the imaging can discriminate, each paired with the imaging discriminator that would support it. Aetiologies the imaging cannot meaningfully discriminate but which the clinical workup must address (e.g. coagulopathy, drug-induced injury) should still be listed and tagged *(imaging-silent — requires clinical/laboratory correlation)* so the generator surfaces them with the deferral framing. **Visibility on this technique.** Every differential that the imaging can discriminate — triage alternatives, complications, aetiologies — is written on its own line with its discriminator and tagged *(visible on this technique: yes)* or *(visible on this technique: no — <what would show it>)*, judged against the modality, phase and sequences declared in Phase 1. A discriminator that only another phase, sequence or modality would show is "no". Silence in a dictation can only close a differential whose discriminator this study would show.
 
 **Clinical history modifiers.** For each relevant item in the history, state how it alters urgency, differential weighting, or management pathway. Modifiers set prior probability for the case as a whole. They apply at synthesis time via the generator's own reasoning; they do NOT fuse into Phase 5 interpretive clauses.
 
@@ -115,6 +115,8 @@ When the primary hypothesis branches on aetiology, emit both tiers:
 
 Report structure is **causal, not anatomical**. The index paragraph collects findings that share a single pathological story, even if they sit in different anatomical compartments. Sweep paragraphs cover residual anatomy in proximity order.
 
+**Macro-structure — declared once, above the paragraph level.** Most studies are FLAT: one field of assessment, causal index paragraph first, sweep after. A study is REGIONS only when it is a multi-region protocol that a clinician reads as separate examinations — several anatomically distinct regions, each with its own systems review, typically acquired as separate series (a trauma pan-scan is the archetype; a single-region study with a co-acquired extension is not). Under REGIONS, FINDINGS is divided into headed blocks, one per region, in the order the report renders them: cranio-caudal by convention, the vertebral column as its own region at its anatomical position, soft tissues and bones last. Each region's header is marked `header: "<REGION NAME>"` so the generator renders it as an uppercase sub-heading inside FINDINGS. Causal clustering then applies **within** a region — the region's dominant finding leads its block, its remaining stations follow as the systems review — and a companion that lives in another region stays in that region. Priority across regions belongs to the impression, never to block order. The test is whether the regions were acquired as separate examinations — brain and spine, head and neck, thorax and lower limbs — not whether one disease spans them; a single disease across separately acquired regions is still REGIONS. Declare REGIONS from topology, not from habit: when in doubt, FLAT.
+
 Declare:
 
 - **Sections.** COMPARISON, FINDINGS, IMPRESSION are required. TECHNIQUE is default-on; omit only if the scan-type convention genuinely doesn't use it. LIMITATIONS is included ONLY when a genuine protocol/modality or study-specific degradation meaningfully precludes a clinical expectation of this specific study. LIMITATIONS is not a catch-all for modality non-assessables, edge-of-volume disclosures, or missing priors (those belong in COMPARISON).
@@ -122,7 +124,7 @@ Declare:
 - **COMPARISON content rule.** First section. Always present. Faithfully reflect whether the dictator's reading involved comparison, judged from the dictation as a whole — not merely whether a prior is named at the top:
   (i) dictation explicitly identifies a prior (scan type, date, or equivalent) → carry as given
   (ii) no explicit reference AND no comparison-dependent language in findings → state no prior is available
-  (iii) no explicit reference BUT findings use language that presupposes comparison (*new*, *stable*, *improved*, *progressed*, *decreased*, *unchanged*, *resolved*) → acknowledge generically ("comparison made to previous imaging") without inventing scan type or date. Denying a comparison that the findings themselves demonstrate forces the generator to contradict COMPARISON or fabricate a referent.
+  (iii) no explicit reference BUT findings use language that presupposes comparison (*new*, *stable*, *improved*, *progressed*, *decreased*, *unchanged*, *resolved*) → acknowledge generically ("comparison made to previous imaging") without inventing scan type or date. Denying a comparison that the findings themselves demonstrate forces the generator to contradict COMPARISON or fabricate a referent. COMPARISON names the prior study and its date and nothing else: no findings, no measurements, no interval commentary. Interval change is stated in FINDINGS beside the lesion it describes.
 
 - **TECHNIQUE content rule.** Strictly protocol description: modality, region, contrast status, phase, sequences. Never contains assessment disclosures, visibility statements, or limitation commentary.
 
@@ -134,7 +136,7 @@ Declare:
 
 - **Normal-study path.** A literal worked template of the sweep the generator will render when dictation is silent — calibrated to the scan's coverage breadth.
   - **Focused scans** (single-system protocols — e.g. targeted joint, dedicated organ imaging): one paragraph covering the primary system with its canonical negatives embedded.
-  - **Broad-coverage scans** (scans whose imaged volume spans multiple organ systems that a consultant radiologist would systematically comment on even when unaffected): a complete per-system sweep with the canonical default-normal line for each major system in the declared sweep order. The generator does not invent sweep content; it consumes this template. Every in-scope organ system the sweep visits must appear with its canonical default-normal phrasing so the generator emits systematic coverage when dictation addresses only focal abnormalities. This is not a restraint exception — it is the sweep's load-bearing scaffold.
+  - **Broad-coverage scans** (scans whose imaged volume spans multiple organ systems that a consultant radiologist would systematically comment on even when unaffected): a complete per-system sweep with the canonical default-normal line for each major system in the declared sweep order. The generator does not invent sweep content; it consumes this template. A canonical line or Normal-study sentence never asserts a finding the history or a prior study reports — a prior's steatosis, a known aneurysm's diameter, an old infarct; it names the structure and leaves its state to the dictation. Every in-scope organ system the sweep visits must appear with its canonical default-normal phrasing so the generator emits systematic coverage when dictation addresses only focal abnormalities. This is not a restraint exception — it is the sweep's load-bearing scaffold.
 
 ---
 
@@ -145,7 +147,7 @@ The companion matrix captures the findings that belong to the primary pathology'
 Declare:
 
 - **In-scope companions** — every companion across those dimensions, within the evaluable field.
-- **Mandatory negatives** — a tight list of negatives that alter interpretation or management. Each bears on a specific differential or complication. Write each in its final report form, quoted.
+- **Mandatory negatives** — a tight list of negatives that alter interpretation or management. Each bears on a specific differential or complication. Write each in its final report form, quoted. **One finding per negative.** Each negative states the absence of exactly one finding, so it can be checked against the dictation on its own: a list of findings in one sentence cannot be kept for some items and withdrawn for others. The test is mechanical: a negative contains no "or" and no comma-separated list of findings or locations. Where you would write "or" or a comma between findings, start a new line instead, repeating the shared wording, even when the findings belong to the same differential.
 - **Out-of-scope suppressed** — items that might be associated with the clinical question but fall outside the evaluable field or require a different modality. Explicit suppression prevents the generator from fabricating assessments it cannot make.
 
 ---
@@ -196,7 +198,7 @@ Explicit IF/THEN rules that prevent redundancy in the emitted report:
 
 The impression is where the report does its clinical work. An impression is not a summary of findings — it is the radiologist's answer to the referrer's clinical question, plus subsidiary concerns the imaging raises, plus whatever direction management should take from here.
 
-**Opening convention** — clinical answer / index finding / negative answer — governed by the clinical question, not the magnitude of positive findings. A negative study with a focused question leads with the negative answer; a pathology-confirming study leads with the index finding; a broad-screen study leads with the most actionable finding.
+**Opening convention** — clinical answer / index finding / negative answer. Any confirmed acute pathology opens the impression, whichever of the history's questions it answers; the negative answers to the remaining questions follow it. The ranking among several questions decides the opening only when every one of them is answered negatively. A negative study leads with the negative answer; a pathology-confirming study leads with the index finding; a broad-screen study leads with the most actionable finding.
 
 **Quoted impression exemplars** — 2–3 complete illustrative impressions that demonstrate the cognitive moves of a consultant answering a clinical question: the primary question explicitly engaged; any incidental but clinically significant findings surfaced as separate concerns with their own direction; warranted synthesis articulated when findings and context support it; management direction recommended where the imaging makes the next step clear.
 
@@ -213,11 +215,11 @@ clarify diagnostic uncertainty, guide probabilistic evaluation from the imaging,
 further radiological investigation that would resolve a doubtful element. Management decisions
 belong to the governing clinical team.
 
-Every entry carries one of these tags, and nothing that cannot take a tag may appear:
+Every entry carries one of these tags, and nothing that cannot take a tag may appear. The tags classify sheet entries; they are sheet notation and never appear in a report — a recommendation renders as prose (specialty and urgency, or investigation and what it resolves):
 
 - `IMAGING:` further radiological investigation, naming what it would resolve
 - `REFERRAL:` named UK NHS specialty service, with urgency tier
-- `MDT:` UK multidisciplinary team review
+- `MDT:` a named UK multidisciplinary team that exists for this condition (site-specific cancer MDTs, spinal, neurovascular, sarcoma and similar); omit the entry where no such MDT exists — most non-oncological studies have none, and an MDT is never invented to fill the slot. An MDT is a scheduled planning forum: it is never recommended on an acute or emergency study, where coordination is by referral to the receiving specialties
 - `TISSUE:` tissue sampling, where imaging cannot resolve the question
 - `CORRELATION:` clinical or laboratory correlation
 
@@ -228,13 +230,13 @@ that specialty should then do is not.
 
 Name UK NHS services and pathways, not US or international equivalents.
 
-The recommendation clause of every impression exemplar below must be drawn from this tag set —
-the exemplars are the generator's imitation target, so an exemplar carrying management language
-will reproduce it on every case.
+The recommendation clause of every impression exemplar below must be drawn from this tag set and
+rendered as prose without the tag label — the exemplars are the generator's imitation target, so an
+exemplar carrying management language, or a tag label, will reproduce it on every case.
 
-**Guideline hooks.** Classification systems likely to apply (Fleischner, Bosniak, RECIST, CAD-RADS, ASPECTS, TNM) — as vocabulary the generator may draw on, not as attributions.
+**Guideline hooks.** Classification systems likely to apply (Fleischner, Bosniak, RECIST, CAD-RADS, ASPECTS, TNM) — as vocabulary the generator may draw on for terms the dictation uses, not as attributions; the generator never assigns a category or stage the dictation did not state, and the sheet never writes a staging rule or threshold table that would let it.
 
-**Clinical history must-appear.** Terse content hooks — phrase-level fragments naming the clinical datum or prior-event marker directly — that the impression must reflect: the presenting symptom or indication answered directly; comparison-relevant priors the management decision turns on. Emit hooks, not narrative prescriptions ("should be acknowledged", "should be discussed", "should be noted as relevant to..."). Narrative prescriptions tell the generator *how to write about* the impression rather than *what content* the impression carries; the generator copies them verbatim and the impression bloats. The generator integrates hooks into impression prose; it does not copy or expand them.
+**Clinical history is never emitted.** This is a radiology report: it states what the imaging establishes. The history has done its work upstream — in the question, the tiering, the modifiers, and in what the exemplars choose to say — and none of it is written into any section: no demographics, presenting symptoms, medications, laboratory values, prior diagnoses or referral wording. The impression answers the question asked; it never comments on whether the findings explain the presentation.
 
 ---
 
@@ -247,6 +249,7 @@ Before emitting, verify:
 - **Voice alignment** — every exemplar leads with anatomical subject or imaging feature, not with existential openers or padding verbs.
 - **Clause discipline** — every Phase 5 interpretive clause IF-condition is imaging-only; no clinical history modifier, demographic, or presentation cue is fused into the trigger.
 - **Differential integrity** — if the primary hypothesis branches on aetiology, the aetiology tier is populated with imaging discriminators paired to each entry, and imaging-silent aetiologies are tagged.
+- **Negatives single, differentials tagged** — each mandatory negative denies exactly one finding (no "or", no list); every imaging-discriminable differential is tagged visible on this technique yes or no.
 - **Structural fidelity** — the sweep order will translate naturally into one paragraph per subsystem at generation time.
 
 Then compile into the format below. Return ONLY the markdown skill sheet; no preamble, no explanation, no phase-by-phase commentary.
@@ -276,6 +279,8 @@ Write concrete values throughout. No angle brackets or curly braces in the emitt
 - **Differentials in scope:**
   - **Triage:** <what the imaging rules in/out at the level of the primary hypothesis>
   - **Aetiology:** <given confirmation, what causes the imaging can discriminate>  (emit this sub-bullet only when the primary hypothesis branches on aetiology per Phase 2; omit entirely when it does not)
+    - <differential> — <imaging discriminator> *(visible on this technique: yes | no — <what would show it>)*  (one line per differential, triage alternatives and aetiologies alike)
+    - <imaging-silent differential> *(imaging-silent — requires clinical/laboratory correlation)*
 - **Clinical history modifiers:** <item> → <effect>
 
 ## Structural Pattern
@@ -283,13 +288,15 @@ Write concrete values throughout. No angle brackets or curly braces in the emitt
 - **P1 belongs:** <primary pathology + every causally-linked companion from Phase 4, regardless of anatomical region>  / **P1 does NOT belong:** <residual anatomy and findings unrelated to the primary pathology>
 - **Primary system:** <...>
 - **Sweep order:** <...>
+- **Macro-structure:** FLAT  |  REGIONS: <REGION NAME> `header: "<REGION NAME>"` => <its stations> ; <REGION NAME> `header: "<REGION NAME>"` => <stations> ...  (REGIONS only for a multi-region protocol read as separate examinations; regions in render order; under REGIONS the Normal-study path below is written under these headers)
 - **Normal-study path:** <literal worked template of the sweep with canonical default-normal lines embedded. Focused scans: one paragraph. Broad-coverage scans: a complete per-system sweep with each in-scope system's canonical default-normal line at its sweep position — the generator uses this as the silent-case scaffold>
 
   **Canonical default-normal lines:** <for broad-coverage scans, list each in-scope system with its canonical default-normal phrasing (one line per system). The generator consumes these when dictation is silent about that system. Omit this sub-section for focused scans where the normal-study path paragraph already carries the per-system phrasing inline>
 
 ## Companion Matrix
 - **In-scope companions:** <...>
-- **Mandatory negatives:** "<quoted form 1>", "<quoted form 2>", ...
+- **Mandatory negatives:** (one line each, one finding each)
+  - "<absence of one finding, in final report form>" (<differential or complication it targets>)
 - **Out-of-scope suppressed:** <...>
 
 ## Style Exemplars
@@ -321,16 +328,15 @@ Append-on phrases the generator uses when a specific imaging pattern fires.
 
 Quoted illustrative impressions modelling voice and cognitive shape. Each exemplar carries imaging observations + radiology-sanctioned handover (specialty referral with urgency, next imaging, tissue sampling, MDT review) — never procedural, hardware, or treatment detail.
 
-- **Opening convention:** <clinical answer / index finding / negative answer>
+- **Opening convention:** <index finding when any acute pathology is confirmed; negative answer only when every question is negative; the most actionable finding on a broad screen>
 - **Normal exemplar:** "<complete impression for a negative study — brief is correct when it meets obligations; one sentence answering the clinical question directly when nothing more is needed>"
 - **Abnormal exemplar:** Fill this structural skeleton with case-specific content: `<Diagnosis>[, with <management-changing complication or severity-tier clause>][. <Sub-question answered as a terse clause when clinically earned>.] <Specialty> referral <urgency tier> recommended.`
 
   A clause or sentence between `<Diagnosis>` and the referral is allowed ONLY when it changes the clinician's action — complications that escalate urgency, severity tiers that alter pathway, features that gate a further referral. Diagnostic-criterion descriptors (size, wall thickness, stranding, signal or enhancement features that define the named condition) do NOT earn a slot here; the FINDINGS section carries them and the diagnosis name encodes them. Emit the exemplar as a single quoted string that obeys this shape.
 - **Complicated exemplar:** "<complete impression for a complicated case>"  (emit ONLY when a clinically distinct complicated form exists — multiple concerns with separate referrals, staging implications, or management-altering incidentals. Do NOT emit if the complicated form would just be the abnormal exemplar with more findings)
 - **Descriptor propagation:** <which descriptor classes change management direction on this clinical question — thresholds, complications, severity tiers, features that gate additional referral. Descriptors that merely confirm the diagnostic criteria for the named condition do NOT propagate — the diagnosis name encodes them>
-- **Recommendation scope:** <tagged entries only, one per line, each beginning `IMAGING:` / `REFERRAL:` / `MDT:` / `TISSUE:` / `CORRELATION:`. UK NHS service names. No treatment, management strategy, procedural technique, hardware or drug content — anything that cannot take a tag is outside radiological remit>
-- **Guideline hooks:** <classification systems likely to apply; prefer the UK body where one applies (NICE, Royal College of Radiologists, the relevant UK specialty society) over US or international equivalents>  (emit only when a named system materially applies to this scan type and clinical question; omit if no system meaningfully applies)
-- **Clinical history must-appear:** <terse phrase-level hooks naming the clinical datum or prior-event marker directly — not narrative prescriptions about how the impression should be written>"""
+- **Recommendation scope:** <tagged entries only, one per line, each beginning `IMAGING:` / `REFERRAL:` / `MDT:` / `TISSUE:` / `CORRELATION:`. UK NHS service names. Tags are sheet notation: they never appear in exemplars or in the report. No treatment, management strategy, procedural technique, hardware or drug content — anything that cannot take a tag is outside radiological remit>
+- **Guideline hooks:** <classification systems likely to apply; prefer the UK body where one applies (NICE, Royal College of Radiologists, the relevant UK specialty society) over US or international equivalents>  (emit only when a named system materially applies to this scan type and clinical question; omit if no system meaningfully applies)"""
 
 
 # GLM prompt — reverse-engineered from Sonnet's structural patterns. Adds
@@ -360,7 +366,7 @@ Work through 8 phases in order; each locks a layer the next consumes. Return ONL
 
 Pin the evaluable field. Every downstream phase is gated by it.
 
-Declare modality and technique (sequences or phases if inferable from scan-type naming); primary region; imaged volume (anatomical start and end); in-scope structures within that volume; secondary visible regions (structures at the edge of the volume — e.g. lung bases on CT abdomen, orbits on CT head — with a canonical default-normal line for each); out-of-scope structures (with the alternative test or modality required for each, where the reader might otherwise expect it to be assessable); contrast status (inferred from scan-type naming, never from clinical indication); modality non-assessables (with the timeframe or threshold below which assessment becomes unreliable, where applicable).
+Declare modality and technique (sequences or phases if inferable from scan-type naming); primary region; imaged volume (anatomical start and end); in-scope structures within that volume; secondary visible regions (structures at the edge of the volume — e.g. lung bases on CT abdomen, orbits on CT head — with a canonical default-normal line for each); out-of-scope structures (with the alternative test or modality required for each, where the reader might otherwise expect it to be assessable); contrast status (stated only where the scan-type name states it — never inferred from its absence or from the clinical indication; otherwise "per dictation", with the sheet written to hold under either protocol); modality non-assessables (with the timeframe or threshold below which assessment becomes unreliable, where applicable).
 
 **Out-of-scope items must name the alternative test required.** Examples illustrate the format across domains — vascular ("carotid bifurcation (requires CTA/Doppler)"), hepatobiliary ("biliary tree microarchitecture (requires MRCP)"), oncology MSK ("soft-tissue staging detail (requires contrast MRI)"), cardiac ("cardiac source of embolism (requires echocardiography)"). The alternative test tells the generator what to recommend if the dictator's clinical question implicates the out-of-scope structure.
 
@@ -374,7 +380,7 @@ Modality non-assessables live as Phase 1 metadata — they only appear in the re
 
 Decompose the clinical question (rule in / rule out / characterise / stage / follow up / screen / broad screen). State the primary hypothesis, or "broad screen" if no single target applies.
 
-**Question framing must make the management gate explicit when one exists.** Examples across acute, surveillance, screening, and staging contexts: "rule out haemorrhage to gate thrombolysis" (acute neuro), "confirm PE to determine anticoagulation duration" (acute vascular), "characterise pancreatitis to triage surgical vs medical management" (acute abdominal), "assess interval change to guide surveillance frequency" (oncology surveillance), "stage per applicable system to guide MDT treatment planning" (oncology staging), "characterise nodule per Fleischner to determine surveillance interval vs biopsy" (lung screening) — these tell the generator what management decision the imaging is gating, which the impression then engages. Generic question framing ("rule out X") loses the management context the impression needs.
+**Question framing must make the management gate explicit when one exists.** Examples across acute, surveillance, screening, and staging contexts: "rule out haemorrhage to gate thrombolysis" (acute neuro), "confirm PE to determine anticoagulation duration" (acute vascular), "characterise pancreatitis to triage surgical vs medical management" (acute abdominal), "assess interval change to guide surveillance frequency" (oncology surveillance), "map nodal and extranodal extent and bulk so the MDT can stage" (oncology staging — the sheet and the report describe extent; the stage itself is assigned by the MDT, never by the report unless dictated), "characterise nodule per Fleischner to determine surveillance interval vs biopsy" (lung screening) — these tell the generator what management decision the imaging is gating, which the impression then engages. Generic question framing ("rule out X") loses the management context the impression needs.
 
 **Differentials in scope — two-tier structure when the primary hypothesis branches on aetiology.**
 
@@ -386,11 +392,11 @@ When the primary hypothesis branches on aetiology, emit both tiers:
 
 - **Aetiology** — given confirmation of the primary hypothesis, what causes the imaging can discriminate. **Each aetiology entry MUST be paired inline with the imaging discriminator that would support it.** Format: `<aetiology> — <imaging features that discriminate it>`. A bare list of aetiology names without paired discriminators is incomplete — the generator needs the discriminator to recognise the aetiology pattern when it fires on dictated findings.
 
-  Aetiologies the imaging cannot meaningfully discriminate but which the clinical workup must address (coagulopathy, drug-induced injury, cardioembolic source, etc.) MUST still be listed and tagged "(imaging-silent — requires clinical/laboratory correlation)" so the generator surfaces them with the deferral framing rather than omitting them entirely.
+  Aetiologies the imaging cannot meaningfully discriminate but which the clinical workup must address (coagulopathy, drug-induced injury, cardioembolic source, etc.) MUST still be listed and tagged "(imaging-silent — requires clinical/laboratory correlation)" so the generator surfaces them with the deferral framing rather than omitting them entirely. **Visibility on this technique.** Every differential that the imaging can discriminate — triage alternatives, complications, aetiologies — is written on its own line with its discriminator and tagged *(visible on this technique: yes)* or *(visible on this technique: no — <what would show it>)*, judged against the modality, phase and sequences declared in Phase 1. A discriminator that only another phase, sequence or modality would show is "no". Silence in a dictation can only close a differential whose discriminator this study would show.
 
   When the triage step has multiple possible confirmed outcomes each with its own aetiology tree (e.g. "if haemorrhage confirmed" vs "if ischaemia confirmed"), emit branched aetiology lists labelled by triage outcome.
 
-**Clinical history modifiers — expanded with management implications.** For each relevant item in the history, state how it alters urgency, differential weighting, or management pathway, AND what management implication follows. Modifiers expressed only as probability labels ("clinical context X → increases prior of Y") are insufficient. The generator needs to know how to think with the prior at synthesis time — what alternatives it does not exclude, what management gates it touches, when the modifier must be reflected in the impression.
+**Clinical history modifiers — expanded with management implications.** For each relevant item in the history, state how it alters urgency, differential weighting, or management pathway, AND what management implication follows. Modifiers expressed only as probability labels ("clinical context X → increases prior of Y") are insufficient. The generator needs to know how to think with the prior at synthesis time — what alternatives it does not exclude, what management gates it touches, how it changes what the impression asserts and at what confidence. The history is reasoning input: the report never restates it.
 
 Modifiers set prior probability for the case as a whole. They apply at synthesis time via the generator's reasoning; they do NOT fuse into Phase 5 interpretive clauses.
 
@@ -400,6 +406,8 @@ Modifiers set prior probability for the case as a whole. They apply at synthesis
 
 Report structure is **causal, not anatomical**. The index paragraph (P1) collects findings that share a single pathological story even if they sit in different anatomical compartments. Sweep paragraphs cover residual anatomy in proximity order.
 
+**Macro-structure — declared once, above the paragraph level.** Most studies are FLAT: one field of assessment, causal index paragraph first, sweep after. A study is REGIONS only when it is a multi-region protocol that a clinician reads as separate examinations — several anatomically distinct regions, each with its own systems review, typically acquired as separate series (a trauma pan-scan is the archetype; a single-region study with a co-acquired extension is not). Under REGIONS, FINDINGS is divided into headed blocks, one per region, in the order the report renders them: cranio-caudal by convention, the vertebral column as its own region at its anatomical position, soft tissues and bones last. Each region's header is marked `header: "<REGION NAME>"` so the generator renders it as an uppercase sub-heading inside FINDINGS. Causal clustering then applies **within** a region — the region's dominant finding leads its block, its remaining stations follow as the systems review — and a companion that lives in another region stays in that region. Priority across regions belongs to the impression, never to block order. The test is whether the regions were acquired as separate examinations — brain and spine, head and neck, thorax and lower limbs — not whether one disease spans them; a single disease across separately acquired regions is still REGIONS. Declare REGIONS from topology, not from habit: when in doubt, FLAT.
+
 Declare:
 
 - **Sections.** COMPARISON, FINDINGS, IMPRESSION are required. TECHNIQUE is default-on; omit only if the scan-type convention doesn't use it. LIMITATIONS is included ONLY when a genuine protocol/modality or study-specific degradation meaningfully precludes a clinical expectation of this specific study — never as a catch-all for modality non-assessables, edge-of-volume disclosures, or missing priors.
@@ -407,7 +415,7 @@ Declare:
 - **COMPARISON content rule.** First section. Always present. Faithfully reflect whether the dictator's reading involved comparison, judged from the dictation as a whole — not merely whether a prior is named at the top:
   (i) dictation explicitly identifies a prior → carry as given
   (ii) no explicit reference AND no comparison-dependent language in findings → state no prior is available
-  (iii) no explicit reference BUT findings use comparison-dependent language (*new*, *stable*, *improved*, *progressed*, *decreased*, *unchanged*, *resolved*) → acknowledge generically ("comparison made to previous imaging") without inventing scan type or date.
+  (iii) no explicit reference BUT findings use comparison-dependent language (*new*, *stable*, *improved*, *progressed*, *decreased*, *unchanged*, *resolved*) → acknowledge generically ("comparison made to previous imaging") without inventing scan type or date. COMPARISON names the prior study and its date and nothing else: no findings, no measurements, no interval commentary. Interval change is stated in FINDINGS beside the lesion it describes.
 
 - **TECHNIQUE content rule.** Strictly protocol description. Never contains assessment disclosures or limitation commentary.
 
@@ -417,7 +425,7 @@ Declare:
 
 - **Sweep order driven by the clinical question.** Where the clinical question implies a directed search — lateralised symptom, focal pain, organ-specific question — the sweep order leads with the implied region (e.g. "ipsilateral hemisphere first when deficit is contralateral", "right lower quadrant first when pain is right-sided"). Generic anatomical sweep is acceptable only when no directional cue exists in the clinical question.
 
-- **Normal-study path.** A literal worked template of the sweep the generator will render when dictation is silent — calibrated to the scan's coverage breadth. Focused single-system scans: one paragraph covering the primary system with canonical negatives embedded. Broad-coverage scans (imaged volume spanning multiple organ systems that a consultant radiologist would systematically comment on even when unaffected): a complete per-system sweep with the canonical default-normal line for each major system in the declared sweep order. The generator does not invent sweep content; it consumes this template. Every in-scope organ system the sweep visits must appear with its canonical default-normal phrasing so the generator emits systematic coverage when dictation addresses only focal abnormalities. A one-line "no abnormality identified" is insufficient even on focused scans — the worked example teaches the generator the consolidation pattern.
+- **Normal-study path.** A literal worked template of the sweep the generator will render when dictation is silent — calibrated to the scan's coverage breadth. Focused single-system scans: one paragraph covering the primary system with canonical negatives embedded. Broad-coverage scans (imaged volume spanning multiple organ systems that a consultant radiologist would systematically comment on even when unaffected): a complete per-system sweep with the canonical default-normal line for each major system in the declared sweep order. The generator does not invent sweep content; it consumes this template. A canonical line or Normal-study sentence never asserts a finding the history or a prior study reports — a prior's steatosis, a known aneurysm's diameter, an old infarct; it names the structure and leaves its state to the dictation. Every in-scope organ system the sweep visits must appear with its canonical default-normal phrasing so the generator emits systematic coverage when dictation addresses only focal abnormalities. A one-line "no abnormality identified" is insufficient even on focused scans — the worked example teaches the generator the consolidation pattern.
 
 ---
 
@@ -429,7 +437,7 @@ Declare:
 
 - **In-scope companions, each with characterisation method inline.** Every companion is listed with its measurement method, characterisation parameters, or qualitative scoring (e.g. "Haematoma — volume by ABC/2 method, location, lobar vs deep", "Midline shift — direction and degree in mm at the level of the septum pellucidum"). Bare structure names without characterisation hints leave the generator without the parameters to report.
 
-- **Mandatory negatives — targeted to specific differentials.** Each mandatory negative bears on a specific differential or complication listed in scope. **Aim for one targeted negative per differential the imaging meaningfully bears on.** Generic negatives that don't tie to a specific differential or complication should not appear. Write each in its final report form, quoted (e.g. `"No hyperdense vessel sign to suggest large vessel occlusion."`). Six well-targeted negatives are better than two generic ones.
+- **Mandatory negatives — targeted to specific differentials.** Each mandatory negative bears on a specific differential or complication listed in scope. **Aim for one targeted negative per differential the imaging meaningfully bears on.** Generic negatives that don't tie to a specific differential or complication should not appear. Write each in its final report form, quoted: the observable feature that would indicate the differential, named in this technique's own descriptive vocabulary, then the differential it excludes. **One finding per negative.** Each negative states the absence of exactly one finding, so it can be checked against the dictation on its own: a list of findings in one sentence cannot be kept for some items and withdrawn for others. The test is mechanical: a negative contains no "or" and no comma-separated list of findings or locations. Where you would write "or" or a comma between findings, start a new line instead, repeating the shared wording, even when the findings belong to the same differential. Six well-targeted negatives are better than two generic ones.
 
 - **Out-of-scope suppressed.** Items that might be associated with the clinical question but fall outside the evaluable field. Each item names the alternative test or modality required.
 
@@ -507,7 +515,7 @@ Explicit IF/THEN rules that prevent redundancy in the emitted report:
 
 The impression is where the report does its clinical work. An impression is not a summary of findings — it is the radiologist's answer to the referrer's clinical question, plus subsidiary concerns the imaging raises, plus whatever direction management should take from here.
 
-**Opening convention** — clinical answer / index finding / negative answer — governed by the clinical question, not the magnitude of positive findings. A negative study with a focused question leads with the negative answer; a pathology-confirming study leads with the index finding; a broad-screen study leads with the most actionable finding.
+**Opening convention** — clinical answer / index finding / negative answer. Any confirmed acute pathology opens the impression, whichever of the history's questions it answers; the negative answers to the remaining questions follow it. The ranking among several questions decides the opening only when every one of them is answered negatively. A negative study leads with the negative answer; a pathology-confirming study leads with the index finding; a broad-screen study leads with the most actionable finding.
 
 **Quoted impression exemplars** — 2–3 complete illustrative impressions that demonstrate the cognitive moves of a consultant answering a clinical question:
 - the primary clinical question explicitly engaged
@@ -515,11 +523,11 @@ The impression is where the report does its clinical work. An impression is not 
 - warranted synthesis articulated when findings and context support it
 - management direction recommended where the imaging makes the next step clear
 
-**CRITICAL: the exemplars must visibly demonstrate every move the "Clinical history must-appear" section enumerates.** Exemplars are the generator's imitation target. If a prose section says "BP value must appear in impression" but no exemplar shows BP propagation, the generator will not propagate it. Build the exemplars so that every must-appear item has at least one exemplar showing it inline. The prose section without exemplars is decorative; the exemplars are load-bearing.
+**Exemplars carry no clinical history.** The history shapes which diagnosis an exemplar names, how confidently, and what it recommends — it never appears as text. No exemplar names a symptom, demographic, medication, laboratory value, prior diagnosis or referral question. Exemplars are the generator's imitation target: a history fragment shown once is reproduced on every case.
 
 Cover:
 - **Normal exemplar** — clinical question answered negatively, with mandatory negatives that bear on the question and any direction the indication supports. Brief is correct when brief meets the obligations.
-- **Abnormal exemplar** — primary pathology named; the Descriptor propagation rule below governs what accompanies it. Must-appear clinical history items propagated visibly as hooks, not narrative prescriptions.
+- **Abnormal exemplar** — primary pathology named; the Descriptor propagation rule below governs what accompanies it. The history has already chosen the diagnosis and the referral; none of it is written.
 - **Complicated exemplar** — multiple concerns framed as separate impression items. Optional, only if clinically meaningful.
 
 Completeness is governed by obligations, not length. A brief impression that answers the clinical question and carries the case's obligations is complete. Length adds completeness only when it carries additional clinical work.
@@ -533,11 +541,11 @@ clarify diagnostic uncertainty, guide probabilistic evaluation from the imaging,
 further radiological investigation that would resolve a doubtful element. Management decisions
 belong to the governing clinical team.
 
-Every entry carries one of these tags, and nothing that cannot take a tag may appear:
+Every entry carries one of these tags, and nothing that cannot take a tag may appear. The tags classify sheet entries; they are sheet notation and never appear in a report — a recommendation renders as prose (specialty and urgency, or investigation and what it resolves):
 
 - `IMAGING:` further radiological investigation, naming what it would resolve
 - `REFERRAL:` named UK NHS specialty service, with urgency tier
-- `MDT:` UK multidisciplinary team review
+- `MDT:` a named UK multidisciplinary team that exists for this condition (site-specific cancer MDTs, spinal, neurovascular, sarcoma and similar); omit the entry where no such MDT exists — most non-oncological studies have none, and an MDT is never invented to fill the slot. An MDT is a scheduled planning forum: it is never recommended on an acute or emergency study, where coordination is by referral to the receiving specialties
 - `TISSUE:` tissue sampling, where imaging cannot resolve the question
 - `CORRELATION:` clinical or laboratory correlation
 
@@ -548,9 +556,9 @@ that specialty should then do is not.
 
 Name UK NHS services and pathways, not US or international equivalents.
 
-The recommendation clause of every impression exemplar below must be drawn from this tag set —
-the exemplars are the generator's imitation target, so an exemplar carrying management language
-will reproduce it on every case.
+The recommendation clause of every impression exemplar below must be drawn from this tag set and
+rendered as prose without the tag label — the exemplars are the generator's imitation target, so an
+exemplar carrying management language, or a tag label, will reproduce it on every case.
 
 The shape — *modality + indication, with specialty referral named* — is what generalises. The clinical content varies substantially by domain. Illustrative parallel examples across domains:
 
@@ -562,9 +570,9 @@ The shape — *modality + indication, with specialty referral named* — is what
 
 Pick the recommendations whose shape matches this case's scan type and clinical question. Also state what is out of radiological scope (treatment dosing, surgical technique, anticoagulation reversal targets, etc.).
 
-**Guideline hooks — name standard classification systems by acronym** where applicable. Use the system the clinical question and modality call for; the list is illustrative not exhaustive (Fleischner, Lung-RADS, Bosniak, RECIST, TNM, ASPECTS, ICH score, BI-RADS, LI-RADS, PI-RADS, TI-RADS, O-RADS, CAD-RADS, etc.). The generator may draw on these as vocabulary; not as attribution mandates.
+**Guideline hooks — name standard classification systems by acronym** where applicable. Use the system the clinical question and modality call for; the list is illustrative not exhaustive (Fleischner, Lung-RADS, Bosniak, RECIST, TNM, ASPECTS, ICH score, BI-RADS, LI-RADS, PI-RADS, TI-RADS, O-RADS, CAD-RADS, etc.). The generator may draw on these as vocabulary for terms the dictation uses; not as attribution mandates, and never to assign a category or stage the dictation did not state — so the sheet never writes a staging rule or threshold table that would let it, and "Stage" is never an impression-permitted term.
 
-**Clinical history must-appear.** Terse content hooks — phrase-level fragments naming the clinical datum or prior-event marker directly — that the impression must reflect: the presenting symptom or indication answered directly; comparison-relevant priors the management decision turns on; any modifier that gates a management decision. Emit hooks, not narrative prescriptions ("should be acknowledged", "should be discussed", "should be noted as relevant to..."). Narrative prescriptions tell the generator *how to write about* the impression rather than *what content* the impression carries; the generator copies them verbatim and the impression bloats. **Every hook must appear in at least one impression exemplar above.** The exemplar is the imitation target; without exemplar demonstration, the generator will not propagate.
+**Clinical history is never emitted.** This is a radiology report: it states what the imaging establishes. The history has done its work upstream — in the question, the tiering, the modifiers, and in what the exemplars choose to say — and none of it is written into any section: no demographics, presenting symptoms, medications, laboratory values, prior diagnoses or referral wording. The impression answers the question asked; it never comments on whether the findings explain the presentation.
 
 ---
 
@@ -575,11 +583,12 @@ Before emitting, verify:
 - **Scope alignment** — every companion in Phase 4 sits inside the evaluable field declared in Phase 1.
 - **Causal-clustering alignment** — P1-belongs in Phase 3 includes every causally-linked companion from Phase 4.
 - **Aetiology paired with discriminators** — every aetiology entry in the Phase 2 aetiology tier has its imaging discriminator paired inline; imaging-silent entries are tagged.
-- **Mandatory negatives are differential-targeted** — each negative bears on a specific differential or complication, not generic anatomy.
+- **Mandatory negatives are differential-targeted and single** — each negative bears on a specific differential or complication, not generic anatomy, and denies exactly one finding (no "or", no list).
+- **Differentials carry visibility** — every imaging-discriminable differential is tagged visible on this technique yes or no; imaging-silent ones are tagged.
 - **Severity grading on style exemplars** — three variants where clinically meaningful; two where not.
 - **Clause discipline** — every Phase 5 interpretive clause IF-condition is imaging-only; no clinical history, demographic, presentation, or laboratory cue is fused into the trigger.
 - **Voice alignment** — every exemplar leads with anatomical subject or imaging feature, not with existential openers or padding verbs.
-- **Exemplars demonstrate must-appear propagation** — every item in Phase 7's "Clinical history must-appear" appears in at least one impression exemplar.
+- **Exemplars carry no clinical history** — no exemplar names a symptom, demographic, medication, laboratory value, prior diagnosis or referral question.
 - **Structural fidelity** — the sweep order will translate naturally into one paragraph per subsystem at generation time.
 
 Then compile into the format below. Return ONLY the markdown skill sheet; no preamble, no explanation.
@@ -600,7 +609,7 @@ Write concrete values throughout. No angle brackets or curly braces in the emitt
 - **Secondary visible regions:**  (CONTAINMENT: every region named here must lie within the declared Imaged volume. A region outside that volume is not a secondary visible region — it belongs in Out of scope, with no canonical line. Co-acquisition convention is not visibility: regions commonly scanned in the same sitting as this study, or implied by the clinical context, are not visible in this study's volume unless the volume contains them. Emitting a canonical normal for a region outside the imaged volume produces a confident assertion about anatomy the study cannot evaluate.)
   - <region> → "<canonical default-normal line>"
 - **Out of scope:** <item> (requires <alternative test>); <item> (requires <alternative test>)
-- **Contrast:** <inferred from scan-type naming>
+- **Contrast:** <as the scan-type name states it, or "per dictation">
 - **Modality non-assessables:** <item with timeframe/threshold explanation>
 
 ## Clinical Lane
@@ -610,8 +619,8 @@ Write concrete values throughout. No angle brackets or curly braces in the emitt
 - **Differentials in scope:**
   - **Triage:** <what the imaging rules in/out at the level of the primary hypothesis>
   - **Aetiology:** <emit only when the primary hypothesis branches on aetiology; each entry paired with its imaging discriminator inline; imaging-silent aetiologies tagged>
-    - <aetiology> — <imaging discriminator>
-    - <imaging-silent aetiology> *(imaging-silent — requires clinical/laboratory correlation)*
+    - <differential> — <imaging discriminator> *(visible on this technique: yes | no — <what would show it>)*  (one line per differential, triage alternatives and aetiologies alike)
+    - <imaging-silent differential> *(imaging-silent — requires clinical/laboratory correlation)*
   - **Aetiology (if X confirmed) / Aetiology (if Y confirmed):** <emit branched lists when the triage step has multiple confirmed outcomes each with its own aetiology tree>
 - **Clinical history modifiers:** <item> → <how it alters urgency, differential weighting, or management pathway, with the management implication that follows>
 
@@ -620,13 +629,15 @@ Write concrete values throughout. No angle brackets or curly braces in the emitt
 - **P1 belongs:** <primary pathology + every causally-linked companion from Phase 4, regardless of anatomical region>  / **P1 does NOT belong:** <residual anatomy unrelated to the primary pathology>
 - **Primary system (priority-ordered):** <what P1 opens, with the internal sequencing of P1>
 - **Sweep order:** <clinical-question-driven where applicable; otherwise anatomical proximity. State the order explicitly.>
+- **Macro-structure:** FLAT  |  REGIONS: <REGION NAME> `header: "<REGION NAME>"` => <its stations> ; <REGION NAME> `header: "<REGION NAME>"` => <stations> ...  (REGIONS only for a multi-region protocol read as separate examinations; regions in render order; under REGIONS the Normal-study path below is written under these headers)
 - **Normal-study path:** <literal worked template of the sweep with canonical default-normal lines embedded. Focused scans: one paragraph. Broad-coverage scans: a complete per-system sweep with each in-scope system's canonical default-normal line at its sweep position — the generator uses this as the silent-case scaffold>
 
 - **Canonical default-normal lines:** <for broad-coverage scans, list each in-scope system with its canonical default-normal phrasing (one line per system). The generator consumes these when dictation is silent about that system. Omit for focused scans where the normal-study path paragraph already carries the per-system phrasing inline>
 
 ## Companion Matrix
 - **In-scope companions:** <each companion listed with its characterisation method or measurement convention inline>
-- **Mandatory negatives:** "<negative 1 — targeted to specific differential>", "<negative 2 — targeted to specific differential>", ...  (one per differential or complication that the imaging meaningfully bears on)
+- **Mandatory negatives:** (one line each, one finding each; one per differential or complication that the imaging meaningfully bears on)
+  - "<absence of one finding, in final report form>" (<differential or complication it targets>)
 - **Out-of-scope suppressed:** <item> (<alternative test required>)
 
 ## Style Exemplars
@@ -641,7 +652,7 @@ For each likely finding (top 4–6), three severity-graded variants where clinic
 ## Terminology Rules
 - **Preferred:** "<term>" (with reason where it adds value)
 - **Suppressed:** "<less-preferred term>" → "<preferred term>"
-- **Findings-only vs Impression-permitted:** "<term>" — reserve for impression synthesis  (where applicable)
+- **Findings-only vs Impression-permitted:** "<term>" — reserve for impression synthesis  (where applicable; a stage, grade or classification tier is never an impression-permitted term unless the dictation states it)
 
 ## Interpretive Clause Rules
 
@@ -657,16 +668,15 @@ For each likely finding (top 4–6), three severity-graded variants where clinic
 
 ## Impression Exemplars
 
-- **Opening convention:** <clinical answer / index finding / negative answer>
-- **Normal exemplar:** "<complete impression for a negative study — must visibly demonstrate any must-appear propagation listed below>"
-- **Abnormal exemplar:** Fill this structural skeleton with case-specific content: `<Diagnosis>[, with <management-changing complication or severity-tier clause>][, in the context of <must-appear clinical history hooks>][. <Sub-question answered as a terse clause when clinically earned>.] <Specialty> referral <urgency tier> recommended.`
+- **Opening convention:** <index finding when any acute pathology is confirmed; negative answer only when every question is negative; the most actionable finding on a broad screen>
+- **Normal exemplar:** "<complete impression for a negative study — brief is correct when it meets obligations; names no clinical history item>"
+- **Abnormal exemplar:** Fill this structural skeleton with case-specific content: `<Diagnosis>[, with <management-changing complication or severity-tier clause>][. <Sub-question answered as a terse clause when clinically earned>.] <Specialty> referral <urgency tier> recommended.`
 
-  A clause or sentence between `<Diagnosis>` and the referral is allowed ONLY when it changes the clinician's action — complications that escalate urgency, severity tiers that alter pathway, features that gate a further referral. Diagnostic-criterion descriptors (size, wall thickness, stranding, signal or enhancement features that define the named condition) do NOT earn a slot here; the FINDINGS section carries them and the diagnosis name encodes them. Must-appear clinical history hooks integrate as phrase-level fragments into the diagnosis clause, not as narrative prescriptions. Emit the exemplar as a single quoted string that obeys this shape.
+  A clause or sentence between `<Diagnosis>` and the referral is allowed ONLY when it changes the clinician's action — complications that escalate urgency, severity tiers that alter pathway, features that gate a further referral. Diagnostic-criterion descriptors (size, wall thickness, stranding, signal or enhancement features that define the named condition) do NOT earn a slot here; the FINDINGS section carries them and the diagnosis name encodes them. Emit the exemplar as a single quoted string that obeys this shape.
 - **Complicated exemplar:** "<complete impression for a complicated case — multiple concerns framed as separate items>"  (optional, if clinically meaningful)
 - **Descriptor propagation:** <which descriptor classes change management direction on this clinical question — thresholds, complications, severity tiers, features that gate additional referral. Descriptors that merely confirm the diagnostic criteria for the named condition do NOT propagate — the diagnosis name encodes them>
-- **Recommendation scope:** <tagged entries only, one per line, each beginning `IMAGING:` / `REFERRAL:` / `MDT:` / `TISSUE:` / `CORRELATION:`. UK NHS service names. No treatment, management strategy, procedural technique, hardware or drug content — anything that cannot take a tag is outside radiological remit>
-- **Guideline hooks:** <standard classification systems named by acronym; prefer the UK body where one applies (NICE, Royal College of Radiologists, the relevant UK specialty society) over US or international equivalents>
-- **Clinical history must-appear:** <terse phrase-level hooks naming the clinical datum or prior-event marker directly — not narrative prescriptions; every hook must appear in at least one impression exemplar above>"""
+- **Recommendation scope:** <tagged entries only, one per line, each beginning `IMAGING:` / `REFERRAL:` / `MDT:` / `TISSUE:` / `CORRELATION:`. UK NHS service names. Tags are sheet notation: they never appear in exemplars or in the report. No treatment, management strategy, procedural technique, hardware or drug content — anything that cannot take a tag is outside radiological remit>
+- **Guideline hooks:** <standard classification systems named by acronym; prefer the UK body where one applies (NICE, Royal College of Radiologists, the relevant UK specialty society) over US or international equivalents>"""
 
 
 # Appended to the analyser prompt only when a structural budget is supplied.
@@ -789,12 +799,44 @@ Conditional Suppression Rules stating that a mandatory negative whose class is i
 dictated positive is replaced by its remainder form.
 """
 
+PRUNE_V1 = """
+
+---
+
+## Subtraction pass — OVERRIDES conflicting guidance above
+
+The v1 sheet carries the clinical reasoning that makes the report good and a
+layer of scaffolding that does not (ledger L-34, 2026-09-24). Emit the reasoning;
+cut the scaffolding. Where this section conflicts with a phase above, this
+section governs.
+
+- **Interpretive Clause Rules:** omit the section entirely.
+- **Style Exemplars:** one variant per finding — the abnormal (uncomplicated)
+  form — for at most 4 findings. No Normal or Complicated variants.
+- **Canonical default-normal lines:** omit the list. The Normal-study path
+  already carries each system's line at its sweep position and is the single
+  source.
+- **Measurement Conventions:** at most 3 entries, only where the clinical
+  question turns on the value.
+- **Modality non-assessables** and **Out of scope:** at most 3 entries each.
+- **Clinical history modifiers:** keep every history item; one line each,
+  ending with the management implication.
+- Unchanged: Clinical Lane, Structural Pattern (P1, priority order, sweep,
+  Normal-study path), Companion Matrix with its mandatory negatives,
+  Terminology Rules, Conditional Suppression Rules, Impression Exemplars.
+"""
+
+# Directives every production analyser call carries. Harnesses that pass an
+# explicit tuple override this; None means "as production".
+PRODUCTION_DIRECTIVES: tuple[str, ...] = ("prune_v1",)
+
 DIRECTIVES = {
     "sweep": lambda: DIRECTIVE_SWEEP,
     "general": lambda: DIRECTIVE_GENERAL_RULES,
     "defeasible": lambda: DEFEASIBILITY_COUNTABLE,
     "defeasible_prose": lambda: DEFEASIBILITY_PROSE,
     "rescope": lambda: NEGATIVES_RESCOPE,
+    "prune_v1": lambda: PRUNE_V1,
 }
 
 
@@ -842,14 +884,15 @@ def get_analyser_prompt(
 # correlate prompt changes with downstream output quality retrospectively.
 
 def analyser_prompt_version(model_name: str) -> str:
-    prompt = get_analyser_prompt(model_name)
+    prompt = get_analyser_prompt(model_name, directives=PRODUCTION_DIRECTIVES)
     return hashlib.sha256(
         (prompt + "||" + ANALYSER_USER_TEMPLATE).encode("utf-8")
     ).hexdigest()[:12]
 
 
 # Back-compat default for callers that don't know which model they are using.
-ANALYSER_PROMPT_VERSION = analyser_prompt_version("zai-glm-4.7")
+from .enhancement_utils import MODEL_CONFIG as _MODEL_CONFIG  # noqa: E402
+ANALYSER_PROMPT_VERSION = analyser_prompt_version(_MODEL_CONFIG["QUICK_REPORT_ANALYZER_FAST"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -862,7 +905,7 @@ async def generate_ephemeral_skill_sheet(
     api_key: str,
     model_override: str | None = None,
     budget_directive: str = "",
-    directives: tuple[str, ...] = (),
+    directives: tuple[str, ...] | None = None,
 ) -> dict:
     """
     Run the analyser to produce a bespoke skill sheet for one case.
@@ -887,73 +930,57 @@ async def generate_ephemeral_skill_sheet(
             'prompt_chars': int,  # user prompt length after substitution
         }
     """
-    from .enhancement_utils import (
-        MODEL_CONFIG,
-        MODEL_PROVIDERS,
-        _run_agent_with_model,
-        _get_api_key_for_provider,
-    )
+    from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model
 
     t0 = time.time()
-    model_name = model_override or MODEL_CONFIG.get("QUICK_REPORT_ANALYZER_BEST", "claude-haiku-4-5-20251001")
-    provider = MODEL_PROVIDERS.get(model_name, "cerebras")
+    model_name = model_override or MODEL_CONFIG["QUICK_REPORT_ANALYZER_BEST"]
 
     user_prompt = (
         ANALYSER_USER_TEMPLATE
         .replace("{{SCAN_TYPE}}", scan_type or "")
         .replace("{{CLINICAL_HISTORY}}", clinical_history or "")
     )
+    if directives is None:
+        directives = PRODUCTION_DIRECTIVES
 
-    # Provider-aware model settings. The GLM-on-Cerebras path uses reasoning
-    # flags that are invalid on Anthropic; Anthropic's endpoint rejects the
-    # full extra_body block outright. Groq rejects those toggles too and
-    # reaches its reasoning stream via groq_reasoning_format, which
-    # _run_agent_with_model sets from use_thinking. Keep each provider's
-    # settings explicit so the failure modes are localised.
-    if provider == "anthropic":
-        model_settings = {
-            "temperature": 0.5,
-            "max_tokens": 16000,
-        }
-        call_api_key = _get_api_key_for_provider("anthropic")
-    elif provider == "groq":
-        model_settings = {
-            "temperature": 0.5,
-            "top_p": 0.95,
-            "max_tokens": 16000,
-        }
-        call_api_key = _get_api_key_for_provider("groq")
-    else:
-        # Cerebras and anything else. disable_reasoning/clear_thinking were
-        # GLM-4.7-only and other Cerebras models reject them; with GLM gone this
-        # branch only ever sees those other models, so the toggles are dropped.
-        model_settings = {
-            "temperature": 0.5,
-            "top_p": 0.95,
-            "max_tokens": 16000,
-        }
-        call_api_key = api_key or _get_api_key_for_provider(provider)
+    # One settings dict for every provider; normalise_model_settings fits it (Cerebras
+    # Qwen: medium, 64k - reasoning counts toward the cap and 16k truncated sheets, L-33;
+    # Groq Qwen: low, clamped to its 16,384 ceiling; Sonnet: no sampling params).
+    model_settings = {"temperature": 0.5, "top_p": 0.95, "max_tokens": 65536}
 
-    system_prompt = get_analyser_prompt(
-        model_name, budget_directive, directives
+    async def _analyse(model: str):
+        return await _run_agent_with_model(
+            model_name=model,
+            output_type=str,
+            system_prompt=get_analyser_prompt(model, budget_directive, directives),
+            user_prompt=user_prompt,
+            api_key="",
+            use_thinking=True,
+            model_settings=model_settings,
+        )
+
+    # One hop to the configured fallback when the primary raises (L-41).
+    fallback = next(
+        (MODEL_CONFIG.get(f"{role}_FALLBACK") for role in ("QUICK_REPORT_ANALYZER_FAST", "QUICK_REPORT_ANALYZER_BEST")
+         if MODEL_CONFIG.get(role) == model_name),
+        None,
     )
-
-    result = await _run_agent_with_model(
-        model_name=model_name,
-        output_type=str,
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        api_key=call_api_key,
-        use_thinking=True,
-        model_settings=model_settings,
-    )
+    fallback_from: str | None = None
+    try:
+        result = await _analyse(model_name)
+    except Exception as e:
+        if not fallback:
+            raise
+        proto_logger.warning(f"[ANALYSER] {model_name} failed ({type(e).__name__}); falling back to {fallback}")
+        fallback_from, model_name = model_name, fallback
+        result = await _analyse(model_name)
 
     skill_sheet = result.output if hasattr(result, "output") else str(result)
     latency_ms = int((time.time() - t0) * 1000)
-
     return {
         "skill_sheet": skill_sheet,
         "model_used": model_name,
+        "fallback_from": fallback_from,
         "latency_ms": latency_ms,
         "prompt_chars": len(user_prompt),
         "prompt_version": analyser_prompt_version(model_name),

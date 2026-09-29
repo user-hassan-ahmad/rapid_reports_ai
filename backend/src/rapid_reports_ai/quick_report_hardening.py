@@ -173,7 +173,12 @@ QUICK_REPORT_HARDENING_PREAMBLE = (
     "— cluster in the index paragraph with their parent, regardless "
     "of which anatomical compartment they live in. Never park a "
     "causal companion in a distant sweep paragraph purely because "
-    "its anatomical location differs from the parent.\n"
+    "its anatomical location differs from the parent. Under a REGIONS "
+    "macro-structure declared by the skill sheet, region membership "
+    "governs placement and this rule applies within the region: the "
+    "region's dominant finding leads its block, and a companion that "
+    "lives in another region stays in that region's block. "
+    "Cross-region synthesis belongs to the impression.\n"
     "\n"
     "**3. Descriptor propagation is calibrated to management, not to "
     "diagnosis confirmation.** Descriptors propagate into the "
@@ -222,7 +227,10 @@ QUICK_REPORT_HARDENING_PREAMBLE = (
     "organs. Positive findings or complications break out into "
     "their own paragraphs; silent systems group. The sweep order "
     "declares the sequence of what the report visits — not the "
-    "granularity of paragraph breaks.\n"
+    "granularity of paragraph breaks. Under a REGIONS macro-structure, "
+    "each region renders as its own headed block inside FINDINGS, in "
+    "the sheet's declared order, and this paragraph discipline applies "
+    "within each block.\n"
     "\n"
     "**7. Section boundaries are strict. Do not bleed content "
     "between TECHNIQUE, LIMITATIONS, and FINDINGS.** Each section "
@@ -277,7 +285,10 @@ QUICK_REPORT_HARDENING_PREAMBLE = (
     "**9. Section header layout.** Each section header declared in "
     "the skill sheet's `Sections:` row — COMPARISON, TECHNIQUE, "
     "LIMITATIONS, FINDINGS, IMPRESSION, etc. — appears on its own "
-    "line, in uppercase, terminated by a colon. The section's "
+    "line, in uppercase, terminated by a colon. A region header from a "
+    "REGIONS macro-structure uses the same layout as a sub-heading "
+    "inside FINDINGS (uppercase, own line, colon, blank line before "
+    "it), and never appears outside FINDINGS. The section's "
     "content begins on the next line. A blank line separates each "
     "section block from the next. Do NOT place section content on "
     "the same line as the header (e.g. `TECHNIQUE: Non-contrast "
@@ -421,3 +432,80 @@ QUICK_REPORT_HARDENING_PREAMBLE = (
     "---\n"
     "\n"
 )
+
+
+# ── Compiled-brief variant ──────────────────────────────────────────────────
+# When the generator reads a compiled brief (quick_report_brief.py), every clinical item has
+# already been checked against the dictation, so principle 12 no longer asks the generator to
+# find conflicts: it tells it to act on the labels. The full preamble above is kept for the
+# fallback path (raw sheet, when reconciliation is unavailable).
+_P12_START = QUICK_REPORT_HARDENING_PREAMBLE.index("**12. A canonical line from the skill sheet")
+_P12_END = QUICK_REPORT_HARDENING_PREAMBLE.rindex("---\n")
+QUICK_REPORT_HARDENING_PREAMBLE_BRIEF = (
+    QUICK_REPORT_HARDENING_PREAMBLE[:_P12_START]
+    + "**12. This sheet has been reconciled with this dictation.**\n"
+    "\n"
+    "Before you received it, every clinical item in the sheet was checked against the "
+    "dictated findings, and items that do not apply to this case were removed. Act on "
+    "its labels exactly; do not re-derive them and do not reintroduce removed items.\n"
+    "\n"
+    "- **Normal-study path**: nothing dictated acts on these structures. Where the "
+    "dictation is silent about one, render its line at its sweep position.\n"
+    "- **Do not assert as normal**: a dictated finding acts on these structures. "
+    "Describe them only as the dictation does; where it is silent, make no claim that "
+    "they are normal.\n"
+    "- **Impression plan**: every Carry forward finding is addressed in the impression; "
+    "Findings only items stay in FINDINGS and do not appear in the impression. The plan is "
+    "a minimum: add the synthesis the evidence supports.\n"
+    "- **Do not recommend**: these have been judged outside this report; never recommend "
+    "them, in any wording.\n"
+    "- **KEEP** negatives answer the clinical question: state each one. **OMIT**: the "
+    "dictation reports this finding; describe the finding as dictated and never state "
+    "the negative, in any section. **DO NOT ASSERT**: a dictated finding is expected to "
+    "cause this; do not state it as absent.\n"
+    "\n"
+    "Coverage is obligatory, assertion is earned: every structure the sweep visits is "
+    "still covered, and what is said about it is only what the dictation and the "
+    "labels support.\n"
+    "\n"
+    + QUICK_REPORT_HARDENING_PREAMBLE[_P12_END:]
+)
+
+
+def _swap(text: str, old: str, new: str) -> str:
+    assert text.count(old) == 1, f"passage not found exactly once: {old[:60]!r}"
+    return text.replace(old, new)
+
+
+def _between(text: str, start: str, end: str) -> str:
+    return text[text.index(start):text.index(end)]
+
+
+# Lean pass: deferral names a specialty or test (not a bare "clinical correlation"); principle 5
+# loses the clause it existed to cancel; paragraph rules live once in the style guide's
+# Consolidation; modality non-assessables never reach the brief; a silent secondary region
+# keeps the do-not-assert exception.
+_B = QUICK_REPORT_HARDENING_PREAMBLE_BRIEF
+for _old, _new in (
+    ("specialty review, "
+     "direct assessment, or clinical correlation are legitimate "
+     "endpoints of an impression, not admissions of failure.",
+     "review by a named specialty, "
+     "direct clinical or surgical assessment, or a named further test are legitimate "
+     "endpoints of an impression, not admissions of failure; a bare \"clinical "
+     "correlation\" is not."),
+    (_between(_B, "**5. Global voice conventions apply strictly.**", "**6. Paragraph structure"),
+     "**5. Global voice conventions apply strictly.** If an exemplar in the skill sheet "
+     "violates a global voice rule, the global rule governs; do not imitate the violation.\n\n"),
+    (_between(_B, "**6. Paragraph structure", "**7. Section boundaries"),
+     "**6. Paragraph structure follows content, not subsystem count** — as set out under "
+     "Consolidation in the Global Style Guide.\n\n"),
+    (_between(_B, "- **Modality non-assessables**", "If a section is declared"), "\n"),
+    ("silence means "
+     "normal, same as any in-scope structure.",
+     "silence means "
+     "normal, same as any in-scope structure, unless the region is listed under "
+     "\"Do not assert as normal\"."),
+):
+    _B = _swap(_B, _old, _new)
+QUICK_REPORT_HARDENING_PREAMBLE_BRIEF = _B

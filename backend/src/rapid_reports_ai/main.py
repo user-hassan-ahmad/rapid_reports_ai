@@ -80,8 +80,9 @@ from .canvas_routes import canvas_router
 from .agentic_routes import agentic_router
 from .chat_prompt import build_chat_system_prompt
 from .enhancement_utils import (
+    MODEL_CONFIG,
+    MODEL_PROVIDERS,
     generate_auto_report,
-    generate_templated_report,
     build_chat_guideline_context,
     build_audit_guideline_references_memory_section,
     collect_guideline_sources_for_chat,
@@ -658,7 +659,7 @@ class TemplateGenerateRequest(BaseModel):
     user_inputs: Dict[str, str]  # New format: user_inputs dict
     # Legacy format (deprecated)
     variables: Optional[Dict[str, str]] = None
-    model: str = "qwen/qwen3.6-27b"  # Uses zai-glm-4.7 as primary
+    model: str = MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
 
 
 # Wizard assistance request models
@@ -1145,7 +1146,7 @@ Apply each fix while preserving grammatical completeness and report structure.""
         report_id = None
         if should_auto_save(current_user):
             try:
-                model_to_store = report_output.model_used or "qwen/qwen3.6-27b"
+                model_to_store = report_output.model_used or MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
                 saved_report = create_report(
                     db=db,
                     user_id=str(current_user.id),
@@ -1169,9 +1170,8 @@ Apply each fix while preserving grammatical completeness and report structure.""
         
         # Map model names to full model identifiers for response
         model_full_name = {
-            "claude": "claude-sonnet-4-6",
-            "gemini": "gemini-2.5-pro",
-            "qwen": "qwen/qwen3.6-27b"
+            "claude": MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"],
+            "qwen": MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"],
         }.get(request.model, request.model)
         
         return {
@@ -1944,7 +1944,7 @@ Apply each fix while preserving grammatical completeness and report structure.""
         report_id = None
         if should_auto_save(current_user):
             try:
-                model_to_store = report_output_dict.get("model_used", "qwen/qwen3.6-27b")
+                model_to_store = report_output_dict.get("model_used") or MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"]
                 input_data_to_save = {
                     "variables": actual_user_inputs,
                     "extracted_scan_type": report_output.scan_type
@@ -1975,9 +1975,8 @@ Apply each fix while preserving grammatical completeness and report structure.""
         
         # Map model names to full model identifiers for response
         model_full_name = {
-            "claude": "claude-sonnet-4-6",
-            "gemini": "gemini-2.5-pro",
-            "qwen": "qwen/qwen3.6-27b"
+            "claude": MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"],
+            "qwen": MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"],
         }.get(request.model, request.model)
         
         return {
@@ -2672,7 +2671,7 @@ async def quick_report_proto_analyse_endpoint(
                 skill_sheet_markdown=result.get("skill_sheet", ""),
                 analyser_model=result.get("model_used", ""),
                 analyser_latency_ms=result.get("latency_ms"),
-                analyser_prompt_version=result.get("prompt_version") or analyser_prompt_version(result.get("model_used", "qwen/qwen3.6-27b")),
+                analyser_prompt_version=result.get("prompt_version") or analyser_prompt_version(result.get("model_used") or MODEL_CONFIG["QUICK_REPORT_ANALYZER_FAST"]),
                 run_id=run_id,
             )
             sheet_id = str(sheet_row.id)
@@ -2711,9 +2710,8 @@ async def quick_report_proto_generate_endpoint(
 ):
     """Generate a report using an ephemeral skill sheet + findings.
 
-    Reuses the same skill_sheet_guided generation path as production templates,
-    so the only difference between this and the templated flow is where the
-    skill sheet came from (ephemeral vs cached in a templates row).
+    Uses the quick-report generator (quick_report_generator.py), the same one as
+    /api/quick-report/generate.
     """
     from .quick_report_analyser import (
         log_generator_run,
@@ -2731,38 +2729,19 @@ async def quick_report_proto_generate_endpoint(
         if not api_key:
             return {"success": False, "error": "Cerebras API key not configured"}
 
-        # Shared preamble — same in production (/api/quick-report/generate)
-        # and proto. Single source of truth at quick_report_hardening.py.
-        from .quick_report_hardening import QUICK_REPORT_HARDENING_PREAMBLE
-        hardening_preamble = QUICK_REPORT_HARDENING_PREAMBLE
-
-        tm = TemplateManager()
-        template_config = {
-            "generation_mode": "skill_sheet_guided",
-            "skill_sheet": hardening_preamble + request.skill_sheet,
-            "scan_type": request.scan_type,
-        }
-        user_inputs = {
-            "FINDINGS": request.findings,
-            "CLINICAL_HISTORY": request.clinical_history,
-        }
-
         # Model override is validated against an allow-list so the proto doesn't
         # accept arbitrary strings from the frontend. Every model here must be
         # registered in MODEL_PROVIDERS in enhancement_utils.py.
-        allowed_models = {
-            "qwen/qwen3.6-27b",                  # Groq Qwen 3.6 27B - current default
-            "claude-sonnet-4-6",                 # Anthropic Claude Sonnet 4.6
-            "claude-haiku-4-5-20251001",         # Anthropic Haiku 4.5
-            "openai/gpt-oss-120b",               # OpenRouter GPT-OSS 120B
-        }
+        allowed_models = set(MODEL_PROVIDERS)
         model_override = request.model if request.model in allowed_models else None
 
+        from .quick_report_generator import generate_quick_report
         t0 = time.time()
-        result = await tm.generate_report_from_config(
-            template_config=template_config,
-            user_inputs=user_inputs,
-            user_signature=None,
+        result = await generate_quick_report(
+            skill_sheet=request.skill_sheet,
+            scan_type=request.scan_type,
+            findings=request.findings,
+            clinical_history=request.clinical_history,
             model_override=model_override,
         )
         latency_ms = int((time.time() - t0) * 1000)
@@ -4097,7 +4076,7 @@ async def chat_about_report(
         perplexity_sources: List[Dict[str, Any]] = []
 
         response = client.chat.completions.create(
-            model="qwen/qwen3.6-27b",
+            model=MODEL_CONFIG["CHAT_ASSISTANT"],
             max_tokens=4096,
             temperature=0.3,
             messages=messages,
@@ -4161,7 +4140,7 @@ async def chat_about_report(
                     )
             messages_followup = messages + [_groq_assistant_to_dict(message)] + tool_messages
             response2 = client.chat.completions.create(
-                model="qwen/qwen3.6-27b",
+                model=MODEL_CONFIG["CHAT_ASSISTANT"],
                 max_tokens=4096,
                 temperature=0.3,
                 messages=messages_followup,
@@ -4344,7 +4323,7 @@ async def chat_about_report(
                     # field schemas can't drift between primary and salvage.
                     salvage_tools = [_apply_structured_actions_tool_def()]
                     salvage_response = client.chat.completions.create(
-                        model="qwen/qwen3.6-27b",
+                        model=MODEL_CONFIG["CHAT_ASSISTANT"],
                         max_tokens=4096,
                         temperature=0.2,
                         messages=salvage_messages,
@@ -5463,7 +5442,7 @@ async def run_audit(
                     audit_result=result,
                     scan_type=request.scan_type or "",
                     clinical_history=request.clinical_history or "",
-                    model_used="qwen/qwen3.6-27b",
+                    model_used=MODEL_CONFIG["AUDIT_ANALYZER"],
                     audited_candidate_model=request.audited_candidate_model,
                 )
                 audit_id = str(audit.id)

@@ -1,12 +1,17 @@
-"""
-Global Style Guide — the root knowledge node for all RadFlow skill sheets.
+"""Quick-report generator prompt stack.
 
-At generation time, this is injected as the system prompt foundation:
-    system_prompt = SYSTEM_PREAMBLE + GLOBAL_STYLE_GUIDE + skill_sheet
-    user_prompt = inputs + PRE_WRITING_ANALYSIS + VERIFICATION_CHECKLIST
+Owned by the quick-report path alone. Template reports use global_style_guide.py,
+which is a separate copy: the two paths have different sheets (ephemeral sheets from
+scan type + history vs template sheets learned from example reports) and are expected
+to diverge. A rule that should apply to both is edited in both files deliberately;
+scripts/prompt_drift_report.py lists sections present in both and whether they match.
+
+Forked 2026-09-29 from global_style_guide.py at 587d4cf, minus the instructions for
+sheet features an ephemeral sheet never contains (fixed blocks, [NEEDS VERIFICATION]
+tags, {{parameters}}, interpretive-clause rules, a CLINICAL HISTORY section).
 """
 
-SYSTEM_PREAMBLE = """You are a senior consultant radiologist generating professional radiology reports.
+QR_SYSTEM_PREAMBLE = """You are a senior consultant radiologist generating professional radiology reports.
 Use British English spelling throughout. The report structure and conventions are
 defined by two documents: a Global Style Guide (universal principles) and a
 Template Skill Sheet (scan-specific conventions). The skill sheet inherits from
@@ -15,7 +20,7 @@ the global guide; where they conflict, the skill sheet takes precedence.
 Work through the pre-writing analysis before committing to any text. Complete
 each step once, concisely. Do not include the analysis in the output."""
 
-GLOBAL_STYLE_GUIDE = """
+QR_STYLE_GUIDE = """
 ---
 
 ## GLOBAL STYLE GUIDE
@@ -71,11 +76,6 @@ impression, never as a labelled line or a section.
 The global guide governs style; the skill sheet governs structure. Style rules
 only fire when the corresponding structural element is present in the skill sheet.
 Do not fabricate sections the skill sheet does not define.
-
-If a CLINICAL HISTORY section is defined in the skill sheet: write in terse
-referral format — age and sex abbreviated (e.g. 61M, 52F), key clinical facts
-as noun phrases separated by full stops, no connective prose, query statement
-last. Never long-form prose.
 
 ### Findings Discipline
 
@@ -158,7 +158,7 @@ a single sentence with directional comparison if asymmetric.
 
 ### Conditional Awareness
 
-Mandatory negatives, fixed phrases, and interpretive clauses from the skill sheet
+Mandatory negatives and conditional rules from the skill sheet
 assume specific finding states. Before writing any mandatory negative, check whether
 the current finding state triggers a suppression condition defined in the skill
 sheet. A negative that contradicts an already-described positive finding is a
@@ -187,31 +187,11 @@ provide it, omit the line entirely. Never fabricate findings, never write
 meta-statements about missing data. The report should read as if the radiologist
 wrote it — and a radiologist never documents what they didn't assess.
 
-### Parameter Placeholders
-
-Where a skill sheet includes a named placeholder for a value that varies
-per-study, substitute the dictated value when the dictation supplies it. When
-the dictation does not supply that value, keep the placeholder as written.
-Do not fabricate a substitute, and do not drop the line. A placeholder is
-itself valid report content when the corresponding data is absent — it
-preserves the structural requirement the skill sheet encodes while honouring
-the rule that only dictated values appear as factual content.
-
 ### Output Consistency
 
 Any section that synthesises from findings above must remain faithful to those
 findings. Must not assert normality for abnormal findings, contradict documented
 abnormalities, or introduce findings not present in the body.
-
-### Fixed Blocks and Parametrisation
-
-Reproduce fixed block text from the skill sheet verbatim. Adapt patient-specific
-values (laterality, contrast type, field strength) to the current case — do not
-hardcode values from the training examples. Before reproducing any fixed block,
-verify that the factual condition it encodes matches the clinical history and
-findings input — if the fixed block asserts a condition that differs from the
-current case, adapt the assertion while preserving the phrasing pattern. Fixed
-blocks are fixed in structure and language, not in factual state.
 
 ### Recommendations
 
@@ -228,7 +208,7 @@ commit. Reserve hedging for genuine clinical ambiguity.
 
 ---"""
 
-PRE_WRITING_ANALYSIS = """
+QR_PRE_WRITING_ANALYSIS = """
 ---
 
 ## PRE-WRITING ANALYSIS (mandatory — complete before writing)
@@ -261,15 +241,11 @@ PRE_WRITING_ANALYSIS = """
    itself is never written into the report.
 
 4. **Skill sheet compliance check**: If the clinical question is staging, plan to describe extent and bulk and leave the stage unassigned unless the dictation states it. Scan the skill sheet for conditional fields
-   triggered by these findings. Verify all IF/THEN interpretive clauses that
-   apply. Confirm fixed block text is ready with correct patient-specific values.
-   For each fixed block tagged [NEEDS VERIFICATION], confirm the factual
-   assertion holds for the current case before reproducing it. If it does not
-   hold, adapt the phrasing while preserving the structural pattern.
+   triggered by these findings.
 
 Now generate the complete report. Do not include this analysis in the output."""
 
-VERIFICATION_CHECKLIST = """
+QR_VERIFICATION_CHECKLIST = """
 ---
 
 ## VERIFICATION (before output)
@@ -278,9 +254,7 @@ VERIFICATION_CHECKLIST = """
 - Every triggered Conditional Suppression Rule has been applied — suppressed phrase removed, replacement phrase inserted
 - No suppressed terms appear anywhere including the impression
 - Impression format matches skill sheet (prose vs numbered)
-- All triggered interpretive clauses are appended
 - No clinical correlation or symptom attribution in FINDINGS
-- Fixed blocks reproduced verbatim with patient values adapted
 - Bilateral same-type findings consolidated
 - Recommendations are specific (specialty, urgency, pathway)
 - No recommendation tag label (IMAGING:, REFERRAL:, MDT:, TISSUE:, CORRELATION:) appears; recommendations are prose
@@ -289,3 +263,140 @@ VERIFICATION_CHECKLIST = """
 - No descriptor, qualifier, or reference value appears in the report that was not either present in the dictation or defined as a fixed reference in the skill sheet — not inferred from an adjacent pattern
 - The report contains ONLY the sections defined in the skill sheet's Structural Pattern — no additional sections, headers, or preambles
 - No skill sheet internal labels (paragraph names marked header: none) appear as text in the output"""
+
+# How the sheet is introduced to the generator. The hardening preamble
+# (quick_report_hardening.py) is prepended to the sheet itself.
+QR_SHEET_HEADER = """## TEMPLATE SKILL SHEET
+
+The following skill sheet defines scan-specific reporting conventions for this template.
+It inherits all rules from the Global Style Guide above. Where a skill sheet rule
+conflicts with a global rule, the skill sheet takes precedence."""
+
+
+# ── Compiled-brief variants ─────────────────────────────────────────────────
+# Used when the generator reads a compiled brief (quick_report_brief.py): the conflict
+# handling that each of these texts carried is done before generation, so they point at the
+# brief's labels instead. The QR_* texts above remain for the raw-sheet fallback.
+
+def _swap(text: str, old: str, new: str) -> str:
+    assert text.count(old) == 1, f"passage not found exactly once: {old[:60]!r}"
+    return text.replace(old, new)
+
+
+def _swaps(text: str, *pairs: tuple[str, str]) -> str:
+    for old, new in pairs:
+        text = _swap(text, old, new)
+    return text
+
+
+def _between(text: str, start: str, end: str) -> str:
+    return text[text.index(start):text.index(end)]
+
+
+# Lean pass (2026-09-29, research doc "Lean prompt"): on this path the brief carries no example
+# reports, no Reference Values table, no header:none paragraphs, no impression-format field and no
+# conditional rules, so the instructions about them are removed; rules stated in several blocks
+# are kept once, where the model acts on them.
+QR_SYSTEM_PREAMBLE_BRIEF = _swaps(
+    QR_SYSTEM_PREAMBLE,
+    ("Use British English spelling throughout. The report", "The report"),
+    ("Template Skill Sheet (scan-specific conventions). The skill sheet inherits from\nthe global guide; where they conflict, the skill sheet takes precedence.",
+     "Skill Sheet (scan-specific conventions)."),
+    (" Do not include the analysis in the output.", ""),
+)
+
+QR_SHEET_HEADER_BRIEF = """## SKILL SHEET
+
+The following skill sheet defines the conventions for this scan, reconciled with this dictation.
+It inherits all rules from the Global Style Guide above. Where a skill sheet rule
+conflicts with a global rule, the skill sheet takes precedence."""
+
+QR_STYLE_GUIDE_BRIEF = _swaps(
+    QR_STYLE_GUIDE,
+    (""" These defaults apply unless the skill sheet establishes
+a different convention through consistent demonstrated use in the example reports.
+The radiologist's demonstrated style always takes precedence over the default.""", ""),
+    (_between(QR_STYLE_GUIDE, "Paragraph names in the skill sheet are internal", "Recommendation tags\nin the skill sheet"),
+     """Paragraph names in the skill sheet are internal labels and never appear as text. The
+only headings inside FINDINGS are the region headers of a REGIONS macro-structure. """),
+    (_between(QR_STYLE_GUIDE, "### Conditional Style Application", "### Findings Discipline"), ""),
+    ("""When the
+dictation provides a value without a qualifier, check the skill sheet's
+Reference Values table for an explicit threshold. If one exists, derive the
+qualifier from it. If no explicit threshold exists in the table, state the
+value without a qualifier rather than inferring one.""",
+     """When the
+dictation provides a value without a qualifier, state the value without a
+qualifier rather than inferring one."""),
+    ("""Not every finding needs a recommendation. Normal structures and minor incidentals
+requiring no action belong in FINDINGS only.""", "Not every finding needs a recommendation."),
+    (_between(QR_STYLE_GUIDE, "### Consolidation", "### Output Consistency"),
+     """### Consolidation
+
+The sheet's structure is fixed: its section list, what belongs in the first paragraph (P1),
+and its sweep order. Nothing is consolidated across a REGIONS heading.
+
+A subsystem is one step of the sheet's sweep order. A sentence may group unremarkable
+structures within one step, and consecutive negatives about that step form one list; a
+sentence never joins two steps. Mandatory negatives are never lost to consolidation.
+
+Paragraphs follow content, not subsystem count. P1 is its own paragraph; a positive finding
+or complication opens a new paragraph; adjacent all-normal steps share one paragraph rather
+than one paragraph per organ system, so the report reads as a coherent sweep. Under a REGIONS
+macro-structure each region renders as its own headed block inside FINDINGS, in the sheet's
+order, and this applies within each block.
+
+A Normal-study path line kept as written is used verbatim, even where it spans two steps.
+
+When bilateral findings of the same type and severity are present, combine into
+a single sentence with directional comparison if asymmetric.
+
+### Missing Data Handling
+
+The dictation is the source of truth for positive findings — if it was not dictated,
+it was not observed, and must not be fabricated. A finding carried in the clinical
+history or attributed to a prior study is not a finding on this study: it is asserted
+only where the dictation asserts it. Never write meta-statements about missing data.
+
+"""),
+)
+
+QR_PRE_WRITING_ANALYSIS_BRIEF = _swaps(
+    QR_PRE_WRITING_ANALYSIS,
+    ("""Cross-reference against the skill sheet's mandatory negatives
+   — any mandatory negative not addressed by the dictation must still appear.
+   Check each mandatory negative against the skill sheet's Conditional Suppression
+   Rules: if the current finding state triggers a suppression condition, suppress
+   the negative and apply the replacement phrase (or omit entirely).""",
+     """Apply each mandatory negative's reconciliation label:
+   KEEP as written, OMIT, or DO NOT ASSERT."""),
+    (_between(QR_PRE_WRITING_ANALYSIS, "   **Clinical history as checklist**", "2. **Impression plan**"),
+     """   **Clinical history as focus**: Use prior events, diagnoses and procedures in the
+   history to decide which dictated findings the report must address and emphasise.
+   The history never creates a field to fill: a structure, measurement or negative the
+   dictation does not mention is not added because the history makes it relevant.
+
+"""),
+    (""" Group findings by management pathway into
+   sentences. Target the format specified in the skill sheet (prose vs numbered).""", ""),
+    (""" Scan the skill sheet for conditional fields
+   triggered by these findings.""", ""),
+)
+
+QR_VERIFICATION_CHECKLIST_BRIEF = _swaps(
+    QR_VERIFICATION_CHECKLIST,
+    ("""- Every mandatory negative from the skill sheet is present with exact phrasing
+- Every triggered Conditional Suppression Rule has been applied — suppressed phrase removed, replacement phrase inserted
+""",
+     """- Every KEEP negative is present; no OMIT negative and no DO NOT ASSERT statement appears anywhere, impression included
+- No structure listed under "Do not assert as normal" is stated to be normal
+- Every Carry forward finding is addressed in the impression; no Findings only item appears there
+- Every recommendation listed in the Recommendation scope appears in the impression
+"""),
+    ("- Impression format matches skill sheet (prose vs numbered)\n", ""),
+    (" — a staging question is answered by describing extent and bulk, never by assigning the stage", ""),
+    ("that was not either present in the dictation or defined as a fixed reference in the skill sheet — not inferred from an adjacent pattern",
+     "that was not in the dictation — not inferred from an adjacent pattern"),
+    ("- No skill sheet internal labels (paragraph names marked header: none) appear as text in the output",
+     "- No skill sheet internal labels appear as text in the output"),
+)

@@ -19,19 +19,19 @@ def test_production_prompts_are_byte_identical_without_a_budget():
 
 def test_empty_budget_leaves_no_override_block():
     """T1 is a true control - identical to what the bake-off ran."""
-    assert qra.get_analyser_prompt("qwen/qwen3.6-27b", "") == qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS
-    assert qra.get_analyser_prompt("qwen/qwen3.6-27b", "   ") == qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS
+    assert qra.get_analyser_prompt("qwen/qwen3.8-27b", "") == qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS
+    assert qra.get_analyser_prompt("qwen/qwen3.8-27b", "   ") == qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS
 
 
 def test_budget_directive_is_appended_and_placeholder_is_consumed():
-    prompt = qra.get_analyser_prompt("qwen/qwen3.6-27b", "Cover exactly 3 findings.")
+    prompt = qra.get_analyser_prompt("qwen/qwen3.8-27b", "Cover exactly 3 findings.")
     assert "Cover exactly 3 findings." in prompt
     assert "{{BUDGET_DIRECTIVE}}" not in prompt
     assert prompt.startswith(qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS)
 
 
 def test_budget_block_declares_itself_an_override():
-    prompt = qra.get_analyser_prompt("qwen/qwen3.6-27b", "Cover exactly 3 findings.")
+    prompt = qra.get_analyser_prompt("qwen/qwen3.8-27b", "Cover exactly 3 findings.")
     tail = prompt[len(qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS):]
     assert "OVERRIDE" in tail.upper()
 
@@ -326,7 +326,7 @@ def test_artifact_html_is_self_contained_and_themed(tmp_path):
 
 from rapid_reports_ai import template_manager as tm_mod
 
-# Groq's published hard ceiling for qwen/qwen3.6-27b. Values above are rejected.
+# Groq's published hard ceiling for qwen/qwen3.8-27b. Values above are rejected.
 QWEN_MAX_OUTPUT_TOKENS = 16384
 
 # Highest single-call generator output observed with reasoning on, across the
@@ -380,14 +380,14 @@ def test_gate_still_flags_a_genuine_two_sentence_contradiction():
 
 def test_directives_are_off_by_default_and_production_unchanged():
     assert qra.get_analyser_prompt("zai-glm-4.7") == qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS
-    assert qra.get_analyser_prompt("qwen/qwen3.6-27b") == qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS
+    assert qra.get_analyser_prompt("qwen/qwen3.8-27b") == qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS
 
 
 def test_sweep_directive_is_isolated_from_the_others():
     """Every directive is independently switchable so the ablation can measure
     each one. 1b ('general') measured ineffective; 2 ('defeasible') complies
     but bought nothing - both must be droppable without touching the sweep."""
-    p = qra.get_analyser_prompt("qwen/qwen3.6-27b", directives=("sweep",))
+    p = qra.get_analyser_prompt("qwen/qwen3.8-27b", directives=("sweep",))
     assert p.startswith(qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS)
     tail = p[len(qra.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS):]
     assert "exhaustive" in tail                 # sweep enumeration
@@ -396,7 +396,7 @@ def test_sweep_directive_is_isolated_from_the_others():
 
 
 def test_directives_and_budget_compose():
-    p = qra.get_analyser_prompt("qwen/qwen3.6-27b", "Cover exactly 3 findings.", directives=("sweep",))
+    p = qra.get_analyser_prompt("qwen/qwen3.8-27b", "Cover exactly 3 findings.", directives=("sweep",))
     assert "Cover exactly 3 findings." in p
     assert "defeasib" in p
     assert "{{BUDGET_DIRECTIVE}}" not in p
@@ -431,11 +431,11 @@ def test_defeasibility_pairing_detects_an_unpaired_sheet():
 
 
 def test_defeasibility_modes_are_distinct_and_validated():
-    countable = qra.get_analyser_prompt("qwen/qwen3.6-27b", directives=("defeasible",))
-    prose = qra.get_analyser_prompt("qwen/qwen3.6-27b", directives=("defeasible_prose",))
+    countable = qra.get_analyser_prompt("qwen/qwen3.8-27b", directives=("defeasible",))
+    prose = qra.get_analyser_prompt("qwen/qwen3.8-27b", directives=("defeasible_prose",))
     assert "SUPPRESS IF" in countable and "SUPPRESS IF" not in prose
     try:
-        qra.get_analyser_prompt("qwen/qwen3.6-27b", directives=("nonsense",))
+        qra.get_analyser_prompt("qwen/qwen3.8-27b", directives=("nonsense",))
     except ValueError:
         pass
     else:

@@ -9,6 +9,7 @@ import ReportResponseViewer from './ReportResponseViewer.svelte';
 import Toast from '$lib/components/Toast.svelte';
 import { API_URL } from '$lib/config';
 import { readSSEStream } from '$lib/utils/sse';
+import { appliedOptionIds, type ReportOption } from '$lib/utils/impressionOptions';
 import type { ChunkTrace, CoverageTrace, LabConfig, PillThresholds, ProcessTrace } from '$lib/dictation-lab/types';
 import type { DecisionRecord, OutcomeEvent } from '$lib/dictation-lab/decisionFirst';
 import { pillState } from '$lib/dictation-lab/coverage';
@@ -56,6 +57,7 @@ import { pillState } from '$lib/dictation-lab/coverage';
 		generated_at: string;
 		error: string | null;
 		description?: string | null;
+		options?: ReportOption[];
 	}
 
 	interface IntelliPrompt { question: string; source_text: string; rationale?: string; }
@@ -103,6 +105,8 @@ import { pillState } from '$lib/dictation-lab/coverage';
 	export let loading = false;
 	export let error: any = null;
 	export let reportId: any = null;
+	// Reporter-choice options carried on the quick-report candidate.
+	let reportOptions: ReportOption[] = [];
 	export let reportUpdateLoading = false;
 	export let versionHistoryRefreshKey = 0;
 	export let enhancementGuidelinesCount = 0;
@@ -407,6 +411,7 @@ import { pillState } from '$lib/dictation-lab/coverage';
 		error = null;
 		response = null;
 		responseModel = null;
+		reportOptions = [];
 		applicableGuidelines = [];
 
 		try {
@@ -453,6 +458,7 @@ import { pillState } from '$lib/dictation-lab/coverage';
 					}
 					response = cand.content;
 					responseModel = cand.model;
+					reportOptions = cand.options ?? [];
 					hasResponseEver = true;
 					findingsAtReportGeneration = content;
 					loading = false;
@@ -484,6 +490,7 @@ import { pillState } from '$lib/dictation-lab/coverage';
 	function clearResponse() {
 		response = null;
 		responseModel = null;
+		reportOptions = [];
 		error = null;
 		applicableGuidelines = [];
 		hasResponseEver = false;
@@ -512,6 +519,7 @@ import { pillState } from '$lib/dictation-lab/coverage';
 		if (!detail?.report) return;
 		response = detail.report.report_content;
 		responseModel = detail.report.model_used ?? null;
+		reportOptions = [];
 		hasResponseEver = true;
 		responseVisible = true;
 		dispatch('historyRestored', detail);
@@ -545,7 +553,10 @@ import { pillState } from '$lib/dictation-lab/coverage';
 					await fetch(`${API_URL}/api/quick-report/reports/${reportId}/finalise`, {
 						method: 'PATCH',
 						headers,
-						body: JSON.stringify({ final_report_content: newContent })
+						body: JSON.stringify({
+							final_report_content: newContent,
+							...(reportOptions.length ? { applied_option_ids: appliedOptionIds(newContent, reportOptions) } : {})
+						})
 					});
 				} catch {
 					// silent — finalise is a data-capture convenience, not
@@ -1006,6 +1017,7 @@ import { pillState } from '$lib/dictation-lab/coverage';
 		caseDetailsDirty={sectionsDirty}
 		{findingsStale}
 		activeCandidateModel={null}
+		options={reportOptions}
 		on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
 	on:auditStateChange={(e) => dispatch('auditStateChange', e.detail)}
 	on:openVersionHistory={() => dispatch('openVersionHistory')}
