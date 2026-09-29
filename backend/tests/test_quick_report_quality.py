@@ -91,3 +91,41 @@ async def test_check_failure_returns_no_flags_and_the_reason(monkeypatch):
     monkeypatch.setattr(qq.qb, "_jev", boom)
     res = await qq.check(REPORT, FINDINGS, "CT AP", OPTIONS)
     assert res.flags == [] and res.bad_option_ids == [] and "jev down" in res.error
+
+
+def _stub_repair(monkeypatch, edits, seen=None):
+    async def fake(**kw):
+        if seen is not None:
+            seen.update(kw)
+        class R:
+            output = qq.RepairEdits(edits=edits)
+        return R()
+    monkeypatch.setattr(qq, "_run_agent_with_model", fake)
+
+
+@pytest.mark.asyncio
+async def test_repair_applies_only_unique_verbatim_edits(monkeypatch):
+    seen = {}
+    _stub_repair(monkeypatch, [
+        {"find": "No superior mesenteric vein encasement, portal vein encasement, or hepatic deposit.",
+         "replace": "No superior mesenteric vein encasement or hepatic deposit."},
+        {"find": "compresses the distal common bile duct.",
+         "replace": "compresses the distal common bile duct, which is dilated to 12 mm."},
+        {"find": "text that is not in the report", "replace": "x"},
+        {"find": "No", "replace": "Yes"},                                      # occurs more than once
+    ], seen)
+    problems = ["The report states 'No portal vein encasement' but the dictation contradicts it.",
+                "The dictated finding 'CBD dilated to 12 mm' is missing from the report."]
+    res = await qq.repair_report(REPORT, FINDINGS, problems)
+    assert "1. The report states" in seen["user_prompt"] and "2. The dictated finding" in seen["user_prompt"]
+    assert "portal vein encasement" not in res.report and "dilated to 12 mm" in res.report
+    assert res.applied == 2 and res.skipped == 2 and res.error is None
+
+
+@pytest.mark.asyncio
+async def test_repair_failure_returns_the_report_unchanged(monkeypatch):
+    async def boom(**kw):
+        raise asyncio.TimeoutError
+    monkeypatch.setattr(qq, "_run_agent_with_model", boom)
+    res = await qq.repair_report(REPORT, FINDINGS, ["anything"])
+    assert res.report == REPORT and res.applied == 0 and res.error

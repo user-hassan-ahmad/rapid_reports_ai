@@ -114,3 +114,55 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict])
               for i, t in enumerate(items) if score(omit, f"i{i}") < OMIT_FLAG]
     bad = [oid for i, (oid, _) in enumerate(opts) if score(contra, f"o{i}") >= CONTRA_FLAG]
     return CheckResult(flags=flags, bad_option_ids=bad, n_clauses=len(cls), n_items=len(items))
+
+
+# ── repair ───────────────────────────────────────────────────────────────────
+
+class Edit(BaseModel):
+    find: str
+    replace: str
+
+
+class RepairEdits(BaseModel):
+    edits: List[Edit]
+    @field_validator("edits", mode="before")
+    @classmethod
+    def _parse_stringified(cls, v):
+        return qb._unstring(v)
+
+
+class RepairResult(BaseModel):
+    report: str
+    applied: int = 0
+    skipped: int = 0
+    error: Optional[str] = None
+
+
+REPAIR_SYS = (
+    "You correct specific problems in a radiology report. The dictated findings are the source of truth. For each "
+    "numbered problem return one edit: 'find' is text copied exactly, character for character, from the report (the "
+    "clause or sentence at fault, or the sentence an omitted finding belongs beside), and 'replace' is that text "
+    "corrected. Remove or correct a statement the dictation contradicts; add an omitted dictated finding in the "
+    "report's own voice where it belongs. Change nothing else, keep British English, and add nothing that was not "
+    "dictated. Return JSON {\"edits\": [{\"find\": ..., \"replace\": ...}]}.")
+
+
+async def repair_report(report: str, findings: str, problems: List[str]) -> RepairResult:
+    """One focal Qwen call; each returned edit is applied only when its find occurs exactly once.
+    Shared by the post-generation check and (next) the audit's Fix with AI."""
+    user = (f"DICTATED FINDINGS:\n{findings}\n\nREPORT:\n{report}\n\nPROBLEMS:\n"
+            + "\n".join(f"{i}. {p}" for i, p in enumerate(problems, 1)))
+    try:
+        r = await asyncio.wait_for(_run_agent_with_model(
+            model_name=REPAIR_MODEL, output_type=RepairEdits, system_prompt=REPAIR_SYS, user_prompt=user, api_key="",
+            model_settings={"temperature": 0, "max_tokens": 3000, "reasoning_effort": "none"}), REPAIR_TIMEOUT_S)
+    except Exception as e:  # never blocks the report
+        logger.warning("quality repair failed (%s: %s)", type(e).__name__, str(e)[:200])
+        return RepairResult(report=report, error=f"{type(e).__name__}: {str(e)[:200]}")
+    out, applied, skipped = report, 0, 0
+    for e in r.output.edits:
+        if e.find and out.count(e.find) == 1 and e.find != e.replace:
+            out, applied = out.replace(e.find, e.replace), applied + 1
+        else:
+            skipped += 1
+    return RepairResult(report=out, applied=applied, skipped=skipped)
