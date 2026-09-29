@@ -105,7 +105,7 @@ async def _write_options(options: List[dict], findings: str, scan_type: str) -> 
     direct = [o for o in options if o["kind"] == "finding_negative"]
     to_write = [o for o in options if o["kind"] != "finding_negative"]
     passed = [{"id": f"fn{i}", "kind": o["kind"], "section": o.get("section", "FINDINGS"),
-               "sentence": o["text"].rstrip(".") + ".", "reason": o.get("reason", ""), "source": o["text"],
+               "sentence": o["text"][:1].upper() + o["text"][1:].rstrip(".") + ".", "reason": o.get("reason", ""), "source": o["text"],
                "finding": o.get("finding", "")}
               for i, o in enumerate(direct)]
     if not to_write:

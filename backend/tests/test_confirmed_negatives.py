@@ -264,3 +264,23 @@ async def test_fallback_shares_the_finding_options_cap(monkeypatch):
     _stub_fallback(monkeypatch, [0, 1], many)
     b = await qb.compile_brief(SHEET_C, "CT head", FINDINGS_R5)
     assert len([o for o in b.decisions["options"] if o["kind"] == "finding_negative"]) == qb.MAX_FINDING_OPTIONS
+
+
+@pytest.mark.asyncio
+async def test_a_negative_listed_under_two_keys_is_stated_once(monkeypatch):
+    sheet = SHEET_C.replace('  - extradural haematoma → "No venous sinus involvement" (core)',
+                            '  - extradural haematoma → "No midline shift" (core)')
+    _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(6)])
+    async def both(state, questions):
+        return {k: {"noul": 0.95 if k in ("f0", "f1") else 0.1} for k in questions}
+    monkeypatch.setattr(qb, "_jev", both)
+    b = await qb.compile_brief(sheet, "CT head", "10 mm subdural and 5 mm extradural haematoma")
+    assert b.text.count('KEEP: "No midline shift"') == 1
+    assert [n["text"] for n in b.decisions["negatives"]].count("No midline shift") == 1
+
+
+@pytest.mark.asyncio
+async def test_passed_through_options_start_with_a_capital(monkeypatch):
+    out = await qrg._write_options([{"kind": "finding_negative", "section": "FINDINGS", "text": "no acute infarction",
+                                     "finding": "x", "reason": "unanticipated finding"}], "f", "CT")
+    assert out[0]["sentence"] == "No acute infarction."

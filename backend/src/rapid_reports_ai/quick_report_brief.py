@@ -490,7 +490,11 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     # Finding-linked negatives (policy 1): stated as KEEP, labelled DO NOT ASSERT, or offered.
     stated: List[str] = []
     n_offered = 0
+    handled = {n for n, _ in negs}   # a negative listed under two keys, or already mandatory, is routed once
     for j, c in enumerate(cands):
+        if c.text in handled:
+            continue
+        handled.add(c.text)
         d = qneg.get(len(negs) + j)
         label = d.action if d else "keep"
         p = score(f"f{keys.index(c.key)}")
