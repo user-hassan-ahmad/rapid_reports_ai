@@ -4974,6 +4974,13 @@ async def websocket_transcribe(websocket: WebSocket):
         uk_spelling=uk_spelling,
     )
     print(f"🎙️ Deepgram keyterms: {'case ' + str(len(case_keyterms)) if case_keyterms else 'core'}")
+    # Lab: save the audio sent to Deepgram and every Deepgram message (lab_audio; off unless
+    # RR_LAB_AUDIO_CAPTURE=1 with RR_TRIAGE_DEBUG=1; local files only).
+    from rapid_reports_ai.lab_audio import recorder_from_env
+    lab_rec = recorder_from_env(pcm_sample_rate, use_pcm, meta={
+        "keyterms": case_keyterms, "dictation": dictation_on, "uk_spelling": uk_spelling, "spoken_format": spoken_format})
+    if lab_rec:
+        print(f"🎙️ Lab audio capture: {lab_rec.dir}")
     print(f"🎙️ Deepgram mode: {'PCM linear16 @ ' + str(pcm_sample_rate) + ' Hz' if use_pcm else 'auto-detect container'}")
     
     try:
@@ -4989,6 +4996,8 @@ async def websocket_transcribe(websocket: WebSocket):
                     try:
                         while True:
                             data = await websocket.receive_bytes()
+                            if lab_rec:
+                                lab_rec.audio(data)
                             await dg_ws.send_bytes(data)
                     except WebSocketDisconnect:
                         print("❌ Client disconnected")
@@ -5000,6 +5009,8 @@ async def websocket_transcribe(websocket: WebSocket):
                         async for msg in dg_ws:
                             if msg.type == aiohttp.WSMsgType.TEXT:
                                 transcript_data = json.loads(msg.data)
+                                if lab_rec:
+                                    lab_rec.event(transcript_data)
 
                                 # Parse Deepgram response
                                 if transcript_data.get("type") == "Results":
@@ -5066,6 +5077,10 @@ async def websocket_transcribe(websocket: WebSocket):
         except:
             pass
         await websocket.close()
+    finally:
+        if lab_rec:
+            paths = lab_rec.close()
+            print(f"🎙️ Lab audio saved: {paths['wav']}")
 
 
 @app.websocket("/api/transcribe/whisper")

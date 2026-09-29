@@ -135,6 +135,8 @@ Same day: word-confidence gate 0.80 (QSET `2026-09-27.1`); polish tokens logged 
 
 Lab backend command now: `RR_TRIAGE_DEBUG=1 RR_COVERAGE_CANDIDATE=jev DEEPGRAM_DICTATION=0 DEEPGRAM_UK_SPELLING=1 DEEPGRAM_SPOKEN_FORMAT=1 DEEPGRAM_CASE_KEYTERMS=1 …uvicorn rapid_reports_ai.main:app --port 8000`.
 
+**Audio capture and review (2026-09-29).** With `RR_LAB_AUDIO_CAPTURE=1` (and `RR_TRIAGE_DEBUG=1`, PCM), each dictation session saves the audio sent to Deepgram and every Deepgram message (interim and final, with word timings) to `backend/.lab_audio/session-<utc>/` (git-ignored, local only; `lab_audio.py`). `python -m rapid_reports_ai.scripts.lab_audio_review [dir] [--export lab-session.json]` re-transcribes the WAV with Deepgram batch (same model, keyterms and UK spelling) and prints, per final: the stream's text, where it differed from the batch pass, how long after speech ended it arrived, and the decision it got, plus the pauses and where the stream cut its finals. When batch and stream agree on a wrong word, the audio or pronunciation is at fault, not streaming. The export also records `wait_ms` and `final_to_solid_ms` per decision.
+
 Known limits: manual edits made while a polish is running are overwritten by it (same as today's path); undo is one step, and only while the range is untouched; `ignore_noise` goes to polish; `standalone` sits just under 0.5 on complete statements (live smoke 0.47–0.48), so expect `⏎ hard_limit` more than `⏎ standalone` on unpunctuated lines.
 
 ## 6. Outstanding / next steps — follow decision-first **rev 2**

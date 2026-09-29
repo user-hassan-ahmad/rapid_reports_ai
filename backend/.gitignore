@@ -47,3 +47,6 @@ smtp-test.log
 # Ephemeral test suite outputs (timestamped per-run dirs)
 test_output/
 
+
+# Lab dictation audio + Deepgram messages (lab_audio.py): local only, never committed
+.lab_audio/
