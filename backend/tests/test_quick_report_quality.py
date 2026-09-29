@@ -316,3 +316,10 @@ async def test_an_insertion_that_repeats_a_report_sentence_is_skipped(monkeypatc
     monkeypatch.setattr(qq, "_run_agent_with_model", fake)
     res = await qq.insert_findings(REPORT, FINDINGS, ["3 cm hypodense mass at the head of the pancreas"])
     assert res.report == REPORT and res.applied == 0 and res.skipped == 1
+
+
+def test_restates_ignores_filler_words():
+    assert qq._restates("An incidental 5 mm right upper lobe pulmonary nodule is noted.",
+                        "A 5 mm right upper lobe pulmonary nodule is present.")
+    assert not qq._restates("The common bile duct is dilated to 12 mm.",
+                            "A mass compresses the distal common bile duct.")

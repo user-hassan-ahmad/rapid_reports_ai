@@ -222,11 +222,16 @@ INSERT_SYS = (
     "copy that sentence exactly into 'after'. Return JSON {\"items\": [{\"after\": ..., \"sentence\": ...}]}.")
 
 
+_FILLER = {"incidental", "noted", "identified", "seen", "present", "demonstrated", "there", "which", "with",
+           "that", "this", "also", "further", "additional", "note"}
+
+
 def _restates(new: str, existing: str) -> bool:
     """`new` says nothing `existing` does not: nearly all its words, and every number, are there."""
-    w = set(re.findall(r"[a-z]{4,}", new.lower()))
+    words = lambda t: set(re.findall(r"[a-z]{4,}", t.lower())) - _FILLER
+    w = words(new)
     nums = set(re.findall(r"\d+(?:\.\d+)?", new))
-    return bool(w) and len(w & set(re.findall(r"[a-z]{4,}", existing.lower()))) >= 0.8 * len(w) \
+    return bool(w) and len(w & words(existing)) >= 0.8 * len(w) \
         and nums <= set(re.findall(r"\d+(?:\.\d+)?", existing))
 
 
