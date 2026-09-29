@@ -19,13 +19,17 @@ from .enhancement_utils import (
     _get_model_provider,
     _run_agent_with_model,
 )
-from .quick_report_hardening import QUICK_REPORT_HARDENING_PREAMBLE
+from .quick_report_brief import compile_brief
+from .quick_report_hardening import QUICK_REPORT_HARDENING_PREAMBLE, QUICK_REPORT_HARDENING_PREAMBLE_BRIEF
 from .quick_report_prompts import (
     QR_PRE_WRITING_ANALYSIS,
+    QR_PRE_WRITING_ANALYSIS_BRIEF,
     QR_SHEET_HEADER,
     QR_STYLE_GUIDE,
+    QR_STYLE_GUIDE_BRIEF,
     QR_SYSTEM_PREAMBLE,
     QR_VERIFICATION_CHECKLIST,
+    QR_VERIFICATION_CHECKLIST_BRIEF,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,16 +49,17 @@ _SETTINGS = {"temperature": 0.8, "top_p": 0.95, "max_tokens": 65536}
 
 
 def build_prompts(skill_sheet: str, scan_type: str, findings: str, clinical_history: str,
-                  provider: str) -> tuple[str, str]:
-    """System and user prompt for one quick report. `skill_sheet` is the analyser's sheet;
-    the hardening preamble is prepended here."""
-    system_prompt = (f"{QR_SYSTEM_PREAMBLE}\n\n{QR_STYLE_GUIDE}\n\n{QR_SHEET_HEADER}\n\n"
-                     f"{QUICK_REPORT_HARDENING_PREAMBLE}{skill_sheet}")
+                  provider: str, brief: bool = False) -> tuple[str, str]:
+    """System and user prompt for one quick report. `skill_sheet` is the analyser's sheet, or
+    the compiled brief when `brief` is set; the hardening preamble is prepended here."""
+    style, hardening = (QR_STYLE_GUIDE_BRIEF, QUICK_REPORT_HARDENING_PREAMBLE_BRIEF) if brief else (QR_STYLE_GUIDE, QUICK_REPORT_HARDENING_PREAMBLE)
+    pre, ver = (QR_PRE_WRITING_ANALYSIS_BRIEF, QR_VERIFICATION_CHECKLIST_BRIEF) if brief else (QR_PRE_WRITING_ANALYSIS, QR_VERIFICATION_CHECKLIST)
+    system_prompt = f"{QR_SYSTEM_PREAMBLE}\n\n{style}\n\n{QR_SHEET_HEADER}\n\n{hardening}{skill_sheet}"
     inputs = f"## INPUTS\n\nScan Type: {scan_type}\nClinical History: {clinical_history}\nFindings: {findings}"
     if provider == "anthropic":
         user_prompt = f"{inputs}\n\n{_ANTHROPIC_INSTRUCTION}"
     else:
-        user_prompt = f"{inputs}\n\n{QR_PRE_WRITING_ANALYSIS}\n\n{QR_VERIFICATION_CHECKLIST}"
+        user_prompt = f"{inputs}\n\n{pre}\n\n{ver}"
     return system_prompt, user_prompt
 
 
@@ -87,17 +92,26 @@ async def generate_quick_report(
     clinical_history: str,
     user_signature: str | None = None,
     model_override: str | None = None,
+    use_brief: bool = True,
 ) -> dict:
-    """Write one quick report. Falls back once to QUICK_REPORT_GENERATOR_FALLBACK when the
-    configured primary raises; an override naming a different model is an explicit
-    comparison and does not fall back."""
+    """Write one quick report from a compiled brief (the sheet reconciled with this dictation),
+    or from the raw sheet with the full prompts if the brief cannot be compiled. Falls back
+    once to QUICK_REPORT_GENERATOR_FALLBACK when the configured primary raises; an override
+    naming a different model is an explicit comparison and does not fall back."""
+    brief = None
+    if use_brief:
+        try:
+            brief = await compile_brief(skill_sheet, scan_type, findings)
+        except Exception as e:
+            logger.warning("quick-report brief failed (%s: %s); generating from the raw sheet", type(e).__name__, str(e)[:200])
+    sheet_for_generator = brief.text if brief else skill_sheet
     primary = MODEL_CONFIG["QUICK_REPORT_GENERATOR"]
     model_name = model_override or primary
     fallback = MODEL_CONFIG.get("QUICK_REPORT_GENERATOR_FALLBACK") if model_name == primary else None
 
     async def _write(model: str):
         provider = _get_model_provider(model)
-        system_prompt, user_prompt = build_prompts(skill_sheet, scan_type, findings, clinical_history, provider)
+        system_prompt, user_prompt = build_prompts(sheet_for_generator, scan_type, findings, clinical_history, provider, brief=brief is not None)
         return await _run_agent_with_model(
             model_name=model, output_type=str, system_prompt=system_prompt, user_prompt=user_prompt,
             api_key=_get_api_key_for_provider(provider), use_thinking=True, model_settings=_SETTINGS,
@@ -121,4 +135,7 @@ async def generate_quick_report(
     if user_signature:
         report = report.rstrip() + "\n\n" + user_signature
     return {"report_content": report, "description": description, "scan_type": scan_type,
-            "model_used": model_name, "fallback_from": fallback_from}
+            "model_used": model_name, "fallback_from": fallback_from,
+            "brief_used": brief is not None,
+            "brief_reconcile_ms": brief.reconcile_ms if brief else None,
+            "brief_decisions": brief.decisions if brief else None}

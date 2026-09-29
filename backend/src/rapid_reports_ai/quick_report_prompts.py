@@ -271,3 +271,47 @@ QR_SHEET_HEADER = """## TEMPLATE SKILL SHEET
 The following skill sheet defines scan-specific reporting conventions for this template.
 It inherits all rules from the Global Style Guide above. Where a skill sheet rule
 conflicts with a global rule, the skill sheet takes precedence."""
+
+
+# ── Compiled-brief variants ─────────────────────────────────────────────────
+# Used when the generator reads a compiled brief (quick_report_brief.py): the conflict
+# handling that each of these texts carried is done before generation, so they point at the
+# brief's labels instead. The QR_* texts above remain for the raw-sheet fallback.
+
+def _swap(text: str, old: str, new: str) -> str:
+    assert text.count(old) == 1, f"passage not found exactly once: {old[:60]!r}"
+    return text.replace(old, new)
+
+
+QR_STYLE_GUIDE_BRIEF = _swap(
+    QR_STYLE_GUIDE,
+    QR_STYLE_GUIDE[QR_STYLE_GUIDE.index("### Conditional Awareness"):QR_STYLE_GUIDE.index("### Output Consistency")],
+    """### Missing Data Handling
+
+The dictation is the source of truth for positive findings — if it was not dictated,
+it was not observed, and must not be fabricated. A finding carried in the clinical
+history or attributed to a prior study is not a finding on this study: it is asserted
+only where the dictation asserts it. The skill sheet's normal lines and mandatory
+negatives have been reconciled with this dictation; render them as labelled. Never
+write meta-statements about missing data.
+
+""")
+
+QR_PRE_WRITING_ANALYSIS_BRIEF = _swap(
+    QR_PRE_WRITING_ANALYSIS,
+    """Cross-reference against the skill sheet's mandatory negatives
+   — any mandatory negative not addressed by the dictation must still appear.
+   Check each mandatory negative against the skill sheet's Conditional Suppression
+   Rules: if the current finding state triggers a suppression condition, suppress
+   the negative and apply the replacement phrase (or omit entirely).""",
+    """Apply each mandatory negative's reconciliation label:
+   KEEP as written, OMIT, or DO NOT ASSERT.""")
+
+QR_VERIFICATION_CHECKLIST_BRIEF = _swap(
+    QR_VERIFICATION_CHECKLIST,
+    """- Every mandatory negative from the skill sheet is present with exact phrasing
+- Every triggered Conditional Suppression Rule has been applied — suppressed phrase removed, replacement phrase inserted
+""",
+    """- Every KEEP negative is present; no OMIT negative and no DO NOT ASSERT statement appears anywhere, impression included
+- No structure listed under "Do not assert as normal" is stated to be normal
+""")

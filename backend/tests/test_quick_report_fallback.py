@@ -90,7 +90,7 @@ async def test_quick_report_generator_falls_back_to_groq_when_cerebras_raises(mo
     monkeypatch.setattr(qrg, "_get_api_key_for_provider", lambda provider, fallback_api_key=None: "k")
     out = await qrg.generate_quick_report(skill_sheet="# Skill Sheet: CT head\n", scan_type="CT head",
                                           findings="No acute abnormality.", clinical_history="fall",
-                                          model_override=override)
+                                          model_override=override, use_brief=False)
     report_calls = [c for c in calls if c["output_type"] is str]
     assert [c["model"] for c in report_calls] == [PRIMARY, FALLBACK]
     assert out["model_used"] == FALLBACK and out["fallback_from"] == PRIMARY
@@ -106,5 +106,5 @@ async def test_an_override_naming_another_model_does_not_fall_back(monkeypatch):
     monkeypatch.setattr(qrg, "_get_api_key_for_provider", lambda provider, fallback_api_key=None: "k")
     with pytest.raises(RuntimeError):
         await qrg.generate_quick_report(skill_sheet="x", scan_type="CT head", findings="f", clinical_history="h",
-                                        model_override=FALLBACK)
+                                        model_override=FALLBACK, use_brief=False)
     assert [c["model"] for c in calls if c["output_type"] is str] == [FALLBACK]

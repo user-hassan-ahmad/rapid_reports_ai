@@ -432,3 +432,36 @@ QUICK_REPORT_HARDENING_PREAMBLE = (
     "---\n"
     "\n"
 )
+
+
+# ── Compiled-brief variant ──────────────────────────────────────────────────
+# When the generator reads a compiled brief (quick_report_brief.py), every clinical item has
+# already been checked against the dictation, so principle 12 no longer asks the generator to
+# find conflicts: it tells it to act on the labels. The full preamble above is kept for the
+# fallback path (raw sheet, when reconciliation is unavailable).
+_P12_START = QUICK_REPORT_HARDENING_PREAMBLE.index("**12. A canonical line from the skill sheet")
+_P12_END = QUICK_REPORT_HARDENING_PREAMBLE.rindex("---\n")
+QUICK_REPORT_HARDENING_PREAMBLE_BRIEF = (
+    QUICK_REPORT_HARDENING_PREAMBLE[:_P12_START]
+    + "**12. This sheet has been reconciled with this dictation.**\n"
+    "\n"
+    "Before you received it, every clinical item in the sheet was checked against the "
+    "dictated findings, and items that do not apply to this case were removed. Act on "
+    "its labels exactly; do not re-derive them and do not reintroduce removed items.\n"
+    "\n"
+    "- **Normal-study path**: nothing dictated acts on these structures. Where the "
+    "dictation is silent about one, render its line at its sweep position.\n"
+    "- **Do not assert as normal**: a dictated finding acts on these structures. "
+    "Describe them only as the dictation does; where it is silent, make no claim that "
+    "they are normal.\n"
+    "- **KEEP** negatives answer the clinical question: state each one. **OMIT**: the "
+    "dictation reports this finding; describe the finding as dictated and never state "
+    "the negative, in any section. **DO NOT ASSERT**: a dictated finding is expected to "
+    "cause this; do not state it as absent.\n"
+    "\n"
+    "Coverage is obligatory, assertion is earned: every structure the sweep visits is "
+    "still covered, and what is said about it is only what the dictation and the "
+    "labels support.\n"
+    "\n"
+    + QUICK_REPORT_HARDENING_PREAMBLE[_P12_END:]
+)
