@@ -42,3 +42,10 @@ def test_a_failing_disk_never_breaks_dictation(tmp_path):
     rec.close()
     rec.audio(b"\x00\x00")  # after close: ignored, no exception
     rec.event({"type": "Results"})
+
+
+def test_two_sessions_started_in_the_same_second_get_separate_folders(tmp_path):
+    a = LabAudioRecorder(tmp_path, sample_rate=16000, wall_ms=1_700_000_000_000)
+    b = LabAudioRecorder(tmp_path, sample_rate=16000, wall_ms=1_700_000_000_000)
+    assert a.dir != b.dir
+    a.close(), b.close()

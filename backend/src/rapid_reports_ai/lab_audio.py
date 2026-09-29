@@ -32,8 +32,15 @@ class LabAudioRecorder:
         self._closed = False
         wall = wall_ms if wall_ms is not None else int(time.time() * 1000)
         stamp = datetime.fromtimestamp(wall / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
-        self.dir = Path(directory) / f"session-{stamp}"
-        self.dir.mkdir(parents=True, exist_ok=True)
+        base = Path(directory) / f"session-{stamp}"
+        self.dir, n = base, 1
+        while True:  # two sessions in the same second must not share (and corrupt) a folder
+            try:
+                self.dir.mkdir(parents=True, exist_ok=False)
+                break
+            except FileExistsError:
+                n += 1
+                self.dir = base.with_name(f"{base.name}-{n}")
         self.paths = {"wav": self.dir / "audio.wav", "events": self.dir / "deepgram.jsonl", "meta": self.dir / "meta.json"}
         self._meta = {"sample_rate": sample_rate, "started_wall_ms": wall, **(meta or {})}
         self._wav = wave.open(str(self.paths["wav"]), "wb")
