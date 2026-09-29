@@ -73,6 +73,8 @@ _BARE_MARK = re.compile(r"^\s*([.?!])[.?!\s]*$")
 # "Scratch that" on its own: the scratchpad removes what the previous utterance wrote. A lab
 # session lost a finding when the lean polish deleted two statements on it (2026-09-27).
 _BARE_DELETE = re.compile(r"^[\s,.]*(?:scratch|delete|strike)\s+that[\s,.!?]*$", re.IGNORECASE)
+# "New paragraph." heard as "Paragraph." (lab 2026-09-29): on its own it cannot be content.
+_BARE_PARAGRAPH = re.compile(r"^[\s,.]*(?:next\s+)?paragraph[\s,.!]*$", re.IGNORECASE)
 _BARE_COLON = re.compile(r"^[\s,.]*colon[\s,.:]*$", re.IGNORECASE)
 
 
@@ -86,6 +88,8 @@ def code_route(utterance: str, preceding: str = "") -> "RouteResult | None":
         return RouteResult("command", "punctuation_mark", "", m.group(1), True, False)
     if _BARE_DELETE.match(utterance or ""):
         return RouteResult("delete", "delete_previous", "", "", False, False)
+    if _BARE_PARAGRAPH.match(utterance or ""):
+        return RouteResult("command", "paragraph_only", "", "\n\n", True, False)
     if _BARE_COLON.match(utterance or ""):
         resolved, ambiguous = resolve_colon("colon", preceding)
         if resolved == ":" and not ambiguous:

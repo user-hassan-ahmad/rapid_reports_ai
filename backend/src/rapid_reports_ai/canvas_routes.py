@@ -29,7 +29,7 @@ from .dictation_triage_router import route as triage_route_decision
 from .asr_repair import build_lexicon, repair
 from .case_keyterms import KEYTERM_SYSTEM_PROMPT, KEYTERM_USER_TEMPLATE, filter_keyterms
 from .fast_append import clean_verbatim, code_route, route_bundle
-from .spoken_format import format_heading_lines
+from .spoken_format import format_heading_lines, opens_with_heading, resolve_colon
 from .lean_fidelity import fidelity_violation, verbatim_append
 from .lean_polish import LEAN_SYSTEM_PROMPT, LEAN_USER_TEMPLATE
 from .jev_questions import FAST_APPEND_BANDS, QSET_VERSION, ROUTE_THRESHOLD_DEFAULT
@@ -1546,7 +1546,12 @@ async def polish_span(request: PolishSpanRequest, current_user: User = Depends(g
     # Commands are code, not words for the model: the lexicon turns "New paragraph" into a
     # real break before the prompt, and a break at the end of the final is re-attached in
     # code if the model drops it (lab: one lost with "…make that 14 mm. New paragraph.").
-    new_clean = format_heading_lines(clean_verbatim(request.new))
+    # The same code steps as the fast-append path: a spoken colon after a heading or level
+    # becomes ':' ("Conclusion, colon, partial response." stayed literal here, lab 2026-09-29),
+    # and a heading opening the words starts a paragraph.
+    new_clean, _ = resolve_colon(format_heading_lines(clean_verbatim(request.new)), preceding)
+    if opens_with_heading(new_clean) and preceding.strip() and not preceding.endswith("\n"):
+        new_clean = "\n\n" + new_clean.lstrip()
     trailing = re.search(r"\n+$", new_clean)
     trailing_break = trailing.group(0) if trailing else ""
     new_for_model = new_clean.rstrip("\n")

@@ -131,6 +131,11 @@ def heading_only(text: str) -> str | None:
 _ENDS_WITH_HEADING = re.compile(r"(?:^|\n)\s*(?:" + _HEADING_RE + r")\s*:\s*$", _I)
 
 
+def opens_with_heading(text: str) -> bool:
+    """The text starts with a written heading ('Conclusion: …')."""
+    return bool(re.match(r"^\s*(?:" + _HEADING_RE + r")\s*:", text or "", _I))
+
+
 def ends_with_heading(preceding: str) -> bool:
     """The scratchpad's last line is a bare heading ('Conclusion:'): what follows is its content."""
     return bool(_ENDS_WITH_HEADING.search(preceding or ""))

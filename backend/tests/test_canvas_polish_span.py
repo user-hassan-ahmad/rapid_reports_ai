@@ -208,3 +208,12 @@ def test_a_lossy_lean_output_is_replaced_by_the_span_with_the_new_words_appended
     logged = [json.loads(r.message.split("] ", 1)[1]) for r in caplog.records if "canvas.polish_span" in r.message]
     assert logged[-1]["fidelity"] == "lost_number"
     assert "extrusion" not in json.dumps(logged[-1])  # counts and reasons only, never text
+
+
+def test_heading_colon_content_in_one_breath_is_formatted_by_code_before_the_model(authed_client, lab):
+    # lab 2026-09-29: "Conclusion, colon, partial response." stayed literal on the lean path
+    authed_client.post("/api/canvas/polish-span", json={
+        "scan_type": "CT", "context": "", "span": "No new lesions in the right lung.",
+        "new": "Conclusion, colon, partial response."})
+    user = lab[-1]["user"]
+    assert "Conclusion: partial response." in user and "colon" not in user.split("NEW", 1)[-1]

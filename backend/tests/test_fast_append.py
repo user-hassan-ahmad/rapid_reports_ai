@@ -305,3 +305,14 @@ def test_a_bare_delete_command_is_decided_by_code(utt):
                                  "The scratch that was seen"])
 def test_delete_with_content_still_goes_to_jev_and_polish(utt):
     assert code_route(utt, "There is a small hiatus hernia.") is None
+
+
+@pytest.mark.parametrize("utt", ["Paragraph.", "paragraph", "Next paragraph."])
+def test_a_bare_paragraph_is_the_command(utt):
+    # lab 2026-09-29: Deepgram heard "New paragraph." as "Paragraph."; the model dropped it
+    r = code_route(utt, "No new lesions in the right lung.")
+    assert r.route == "command" and r.insert == "\n\n"
+
+
+def test_paragraph_inside_a_sentence_is_not_a_command():
+    assert code_route("The paragraph structure is normal.", "") is None
