@@ -57,7 +57,7 @@ SHEET = '''# Skill Sheet: CT head non-contrast — query haemorrhage
 '''
 
 
-def _stub(monkeypatch, jev: dict, qwen: qb.QwenDecisions):
+def _stub(monkeypatch, jev: dict, qwen: qb.QwenDecisions, plan: qb.ImpressionPlan | None = None):
     async def fake_jev(state, questions):
         missing = set(questions) - set(jev)
         assert not missing, missing
@@ -68,7 +68,12 @@ def _stub(monkeypatch, jev: dict, qwen: qb.QwenDecisions):
         return [[n] for n in negs]
     monkeypatch.setattr(qb, "_jev", fake_jev)
     monkeypatch.setattr(qb, "_qwen", fake_qwen)
+    async def fake_plan(scan_type, history, items, recs):
+        if plan is None:
+            raise RuntimeError("no plan in this test")
+        return plan
     monkeypatch.setattr(qb, "_split_bundled", no_split)
+    monkeypatch.setattr(qb, "_plan", fake_plan)
 
 
 JEV = {"n0": {"noul": 0.9}, "n1": {"noul": 0.1}, "n2": {"noul": 0.8},        # ventricles, orbits, midline
@@ -137,3 +142,26 @@ def test_measurement_pattern_catches_values_not_anatomical_labels():
     for s in ["No abnormality at C1–C2.", "The conus terminates at T12/L1.", "Segment VI is clear.",
               "Raphe at 12 o'clock.", "The L4/5 disc is normal."]:
         assert not qb._MEASUREMENT.search(s), s
+
+
+@pytest.mark.asyncio
+async def test_plan_routes_recommendations_and_writes_the_impression_plan(monkeypatch):
+    findings = "8 mm right subdural. 3 mm midline shift. Age-related involutional change."
+    plan = qb.ImpressionPlan(
+        recommendations=[qb.RecDecision(index=0, decision="optional", reason="either way"),
+                         qb.RecDecision(index=1, decision="include")],
+        impression=[0, 1], findings_only=[2])
+    _stub(monkeypatch, JEV, QWEN, plan)
+    b = await qb.compile_brief(SHEET, "CT head non-contrast", findings, "fall on anticoagulation")
+    t = b.text
+    # Jev's unmet condition wins over Qwen's include; an optional recommendation is offered, not written
+    assert "CTA for large vessel occlusion" not in t and "Neurosurgery" not in t.split("## Impression Plan")[0]
+    assert b.decisions["options"] == [{"kind": "recommendation", "text": "REFERRAL: Neurosurgery for haemorrhage with mass effect",
+                                       "reason": "either way"}]
+    plan_block = t.split("## Impression Plan")[1]
+    assert '"8 mm right subdural" "3 mm midline shift"' in plan_block
+    assert 'Findings only (not in the impression):** "Age-related involutional change"' in plan_block
+
+
+def test_split_findings_numbers_bullets_lines_and_sentences():
+    assert qb.split_findings("- A mass. B node\n- No effusion") == ["A mass", "B node", "No effusion"]

@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from .enhancement_utils import _run_agent_with_model
 
@@ -173,14 +173,62 @@ class NegativeDecision(BaseModel):
     dictated_finding: str = ""
 
 
+def _unstring(v):
+    """Qwen sometimes returns a nested list as a JSON string inside the tool call."""
+    return json.loads(v) if isinstance(v, str) else v
+
+
 class QwenDecisions(BaseModel):
     negatives: List[NegativeDecision]
     affected_normals: List[int]
     applicable_measurements: List[int]
+    @field_validator("negatives", "affected_normals", "applicable_measurements", mode="before")
+    @classmethod
+    def _parse_stringified(cls, v):
+        return _unstring(v)
 
 
 class Split(BaseModel):
     negatives: List[List[str]]
+    @field_validator("negatives", mode="before")
+    @classmethod
+    def _parse_stringified(cls, v):
+        return _unstring(v)
+
+
+class RecDecision(BaseModel):
+    index: int
+    decision: Literal["include", "exclude", "optional"]
+    reason: str = ""
+
+
+class ImpressionPlan(BaseModel):
+    recommendations: List[RecDecision]
+    impression: List[int]
+    optional_impression: List[int] = []
+    findings_only: List[int] = []
+    @field_validator("recommendations", "impression", "optional_impression", "findings_only", mode="before")
+    @classmethod
+    def _parse_stringified(cls, v):
+        return _unstring(v)
+
+
+# Clinical judgement about what the impression carries is Qwen's (reasoning low); Jev keeps to
+# whether a recommendation's condition is met; code routes include / exclude / optional.
+PLAN_SYS = """You plan the impression of a radiology report before it is written. You see the scan type, the clinical question, the dictated findings (numbered) and candidate recommendations (numbered). Return JSON only.
+
+recommendations — decide every candidate by its kind; a candidate whose condition the dictated findings do not meet is always exclude.
+- REFERRAL and MDT: routing a finding to the team that must act on it, at the urgency the findings warrant, is the radiologist's job even when the diagnosis is already made. include when the condition is met; exclude only when an included candidate already covers it.
+- IMAGING and TISSUE: include only when it answers a question this study raises but cannot answer itself, and the answer would change management. exclude routine workup of a diagnosis this study has already made — looking for its cause, source or spread when the receiving team manages it the same way regardless.
+- CORRELATION: include only retrieving prior imaging to compare against; exclude laboratory tests, clinical monitoring, treatment decisions and bare clinical correlation.
+Use optional only when a reasonable consultant could go either way on this case. Give a one-line reason.
+
+impression — the numbers of the findings the impression must carry: the finding(s) that answer the clinical question, findings that change management or urgency, and negatives that answer the clinical question.
+optional_impression — findings a reasonable consultant could either carry or leave in FINDINGS.
+findings_only — findings that stay in FINDINGS: incidental or background findings needing no action, devices and procedure notes, normal structures the question did not ask about.
+A finding may be in none of the lists when either placement is acceptable. Never place a number in two lists."""
+PLAN_TIMEOUT_S = 10.0
+MAX_OPTIONS = 3
 
 
 QWEN_SYS = (
@@ -236,6 +284,28 @@ async def _qwen(state: str, negs: List[str], normals: List[str], measurements: L
     return r.output
 
 
+def split_findings(findings: str) -> List[str]:
+    """Dictated findings as numbered items: bullets, lines and sentences."""
+    parts = []
+    for line in re.split(r"\n+|\s/\s|(?:^|\s)-\s(?=[A-Za-z0-9])", findings):
+        line = line.strip(" -\t")
+        for s in re.split(r"(?<=[a-z0-9%)])\.\s+(?=[A-Z0-9])", line):
+            s = s.strip().rstrip(".")
+            if len(s) > 3:
+                parts.append(s)
+    return parts
+
+
+async def _plan(scan_type: str, clinical_history: str, items: List[str], recs: List[str]) -> ImpressionPlan:
+    user = (f"SCAN TYPE: {scan_type}\nCLINICAL QUESTION (context only): {clinical_history or '(not given)'}\n\n"
+            "DICTATED FINDINGS:\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(items))
+            + "\n\nCANDIDATE RECOMMENDATIONS:\n" + ("\n".join(f"{i}. {t}" for i, t in enumerate(recs)) or "(none)"))
+    r = await asyncio.wait_for(_run_agent_with_model(
+        model_name=QWEN, output_type=ImpressionPlan, system_prompt=PLAN_SYS, user_prompt=user, api_key="",
+        model_settings={"temperature": 0, "max_tokens": 8000, "reasoning_effort": "low"}), PLAN_TIMEOUT_S)
+    return r.output
+
+
 # ── compile ──────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -245,7 +315,7 @@ class Brief:
     reconcile_ms: int
 
 
-async def compile_brief(sheet: str, scan_type: str, findings: str) -> Brief:
+async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_history: str = "") -> Brief:
     t0 = time.time()
     secs = parse_sheet(sheet)
     lane, struct = _section(secs, "Clinical Lane"), _section(secs, "Structural Pattern")
@@ -278,11 +348,21 @@ async def compile_brief(sheet: str, scan_type: str, findings: str) -> Brief:
     if len(variants) > 1:
         qs["imp"] = {"type": "choice", "instructions": "Which impression exemplar best matches the shape of this case's findings (severity, number of findings, complications)?",
                      "criteria": {f"v{k}": " ".join(b.lines)[:400] for k, b in enumerate(variants)}}
-    jev, qw = await asyncio.gather(_jev(state, qs) if qs else asyncio.sleep(0, {}),
-                                   _qwen(state, [n for n, _ in negs], normals, [" ".join(b.lines) for b in measurements]))
+    items = split_findings(findings)
+
+    async def plan_or_none():
+        try:
+            return await _plan(scan_type, clinical_history, items, recs)
+        except Exception as e:  # the brief still compiles; recommendations fall back to Jev alone
+            logger.warning("impression plan failed (%s: %s)", type(e).__name__, str(e)[:200])
+            return None
+    jev, qw, plan = await asyncio.gather(_jev(state, qs) if qs else asyncio.sleep(0, {}),
+                                         _qwen(state, [n for n, _ in negs], normals, [" ".join(b.lines) for b in measurements]),
+                                         plan_or_none())
     score = lambda k: float(jev[k]["noul"])
 
-    decisions: dict = {"negatives": [], "normals": [], "differentials": [], "recommendations": [], "style": [], "measurements": [], "impression_variant": None}
+    decisions: dict = {"negatives": [], "normals": [], "differentials": [], "recommendations": [], "style": [], "measurements": [],
+                       "impression_variant": None, "impression_plan": None, "options": []}
 
     # Mandatory negatives: one line each, with its action and the dictated finding.
     qneg = {d.index: d for d in qw.negatives}
@@ -331,16 +411,43 @@ async def compile_brief(sheet: str, scan_type: str, findings: str) -> Brief:
         b = _bullet(lane, "Differentials in scope")
         b.lines = [line for line in b.lines if not ((m := _DIFF.match(line)) and m.group(1) in removed)]
 
-    # Recommendations: keep only those whose condition the findings meet or leave open.
+    # Recommendations: Jev removes those whose condition is unmet; of the rest, Qwen's plan
+    # includes, excludes, or leaves to the reporter (offered below the report, not written).
     rb = _bullet(imp, "Recommendation scope")
+    pdec = {d.index: d for d in plan.recommendations} if plan else {}
     if rb:
         kept = []
         for k, t in enumerate(recs):
-            unmet = score(f"r{k}") >= 0.5
-            decisions["recommendations"].append({"text": t, "action": "removed" if unmet else "keep"})
-            if not unmet:
+            d = pdec.get(k)
+            if score(f"r{k}") >= 0.5:
+                action = "removed"
+            elif d is None or d.decision == "include":
+                action = "keep"
+            elif d.decision == "optional" and len(decisions["options"]) < MAX_OPTIONS:
+                action = "optional"
+                decisions["options"].append({"kind": "recommendation", "text": t, "reason": d.reason})
+            else:
+                action = "removed"
+            decisions["recommendations"].append({"text": t, "action": action, "reason": d.reason if d else ""})
+            if action == "keep":
                 kept.append(f"  - {t}")
         rb.lines = [rb.lines[0]] + kept
+
+    # Impression plan: what the impression must carry, and what stays in FINDINGS.
+    if plan and items:
+        pick = lambda idx: [items[i] for i in dict.fromkeys(idx) if 0 <= i < len(items)]
+        carry, only = pick(plan.impression), pick(plan.findings_only)
+        opt = [t for t in pick(plan.optional_impression) if t not in carry]
+        room = MAX_OPTIONS - len(decisions["options"])
+        decisions["options"].extend({"kind": "impression", "text": t, "reason": ""} for t in opt[:room])
+        decisions["impression_plan"] = {"carry": carry, "findings_only": only, "optional": opt[:room]}
+        plan_lines = []
+        if carry:
+            plan_lines.append("- **Carry forward (the impression addresses each):** " + " ".join(f'"{t}"' for t in carry))
+        if only:
+            plan_lines.append("- **Findings only (not in the impression):** " + " ".join(f'"{t}"' for t in only + opt[:room]))
+        if plan_lines:
+            secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", plan_lines)]))
 
     # Impression exemplars: only the variant matching this case's shape.
     if variants and imp:

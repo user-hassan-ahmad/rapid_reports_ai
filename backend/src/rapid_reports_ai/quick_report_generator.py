@@ -104,7 +104,7 @@ async def generate_quick_report(
     brief = None
     if use_brief:
         try:
-            brief = await compile_brief(skill_sheet, scan_type, findings)
+            brief = await compile_brief(skill_sheet, scan_type, findings, clinical_history)
         except Exception as e:
             logger.warning("quick-report brief failed (%s: %s); generating from the raw sheet", type(e).__name__, str(e)[:200])
     sheet_for_generator = brief.text if brief else skill_sheet
@@ -141,4 +141,5 @@ async def generate_quick_report(
             "model_used": model_name, "fallback_from": fallback_from,
             "brief_used": brief is not None,
             "brief_reconcile_ms": brief.reconcile_ms if brief else None,
-            "brief_decisions": brief.decisions if brief else None}
+            "brief_decisions": brief.decisions if brief else None,
+            "brief_options": brief.decisions.get("options", []) if brief else []}
