@@ -850,8 +850,9 @@ radiologist would dictate, never the diagnosis it suggests, and at the most gene
 which its negatives still apply. A key names one finding, never two findings joined by "with", "and" or "or": an extension or complication of the finding is a negative under its key, never part of the key. Write every negative on its own line with its key repeated, in
 the form shown. One finding per negative: no "or", no comma-separated list. Tag each negative
 core when any consultant states it once that finding is reported, contextual when stating it
-depends on the case or on local practice. At most three negatives per finding and fifteen in
-total. Never repeat a mandatory negative. Never write a negative denying something the finding
+depends on the case or on local practice. List each finding's negatives in order of
+consequence, first the one the next management step depends on most. At most four negatives
+per finding and twenty in total. Never repeat a mandatory negative. Never write a negative denying something the finding
 is expected to cause.
 
 This bullet is an addition: the Sections line and every other part of the sheet stay exactly as they would without it.

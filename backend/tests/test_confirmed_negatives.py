@@ -15,6 +15,9 @@ def test_confirmed_negatives_is_an_opt_in_directive():
     assert "(core | contextual)" in arm_b
     assert "finding_negatives" not in qa.PRODUCTION_DIRECTIVES
     assert "never the diagnosis it suggests" in arm_b
+    # the management-deciding negative must survive the cap (L-45: pancreas lost SMV/SMA contact 1 in 5)
+    assert "At most four negatives per finding" in arm_b
+    assert "first the one the next management step depends on most" in arm_b
     # a key is one finding; its extensions are negatives under it (MSCC key "lesion with epidural extension" missed)
     assert 'never two findings joined by "with", "and" or "or"' in arm_b
     # the bullet changes nothing else in the sheet (TECHNIQUE dropped from Sections in 2/33 B sheets)
