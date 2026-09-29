@@ -38,3 +38,10 @@
    - the user's smoke test on the normal tab (flag on and off, the toggle).
 
    Then a PR, and deploy with `RR_DICTATION_V2=1`, the flag on for the user.
+
+## Status (2026-09-29)
+
+- **Task 1 done** (`cac5468`): `main` merged; 840 → 855 backend and 131 frontend tests pass; the type-check baseline is unchanged. Live on `main`'s models: lean polish 458 ms, bundle 457 ms, Jev pills 251 ms, IntelliPrompts 538 ms.
+- **Task 2 done** (`9fee762`, `2dcf364`). On a server with only `RR_DICTATION_V2=1`, a normal client gets production dictation unchanged, and a `v2=1` client gets the package (forced finals + guard, two-pass revisions, word confidences). No audio capture either way. Engine calls retry once on a dropped connection.
+- **Task 3 deferred to a follow-up PR.** The retired experiments are dormant behind lab-only flags and entangled with shared modules; pruning them inside the release adds risk for no user-facing gain.
+- **Task 4:** the user's smoke test on the normal tab, then the PR.
