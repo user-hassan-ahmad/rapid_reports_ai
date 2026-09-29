@@ -4981,6 +4981,11 @@ async def websocket_transcribe(websocket: WebSocket):
         "keyterms": case_keyterms, "dictation": dictation_on, "uk_spelling": uk_spelling, "spoken_format": spoken_format})
     if lab_rec:
         print(f"🎙️ Lab audio capture: {lab_rec.dir}")
+    # Lab: force a final once Deepgram has heard a pause with no new word (deepgram_finalize;
+    # its own endpointing let one final run 17 s across two 2-second pauses).
+    from rapid_reports_ai.deepgram_finalize import FinalizeTrigger, finalize_gap_from_env
+    _gap = finalize_gap_from_env() if _lab_asr else None
+    finalize_trigger = FinalizeTrigger(_gap) if _gap else None
     print(f"🎙️ Deepgram mode: {'PCM linear16 @ ' + str(pcm_sample_rate) + ' Hz' if use_pcm else 'auto-detect container'}")
     
     try:
@@ -5011,6 +5016,9 @@ async def websocket_transcribe(websocket: WebSocket):
                                 transcript_data = json.loads(msg.data)
                                 if lab_rec:
                                     lab_rec.event(transcript_data)
+                                if finalize_trigger and finalize_trigger.observe(transcript_data):
+                                    await dg_ws.send_str(json.dumps({"type": "Finalize"}))
+                                    print(f"⏩ Finalize after {finalize_trigger.gap_s}s with no new word")
 
                                 # Parse Deepgram response
                                 if transcript_data.get("type") == "Results":
