@@ -42,6 +42,7 @@
 	import { EditorView, keymap, Decoration, hoverTooltip, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 	import { editTouches, integrityMarks, type FlagLike, type IntegrityMark } from '$lib/utils/integrityMarks';
 	import { clearPending, markPending, pendingField, replaceAndClear } from '$lib/dictation-lab/pendingMarks';
+	import { ghostField, setGhost } from '$lib/dictation-lab/ghostText';
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import { markdown } from '@codemirror/lang-markdown';
@@ -232,6 +233,11 @@
 	$: if (polishMode === 'structured' && editor) {
 		structuredWanted = true;
 		scheduleStructure(0);
+	}
+	// Lab: Deepgram's interim words drawn in grey at the end of the verbatim text (ghostText);
+	// production keeps the caption under the editor.
+	function showGhost(text: string): void {
+		if (labConfig && editor) editor.dispatch({ effects: setGhost.of(text) });
 	}
 	function visibleEditor(): EditorView | null {
 		return polishMode === 'structured' ? structuredEditor : editor;
@@ -469,6 +475,7 @@
 	 */
 	function handleFinalTranscript(transcript: string, speechFinal: boolean, asr: AsrFields | null = null): void {
 		currentInterim = '';
+		showGhost('');
 
 		// Accumulate into session transcript
 		const appended = sessionTranscript ? `${sessionTranscript} ${transcript}` : transcript;
@@ -1534,6 +1541,7 @@
 						if (!data.is_final) {
 							// Interim: live preview while speaking
 							currentInterim = data.transcript;
+							showGhost(data.transcript);
 						} else {
 							handleFinalTranscript(data.transcript, !!data.speech_final, asrFields(data));
 						}
@@ -1558,6 +1566,7 @@
 
 	function stopRecording(): void {
 		isRecording = false;
+		showGhost(''); // words never finalised must not linger as ghost text
 		onRecordingChange(false);
 		isConnecting = false;
 		if (workletNode) {
@@ -1635,6 +1644,7 @@
 					integrityField,
 					integrityTooltip,
 					pendingField,
+					ghostField,
 					autoField,
 					asrFlagField,
 					EditorView.updateListener.of((update) => {
@@ -1907,7 +1917,7 @@
 		</div>
 
 		<!-- Inline transcript feed at the bottom of the box — only when dictation is on -->
-		{#if isRecording && currentInterim}
+		{#if isRecording && currentInterim && !labConfig}
 			<div class="border-t border-white/[0.05] px-4 py-2 flex flex-col gap-0.5 shrink-0">
 				<p class="text-xs text-gray-600 italic truncate">{currentInterim}</p>
 			</div>
@@ -1955,6 +1965,11 @@
 	:global(.cm-integrity-related) {
 		text-decoration-style: dotted !important;
 		background: transparent !important;
+	}
+	:global(.cm-ghost-interim) {
+		color: rgb(107, 114, 128);
+		font-style: italic;
+		pointer-events: none;
 	}
 	:global(.cm-integrity-tooltip) {
 		max-width: 320px;
