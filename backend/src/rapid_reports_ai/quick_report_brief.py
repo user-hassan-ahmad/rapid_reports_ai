@@ -152,6 +152,54 @@ def _recommendations(section: Optional[Section]) -> List[str]:
     return out
 
 
+# Policy 1 for confirmed branches: a branch Jev finds present brings the negatives the analyser
+# listed for it. Cut-offs on Jev's `present` score; the high one is calibrated (ledger L-45).
+PRESENT_LOW = 0.5
+PRESENT_HIGH = 0.8
+MAX_CONFIRMED_OPTIONS = 4
+_CONFIRMED = re.compile(r'^\s+-\s+(.+?)\s*(?:→|->)\s*"([^"]+)"\s*(?:\((core|contextual)\))?')
+
+
+@dataclass
+class Candidate:
+    branch: str
+    text: str
+    tag: str          # "core" | "contextual"
+    diff_index: int   # index into differential_lines(), whose Jev key is f"d{diff_index}"
+
+
+def _diff_name(line: str) -> str:
+    return re.split(r"\s+—\s+|\s+\*\(", line, maxsplit=1)[0].strip().lower()
+
+
+def parse_confirmed(lines: List[str], diffs: List[str]) -> tuple[List[Candidate], int]:
+    """The If-confirmed bullet's lines as candidates matched to a differential by name."""
+    names = {_diff_name(d): i for i, d in enumerate(diffs)}
+    cands, unmatched = [], 0
+    for line in lines[1:]:
+        m = _CONFIRMED.match(line)
+        if not m:
+            continue
+        branch, text, tag = m.group(1).strip(), m.group(2).strip().rstrip("."), m.group(3) or "contextual"
+        k = names.get(branch.lower())
+        if k is None:
+            unmatched += 1
+            continue
+        cands.append(Candidate(branch, text, tag, k))
+    return cands, unmatched
+
+
+def route_confirmed(label: str, present: float, tag: str) -> str:
+    """Rule C: stated only when the branch is clearly confirmed and the negative is core."""
+    if present < PRESENT_LOW or label == "contradicted":
+        return "dropped"
+    if label == "expected":
+        return "do_not_assert"
+    if present >= PRESENT_HIGH and tag == "core":
+        return "stated"
+    return "offered"
+
+
 _MEASUREMENT = re.compile(r"\d+(?:[.,]\d+)?\s*(?:%|°|(?:mm|cm|ml|mL|cc|HU|mmHg|m/s|degrees?)(?![A-Za-z]))")
 
 
