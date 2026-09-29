@@ -4988,6 +4988,13 @@ async def websocket_transcribe(websocket: WebSocket):
     finalize_trigger = FinalizeTrigger(_gap) if _gap else None
     # never flush while the speaker is mid-word: the audio is immediate, Deepgram's words are not
     audio_level = AudioLevel(pcm_sample_rate) if finalize_trigger and use_pcm else None
+    # Lab: two-pass ASR — each live final heard again (Deepgram batch + gpt-4o-transcribe) and
+    # disagreements settled by Jev; results arrive later as a revision (two_pass; RR_TWO_PASS=1).
+    from rapid_reports_ai.two_pass import two_pass_from_env
+    _tp = two_pass_from_env(pcm_sample_rate, case_keyterms, websocket.query_params.get("st", "")) if use_pcm else None
+    two_pass, two_pass_http = _tp if _tp else (None, None)
+    two_pass_tasks: set = set()
+    final_seq = [0]
     print(f"🎙️ Deepgram mode: {'PCM linear16 @ ' + str(pcm_sample_rate) + ' Hz' if use_pcm else 'auto-detect container'}")
     
     try:
@@ -5007,6 +5014,8 @@ async def websocket_transcribe(websocket: WebSocket):
                                 lab_rec.audio(data)
                             if audio_level:
                                 audio_level.feed(data)
+                            if two_pass:
+                                two_pass.feed(data)
                             await dg_ws.send_bytes(data)
                     except WebSocketDisconnect:
                         print("❌ Client disconnected")
@@ -5059,6 +5068,21 @@ async def websocket_transcribe(websocket: WebSocket):
                                             # are unchanged.
                                             if is_final and _lab_asr:
                                                 out.update(asr_confidence(alternatives[0]) or {})
+                                            if is_final and two_pass:
+                                                final_seq[0] += 1
+                                                out["final_seq"] = final_seq[0]
+
+                                                async def _revise(seq=final_seq[0], alt=alternatives[0]):
+                                                    rev = await two_pass.revise(seq, alt)
+                                                    if rev.get("recovered") and spoken_format:
+                                                        rev["recovered"] = apply_spoken_format(rev["recovered"])
+                                                    try:
+                                                        await websocket.send_json({"revision": rev})
+                                                    except Exception:
+                                                        pass  # the session has ended
+                                                task = asyncio.create_task(_revise())
+                                                two_pass_tasks.add(task)
+                                                task.add_done_callback(two_pass_tasks.discard)
                                             await websocket.send_json(out)
                                 elif transcript_data.get("type") == "UtteranceEnd":
                                     # Signal the frontend that a natural utterance boundary was detected
@@ -5097,6 +5121,10 @@ async def websocket_transcribe(websocket: WebSocket):
         if lab_rec:
             paths = lab_rec.close()
             print(f"🎙️ Lab audio saved: {paths['wav']}")
+        for task in list(two_pass_tasks):
+            task.cancel()
+        if two_pass_http:
+            await two_pass_http.aclose()
 
 
 @app.websocket("/api/transcribe/whisper")
