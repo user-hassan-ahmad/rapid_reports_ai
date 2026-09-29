@@ -105,7 +105,7 @@ Some clinical questions have a primary hypothesis whose confirmation on imaging 
 When the primary hypothesis branches on aetiology, emit both tiers:
 
 - **Triage** — what the imaging is ruling in or out at the level of the primary hypothesis
-- **Aetiology** — given confirmation, what causes the imaging can discriminate, each paired with the imaging discriminator that would support it. Aetiologies the imaging cannot meaningfully discriminate but which the clinical workup must address (e.g. coagulopathy, drug-induced injury) should still be listed and tagged *(imaging-silent — requires clinical/laboratory correlation)* so the generator surfaces them with the deferral framing.
+- **Aetiology** — given confirmation, what causes the imaging can discriminate, each paired with the imaging discriminator that would support it. Aetiologies the imaging cannot meaningfully discriminate but which the clinical workup must address (e.g. coagulopathy, drug-induced injury) should still be listed and tagged *(imaging-silent — requires clinical/laboratory correlation)* so the generator surfaces them with the deferral framing. **Visibility on this technique.** Every differential that the imaging can discriminate — triage alternatives, complications, aetiologies — is written on its own line with its discriminator and tagged *(visible on this technique: yes)* or *(visible on this technique: no — <what would show it>)*, judged against the modality, phase and sequences declared in Phase 1. A discriminator that only another phase, sequence or modality would show is "no". Silence in a dictation can only close a differential whose discriminator this study would show.
 
 **Clinical history modifiers.** For each relevant item in the history, state how it alters urgency, differential weighting, or management pathway. Modifiers set prior probability for the case as a whole. They apply at synthesis time via the generator's own reasoning; they do NOT fuse into Phase 5 interpretive clauses.
 
@@ -147,7 +147,7 @@ The companion matrix captures the findings that belong to the primary pathology'
 Declare:
 
 - **In-scope companions** — every companion across those dimensions, within the evaluable field.
-- **Mandatory negatives** — a tight list of negatives that alter interpretation or management. Each bears on a specific differential or complication. Write each in its final report form, quoted.
+- **Mandatory negatives** — a tight list of negatives that alter interpretation or management. Each bears on a specific differential or complication. Write each in its final report form, quoted. **One finding per negative.** Each negative states the absence of exactly one finding, so it can be checked against the dictation on its own: a list of findings in one sentence cannot be kept for some items and withdrawn for others. The test is mechanical: a negative contains no "or" and no comma-separated list of findings or locations. Where you would write "or" or a comma between findings, start a new line instead, repeating the shared wording, even when the findings belong to the same differential.
 - **Out-of-scope suppressed** — items that might be associated with the clinical question but fall outside the evaluable field or require a different modality. Explicit suppression prevents the generator from fabricating assessments it cannot make.
 
 ---
@@ -249,6 +249,7 @@ Before emitting, verify:
 - **Voice alignment** — every exemplar leads with anatomical subject or imaging feature, not with existential openers or padding verbs.
 - **Clause discipline** — every Phase 5 interpretive clause IF-condition is imaging-only; no clinical history modifier, demographic, or presentation cue is fused into the trigger.
 - **Differential integrity** — if the primary hypothesis branches on aetiology, the aetiology tier is populated with imaging discriminators paired to each entry, and imaging-silent aetiologies are tagged.
+- **Negatives single, differentials tagged** — each mandatory negative denies exactly one finding (no "or", no list); every imaging-discriminable differential is tagged visible on this technique yes or no.
 - **Structural fidelity** — the sweep order will translate naturally into one paragraph per subsystem at generation time.
 
 Then compile into the format below. Return ONLY the markdown skill sheet; no preamble, no explanation, no phase-by-phase commentary.
@@ -278,6 +279,8 @@ Write concrete values throughout. No angle brackets or curly braces in the emitt
 - **Differentials in scope:**
   - **Triage:** <what the imaging rules in/out at the level of the primary hypothesis>
   - **Aetiology:** <given confirmation, what causes the imaging can discriminate>  (emit this sub-bullet only when the primary hypothesis branches on aetiology per Phase 2; omit entirely when it does not)
+    - <differential> — <imaging discriminator> *(visible on this technique: yes | no — <what would show it>)*  (one line per differential, triage alternatives and aetiologies alike)
+    - <imaging-silent differential> *(imaging-silent — requires clinical/laboratory correlation)*
 - **Clinical history modifiers:** <item> → <effect>
 
 ## Structural Pattern
@@ -292,7 +295,8 @@ Write concrete values throughout. No angle brackets or curly braces in the emitt
 
 ## Companion Matrix
 - **In-scope companions:** <...>
-- **Mandatory negatives:** "<quoted form 1>", "<quoted form 2>", ...
+- **Mandatory negatives:** (one line each, one finding each)
+  - "<absence of one finding, in final report form>" (<differential or complication it targets>)
 - **Out-of-scope suppressed:** <...>
 
 ## Style Exemplars
@@ -388,7 +392,7 @@ When the primary hypothesis branches on aetiology, emit both tiers:
 
 - **Aetiology** — given confirmation of the primary hypothesis, what causes the imaging can discriminate. **Each aetiology entry MUST be paired inline with the imaging discriminator that would support it.** Format: `<aetiology> — <imaging features that discriminate it>`. A bare list of aetiology names without paired discriminators is incomplete — the generator needs the discriminator to recognise the aetiology pattern when it fires on dictated findings.
 
-  Aetiologies the imaging cannot meaningfully discriminate but which the clinical workup must address (coagulopathy, drug-induced injury, cardioembolic source, etc.) MUST still be listed and tagged "(imaging-silent — requires clinical/laboratory correlation)" so the generator surfaces them with the deferral framing rather than omitting them entirely.
+  Aetiologies the imaging cannot meaningfully discriminate but which the clinical workup must address (coagulopathy, drug-induced injury, cardioembolic source, etc.) MUST still be listed and tagged "(imaging-silent — requires clinical/laboratory correlation)" so the generator surfaces them with the deferral framing rather than omitting them entirely. **Visibility on this technique.** Every differential that the imaging can discriminate — triage alternatives, complications, aetiologies — is written on its own line with its discriminator and tagged *(visible on this technique: yes)* or *(visible on this technique: no — <what would show it>)*, judged against the modality, phase and sequences declared in Phase 1. A discriminator that only another phase, sequence or modality would show is "no". Silence in a dictation can only close a differential whose discriminator this study would show.
 
   When the triage step has multiple possible confirmed outcomes each with its own aetiology tree (e.g. "if haemorrhage confirmed" vs "if ischaemia confirmed"), emit branched aetiology lists labelled by triage outcome.
 
@@ -433,7 +437,7 @@ Declare:
 
 - **In-scope companions, each with characterisation method inline.** Every companion is listed with its measurement method, characterisation parameters, or qualitative scoring (e.g. "Haematoma — volume by ABC/2 method, location, lobar vs deep", "Midline shift — direction and degree in mm at the level of the septum pellucidum"). Bare structure names without characterisation hints leave the generator without the parameters to report.
 
-- **Mandatory negatives — targeted to specific differentials.** Each mandatory negative bears on a specific differential or complication listed in scope. **Aim for one targeted negative per differential the imaging meaningfully bears on.** Generic negatives that don't tie to a specific differential or complication should not appear. Write each in its final report form, quoted (e.g. `"No hyperdense vessel sign to suggest large vessel occlusion."`). Six well-targeted negatives are better than two generic ones.
+- **Mandatory negatives — targeted to specific differentials.** Each mandatory negative bears on a specific differential or complication listed in scope. **Aim for one targeted negative per differential the imaging meaningfully bears on.** Generic negatives that don't tie to a specific differential or complication should not appear. Write each in its final report form, quoted: the observable feature that would indicate the differential, named in this technique's own descriptive vocabulary, then the differential it excludes. **One finding per negative.** Each negative states the absence of exactly one finding, so it can be checked against the dictation on its own: a list of findings in one sentence cannot be kept for some items and withdrawn for others. The test is mechanical: a negative contains no "or" and no comma-separated list of findings or locations. Where you would write "or" or a comma between findings, start a new line instead, repeating the shared wording, even when the findings belong to the same differential. Six well-targeted negatives are better than two generic ones.
 
 - **Out-of-scope suppressed.** Items that might be associated with the clinical question but fall outside the evaluable field. Each item names the alternative test or modality required.
 
@@ -579,7 +583,8 @@ Before emitting, verify:
 - **Scope alignment** — every companion in Phase 4 sits inside the evaluable field declared in Phase 1.
 - **Causal-clustering alignment** — P1-belongs in Phase 3 includes every causally-linked companion from Phase 4.
 - **Aetiology paired with discriminators** — every aetiology entry in the Phase 2 aetiology tier has its imaging discriminator paired inline; imaging-silent entries are tagged.
-- **Mandatory negatives are differential-targeted** — each negative bears on a specific differential or complication, not generic anatomy.
+- **Mandatory negatives are differential-targeted and single** — each negative bears on a specific differential or complication, not generic anatomy, and denies exactly one finding (no "or", no list).
+- **Differentials carry visibility** — every imaging-discriminable differential is tagged visible on this technique yes or no; imaging-silent ones are tagged.
 - **Severity grading on style exemplars** — three variants where clinically meaningful; two where not.
 - **Clause discipline** — every Phase 5 interpretive clause IF-condition is imaging-only; no clinical history, demographic, presentation, or laboratory cue is fused into the trigger.
 - **Voice alignment** — every exemplar leads with anatomical subject or imaging feature, not with existential openers or padding verbs.
@@ -614,8 +619,8 @@ Write concrete values throughout. No angle brackets or curly braces in the emitt
 - **Differentials in scope:**
   - **Triage:** <what the imaging rules in/out at the level of the primary hypothesis>
   - **Aetiology:** <emit only when the primary hypothesis branches on aetiology; each entry paired with its imaging discriminator inline; imaging-silent aetiologies tagged>
-    - <aetiology> — <imaging discriminator>
-    - <imaging-silent aetiology> *(imaging-silent — requires clinical/laboratory correlation)*
+    - <differential> — <imaging discriminator> *(visible on this technique: yes | no — <what would show it>)*  (one line per differential, triage alternatives and aetiologies alike)
+    - <imaging-silent differential> *(imaging-silent — requires clinical/laboratory correlation)*
   - **Aetiology (if X confirmed) / Aetiology (if Y confirmed):** <emit branched lists when the triage step has multiple confirmed outcomes each with its own aetiology tree>
 - **Clinical history modifiers:** <item> → <how it alters urgency, differential weighting, or management pathway, with the management implication that follows>
 
@@ -631,7 +636,8 @@ Write concrete values throughout. No angle brackets or curly braces in the emitt
 
 ## Companion Matrix
 - **In-scope companions:** <each companion listed with its characterisation method or measurement convention inline>
-- **Mandatory negatives:** "<negative 1 — targeted to specific differential>", "<negative 2 — targeted to specific differential>", ...  (one per differential or complication that the imaging meaningfully bears on)
+- **Mandatory negatives:** (one line each, one finding each; one per differential or complication that the imaging meaningfully bears on)
+  - "<absence of one finding, in final report form>" (<differential or complication it targets>)
 - **Out-of-scope suppressed:** <item> (<alternative test required>)
 
 ## Style Exemplars
