@@ -1481,3 +1481,42 @@ The fixes:
    It is parallel by design, so its output never passes the Qwen contradiction check. It is
    unsplit ("or" bundles) and misjudges coverage (attached to keyed findings). The items are
    offered only and hidden in the UI, but they must not reach the side panel like this.
+
+### L-46 · Post-generation quality check — can Jev do it? (probe, 2026-09-30)
+
+Proposal (Hassan): a lightweight catch-all check after every report, so a good report ships
+first time. Probe scripts: `backend/src/rapid_reports_ai/scripts/jev_quality_probe*.py`, run on
+the 32 L-45 rerun reports.
+- **Negative class:** real clauses and items as generated. They were hand-read on L-45 and are
+  consistent.
+- **Positive class:**
+  - the 4 real fallback contradictions;
+  - synthetic flips (a dictated item negated);
+  - deleted sentences;
+  - inserted history, fabrications and concordance lines.
+
+Jev latency: 0.28 s median per call, ≤11 questions.
+
+| Question (state) | Result | Verdict |
+|---|---|---|
+| "The dictated findings state something that this report statement denies or contradicts" (dictation) | **31/31** contradictions caught at 0.5 (4 real fallback ones 0.75–0.86); 4/127 clean clauses flagged, 2 of them clause-splitter artefacts ("No pericolic") and 2 defensible ("no epidural collection" beside epidural disease) | **fold in** |
+| "The report states this dictated finding" (report) | **24/24** deleted findings caught; 3/68 present items missed, all dictated negatives or background lines | **fold in**, positive dictated items only |
+| "The impression mentions this finding" (impression) | deleted 43/43 caught, but present items recognised only 22/43: the impression synthesises at diagnosis level, Jev matches literally | **not reliable** as phrased |
+| History restated (history) | 8/32 | **fails**: use code (history tokens in report but not dictation) |
+| Undictated abnormal finding (dictation) | 5/32 and 49 false alarms | **fails**: stays with prompt + Phase 1 audit |
+| Concordance / attribution (history) | 12/32 and 21 false alarms | **fails**: use a code regex on the L-39 constructions |
+
+**Conclusion:**
+- **Jev reliably does two things:**
+  - **contradiction per clause**, which also screens offered options;
+  - **omission of a dictated positive finding.**
+
+  The "report states X" form also covers DO NOT ASSERT / OMIT compliance (not separately probed).
+- **Code checks** fold into the same step at no cost:
+  - `gate.py` into prod: sections, tag leak, thinking leak, truncation, self-contradiction;
+  - staging / grade / RADS tier not dictated (L-44; "AAST grade III" seen in L-45);
+  - measurement values not in the dictation;
+  - history-token leak (L-36);
+  - L-39 concordance phrasing.
+- **Not foldable:** impression completeness as phrased, fabricated descriptors, and clinical
+  judgement (recommendations, characterisation, flagging).
