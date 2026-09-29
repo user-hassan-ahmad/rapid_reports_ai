@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { computeDelta } from '$lib/dictation-lab/delta';
-	import { toRequestFields } from '$lib/dictation-lab/labConfig';
-	import type { CoverageTrace, LabConfig, ProcessTrace, TriageTrace } from '$lib/dictation-lab/types';
+	import type { CoverageTrace, LabConfig } from '$lib/dictation-lab/types';
 	import {
 		EDIT_WINDOW_MS,
 		REDICTATE_WINDOW_MS,
@@ -64,7 +63,6 @@
 	/** Dictation Lab only. null in production: nothing is added to the request. */
 	export let labConfig: LabConfig | null = null;
 	/** Dictation Lab only. Called once per completed /process call. */
-	export let onProcessTrace: (trace: ProcessTrace) => void = () => {};
 	/** Dictation Lab only. Per-section scores from the selected coverage candidate. */
 	export let onCoverageScoresChange: (scores: Record<string, number> | null) => void = () => {};
 	/** Dictation Lab only. Both candidates' coverage results when coverage_debug is on. */
@@ -282,7 +280,6 @@
 	// Transcript as of the last /process call that completed, so the next call can
 	// send the delta as `last_utterance` (triage only; never affects the live response).
 	let lastSentTranscript = '';
-	let traceSeq = 0;
 	let pendingUtterance: string | null = null;
 
 	// Latest-wins processing: only one Qwen call runs at a time.
@@ -1165,7 +1162,6 @@
 			const utterance = queued ?? pendingUtterance ?? delta;
 			pendingUtterance = null;
 			if (utterance) body.last_utterance = utterance;
-			if (labConfig) Object.assign(body, toRequestFields(labConfig));
 			const t0 = performance.now();
 
 			const res = await fetch(`${API_URL}/api/canvas/process`, {
@@ -1212,17 +1208,6 @@
 			if (data.covered_sections && Array.isArray(data.covered_sections)) {
 				onCoveredSectionsChange(data.covered_sections);
 			}
-			onProcessTrace({
-				seq: ++traceSeq,
-				at: Date.now(),
-				utterance: utterance ?? '',
-				committed: '',
-				activeBefore,
-				activeAfter: content ?? activeBefore,
-				scanType,
-				latency_ms: Math.round(performance.now() - t0),
-				triage: (data.triage as TriageTrace | null | undefined) ?? null
-			});
 		} catch {
 			// Superseded aborts set pendingProcess and will re-run, so keep the faded raw.
 			// A real network error won't re-run — promote the faded raw to solid so it

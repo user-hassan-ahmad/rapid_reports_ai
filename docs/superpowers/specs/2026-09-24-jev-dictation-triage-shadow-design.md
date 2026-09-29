@@ -1,5 +1,7 @@
 # Dictation Utterance Triage — System 1 Pilot with a Local Dictation Lab (Jev vs Qwen reasoning-off)
 
+> **Retired 2026-09-29.** The shadow, debug and route modes, the Qwen candidate, the labels module and the fixture endpoint were removed after the decision-first package shipped (`rr_dictation_v2`). `JevTriager`, the formatting lexicon and the triage fixtures (routing eval set) remain. Kept as a historical record.
+
 **Date:** 2026-09-24
 **Status:** Implemented on branch `dictation-triage-lab`; bake-off run 1 and run 2 recorded in §12; in-browser lab smoke pending sign-in
 **Branch:** skill-sheet-v3 (spec only; implementation on its own branch)

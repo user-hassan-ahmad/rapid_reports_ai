@@ -4,39 +4,9 @@ import {
 	DEFAULT_LAB_CONFIG,
 	labConfig,
 	loadLabConfig,
-	saveLabConfig,
-	toRequestFields
+	saveLabConfig
 } from './labConfig';
 import type { LabConfig } from './types';
-
-const base: Omit<LabConfig, 'strategy' | 'threshold' | 'showBoth'> = {
-	coverageDebug: true,
-	pillThresholds: { hi: 0.8, lo: 0.4 },
-	frontDoor: 'timer',
-	polish: 'full'
-};
-
-describe('toRequestFields', () => {
-	it('shadow strategy sends debug only when showBoth', () => {
-		expect(toRequestFields({ strategy: 'shadow', threshold: 0.9, showBoth: true, ...base })).toEqual({
-			triage_debug: true,
-			triage_route: null
-		});
-		expect(toRequestFields({ strategy: 'shadow', threshold: 0.9, showBoth: false, ...base })).toEqual({
-			triage_debug: false,
-			triage_route: null
-		});
-	});
-	it('route strategies set the candidate and threshold', () => {
-		expect(toRequestFields({ strategy: 'route:jev', threshold: 0.85, showBoth: false, ...base })).toEqual({
-			triage_debug: false,
-			triage_route: { candidate: 'jev', threshold: 0.85 }
-		});
-		expect(
-			toRequestFields({ strategy: 'route:qwen', threshold: 0.7, showBoth: true, ...base }).triage_route
-		).toEqual({ candidate: 'qwen', threshold: 0.7 });
-	});
-});
 
 describe('persistence', () => {
 	it('falls back to defaults when storage is unavailable or corrupt', () => {
@@ -47,7 +17,7 @@ describe('persistence', () => {
 			}
 		} as unknown as Storage;
 		expect(loadLabConfig(fake)).toEqual(DEFAULT_LAB_CONFIG);
-		expect(() => saveLabConfig({ ...DEFAULT_LAB_CONFIG, threshold: 0.6 }, fake)).not.toThrow();
+		expect(() => saveLabConfig({ ...DEFAULT_LAB_CONFIG, polish: 'race' }, fake)).not.toThrow();
 		expect(loadLabConfig(undefined)).toEqual(DEFAULT_LAB_CONFIG);
 	});
 	it('round-trips through a storage object', () => {
@@ -59,9 +29,6 @@ describe('persistence', () => {
 			}
 		} as unknown as Storage;
 		const cfg: LabConfig = {
-			strategy: 'route:jev',
-			threshold: 0.75,
-			showBoth: true,
 			coverageDebug: false,
 			pillThresholds: { hi: 0.9, lo: 0.3 },
 			frontDoor: 'decision',
@@ -72,7 +39,7 @@ describe('persistence', () => {
 	});
 	it('rejects out-of-range or unknown values', () => {
 		const fake = {
-			getItem: () => JSON.stringify({ strategy: 'route:gpt', threshold: 7, showBoth: 'yes' })
+			getItem: () => JSON.stringify({ ...DEFAULT_LAB_CONFIG, frontDoor: 'jev', coverageDebug: 'yes' })
 		} as unknown as Storage;
 		expect(loadLabConfig(fake)).toEqual(DEFAULT_LAB_CONFIG);
 	});

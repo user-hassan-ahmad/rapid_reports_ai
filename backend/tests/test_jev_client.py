@@ -101,13 +101,14 @@ async def test_warm_up_reports_ms_and_never_raises(built):
 @pytest.mark.parametrize("env,expected", [
     ({}, False),
     ({"RR_TRIAGE_DEBUG": "1"}, True),
-    ({"RR_TRIAGE_SHADOW": "1"}, True),
+    ({"RR_TRIAGE_SHADOW": "1"}, False),  # the shadow mode was retired 2026-09-29
+    ({"RR_DICTATION_V2": "1"}, True),
     ({"RR_COVERAGE_CANDIDATE": "jev"}, True),
     ({"RR_COVERAGE_CANDIDATE": "qwen"}, False),
     ({"RR_TRIAGE_DEBUG": "0"}, False),
 ])
 def test_warmup_wanted(monkeypatch, env, expected):
-    for k in ("RR_TRIAGE_DEBUG", "RR_TRIAGE_SHADOW", "RR_COVERAGE_CANDIDATE"):
+    for k in ("RR_TRIAGE_DEBUG", "RR_TRIAGE_SHADOW", "RR_COVERAGE_CANDIDATE", "RR_DICTATION_V2"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
     for k, v in env.items():
@@ -122,10 +123,10 @@ def test_warmup_not_wanted_without_key(monkeypatch):
 
 
 async def test_schedule_warm_up(built, monkeypatch):
-    for k in ("RR_TRIAGE_DEBUG", "RR_TRIAGE_SHADOW", "RR_COVERAGE_CANDIDATE"):
+    for k in ("RR_TRIAGE_DEBUG", "RR_COVERAGE_CANDIDATE", "RR_DICTATION_V2"):
         monkeypatch.delenv(k, raising=False)
     assert jev_client.schedule_warm_up() is None
-    monkeypatch.setenv("RR_TRIAGE_SHADOW", "1")
+    monkeypatch.setenv("RR_DICTATION_V2", "1")
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
     task = jev_client.schedule_warm_up()
     assert task is not None and isinstance(await task, int)

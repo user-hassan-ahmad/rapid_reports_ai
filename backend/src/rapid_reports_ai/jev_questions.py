@@ -46,7 +46,8 @@ TRIAGE_QUESTIONS: dict[str, dict[str, Any]] = {
     },
 }
 
-# Default confidence floor for lab route mode (canvas_routes.TriageRouteConfig).
+# Default confidence floor of the retired lab route mode (2026-09-29). Kept: it is part of
+# the wording digest in tests/test_jev_questions.py.
 ROUTE_THRESHOLD_DEFAULT = 0.9
 
 # --- fast-append band router (fast_append, work-order step 5) ------------------------
