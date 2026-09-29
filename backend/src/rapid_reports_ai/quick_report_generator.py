@@ -99,12 +99,19 @@ class _OptionSentences(BaseModel):
 
 
 async def _write_options(options: List[dict], findings: str, scan_type: str) -> List[dict]:
-    """One impression sentence per optional item, for the reporter to tick in. Runs beside
-    the generator; on any failure the report ships without options."""
-    if not options:
-        return []
+    """Reporter-choice items. Impression and recommendation items get one sentence each from a
+    writer call beside the generator; confirmed-branch negatives are already in report form and
+    pass through. On a writer failure only the written items are lost."""
+    direct = [o for o in options if o["kind"] == "confirmed_negative"]
+    to_write = [o for o in options if o["kind"] != "confirmed_negative"]
+    passed = [{"id": f"cn{i}", "kind": o["kind"], "section": o.get("section", "FINDINGS"),
+               "sentence": o["text"].rstrip(".") + ".", "reason": o.get("reason", ""), "source": o["text"],
+               "branch": o.get("branch", "")}
+              for i, o in enumerate(direct)]
+    if not to_write:
+        return passed
     try:
-        items = "\n".join(f"{i}. [{o['kind']}] {o['text']}" for i, o in enumerate(options))
+        items = "\n".join(f"{i}. [{o['kind']}] {o['text']}" for i, o in enumerate(to_write))
         r = await asyncio.wait_for(_run_agent_with_model(
             model_name=MODEL_CONFIG["QUICK_REPORT_GENERATOR"], output_type=_OptionSentences,
             system_prompt=("Write one sentence for the IMPRESSION of a radiology report for each numbered item, in order. "
@@ -117,10 +124,12 @@ async def _write_options(options: List[dict], findings: str, scan_type: str) -> 
             model_settings={"temperature": 0.2, "max_tokens": 2000, "reasoning_effort": "none"}), 10.0)
         sentences = r.output.sentences
     except Exception as e:
-        logger.warning("option sentences failed (%s: %s); no options offered", type(e).__name__, str(e)[:200])
-        return []
-    return [{"id": f"opt{i}", "kind": o["kind"], "sentence": s.strip(), "reason": o.get("reason", ""), "source": o["text"]}
-            for i, (o, s) in enumerate(zip(options, sentences)) if s and s.strip()]
+        logger.warning("option sentences failed (%s: %s); no written options offered", type(e).__name__, str(e)[:200])
+        return passed
+    written = [{"id": f"opt{i}", "kind": o["kind"], "section": "IMPRESSION", "sentence": s.strip(),
+                "reason": o.get("reason", ""), "source": o["text"]}
+               for i, (o, s) in enumerate(zip(to_write, sentences)) if s and s.strip()]
+    return written + passed
 
 
 async def generate_quick_report(
@@ -180,4 +189,5 @@ async def generate_quick_report(
             "brief_used": brief is not None,
             "brief_reconcile_ms": brief.reconcile_ms if brief else None,
             "brief_decisions": brief.decisions if brief else None,
+            "brief_text": brief.text if brief else None,
             "brief_options": options}

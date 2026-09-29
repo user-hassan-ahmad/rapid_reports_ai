@@ -162,3 +162,39 @@ async def test_plan_carries_only_stated_negatives_it_chose(monkeypatch):
 def test_plan_prompt_keeps_negatives_out_of_the_impression_by_default():
     assert "carry_negatives" in qb.PLAN_SYS
     assert "changes the interpretation of a carried finding" in qb.PLAN_SYS
+
+
+from rapid_reports_ai import quick_report_generator as qrg
+
+
+@pytest.mark.asyncio
+async def test_options_carry_a_section_and_confirmed_negatives_skip_the_writer(monkeypatch):
+    calls = []
+    async def fake_run(**kw):
+        calls.append(kw["user_prompt"])
+        class R:
+            output = qrg._OptionSentences(sentences=["MRI brain is recommended."])
+        return R()
+    monkeypatch.setattr(qrg, "_run_agent_with_model", fake_run)
+    opts = [{"kind": "recommendation", "text": "IMAGING: MRI brain", "reason": "either way"},
+            {"kind": "confirmed_negative", "section": "FINDINGS", "text": "No uncal herniation",
+             "branch": "Acute subdural", "reason": "contextual"}]
+    out = await qrg._write_options(opts, "findings", "CT")
+    assert "No uncal herniation" not in calls[0]
+    assert out[0] == {"id": "opt0", "kind": "recommendation", "section": "IMPRESSION",
+                      "sentence": "MRI brain is recommended.", "reason": "either way", "source": "IMAGING: MRI brain"}
+    assert out[1] == {"id": "cn0", "kind": "confirmed_negative", "section": "FINDINGS",
+                      "sentence": "No uncal herniation.", "reason": "contextual",
+                      "source": "No uncal herniation", "branch": "Acute subdural"}
+
+
+@pytest.mark.asyncio
+async def test_confirmed_negatives_survive_when_the_writer_fails(monkeypatch):
+    async def boom(**kw):
+        raise RuntimeError("down")
+    monkeypatch.setattr(qrg, "_run_agent_with_model", boom)
+    opts = [{"kind": "impression", "text": "Small effusion", "reason": ""},
+            {"kind": "confirmed_negative", "section": "FINDINGS", "text": "No uncal herniation",
+             "branch": "Acute subdural", "reason": "contextual"}]
+    out = await qrg._write_options(opts, "findings", "CT")
+    assert [o["id"] for o in out] == ["cn0"]
