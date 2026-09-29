@@ -105,6 +105,27 @@ def _parallel_analyse_enabled() -> bool:
     return raw in ("true", "1", "yes", "on")
 
 
+def schedule_guideline_prefetch(user_id: str, findings: str, scan_type: str, clinical_history: str) -> None:
+    """Start the guideline prefetch beside generation, as /api/chat does, keyed the way /enhance
+    looks it up (user id + stored FINDINGS). Without it /enhance runs S1-S3 cold, inline."""
+    import hashlib
+    import uuid
+    from . import main  # main imports this module; resolve at call time
+
+    findings = findings.strip()
+    findings_hash = hashlib.sha256(f"{user_id}:{findings}".encode()).hexdigest()[:16]
+    prefetch_id = str(uuid.uuid4())
+    main.PREFETCH_INDEX[findings_hash] = prefetch_id
+    main._schedule_prefetch_task(
+        prefetch_id=prefetch_id,
+        findings_hash=findings_hash,
+        findings=findings,
+        scan_type=scan_type,
+        clinical_history=clinical_history,
+        user_id=user_id,
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Request models
 # ─────────────────────────────────────────────────────────────────────────────
@@ -425,6 +446,11 @@ async def generate(
                     {"error": "Either sheet_id (preferred) or (scan_type + clinical_history) is required"},
                 )
                 return
+
+            try:
+                schedule_guideline_prefetch(user_id_str, request.findings, scan_type, clinical_history)
+            except Exception as e:  # guidelines are an enhancement; never block the report
+                logger.warning("guideline prefetch not scheduled (%s: %s)", type(e).__name__, e)
 
             # ── Fire the GLM generator ────────────────────────────────────
             logger.info("quick-report generate firing model=%s", GENERATOR_MODEL)
