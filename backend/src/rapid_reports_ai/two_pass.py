@@ -232,7 +232,7 @@ class TwoPass:
                 item = {"from": s.live, "to": reading, "confidence": round(conf, 2)}
                 if switch_allowed(s.live, reading, conf):
                     switches.append(item)
-                elif conf >= SUGGEST_MIN_CONF:
+                elif conf >= SUGGEST_MIN_CONF and switch_allowed(s.live, reading, 1.0):  # short on confidence only
                     suggestions.append(item)
         rev = {"final_seq": final_seq, "switches": switches, "suggestions": suggestions, "recovered": recovered,
                "spans": len(spans),

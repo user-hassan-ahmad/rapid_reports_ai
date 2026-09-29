@@ -179,3 +179,17 @@ def test_a_weak_preference_is_neither():
     tp.feed(b"\x00\x00" * 16000 * 3)
     rev = asyncio.run(tp.revise(1, FINAL))
     assert rev["switches"] == [] and rev["suggestions"] == []
+
+
+def test_a_reading_the_guard_blocks_is_not_suggested_either():
+    live = [_w("No"), _w("disc"), _w("extrusion.")]
+
+    async def gpt(wav):
+        return "Lumbar disc extrusion."
+
+    async def jev(body):
+        return {q: {"choice": "option", "confidence": 0.7} for q in body["questions"]}
+    tp = TwoPass(16000, gpt=gpt, jev=jev)
+    tp.feed(b"\x00\x00" * 16000 * 3)
+    rev = asyncio.run(tp.revise(1, _alt("No disc extrusion.", [dict(w, start=0.1, end=0.5) for w in live])))
+    assert rev["switches"] == [] and rev["suggestions"] == []
