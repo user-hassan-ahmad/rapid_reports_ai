@@ -58,3 +58,21 @@ Same 11 cases and sheets, production generator path, 2 runs per arm (66 reports)
 **Decision input:** ship reconciliation (B) in front of the medium generator. Reasoning off needs the compiled brief (stage 3: verbatim normals, findings mapped to sections), which targets exactly C's failure classes.
 
 Data: `backend/test_cases/sheet_reconcile_arms_runs.json`. Script: `backend/src/rapid_reports_ai/scripts/sheet_reconcile_arms.py`.
+
+## Applicability pruning — multiple Jev questions per item (2026-09-29)
+
+Can the sheet be cut down to what applies to this case, not just labelled? 5 cases (cerebellar haemorrhage, SDH, CTPA, diverticulitis, ct_tap), 210 items of 7 types, hand-labelled (5 ambiguous excluded). One Jev call per case asks 1–3 questions per item in parallel (60–109 questions per call, **0.31–0.49 s**, one 1.19 s outlier); Qwen 3.8 reasoning off returns one action per item (~0.6 s). Mandatory negatives were first split into single claims by Qwen (reasoning off), since a comma-and-or splitter garbles shared phrasing ("No filling defect in the SMA, celiac trunk, or IMV").
+
+| Item type | Best method | Result |
+|---|---|---|
+| Recommendation | Jev, one question ("condition unmet or belongs to a ruled-out diagnosis") | **13/13 removals, 0 wrong** |
+| Impression variant | Jev **choice** over the three exemplars | **5/5** (confidence 0.91–1.0); Qwen 5/5 |
+| Style exemplar | Jev "matches a dictated finding?" < 0.5 | recall 1.00, 2 wrong removals (Qwen identical) |
+| Differential branch | Jev settled ≥ 0.6 and present < 0.5 | precision 0.79, recall 0.55 under strict labels (see below) |
+| Negative clause (contradicted / expected / keep) | **Qwen** | Qwen 0.88 accuracy vs Jev 0.65 (Jev over-calls "expected") |
+| Measurement convention | **Qwen** | Jev 3 wrong removals of 7; Qwen 1 |
+| Suppression rule | none | All 34 are generic writing rules, none case-conditional: remove from the generator input in the lean pass, not per case |
+
+**Multi-question gating did not help where the questions are not independent.** For differentials, "nothing in the findings bears on it" scored as high on settled branches (median 0.62) as on open ones (0.72), so requiring it to be low cut recall to 0.10. The "present" question is strong (10/11, no false positives) and belongs in the gate; the "silent" question does not.
+
+**The remaining differential "errors" are a policy question.** All six are branches whose imaging sign the dictation does not mention (aneurysmal SAH, haemorrhagic transformation, distant abscess, fistula, SMA embolus). Labelled open under "silence never closes a branch"; both models read silence as excluded. By reporting convention a finding with a visible sign that is not dictated was not seen, the same logic that licenses normal-fill. Branch text is reasoning scaffolding; the pertinent negative that answers the question is kept separately. Under a "silence closes a branch whose imaging sign would have been dictated; never an imaging-silent one" policy, 4–5 of the 6 become correct.

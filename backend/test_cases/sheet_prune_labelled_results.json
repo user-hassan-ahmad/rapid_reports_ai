@@ -1,0 +1,2204 @@
+[
+ {
+  "name": "ct_head_cerebellar_haemorrhage",
+  "scan_type": "CT head non-con",
+  "clinical_history": "onset at 13:30 with left facial droop, left arm and leg weakness and slurred speech.\nBP 255/161",
+  "findings": "- There is a large area of parenchymal hemorrhage in the right cerebellum measuring 5 cm in diameter with significant peri-lesional vasogenic edema and this is causing major midline shift across the horizontal cerebellar axis with complete effacement of the cerebral aqueduct and fourth ventricle and crowding of the foramen magnum due to ipsilateral tonsillar herniation\n\n- There is some regional subarachnoid and subdural extension of haemorrhage along the tentorium\n\n- The background brain parenchyma otherwise appears unremarkable with no gross areas of infarction\n\n- Background chronic small vessel ischemic changes and age-appropriate involutional atrophy are noted with asymmetric predominance of the right frontal lobe",
+  "items": [
+   {
+    "type": "differential",
+    "text": "Triage: Acute intracranial haemorrhage (must be excluded before any thrombolytic) vs acute ischaemic stroke vs mimics (mass lesion, trauma, post-ictal change)",
+    "label": "P",
+    "jev": {
+     "present": 0.96,
+     "settled": 0.76,
+     "silent": 0.03
+    },
+    "qwen": "present"
+   },
+   {
+    "type": "differential",
+    "text": "Large vessel occlusion \u2014 hypodense vessel sign, territorial hypodensity, loss of grey-white differentiation in a single major vascular territory",
+    "label": "X",
+    "jev": {
+     "present": 0.03,
+     "settled": 0.79,
+     "silent": 0.81
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "differential",
+    "text": "Small vessel / lacunar \u2014 small deep infarct (basal ganglia, thalamus, pons, corona radiata), no cortical involvement",
+    "label": "X",
+    "jev": {
+     "present": 0.16,
+     "settled": 0.58,
+     "silent": 0.52
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "differential",
+    "text": "Cardioembolic \u2014 cortical or subcortical infarct, often in multiple vascular territories",
+    "label": "X",
+    "jev": {
+     "present": 0.03,
+     "settled": 0.67,
+     "silent": 0.81
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "differential",
+    "text": "Large artery atherosclerosis \u2014 infarct in a single major territory with associated chronic small vessel disease",
+    "label": "X",
+    "jev": {
+     "present": 0.06,
+     "settled": 0.72,
+     "silent": 0.64
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "differential",
+    "text": "Hypertensive small vessel disease \u2014 basal ganglia, thalamus, pons, cerebellum; associated with prior lacunes",
+    "label": "X",
+    "jev": {
+     "present": 0.42,
+     "settled": 0.31,
+     "silent": 0.33
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Coagulopathy, drug-induced, vasculitis, arterial dissection *(imaging-silent \u2014 requires CTA/angiography and clinical/laboratory correlation)*",
+    "label": "X",
+    "jev": {
+     "present": 0.1,
+     "settled": 0.13,
+     "silent": 0.87
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Hypertensive \u2014 basal ganglia, thalamus, pons, cerebellum; no underlying mass",
+    "label": "P",
+    "jev": {
+     "present": 0.69,
+     "settled": 0.32,
+     "silent": 0.23
+    },
+    "qwen": "present"
+   },
+   {
+    "type": "differential",
+    "text": "Ruptured aneurysm \u2014 subarachnoid blood in basal cisterns and Sylvian fissures",
+    "label": "O",
+    "jev": {
+     "present": 0.1,
+     "settled": 0.52,
+     "silent": 0.63
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "differential",
+    "text": "Arteriovenous malformation \u2014 haemorrhage with calcification or mixed density",
+    "label": "O",
+    "jev": {
+     "present": 0.07,
+     "settled": 0.27,
+     "silent": 0.76
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Cerebral amyloid angiopathy \u2014 lobar or cortical haemorrhage, multiple microbleeds (not visible on CT)",
+    "label": "O",
+    "jev": {
+     "present": 0.08,
+     "settled": 0.3,
+     "silent": 0.68
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Haemorrhagic transformation of ischaemic stroke \u2014 haemorrhage within a territorial infarct",
+    "label": "X",
+    "jev": {
+     "present": 0.05,
+     "settled": 0.69,
+     "silent": 0.7
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "differential",
+    "text": "Coagulopathy, anticoagulant use, neoplasm *(imaging-silent \u2014 requires contrast MRI and clinical/laboratory correlation)*",
+    "label": "O",
+    "jev": {
+     "present": 0.18,
+     "settled": 0.16,
+     "silent": 0.81
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Acute intracerebral haemorrhage (basal ganglia) Abnormal (uncomplicated): \"Right putaminal haemorrhage, 2.8 cm, with 3 mm midline shift to the left and mild perilesional oedema.\"",
+    "label": "K",
+    "jev": {
+     "match": 0.62,
+     "absent": 0.36
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Acute ischaemic infarct (MCA territory) Abnormal (uncomplicated): \"Right MCA territory ischaemic infarct with loss of grey-white differentiation in the right insula and right basal ganglia, and effacement of the right lateral sulcus.\"",
+    "label": "R",
+    "jev": {
+     "match": 0.25,
+     "absent": 0.38
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Mass effect / midline shift Abnormal (uncomplicated): \"8 mm midline shift to the left with effacement of the right lateral ventricle and early uncal herniation.\"",
+    "label": "K",
+    "jev": {
+     "match": 0.7,
+     "absent": 0.47
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Subarachnoid haemorrhage Abnormal (uncomplicated): \"Acute subarachnoid haemorrhage in the basal cisterns, right Sylvian fissure, and interhemispheric fissure.\"",
+    "label": "K",
+    "jev": {
+     "match": 0.49,
+     "absent": 0.39
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "impression_variant_choice",
+    "text": "[\"Normal exemplar: \\\"No acute intracranial haemorrhage, ischaemic change, mass effect, or hydrocephalus. No subarachnoid blood. No skull fracture. CTA head and neck recommended to assess for large vessel occlusion.\\\"\", \"Abnormal exemplar: \\\"Acute right basal ganglia haemorrhage with 6 mm midline shift and early uncal herniation. No ischaemic change. Neurosurgical referral urgent.\\\"\", \"Complicated exemplar: \\\"Acute right basal ganglia haemorrhage, 4.2 cm, with 12 mm midline shift, uncal herniation, and obstructive hydrocephalus. No ischaemic change. Neurosurgical referral urgent.\\\"\"]",
+    "label": "2",
+    "jev": {
+     "choice": "v2",
+     "confidence": 0.99
+    },
+    "qwen": "v2"
+   },
+   {
+    "type": "recommendation",
+    "text": "IMAGING: CTA head and neck to assess for large vessel occlusion and thrombectomy eligibility",
+    "label": "R",
+    "jev": {
+     "met": 0.09,
+     "unmet": 0.88
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "recommendation",
+    "text": "IMAGING: MRI brain with DWI to characterise early ischaemic change when non-contrast CT is equivocal or negative in a high-probability clinical context",
+    "label": "R",
+    "jev": {
+     "met": 0.08,
+     "unmet": 0.7
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "recommendation",
+    "text": "REFERRAL: Neurosurgical review, urgent, for intracerebral haemorrhage with mass effect or herniation",
+    "label": "K",
+    "jev": {
+     "met": 0.98,
+     "unmet": 0.15
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "recommendation",
+    "text": "REFERRAL: Neurovascular / stroke unit review, urgent, for confirmed ischaemic stroke",
+    "label": "R",
+    "jev": {
+     "met": 0.04,
+     "unmet": 0.86
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "recommendation",
+    "text": "CORRELATION: Clinical correlation for aetiology where imaging is non-specific (coagulopathy, anticoagulant use, vasculitis)",
+    "label": "K",
+    "jev": {
+     "met": 0.51,
+     "unmet": 0.39
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF the index finding (haemorrhage or infarct) is named with its descriptor in P1, THEN the sweep paragraph for that region names the structure only, without restating the descriptor.",
+    "label": "K",
+    "jev": {
+     "applies": 0.45
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF a triage differential is excluded by the imaging (e.g. no haemorrhage, no SAH), THEN state it as a single compact negative in FINDINGS and carry it into the IMPRESSION as a direct negative answer; do not elaborate in both locations.",
+    "label": "K",
+    "jev": {
+     "applies": 0.48
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF dictation is silent about an in-scope structure the sweep order visits, THEN render the structure's canonical default-normal line at its sweep position; if dictation specifies a positive finding, replace the canonical line; if dictation flags a technical limitation, that triggers LIMITATIONS inclusion.",
+    "label": "K",
+    "jev": {
+     "applies": 0.49
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF multiple negatives fire in one subsystem (e.g. no haemorrhage, no SAH, no extra-axial collection all in the extra-axial sweep), THEN consolidate into a single sentence.",
+    "label": "K",
+    "jev": {
+     "applies": 0.51
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF a descriptor is mentioned once in P1, THEN it is not repeated in subsequent paragraphs; structures are described in one place.",
+    "label": "K",
+    "jev": {
+     "applies": 0.56
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF adjacent-in-sweep structures (e.g. left hemisphere, posterior fossa, extra-axial spaces) are all normal, THEN consolidate into a single paragraph; a paragraph earns its own boundary only when it carries a positive finding, a differential-targeted negative the clinical question turns on, or a clinical pivot between body regions.",
+    "label": "K",
+    "jev": {
+     "applies": 0.52
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "measurement",
+    "text": "Intracerebral haemorrhage: largest diameter in cm (0.1 cm precision) \u2014 required; volume by ABC/2 if dictation provides",
+    "label": "K",
+    "jev": {
+     "applies": 0.64
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "measurement",
+    "text": "Midline shift: mm at level of septum pellucidum \u2014 required when present",
+    "label": "K",
+    "jev": {
+     "applies": 0.42
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "measurement",
+    "text": "Ventricle size: qualitative (normal, mildly dilated, dilated) or lateral ventricle width in mm \u2014 required when abnormal",
+    "label": "K",
+    "jev": {
+     "applies": 0.32
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No acute intracranial haemorrhage.",
+    "parent": "No acute intracranial haemorrhage.",
+    "label": "C",
+    "jev": {
+     "contra": 0.62,
+     "expected": 0.45
+    },
+    "qwen": "contradicted"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No subarachnoid blood.",
+    "parent": "No subarachnoid blood.",
+    "label": "C",
+    "jev": {
+     "contra": 0.85,
+     "expected": 0.45
+    },
+    "qwen": "contradicted"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No mass effect.",
+    "parent": "No mass effect, midline shift, or hydrocephalus.",
+    "label": "C",
+    "jev": {
+     "contra": 0.67,
+     "expected": 0.5
+    },
+    "qwen": "contradicted"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No midline shift.",
+    "parent": "No mass effect, midline shift, or hydrocephalus.",
+    "label": "C",
+    "jev": {
+     "contra": 0.74,
+     "expected": 0.3
+    },
+    "qwen": "contradicted"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No hydrocephalus.",
+    "parent": "No mass effect, midline shift, or hydrocephalus.",
+    "label": "E",
+    "jev": {
+     "contra": 0.53,
+     "expected": 0.52
+    },
+    "qwen": "contradicted"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No hypodense vessel sign.",
+    "parent": "No hypodense vessel sign.",
+    "label": "K",
+    "jev": {
+     "contra": 0.47,
+     "expected": 0.43
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No skull fracture.",
+    "parent": "No skull fracture.",
+    "label": "K",
+    "jev": {
+     "contra": 0.37,
+     "expected": 0.49
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No extra-axial collection.",
+    "parent": "No extra-axial collection.",
+    "label": "C",
+    "jev": {
+     "contra": 0.71,
+     "expected": 0.41
+    },
+    "qwen": "contradicted"
+   }
+  ]
+ },
+ {
+  "name": "ct_tap_acute_abdomen_gda_bleed",
+  "scan_type": "CT thorax abdomen pelvis",
+  "clinical_history": "72F, admitted 4 days ago with confusion and falls. Background AF on apixaban, T2DM, previous right MCA stroke with residual left hemiparesis. Today developed acute abdominal pain localised to epigastrium with associated vomiting. Lactate 4.2, Hb dropped from 112 to 87 over 24 hours. Query mesenteric ischaemia, query GI bleed source, query intra-abdominal pathology. Previous imaging includes CT head on admission (old infarct only) and an abdominal ultrasound 6 months ago (fatty liver, small abdominal aortic aneurysm 3.8cm infrarenal).",
+  "findings": "Scan performed thorax abdomen pelvis portal venous phase, no arterial phase obtained\nLarge volume haemoperitoneum throughout abdomen and pelvis, highest density in pelvis and around liver\nActive contrast extravasation from gastroduodenal artery branch, approximately 2cm distal to origin, forming a small pseudoaneurysm approximately 8mm\nDuodenum D1/D2 shows wall thickening and mural gas, adjacent fat stranding\nInfrarenal abdominal aortic aneurysm now measures 4.6cm, previously 3.8cm on US 6 months ago, no evidence of rupture or contained leak\nPancreas appears atrophic with pancreatic duct dilation to 6mm, calcifications within pancreatic head, consistent with chronic pancreatitis\nMultiple small hypodensities in both kidneys, largest 1.2cm right interpolar, not fully characterised on this phase\nLarge hiatus hernia with approximately 40% of stomach intrathoracic\nBilateral dependent atelectasis, small right pleural effusion\nLeft adrenal thickening, nodular, 2.4cm, not previously characterised\nCholelithiasis, no wall thickening\nModerate bilateral pelvic free fluid continuous with the haemoperitoneum\nOld right MCA territory encephalomalacia visible on scout images only\nBladder partially distended, catheter not yet placed\nDiffuse colonic faecal loading\nBackground mild-moderate atherosclerosis",
+  "items": [
+   {
+    "type": "differential",
+    "text": "Triage: Mesenteric ischaemia (arterial embolic, venous thrombotic, non-occlusive, or acute-on-chronic atherosclerotic); GI haemorrhage source (upper GI, lower GI, mesenteric, or retroperitoneal); intra-abdominal catastrophe (AAA rupture, perforation, obstruction, abscess)",
+    "label": "P",
+    "jev": {
+     "present": 0.81,
+     "settled": 0.38,
+     "silent": 0.08
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Arterial embolic (SMA or celiac embolus) \u2014 filling defect in SMA or celiac trunk, abrupt vessel cutoff, bowel wall oedema and enhancement loss in SMA or celiac territory",
+    "label": "O",
+    "jev": {
+     "present": 0.04,
+     "settled": 0.55,
+     "silent": 0.72
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Mesenteric venous thrombosis \u2014 filling defect in SMV or IMV, bowel wall oedema with preserved arterial enhancement, mesenteric stranding",
+    "label": "O",
+    "jev": {
+     "present": 0.03,
+     "settled": 0.32,
+     "silent": 0.7
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Non-occlusive mesenteric ischaemia \u2014 diffuse SMA or celiac narrowing without focal occlusion, bowel wall enhancement loss in watershed distribution (splenic flexure, rectosigmoid)",
+    "label": "O",
+    "jev": {
+     "present": 0.04,
+     "settled": 0.38,
+     "silent": 0.78
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Acute-on-chronic atherosclerotic \u2014 calcified plaque, stenosis > 70% in SMA, celiac, or IMV, collateral vessels (gastroomental, colic arcades)",
+    "label": "O",
+    "jev": {
+     "present": 0.06,
+     "settled": 0.26,
+     "silent": 0.69
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Coagulopathy / apixaban-related mucosal injury *(imaging-silent \u2014 requires clinical/laboratory correlation)*",
+    "label": "O",
+    "jev": {
+     "present": 0.2,
+     "settled": 0.15,
+     "silent": 0.76
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Cardioembolic source (AF-related) *(imaging-silent \u2014 requires echocardiography / clinical correlation)*",
+    "label": "O",
+    "jev": {
+     "present": 0.11,
+     "settled": 0.12,
+     "silent": 0.9
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Upper GI (gastric or duodenal) \u2014 active contrast extravasation in stomach or duodenum, perilesional stranding",
+    "label": "P",
+    "jev": {
+     "present": 0.78,
+     "settled": 0.36,
+     "silent": 0.09
+    },
+    "qwen": "present"
+   },
+   {
+    "type": "differential",
+    "text": "Lower GI (colonic) \u2014 active contrast extravasation in colon, perilesional stranding",
+    "label": "X",
+    "jev": {
+     "present": 0.03,
+     "settled": 0.51,
+     "silent": 0.71
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Mesenteric / small bowel \u2014 active contrast extravasation in small bowel, mesenteric stranding",
+    "label": "X",
+    "jev": {
+     "present": 0.12,
+     "settled": 0.48,
+     "silent": 0.29
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Angiodysplasia / small vessel source *(imaging-silent \u2014 requires endoscopy or angiography)*",
+    "label": "X",
+    "jev": {
+     "present": 0.09,
+     "settled": 0.17,
+     "silent": 0.77
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Apixaban-related mucosal bleeding *(imaging-silent \u2014 requires clinical/laboratory correlation)*",
+    "label": "O",
+    "jev": {
+     "present": 0.19,
+     "settled": 0.16,
+     "silent": 0.73
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "AAA rupture \u2014 periaortic haemorrhage, loss of periaortic fat planes, retroperitoneal haematoma, contrast extravasation",
+    "label": "X",
+    "jev": {
+     "present": 0.04,
+     "settled": 0.82,
+     "silent": 0.46
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "differential",
+    "text": "Perforation \u2014 free intraperitoneal gas, extraluminal contrast, pericolic or perigastric stranding",
+    "label": "O",
+    "jev": {
+     "present": 0.38,
+     "settled": 0.4,
+     "silent": 0.13
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Obstruction \u2014 dilated bowel loops, transition point, wall thickening",
+    "label": "O",
+    "jev": {
+     "present": 0.07,
+     "settled": 0.46,
+     "silent": 0.47
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Abscess / collection \u2014 rim-enhancing fluid collection, gas within collection",
+    "label": "O",
+    "jev": {
+     "present": 0.13,
+     "settled": 0.38,
+     "silent": 0.56
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Mesenteric vessel occlusion Abnormal (uncomplicated): \"The SMA is occluded at its origin with a 4.2 cm filling defect extending into the proximal jejunal branches; the celiac trunk and IMV are patent.\"",
+    "label": "R",
+    "jev": {
+     "match": 0.33,
+     "absent": 0.52
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Bowel wall ischaemia Abnormal (uncomplicated): \"The proximal jejunum is dilated to 4.8 cm with mural enhancement loss over a 12 cm segment and submucosal oedema; no pneumatosis or portal venous gas is present.\"",
+    "label": "R",
+    "jev": {
+     "match": 0.35,
+     "absent": 0.58
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Abdominal aorta with periaortic abnormality Abnormal (uncomplicated): \"The infrarenal abdominal aorta measures 41 mm in maximum transverse diameter, increased from 38 mm on prior imaging, with a 2.3 cm periaortic haematoma and no active contrast extravasation.\"",
+    "label": "K",
+    "jev": {
+     "match": 0.41,
+     "absent": 0.64
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Active GI contrast extravasation Abnormal (uncomplicated): \"The distal duodenum shows active contrast extravasation with a 1.8 cm perilesional haematoma; no other site of extravasation is identified.\"",
+    "label": "K",
+    "jev": {
+     "match": 0.52,
+     "absent": 0.63
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "impression_variant_choice",
+    "text": "[\"Normal exemplar: \\\"No mesenteric ischaemia, active haemorrhage, or acute intra-abdominal pathology identified. Mesenteric vasculature patent; bowel wall enhancement normal; no active extravasation. Abdominal aorta stable at 38 mm. No free gas or fluid. No acute thoracic or osseous abnormality.\\\"\", \"Abnormal exemplar: \\\"Acute mesenteric ischaemia: SMA occlusion at its origin. No pneumatosis or portal venous gas. No active contrast extravasation. Abdominal aorta stable at 38 mm. Urgent vascular surgical and interventional radiology referral recommended.\\\"\", \"Complicated exemplar: \\\"1. Acute mesenteric ischaemia: SMA occlusion at its origin with jejunal mural enhancement loss and portal venous gas. Urgent vascular surgical and interventional radiology referral recommended. 2. Infrarenal AAA 41 mm, increased from 38 mm, with 2.3 cm periaortic haematoma. Urgent vascular surgical review recommended. 3. No active GI contrast extravasation identified. Urgent gastroenterology referral for upper and lower endoscopy recommended.\\\"\"]",
+    "label": "2",
+    "jev": {
+     "choice": "v2",
+     "confidence": 0.97
+    },
+    "qwen": "v2"
+   },
+   {
+    "type": "recommendation",
+    "text": "IMAGING: CTA mesenteric vessels if the current study is non-contrast and mesenteric vasculature is not assessed (resolves arterial versus venous aetiology of ischaemia)",
+    "label": "R",
+    "jev": {
+     "met": 0.05,
+     "unmet": 0.73
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "recommendation",
+    "text": "REFERRAL: Vascular surgery (emergent) for mesenteric ischaemia with bowel infarction or AAA rupture",
+    "label": "R",
+    "jev": {
+     "met": 0.17,
+     "unmet": 0.81
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "recommendation",
+    "text": "REFERRAL: Interventional radiology (urgent) for active contrast extravasation amenable to embolisation",
+    "label": "K",
+    "jev": {
+     "met": 0.97,
+     "unmet": 0.15
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "recommendation",
+    "text": "REFERRAL: Gastroenterology (urgent) for upper and lower endoscopy when no active extravasation is identified on CT and haemorrhage source remains unconfirmed",
+    "label": "R",
+    "jev": {
+     "met": 0.06,
+     "unmet": 0.71
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "recommendation",
+    "text": "REFERRAL: General or colorectal surgery (urgent) for perforation, complete obstruction, or bowel infarction requiring resection",
+    "label": "R",
+    "jev": {
+     "met": 0.5,
+     "unmet": 0.64
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "recommendation",
+    "text": "CORRELATION: Lactate, full blood count, coagulation screen, and apixaban level for clinical correlation with imaging findings",
+    "label": "K",
+    "jev": {
+     "met": 0.83,
+     "unmet": 0.35
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF the index finding is named with its descriptor in P1 THEN the sweep paragraph for that region names the structure only, without restating the descriptor.",
+    "label": "K",
+    "jev": {
+     "applies": 0.37
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF a triage differential is excluded by the imaging THEN state it as a single compact negative in FINDINGS and carry it into the IMPRESSION as a direct negative answer; do not elaborate in both locations.",
+    "label": "K",
+    "jev": {
+     "applies": 0.41
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF dictation is silent about an in-scope structure the sweep order visits THEN render the structure's canonical default-normal line at its sweep position; silence is not omission in the report \u2014 it is the default rendering. The default rendering is defeasible: where a dictated positive implicates the structure as a companion (the Companion Matrix names it as a secondary effect, complication, or paired-territory consequence of that positive), the canonical normal line is dropped or rendered in a contingent form that does not assert. Coverage of the structure remains obligatory; the specific normal assertion does not. Mandatory negatives are never suppressed by this rule.",
+    "label": "K",
+    "jev": {
+     "applies": 0.49
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF multiple negatives fire in one subsystem THEN consolidate into a single sentence.",
+    "label": "K",
+    "jev": {
+     "applies": 0.52
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF a descriptor is mentioned once THEN it is not repeated in subsequent paragraphs; structures are described in one place.",
+    "label": "K",
+    "jev": {
+     "applies": 0.66
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF adjacent-in-sweep structures have all-normal canonical lines THEN consolidate into a single paragraph; a paragraph earns its own boundary only when it carries case-specific content (a positive finding, a differential-targeted negative, or a clinical pivot between body regions).",
+    "label": "K",
+    "jev": {
+     "applies": 0.48
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF the clinical history establishes patient gender (72F in this case) THEN canonical default-normal lines for pelvic structures name the gender-appropriate organs directly (uterus and ovaries); if gender were not established, generic phrasing would apply (\"the pelvic viscera are unremarkable\").",
+    "label": "K",
+    "jev": {
+     "applies": 0.38
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "measurement",
+    "text": "Mesenteric vessel occlusion: Named vessel and level of occlusion (origin, proximal, mid, distal, named branch); length of filling defect in cm \u2014 required when occlusion or significant stenosis is identified",
+    "label": "R",
+    "jev": {
+     "applies": 0.06
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "measurement",
+    "text": "Abdominal aorta: Maximum transverse diameter in mm (to nearest mm); interval change from prior in mm \u2014 required when prior AAA is known; periaortic haematoma size in cm if present",
+    "label": "K",
+    "jev": {
+     "applies": 0.83
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "measurement",
+    "text": "Bowel segment: Wall thickness in mm; segment length in cm; presence or absence of pneumatosis and portal venous gas \u2014 required when bowel wall abnormality is identified",
+    "label": "K",
+    "jev": {
+     "applies": 0.46
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No filling defect in the SMA to suggest mesenteric arterial occlusion.",
+    "parent": "No filling defect in the SMA, celiac trunk, or IMV to suggest mesenteric arterial occlusion.",
+    "label": "K",
+    "jev": {
+     "contra": 0.38,
+     "expected": 0.5
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No filling defect in the celiac trunk to suggest mesenteric arterial occlusion.",
+    "parent": "No filling defect in the SMA, celiac trunk, or IMV to suggest mesenteric arterial occlusion.",
+    "label": "K",
+    "jev": {
+     "contra": 0.39,
+     "expected": 0.52
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No filling defect in the IMV to suggest mesenteric arterial occlusion.",
+    "parent": "No filling defect in the SMA, celiac trunk, or IMV to suggest mesenteric arterial occlusion.",
+    "label": "K",
+    "jev": {
+     "contra": 0.38,
+     "expected": 0.46
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No filling defect in the SMV to suggest mesenteric venous thrombosis.",
+    "parent": "No filling defect in the SMV or IMV to suggest mesenteric venous thrombosis.",
+    "label": "K",
+    "jev": {
+     "contra": 0.4,
+     "expected": 0.49
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No filling defect in the IMV to suggest mesenteric venous thrombosis.",
+    "parent": "No filling defect in the SMV or IMV to suggest mesenteric venous thrombosis.",
+    "label": "K",
+    "jev": {
+     "contra": 0.35,
+     "expected": 0.47
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No bowel wall enhancement abnormality to suggest bowel ischaemia or infarction.",
+    "parent": "No bowel wall enhancement abnormality, pneumatosis, or portal venous gas to suggest bowel ischaemia or infarction.",
+    "label": "C",
+    "jev": {
+     "contra": 0.48,
+     "expected": 0.47
+    },
+    "qwen": "contradicted"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No pneumatosis to suggest bowel ischaemia or infarction.",
+    "parent": "No bowel wall enhancement abnormality, pneumatosis, or portal venous gas to suggest bowel ischaemia or infarction.",
+    "label": "C",
+    "jev": {
+     "contra": 0.54,
+     "expected": 0.35
+    },
+    "qwen": "contradicted"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No portal venous gas to suggest bowel ischaemia or infarction.",
+    "parent": "No bowel wall enhancement abnormality, pneumatosis, or portal venous gas to suggest bowel ischaemia or infarction.",
+    "label": "K",
+    "jev": {
+     "contra": 0.48,
+     "expected": 0.55
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No active contrast extravasation within the GI tract to suggest active haemorrhage.",
+    "parent": "No active contrast extravasation within the GI tract or retroperitoneum to suggest active haemorrhage.",
+    "label": "C",
+    "jev": {
+     "contra": 0.46,
+     "expected": 0.38
+    },
+    "qwen": "contradicted"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No active contrast extravasation within the retroperitoneum to suggest active haemorrhage.",
+    "parent": "No active contrast extravasation within the GI tract or retroperitoneum to suggest active haemorrhage.",
+    "label": "A",
+    "jev": {
+     "contra": 0.63,
+     "expected": 0.49
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No periaortic haemorrhage to suggest aneurysm rupture.",
+    "parent": "No periaortic haemorrhage, loss of periaortic fat planes, or interval enlargement of the abdominal aorta to suggest aneurysm rupture.",
+    "label": "K",
+    "jev": {
+     "contra": 0.38,
+     "expected": 0.64
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No loss of periaortic fat planes to suggest aneurysm rupture.",
+    "parent": "No periaortic haemorrhage, loss of periaortic fat planes, or interval enlargement of the abdominal aorta to suggest aneurysm rupture.",
+    "label": "K",
+    "jev": {
+     "contra": 0.32,
+     "expected": 0.62
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No interval enlargement of the abdominal aorta to suggest aneurysm rupture.",
+    "parent": "No periaortic haemorrhage, loss of periaortic fat planes, or interval enlargement of the abdominal aorta to suggest aneurysm rupture.",
+    "label": "C",
+    "jev": {
+     "contra": 0.33,
+     "expected": 0.3
+    },
+    "qwen": "contradicted"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No free intraperitoneal gas to suggest bowel or gastric perforation.",
+    "parent": "No free intraperitoneal gas to suggest bowel or gastric perforation.",
+    "label": "K",
+    "jev": {
+     "contra": 0.57,
+     "expected": 0.5
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No free intraperitoneal fluid to suggest haemoperitoneum or peritonitis.",
+    "parent": "No free intraperitoneal fluid to suggest haemoperitoneum or peritonitis.",
+    "label": "C",
+    "jev": {
+     "contra": 0.52,
+     "expected": 0.28
+    },
+    "qwen": "contradicted"
+   }
+  ]
+ },
+ {
+  "name": "ct_head_out_of_volume_and_companion_contradiction",
+  "scan_type": "CT head non-contrast",
+  "clinical_history": "Elderly fall on anticoagulation, reduced GCS. Query intracranial haemorrhage.",
+  "findings": "- acute subdural haematoma along the right cerebral convexity, maximal thickness 8 mm, with 3 mm of midline shift to the left\n- no skull vault fracture\n- age-related involutional change",
+  "items": [
+   {
+    "type": "differential",
+    "text": "Triage: Intracranial haemorrhage in any compartment vs ischaemic infarct vs mass lesion vs normal \u2014 the imaging must exclude a surgical or reversal-gating bleed before the clinical team proceeds",
+    "label": "P",
+    "jev": {
+     "present": 0.94,
+     "settled": 0.46,
+     "silent": 0.03
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Traumatic (fall-related) \u2014 convexity subdural, biconvex epidural, cortical contusions (frontal/temporal poles, contrecoup), petechial haemorrhages at grey-white junction or corpus callosum",
+    "label": "P",
+    "jev": {
+     "present": 0.76,
+     "settled": 0.29,
+     "silent": 0.22
+    },
+    "qwen": "present"
+   },
+   {
+    "type": "differential",
+    "text": "Hypertensive / spontaneous \u2014 deep location (putamen, thalamus, pons, cerebellum) without cortical component",
+    "label": "X",
+    "jev": {
+     "present": 0.02,
+     "settled": 0.79,
+     "silent": 0.87
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "differential",
+    "text": "Cerebral amyloid angiopathy \u2014 lobar or cortical haemorrhage, multiple foci",
+    "label": "X",
+    "jev": {
+     "present": 0.04,
+     "settled": 0.53,
+     "silent": 0.85
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "differential",
+    "text": "Aneurysmal subarachnoid \u2014 hyperdense blood in basal cisterns, interhemispheric fissure, and Sylvian fissures in a distribution not explained by trauma",
+    "label": "O",
+    "jev": {
+     "present": 0.03,
+     "settled": 0.73,
+     "silent": 0.78
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "differential",
+    "text": "Haemorrhagic transformation of ischaemic infarct \u2014 haemorrhage within a hypodense vascular territory",
+    "label": "O",
+    "jev": {
+     "present": 0.03,
+     "settled": 0.64,
+     "silent": 0.86
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "differential",
+    "text": "Tumour-related \u2014 mass with haemorrhagic component, surrounding oedema disproportionate to haemorrhage volume",
+    "label": "O",
+    "jev": {
+     "present": 0.04,
+     "settled": 0.44,
+     "silent": 0.74
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "differential",
+    "text": "Anticoagulation-related *(imaging-silent \u2014 requires clinical/laboratory correlation)*",
+    "label": "P",
+    "jev": {
+     "present": 0.33,
+     "settled": 0.12,
+     "silent": 0.85
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Coagulopathy *(imaging-silent \u2014 requires clinical/laboratory correlation)*",
+    "label": "O",
+    "jev": {
+     "present": 0.2,
+     "settled": 0.08,
+     "silent": 0.85
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Subdural haematoma Abnormal (uncomplicated): \"A 12 mm right convexity subdural haematoma without midline shift or ventricular compression.\"",
+    "label": "K",
+    "jev": {
+     "match": 0.8,
+     "absent": 0.58
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Intraparenchymal haemorrhage Abnormal (uncomplicated): \"A 28 \u00d7 22 mm left putaminal haemorrhage, estimated volume 24 ml by ABC/2, with 5 mm midline shift to the right and effacement of the left lateral ventricle.\"",
+    "label": "R",
+    "jev": {
+     "match": 0.41,
+     "absent": 0.42
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Subarachnoid haemorrhage Abnormal (uncomplicated): \"Hyperdense blood in the basal cisterns, interhemispheric fissure, and right Sylvian fissure, consistent with subarachnoid haemorrhage.\"",
+    "label": "R",
+    "jev": {
+     "match": 0.36,
+     "absent": 0.3
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Skull fracture Abnormal (uncomplicated): \"A linear fracture of the right parietal bone without depression or diastasis.\"",
+    "label": "R",
+    "jev": {
+     "match": 0.17,
+     "absent": 0.33
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "impression_variant_choice",
+    "text": "[\"Normal exemplar: \\\"No intracranial haemorrhage, mass lesion, or acute infarct. No midline shift or ventricular abnormality. No skull fracture.\\\"\", \"Abnormal exemplar: \\\"Acute right convexity subdural haematoma with 8 mm midline shift and effacement of the right lateral ventricle. Neurosurgical referral urgent.\\\"\", \"Complicated exemplar: \\\"Acute left putaminal haemorrhage, estimated volume 32 ml by ABC/2, with 10 mm midline shift, left uncal herniation, and intraventricular extension into the left lateral ventricle. Neurosurgical referral urgent. CTA head recommended to exclude an underlying vascular malformation.\\\"\"]",
+    "label": "1",
+    "jev": {
+     "choice": "v1",
+     "confidence": 0.99
+    },
+    "qwen": "v1"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF the index haemorrhage is named with its compartment, location, and dimensions in P1, THEN the sweep paragraph for that region names the structure only, without restating the descriptor",
+    "label": "K",
+    "jev": {
+     "applies": 0.5
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF a triage differential (e.g. ischaemic infarct, mass lesion) is excluded by the imaging, THEN state it as a single compact negative in FINDINGS and carry it into the IMPRESSION as a direct negative answer; do not elaborate in both locations",
+    "label": "K",
+    "jev": {
+     "applies": 0.46
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF dictation is silent about an in-scope structure the sweep order visits, THEN render the structure's canonical default-normal line at its sweep position; if dictation specifies a positive finding, replace the canonical line; if dictation flags a technical limitation, that triggers LIMITATIONS inclusion",
+    "label": "K",
+    "jev": {
+     "applies": 0.55
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF a dictated positive finding implicates a structure as a companion (e.g. haemorrhage causing ventricular compression), THEN the canonical normal line for that structure is dropped or rendered in contingent form; coverage of the structure remains obligatory, the specific normal assertion does not",
+    "label": "K",
+    "jev": {
+     "applies": 0.58
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF multiple negatives fire in one subsystem (e.g. no haemorrhage, no mass, no infarct in the parenchyma), THEN consolidate into a single sentence",
+    "label": "K",
+    "jev": {
+     "applies": 0.45
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF a descriptor is mentioned once in P1, THEN it is not repeated in subsequent paragraphs; structures are described in one place",
+    "label": "K",
+    "jev": {
+     "applies": 0.73
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF adjacent-in-sweep structures are all normal, THEN consolidate into a single paragraph; a paragraph earns its own boundary only when it carries a positive finding, a differential-targeted negative, or a clinical pivot",
+    "label": "K",
+    "jev": {
+     "applies": 0.54
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "measurement",
+    "text": "Intraparenchymal haemorrhage volume: Longest axis \u00d7 perpendicular axis \u00d7 number of slices \u00d7 slice thickness \u00f7 2 (ABC/2), in millilitres \u2014 required for all intraparenchymal haemorrhages; the ICH score components (volume, ventricular extension, lobar vs deep location, GCS, age) are the framework the clinical team uses, and the radiologist reports the imaging components",
+    "label": "R",
+    "jev": {
+     "applies": 0.06
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "measurement",
+    "text": "Midline shift: Degree in mm at the level of the septum pellucidum \u2014 required when shift is present; >5 mm is the threshold that changes neurosurgical urgency",
+    "label": "K",
+    "jev": {
+     "applies": 0.64
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "measurement",
+    "text": "Subdural / epidural thickness: Maximum perpendicular thickness in mm \u2014 required for all subdural and epidural collections; >10 mm thickness or >5 mm midline shift are the thresholds that alter management",
+    "label": "K",
+    "jev": {
+     "applies": 0.94
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No hyperdense subdural haemorrhage.",
+    "parent": "No hyperdense subdural, epidural, intraparenchymal, or intraventricular haemorrhage.",
+    "label": "C",
+    "jev": {
+     "contra": 0.59,
+     "expected": 0.17
+    },
+    "qwen": "contradicted"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No hyperdense epidural haemorrhage.",
+    "parent": "No hyperdense subdural, epidural, intraparenchymal, or intraventricular haemorrhage.",
+    "label": "K",
+    "jev": {
+     "contra": 0.54,
+     "expected": 0.53
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No hyperdense intraparenchymal haemorrhage.",
+    "parent": "No hyperdense subdural, epidural, intraparenchymal, or intraventricular haemorrhage.",
+    "label": "K",
+    "jev": {
+     "contra": 0.57,
+     "expected": 0.48
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No hyperdense intraventricular haemorrhage.",
+    "parent": "No hyperdense subdural, epidural, intraparenchymal, or intraventricular haemorrhage.",
+    "label": "K",
+    "jev": {
+     "contra": 0.48,
+     "expected": 0.5
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No hyperdense blood in the basal cisterns.",
+    "parent": "No hyperdense blood in the basal cisterns, sulci, or interhemispheric fissure.",
+    "label": "K",
+    "jev": {
+     "contra": 0.39,
+     "expected": 0.41
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No hyperdense blood in the sulci.",
+    "parent": "No hyperdense blood in the basal cisterns, sulci, or interhemispheric fissure.",
+    "label": "K",
+    "jev": {
+     "contra": 0.41,
+     "expected": 0.4
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No hyperdense blood in the interhemispheric fissure.",
+    "parent": "No hyperdense blood in the basal cisterns, sulci, or interhemispheric fissure.",
+    "label": "K",
+    "jev": {
+     "contra": 0.45,
+     "expected": 0.44
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No focal hypodensity to suggest acute ischaemic infarct.",
+    "parent": "No focal hypodensity to suggest acute ischaemic infarct.",
+    "label": "K",
+    "jev": {
+     "contra": 0.43,
+     "expected": 0.45
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No midline shift.",
+    "parent": "No midline shift, ventricular compression, or herniation.",
+    "label": "C",
+    "jev": {
+     "contra": 0.69,
+     "expected": 0.39
+    },
+    "qwen": "contradicted"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No ventricular compression.",
+    "parent": "No midline shift, ventricular compression, or herniation.",
+    "label": "E",
+    "jev": {
+     "contra": 0.47,
+     "expected": 0.52
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No herniation.",
+    "parent": "No midline shift, ventricular compression, or herniation.",
+    "label": "A",
+    "jev": {
+     "contra": 0.45,
+     "expected": 0.5
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No skull fracture identified.",
+    "parent": "No skull fracture identified.",
+    "label": "K",
+    "jev": {
+     "contra": 0.13,
+     "expected": 0.42
+    },
+    "qwen": "contradicted"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No mass lesion.",
+    "parent": "No mass lesion or abnormal parenchymal density.",
+    "label": "K",
+    "jev": {
+     "contra": 0.73,
+     "expected": 0.45
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No abnormal parenchymal density.",
+    "parent": "No mass lesion or abnormal parenchymal density.",
+    "label": "K",
+    "jev": {
+     "contra": 0.63,
+     "expected": 0.45
+    },
+    "qwen": "keep"
+   }
+  ]
+ },
+ {
+  "name": "ctpa_acute_pe_rv_strain",
+  "scan_type": "CTPA",
+  "clinical_history": "58M, sudden onset pleuritic chest pain and dyspnoea, SpO2 91% on air, HR 112, D-dimer 4.2, Wells score 6. Query PE.",
+  "findings": "- Filling defects right main pulmonary artery extending into lower lobe segmental branches\n- Further filling defect left lower lobe segmental artery\n- RV:LV ratio 1.2, interventricular septal flattening\n- Small right pleural effusion\n- Mosaic attenuation right lower lobe, no consolidation\n- No pericardial effusion\n- Incidental 5mm right upper lobe pulmonary nodule\n- Thyroid and imaged upper abdomen unremarkable",
+  "items": [
+   {
+    "type": "differential",
+    "text": "Triage: Pulmonary arterial filling defect (PE) vs aortic dissection (intimal flap, intramural haematoma) vs pneumothorax vs pulmonary parenchymal disease (consolidation, oedema) vs pleural effusion vs pericardial effusion",
+    "label": "P",
+    "jev": {
+     "present": 0.96,
+     "settled": 0.72,
+     "silent": 0.09
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Acute PE \u2014 well-defined, central intraluminal filling defect with abrupt calibre change, no vessel wall thickening",
+    "label": "P",
+    "jev": {
+     "present": 0.85,
+     "settled": 0.17,
+     "silent": 0.11
+    },
+    "qwen": "present"
+   },
+   {
+    "type": "differential",
+    "text": "Subacute/chronic PE \u2014 eccentric, wall-adherent filling defect, webs, band-like retraction, mosaic perfusion pattern, main pulmonary artery dilatation",
+    "label": "O",
+    "jev": {
+     "present": 0.28,
+     "settled": 0.29,
+     "silent": 0.16
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Saddle/massive PE \u2014 filling defect straddling the main pulmonary artery bifurcation with bilateral lobar extension",
+    "label": "X",
+    "jev": {
+     "present": 0.13,
+     "settled": 0.63,
+     "silent": 0.52
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "differential",
+    "text": "Provoked vs unprovoked *(imaging-silent \u2014 requires clinical/laboratory correlation)*",
+    "label": "O",
+    "jev": {
+     "present": 0.23,
+     "settled": 0.09,
+     "silent": 0.91
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "differential",
+    "text": "Underlying malignancy as provoking factor *(imaging-silent \u2014 requires clinical correlation and further workup)*",
+    "label": "O",
+    "jev": {
+     "present": 0.22,
+     "settled": 0.12,
+     "silent": 0.59
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Pulmonary arterial filling defect (PE) Abnormal (uncomplicated): \"A 14-mm intraluminal filling defect is present in the right main pulmonary artery, extending into the right upper lobe and right middle lobe pulmonary arteries, with abrupt calibre change at the site of occlusion.\"",
+    "label": "K",
+    "jev": {
+     "match": 0.89,
+     "absent": 0.65
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Right heart strain Abnormal (uncomplicated): \"The right ventricle is dilated with an RV/LV ratio of 1.3 and interventricular septal bowing towards the left ventricle; the main pulmonary artery measures 34 mm.\"",
+    "label": "K",
+    "jev": {
+     "match": 0.87,
+     "absent": 0.47
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Pulmonary infarction Abnormal (uncomplicated): \"A wedge-shaped, pleural-based area of haemorrhagic infarction is present in the posterior basal segment of the right lower lobe, measuring 3.2 cm in its longest dimension.\"",
+    "label": "R",
+    "jev": {
+     "match": 0.15,
+     "absent": 0.59
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Aortic dissection Abnormal (uncomplicated): \"An intimal flap is present in the descending thoracic aorta at the level of T5, with a true lumen measuring 22 mm and a false lumen measuring 18 mm.\"",
+    "label": "R",
+    "jev": {
+     "match": 0.3,
+     "absent": 0.4
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "impression_variant_choice",
+    "text": "[\"Normal exemplar: \\\"No evidence of pulmonary embolism. No aortic dissection. No pneumothorax, pleural effusion, or parenchymal abnormality. No mediastinal lymphadenopathy or pericardial effusion.\\\"\", \"Abnormal exemplar: \\\"Acute pulmonary embolism, right main pulmonary artery with extension to the right upper and middle lobe arteries, with right ventricular strain. No aortic dissection. No pneumothorax or pleural effusion. Urgent clinical review for anticoagulation; transthoracic echocardiography recommended to assess right ventricular function.\\\"\", \"Complicated exemplar: \\\"Acute saddle pulmonary embolism with bilateral lobar and segmental involvement, right ventricular strain (RV/LV ratio 1.5, main pulmonary artery 38 mm). No aortic dissection. No pneumothorax. Urgent clinical review for thrombolysis or catheter-directed therapy; transthoracic echocardiography recommended.\\\"\"]",
+    "label": "1",
+    "jev": {
+     "choice": "v1",
+     "confidence": 0.91
+    },
+    "qwen": "v1"
+   },
+   {
+    "type": "recommendation",
+    "text": "IMAGING: Transthoracic echocardiography for right ventricular function assessment when RV strain is present on CTPA",
+    "label": "K",
+    "jev": {
+     "met": 0.93,
+     "unmet": 0.14
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "recommendation",
+    "text": "REFERRAL: Urgent clinical review (treating medical team) for anticoagulation when PE is confirmed",
+    "label": "K",
+    "jev": {
+     "met": 0.95,
+     "unmet": 0.19
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "recommendation",
+    "text": "REFERRAL: Urgent interventional radiology review for catheter-directed therapy when massive PE with haemodynamic compromise is present",
+    "label": "R",
+    "jev": {
+     "met": 0.08,
+     "unmet": 0.85
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "recommendation",
+    "text": "CORRELATION: Clinical correlation for haemodynamic status (blood pressure, lactate) to stratify massive versus submassive PE",
+    "label": "K",
+    "jev": {
+     "met": 0.83,
+     "unmet": 0.26
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF the pulmonary arterial filling defect is named with its location and extent in P1, THEN the sweep of the remaining pulmonary arteries names the vessels as patent without restating the defect.",
+    "label": "K",
+    "jev": {
+     "applies": 0.27
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF a triage differential (aortic dissection, pneumothorax, parenchymal disease, pericardial effusion) is excluded by the imaging, THEN state it as a single compact negative in FINDINGS and carry it into the IMPRESSION as a direct negative answer; do not elaborate in both locations.",
+    "label": "K",
+    "jev": {
+     "applies": 0.42
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF dictation is silent about an in-scope structure the sweep visits, THEN render the structure's canonical default-normal line at its sweep position; if a dictated positive implicates the structure as a companion (e.g. PE with associated infarction), the canonical normal for that structure is dropped or rendered in contingent form.",
+    "label": "K",
+    "jev": {
+     "applies": 0.54
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF multiple negatives fire in one subsystem (e.g. no consolidation, no ground-glass opacity, no interstitial abnormality), THEN consolidate into a single sentence.",
+    "label": "K",
+    "jev": {
+     "applies": 0.53
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF a descriptor is mentioned once in P1, THEN it is not repeated in subsequent paragraphs; structures are described in one place.",
+    "label": "K",
+    "jev": {
+     "applies": 0.61
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "suppression_rule",
+    "text": "Adjacent-in-sweep structures whose findings are all normal consolidate into a single paragraph: lungs and pleura in one paragraph; mediastinum, aorta, and heart in one paragraph; upper abdominal organs, chest wall, and thoracic spine in one terminal paragraph. A positive finding or a differential-targeted negative breaks out into its own paragraph.",
+    "label": "K",
+    "jev": {
+     "applies": 0.39
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "measurement",
+    "text": "Pulmonary arterial filling defect: location by vessel name and level (main PA, lobar, segmental, subsegmental); longest dimension in mm \u2014 required for every filling defect identified",
+    "label": "K",
+    "jev": {
+     "applies": 0.53
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "measurement",
+    "text": "RV/LV ratio: measured at the level of the atrioventricular valves, ratio to one decimal place \u2014 required when right heart strain is present; main pulmonary artery transverse diameter in mm at the bifurcation (normal < 29 mm)",
+    "label": "K",
+    "jev": {
+     "applies": 0.65
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "measurement",
+    "text": "Pulmonary infarction: longest dimension in mm, segmental location \u2014 required when infarction is identified",
+    "label": "R",
+    "jev": {
+     "applies": 0.07
+    },
+    "qwen": "prune"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No intimal flap in the thoracic aorta.",
+    "parent": "No intimal flap or intramural haematoma in the thoracic aorta.",
+    "label": "K",
+    "jev": {
+     "contra": 0.37,
+     "expected": 0.5
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No intramural haematoma in the thoracic aorta.",
+    "parent": "No intimal flap or intramural haematoma in the thoracic aorta.",
+    "label": "K",
+    "jev": {
+     "contra": 0.42,
+     "expected": 0.43
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No pneumothorax.",
+    "parent": "No pneumothorax.",
+    "label": "K",
+    "jev": {
+     "contra": 0.35,
+     "expected": 0.47
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No pleural effusion.",
+    "parent": "No pleural effusion.",
+    "label": "C",
+    "jev": {
+     "contra": 0.71,
+     "expected": 0.13
+    },
+    "qwen": "contradicted"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No consolidation.",
+    "parent": "No consolidation, ground-glass opacity, or interstitial abnormality.",
+    "label": "K",
+    "jev": {
+     "contra": 0.21,
+     "expected": 0.38
+    },
+    "qwen": "expected"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No ground-glass opacity.",
+    "parent": "No consolidation, ground-glass opacity, or interstitial abnormality.",
+    "label": "A",
+    "jev": {
+     "contra": 0.44,
+     "expected": 0.38
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No interstitial abnormality.",
+    "parent": "No consolidation, ground-glass opacity, or interstitial abnormality.",
+    "label": "K",
+    "jev": {
+     "contra": 0.49,
+     "expected": 0.38
+    },
+    "qwen": "keep"
+   },
+   {
+    "type": "negative_clause",
+    "text": "No pericardial effusion.",
+    "parent": "No pericardial effusion.",
+    "label": "K",
+    "jev": {
+     "contra": 0.09,
+     "expected": 0.28
+    },
+    "qwen": "contradicted"
+   }
+  ]
+ },
+ {
+  "name": "ct_ap_diverticulitis_abscess",
+  "scan_type": "CT abdomen pelvis with contrast",
+  "clinical_history": "66F, 4 days left iliac fossa pain, fever 38.2, WCC 15, CRP 180. Query diverticulitis.",
+  "findings": "- Sigmoid diverticulosis with segmental wall thickening over 6cm\n- Pericolic fat stranding\n- 3.2cm rim-enhancing pericolic collection adjacent to sigmoid\n- No free intraperitoneal gas\n- Trace pelvic free fluid only\n- Ureters not obstructed\n- Liver, spleen, pancreas, adrenals, kidneys unremarkable\n- No suspicious osseous lesion",
+  "items": [
+   {
+    "type": "differential",
+    "text": "Triage: Acute diverticulitis (confirm or exclude) versus alternative aetiologies of left iliac fossa pain (colorectal malignancy, epiploic appendagitis, ovarian pathology, ureteric calculus, ischaemic colitis, abscess of other origin)",
+    "label": "P",
+    "qwen": "keep",
+    "jev": {
+     "present": 0.94,
+     "settled": 0.59,
+     "silent": 0.03
+    }
+   },
+   {
+    "type": "differential",
+    "text": "Uncomplicated (Hinchey I) \u2014 pericolic fat stranding, diverticula at inflamed segment, no collection, no extraluminal air",
+    "label": "X",
+    "qwen": "prune",
+    "jev": {
+     "present": 0.06,
+     "settled": 0.69,
+     "silent": 0.13
+    }
+   },
+   {
+    "type": "differential",
+    "text": "Pericolic/paracolic abscess (Hinchey II) \u2014 walled-off rim-enhancing fluid collection adjacent to inflamed segment, \u00b1 internal air-fluid level",
+    "label": "P",
+    "qwen": "present",
+    "jev": {
+     "present": 0.96,
+     "settled": 0.13,
+     "silent": 0.03
+    }
+   },
+   {
+    "type": "differential",
+    "text": "Generalised peritonitis (Hinchey III) \u2014 free peritoneal fluid of mixed attenuation, extraluminal air beyond pericolic region, diffuse mesenteric and peritoneal stranding",
+    "label": "X",
+    "qwen": "prune",
+    "jev": {
+     "present": 0.04,
+     "settled": 0.88,
+     "silent": 0.53
+    }
+   },
+   {
+    "type": "differential",
+    "text": "Distant abscess (Hinchey II variant) \u2014 rim-enhancing collection in pelvis, subhepatic space, or other non-adjacent location",
+    "label": "O",
+    "qwen": "prune",
+    "jev": {
+     "present": 0.06,
+     "settled": 0.75,
+     "silent": 0.73
+    }
+   },
+   {
+    "type": "differential",
+    "text": "Stricture / partial obstruction \u2014 luminal narrowing at inflamed segment with proximal colonic dilatation",
+    "label": "O",
+    "qwen": "keep",
+    "jev": {
+     "present": 0.12,
+     "settled": 0.42,
+     "silent": 0.71
+    }
+   },
+   {
+    "type": "differential",
+    "text": "Fistula \u2014 abnormal enhancing tract from inflamed segment to bladder, vagina, adjacent bowel loop, or abdominal wall",
+    "label": "O",
+    "qwen": "keep",
+    "jev": {
+     "present": 0.06,
+     "settled": 0.56,
+     "silent": 0.71
+    }
+   },
+   {
+    "type": "differential",
+    "text": "Colorectal malignancy \u2014 eccentric or concentric wall thickening >1 cm, luminal narrowing, heterogeneous enhancement, mesorectal or mesenteric lymphadenopathy",
+    "label": "O",
+    "qwen": "keep",
+    "jev": {
+     "present": 0.09,
+     "settled": 0.48,
+     "silent": 0.37
+    }
+   },
+   {
+    "type": "differential",
+    "text": "Epiploic appendagitis \u2014 oval fat-density lesion with hyperdense rim adjacent to colonic serosa",
+    "label": "X",
+    "qwen": "keep",
+    "jev": {
+     "present": 0.05,
+     "settled": 0.63,
+     "silent": 0.74
+    }
+   },
+   {
+    "type": "differential",
+    "text": "Ovarian pathology (postmenopausal) \u2014 adnexal mass, complex free fluid",
+    "label": "X",
+    "qwen": "keep",
+    "jev": {
+     "present": 0.03,
+     "settled": 0.3,
+     "silent": 0.61
+    }
+   },
+   {
+    "type": "differential",
+    "text": "Ureteric calculus \u2014 hyperdense focus in ureter with proximal hydroureter",
+    "label": "X",
+    "qwen": "prune",
+    "jev": {
+     "present": 0.02,
+     "settled": 0.85,
+     "silent": 0.59
+    }
+   },
+   {
+    "type": "differential",
+    "text": "Ischaemic colitis \u2014 segmental wall thickening in a watershed distribution, thumbprinting, mesenteric vessel involvement",
+    "label": "X",
+    "qwen": "keep",
+    "jev": {
+     "present": 0.06,
+     "settled": 0.58,
+     "silent": 0.53
+    }
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Sigmoid diverticulitis (uncomplicated): \"The sigmoid colon shows focal circumferential wall thickening to 8 mm over a 4 cm segment at the sigmoid\u2013descending junction, with surrounding pericolic fat stranding extending 3 cm. Several diverticula are visible at the affected segment. No pericolic abscess, extraluminal air, or fistula is identified.\"",
+    "label": "K",
+    "qwen": "prune",
+    "jev": {
+     "match": 0.71,
+     "absent": 0.48
+    }
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Pericolic abscess: \"A 3.2 cm rim-enhancing fluid collection is seen posterior to the inflamed sigmoid segment, with a small internal air-fluid level, consistent with a pericolic abscess.\"",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "match": 0.88,
+     "absent": 0.44
+    }
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Colorectal mass (alternative diagnosis): \"The rectosigmoid junction shows a 3.4 cm eccentric, irregular wall thickening with luminal narrowing to 8 mm and heterogeneous enhancement, with three enlarged mesorectal lymph nodes (largest 14 mm short axis).\"",
+    "label": "R",
+    "qwen": "prune",
+    "jev": {
+     "match": 0.35,
+     "absent": 0.47
+    }
+   },
+   {
+    "type": "style_exemplar",
+    "text": "Free perforation: \"Extraluminal air tracks along the left paracolic gutter with moderate-volume free peritoneal fluid of mixed attenuation, consistent with free perforation.\"",
+    "label": "R",
+    "qwen": "prune",
+    "jev": {
+     "match": 0.26,
+     "absent": 0.36
+    }
+   },
+   {
+    "type": "impression_variant_choice",
+    "text": "[\"Normal exemplar: \\\"No acute diverticulitis identified. The sigmoid and rectum are unremarkable. No mass lesion, obstructing calculus, adnexal abnormality, ischaemic colitis, or free peritoneal fluid identified. No alternative aetiology identified on this study.\\\"\", \"Abnormal exemplar: \\\"Acute sigmoid diverticulitis, uncomplicated. No pericolic abscess, free perforation, or fistula identified. Gastroenterology referral recommended for colonoscopy at 6\\u20138 weeks to exclude underlying malignancy.\\\"\", \"Complicated exemplar: \\\"1. Acute sigmoid diverticulitis with a 3.4 cm pericolic abscess posterior to the inflamed segment. Urgent interventional radiology and colorectal surgery referrals recommended. 2. No evidence of free perforation or fistula. 3. No alternative pathology identified.\\\"\"]",
+    "label": "2",
+    "qwen": "v2",
+    "jev": {
+     "choice": "v2",
+     "confidence": 1
+    }
+   },
+   {
+    "type": "recommendation",
+    "text": "IMAGING: CT chest if pulmonary pathology is implicated by clinical correlation",
+    "label": "R",
+    "qwen": "prune",
+    "jev": {
+     "met": 0.09,
+     "unmet": 0.74
+    }
+   },
+   {
+    "type": "recommendation",
+    "text": "IMAGING: MR enterography if small bowel pathology is suspected and not excluded on CT",
+    "label": "R",
+    "qwen": "prune",
+    "jev": {
+     "met": 0.13,
+     "unmet": 0.71
+    }
+   },
+   {
+    "type": "recommendation",
+    "text": "REFERRAL: Colorectal surgery (urgent for abscess >3 cm or perforation",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "met": 0.93,
+     "unmet": 0.21
+    }
+   },
+   {
+    "type": "recommendation",
+    "text": "REFERRAL: routine for uncomplicated diverticulitis)",
+    "label": "R",
+    "qwen": "prune",
+    "jev": {
+     "met": 0.17,
+     "unmet": 0.84
+    }
+   },
+   {
+    "type": "recommendation",
+    "text": "REFERRAL: Interventional radiology (urgent, for abscess >3 cm)",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "met": 0.95,
+     "unmet": 0.17
+    }
+   },
+   {
+    "type": "recommendation",
+    "text": "REFERRAL: Gastroenterology (routine, for post-acute colonoscopy at 6\u20138 weeks)",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "met": 0.71,
+     "unmet": 0.31
+    }
+   },
+   {
+    "type": "recommendation",
+    "text": "MDT: Colorectal MDT (for complicated diverticulitis with stricture or fistula, or if malignancy cannot be excluded on imaging)",
+    "label": "A",
+    "qwen": "prune",
+    "jev": {
+     "met": 0.36,
+     "unmet": 0.67
+    }
+   },
+   {
+    "type": "recommendation",
+    "text": "TISSUE: Image-guided biopsy of pericolic mass if malignancy cannot be excluded on imaging",
+    "label": "R",
+    "qwen": "prune",
+    "jev": {
+     "met": 0.27,
+     "unmet": 0.68
+    }
+   },
+   {
+    "type": "recommendation",
+    "text": "CORRELATION: Clinical correlation if imaging is negative but inflammatory markers remain elevated",
+    "label": "R",
+    "qwen": "prune",
+    "jev": {
+     "met": 0.14,
+     "unmet": 0.52
+    }
+   },
+   {
+    "type": "recommendation",
+    "text": "CORRELATION: colonoscopy at 6\u20138 weeks post-acute episode to exclude underlying malignancy",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "met": 0.87,
+     "unmet": 0.19
+    }
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF the sigmoid diverticulitis is named with its descriptor in P1, the subsequent colon sweep names the remaining colon only, without restating the sigmoid finding",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "applies": 0.42
+    }
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF a triage differential (malignancy, calculus, ovarian pathology, ischaemic colitis, epiploic appendagitis) is excluded by the imaging, state it as a single compact negative in FINDINGS and carry it into the IMPRESSION as a direct negative answer; do not elaborate in both locations",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "applies": 0.35
+    }
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF dictation is silent about an in-scope structure the sweep order visits, render the structure's canonical default-normal line at its sweep position; if dictation specifies a positive finding, replace the canonical line; if dictation flags a technical limitation, that triggers LIMITATIONS inclusion",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "applies": 0.5
+    }
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF a dictated positive finding implicates a structure as a companion (e.g. pericolic stranding implicating the adjacent peritoneum), the canonical default-normal line for that structure is dropped or rendered in contingent form; coverage remains obligatory, the specific normal assertion does not",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "applies": 0.64
+    }
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF multiple negatives fire in one subsystem (e.g. no calculus, no hydronephrosis, no renal mass), consolidate into a single sentence",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "applies": 0.68
+    }
+   },
+   {
+    "type": "suppression_rule",
+    "text": "IF a descriptor is mentioned once in P1, it is not repeated in the sweep or impression",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "applies": 0.56
+    }
+   },
+   {
+    "type": "suppression_rule",
+    "text": "Adjacent-in-sweep structures whose canonical lines are all normal consolidate into a single paragraph; a paragraph earns its own boundary only when it carries a positive finding, a differential-targeted negative the clinical question turns on, or a clinical pivot between body regions",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "applies": 0.53
+    }
+   },
+   {
+    "type": "suppression_rule",
+    "text": "Gender is established as female (66F); canonical pelvic lines name the uterus and ovaries directly",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "applies": 0.12
+    }
+   },
+   {
+    "type": "measurement",
+    "text": "Abscess: largest dimension in cm (or volume by ABC/2 if irregular); location relative to inflamed segment; >3 cm is the threshold at which percutaneous drainage is typically indicated",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "applies": 0.96
+    }
+   },
+   {
+    "type": "measurement",
+    "text": "Wall thickening: maximum thickness in mm; extent in cm; >1 cm with eccentricity raises malignancy concern",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "applies": 0.67
+    }
+   },
+   {
+    "type": "measurement",
+    "text": "Colonic dilatation: maximum luminal diameter in cm; level of transition named anatomically",
+    "label": "R",
+    "qwen": "prune",
+    "jev": {
+     "applies": 0.06
+    }
+   },
+   {
+    "type": "negative_clause",
+    "text": "No mass lesion to suggest colorectal malignancy.",
+    "parent": "No mass lesion or asymmetric wall thickening to suggest colorectal malignancy.",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "contra": 0.45,
+     "expected": 0.48
+    }
+   },
+   {
+    "type": "negative_clause",
+    "text": "No asymmetric wall thickening to suggest colorectal malignancy.",
+    "parent": "No mass lesion or asymmetric wall thickening to suggest colorectal malignancy.",
+    "label": "C",
+    "qwen": "keep",
+    "jev": {
+     "contra": 0.57,
+     "expected": 0.38
+    }
+   },
+   {
+    "type": "negative_clause",
+    "text": "No hyperdense focus within the ureter to suggest obstructing calculus.",
+    "parent": "No hyperdense focus within the ureter or perinephric space to suggest obstructing calculus.",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "contra": 0.42,
+     "expected": 0.48
+    }
+   },
+   {
+    "type": "negative_clause",
+    "text": "No hyperdense focus within the perinephric space to suggest obstructing calculus.",
+    "parent": "No hyperdense focus within the ureter or perinephric space to suggest obstructing calculus.",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "contra": 0.35,
+     "expected": 0.4
+    }
+   },
+   {
+    "type": "negative_clause",
+    "text": "No adnexal mass to suggest ovarian pathology.",
+    "parent": "No adnexal mass or complex free fluid to suggest ovarian pathology.",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "contra": 0.32,
+     "expected": 0.4
+    }
+   },
+   {
+    "type": "negative_clause",
+    "text": "No complex free fluid to suggest ovarian pathology.",
+    "parent": "No adnexal mass or complex free fluid to suggest ovarian pathology.",
+    "label": "A",
+    "qwen": "keep",
+    "jev": {
+     "contra": 0.41,
+     "expected": 0.38
+    }
+   },
+   {
+    "type": "negative_clause",
+    "text": "No segmental colonic wall thickening in a distribution separate from the sigmoid to suggest ischaemic colitis.",
+    "parent": "No segmental colonic wall thickening or thumbprinting in a distribution separate from the sigmoid to suggest ischaemic colitis.",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "contra": 0.51,
+     "expected": 0.53
+    }
+   },
+   {
+    "type": "negative_clause",
+    "text": "No thumbprinting in a distribution separate from the sigmoid to suggest ischaemic colitis.",
+    "parent": "No segmental colonic wall thickening or thumbprinting in a distribution separate from the sigmoid to suggest ischaemic colitis.",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "contra": 0.49,
+     "expected": 0.49
+    }
+   },
+   {
+    "type": "negative_clause",
+    "text": "No oval fat-density lesion with hyperdense rim adjacent to the colonic serosa to suggest epiploic appendagitis.",
+    "parent": "No oval fat-density lesion with hyperdense rim adjacent to the colonic serosa to suggest epiploic appendagitis.",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "contra": 0.43,
+     "expected": 0.48
+    }
+   },
+   {
+    "type": "negative_clause",
+    "text": "No extraluminal air beyond the pericolic region to suggest generalised perforation.",
+    "parent": "No extraluminal air beyond the pericolic region to suggest generalised perforation.",
+    "label": "K",
+    "qwen": "keep",
+    "jev": {
+     "contra": 0.35,
+     "expected": 0.67
+    }
+   }
+  ]
+ }
+]
