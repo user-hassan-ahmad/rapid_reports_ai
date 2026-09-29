@@ -23,3 +23,15 @@
 5. Live check with synthetic speech (a dropped phrase forced by a mid-word Finalize), then a mic session.
 
 **Open question for the user:** in 3, should a revision that changes a fast-appended sentence be replaced silently (with the auto-mark and one-step undo), or underlined for you to accept?
+
+
+## Update after the hard-case bake-off (CTPA, MRI spine; 4 sessions in all)
+
+- No engine wins everywhere; errors are largely independent ("both wrong" 1–2 critical words per session, mostly "Tarlov"). Deepgram batch: 0 errors on the CT script, but 4 on the MRI ("excursion", a dropped "extrusion"), so it is a dropped-speech net, not an accuracy judge. gpt-4o-transcribe: 0 critical errors on the CTPA (heard "subsegmental" where Deepgram said "supplemental"), and the only engine to hear "Tarlov"; it drops spoken commands ("slash"). The gpt-4o-mini model turned "No" into "lumbar". Whisper models invent text on short clips.
+- **Jev as the referee** (`scripts/asr_jev_adjudicate.py`): 31/34 decidable disagreements picked correctly. Correct switches away from the live text at ≥ 0.97; wrong ones ≤ 0.64.
+- **Revised design:**
+  - The live final drives everything, as now.
+  - In parallel: Deepgram batch since the last final (dropped speech), and gpt-4o-transcribe on the same clip (independent hearing).
+  - Disagreements on content words go to one Jev choice call; commands and formatting stay Deepgram's.
+  - Switch only at Jev ≥ 0.90, and never when a number, side or negation would be lost.
+  - Applied as a revision; logged.
