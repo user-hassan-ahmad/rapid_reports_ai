@@ -118,3 +118,33 @@ The durable fix is upstream: the analyser now writes one finding per mandatory n
 **What generalises about Jev.** Strong: independent yes/no judgements about marked text (split points 92%; relevance AUC 0.989; "present" 10/11) and a choice among semantically distinct options (impression variant 5/5). Weak: a choice among near-identical overlapping spans (40%), and inference about what imaging would show. "Code proposes, Jev classifies" carries forward when each candidate is a distinct judgement; for span extraction use Qwen with a code check that every output word appears in the source.
 
 **Decision:** splitting = analyser atomic rule + Qwen extractive fallback with the source-word check.
+
+## Compiled brief end to end — arms A/B/C (2026-09-29)
+
+Branch `feat/compiled-brief` (0f4e9a4). Fresh sheets from the atomic-negative + visibility-tag analyser for the 11 labelled cases; 2 runs per arm, 66 reports, judged by reading each one.
+
+- **A** raw sheet, split quick-report generator, Qwen 3.8 medium.
+- **B** compiled brief (Jev + Qwen reconciliation, labels, pruning), same generator, medium.
+- **C** compiled brief, reasoning off.
+
+| Arm | Median total | Serious errors (reports) | Other |
+|---|---|---|---|
+| A | 5.9s | 12/22 | — |
+| B | 6.6s (reconcile 0.47s) | 2/22 | brief used 22/22 |
+| C | 1.2s | 4/22 | 4 gate fails (missing section) + several reports silently drop COMPARISON |
+
+Serious = contradicts a dictated finding, asserts normal for a structure the findings act on, or fabricates a management-relevant fact. Undictated "No pulmonary embolism" on the ct_tap case (A0, A1, B0, B1) is scored separately below, not in the count.
+
+- **A:** brainstem "unremarkable" beside tonsillar herniation (×2); ventricles "normal" beside an SDH with shift (×4 across the two SDH cases); portal vein "uninvolved" in pancreatic staging (×2, not dictated, resectability-critical); "no pelvic haemorrhage" with pubic rami fractures (×2); "no flail segment" with two segmental adjacent ribs (×1); neural foramina "unremarkable" at a level with paraspinal extension (×1).
+- **B:** "borderline resectable" alongside suspected liver metastases (B0, a staging interpretation); "ventricular system unremarkable" in clean_ct_head (B0).
+- **C:** ventricles "normal" in the SDH case in both runs, which ignores the do-not-assert label; "no pelvic ring fracture" alongside pubic rami fractures (C0); a 5 mm nodule followed up "in three months" (C1). C also fabricates signal characteristics and duct findings more often.
+
+Findings:
+
+1. **The brief works at medium.** Serious errors fell from 12/22 to 2/22 for +0.7s. In both head cases the labels removed exactly the normals that A asserted, and the pancreatic vessel line removed the portal-vein claim.
+2. **Removing a line is weaker than labelling it.** In clean_ct_head both reconcilers removed the ventricles line, and B0 still wrote "ventricular system unremarkable" from its own priors. In the matched SDH case the same line was labelled DO NOT ASSERT and B was clean in both runs. An affected normal should become an explicit prohibition, not a deletion.
+3. **Reasoning off is not viable yet.** C is 5× faster, but it drops sections, ignores labels (4/4 in the SDH case) and makes arithmetic and interval errors. The reasoning is doing the label-following.
+4. **Undictated PE negative:** "No pulmonary embolism" on a portal-venous-phase CT TAP. The sheet lists PE only as an in-scope companion, which the brief drops, so in B it comes from the generator's priors. B1 escalated it to "PE excluded" in the impression. This needs a rule about which negatives a technique can support; it is not a brief defect.
+5. **Recommendation scope:** the Doppler recommendation after PE and the MRI-spine/brain staging recommendations appear in every arm. This is unchanged and a separate policy question.
+
+Next: turn affected-normal removals into DO NOT ASSERT (keep deletion only for normals of structures outside the scan's anatomy), then re-run B on the two head cases before shipping.
