@@ -138,13 +138,16 @@ async def test_run_quality_check_repairs_on_report_flags_and_drops_bad_options(m
                                      qq.Flag(kind="omission", text="CBD dilated to 12 mm", score=0.2)],
                               bad_option_ids=["fn0"], n_clauses=9, n_items=3)
     seen = {}
-    async def fake_repair(report, findings, problems, insert_only=False):
-        seen["problems"] = problems
+    async def fake_insert(report, findings, items):
+        seen["items"] = items
         return qq.RepairResult(report=report, applied=1, skipped=1)
+    async def no_repair(*a, **k):
+        raise AssertionError("no positive contradiction to correct")
     monkeypatch.setattr(qq, "check", fake_check)
-    monkeypatch.setattr(qq, "repair_report", fake_repair)
+    monkeypatch.setattr(qq, "repair_report", no_repair)
+    monkeypatch.setattr(qq, "insert_findings", fake_insert)
     report, options, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", OPTIONS)
-    assert seen["problems"] == ['The dictated finding "CBD dilated to 12 mm" is missing from the report.']
+    assert seen["items"] == ["CBD dilated to 12 mm"]
     assert "portal vein encasement" not in report                     # removed in code
     assert [o["id"] for o in options] == ["fn1"]
     assert tel["edits_applied"] == 1 and tel["edits_skipped"] == 1 and tel["options_dropped"] == ["fn0"]
@@ -229,14 +232,18 @@ async def test_run_quality_check_routes_each_flag_to_its_safe_repair(monkeypatch
                                      qq.Flag(kind="omission", text="CBD dilated to 12 mm", score=0.2)])
     calls = []
     async def fake_repair(report, findings, problems, insert_only=False):
-        calls.append((problems, insert_only))
+        calls.append(("correct", problems))
+        return qq.RepairResult(report=report, applied=0, skipped=0)
+    async def fake_insert(report, findings, items):
+        calls.append(("insert", items))
         return qq.RepairResult(report=report, applied=0, skipped=0)
     monkeypatch.setattr(qq, "check", fake_check)
     monkeypatch.setattr(qq, "repair_report", fake_repair)
+    monkeypatch.setattr(qq, "insert_findings", fake_insert)
     report, _, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", [])
     assert "portal vein encasement" not in report and "No superior mesenteric vein encasement or hepatic deposit." in report
-    assert calls == [(['The report states "Pancreatic head mass causing biliary obstruction.", which the dictated findings contradict.'], False),
-                     (['The dictated finding "CBD dilated to 12 mm" is missing from the report.'], True)]
+    assert calls == [("correct", ['The report states "Pancreatic head mass causing biliary obstruction.", which the dictated findings contradict.']),
+                     ("insert", ["CBD dilated to 12 mm"])]
     assert tel["clauses_removed"] == 1
 
 
@@ -245,11 +252,30 @@ async def test_a_correction_and_an_insertion_both_land(monkeypatch):
     async def fake_check(report, findings, scan_type, options):
         return qq.CheckResult(flags=[qq.Flag(kind="contradiction", text="Pancreatic head mass causing biliary obstruction.", score=0.8),
                                      qq.Flag(kind="omission", text="CBD dilated to 12 mm", score=0.2)])
+    async def fake_insert(report, findings, items):
+        return qq.RepairResult(report=report.replace("distal common bile duct.", "distal common bile duct, dilated to 12 mm."), applied=1)
     async def fake_repair(report, findings, problems, insert_only=False):
-        if insert_only:
-            return qq.RepairResult(report=report.replace("distal common bile duct.", "distal common bile duct, dilated to 12 mm."), applied=1)
         return qq.RepairResult(report=report.replace("causing biliary obstruction", "compressing the distal bile duct"), applied=1)
     monkeypatch.setattr(qq, "check", fake_check)
     monkeypatch.setattr(qq, "repair_report", fake_repair)
+    monkeypatch.setattr(qq, "insert_findings", fake_insert)
     report, _, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", [])
     assert "dilated to 12 mm" in report and "compressing the distal bile duct" in report and tel["edits_applied"] == 2
+
+
+@pytest.mark.asyncio
+async def test_omitted_findings_are_inserted_by_code_after_an_anchor(monkeypatch):
+    async def fake(**kw):
+        class R:
+            output = qq.Insertions(items=[
+                {"after": "compresses the distal common bile duct.", "sentence": "The common bile duct is dilated to 12 mm."},
+                {"after": "a sentence that is not there", "sentence": "Intrahepatic ducts are dilated."},
+                {"after": "The spleen is normal in size.", "sentence": ""}])
+        return R()
+    monkeypatch.setattr(qq, "_run_agent_with_model", fake)
+    res = await qq.insert_findings(REPORT, FINDINGS, ["CBD dilated to 12 mm", "Intrahepatic duct dilatation", "x"])
+    fnd, _ = qq.report_sections(res.report)
+    assert "compresses the distal common bile duct. The common bile duct is dilated to 12 mm." in fnd
+    assert fnd.startswith("Intrahepatic ducts are dilated. A 3 cm")        # unknown anchor: first in FINDINGS
+    assert res.applied == 2 and res.skipped == 1
+    assert REPORT.replace(" ", "") in res.report.replace(" ", "").replace("Thecommonbileductisdilatedto12mm.", "").replace("Intrahepaticductsaredilated.", "")

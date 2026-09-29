@@ -184,6 +184,60 @@ async def repair_report(report: str, findings: str, problems: List[str], insert_
     return RepairResult(report=out, applied=applied, skipped=skipped)
 
 
+# ── omitted findings: Qwen writes the sentence, code inserts it ──────────────
+
+class Insertion(BaseModel):
+    after: str       # an existing report sentence, copied exactly
+    sentence: str    # the omitted finding, one sentence in the report's voice
+
+
+class Insertions(BaseModel):
+    items: List[Insertion]
+    @field_validator("items", mode="before")
+    @classmethod
+    def _parse_stringified(cls, v):
+        return qb._unstring(v)
+
+
+INSERT_SYS = (
+    "A radiology report left out some dictated findings. For each numbered omitted finding write one sentence stating "
+    "it in the report's own voice, using only what was dictated, and choose the report sentence it should follow: "
+    "copy that sentence exactly into 'after'. Return JSON {\"items\": [{\"after\": ..., \"sentence\": ...}]}.")
+
+
+async def insert_findings(report: str, findings: str, items: List[str]) -> RepairResult:
+    """Insertion by construction: the report's existing text is never rewritten (L-47: asked for
+    insert-only edits, Qwen rewrote the neighbouring sentence). An anchor that is not found places
+    the sentence first in FINDINGS, where the primary finding belongs."""
+    user = (f"DICTATED FINDINGS:\n{findings}\n\nREPORT:\n{report}\n\nOMITTED FINDINGS:\n"
+            + "\n".join(f"{i}. {t}" for i, t in enumerate(items, 1)))
+    try:
+        r = await asyncio.wait_for(_run_agent_with_model(
+            model_name=REPAIR_MODEL, output_type=Insertions, system_prompt=INSERT_SYS, user_prompt=user, api_key="",
+            model_settings={"temperature": 0, "max_tokens": 2000, "reasoning_effort": "none"}), REPAIR_TIMEOUT_S)
+    except Exception as e:  # never blocks the report
+        logger.warning("quality insert failed (%s: %s)", type(e).__name__, str(e)[:200])
+        return RepairResult(report=report, error=f"{type(e).__name__}: {str(e)[:200]}")
+    out, applied, skipped = report, 0, 0
+    for it in r.output.items:
+        sent = it.sentence.strip()
+        if not sent or _NEGATION.search(sent) and not any(_NEGATION.search(t) for t in items):
+            skipped += 1
+            continue
+        sent = sent if sent.endswith(".") else sent + "."
+        if it.after and out.count(it.after) == 1:
+            out = out.replace(it.after, f"{it.after} {sent}", 1)
+        else:
+            fnd, _ = report_sections(out)
+            first = _sentences(fnd)[0] if fnd else None
+            if not first or out.count(first) != 1:
+                skipped += 1
+                continue
+            out = out.replace(first, f"{sent} {first}", 1)
+        applied += 1
+    return RepairResult(report=out, applied=applied, skipped=skipped)
+
+
 # ── deterministic removal of a flagged negative ─────────────────────────────
 
 _NEG_LIST = re.compile(r"^(No|There is no|There are no|Without)\s+(.*?)\.?$", re.I)
@@ -266,11 +320,12 @@ async def run_quality_check(report: str, findings: str, scan_type: str,
                 report = new
         tel["clauses_removed"] = removed
         fix = [_problem(f) for f in res.flags if f.kind == "contradiction" and not is_negative(f.text)]
-        add = [_problem(f) for f in res.flags if f.kind == "omission"]
-        if fix or add:
+        if fix or any(f.kind == "omission" for f in res.flags):
             t1 = time.time()
-            reps = await asyncio.gather(*[repair_report(report, findings, probs, insert_only=ins)
-                                          for probs, ins in ((fix, False), (add, True)) if probs])
+            omitted = [f.text for f in res.flags if f.kind == "omission"]
+            calls = ([repair_report(report, findings, fix)] if fix else []) + \
+                    ([insert_findings(report, findings, omitted)] if omitted else [])
+            reps = await asyncio.gather(*calls)
             base, report = report, reps[0].report
             for rep in reps[1:]:   # both were made from the same base: replay the second's changes
                 for old_s, new_s in _diff_edits(base, rep.report):
