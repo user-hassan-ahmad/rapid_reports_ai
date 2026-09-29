@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import re
 import time
 from datetime import datetime
@@ -87,7 +88,7 @@ async def main() -> None:
     cases = [c for c in json.loads(Path(a.cases_file).read_text()) if not a.case or c["name"] in a.case]
     out_dir = BACKEND / "test_output" / "confirmed_negatives"
     out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    stamp = f"{datetime.now():%Y%m%dT%H%M%S}_{os.getpid()}"   # parallel runs must not share a file
     if a.coverage:
         rows = []
         for c in cases:
