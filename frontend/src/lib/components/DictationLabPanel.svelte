@@ -353,6 +353,10 @@
 						{#if d.rec.polish_ms != null}<span class="tabular-nums text-amber-200/70">{d.rec.polish_kind ?? 'polish'} {d.rec.polish_ms} ms{d.rec.polish_tokens_in != null ? ` · ${d.rec.polish_tokens_in}+${d.rec.polish_tokens_out ?? 0} tok` : ''}</span>{/if}
 						{#if d.rec.asr_fix_count}<span class="text-emerald-300" title="word-sense fixes applied">fixed {d.rec.asr_fix_count}{d.rec.repair_ms != null ? ` · ${d.rec.repair_ms} ms` : ''}</span>{/if}
 						{#if d.rec.asr_flag_count}<span class="text-yellow-300" title="words underlined as not making clinical sense">flagged {d.rec.asr_flag_count}</span>{/if}
+						{#if d.rec.two_pass_switched}<span class="text-emerald-300" title="two-pass: words swapped (Jev ≥ 0.90)">2p swapped {d.rec.two_pass_switched}</span>{/if}
+						{#if d.rec.two_pass_suggested}<span class="text-yellow-300" title="two-pass: underlined, also heard as …">2p suggested {d.rec.two_pass_suggested}</span>{/if}
+						{#if d.rec.two_pass_recovered_words}<span class="text-sky-300" title="two-pass: dropped speech recovered">2p recovered {d.rec.two_pass_recovered_words}w</span>{/if}
+						{#if d.rec.two_pass_ms != null}<span class="text-gray-500" title="two-pass revision time after the final">2p {d.rec.two_pass_ms} ms</span>{/if}
 						{#if d.rec.line_closed_by}<span class="text-violet-300">⏎ {d.rec.line_closed_by}</span>{/if}
 						{#if k}{#each [...k] as kind}<span class="text-red-300">{kind}</span>{/each}{/if}
 						{#if d.rec.error}<span class="text-red-300">{d.rec.error}</span>{/if}

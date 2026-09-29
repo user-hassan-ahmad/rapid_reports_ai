@@ -60,6 +60,12 @@ export interface DecisionRecord {
 	polish_ms?: number | null; // the polish call this decision caused, when one ran
 	wait_ms?: number | null; // final arrival → this decision started (queued behind earlier ones)
 	final_to_solid_ms?: number | null; // final arrival → its text solid on the page (faded → written)
+	// two-pass ASR (lab): the final heard again; numbers only
+	two_pass_ms?: number | null;
+	two_pass_switched?: number; // quiet swaps applied (Jev ≥ 0.90)
+	two_pass_suggested?: number; // underlined, "also heard as …"
+	two_pass_recovered_words?: number; // speech the stream dropped, inserted
+	two_pass_unmatched?: number; // readings no longer in the text
 	polish_kind?: 'full' | 'lean' | null; // which polish produced the text (racing: lean)
 	asr_fix_count?: number; // word-sense fixes applied to this line
 	asr_flag_count?: number; // words underlined as not making clinical sense

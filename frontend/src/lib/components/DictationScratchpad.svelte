@@ -43,6 +43,7 @@
 	import { editTouches, integrityMarks, type FlagLike, type IntegrityMark } from '$lib/utils/integrityMarks';
 	import { clearPending, markPending, pendingField, replaceAndClear } from '$lib/dictation-lab/pendingMarks';
 	import { ghostField, setGhost } from '$lib/dictation-lab/ghostText';
+	import { planRevision, type Revision } from '$lib/dictation-lab/revisions';
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import { markdown } from '@codemirror/lang-markdown';
@@ -139,13 +140,15 @@
 	// Hovering a flagged span shows its message.
 	const integrityTooltip = hoverTooltip((view, pos) => {
 		let hit: { from: number; to: number; message: string } | null = null;
-		view.state.field(integrityField, false)?.between(pos, pos, (from, to, value) => {
-			const message = value.spec.attributes?.['data-integrity-message'];
-			if (message) {
-				hit = { from, to, message };
-				return false;
-			}
-		});
+		for (const field of [integrityField, asrFlagField]) {
+			view.state.field(field, false)?.between(pos, pos, (from, to, value) => {
+				const message = value.spec.attributes?.['data-integrity-message'];
+				if (message && !hit) {
+					hit = { from, to, message };
+					return false;
+				}
+			});
+		}
 		const h = hit as { from: number; to: number; message: string } | null;
 		if (!h) return null;
 		return {
@@ -193,14 +196,15 @@
 
 	// Word-sense spotter (lab): words Jev says make no clinical sense as heard and that no
 	// fix was found for, underlined so the radiologist checks them. Mapped through edits.
-	const markAsrFlag = StateEffect.define<{ from: number; to: number }>();
+	const markAsrFlag = StateEffect.define<{ from: number; to: number; message?: string }>();
 	const asrFlagField = StateField.define<DecorationSet>({
 		create: () => Decoration.none,
 		update(deco, tr) {
 			deco = deco.map(tr.changes);
 			for (const e of tr.effects) {
 				if (e.is(markAsrFlag)) {
-					deco = deco.update({ add: [Decoration.mark({ class: 'cm-asr-flag' }).range(e.value.from, e.value.to)] });
+					const attrs = e.value.message ? { 'data-integrity-message': e.value.message } : undefined;
+					deco = deco.update({ add: [Decoration.mark({ class: 'cm-asr-flag', attributes: attrs }).range(e.value.from, e.value.to)] });
 				}
 			}
 			return deco;
@@ -473,7 +477,12 @@
 	 * on, and fires the polish at a pause. This is the body the websocket handler
 	 * used to hold inline; it moved so the lab can drive it without a microphone.
 	 */
-	function handleFinalTranscript(transcript: string, speechFinal: boolean, asr: AsrFields | null = null): void {
+	function handleFinalTranscript(
+		transcript: string,
+		speechFinal: boolean,
+		asr: AsrFields | null = null,
+		finalSeq: number | null = null
+	): void {
 		currentInterim = '';
 		showGhost('');
 
@@ -524,7 +533,7 @@
 			const rangeId = chunkRangeSeq;
 			if (heldCorrection) clearTimeout(heldCorrection.timer); // speech resumed: the next decision joins it
 			decisionChain = decisionChain
-				.then(() => decideUtterance(transcript, arrivedAt, asr, rangeId))
+				.then(() => decideUtterance(transcript, arrivedAt, asr, rangeId, finalSeq))
 				.catch(() => {})
 				.finally(() => {
 					for (const k of [...chunkRanges.keys()]) {
@@ -719,12 +728,75 @@
 	function emitDecision(rec: DecisionRecord, display: string): void {
 		decisionRecords.set(rec.id, { rec, display });
 		onDecision({ ...rec }, display);
+		retryRevision(rec.id);
 	}
 	function patchDecision(id: string, patch: Partial<DecisionRecord>): void {
 		const d = decisionRecords.get(id);
 		if (!d) return;
 		d.rec = { ...d.rec, ...patch };
 		onDecision({ ...d.rec }, d.display);
+		if ('final_to_solid_ms' in patch) retryRevision(id);
+	}
+
+	// --- two-pass ASR revisions (lab; backend RR_TWO_PASS=1) -------------------------------
+	// A revision can arrive before its final's text is solid; it waits here until it is.
+	const decisionByFinal = new Map<number, string>();
+	const finalByDecision = new Map<string, number>();
+	const pendingRevisions = new Map<number, Revision>();
+	function onRevision(rev: Revision): void {
+		pendingRevisions.set(rev.final_seq, rev);
+		tryRevision(rev.final_seq);
+	}
+	function retryRevision(decisionId: string): void {
+		const seq = finalByDecision.get(decisionId);
+		if (seq !== undefined && pendingRevisions.has(seq)) tryRevision(seq);
+	}
+	function tryRevision(seq: number): void {
+		const rev = pendingRevisions.get(seq);
+		const id = decisionByFinal.get(seq);
+		const d = id ? decisionRecords.get(id) : undefined;
+		if (!editor || !rev || !id || !d || d.rec.final_to_solid_ms == null) return; // not solid yet
+		pendingRevisions.delete(seq);
+		const patch: Partial<DecisionRecord> = { two_pass_ms: rev.ms, two_pass_switched: 0, two_pass_suggested: 0,
+			two_pass_recovered_words: 0, two_pass_unmatched: 0 };
+		const a = [...affected].reverse().find((x) => x.id === id);
+		if (!a || (!rev.switches.length && !rev.suggestions.length && !rev.recovered)) {
+			patchDecision(id, patch);
+			return;
+		}
+		const text = editor.state.doc.sliceString(a.from, a.to);
+		const plan = planRevision(text, rev, a.intact);
+		// quiet swaps: each is its own one-step undo (the auto-mark shows where)
+		for (const e of [...plan.edits].reverse()) {
+			const from = a.from + e.from;
+			const before = editor.state.doc.sliceString(from, a.from + e.to);
+			isQwenWriting = true;
+			editor.dispatch({ changes: { from, to: a.from + e.to, insert: e.insert },
+				effects: markAuto.of({ from, to: from + e.insert.length }) });
+			isQwenWriting = false;
+			track({ id: `${id}:2p`, route: a.route, at: Date.now(), from, to: from + e.insert.length, before,
+				lineOpenBefore: lineOpen, tokens: new Set(), intact: true, edited: false, redictated: false });
+			setTimeout(() => editor?.dispatch({ effects: clearAuto.of({ from, to: from + e.insert.length }) }), EDIT_WINDOW_MS);
+		}
+		for (const u of plan.underlines) {
+			editor.dispatch({ effects: markAsrFlag.of({ from: a.from + u.from, to: a.from + u.to, message: u.message }) });
+		}
+		if (rev.recovered && a.intact) {
+			// speech the stream dropped, before this final's words
+			const at = a.from;
+			const insert = `${rev.recovered.trim()} `;
+			isQwenWriting = true;
+			editor.dispatch({ changes: { from: at, insert }, effects: markAuto.of({ from: at, to: at + insert.length }) });
+			isQwenWriting = false;
+			track({ id: `${id}:2p-recovered`, route: a.route, at: Date.now(), from: at, to: at + insert.length, before: '',
+				lineOpenBefore: lineOpen, tokens: new Set(), intact: true, edited: false, redictated: false });
+			setTimeout(() => editor?.dispatch({ effects: clearAuto.of({ from: at, to: at + insert.length }) }), EDIT_WINDOW_MS);
+			patch.two_pass_recovered_words = rev.recovered.trim().split(/\s+/).length;
+		}
+		patch.two_pass_switched = plan.edits.length;
+		patch.two_pass_suggested = plan.underlines.length;
+		patch.two_pass_unmatched = plan.unmatched;
+		patchDecision(id, patch);
 	}
 	function outcome(a: Affected, kind: OutcomeEvent['kind']): void {
 		const now = Date.now();
@@ -962,7 +1034,8 @@
 		chunk: string,
 		arrivedAt: number,
 		asr: AsrFields | null,
-		rangeId: number | null = null
+		rangeId: number | null = null,
+		finalSeq: number | null = null
 	): Promise<void> {
 		if (!editor) return;
 		// A correction held back from the previous final is decided together with this one.
@@ -1051,6 +1124,10 @@
 			final_to_solid_ms: null
 		};
 		arrivalById.set(rec.id, arrivedAt);
+		if (finalSeq !== null) {
+			decisionByFinal.set(finalSeq, rec.id);
+			finalByDecision.set(rec.id, finalSeq);
+		}
 		const markSolid = () => (rec.final_to_solid_ms = Date.now() - arrivedAt);
 
 		if ((route === 'fast_append' || route === 'command') && data && pend) {
@@ -1501,7 +1578,8 @@
 				? `?token=${encodeURIComponent($token)}&pcm=1&sr=${sr}`
 				: `?pcm=1&sr=${sr}`;
 			const kt = labConfig ? keytermQuery(await caseKeyterms()) : '';
-			const wsUrl = `${wsUrlBase}/api/transcribe${tokenPart}${kt}`;
+			const st = labConfig && scanType ? `&st=${encodeURIComponent(scanType)}` : '';
+			const wsUrl = `${wsUrlBase}/api/transcribe${tokenPart}${kt}${st}`;
 			websocket = new WebSocket(wsUrl);
 
 			workletNode.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
@@ -1532,6 +1610,10 @@
 						stopRecording();
 						return;
 					}
+					if (data.revision) {
+						onRevision(data.revision as Revision);
+						return;
+					}
 					if (data.utterance_end) {
 						// Deepgram UtteranceEnd (~1s pause) is a backup polish trigger; the primary is
 						// speech_final (~endpointing). Only fire if idle, so we never abort + re-run an
@@ -1543,7 +1625,7 @@
 							currentInterim = data.transcript;
 							showGhost(data.transcript);
 						} else {
-							handleFinalTranscript(data.transcript, !!data.speech_final, asrFields(data));
+							handleFinalTranscript(data.transcript, !!data.speech_final, asrFields(data), data.final_seq ?? null);
 						}
 					}
 				} catch {
