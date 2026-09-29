@@ -148,3 +148,17 @@ Findings:
 5. **Recommendation scope:** the Doppler recommendation after PE and the MRI-spine/brain staging recommendations appear in every arm. This is unchanged and a separate policy question.
 
 Next: turn affected-normal removals into DO NOT ASSERT (keep deletion only for normals of structures outside the scan's anatomy), then re-run B on the two head cases before shipping.
+
+## Lean prompt — rule trim and exemplar diet (2026-09-29)
+
+Baseline **B′** = compiled brief with affected normals always DO NOT ASSERT (51d3e5f). **D** = B′ + lean pass: dead rules removed, duplicates kept once, history-as-checklist rewritten to history-as-focus, "clinical correlation" limited to a named specialty or test, consolidation defined on the sheet's sweep steps. **F** = D with Style and Impression Exemplars stripped from the brief and exemplar references removed from hardening principles 1 and 5. 11 cases × 2 runs each, every report read.
+
+| Arm | Serious errors | Notes |
+|---|---|---|
+| B′ | 2/22 | head cases 4/4 clean (vs B's "ventricular system unremarkable"); trauma "no flail segment", "no pelvic haemorrhage" despite its DO NOT ASSERT label; undictated "No PE" 2/2 |
+| **D** | **0/22** | undictated "No PE" gone (0/2); prompt −2.7k chars (system 28.0k→25.9k, user 3.4k→2.8k) |
+| F | 4/22 | history leak into the impression (lactate), mosaic attenuation called infarction, "borderline resectable" beside liver metastases, SMV-only encasement called locally advanced |
+
+F also drifts in scope and voice without exemplars: treatment recommendations (decompressive surgery, embolectomy, CSF diversion, anticoagulation reversal), undictated inferences ("contained perforation", "spinal instability", guideline thresholds), and impressions that restate findings across several paragraphs. **Exemplars anchor impression scope and voice; keep them (Jev-pruned).** D is adopted (b2fd… on feat/compiled-brief).
+
+Operational note: at 6 concurrent reports, 3/44 reconciliations hit the Qwen/Jev timeout and fell back to the raw sheet (safe, but loses the brief). Production concurrency is lower, but the fallback rate should be logged once live.
