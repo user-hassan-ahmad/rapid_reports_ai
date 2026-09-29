@@ -152,6 +152,9 @@ def _recommendations(section: Optional[Section]) -> List[str]:
     return out
 
 
+_MEASUREMENT = re.compile(r"\d+(?:[.,]\d+)?\s*(?:%|°|(?:mm|cm|ml|mL|cc|HU|mmHg|m/s|degrees?)(?![A-Za-z]))")
+
+
 # ── reconcile ────────────────────────────────────────────────────────────────
 
 Q_AFFECTED = ("Is this statement from a report template affected by the dictated findings? Affected means a dictated "
@@ -256,7 +259,10 @@ async def compile_brief(sheet: str, scan_type: str, findings: str) -> Brief:
     split = await _split_bundled(raw_negs)
     negs = [(c, targets.get(parent, "")) for parent, parts in zip(raw_negs, split) for c in parts]
     normal_bullet = _bullet(struct, "Normal-study path")
-    normals = _normal_sentences(normal_bullet)
+    # A normal line that states a measurement asserts a value nobody dictated whenever the
+    # dictation is silent about it, so it never reaches the generator.
+    measured = [t for t in _normal_sentences(normal_bullet) if _MEASUREMENT.search(t)]
+    normals = [t for t in _normal_sentences(normal_bullet) if not _MEASUREMENT.search(t)]
     diffs = differential_lines(secs)
     recs = _recommendations(imp)
     styles = style.bullets if style else []
@@ -298,6 +304,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str) -> Brief:
     # Normal-study path: unaffected lines verbatim; a line either model flags is listed as not
     # assertable. Never deleted: a missing line is refilled from priors, a prohibition holds.
     if normal_bullet:
+        decisions["normals"].extend({"text": t, "action": "removed_measurement"} for t in measured)
         keep, flagged = [], []
         qaff = set(qw.affected_normals)
         for k, t in enumerate(normals):

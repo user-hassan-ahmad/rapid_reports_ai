@@ -128,3 +128,12 @@ async def test_generator_falls_back_to_raw_sheet_when_the_brief_fails(monkeypatc
     assert out["brief_used"] is False
     assert "Conditional Suppression Rules" in seen["system"]          # raw sheet
     assert "A canonical line from the skill sheet is a proposal" in seen["system"]   # full principle 12
+
+
+def test_measurement_pattern_catches_values_not_anatomical_labels():
+    for s in ["Sinuses of Valsalva 32 mm.", "Minimum calibre 8mm.", "Ejection fraction 60%.", "Area 510 mm².",
+              "The aorta measures 2.2 cm.", "Angle 15 degrees."]:
+        assert qb._MEASUREMENT.search(s), s
+    for s in ["No abnormality at C1–C2.", "The conus terminates at T12/L1.", "Segment VI is clear.",
+              "Raphe at 12 o'clock.", "The L4/5 disc is normal."]:
+        assert not qb._MEASUREMENT.search(s), s
