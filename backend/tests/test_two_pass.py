@@ -49,9 +49,9 @@ def test_a_switch_needs_confidence_and_must_not_lose_a_negation_side_or_number()
 
 
 def test_speech_the_stream_dropped_is_recovered_from_the_batch_pass():
-    live = [_w("Actually"), _w("make"), _w("that"), _w("54"), _w("millimetres.")]
-    batch = [_w(x) for x in ["Actually,", "make", "that", "54", "millimetres.", "Actually,", "make", "that", "54", "millimetres."]]
-    assert recovered_prefix(live, batch) == "Actually, make that 54 millimetres."
+    live = [_w("Make"), _w("that"), _w("54"), _w("millimetres.")]
+    batch = [_w(x) for x in ["The", "mass", "measures", "45", "mm.", "Make", "that", "54", "millimetres."]]
+    assert recovered_prefix(live, batch) == "The mass measures 45 mm."
 
 
 def test_no_recovery_from_a_single_or_unsure_word():
@@ -210,3 +210,71 @@ def test_units_written_differently_still_align():
     batch = [_w("Actually,", 0.9), _w("make"), _w("that"), _w("7"), _w("mm.")]
     assert recovered_prefix(live, batch, "Actually make that 7 millimeters") == "Actually,"
     assert disagreements(live, {"gpt": "Make that 7 millimeters."}) == []
+
+
+# --- mid-utterance dropped words that change the meaning ----------------------------------
+from rapid_reports_ai.two_pass import recovered_inserts
+
+
+def test_a_dropped_negation_both_engines_heard_is_restored_in_place():
+    live = [_w("There"), _w("is"), _w("pleural"), _w("effusion.")]
+    batch = [_w("There"), _w("is"), _w("no"), _w("pleural"), _w("effusion.")]
+    assert recovered_inserts(live, batch, "There is no pleural effusion.") == [
+        {"left": "is", "right": "pleural", "text": "no"}]
+
+
+def test_a_dropped_side_or_number_with_its_unit():
+    live = [_w("A"), _w("nodule"), _w("in"), _w("the"), _w("upper"), _w("lobe.")]
+    batch = [_w("A"), _w("nodule"), _w("in"), _w("the"), _w("right"), _w("upper"), _w("lobe.")]
+    assert recovered_inserts(live, batch, "A nodule in the right upper lobe.")[0]["text"] == "right"
+    live = [_w("A"), _w("nodule"), _w("measuring"), _w("in"), _w("the"), _w("lung.")]
+    batch = [_w("A"), _w("nodule"), _w("measuring"), _w("8"), _w("mm"), _w("in"), _w("the"), _w("lung.")]
+    assert recovered_inserts(live, batch, "A nodule measuring 8 millimetres in the lung.")[0]["text"] == "8 mm"
+
+
+def test_only_when_both_engines_heard_it_in_the_same_place():
+    live = [_w("There"), _w("is"), _w("pleural"), _w("effusion.")]
+    batch = [_w("There"), _w("is"), _w("no"), _w("pleural"), _w("effusion.")]
+    assert recovered_inserts(live, batch, "There is pleural effusion.") == []  # gpt did not
+    assert recovered_inserts(live, batch, None) == []                         # no second hearing
+
+
+def test_an_unsure_batch_word_or_an_ordinary_word_is_not_inserted():
+    live = [_w("There"), _w("is"), _w("pleural"), _w("effusion.")]
+    unsure = [_w("There"), _w("is"), _w("no", 0.6), _w("pleural"), _w("effusion.")]
+    assert recovered_inserts(live, unsure, "There is no pleural effusion.") == []
+    ordinary = [_w("There"), _w("is"), _w("a"), _w("pleural"), _w("effusion.")]
+    assert recovered_inserts(live, ordinary, "There is a pleural effusion.") == []  # 'of', 'a': not high-stakes
+
+
+def test_revise_reports_inserts():
+    live_alt = _alt("There is pleural effusion.", [_timed(w, 0.1 * i, 0.1 * i + 0.08) for i, w in
+                                                    enumerate(["There", "is", "pleural", "effusion."])])
+
+    async def batch(wav):
+        return "There is no pleural effusion.", [_w(x) for x in ["There", "is", "no", "pleural", "effusion."]]
+
+    async def gpt(wav):
+        return "There is no pleural effusion."
+    tp = TwoPass(16000, batch=batch, gpt=gpt)
+    tp.feed(b"\x00\x00" * 16000 * 2)
+    rev = asyncio.run(tp.revise(1, live_alt))
+    assert rev["inserts"] == [{"left": "is", "right": "pleural", "text": "no"}]
+
+
+def test_no_insert_at_the_end_the_next_final_owns_those_words():
+    # replay: "…the right ventricle measures" + "46": the clip's 0.3 s tail caught the start of
+    # the next final ("46 millimetres") — inserting would duplicate it
+    live = [_w("the"), _w("ventricle"), _w("measures")]
+    batch = [_w("the"), _w("ventricle"), _w("measures"), _w("46")]
+    assert recovered_inserts(live, batch, "the ventricle measures 46") == []
+
+
+def test_a_restart_or_repeat_of_the_final_is_not_recovered():
+    # replay: "The para" before "The para aortic nodes…"; a repeated "Actually make that 54 mm"
+    live = [_w("The"), _w("para"), _w("aortic"), _w("nodes")]
+    batch = [_w("The"), _w("para"), _w("The"), _w("para"), _w("aortic"), _w("nodes")]
+    assert recovered_prefix(live, batch, "The para the para aortic nodes") is None
+    live = [_w("Actually"), _w("make"), _w("that"), _w("54"), _w("mm.")]
+    batch = [_w(x) for x in ["Actually,", "make", "that", "54", "mm.", "Actually,", "make", "that", "54", "mm."]]
+    assert recovered_prefix(live, batch) is None

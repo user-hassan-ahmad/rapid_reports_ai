@@ -355,6 +355,7 @@
 						{#if d.rec.asr_flag_count}<span class="text-yellow-300" title="words underlined as not making clinical sense">flagged {d.rec.asr_flag_count}</span>{/if}
 						{#if d.rec.two_pass_switched}<span class="text-emerald-300" title="two-pass: words swapped (Jev ≥ 0.90)">2p swapped {d.rec.two_pass_switched}</span>{/if}
 						{#if d.rec.two_pass_suggested}<span class="text-yellow-300" title="two-pass: underlined, also heard as …">2p suggested {d.rec.two_pass_suggested}</span>{/if}
+						{#if d.rec.two_pass_inserted}<span class="text-sky-300" title="two-pass: dropped negation / side / number inserted">2p inserted {d.rec.two_pass_inserted}</span>{/if}
 						{#if d.rec.two_pass_recovered_words}<span class="text-sky-300" title="two-pass: dropped speech recovered">2p recovered {d.rec.two_pass_recovered_words}w</span>{/if}
 						{#if d.rec.two_pass_ms != null}<span class="text-gray-500" title="two-pass revision time after the final">2p {d.rec.two_pass_ms} ms</span>{/if}
 						{#if d.rec.line_closed_by}<span class="text-violet-300">⏎ {d.rec.line_closed_by}</span>{/if}

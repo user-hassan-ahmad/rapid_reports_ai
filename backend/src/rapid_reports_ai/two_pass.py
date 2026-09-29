@@ -124,6 +124,9 @@ def recovered_prefix(live_words: list[dict], batch_words: list[dict], other_text
         return None
     if lead == 0:
         return None
+    lead_tokens = tokens[:lead]
+    if lead_tokens == live[:lead] or lead_tokens == live[: len(lead_tokens)]:
+        return None  # a restart or repeat of how the final itself begins, not lost speech
     if lead < RECOVER_MIN_WORDS:
         other = _tok(other_text or "")
         if other[:lead] != tokens[:lead] or other[lead:lead + 2] != live[:2]:
@@ -136,6 +139,39 @@ def recovered_prefix(live_words: list[dict], batch_words: list[dict], other_text
     if min(w.get("confidence", 0.0) for w in words) < RECOVER_MIN_CONF:
         return None
     return " ".join(w.get("punctuated_word") or w.get("word", "") for w in words)
+
+
+_HIGH_STAKES = {"no", "not", "without", "absent", "negative", "left", "right", "bilateral"}
+INSERT_MAX_WORDS = 3
+
+
+def recovered_inserts(live_words: list[dict], batch_words: list[dict], other_text: str | None) -> list[dict]:
+    """Negations, sides and numbers the live stream dropped mid-utterance, restored only where
+    BOTH independent hearings have them in the same place (same neighbouring words) and the
+    batch pass is confident. Ordinary dropped words ("of", "a") are left alone: harmless, and
+    not worth an edit. Each insert: {left, right, text} in comparable tokens."""
+    if not other_text:
+        return []
+    live = [t for t, _ in _live_tokens(live_words)]
+    batch = [(t, w) for w in batch_words for t in _tok(w.get("punctuated_word") or w.get("word", ""))]
+    other = _tok(other_text)
+    out = []
+    sm = difflib.SequenceMatcher(None, live, [t for t, _ in batch], autojunk=False)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag != "insert" or i1 == 0 or i1 >= len(live):
+            continue  # start: recovered_prefix's job; end: the clip's tail belongs to the next final
+        added = [t for t, _ in batch[j1:j2]]
+        if len(added) > INSERT_MAX_WORDS or not any(t in _HIGH_STAKES or t[0].isdigit() for t in added):
+            continue
+        if not all(t in _HIGH_STAKES or t[0].isdigit() or t in _UNITS for t in added):
+            continue
+        if min(w.get("confidence", 0.0) for _, w in batch[j1:j2]) < RECOVER_MIN_CONF:
+            continue
+        pattern = [live[i1 - 1], *added] + ([live[i1]] if i1 < len(live) else [])
+        if not any(other[k:k + len(pattern)] == pattern for k in range(len(other) - len(pattern) + 1)):
+            continue  # the independent engine did not hear it there
+        out.append({"left": live[i1 - 1], "right": live[i1] if i1 < len(live) else "", "text": " ".join(added)})
+    return out
 
 
 # --- orchestration (lab, RR_TWO_PASS=1) -------------------------------------------------------
@@ -226,6 +262,7 @@ class TwoPass:
             others["gpt"] = gpt_text
         spans = disagreements(words, others)
         recovered = recovered_prefix(words, batch[1], gpt_text) if batch else None
+        inserts = recovered_inserts(words, batch[1], gpt_text) if batch else []
         switches, suggestions = [], []
         if spans and self._jev:
             body = {"state": {"scan_type": self.scan_type, "dictation": alternative.get("transcript", "")},
@@ -251,10 +288,11 @@ class TwoPass:
                 elif conf >= SUGGEST_MIN_CONF and switch_allowed(s.live, reading, 1.0):  # short on confidence only
                     suggestions.append(item)
         rev = {"final_seq": final_seq, "switches": switches, "suggestions": suggestions, "recovered": recovered,
+               "inserts": inserts,
                "spans": len(spans),
                "errors": errors, "ms": int((time.perf_counter() - t0) * 1000)}
         logger.info("[two_pass] %s", json.dumps({"final_seq": final_seq, "spans": len(spans), "switches": len(switches),
-                                                 "suggestions": len(suggestions),
+                                                 "suggestions": len(suggestions), "inserts": len(inserts),
                                                  "recovered_words": len((recovered or "").split()), "errors": errors,
                                                  "ms": rev["ms"]}))
         return rev

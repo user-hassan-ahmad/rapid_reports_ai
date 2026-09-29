@@ -760,7 +760,7 @@
 		const patch: Partial<DecisionRecord> = { two_pass_ms: rev.ms, two_pass_switched: 0, two_pass_suggested: 0,
 			two_pass_recovered_words: 0, two_pass_unmatched: 0 };
 		const a = [...affected].reverse().find((x) => x.id === id);
-		if (!a || (!rev.switches.length && !rev.suggestions.length && !rev.recovered)) {
+		if (!a || (!rev.switches.length && !rev.suggestions.length && !rev.recovered && !(rev.inserts ?? []).length)) {
 			patchDecision(id, patch);
 			return;
 		}
@@ -777,6 +777,10 @@
 			track({ id: `${id}:2p`, route: a.route, at: Date.now(), from, to: from + e.insert.length, before,
 				lineOpenBefore: lineOpen, tokens: new Set(), intact: true, edited: false, redictated: false });
 			setTimeout(() => editor?.dispatch({ effects: clearAuto.of({ from, to: from + e.insert.length }) }), EDIT_WINDOW_MS);
+			if (e.message) {
+				// an inserted negation, side or number stays underlined: it changes the meaning
+				editor.dispatch({ effects: markAsrFlag.of({ from, to: from + e.insert.trimEnd().length, message: e.message }) });
+			}
 		}
 		for (const u of plan.underlines) {
 			editor.dispatch({ effects: markAsrFlag.of({ from: a.from + u.from, to: a.from + u.to, message: u.message }) });
@@ -793,7 +797,8 @@
 			setTimeout(() => editor?.dispatch({ effects: clearAuto.of({ from: at, to: at + insert.length }) }), EDIT_WINDOW_MS);
 			patch.two_pass_recovered_words = rev.recovered.trim().split(/\s+/).length;
 		}
-		patch.two_pass_switched = plan.edits.length;
+		patch.two_pass_switched = plan.edits.filter((e) => !e.message).length;
+		patch.two_pass_inserted = plan.edits.filter((e) => e.message).length;
 		patch.two_pass_suggested = plan.underlines.length;
 		patch.two_pass_unmatched = plan.unmatched;
 		patchDecision(id, patch);

@@ -36,3 +36,21 @@ describe('two-pass revisions', () => {
 		expect(p.unmatched).toBe(1);
 	});
 });
+
+describe('two-pass inserts (dropped negations, sides, numbers)', () => {
+	it('inserts between the neighbouring words, underlined so it is seen', () => {
+		const p = planRevision('There is pleural effusion.', rev({ inserts: [{ left: 'is', right: 'pleural', text: 'no' }] }), true);
+		expect(p.edits).toEqual([{ from: 9, to: 9, insert: 'no ', message: 'Inserted “no”: both second passes heard it here' }]);
+	});
+
+	it('when the text was edited by hand, the neighbours are underlined instead', () => {
+		const p = planRevision('There is pleural effusion.', rev({ inserts: [{ left: 'is', right: 'pleural', text: 'no' }] }), false);
+		expect(p.edits).toEqual([]);
+		expect(p.underlines).toEqual([{ from: 6, to: 16, message: 'Both second passes also heard “no” here' }]);
+	});
+
+	it('neighbours no longer adjacent (a polish reworded them): unmatched', () => {
+		const p = planRevision('There is a pleural effusion.', rev({ inserts: [{ left: 'is', right: 'pleural', text: 'no' }] }), true);
+		expect(p.unmatched).toBe(1);
+	});
+});

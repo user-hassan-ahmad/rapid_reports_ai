@@ -12,11 +12,20 @@ export interface Switch {
 	confidence: number;
 }
 
+/** A negation, side or number the live stream dropped mid-sentence and both second passes
+ *  heard between these neighbouring words. */
+export interface Insert {
+	left: string;
+	right: string;
+	text: string;
+}
+
 export interface Revision {
 	final_seq: number;
 	switches: Switch[];
 	suggestions: Switch[];
 	recovered: string | null;
+	inserts?: Insert[];
 	spans: number;
 	errors: string[];
 	ms: number;
@@ -45,8 +54,12 @@ export function planRevision(
 	text: string,
 	rev: Revision,
 	intact: boolean
-): { edits: { from: number; to: number; insert: string }[]; underlines: { from: number; to: number; message: string }[]; unmatched: number } {
-	const edits: { from: number; to: number; insert: string }[] = [];
+): {
+	edits: { from: number; to: number; insert: string; message?: string }[];
+	underlines: { from: number; to: number; message: string }[];
+	unmatched: number;
+} {
+	const edits: { from: number; to: number; insert: string; message?: string }[] = [];
 	const underlines: { from: number; to: number; message: string }[] = [];
 	let unmatched = 0;
 	for (const s of rev.switches) {
@@ -59,6 +72,16 @@ export function planRevision(
 		const r = findReading(text, s.from);
 		if (!r) unmatched++;
 		else underlines.push({ ...r, message: hover(s) });
+	}
+	for (const ins of rev.inserts ?? []) {
+		const r = findReading(text, `${ins.left} ${ins.right}`);
+		if (!r) {
+			unmatched++;
+			continue;
+		}
+		const at = r.to - (text.slice(r.from, r.to).match(/\S+$/)?.[0].length ?? 0); // start of the right word
+		if (intact) edits.push({ from: at, to: at, insert: `${ins.text} `, message: `Inserted “${ins.text}”: both second passes heard it here` });
+		else underlines.push({ ...r, message: `Both second passes also heard “${ins.text}” here` });
 	}
 	edits.sort((a, b) => a.from - b.from);
 	return { edits, underlines, unmatched };

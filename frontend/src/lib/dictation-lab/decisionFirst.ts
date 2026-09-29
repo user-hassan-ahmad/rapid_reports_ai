@@ -65,6 +65,7 @@ export interface DecisionRecord {
 	two_pass_switched?: number; // quiet swaps applied (Jev ≥ 0.90)
 	two_pass_suggested?: number; // underlined, "also heard as …"
 	two_pass_recovered_words?: number; // speech the stream dropped, inserted
+	two_pass_inserted?: number; // a dropped negation / side / number both second passes heard
 	two_pass_unmatched?: number; // readings no longer in the text
 	polish_kind?: 'full' | 'lean' | null; // which polish produced the text (racing: lean)
 	asr_fix_count?: number; // word-sense fixes applied to this line
