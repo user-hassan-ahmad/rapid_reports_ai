@@ -212,3 +212,25 @@ async def test_candidate_persists_the_brief(monkeypatch):
     cand = await api._run_one_generator(skill_sheet_markdown="S", findings="F", model_name="m", run_id="r",
                                         scan_type="CT", clinical_history="h")
     assert cand["brief"] == {"text": "BRIEF", "decisions": {"negatives": []}}
+
+
+def test_candidates_parse_the_nested_shape_the_analyser_emits():
+    # Real Qwen output (2026-09-29, prod jaundice case): branch on its own line, negatives nested,
+    # and the branch named without the differential's parenthetical.
+    diffs = ["Pancreatic head mass — hypoenhancing mass *(visible on this technique: yes)*",
+             "Hilar cholangiocarcinoma (Klatskin tumour) — stricture at the confluence *(visible on this technique: yes)*"]
+    lines = ["- **If confirmed:**",
+             "  - Pancreatic head mass →",
+             '    - "No vascular encasement is identified." (core)',
+             '    - "No peritoneal deposit is identified." (contextual)',
+             "  - Hilar cholangiocarcinoma →",
+             '    - "No hepatic metastatic deposit is identified." (core)',
+             "  - Cirrhosis →",
+             '    - "No varices are identified." (contextual)']
+    cands, unmatched = qb.parse_confirmed(lines, diffs)
+    assert [(c.branch, c.text, c.tag, c.diff_index) for c in cands] == [
+        ("Pancreatic head mass", "No vascular encasement is identified", "core", 0),
+        ("Pancreatic head mass", "No peritoneal deposit is identified", "contextual", 0),
+        ("Hilar cholangiocarcinoma", "No hepatic metastatic deposit is identified", "core", 1),
+    ]
+    assert unmatched == 1

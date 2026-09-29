@@ -159,6 +159,9 @@ PRESENT_LOW = 0.5
 PRESENT_HIGH = 0.8
 MAX_CONFIRMED_OPTIONS = 4
 _CONFIRMED = re.compile(r'^\s+-\s+(.+?)\s*(?:→|->)\s*"([^"]+)"\s*(?:\((core|contextual)\))?')
+# The analyser also nests: the branch on its own line, its negatives as sub-bullets.
+_CONFIRMED_BRANCH = re.compile(r'^\s+-\s+([^"]+?)\s*(?:→|->)\s*$')
+_CONFIRMED_NEG = re.compile(r'^\s+-\s+"([^"]+)"\s*(?:\((core|contextual)\))?')
 
 
 @dataclass
@@ -169,24 +172,35 @@ class Candidate:
     diff_index: int   # index into differential_lines(), whose Jev key is f"d{diff_index}"
 
 
+def _name_key(name: str) -> str:
+    """A branch name without its parenthetical: the analyser drops it when it repeats the name."""
+    return re.sub(r"\s*\([^)]*\)", "", name).strip().lower()
+
+
 def _diff_name(line: str) -> str:
-    return re.split(r"\s+—\s+|\s+\*\(", line, maxsplit=1)[0].strip().lower()
+    return _name_key(re.split(r"\s+—\s+|\s+\*\(", line, maxsplit=1)[0])
 
 
 def parse_confirmed(lines: List[str], diffs: List[str]) -> tuple[List[Candidate], int]:
-    """The If-confirmed bullet's lines as candidates matched to a differential by name."""
+    """The If-confirmed bullet's lines as candidates matched to a differential by name, in either
+    shape the analyser writes: one line per negative, or the branch with negatives nested."""
     names = {_diff_name(d): i for i, d in enumerate(diffs)}
-    cands, unmatched = [], 0
+    pairs: List[tuple] = []
+    branch = None
     for line in lines[1:]:
-        m = _CONFIRMED.match(line)
-        if not m:
-            continue
-        branch, text, tag = m.group(1).strip(), m.group(2).strip().rstrip("."), m.group(3) or "contextual"
-        k = names.get(branch.lower())
+        if m := _CONFIRMED.match(line):
+            pairs.append((m.group(1), m.group(2), m.group(3)))
+        elif m := _CONFIRMED_BRANCH.match(line):
+            branch = m.group(1)
+        elif (m := _CONFIRMED_NEG.match(line)) and branch:
+            pairs.append((branch, m.group(1), m.group(2)))
+    cands, unmatched = [], 0
+    for b, text, tag in pairs:
+        k = names.get(_name_key(b))
         if k is None:
             unmatched += 1
             continue
-        cands.append(Candidate(branch, text, tag, k))
+        cands.append(Candidate(b.strip(), text.strip().rstrip("."), tag or "contextual", k))
     return cands, unmatched
 
 
