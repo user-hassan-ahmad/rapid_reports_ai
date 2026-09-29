@@ -141,3 +141,24 @@ async def test_borderline_branch_offers_its_core_negatives_with_a_reason(monkeyp
     assert len(offered) == qb.MAX_CONFIRMED_OPTIONS                     # 4 of the 4 subdural candidates
     assert offered[0]["reason"] == "branch borderline (p=0.60)"
     assert "(confirmed:" not in b.text
+
+
+@pytest.mark.asyncio
+async def test_plan_carries_only_stated_negatives_it_chose(monkeypatch):
+    _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(6)])
+    seen = {}
+    async def fake_plan(scan_type, history, items, recs, cand_negs=()):
+        seen["cands"] = list(cand_negs)
+        # 0 = "No midline shift" (stated), 1 = "No uncal herniation" (offered): only 0 may be carried
+        return qb.ImpressionPlan(recommendations=[], impression=[0], carry_negatives=[0, 1])
+    monkeypatch.setattr(qb, "_plan", fake_plan)
+    b = await qb.compile_brief(SHEET_C, "CT head", "10 mm right acute subdural")
+    assert seen["cands"][:2] == ["No midline shift", "No uncal herniation"]
+    carry = b.text.split("Carry forward")[1].split("\n")[0]
+    assert '"No midline shift"' in carry and "No uncal herniation" not in carry
+    assert b.decisions["impression_plan"]["carry_negatives"] == ["No midline shift"]
+
+
+def test_plan_prompt_keeps_negatives_out_of_the_impression_by_default():
+    assert "carry_negatives" in qb.PLAN_SYS
+    assert "changes the interpretation of a carried finding" in qb.PLAN_SYS
