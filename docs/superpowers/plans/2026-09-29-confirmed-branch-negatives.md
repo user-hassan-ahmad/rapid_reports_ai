@@ -1137,3 +1137,152 @@ def distinct_keys(cands: List[FindingNegative]) -> List[str]:
   triggers (target 0), the calibration table, and the quality notes to Hassan before writing
   R4–R7. Commit the runner change and outputs:
   `eval(finding-negatives): coverage check`.
+
+### R3 result (2026-09-29)
+
+The gate passed: 15/16 main findings keyed ≥0.5, 0 false triggers, clear 0.86–0.99 vs hedged
+≤0.72. The negatives are of mixed quality, and the Qwen check is doing essential work (ledger
+L-45). Hassan approved R4–R7.
+
+### R4: Brief keyed by finding (replaces the branch-keyed code)
+
+**Files:**
+- modify `backend/src/rapid_reports_ai/quick_report_brief.py`, `backend/src/rapid_reports_ai/quick_report_generator.py`,
+  `backend/src/rapid_reports_ai/scripts/confirmed_negatives_eval.py`,
+  `frontend/src/lib/utils/impressionOptions.ts(+test)`;
+- rewrite the branch-keyed tests in `backend/tests/test_confirmed_negatives.py`.
+
+- [ ] **Step 1: Rewrite the tests.**
+  - Delete `test_candidates_parse_branch_negative_and_tag` and
+    `test_candidates_parse_the_nested_shape_the_analyser_emits`.
+  - Rename `route_confirmed` → `route_finding` in the rule-C test.
+  - `SHEET_C` loses its differentials' role. Its Companion Matrix bullet becomes:
+    ```
+    - **If present:** (negatives stated only when the dictation reports the finding)
+      - subdural haematoma → "No midline shift" (core)
+      - subdural haematoma → "No uncal herniation" (contextual)
+      - subdural haematoma → "No effacement of the basal cisterns" (core)
+      - subdural haematoma → "No subfalcine herniation" (core)
+      - extradural haematoma → "No venous sinus involvement" (core)
+    ```
+  - `_stub_c` sets `f0` (the subdural key) to the given score and every other question to 0.1.
+  - Expected texts are unchanged. Kind `finding_negative`, field `finding` instead of
+    `branch`, decisions key `finding_negatives`, source `finding:subdural haematoma`, and the
+    KEEP annotation `(finding: subdural haematoma)`.
+  - The generator tests use kind `finding_negative` and `finding`.
+  - Add a test that the Jev question for each key starts with `Q_FINDING`, and that a key
+    shared by several negatives is asked once.
+- [ ] **Step 2:** run the tests; expect FAILs.
+- [ ] **Step 3: Implement.**
+  - **Remove** `Candidate`, `_diff_name`, `_name_key`, `parse_confirmed`.
+  - **Rename** `route_confirmed` → `route_finding` and `MAX_CONFIRMED_OPTIONS` →
+    `MAX_FINDING_OPTIONS`. In `DROP_TOP_BULLETS`, replace `"If confirmed"` with `"If present"`.
+  - **In `compile_brief`:**
+    - `fb = _bullet(matrix, "If present")`, `cands = parse_if_present(fb.lines) if fb else []`,
+      `keys = distinct_keys(cands)`.
+    - Add `qs.update({f"f{i}": {"type": "noul", "instructions": Q_FINDING + k} for i, k in enumerate(keys)})`.
+    - Each candidate's score is `score(f"f{keys.index(c.key)}")`.
+    - Options become `{"kind": "finding_negative", "section": "FINDINGS", "text", "finding": c.key, "reason"}`.
+    - Decisions become `finding_negatives` entries `{finding, text, tag, qwen, present, outcome}`,
+      and `unmatched` is removed.
+  - **Generator:** `"confirmed_negative"` → `"finding_negative"`, `"branch"` → `"finding"`.
+  - **Frontend:** `'confirmed_negative'` → `'finding_negative'`, `branch` → `finding`.
+  - **Eval runner:** `confirmed_negatives` → `finding_negatives`, kind `finding_negative`,
+    and the `unmatched` column is removed.
+- [ ] **Step 4:** backend and frontend tests pass. **Step 5:** commit
+  `feat(brief): link negatives to the reported finding (Jev per key); drop branch keying`.
+
+### R5: Fallback for unanticipated findings (offered only)
+
+**Files:** modify `backend/src/rapid_reports_ai/quick_report_brief.py`, `backend/tests/test_confirmed_negatives.py`
+
+This deviates from the spec's §3 on one point. Jev scores keys, not dictated items, so code
+cannot tell which item a key covers. The fallback Qwen call therefore judges coverage itself.
+It sees every dictated item and every key, and runs in the same `gather`.
+
+- [ ] **Step 1: Failing tests.** Stub `_fallback`, returning items 0 (covered) and 1 (not
+  covered, negatives `["No adrenal haemorrhage"]`), with the plan carrying items [0, 1].
+  - An option `{"kind": "finding_negative", "section": "FINDINGS", "text": "No adrenal haemorrhage", "finding": <item 1>, "reason": "unanticipated finding"}` appears.
+  - Nothing from the fallback is ever stated.
+  - With the plan not carrying item 1, nothing is offered.
+  - When `_fallback` raises, the brief still compiles and offers nothing from it.
+  - The fallback shares the `MAX_FINDING_OPTIONS` cap.
+- [ ] **Step 2:** run the tests; expect FAIL.
+- [ ] **Step 3: Implement.**
+
+```python
+class FallbackItem(BaseModel):
+    index: int
+    covered: bool
+    negatives: List[str] = []
+
+
+class FallbackNegatives(BaseModel):
+    items: List[FallbackItem]
+    @field_validator("items", mode="before")
+    @classmethod
+    def _parse_stringified(cls, v):
+        return _unstring(v)
+
+
+FALLBACK_SYS = (
+    "You check whether each dictated radiology finding is covered by a prepared list of finding types, and write "
+    "pertinent negatives only for findings that are not. For each numbered dictated finding return covered=true "
+    "when one of the FINDING TYPES describes the same kind of finding in the same place; otherwise covered=false "
+    "and up to three negatives a consultant states once that finding is reported: the absence of each extension, "
+    "spread or complication this technique shows and the next management step depends on. One finding per "
+    "negative, no 'or', no list, final report form. Never deny anything dictated or its expected consequence.")
+FALLBACK_TIMEOUT_S = 6.0
+
+
+async def _fallback(state: str, items: List[str], keys: List[str]) -> FallbackNegatives:
+    r = await asyncio.wait_for(_run_agent_with_model(
+        model_name=QWEN, output_type=FallbackNegatives, system_prompt=FALLBACK_SYS,
+        user_prompt=(f"{state}\n\nNUMBERED DICTATED FINDINGS:\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(items))
+                     + "\n\nFINDING TYPES:\n" + ("\n".join(f"- {k}" for k in keys) or "(none)")),
+        api_key="", model_settings={"temperature": 0, "max_tokens": 3000, "reasoning_effort": "none"}), FALLBACK_TIMEOUT_S)
+    return r.output
+```
+
+In `compile_brief`, add `fallback_or_none()` (it catches everything and returns `None`) to the
+`gather`. After the plan block, and only when `plan` exists:
+
+```python
+    if plan and fb_out:
+        seen = {c.text for c in cands}
+        for it in fb_out.items:
+            if it.covered or it.index not in plan.impression or not (0 <= it.index < len(items)):
+                continue
+            for neg in it.negatives[:3]:
+                neg = neg.strip().rstrip(".")
+                if neg in seen or n_offered >= MAX_FINDING_OPTIONS:
+                    continue
+                seen.add(neg)
+                n_offered += 1
+                decisions["options"].append({"kind": "finding_negative", "section": "FINDINGS", "text": neg,
+                                             "finding": items[it.index], "reason": "unanticipated finding"})
+                decisions["finding_negatives"].append({"finding": items[it.index], "text": neg, "tag": "fallback",
+                                                       "qwen": "n/a", "present": None, "outcome": "offered"})
+```
+
+- [ ] **Step 4:** tests pass. **Step 5:** commit
+  `feat(brief): unanticipated carried findings get offered negatives from a parallel Qwen fallback`.
+
+### R6: PRESENT_HIGH
+
+It stays at 0.8, which sits in the measured gap (clear ≥0.86, hedged ≤0.72). There is no code
+change. Re-check it on the A/B's hedged cases in R7.
+
+### R7: A/B, read by hand, results (the old Task 10)
+
+- [ ] **Step 1:** add the L-45 predictions block (spec "Evaluation" table), then commit it
+  before any run.
+- [ ] **Step 2: Run** in the background, serially:
+  - arm A, 3 runs, `silent_staging.json`;
+  - arm B, 3 runs, `silent_staging.json`;
+  - arms A and B, 1 run each, `varied_10.json`.
+- [ ] **Step 3: Read every B report by hand** against its dictation, per the spec's measures.
+  Add: did the Qwen check drop every contradicted negative? Do fallback options appear, and
+  are they sensible? Write the results table into L-45.
+- [ ] **Step 4:** run the full backend suite, then commit. Production enablement is not in
+  scope; it needs Hassan's sign-off.
