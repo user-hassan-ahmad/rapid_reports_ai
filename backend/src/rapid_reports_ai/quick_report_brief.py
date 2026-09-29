@@ -46,7 +46,8 @@ QWEN = "qwen-3.8-27b"
 JEV_TIMEOUT_S = 6.0
 QWEN_TIMEOUT_S = 10.0
 
-DROP_TOP_BULLETS = {"Out of scope", "Modality non-assessables", "In-scope companions", "Out-of-scope suppressed"}
+DROP_TOP_BULLETS = {"Out of scope", "Modality non-assessables", "In-scope companions", "Out-of-scope suppressed",
+                    "If confirmed"}
 DROP_SECTIONS = {"Conditional Suppression Rules"}
 
 # ── parse ────────────────────────────────────────────────────────────────────
@@ -384,6 +385,8 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     measured = [t for t in _normal_sentences(normal_bullet) if _MEASUREMENT.search(t)]
     normals = [t for t in _normal_sentences(normal_bullet) if not _MEASUREMENT.search(t)]
     diffs = differential_lines(secs)
+    conf_bullet = _bullet(matrix, "If confirmed")
+    cands, unmatched = parse_confirmed(conf_bullet.lines, diffs) if conf_bullet else ([], 0)
     recs = _recommendations(imp)
     styles = style.bullets if style else []
     variants = _impression_variants(imp)
@@ -402,17 +405,18 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
 
     async def plan_or_none():
         try:
-            return await _plan(scan_type, clinical_history, items, recs)
+            return await _plan(scan_type, clinical_history, items, recs, [c.text for c in cands])
         except Exception as e:  # the brief still compiles; recommendations fall back to Jev alone
             logger.warning("impression plan failed (%s: %s)", type(e).__name__, str(e)[:200])
             return None
     jev, qw, plan = await asyncio.gather(_jev(state, qs) if qs else asyncio.sleep(0, {}),
-                                         _qwen(state, [n for n, _ in negs], normals, [" ".join(b.lines) for b in measurements]),
+                                         _qwen(state, [n for n, _ in negs] + [c.text for c in cands], normals, [" ".join(b.lines) for b in measurements]),
                                          plan_or_none())
     score = lambda k: float(jev[k]["noul"])
 
     decisions: dict = {"negatives": [], "normals": [], "differentials": [], "recommendations": [], "style": [], "measurements": [],
-                       "impression_variant": None, "impression_plan": None, "options": []}
+                       "impression_variant": None, "impression_plan": None, "options": [],
+                       "confirmed_negatives": [], "confirmed_negatives_unmatched": unmatched}
 
     # Mandatory negatives: one line each, with its action and the dictated finding.
     qneg = {d.index: d for d in qw.negatives}
@@ -427,9 +431,39 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             neg_lines.append(f'  - DO NOT ASSERT: "{text}" — expected consequence of: {d.dictated_finding}')
         else:
             neg_lines.append(f'  - KEEP: "{text}"{why}')
-        decisions["negatives"].append({"text": text, "action": action, "dictated_finding": d.dictated_finding if d else ""})
+        decisions["negatives"].append({"text": text, "action": action, "dictated_finding": d.dictated_finding if d else "",
+                                       "source": "sheet"})
+
+    # Confirmed-branch negatives (policy 1): stated as KEEP, labelled DO NOT ASSERT, or offered.
+    stated: List[str] = []
+    n_offered = 0
+    for j, c in enumerate(cands):
+        d = qneg.get(len(negs) + j)
+        label = d.action if d else "keep"
+        p = score(f"d{c.diff_index}")
+        outcome = route_confirmed(label, p, c.tag)
+        if outcome == "offered":
+            if n_offered >= MAX_CONFIRMED_OPTIONS:
+                outcome = "dropped"
+            else:
+                n_offered += 1
+                decisions["options"].append({"kind": "confirmed_negative", "section": "FINDINGS", "text": c.text,
+                                             "branch": c.branch,
+                                             "reason": "contextual" if p >= PRESENT_HIGH else f"branch borderline (p={p:.2f})"})
+        decisions["confirmed_negatives"].append({"branch": c.branch, "text": c.text, "tag": c.tag, "qwen": label,
+                                                 "present": round(p, 3), "outcome": outcome})
+        if outcome == "stated":
+            stated.append(c.text)
+            neg_lines.append(f'  - KEEP: "{c.text}" (confirmed: {c.branch})')
+            decisions["negatives"].append({"text": c.text, "action": "keep", "dictated_finding": "",
+                                           "source": f"confirmed:{c.branch}"})
+        elif outcome == "do_not_assert":
+            neg_lines.append(f'  - DO NOT ASSERT: "{c.text}" — expected consequence of: {d.dictated_finding}')
     if neg_bullet:
         neg_bullet.lines = neg_lines
+    elif matrix and neg_lines:
+        matrix.bullets.insert(0, Bullet("Mandatory negatives",
+                                        ["- **Mandatory negatives:** (reconciled with this dictation; one finding each)"] + neg_lines))
 
     # Normal-study path: unaffected lines verbatim; a line either model flags is listed as not
     # assertable. Never deleted: a missing line is refilled from priors, a prohibition holds.

@@ -52,3 +52,92 @@ def test_candidates_parse_branch_negative_and_tag():
 ])
 def test_route_confirmed_rule_c(label, present, tag, outcome):
     assert qb.route_confirmed(label, present, tag) == outcome
+
+
+from rapid_reports_ai.quick_report_brief import NegativeDecision, QwenDecisions
+
+SHEET_C = '''# Skill Sheet: CT head — head injury
+
+## Clinical Lane
+- **Question:** Intracranial injury?
+- **Differentials in scope:**
+  - **Aetiology (if haemorrhage confirmed):**
+    - Acute subdural — crescentic hyperdensity *(visible on this technique: yes)*
+    - Epidural — biconvex hyperdensity *(visible on this technique: yes)*
+
+## Structural Pattern
+- **Normal-study path:** "The orbits are clear."
+
+## Companion Matrix
+- **Mandatory negatives:** (one line each, one finding each)
+  - "No skull fracture" (trauma)
+- **If confirmed:** (negatives stated only when the dictation confirms the branch)
+  - Acute subdural → "No midline shift" (core)
+  - Acute subdural → "No uncal herniation" (contextual)
+  - Acute subdural → "No effacement of the basal cisterns" (core)
+  - Acute subdural → "No subfalcine herniation" (core)
+  - Epidural → "No venous sinus involvement" (core)
+
+## Impression Exemplars
+- **Abnormal exemplar:** "Acute subdural."
+'''
+
+
+def _stub_c(monkeypatch, subdural_present: float, qwen_negs):
+    async def fake_jev(state, questions):
+        out = {k: {"noul": 0.1} for k in questions}
+        out["d0"] = {"noul": subdural_present}
+        return out
+    async def fake_qwen(state, negs, normals, measurements):
+        fake_qwen.negs = negs
+        return QwenDecisions(negatives=qwen_negs, affected_normals=[], applicable_measurements=[])
+    async def no_split(negs):
+        return [[n] for n in negs]
+    async def no_plan(*a):
+        raise RuntimeError("no plan")
+    monkeypatch.setattr(qb, "_jev", fake_jev)
+    monkeypatch.setattr(qb, "_qwen", fake_qwen)
+    monkeypatch.setattr(qb, "_split_bundled", no_split)
+    monkeypatch.setattr(qb, "_plan", no_plan)
+    return fake_qwen
+
+
+@pytest.mark.asyncio
+async def test_confirmed_branch_negatives_are_stated_offered_or_labelled(monkeypatch):
+    # candidates follow the one mandatory negative in Qwen's list: indices 1..5
+    fq = _stub_c(monkeypatch, 0.95, [
+        NegativeDecision(index=0, action="keep"),
+        NegativeDecision(index=1, action="keep"),                      # core -> stated
+        NegativeDecision(index=2, action="keep"),                      # contextual -> offered
+        NegativeDecision(index=3, action="expected", dictated_finding="10 mm subdural"),
+        NegativeDecision(index=4, action="contradicted", dictated_finding="subfalcine herniation"),
+        NegativeDecision(index=5, action="keep"),                      # epidural branch not present
+    ])
+    b = await qb.compile_brief(SHEET_C, "CT head", "10 mm right acute subdural. Subfalcine herniation.")
+    t = b.text
+    assert fq.negs[1:] == ["No midline shift", "No uncal herniation", "No effacement of the basal cisterns",
+                           "No subfalcine herniation", "No venous sinus involvement"]
+    assert 'KEEP: "No midline shift" (confirmed: Acute subdural)' in t
+    assert 'DO NOT ASSERT: "No effacement of the basal cisterns" — expected consequence of: 10 mm subdural' in t
+    assert "No subfalcine herniation" not in t and "No venous sinus involvement" not in t
+    assert "No uncal herniation" not in t                              # offered, not in the brief
+    assert "If confirmed" not in t
+    opts = [o for o in b.decisions["options"] if o["kind"] == "confirmed_negative"]
+    assert opts == [{"kind": "confirmed_negative", "section": "FINDINGS", "text": "No uncal herniation",
+                     "branch": "Acute subdural", "reason": "contextual"}]
+    routes = {c["text"]: c["outcome"] for c in b.decisions["confirmed_negatives"]}
+    assert routes == {"No midline shift": "stated", "No uncal herniation": "offered",
+                      "No effacement of the basal cisterns": "do_not_assert",
+                      "No subfalcine herniation": "dropped", "No venous sinus involvement": "dropped"}
+    sources = {n["text"]: n["source"] for n in b.decisions["negatives"]}
+    assert sources["No skull fracture"] == "sheet" and sources["No midline shift"] == "confirmed:Acute subdural"
+
+
+@pytest.mark.asyncio
+async def test_borderline_branch_offers_its_core_negatives_with_a_reason(monkeypatch):
+    _stub_c(monkeypatch, 0.6, [NegativeDecision(index=i, action="keep") for i in range(6)])
+    b = await qb.compile_brief(SHEET_C, "CT head", "Possible thin right subdural.")
+    offered = [o for o in b.decisions["options"] if o["kind"] == "confirmed_negative"]
+    assert len(offered) == qb.MAX_CONFIRMED_OPTIONS                     # 4 of the 4 subdural candidates
+    assert offered[0]["reason"] == "branch borderline (p=0.60)"
+    assert "(confirmed:" not in b.text
