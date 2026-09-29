@@ -141,6 +141,13 @@ Lab backend command now: `RR_TRIAGE_DEBUG=1 RR_COVERAGE_CANDIDATE=jev DEEPGRAM_D
 
 Lab backend command now: `RR_TRIAGE_DEBUG=1 RR_LAB_AUDIO_CAPTURE=1 DEEPGRAM_FINALIZE_GAP_S=0.9 RR_COVERAGE_CANDIDATE=jev DEEPGRAM_DICTATION=0 DEEPGRAM_UK_SPELLING=1 DEEPGRAM_SPOKEN_FORMAT=1 DEEPGRAM_CASE_KEYTERMS=1 …uvicorn rapid_reports_ai.main:app --port 8000`.
 
+**Two-pass ASR with Jev as referee (2026-09-29, plan `plans/2026-09-29-two-pass-asr.md`).** `RR_TWO_PASS=1` (lab): each live final's audio (since the previous final) is re-heard by Deepgram batch and gpt-4o-transcribe in parallel (`two_pass.py`). Content-word disagreements (never commands, numbers or units) go to Jev as two-way choices, one per alternative. **≥ 0.90** is a quiet swap in the text (auto-mark, its own undo); **0.60–0.90** is an underline, "also heard as …" on hover. A reading that would lose a negation, side or number is neither. Speech the stream dropped is inserted from the batch pass. A revision arrives about 0.6–1.8 s after its final, and the panel shows `2p` counts. Evidence: bake-off and Jev adjudication across 4 captured sessions (`scripts/asr_bakeoff.py`, `scripts/asr_jev_adjudicate.py`): Jev 31/34 correct, right switches ≥ 0.97, wrong ≤ 0.64. Live replay: "Tarlov" over "tidal" at 0.84, so it is a suggestion, not a swap. Other lab fixes the same day:
+- The forced final waits for 18 dB of quiet in the audio (a mid-word flush lost a phrase).
+- Units after a number are written mm/cm/ml.
+- Unit words no longer set the ASR gate.
+
+Lab backend command now: `RR_TRIAGE_DEBUG=1 RR_TWO_PASS=1 RR_LAB_AUDIO_CAPTURE=1 DEEPGRAM_FINALIZE_GAP_S=0.9 RR_COVERAGE_CANDIDATE=jev DEEPGRAM_DICTATION=0 DEEPGRAM_UK_SPELLING=1 DEEPGRAM_SPOKEN_FORMAT=1 DEEPGRAM_CASE_KEYTERMS=1 …uvicorn rapid_reports_ai.main:app --port 8000`.
+
 Known limits: manual edits made while a polish is running are overwritten by it (same as today's path); undo is one step, and only while the range is untouched; `ignore_noise` goes to polish; `standalone` sits just under 0.5 on complete statements (live smoke 0.47–0.48), so expect `⏎ hard_limit` more than `⏎ standalone` on unpunctuated lines.
 
 ## 6. Outstanding / next steps — follow decision-first **rev 2**
