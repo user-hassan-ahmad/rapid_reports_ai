@@ -7,7 +7,7 @@
 	import ReportVersionInline from './ReportVersionInline.svelte';
 	import ReportEditor from './ReportEditor.svelte';
 	import OptionalAdditions from './OptionalAdditions.svelte';
-	import { insertEdit, removeEdit, optionsEnabled, type ReportOption } from '$lib/utils/impressionOptions';
+	import { insertEdit, removeEdit, type ReportOption } from '$lib/utils/impressionOptions';
 	import { API_URL } from '$lib/config';
 	import { detectUnfilledPlaceholders, generateChatContext } from '$lib/utils/placeholderDetection';
 	import { applyEditsToReport } from '$lib/utils/reportEditing';
@@ -51,9 +51,8 @@
 	// single-candidate reports (templated/auto) — audit flow unchanged.
 	export let activeCandidateModel: string | null = null;
 
-	// Quick-report reporter-choice options (behind localStorage rr_discretionary=1).
+	// Quick-report reporter-choice options: shown whenever the candidate carries any.
 	export let options: ReportOption[] = [];
-	const showOptions = optionsEnabled();
 
 	function handleOptionToggle(e: CustomEvent<{ option: ReportOption; checked: boolean }>) {
 		const text = currentEditorContent || response || '';
@@ -1049,7 +1048,7 @@
 						on:auditSpanHover={handleAuditSpanHover}
 					on:auditSpanClick={handleAuditSpanClick}
 					/>
-					{#if showOptions && options.length}
+					{#if options.length}
 						<OptionalAdditions
 							{options}
 							content={currentEditorContent || response}

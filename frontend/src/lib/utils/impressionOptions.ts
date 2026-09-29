@@ -94,11 +94,3 @@ export function applyEdit(text: string, edit: TextEdit): string {
 export function appliedOptionIds(text: string, options: ReportOption[]): string[] {
 	return options.filter((o) => isApplied(text, o)).map((o) => o.id);
 }
-
-export function optionsEnabled(): boolean {
-	try {
-		return typeof localStorage !== 'undefined' && localStorage.getItem('rr_discretionary') === '1';
-	} catch {
-		return false;
-	}
-}
