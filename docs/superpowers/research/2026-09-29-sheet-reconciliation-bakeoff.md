@@ -39,3 +39,22 @@ Jev AUC 0.989. Jev and Qwen agree on 90 % of items. By type (Jev @0.61 / Qwen): 
 3. **Next measurement:** generator A/B on these cases, with labelled sheet vs raw sheet. Measure contradiction and unsupported-normal rate, must-appear retention, and latency (+~0.3 s, in parallel with nothing else on the path).
 
 Caveats: small set, single non-radiologist annotator, thresholds chosen on the same data (use the @0.50 row as the fair estimate).
+
+## Generator A/B — does the reconciled sheet help, and can reasoning go? (2026-09-29)
+
+Same 11 cases and sheets, production generator path, 2 runs per arm (66 reports). **A** raw sheet, reasoning medium (production). **B** reconciled sheet (Jev ≥0.5 → RESCOPE / affected-normal list; Jev AND Qwen → normal line removed), medium. **C** reconciled sheet, reasoning off. Every report read in full by one reviewer (not blinded), counting serious errors: a contradiction of a dictated finding, a normal asserted for a structure a dictated finding acts on, a fabricated detail, or history asserted as a finding on this study. The automated gpt-oss checker missed two of the ventricles errors, so it was not used for scoring.
+
+| | Reports with a serious error | Fabrication / history leak | Generator median (p90) | Output tokens |
+|---|---|---|---|---|
+| A raw, medium | **12 / 22** | 0 | 6.8 s (8.1) | 9,186 |
+| B reconciled, medium | **5 / 22** | 0 | 7.2 s (9.0) | 9,448 |
+| C reconciled, off | **9 / 22** | 3 | **0.6 s** (0.8) | 382 |
+
+- **B fixed what A got wrong:** the rescoped malignancy negative beside dictated sigmoid thickening (A 2/2 flat, B 0/2), "heart normal" beside RV dilatation, "no pneumatosis" beside duodenal mural gas, intrahepatic ducts "not dilated" beside a double-duct sign. No new failure mode.
+- **B's residual errors** are almost all one pattern: a multi-part negative ("No midline shift or ventricular compression") marked RESCOPE, where the generator drops the dictated part and keeps the rest ("no ventricular compression" beside a 3 mm shift). Items should be split into single clauses in code before classification. Also "no pelvic ring disruption" beside pubic rami fractures, which both classifiers missed.
+- **C is 11× faster and worse than B:** it invents detail ("apical" pneumothorax, splenic laceration "upper pole", "colon distended"), asserts history as a finding (prior-ultrasound "fatty liver" → "steatosis" on this CT, 2/2), states flat negatives the reconciliation had marked, and writes thinner impressions (missed referrals, dropped fractures). Consistent with L-31: labels remove the need to *find* conflicts, not the need to *reason* while writing.
+- Not reached by any arm: "upper cervical canal unremarkable" beside 5 mm tonsillar descent; "obstructive hydrocephalus" asserted when only its signs were dictated (over-inference, all arms).
+
+**Decision input:** ship reconciliation (B) in front of the medium generator. Reasoning off needs the compiled brief (stage 3: verbatim normals, findings mapped to sections), which targets exactly C's failure classes.
+
+Data: `backend/test_cases/sheet_reconcile_arms_runs.json`. Script: `backend/src/rapid_reports_ai/scripts/sheet_reconcile_arms.py`.
