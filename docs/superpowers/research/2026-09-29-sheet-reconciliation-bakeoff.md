@@ -76,3 +76,28 @@ Can the sheet be cut down to what applies to this case, not just labelled? 5 cas
 **Multi-question gating did not help where the questions are not independent.** For differentials, "nothing in the findings bears on it" scored as high on settled branches (median 0.62) as on open ones (0.72), so requiring it to be low cut recall to 0.10. The "present" question is strong (10/11, no false positives) and belongs in the gate; the "silent" question does not.
 
 **The remaining differential "errors" are a policy question.** All six are branches whose imaging sign the dictation does not mention (aneurysmal SAH, haemorrhagic transformation, distant abscess, fistula, SMA embolus). Labelled open under "silence never closes a branch"; both models read silence as excluded. By reporting convention a finding with a visible sign that is not dictated was not seen, the same logic that licenses normal-fill. Branch text is reasoning scaffolding; the pertinent negative that answers the question is kept separately. Under a "silence closes a branch whose imaging sign would have been dictated; never an imaging-silent one" policy, 4–5 of the 6 become correct.
+
+## Serial chaining — a sieve, then gated questions (2026-09-29)
+
+Same 5 cases and labels. Each stage is one Jev call over the items that survived the previous gate; code decides between stages. Three calls cost **0.6–0.9 s** per case against 0.3–0.5 s for one parallel call.
+
+**Negative clauses (sieve → contradicted? → expected consequence?).**
+
+| Set-up | Accuracy |
+|---|---|
+| Parallel single call | 0.65 |
+| Chain, sieve "a dictated finding relates to this negative" | 0.57: contradicted clauses scored *low* on the sieve ("No midline shift" beside a dictated shift: 0.18) and never reached stage 2 |
+| **Chain, sieve = the bake-off's "is this statement affected…" wording** | **0.84**; **0.88** when contradicted and expected are merged into the one action they share ("don't assert as written") |
+| Qwen reasoning off | 0.88 |
+
+A chain is only as good as its sieve: a stage-1 miss is unrecoverable. Use the proven, highest-recall question as the sieve. Jev also misreads questions that embed a negative sentence inside a claim.
+
+**Differentials (present? → alternative / ruled out / invisible / sign-would-be-dictated).** Chaining barely helped. Among branches not present, only "ruled out" separates removable from open (medians 0.42 vs 0.28). "Establishes an alternative", "invisible on imaging" and "sign would be dictated" score alike on both (0.15/0.18, 0.53/0.52, 0.46/0.39). "Invisible" fired on visible branches (fistula 0.73, SAH 0.63) and blocked removals until replaced by the sheet's own `imaging-silent` tag read in code. Best Jev-only chain under policy 1: 0.95 precision, 0.59 recall.
+
+**Division of labour is what worked.** Jev is strong at whether something is stated in the text and weak at inference about what imaging would show; chaining changes which questions are asked but adds no reasoning. Moving the inference upstream fixes it. Simulated with an analyser-style field per branch, *visible on this technique: yes/no* (my judgement standing in):
+
+> remove ⇔ Jev *not present* (< 0.5) ∧ *visible on this technique* ∧ not `imaging-silent`
+
+→ **policy 1: precision 0.91, recall 0.91** (vs 0.44–0.59 for Jev-only designs). The 3 residual errors are branches with part of their sign dictated (tentorial SAH vs aneurysmal pattern, background atherosclerosis, mosaic perfusion). A Jev "partial sign dictated?" gate fixed one (mosaic 0.89) and cost recall (0.78): not adopted.
+
+**Implications.** (1) The analyser should emit, per differential, its visibility on the declared technique; the imaging-silent tag it already writes. (2) Jev asks only text-matching questions. (3) Code decides. (4) Negative clauses: Jev chain with the proven sieve, or Qwen, is equal at 0.88; Jev is cheaper and returns calibrated scores for thresholds.
