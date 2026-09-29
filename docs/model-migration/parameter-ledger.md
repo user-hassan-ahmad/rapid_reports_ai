@@ -1445,3 +1445,39 @@ Production's report path is now unchanged until `finding_negatives` joins
 1. The TECHNIQUE drop (about 8% of B sheets).
 2. Bundled stated negatives: extend `_split_bundled` to candidates.
 3. MSCC-type misses, where the key is too specific.
+
+**L-45 rerun after three fixes** (c18a97f; arm B silent_staging × 2 + varied_10 × 1 = 32).
+The fixes:
+- one finding per key;
+- finding-linked negatives through `_split_bundled`;
+- the directive states it leaves the Sections line alone.
+
+| Measure | Before | After |
+|---|---|---|
+| Sheets without TECHNIQUE in Sections | 2/32 | **0/32** |
+| Gate | 29/32 | **32/32** |
+| Bundled stated negatives | 6 | **0** |
+| Compound keys (with/and/or) | 25 | 16 |
+| Silent: ≥1 negative stated in FINDINGS, both runs (by hand) | 3/6 | **4/6** (pancreas, lung, cerebellar, PE) |
+| Silent: in ≥1 run | 5/6 | 5/6 (diverticulitis 1/2: key negatives tagged contextual, so offered; MSCC 0/2) |
+| Hedged stated / controls new | 0 / 0 | 0 / 0 |
+| Analyser / brief median | 10.7 s / 1.8 s | 11.0 s / 1.9 s |
+
+**Still open:**
+1. **Content variance on the case that started this.** Pancreas run 1's If-present list for
+   "pancreatic head mass" gave peritoneal studding, nodes and splenic vein thrombus, not
+   SMA/SMV contact. Vascular negatives were stated in 4/5 arm-B runs of this case across the
+   day. The cap of three per finding forces a choice, and the analyser does not always pick the
+   management-deciding one.
+2. **MSCC keys.** One key was compound ("…deposit *with collapse*"); one was written as a sign
+   rather than dictation vocabulary ("vertebral body marrow replacement", 0.33).
+3. **The fallback is unsafe as built.** 4/43 fallback negatives contradict the dictation, plus
+   1 borderline:
+   - "No intra-/extrahepatic biliary duct dilatation" beside dictated dilatation;
+   - "No interventricular septal bowing" beside dictated septal flattening;
+   - "No SMV … encasement" beside dictated 190° SMV contact;
+   - borderline: "No brainstem compression" beside marked cerebellar oedema.
+
+   It is parallel by design, so its output never passes the Qwen contradiction check. It is
+   unsplit ("or" bundles) and misjudges coverage (attached to keyed findings). The items are
+   offered only and hidden in the UI, but they must not reach the side panel like this.
