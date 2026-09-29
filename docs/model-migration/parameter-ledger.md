@@ -1560,3 +1560,14 @@ Fixes, each found on hand read and each tested:
 **Residual risk:** a Jev false flag on a negative whose denied finding shares words with a
 dictated one ("focal mass-like wall thickening" vs "segmental wall thickening") can remove that
 negative. It fails safe: the report loses one negative and asserts nothing new.
+
+**L-45 step: order by consequence, cap 4** (6c9f432; post-generation check on). Pancreas case
+× 5, plus the silent basket × 1 for regression. One earlier parallel run was lost to an output
+filename collision (fixed: pid in the name).
+- **Vascular negative stated in FINDINGS: 4/5**, unchanged from 4/5 before the change.
+- **The miss (run 3):** the sheet listed no vessel at all. Its four negatives were stricture,
+  duct dilatation, nodes and peritoneal deposits. The cap was not the limit; what gets
+  anticipated varies between sheets.
+- **Hits are partial:** SMV only, SMA only, or SMV + PV. None gave the full resectability set
+  (SMA, SMV, PV, coeliac).
+- **Basket regression:** gate 11/11; controls and hedged stated 0.
