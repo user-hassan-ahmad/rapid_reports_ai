@@ -34,7 +34,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -129,6 +129,9 @@ class FinaliseRequest(BaseModel):
     # If not provided, the server computes a unified diff against the persisted
     # candidate content.
     final_edit_diff: Optional[str] = None
+    # Ids of the reporter-choice options ticked into the report (feedback on the
+    # include / optional / exclude routing).
+    applied_option_ids: Optional[List[str]] = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -317,6 +320,8 @@ async def _run_one_generator(
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "error": None,
             "description": result.get("description"),
+            # Reporter-choice items: sentences the reporter can tick into the impression.
+            "options": result.get("brief_options") or [],
         }
     except Exception as e:
         logger.warning("generator %s failed: %s", model_name, e)
@@ -524,6 +529,12 @@ async def finalise_report(
 
     if updated is None:
         return {"success": False, "error": "Failed to finalise report"}
+
+    if request.applied_option_ids is not None and updated.candidate_reports:
+        candidates = [dict(c) for c in updated.candidate_reports]
+        candidates[0]["options_applied"] = request.applied_option_ids
+        updated.candidate_reports = candidates
+        db.commit()
 
     return {
         "success": True,

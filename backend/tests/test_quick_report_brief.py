@@ -183,3 +183,24 @@ async def test_removed_investigations_are_named_and_referrals_removed_silently(m
     plan.recommendations[1].exclude_reason = "condition_unmet"
     b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural", "fall")
     assert "Do not recommend" not in b.text and "CTA for large vessel occlusion" not in b.text
+
+
+@pytest.mark.asyncio
+async def test_option_sentences_pair_with_their_items_and_fail_to_empty(monkeypatch):
+    opts = [{"kind": "recommendation", "text": "IMAGING: MRI brain", "reason": "either way"},
+            {"kind": "impression", "text": "Small right pleural effusion", "reason": ""}]
+
+    async def fake_run(**kw):
+        class R:
+            output = qrg._OptionSentences(sentences='["MRI brain is recommended.", "Small right pleural effusion."]')
+        return R()
+    monkeypatch.setattr(qrg, "_run_agent_with_model", fake_run)
+    out = await qrg._write_options(opts, "findings", "CT")
+    assert [o["id"] for o in out] == ["opt0", "opt1"]
+    assert out[0]["sentence"] == "MRI brain is recommended." and out[0]["source"] == "IMAGING: MRI brain"
+
+    async def boom(**kw):
+        raise RuntimeError("down")
+    monkeypatch.setattr(qrg, "_run_agent_with_model", boom)
+    assert await qrg._write_options(opts, "findings", "CT") == []
+    assert await qrg._write_options([], "findings", "CT") == []

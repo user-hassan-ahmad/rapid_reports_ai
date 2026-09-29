@@ -9,9 +9,11 @@ see scripts/prompt_drift_report.py for rules that exist in both.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+from typing import List
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from .enhancement_utils import (
     MODEL_CONFIG,
@@ -87,6 +89,40 @@ async def _describe(findings: str, clinical_history: str, scan_type: str) -> str
         return f"Report for {scan_type}"
 
 
+class _OptionSentences(BaseModel):
+    sentences: List[str]
+
+    @field_validator("sentences", mode="before")
+    @classmethod
+    def _parse_stringified(cls, v):
+        return json.loads(v) if isinstance(v, str) else v
+
+
+async def _write_options(options: List[dict], findings: str, scan_type: str) -> List[dict]:
+    """One impression sentence per optional item, for the reporter to tick in. Runs beside
+    the generator; on any failure the report ships without options."""
+    if not options:
+        return []
+    try:
+        items = "\n".join(f"{i}. [{o['kind']}] {o['text']}" for i, o in enumerate(options))
+        r = await asyncio.wait_for(_run_agent_with_model(
+            model_name=MODEL_CONFIG["QUICK_REPORT_GENERATOR"], output_type=_OptionSentences,
+            system_prompt=("Write one sentence for the IMPRESSION of a radiology report for each numbered item, in order. "
+                           "A 'recommendation' item becomes a recommendation sentence naming the test or service and, where "
+                           "the item gives one, its urgency; drop any condition in brackets once it is met. An 'impression' "
+                           "item becomes a compressed statement of that dictated finding. Use only facts in the item and the "
+                           "findings. British English, consultant voice, no preamble. Return JSON {\"sentences\": [...]}."),
+            user_prompt=f"SCAN TYPE: {scan_type}\nDICTATED FINDINGS:\n{findings}\n\nITEMS:\n{items}",
+            api_key="",
+            model_settings={"temperature": 0.2, "max_tokens": 2000, "reasoning_effort": "none"}), 10.0)
+        sentences = r.output.sentences
+    except Exception as e:
+        logger.warning("option sentences failed (%s: %s); no options offered", type(e).__name__, str(e)[:200])
+        return []
+    return [{"id": f"opt{i}", "kind": o["kind"], "sentence": s.strip(), "reason": o.get("reason", ""), "source": o["text"]}
+            for i, (o, s) in enumerate(zip(options, sentences)) if s and s.strip()]
+
+
 async def generate_quick_report(
     *,
     skill_sheet: str,
@@ -133,7 +169,9 @@ async def generate_quick_report(
             fallback_from, model_name = model_name, fallback
             return await _write(model_name)
 
-    result, description = await asyncio.gather(_write_with_fallback(), _describe(findings, clinical_history, scan_type))
+    result, description, options = await asyncio.gather(
+        _write_with_fallback(), _describe(findings, clinical_history, scan_type),
+        _write_options(brief.decisions.get("options", []) if brief else [], findings, scan_type))
     report = result.output if hasattr(result, "output") else str(result)
     if user_signature:
         report = report.rstrip() + "\n\n" + user_signature
@@ -142,4 +180,4 @@ async def generate_quick_report(
             "brief_used": brief is not None,
             "brief_reconcile_ms": brief.reconcile_ms if brief else None,
             "brief_decisions": brief.decisions if brief else None,
-            "brief_options": brief.decisions.get("options", []) if brief else []}
+            "brief_options": options}
