@@ -204,6 +204,34 @@ def parse_confirmed(lines: List[str], diffs: List[str]) -> tuple[List[Candidate]
     return cands, unmatched
 
 
+Q_FINDING = "The dictated findings report this imaging finding, in any wording or size: "
+
+
+@dataclass
+class FindingNegative:
+    key: str
+    text: str
+    tag: str   # "core" | "contextual"
+
+
+def parse_if_present(lines: List[str]) -> List[FindingNegative]:
+    """The If-present bullet as (finding key, negative, tag), one-line or nested shape."""
+    out: List[FindingNegative] = []
+    key = None
+    for line in lines[1:]:
+        if m := _CONFIRMED.match(line):
+            out.append(FindingNegative(m.group(1).strip(), m.group(2).strip().rstrip("."), m.group(3) or "contextual"))
+        elif m := _CONFIRMED_BRANCH.match(line):
+            key = m.group(1).strip()
+        elif (m := _CONFIRMED_NEG.match(line)) and key:
+            out.append(FindingNegative(key, m.group(1).strip().rstrip("."), m.group(2) or "contextual"))
+    return out
+
+
+def distinct_keys(cands: List[FindingNegative]) -> List[str]:
+    return list(dict.fromkeys(c.key for c in cands))
+
+
 def route_confirmed(label: str, present: float, tag: str) -> str:
     """Rule C: stated only when the branch is clearly confirmed and the negative is core."""
     if present < PRESENT_LOW or label == "contradicted":

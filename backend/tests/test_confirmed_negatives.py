@@ -236,3 +236,18 @@ def test_candidates_parse_the_nested_shape_the_analyser_emits():
         ("Hilar cholangiocarcinoma", "No hepatic metastatic deposit is identified", "core", 1),
     ]
     assert unmatched == 1
+
+
+def test_if_present_parses_keys_in_both_shapes():
+    lines = ["- **If present:** (negatives stated only when the dictation reports the finding)",
+             '  - pancreatic head mass → "No superior mesenteric vein contact." (core)',
+             '  - pancreatic head mass -> "No peritoneal deposit"',
+             "  - spiculated lung nodule →",
+             '    - "No chest wall invasion." (core)']
+    cands = qb.parse_if_present(lines)
+    assert [(c.key, c.text, c.tag) for c in cands] == [
+        ("pancreatic head mass", "No superior mesenteric vein contact", "core"),
+        ("pancreatic head mass", "No peritoneal deposit", "contextual"),
+        ("spiculated lung nodule", "No chest wall invasion", "core"),
+    ]
+    assert qb.distinct_keys(cands) == ["pancreatic head mass", "spiculated lung nodule"]
