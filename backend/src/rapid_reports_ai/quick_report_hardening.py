@@ -465,3 +465,42 @@ QUICK_REPORT_HARDENING_PREAMBLE_BRIEF = (
     "\n"
     + QUICK_REPORT_HARDENING_PREAMBLE[_P12_END:]
 )
+
+
+def _swap(text: str, old: str, new: str) -> str:
+    assert text.count(old) == 1, f"passage not found exactly once: {old[:60]!r}"
+    return text.replace(old, new)
+
+
+def _between(text: str, start: str, end: str) -> str:
+    return text[text.index(start):text.index(end)]
+
+
+# Lean pass: deferral names a specialty or test (not a bare "clinical correlation"); principle 5
+# loses the clause it existed to cancel; paragraph rules live once in the style guide's
+# Consolidation; modality non-assessables never reach the brief; a silent secondary region
+# keeps the do-not-assert exception.
+_B = QUICK_REPORT_HARDENING_PREAMBLE_BRIEF
+for _old, _new in (
+    ("specialty review, "
+     "direct assessment, or clinical correlation are legitimate "
+     "endpoints of an impression, not admissions of failure.",
+     "review by a named specialty, "
+     "direct clinical or surgical assessment, or a named further test are legitimate "
+     "endpoints of an impression, not admissions of failure; a bare \"clinical "
+     "correlation\" is not."),
+    (_between(_B, "**5. Global voice conventions apply strictly.**", "**6. Paragraph structure"),
+     "**5. Global voice conventions apply strictly.** If an exemplar in the skill sheet "
+     "violates a global voice rule, the global rule governs; do not imitate the violation.\n\n"),
+    (_between(_B, "**6. Paragraph structure", "**7. Section boundaries"),
+     "**6. Paragraph structure follows content, not subsystem count** — as set out under "
+     "Consolidation in the Global Style Guide.\n\n"),
+    (_between(_B, "- **Modality non-assessables**", "If a section is declared"), "\n"),
+    ("silence means "
+     "normal, same as any in-scope structure.",
+     "silence means "
+     "normal, same as any in-scope structure, unless the region is listed under "
+     "\"Do not assert as normal\"."),
+):
+    _B = _swap(_B, _old, _new)
+QUICK_REPORT_HARDENING_PREAMBLE_BRIEF = _B

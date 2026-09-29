@@ -25,9 +25,11 @@ from .quick_report_prompts import (
     QR_PRE_WRITING_ANALYSIS,
     QR_PRE_WRITING_ANALYSIS_BRIEF,
     QR_SHEET_HEADER,
+    QR_SHEET_HEADER_BRIEF,
     QR_STYLE_GUIDE,
     QR_STYLE_GUIDE_BRIEF,
     QR_SYSTEM_PREAMBLE,
+    QR_SYSTEM_PREAMBLE_BRIEF,
     QR_VERIFICATION_CHECKLIST,
     QR_VERIFICATION_CHECKLIST_BRIEF,
 )
@@ -54,7 +56,8 @@ def build_prompts(skill_sheet: str, scan_type: str, findings: str, clinical_hist
     the compiled brief when `brief` is set; the hardening preamble is prepended here."""
     style, hardening = (QR_STYLE_GUIDE_BRIEF, QUICK_REPORT_HARDENING_PREAMBLE_BRIEF) if brief else (QR_STYLE_GUIDE, QUICK_REPORT_HARDENING_PREAMBLE)
     pre, ver = (QR_PRE_WRITING_ANALYSIS_BRIEF, QR_VERIFICATION_CHECKLIST_BRIEF) if brief else (QR_PRE_WRITING_ANALYSIS, QR_VERIFICATION_CHECKLIST)
-    system_prompt = f"{QR_SYSTEM_PREAMBLE}\n\n{style}\n\n{QR_SHEET_HEADER}\n\n{hardening}{skill_sheet}"
+    preamble, header = (QR_SYSTEM_PREAMBLE_BRIEF, QR_SHEET_HEADER_BRIEF) if brief else (QR_SYSTEM_PREAMBLE, QR_SHEET_HEADER)
+    system_prompt = f"{preamble}\n\n{style}\n\n{header}\n\n{hardening}{skill_sheet}"
     inputs = f"## INPUTS\n\nScan Type: {scan_type}\nClinical History: {clinical_history}\nFindings: {findings}"
     if provider == "anthropic":
         user_prompt = f"{inputs}\n\n{_ANTHROPIC_INSTRUCTION}"

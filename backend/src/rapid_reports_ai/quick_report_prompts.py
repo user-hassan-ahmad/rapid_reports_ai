@@ -283,35 +283,118 @@ def _swap(text: str, old: str, new: str) -> str:
     return text.replace(old, new)
 
 
-QR_STYLE_GUIDE_BRIEF = _swap(
+def _swaps(text: str, *pairs: tuple[str, str]) -> str:
+    for old, new in pairs:
+        text = _swap(text, old, new)
+    return text
+
+
+def _between(text: str, start: str, end: str) -> str:
+    return text[text.index(start):text.index(end)]
+
+
+# Lean pass (2026-09-29, research doc "Lean prompt"): on this path the brief carries no example
+# reports, no Reference Values table, no header:none paragraphs, no impression-format field and no
+# conditional rules, so the instructions about them are removed; rules stated in several blocks
+# are kept once, where the model acts on them.
+QR_SYSTEM_PREAMBLE_BRIEF = _swaps(
+    QR_SYSTEM_PREAMBLE,
+    ("Use British English spelling throughout. The report", "The report"),
+    ("Template Skill Sheet (scan-specific conventions). The skill sheet inherits from\nthe global guide; where they conflict, the skill sheet takes precedence.",
+     "Skill Sheet (scan-specific conventions)."),
+    (" Do not include the analysis in the output.", ""),
+)
+
+QR_SHEET_HEADER_BRIEF = """## SKILL SHEET
+
+The following skill sheet defines the conventions for this scan, reconciled with this dictation.
+It inherits all rules from the Global Style Guide above. Where a skill sheet rule
+conflicts with a global rule, the skill sheet takes precedence."""
+
+QR_STYLE_GUIDE_BRIEF = _swaps(
     QR_STYLE_GUIDE,
-    QR_STYLE_GUIDE[QR_STYLE_GUIDE.index("### Conditional Awareness"):QR_STYLE_GUIDE.index("### Output Consistency")],
-    """### Missing Data Handling
+    (""" These defaults apply unless the skill sheet establishes
+a different convention through consistent demonstrated use in the example reports.
+The radiologist's demonstrated style always takes precedence over the default.""", ""),
+    (_between(QR_STYLE_GUIDE, "Paragraph names in the skill sheet are internal", "Recommendation tags\nin the skill sheet"),
+     """Paragraph names in the skill sheet are internal labels and never appear as text. The
+only headings inside FINDINGS are the region headers of a REGIONS macro-structure. """),
+    (_between(QR_STYLE_GUIDE, "### Conditional Style Application", "### Findings Discipline"), ""),
+    ("""When the
+dictation provides a value without a qualifier, check the skill sheet's
+Reference Values table for an explicit threshold. If one exists, derive the
+qualifier from it. If no explicit threshold exists in the table, state the
+value without a qualifier rather than inferring one.""",
+     """When the
+dictation provides a value without a qualifier, state the value without a
+qualifier rather than inferring one."""),
+    ("""Not every finding needs a recommendation. Normal structures and minor incidentals
+requiring no action belong in FINDINGS only.""", "Not every finding needs a recommendation."),
+    (_between(QR_STYLE_GUIDE, "### Consolidation", "### Output Consistency"),
+     """### Consolidation
+
+The sheet's structure is fixed: its section list, what belongs in the first paragraph (P1),
+and its sweep order. Nothing is consolidated across a REGIONS heading.
+
+A subsystem is one step of the sheet's sweep order. A sentence may group unremarkable
+structures within one step, and consecutive negatives about that step form one list; a
+sentence never joins two steps. Mandatory negatives are never lost to consolidation.
+
+Paragraphs follow content, not subsystem count. P1 is its own paragraph; a positive finding
+or complication opens a new paragraph; adjacent all-normal steps share one paragraph rather
+than one paragraph per organ system, so the report reads as a coherent sweep. Under a REGIONS
+macro-structure each region renders as its own headed block inside FINDINGS, in the sheet's
+order, and this applies within each block.
+
+A Normal-study path line kept as written is used verbatim, even where it spans two steps.
+
+When bilateral findings of the same type and severity are present, combine into
+a single sentence with directional comparison if asymmetric.
+
+### Missing Data Handling
 
 The dictation is the source of truth for positive findings — if it was not dictated,
 it was not observed, and must not be fabricated. A finding carried in the clinical
 history or attributed to a prior study is not a finding on this study: it is asserted
-only where the dictation asserts it. The skill sheet's normal lines and mandatory
-negatives have been reconciled with this dictation; render them as labelled. Never
-write meta-statements about missing data.
+only where the dictation asserts it. Never write meta-statements about missing data.
 
-""")
+"""),
+)
 
-QR_PRE_WRITING_ANALYSIS_BRIEF = _swap(
+QR_PRE_WRITING_ANALYSIS_BRIEF = _swaps(
     QR_PRE_WRITING_ANALYSIS,
-    """Cross-reference against the skill sheet's mandatory negatives
+    ("""Cross-reference against the skill sheet's mandatory negatives
    — any mandatory negative not addressed by the dictation must still appear.
    Check each mandatory negative against the skill sheet's Conditional Suppression
    Rules: if the current finding state triggers a suppression condition, suppress
    the negative and apply the replacement phrase (or omit entirely).""",
-    """Apply each mandatory negative's reconciliation label:
-   KEEP as written, OMIT, or DO NOT ASSERT.""")
+     """Apply each mandatory negative's reconciliation label:
+   KEEP as written, OMIT, or DO NOT ASSERT."""),
+    (_between(QR_PRE_WRITING_ANALYSIS, "   **Clinical history as checklist**", "2. **Impression plan**"),
+     """   **Clinical history as focus**: Use prior events, diagnoses and procedures in the
+   history to decide which dictated findings the report must address and emphasise.
+   The history never creates a field to fill: a structure, measurement or negative the
+   dictation does not mention is not added because the history makes it relevant.
 
-QR_VERIFICATION_CHECKLIST_BRIEF = _swap(
+"""),
+    (""" Group findings by management pathway into
+   sentences. Target the format specified in the skill sheet (prose vs numbered).""", ""),
+    (""" Scan the skill sheet for conditional fields
+   triggered by these findings.""", ""),
+)
+
+QR_VERIFICATION_CHECKLIST_BRIEF = _swaps(
     QR_VERIFICATION_CHECKLIST,
-    """- Every mandatory negative from the skill sheet is present with exact phrasing
+    ("""- Every mandatory negative from the skill sheet is present with exact phrasing
 - Every triggered Conditional Suppression Rule has been applied — suppressed phrase removed, replacement phrase inserted
 """,
-    """- Every KEEP negative is present; no OMIT negative and no DO NOT ASSERT statement appears anywhere, impression included
+     """- Every KEEP negative is present; no OMIT negative and no DO NOT ASSERT statement appears anywhere, impression included
 - No structure listed under "Do not assert as normal" is stated to be normal
-""")
+"""),
+    ("- Impression format matches skill sheet (prose vs numbered)\n", ""),
+    (" — a staging question is answered by describing extent and bulk, never by assigning the stage", ""),
+    ("that was not either present in the dictation or defined as a fixed reference in the skill sheet — not inferred from an adjacent pattern",
+     "that was not in the dictation — not inferred from an adjacent pattern"),
+    ("- No skill sheet internal labels (paragraph names marked header: none) appear as text in the output",
+     "- No skill sheet internal labels appear as text in the output"),
+)
