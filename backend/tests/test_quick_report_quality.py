@@ -279,3 +279,40 @@ async def test_omitted_findings_are_inserted_by_code_after_an_anchor(monkeypatch
     assert fnd.startswith("Intrahepatic ducts are dilated. A 3 cm")        # unknown anchor: first in FINDINGS
     assert res.applied == 2 and res.skipped == 1
     assert REPORT.replace(" ", "") in res.report.replace(" ", "").replace("Thecommonbileductisdilatedto12mm.", "").replace("Intrahepaticductsaredilated.", "")
+
+
+def test_restatement_turns_a_negative_into_the_finding_it_denies():
+    assert qq.restate("No irregular asymmetric wall thickening with loss of pericolonic fat planes is identified.") == \
+        "irregular asymmetric wall thickening with loss of pericolonic fat planes"
+    assert qq.restate("There is no portal vein encasement") == "portal vein encasement"
+    assert qq.restate("No hepatic deposit identified.") == "hepatic deposit"
+
+
+@pytest.mark.asyncio
+async def test_a_negative_is_flagged_only_when_its_restatement_is_dictated(monkeypatch):
+    async def fake(state, questions):
+        out = {}
+        for k, q in questions.items():
+            t = q["instructions"]
+            if t.startswith(qq.Q_CONTRA):
+                out[k] = {"noul": 0.8 if "encasement" in t or "hepatic deposit" in t else 0.05}
+            elif t.startswith(qq.Q_RESTATED):
+                out[k] = {"noul": 0.9 if "portal vein" in t else 0.1}
+            else:
+                out[k] = {"noul": 0.95}
+        return out
+    monkeypatch.setattr(qq.qb, "_jev", fake)
+    res = await qq.check(REPORT, FINDINGS, "CT AP", [])
+    assert [f.text for f in res.flags] == ["No portal vein encasement"]   # SMV and hepatic deposit not confirmed
+
+
+@pytest.mark.asyncio
+async def test_an_insertion_that_repeats_a_report_sentence_is_skipped(monkeypatch):
+    async def fake(**kw):
+        class R:
+            output = qq.Insertions(items=[{"after": "The spleen is normal in size.",
+                                           "sentence": "A 3 cm hypodense mass in the pancreatic head compresses the common bile duct."}])
+        return R()
+    monkeypatch.setattr(qq, "_run_agent_with_model", fake)
+    res = await qq.insert_findings(REPORT, FINDINGS, ["3 cm hypodense mass at the head of the pancreas"])
+    assert res.report == REPORT and res.applied == 0 and res.skipped == 1

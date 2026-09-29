@@ -27,7 +27,9 @@ logger = logging.getLogger(__name__)
 
 Q_CONTRA = "The dictated findings state something that this report statement denies or contradicts. Statement: "
 Q_OMIT = "The report states this dictated finding, in any wording: "
+Q_RESTATED = "The dictated findings report this finding: "
 CONTRA_FLAG = 0.6   # L-46: 31/31 genuine contradictions >= 0.5, 29/31 >= 0.7
+RESTATED_FLAG = 0.5  # a report negative is removed only when the finding it denies is dictated (L-47)
 OMIT_FLAG = 0.5     # L-46: 24/24 deleted findings < 0.5
 JEV_TIMEOUT_S = 6.0
 REPAIR_TIMEOUT_S = 8.0
@@ -60,6 +62,15 @@ def clauses(text: str) -> List[str]:
         parts = [p.strip() for p in re.split(r",\s*(?:or\s+|and\s+)?", m.group(2)) if p.strip()] if m else []
         out.extend(f"No {p}" for p in parts) if len(parts) > 1 else out.append(s)
     return out
+
+
+_RESTATE = re.compile(r"^(?:No|There is no|There are no|Without)\s+(.*?)(?:\s+(?:is|are|was|were))?(?:\s+(?:identified|seen|present|demonstrated|noted))?\.?$", re.I)
+
+
+def restate(clause: str) -> Optional[str]:
+    """The finding a negative clause denies ('No X is identified.' -> 'X'); None for a positive."""
+    m = _RESTATE.match(clause.strip())
+    return m.group(1).strip() if m else None
 
 
 _BACKGROUND = re.compile(r"^\s*(no|nil)\b|\b(unremarkable|normal|intact|clear)\b", re.I)
@@ -95,6 +106,11 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict])
     items = positive_items(findings)
     contra_qs = {f"c{i}": {"type": "noul", "instructions": Q_CONTRA + t} for i, t in enumerate(cls)}
     contra_qs.update({f"o{i}": {"type": "noul", "instructions": Q_CONTRA + t} for i, (_, t) in enumerate(opts)})
+    # A report negative is removed only if the finding it denies is itself dictated: Jev over-flags
+    # negatives that share words with a dictated finding (L-47: 'No irregular asymmetric wall
+    # thickening' beside dictated segmental wall thickening). Same call, no added latency.
+    restated = {i: restate(t) for i, t in enumerate(cls)}
+    contra_qs.update({f"r{i}": {"type": "noul", "instructions": Q_RESTATED + r} for i, r in restated.items() if r})
     omit_qs = {f"i{i}": {"type": "noul", "instructions": Q_OMIT + t} for i, t in enumerate(items)}
 
     async def ask(state, qs):
@@ -109,7 +125,8 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict])
 
     score = lambda ans, k: float(ans[k]["noul"])
     flags = [Flag(kind="contradiction", text=t, score=score(contra, f"c{i}"))
-             for i, t in enumerate(cls) if score(contra, f"c{i}") >= CONTRA_FLAG]
+             for i, t in enumerate(cls) if score(contra, f"c{i}") >= CONTRA_FLAG
+             and (not restated[i] or score(contra, f"r{i}") >= RESTATED_FLAG)]
     flags += [Flag(kind="omission", text=t, score=score(omit, f"i{i}"))
               for i, t in enumerate(items) if score(omit, f"i{i}") < OMIT_FLAG]
     bad = [oid for i, (oid, _) in enumerate(opts) if score(contra, f"o{i}") >= CONTRA_FLAG]
@@ -205,6 +222,14 @@ INSERT_SYS = (
     "copy that sentence exactly into 'after'. Return JSON {\"items\": [{\"after\": ..., \"sentence\": ...}]}.")
 
 
+def _restates(new: str, existing: str) -> bool:
+    """`new` says nothing `existing` does not: nearly all its words, and every number, are there."""
+    w = set(re.findall(r"[a-z]{4,}", new.lower()))
+    nums = set(re.findall(r"\d+(?:\.\d+)?", new))
+    return bool(w) and len(w & set(re.findall(r"[a-z]{4,}", existing.lower()))) >= 0.8 * len(w) \
+        and nums <= set(re.findall(r"\d+(?:\.\d+)?", existing))
+
+
 async def insert_findings(report: str, findings: str, items: List[str]) -> RepairResult:
     """Insertion by construction: the report's existing text is never rewritten (L-47: asked for
     insert-only edits, Qwen rewrote the neighbouring sentence). An anchor that is not found places
@@ -225,6 +250,9 @@ async def insert_findings(report: str, findings: str, items: List[str]) -> Repai
             skipped += 1
             continue
         sent = sent if sent.endswith(".") else sent + "."
+        if any(_restates(sent, x) for x in _sentences(out)):
+            skipped += 1   # already stated in other words (L-47: a reworded finding was re-inserted)
+            continue
         if it.after and out.count(it.after) == 1:
             out = out.replace(it.after, f"{it.after} {sent}", 1)
         else:
