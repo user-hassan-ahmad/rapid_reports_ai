@@ -28,13 +28,17 @@ def test_readings_from_two_engines_merge_into_one_question():
     assert spans[0].options == ("subsegmental", "segmental")
 
 
-def test_one_jev_choice_question_per_span():
-    spans = disagreements(LIVE, {"gpt": "Further subsegmental emboli are seen in the lingula."})
+def test_one_two_way_jev_question_per_alternative_reading():
+    # three-way choices spread Jev's confidence (live: Tarlov picked at 0.83 against "tidal" and
+    # "tunnel of"); the 31/34 experiment asked two-way — live against one other reading
+    spans = disagreements(LIVE, {"gpt": "Further subsegmental emboli are seen in the lingula.",
+                                 "batch": "Further segmental emboli are seen in the lingula."})
     qs = switch_questions(spans)
-    assert list(qs) == ["span_0"]
-    assert qs["span_0"]["type"] == "choice"
-    assert qs["span_0"]["criteria"] == {"as_heard": "further supplemental emboli are seen in the lingula",
-                                        "option_0": "further subsegmental emboli are seen in the lingula"}
+    assert list(qs) == ["span_0_0", "span_0_1"]
+    assert qs["span_0_0"]["type"] == "choice"
+    assert qs["span_0_0"]["criteria"] == {"as_heard": "further supplemental emboli are seen in the lingula",
+                                          "option": "further subsegmental emboli are seen in the lingula"}
+    assert qs["span_0_1"]["criteria"]["option"] == "further segmental emboli are seen in the lingula"
 
 
 def test_a_switch_needs_confidence_and_must_not_lose_a_negation_side_or_number():
@@ -75,7 +79,7 @@ def _timed(word, start, end):
 FINAL = _alt("Further supplemental emboli.", [_timed("Further", 0.2, 0.5), _timed("supplemental", 0.6, 1.2), _timed("emboli.", 1.3, 1.8)])
 
 
-def _engines(gpt_text="Further subsegmental emboli.", choice="option_0", conf=0.97, fail=False):
+def _engines(gpt_text="Further subsegmental emboli.", choice="option", conf=0.97, fail=False):
     seen = {"clips": [], "jev": []}
 
     async def batch(wav):
@@ -91,7 +95,7 @@ def _engines(gpt_text="Further subsegmental emboli.", choice="option_0", conf=0.
 
     async def jev(body):
         seen["jev"].append(body)
-        return {q: {"choice": choice, "confidence": conf} for q in body["questions"]}
+        return {q: {"choice": choice, "confidence": conf} for q in body["questions"]}  # choice: option / as_heard
     return seen, dict(batch=batch, gpt=gpt, jev=jev)
 
 
@@ -140,3 +144,38 @@ def test_the_next_clip_starts_where_the_last_one_ended():
     asyncio.run(tp.revise(2, second))
     with wave.open(io.BytesIO(seen["clips"][1])) as w:  # 2.1 s → 4.2 s
         assert abs(w.getnframes() / 16000 - 2.1) < 0.01
+
+
+
+def test_the_alternative_jev_prefers_most_confidently_wins():
+    async def batch(wav):
+        return "Further segmental emboli.", FINAL["words"]
+
+    async def gpt(wav):
+        return "Further subsegmental emboli."
+
+    async def jev(body):
+        return {"span_0_0": {"choice": "option", "confidence": 0.93},   # batch's "segmental"
+                "span_0_1": {"choice": "option", "confidence": 0.98}}   # gpt's "subsegmental"
+    tp = TwoPass(16000, batch=batch, gpt=gpt, jev=jev)
+    tp.feed(b"\x00\x00" * 16000 * 3)
+    rev = asyncio.run(tp.revise(1, FINAL))
+    assert rev["switches"] == [{"from": "supplemental", "to": "subsegmental", "confidence": 0.98}]
+
+
+def test_a_preference_below_the_switch_bar_becomes_a_suggestion():
+    # live: Jev preferred "tarlov" over "tidal" at 0.84 — shown, not swapped
+    _, eng = _engines(conf=0.84)
+    tp = TwoPass(16000, **eng)
+    tp.feed(b"\x00\x00" * 16000 * 3)
+    rev = asyncio.run(tp.revise(1, FINAL))
+    assert rev["switches"] == []
+    assert rev["suggestions"] == [{"from": "supplemental", "to": "subsegmental", "confidence": 0.84}]
+
+
+def test_a_weak_preference_is_neither():
+    _, eng = _engines(conf=0.55)
+    tp = TwoPass(16000, **eng)
+    tp.feed(b"\x00\x00" * 16000 * 3)
+    rev = asyncio.run(tp.revise(1, FINAL))
+    assert rev["switches"] == [] and rev["suggestions"] == []

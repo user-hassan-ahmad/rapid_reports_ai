@@ -162,3 +162,19 @@ Baseline **B′** = compiled brief with affected normals always DO NOT ASSERT (5
 F also drifts in scope and voice without exemplars: treatment recommendations (decompressive surgery, embolectomy, CSF diversion, anticoagulation reversal), undictated inferences ("contained perforation", "spinal instability", guideline thresholds), and impressions that restate findings across several paragraphs. **Exemplars anchor impression scope and voice; keep them (Jev-pruned).** D is adopted (03cea37 on feat/compiled-brief).
 
 Operational note: at 6 concurrent reports, 3/44 reconciliations hit the Qwen/Jev timeout and fell back to the raw sheet (safe, but loses the brief). Production concurrency is lower, but the fallback rate should be logged once live.
+
+## Longer set — lean (D) vs lean + recommendation-scope fix (G) (2026-09-29)
+
+26 cases (the 11 + 15 from analyser/broad/denovo suites), 2 runs each; D reuses its 22 runs on the original 11. Branches `feat/qr-lean` (03cea37) and `feat/qr-lean-fixes` (e304f21: "further imaging only when this study raises a question it cannot answer; not routine workup of a diagnosis already made"). 82 new reports, all with the brief, all read.
+
+| | D | G |
+|---|---|---|
+| Serious errors, 22 clean-input cases | 1/44 (TAVI: aortic root, ostial and iliofemoral measurements invented) | 0/44 |
+| Target of the fix: PE → leg Doppler, MSCC → MRI brain | — | still present 4/4 |
+
+- **The fix did not work.** Both recommendations come from the sheet's Recommendation scope, which Jev keeps (condition met) and the generator follows. A generator rule does not override a sheet line it has been told takes precedence. The fix belongs in the brief: a Jev question per recommendation ("routine next step of a diagnosis already made?") or code that drops that class.
+- The 1 vs 0 difference is a single event and not evidence for G.
+- **Input-defect cases (4) fail in both arms and are not scored:** laterality conflict (silently corrected to right, or "left talar dome" kept in a right-ankle report), "tiny" 4.2 cm calculus reproduced as "tiny 42 mm", contradictory free fluid resolved without comment, truncated dictation filled with "spinal canal patent at all levels" (G 2/2, D 0/2). These are upstream integrity-check territory; the generator does not flag them.
+- Seen in both arms, minor: bare "clinical correlation" still appears (4 reports, often echoing the dictation), laboratory-test and treatment suggestions (galactomannan, anticoagulation reversal), ultrasound reports drop TECHNIQUE (4/4 missing_section).
+
+**Decision input:** ship `feat/qr-lean`; rework the recommendation-scope fix at the brief level before merging `feat/qr-lean-fixes`.

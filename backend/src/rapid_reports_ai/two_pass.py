@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any
 
 SWITCH_MIN_CONF = 0.90  # PROVISIONAL (lab data: right ≥ 0.97, wrong ≤ 0.64)
+SUGGEST_MIN_CONF = 0.60  # below the switch bar: underline the live words, "also heard as …"
 CONTEXT_WORDS = 6
 RECOVER_MIN_WORDS = 2
 RECOVER_MIN_CONF = 0.90
@@ -71,18 +72,19 @@ def disagreements(live_words: list[dict], others: dict[str, str]) -> list[Span]:
 
 
 def switch_questions(spans: list[Span]) -> dict[str, dict[str, Any]]:
-    """One Jev choice per span: the passage as heard, and with each other engine's reading."""
+    """One two-way Jev choice per alternative reading: the passage as heard against it. Three-way
+    choices spread Jev's confidence (live: "Tarlov" picked at 0.83 against "tidal" and "tunnel
+    of"); the 31/34 experiment was two-way."""
     def passage(words: str, s: Span) -> str:
         return " ".join(x for x in (s.left, words, s.right) if x)
     return {
-        f"span_{i}": {
+        f"span_{i}_{k}": {
             "type": "choice",
             "instructions": "Which version of this dictated passage is what the radiologist said, "
                             "judged by clinical sense for this scan and by the surrounding words?",
-            "criteria": {"as_heard": passage(s.live, s),
-                         **{f"option_{k}": passage(o, s) for k, o in enumerate(s.options)}},
+            "criteria": {"as_heard": passage(s.live, s), "option": passage(o, s)},
         }
-        for i, s in enumerate(spans)
+        for i, s in enumerate(spans) for k, o in enumerate(s.options)
     }
 
 
@@ -208,7 +210,7 @@ class TwoPass:
             others["gpt"] = gpt_text
         spans = disagreements(words, others)
         recovered = recovered_prefix(words, batch[1]) if batch else None
-        switches = []
+        switches, suggestions = [], []
         if spans and self._jev:
             body = {"state": {"scan_type": self.scan_type, "dictation": alternative.get("transcript", "")},
                     "questions": switch_questions(spans)}
@@ -219,16 +221,24 @@ class TwoPass:
                 logger.warning("[two_pass] jev failed: %s", type(e).__name__)
                 answers = {}
             for i, s in enumerate(spans):
-                a = answers.get(f"span_{i}") or {}
-                choice, conf = a.get("choice") or "", float(a.get("confidence") or 0.0)
-                if not choice.startswith("option_"):
+                preferred = []  # alternatives Jev picked over the live words, with confidence
+                for k, reading in enumerate(s.options):
+                    a = answers.get(f"span_{i}_{k}") or {}
+                    if a.get("choice") == "option":
+                        preferred.append((float(a.get("confidence") or 0.0), reading))
+                if not preferred:
                     continue
-                reading = s.options[int(choice.split("_")[1])]
+                conf, reading = max(preferred)  # the reading Jev prefers most confidently
+                item = {"from": s.live, "to": reading, "confidence": round(conf, 2)}
                 if switch_allowed(s.live, reading, conf):
-                    switches.append({"from": s.live, "to": reading, "confidence": round(conf, 2)})
-        rev = {"final_seq": final_seq, "switches": switches, "recovered": recovered, "spans": len(spans),
+                    switches.append(item)
+                elif conf >= SUGGEST_MIN_CONF:
+                    suggestions.append(item)
+        rev = {"final_seq": final_seq, "switches": switches, "suggestions": suggestions, "recovered": recovered,
+               "spans": len(spans),
                "errors": errors, "ms": int((time.perf_counter() - t0) * 1000)}
         logger.info("[two_pass] %s", json.dumps({"final_seq": final_seq, "spans": len(spans), "switches": len(switches),
+                                                 "suggestions": len(suggestions),
                                                  "recovered_words": len((recovered or "").split()), "errors": errors,
                                                  "ms": rev["ms"]}))
         return rev
