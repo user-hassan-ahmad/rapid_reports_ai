@@ -64,7 +64,7 @@ describe('persistence', () => {
 			showBoth: true,
 			coverageDebug: false,
 			pillThresholds: { hi: 0.9, lo: 0.3 },
-			frontDoor: 'jev',
+			frontDoor: 'decision',
 			polish: 'full'
 		};
 		saveLabConfig(cfg, fake);

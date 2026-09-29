@@ -25,16 +25,14 @@ export interface LabConfig {
 	showBoth: boolean; // sets triage_debug
 	coverageDebug: boolean; // sets coverage_debug on /review
 	pillThresholds: PillThresholds;
-	frontDoor: FrontDoor; // 'timer' = Deepgram silence timers (production); 'jev' = boundary classifier;
+	frontDoor: FrontDoor; // 'timer' = Deepgram silence timers (production);
 	// 'decision' = decision-first live: Jev bundle per final, fast-append + band router (step 5)
 	polish: PolishStrategy; // decision-first only: 'race' fires a lean scoped polish together with Jev
 }
 
 export type PolishStrategy = 'full' | 'race';
 
-export type FrontDoor = 'timer' | 'jev' | 'decision';
-export type Boundary = 'complete' | 'continues' | 'command';
-export type Placement = 'extend_previous_line' | 'new_line' | 'new_paragraph';
+export type FrontDoor = 'timer' | 'decision';
 
 export interface PillThresholds {
 	hi: number; // >= hi → covered
@@ -127,36 +125,3 @@ export interface CoverageFixtureCase {
 }
 
 /** One finalised Deepgram chunk classified by the front door. */
-export interface ChunkTrace {
-	seq: number;
-	at: number;
-	chunk: string;
-	buffered: string;
-	resolved: Boundary;
-	boundary: Boundary | null;
-	confidence: number | null;
-	asr_risk: number | null;
-	latency_ms: number;
-	error: string | null;
-	sent: string | null; // the merged statement handed to polish, when one was
-	viaBackstop: boolean;
-	placement: Placement | null; // Jev's placement for a sent statement
-	placement_confidence: number | null;
-	silence_s: number | null; // > 0 on a silence re-check row
-	standalone: number | null;
-	via: 'jev' | 'punctuation' | 'silence' | 'hard_limit';
-}
-/** Mirrors backend UtteranceResponse. */
-export interface UtteranceResponse {
-	resolved: Boundary;
-	boundary: Boundary | null;
-	confidence: number | null;
-	probabilities: Record<string, number> | null;
-	asr_risk: number | null;
-	latency_ms: number | null;
-	error: string | null;
-	placement?: Placement;
-	placement_raw?: string | null;
-	placement_confidence?: number | null;
-	standalone?: number | null;
-}

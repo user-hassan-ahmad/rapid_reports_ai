@@ -5,7 +5,6 @@
 	import { labConfig } from '$lib/dictation-lab/labConfig';
 	import { buildFixtureLine, suggestId } from '$lib/dictation-lab/fixtureExport';
 	import { buildCoverageFixtureLine, coverageAgreement } from '$lib/dictation-lab/coverage';
-	import { derivePlacement } from '$lib/dictation-lab/frontDoor';
 	import { agreementClass, summariseTraces, type AgreementClass } from '$lib/dictation-lab/summary';
 	import {
 		FAST_ROUTES,
@@ -16,7 +15,6 @@
 	} from '$lib/dictation-lab/decisionFirst';
 	import {
 		TRIAGE_ACTIONS,
-		type ChunkTrace,
 		type CoverageTrace,
 		type FixtureCase,
 		type ProcessTrace,
@@ -29,7 +27,6 @@
 	export let traces: ProcessTrace[] = [];
 	export let onClear: () => void = () => {};
 	export let coverageTrace: CoverageTrace | null = null;
-	export let chunkTraces: ChunkTrace[] = [];
 	export let decisions: { rec: DecisionRecord; display: string }[] = [];
 	export let outcomes: OutcomeEvent[] = [];
 	export let sessionStartedAt = 0;
@@ -63,47 +60,6 @@
 		URL.revokeObjectURL(a.href);
 	}
 
-	// ── Front door ─────────────────────────────────────────────────────────────
-	let boundaryBuffer = '';
-	let boundarySeq = 1;
-	$: chunkSummary = {
-		chunks: chunkTraces.filter((c) => !c.viaBackstop && c.silence_s == null).length,
-		rechecks: chunkTraces.filter((c) => c.silence_s != null && !c.viaBackstop).length,
-		sent: chunkTraces.filter((c) => c.sent !== null).length,
-		backstops: chunkTraces.filter((c) => c.viaBackstop).length,
-		placement: (() => {
-			// Shadow-compare Jev's placement with what the polish did, matched on the sent text.
-			let n = 0, agree = 0;
-			for (const c of chunkTraces) {
-				if (!c.sent || !c.placement) continue;
-				const p = traces.find((t) => t.utterance === c.sent);
-				if (!p) continue;
-				const d = derivePlacement(p.activeBefore, p.activeAfter);
-				if (!d) continue;
-				n += 1;
-				if (d === c.placement) agree += 1;
-			}
-			return { n, agree };
-		})(),
-		meanLatency: (() => {
-			const xs = chunkTraces.filter((c) => !c.viaBackstop && c.silence_s == null).map((c) => c.latency_ms);
-			return xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null;
-		})()
-	};
-	function addBoundaryFixture(c: ChunkTrace, expected: string): void {
-		const line = JSON.stringify({
-			id: `lab-bnd-${String(boundarySeq++).padStart(2, '0')}`,
-			scan_type: coverageState?.scanType ?? '',
-			buffered: c.buffered,
-			chunk: c.chunk,
-			scratchpad_tail: '',
-			expected_boundary: expected,
-			expected_asr_risk: (c.asr_risk ?? 0) >= 0.5,
-			hard: false,
-			note: 'from lab'
-		});
-		boundaryBuffer = boundaryBuffer ? `${boundaryBuffer}\n${line}` : line;
-	}
 	export let coverageState: { scratchpad: string; checklist: string[]; scanType: string } | null = null;
 
 	// ── Coverage ───────────────────────────────────────────────────────────────
@@ -292,7 +248,7 @@
 		</label>
 		<div class="flex flex-wrap gap-3">
 			<span class="text-gray-400">front door</span>
-			{#each [['timer', 'silence timers'], ['jev', 'Jev boundary'], ['decision', 'decision-first (live)']] as [value, label]}
+			{#each [['timer', 'silence timers'], ['decision', 'decision-first (live)']] as [value, label]}
 				<label class="flex items-center gap-1">
 					<input type="radio" bind:group={$labConfig.frontDoor} {value} />
 					{label}
@@ -364,52 +320,6 @@
 					</div>
 				{/each}
 			</div>
-		</section>
-	{/if}
-
-	<!-- Chunks (front door) -->
-	{#if $labConfig.frontDoor === 'jev' || chunkTraces.length > 0}
-		<section class="card-dark space-y-1">
-			<h3 class="font-semibold">
-				Chunks
-				<span class="text-gray-400 font-normal text-xs">
-					{chunkSummary.chunks} chunks · {chunkSummary.sent} sent · {chunkSummary.chunks - chunkSummary.sent} polish calls saved
-					· {chunkSummary.rechecks} silence re-checks · {chunkSummary.backstops} hard limit · mean {chunkSummary.meanLatency ?? '—'} ms
-					· placement agrees {chunkSummary.placement.agree}/{chunkSummary.placement.n}
-				</span>
-			</h3>
-			<div class="max-h-56 overflow-y-auto space-y-0.5">
-				{#each chunkTraces as c (c.seq)}
-					<div class="text-xs flex flex-wrap gap-x-2 items-baseline border-l-2 pl-2 {c.sent !== null ? 'border-emerald-500/60' : 'border-gray-700'}">
-						<span class="font-mono truncate max-w-[14rem]">“{c.viaBackstop ? c.buffered : c.chunk}”</span>
-						{#if c.silence_s != null && !c.viaBackstop}<span class="text-violet-300">silence {c.silence_s}s{c.standalone != null ? ` · standalone ${c.standalone.toFixed(2)}` : ''} →</span>{/if}
-						<span class={c.resolved === 'continues' ? 'text-gray-400' : c.resolved === 'command' ? 'text-blue-300' : 'text-emerald-300'}>{c.viaBackstop ? 'hard limit' : c.resolved}{c.via === 'punctuation' ? ' (punct.)' : c.via === 'silence' && c.resolved === 'complete' ? ' (silence)' : ''}</span>
-						{#if c.boundary && c.boundary !== c.resolved && !c.viaBackstop}<span class="text-gray-500">jev: {c.boundary}</span>{/if}
-						{#if c.confidence != null}<span class="tabular-nums text-gray-400">{c.confidence.toFixed(2)}</span>{/if}
-						{#if c.asr_risk != null && c.asr_risk >= 0.5}<span class="text-amber-300">asr {c.asr_risk.toFixed(2)}</span>{/if}
-						<span class="tabular-nums text-gray-500">{c.latency_ms} ms</span>
-						{#if c.placement}
-							{@const p = traces.find((t) => t.utterance === c.sent)}
-							{@const d = p ? derivePlacement(p.activeBefore, p.activeAfter) : null}
-							<span class={d == null ? 'text-gray-500' : d === c.placement ? 'text-emerald-300' : 'text-amber-300'}>
-								{c.placement.replace(/_/g, ' ')}{c.placement_confidence != null ? ` ${c.placement_confidence.toFixed(2)}` : ''}{d && d !== c.placement ? ` (polish: ${d.replace(/_/g, ' ')})` : ''}
-							</span>
-						{/if}
-						{#if c.error}<span class="text-red-300">{c.error}</span>{/if}
-						{#if !c.viaBackstop}
-							<span class="ml-auto flex gap-1">
-								{#each ['complete', 'continues', 'command'] as b}
-									<button class="text-[10px] text-gray-500 underline" on:click={() => addBoundaryFixture(c, b)}>{b[0]}</button>
-								{/each}
-							</span>
-						{/if}
-					</div>
-				{/each}
-			</div>
-			{#if boundaryBuffer}
-				<textarea class="w-full h-16 bg-gray-900 rounded p-2 font-mono text-xs" readonly value={boundaryBuffer}></textarea>
-				<p class="text-[10px] text-gray-500">→ backend/tests/fixtures/boundary_cases.jsonl (fill scratchpad_tail and note by hand)</p>
-			{/if}
 		</section>
 	{/if}
 

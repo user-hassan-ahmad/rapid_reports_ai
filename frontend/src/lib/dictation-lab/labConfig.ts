@@ -12,7 +12,7 @@ export const DEFAULT_LAB_CONFIG: LabConfig = {
 	polish: 'full'
 };
 const STRATEGIES: Strategy[] = ['shadow', 'route:jev', 'route:qwen'];
-const FRONT_DOORS: FrontDoor[] = ['timer', 'jev', 'decision'];
+const FRONT_DOORS: FrontDoor[] = ['timer', 'decision'];
 
 function storage(): Storage | undefined {
 	try {

@@ -6,7 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from rapid_reports_ai import dictation_triage, section_coverage, utterance_boundary, utterance_bundle
+from rapid_reports_ai import dictation_triage, section_coverage, utterance_bundle
 from rapid_reports_ai.canvas_routes import TriageRouteConfig
 from rapid_reports_ai.dictation_triage import QWEN_SYSTEM_PROMPT
 from rapid_reports_ai.jev_questions import (
@@ -60,8 +60,6 @@ def test_qset_digest_pins_wording():
 def test_old_modules_reexport_the_registry_objects():
     assert dictation_triage.TRIAGE_QUESTIONS is TRIAGE_QUESTIONS
     assert dictation_triage.ACTION_DESCRIPTIONS is ACTION_DESCRIPTIONS
-    assert utterance_boundary.BOUNDARY_QUESTIONS is BOUNDARY_QUESTIONS
-    assert utterance_boundary.COMPLETE_THRESHOLD == COMPLETE_THRESHOLD
     assert section_coverage.COVERAGE_CRITERIA is COVERAGE_CRITERIA
     assert section_coverage.coverage_questions is coverage_questions
     assert utterance_bundle.bundle_questions is bundle_questions

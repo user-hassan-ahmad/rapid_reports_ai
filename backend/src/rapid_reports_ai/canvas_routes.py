@@ -35,9 +35,6 @@ from .lean_fidelity import fidelity_violation, verbatim_append
 from .lean_polish import LEAN_SYSTEM_PROMPT, LEAN_USER_TEMPLATE
 from .jev_questions import FAST_APPEND_BANDS, QSET_VERSION, ROUTE_THRESHOLD_DEFAULT
 from .utterance_bundle import BundleDecision, BundleState, get_jev_bundle
-from .utterance_boundary import BoundaryDecision, get_jev_boundary
-from .utterance_boundary import resolve as resolve_boundary
-from .utterance_boundary import resolve_placement
 from .section_coverage import (
     CoverageDecision,
     CoverageTrace,
@@ -1235,79 +1232,6 @@ async def review_scratchpad(
         prompts=prompts,
         coverage_scores=chosen.scores if chosen else None,
         coverage=trace,
-    )
-
-
-# -----------------------------------------------------------------------------
-# Utterance front door (spec 2026-09-24-utterance-front-door-design.md), lab only
-# -----------------------------------------------------------------------------
-
-
-class UtteranceRequest(BaseModel):
-    scan_type: str = ""
-    buffered: str = ""
-    chunk: str
-    scratchpad_tail: str = ""
-    silence_s: float = 0.0  # seconds of silence since the chunk; > 0 on a re-check
-
-
-class UtteranceResponse(BaseModel):
-    resolved: Literal["complete", "continues", "command"]
-    boundary: Optional[str] = None
-    confidence: Optional[float] = None
-    probabilities: Optional[dict[str, float]] = None
-    asr_risk: Optional[float] = None
-    latency_ms: Optional[int] = None
-    input_tokens: Optional[int] = None
-    cost_usd: Optional[float] = None
-    error: Optional[str] = None
-    placement: Literal["extend_previous_line", "new_line", "new_paragraph"] = "new_line"
-    placement_raw: Optional[str] = None
-    placement_confidence: Optional[float] = None
-    standalone: Optional[float] = None
-    qset: str = QSET_VERSION
-
-
-@canvas_router.post("/utterance", response_model=UtteranceResponse)
-async def classify_utterance(request: UtteranceRequest, current_user: User = Depends(get_current_user)):
-    """Lab only: boundary decision for one finalised chunk."""
-    if not _triage_debug_enabled():
-        raise HTTPException(status_code=404, detail="Not Found")
-    d: BoundaryDecision | BaseException
-    try:
-        d = await get_jev_boundary().classify(
-            request.scan_type, request.buffered, request.chunk, request.scratchpad_tail, request.silence_s
-        )
-    except Exception as e:
-        logger.error("[canvas.utterance] ❌ %s: %s", type(e).__name__, e)
-        d = e
-    resolved = resolve_boundary(d)
-    if isinstance(d, BaseException):
-        return UtteranceResponse(resolved=resolved, error=type(d).__name__)
-    logger.info(
-        "[canvas.utterance] %s (%s %.2f) asr=%.2f %dms", resolved, d.boundary, d.confidence, d.asr_risk, d.latency_ms
-    )
-    logger.info("[canvas.utterance.decision] %s", json.dumps({
-        "event": "canvas.utterance.decision",
-        "qset": QSET_VERSION,
-        "resolved": resolved,
-        "boundary": d.boundary,
-        "confidence": d.confidence,
-        "probabilities": d.probabilities,
-        "standalone": d.standalone,
-        "asr_risk": d.asr_risk,
-        "placement": d.placement,
-        "placement_probabilities": d.placement_probabilities,
-        "silence_s": request.silence_s,
-        "chunk_len": len(request.chunk or ""),
-        "buffered_len": len(request.buffered or ""),
-        "latency_ms": d.latency_ms,
-    }))
-    return UtteranceResponse(
-        resolved=resolved, boundary=d.boundary, confidence=d.confidence, probabilities=d.probabilities,
-        asr_risk=d.asr_risk, latency_ms=d.latency_ms, input_tokens=d.input_tokens, cost_usd=d.cost_usd,
-        placement=resolve_placement(d), placement_raw=d.placement, placement_confidence=d.placement_confidence,
-        standalone=d.standalone,
     )
 
 
