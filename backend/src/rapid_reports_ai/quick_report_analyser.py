@@ -826,6 +826,31 @@ section governs.
   Terminology Rules, Conditional Suppression Rules, Impression Exemplars.
 """
 
+# Policy 1 for confirmed branches (spec 2026-09-29): the sheet is written before anything is
+# dictated, so its mandatory negatives answer the question as asked. The negatives a consultant
+# states once a diagnosis is confirmed (extent, spread, complications) had no carrier. The brief
+# promotes these only when Jev finds the branch confirmed.
+CONFIRMED_NEGATIVES = """
+
+---
+
+## If confirmed — negatives that follow a confirmed diagnosis
+
+Add one bullet to the Companion Matrix, directly after Mandatory negatives:
+
+- **If confirmed:** (negatives stated only when the dictation confirms the branch)
+  - <differential name exactly as written in Differentials in scope> → "<negative in final report form>" (core | contextual)
+
+For each differential tagged *visible on this technique: yes* whose confirmation would change
+management through its extent, spread or complications, list the negatives a consultant states
+once that diagnosis is made: the absence of each extension, spread or complication this
+technique shows and the next management step depends on. One finding per negative: no "or",
+no comma-separated list. Tag each negative core when any consultant states it once the
+diagnosis is made, contextual when stating it depends on the case or on local practice. At most
+three per differential and twelve in total. Never repeat a mandatory negative. Never write a
+negative denying something the confirmed diagnosis is expected to cause.
+"""
+
 # Directives every production analyser call carries. Harnesses that pass an
 # explicit tuple override this; None means "as production".
 PRODUCTION_DIRECTIVES: tuple[str, ...] = ("prune_v1",)
@@ -837,6 +862,7 @@ DIRECTIVES = {
     "defeasible_prose": lambda: DEFEASIBILITY_PROSE,
     "rescope": lambda: NEGATIVES_RESCOPE,
     "prune_v1": lambda: PRUNE_V1,
+    "confirmed_negatives": lambda: CONFIRMED_NEGATIVES,
 }
 
 
