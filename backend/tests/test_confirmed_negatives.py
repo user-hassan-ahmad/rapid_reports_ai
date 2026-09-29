@@ -138,9 +138,20 @@ async def test_plan_carries_only_stated_negatives_it_chose(monkeypatch):
     assert b.decisions["impression_plan"]["carry_negatives"] == ["No midline shift"]
 
 
-def test_plan_prompt_keeps_negatives_out_of_the_impression_by_default():
-    assert "carry_negatives" in qb.PLAN_SYS
-    assert "changes the interpretation of a carried finding" in qb.PLAN_SYS
+@pytest.mark.asyncio
+async def test_plan_prompt_changes_only_when_there_are_candidate_negatives(monkeypatch):
+    seen = []
+    async def fake_run(**kw):
+        seen.append((kw["system_prompt"], kw["user_prompt"]))
+        class R:
+            output = qb.ImpressionPlan(recommendations=[], impression=[])
+        return R()
+    monkeypatch.setattr(qb, "_run_agent_with_model", fake_run)
+    await qb._plan("CT", "h", ["A mass"], [])
+    await qb._plan("CT", "h", ["A mass"], [], ["No SMV contact"])
+    (sys0, user0), (sys1, user1) = seen
+    assert "carry_negatives" not in sys0 and "CANDIDATE NEGATIVES" not in user0      # production: byte-identical
+    assert "changes the interpretation of a carried finding" in sys1 and "0. No SMV contact" in user1
 
 
 from rapid_reports_ai import quick_report_generator as qrg

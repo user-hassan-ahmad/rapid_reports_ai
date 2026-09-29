@@ -280,7 +280,9 @@ Use optional only when a reasonable consultant could go either way on this case.
 impression — the numbers of the findings the impression must carry: the finding(s) that answer the clinical question, findings that change management or urgency, and negatives that answer the clinical question.
 optional_impression — findings with a management consequence that a reasonable consultant could either carry or leave in FINDINGS. Never use it for normal structures, devices or negatives.
 findings_only — findings that stay in FINDINGS: incidental or background findings needing no action, devices and procedure notes, normal structures the question did not ask about.
-A finding may be in none of the lists when either placement is acceptable. Never place a number in two lists.
+A finding may be in none of the lists when either placement is acceptable. Never place a number in two lists."""
+# Appended only when the sheet has finding-linked negatives, so production prompts are unchanged.
+PLAN_NEGATIVES_RULE = """
 carry_negatives — the numbers of CANDIDATE NEGATIVES the impression must carry. A negative is carried only when it changes the interpretation of a carried finding; never carry a negative for any other reason. Most cases carry none."""
 PLAN_TIMEOUT_S = 10.0
 MAX_OPTIONS = 3
@@ -392,11 +394,13 @@ async def _plan(scan_type: str, clinical_history: str, items: List[str], recs: L
                 cand_negs: List[str] = ()) -> ImpressionPlan:
     user = (f"SCAN TYPE: {scan_type}\nCLINICAL QUESTION (context only): {clinical_history or '(not given)'}\n\n"
             "DICTATED FINDINGS:\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(items))
-            + "\n\nCANDIDATE RECOMMENDATIONS:\n" + ("\n".join(f"{i}. {t}" for i, t in enumerate(recs)) or "(none)")
-            + "\n\nCANDIDATE NEGATIVES — apply only if their finding is reported:\n"
-            + ("\n".join(f"{i}. {t}" for i, t in enumerate(cand_negs)) or "(none)"))
+            + "\n\nCANDIDATE RECOMMENDATIONS:\n" + ("\n".join(f"{i}. {t}" for i, t in enumerate(recs)) or "(none)"))
+    if cand_negs:
+        user += ("\n\nCANDIDATE NEGATIVES — apply only if their finding is reported:\n"
+                 + "\n".join(f"{i}. {t}" for i, t in enumerate(cand_negs)))
     r = await asyncio.wait_for(_run_agent_with_model(
-        model_name=QWEN, output_type=ImpressionPlan, system_prompt=PLAN_SYS, user_prompt=user, api_key="",
+        model_name=QWEN, output_type=ImpressionPlan, system_prompt=PLAN_SYS + (PLAN_NEGATIVES_RULE if cand_negs else ""),
+        user_prompt=user, api_key="",
         model_settings={"temperature": 0, "max_tokens": 8000, "reasoning_effort": "low"}), PLAN_TIMEOUT_S)
     return r.output
 
