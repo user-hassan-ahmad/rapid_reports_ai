@@ -15,6 +15,10 @@ def test_confirmed_negatives_is_an_opt_in_directive():
     assert "(core | contextual)" in arm_b
     assert "finding_negatives" not in qa.PRODUCTION_DIRECTIVES
     assert "never the diagnosis it suggests" in arm_b
+    # a key is one finding; its extensions are negatives under it (MSCC key "lesion with epidural extension" missed)
+    assert 'never two findings joined by "with", "and" or "or"' in arm_b
+    # the bullet changes nothing else in the sheet (TECHNIQUE dropped from Sections in 2/33 B sheets)
+    assert "the Sections line and every other part of the sheet stay exactly as they would without it" in arm_b
     assert "confirmed_negatives" not in qa.DIRECTIVES
 
 
@@ -309,3 +313,17 @@ async def test_fallback_does_not_run_without_an_if_present_list(monkeypatch):
     b = await qb.compile_brief(sheet, "CT head", FINDINGS_R5)
     assert calls == []
     assert not [o for o in b.decisions["options"] if o["kind"] == "finding_negative"]
+
+
+@pytest.mark.asyncio
+async def test_bundled_finding_negatives_are_split_and_keep_their_key_and_tag(monkeypatch):
+    sheet = SHEET_C.replace('"No midline shift" (core)', '"No superior mesenteric vein or portal vein encasement" (core)')
+    _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(8)])
+    async def split(negs):
+        return [["No superior mesenteric vein encasement", "No portal vein encasement"]
+                if n.startswith("No superior mesenteric vein or") else [n] for n in negs]
+    monkeypatch.setattr(qb, "_split_bundled", split)
+    b = await qb.compile_brief(sheet, "CT head", "10 mm right acute subdural")
+    assert 'KEEP: "No superior mesenteric vein encasement" (finding: subdural haematoma)' in b.text
+    assert 'KEEP: "No portal vein encasement" (finding: subdural haematoma)' in b.text
+    assert "vein or portal" not in b.text

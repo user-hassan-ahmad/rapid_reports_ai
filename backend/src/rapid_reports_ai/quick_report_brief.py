@@ -425,16 +425,18 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     raw_negs = [n.strip().rstrip(".") for n in _quoted(" ".join(neg_bullet.lines))] if neg_bullet else []
     targets = {n: (re.search(r'"' + re.escape(n) + r'\.?"\s*\(([^)]*)\)', " ".join(neg_bullet.lines)) or [None, ""])[1]
                for n in raw_negs} if neg_bullet else {}
-    split = await _split_bundled(raw_negs)
+    fb = _bullet(matrix, "If present")
+    raw_cands = parse_if_present(fb.lines) if fb else []
+    # One split call covers mandatory and finding-linked negatives: the analyser bundles both.
+    split = await _split_bundled(raw_negs + [c.text for c in raw_cands])
     negs = [(c, targets.get(parent, "")) for parent, parts in zip(raw_negs, split) for c in parts]
+    cands = [FindingNegative(c.key, part, c.tag) for c, parts in zip(raw_cands, split[len(raw_negs):]) for part in parts]
     normal_bullet = _bullet(struct, "Normal-study path")
     # A normal line that states a measurement asserts a value nobody dictated whenever the
     # dictation is silent about it, so it never reaches the generator.
     measured = [t for t in _normal_sentences(normal_bullet) if _MEASUREMENT.search(t)]
     normals = [t for t in _normal_sentences(normal_bullet) if not _MEASUREMENT.search(t)]
     diffs = differential_lines(secs)
-    fb = _bullet(matrix, "If present")
-    cands = parse_if_present(fb.lines) if fb else []
     keys = distinct_keys(cands)
     recs = _recommendations(imp)
     styles = style.bullets if style else []
