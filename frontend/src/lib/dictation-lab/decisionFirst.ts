@@ -58,6 +58,8 @@ export interface DecisionRecord {
 	roundtrip_ms: number | null; // browser → route decision
 	polish_called: boolean;
 	polish_ms?: number | null; // the polish call this decision caused, when one ran
+	wait_ms?: number | null; // final arrival → this decision started (queued behind earlier ones)
+	final_to_solid_ms?: number | null; // final arrival → its text solid on the page (faded → written)
 	polish_kind?: 'full' | 'lean' | null; // which polish produced the text (racing: lean)
 	asr_fix_count?: number; // word-sense fixes applied to this line
 	asr_flag_count?: number; // words underlined as not making clinical sense

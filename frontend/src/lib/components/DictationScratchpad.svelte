@@ -687,6 +687,7 @@
 	const chunkRanges = new Map<number, { from: number; to: number }>();
 	let chunkRangeSeq = 0;
 	let decisionSeq = 0;
+	const arrivalById = new Map<string, number>(); // decision id → its final's arrival (Date.now())
 	let localDecisionSeq = 0;
 	let lineOpen = false;
 	let openLineDecisionId: string | null = null;
@@ -965,6 +966,7 @@
 		}
 		const utterance = heldNow ? `${heldNow.text} ${chunk}` : chunk;
 		const firstRangeId = heldNow ? heldNow.rangeId : rangeId;
+		const waitMs = Date.now() - arrivedAt;
 		noteRedictation(chunk, Date.now());
 		const pend0 = firstPendingRange();
 		const doc0 = editor.state.doc.toString();
@@ -1037,8 +1039,12 @@
 			repair_ms: data?.repair_ms ?? null,
 			asr_conf: asr?.asr_conf ?? null,
 			asr_min_conf: asr?.asr_min_conf ?? null,
-			asr_word_confs: asr?.asr_word_confs ?? null
+			asr_word_confs: asr?.asr_word_confs ?? null,
+			wait_ms: waitMs,
+			final_to_solid_ms: null
 		};
+		arrivalById.set(rec.id, arrivedAt);
+		const markSolid = () => (rec.final_to_solid_ms = Date.now() - arrivedAt);
 
 		if ((route === 'fast_append' || route === 'command') && data && pend) {
 			const solid = doc.slice(0, pend.from);
@@ -1081,6 +1087,7 @@
 				armLineTimers(data.close_on_silence, data.line_close, arrivedAt);
 			}
 			if (route === 'fast_append') rec.asr_flag_count = underlineFlags(pend.from, insert, data.asr_flags);
+			markSolid();
 			emitDecision(rec, chunk);
 			processReview();
 			return;
@@ -1101,6 +1108,7 @@
 				lineOpen = prev.lineOpenBefore;
 				// Not logged as an 'undo' outcome: the speaker retracted their own words, which says
 				// nothing about whether the previous automatic action was right.
+				markSolid();
 				emitDecision(rec, chunk);
 				return;
 			}
@@ -1112,6 +1120,7 @@
 			isQwenWriting = true;
 			editor.dispatch(replaceAndClear({ from: pend.from, to: pend.to, insert: '' }));
 			isQwenWriting = false;
+			markSolid();
 			emitDecision(rec, chunk);
 			return;
 		}
@@ -1137,6 +1146,7 @@
 				flags: data?.asr_flags
 			});
 			if (why === null) {
+				markSolid();
 				emitDecision(rec, chunk);
 				processReview();
 				return;
@@ -1240,7 +1250,9 @@
 						lineOpenBefore: false, tokens: tokenSet(utterance ?? ''), intact: true, edited: false, redictated: false
 					});
 					lineOpen = false;
+					const arrived = arrivalById.get(queuedDecisionId);
 					patchDecision(queuedDecisionId, {
+						final_to_solid_ms: arrived ? Date.now() - arrived : null,
 						polish_ms: Math.round(performance.now() - t0),
 						polish_kind: 'full',
 						polish_tokens_in: data.polish_usage?.input_tokens ?? null,
