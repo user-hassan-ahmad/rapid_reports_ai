@@ -256,7 +256,14 @@ class TwoPass:
             if fn is None:
                 return None
             try:
-                return await asyncio.wait_for(fn(clip), ENGINE_TIMEOUT_S)
+                try:
+                    return await asyncio.wait_for(fn(clip), ENGINE_TIMEOUT_S)
+                except Exception as e:
+                    import httpx
+                    if not isinstance(e, httpx.TransportError):
+                        raise
+                    # a dropped / stale keep-alive connection: one immediate retry
+                    return await asyncio.wait_for(fn(clip), ENGINE_TIMEOUT_S)
             except Exception as e:  # fail open: the live final stands
                 errors.append(name)
                 logger.warning("[two_pass] %s failed: %s", name, type(e).__name__)

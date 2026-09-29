@@ -287,3 +287,32 @@ def test_recovery_restores_exactly_the_dropped_words_when_the_batch_runs_on():
     batch = [_w(x) for x in "There is no mediastinal or hilar lymphadenopathy. The right adrenal gland is thickened, but".split()]
     gpt = "There is no mediastinal or hilar lymphadenopathy. The right adrenal gland is thickened"
     assert recovered_prefix(live, batch, gpt) == "There"
+
+
+def test_a_dropped_connection_is_retried_once():
+    # production-style run: one Deepgram batch call failed with RemoteProtocolError (a stale
+    # keep-alive connection); one immediate retry, then fail open as before
+    import httpx
+    attempts = []
+
+    async def flaky_batch(wav):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise httpx.RemoteProtocolError("Server disconnected")
+        return "Further subsegmental emboli.", FINAL["words"]
+    tp = TwoPass(16000, batch=flaky_batch)
+    tp.feed(b"\x00\x00" * 16000 * 3)
+    rev = asyncio.run(tp.revise(1, FINAL))
+    assert len(attempts) == 2 and rev["errors"] == []
+
+
+def test_other_errors_are_not_retried():
+    attempts = []
+
+    async def broken(wav):
+        attempts.append(1)
+        raise ValueError("bad response")
+    tp = TwoPass(16000, batch=broken)
+    tp.feed(b"\x00\x00" * 16000 * 3)
+    rev = asyncio.run(tp.revise(1, FINAL))
+    assert len(attempts) == 1 and rev["errors"] == ["batch"]
