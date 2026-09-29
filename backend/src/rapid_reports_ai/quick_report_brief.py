@@ -457,7 +457,9 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             return None
     async def fallback_or_none():
         try:
-            return await _fallback(state, items, keys) if items else None
+            # Only sheets written with the finding_negatives directive carry an If-present list;
+            # without one the brief behaves exactly as before (no extra call, no options).
+            return await _fallback(state, items, keys) if items and fb else None
         except Exception as e:  # the brief still compiles; unanticipated findings just get no options
             logger.warning("finding-negatives fallback failed (%s: %s)", type(e).__name__, str(e)[:200])
             return None

@@ -284,3 +284,17 @@ async def test_passed_through_options_start_with_a_capital(monkeypatch):
     out = await qrg._write_options([{"kind": "finding_negative", "section": "FINDINGS", "text": "no acute infarction",
                                      "finding": "x", "reason": "unanticipated finding"}], "f", "CT")
     assert out[0]["sentence"] == "No acute infarction."
+
+
+@pytest.mark.asyncio
+async def test_fallback_does_not_run_without_an_if_present_list(monkeypatch):
+    # Production sheets (directive off) have no If-present list: the brief must behave as before.
+    calls = []
+    async def spy(state, items, keys):
+        calls.append(items)
+        return qb.FallbackNegatives(items=[qb.FallbackItem(index=0, covered=False, negatives=["No x"])])
+    sheet = SHEET_C.split("- **If present:**")[0] + "\n## Impression Exemplars\n- **Abnormal exemplar:** \"Acute subdural.\"\n"
+    _stub_fallback(monkeypatch, [0, 1], spy)
+    b = await qb.compile_brief(sheet, "CT head", FINDINGS_R5)
+    assert calls == []
+    assert not [o for o in b.decisions["options"] if o["kind"] == "finding_negative"]
