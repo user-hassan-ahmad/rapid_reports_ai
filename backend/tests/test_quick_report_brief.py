@@ -104,7 +104,7 @@ async def test_compile_labels_removes_and_keeps(monkeypatch):
     # and coagulopathy (imaging-silent) kept; subdural (present) kept
     assert "Epidural" not in t and "Vascular malformation" in t and "Coagulopathy" in t and "Acute subdural" in t
     # recommendations, exemplars, measurements
-    assert "Neurosurgery" in t and "  - IMAGING: CTA" not in t and '"CTA for large vessel occlusion"' in t.split("Do not recommend")[1]
+    assert "Neurosurgery" in t and "CTA for large vessel occlusion" not in t
     assert "Abnormal exemplar" in t and "Normal exemplar" not in t and "Complicated exemplar" not in t
     assert "An 8 mm subdural" in t and "MCA territory infarct" not in t
     assert "Subdural thickness" in t and "Infarct volume" not in t
@@ -170,10 +170,16 @@ def test_split_findings_numbers_bullets_lines_and_sentences():
 
 @pytest.mark.asyncio
 async def test_removed_investigations_are_named_and_referrals_removed_silently(monkeypatch):
-    plan = qb.ImpressionPlan(recommendations=[qb.RecDecision(index=0, decision="exclude", reason="receiving team")],
-                             impression=[0])
+    plan = qb.ImpressionPlan(recommendations=[
+        qb.RecDecision(index=0, decision="exclude", exclude_reason="routine_workup", reason="receiving team"),
+        qb.RecDecision(index=1, decision="exclude", exclude_reason="routine_workup", reason="source search")],
+        impression=[0])
     _stub(monkeypatch, JEV, QWEN, plan)
     b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural", "fall")
-    # the excluded referral is removed silently; the unmet investigation is named
+    # a referral is removed silently; an investigation excluded as routine workup is named
     assert "Neurosurgery" not in b.text.split("## Impression Plan")[0]
     assert 'Do not recommend' in b.text and '"CTA for large vessel occlusion"' in b.text
+    # an investigation excluded because its condition is unmet is removed silently
+    plan.recommendations[1].exclude_reason = "condition_unmet"
+    b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural", "fall")
+    assert "Do not recommend" not in b.text and "CTA for large vessel occlusion" not in b.text

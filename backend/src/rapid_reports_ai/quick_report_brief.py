@@ -199,6 +199,7 @@ class Split(BaseModel):
 class RecDecision(BaseModel):
     index: int
     decision: Literal["include", "exclude", "optional"]
+    exclude_reason: Optional[Literal["condition_unmet", "routine_workup", "not_radiology", "duplicate"]] = None
     reason: str = ""
 
 
@@ -221,7 +222,7 @@ recommendations — decide every candidate by its kind; a candidate whose condit
 - REFERRAL and MDT: routing a finding to the team that must act on it, at the urgency the findings warrant, is the radiologist's job even when the diagnosis is already made. include when the condition is met; exclude only when an included candidate already covers it.
 - IMAGING and TISSUE: include only when it answers a question this study raises but cannot answer itself, and the answer would change management. exclude routine workup of a diagnosis this study has already made — looking for its cause, source or spread when the receiving team manages it the same way regardless.
 - CORRELATION: include only retrieving prior imaging to compare against; exclude laboratory tests, clinical monitoring, treatment decisions and bare clinical correlation.
-Use optional only when a reasonable consultant could go either way on this case. Give a one-line reason.
+Use optional only when a reasonable consultant could go either way on this case. For every exclude, set exclude_reason: condition_unmet (the findings do not meet its condition), routine_workup (routine workup of a diagnosis this study has already made), not_radiology (laboratory tests, monitoring, treatment, bare correlation) or duplicate. Give a one-line reason.
 
 impression — the numbers of the findings the impression must carry: the finding(s) that answer the clinical question, findings that change management or urgency, and negatives that answer the clinical question.
 optional_impression — findings with a management consequence that a reasonable consultant could either carry or leave in FINDINGS. Never use it for normal structures, devices or negatives.
@@ -422,8 +423,6 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             d = pdec.get(k)
             if score(f"r{k}") >= 0.5:
                 action = "removed"
-                if t.startswith(_BAR_KINDS):
-                    barred.append(re.sub(r"^[A-Z]+:\s*", "", t))
             elif d is None or d.decision == "include":
                 action = "keep"
             elif d.decision == "optional" and len(decisions["options"]) < MAX_OPTIONS:
@@ -431,15 +430,16 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
                 decisions["options"].append({"kind": "recommendation", "text": t, "reason": d.reason})
             else:
                 action = "removed"
-                if t.startswith(_BAR_KINDS):
-                    barred.append(re.sub(r"^[A-Z]+:\s*", "", t))
+            if action == "removed" and d and d.exclude_reason == "routine_workup" and t.startswith(_BAR_KINDS):
+                barred.append(re.sub(r"^[A-Z]+:\s*", "", t))
             decisions["recommendations"].append({"text": t, "action": action, "reason": d.reason if d else ""})
             if action == "keep":
                 kept.append(f"  - {t}")
-        # A removed investigation is named, not just deleted: the generator refills a missing
-        # test from its priors, a prohibition holds (as for normal lines). Referrals and
-        # correlation items are removed silently — naming them quoted their conditions (and a
-        # duplicate's staging words) back into the brief.
+        # An investigation excluded as routine workup of a diagnosis already made is named, not
+        # just deleted: the generator refills such a test from its priors, a prohibition holds.
+        # Everything else is removed silently — naming a referral quoted a duplicate's staging
+        # words into the brief, and naming unmet-condition tests suppressed legitimate variants
+        # (follow-up imaging for an unresolved opacity).
         rb.lines = [rb.lines[0]] + kept
         if barred:
             rb.lines.append("- **Do not recommend (this study has answered it, or it falls to the receiving team):** "

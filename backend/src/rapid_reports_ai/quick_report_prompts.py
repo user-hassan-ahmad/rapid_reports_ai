@@ -391,6 +391,7 @@ QR_VERIFICATION_CHECKLIST_BRIEF = _swaps(
      """- Every KEEP negative is present; no OMIT negative and no DO NOT ASSERT statement appears anywhere, impression included
 - No structure listed under "Do not assert as normal" is stated to be normal
 - Every Carry forward finding is addressed in the impression; no Findings only item appears there
+- Every recommendation listed in the Recommendation scope appears in the impression
 """),
     ("- Impression format matches skill sheet (prose vs numbered)\n", ""),
     (" — a staging question is answered by describing extent and bulk, never by assigning the stage", ""),
