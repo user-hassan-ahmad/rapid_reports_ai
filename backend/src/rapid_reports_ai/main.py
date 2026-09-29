@@ -4983,9 +4983,11 @@ async def websocket_transcribe(websocket: WebSocket):
         print(f"🎙️ Lab audio capture: {lab_rec.dir}")
     # Lab: force a final once Deepgram has heard a pause with no new word (deepgram_finalize;
     # its own endpointing let one final run 17 s across two 2-second pauses).
-    from rapid_reports_ai.deepgram_finalize import FinalizeTrigger, finalize_gap_from_env
+    from rapid_reports_ai.deepgram_finalize import AudioLevel, FinalizeTrigger, finalize_gap_from_env
     _gap = finalize_gap_from_env() if _lab_asr else None
     finalize_trigger = FinalizeTrigger(_gap) if _gap else None
+    # never flush while the speaker is mid-word: the audio is immediate, Deepgram's words are not
+    audio_level = AudioLevel(pcm_sample_rate) if finalize_trigger and use_pcm else None
     print(f"🎙️ Deepgram mode: {'PCM linear16 @ ' + str(pcm_sample_rate) + ' Hz' if use_pcm else 'auto-detect container'}")
     
     try:
@@ -5003,6 +5005,8 @@ async def websocket_transcribe(websocket: WebSocket):
                             data = await websocket.receive_bytes()
                             if lab_rec:
                                 lab_rec.audio(data)
+                            if audio_level:
+                                audio_level.feed(data)
                             await dg_ws.send_bytes(data)
                     except WebSocketDisconnect:
                         print("❌ Client disconnected")
@@ -5017,8 +5021,12 @@ async def websocket_transcribe(websocket: WebSocket):
                                 if lab_rec:
                                     lab_rec.event(transcript_data)
                                 if finalize_trigger and finalize_trigger.observe(transcript_data):
-                                    await dg_ws.send_str(json.dumps({"type": "Finalize"}))
-                                    print(f"⏩ Finalize after {finalize_trigger.gap_s}s with no new word")
+                                    if audio_level is None or audio_level.quiet():
+                                        await dg_ws.send_str(json.dumps({"type": "Finalize"}))
+                                        print(f"⏩ Finalize after {finalize_trigger.gap_s}s with no new word")
+                                    else:
+                                        finalize_trigger.retract()  # speaking again: ask next interim
+                                        print("⏸ Finalize held: audio says speech has resumed")
 
                                 # Parse Deepgram response
                                 if transcript_data.get("type") == "Results":

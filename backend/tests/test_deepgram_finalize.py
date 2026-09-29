@@ -60,3 +60,40 @@ def test_off_unless_a_positive_gap_is_set(monkeypatch, value, expected):
     else:
         monkeypatch.setenv("DEEPGRAM_FINALIZE_GAP_S", value)
     assert finalize_gap_from_env() == expected
+
+
+# --- audio-level guard: never flush while the speaker is mid-word -------------------------
+import math
+import struct
+
+from rapid_reports_ai.deepgram_finalize import AudioLevel
+
+
+def _pcm(db: float, seconds: float, sr: int = 16000) -> bytes:
+    amp = int(32767 * 10 ** (db / 20))
+    n = int(sr * seconds)
+    return struct.pack(f"<{n}h", *[int(amp * math.sin(2 * math.pi * 220 * i / sr)) for i in range(n)])
+
+
+def test_quiet_after_speech_allows_a_final_and_speech_blocks_it():
+    lv = AudioLevel(sample_rate=16000)
+    lv.feed(_pcm(-30, 2.0))  # speaking
+    assert lv.quiet() is False
+    lv.feed(_pcm(-62, 0.5))  # pause
+    assert lv.quiet() is True
+    lv.feed(_pcm(-35, 0.2))  # "Actually" begins, before Deepgram reports it
+    assert lv.quiet() is False
+
+
+def test_no_speech_heard_yet_counts_as_not_quiet():
+    lv = AudioLevel(sample_rate=16000)
+    lv.feed(_pcm(-62, 0.5))
+    assert lv.quiet() is False  # no reference level yet: do not force anything
+
+
+def test_a_blocked_finalize_is_retried_on_the_next_interim():
+    t = FinalizeTrigger(gap_s=0.9)
+    t.observe(_interim(22.0, 3.0, [("45", 25.0)]))
+    assert t.observe(_interim(22.0, 4.0, [("45", 25.0)])) is True
+    t.retract()  # the audio said the speaker had started again
+    assert t.observe(_interim(22.0, 4.5, [("45", 25.0)])) is True
