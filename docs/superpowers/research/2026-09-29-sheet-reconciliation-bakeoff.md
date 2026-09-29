@@ -159,6 +159,6 @@ Baseline **B′** = compiled brief with affected normals always DO NOT ASSERT (5
 | **D** | **0/22** | undictated "No PE" gone (0/2); prompt −2.7k chars (system 28.0k→25.9k, user 3.4k→2.8k) |
 | F | 4/22 | history leak into the impression (lactate), mosaic attenuation called infarction, "borderline resectable" beside liver metastases, SMV-only encasement called locally advanced |
 
-F also drifts in scope and voice without exemplars: treatment recommendations (decompressive surgery, embolectomy, CSF diversion, anticoagulation reversal), undictated inferences ("contained perforation", "spinal instability", guideline thresholds), and impressions that restate findings across several paragraphs. **Exemplars anchor impression scope and voice; keep them (Jev-pruned).** D is adopted (b2fd… on feat/compiled-brief).
+F also drifts in scope and voice without exemplars: treatment recommendations (decompressive surgery, embolectomy, CSF diversion, anticoagulation reversal), undictated inferences ("contained perforation", "spinal instability", guideline thresholds), and impressions that restate findings across several paragraphs. **Exemplars anchor impression scope and voice; keep them (Jev-pruned).** D is adopted (03cea37 on feat/compiled-brief).
 
 Operational note: at 6 concurrent reports, 3/44 reconciliations hit the Qwen/Jev timeout and fell back to the raw sheet (safe, but loses the brief). Production concurrency is lower, but the fallback rate should be logged once live.
