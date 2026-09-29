@@ -343,6 +343,9 @@ async def _run_one_generator(
             "description": result.get("description"),
             # Reporter-choice items: sentences the reporter can tick into the impression.
             "options": result.get("brief_options") or [],
+            # The compiled brief the generator read, so a prod report can be traced to it.
+            "brief": ({"text": result.get("brief_text"), "decisions": result.get("brief_decisions")}
+                      if result.get("brief_used") else None),
         }
     except Exception as e:
         logger.warning("generator %s failed: %s", model_name, e)

@@ -198,3 +198,17 @@ async def test_confirmed_negatives_survive_when_the_writer_fails(monkeypatch):
              "branch": "Acute subdural", "reason": "contextual"}]
     out = await qrg._write_options(opts, "findings", "CT")
     assert [o["id"] for o in out] == ["cn0"]
+
+
+@pytest.mark.asyncio
+async def test_candidate_persists_the_brief(monkeypatch):
+    from rapid_reports_ai import quick_report_api as api
+
+    async def fake_generate(**kw):
+        return {"report_content": "R", "description": "d", "brief_used": True,
+                "brief_text": "BRIEF", "brief_decisions": {"negatives": []}, "brief_options": []}
+    monkeypatch.setattr(api, "generate_quick_report", fake_generate)
+    monkeypatch.setattr(api, "log_generator_run", lambda **kw: None)
+    cand = await api._run_one_generator(skill_sheet_markdown="S", findings="F", model_name="m", run_id="r",
+                                        scan_type="CT", clinical_history="h")
+    assert cand["brief"] == {"text": "BRIEF", "decisions": {"negatives": []}}
