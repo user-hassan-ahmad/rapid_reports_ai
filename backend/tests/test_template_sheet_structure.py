@@ -1029,3 +1029,18 @@ def test_a_section_named_by_its_listed_alternatives(name, kept):
     d = good_draft()
     d.sections[2] = d.sections[2].model_copy(update={"name": name})
     assert (name in [x.name for x in build(d, ALT_SHEET).sections]) is kept
+
+
+@pytest.mark.parametrize("pattern,text,kept", [
+    ("Normal wall thickness (maximum 8 mm). Mild grade 1 slip at the lower level.", "Normal wall thickness (maximum 8 mm).", False),
+    ("Normal wall thickness (maximum 8 mm). Mild grade 1 slip at the lower level.", "Mild grade 1 slip at the lower level.", False),
+    ("Normal chamber volume ({value} ml/m2). Ejection fraction=57%.", "Normal chamber volume ({value} ml/m2).", True),
+    ("Normal chamber volume ({value} ml/m2). Ejection fraction=57%.", "Ejection fraction=57%.", False),
+    ("No signal change on T1-weighted sequences.", "No signal change on T1-weighted sequences.", True),
+])
+def test_an_atomic_normal_is_a_normal_without_example_values(pattern, text, kept):
+    line = f'- **Normal pattern**: "{pattern}"'
+    sheet = SHEET.replace(NORMAL_LINE, line)
+    d = good_draft()
+    d.normals = [tss.Normal(id="m9", section="FINDINGS", structure="x", text=text, source_line=line)]
+    assert (build(d, sheet).normals != []) is kept

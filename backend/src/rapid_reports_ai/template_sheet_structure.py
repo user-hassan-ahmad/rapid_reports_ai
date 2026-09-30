@@ -440,11 +440,18 @@ def _is_subsequence(needle: List[str], hay: List[str]) -> bool:
     return all(w in it for w in needle)
 
 
+_MEASURE = re.compile(r"\d+(?:\.\d+)?\s*(?:%|mm\b|cm2?\b|ml\b|ms\b|m/s\b|mgy|x\s*\d)|=\s*\d", re.I)
+
+
 def _atomic_normal_ok(text: str, source_line: str) -> bool:
-    """The atomic sentence uses the pattern's words in order and keeps every negation of the
-    pattern sentence it is drawn from (so a split can never invert a statement)."""
+    """The atomic sentence states a normal (a negative, or a normal-state statement), carries no
+    literal measurement (a pattern line may quote an example report with values), uses the
+    pattern's words in order and keeps every negation of the pattern sentence it is drawn from
+    (so a split can never invert a statement)."""
     words = _words(text)
-    if not words:
+    if not words or _MEASURE.search(re.sub(r"\{[^}]*\}", "", text)):
+        return False
+    if not (is_negative(text) or _NORMAL_STATE.search(text) or _NEG_PREDICATE.search(text)):
         return False
     pattern = " ".join(_quoted(source_line)) or re.split(r"normal pattern\W*", _norm(source_line), maxsplit=1)[-1]
     for sent in _sentences(pattern):
