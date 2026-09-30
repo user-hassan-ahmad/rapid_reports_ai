@@ -22,6 +22,7 @@ from .enhancement_utils import (
     _run_agent_with_model,
 )
 from .quick_report_brief import compile_brief
+from .quick_report_quality import run_quality_check
 from .quick_report_hardening import QUICK_REPORT_HARDENING_PREAMBLE, QUICK_REPORT_HARDENING_PREAMBLE_BRIEF
 from .quick_report_prompts import (
     QR_PRE_WRITING_ANALYSIS,
@@ -99,12 +100,19 @@ class _OptionSentences(BaseModel):
 
 
 async def _write_options(options: List[dict], findings: str, scan_type: str) -> List[dict]:
-    """One impression sentence per optional item, for the reporter to tick in. Runs beside
-    the generator; on any failure the report ships without options."""
-    if not options:
-        return []
+    """Reporter-choice items. Impression and recommendation items get one sentence each from a
+    writer call beside the generator; finding-linked negatives are already in report form and
+    pass through. On a writer failure only the written items are lost."""
+    direct = [o for o in options if o["kind"] == "finding_negative"]
+    to_write = [o for o in options if o["kind"] != "finding_negative"]
+    passed = [{"id": f"fn{i}", "kind": o["kind"], "section": o.get("section", "FINDINGS"),
+               "sentence": o["text"][:1].upper() + o["text"][1:].rstrip(".") + ".", "reason": o.get("reason", ""), "source": o["text"],
+               "finding": o.get("finding", "")}
+              for i, o in enumerate(direct)]
+    if not to_write:
+        return passed
     try:
-        items = "\n".join(f"{i}. [{o['kind']}] {o['text']}" for i, o in enumerate(options))
+        items = "\n".join(f"{i}. [{o['kind']}] {o['text']}" for i, o in enumerate(to_write))
         r = await asyncio.wait_for(_run_agent_with_model(
             model_name=MODEL_CONFIG["QUICK_REPORT_GENERATOR"], output_type=_OptionSentences,
             system_prompt=("Write one sentence for the IMPRESSION of a radiology report for each numbered item, in order. "
@@ -117,10 +125,12 @@ async def _write_options(options: List[dict], findings: str, scan_type: str) -> 
             model_settings={"temperature": 0.2, "max_tokens": 2000, "reasoning_effort": "none"}), 10.0)
         sentences = r.output.sentences
     except Exception as e:
-        logger.warning("option sentences failed (%s: %s); no options offered", type(e).__name__, str(e)[:200])
-        return []
-    return [{"id": f"opt{i}", "kind": o["kind"], "sentence": s.strip(), "reason": o.get("reason", ""), "source": o["text"]}
-            for i, (o, s) in enumerate(zip(options, sentences)) if s and s.strip()]
+        logger.warning("option sentences failed (%s: %s); no written options offered", type(e).__name__, str(e)[:200])
+        return passed
+    written = [{"id": f"opt{i}", "kind": o["kind"], "section": "IMPRESSION", "sentence": s.strip(),
+                "reason": o.get("reason", ""), "source": o["text"]}
+               for i, (o, s) in enumerate(zip(to_write, sentences)) if s and s.strip()]
+    return written + passed
 
 
 async def generate_quick_report(
@@ -173,6 +183,9 @@ async def generate_quick_report(
         _write_with_fallback(), _describe(findings, clinical_history, scan_type),
         _write_options(brief.decisions.get("options", []) if brief else [], findings, scan_type))
     report = result.output if hasattr(result, "output") else str(result)
+    # Jev checks every clause and option against the dictation; one focal Qwen call repairs what
+    # it flags before the report ships (spec 2026-09-30-post-generation-check-design).
+    report, options, quality = await run_quality_check(report, findings, scan_type, options)
     if user_signature:
         report = report.rstrip() + "\n\n" + user_signature
     return {"report_content": report, "description": description, "scan_type": scan_type,
@@ -180,4 +193,6 @@ async def generate_quick_report(
             "brief_used": brief is not None,
             "brief_reconcile_ms": brief.reconcile_ms if brief else None,
             "brief_decisions": brief.decisions if brief else None,
-            "brief_options": options}
+            "brief_text": brief.text if brief else None,
+            "brief_options": options,
+            "quality_check": quality}

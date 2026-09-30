@@ -46,7 +46,8 @@ QWEN = "qwen-3.8-27b"
 JEV_TIMEOUT_S = 6.0
 QWEN_TIMEOUT_S = 10.0
 
-DROP_TOP_BULLETS = {"Out of scope", "Modality non-assessables", "In-scope companions", "Out-of-scope suppressed"}
+DROP_TOP_BULLETS = {"Out of scope", "Modality non-assessables", "In-scope companions", "Out-of-scope suppressed",
+                    "If present"}
 DROP_SECTIONS = {"Conditional Suppression Rules"}
 
 # ── parse ────────────────────────────────────────────────────────────────────
@@ -152,6 +153,64 @@ def _recommendations(section: Optional[Section]) -> List[str]:
     return out
 
 
+# Policy 1 for dictated findings: a finding Jev finds reported brings the negatives the analyser
+# listed for it. Cut-offs on Jev's score; PRESENT_HIGH sits in the measured gap between clear
+# (0.86-0.99) and hedged (<=0.72) reports (ledger L-45).
+PRESENT_LOW = 0.5
+PRESENT_HIGH = 0.8
+MAX_FINDING_OPTIONS = 4
+_CONFIRMED = re.compile(r'^\s+-\s+(.+?)\s*(?:→|->)\s*"([^"]+)"\s*(?:\((core|contextual)\))?')
+# The analyser also nests: the key on its own line, its negatives as sub-bullets.
+_CONFIRMED_BRANCH = re.compile(r'^\s+-\s+([^"]+?)\s*(?:→|->)\s*$')
+_CONFIRMED_NEG = re.compile(r'^\s+-\s+"([^"]+)"\s*(?:\((core|contextual)\))?')
+
+
+Q_FINDING = "The dictated findings report this imaging finding, in any wording or size: "
+
+
+@dataclass
+class FindingNegative:
+    key: str
+    text: str
+    tag: str   # "core" | "contextual"
+
+
+def _tag(line: str) -> str:
+    """The tag after the quoted negative, however the analyser annotates it: '(core)',
+    '(core — resectability)', '(peritonitis) (core)'. Unreadable means contextual (offered)."""
+    m = re.search(r"\b(core|contextual)\b", line.rsplit('"', 1)[-1])
+    return m.group(1) if m else "contextual"
+
+
+def parse_if_present(lines: List[str]) -> List[FindingNegative]:
+    """The If-present bullet as (finding key, negative, tag), one-line or nested shape."""
+    out: List[FindingNegative] = []
+    key = None
+    for line in lines[1:]:
+        if m := _CONFIRMED.match(line):
+            out.append(FindingNegative(m.group(1).strip(), m.group(2).strip().rstrip("."), _tag(line)))
+        elif m := _CONFIRMED_BRANCH.match(line):
+            key = m.group(1).strip()
+        elif (m := _CONFIRMED_NEG.match(line)) and key:
+            out.append(FindingNegative(key, m.group(1).strip().rstrip("."), _tag(line)))
+    return out
+
+
+def distinct_keys(cands: List[FindingNegative]) -> List[str]:
+    return list(dict.fromkeys(c.key for c in cands))
+
+
+def route_finding(label: str, present: float, tag: str) -> str:
+    """Rule C: stated only when the finding is clearly reported and the negative is core."""
+    if present < PRESENT_LOW or label == "contradicted":
+        return "dropped"
+    if label == "expected":
+        return "do_not_assert"
+    if present >= PRESENT_HIGH and tag == "core":
+        return "stated"
+    return "offered"
+
+
 _MEASUREMENT = re.compile(r"\d+(?:[.,]\d+)?\s*(?:%|°|(?:mm|cm|ml|mL|cc|HU|mmHg|m/s|degrees?)(?![A-Za-z]))")
 
 
@@ -224,10 +283,11 @@ recommendations — decide every candidate by its kind; a candidate whose condit
 - CORRELATION: include only retrieving prior imaging to compare against; exclude laboratory tests, clinical monitoring, treatment decisions and bare clinical correlation.
 Use optional only when a reasonable consultant could go either way on this case. For every exclude, set exclude_reason: condition_unmet (the findings do not meet its condition), routine_workup (routine workup of a diagnosis this study has already made), not_radiology (laboratory tests, monitoring, treatment, bare correlation) or duplicate. Give a one-line reason.
 
-impression — the numbers of the findings the impression must carry: the finding(s) that answer the clinical question, findings that change management or urgency, and negatives that answer the clinical question.
+impression — the numbers of the findings the impression must carry: the finding(s) that answer the clinical question, findings that change management or urgency, and, only when no dictated positive finding answers the clinical question, the one negative that does. Never carry more than one negative.
 optional_impression — findings with a management consequence that a reasonable consultant could either carry or leave in FINDINGS. Never use it for normal structures, devices or negatives.
 findings_only — findings that stay in FINDINGS: incidental or background findings needing no action, devices and procedure notes, normal structures the question did not ask about.
 A finding may be in none of the lists when either placement is acceptable. Never place a number in two lists."""
+
 PLAN_TIMEOUT_S = 10.0
 MAX_OPTIONS = 3
 _BAR_KINDS = ("IMAGING:", "TISSUE:")
@@ -286,6 +346,42 @@ async def _qwen(state: str, negs: List[str], normals: List[str], measurements: L
     return r.output
 
 
+class FallbackItem(BaseModel):
+    index: int
+    covered: bool
+    negatives: List[str] = []
+
+
+class FallbackNegatives(BaseModel):
+    items: List[FallbackItem]
+    @field_validator("items", mode="before")
+    @classmethod
+    def _parse_stringified(cls, v):
+        return _unstring(v)
+
+
+# A dictated finding the sheet did not anticipate has no If-present key. Qwen judges coverage
+# (Jev scores keys, not dictated items) and writes negatives for the uncovered; written at
+# reasoning off, these are only ever offered, never stated.
+FALLBACK_SYS = (
+    "You check whether each dictated radiology finding is covered by a prepared list of finding types, and write "
+    "pertinent negatives only for findings that are not. For each numbered dictated finding return covered=true "
+    "when one of the FINDING TYPES describes the same kind of finding in the same place; otherwise covered=false "
+    "and up to three negatives a consultant states once that finding is reported: the absence of each extension, "
+    "spread or complication this technique shows and the next management step depends on. One finding per "
+    "negative, no 'or', no list, final report form. Never deny anything dictated or its expected consequence.")
+FALLBACK_TIMEOUT_S = 6.0
+
+
+async def _fallback(state: str, items: List[str], keys: List[str]) -> FallbackNegatives:
+    r = await asyncio.wait_for(_run_agent_with_model(
+        model_name=QWEN, output_type=FallbackNegatives, system_prompt=FALLBACK_SYS,
+        user_prompt=(f"{state}\n\nNUMBERED DICTATED FINDINGS:\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(items))
+                     + "\n\nFINDING TYPES:\n" + ("\n".join(f"- {k}" for k in keys) or "(none)")),
+        api_key="", model_settings={"temperature": 0, "max_tokens": 3000, "reasoning_effort": "none"}), FALLBACK_TIMEOUT_S)
+    return r.output
+
+
 def split_findings(findings: str) -> List[str]:
     """Dictated findings as numbered items: bullets, lines and sentences."""
     parts = []
@@ -303,7 +399,8 @@ async def _plan(scan_type: str, clinical_history: str, items: List[str], recs: L
             "DICTATED FINDINGS:\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(items))
             + "\n\nCANDIDATE RECOMMENDATIONS:\n" + ("\n".join(f"{i}. {t}" for i, t in enumerate(recs)) or "(none)"))
     r = await asyncio.wait_for(_run_agent_with_model(
-        model_name=QWEN, output_type=ImpressionPlan, system_prompt=PLAN_SYS, user_prompt=user, api_key="",
+        model_name=QWEN, output_type=ImpressionPlan, system_prompt=PLAN_SYS,
+        user_prompt=user, api_key="",
         model_settings={"temperature": 0, "max_tokens": 8000, "reasoning_effort": "low"}), PLAN_TIMEOUT_S)
     return r.output
 
@@ -328,14 +425,19 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     raw_negs = [n.strip().rstrip(".") for n in _quoted(" ".join(neg_bullet.lines))] if neg_bullet else []
     targets = {n: (re.search(r'"' + re.escape(n) + r'\.?"\s*\(([^)]*)\)', " ".join(neg_bullet.lines)) or [None, ""])[1]
                for n in raw_negs} if neg_bullet else {}
-    split = await _split_bundled(raw_negs)
+    fb = _bullet(matrix, "If present")
+    raw_cands = parse_if_present(fb.lines) if fb else []
+    # One split call covers mandatory and finding-linked negatives: the analyser bundles both.
+    split = await _split_bundled(raw_negs + [c.text for c in raw_cands])
     negs = [(c, targets.get(parent, "")) for parent, parts in zip(raw_negs, split) for c in parts]
+    cands = [FindingNegative(c.key, part, c.tag) for c, parts in zip(raw_cands, split[len(raw_negs):]) for part in parts]
     normal_bullet = _bullet(struct, "Normal-study path")
     # A normal line that states a measurement asserts a value nobody dictated whenever the
     # dictation is silent about it, so it never reaches the generator.
     measured = [t for t in _normal_sentences(normal_bullet) if _MEASUREMENT.search(t)]
     normals = [t for t in _normal_sentences(normal_bullet) if not _MEASUREMENT.search(t)]
     diffs = differential_lines(secs)
+    keys = distinct_keys(cands)
     recs = _recommendations(imp)
     styles = style.bullets if style else []
     variants = _impression_variants(imp)
@@ -346,6 +448,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     qs.update({f"n{k}": {"type": "noul", "instructions": Q_AFFECTED + t} for k, t in enumerate(normals)})
     qs.update({f"d{k}": {"type": "noul", "instructions": Q_PRESENT + t} for k, t in enumerate(diffs)})
     qs.update({f"r{k}": {"type": "noul", "instructions": Q_REC_UNMET + t} for k, t in enumerate(recs)})
+    qs.update({f"f{i}": {"type": "noul", "instructions": Q_FINDING + k} for i, k in enumerate(keys)})
     qs.update({f"s{k}": {"type": "noul", "instructions": Q_STYLE_MATCH + " ".join(b.lines)} for k, b in enumerate(styles)})
     if len(variants) > 1:
         qs["imp"] = {"type": "choice", "instructions": "Which impression exemplar best matches the shape of this case's findings (severity, number of findings, complications)?",
@@ -358,13 +461,23 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         except Exception as e:  # the brief still compiles; recommendations fall back to Jev alone
             logger.warning("impression plan failed (%s: %s)", type(e).__name__, str(e)[:200])
             return None
-    jev, qw, plan = await asyncio.gather(_jev(state, qs) if qs else asyncio.sleep(0, {}),
-                                         _qwen(state, [n for n, _ in negs], normals, [" ".join(b.lines) for b in measurements]),
-                                         plan_or_none())
+    async def fallback_or_none():
+        try:
+            # Only sheets written with the finding_negatives directive carry an If-present list;
+            # without one the brief behaves exactly as before (no extra call, no options).
+            return await _fallback(state, items, keys) if items and fb else None
+        except Exception as e:  # the brief still compiles; unanticipated findings just get no options
+            logger.warning("finding-negatives fallback failed (%s: %s)", type(e).__name__, str(e)[:200])
+            return None
+    jev, qw, plan, fb_out = await asyncio.gather(
+        _jev(state, qs) if qs else asyncio.sleep(0, {}),
+        _qwen(state, [n for n, _ in negs] + [c.text for c in cands], normals, [" ".join(b.lines) for b in measurements]),
+        plan_or_none(), fallback_or_none())
     score = lambda k: float(jev[k]["noul"])
 
     decisions: dict = {"negatives": [], "normals": [], "differentials": [], "recommendations": [], "style": [], "measurements": [],
-                       "impression_variant": None, "impression_plan": None, "options": []}
+                       "impression_variant": None, "impression_plan": None, "options": [],
+                       "finding_negatives": []}
 
     # Mandatory negatives: one line each, with its action and the dictated finding.
     qneg = {d.index: d for d in qw.negatives}
@@ -379,9 +492,43 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             neg_lines.append(f'  - DO NOT ASSERT: "{text}" — expected consequence of: {d.dictated_finding}')
         else:
             neg_lines.append(f'  - KEEP: "{text}"{why}')
-        decisions["negatives"].append({"text": text, "action": action, "dictated_finding": d.dictated_finding if d else ""})
+        decisions["negatives"].append({"text": text, "action": action, "dictated_finding": d.dictated_finding if d else "",
+                                       "source": "sheet"})
+
+    # Finding-linked negatives (policy 1): stated as KEEP, labelled DO NOT ASSERT, or offered.
+    stated: List[str] = []
+    n_offered = 0
+    handled = {n for n, _ in negs}   # a negative listed under two keys, or already mandatory, is routed once
+    for j, c in enumerate(cands):
+        if c.text in handled:
+            continue
+        handled.add(c.text)
+        d = qneg.get(len(negs) + j)
+        label = d.action if d else "keep"
+        p = score(f"f{keys.index(c.key)}")
+        outcome = route_finding(label, p, c.tag)
+        if outcome == "offered":
+            if n_offered >= MAX_FINDING_OPTIONS:
+                outcome = "dropped"
+            else:
+                n_offered += 1
+                decisions["options"].append({"kind": "finding_negative", "section": "FINDINGS", "text": c.text,
+                                             "finding": c.key,
+                                             "reason": "contextual" if p >= PRESENT_HIGH else f"finding borderline (p={p:.2f})"})
+        decisions["finding_negatives"].append({"finding": c.key, "text": c.text, "tag": c.tag, "qwen": label,
+                                               "present": round(p, 3), "outcome": outcome})
+        if outcome == "stated":
+            stated.append(c.text)
+            neg_lines.append(f'  - KEEP: "{c.text}" (finding: {c.key})')
+            decisions["negatives"].append({"text": c.text, "action": "keep", "dictated_finding": "",
+                                           "source": f"finding:{c.key}"})
+        elif outcome == "do_not_assert":
+            neg_lines.append(f'  - DO NOT ASSERT: "{c.text}" — expected consequence of: {d.dictated_finding}')
     if neg_bullet:
         neg_bullet.lines = neg_lines
+    elif matrix and neg_lines:
+        matrix.bullets.insert(0, Bullet("Mandatory negatives",
+                                        ["- **Mandatory negatives:** (reconciled with this dictation; one finding each)"] + neg_lines))
 
     # Normal-study path: unaffected lines verbatim; a line either model flags is listed as not
     # assertable. Never deleted: a missing line is refilled from priors, a prohibition holds.
@@ -462,6 +609,23 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             plan_lines.append("- **Findings only (not in the impression):** " + " ".join(f'"{t}"' for t in only))
         if plan_lines:
             secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", plan_lines)]))
+
+    # Unanticipated carried findings: offered negatives from the fallback, never stated.
+    if plan and fb_out:
+        seen = {c.text for c in cands}
+        for it in fb_out.items:
+            if it.covered or it.index not in plan.impression or not (0 <= it.index < len(items)):
+                continue
+            for neg in it.negatives[:3]:
+                neg = neg.strip().rstrip(".")
+                if not neg or neg in seen or n_offered >= MAX_FINDING_OPTIONS:
+                    continue
+                seen.add(neg)
+                n_offered += 1
+                decisions["options"].append({"kind": "finding_negative", "section": "FINDINGS", "text": neg,
+                                             "finding": items[it.index], "reason": "unanticipated finding"})
+                decisions["finding_negatives"].append({"finding": items[it.index], "text": neg, "tag": "fallback",
+                                                       "qwen": "n/a", "present": None, "outcome": "offered"})
 
     # Impression exemplars: only the variant matching this case's shape.
     if variants and imp:

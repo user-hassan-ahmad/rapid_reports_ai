@@ -185,7 +185,7 @@ The THEN may attribute to another imaging finding in the same study (imaging-to-
 Explicit IF/THEN rules that prevent redundancy in the emitted report:
 
 - If the index finding is named with its descriptor in P1, the sweep paragraph for that region names the structure only, without restating the descriptor.
-- If a triage differential is excluded by the imaging, state it as a single compact negative in FINDINGS and carry it into the IMPRESSION as a direct negative answer. Do not elaborate in both locations.
+- If a triage differential is excluded by the imaging, state it as a single compact negative in FINDINGS and carry it into the IMPRESSION as the negative answer only when no positive finding answers the clinical question. Do not elaborate in both locations.
 - If dictation is silent about an in-scope structure the sweep order visits, render the structure's canonical default-normal line at its sweep position. Silence is not omission in the report — it is the default rendering. This applies to every in-scope system on broad-coverage scans, not only to secondary visible regions. If dictation specifies a positive finding, replace the canonical line; if dictation flags a technical limitation, that triggers LIMITATIONS inclusion and the position reflects the limitation. **The default rendering is defeasible.** A canonical default-normal line is a proposal the dictation may override, not a mandate the generator must satisfy. Where a dictated positive implicates the structure as a companion — the Companion Matrix names it as a secondary effect, complication, or paired-territory consequence of that positive — asserting the canonical normal would state as verified something the dictated finding puts in question. In that case the line is dropped, or rendered in a contingent form that does not assert. Coverage of the structure remains obligatory; the specific normal assertion does not. This defeasibility governs canonical default-normal lines only — mandatory negatives are never suppressed by it, since they answer the clinical question rather than fill silence. Silence about a structure whose companion finding was dictated is not the same kind of silence as silence on an unremarkable study, and must not be rendered as though it were.
 - If multiple negatives fire in one subsystem, consolidate into a single sentence.
 - A descriptor mentioned once is not repeated in subsequent paragraphs; structures are described in one place.
@@ -198,11 +198,11 @@ Explicit IF/THEN rules that prevent redundancy in the emitted report:
 
 The impression is where the report does its clinical work. An impression is not a summary of findings — it is the radiologist's answer to the referrer's clinical question, plus subsidiary concerns the imaging raises, plus whatever direction management should take from here.
 
-**Opening convention** — clinical answer / index finding / negative answer. Any confirmed acute pathology opens the impression, whichever of the history's questions it answers; the negative answers to the remaining questions follow it. The ranking among several questions decides the opening only when every one of them is answered negatively. A negative study leads with the negative answer; a pathology-confirming study leads with the index finding; a broad-screen study leads with the most actionable finding.
+**Opening convention** — clinical answer / index finding / negative answer. Any confirmed acute pathology opens the impression, whichever of the history's questions it answers; negatives about the remaining questions stay in FINDINGS unless one changes the next step. The ranking among several questions decides the opening only when every one of them is answered negatively. A negative study leads with the negative answer; a pathology-confirming study leads with the index finding; a broad-screen study leads with the most actionable finding.
 
 **Quoted impression exemplars** — 2–3 complete illustrative impressions that demonstrate the cognitive moves of a consultant answering a clinical question: the primary question explicitly engaged; any incidental but clinically significant findings surfaced as separate concerns with their own direction; warranted synthesis articulated when findings and context support it; management direction recommended where the imaging makes the next step clear.
 
-Cover a normal-study impression (clinical question answered negatively, with mandatory negatives that bear on the question and direction where indicated — brief is correct when brief meets the obligations), an abnormal impression (primary pathology named; the Descriptor propagation rule below governs what accompanies it), and a complicated impression if clinically meaningful.
+Cover a normal-study impression (clinical question answered negatively in one negative sentence, no list of absent findings, with direction where indicated — brief is correct when brief meets the obligations), an abnormal impression (primary pathology named; the Descriptor propagation rule below governs what accompanies it), and a complicated impression if clinically meaningful.
 
 Completeness is governed by obligations, not length. A brief impression that answers the clinical question and carries the case's obligations is complete. Length adds completeness only when it carries additional clinical work.
 
@@ -502,7 +502,7 @@ The phrasing that wraps a measurement is learned from style exemplars, not presc
 Explicit IF/THEN rules that prevent redundancy in the emitted report:
 
 - If the index finding is named with its descriptor in P1, the sweep paragraph for that region names the structure only, without restating the descriptor.
-- If a triage differential is excluded by the imaging, state it as a single compact negative in FINDINGS and carry it into the IMPRESSION as a direct negative answer. Do not elaborate in both locations.
+- If a triage differential is excluded by the imaging, state it as a single compact negative in FINDINGS and carry it into the IMPRESSION as the negative answer only when no positive finding answers the clinical question. Do not elaborate in both locations.
 - If dictation is silent about an in-scope structure the sweep order visits, render the structure's canonical default-normal line at its sweep position. Silence is not omission in the report — it is the default rendering. This applies to every in-scope system on broad-coverage scans, not only to secondary visible regions. If dictation specifies a positive finding, replace the canonical line; if dictation flags a technical limitation, that triggers LIMITATIONS inclusion. **The default rendering is defeasible.** A canonical default-normal line is a proposal the dictation may override, not a mandate the generator must satisfy. Where a dictated positive implicates the structure as a companion — the Companion Matrix names it as a secondary effect, complication, or paired-territory consequence of that positive — asserting the canonical normal would state as verified something the dictated finding puts in question. In that case the line is dropped, or rendered in a contingent form that does not assert. Coverage of the structure remains obligatory; the specific normal assertion does not. This defeasibility governs canonical default-normal lines only — mandatory negatives are never suppressed by it, since they answer the clinical question rather than fill silence. Silence about a structure whose companion finding was dictated is not the same kind of silence as silence on an unremarkable study, and must not be rendered as though it were.
 - If multiple negatives fire in one subsystem, consolidate into a single sentence.
 - A descriptor mentioned once is not repeated in subsequent paragraphs; structures are described in one place.
@@ -515,7 +515,7 @@ Explicit IF/THEN rules that prevent redundancy in the emitted report:
 
 The impression is where the report does its clinical work. An impression is not a summary of findings — it is the radiologist's answer to the referrer's clinical question, plus subsidiary concerns the imaging raises, plus whatever direction management should take from here.
 
-**Opening convention** — clinical answer / index finding / negative answer. Any confirmed acute pathology opens the impression, whichever of the history's questions it answers; the negative answers to the remaining questions follow it. The ranking among several questions decides the opening only when every one of them is answered negatively. A negative study leads with the negative answer; a pathology-confirming study leads with the index finding; a broad-screen study leads with the most actionable finding.
+**Opening convention** — clinical answer / index finding / negative answer. Any confirmed acute pathology opens the impression, whichever of the history's questions it answers; negatives about the remaining questions stay in FINDINGS unless one changes the next step. The ranking among several questions decides the opening only when every one of them is answered negatively. A negative study leads with the negative answer; a pathology-confirming study leads with the index finding; a broad-screen study leads with the most actionable finding.
 
 **Quoted impression exemplars** — 2–3 complete illustrative impressions that demonstrate the cognitive moves of a consultant answering a clinical question:
 - the primary clinical question explicitly engaged
@@ -526,7 +526,7 @@ The impression is where the report does its clinical work. An impression is not 
 **Exemplars carry no clinical history.** The history shapes which diagnosis an exemplar names, how confidently, and what it recommends — it never appears as text. No exemplar names a symptom, demographic, medication, laboratory value, prior diagnosis or referral question. Exemplars are the generator's imitation target: a history fragment shown once is reproduced on every case.
 
 Cover:
-- **Normal exemplar** — clinical question answered negatively, with mandatory negatives that bear on the question and any direction the indication supports. Brief is correct when brief meets the obligations.
+- **Normal exemplar** — clinical question answered negatively in one negative sentence, no list of absent findings, with any direction the indication supports. Brief is correct when brief meets the obligations.
 - **Abnormal exemplar** — primary pathology named; the Descriptor propagation rule below governs what accompanies it. The history has already chosen the diagnosis and the referral; none of it is written.
 - **Complicated exemplar** — multiple concerns framed as separate impression items. Optional, only if clinically meaningful.
 
@@ -826,9 +826,41 @@ section governs.
   Terminology Rules, Conditional Suppression Rules, Impression Exemplars.
 """
 
+# Policy 1 for dictated findings (spec 2026-09-29, revision 2): the sheet is written before
+# anything is dictated, so its mandatory negatives answer the question as asked. The negatives a
+# consultant states once a finding is reported (extent, spread, complications) had no carrier.
+# Keyed by imaging finding, not diagnosis: imaging reports findings, and a diagnosis key was
+# almost never matched (L-45). The brief promotes these only when Jev finds the key reported.
+FINDING_NEGATIVES = """
+
+---
+
+## If present — negatives that follow a reported finding
+
+Add one bullet to the Companion Matrix, directly after Mandatory negatives:
+
+- **If present:** (negatives stated only when the dictation reports the finding)
+  - <imaging finding as a radiologist would dictate it> → "<negative in final report form>" (core | contextual)
+
+List the imaging findings this clinical question anticipates: the primary finding and each
+alternative the study could show. For each, list the negatives a consultant states once that
+finding is reported: the absence of each extension, spread or complication this technique
+shows and the next management step depends on. Write each key as the imaging finding a
+radiologist would dictate, never the diagnosis it suggests, and at the most general level at
+which its negatives still apply. A key names one finding, never two findings joined by "with", "and" or "or": an extension or complication of the finding is a negative under its key, never part of the key. Write every negative on its own line with its key repeated, in
+the form shown. One finding per negative: no "or", no comma-separated list. Tag each negative
+core when any consultant states it once that finding is reported, contextual when stating it
+depends on the case or on local practice. List each finding's negatives in order of
+consequence, first the one the next management step depends on most.
+At most four negatives per finding and twenty in total. Never repeat a mandatory negative. Never write a negative denying something the finding
+is expected to cause.
+
+This bullet is an addition: the Sections line and every other part of the sheet stay exactly as they would without it.
+"""
+
 # Directives every production analyser call carries. Harnesses that pass an
 # explicit tuple override this; None means "as production".
-PRODUCTION_DIRECTIVES: tuple[str, ...] = ("prune_v1",)
+PRODUCTION_DIRECTIVES: tuple[str, ...] = ("prune_v1", "finding_negatives")
 
 DIRECTIVES = {
     "sweep": lambda: DIRECTIVE_SWEEP,
@@ -837,6 +869,7 @@ DIRECTIVES = {
     "defeasible_prose": lambda: DEFEASIBILITY_PROSE,
     "rescope": lambda: NEGATIVES_RESCOPE,
     "prune_v1": lambda: PRUNE_V1,
+    "finding_negatives": lambda: FINDING_NEGATIVES,
 }
 
 
