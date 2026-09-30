@@ -974,3 +974,35 @@ async def test_a_failed_repair_keeps_the_first_pass_and_a_usable_first_pass_is_n
     seen.clear()
     repair_fake(monkeypatch, [good_draft()], seen)
     assert (await tss.structure_sheet(SHEET, model="m")).usable and len(seen) == 1
+
+
+@pytest.mark.parametrize("label,noted", [
+    ("Routine case", True), ("Follow-up study", True), ("Right heart (screening context)", True),
+    ("Lungs", False), ("Mandatory negatives", False),
+])
+def test_a_case_scoped_label_is_a_condition(label, noted):
+    line = f'- {label}: "No pleural effusion."'
+    assert tss._cond_noted(line) is noted
+    sheet = with_nfr_line(line)
+    for condition in (None, "The study is a routine case"):
+        d = good_draft()
+        d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text="No pleural effusion.",
+                                        condition=condition, source_lines=[line]))
+        assert build(d, sheet).usable is (noted == bool(condition))   # required when scoped, refused when not
+
+
+ELLIPSIS_IF = '- IF [x] THEN suppress "No free intra-abdominal... or fluid" AND replace with "Y."'
+
+
+@pytest.mark.parametrize("target,kept", [
+    ("No free intra-abdominal air or fluid.", True),       # the sheet's own statement, abbreviated on the line
+    ("No free intra-abdominal gas or fluid.", False),      # not a sheet statement
+    ("No free intra-abdominal air.", False),               # wrong ending
+])
+def test_an_abbreviated_target_expands_only_to_a_sheet_statement(target, kept):
+    sheet = SHEET.replace(ONCOLOGY_IF, ONCOLOGY_IF + "\n" + ELLIPSIS_IF)
+    d = good_draft()
+    d.rules.append(tss.Rule(id="r9", section="FINDINGS", condition="The dictated findings report x", effect="replace",
+                            target=target, then_text="Y.", source_lines=[ELLIPSIS_IF]))
+    s = build(d, sheet)
+    assert ("r9" in [r.id for r in s.rules]) is kept and s.usable is kept

@@ -215,6 +215,23 @@ def _in_line(text: str, line: str) -> bool:
     return bool(re.search(r"(?<![a-z0-9])" + re.escape(k) + end, hay))
 
 
+_ELLIPSIS = re.compile(r"\.\.\.|…")
+
+
+def _expands_ellipsis(text: str, line: str, statements: set) -> bool:
+    """A target the line abbreviates ("[start]... [end]"): accepted only when it is a whole statement
+    quoted elsewhere on the sheet, starting with the line's words before the ellipsis (at least two)
+    and ending with the words after it."""
+    k = _key(text)
+    if k not in statements:
+        return False
+    for q in _quoted(line):
+        parts = [_key(p).strip(" ,;") for p in _ELLIPSIS.split(q)]
+        if len(parts) >= 2 and len(parts[0].split()) >= 2 and k.startswith(parts[0]) and k.endswith(parts[-1]):
+            return True
+    return False
+
+
 def _covers(source_line: str, line: str) -> bool:
     """A source line covers a sheet line only when it IS that line (after normalisation)."""
     a = _norm(source_line)
@@ -273,9 +290,16 @@ def _outside_quotes(line: str) -> str:
     return _QUOTED.sub(" ", _bullet_body(line))
 
 
+_SCOPE_LABEL = re.compile(r"\b(?:case|study|context)\b", re.I)
+
+
 def _cond_noted(line: str) -> bool:
-    """The line qualifies when its statement applies (text outside the quotes)."""
-    return bool(_COND_WORD.search(_outside_quotes(line)))
+    """The line qualifies when its statement applies (text outside the quotes), or scopes its
+    statements to a kind of case by a label before the first quote ("[Kind] case: …",
+    "[Label] ([kind] context): …")."""
+    body = _bullet_body(line)
+    m = _QUOTE_CHARS.search(body)
+    return bool(_COND_WORD.search(_outside_quotes(line)) or (m and _SCOPE_LABEL.search(body[:m.start()])))
 
 
 _MAND_LABEL = re.compile(r"^\s*mandatory negatives?\s*:?\s*$", re.I)
@@ -536,6 +560,8 @@ def build_structure(sheet: str, draft: StructureDraft, model: str) -> SheetStruc
     def para(item):
         return item if not item.paragraph or item.paragraph in para_ids else item.model_copy(update={"paragraph": ""})
 
+    sheet_statements = {_key(q) for ln in sheet.splitlines() for q in _quoted_statements(ln)} - {""}
+
     def effect_complete(r) -> bool:
         """A rule carries what its effect needs, so a covered IF line is never a hollow rule."""
         need = {"suppress": ("target",), "replace": ("target", "then_text"), "append": ("then_text",),
@@ -548,7 +574,8 @@ def build_structure(sheet: str, draft: StructureDraft, model: str) -> SheetStruc
              and effect_complete(r)
              and (_norm(r.condition) or reject(f"rule {r.id}: empty condition"))
              and whole_lines(f"rule {r.id}", r.source_lines, if_set)
-             and in_own_line(f"rule {r.id} target", r.target, r.source_lines)
+             and (any(_expands_ellipsis(r.target, ln, sheet_statements) for ln in r.source_lines)
+                  or in_own_line(f"rule {r.id} target", r.target, r.source_lines))
              and in_own_line(f"rule {r.id} then_text", r.then_text, r.source_lines)]
     def cited_negative_lines(n):
         """Each citation is verified on its own: a cited line that is not a whole negative line (often
