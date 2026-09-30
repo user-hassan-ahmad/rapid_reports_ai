@@ -9,11 +9,10 @@ see scripts/prompt_drift_report.py for rules that exist in both.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from typing import List
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 
 from .enhancement_utils import (
     MODEL_CONFIG,
@@ -23,6 +22,7 @@ from .enhancement_utils import (
 )
 from .quick_report_brief import compile_brief
 from .quick_report_quality import run_quality_check
+from .report_reconcile import _OptionSentences, write_options  # noqa: F401  (_OptionSentences: tests build it via qrg)
 from .quick_report_hardening import QUICK_REPORT_HARDENING_PREAMBLE, QUICK_REPORT_HARDENING_PREAMBLE_BRIEF
 from .quick_report_prompts import (
     QR_PRE_WRITING_ANALYSIS,
@@ -90,47 +90,10 @@ async def _describe(findings: str, clinical_history: str, scan_type: str) -> str
         return f"Report for {scan_type}"
 
 
-class _OptionSentences(BaseModel):
-    sentences: List[str]
-
-    @field_validator("sentences", mode="before")
-    @classmethod
-    def _parse_stringified(cls, v):
-        return json.loads(v) if isinstance(v, str) else v
-
-
 async def _write_options(options: List[dict], findings: str, scan_type: str) -> List[dict]:
-    """Reporter-choice items. Impression and recommendation items get one sentence each from a
-    writer call beside the generator; finding-linked negatives are already in report form and
-    pass through. On a writer failure only the written items are lost."""
-    direct = [o for o in options if o["kind"] == "finding_negative"]
-    to_write = [o for o in options if o["kind"] != "finding_negative"]
-    passed = [{"id": f"fn{i}", "kind": o["kind"], "section": o.get("section", "FINDINGS"),
-               "sentence": o["text"][:1].upper() + o["text"][1:].rstrip(".") + ".", "reason": o.get("reason", ""), "source": o["text"],
-               "finding": o.get("finding", "")}
-              for i, o in enumerate(direct)]
-    if not to_write:
-        return passed
-    try:
-        items = "\n".join(f"{i}. [{o['kind']}] {o['text']}" for i, o in enumerate(to_write))
-        r = await asyncio.wait_for(_run_agent_with_model(
-            model_name=MODEL_CONFIG["QUICK_REPORT_GENERATOR"], output_type=_OptionSentences,
-            system_prompt=("Write one sentence for the IMPRESSION of a radiology report for each numbered item, in order. "
-                           "A 'recommendation' item becomes a recommendation sentence naming the test or service and, where "
-                           "the item gives one, its urgency; drop any condition in brackets once it is met. An 'impression' "
-                           "item becomes a compressed statement of that dictated finding. Use only facts in the item and the "
-                           "findings. British English, consultant voice, no preamble. Return JSON {\"sentences\": [...]}."),
-            user_prompt=f"SCAN TYPE: {scan_type}\nDICTATED FINDINGS:\n{findings}\n\nITEMS:\n{items}",
-            api_key="",
-            model_settings={"temperature": 0.2, "max_tokens": 2000, "reasoning_effort": "none"}), 10.0)
-        sentences = r.output.sentences
-    except Exception as e:
-        logger.warning("option sentences failed (%s: %s); no written options offered", type(e).__name__, str(e)[:200])
-        return passed
-    written = [{"id": f"opt{i}", "kind": o["kind"], "section": "IMPRESSION", "sentence": s.strip(),
-                "reason": o.get("reason", ""), "source": o["text"]}
-               for i, (o, s) in enumerate(zip(to_write, sentences)) if s and s.strip()]
-    return written + passed
+    """Reporter-choice items; the writer is shared (report_reconcile.write_options)."""
+    return await write_options(options, findings, scan_type, model=MODEL_CONFIG["QUICK_REPORT_GENERATOR"],
+                               runner=_run_agent_with_model)
 
 
 async def generate_quick_report(

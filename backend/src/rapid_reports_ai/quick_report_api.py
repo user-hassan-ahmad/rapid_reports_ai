@@ -61,6 +61,7 @@ from .quick_report_analyser import (
     new_run_id,
 )
 from .quick_report_generator import generate_quick_report
+from .report_review import header_names
 
 
 logger = logging.getLogger(__name__)
@@ -341,6 +342,8 @@ async def _run_one_generator(
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "error": None,
             "description": result.get("description"),
+            # Ordered output headings — the Review rail keys items by section (GenerationArtifacts).
+            "sections": header_names(result.get("report_content", "")),
             # Reporter-choice items: sentences the reporter can tick into the impression.
             "options": result.get("brief_options") or [],
             # What the post-generation check flagged and repaired (None on older paths).

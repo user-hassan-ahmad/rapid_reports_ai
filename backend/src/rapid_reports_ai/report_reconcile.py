@@ -266,6 +266,55 @@ async def _plan(scan_type: str, clinical_history: str, items: List[str], recs: L
     return r.output
 
 
+class _OptionSentences(BaseModel):
+    sentences: List[str]
+
+    @field_validator("sentences", mode="before")
+    @classmethod
+    def _parse_stringified(cls, v):
+        return json.loads(v) if isinstance(v, str) else v
+
+
+OPTION_SYS = ("Write one sentence for the IMPRESSION of a radiology report for each numbered item, in order. "
+              "A 'recommendation' item becomes a recommendation sentence naming the test or service and, where "
+              "the item gives one, its urgency; drop any condition in brackets once it is met. An 'impression' "
+              "item becomes a compressed statement of that dictated finding. Use only facts in the item and the "
+              "findings. British English, consultant voice, no preamble. Return JSON {\"sentences\": [...]}.")
+
+
+async def write_options(options: List[dict], findings: str, scan_type: str, *, model: str, runner,
+                        style: str = "", impression_section: str = "IMPRESSION") -> List[dict]:
+    """Reporter-choice items. Impression and recommendation items get one sentence each from a
+    writer call beside the generator; finding-linked negatives are already in report form and
+    pass through. On a writer failure only the written items are lost. `runner` is the caller's
+    _run_agent_with_model (so each pathway's tests patch their own module); `style` carries a
+    template sheet's impression examples and terminology."""
+    direct = [o for o in options if o["kind"] == "finding_negative"]
+    to_write = [o for o in options if o["kind"] != "finding_negative"]
+    passed = [{"id": f"fn{i}", "kind": o["kind"], "section": o.get("section", "FINDINGS"),
+               "sentence": o["text"][:1].upper() + o["text"][1:].rstrip(".") + ".", "reason": o.get("reason", ""), "source": o["text"],
+               "finding": o.get("finding", "")}
+              for i, o in enumerate(direct)]
+    if not to_write:
+        return passed
+    try:
+        items = "\n".join(f"{i}. [{o['kind']}] {o['text']}" for i, o in enumerate(to_write))
+        user = f"SCAN TYPE: {scan_type}\nDICTATED FINDINGS:\n{findings}\n\nITEMS:\n{items}"
+        if style:
+            user += f"\n\nWRITE IN THIS REPORTER'S STYLE:\n{style}"
+        r = await asyncio.wait_for(runner(
+            model_name=model, output_type=_OptionSentences, system_prompt=OPTION_SYS, user_prompt=user,
+            api_key="", model_settings={"temperature": 0.2, "max_tokens": 2000, "reasoning_effort": "none"}), 10.0)
+        sentences = r.output.sentences
+    except Exception as e:
+        logger.warning("option sentences failed (%s: %s); no written options offered", type(e).__name__, str(e)[:200])
+        return passed
+    written = [{"id": f"opt{i}", "kind": o["kind"], "section": impression_section, "sentence": s.strip(),
+                "reason": o.get("reason", ""), "source": o["text"]}
+               for i, (o, s) in enumerate(zip(to_write, sentences)) if s and s.strip()]
+    return written + passed
+
+
 @dataclass
 class Brief:
     text: str
