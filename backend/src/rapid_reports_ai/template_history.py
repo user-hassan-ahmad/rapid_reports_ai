@@ -1,11 +1,24 @@
 """CLINICAL HISTORY section for templates whose sheet defines one (spec §4, L-36 as refined
-2026-09-30): a near-extractive restatement of the platform's clinical-history input, written by a
-small call, checked fact-by-fact in code, placed by code. When the restatement fails its check (or the
-call fails) the input itself is used, whitespace-tidied. Nothing from the history goes anywhere else."""
+2026-09-30): the platform's clinical-history input, placed by code under the sheet's header. Nothing
+from the history goes anywhere else.
+
+By default the section is the input VERBATIM (whitespace-tidied); no model call is made.
+
+A near-extractive restatement (HISTORY_SYS, a small Qwen call, fact-level provenance in `grounded`,
+verbatim fallback) is kept here behind RR_HISTORY_RESTATE=1 and is OFF pending the segmentation fixes
+from the round-3 review (2026-09-30). Fix these before enabling:
+- comma-listed markers: a marker's scope over a comma-separated list ("no fever, cough or rash" ->
+  "Cough or rash." is accepted because the comma makes separate clauses);
+- abbreviation periods ("e.g.", "o.e.", "y.o.") split clauses mid-fact;
+- thousands commas ("1,200") split a number into two clauses;
+- had/was/is/has as droppable connectives can change tense or polarity ("was on X", "had X");
+- unit letters: a lone m/f after a number ("5 m") is read as an age/sex token.
+"""
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 from typing import List, Optional, Set, Tuple
 
@@ -16,6 +29,8 @@ from .enhancement_utils import _run_agent_with_model
 from .report_review import ReportSection
 
 logger = logging.getLogger(__name__)
+
+RESTATE = os.environ.get("RR_HISTORY_RESTATE", "0").strip().lower() in ("1", "true", "on")
 
 HISTORY_SYS = ("Restate a referral's clinical history for the CLINICAL HISTORY section of a radiology report, in terse "
                "referral format: age and sex as e.g. 61M or 52F, then the input's facts as short phrases separated by "
@@ -203,12 +218,14 @@ class _History(BaseModel):
 
 
 async def write_history(history: str) -> Optional[Tuple[str, str]]:
-    """(text, mode) for the section: mode 'restated' when the model's restatement passes provenance,
-    'verbatim' (the tidied input) when the call fails, returns nothing, or fails provenance.
-    None only for empty input."""
+    """(text, mode) for the section, or None for empty input. By default (text, 'verbatim'): the tidied
+    input, no model call. With RESTATE on: 'restated' when the model's restatement passes provenance,
+    else 'verbatim' (call failed, returned nothing, or failed provenance)."""
     verbatim = _tidy(history)
     if not verbatim:
         return None
+    if not RESTATE:
+        return verbatim, "verbatim"
     try:
         r = await asyncio.wait_for(_run_agent_with_model(
             model_name=rc.QWEN, output_type=_History, system_prompt=HISTORY_SYS, user_prompt=history, api_key="",
@@ -285,6 +302,31 @@ def _remove_written_history(report: str, hist: ReportSection, sections: List[Rep
     return re.sub(r"\n{3,}", "\n\n", out)
 
 
+def _neutralise_headers(text: str, sections: List[ReportSection]) -> str:
+    """No line of the history text may read as a standalone sheet header (it would start a section):
+    such a line is folded into the next non-empty line as the inline form 'HEADER: next line', or, when
+    it is the last line, ends with a full stop instead."""
+    pats = [re.compile(rf"^[ \t]*{re.escape(s.header.strip().rstrip(':').strip())}[ \t]*:?[ \t]*\r?$", re.I)
+            for s in sections if s.header]
+    lines = text.split("\n")
+    out: List[str] = []
+    i = 0
+    while i < len(lines):
+        ln = lines[i]
+        if any(p.match(ln) for p in pats):
+            head = ln.strip().rstrip(":").strip()
+            j = next((k for k in range(i + 1, len(lines)) if lines[k].strip()), None)
+            if j is None:
+                out.append(head + ".")
+                break
+            lines[j] = f"{head}: {lines[j].strip()}"
+            i = j
+            continue
+        out.append(ln)
+        i += 1
+    return "\n".join(out)
+
+
 def insert_history(report: str, text: str, sections: List[ReportSection]) -> str:
     """Place the section under its header, before the next section (in sheet order) whose header is
     in the report; at the top when the next section is implicit or absent. A history block the
@@ -293,6 +335,7 @@ def insert_history(report: str, text: str, sections: List[ReportSection]) -> str
     hist = next((s for s in sections if s.role == "history"), None)
     if hist is None:
         return report
+    text = _neutralise_headers(text, sections)
     report = _remove_written_history(report, hist, sections, text)
     block = f"{hist.header or hist.name}\n{text}\n\n"
     idx = sections.index(hist)
