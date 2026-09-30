@@ -1120,6 +1120,7 @@ async def run_prefetch_pipeline(
                 "[S1] GLM extract timed out after 15s — returning minimal prefetch output"
             )
             return PrefetchOutput(
+                prefetch_id=prefetch_id,
                 consolidated_findings=[],
                 applicable_guidelines=[],
                 urgency_signals=[],

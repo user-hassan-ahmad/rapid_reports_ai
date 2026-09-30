@@ -1337,3 +1337,272 @@ generated one. Suite 210 passed. 12 edits this entry (L-43 follow-through).
 - **Gate before judging.** Free structural checks (contradiction, missing section, thinking leak,
   truncation) catch what the LLM judge does not, and keep judge spend off already-broken runs.
 - **Serialise everything against Groq.** Concurrency at this org's OTPM limit loses cells.
+
+### L-45 · Negatives keyed by reported finding — coverage check (gate), 2026-09-29
+
+Spec `docs/superpowers/specs/2026-09-29-policy1-confirmed-branch-negatives-design.md` (rev 2),
+branch `feat/confirmed-negatives`. Trigger: prod report 064ff6f1 (jaundice, pancreatic head
+mass) omitted every resectability negative.
+
+**Rev 1 (branch-keyed) failed on first contact:** arm B, 8 cases, 0 stated anywhere. Jev scored
+the diagnosis branch 0.68 (pancreatic adenocarcinoma) and 0.35 (lung carcinoma), which is
+correct because imaging reports findings, not diagnoses. The main finding (haemorrhage, PE,
+vertebral metastases) is the primary hypothesis, not an aetiology line. Branch names matched
+0/4 on the cerebellar case.
+
+**Rev 2 coverage** (directive `finding_negatives`, Jev "reports this imaging finding"), one
+sheet per case:
+
+| Set | Main finding keyed ≥0.5 | Notes |
+|---|---|---|
+| silent_staging (6) | 5/6 | MSCC miss 0.10: key "vertebral body lesion *with epidural extension*" too specific |
+| varied_10 (10) | 10/10 | lowest 0.86 (disc extrusion) |
+| controls (2) | 0 false triggers | max 0.03 |
+| **Total** | **15/16 = 94%** (target ≥90%) | |
+
+**Calibration** (clear vs hedged restatements of the same findings): clear 0.86–0.99; hedged
+0.16 (pancreas), 0.72 (lung "nodule versus vessel"), 0.16 (cerebellar). `PRESENT_HIGH = 0.8`
+sits in the gap. n is small (3 hedged), so re-check on the A/B.
+
+**Negatives quality (by hand):**
+- **Good:** pancreas (PV/SMV encasement, distant deposits; core); cerebellar haemorrhage in
+  varied_10 (fourth ventricle, hydrocephalus; core); PE (contralateral filling defect);
+  trauma (flail segment); pancreatic staging (coeliac/SMV encasement).
+- **Varies between sheets for the same finding:** silent cerebellar got only contextual,
+  off-target negatives ("no surrounding mass lesion") where varied_10 got the core ones.
+  Silent lung got no core negatives at all.
+- **Inferential or odd:** "No features of underlying colonic malignancy"; "No feeding vessel
+  from the pulmonary artery".
+- **Contradicted by the dictation:** brain metastases "No haemorrhagic component" beside a
+  dictated haemorrhage; MSCC "No epidural extension" beside dictated epidural disease. The
+  Qwen check must catch these, which makes it load-bearing.
+- **One bundled negative** ("…dilatation or interventricular septal bowing") despite the
+  one-finding rule.
+
+**Gate:** the link passes (coverage and false triggers). Whether the negatives are good enough
+is left to the A/B and the hand read, with the Qwen check as the safety net.
+
+**L-45 A/B predictions** (written 2026-09-29 before any A/B run; the brief is rev 2 with the fallback):
+
+| Measure | A | B |
+|---|---|---|
+| Silent (6): ≥1 finding-linked negative stated in FINDINGS | ~0/6 | ≥5/6 cases in the majority of runs |
+| Report negative contradicting the dictation | 0 | 0 |
+| Expected-consequence negative anywhere | n/a | 0 |
+| Negatives in the impression | as generator does today | median ≤1 per case, each changing interpretation |
+| Offered finding negatives per silent case (median) | 0 | 1–2 |
+| Hedged (3): stated finding negatives | 0 | 0 (offered at most) |
+| Controls (2): new negatives or options | 0 | 0 |
+| Regression gate (varied_10) | 100% | 100% |
+| Analyser median latency | baseline | within +1.5 s |
+| Brief reconcile median | baseline | within +0.5 s (fallback in parallel) |
+
+Smoke before the A/B (prod case, 1 run): SMA/PV encasement and hepatic deposits stated. Watch
+for: one bundled negative ("SMA or portal vein encasement"); the fallback misjudging coverage
+for the "CBD compression" line; the generator carrying negatives into the impression despite
+`carry_negatives=[]`.
+
+**L-45 A/B results** (2026-09-29). Arm B: silent_staging × 2 runs (22) + varied_10 × 1 (10).
+Arm A: not re-run in full. Production sheets carry no If-present list, so A states none of
+these negatives by construction; prod report 064ff6f1 is the real-case A. A was run on the three
+cases where B lost a section (6 runs). Run count cut from 3 to 2, reusing existing outputs
+(Hassan).
+
+| Prediction | Predicted (B) | Observed (B) | |
+|---|---|---|---|
+| Silent: ≥1 negative stated in FINDINGS | ≥5/6 cases, majority of runs | **5/6 in ≥1 run; 3/6 in both runs** (pancreas 2/2, lung 2/2, diverticulitis 2/2, cerebellar 1/2, PE 1/2, MSCC 0/2) | partly contradicted |
+| Contradicting negative in a report | 0 | **0** (by hand). Qwen dropped every contradicted candidate: varied_10 PE RV dilatation, diverticulitis collection, brain-mets haemorrhage, MSCC epidural | held |
+| Expected-consequence negative anywhere | 0 | 0 | held |
+| Stated negatives in the impression | only when carried | 2 of 32 leaked uncarried (lung atelectasis, diverticulitis obstruction); carried ones (diverticulitis "no abscess/perforation", lung contralateral nodes) change the interpretation | mostly held |
+| Offered per silent case (median) | 1–2 | 1.5 | held |
+| Hedged: stated | 0 | **0/6** (offered 0–3) | held |
+| Controls: new negatives or options | 0 | **0/4** | held |
+| Regression gate | 100% | **29/32**: 3 missing TECHNIQUE (cerebellar ×2, diverticulitis ×1). Their sheets' Sections line omits it. A 0/7 sheets, prod 0/10 in the last 10 days vs B 2/33 sheets | **contradicted: likely directive side effect** |
+| Analyser median | within +1.5 s | 11.0 s (silent), 10.3 s (varied); two outliers of 68/74 s under 2-stream load | held (no A median to compare) |
+| Brief median | within +0.5 s | 1.5 s (silent), 2.5 s (varied); one 10.3 s plan timeout under load | held |
+
+**Quality notes:**
+- The pancreas case is fixed: SMA, SMV and PV encasement plus hepatic deposits stated in 2/2
+  runs, and the impression says "No vascular encasement".
+- Several stated negatives are **bundled** ("SMV *or* portal vein encasement"). The directive's
+  one-finding rule is not always followed, and `_split_bundled` covers only mandatory
+  negatives.
+- **MSCC key misses** in both runs (as in the coverage check): the negatives were only offered.
+- Some offered items are weak or odd ("No liver dome lesion", "No hemothorax", US spelling).
+  They are offered only, and hidden until the side panel exists.
+
+**Bugs found and fixed during the run:**
+- A negative under two keys was stated twice (e.g. diverticulitis);
+- passed-through options started lowercase;
+- **the fallback ran on production sheets** (A offered 3–4 per case), now gated on an
+  If-present list;
+- the plan prompt changed with the directive off, now conditional.
+
+Production's report path is now unchanged until `finding_negatives` joins
+`PRODUCTION_DIRECTIVES`.
+
+**Open before sign-off:**
+1. The TECHNIQUE drop (about 8% of B sheets).
+2. Bundled stated negatives: extend `_split_bundled` to candidates.
+3. MSCC-type misses, where the key is too specific.
+
+**L-45 rerun after three fixes** (c18a97f; arm B silent_staging × 2 + varied_10 × 1 = 32).
+The fixes:
+- one finding per key;
+- finding-linked negatives through `_split_bundled`;
+- the directive states it leaves the Sections line alone.
+
+| Measure | Before | After |
+|---|---|---|
+| Sheets without TECHNIQUE in Sections | 2/32 | **0/32** |
+| Gate | 29/32 | **32/32** |
+| Bundled stated negatives | 6 | **0** |
+| Compound keys (with/and/or) | 25 | 16 |
+| Silent: ≥1 negative stated in FINDINGS, both runs (by hand) | 3/6 | **4/6** (pancreas, lung, cerebellar, PE) |
+| Silent: in ≥1 run | 5/6 | 5/6 (diverticulitis 1/2: key negatives tagged contextual, so offered; MSCC 0/2) |
+| Hedged stated / controls new | 0 / 0 | 0 / 0 |
+| Analyser / brief median | 10.7 s / 1.8 s | 11.0 s / 1.9 s |
+
+**Still open:**
+1. **Content variance on the case that started this.** Pancreas run 1's If-present list for
+   "pancreatic head mass" gave peritoneal studding, nodes and splenic vein thrombus, not
+   SMA/SMV contact. Vascular negatives were stated in 4/5 arm-B runs of this case across the
+   day. The cap of three per finding forces a choice, and the analyser does not always pick the
+   management-deciding one.
+2. **MSCC keys.** One key was compound ("…deposit *with collapse*"); one was written as a sign
+   rather than dictation vocabulary ("vertebral body marrow replacement", 0.33).
+3. **The fallback is unsafe as built.** 4/43 fallback negatives contradict the dictation, plus
+   1 borderline:
+   - "No intra-/extrahepatic biliary duct dilatation" beside dictated dilatation;
+   - "No interventricular septal bowing" beside dictated septal flattening;
+   - "No SMV … encasement" beside dictated 190° SMV contact;
+   - borderline: "No brainstem compression" beside marked cerebellar oedema.
+
+   It is parallel by design, so its output never passes the Qwen contradiction check. It is
+   unsplit ("or" bundles) and misjudges coverage (attached to keyed findings). The items are
+   offered only and hidden in the UI, but they must not reach the side panel like this.
+
+### L-46 · Post-generation quality check — can Jev do it? (probe, 2026-09-30)
+
+Proposal (Hassan): a lightweight catch-all check after every report, so a good report ships
+first time. Probe scripts: `backend/src/rapid_reports_ai/scripts/jev_quality_probe*.py`, run on
+the 32 L-45 rerun reports.
+- **Negative class:** real clauses and items as generated. They were hand-read on L-45 and are
+  consistent.
+- **Positive class:**
+  - the 4 real fallback contradictions;
+  - synthetic flips (a dictated item negated);
+  - deleted sentences;
+  - inserted history, fabrications and concordance lines.
+
+Jev latency: 0.28 s median per call, ≤11 questions.
+
+| Question (state) | Result | Verdict |
+|---|---|---|
+| "The dictated findings state something that this report statement denies or contradicts" (dictation) | **31/31** contradictions caught at 0.5 (4 real fallback ones 0.75–0.86); 4/127 clean clauses flagged, 2 of them clause-splitter artefacts ("No pericolic") and 2 defensible ("no epidural collection" beside epidural disease) | **fold in** |
+| "The report states this dictated finding" (report) | **24/24** deleted findings caught; 3/68 present items missed, all dictated negatives or background lines | **fold in**, positive dictated items only |
+| "The impression mentions this finding" (impression) | deleted 43/43 caught, but present items recognised only 22/43: the impression synthesises at diagnosis level, Jev matches literally | **not reliable** as phrased |
+| History restated (history) | 8/32 | **fails**: use code (history tokens in report but not dictation) |
+| Undictated abnormal finding (dictation) | 5/32 and 49 false alarms | **fails**: stays with prompt + Phase 1 audit |
+| Concordance / attribution (history) | 12/32 and 21 false alarms | **fails**: use a code regex on the L-39 constructions |
+
+**Conclusion:**
+- **Jev reliably does two things:**
+  - **contradiction per clause**, which also screens offered options;
+  - **omission of a dictated positive finding.**
+
+  The "report states X" form also covers DO NOT ASSERT / OMIT compliance (not separately probed).
+- **Code checks** fold into the same step at no cost:
+  - `gate.py` into prod: sections, tag leak, thinking leak, truncation, self-contradiction;
+  - staging / grade / RADS tier not dictated (L-44; "AAST grade III" seen in L-45);
+  - measurement values not in the dictation;
+  - history-token leak (L-36);
+  - L-39 concordance phrasing.
+- **Not foldable:** impression completeness as phrased, fabricated descriptors, and clinical
+  judgement (recommendations, characterisation, flagging).
+
+### L-47 · Post-generation check (Jev flags, focal repair): offline evaluation, 2026-09-30
+
+Spec `docs/superpowers/specs/2026-09-30-post-generation-check-design.md`, branch
+`feat/post-generation-check` (on `feat/confirmed-negatives`). Eval
+`scripts/quality_check_eval.py`:
+- the 32 L-45 rerun reports as generated (clean);
+- plus one perturbed copy each: 14 contradictions injected (a dictated finding negated), 11
+  findings deleted;
+- plus the 4 known-bad fallback options on their cases.
+
+**The first build failed the pass bar dangerously.** Two false-flagged negatives were
+"corrected" by Qwen into the malignant findings they denied: "No focal mass-like colonic wall
+thickening is identified" became "Focal mass-like colonic wall thickening is identified."
+Fixes, each found on hand read and each tested:
+1. A flagged **negative** is removed in code (a list item dropped or the sentence deleted),
+   never by the LLM. A false flag can only lose a negative, never create a finding.
+2. `edit_allowed` rejects any edit that drops a negation.
+3. **Omissions** are inserted by code after an anchor Qwen picks. Asked for insert-only edits,
+   Qwen rewrote the neighbouring sentence (omissions fixed 5/11).
+4. A negative is removed only when a **second Jev question in the same call** confirms the
+   denied finding is dictated. This cut false negative-removals from 3 to 1.
+5. **Duplicate guard:** skip an insertion that restates a report sentence (80% of words, every
+   number, filler words ignored). It stopped a reworded finding and an existing nodule being
+   re-inserted.
+
+**Final** (0f2e28f):
+
+| Measure | Result | Bar |
+|---|---|---|
+| Injected contradictions fixed | **14/14** | ≥90% |
+| Deleted findings restored, where the finding was absent from the whole report | **7/7**. The 4 unrepaired omissions all still had the finding in the impression (2 not flagged; 2 insertions correctly refused as duplicates) | ≥90% |
+| Known-bad options dropped | **6/6** (+6 other options dropped, all plausible: "No acute hydrocephalus" beside dictated aqueduct effacement, …) | — |
+| Clean reports edited | 5/32, by hand: 4 correct ("encasement" → dictated "abutting … no occlusion"; "no focal abdominal lesion" removed beside a dictated hypodensity; herniation negative removed beside dictated herniation; "no other parenchymal abnormality" removed beside a dictated opacity), **1 correct negative lost** ("No focal mass-like colonic wall thickening", diverticulitis) | 0 damaging: **1 near miss** |
+| Fabricated or inverted findings | **0** | 0 |
+| Added latency | median 0.37 s, max 0.74 s (repair included when flagged) | ≤0.8 s |
+
+**Residual risk:** a Jev false flag on a negative whose denied finding shares words with a
+dictated one ("focal mass-like wall thickening" vs "segmental wall thickening") can remove that
+negative. It fails safe: the report loses one negative and asserts nothing new.
+
+**L-45 step: order by consequence, cap 4** (6c9f432; post-generation check on). Pancreas case
+× 5, plus the silent basket × 1 for regression. One earlier parallel run was lost to an output
+filename collision (fixed: pid in the name).
+- **Vascular negative stated in FINDINGS: 4/5**, unchanged from 4/5 before the change.
+- **The miss (run 3):** the sheet listed no vessel at all. Its four negatives were stricture,
+  duct dilatation, nodes and peritoneal deposits. The cap was not the limit; what gets
+  anticipated varies between sheets.
+- **Hits are partial:** SMV only, SMA only, or SMV + PV. None gave the full resectability set
+  (SMA, SMV, PV, coeliac).
+- **Basket regression:** gate 11/11; controls and hedged stated 0.
+
+### L-48 · Negatives out of the quick-report impression by default, 2026-09-30
+
+Trigger (Hassan, before/after review): impressions read as lists of absent findings. The
+evidence says this was **pre-existing**:
+- the finding-negatives plan carried none;
+- production arm A listed them too;
+- 7 of the last 11 prod impressions had a negative sentence.
+
+The fix (0871db9) is quick reports only, made at the sites that taught the lists:
+- a countable checklist rule (at most one negative: the answer when nothing positive answers
+  the question, or one clause that changes the next step; never a list);
+- hardening principle 10 no longer lists negatives as an impression obligation;
+- analyser, both copies: the opening convention, the normal exemplar, and excluded triage
+  differentials;
+- the impression plan carries at most one negative, and the finding-negatives carry path is
+  removed.
+
+**Rerun, impressions before → after:**
+
+| Case | Before | After |
+|---|---|---|
+| PE | "Aortic dissection, pneumothorax, pericardial effusion, pleural effusion, and pulmonary consolidation are excluded" | clean |
+| Diverticulitis | "No pericolic abscess or free perforation. No colonic mass lesion. No adnexal abnormality" | "Acute sigmoid diverticulitis, uncomplicated." |
+| Controls | — | still "No acute intracranial abnormality" / "No acute intra-abdominal or pelvic abnormality identified" |
+| PE with RV strain, diverticulitis with abscess, trauma | — | positives that change management kept |
+
+**Residual:** some impressions still carry one negative sentence joining two items ("No distant
+metastatic or peritoneal disease"); one abscess case lost "No free perforation". Gate 17/17.
+
+**Tag parser bug found on the same rerun** (b9cf3c3): annotated tags ("(core — resectability, …)",
+"(peritonitis) (core)") parsed as contextual. Earlier arm-B runs under-stated core negatives
+because of it. After the fix, pancreas × 5:
+- **vascular negative in FINDINGS 4/5**, still missing from one sheet's anticipated list;
+- run 1 states the full set (no SMA, SMV or portal vein encasement).

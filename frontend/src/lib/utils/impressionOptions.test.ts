@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appliedOptionIds, applyEdit, insertEdit, removeEdit, type ReportOption } from './impressionOptions';
+import { appliedOptionIds, applyEdit, insertEdit, panelOptions, removeEdit, type ReportOption } from './impressionOptions';
 
 const opt: ReportOption = { id: 'opt0', kind: 'recommendation', sentence: 'MRI brain is recommended.' };
 
@@ -51,5 +51,15 @@ describe('impression options', () => {
 	it('stops the impression at the next section header', () => {
 		const text = 'IMPRESSION:\nOne finding.\n\nRECOMMENDATIONS:\nSomething else.';
 		expect(applyEdit(text, insertEdit(text, opt)!)).toContain('One finding. MRI brain is recommended.\n\nRECOMMENDATIONS:');
+	});
+});
+
+describe('panelOptions', () => {
+	it('keeps impression-section kinds and hides finding negatives until the side panel exists', () => {
+		const opts: ReportOption[] = [
+			{ id: 'opt0', kind: 'recommendation', section: 'IMPRESSION', sentence: 'MRI brain is recommended.' },
+			{ id: 'fn0', kind: 'finding_negative', section: 'FINDINGS', sentence: 'No uncal herniation.' }
+		];
+		expect(panelOptions(opts).map((o) => o.id)).toEqual(['opt0']);
 	});
 });

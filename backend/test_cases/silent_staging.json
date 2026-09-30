@@ -1,0 +1,90 @@
+[
+ {
+  "name": "prod_jaundice_panc_head",
+  "kind": "silent",
+  "scan_type": "CT AP with contrast",
+  "clinical_history": "jaundice",
+  "findings": "There is a large hypodense irregular mass at the head of the pancreas measuring approximately 3 cm in size.\nThis is causing compression of the distal CBD with subsequent dilatation up to a maximum of 12 millimeters.\nThere is intra and extrahepatic biliary duct dilatation.",
+  "source": "prod report 064ff6f1"
+ },
+ {
+  "name": "lung_nodule_silent",
+  "kind": "silent",
+  "scan_type": "CT thorax with IV contrast",
+  "clinical_history": "68M, 40 pack-year smoker. Chronic cough and haemoptysis for 6 weeks. Referred for lung cancer workup. CT thorax with contrast for characterisation of nodule identified on recent chest X-ray.",
+  "findings": "22 mm spiculated nodule in the right upper lobe apical segment.",
+  "source": "ct_thorax_smoker_lung_nodule"
+ },
+ {
+  "name": "cerebellar_haem_silent",
+  "kind": "silent",
+  "scan_type": "CT head non-con",
+  "clinical_history": "onset at 13:30 with left facial droop, left arm and leg weakness and slurred speech.\nBP 255/161",
+  "findings": "- There is a large area of parenchymal hemorrhage in the right cerebellum measuring 5 cm in diameter",
+  "source": "ct_head_cerebellar_haemorrhage"
+ },
+ {
+  "name": "diverticulitis_silent",
+  "kind": "silent",
+  "scan_type": "CT abdomen pelvis with contrast",
+  "clinical_history": "66F, 4 days left iliac fossa pain, fever 38.2, WCC 15, CRP 180. Query diverticulitis.",
+  "findings": "- Sigmoid diverticulosis with segmental wall thickening over 6cm\n- Pericolic fat stranding",
+  "source": "ct_ap_diverticulitis_abscess"
+ },
+ {
+  "name": "pe_silent",
+  "kind": "silent",
+  "scan_type": "CTPA",
+  "clinical_history": "58M, sudden onset pleuritic chest pain and dyspnoea, SpO2 91% on air, HR 112, D-dimer 4.2, Wells score 6. Query PE.",
+  "findings": "- Filling defects right main pulmonary artery extending into lower lobe segmental branches",
+  "source": "ctpa_acute_pe_rv_strain"
+ },
+ {
+  "name": "mscc_silent",
+  "kind": "silent",
+  "scan_type": "MRI whole spine with contrast",
+  "clinical_history": "72M metastatic prostate cancer, PSA 85. Three weeks progressive thoracic back pain, 48 hours bilateral leg weakness with two falls, new urinary hesitancy. Query cord compression.",
+  "findings": "- Multilevel vertebral metastases at C7, T3, T7, T9, L2 and L4",
+  "source": "mri_spine_mscc"
+ },
+ {
+  "name": "control_normal_ct_head",
+  "kind": "control",
+  "scan_type": "CT head non-con",
+  "clinical_history": "headache",
+  "findings": "No acute intracranial abnormality.",
+  "source": "synthetic"
+ },
+ {
+  "name": "control_normal_ct_ap",
+  "kind": "control",
+  "scan_type": "CT AP with contrast",
+  "clinical_history": "abdominal pain",
+  "findings": "No acute abnormality in the abdomen or pelvis.",
+  "source": "synthetic"
+ },
+ {
+  "name": "hedged_panc",
+  "kind": "hedged",
+  "scan_type": "CT AP with contrast",
+  "clinical_history": "jaundice",
+  "findings": "Possible subtle hypodensity in the region of the pancreatic head, of uncertain significance.",
+  "source": "hedged restatement of prod_jaundice_panc_head"
+ },
+ {
+  "name": "hedged_lung",
+  "kind": "hedged",
+  "scan_type": "CT thorax with IV contrast",
+  "clinical_history": "68M, 40 pack-year smoker. Chronic cough and haemoptysis for 6 weeks. Referred for lung cancer workup. CT thorax with contrast for characterisation of nodule identified on recent chest X-ray.",
+  "findings": "Ill-defined opacity in the right upper lobe, possibly a nodule versus vessel.",
+  "source": "hedged restatement of lung_nodule_silent"
+ },
+ {
+  "name": "hedged_cerebellar",
+  "kind": "hedged",
+  "scan_type": "CT head non-con",
+  "clinical_history": "onset at 13:30 with left facial droop, left arm and leg weakness and slurred speech.\nBP 255/161",
+  "findings": "Questionable small hyperdensity in the right cerebellum, possibly artefact.",
+  "source": "hedged restatement of cerebellar_haem_silent"
+ }
+]

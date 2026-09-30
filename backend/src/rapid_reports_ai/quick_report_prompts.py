@@ -392,6 +392,7 @@ QR_VERIFICATION_CHECKLIST_BRIEF = _swaps(
 - No structure listed under "Do not assert as normal" is stated to be normal
 - Every Carry forward finding is addressed in the impression; no Findings only item appears there
 - Every recommendation listed in the Recommendation scope appears in the impression
+- The impression contains at most one negative: the answer to the clinical question when no positive finding answers it, or one clause that changes the next step. It never lists absent findings
 """),
     ("- Impression format matches skill sheet (prose vs numbered)\n", ""),
     (" — a staging question is answered by describing extent and bulk, never by assigning the stage", ""),

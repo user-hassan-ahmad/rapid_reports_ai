@@ -205,9 +205,12 @@ MODEL_CONFIG = {
     "STRUCTURE_VALIDATOR": _OSS_CEREBRAS,
     "STRUCTURE_VALIDATOR_FALLBACK": _OSS_GROQ,
     "PLAN_ADHERENCE_CHECKER": _OSS_CEREBRAS,
+    # S1 fills a nested schema (guideline objects, query plan). Qwen could not: 0/5 on
+    # both providers (Groq degenerated to whitespace until the token cap, ~33 s); gpt-oss
+    # 5/5 at ~1.2 s (2026-09-29).
+    "GUIDELINE_PREFETCH": _OSS_CEREBRAS,
 
     # --- Light background: Groq Qwen 3.8, low (none where set at the call site) ----------
-    "GUIDELINE_PREFETCH": _Q_GROQ,
     "KNOWLEDGE_MAINTENANCE": _Q_GROQ,
     "KNOWLEDGE_MAINTENANCE_FALLBACK": _Q_CEREBRAS,
     "REPORT_DESCRIPTION": _Q_GROQ,

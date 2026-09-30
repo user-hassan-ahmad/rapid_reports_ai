@@ -9,7 +9,7 @@ import ReportResponseViewer from './ReportResponseViewer.svelte';
 import Toast from '$lib/components/Toast.svelte';
 import { API_URL } from '$lib/config';
 import { readSSEStream } from '$lib/utils/sse';
-import { appliedOptionIds, type ReportOption } from '$lib/utils/impressionOptions';
+import { appliedOptionIds, panelOptions, type ReportOption } from '$lib/utils/impressionOptions';
 import type { CoverageTrace, LabConfig, PillThresholds } from '$lib/dictation-lab/types';
 import type { DecisionRecord, OutcomeEvent } from '$lib/dictation-lab/decisionFirst';
 import { pillState } from '$lib/dictation-lab/coverage';
@@ -460,7 +460,7 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 					}
 					response = cand.content;
 					responseModel = cand.model;
-					reportOptions = cand.options ?? [];
+					reportOptions = panelOptions(cand.options ?? []);
 					hasResponseEver = true;
 					findingsAtReportGeneration = content;
 					loading = false;

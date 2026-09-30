@@ -312,7 +312,7 @@ QUICK_REPORT_HARDENING_PREAMBLE = (
     "not by its length.**\n"
     "\n"
     "The impression's obligations — direct engagement with the "
-    "clinical question, mandatory negatives that bear on it, "
+    "clinical question (a negative study answers it with one negative; negatives about extent, staging or complications stay in FINDINGS), "
     "management recommendations where the indication supports one, "
     "warranted synthesis — are independent of findings volume. "
     "Meeting them may take a single line or several paragraphs; both "
