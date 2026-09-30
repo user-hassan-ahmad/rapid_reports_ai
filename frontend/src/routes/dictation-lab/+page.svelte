@@ -5,7 +5,7 @@
 	import { API_URL } from '$lib/config';
 	import { token } from '$lib/stores/auth';
 	import { labConfig, saveLabConfig } from '$lib/dictation-lab/labConfig';
-	import type { ChunkTrace, CoverageTrace, ProcessTrace } from '$lib/dictation-lab/types';
+	import type { CoverageTrace } from '$lib/dictation-lab/types';
 	import type { DecisionRecord, OutcomeEvent } from '$lib/dictation-lab/decisionFirst';
 
 	// Same bindings the home page gives the tab (src/routes/+page.svelte ~975-1000).
@@ -14,7 +14,6 @@
 		getCoverageState: () => { scratchpad: string; checklist: string[]; scanType: string };
 	} | null = null;
 	let coverageTrace: CoverageTrace | null = null;
-	let chunkTraces: ChunkTrace[] = [];
 	let coverageState: { scratchpad: string; checklist: string[]; scanType: string } | null = null;
 	let response: any = null;
 	let responseModel: any = null;
@@ -39,10 +38,6 @@
 		decisions = i >= 0 ? decisions.map((d, j) => (j === i ? { rec, display } : d)) : [...decisions, { rec, display }];
 	}
 
-	let traces: ProcessTrace[] = [];
-	function pushTrace(t: ProcessTrace): void {
-		traces = [...traces, t];
-	}
 
 	$: saveLabConfig($labConfig);
 
@@ -94,21 +89,16 @@
 				bind:reportId
 				{apiKeyStatus}
 				labConfig={$labConfig}
-				onProcessTrace={pushTrace}
 				pillThresholds={$labConfig.pillThresholds}
 				onCoverageTrace={(t) => {
 					coverageTrace = t;
 					coverageState = tabRef?.getCoverageState?.() ?? null;
-				}}
-				onChunkTrace={(t) => {
-					chunkTraces = [...chunkTraces, t];
 				}}
 				onDecision={upsertDecision}
 				onOutcome={(e) => {
 					outcomes = [...outcomes, e];
 				}}
 				on:resetForm={() => {
-					traces = [];
 				}}
 				on:openSidebar={() => {}}
 				on:auditStateChange={() => {}}
@@ -119,16 +109,12 @@
 		<aside class="min-w-0">
 			<DictationLabPanel
 				inject={(text) => tabRef?.injectTranscript(text, true)}
-				{traces}
 				{coverageTrace}
 				{coverageState}
-				{chunkTraces}
 				{decisions}
 				{outcomes}
 				{sessionStartedAt}
 				onClear={() => {
-					traces = [];
-					chunkTraces = [];
 					decisions = [];
 					outcomes = [];
 					sessionStartedAt = Date.now();

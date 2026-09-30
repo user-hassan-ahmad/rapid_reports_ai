@@ -11,16 +11,10 @@ from rapid_reports_ai.dictation_triage import (
     ACTION_DESCRIPTIONS,
     JEV_MODEL,
     JEV_URL,
-    QWEN_SYSTEM_PROMPT,
     TRIAGE_ACTIONS,
     JevTriager,
-    QwenTriageOutput,
-    QwenTriager,
-    TriageCandidateTrace,
     TriageError,
     TriageState,
-    decision_to_trace,
-    get_triager,
 )
 
 STATE = TriageState(
@@ -160,55 +154,3 @@ class _FakeResult:
         self.output = output
 
 
-async def test_qwen_passes_reasoning_off_schema_and_maps_yes_no():
-    captured = {}
-
-    async def runner(**kwargs):
-        captured.update(kwargs)
-        return _FakeResult(
-            QwenTriageOutput(action="delete_previous_utterance", is_correction="yes", needs_committed_edit="no")
-        )
-
-    triager = QwenTriager(runner=runner, model_name="qwen/qwen3.6-27b", api_key="ck")
-    d = await triager.classify(STATE)
-
-    assert captured["output_type"] is QwenTriageOutput
-    assert captured["use_thinking"] is False
-    assert captured["api_key"] == "ck"
-    ms = captured["model_settings"]
-    assert ms["temperature"] == 0.0
-    assert ms["extra_body"]["reasoning_effort"] == "none"
-    assert "max_completion_tokens" in ms or "max_tokens" in ms
-    assert STATE.latest_utterance in captured["user_prompt"]
-    assert d.candidate == "qwen"
-    assert d.action == "delete_previous_utterance"
-    assert d.confidence is None and d.probabilities is None and d.cost_usd is None
-    assert d.is_correction == 1.0 and d.needs_committed_edit == 0.0
-
-
-def test_qwen_prompt_contains_every_action_description_verbatim():
-    for action, desc in ACTION_DESCRIPTIONS.items():
-        assert action in QWEN_SYSTEM_PROMPT
-        assert desc in QWEN_SYSTEM_PROMPT
-
-
-async def test_qwen_wraps_runner_errors_in_triage_error():
-    async def runner(**kwargs):
-        raise RuntimeError("provider down")
-
-    triager = QwenTriager(runner=runner, model_name="qwen/qwen3.6-27b", api_key="ck")
-    with pytest.raises(TriageError):
-        await triager.classify(STATE)
-
-
-def test_get_triager_returns_named_candidate(monkeypatch):
-    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
-    assert get_triager("jev").name == "jev"
-    with pytest.raises(ValueError):
-        get_triager("nope")  # type: ignore[arg-type]
-
-
-def test_decision_to_trace_handles_exceptions():
-    t = decision_to_trace(TriageError("boom"))
-    assert isinstance(t, TriageCandidateTrace)
-    assert t.action is None and t.error == "TriageError"

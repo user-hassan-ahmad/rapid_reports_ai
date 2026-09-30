@@ -89,17 +89,15 @@ def test_triage_calibration_aligns_cases_across_candidates():
 
     p = {"append_new_finding": 0.9, "correct_previous_finding": 0.1}
     records = [
-        rec("a", "jev", "append_new_finding", p), rec("a", "qwen", "append_new_finding", ic=0.0),
+        rec("a", "jev", "append_new_finding", p),
         rec("a", "qwen-lp", "append_new_finding", p),
-        rec("b", "jev", "append_new_finding", p), rec("b", "qwen", "correct_previous_finding", ic=1.0),
+        rec("b", "jev", "append_new_finding", p),
         rec("b", "qwen-lp", "append_new_finding", p),
-        rec("c", "jev", "append_new_finding", p), rec("c", "qwen", "append_new_finding", ic=0.0),
+        rec("c", "jev", "append_new_finding", p),
         rec("c", "qwen-lp", None, err="QwenLogprobError"),  # dropped for every candidate
         rec("c", "code", "append_new_finding"),  # code states no probability: never in calibration
     ]
     blocks = {s["question"]: s for s, _ in triage_calibration(records)}
     assert set(blocks) == {"action", "is_correction", "needs_committed_edit"}
     a = blocks["action"]["candidates"]
-    assert set(a) == {"jev", "qwen", "qwen-lp"} and a["jev"]["n"] == 2
-    assert a["qwen"]["accuracy"]["k"] == 1  # hard label, one wrong
-    assert blocks["is_correction"]["candidates"]["qwen"]["brier"] == 0.5  # 0 and 1 against two False labels
+    assert set(a) == {"jev", "qwen-lp"} and a["jev"]["n"] == 2 and a["qwen-lp"]["n"] == 2  # case c dropped for both

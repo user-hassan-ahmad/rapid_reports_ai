@@ -15,7 +15,6 @@ describe('rr_dictation_v2: the dictation package, on by default where the server
 	it('the package runs what the lab ran: decision-first with the raced lean polish, no debug extras', () => {
 		expect(PACKAGE_CONFIG.frontDoor).toBe('decision');
 		expect(PACKAGE_CONFIG.polish).toBe('race');
-		expect(PACKAGE_CONFIG.showBoth).toBe(false);
 		expect(PACKAGE_CONFIG.coverageDebug).toBe(false);
 	});
 
