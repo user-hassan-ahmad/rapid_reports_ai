@@ -2536,6 +2536,11 @@ No user input provided. Omit this section entirely from output.
 
         When model_override is supplied (e.g. by the quick-report proto), that
         model is used in place of MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"].
+
+        brief_text: the reconciled brief (spec template-pipeline-mirror §4/§5); when non-blank it
+        replaces the raw skill sheet and switches to the _BRIEF prompt package.
+        history_supplied: True when code writes the CLINICAL HISTORY section (spec §4); adds a
+        note after the inputs telling the model not to write it.
         """
         from pydantic import BaseModel
         from .enhancement_utils import (
@@ -2556,15 +2561,20 @@ No user input provided. Omit this section entirely from output.
         findings_input = user_inputs.get("FINDINGS", "")
         clinical_history = user_inputs.get("CLINICAL_HISTORY", "")
 
-        if brief_text is not None:
-            # Mirror path (spec template-pipeline-mirror §5): the sheet reconciled with this dictation.
-            pre, ver = PRE_WRITING_ANALYSIS_BRIEF, VERIFICATION_CHECKLIST_BRIEF
+        if brief_text and brief_text.strip():
+            # Mirror path (spec template-pipeline-mirror §5): the sheet reconciled with this
+            # dictation. skill_sheet is unused here; the brief replaces it. A blank brief is a
+            # failed brief and takes the raw path below.
+            # GLOBAL_STYLE_GUIDE_BRIEF already says a sheet-defined CLINICAL HISTORY section is
+            # supplied separately, so history_supplied=False does not make the model write it.
+            # By design: a failed history call omits the section rather than inventing one.
+            pre_writing, checklist = PRE_WRITING_ANALYSIS_BRIEF, VERIFICATION_CHECKLIST_BRIEF
             system_prompt = (
                 f"{SYSTEM_PREAMBLE}\n\n{GLOBAL_STYLE_GUIDE_BRIEF}\n\n"
                 f"{TEMPLATE_SHEET_HEADER_BRIEF}\n\n{brief_text}"
             )
         else:
-            pre, ver = PRE_WRITING_ANALYSIS, VERIFICATION_CHECKLIST
+            pre_writing, checklist = PRE_WRITING_ANALYSIS, VERIFICATION_CHECKLIST
             system_prompt = f"""{SYSTEM_PREAMBLE}
 
 {GLOBAL_STYLE_GUIDE}
@@ -2614,9 +2624,9 @@ Scan Type: {scan_type}
 Clinical History: {clinical_history}
 Findings: {findings_input}{history_note}
 
-{pre}
+{pre_writing}
 
-{ver}"""
+{checklist}"""
 
         # One settings dict; normalise_model_settings fits it per provider (Cerebras Qwen:
         # medium, 64k; Groq Qwen: low, 16,384 ceiling; Sonnet: no sampling params).
