@@ -201,15 +201,47 @@ def conditional_lines(sheet: str) -> List[str]:
 _MANDATORY = re.compile(r"mandatory negatives?", re.I)
 _INSTRUCTION = re.compile(r"\b(?:never|instead|rather than|replace[sd]?|avoid|do not|don't|only when)\b"
                           r"|\bwhen\b.*\bis seen\b", re.I)
-_NORMAL_STATE = re.compile(r"\b(?:unremarkable|normal|patent|intact|preserved|clear|within normal limits"
+_NORMAL_STATE = re.compile(r"\b(?:unremarkable|normal|patent|intact|preserved|(?:is|are) clear|within normal limits"
                            r"|not (?:dilated|enlarged))\b", re.I)
-_COND_NOTE = re.compile(r"\(\s*if\b", re.I)
+# a qualifier outside the quotes that says when the line applies, in any form: "(if x)", "— if x",
+# "(when x)", "(only in x)", "if x: ...", "[if x]", "(in x cases)"
+_COND_WORD = re.compile(r"\b(?:if|when|whenever|where|unless|only|provided)\b|\bin [^)\]]*cases?\b", re.I)
 _MANDATORY_NONE = re.compile(r"mandatory negatives?\W*none\b", re.I)  # "Mandatory negatives: None …"
 
 
 def _quoted_statements(line: str) -> List[str]:
     return [s for q in _quoted(line) for s in [q, *_sentences(q)]]
+
+
+def _outside_quotes(line: str) -> str:
+    return _QUOTED.sub(" ", _bullet_body(line))
+
+
+def _cond_noted(line: str) -> bool:
+    """The line qualifies when its statement applies (text outside the quotes)."""
+    return bool(_COND_WORD.search(_outside_quotes(line)))
+
+
+_MAND_LABEL = re.compile(r"^\s*mandatory negatives?\s*:?\s*$", re.I)
+_STATEMENT_TAIL = re.compile(r"^(?:[\s/,;.]|\x00|\bor\b|\band\b)*(?:$|[(\[]|[—–-]\s)", re.I)
+
+
+def _statement_shape(line: str) -> bool:
+    """Allow-list of the shape a listed statement takes: an optional bullet (or a bare Mandatory
+    negatives label), then the quote(s), then optionally a trailing "(…)", "[…]" or "— …" note. Any other
+    text before the first quote makes it wording guidance ("Prefer "…" for …", "Use "…" when …")."""
+    body = _bullet_body(line)
+    m = _QUOTE_CHARS.search(body)
+    if not m or (body[:m.start()].strip() and not _MAND_LABEL.match(body[:m.start()])):
+        return False
+    return bool(_STATEMENT_TAIL.match(_QUOTED.sub("\x00", body[m.start():])))
+
+
 _LABEL = re.compile(r"^\s*(?:[-*]\s+)?\*\*")
+
+
+def _quotes_a_negative(line: str) -> bool:
+    return any(is_negative(q) for q in _quoted_statements(line))
 
 
 def negative_lines(sheet: str) -> List[str]:
@@ -232,7 +264,8 @@ def negative_lines(sheet: str) -> List[str]:
         if _MANDATORY.search(ln):
             in_mand, mand_indent, mand_bulleted = True, ind, bool(_BULLET.match(ln))
             says_none = _MANDATORY_NONE.search(ln) and not any(is_negative(q) for q in _quoted_statements(ln))
-            if _QUOTE_CHARS.search(ln) and not _IF.search(ln) and not says_none:
+            if (_QUOTE_CHARS.search(ln) and not _IF.search(ln) and not says_none
+                    and (_quotes_a_negative(ln) or _statement_shape(ln))):
                 out.append(ln)
             continue
         if in_mand and mand_indent >= 0 and ind <= mand_indent:
@@ -241,9 +274,17 @@ def negative_lines(sheet: str) -> List[str]:
                 in_mand = False
         if _IF.search(ln):
             continue  # a conditional line is gated as a rule, not twice
-        if _INSTRUCTION.search(ln) and not any(is_negative(q) for q in _quoted_statements(ln)):
+        if _INSTRUCTION.search(ln) and not _quotes_a_negative(ln):
             continue  # guidance about wording, with no negative statement of its own
-        if (in_mand or in_nfr) and (_QUOTE_CHARS.search(ln) or is_negative(_bullet_body(ln))):
+        if not (in_mand or in_nfr):
+            continue
+        if _QUOTE_CHARS.search(ln):
+            # a quote-bearing line counts when it quotes a negative, or is a listed statement; a
+            # guidance-shaped line quoting only positives is never required (the gate must never
+            # demand a positive statement)
+            if _quotes_a_negative(ln) or _statement_shape(ln):
+                out.append(ln)
+        elif is_negative(_bullet_body(ln)):
             out.append(ln)
     return out
 
@@ -325,16 +366,17 @@ def _atomic_normal_ok(text: str, source_line: str) -> bool:
 def _negative_kind(text: str, source_lines: List[str]) -> Optional[str]:
     """'negative' for a negative statement. 'stated_normal' for a normal-state statement the sheet
     quotes whole on one of the item's own negative lines (sheets list mandatory normals such as
-    "[structure] is patent." there), provided that line is not wording guidance. Else None.
-    Conditional lines are never negative lines, so a replacement clause cannot pass."""
+    "[structure] is patent." there), provided every such line has the listed-statement shape (an
+    allow-list, never a word deny-list). Else None. Conditional lines are never negative lines, so
+    a replacement clause cannot pass."""
     k = _key(text)
     if not k:
         return None
     if is_negative(text):
         return "negative"
-    normal_state = _NORMAL_STATE.search(text) or _NEGATION & set(_words(text))
     quoted_on = [ln for ln in source_lines if any(k == _key(s) for s in _quoted_statements(ln))]
-    if normal_state and quoted_on and not any(_INSTRUCTION.search(ln) for ln in quoted_on):
+    if (_NORMAL_STATE.search(text) and quoted_on and all(_statement_shape(ln) for ln in quoted_on)
+            and not any(_INSTRUCTION.search(ln) for ln in quoted_on)):
         return "stated_normal"
     return None
 
@@ -393,7 +435,7 @@ def build_structure(sheet: str, draft: StructureDraft, model: str) -> SheetStruc
         return _name_key(item.section) in kept or reject(f"{label}: unknown section {item.section}")
 
     def condition_matches(n) -> bool:
-        noted = any(_COND_NOTE.search(ln) for ln in n.source_lines)
+        noted = any(_cond_noted(ln) for ln in n.source_lines)
         return noted == bool(n.condition and _norm(n.condition)) or reject(
             f"negative {n.id}: condition {'missing' if noted else 'not on its line'}")
 

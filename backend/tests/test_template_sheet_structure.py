@@ -492,7 +492,9 @@ def test_positive_statement_on_a_guidance_line_is_not_a_negative():
 def test_guidance_line_negative_can_cover_it():
     sheet = with_nfr_line(GUIDANCE)
     d = good_draft()
-    d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text="No free fluid", source_lines=[GUIDANCE]))
+    # the line says when it applies ("when …"), so the item must carry a condition
+    d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text="No free fluid", source_lines=[GUIDANCE],
+                                    condition="The dictated findings report no free fluid"))
     s = build(d, sheet)
     assert s.usable and [n.kind for n in s.negatives if n.id == "n9"] == ["negative"]
 
@@ -606,3 +608,75 @@ def test_store_round_trip_on_a_real_session(db_session):
     assert tss.store_failure(db_session, tid, edited, "TimeoutError: ") is True
     cfg = config()
     assert cfg["sheet_structure"]["failed"] and tss.fresh(cfg) is None and not tss.needs_restructure(cfg)
+
+
+# ── regression round 3: statement shape allow-list, conditions in any form ──────
+
+@pytest.mark.parametrize("line,text", [
+    ('- Prefer "Small volume free fluid, not previously seen." for new fluid.', "Small volume free fluid, not previously seen."),
+    ('- Use "Clear evidence of perforation." when present.', "Clear evidence of perforation."),
+    ('- Write "The bowel is dilated with normal wall enhancement." for obstruction.',
+     "The bowel is dilated with normal wall enhancement."),
+    ('- Report as "Free fluid is present, no collection."', "Free fluid is present, no collection."),
+])
+def test_guidance_shaped_positive_line_is_neither_a_stated_normal_nor_required(line, text):
+    sheet = with_nfr_line(line)
+    assert line not in tss.negative_lines(sheet)         # the gate never demands a positive statement
+    d = good_draft()
+    d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text=text, source_lines=[line]))
+    s = build(d, sheet)
+    assert "n9" not in [n.id for n in s.negatives] and s.usable
+
+
+@pytest.mark.parametrize("line", [
+    '- "The portal vein is patent."',
+    '- "The portal vein is patent." (targets portal venous assessment)',
+    '- "The portal vein is patent." [needs verification]',
+    '- **Mandatory negatives**: "The portal vein is patent."',
+])
+def test_listed_statement_shape_keeps_a_stated_normal(line):
+    sheet = with_nfr_line(line)
+    assert line in tss.negative_lines(sheet)
+    d = good_draft()
+    d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text="The portal vein is patent.", source_lines=[line]))
+    s = build(d, sheet)
+    assert [n.kind for n in s.negatives if n.id == "n9"] == ["stated_normal"] and s.usable
+
+
+@pytest.mark.parametrize("text", ["Clear evidence of perforation.", "Small fluid, not previously seen."])
+def test_stated_normal_needs_a_normal_state_not_a_bare_word(text):
+    line = f'- "{text}"'
+    d = good_draft()
+    d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text=text, source_lines=[line]))
+    s = build(d, with_nfr_line(line))
+    assert "n9" not in [n.id for n in s.negatives] and not s.usable
+
+
+@pytest.mark.parametrize("line", [
+    '- "No periappendiceal abscess." — if appendicitis',
+    '- "No periappendiceal abscess." (when appendicitis)',
+    '- "No periappendiceal abscess." (only in suspected appendicitis)',
+    '- if appendicitis: "No periappendiceal abscess."',
+    '- "No periappendiceal abscess." [if appendicitis]',
+    '- "No periappendiceal abscess." (in appendicitis cases)',
+    '- "No periappendiceal abscess." (If appendicitis)',
+])
+def test_a_condition_in_any_form_must_be_carried(line):
+    sheet = with_nfr_line(line)
+    for condition, usable in ((None, False), ("The dictated findings report appendicitis", True)):
+        d = good_draft()
+        d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text="No periappendiceal abscess.",
+                                        condition=condition, source_lines=[line]))
+        s = build(d, sheet)
+        assert ("n9" in [n.id for n in s.negatives]) is usable and s.usable is usable
+
+
+@pytest.mark.parametrize("line", ['- "No abscess."', '- "No abscess." (targets the pelvis)',
+                                  '- "No abscess." — excludes collections'])
+def test_a_condition_not_on_the_line_is_rejected(line):
+    sheet = with_nfr_line(line)
+    for condition, usable in (("The dictated findings report appendicitis", False), (None, True)):
+        d = good_draft()
+        d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text="No abscess.", condition=condition,
+                                        source_lines=[line]))
+        assert build(d, sheet).usable is usable
