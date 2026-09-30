@@ -42,9 +42,11 @@ def _engine():
     """The module whose _run_agent_with_model _plan calls: the brief today, report_reconcile once
     Task 2 moves the reconcile engine there. The switch lets one golden span the move."""
     try:
-        from rapid_reports_ai import report_reconcile as rc
+        import rapid_reports_ai.report_reconcile as rc
         return rc
-    except ImportError:
+    except ModuleNotFoundError as e:
+        if e.name != "rapid_reports_ai.report_reconcile":
+            raise
         return qb
 
 
@@ -118,9 +120,11 @@ async def _plan_prompt(monkeypatch) -> dict:
         return SimpleNamespace(output=canned)
     monkeypatch.setattr(_engine(), "_run_agent_with_model", fake_run)
     out = await _REAL_PLAN("CT head", "fall", ["a", "b"], ["REFERRAL: x"])
-    return {"system_prompt": seen["system_prompt"], "user_prompt": seen["user_prompt"],
-            "model_settings": seen["model_settings"], "model_name": seen["model_name"],
-            "output_type": seen["output_type"].__name__, "output": out.model_dump()}
+    given = {"system_prompt": seen["system_prompt"], "user_prompt": seen["user_prompt"],
+             "model_settings": seen["model_settings"], "model_name": seen["model_name"],
+             "output_type": seen["output_type"].__name__, "output": out.model_dump()}
+    await _REAL_PLAN("CT head", "", ["a"], [])   # empty history and no recs: the '(not given)' path
+    return {**given, "user_prompt_no_history": seen["user_prompt"]}
 
 
 async def _check(monkeypatch) -> dict:
