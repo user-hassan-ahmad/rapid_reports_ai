@@ -121,5 +121,6 @@
    }
   ]
  },
- "removed": "FINDINGS:\nAn 8 mm right subdural haematoma. No skull fracture. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.\n\nDr A"
+ "removed_list": "FINDINGS:\nNo collection or free air.\n\nIMPRESSION:\nNormal.",
+ "removed_sentence": "FINDINGS:\nAn 8 mm right subdural haematoma. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.\n\nDr A"
 }

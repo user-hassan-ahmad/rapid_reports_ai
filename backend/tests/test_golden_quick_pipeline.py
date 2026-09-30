@@ -21,6 +21,7 @@ IMPRESSION:
 Acute right subdural haematoma with 3 mm midline shift.
 
 Dr A"""
+LIST_REPORT = "FINDINGS:\nNo ascites, collection or free air.\n\nIMPRESSION:\nNormal."
 
 
 async def _snapshot(monkeypatch) -> dict:
@@ -36,11 +37,14 @@ async def _snapshot(monkeypatch) -> dict:
     return {"brief_text": brief.text, "decisions": brief.decisions,
             "clauses": qq.clauses(fnd) + qq.clauses(imp),
             "check": res.model_dump(),
-            "removed": qq.remove_negative_clause(REPORT, "No herniation")}
+            "removed_sentence": qq.remove_negative_clause(REPORT, "No skull fracture"),
+            "removed_list": qq.remove_negative_clause(LIST_REPORT, "No ascites")}
 
 
 async def test_quick_pipeline_matches_golden(monkeypatch):
     snap = json.loads(json.dumps(await _snapshot(monkeypatch)))
+    assert snap["removed_sentence"] != REPORT, "sentence removal was a no-op"
+    assert snap["removed_list"] != LIST_REPORT, "list-item removal was a no-op"
     if os.environ.get("UPDATE_GOLDEN") == "1":
         GOLDEN.parent.mkdir(exist_ok=True)
         GOLDEN.write_text(json.dumps(snap, indent=1, sort_keys=True))
