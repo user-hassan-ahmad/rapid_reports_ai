@@ -1,0 +1,125 @@
+{
+ "brief_text": "# Skill Sheet: CT head non-contrast \u2014 query haemorrhage\n\n## Scan Context\n- **Modality:** CT head, non-contrast\n\n## Clinical Lane\n- **Question:** Rule out haemorrhage\n- **Differentials in scope:**\n  - **Triage:** Haemorrhage vs ischaemia\n  - **Aetiology (if haemorrhage confirmed):**\n    - Acute subdural \u2014 crescentic hyperdensity *(visible on this technique: yes)*\n    - Vascular malformation \u2014 needs angiography *(visible on this technique: no \u2014 requires CTA)*\n    - Coagulopathy *(imaging-silent \u2014 requires clinical/laboratory correlation)*\n\n## Structural Pattern\n- **Sections:** COMPARISON, TECHNIQUE, FINDINGS, IMPRESSION\n- **Normal-study path:** \"The orbits are clear.\"\n- **Do not assert as normal (a dictated finding acts on these):** \"The ventricles are normal in size.\" \"No midline shift.\"\n\n## Companion Matrix\n- **Mandatory negatives:** (reconciled with this dictation; one finding each)\n  - OMIT: \"No subdural collection\" \u2014 the dictation reports: 8 mm right subdural\n  - DO NOT ASSERT: \"No ventricular compression\" \u2014 expected consequence of: 3 mm midline shift\n  - KEEP: \"No skull fracture\" (trauma)\n\n## Style Exemplars\n- **Subdural** Abnormal: \"An 8 mm subdural.\"\n\n## Measurement Conventions\n- **Subdural thickness:** mm\n\n## Impression Exemplars\n- **Opening convention:** Index finding first\n- **Abnormal exemplar:** \"Acute subdural.\"\n- **Recommendation scope:**\n  - REFERRAL: Neurosurgery for haemorrhage with mass effect\n",
+ "check": {
+  "bad_option_ids": [],
+  "error": null,
+  "flags": [
+   {
+    "kind": "contradiction",
+    "score": 0.9,
+    "text": "No skull fracture."
+   },
+   {
+    "kind": "omission",
+    "score": 0.1,
+    "text": "8 mm right subdural haematoma"
+   },
+   {
+    "kind": "omission",
+    "score": 0.1,
+    "text": "3 mm midline shift"
+   }
+  ],
+  "n_clauses": 6,
+  "n_items": 2
+ },
+ "clauses": [
+  "An 8 mm right subdural haematoma.",
+  "No skull fracture.",
+  "No hydrocephalus",
+  "No no herniation",
+  "No no intraventricular extension",
+  "Acute right subdural haematoma with 3 mm midline shift."
+ ],
+ "decisions": {
+  "differentials": [
+   {
+    "action": "present",
+    "text": "Acute subdural \u2014 crescentic hyperdensity *(visible on this technique: yes)*"
+   },
+   {
+    "action": "removed",
+    "text": "Epidural \u2014 biconvex hyperdensity *(visible on this technique: yes)*"
+   },
+   {
+    "action": "open",
+    "text": "Vascular malformation \u2014 needs angiography *(visible on this technique: no \u2014 requires CTA)*"
+   },
+   {
+    "action": "open",
+    "text": "Coagulopathy *(imaging-silent \u2014 requires clinical/laboratory correlation)*"
+   }
+  ],
+  "finding_negatives": [],
+  "impression_plan": null,
+  "impression_variant": "Abnormal exemplar",
+  "measurements": [
+   {
+    "action": "keep",
+    "label": "Subdural thickness"
+   },
+   {
+    "action": "removed",
+    "label": "Infarct volume"
+   }
+  ],
+  "negatives": [
+   {
+    "action": "contradicted",
+    "dictated_finding": "8 mm right subdural",
+    "source": "sheet",
+    "text": "No subdural collection"
+   },
+   {
+    "action": "expected",
+    "dictated_finding": "3 mm midline shift",
+    "source": "sheet",
+    "text": "No ventricular compression"
+   },
+   {
+    "action": "keep",
+    "dictated_finding": "",
+    "source": "sheet",
+    "text": "No skull fracture"
+   }
+  ],
+  "normals": [
+   {
+    "action": "do_not_assert",
+    "text": "The ventricles are normal in size."
+   },
+   {
+    "action": "keep",
+    "text": "The orbits are clear."
+   },
+   {
+    "action": "do_not_assert",
+    "text": "No midline shift."
+   }
+  ],
+  "options": [],
+  "recommendations": [
+   {
+    "action": "keep",
+    "reason": "",
+    "text": "REFERRAL: Neurosurgery for haemorrhage with mass effect"
+   },
+   {
+    "action": "removed",
+    "reason": "",
+    "text": "IMAGING: CTA for large vessel occlusion"
+   }
+  ],
+  "style": [
+   {
+    "action": "keep",
+    "label": "Subdural"
+   },
+   {
+    "action": "removed",
+    "label": "Infarct"
+   }
+  ]
+ },
+ "removed": "FINDINGS:\nAn 8 mm right subdural haematoma. No skull fracture. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.\n\nDr A"
+}
