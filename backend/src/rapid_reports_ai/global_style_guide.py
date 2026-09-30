@@ -296,11 +296,12 @@ VERIFICATION_CHECKLIST = """
 # drift in the originals fails at import; the originals stay the raw-sheet fallback.
 
 def _swap(text: str, old: str, new: str) -> str:
-    assert text.count(old) == 1, f"passage not found exactly once: {old[:60]!r}"
+    if text.count(old) != 1:
+        raise ValueError(f"passage not found exactly once: {old[:60]!r}")
     return text.replace(old, new)
 
 
-def _swaps(text: str, *pairs: tuple) -> str:
+def _swaps(text: str, *pairs: tuple[str, str]) -> str:
     for old, new in pairs:
         text = _swap(text, old, new)
     return text
@@ -365,6 +366,13 @@ listed under Do not assert as normal."""),
      "them from the dictation or leave the clause out. A slot is never written as text.\n\n"),
     # S7
     ("matches the clinical history and\nfindings input", "matches the findings input"),
+    # 4a
+    ("Do not add sections, headers, or preambles not listed there.",
+     "Do not add sections, headers, or preambles not listed there. A CLINICAL HISTORY section the skill sheet"
+     " defines is the exception: it is supplied separately; do not write it."),
+    # 5
+    ("do not lose mandatory negative statements during consolidation",
+     "do not lose KEEP negatives during consolidation"),
 )
 
 PRE_WRITING_ANALYSIS_BRIEF = _swaps(
@@ -409,4 +417,7 @@ VERIFICATION_CHECKLIST_BRIEF = _swaps(
     # V4
     ("- No clinical history item (demographic, symptom, medication, laboratory value, prior diagnosis, referral wording) is restated anywhere in the report",
      "- No clinical history item (demographic, symptom, medication, laboratory value, prior diagnosis, referral wording) is written anywhere; the CLINICAL HISTORY section, if defined, is supplied separately"),
+    # 4b
+    ("- The report contains ONLY the sections defined in the skill sheet's Structural Pattern — no additional sections, headers, or preambles",
+     "- The report contains ONLY the sections defined in the skill sheet's Structural Pattern — no additional sections, headers, or preambles; a CLINICAL HISTORY section the skill sheet defines is supplied separately and not written by you"),
 )

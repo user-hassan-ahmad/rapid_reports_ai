@@ -12,8 +12,8 @@ QR_MODULES = ("quick_report_generator.py", "quick_report_prompts.py", "quick_rep
 TEMPLATE_PROMPTS = {"GLOBAL_STYLE_GUIDE": "598bdfe9",  # T0, signed off 2026-09-30
                     "PRE_WRITING_ANALYSIS": "c45d9d5d",
                     "VERIFICATION_CHECKLIST": "20e21f1f", "SYSTEM_PREAMBLE": None,
-                    "GLOBAL_STYLE_GUIDE_BRIEF": "07db3106", "PRE_WRITING_ANALYSIS_BRIEF": "7f0a70c3",
-                    "VERIFICATION_CHECKLIST_BRIEF": "e11c8dca", "TEMPLATE_SHEET_HEADER_BRIEF": "bc9f1a23"}
+                    "GLOBAL_STYLE_GUIDE_BRIEF": "4f34928a", "PRE_WRITING_ANALYSIS_BRIEF": "7f0a70c3",
+                    "VERIFICATION_CHECKLIST_BRIEF": "adbc75f1", "TEMPLATE_SHEET_HEADER_BRIEF": "bc9f1a23"}
 
 
 def _imports(path: pathlib.Path) -> set[str]:

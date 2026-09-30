@@ -30,3 +30,15 @@ def test_checklist_carries_the_l48_plus_line_and_slot_rule():
     v = g.VERIFICATION_CHECKLIST_BRIEF
     assert "or one cluster of negatives bearing on the index finding's next step" in v
     assert "No curly-brace slot appears as text" in v
+
+
+def test_brief_follow_ups_history_exception_and_keep_wording():
+    s = g.GLOBAL_STYLE_GUIDE_BRIEF
+    assert ("Do not add sections, headers, or preambles not listed there. A CLINICAL HISTORY section the skill sheet"
+            " defines is the exception: it is supplied separately; do not write it.") in s
+    assert "do not lose KEEP negatives during consolidation" in s
+    assert "mandatory negative statements" not in s
+    assert ("no additional sections, headers, or preambles; a CLINICAL HISTORY section the skill sheet defines is"
+            " supplied separately and not written by you") in g.VERIFICATION_CHECKLIST_BRIEF
+    assert "A CLINICAL HISTORY section the skill sheet defines is the exception" not in g.GLOBAL_STYLE_GUIDE
+    assert "do not lose mandatory negative statements during consolidation" in g.GLOBAL_STYLE_GUIDE
