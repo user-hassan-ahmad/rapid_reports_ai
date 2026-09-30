@@ -82,6 +82,83 @@ def positive_items(findings: str) -> List[str]:
     return [t for t in rc.split_findings(findings) if not _BACKGROUND.search(t)]
 
 
+def header_names(report: str) -> List[str]:
+    """Ordered section headings of a quick report (FINDINGS:, IMPRESSION:, …)."""
+    return [m.group(1) for m in _HEADER.finditer(report)]
+
+
+class ReportSection(BaseModel):
+    name: str
+    header: Optional[str] = None      # as written in reports; None = implicit (no header line)
+    role: str = "other"               # history|technique|comparison|findings|impression|other
+
+
+CHECKED_ROLES = {"findings", "impression", "other"}
+
+
+def section_spans(report: str, sections: List[ReportSection]) -> List[Tuple[ReportSection, int, int]]:
+    """(section, start, end) for each section found, in sheet order. A headed section starts after
+    its header line and ends at the next header found, or, when the next section is implicit, at
+    its first paragraph break; an implicit section covers the text from the previous section's end
+    (or the top) to the next header."""
+    found: List[Tuple[ReportSection, Optional[int], Optional[int]]] = []
+    pos = 0
+    for sec in sections:
+        if sec.header:
+            pat = re.compile(rf"^[ \t]*{re.escape(sec.header.strip().rstrip(':'))}[ \t]*:?[ \t]*$", re.M | re.I)
+            m = pat.search(report, pos)
+            if not m:
+                continue
+            found.append((sec, m.start(), m.end()))
+            pos = m.end()
+        else:
+            found.append((sec, None, None))
+    header_starts = sorted(h for _, h, _ in found if h is not None)
+    out: List[Tuple[ReportSection, int, int]] = []
+    prev_end = 0
+    for idx, (sec, h, c) in enumerate(found):
+        start = c if c is not None else prev_end
+        nxt = next((x for x in header_starts if x >= start and (h is None or x > h)), len(report))
+        if c is not None and idx + 1 < len(found) and found[idx + 1][1] is None:
+            body = re.search(r"\S", report[start:nxt])
+            brk = re.search(r"\n[ \t]*\n", report[start + body.start():nxt]) if body else None
+            if brk:
+                nxt = start + body.start() + brk.start()
+        out.append((sec, start, nxt))
+        prev_end = nxt
+    return out
+
+
+def _checked_texts(report: str, sections: Optional[List[ReportSection]]) -> List[str]:
+    """The report text the check reads: FINDINGS + IMPRESSION (quick), or every section whose role
+    carries dictated content (templates)."""
+    if sections is None:
+        return list(report_sections(report))
+    return [report[a:b].strip() for s, a, b in section_spans(report, sections) if s.role in CHECKED_ROLES]
+
+
+def checked_clauses(report: str, sections: Optional[List[ReportSection]]) -> List[str]:
+    """Clauses the contradiction check reads. Quick (no sections): FINDINGS + IMPRESSION as before.
+    Templates: every section whose role carries dictated content."""
+    return list(dict.fromkeys(c for t in _checked_texts(report, sections) for c in clauses(t)))
+
+
+def without(report: str, protected: List[str]) -> str:
+    """The report with protected text (history section, fixed blocks) removed."""
+    for p in protected:
+        if p:
+            report = report.replace(p, "")
+    return report
+
+
+def _in_protected(text: str, protected: Optional[List[str]]) -> bool:
+    return any(p and text in p for p in protected or [])
+
+
+def _has_term(text: str, terms: Optional[List[str]]) -> bool:
+    return any(t and re.search(rf"\b{re.escape(t)}\b", text, re.I) for t in terms or [])
+
+
 # ── check ────────────────────────────────────────────────────────────────────
 
 class Flag(BaseModel):
@@ -98,11 +175,11 @@ class CheckResult(BaseModel):
     error: Optional[str] = None
 
 
-async def check(report: str, findings: str, scan_type: str, options: List[dict]) -> CheckResult:
-    """Two Jev calls in parallel: every report clause and option against the dictation, every
-    positive dictated item against the report."""
-    fnd, imp = report_sections(report)
-    cls = list(dict.fromkeys(clauses(fnd) + clauses(imp)))
+async def check(report: str, findings: str, scan_type: str, options: List[dict],
+                sections: Optional[List[ReportSection]] = None, protected: Optional[List[str]] = None) -> CheckResult:
+    """Two Jev calls in parallel: every checked report clause and option against the dictation,
+    every positive dictated item against the report (protected text removed)."""
+    cls = checked_clauses(report, sections)
     opts = [(o["id"], o["sentence"]) for o in options if o.get("sentence")]
     items = positive_items(findings)
     contra_qs = {f"c{i}": {"type": "noul", "instructions": Q_CONTRA + t} for i, t in enumerate(cls)}
@@ -119,7 +196,7 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict])
     try:
         contra, omit = await asyncio.wait_for(asyncio.gather(
             ask(f"SCAN TYPE: {scan_type}\nDICTATED FINDINGS:\n{findings}", contra_qs),
-            ask(f"REPORT:\n{report}", omit_qs)), JEV_TIMEOUT_S)
+            ask(f"REPORT:\n{without(report, protected or [])}", omit_qs)), JEV_TIMEOUT_S)
     except Exception as e:  # never blocks the report
         logger.warning("quality check: Jev failed (%s: %s)", type(e).__name__, str(e)[:200])
         return CheckResult(n_clauses=len(cls), n_items=len(items), error=f"{type(e).__name__}: {str(e)[:200]}")
@@ -170,17 +247,27 @@ INSERT_ONLY_SYS = (" Each problem is an omitted finding: 'replace' must contain 
                    "finding added to it.")
 
 
-def edit_allowed(e: Edit, insert_only: bool) -> bool:
+def edit_allowed(e: Edit, insert_only: bool, protected: Optional[List[str]] = None,
+                 suppressed: Optional[List[str]] = None) -> bool:
     """A repair never turns a negated statement into an assertion (L-47: a flagged negative was
-    'corrected' into the malignant finding it denied), and an insertion never rewrites text."""
+    'corrected' into the malignant finding it denied), an insertion never rewrites text, protected
+    text (history section, fixed blocks) is never edited, and a repair never introduces a term the
+    sheet suppresses."""
     if not e.find or e.find == e.replace:
         return False
     if _NEGATION.search(e.find) and not _NEGATION.search(e.replace):
         return False
+    if any(p and (e.find in p or p in e.find) for p in protected or []):
+        return False
+    for term in suppressed or []:
+        pat = re.compile(rf"\b{re.escape(term)}\b", re.I)
+        if term and pat.search(e.replace) and not pat.search(e.find):
+            return False
     return not insert_only or e.find in e.replace
 
 
-async def repair_report(report: str, findings: str, problems: List[str], insert_only: bool = False) -> RepairResult:
+async def repair_report(report: str, findings: str, problems: List[str], insert_only: bool = False,
+                        protected: Optional[List[str]] = None, suppressed: Optional[List[str]] = None) -> RepairResult:
     """One focal Qwen call; each returned edit is applied only when allowed and its find occurs
     exactly once. Shared by the post-generation check and (next) the audit's Fix with AI."""
     user = (f"DICTATED FINDINGS:\n{findings}\n\nREPORT:\n{report}\n\nPROBLEMS:\n"
@@ -195,7 +282,7 @@ async def repair_report(report: str, findings: str, problems: List[str], insert_
         return RepairResult(report=report, error=f"{type(e).__name__}: {str(e)[:200]}")
     out, applied, skipped = report, 0, 0
     for e in r.output.edits:
-        if edit_allowed(e, insert_only) and out.count(e.find) == 1:
+        if edit_allowed(e, insert_only, protected, suppressed) and out.count(e.find) == 1:
             out, applied = out.replace(e.find, e.replace), applied + 1
         else:
             skipped += 1
@@ -236,7 +323,9 @@ def _restates(new: str, existing: str) -> bool:
         and nums <= set(re.findall(r"\d+(?:\.\d+)?", existing))
 
 
-async def insert_findings(report: str, findings: str, items: List[str]) -> RepairResult:
+async def insert_findings(report: str, findings: str, items: List[str],
+                          sections: Optional[List[ReportSection]] = None, protected: Optional[List[str]] = None,
+                          suppressed: Optional[List[str]] = None) -> RepairResult:
     """Insertion by construction: the report's existing text is never rewritten (L-47: asked for
     insert-only edits, Qwen rewrote the neighbouring sentence). An anchor that is not found places
     the sentence first in FINDINGS, where the primary finding belongs."""
@@ -255,14 +344,18 @@ async def insert_findings(report: str, findings: str, items: List[str]) -> Repai
         if not sent or _NEGATION.search(sent) and not any(_NEGATION.search(t) for t in items):
             skipped += 1
             continue
+        if _has_term(sent, suppressed):
+            skipped += 1   # the sheet suppresses this wording
+            continue
         sent = sent if sent.endswith(".") else sent + "."
         if any(_restates(sent, x) for x in _sentences(out)):
             skipped += 1   # already stated in other words (L-47: a reworded finding was re-inserted)
             continue
-        if it.after and out.count(it.after) == 1:
+        if it.after and out.count(it.after) == 1 and not _in_protected(it.after, protected):
             out = out.replace(it.after, f"{it.after} {sent}", 1)
         else:
-            fnd, _ = report_sections(out)
+            fnd = next((out[a:b].strip() for s, a, b in section_spans(out, sections) if s.role == "findings"), "") \
+                if sections else report_sections(out)[0]
             first = _sentences(fnd)[0] if fnd else None
             if not first or out.count(first) != 1:
                 skipped += 1
@@ -281,13 +374,12 @@ def is_negative(clause: str) -> bool:
     return bool(_NEG_LIST.match(clause.strip()))
 
 
-def remove_negative_clause(report: str, clause: str) -> str:
+def remove_negative_clause(report: str, clause: str, sections: Optional[List[ReportSection]] = None) -> str:
     """Take one flagged negative out of the report without asserting anything: a whole negative
     sentence is deleted; one item of a negative list is dropped from the list. No LLM, so a false
     flag can only lose a negative, never create a finding."""
     target = clause.strip().rstrip(".")
-    fnd, imp = report_sections(report)
-    for s in _sentences(fnd) + _sentences(imp):
+    for s in [x for t in _checked_texts(report, sections) for x in _sentences(t)]:
         if s.rstrip(".") == target:
             return re.sub(r"[ \t]*" + re.escape(s) + r"[ \t]*", " ", report, count=1).replace(" \n", "\n")
         m = _NEG_LIST.match(s)
@@ -330,35 +422,46 @@ def _problem(f: Flag) -> str:
     return f'The dictated finding "{f.text}" is missing from the report.'
 
 
-async def run_quality_check(report: str, findings: str, scan_type: str,
-                            options: List[dict]) -> Tuple[str, List[dict], dict]:
+async def run_quality_check(report: str, findings: str, scan_type: str, options: List[dict],
+                            sections: Optional[List[ReportSection]] = None, protected: Optional[List[str]] = None,
+                            suppressed: Optional[List[str]] = None) -> Tuple[str, List[dict], dict]:
     """Check, then repair only when a report clause or item is flagged. Returns the report, the
-    options with flagged ones dropped, and telemetry. Never raises."""
+    options with flagged ones dropped, and telemetry. Never raises. `sections` makes the check
+    section-generic (templates); `protected` text is never checked for omission or edited; a repair
+    never introduces a `suppressed` term. All default to the quick behaviour."""
     if not enabled():
         return report, options, {"enabled": False}
     t0 = time.time()
     tel: dict = {"enabled": True, "flags": [], "clauses_removed": 0, "edits_applied": 0, "edits_skipped": 0, "options_dropped": [],
                  "clauses": 0, "items": 0, "jev_ms": None, "repair_ms": None, "error": None}
     try:
-        res = await check(report, findings, scan_type, options)
+        # The template-only arguments are passed only when set, so the quick call is unchanged.
+        opt = lambda **kw: {k: v for k, v in kw.items() if v is not None}
+        res = await check(report, findings, scan_type, options, **opt(sections=sections, protected=protected))
         tel.update(flags=[f.model_dump() for f in res.flags], clauses=res.n_clauses, items=res.n_items,
                    jev_ms=int((time.time() - t0) * 1000), error=res.error, options_dropped=res.bad_option_ids)
         options = [o for o in options if o.get("id") not in set(res.bad_option_ids)]
         # A flagged negative is removed in code; a flagged positive statement is corrected, and an
         # omitted finding inserted, by Qwen under edit_allowed (L-47).
+        # A contradiction inside protected text stays in tel["flags"] for the rail but is never edited.
+        editable = [f for f in res.flags
+                    if not (f.kind == "contradiction" and _in_protected(f.text.rstrip("."), protected))]
         removed = 0
-        for f in res.flags:
+        for f in editable:
             if f.kind == "contradiction" and is_negative(f.text):
-                new = remove_negative_clause(report, f.text)
+                new = remove_negative_clause(report, f.text, **opt(sections=sections))
                 removed += new != report
                 report = new
         tel["clauses_removed"] = removed
-        fix = [_problem(f) for f in res.flags if f.kind == "contradiction" and not is_negative(f.text)]
-        if fix or any(f.kind == "omission" for f in res.flags):
+        fix = [_problem(f) for f in editable if f.kind == "contradiction" and not is_negative(f.text)]
+        if fix or any(f.kind == "omission" for f in editable):
             t1 = time.time()
-            omitted = [f.text for f in res.flags if f.kind == "omission"]
-            calls = ([repair_report(report, findings, fix)] if fix else []) + \
-                    ([insert_findings(report, findings, omitted)] if omitted else [])
+            omitted = [f.text for f in editable if f.kind == "omission"]
+            calls = ([repair_report(report, findings, fix, **opt(protected=protected, suppressed=suppressed))]
+                     if fix else []) + \
+                    ([insert_findings(report, findings, omitted,
+                                      **opt(sections=sections, protected=protected, suppressed=suppressed))]
+                     if omitted else [])
             reps = await asyncio.gather(*calls)
             base, report = report, reps[0].report
             for rep in reps[1:]:   # both were made from the same base: replay the second's changes
