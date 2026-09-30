@@ -1,27 +1,711 @@
 {
- "brief_text": "# Skill Sheet: CT head non-contrast \u2014 query haemorrhage\n\n## Scan Context\n- **Modality:** CT head, non-contrast\n\n## Clinical Lane\n- **Question:** Rule out haemorrhage\n- **Differentials in scope:**\n  - **Triage:** Haemorrhage vs ischaemia\n  - **Aetiology (if haemorrhage confirmed):**\n    - Acute subdural \u2014 crescentic hyperdensity *(visible on this technique: yes)*\n    - Vascular malformation \u2014 needs angiography *(visible on this technique: no \u2014 requires CTA)*\n    - Coagulopathy *(imaging-silent \u2014 requires clinical/laboratory correlation)*\n\n## Structural Pattern\n- **Sections:** COMPARISON, TECHNIQUE, FINDINGS, IMPRESSION\n- **Normal-study path:** \"The orbits are clear.\"\n- **Do not assert as normal (a dictated finding acts on these):** \"The ventricles are normal in size.\" \"No midline shift.\"\n\n## Companion Matrix\n- **Mandatory negatives:** (reconciled with this dictation; one finding each)\n  - OMIT: \"No subdural collection\" \u2014 the dictation reports: 8 mm right subdural\n  - DO NOT ASSERT: \"No ventricular compression\" \u2014 expected consequence of: 3 mm midline shift\n  - KEEP: \"No skull fracture\" (trauma)\n\n## Style Exemplars\n- **Subdural** Abnormal: \"An 8 mm subdural.\"\n\n## Measurement Conventions\n- **Subdural thickness:** mm\n\n## Impression Exemplars\n- **Opening convention:** Index finding first\n- **Abnormal exemplar:** \"Acute subdural.\"\n- **Recommendation scope:**\n  - REFERRAL: Neurosurgery for haemorrhage with mass effect\n",
+ "briefs": {
+  "finding_negatives": {
+   "calls": {
+    "_fallback": [
+     [
+      "SCAN TYPE: CT head\nDICTATED FINDINGS:\n10 mm right acute subdural. 12 mm left adrenal nodule",
+      [
+       "10 mm right acute subdural",
+       "12 mm left adrenal nodule"
+      ],
+      [
+       "subdural haematoma",
+       "extradural haematoma"
+      ]
+     ]
+    ],
+    "_jev": [
+     [
+      "SCAN TYPE: CT head\nDICTATED FINDINGS:\n10 mm right acute subdural. 12 mm left adrenal nodule",
+      {
+       "f0": {
+        "instructions": "The dictated findings report this imaging finding, in any wording or size: subdural haematoma",
+        "type": "noul"
+       },
+       "f1": {
+        "instructions": "The dictated findings report this imaging finding, in any wording or size: extradural haematoma",
+        "type": "noul"
+       },
+       "n0": {
+        "instructions": "Is this statement from a report template affected by the dictated findings? Affected means a dictated finding contradicts it, or acts on the structure it describes (displaces, compresses, obstructs, drains into, extends to, involves it, or is a finding of the same kind in that structure), so it cannot be written as it stands. Statement: The orbits are clear.",
+        "type": "noul"
+       }
+      }
+     ]
+    ],
+    "_plan": [
+     [
+      "CT head",
+      "fall",
+      [
+       "10 mm right acute subdural",
+       "12 mm left adrenal nodule"
+      ],
+      []
+     ]
+    ],
+    "_qwen": [
+     [
+      "SCAN TYPE: CT head\nDICTATED FINDINGS:\n10 mm right acute subdural. 12 mm left adrenal nodule",
+      [
+       "No skull fracture",
+       "No midline shift",
+       "No uncal herniation",
+       "No effacement of the basal cisterns",
+       "No subfalcine herniation",
+       "No venous sinus involvement"
+      ],
+      [
+       "The orbits are clear."
+      ],
+      []
+     ]
+    ],
+    "_split_bundled": [
+     [
+      [
+       "No skull fracture",
+       "No midline shift",
+       "No uncal herniation",
+       "No effacement of the basal cisterns",
+       "No subfalcine herniation",
+       "No venous sinus involvement"
+      ]
+     ]
+    ]
+   },
+   "decisions": {
+    "differentials": [],
+    "finding_negatives": [
+     {
+      "finding": "subdural haematoma",
+      "outcome": "stated",
+      "present": 0.95,
+      "qwen": "keep",
+      "tag": "core",
+      "text": "No midline shift"
+     },
+     {
+      "finding": "subdural haematoma",
+      "outcome": "offered",
+      "present": 0.95,
+      "qwen": "keep",
+      "tag": "contextual",
+      "text": "No uncal herniation"
+     },
+     {
+      "finding": "subdural haematoma",
+      "outcome": "stated",
+      "present": 0.95,
+      "qwen": "keep",
+      "tag": "core",
+      "text": "No effacement of the basal cisterns"
+     },
+     {
+      "finding": "subdural haematoma",
+      "outcome": "stated",
+      "present": 0.95,
+      "qwen": "keep",
+      "tag": "core",
+      "text": "No subfalcine herniation"
+     },
+     {
+      "finding": "extradural haematoma",
+      "outcome": "dropped",
+      "present": 0.1,
+      "qwen": "keep",
+      "tag": "core",
+      "text": "No venous sinus involvement"
+     },
+     {
+      "finding": "12 mm left adrenal nodule",
+      "outcome": "offered",
+      "present": null,
+      "qwen": "n/a",
+      "tag": "fallback",
+      "text": "No adrenal haemorrhage"
+     },
+     {
+      "finding": "12 mm left adrenal nodule",
+      "outcome": "offered",
+      "present": null,
+      "qwen": "n/a",
+      "tag": "fallback",
+      "text": "No local invasion"
+     }
+    ],
+    "impression_plan": {
+     "carry": [
+      "10 mm right acute subdural",
+      "12 mm left adrenal nodule"
+     ],
+     "findings_only": [],
+     "optional": []
+    },
+    "impression_variant": "Abnormal exemplar",
+    "measurements": [],
+    "negatives": [
+     {
+      "action": "keep",
+      "dictated_finding": "",
+      "source": "sheet",
+      "text": "No skull fracture"
+     },
+     {
+      "action": "keep",
+      "dictated_finding": "",
+      "source": "finding:subdural haematoma",
+      "text": "No midline shift"
+     },
+     {
+      "action": "keep",
+      "dictated_finding": "",
+      "source": "finding:subdural haematoma",
+      "text": "No effacement of the basal cisterns"
+     },
+     {
+      "action": "keep",
+      "dictated_finding": "",
+      "source": "finding:subdural haematoma",
+      "text": "No subfalcine herniation"
+     }
+    ],
+    "normals": [
+     {
+      "action": "keep",
+      "text": "The orbits are clear."
+     }
+    ],
+    "options": [
+     {
+      "finding": "subdural haematoma",
+      "kind": "finding_negative",
+      "reason": "contextual",
+      "section": "FINDINGS",
+      "text": "No uncal herniation"
+     },
+     {
+      "finding": "12 mm left adrenal nodule",
+      "kind": "finding_negative",
+      "reason": "unanticipated finding",
+      "section": "FINDINGS",
+      "text": "No adrenal haemorrhage"
+     },
+     {
+      "finding": "12 mm left adrenal nodule",
+      "kind": "finding_negative",
+      "reason": "unanticipated finding",
+      "section": "FINDINGS",
+      "text": "No local invasion"
+     }
+    ],
+    "recommendations": [],
+    "style": []
+   },
+   "text": "# Skill Sheet: CT head \u2014 head injury\n\n## Structural Pattern\n- **Normal-study path:** \"The orbits are clear.\"\n\n## Companion Matrix\n- **Mandatory negatives:** (reconciled with this dictation; one finding each)\n  - KEEP: \"No skull fracture\" (trauma)\n  - KEEP: \"No midline shift\" (finding: subdural haematoma)\n  - KEEP: \"No effacement of the basal cisterns\" (finding: subdural haematoma)\n  - KEEP: \"No subfalcine herniation\" (finding: subdural haematoma)\n\n## Impression Exemplars\n- **Abnormal exemplar:** \"Acute subdural.\"\n\n## Impression Plan\n- **Carry forward (the impression addresses each):** \"10 mm right acute subdural\" \"12 mm left adrenal nodule\"\n"
+  },
+  "no_plan": {
+   "calls": {
+    "_jev": [
+     [
+      "SCAN TYPE: CT head\nDICTATED FINDINGS:\n8 mm right subdural haematoma. 3 mm midline shift.",
+      {
+       "d0": {
+        "instructions": "A dictated finding shows that this diagnosis or branch is present in this case. Branch: Acute subdural \u2014 crescentic hyperdensity *(visible on this technique: yes)*",
+        "type": "noul"
+       },
+       "d1": {
+        "instructions": "A dictated finding shows that this diagnosis or branch is present in this case. Branch: Epidural \u2014 biconvex hyperdensity *(visible on this technique: yes)*",
+        "type": "noul"
+       },
+       "d2": {
+        "instructions": "A dictated finding shows that this diagnosis or branch is present in this case. Branch: Vascular malformation \u2014 needs angiography *(visible on this technique: no \u2014 requires CTA)*",
+        "type": "noul"
+       },
+       "d3": {
+        "instructions": "A dictated finding shows that this diagnosis or branch is present in this case. Branch: Coagulopathy *(imaging-silent \u2014 requires clinical/laboratory correlation)*",
+        "type": "noul"
+       },
+       "imp": {
+        "criteria": {
+         "v0": "- **Normal exemplar:** \"No haemorrhage.\"",
+         "v1": "- **Abnormal exemplar:** \"Acute subdural.\"",
+         "v2": "- **Complicated exemplar:** \"Subdural with herniation.\""
+        },
+        "instructions": "Which impression exemplar best matches the shape of this case's findings (severity, number of findings, complications)?",
+        "type": "choice"
+       },
+       "n0": {
+        "instructions": "Is this statement from a report template affected by the dictated findings? Affected means a dictated finding contradicts it, or acts on the structure it describes (displaces, compresses, obstructs, drains into, extends to, involves it, or is a finding of the same kind in that structure), so it cannot be written as it stands. Statement: The ventricles are normal in size.",
+        "type": "noul"
+       },
+       "n1": {
+        "instructions": "Is this statement from a report template affected by the dictated findings? Affected means a dictated finding contradicts it, or acts on the structure it describes (displaces, compresses, obstructs, drains into, extends to, involves it, or is a finding of the same kind in that structure), so it cannot be written as it stands. Statement: The orbits are clear.",
+        "type": "noul"
+       },
+       "n2": {
+        "instructions": "Is this statement from a report template affected by the dictated findings? Affected means a dictated finding contradicts it, or acts on the structure it describes (displaces, compresses, obstructs, drains into, extends to, involves it, or is a finding of the same kind in that structure), so it cannot be written as it stands. Statement: No midline shift.",
+        "type": "noul"
+       },
+       "r0": {
+        "instructions": "The condition for this recommendation is not met by the dictated findings, or it belongs to a diagnosis the findings rule out. Recommendation: REFERRAL: Neurosurgery for haemorrhage with mass effect",
+        "type": "noul"
+       },
+       "r1": {
+        "instructions": "The condition for this recommendation is not met by the dictated findings, or it belongs to a diagnosis the findings rule out. Recommendation: IMAGING: CTA for large vessel occlusion",
+        "type": "noul"
+       },
+       "s0": {
+        "instructions": "This example report sentence describes the same kind of finding as one that is dictated in this case. Example: - **Subdural** Abnormal: \"An 8 mm subdural.\"",
+        "type": "noul"
+       },
+       "s1": {
+        "instructions": "This example report sentence describes the same kind of finding as one that is dictated in this case. Example: - **Infarct** Abnormal: \"MCA territory infarct.\" ",
+        "type": "noul"
+       }
+      }
+     ]
+    ],
+    "_plan": [
+     [
+      "CT head",
+      "fall",
+      [
+       "8 mm right subdural haematoma",
+       "3 mm midline shift"
+      ],
+      [
+       "REFERRAL: Neurosurgery for haemorrhage with mass effect",
+       "IMAGING: CTA for large vessel occlusion"
+      ]
+     ]
+    ],
+    "_qwen": [
+     [
+      "SCAN TYPE: CT head\nDICTATED FINDINGS:\n8 mm right subdural haematoma. 3 mm midline shift.",
+      [
+       "No subdural collection",
+       "No ventricular compression",
+       "No skull fracture"
+      ],
+      [
+       "The ventricles are normal in size.",
+       "The orbits are clear.",
+       "No midline shift."
+      ],
+      [
+       "- **Subdural thickness:** mm",
+       "- **Infarct volume:** ml "
+      ]
+     ]
+    ],
+    "_split_bundled": [
+     [
+      [
+       "No subdural collection",
+       "No ventricular compression",
+       "No skull fracture"
+      ]
+     ]
+    ]
+   },
+   "decisions": {
+    "differentials": [
+     {
+      "action": "present",
+      "text": "Acute subdural \u2014 crescentic hyperdensity *(visible on this technique: yes)*"
+     },
+     {
+      "action": "removed",
+      "text": "Epidural \u2014 biconvex hyperdensity *(visible on this technique: yes)*"
+     },
+     {
+      "action": "open",
+      "text": "Vascular malformation \u2014 needs angiography *(visible on this technique: no \u2014 requires CTA)*"
+     },
+     {
+      "action": "open",
+      "text": "Coagulopathy *(imaging-silent \u2014 requires clinical/laboratory correlation)*"
+     }
+    ],
+    "finding_negatives": [],
+    "impression_plan": null,
+    "impression_variant": "Abnormal exemplar",
+    "measurements": [
+     {
+      "action": "keep",
+      "label": "Subdural thickness"
+     },
+     {
+      "action": "removed",
+      "label": "Infarct volume"
+     }
+    ],
+    "negatives": [
+     {
+      "action": "contradicted",
+      "dictated_finding": "8 mm right subdural",
+      "source": "sheet",
+      "text": "No subdural collection"
+     },
+     {
+      "action": "expected",
+      "dictated_finding": "3 mm midline shift",
+      "source": "sheet",
+      "text": "No ventricular compression"
+     },
+     {
+      "action": "keep",
+      "dictated_finding": "",
+      "source": "sheet",
+      "text": "No skull fracture"
+     }
+    ],
+    "normals": [
+     {
+      "action": "do_not_assert",
+      "text": "The ventricles are normal in size."
+     },
+     {
+      "action": "keep",
+      "text": "The orbits are clear."
+     },
+     {
+      "action": "do_not_assert",
+      "text": "No midline shift."
+     }
+    ],
+    "options": [],
+    "recommendations": [
+     {
+      "action": "keep",
+      "reason": "",
+      "text": "REFERRAL: Neurosurgery for haemorrhage with mass effect"
+     },
+     {
+      "action": "removed",
+      "reason": "",
+      "text": "IMAGING: CTA for large vessel occlusion"
+     }
+    ],
+    "style": [
+     {
+      "action": "keep",
+      "label": "Subdural"
+     },
+     {
+      "action": "removed",
+      "label": "Infarct"
+     }
+    ]
+   },
+   "text": "# Skill Sheet: CT head non-contrast \u2014 query haemorrhage\n\n## Scan Context\n- **Modality:** CT head, non-contrast\n\n## Clinical Lane\n- **Question:** Rule out haemorrhage\n- **Differentials in scope:**\n  - **Triage:** Haemorrhage vs ischaemia\n  - **Aetiology (if haemorrhage confirmed):**\n    - Acute subdural \u2014 crescentic hyperdensity *(visible on this technique: yes)*\n    - Vascular malformation \u2014 needs angiography *(visible on this technique: no \u2014 requires CTA)*\n    - Coagulopathy *(imaging-silent \u2014 requires clinical/laboratory correlation)*\n\n## Structural Pattern\n- **Sections:** COMPARISON, TECHNIQUE, FINDINGS, IMPRESSION\n- **Normal-study path:** \"The orbits are clear.\"\n- **Do not assert as normal (a dictated finding acts on these):** \"The ventricles are normal in size.\" \"No midline shift.\"\n\n## Companion Matrix\n- **Mandatory negatives:** (reconciled with this dictation; one finding each)\n  - OMIT: \"No subdural collection\" \u2014 the dictation reports: 8 mm right subdural\n  - DO NOT ASSERT: \"No ventricular compression\" \u2014 expected consequence of: 3 mm midline shift\n  - KEEP: \"No skull fracture\" (trauma)\n\n## Style Exemplars\n- **Subdural** Abnormal: \"An 8 mm subdural.\"\n\n## Measurement Conventions\n- **Subdural thickness:** mm\n\n## Impression Exemplars\n- **Opening convention:** Index finding first\n- **Abnormal exemplar:** \"Acute subdural.\"\n- **Recommendation scope:**\n  - REFERRAL: Neurosurgery for haemorrhage with mass effect\n"
+  },
+  "planned": {
+   "calls": {
+    "_jev": [
+     [
+      "SCAN TYPE: CT head\nDICTATED FINDINGS:\n8 mm right subdural haematoma. 3 mm midline shift.",
+      {
+       "d0": {
+        "instructions": "A dictated finding shows that this diagnosis or branch is present in this case. Branch: Acute subdural \u2014 crescentic hyperdensity *(visible on this technique: yes)*",
+        "type": "noul"
+       },
+       "d1": {
+        "instructions": "A dictated finding shows that this diagnosis or branch is present in this case. Branch: Epidural \u2014 biconvex hyperdensity *(visible on this technique: yes)*",
+        "type": "noul"
+       },
+       "d2": {
+        "instructions": "A dictated finding shows that this diagnosis or branch is present in this case. Branch: Vascular malformation \u2014 needs angiography *(visible on this technique: no \u2014 requires CTA)*",
+        "type": "noul"
+       },
+       "d3": {
+        "instructions": "A dictated finding shows that this diagnosis or branch is present in this case. Branch: Coagulopathy *(imaging-silent \u2014 requires clinical/laboratory correlation)*",
+        "type": "noul"
+       },
+       "imp": {
+        "criteria": {
+         "v0": "- **Normal exemplar:** \"No haemorrhage.\"",
+         "v1": "- **Abnormal exemplar:** \"Acute subdural.\"",
+         "v2": "- **Complicated exemplar:** \"Subdural with herniation.\""
+        },
+        "instructions": "Which impression exemplar best matches the shape of this case's findings (severity, number of findings, complications)?",
+        "type": "choice"
+       },
+       "n0": {
+        "instructions": "Is this statement from a report template affected by the dictated findings? Affected means a dictated finding contradicts it, or acts on the structure it describes (displaces, compresses, obstructs, drains into, extends to, involves it, or is a finding of the same kind in that structure), so it cannot be written as it stands. Statement: The ventricles are normal in size.",
+        "type": "noul"
+       },
+       "n1": {
+        "instructions": "Is this statement from a report template affected by the dictated findings? Affected means a dictated finding contradicts it, or acts on the structure it describes (displaces, compresses, obstructs, drains into, extends to, involves it, or is a finding of the same kind in that structure), so it cannot be written as it stands. Statement: The orbits are clear.",
+        "type": "noul"
+       },
+       "n2": {
+        "instructions": "Is this statement from a report template affected by the dictated findings? Affected means a dictated finding contradicts it, or acts on the structure it describes (displaces, compresses, obstructs, drains into, extends to, involves it, or is a finding of the same kind in that structure), so it cannot be written as it stands. Statement: No midline shift.",
+        "type": "noul"
+       },
+       "r0": {
+        "instructions": "The condition for this recommendation is not met by the dictated findings, or it belongs to a diagnosis the findings rule out. Recommendation: REFERRAL: Neurosurgery for haemorrhage with mass effect",
+        "type": "noul"
+       },
+       "r1": {
+        "instructions": "The condition for this recommendation is not met by the dictated findings, or it belongs to a diagnosis the findings rule out. Recommendation: IMAGING: CTA for large vessel occlusion",
+        "type": "noul"
+       },
+       "s0": {
+        "instructions": "This example report sentence describes the same kind of finding as one that is dictated in this case. Example: - **Subdural** Abnormal: \"An 8 mm subdural.\"",
+        "type": "noul"
+       },
+       "s1": {
+        "instructions": "This example report sentence describes the same kind of finding as one that is dictated in this case. Example: - **Infarct** Abnormal: \"MCA territory infarct.\" ",
+        "type": "noul"
+       }
+      }
+     ]
+    ],
+    "_plan": [
+     [
+      "CT head",
+      "fall",
+      [
+       "8 mm right subdural haematoma",
+       "3 mm midline shift"
+      ],
+      [
+       "REFERRAL: Neurosurgery for haemorrhage with mass effect",
+       "IMAGING: CTA for large vessel occlusion"
+      ]
+     ]
+    ],
+    "_qwen": [
+     [
+      "SCAN TYPE: CT head\nDICTATED FINDINGS:\n8 mm right subdural haematoma. 3 mm midline shift.",
+      [
+       "No subdural collection",
+       "No ventricular compression",
+       "No skull fracture"
+      ],
+      [
+       "The ventricles are normal in size.",
+       "The orbits are clear.",
+       "No midline shift."
+      ],
+      [
+       "- **Subdural thickness:** mm",
+       "- **Infarct volume:** ml "
+      ]
+     ]
+    ],
+    "_split_bundled": [
+     [
+      [
+       "No subdural collection",
+       "No ventricular compression",
+       "No skull fracture"
+      ]
+     ]
+    ]
+   },
+   "decisions": {
+    "differentials": [
+     {
+      "action": "present",
+      "text": "Acute subdural \u2014 crescentic hyperdensity *(visible on this technique: yes)*"
+     },
+     {
+      "action": "removed",
+      "text": "Epidural \u2014 biconvex hyperdensity *(visible on this technique: yes)*"
+     },
+     {
+      "action": "open",
+      "text": "Vascular malformation \u2014 needs angiography *(visible on this technique: no \u2014 requires CTA)*"
+     },
+     {
+      "action": "open",
+      "text": "Coagulopathy *(imaging-silent \u2014 requires clinical/laboratory correlation)*"
+     }
+    ],
+    "finding_negatives": [],
+    "impression_plan": {
+     "carry": [
+      "8 mm right subdural haematoma"
+     ],
+     "findings_only": [],
+     "optional": [
+      "3 mm midline shift"
+     ]
+    },
+    "impression_variant": "Abnormal exemplar",
+    "measurements": [
+     {
+      "action": "keep",
+      "label": "Subdural thickness"
+     },
+     {
+      "action": "removed",
+      "label": "Infarct volume"
+     }
+    ],
+    "negatives": [
+     {
+      "action": "contradicted",
+      "dictated_finding": "8 mm right subdural",
+      "source": "sheet",
+      "text": "No subdural collection"
+     },
+     {
+      "action": "expected",
+      "dictated_finding": "3 mm midline shift",
+      "source": "sheet",
+      "text": "No ventricular compression"
+     },
+     {
+      "action": "keep",
+      "dictated_finding": "",
+      "source": "sheet",
+      "text": "No skull fracture"
+     }
+    ],
+    "normals": [
+     {
+      "action": "do_not_assert",
+      "text": "The ventricles are normal in size."
+     },
+     {
+      "action": "keep",
+      "text": "The orbits are clear."
+     },
+     {
+      "action": "do_not_assert",
+      "text": "No midline shift."
+     }
+    ],
+    "options": [
+     {
+      "kind": "impression",
+      "reason": "",
+      "text": "3 mm midline shift"
+     }
+    ],
+    "recommendations": [
+     {
+      "action": "keep",
+      "reason": "mass effect",
+      "text": "REFERRAL: Neurosurgery for haemorrhage with mass effect"
+     },
+     {
+      "action": "removed",
+      "reason": "diagnosis made",
+      "text": "IMAGING: CTA for large vessel occlusion"
+     }
+    ],
+    "style": [
+     {
+      "action": "keep",
+      "label": "Subdural"
+     },
+     {
+      "action": "removed",
+      "label": "Infarct"
+     }
+    ]
+   },
+   "text": "# Skill Sheet: CT head non-contrast \u2014 query haemorrhage\n\n## Scan Context\n- **Modality:** CT head, non-contrast\n\n## Clinical Lane\n- **Question:** Rule out haemorrhage\n- **Differentials in scope:**\n  - **Triage:** Haemorrhage vs ischaemia\n  - **Aetiology (if haemorrhage confirmed):**\n    - Acute subdural \u2014 crescentic hyperdensity *(visible on this technique: yes)*\n    - Vascular malformation \u2014 needs angiography *(visible on this technique: no \u2014 requires CTA)*\n    - Coagulopathy *(imaging-silent \u2014 requires clinical/laboratory correlation)*\n\n## Structural Pattern\n- **Sections:** COMPARISON, TECHNIQUE, FINDINGS, IMPRESSION\n- **Normal-study path:** \"The orbits are clear.\"\n- **Do not assert as normal (a dictated finding acts on these):** \"The ventricles are normal in size.\" \"No midline shift.\"\n\n## Companion Matrix\n- **Mandatory negatives:** (reconciled with this dictation; one finding each)\n  - OMIT: \"No subdural collection\" \u2014 the dictation reports: 8 mm right subdural\n  - DO NOT ASSERT: \"No ventricular compression\" \u2014 expected consequence of: 3 mm midline shift\n  - KEEP: \"No skull fracture\" (trauma)\n\n## Style Exemplars\n- **Subdural** Abnormal: \"An 8 mm subdural.\"\n\n## Measurement Conventions\n- **Subdural thickness:** mm\n\n## Impression Exemplars\n- **Opening convention:** Index finding first\n- **Abnormal exemplar:** \"Acute subdural.\"\n- **Recommendation scope:**\n  - REFERRAL: Neurosurgery for haemorrhage with mass effect\n- **Do not recommend (this study has answered it, or it falls to the receiving team):** \"CTA for large vessel occlusion\"\n\n## Impression Plan\n- **Carry forward (the impression addresses each):** \"8 mm right subdural haematoma\"\n"
+  }
+ },
  "check": {
-  "bad_option_ids": [],
-  "error": null,
-  "flags": [
-   {
-    "kind": "contradiction",
-    "score": 0.9,
-    "text": "No skull fracture."
-   },
-   {
-    "kind": "omission",
-    "score": 0.1,
-    "text": "8 mm right subdural haematoma"
-   },
-   {
-    "kind": "omission",
-    "score": 0.1,
-    "text": "3 mm midline shift"
-   }
-  ],
-  "n_clauses": 6,
-  "n_items": 2
+  "calls": {
+   "_jev": [
+    [
+     "SCAN TYPE: CT head\nDICTATED FINDINGS:\n8 mm right subdural haematoma. 3 mm midline shift.",
+     {
+      "c0": {
+       "instructions": "The dictated findings state something that this report statement denies or contradicts. Statement: An 8 mm right subdural haematoma.",
+       "type": "noul"
+      },
+      "c1": {
+       "instructions": "The dictated findings state something that this report statement denies or contradicts. Statement: No skull fracture.",
+       "type": "noul"
+      },
+      "c2": {
+       "instructions": "The dictated findings state something that this report statement denies or contradicts. Statement: No hydrocephalus",
+       "type": "noul"
+      },
+      "c3": {
+       "instructions": "The dictated findings state something that this report statement denies or contradicts. Statement: No no herniation",
+       "type": "noul"
+      },
+      "c4": {
+       "instructions": "The dictated findings state something that this report statement denies or contradicts. Statement: No no intraventricular extension",
+       "type": "noul"
+      },
+      "c5": {
+       "instructions": "The dictated findings state something that this report statement denies or contradicts. Statement: Acute right subdural haematoma with 3 mm midline shift.",
+       "type": "noul"
+      },
+      "o0": {
+       "instructions": "The dictated findings state something that this report statement denies or contradicts. Statement: No hydrocephalus.",
+       "type": "noul"
+      },
+      "r1": {
+       "instructions": "The dictated findings report this finding: skull fracture",
+       "type": "noul"
+      },
+      "r2": {
+       "instructions": "The dictated findings report this finding: hydrocephalus",
+       "type": "noul"
+      },
+      "r3": {
+       "instructions": "The dictated findings report this finding: no herniation",
+       "type": "noul"
+      },
+      "r4": {
+       "instructions": "The dictated findings report this finding: no intraventricular extension",
+       "type": "noul"
+      }
+     }
+    ],
+    [
+     "REPORT:\nFINDINGS:\nAn 8 mm right subdural haematoma. No skull fracture. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.\n\nDr A",
+     {
+      "i0": {
+       "instructions": "The report states this dictated finding, in any wording: 8 mm right subdural haematoma",
+       "type": "noul"
+      },
+      "i1": {
+       "instructions": "The report states this dictated finding, in any wording: 3 mm midline shift",
+       "type": "noul"
+      }
+     }
+    ]
+   ]
+  },
+  "result": {
+   "bad_option_ids": [
+    "opt-a"
+   ],
+   "error": null,
+   "flags": [
+    {
+     "kind": "contradiction",
+     "score": 0.9,
+     "text": "No skull fracture."
+    },
+    {
+     "kind": "omission",
+     "score": 0.1,
+     "text": "8 mm right subdural haematoma"
+    },
+    {
+     "kind": "omission",
+     "score": 0.1,
+     "text": "3 mm midline shift"
+    }
+   ],
+   "n_clauses": 6,
+   "n_items": 2
+  }
  },
  "clauses": [
   "An 8 mm right subdural haematoma.",
@@ -31,95 +715,47 @@
   "No no intraventricular extension",
   "Acute right subdural haematoma with 3 mm midline shift."
  ],
- "decisions": {
-  "differentials": [
-   {
-    "action": "present",
-    "text": "Acute subdural \u2014 crescentic hyperdensity *(visible on this technique: yes)*"
-   },
-   {
-    "action": "removed",
-    "text": "Epidural \u2014 biconvex hyperdensity *(visible on this technique: yes)*"
-   },
-   {
-    "action": "open",
-    "text": "Vascular malformation \u2014 needs angiography *(visible on this technique: no \u2014 requires CTA)*"
-   },
-   {
-    "action": "open",
-    "text": "Coagulopathy *(imaging-silent \u2014 requires clinical/laboratory correlation)*"
-   }
-  ],
-  "finding_negatives": [],
-  "impression_plan": null,
-  "impression_variant": "Abnormal exemplar",
-  "measurements": [
-   {
-    "action": "keep",
-    "label": "Subdural thickness"
-   },
-   {
-    "action": "removed",
-    "label": "Infarct volume"
-   }
-  ],
-  "negatives": [
-   {
-    "action": "contradicted",
-    "dictated_finding": "8 mm right subdural",
-    "source": "sheet",
-    "text": "No subdural collection"
-   },
-   {
-    "action": "expected",
-    "dictated_finding": "3 mm midline shift",
-    "source": "sheet",
-    "text": "No ventricular compression"
-   },
-   {
-    "action": "keep",
-    "dictated_finding": "",
-    "source": "sheet",
-    "text": "No skull fracture"
-   }
-  ],
-  "normals": [
-   {
-    "action": "do_not_assert",
-    "text": "The ventricles are normal in size."
-   },
-   {
-    "action": "keep",
-    "text": "The orbits are clear."
-   },
-   {
-    "action": "do_not_assert",
-    "text": "No midline shift."
-   }
-  ],
-  "options": [],
-  "recommendations": [
-   {
-    "action": "keep",
-    "reason": "",
-    "text": "REFERRAL: Neurosurgery for haemorrhage with mass effect"
-   },
-   {
-    "action": "removed",
-    "reason": "",
-    "text": "IMAGING: CTA for large vessel occlusion"
-   }
-  ],
-  "style": [
-   {
-    "action": "keep",
-    "label": "Subdural"
-   },
-   {
-    "action": "removed",
-    "label": "Infarct"
-   }
-  ]
+ "plan_prompt": {
+  "model_name": "qwen-3.8-27b",
+  "model_settings": {
+   "max_tokens": 8000,
+   "reasoning_effort": "low",
+   "temperature": 0
+  },
+  "output": {
+   "findings_only": [],
+   "impression": [
+    0
+   ],
+   "optional_impression": [],
+   "recommendations": [
+    {
+     "decision": "include",
+     "exclude_reason": null,
+     "index": 0,
+     "reason": ""
+    }
+   ]
+  },
+  "output_type": "ImpressionPlan",
+  "system_prompt": "You plan the impression of a radiology report before it is written. You see the scan type, the clinical question, the dictated findings (numbered) and candidate recommendations (numbered). Return JSON only.\n\nrecommendations \u2014 decide every candidate by its kind; a candidate whose condition the dictated findings do not meet is always exclude.\n- REFERRAL and MDT: routing a finding to the team that must act on it, at the urgency the findings warrant, is the radiologist's job even when the diagnosis is already made. include when the condition is met; exclude only when an included candidate already covers it.\n- IMAGING and TISSUE: include only when it answers a question this study raises but cannot answer itself, and the answer would change management. exclude routine workup of a diagnosis this study has already made \u2014 looking for its cause, source or spread when the receiving team manages it the same way regardless.\n- CORRELATION: include only retrieving prior imaging to compare against; exclude laboratory tests, clinical monitoring, treatment decisions and bare clinical correlation.\nUse optional only when a reasonable consultant could go either way on this case. For every exclude, set exclude_reason: condition_unmet (the findings do not meet its condition), routine_workup (routine workup of a diagnosis this study has already made), not_radiology (laboratory tests, monitoring, treatment, bare correlation) or duplicate. Give a one-line reason.\n\nimpression \u2014 the numbers of the findings the impression must carry: the finding(s) that answer the clinical question, findings that change management or urgency, and, only when no dictated positive finding answers the clinical question, the one negative that does. Never carry more than one negative.\noptional_impression \u2014 findings with a management consequence that a reasonable consultant could either carry or leave in FINDINGS. Never use it for normal structures, devices or negatives.\nfindings_only \u2014 findings that stay in FINDINGS: incidental or background findings needing no action, devices and procedure notes, normal structures the question did not ask about.\nA finding may be in none of the lists when either placement is acceptable. Never place a number in two lists.",
+  "user_prompt": "SCAN TYPE: CT head\nCLINICAL QUESTION (context only): fall\n\nDICTATED FINDINGS:\n0. a\n1. b\n\nCANDIDATE RECOMMENDATIONS:\n0. REFERRAL: x"
+ },
+ "prompt_hashes": {
+  "qb.FALLBACK_SYS": "3bb1d01f72c7",
+  "qb.PLAN_SYS": "90e5cef94ee1",
+  "qb.QWEN_SYS": "8a77446e6499",
+  "qb.Q_AFFECTED": "11fa1a77c91f",
+  "qb.Q_FINDING": "2d14203db375",
+  "qb.Q_PRESENT": "15977af07a11",
+  "qb.Q_REC_UNMET": "6741cf47acee",
+  "qb.Q_STYLE_MATCH": "6a3a810a3e67",
+  "qq.INSERT_ONLY_SYS": "c05279075b45",
+  "qq.INSERT_SYS": "684666873967",
+  "qq.Q_CONTRA": "ed1074aa3ba8",
+  "qq.Q_OMIT": "17a4ca2c881a",
+  "qq.Q_RESTATED": "3d1c1f42aeb7",
+  "qq.REPAIR_SYS": "9b36156d4423"
  },
  "removed_list": "FINDINGS:\nNo collection or free air.\n\nIMPRESSION:\nNormal.",
  "removed_sentence": "FINDINGS:\nAn 8 mm right subdural haematoma. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.\n\nDr A"
