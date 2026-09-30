@@ -5,7 +5,7 @@ import asyncio
 
 import pytest
 
-from rapid_reports_ai import quick_report_quality as qq
+from rapid_reports_ai import report_review as qq
 
 REPORT = """COMPARISON:
 None.
@@ -62,7 +62,7 @@ def _stub_jev(monkeypatch, contra: dict, reported: dict):
             else:
                 out[k] = {"noul": reported.get(t[len(qq.Q_OMIT):], 0.95)}
         return out
-    monkeypatch.setattr(qq.qb, "_jev", fake)
+    monkeypatch.setattr(qq.rc, "_jev", fake)
     return calls
 
 
@@ -88,7 +88,7 @@ async def test_check_asks_two_parallel_calls_and_flags(monkeypatch):
 async def test_check_failure_returns_no_flags_and_the_reason(monkeypatch):
     async def boom(state, questions):
         raise RuntimeError("jev down")
-    monkeypatch.setattr(qq.qb, "_jev", boom)
+    monkeypatch.setattr(qq.rc, "_jev", boom)
     res = await qq.check(REPORT, FINDINGS, "CT AP", OPTIONS)
     assert res.flags == [] and res.bad_option_ids == [] and "jev down" in res.error
 
@@ -301,7 +301,7 @@ async def test_a_negative_is_flagged_only_when_its_restatement_is_dictated(monke
             else:
                 out[k] = {"noul": 0.95}
         return out
-    monkeypatch.setattr(qq.qb, "_jev", fake)
+    monkeypatch.setattr(qq.rc, "_jev", fake)
     res = await qq.check(REPORT, FINDINGS, "CT AP", [])
     assert [f.text for f in res.flags] == ["No portal vein encasement"]   # SMV and hepatic deposit not confirmed
 

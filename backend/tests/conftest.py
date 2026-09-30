@@ -105,10 +105,14 @@ def client(db_session: Session, monkeypatch) -> Iterator[TestClient]:
         app.dependency_overrides.clear()
 
 
+_QUALITY_MODULES = ("test_quick_report_quality", "test_report_review", "test_template_pipeline",
+                    "test_golden_quick_pipeline")
+
+
 @pytest.fixture(autouse=True)
 def _no_live_quality_check(request, monkeypatch):
-    """The post-generation check calls Jev over the network; unit tests outside its own module
-    run the generator with it switched off."""
-    if request.module.__name__.endswith("test_quick_report_quality"):
+    """The post-generation check calls Jev over the network; unit tests outside the modules that
+    stub it run the generators with it switched off."""
+    if request.module.__name__.endswith(_QUALITY_MODULES):
         return
     monkeypatch.setenv("RR_QUALITY_CHECK", "0")

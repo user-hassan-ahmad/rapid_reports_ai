@@ -21,6 +21,8 @@ Who decides what (docs/superpowers/research/2026-09-29-sheet-reconciliation-bake
 
 Removed outright (lean): Conditional Suppression Rules (generic; replaced by per-item labels),
 Out of scope, Modality non-assessables, In-scope companions, Out-of-scope suppressed.
+
+The Jev/Qwen calls and routing now live in report_reconcile (shared with the templated pathway).
 """
 from __future__ import annotations
 
