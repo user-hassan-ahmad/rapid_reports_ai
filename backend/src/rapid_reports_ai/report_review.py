@@ -106,30 +106,51 @@ class ReportSection(BaseModel):
 CHECKED_ROLES = {"findings", "impression", "other"}
 
 
-def _header_pattern(header: str) -> "re.Pattern[str]":
-    """A header alone on its line ('Impression', 'Impression:') or inline ('Impression: text'); the
-    match ends where the section's content starts. Tolerates CRLF line ends."""
+def _header_candidates(report: str, header: str) -> List[Tuple[int, int, int]]:
+    """Every place `header` could start a section, as (tier, header start, content start). Tier 0/1:
+    the header alone on its line ('Impression', 'Impression:'), exact case / any case; tier 2/3: an
+    inline header ('Impression: text', content after the colon), exact case / any case. Tolerates
+    CRLF line ends."""
     h = re.escape(header.strip().rstrip(":").strip())
-    return re.compile(rf"^[ \t]*{h}[ \t]*(?::[ \t]*(?=[^\s])|:?[ \t]*\r?$)", re.M | re.I)
+    alone = rf"^[ \t]*{h}[ \t]*:?[ \t]*\r?$"
+    inline = rf"^[ \t]*{h}[ \t]*:[ \t]*(?=[^\s])"
+    out = []
+    for base, pat in ((0, alone), (2, inline)):
+        exact = re.compile(pat, re.M)
+        for m in re.compile(pat, re.M | re.I).finditer(report):
+            out.append((base + (0 if exact.match(report, m.start()) else 1), m.start(), m.end()))
+    return out
 
 
-def section_spans(report: str, sections: List[ReportSection]) -> List[Tuple[ReportSection, int, int]]:
-    """(section, start, end) for each section found, in report order. Each header is looked for
-    anywhere in the report, so sections written out of sheet order still split correctly. A headed
-    section starts where its content starts (after the header line, or after an inline header's
-    colon) and ends at the next header, or, when the next section is implicit, at its first paragraph
-    break. An implicit section follows its nearest found headed predecessor in sheet order (or sits
-    at the top) and runs to the next header."""
+_PREAMBLE_ROLES = {"technique", "comparison", "history"}
+
+
+def _section_layout(report: str, sections: List[ReportSection]
+                    ) -> Tuple[List[Tuple[ReportSection, int, int]], List[str]]:
+    """section_spans, plus the names of checked implicit sections that came out empty."""
+    # Header choice, deterministic: sections are taken in sheet order; each tries the candidate tiers
+    # in turn (standalone before inline, exact case before any case) and within a tier takes the
+    # first unclaimed candidate after the previously placed header, else the first unclaimed one
+    # anywhere. So a standalone header always beats prose that merely starts 'Impression: ...', a
+    # lone lower-case word in the history loses to the real header, and a section written out of
+    # sheet order is still found.
     headed: dict = {}                 # sheet index -> (header start, content start)
-    claimed: List[int] = []
+    claimed: set = set()
+    last = -1
     for i, sec in enumerate(sections):
         if not sec.header:
             continue
-        for m in _header_pattern(sec.header).finditer(report):
-            if m.start() not in claimed:
-                headed[i] = (m.start(), m.end())
-                claimed.append(m.start())
+        cands = _header_candidates(report, sec.header)
+        pick = None
+        for tier in range(4):
+            tc = sorted((st, en) for t, st, en in cands if t == tier and st not in claimed)
+            pick = next(((st, en) for st, en in tc if st > last), tc[0] if tc else None)
+            if pick:
                 break
+        if pick:
+            headed[i] = pick
+            claimed.add(pick[0])
+            last = pick[0]
     after: dict = {}                  # headed sheet index (or -1 = top) -> implicit sections after it
     for i, sec in enumerate(sections):
         if not sec.header:
@@ -141,7 +162,8 @@ def section_spans(report: str, sections: List[ReportSection]) -> List[Tuple[Repo
         order.append((sections[i], *headed[i]))
         order += [(sec, None, None) for sec in after.get(i, [])]
     header_starts = sorted(h for h, _ in headed.values())
-    out: List[Tuple[ReportSection, int, int]] = []
+    out: List[List] = []
+    empty: List[str] = []
     prev_end = 0
     for idx, (sec, h, c) in enumerate(order):
         start = c if c is not None else prev_end
@@ -151,9 +173,32 @@ def section_spans(report: str, sections: List[ReportSection]) -> List[Tuple[Repo
             brk = re.search(r"\n[ \t]*\r?\n", report[start + body.start():nxt]) if body else None
             if brk:
                 nxt = start + body.start() + brk.start()
-        out.append((sec, start, nxt))
+        if c is None and sec.role in CHECKED_ROLES and not report[start:nxt].strip():
+            empty.append(sec.name)
+            # No blank line after a short preamble section ('TECHNIQUE\nCT.\nNo ascites.'): its
+            # first line is the preamble, the rest belongs to this implicit section.
+            prev = out[-1] if out else None
+            if prev and prev[0].header and prev[0].role in _PREAMBLE_ROLES:
+                body = re.search(r"\S", report[prev[1]:prev[2]])
+                nl = report.find("\n", prev[1] + body.start(), prev[2]) if body else -1
+                if nl >= 0 and report[nl:prev[2]].strip():
+                    prev[2], start = nl, nl
+        out.append([sec, start, nxt])
         prev_end = nxt
-    return out
+    return [(s_, a_, b_) for s_, a_, b_ in out], empty
+
+
+def section_spans(report: str, sections: List[ReportSection]) -> List[Tuple[ReportSection, int, int]]:
+    """(section, start, end) for each section found, in report order. Headers are chosen as in
+    _section_layout: standalone header lines before inline 'Header: text', exact case before any
+    case, sheet order kept where the report allows, else the first free occurrence anywhere (so
+    out-of-order sections still split). A headed section starts where its content starts (after
+    the header line, or after an inline header's colon) and ends at the next header, or, when the
+    next section is implicit, at its first paragraph break. An implicit section follows its nearest
+    found headed predecessor in sheet order (or sits at the top) and runs to the next header; if it
+    comes out empty after a history/technique/comparison section, that section keeps only its first
+    line and the rest is the implicit section's."""
+    return _section_layout(report, sections)[0]
 
 
 def _checked_spans(report: str, sections: List[ReportSection]) -> List[Tuple[int, int]]:
@@ -316,19 +361,15 @@ INSERT_ONLY_SYS = (" Each problem is an omitted finding: 'replace' must contain 
 
 
 def _touches_protected(find: str, protected: Optional[List[str]], report: Optional[str]) -> bool:
-    """Whether editing `find` would touch protected text. With the report, by position: any
-    occurrence of `find` that overlaps any occurrence of a protected string. Without it, by the
-    strings alone: containment either way, or `find` running into or out of a protected string."""
+    """Whether editing `find` would touch protected text, by position: any occurrence of `find` in
+    the report that overlaps any occurrence of a protected string. The report is required whenever
+    protected text is given."""
     if not protected:
         return False
-    if report is not None:
-        spans = protected_spans(report, protected)
-        return any(_overlaps(a, b, spans) for a, b in _occurrences(report, find))
-    for p in protected:
-        if p and (find in p or p in find
-                  or any(find[-k:] == p[:k] or find[:k] == p[-k:] for k in range(1, min(len(find), len(p))))):
-            return True
-    return False
+    if report is None:
+        raise ValueError("edit_allowed: protected text needs the report to locate it")
+    spans = protected_spans(report, protected)
+    return any(_overlaps(a, b, spans) for a, b in _occurrences(report, find))
 
 
 def edit_allowed(e: Edit, insert_only: bool, protected: Optional[List[str]] = None,
@@ -578,7 +619,7 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
     options with flagged ones dropped, and telemetry. Never raises. `sections` makes the check
     section-generic (templates); `protected` text is never checked for omission or edited; a repair
     never introduces a `suppressed` term. All default to the quick behaviour. The template path works
-    on the report with CRLF normalised to LF; protected text is an invariant: if a repair ever
+    on the report with CRLF normalised to LF and returns it with LF line endings; protected text is an invariant: if a repair ever
     changes it, the repairs are reverted."""
     if not enabled():
         return report, options, {"enabled": False}
@@ -588,7 +629,7 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
     if sections is not None:
         report = report.replace("\r\n", "\n")
         protected = [p.replace("\r\n", "\n") for p in protected] if protected is not None else None
-        found = section_spans(report, sections)
+        found, tel["sections_empty"] = _section_layout(report, sections)
         tel["sections_found"] = [s.name for s, _, _ in found]
         tel["sections_missing"] = [s.name for s in sections if s.header and not any(s is f for f, _, _ in found)]
     original = pre_repair = report
@@ -600,9 +641,9 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
         # A flagged negative is removed in code; a flagged positive statement is corrected, and an
         # omitted finding inserted, by Qwen under edit_allowed (L-47).
         # A contradiction inside protected text stays in tel["flags"] for the rail but is never edited.
-        # The positional guards in the repairs are the invariant; this only keeps obvious cases off the LLM.
-        editable = [f for f in res.flags
-                    if not (f.kind == "contradiction" and any(p and f.text.rstrip(".") in p for p in protected or []))]
+        # A clause found only inside protected text is not edited; one also written elsewhere still
+        # is. The positional guards in the repairs are the invariant; this keeps such flags off the LLM.
+        editable = [f for f in res.flags if not (f.kind == "contradiction" and _only_protected(report, f.text, protected))]
         removed = 0
         for f in editable:
             if f.kind == "contradiction" and is_negative(f.text):
@@ -636,6 +677,13 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
         report = pre_repair if _protected_intact(original, pre_repair, protected) else original
         tel["error"] = "protected text changed; repair reverted"
     return report, options, tel
+
+
+def _only_protected(report: str, clause: str, protected: Optional[List[str]]) -> bool:
+    """The clause occurs in the report, and every occurrence lies wholly inside protected text."""
+    occ = _occurrences(report, clause.strip().rstrip("."))
+    spans = protected_spans(report, protected)
+    return bool(occ and spans) and all(_inside(a, b, spans) for a, b in occ)
 
 
 def _protected_intact(before: str, after: str, protected: List[str]) -> bool:

@@ -68,11 +68,12 @@ def test_quick_default_is_unchanged():
 
 def test_edit_guard_rejects_protected_spans_and_suppressed_terms():
     history = "67F. Abdominal pain. ?Appendicitis."
-    assert not rr.edit_allowed(rr.Edit(find="Abdominal pain.", replace="Pain."), False, protected=[history])
+    assert not rr.edit_allowed(rr.Edit(find="Abdominal pain.", replace="Pain."), False, protected=[history],
+                               report=REPORT)
     assert not rr.edit_allowed(rr.Edit(find="The spleen is unremarkable.", replace="The spleen is normal."),
                                False, suppressed=["normal"])
     assert rr.edit_allowed(rr.Edit(find="The appendix is dilated.", replace="The appendix is dilated to 11 mm."),
-                           False, protected=[history], suppressed=["normal"])
+                           False, protected=[history], suppressed=["normal"], report=REPORT)
 
 
 def test_omission_state_drops_the_history_text():
@@ -147,8 +148,11 @@ def test_negative_removal_edits_only_the_checked_span():
 def test_edit_guard_rejects_partial_overlap_with_protected_text():
     history = "67F. Abdominal pain. ?Appendicitis."
     e = rr.Edit(find="?Appendicitis.\n\nTECHNIQUE", replace="?Appendicitis.\n\nMETHOD")
-    assert not rr.edit_allowed(e, False, protected=[history])
     assert not rr.edit_allowed(e, False, protected=[history], report=REPORT)
+    assert not rr.edit_allowed(rr.Edit(find="pain. ?App", replace="pain. App"), False, protected=[history],
+                               report=REPORT)
+    with pytest.raises(ValueError):   # protected text is located by position: the report is required
+        rr.edit_allowed(e, False, protected=[history])
     assert rr.edit_allowed(rr.Edit(find="Portal venous phase CT.", replace="Portal venous phase CT abdomen."),
                            False, protected=[history], report=REPORT)
 
@@ -226,7 +230,7 @@ async def test_run_quality_check_normalises_crlf_and_reports_sections(monkeypatc
                                              sections=secs, protected=["67F. Abdominal pain. ?Appendicitis."])
     assert out == REPORT and tel["error"] is None
     assert tel["sections_found"] == ["CLINICAL HISTORY", "TECHNIQUE", "FINDINGS", "IMPRESSION"]
-    assert tel["sections_missing"] == ["RECOMMENDATION"]
+    assert tel["sections_missing"] == ["RECOMMENDATION"] and tel["sections_empty"] == []
 
 
 def test_without_removes_the_protected_occurrence_only():
@@ -234,3 +238,60 @@ def test_without_removes_the_protected_occurrence_only():
             rr.ReportSection(name="FINDINGS", header="FINDINGS", role="findings")]
     report = "CLINICAL HISTORY\nNo ascites.\n\nFINDINGS\nLiver normal. No ascites."
     assert rr.without(report, ["No ascites."], secs) == "CLINICAL HISTORY\n\n\nFINDINGS\nLiver normal. No ascites."
+
+
+H3 = [rr.ReportSection(name="CLINICAL HISTORY", header="CLINICAL HISTORY", role="history"),
+      rr.ReportSection(name="FINDINGS", header="FINDINGS", role="findings"),
+      rr.ReportSection(name="IMPRESSION", header="IMPRESSION", role="impression")]
+
+
+def test_prose_that_starts_like_an_inline_header_is_not_a_header():
+    text = "CLINICAL HISTORY\nPain.\n\nFINDINGS\nLiver normal.\nImpression: none from prior.\n\nIMPRESSION\nNormal."
+    spans = _spans(text, H3)
+    assert spans["FINDINGS"] == "Liver normal.\nImpression: none from prior." and spans["IMPRESSION"] == "Normal."
+
+
+def test_a_lone_lower_case_header_word_in_the_history_loses_to_the_real_header():
+    text = "CLINICAL HISTORY\nfindings\n\nFINDINGS\nNo ascites.\n\nIMPRESSION\nNormal."
+    assert _spans(text, H3) == {"CLINICAL HISTORY": "findings", "FINDINGS": "No ascites.", "IMPRESSION": "Normal."}
+
+
+PRE = [rr.ReportSection(name="TECHNIQUE", header="TECHNIQUE", role="technique"),
+       rr.ReportSection(name="FINDINGS", header=None, role="findings"),
+       rr.ReportSection(name="IMPRESSION", header="Impression", role="impression")]
+NO_BLANK = "TECHNIQUE\nCT.\nNo ascites.\n\nImpression\nNormal."
+
+
+def test_an_empty_implicit_section_takes_the_preamble_after_its_first_line():
+    assert _spans(NO_BLANK, PRE) == {"TECHNIQUE": "CT.", "FINDINGS": "No ascites.", "IMPRESSION": "Normal."}
+    assert rr.checked_clauses(NO_BLANK, PRE) == ["No ascites.", "Normal."]
+
+
+async def test_run_quality_check_reports_empty_implicit_sections(monkeypatch):
+    async def fake_jev(state, qs):
+        return {k: {"noul": 0.9 if k.startswith("i") else 0.1} for k in qs}
+    monkeypatch.setattr(rr.rc, "_jev", fake_jev)
+    _, _, tel = await rr.run_quality_check(NO_BLANK, "ascites", "CT", [], sections=PRE)
+    assert tel["sections_empty"] == ["FINDINGS"] and tel["clauses"] == 2
+
+
+async def test_a_contradiction_also_written_outside_protected_text_is_still_repaired(monkeypatch):
+    history = "67F. Abdominal pain. ?Appendicitis. The appendix is dilated measuring 11 mm."
+    report = REPORT.replace("67F. Abdominal pain. ?Appendicitis.", history)
+    seen = []
+
+    async def fake_check(*a, **kw):
+        return rr.CheckResult(flags=[rr.Flag(kind="contradiction", text="The appendix is dilated measuring 11 mm.",
+                                             score=0.9)])
+
+    async def fake_repair(report, findings, problems, **kw):
+        seen.append(problems)
+        return rr.RepairResult(report=report)
+    monkeypatch.setattr(rr, "check", fake_check)
+    monkeypatch.setattr(rr, "repair_report", fake_repair)
+    await rr.run_quality_check(report, "x", "CT", [], sections=SECTIONS, protected=[history])
+    assert len(seen) == 1
+    seen.clear()   # the same clause only inside protected text is kept off the repair
+    await rr.run_quality_check(report.replace("The appendix is dilated measuring 11 mm. No", "No"), "x", "CT", [],
+                               sections=SECTIONS, protected=[history])
+    assert seen == []
