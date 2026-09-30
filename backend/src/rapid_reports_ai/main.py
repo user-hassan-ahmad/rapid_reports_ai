@@ -65,6 +65,7 @@ from .database import (
 )
 from .database.connection import engine
 from .template_manager import TemplateManager
+from . import template_sheet_structure as tss
 from .auth import (
     verify_password,
     get_password_hash,
@@ -1625,6 +1626,25 @@ def _normalize_template_config_styles(config: dict) -> dict:
     return config
 
 
+def _carry_structure(new_config: dict, old_config: dict) -> dict:
+    """PUT replaces template_config wholesale; keep the stored structure when the sheet is unchanged."""
+    old = old_config or {}
+    if (new_config.get("skill_sheet") and "sheet_structure" not in new_config
+            and old.get("skill_sheet") == new_config.get("skill_sheet") and old.get("sheet_structure")):
+        return {**new_config, "sheet_structure": old["sheet_structure"]}
+    return new_config
+
+
+def _queue_structure(template_id: str, config: dict) -> None:
+    """Queue background structuring for a guided template whose structure is missing or stale.
+    Never raises: a template write must not fail because structuring could not be queued."""
+    try:
+        if (config or {}).get("generation_mode") == "skill_sheet_guided" and tss.needs_restructure(config):
+            tss.schedule_structure(template_id, config["skill_sheet"])
+    except Exception as e:
+        logger.warning("sheet structuring not queued for template %s: %s", template_id, e)
+
+
 @app.post("/api/templates")
 async def create_template_endpoint(
     template_data: TemplateCreate,
@@ -1645,7 +1665,8 @@ async def create_template_endpoint(
             is_pinned=template_data.is_pinned or False,
             user_id=str(current_user.id),
         )
-        
+        _queue_structure(str(template.id), template.template_config)
+
         return {"success": True, "template": template.to_dict()}
     except Exception as e:
         import traceback
@@ -1666,6 +1687,9 @@ async def update_template_endpoint(
         template_config = template_data.template_config
         if template_config:
             template_config = _normalize_template_config_styles(template_config)
+        if template_config:
+            existing = get_template(db, template_id, user_id=str(current_user.id))
+            template_config = _carry_structure(template_config, existing.template_config if existing else {})
         updated_template = update_template(
             db=db,
             template_id=template_id,
@@ -1679,7 +1703,8 @@ async def update_template_endpoint(
         
         if not updated_template:
             return {"success": False, "error": "Template not found"}
-        
+        _queue_structure(template_id, updated_template.template_config)
+
         return {"success": True, "template": updated_template.to_dict()}
     except Exception as e:
         import traceback
@@ -2082,6 +2107,7 @@ async def restore_template_version_endpoint(
         
         if not restored_template:
             return {"success": False, "error": "Template or version not found, or you don't have permission"}
+        _queue_structure(template_id, restored_template.template_config)
         
         return {
             "success": True,
@@ -2543,6 +2569,7 @@ async def skill_sheet_save_endpoint(
             is_pinned=False,
             user_id=str(current_user.id),
         )
+        _queue_structure(str(template.id), template_config)
         return {"success": True, "template_id": str(template.id)}
     except Exception as e:
         import traceback
