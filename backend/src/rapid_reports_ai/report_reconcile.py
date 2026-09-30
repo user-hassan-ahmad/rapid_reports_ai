@@ -16,7 +16,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import List, Literal, Optional
+from typing import Any, Awaitable, Callable, List, Literal, Optional
 
 import httpx
 from pydantic import BaseModel, field_validator
@@ -282,7 +282,8 @@ OPTION_SYS = ("Write one sentence for the IMPRESSION of a radiology report for e
               "findings. British English, consultant voice, no preamble. Return JSON {\"sentences\": [...]}.")
 
 
-async def write_options(options: List[dict], findings: str, scan_type: str, *, model: str, runner,
+async def write_options(options: List[dict], findings: str, scan_type: str, *, model: str,
+                        runner: Callable[..., Awaitable[Any]],
                         style: str = "", impression_section: str = "IMPRESSION") -> List[dict]:
     """Reporter-choice items. Impression and recommendation items get one sentence each from a
     writer call beside the generator; finding-linked negatives are already in report form and

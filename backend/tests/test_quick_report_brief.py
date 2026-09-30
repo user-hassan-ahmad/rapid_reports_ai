@@ -5,6 +5,7 @@ import pytest
 
 from rapid_reports_ai import quick_report_brief as qb
 from rapid_reports_ai import quick_report_generator as qrg
+from rapid_reports_ai import report_reconcile
 
 SHEET = '''# Skill Sheet: CT head non-contrast — query haemorrhage
 
@@ -195,7 +196,7 @@ async def test_option_sentences_pair_with_their_items_and_fail_to_empty(monkeypa
 
     async def fake_run(**kw):
         class R:
-            output = qrg._OptionSentences(sentences='["MRI brain is recommended.", "Small right pleural effusion."]')
+            output = report_reconcile._OptionSentences(sentences='["MRI brain is recommended.", "Small right pleural effusion."]')
         return R()
     monkeypatch.setattr(qrg, "_run_agent_with_model", fake_run)
     out = await qrg._write_options(opts, "findings", "CT")

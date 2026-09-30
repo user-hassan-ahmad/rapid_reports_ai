@@ -22,7 +22,7 @@ from .enhancement_utils import (
 )
 from .quick_report_brief import compile_brief
 from .quick_report_quality import run_quality_check
-from .report_reconcile import _OptionSentences, write_options  # noqa: F401  (_OptionSentences: tests build it via qrg)
+from .report_reconcile import write_options
 from .quick_report_hardening import QUICK_REPORT_HARDENING_PREAMBLE, QUICK_REPORT_HARDENING_PREAMBLE_BRIEF
 from .quick_report_prompts import (
     QR_PRE_WRITING_ANALYSIS,

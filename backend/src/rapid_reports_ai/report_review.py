@@ -87,6 +87,16 @@ def header_names(report: str) -> List[str]:
     return [m.group(1) for m in _HEADER.finditer(report)]
 
 
+QUICK_TOP_LEVEL = ("CLINICAL HISTORY", "COMPARISON", "TECHNIQUE", "FINDINGS", "IMPRESSION", "LIMITATIONS",
+                   "CONCLUSION")
+
+
+def quick_section_names(report: str) -> List[str]:
+    """Top-level headings of a quick report, in order. Region sub-headings under a REGIONS
+    macro-structure (e.g. a body-region label inside FINDINGS) are not sections."""
+    return [h for h in header_names(report) if h in QUICK_TOP_LEVEL]
+
+
 class ReportSection(BaseModel):
     name: str
     header: Optional[str] = None      # as written in reports; None = implicit (no header line)
