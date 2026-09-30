@@ -492,6 +492,32 @@ def _link_repeats(negatives: list, neg_lines: List[str]) -> None:
                 break
 
 
+def _fold_negatives(negatives: list) -> list:
+    """One item per (statement, condition): a repeat (e.g. from the repair pass) adds its lines."""
+    out, at = [], {}
+    for n in negatives:
+        k = (_key(n.text), _norm(n.condition or ""))
+        if k not in at:
+            at[k] = len(out)
+            out.append(n)
+            continue
+        first = out[at[k]]
+        extra = [ln for ln in n.source_lines if _norm(ln) not in {_norm(x) for x in first.source_lines}]
+        out[at[k]] = first.model_copy(update={"source_lines": [*first.source_lines, *extra]})
+    return out
+
+
+def _fold_rules(rules: list) -> list:
+    """Drop a rule identical to an earlier one (same line(s), effect, target and text)."""
+    seen, out = set(), []
+    for r in rules:
+        k = (tuple(sorted(_norm(ln) for ln in r.source_lines)), r.effect, _key(r.target), _key(r.then_text))
+        if k not in seen:
+            seen.add(k)
+            out.append(r)
+    return out
+
+
 def _dedupe(items: list, label: str, failures: List[str]) -> list:
     seen, out = set(), []
     for it in items:
@@ -532,9 +558,17 @@ def build_structure(sheet: str, draft: StructureDraft, model: str) -> SheetStruc
 
     allowed_sections = section_names(sheet)
     sections, kept = [], set()
+    canon_sections = {re.sub(r"\s*/\s*|\s+or\s+", " or ", a) for a in allowed_sections}
+
+    def listed(k: str) -> bool:
+        """A listed name, or alternatives the pattern lists for one section ("[A]/[B]", "[A] or [B]")."""
+        alts = [a.strip() for a in re.split(r"\s*/\s*|\s+or\s+", k)]
+        return (k in allowed_sections or " or ".join(alts) in canon_sections
+                or (len(alts) > 1 and all(a in allowed_sections for a in alts)))
+
     for s in draft.sections:
         k = _name_key(s.name)
-        if not (k and k in allowed_sections):
+        if not (k and listed(k)):
             reject(f"section: {s.name}")
         elif k in kept:
             reject(f"duplicate section: {s.name}")
@@ -598,6 +632,8 @@ def build_structure(sheet: str, draft: StructureDraft, model: str) -> SheetStruc
                  and in_own_line(f"negative {n.id}", n.text, n.source_lines)
                  and condition_matches(n)]
     _link_repeats(negatives, neg_lines)
+    negatives = _fold_negatives(negatives)
+    rules = _fold_rules(rules)
     normals = [para(n) for n in _dedupe(draft.normals, "normal", failures)
                if in_section(f"normal {n.id}", n)
                and (n.source_line.strip() and "normal pattern" in _norm(n.source_line)

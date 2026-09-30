@@ -738,7 +738,9 @@ def test_negative_text_is_a_whole_statement_of_its_line(text, kept):
     line = d.negatives[1].source_lines[0] if "air" in text else d.negatives[2].source_lines[0]
     cond = None if "air" in text else "The dictated findings report appendicitis"
     d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text=text, condition=cond, source_lines=[line]))
-    assert ("n9" in [n.id for n in build(d).negatives]) is kept
+    s = build(d)                                    # a kept repeat folds into the item with that statement
+    assert (tss._key(text) in [tss._key(n.text) for n in s.negatives]) is kept
+    assert not any("n9: " in f and "source line" not in f for f in s.coverage.verbatim_failures) is kept
 
 
 def test_backtick_quoted_target_is_a_statement_boundary():
@@ -1006,3 +1008,24 @@ def test_an_abbreviated_target_expands_only_to_a_sheet_statement(target, kept):
                             target=target, then_text="Y.", source_lines=[ELLIPSIS_IF]))
     s = build(d, sheet)
     assert ("r9" in [r.id for r in s.rules]) is kept and s.usable is kept
+
+
+def test_repeated_items_fold_into_one():
+    d = good_draft()
+    d.negatives.append(d.negatives[0].model_copy(update={"id": "nx0", "source_lines": ['- "No pneumoperitoneum."']}))
+    d.negatives.append(d.negatives[2].model_copy(update={"id": "nx1", "condition": None}))  # different condition: kept apart (and rejected)
+    d.rules.append(d.rules[1].model_copy(update={"id": "rx0"}))
+    s = build(d)
+    assert [n.id for n in s.negatives] == ["n0", "n1", "n2"] and [r.id for r in s.rules] == ["r0", "r1", "r2"]
+    assert s.usable
+
+
+ALT_SHEET = SHEET.replace("  - IMPRESSION\n", "  - IMPRESSION or CONCLUSION\n")
+
+
+@pytest.mark.parametrize("name,kept", [("IMPRESSION/CONCLUSION", True), ("IMPRESSION or CONCLUSION", True),
+                                       ("IMPRESSION/SUMMARY", False), ("FINDINGS/LIMITATIONS", False)])
+def test_a_section_named_by_its_listed_alternatives(name, kept):
+    d = good_draft()
+    d.sections[2] = d.sections[2].model_copy(update={"name": name})
+    assert (name in [x.name for x in build(d, ALT_SHEET).sections]) is kept
