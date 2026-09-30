@@ -7,15 +7,22 @@ ever meet a fully labelled sheet; anything else generates down the raw path.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
+import uuid
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, field_validator
+from sqlalchemy.orm.attributes import flag_modified
 
+from .database import SessionLocal
+from .database.models import Template
+from .enhancement_utils import _run_agent_with_model
 from .report_review import is_negative
 
 logger = logging.getLogger(__name__)
@@ -251,3 +258,86 @@ def needs_restructure(config: dict) -> bool:
     s = _stored(config)
     sheet = (config or {}).get("skill_sheet", "")
     return bool(sheet) and (s is None or s.version != STRUCTURE_VERSION or s.sheet_hash != sheet_hash(sheet))
+
+
+# ── structuring call and background store ───────────────────────────────────
+
+STRUCTURE_TIMEOUT_S = 120.0
+
+
+def structure_model() -> str:
+    """Chosen in E1 (ledger); overridable on Railway."""
+    return os.environ.get("RR_STRUCTURE_MODEL", "gpt-oss-120b")
+
+
+STRUCTURE_SYS = """You convert a radiology report skill sheet into typed items. The sheet is the reporter's own style guide; you do not change it, judge it or add to it, except for the if_present list. Copy text exactly as it appears in the sheet (same words, same punctuation) wherever a field says "verbatim". Return JSON only.
+
+sections — the report's OUTPUT sections from the Structural Pattern, in order: name, role (history | technique | comparison | findings | impression | other), header exactly as reports write it (null when the sheet says the header is none or implicit), order (0-based). Paragraph groupings inside a section are not sections.
+
+paragraphs — each "### <name>" block under Per-Section Construction Rules: id (p0, p1, …), the output section it belongs to, name.
+
+rules — one per sheet line that holds a conditional, in any form: IF [condition] THEN suppress "[negative]", IF [condition] THEN append "[clause]", IF x: "[text]", bold **IF [..]**, compound OR conditions. id (r0, …); section and paragraph id where it applies; condition rewritten as one plain statement that can be judged true or false for a case ("The dictated findings report [X]" for an imaging condition; "The clinical history reports [Y]" or "The clinical context is [Z]" for a history or context condition); condition_source: findings | history | context; effect: suppress (drop the target text) | replace (drop the target text and write then_text) | append (add then_text, e.g. an interpretive clause) | use (a phrasing variant); target: the text it suppresses or replaces, verbatim, else ""; then_text: the text it adds, verbatim, else ""; source_lines: the whole sheet line(s), verbatim. Every conditional line in the sheet must appear in some rule's source_lines.
+
+negatives — every quoted negative statement listed under a paragraph's Mandatory negatives and under Negative Finding Rules. One item per statement: a line holding two quoted statements gives two items with the same source line. The same statement listed in several places is ONE item whose source_lines lists every line it appears on. text verbatim (the quoted statement); condition: when the line attaches one ("(if [X])"), the plain statement "The dictated findings report [X]", else null; source_lines verbatim.
+
+normals — split every Normal pattern into one item per structure it names: structure (the structure's name), text (a sentence for that structure alone, using only words from the pattern line: "Unremarkable appearances of the [A], [B] and [C]." gives "Unremarkable appearances of the [A]." and so on), source_line verbatim.
+
+fixed_blocks — each fixed block's text, verbatim. Empty when the sheet says none were identified.
+
+terminology — preferred and suppressed terms, verbatim, one term each.
+
+if_present — the only list you write rather than copy. For the findings this scan commonly reports, give the finding (a short general name) and up to three negatives a consultant states once that finding is reported: the absence of each extension, spread or complication this technique shows and the next management step depends on. One finding per negative, starting "No", written in this sheet's own negative style. tag core when the next management step depends on it, contextual otherwise. Never repeat a negative the sheet already lists. Assign each to the section and paragraph where the finding is described."""
+
+
+async def structure_sheet(sheet: str, model: Optional[str] = None) -> SheetStructure:
+    model = model or structure_model()
+    r = await asyncio.wait_for(_run_agent_with_model(
+        model_name=model, output_type=StructureDraft, system_prompt=STRUCTURE_SYS,
+        user_prompt=f"SKILL SHEET:\n\n{sheet}", api_key="",
+        model_settings={"temperature": 0, "max_tokens": 32000, "reasoning_effort": "low"}), STRUCTURE_TIMEOUT_S)
+    return build_structure(sheet, r.output, model)
+
+
+def store_structure(db, template_id: str, structure: SheetStructure) -> bool:
+    """Write the structure only if the template's sheet is still the one it was built from."""
+    tpl = db.query(Template).filter(Template.id == uuid.UUID(str(template_id))).first()
+    if not tpl or sheet_hash((tpl.template_config or {}).get("skill_sheet", "")) != structure.sheet_hash:
+        return False
+    tpl.template_config = {**tpl.template_config, "sheet_structure": structure.model_dump(mode="json")}
+    flag_modified(tpl, "template_config")
+    db.commit()
+    return True
+
+
+_inflight: set = set()
+_tasks: set = set()
+
+
+def schedule_structure(template_id: str, sheet: str) -> None:
+    """Background: structure the sheet and store it. Never raises; one task per (template, sheet)."""
+    key = (str(template_id), sheet_hash(sheet))
+    if key in _inflight:
+        return
+    _inflight.add(key)
+
+    async def run():
+        try:
+            s = await structure_sheet(sheet)
+            db = SessionLocal()
+            try:
+                ok = store_structure(db, template_id, s)
+            finally:
+                db.close()
+            logger.info("sheet structure %s: stored=%s usable=%s coverage=%s", template_id, ok, s.usable,
+                        s.coverage.model_dump())
+        except Exception as e:
+            logger.warning("sheet structure %s failed (%s: %s)", template_id, type(e).__name__, str(e)[:200])
+        finally:
+            _inflight.discard(key)
+    try:
+        task = asyncio.get_running_loop().create_task(run())
+    except RuntimeError:
+        _inflight.discard(key)
+        return
+    _tasks.add(task)  # the loop holds only a weak reference to a task
+    task.add_done_callback(_tasks.discard)

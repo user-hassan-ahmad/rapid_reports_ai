@@ -114,3 +114,47 @@ def test_real_stored_if_line_shapes_are_conditional_and_coverable():
     assert tss.conditional_lines(sheet) == REAL_IF_SHAPES
     for ln in REAL_IF_SHAPES:
         assert tss._covers(ln, ln) and tss._covers(ln.replace("**", ""), ln)
+
+
+async def test_structure_sheet_calls_the_model_and_verifies(monkeypatch):
+    seen = {}
+
+    class R:
+        output = good_draft()
+
+    async def fake_run(**kw):
+        seen.update(kw)
+        return R
+    monkeypatch.setattr(tss, "_run_agent_with_model", fake_run)
+    s = await tss.structure_sheet(SHEET, model="gpt-oss-120b")
+    assert s.usable and s.model == "gpt-oss-120b"
+    assert seen["user_prompt"].endswith(SHEET) and "IF [condition]" in seen["system_prompt"]
+    for clinical in ("appendic", "pneumoperitoneum", "liver"):
+        assert clinical not in tss.STRUCTURE_SYS.lower(), clinical
+
+
+async def test_store_skips_when_the_sheet_changed_meanwhile(monkeypatch):
+    s = tss.build_structure(SHEET, good_draft(), model="m")
+
+    class T:
+        template_config = {"skill_sheet": SHEET + "\nedited", "generation_mode": "skill_sheet_guided"}
+
+    class DB:
+        committed = False
+
+        def query(self, *_):
+            return self
+
+        def filter(self, *_):
+            return self
+
+        def first(self):
+            return T
+
+        def commit(self):
+            DB.committed = True
+
+        def close(self):
+            pass
+    assert tss.store_structure(DB(), "00000000-0000-0000-0000-000000000000", s) is False
+    assert DB.committed is False
