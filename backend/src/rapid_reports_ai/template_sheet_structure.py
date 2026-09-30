@@ -28,6 +28,7 @@ from .report_review import is_negative
 logger = logging.getLogger(__name__)
 
 STRUCTURE_VERSION = 1
+RETRY_AFTER_S = 3600  # a failed structuring attempt for the same sheet is retried after this long
 Role = Literal["history", "technique", "comparison", "findings", "impression", "other"]
 
 
@@ -67,6 +68,7 @@ class Negative(BaseModel):
     text: str
     condition: Optional[str] = None
     source_lines: List[str]
+    kind: Literal["negative", "stated_normal"] = "negative"  # stated_normal: a quoted normal-state line
 
 
 class Normal(BaseModel):
@@ -197,6 +199,16 @@ def conditional_lines(sheet: str) -> List[str]:
 
 
 _MANDATORY = re.compile(r"mandatory negatives?", re.I)
+_INSTRUCTION = re.compile(r"\b(?:never|instead|rather than|replace[sd]?|avoid|do not|don't|only when)\b"
+                          r"|\bwhen\b.*\bis seen\b", re.I)
+_NORMAL_STATE = re.compile(r"\b(?:unremarkable|normal|patent|intact|preserved|clear|within normal limits"
+                           r"|not (?:dilated|enlarged))\b", re.I)
+_COND_NOTE = re.compile(r"\(\s*if\b", re.I)
+_MANDATORY_NONE = re.compile(r"mandatory negatives?\W*none\b", re.I)  # "Mandatory negatives: None …"
+
+
+def _quoted_statements(line: str) -> List[str]:
+    return [s for q in _quoted(line) for s in [q, *_sentences(q)]]
 _LABEL = re.compile(r"^\s*(?:[-*]\s+)?\*\*")
 
 
@@ -219,7 +231,8 @@ def negative_lines(sheet: str) -> List[str]:
         ind = _indent(ln)
         if _MANDATORY.search(ln):
             in_mand, mand_indent, mand_bulleted = True, ind, bool(_BULLET.match(ln))
-            if _QUOTE_CHARS.search(ln) and not _IF.search(ln):
+            says_none = _MANDATORY_NONE.search(ln) and not any(is_negative(q) for q in _quoted_statements(ln))
+            if _QUOTE_CHARS.search(ln) and not _IF.search(ln) and not says_none:
                 out.append(ln)
             continue
         if in_mand and mand_indent >= 0 and ind <= mand_indent:
@@ -228,6 +241,8 @@ def negative_lines(sheet: str) -> List[str]:
                 in_mand = False
         if _IF.search(ln):
             continue  # a conditional line is gated as a rule, not twice
+        if _INSTRUCTION.search(ln) and not any(is_negative(q) for q in _quoted_statements(ln)):
+            continue  # guidance about wording, with no negative statement of its own
         if (in_mand or in_nfr) and (_QUOTE_CHARS.search(ln) or is_negative(_bullet_body(ln))):
             out.append(ln)
     return out
@@ -307,16 +322,21 @@ def _atomic_normal_ok(text: str, source_line: str) -> bool:
     return False
 
 
-def _negative_text_ok(text: str, source_lines: List[str]) -> bool:
-    """A negative is a negative statement, or a statement the sheet quotes whole on one of the item's
-    own negative lines (sheets list mandatory normals such as "[structure] is patent." there too;
-    conditional lines are never negative lines, so a replacement clause cannot pass)."""
+def _negative_kind(text: str, source_lines: List[str]) -> Optional[str]:
+    """'negative' for a negative statement. 'stated_normal' for a normal-state statement the sheet
+    quotes whole on one of the item's own negative lines (sheets list mandatory normals such as
+    "[structure] is patent." there), provided that line is not wording guidance. Else None.
+    Conditional lines are never negative lines, so a replacement clause cannot pass."""
     k = _key(text)
     if not k:
-        return False
+        return None
     if is_negative(text):
-        return True
-    return any(k == _key(s) for ln in source_lines for q in _quoted(ln) for s in [q, *_sentences(q)])
+        return "negative"
+    normal_state = _NORMAL_STATE.search(text) or _NEGATION & set(_words(text))
+    quoted_on = [ln for ln in source_lines if any(k == _key(s) for s in _quoted_statements(ln))]
+    if normal_state and quoted_on and not any(_INSTRUCTION.search(ln) for ln in quoted_on):
+        return "stated_normal"
+    return None
 
 
 def _dedupe(items: list, label: str, failures: List[str]) -> list:
@@ -357,36 +377,60 @@ def build_structure(sheet: str, draft: StructureDraft, model: str) -> SheetStruc
         return False
 
     allowed_sections = section_names(sheet)
-    sections = [s for s in draft.sections
-                if (_name_key(s.name) and _name_key(s.name) in allowed_sections) or reject(f"section: {s.name}")]
+    sections, kept = [], set()
+    for s in draft.sections:
+        k = _name_key(s.name)
+        if not (k and k in allowed_sections):
+            reject(f"section: {s.name}")
+        elif k in kept:
+            reject(f"duplicate section: {s.name}")
+        else:
+            kept.add(k)
+            sections.append(s)
+
+    def in_section(label: str, item) -> bool:
+        """Every item must belong to a kept output section; no remapping."""
+        return _name_key(item.section) in kept or reject(f"{label}: unknown section {item.section}")
+
+    def condition_matches(n) -> bool:
+        noted = any(_COND_NOTE.search(ln) for ln in n.source_lines)
+        return noted == bool(n.condition and _norm(n.condition)) or reject(
+            f"negative {n.id}: condition {'missing' if noted else 'not on its line'}")
 
     headings = _paragraph_headings(sheet)
     paragraphs = [p for p in _dedupe(draft.paragraphs, "paragraph", failures)
-                  if (_norm(p.name) and _norm(p.name) in headings) or reject(f"paragraph {p.id}: {p.name}")]
+                  if ((_norm(p.name) and _norm(p.name) in headings) or reject(f"paragraph {p.id}: {p.name}"))
+                  and in_section(f"paragraph {p.id}", p)]
     para_ids = {p.id for p in paragraphs}
 
     def para(item):
         return item if not item.paragraph or item.paragraph in para_ids else item.model_copy(update={"paragraph": ""})
 
     rules = [para(r) for r in _dedupe(draft.rules, "rule", failures)
-             if (_norm(r.condition) or reject(f"rule {r.id}: empty condition"))
+             if in_section(f"rule {r.id}", r)
+             and (_norm(r.condition) or reject(f"rule {r.id}: empty condition"))
              and whole_lines(f"rule {r.id}", r.source_lines, if_set)
              and in_own_line(f"rule {r.id} target", r.target, r.source_lines)
              and in_own_line(f"rule {r.id} then_text", r.then_text, r.source_lines)]
-    negatives = [para(n) for n in _dedupe(draft.negatives, "negative", failures)
-                 if (_negative_text_ok(n.text, n.source_lines) or reject(f"negative {n.id}: not a negative: {n.text}"))
+    negatives = [para(n).model_copy(update={"kind": _negative_kind(n.text, n.source_lines)})
+                 for n in _dedupe(draft.negatives, "negative", failures)
+                 if in_section(f"negative {n.id}", n)
+                 and (_negative_kind(n.text, n.source_lines) or reject(f"negative {n.id}: not a negative: {n.text}"))
                  and whole_lines(f"negative {n.id}", n.source_lines, neg_set)
-                 and in_own_line(f"negative {n.id}", n.text, n.source_lines)]
+                 and in_own_line(f"negative {n.id}", n.text, n.source_lines)
+                 and condition_matches(n)]
     normals = [para(n) for n in _dedupe(draft.normals, "normal", failures)
-               if (n.source_line.strip() and "normal pattern" in _norm(n.source_line)
+               if in_section(f"normal {n.id}", n)
+               and (n.source_line.strip() and "normal pattern" in _norm(n.source_line)
                    and whole_lines(f"normal {n.id}", [n.source_line], sheet_lines)
                    and _atomic_normal_ok(n.text, n.source_line))
                or reject(f"normal {n.id}: {n.text}")]
 
     sheet_norm_lines = "\n".join(_norm(ln) for ln in sheet.splitlines() if _norm(ln))
     fixed = [b for b in _dedupe(draft.fixed_blocks, "fixed", failures)
-             if ((body := "\n".join(_norm(ln) for ln in b.text.splitlines() if _norm(ln)))
-                 and body in sheet_norm_lines) or reject(f"fixed {b.id}: {b.text}")]
+             if in_section(f"fixed {b.id}", b)
+             and (((body := "\n".join(_norm(ln) for ln in b.text.splitlines() if _norm(ln)))
+                   and body in sheet_norm_lines) or reject(f"fixed {b.id}: {b.text}"))]
 
     term_body = _norm(_section_body(sheet, "Terminology Rules"))
 
@@ -414,7 +458,7 @@ def build_structure(sheet: str, draft: StructureDraft, model: str) -> SheetStruc
             if is_negative(x.text) and k and k not in sheet_negs and k not in seen:
                 keep.append(x)
                 seen.add(k)
-        if _norm(ip.finding) and keep:
+        if _norm(ip.finding) and keep and in_section(f"if_present {ip.finding}", ip):
             if_present.append(para(ip.model_copy(update={"negatives": keep[:3]})))
 
     ifs = conditional_lines(sheet)
@@ -457,15 +501,25 @@ def fresh(config: dict) -> Optional[SheetStructure]:
 
 
 def needs_restructure(config: dict) -> bool:
-    """Missing, old or stale. An unusable-but-current structure, or a failure marker for the current
-    sheet and version, is not rebuilt on every request; a sheet edit retries."""
+    """Missing, old or stale. An unusable-but-current structure is not rebuilt on every request, nor is
+    a failure marker for the current sheet and version until it is RETRY_AFTER_S old; a sheet edit
+    retries at once."""
     sheet = (config or {}).get("skill_sheet", "")
     if not sheet:
         return False
     raw = _raw(config)
     if raw.get("version") == STRUCTURE_VERSION and raw.get("sheet_hash") == sheet_hash(sheet):
-        return not raw.get("failed") and _stored(config) is None
+        if raw.get("failed"):
+            return _age_s(raw.get("created_at")) > RETRY_AFTER_S  # transient failures retry later
+        return _stored(config) is None
     return True
+
+
+def _age_s(created_at) -> float:
+    try:
+        return (datetime.now(timezone.utc) - datetime.fromisoformat(created_at)).total_seconds()
+    except (TypeError, ValueError):
+        return float("inf")
 
 
 # ── structuring call and background store ───────────────────────────────────
@@ -506,11 +560,13 @@ async def structure_sheet(sheet: str, model: Optional[str] = None) -> SheetStruc
     return build_structure(sheet, r.output, model)
 
 
-def _store(db, template_id: str, digest: str, payload: dict) -> bool:
-    """Write sheet_structure only if the template's sheet is still the one the payload was built from.
-    The row is locked for the read-check-write so a concurrent sheet save cannot be overwritten."""
+def _store(db, template_id: str, digest: str, payload: dict, keep_usable: bool = False) -> bool:
+    """Write sheet_structure only if the template's sheet is still the one the payload was built from
+    (and, with keep_usable, never over a usable structure of that sheet). The row is locked for the
+    read-check-write so a concurrent sheet save cannot be overwritten."""
     tpl = (db.query(Template).filter(Template.id == uuid.UUID(str(template_id))).with_for_update().first())
-    if not tpl or sheet_hash((tpl.template_config or {}).get("skill_sheet", "")) != digest:
+    if (not tpl or sheet_hash((tpl.template_config or {}).get("skill_sheet", "")) != digest
+            or (keep_usable and fresh(tpl.template_config) is not None)):
         db.rollback()
         return False
     tpl.template_config = {**tpl.template_config, "sheet_structure": payload}
@@ -526,10 +582,12 @@ def store_structure(db, template_id: str, structure: SheetStructure) -> bool:
 
 def store_failure(db, template_id: str, sheet: str, error: str) -> bool:
     """Record that structuring this sheet failed, so repeated triggers for the same sheet do not call
-    the model again (needs_restructure is False for it; fresh() treats it as unusable). An edit retries."""
+    the model again until RETRY_AFTER_S has passed (fresh() treats the marker as unusable). An edit
+    retries at once. Never replaces a usable structure of the same sheet."""
     digest = sheet_hash(sheet)
     return _store(db, template_id, digest,
-                  {"version": STRUCTURE_VERSION, "sheet_hash": digest, "failed": True, "error": error[:500]})
+                  {"version": STRUCTURE_VERSION, "sheet_hash": digest, "failed": True, "error": error[:500],
+                   "created_at": datetime.now(timezone.utc).isoformat()}, keep_usable=True)
 
 
 _inflight: set = set()

@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import asyncio
 import pathlib
+import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from rapid_reports_ai import template_sheet_structure as tss
+from rapid_reports_ai.database.models import Template, User
 
 SHEET = (pathlib.Path(__file__).parent / "fixtures" / "template_sheet.md").read_text()
 IF_SUPPRESS = '- IF [pneumoperitoneum is present] THEN suppress "No pneumoperitoneum." AND replace with "Free intra-abdominal air is present."'
@@ -308,8 +311,9 @@ def test_section_names_match_whole_listed_names_only():
     d.sections += [tss.StructSection(name="IN", role="other", order=9),
                    tss.StructSection(name="", role="other", order=10),
                    tss.StructSection(name="FINDINGS (implicit header)", role="findings", order=11)]
-    assert [x.name for x in build(d).sections] == ["CLINICAL HISTORY", "FINDINGS", "IMPRESSION",
-                                                   "FINDINGS (implicit header)"]
+    s = build(d)   # the last is FINDINGS again by name key: a duplicate, first kept
+    assert [x.name for x in s.sections] == ["CLINICAL HISTORY", "FINDINGS", "IMPRESSION"]
+    assert "duplicate section: FINDINGS (implicit header)" in s.coverage.verbatim_failures
 
 
 @pytest.mark.parametrize("pattern,names", [
@@ -357,6 +361,9 @@ def test_paragraph_refs_are_validated():
     ('## Negative Finding Rules\n- "No a."\n## Negative Finding Rules (global)\n- "No b."\n', ['- "No a."', '- "No b."']),
     ('### P\n- **Mandatory negatives**:\n  - “No a.”\n', ['  - “No a.”']),
     ('### P\n\t- **Mandatory negatives**:\n\t\t- "No a."\n\t- **Normal**: "x"\n', ['\t\t- "No a."']),
+    ('### P\n- **Mandatory negatives**: None specific; described positively or as "unchanged".\n'
+     '- **Mandatory negatives**: None, but "No a." when relevant.\n',
+     ['- **Mandatory negatives**: None, but "No a." when relevant.']),
     ('## Negative Finding Rules\n- **Lungs**: "Lungs clear. No effusion."\n- IF [x] THEN suppress "No a."\n',
      ['- **Lungs**: "Lungs clear. No effusion."']),
 ])
@@ -459,3 +466,143 @@ def test_schedule_without_a_loop_warns_and_clears(monkeypatch):
     tss.schedule_structure(TID, SHEET)
     assert not tss._inflight and not tss._tasks
     assert any("no running event loop" in w for w in warned)
+
+
+# ── regression round 2: stated normals, section validation, conditions, retry ────
+
+GUIDANCE = '- Never write "No free fluid" when fluid is seen; write "Small volume free fluid is present." instead.'
+NFR_HEAD = '## Negative Finding Rules\n- "No pneumoperitoneum."'
+
+
+def with_nfr_line(line: str) -> str:
+    return SHEET.replace(NFR_HEAD, NFR_HEAD + "\n" + line)
+
+
+def test_positive_statement_on_a_guidance_line_is_not_a_negative():
+    sheet = with_nfr_line(GUIDANCE)
+    d = good_draft()
+    d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text="Small volume free fluid is present.",
+                                    source_lines=[GUIDANCE]))
+    s = build(d, sheet)
+    assert "n9" not in [n.id for n in s.negatives]
+    # the line quotes a negative statement, so it still has to be covered (fail closed)
+    assert GUIDANCE in tss.negative_lines(sheet) and not s.usable
+
+
+def test_guidance_line_negative_can_cover_it():
+    sheet = with_nfr_line(GUIDANCE)
+    d = good_draft()
+    d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text="No free fluid", source_lines=[GUIDANCE]))
+    s = build(d, sheet)
+    assert s.usable and [n.kind for n in s.negatives if n.id == "n9"] == ["negative"]
+
+
+def test_guidance_line_without_a_negative_is_not_a_negative_line():
+    line = '- Avoid "The appendix is normal."; prefer "The appendix is unremarkable." instead.'
+    sheet = with_nfr_line(line)
+    assert line not in tss.negative_lines(sheet)
+    d = good_draft()
+    d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text="The appendix is unremarkable.",
+                                    source_lines=[line]))
+    s = build(d, sheet)
+    assert "n9" not in [n.id for n in s.negatives] and s.usable
+
+
+def test_stated_normal_is_tagged_and_needs_a_normal_state_marker():
+    sheet = SHEET.replace('  - "No periappendiceal collection." (if appendicitis)',
+                          '  - "No periappendiceal collection." (if appendicitis)\n'
+                          '  - "The portal vein is patent."\n  - "Small volume free fluid is present."')
+    d = good_draft()
+    d.negatives += [tss.Negative(id="n3", section="FINDINGS", text="The portal vein is patent.",
+                                 source_lines=['  - "The portal vein is patent."']),
+                    tss.Negative(id="n4", section="FINDINGS", text="Small volume free fluid is present.",
+                                 source_lines=['  - "Small volume free fluid is present."'])]
+    s = build(d, sheet)
+    kinds = {n.id: n.kind for n in s.negatives}
+    assert kinds == {"n0": "negative", "n1": "negative", "n2": "negative", "n3": "stated_normal"}
+    assert not s.usable and '- "Small volume free fluid is present."' in s.coverage.uncovered
+
+
+@pytest.mark.parametrize("mutate,usable", [
+    (lambda d: d.negatives.__setitem__(0, d.negatives[0].model_copy(update={"section": "LIMITATIONS"})), False),
+    (lambda d: d.rules.__setitem__(2, d.rules[2].model_copy(update={"section": "BONES"})), False),
+    (lambda d: d.normals.__setitem__(0, d.normals[0].model_copy(update={"section": "LIMITATIONS"})), True),
+    (lambda d: d.if_present.__setitem__(0, d.if_present[0].model_copy(update={"section": "LIMITATIONS"})), True),
+    (lambda d: d.paragraphs.__setitem__(0, d.paragraphs[0].model_copy(update={"section": "LIMITATIONS"})), True),
+])
+def test_items_in_an_unknown_section_are_dropped_not_remapped(mutate, usable):
+    d = good_draft()
+    mutate(d)
+    s = build(d)
+    assert s.usable is usable
+    assert any("unknown section" in f for f in s.coverage.verbatim_failures)
+    assert all(x.section in {"CLINICAL HISTORY", "FINDINGS", "IMPRESSION"}
+               for x in [*s.rules, *s.negatives, *s.normals, *s.if_present, *s.paragraphs])
+
+
+def test_unknown_paragraph_section_blanks_its_items_paragraph():
+    d = good_draft()
+    d.paragraphs[0] = d.paragraphs[0].model_copy(update={"section": "LIMITATIONS"})
+    s = build(d)
+    assert s.paragraphs == [] and all(n.paragraph == "" for n in s.negatives)
+
+
+def test_negative_condition_must_match_its_line():
+    d = good_draft()
+    d.negatives[2] = d.negatives[2].model_copy(update={"condition": None})      # (if appendicitis) ignored
+    s = build(d)
+    assert "n2" not in [n.id for n in s.negatives] and not s.usable
+    d = good_draft()
+    d.negatives[1] = d.negatives[1].model_copy(update={"condition": "The dictated findings report ascites"})
+    s = build(d)                                    # condition not on its line (n0 still covers that line)
+    assert "n1" not in [n.id for n in s.negatives]
+    assert "negative n1: condition not on its line" in s.coverage.verbatim_failures
+
+
+def test_failure_marker_never_replaces_a_usable_structure(monkeypatch):
+    monkeypatch.setattr(tss, "flag_modified", lambda *_: None)
+    tpl = Tpl(SHEET)
+    assert tss.store_structure(FakeDB(tpl), TID, tss.build_structure(SHEET, good_draft(), model="m"))
+    assert tss.store_failure(FakeDB(tpl), TID, SHEET, "TimeoutError: ") is False
+    assert tss.fresh(tpl.template_config) is not None
+
+
+def test_failure_marker_retries_after_an_hour(monkeypatch):
+    monkeypatch.setattr(tss, "flag_modified", lambda *_: None)
+    tpl = Tpl(SHEET)
+    tss.store_failure(FakeDB(tpl), TID, SHEET, "RateLimited: 429")
+    cfg = tpl.template_config
+    assert "created_at" in cfg["sheet_structure"] and not tss.needs_restructure(cfg)
+    old = datetime.now(timezone.utc) - timedelta(seconds=tss.RETRY_AFTER_S + 1)
+    cfg["sheet_structure"]["created_at"] = old.isoformat()
+    assert tss.needs_restructure(cfg)
+
+
+def test_store_round_trip_on_a_real_session(db_session):
+    user = User(email="t@example.com", password_hash="x")
+    db_session.add(user)
+    db_session.flush()
+    tpl = Template(id=uuid.uuid4(), name="T", user_id=user.id,
+                   template_config={"skill_sheet": SHEET, "generation_mode": "skill_sheet_guided"})
+    db_session.add(tpl)
+    db_session.commit()
+    tid = str(tpl.id)
+
+    def config():
+        db_session.expire_all()
+        return db_session.query(Template).filter(Template.id == tpl.id).first().template_config
+
+    assert tss.store_structure(db_session, tid, tss.build_structure(SHEET, good_draft(), model="m"))
+    assert tss.fresh(config()) is not None and config()["generation_mode"] == "skill_sheet_guided"
+    assert tss.store_failure(db_session, tid, SHEET, "TimeoutError: ") is False     # usable kept
+    assert tss.fresh(config()) is not None
+
+    edited = SHEET + "\n- edited"
+    row = db_session.query(Template).filter(Template.id == tpl.id).first()
+    row.template_config = {**row.template_config, "skill_sheet": edited}
+    db_session.commit()
+    assert tss.needs_restructure(config())
+    assert tss.store_structure(db_session, tid, tss.build_structure(SHEET, good_draft(), model="m")) is False
+    assert tss.store_failure(db_session, tid, edited, "TimeoutError: ") is True
+    cfg = config()
+    assert cfg["sheet_structure"]["failed"] and tss.fresh(cfg) is None and not tss.needs_restructure(cfg)
