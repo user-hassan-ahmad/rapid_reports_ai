@@ -2520,6 +2520,8 @@ No user input provided. Omit this section entirely from output.
         user_inputs: dict,
         user_signature: str = None,
         model_override: str = None,
+        brief_text: str | None = None,
+        history_supplied: bool = False,
     ) -> dict:
         """
         Generate a report using the skill sheet + global style guide prompt
@@ -2544,8 +2546,9 @@ No user input provided. Omit this section entirely from output.
             _append_signature_to_report,
         )
         from .global_style_guide import (
-            SYSTEM_PREAMBLE, GLOBAL_STYLE_GUIDE,
-            PRE_WRITING_ANALYSIS, VERIFICATION_CHECKLIST,
+            SYSTEM_PREAMBLE, GLOBAL_STYLE_GUIDE, PRE_WRITING_ANALYSIS, VERIFICATION_CHECKLIST,
+            GLOBAL_STYLE_GUIDE_BRIEF, PRE_WRITING_ANALYSIS_BRIEF, VERIFICATION_CHECKLIST_BRIEF,
+            TEMPLATE_SHEET_HEADER_BRIEF,
         )
 
         skill_sheet = template_config.get("skill_sheet", "")
@@ -2553,7 +2556,16 @@ No user input provided. Omit this section entirely from output.
         findings_input = user_inputs.get("FINDINGS", "")
         clinical_history = user_inputs.get("CLINICAL_HISTORY", "")
 
-        system_prompt = f"""{SYSTEM_PREAMBLE}
+        if brief_text is not None:
+            # Mirror path (spec template-pipeline-mirror §5): the sheet reconciled with this dictation.
+            pre, ver = PRE_WRITING_ANALYSIS_BRIEF, VERIFICATION_CHECKLIST_BRIEF
+            system_prompt = (
+                f"{SYSTEM_PREAMBLE}\n\n{GLOBAL_STYLE_GUIDE_BRIEF}\n\n"
+                f"{TEMPLATE_SHEET_HEADER_BRIEF}\n\n{brief_text}"
+            )
+        else:
+            pre, ver = PRE_WRITING_ANALYSIS, VERIFICATION_CHECKLIST
+            system_prompt = f"""{SYSTEM_PREAMBLE}
 
 {GLOBAL_STYLE_GUIDE}
 
@@ -2564,6 +2576,10 @@ It inherits all rules from the Global Style Guide above. Where a skill sheet rul
 conflicts with a global rule, the skill sheet takes precedence.
 
 {skill_sheet}"""
+        history_note = (
+            "\n\nThe CLINICAL HISTORY section is supplied separately; do not write it."
+            if history_supplied else ""
+        )
 
         model_name = model_override or MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"]
         provider = _get_model_provider(model_name)
@@ -2584,7 +2600,7 @@ conflicts with a global rule, the skill sheet takes precedence.
 
 Scan Type: {scan_type}
 Clinical History: {clinical_history}
-Findings: {findings_input}
+Findings: {findings_input}{history_note}
 
 Generate the report now. Output the report content ONLY — no analysis, no commentary, no restatement of the skill sheet. Emit exactly the sections declared in the skill sheet's Structural Pattern, in order.
 
@@ -2596,11 +2612,11 @@ Generate the report now. Output the report content ONLY — no analysis, no comm
 
 Scan Type: {scan_type}
 Clinical History: {clinical_history}
-Findings: {findings_input}
+Findings: {findings_input}{history_note}
 
-{PRE_WRITING_ANALYSIS}
+{pre}
 
-{VERIFICATION_CHECKLIST}"""
+{ver}"""
 
         # One settings dict; normalise_model_settings fits it per provider (Cerebras Qwen:
         # medium, 64k; Groq Qwen: low, 16,384 ceiling; Sonnet: no sampling params).
