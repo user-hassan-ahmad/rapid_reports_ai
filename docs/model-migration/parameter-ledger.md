@@ -1571,3 +1571,38 @@ filename collision (fixed: pid in the name).
 - **Hits are partial:** SMV only, SMA only, or SMV + PV. None gave the full resectability set
   (SMA, SMV, PV, coeliac).
 - **Basket regression:** gate 11/11; controls and hedged stated 0.
+
+### L-48 · Negatives out of the quick-report impression by default, 2026-09-30
+
+Trigger (Hassan, before/after review): impressions read as lists of absent findings. The
+evidence says this was **pre-existing**:
+- the finding-negatives plan carried none;
+- production arm A listed them too;
+- 7 of the last 11 prod impressions had a negative sentence.
+
+The fix (0871db9) is quick reports only, made at the sites that taught the lists:
+- a countable checklist rule (at most one negative: the answer when nothing positive answers
+  the question, or one clause that changes the next step; never a list);
+- hardening principle 10 no longer lists negatives as an impression obligation;
+- analyser, both copies: the opening convention, the normal exemplar, and excluded triage
+  differentials;
+- the impression plan carries at most one negative, and the finding-negatives carry path is
+  removed.
+
+**Rerun, impressions before → after:**
+
+| Case | Before | After |
+|---|---|---|
+| PE | "Aortic dissection, pneumothorax, pericardial effusion, pleural effusion, and pulmonary consolidation are excluded" | clean |
+| Diverticulitis | "No pericolic abscess or free perforation. No colonic mass lesion. No adnexal abnormality" | "Acute sigmoid diverticulitis, uncomplicated." |
+| Controls | — | still "No acute intracranial abnormality" / "No acute intra-abdominal or pelvic abnormality identified" |
+| PE with RV strain, diverticulitis with abscess, trauma | — | positives that change management kept |
+
+**Residual:** some impressions still carry one negative sentence joining two items ("No distant
+metastatic or peritoneal disease"); one abscess case lost "No free perforation". Gate 17/17.
+
+**Tag parser bug found on the same rerun** (b9cf3c3): annotated tags ("(core — resectability, …)",
+"(peritonitis) (core)") parsed as contextual. Earlier arm-B runs under-stated core negatives
+because of it. After the fix, pancreas × 5:
+- **vascular negative in FINDINGS 4/5**, still missing from one sheet's anticipated list;
+- run 1 states the full set (no SMA, SMV or portal vein encasement).
