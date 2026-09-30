@@ -15,9 +15,9 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm.attributes import flag_modified
 
 from .database import SessionLocal
@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 STRUCTURE_VERSION = 1
 RETRY_AFTER_S = 3600  # a failed structuring attempt for the same sheet is retried after this long
 Role = Literal["history", "technique", "comparison", "findings", "impression", "other"]
+LineRef = Union[int, str]  # the model cites a sheet line by its number; build_structure stores the line itself
 
 
 def _listify(v):
@@ -58,7 +59,7 @@ class Rule(BaseModel):
     effect: Literal["suppress", "replace", "append", "use"]
     target: str = ""
     then_text: str = ""
-    source_lines: List[str]
+    source_lines: List[LineRef]
 
 
 class Negative(BaseModel):
@@ -67,8 +68,14 @@ class Negative(BaseModel):
     paragraph: str = ""
     text: str
     condition: Optional[str] = None
-    source_lines: List[str]
+    source_lines: List[LineRef]
     kind: Literal["negative", "stated_normal"] = "negative"  # stated_normal: a quoted normal-state line
+
+    @field_validator("condition", mode="before")
+    @classmethod
+    def _null_word(cls, v):
+        """Models sometimes write the JSON null as a word; that is no condition."""
+        return None if isinstance(v, str) and v.strip().lower() in {"", "null", "none", "n/a"} else v
 
 
 class Normal(BaseModel):
@@ -77,13 +84,18 @@ class Normal(BaseModel):
     paragraph: str = ""
     structure: str
     text: str
-    source_line: str
+    source_line: LineRef
 
 
 class FixedBlock(BaseModel):
     id: str
-    section: str
+    section: str = ""  # a missing section drops the block in verification, not the whole draft
     text: str
+
+    @field_validator("section", mode="before")
+    @classmethod
+    def _none_section(cls, v):
+        return "" if v is None else v
 
 
 class Terminology(BaseModel):
@@ -93,7 +105,7 @@ class Terminology(BaseModel):
 
 class IfPresentNeg(BaseModel):
     text: str
-    tag: Literal["core", "contextual"]
+    tag: Literal["core", "contextual"] = "contextual"  # untagged: the weaker tag, not a failed draft
 
 
 class IfPresent(BaseModel):
@@ -113,8 +125,9 @@ class Coverage(BaseModel):
 
 
 class StructureDraft(BaseModel):
-    """What the model returns; build_structure verifies it."""
-    sections: List[StructSection]
+    """What the model returns; build_structure verifies it. An empty draft fails validation, so the
+    structuring call retries instead of storing nothing."""
+    sections: List[StructSection] = Field(min_length=1)
     paragraphs: List[Paragraph] = []
     rules: List[Rule] = []
     negatives: List[Negative] = []
@@ -131,6 +144,7 @@ class StructureDraft(BaseModel):
 
 
 class SheetStructure(StructureDraft):
+    sections: List[StructSection] = []  # verified; may be empty (then unusable)
     version: int = STRUCTURE_VERSION
     sheet_hash: str
     model: str
@@ -143,6 +157,34 @@ class SheetStructure(StructureDraft):
 
 def sheet_hash(sheet: str) -> str:
     return hashlib.sha256(sheet.encode()).hexdigest()
+
+
+def numbered(sheet: str) -> str:
+    """The sheet as the model sees it: every line (blank ones too) prefixed "L<n>| ", 1-based."""
+    return "\n".join(f"L{i}| {ln}" for i, ln in enumerate(sheet.splitlines(), 1))
+
+
+_REF = re.compile(r"\s*L?(\d+)\s*")
+
+
+def _resolve(ref: LineRef, lines: List[str]) -> str:
+    """A cited line number becomes that exact sheet line (out of range: a marker no check accepts).
+    Text is passed through unchanged and verified as text."""
+    m = _REF.fullmatch(ref) if isinstance(ref, str) else None
+    if isinstance(ref, str) and not m:
+        return ref
+    i = int(m.group(1)) if m else int(ref)
+    return lines[i - 1] if 1 <= i <= len(lines) else f"<no sheet line {i}>"
+
+
+def _resolve_draft(sheet: str, draft: StructureDraft) -> StructureDraft:
+    lines = sheet.splitlines()
+
+    def many(items):
+        return [x.model_copy(update={"source_lines": [_resolve(r, lines) for r in x.source_lines]}) for x in items]
+    return draft.model_copy(update={
+        "rules": many(draft.rules), "negatives": many(draft.negatives),
+        "normals": [n.model_copy(update={"source_line": _resolve(n.source_line, lines)}) for n in draft.normals]})
 
 
 def _norm(s: str) -> str:
@@ -159,6 +201,18 @@ def _words(s: str) -> List[str]:
 def _key(s: str) -> str:
     """Comparison key for a statement: normalised, trailing punctuation dropped."""
     return re.sub(r"[\s.!?]+$", "", _norm(s))
+
+
+def _in_line(text: str, line: str) -> bool:
+    """The statement appears on the line as a whole unit: it starts at a word boundary and ends where
+    a sentence or quote ends (so a copied statement may drop or keep its final stop, but can never be
+    the front part of a longer statement). Backtick quotes count as quotes."""
+    k = _key(text)
+    if not k:
+        return False
+    hay = _norm(line.replace("`", '"'))
+    end = "" if k[-1] in "])\"" else r"[.!?]*(?=\s*(?:[.!?\"')\]]|$))"  # a bracketed placeholder closes itself
+    return bool(re.search(r"(?<![a-z0-9])" + re.escape(k) + end, hay))
 
 
 def _covers(source_line: str, line: str) -> bool:
@@ -205,6 +259,8 @@ _NORMAL_STATE = re.compile(r"\b(?:unremarkable|normal|patent|intact|preserved|(?
                            r"|not (?:dilated|enlarged))\b", re.I)
 # a qualifier outside the quotes that says when the line applies, in any form: "(if x)", "— if x",
 # "(when x)", "(only in x)", "if x: ...", "[if x]", "(in x cases)"
+# "[structure] demonstrates no [finding]": a negative whose negation is the main predicate (no clause before it)
+_NEG_PREDICATE = re.compile(r"^[^,;]*?\b(?:demonstrates?|shows?|there (?:is|are))\s+no\b", re.I)
 _COND_WORD = re.compile(r"\b(?:if|when|whenever|where|unless|only|provided)\b|\bin [^)\]]*cases?\b", re.I)
 _MANDATORY_NONE = re.compile(r"mandatory negatives?\W*none\b", re.I)  # "Mandatory negatives: None …"
 
@@ -340,8 +396,19 @@ def section_names(sheet: str) -> set:
     return names
 
 
+def _heading_key(s: str) -> str:
+    return _name_key(s.replace("[", "").replace("]", ""))
+
+
 def _paragraph_headings(sheet: str) -> set:
-    return {_norm(ln[4:]) for ln in sheet.splitlines() if ln.startswith("### ")}
+    """Names a paragraph may carry: a "### " heading as written, or its title after the heading's last
+    ":" or " - " label ("<Section> - Paragraph 1: <Title>" is named "<Title>")."""
+    out = set()
+    for ln in sheet.splitlines():
+        if ln.startswith("### "):
+            body = ln[4:]
+            out |= {_heading_key(body), *(_heading_key(body.rsplit(sep, 1)[1]) for sep in (":", " - ") if sep in body)}
+    return out - {""}
 
 
 def _is_subsequence(needle: List[str], hay: List[str]) -> bool:
@@ -375,10 +442,30 @@ def _negative_kind(text: str, source_lines: List[str]) -> Optional[str]:
     if is_negative(text):
         return "negative"
     quoted_on = [ln for ln in source_lines if any(k == _key(s) for s in _quoted_statements(ln))]
-    if (_NORMAL_STATE.search(text) and quoted_on and all(_statement_shape(ln) for ln in quoted_on)
+    if ((_NORMAL_STATE.search(text) or _NEG_PREDICATE.search(text)) and quoted_on and all(_statement_shape(ln) for ln in quoted_on)
             and not any(_INSTRUCTION.search(ln) for ln in quoted_on)):
         return "stated_normal"
     return None
+
+
+def _link_repeats(negatives: list, neg_lines: List[str]) -> None:
+    """Sheets repeat a statement (a paragraph's Mandatory negatives and again under Negative Finding
+    Rules); the model often cites only one place. An uncited negative line is cited for a verified
+    unconditional item when the line quotes exactly that statement, states no condition, is not
+    wording guidance, and the item's kind is unchanged: only citations the checks above would have
+    accepted from the model. Conditional lines are never linked."""
+    cited = {_norm(sl) for n in negatives for sl in n.source_lines}
+    for ln in neg_lines:
+        if _norm(ln) in cited or _cond_noted(ln) or _INSTRUCTION.search(_outside_quotes(ln)):
+            continue
+        stmts = {_key(q) for q in _quoted_statements(ln)} or {_key(_bullet_body(ln))}
+        for i, n in enumerate(negatives):
+            lines = [*n.source_lines, ln]
+            if (not (n.condition and _norm(n.condition)) and _key(n.text) in stmts
+                    and _negative_kind(n.text, lines) == n.kind):
+                negatives[i] = n.model_copy(update={"source_lines": lines})
+                cited.add(_norm(ln))
+                break
 
 
 def _dedupe(items: list, label: str, failures: List[str]) -> list:
@@ -396,6 +483,7 @@ def build_structure(sheet: str, draft: StructureDraft, model: str) -> SheetStruc
     """Keep only what is grounded in the sheet, each item in its own whole source line(s), then gate
     on coverage. Everything fails closed: an item that cannot be verified is dropped and logged."""
     failures: List[str] = []
+    draft = _resolve_draft(sheet, draft)
     sheet_lines = {_norm(ln) for ln in sheet.splitlines()} - {""}
     if_set = {_norm(ln) for ln in conditional_lines(sheet)}
     neg_lines = negative_lines(sheet)
@@ -409,7 +497,7 @@ def build_structure(sheet: str, draft: StructureDraft, model: str) -> SheetStruc
         return bool(lines) and not bad
 
     def in_own_line(label: str, text: str, lines: List[str]) -> bool:
-        ok = not text or any(_norm(text) in _norm(ln) for ln in lines)
+        ok = not text or any(_in_line(text, ln) for ln in lines)
         if not ok:
             failures.append(f"{label}: {text}")
         return ok
@@ -441,26 +529,48 @@ def build_structure(sheet: str, draft: StructureDraft, model: str) -> SheetStruc
 
     headings = _paragraph_headings(sheet)
     paragraphs = [p for p in _dedupe(draft.paragraphs, "paragraph", failures)
-                  if ((_norm(p.name) and _norm(p.name) in headings) or reject(f"paragraph {p.id}: {p.name}"))
+                  if ((_heading_key(p.name) and _heading_key(p.name) in headings) or reject(f"paragraph {p.id}: {p.name}"))
                   and in_section(f"paragraph {p.id}", p)]
     para_ids = {p.id for p in paragraphs}
 
     def para(item):
         return item if not item.paragraph or item.paragraph in para_ids else item.model_copy(update={"paragraph": ""})
 
+    def effect_complete(r) -> bool:
+        """A rule carries what its effect needs, so a covered IF line is never a hollow rule."""
+        need = {"suppress": ("target",), "replace": ("target", "then_text"), "append": ("then_text",),
+                "use": ("then_text",)}[r.effect]
+        missing = [f for f in need if not _norm(getattr(r, f))]
+        return not missing or reject(f"rule {r.id}: {r.effect} without {' or '.join(missing)}")
+
     rules = [para(r) for r in _dedupe(draft.rules, "rule", failures)
              if in_section(f"rule {r.id}", r)
+             and effect_complete(r)
              and (_norm(r.condition) or reject(f"rule {r.id}: empty condition"))
              and whole_lines(f"rule {r.id}", r.source_lines, if_set)
              and in_own_line(f"rule {r.id} target", r.target, r.source_lines)
              and in_own_line(f"rule {r.id} then_text", r.then_text, r.source_lines)]
+    def cited_negative_lines(n):
+        """Each citation is verified on its own: a cited line that is not a whole negative line (often
+        the conditional line of the rule that targets the same statement, or a repeat outside the
+        negative regions) is dropped and logged; the item then stands or falls on the lines left."""
+        keep = [ln for ln in n.source_lines if ln.strip() and "\n" not in ln and _norm(ln) in neg_set]
+        # a statement repeated on a qualified and an unqualified line is two items: citations whose
+        # qualifier disagrees with the item's condition are dropped when agreeing ones remain
+        conditional = bool(n.condition and _norm(n.condition))
+        agree = [ln for ln in keep if _cond_noted(ln) == conditional]
+        keep = agree or keep
+        failures.extend(f"negative {n.id} source line not cited: {ln}" for ln in n.source_lines if ln not in keep)
+        return n.model_copy(update={"source_lines": keep})
+
     negatives = [para(n).model_copy(update={"kind": _negative_kind(n.text, n.source_lines)})
-                 for n in _dedupe(draft.negatives, "negative", failures)
+                 for n in map(cited_negative_lines, _dedupe(draft.negatives, "negative", failures))
                  if in_section(f"negative {n.id}", n)
                  and (_negative_kind(n.text, n.source_lines) or reject(f"negative {n.id}: not a negative: {n.text}"))
                  and whole_lines(f"negative {n.id}", n.source_lines, neg_set)
                  and in_own_line(f"negative {n.id}", n.text, n.source_lines)
                  and condition_matches(n)]
+    _link_repeats(negatives, neg_lines)
     normals = [para(n) for n in _dedupe(draft.normals, "normal", failures)
                if in_section(f"normal {n.id}", n)
                and (n.source_line.strip() and "normal pattern" in _norm(n.source_line)
@@ -574,32 +684,82 @@ def structure_model() -> str:
     return os.environ.get("RR_STRUCTURE_MODEL", "gpt-oss-120b")
 
 
-STRUCTURE_SYS = """You convert a radiology report skill sheet into typed items. The sheet is the reporter's own style guide; you do not change it, judge it or add to it, except for the if_present list. Copy text exactly as it appears in the sheet (same words, same punctuation) wherever a field says "verbatim". Each source line (every entry of source_lines, and source_line) is exactly one whole sheet line, copied verbatim; never join lines. Return JSON only.
+STRUCTURE_SYS = """You convert a radiology report skill sheet into typed items. The sheet is the reporter's own style guide; you do not change it, judge it or add to it, except for the if_present list. Return JSON only.
 
-sections — the report's OUTPUT sections from the Structural Pattern, in order: name, role (history | technique | comparison | findings | impression | other), header exactly as reports write it (null when the sheet says the header is none or implicit), order (0-based). Paragraph groupings inside a section are not sections.
+The sheet is given with every line numbered: "L12| <line>". The "L12| " prefix is not part of the line.
 
-paragraphs — each "### <name>" block under Per-Section Construction Rules: id (p0, p1, …), the output section it belongs to, name.
+Citing lines: source_lines (a list) and source_line are line NUMBERS as integers, e.g. [12] or 40, never copied text. Cite the one line that holds the item; list several numbers only when the same statement is written on several lines.
 
-rules — one per sheet line that holds a conditional, in any form: IF [condition] THEN suppress "[negative]", IF [condition] THEN append "[clause]", IF x: "[text]", bold **IF [..]**, compound OR conditions. id (r0, …); section and paragraph id where it applies; condition rewritten as one plain statement that can be judged true or false for a case ("The dictated findings report [X]" for an imaging condition; "The clinical history reports [Y]" or "The clinical context is [Z]" for a history or context condition); condition_source: findings | history | context; effect: suppress (drop the target text) | replace (drop the target text and write then_text) | append (add then_text, e.g. an interpretive clause) | use (a phrasing variant); target: the text it suppresses or replaces, verbatim, else ""; then_text: the text it adds, verbatim, else ""; source_lines: the whole sheet line(s), verbatim. Every conditional line in the sheet must appear in some rule's source_lines.
+Copying text: text, target and then_text are copied exactly as written between the quote marks on the cited line: the same words and punctuation, nothing added (no labels, notes, section names or "..."), nothing from outside the quotes, nothing from another line.
 
-negatives — every quoted negative statement listed under a paragraph's Mandatory negatives and under Negative Finding Rules. One item per statement: a line holding two quoted statements gives two items with the same source line. The same statement listed in several places is ONE item whose source_lines lists every line it appears on. text verbatim (the quoted statement); condition: when the line attaches one ("(if [X])"), the plain statement "The dictated findings report [X]", else null; source_lines verbatim.
+Sections: the section field of every item is the name of one of the sections you list, written exactly as you listed it. A paragraph, sub-heading, block or body region is never a section: an item in a paragraph takes the section that paragraph belongs to.
 
-normals — split every Normal pattern into one item per structure it names: structure (the structure's name), text (a sentence for that structure alone, using only words from the pattern line: "Unremarkable appearances of the [A], [B] and [C]." gives "Unremarkable appearances of the [A]." and so on), source_line verbatim.
+sections — the report's OUTPUT sections from the Structural Pattern, in order (at least one): name (as the Structural Pattern names it), role (history | technique | comparison | findings | impression | other), header exactly as reports write it (null when the sheet says the header is none or implicit), order (0-based). Paragraph groupings inside a section are not sections.
 
-fixed_blocks — each fixed block's text, verbatim. Empty when the sheet says none were identified.
+paragraphs — each "### <heading>" block under Per-Section Construction Rules: id (p0, p1, …), the output section it belongs to, name: the heading's title exactly as written after "### " (without the section or paragraph-number label in front of it).
 
-terminology — preferred and suppressed terms, verbatim, one term each.
+rules — one per sheet line that holds an uppercase IF conditional, wherever it is (Structural Pattern and header descriptions included), in any form: IF [condition] THEN suppress "[negative]", IF [condition] THEN append "[clause]", IF x: "[text]", bold **IF [..]**, compound OR conditions. id (r0, …); section and paragraph id where it applies; condition rewritten as one plain statement that can be judged true or false for a case ("The dictated findings report [X]" for an imaging condition; "The clinical history reports [Y]" or "The clinical context is [Z]" for a history or context condition); condition_source: findings | history | context; effect: suppress (drop the target text) | replace (drop the target text and write then_text) | append (add then_text, e.g. an interpretive clause) | use (a phrasing variant); target: the quoted text it suppresses or replaces (for a whole section or block, that name as written on the line), else ""; then_text: the quoted or [bracketed] text it adds or uses, else ""; suppress and replace need a target, replace, append and use need a then_text; source_lines: that line's number. A line that suppresses or replaces several quoted texts gives one rule per quoted text, all citing that line. Every uppercase IF line in the sheet must be the source of some rule.
+
+negatives — every quoted statement on the lines listed under a paragraph's Mandatory negatives and under Negative Finding Rules (negative statements, and normal-state statements listed there). Every one of those lines must be cited by at least one item. One item per quoted statement: a line holding two quoted statements gives two items citing the same line. The same statement listed on several lines is ONE item citing every one of those lines, provided they state the same condition (or none); an uppercase IF line is never cited here (it belongs to its rule). text: the quoted statement; condition: read the line outside its quotes — when it says in which case the statement is written or dropped (an if, when, only, unless, used-if or "in … cases" qualifier, in brackets, after a dash or before the quote), condition is the case in which the statement IS written, as a plain statement ("The dictated findings report [X]", "The dictated findings do not report [X]", "The clinical context is [Z]"); otherwise condition is null (JSON null). Never add a condition the line does not state; source_lines: the line numbers. Shapes:
+  - "No [A]." (if [X])  →  text "No [A].", condition "The dictated findings report [X]"
+  - "No [A]." (Suppress if [Y])  →  condition "The dictated findings do not report [Y]"
+  - **[Label]**: "No [B]."  →  text "No [B].", condition null
+  The same statement on a line with a qualifier and on a line without one gives TWO items (one with the condition, one with null).
+
+normals — only lines labelled Normal pattern: split each into one item per structure it names: structure (the structure's name), text (a sentence for that structure alone, using only words from the pattern line, in their order: "Unremarkable appearances of the [A], [B] and [C]." gives "Unremarkable appearances of the [A]." and so on), source_line: that line's number.
+
+fixed_blocks — each fixed block's text, copied exactly (without the line prefixes). Empty when the sheet says none were identified.
+
+terminology — preferred and suppressed terms, exactly as written, one term each.
 
 if_present — the only list you write rather than copy. For the findings this scan commonly reports, give the finding (a short general name) and up to three negatives a consultant states once that finding is reported: the absence of each extension, spread or complication this technique shows and the next management step depends on. One finding per negative, starting "No", written in this sheet's own negative style. tag core when the next management step depends on it, contextual otherwise. Never repeat a negative the sheet already lists. Assign each to the section and paragraph where the finding is described."""
 
 
-async def structure_sheet(sheet: str, model: Optional[str] = None) -> SheetStructure:
-    model = model or structure_model()
+async def draft_sheet(sheet: str, model: Optional[str] = None, extra: str = "") -> StructureDraft:
+    """The raw structuring call (unverified)."""
     r = await asyncio.wait_for(_run_agent_with_model(
-        model_name=model, output_type=StructureDraft, system_prompt=STRUCTURE_SYS,
-        user_prompt=f"SKILL SHEET:\n\n{sheet}", api_key="",
-        model_settings={"temperature": 0, "max_tokens": 32000, "reasoning_effort": "low"}), STRUCTURE_TIMEOUT_S)
-    return build_structure(sheet, r.output, model)
+        model_name=model or structure_model(), output_type=StructureDraft, system_prompt=STRUCTURE_SYS,
+        user_prompt=f"SKILL SHEET (numbered lines):\n\n{numbered(sheet)}{extra}", api_key="",
+        model_settings={"temperature": 0, "max_tokens": 65536, "reasoning_effort": "medium"}), STRUCTURE_TIMEOUT_S)
+    return r.output
+
+
+def repair_request(sheet: str, s: SheetStructure) -> str:
+    """The follow-up for an unusable first pass: the uncovered lines by number, and why items failed."""
+    num = {}
+    for i, ln in enumerate(sheet.splitlines(), 1):
+        num.setdefault(_norm(ln), i)
+    lines = "\n".join(f"L{num.get(_norm(u), '?')}| {u}" for u in s.coverage.uncovered)
+    why = "\n".join(f"- {f[:300]}" for f in s.coverage.verbatim_failures
+                    if f.startswith(("rule", "negative")))[:4000]
+    return ("\n\nA first pass left these lines uncovered:\n" + lines
+            + ("\n\nIts items for them failed verification:\n" + why if why else "")
+            + "\n\nReturn the sections again, and rules and negatives for the uncovered lines only (other lists"
+              " empty), following every instruction exactly.")
+
+
+def merge_repair(first: StructureDraft, repair: StructureDraft) -> StructureDraft:
+    """The first pass plus the repair's rules and negatives (renumbered so ids never collide)."""
+    return first.model_copy(update={
+        "rules": [*first.rules, *(r.model_copy(update={"id": f"rx{i}"}) for i, r in enumerate(repair.rules))],
+        "negatives": [*first.negatives,
+                      *(n.model_copy(update={"id": f"nx{i}"}) for i, n in enumerate(repair.negatives))]})
+
+
+async def structure_sheet(sheet: str, model: Optional[str] = None) -> SheetStructure:
+    """Structure, verify, and when the gate fails ask once more for the uncovered lines only. The
+    merged draft is verified exactly like the first; the repair can add items, never skip a check."""
+    model = model or structure_model()
+    first = await draft_sheet(sheet, model)
+    s = build_structure(sheet, first, model)
+    if s.usable or not s.coverage.uncovered:
+        return s
+    try:
+        repair = await draft_sheet(sheet, model, repair_request(sheet, s))
+    except Exception as e:
+        logger.info("sheet structure repair failed (%s)", type(e).__name__)
+        return s
+    return build_structure(sheet, merge_repair(first, repair), model)
 
 
 def _store(db, template_id: str, digest: str, payload: dict, keep_usable: bool = False) -> bool:

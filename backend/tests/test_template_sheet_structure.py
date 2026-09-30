@@ -134,7 +134,7 @@ async def test_structure_sheet_calls_the_model_and_verifies(monkeypatch):
     monkeypatch.setattr(tss, "_run_agent_with_model", fake_run)
     s = await tss.structure_sheet(SHEET, model="gpt-oss-120b")
     assert s.usable and s.model == "gpt-oss-120b"
-    assert seen["user_prompt"].endswith(SHEET) and "IF [condition]" in seen["system_prompt"]
+    assert seen["user_prompt"].endswith(tss.numbered(SHEET)) and "IF [condition]" in seen["system_prompt"]
     for clinical in ("appendic", "pneumoperitoneum", "liver"):
         assert clinical not in tss.STRUCTURE_SYS.lower(), clinical
 
@@ -680,3 +680,297 @@ def test_a_condition_not_on_the_line_is_rejected(line):
         d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text="No abscess.", condition=condition,
                                         source_lines=[line]))
         assert build(d, sheet).usable is usable
+
+
+# ── E1 tuning: line references, statement containment, heading titles, empty drafts ──
+
+def line_no(line: str, sheet: str = SHEET) -> int:
+    return sheet.splitlines().index(line) + 1
+
+
+def by_number(d: tss.StructureDraft, sheet: str = SHEET) -> tss.StructureDraft:
+    for x in [*d.rules, *d.negatives]:
+        x.source_lines = [line_no(ln, sheet) for ln in x.source_lines]
+    for n in d.normals:
+        n.source_line = f"L{line_no(n.source_line, sheet)}"
+    return d
+
+
+def test_numbered_prompt_matches_the_resolver():
+    first = tss.numbered(SHEET).splitlines()[line_no(IF_SUPPRESS) - 1]
+    assert first == f"L{line_no(IF_SUPPRESS)}| {IF_SUPPRESS}"
+
+
+def test_cited_line_numbers_resolve_to_the_exact_lines_and_are_stored_as_text():
+    s = build(by_number(good_draft()))
+    assert s.usable, s.coverage
+    assert s.rules[1].source_lines == [IF_SUPPRESS] and s.normals[0].source_line == NORMAL_LINE
+
+
+@pytest.mark.parametrize("ref", [line_no(ONCOLOGY_IF), line_no("## Negative Finding Rules"), 0, 10_000, "L10000"])
+def test_a_wrong_line_number_is_verified_like_wrong_text(ref):
+    d = by_number(good_draft())
+    d.negatives[2].source_lines = [ref]          # the conditional negative now cites the wrong line
+    s = build(d)
+    assert "n2" not in [n.id for n in s.negatives] and not s.usable
+
+
+@pytest.mark.parametrize("target,kept", [
+    ("No pneumoperitoneum", True),                   # the stop inside the quote may be dropped
+    ("No pneumoperitoneum.", True),
+    ("o pneumoperitoneum.", False),                  # must start at a word boundary
+    ("No free intra-abdominal air", False),          # front part of a longer statement
+    ("No pneumoperitoneum. AND", False),
+])
+def test_rule_target_is_a_whole_statement_of_its_line(target, kept):
+    d = good_draft()
+    d.rules[1] = d.rules[1].model_copy(update={"target": target})
+    assert ("r1" in [r.id for r in build(d).rules]) is kept
+
+
+@pytest.mark.parametrize("text,kept", [
+    ("No periappendiceal collection", True),
+    ("No free intra-abdominal air", False),
+    ("No free intra-abdominal air or fluid. (if appendicitis)", False),
+])
+def test_negative_text_is_a_whole_statement_of_its_line(text, kept):
+    d = good_draft()
+    line = d.negatives[1].source_lines[0] if "air" in text else d.negatives[2].source_lines[0]
+    cond = None if "air" in text else "The dictated findings report appendicitis"
+    d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text=text, condition=cond, source_lines=[line]))
+    assert ("n9" in [n.id for n in build(d).negatives]) is kept
+
+
+def test_backtick_quoted_target_is_a_statement_boundary():
+    assert tss._in_line("No central defect", "- IF [x] THEN suppress `No central defect.` AND replace with `Y.`")
+    assert not tss._in_line("No central", "- IF [x] THEN suppress `No central defect.` AND replace with `Y.`")
+
+
+HEADED = SHEET.replace("### Primary Pathology Paragraph", "### FINDINGS - Paragraph 1: Primary Pathology (Main)")
+
+
+@pytest.mark.parametrize("name,kept", [
+    ("Primary Pathology", True),
+    ("FINDINGS - Paragraph 1: Primary Pathology (Main)", True),
+    ("[Primary Pathology]", True),
+    ("Primary", False),
+    ("Paragraph 1", False),
+    ("FINDINGS", False),
+])
+def test_paragraph_name_is_the_heading_or_its_title(name, kept):
+    d = good_draft()
+    d.paragraphs[0] = d.paragraphs[0].model_copy(update={"name": name})
+    assert (build(d, HEADED).paragraphs != []) is kept
+
+
+def test_bracketed_heading_title():
+    sheet = SHEET.replace("### Primary Pathology Paragraph", "### [Primary Pathology Paragraph]")
+    assert build(good_draft(), sheet).paragraphs[0].id == "p0"
+
+
+def test_an_empty_draft_fails_validation_so_the_call_retries():
+    with pytest.raises(Exception):
+        tss.StructureDraft.model_validate({"sections": [], "rules": [], "negatives": []})
+    with pytest.raises(Exception):
+        tss.StructureDraft.model_validate({"rules": []})
+    d = good_draft()
+    d.sections = [tss.StructSection(name="LIMITATIONS", role="other", order=0)]
+    s = build(d)                                    # every section rejected: stored, but unusable
+    assert s.sections == [] and not s.usable
+    assert tss.SheetStructure.model_validate(s.model_dump(mode="json")).sections == []
+
+
+@pytest.mark.parametrize("word", ["null", "None", " n/a ", ""])
+def test_a_null_word_is_no_condition(word):
+    d = good_draft()
+    d.negatives[0] = d.negatives[0].model_copy(update={"condition": None})
+    d.negatives[0] = tss.Negative.model_validate({**d.negatives[0].model_dump(), "condition": word})
+    assert d.negatives[0].condition is None and build(d).usable
+    d = good_draft()                                    # counter: the conditional line still needs a real one
+    d.negatives[2] = tss.Negative.model_validate({**d.negatives[2].model_dump(), "condition": word})
+    assert not build(d).usable
+
+
+def test_a_negative_citing_its_rules_if_line_keeps_its_own_line():
+    d = good_draft()
+    d.negatives[0].source_lines = [*d.negatives[0].source_lines, IF_SUPPRESS]
+    s = build(d)
+    assert s.usable and IF_SUPPRESS not in s.negatives[0].source_lines
+    assert any("source line not cited" in f for f in s.coverage.verbatim_failures)
+
+
+def test_a_dropped_if_line_citation_never_covers_the_if_line():
+    d = good_draft()
+    d.rules = [r for r in d.rules if r.id != "r1"]
+    d.negatives[0].source_lines = [*d.negatives[0].source_lines, IF_SUPPRESS]
+    s = build(d)
+    assert not s.usable and IF_SUPPRESS.strip() in s.coverage.uncovered
+
+
+MAND_BOTH = '  - "No pneumoperitoneum." / "No free intra-abdominal air or fluid."'
+
+
+def test_a_repeated_statement_is_linked_to_its_verified_item():
+    d = good_draft()
+    d.negatives[0].source_lines = [MAND_BOTH]          # the model cited one of the two places
+    s = build(d)
+    assert s.usable and s.negatives[0].source_lines == [MAND_BOTH, '- "No pneumoperitoneum."']
+
+
+@pytest.mark.parametrize("line", [
+    '- "No pneumoperitoneum." (if perforation suspected)',         # conditional line
+    '- "No pneumoperitoneum." (when relevant)',
+    '- Avoid "No pneumoperitoneum." in post-operative studies',       # guidance
+    '- "No pneumoperitoneum or portal venous gas."',                  # a longer statement
+])
+def test_a_repeat_is_never_linked_across_a_condition_guidance_or_a_different_statement(line):
+    sheet = SHEET.replace(NFR_HEAD, "## Negative Finding Rules\n" + line)
+    d = good_draft()
+    d.negatives[0].source_lines = [MAND_BOTH]
+    s = build(d, sheet)
+    assert not s.usable and line.strip() in s.coverage.uncovered
+
+
+def test_a_conditional_item_is_never_linked():
+    line = '  - "No periappendiceal collection."'
+    sheet = SHEET.replace(NFR_HEAD, NFR_HEAD + "\n" + line)
+    s = build(good_draft(), sheet)                     # n2 is conditional: the unconditional repeat stays uncovered
+    assert not s.usable and line.strip() in s.coverage.uncovered
+
+
+def test_bracketed_placeholder_then_text_is_a_unit():
+    line = '- IF [x] THEN append [location description] (e.g. "example text").'
+    assert tss._in_line("[location description]", line)
+    assert not tss._in_line("[location", line)
+
+
+def test_a_citation_outside_the_negative_regions_is_dropped_not_the_item():
+    d = good_draft()
+    d.negatives[0].source_lines = [*d.negatives[0].source_lines, '- "No acute intra-abdominal abnormality."', ""]
+    s = build(d)
+    assert s.usable and s.negatives[0].source_lines == ['  - "No pneumoperitoneum." / "No free intra-abdominal air or fluid."',
+                                                        '- "No pneumoperitoneum."']
+
+
+def test_an_item_left_without_a_valid_citation_is_rejected():
+    d = good_draft()
+    d.negatives[2].source_lines = ['- "No acute intra-abdominal abnormality."', IF_SUPPRESS]
+    s = build(d)
+    assert "n2" not in [n.id for n in s.negatives] and not s.usable
+
+
+def test_a_condition_borrowed_from_a_dropped_citation_is_rejected():
+    d = good_draft()                                  # condition only on the dropped (non-negative) line
+    d.negatives[1] = d.negatives[1].model_copy(update={
+        "condition": "The dictated findings report ascites",
+        "source_lines": [*d.negatives[1].source_lines, '- "No free intra-abdominal air or fluid." (if ascites)']})
+    assert "n1" not in [n.id for n in build(d).negatives]
+
+
+@pytest.mark.parametrize("text,kept", [
+    ("The visualised structures demonstrate no suspicious lesion.", True),
+    ("There is no focal abnormality.", True),
+    ("Small fluid, there is no collection.", False),     # a clause before the negation
+    ("Free fluid is present with no collection.", False),
+])
+def test_a_negated_predicate_statement_is_a_stated_normal(text, kept):
+    line = f'- "{text}"'
+    d = good_draft()
+    d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text=text, source_lines=[line]))
+    s = build(d, with_nfr_line(line))
+    assert ("n9" in [n.id for n in s.negatives]) is kept and s.usable is kept
+
+
+def test_non_gated_fields_do_not_fail_the_whole_draft():
+    raw = good_draft().model_dump(mode="json")
+    raw["fixed_blocks"] = [{"id": "f0", "section": None, "text": "Unremarkable appearances of the gallbladder, spleen and kidneys."}]
+    raw["if_present"][0]["negatives"] = [{"text": "No appendicolith"}]
+    d = tss.StructureDraft.model_validate(raw)
+    s = build(d)
+    assert s.usable and s.fixed_blocks == [] and s.if_present[0].negatives[0].tag == "contextual"
+
+
+def test_citations_disagreeing_with_the_items_condition_are_dropped():
+    line = '  - "No pneumoperitoneum." (if perforation)'
+    sheet = SHEET.replace(MAND_BOTH, MAND_BOTH + "\n" + line)
+    d = good_draft()
+    d.negatives[0].source_lines = [*d.negatives[0].source_lines, line]       # merged across a qualifier
+    s = build(d, sheet)
+    assert line not in s.negatives[0].source_lines and not s.usable          # the qualified line is uncovered
+    d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text="No pneumoperitoneum.",
+                                    condition="The dictated findings report perforation", source_lines=[line]))
+    assert build(d, sheet).usable
+
+
+def test_an_unqualified_item_citing_only_qualified_lines_is_still_rejected():
+    d = good_draft()
+    d.negatives[2] = d.negatives[2].model_copy(update={"condition": None})
+    s = build(d)
+    assert "n2" not in [n.id for n in s.negatives] and not s.usable
+
+
+@pytest.mark.parametrize("update", [
+    {"effect": "replace", "then_text": ""},               # replace with nothing
+    {"effect": "suppress", "target": ""},                 # suppress nothing
+])
+def test_a_hollow_rule_never_covers_its_line(update):
+    d = good_draft()
+    d.rules[1] = d.rules[1].model_copy(update=update)
+    s = build(d)
+    assert "r1" not in [r.id for r in s.rules] and not s.usable
+    assert any("r1:" in f and "without" in f for f in s.coverage.verbatim_failures)
+
+
+def test_an_append_rule_needs_its_clause():
+    d = good_draft()
+    d.rules[0] = d.rules[0].model_copy(update={"then_text": ""})
+    assert not build(d).usable
+
+
+def repair_fake(monkeypatch, outputs, seen):
+    async def fake_run(**kw):
+        seen.append(kw["user_prompt"])
+        out = outputs.pop(0)
+        if isinstance(out, Exception):
+            raise out
+
+        class R:
+            output = out
+        return R
+    monkeypatch.setattr(tss, "_run_agent_with_model", fake_run)
+
+
+def missing_n2():
+    d = good_draft()
+    d.negatives = [n for n in d.negatives if n.id != "n2"]
+    return d
+
+
+def only_n2(**update):
+    d = good_draft()
+    return d.model_copy(update={"rules": [], "negatives": [d.negatives[2].model_copy(update=update)], "normals": []})
+
+
+async def test_repair_asks_for_the_uncovered_lines_and_merges(monkeypatch):
+    seen = []
+    repair_fake(monkeypatch, [missing_n2(), only_n2()], seen)
+    s = await tss.structure_sheet(SHEET, model="m")
+    assert s.usable and [n.id for n in s.negatives] == ["n0", "n1", "nx0"]
+    assert len(seen) == 2 and '(if appendicitis)' in seen[1].split("uncovered:")[1]
+
+
+async def test_repair_items_are_verified_like_the_first_pass(monkeypatch):
+    seen = []
+    repair_fake(monkeypatch, [missing_n2(), only_n2(condition=None)], seen)   # the repair drops the condition
+    s = await tss.structure_sheet(SHEET, model="m")
+    assert not s.usable and [n.id for n in s.negatives] == ["n0", "n1"]
+
+
+async def test_a_failed_repair_keeps_the_first_pass_and_a_usable_first_pass_is_not_repaired(monkeypatch):
+    seen = []
+    repair_fake(monkeypatch, [missing_n2(), RuntimeError("down")], seen)
+    s = await tss.structure_sheet(SHEET, model="m")
+    assert not s.usable and len(seen) == 2
+    seen.clear()
+    repair_fake(monkeypatch, [good_draft()], seen)
+    assert (await tss.structure_sheet(SHEET, model="m")).usable and len(seen) == 1
