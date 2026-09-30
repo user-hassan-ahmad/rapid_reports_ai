@@ -106,32 +106,49 @@ class ReportSection(BaseModel):
 CHECKED_ROLES = {"findings", "impression", "other"}
 
 
+def _header_pattern(header: str) -> "re.Pattern[str]":
+    """A header alone on its line ('Impression', 'Impression:') or inline ('Impression: text'); the
+    match ends where the section's content starts. Tolerates CRLF line ends."""
+    h = re.escape(header.strip().rstrip(":").strip())
+    return re.compile(rf"^[ \t]*{h}[ \t]*(?::[ \t]*(?=[^\s])|:?[ \t]*\r?$)", re.M | re.I)
+
+
 def section_spans(report: str, sections: List[ReportSection]) -> List[Tuple[ReportSection, int, int]]:
-    """(section, start, end) for each section found, in sheet order. A headed section starts after
-    its header line and ends at the next header found, or, when the next section is implicit, at
-    its first paragraph break; an implicit section covers the text from the previous section's end
-    (or the top) to the next header."""
-    found: List[Tuple[ReportSection, Optional[int], Optional[int]]] = []
-    pos = 0
-    for sec in sections:
-        if sec.header:
-            pat = re.compile(rf"^[ \t]*{re.escape(sec.header.strip().rstrip(':'))}[ \t]*:?[ \t]*$", re.M | re.I)
-            m = pat.search(report, pos)
-            if not m:
-                continue
-            found.append((sec, m.start(), m.end()))
-            pos = m.end()
-        else:
-            found.append((sec, None, None))
-    header_starts = sorted(h for _, h, _ in found if h is not None)
+    """(section, start, end) for each section found, in report order. Each header is looked for
+    anywhere in the report, so sections written out of sheet order still split correctly. A headed
+    section starts where its content starts (after the header line, or after an inline header's
+    colon) and ends at the next header, or, when the next section is implicit, at its first paragraph
+    break. An implicit section follows its nearest found headed predecessor in sheet order (or sits
+    at the top) and runs to the next header."""
+    headed: dict = {}                 # sheet index -> (header start, content start)
+    claimed: List[int] = []
+    for i, sec in enumerate(sections):
+        if not sec.header:
+            continue
+        for m in _header_pattern(sec.header).finditer(report):
+            if m.start() not in claimed:
+                headed[i] = (m.start(), m.end())
+                claimed.append(m.start())
+                break
+    after: dict = {}                  # headed sheet index (or -1 = top) -> implicit sections after it
+    for i, sec in enumerate(sections):
+        if not sec.header:
+            anchor = next((j for j in range(i - 1, -1, -1) if j in headed), -1)
+            after.setdefault(anchor, []).append(sec)
+    order: List[Tuple[ReportSection, Optional[int], Optional[int]]] = \
+        [(sec, None, None) for sec in after.get(-1, [])]
+    for i in sorted(headed, key=lambda j: headed[j][0]):
+        order.append((sections[i], *headed[i]))
+        order += [(sec, None, None) for sec in after.get(i, [])]
+    header_starts = sorted(h for h, _ in headed.values())
     out: List[Tuple[ReportSection, int, int]] = []
     prev_end = 0
-    for idx, (sec, h, c) in enumerate(found):
+    for idx, (sec, h, c) in enumerate(order):
         start = c if c is not None else prev_end
         nxt = next((x for x in header_starts if x >= start and (h is None or x > h)), len(report))
-        if c is not None and idx + 1 < len(found) and found[idx + 1][1] is None:
+        if c is not None and idx + 1 < len(order) and order[idx + 1][1] is None:
             body = re.search(r"\S", report[start:nxt])
-            brk = re.search(r"\n[ \t]*\n", report[start + body.start():nxt]) if body else None
+            brk = re.search(r"\n[ \t]*\r?\n", report[start + body.start():nxt]) if body else None
             if brk:
                 nxt = start + body.start() + brk.start()
         out.append((sec, start, nxt))
@@ -139,12 +156,16 @@ def section_spans(report: str, sections: List[ReportSection]) -> List[Tuple[Repo
     return out
 
 
+def _checked_spans(report: str, sections: List[ReportSection]) -> List[Tuple[int, int]]:
+    return [(a, b) for s, a, b in section_spans(report, sections) if s.role in CHECKED_ROLES]
+
+
 def _checked_texts(report: str, sections: Optional[List[ReportSection]]) -> List[str]:
     """The report text the check reads: FINDINGS + IMPRESSION (quick), or every section whose role
     carries dictated content (templates)."""
     if sections is None:
         return list(report_sections(report))
-    return [report[a:b].strip() for s, a, b in section_spans(report, sections) if s.role in CHECKED_ROLES]
+    return [report[a:b].strip() for a, b in _checked_spans(report, sections)]
 
 
 def checked_clauses(report: str, sections: Optional[List[ReportSection]]) -> List[str]:
@@ -153,20 +174,57 @@ def checked_clauses(report: str, sections: Optional[List[ReportSection]]) -> Lis
     return list(dict.fromkeys(c for t in _checked_texts(report, sections) for c in clauses(t)))
 
 
-def without(report: str, protected: List[str]) -> str:
-    """The report with protected text (history section, fixed blocks) removed."""
+# ── protected text: an invariant by position ────────────────────────────────
+
+def _occurrences(text: str, needle: str) -> List[Tuple[int, int]]:
+    out, i = [], text.find(needle) if needle else -1
+    while i >= 0:
+        out.append((i, i + len(needle)))
+        i = text.find(needle, i + 1)
+    return out
+
+
+def protected_spans(report: str, protected: Optional[List[str]]) -> List[Tuple[int, int]]:
+    """Every occurrence of every protected string (history section, fixed blocks), as positions."""
+    return [sp for p in protected or [] for sp in _occurrences(report, p)]
+
+
+def _overlaps(a: int, b: int, spans: List[Tuple[int, int]]) -> bool:
+    return any(a < pe and ps < b for ps, pe in spans)
+
+
+def _inside(a: int, b: int, spans: List[Tuple[int, int]]) -> bool:
+    return any(ps <= a and b <= pe for ps, pe in spans)
+
+
+def without(report: str, protected: List[str], sections: Optional[List[ReportSection]] = None) -> str:
+    """The report with protected text (history section, fixed blocks) removed: one occurrence of
+    each protected string, by position — the first outside the checked sections when sections are
+    given, else the first. A duplicate elsewhere (a dictated sentence that matches) is kept."""
     for p in protected:
-        if p:
-            report = report.replace(p, "")
+        occ = _occurrences(report, p)
+        if not occ:
+            continue
+        a, b = occ[0]
+        if sections is not None:
+            checked = _checked_spans(report, sections)
+            a, b = next(((x, y) for x, y in occ if not _inside(x, y, checked)), occ[0])
+        report = report[:a] + report[b:]
     return report
 
 
-def _in_protected(text: str, protected: Optional[List[str]]) -> bool:
-    return any(p and text in p for p in protected or [])
+def _term(t: str) -> "re.Pattern[str]":
+    return re.compile(rf"(?<!\w){re.escape(t)}(?!\w)", re.I)
 
 
 def _has_term(text: str, terms: Optional[List[str]]) -> bool:
-    return any(t and re.search(rf"\b{re.escape(t)}\b", text, re.I) for t in terms or [])
+    return any(t and _term(t).search(text) for t in terms or [])
+
+
+def _given(**kw) -> dict:
+    """The keyword arguments that are set: template-only arguments are passed on only when given,
+    so every quick call keeps its exact shape."""
+    return {k: v for k, v in kw.items() if v is not None}
 
 
 # ── check ────────────────────────────────────────────────────────────────────
@@ -206,7 +264,7 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict],
     try:
         contra, omit = await asyncio.wait_for(asyncio.gather(
             ask(f"SCAN TYPE: {scan_type}\nDICTATED FINDINGS:\n{findings}", contra_qs),
-            ask(f"REPORT:\n{without(report, protected or [])}", omit_qs)), JEV_TIMEOUT_S)
+            ask(f"REPORT:\n{without(report, protected or [], sections)}", omit_qs)), JEV_TIMEOUT_S)
     except Exception as e:  # never blocks the report
         logger.warning("quality check: Jev failed (%s: %s)", type(e).__name__, str(e)[:200])
         return CheckResult(n_clauses=len(cls), n_items=len(items), error=f"{type(e).__name__}: {str(e)[:200]}")
@@ -257,21 +315,36 @@ INSERT_ONLY_SYS = (" Each problem is an omitted finding: 'replace' must contain 
                    "finding added to it.")
 
 
+def _touches_protected(find: str, protected: Optional[List[str]], report: Optional[str]) -> bool:
+    """Whether editing `find` would touch protected text. With the report, by position: any
+    occurrence of `find` that overlaps any occurrence of a protected string. Without it, by the
+    strings alone: containment either way, or `find` running into or out of a protected string."""
+    if not protected:
+        return False
+    if report is not None:
+        spans = protected_spans(report, protected)
+        return any(_overlaps(a, b, spans) for a, b in _occurrences(report, find))
+    for p in protected:
+        if p and (find in p or p in find
+                  or any(find[-k:] == p[:k] or find[:k] == p[-k:] for k in range(1, min(len(find), len(p))))):
+            return True
+    return False
+
+
 def edit_allowed(e: Edit, insert_only: bool, protected: Optional[List[str]] = None,
-                 suppressed: Optional[List[str]] = None) -> bool:
+                 suppressed: Optional[List[str]] = None, report: Optional[str] = None) -> bool:
     """A repair never turns a negated statement into an assertion (L-47: a flagged negative was
     'corrected' into the malignant finding it denied), an insertion never rewrites text, protected
-    text (history section, fixed blocks) is never edited, and a repair never introduces a term the
-    sheet suppresses."""
+    text (history section, fixed blocks) is never edited, even in part, and a repair never introduces
+    a term the sheet suppresses."""
     if not e.find or e.find == e.replace:
         return False
     if _NEGATION.search(e.find) and not _NEGATION.search(e.replace):
         return False
-    if any(p and (e.find in p or p in e.find) for p in protected or []):
+    if _touches_protected(e.find, protected, report):
         return False
     for term in suppressed or []:
-        pat = re.compile(rf"\b{re.escape(term)}\b", re.I)
-        if term and pat.search(e.replace) and not pat.search(e.find):
+        if term and _term(term).search(e.replace) and not _term(term).search(e.find):
             return False
     return not insert_only or e.find in e.replace
 
@@ -292,7 +365,7 @@ async def repair_report(report: str, findings: str, problems: List[str], insert_
         return RepairResult(report=report, error=f"{type(e).__name__}: {str(e)[:200]}")
     out, applied, skipped = report, 0, 0
     for e in r.output.edits:
-        if edit_allowed(e, insert_only, protected, suppressed) and out.count(e.find) == 1:
+        if edit_allowed(e, insert_only, protected, suppressed, report=out) and out.count(e.find) == 1:
             out, applied = out.replace(e.find, e.replace), applied + 1
         else:
             skipped += 1
@@ -300,6 +373,28 @@ async def repair_report(report: str, findings: str, problems: List[str], insert_
 
 
 # ── omitted findings: Qwen writes the sentence, code inserts it ──────────────
+
+def _sentence_positions(report: str, a: int, b: int) -> List[Tuple[str, int, int]]:
+    """The sentences of report[a:b], each with its position in the report."""
+    out, cur = [], a
+    for s in _sentences(report[a:b].strip()):
+        i = report.find(s, cur, b)
+        if i >= 0:
+            out.append((s, i, i + len(s)))
+            cur = i + len(s)
+    return out
+
+
+def _anchor_ok(report: str, after: str, sections: Optional[List[ReportSection]],
+               pspans: List[Tuple[int, int]]) -> bool:
+    """An insertion anchor (occurring once) never overlaps protected text and, for templates, lies
+    wholly inside a checked section's content, so never on a header line."""
+    i = report.find(after)
+    j = i + len(after)
+    if _overlaps(i, j, pspans):
+        return False
+    return sections is None or _inside(i, j, _checked_spans(report, sections))
+
 
 class Insertion(BaseModel):
     after: str       # an existing report sentence, copied exactly
@@ -338,7 +433,9 @@ async def insert_findings(report: str, findings: str, items: List[str],
                           suppressed: Optional[List[str]] = None) -> RepairResult:
     """Insertion by construction: the report's existing text is never rewritten (L-47: asked for
     insert-only edits, Qwen rewrote the neighbouring sentence). An anchor that is not found places
-    the sentence first in FINDINGS, where the primary finding belongs."""
+    the sentence first in FINDINGS, where the primary finding belongs. With `sections` (templates) an
+    anchor must lie wholly inside a checked section's content, never on a header or in protected
+    text; the fallback is the first sentence of the findings-role section."""
     user = (f"DICTATED FINDINGS:\n{findings}\n\nREPORT:\n{report}\n\nOMITTED FINDINGS:\n"
             + "\n".join(f"{i}. {t}" for i, t in enumerate(items, 1)))
     try:
@@ -361,13 +458,21 @@ async def insert_findings(report: str, findings: str, items: List[str],
         if any(_restates(sent, x) for x in _sentences(out)):
             skipped += 1   # already stated in other words (L-47: a reworded finding was re-inserted)
             continue
-        if it.after and out.count(it.after) == 1 and not _in_protected(it.after, protected):
+        pspans = protected_spans(out, protected)
+        if it.after and out.count(it.after) == 1 and _anchor_ok(out, it.after, sections, pspans):
             out = out.replace(it.after, f"{it.after} {sent}", 1)
+        elif sections is not None:
+            span = next(((a, b) for s, a, b in section_spans(out, sections) if s.role == "findings"), None)
+            firsts = _sentence_positions(out, *span) if span else []
+            if not firsts or _overlaps(firsts[0][1], firsts[0][2], pspans):
+                skipped += 1
+                continue
+            i = firsts[0][1]
+            out = out[:i] + f"{sent} " + out[i:]
         else:
-            fnd = next((out[a:b].strip() for s, a, b in section_spans(out, sections) if s.role == "findings"), "") \
-                if sections else report_sections(out)[0]
+            fnd, _ = report_sections(out)
             first = _sentences(fnd)[0] if fnd else None
-            if not first or out.count(first) != 1:
+            if not first or out.count(first) != 1 or _overlaps(out.find(first), out.find(first) + len(first), pspans):
                 skipped += 1
                 continue
             out = out.replace(first, f"{sent} {first}", 1)
@@ -384,25 +489,59 @@ def is_negative(clause: str) -> bool:
     return bool(_NEG_LIST.match(clause.strip()))
 
 
-def remove_negative_clause(report: str, clause: str, sections: Optional[List[ReportSection]] = None) -> str:
+def _drop_item(s: str, target: str) -> Optional[str]:
+    """Sentence `s` with the negative-list item `target` dropped; None when `s` is not a negative
+    list holding it."""
+    m = _NEG_LIST.match(s)
+    if not m:
+        return None
+    parts = [p.strip() for p in re.split(r",\s*(?:or\s+|and\s+)?", m.group(2)) if p.strip()]
+    if len(parts) < 2 or target not in (f"No {p}" for p in parts):
+        return None
+    rest = [p for p in parts if f"No {p}" != target]
+    conj = "and" if re.search(r",\s*and\s+", m.group(2)) else "or"
+    body = rest[0] if len(rest) == 1 else (f"{rest[0]} {conj} {rest[1]}" if len(rest) == 2
+                                              else ", ".join(rest[:-1]) + f", {conj} {rest[-1]}")
+    return f"{m.group(1)} {body}."
+
+
+def remove_negative_clause(report: str, clause: str, sections: Optional[List[ReportSection]] = None,
+                           protected: Optional[List[str]] = None) -> str:
     """Take one flagged negative out of the report without asserting anything: a whole negative
     sentence is deleted; one item of a negative list is dropped from the list. No LLM, so a false
-    flag can only lose a negative, never create a finding."""
+    flag can only lose a negative, never create a finding. With `sections` or `protected`
+    (templates) the edit is made by position, only inside a checked section and never in a sentence
+    that overlaps protected text."""
     target = clause.strip().rstrip(".")
-    for s in [x for t in _checked_texts(report, sections) for x in _sentences(t)]:
-        if s.rstrip(".") == target:
-            return re.sub(r"[ \t]*" + re.escape(s) + r"[ \t]*", " ", report, count=1).replace(" \n", "\n")
-        m = _NEG_LIST.match(s)
-        if not m:
-            continue
-        parts = [p.strip() for p in re.split(r",\s*(?:or\s+|and\s+)?", m.group(2)) if p.strip()]
-        if len(parts) < 2 or target not in (f"No {p}" for p in parts):
-            continue
-        rest = [p for p in parts if f"No {p}" != target]
-        conj = "and" if re.search(r",\s*and\s+", m.group(2)) else "or"
-        body = rest[0] if len(rest) == 1 else (f"{rest[0]} {conj} {rest[1]}" if len(rest) == 2
-                                                  else ", ".join(rest[:-1]) + f", {conj} {rest[-1]}")
-        return report.replace(s, f"{m.group(1)} {body}.", 1)
+    if sections is None and not protected:
+        for s in [x for t in _checked_texts(report, None) for x in _sentences(t)]:
+            if s.rstrip(".") == target:
+                return re.sub(r"[ \t]*" + re.escape(s) + r"[ \t]*", " ", report, count=1).replace(" \n", "\n")
+            new = _drop_item(s, target)
+            if new:
+                return report.replace(s, new, 1)
+        return report
+    if sections is not None:
+        spans = _checked_spans(report, sections)
+    else:
+        spans = [(i, i + len(t)) for t in report_sections(report) if t and (i := report.find(t)) >= 0]
+    pspans = protected_spans(report, protected)
+    for a, b in spans:
+        for s, i, j in _sentence_positions(report, a, b):
+            if _overlaps(i, j, pspans):
+                continue
+            if s.rstrip(".") == target:
+                lo, hi = i, j
+                while lo > 0 and report[lo - 1] in " \t":
+                    lo -= 1
+                while hi < len(report) and report[hi] in " \t":
+                    hi += 1
+                left, right = report[:lo], report[hi:]
+                sep = "" if not left or left.endswith("\n") or not right or right.startswith("\n") else " "
+                return left + sep + right
+            new = _drop_item(s, target)
+            if new:
+                return report[:i] + new + report[j:]
     return report
 
 
@@ -438,39 +577,48 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
     """Check, then repair only when a report clause or item is flagged. Returns the report, the
     options with flagged ones dropped, and telemetry. Never raises. `sections` makes the check
     section-generic (templates); `protected` text is never checked for omission or edited; a repair
-    never introduces a `suppressed` term. All default to the quick behaviour."""
+    never introduces a `suppressed` term. All default to the quick behaviour. The template path works
+    on the report with CRLF normalised to LF; protected text is an invariant: if a repair ever
+    changes it, the repairs are reverted."""
     if not enabled():
         return report, options, {"enabled": False}
     t0 = time.time()
     tel: dict = {"enabled": True, "flags": [], "clauses_removed": 0, "edits_applied": 0, "edits_skipped": 0, "options_dropped": [],
                  "clauses": 0, "items": 0, "jev_ms": None, "repair_ms": None, "error": None}
+    if sections is not None:
+        report = report.replace("\r\n", "\n")
+        protected = [p.replace("\r\n", "\n") for p in protected] if protected is not None else None
+        found = section_spans(report, sections)
+        tel["sections_found"] = [s.name for s, _, _ in found]
+        tel["sections_missing"] = [s.name for s in sections if s.header and not any(s is f for f, _, _ in found)]
+    original = pre_repair = report
     try:
-        # The template-only arguments are passed only when set, so the quick call is unchanged.
-        opt = lambda **kw: {k: v for k, v in kw.items() if v is not None}
-        res = await check(report, findings, scan_type, options, **opt(sections=sections, protected=protected))
+        res = await check(report, findings, scan_type, options, **_given(sections=sections, protected=protected))
         tel.update(flags=[f.model_dump() for f in res.flags], clauses=res.n_clauses, items=res.n_items,
                    jev_ms=int((time.time() - t0) * 1000), error=res.error, options_dropped=res.bad_option_ids)
         options = [o for o in options if o.get("id") not in set(res.bad_option_ids)]
         # A flagged negative is removed in code; a flagged positive statement is corrected, and an
         # omitted finding inserted, by Qwen under edit_allowed (L-47).
         # A contradiction inside protected text stays in tel["flags"] for the rail but is never edited.
+        # The positional guards in the repairs are the invariant; this only keeps obvious cases off the LLM.
         editable = [f for f in res.flags
-                    if not (f.kind == "contradiction" and _in_protected(f.text.rstrip("."), protected))]
+                    if not (f.kind == "contradiction" and any(p and f.text.rstrip(".") in p for p in protected or []))]
         removed = 0
         for f in editable:
             if f.kind == "contradiction" and is_negative(f.text):
-                new = remove_negative_clause(report, f.text, **opt(sections=sections))
+                new = remove_negative_clause(report, f.text, **_given(sections=sections, protected=protected))
                 removed += new != report
                 report = new
         tel["clauses_removed"] = removed
+        pre_repair = report
         fix = [_problem(f) for f in editable if f.kind == "contradiction" and not is_negative(f.text)]
         if fix or any(f.kind == "omission" for f in editable):
             t1 = time.time()
             omitted = [f.text for f in editable if f.kind == "omission"]
-            calls = ([repair_report(report, findings, fix, **opt(protected=protected, suppressed=suppressed))]
+            calls = ([repair_report(report, findings, fix, **_given(protected=protected, suppressed=suppressed))]
                      if fix else []) + \
                     ([insert_findings(report, findings, omitted,
-                                      **opt(sections=sections, protected=protected, suppressed=suppressed))]
+                                      **_given(sections=sections, protected=protected, suppressed=suppressed))]
                      if omitted else [])
             reps = await asyncio.gather(*calls)
             base, report = report, reps[0].report
@@ -484,4 +632,12 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
     except Exception as e:  # never blocks the report
         logger.warning("quality check failed (%s: %s)", type(e).__name__, str(e)[:200])
         tel["error"] = f"{type(e).__name__}: {str(e)[:200]}"
+    if protected and not _protected_intact(original, report, protected):
+        report = pre_repair if _protected_intact(original, pre_repair, protected) else original
+        tel["error"] = "protected text changed; repair reverted"
     return report, options, tel
+
+
+def _protected_intact(before: str, after: str, protected: List[str]) -> bool:
+    """Every protected string occurs at least as often after the check as before it."""
+    return all(after.count(p) >= before.count(p) for p in protected if p)
