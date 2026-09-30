@@ -860,7 +860,7 @@ This bullet is an addition: the Sections line and every other part of the sheet 
 
 # Directives every production analyser call carries. Harnesses that pass an
 # explicit tuple override this; None means "as production".
-PRODUCTION_DIRECTIVES: tuple[str, ...] = ("prune_v1",)
+PRODUCTION_DIRECTIVES: tuple[str, ...] = ("prune_v1", "finding_negatives")
 
 DIRECTIVES = {
     "sweep": lambda: DIRECTIVE_SWEEP,

@@ -8,12 +8,12 @@ from rapid_reports_ai import quick_report_analyser as qa
 
 def test_confirmed_negatives_is_an_opt_in_directive():
     model = "qwen-3.8-27b"
-    prod = qa.get_analyser_prompt(model, directives=qa.PRODUCTION_DIRECTIVES)
-    arm_b = qa.get_analyser_prompt(model, directives=qa.PRODUCTION_DIRECTIVES + ("finding_negatives",))
+    prod = qa.get_analyser_prompt(model, directives=("prune_v1",))
+    arm_b = qa.get_analyser_prompt(model, directives=qa.PRODUCTION_DIRECTIVES)
     assert "**If present:**" not in prod
     assert "**If present:**" in arm_b
     assert "(core | contextual)" in arm_b
-    assert "finding_negatives" not in qa.PRODUCTION_DIRECTIVES
+    assert qa.PRODUCTION_DIRECTIVES == ("prune_v1", "finding_negatives")     # switched on 2026-09-30 (Hassan)
     assert "never the diagnosis it suggests" in arm_b
     # the management-deciding negative must survive the cap (L-45: pancreas lost SMV/SMA contact 1 in 5)
     assert "At most four negatives per finding" in arm_b

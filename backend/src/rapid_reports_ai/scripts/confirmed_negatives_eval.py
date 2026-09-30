@@ -28,7 +28,7 @@ from rapid_reports_ai.quick_report_analyser import PRODUCTION_DIRECTIVES, genera
 from rapid_reports_ai.quick_report_generator import generate_quick_report  # noqa: E402
 from rapid_reports_ai.scripts.sheet_budget import gate  # noqa: E402
 
-ARMS = {"A": PRODUCTION_DIRECTIVES, "B": PRODUCTION_DIRECTIVES + ("finding_negatives",)}
+ARMS = {"A": ("prune_v1",), "B": ("prune_v1", "finding_negatives")}   # A = production before 2026-09-30
 
 
 def _findings_block(report: str) -> str:
