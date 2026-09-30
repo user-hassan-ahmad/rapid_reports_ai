@@ -1627,12 +1627,12 @@ def _normalize_template_config_styles(config: dict) -> dict:
 
 
 def _carry_structure(new_config: dict, old_config: dict) -> dict:
-    """PUT replaces template_config wholesale; keep the stored structure when the sheet is unchanged."""
+    """sheet_structure is server-written only: drop any client copy, carry the stored one when the sheet is unchanged."""
+    new = {k: v for k, v in (new_config or {}).items() if k != "sheet_structure"}
     old = old_config or {}
-    if (new_config.get("skill_sheet") and "sheet_structure" not in new_config
-            and old.get("skill_sheet") == new_config.get("skill_sheet") and old.get("sheet_structure")):
-        return {**new_config, "sheet_structure": old["sheet_structure"]}
-    return new_config
+    if new.get("skill_sheet") and old.get("skill_sheet") == new["skill_sheet"] and old.get("sheet_structure"):
+        new["sheet_structure"] = old["sheet_structure"]
+    return new
 
 
 def _queue_structure(template_id: str, config: dict) -> None:
@@ -1655,7 +1655,7 @@ async def create_template_endpoint(
     try:
         if not template_data.template_config:
             return {"success": False, "error": "template_config is required"}
-        normalized_config = _normalize_template_config_styles(template_data.template_config)
+        normalized_config = _carry_structure(_normalize_template_config_styles(template_data.template_config), {})
         template = create_template(
             db=db,
             name=template_data.name,
@@ -1687,7 +1687,6 @@ async def update_template_endpoint(
         template_config = template_data.template_config
         if template_config:
             template_config = _normalize_template_config_styles(template_config)
-        if template_config:
             existing = get_template(db, template_id, user_id=str(current_user.id))
             template_config = _carry_structure(template_config, existing.template_config if existing else {})
         updated_template = update_template(
@@ -2102,7 +2101,8 @@ async def restore_template_version_endpoint(
             db=db,
             template_id=template_id,
             version_id=version_id,
-            user_id=str(current_user.id)
+            user_id=str(current_user.id),
+            config_transform=_carry_structure,
         )
         
         if not restored_template:

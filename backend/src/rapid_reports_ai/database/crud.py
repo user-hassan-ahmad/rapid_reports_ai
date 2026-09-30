@@ -644,9 +644,11 @@ def restore_template_version(
     db: Session,
     template_id: str,
     version_id: str,
-    user_id: str
+    user_id: str,
+    config_transform=None,
 ) -> Optional[Template]:
-    """Restore a template to a specific version"""
+    """Restore a template to a specific version. config_transform(version_config, current_config), when
+    given, produces the config actually written (used to keep server-written keys out of snapshots)."""
     # Verify ownership
     template = get_template(db, template_id, user_id=user_id)
     if not template:
@@ -669,7 +671,10 @@ def restore_template_version(
     template.name = version.name
     template.description = version.description
     template.tags = version.tags
-    template.template_config = version.template_config
+    restored_config = version.template_config
+    if config_transform is not None:
+        restored_config = config_transform(restored_config, template.template_config or {})
+    template.template_config = restored_config
     
     db.commit()
     db.refresh(template)
