@@ -304,8 +304,9 @@ def _remove_written_history(report: str, hist: ReportSection, sections: List[Rep
 
 def _neutralise_headers(text: str, sections: List[ReportSection]) -> str:
     """No line of the history text may read as a standalone sheet header (it would start a section):
-    such a line is folded into the next non-empty line as the inline form 'HEADER: next line', or, when
-    it is the last line, ends with a full stop instead."""
+    such a line is folded into the next non-empty line as 'HEADER – next line' (en dash, not a colon,
+    so it matches neither the standalone nor the inline 'HEADER: text' form), or, when it is the last
+    line, ends with a full stop instead."""
     pats = [re.compile(rf"^[ \t]*{re.escape(s.header.strip().rstrip(':').strip())}[ \t]*:?[ \t]*\r?$", re.I)
             for s in sections if s.header]
     lines = text.split("\n")
@@ -319,7 +320,7 @@ def _neutralise_headers(text: str, sections: List[ReportSection]) -> str:
             if j is None:
                 out.append(head + ".")
                 break
-            lines[j] = f"{head}: {lines[j].strip()}"
+            lines[j] = f"{head} \u2013 {lines[j].strip()}"
             i = j
             continue
         out.append(ln)

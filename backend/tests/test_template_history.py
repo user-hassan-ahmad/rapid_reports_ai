@@ -296,12 +296,12 @@ def test_insert_is_idempotent(secs, report):
 PRIOR_REPORT_HISTORY = "Previous CT report:\nFINDINGS\nNodule 5 mm.\nIMPRESSION\nStable.\n?progression"
 
 
-def test_history_lines_that_read_as_headers_are_folded_inline():
+def test_history_lines_that_read_as_headers_are_folded():
     out = th.insert_history("FINDINGS\nNew 8 mm nodule.\n\nIMPRESSION\nProgression.", PRIOR_REPORT_HISTORY, EXPLICIT)
-    assert out == ("CLINICAL HISTORY\nPrevious CT report:\nFINDINGS: Nodule 5 mm.\nIMPRESSION: Stable.\n?progression"
+    assert out == ("CLINICAL HISTORY\nPrevious CT report:\nFINDINGS \u2013 Nodule 5 mm.\nIMPRESSION \u2013 Stable.\n?progression"
                    "\n\nFINDINGS\nNew 8 mm nodule.\n\nIMPRESSION\nProgression.")
     spans = {s.name: out[a:b].strip() for s, a, b in rr.section_spans(out, EXPLICIT)}
-    assert spans == {"CLINICAL HISTORY": "Previous CT report:\nFINDINGS: Nodule 5 mm.\nIMPRESSION: Stable.\n?progression",
+    assert spans == {"CLINICAL HISTORY": "Previous CT report:\nFINDINGS \u2013 Nodule 5 mm.\nIMPRESSION \u2013 Stable.\n?progression",
                      "FINDINGS": "New 8 mm nodule.", "IMPRESSION": "Progression."}
     assert th.insert_history(out, PRIOR_REPORT_HISTORY, EXPLICIT) == out
 
@@ -310,3 +310,14 @@ def test_a_trailing_header_line_in_the_history_ends_with_a_full_stop():
     out = th.insert_history("FINDINGS\nX.", "Pain.\nImpression", EXPLICIT)
     assert out == "CLINICAL HISTORY\nPain.\nImpression.\n\nFINDINGS\nX."
     assert [s.name for s, _, _ in rr.section_spans(out, EXPLICIT)] == ["CLINICAL HISTORY", "FINDINGS"]
+
+
+def test_folded_history_is_safe_in_an_inline_header_report():
+    report = "FINDINGS: New 8 mm nodule.\n\nIMPRESSION: Progression."
+    out = th.insert_history(report, PRIOR_REPORT_HISTORY, EXPLICIT)
+    assert out == ("CLINICAL HISTORY\nPrevious CT report:\nFINDINGS \u2013 Nodule 5 mm.\nIMPRESSION \u2013 Stable.\n?progression"
+                   "\n\nFINDINGS: New 8 mm nodule.\n\nIMPRESSION: Progression.")
+    spans = {s.name: out[a:b].strip() for s, a, b in rr.section_spans(out, EXPLICIT)}
+    assert spans == {"CLINICAL HISTORY": "Previous CT report:\nFINDINGS \u2013 Nodule 5 mm.\nIMPRESSION \u2013 Stable.\n?progression",
+                     "FINDINGS": "New 8 mm nodule.", "IMPRESSION": "Progression."}
+    assert th.insert_history(out, PRIOR_REPORT_HISTORY, EXPLICIT) == out
