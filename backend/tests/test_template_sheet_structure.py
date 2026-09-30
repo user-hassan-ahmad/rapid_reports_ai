@@ -1,7 +1,10 @@
 """Save-time structure: verification and the coverage gate (spec §2)."""
 from __future__ import annotations
 
+import asyncio
 import pathlib
+
+import pytest
 
 from rapid_reports_ai import template_sheet_structure as tss
 
@@ -148,13 +151,311 @@ async def test_store_skips_when_the_sheet_changed_meanwhile(monkeypatch):
         def filter(self, *_):
             return self
 
+        def with_for_update(self):
+            return self
+
         def first(self):
             return T
 
         def commit(self):
             DB.committed = True
 
+        def rollback(self):
+            pass
+
         def close(self):
             pass
     assert tss.store_structure(DB(), "00000000-0000-0000-0000-000000000000", s) is False
     assert DB.committed is False
+
+
+# ── regression: verification fails closed (review of Tasks 6-7) ─────────────────
+
+ONCOLOGY_IF = '- **IF [oncology context]** THEN use "no suspicious osseous lesion" for bones.'
+NORMAL_LINE = '- **Normal pattern**: "Unremarkable appearances of the gallbladder, spleen and kidneys."'
+
+
+def build(d, sheet=SHEET):
+    return tss.build_structure(sheet, d, model="m")
+
+
+def with_rule2_source(lines):
+    d = good_draft()
+    d.rules[2] = d.rules[2].model_copy(update={"source_lines": lines})
+    return d
+
+
+@pytest.mark.parametrize("lines", [
+    ["oncology"],                                                             # tiny substring
+    ['- **IF [oncology context]** THEN use "no suspicious osseous'],          # 60% prefix
+    [SHEET[SHEET.index("## Interpretive"):SHEET.index("## Impression")]],     # superset block
+    [SHEET],                                                                   # the whole sheet
+])
+def test_rule_source_must_be_one_whole_conditional_line(lines):
+    s = build(with_rule2_source(lines))
+    assert [r.id for r in s.rules] == ["r0", "r1"]
+    assert not s.usable and ONCOLOGY_IF.strip() in s.coverage.uncovered
+
+
+def test_whole_sheet_as_every_source_covers_nothing():
+    d = good_draft()
+    d.rules = [d.rules[0].model_copy(update={"source_lines": [SHEET]})]
+    d.negatives = [d.negatives[0].model_copy(update={"source_lines": [SHEET]})]
+    s = build(d)
+    assert not s.rules and not s.negatives and not s.usable
+
+
+def test_two_joined_conditional_lines_are_not_one_source_line():
+    d = good_draft()
+    d.rules = [d.rules[0], d.rules[1].model_copy(update={"source_lines": [IF_SUPPRESS + "\n" + ONCOLOGY_IF]})]
+    s = build(d)
+    assert [r.id for r in s.rules] == ["r0"] and not s.usable
+
+
+@pytest.mark.parametrize("neg", [
+    # a quoted line outside any negative region
+    tss.Negative(id="n7", section="FINDINGS", text="No acute intra-abdominal abnormality.",
+                 source_lines=['- "No acute intra-abdominal abnormality."']),
+    # a positive statement, not a whole line
+    tss.Negative(id="n7", section="FINDINGS", text="Free intra-abdominal air",
+                 source_lines=["Free intra-abdominal air is present."]),
+    # text spanning two lines
+    tss.Negative(id="n7", section="FINDINGS", text='No pneumoperitoneum." - "No periappendiceal',
+                 source_lines=['- "No pneumoperitoneum."']),
+    # text not on its own source line
+    tss.Negative(id="n7", section="FINDINGS", text="No periappendiceal collection.",
+                 source_lines=['- "No pneumoperitoneum."']),
+    # positive text lifted from a conditional line
+    tss.Negative(id="n7", section="FINDINGS", text="Free intra-abdominal air is present.",
+                 source_lines=[IF_SUPPRESS]),
+    tss.Negative(id="n7", section="FINDINGS", text="", source_lines=[]),
+    tss.Negative(id="n7", section="FINDINGS", text="  ", source_lines=["  "]),
+])
+def test_unverifiable_negative_is_dropped(neg):
+    d = good_draft()
+    d.negatives.append(neg)
+    s = build(d)
+    assert [n.id for n in s.negatives] == ["n0", "n1", "n2"] and s.usable
+    assert any("n7" in f for f in s.coverage.verbatim_failures)
+
+
+def test_quoted_mandatory_normal_on_a_negative_line_is_kept():
+    sheet = SHEET.replace('  - "No periappendiceal collection." (if appendicitis)',
+                          '  - "No periappendiceal collection." (if appendicitis)\n  - "The portal vein is patent."')
+    d = good_draft()
+    d.negatives.append(tss.Negative(id="n3", section="FINDINGS", text="The portal vein is patent.",
+                                    source_lines=['  - "The portal vein is patent."']))
+    s = build(d, sheet)
+    assert "n3" in [n.id for n in s.negatives] and s.usable
+
+
+INVERTING = '- **Normal pattern**: "No hydronephrosis or renal calculus."'
+
+
+@pytest.mark.parametrize("line,text", [
+    (INVERTING, "Renal calculus."),                                               # negation dropped
+    (INVERTING, ""),                                                              # empty
+    ('- **Normal pattern**: "No abnormality of the liver. The kidneys are not unremarkable."',
+     "The kidneys are unremarkable."),                                            # 'not' dropped
+    (NORMAL_LINE, "Kidneys unremarkable appearances of the gallbladder spleen."), # word order
+    ('- "No pneumoperitoneum."', "No pneumoperitoneum."),                         # not a Normal pattern line
+])
+def test_atomic_normal_cannot_invert_or_reorder(line, text):
+    sheet = SHEET.replace(NORMAL_LINE, line) if line != '- "No pneumoperitoneum."' else SHEET
+    d = good_draft()
+    d.normals = [tss.Normal(id="m9", section="FINDINGS", structure="x", text=text, source_line=line)]
+    assert build(d, sheet).normals == []
+
+
+def test_atomic_normal_keeping_its_negation_is_kept():
+    sheet = SHEET.replace(NORMAL_LINE, INVERTING)
+    d = good_draft()
+    d.normals = [tss.Normal(id="m9", section="FINDINGS", structure="kidneys", text="No renal calculus.",
+                            source_line=INVERTING)]
+    assert [n.id for n in build(d, sheet).normals] == ["m9"]
+
+
+def test_duplicate_ids_keep_the_first_and_are_logged():
+    d = good_draft()
+    d.rules.append(d.rules[0].model_copy(update={"id": "r1"}))
+    d.negatives.append(d.negatives[0].model_copy(update={"id": "n1"}))
+    s = build(d)
+    assert [r.id for r in s.rules] == ["r0", "r1", "r2"] and [n.id for n in s.negatives] == ["n0", "n1", "n2"]
+    assert s.rules[1].target == "No pneumoperitoneum."
+    assert {"duplicate rule id r1", "duplicate negative id n1"} <= set(s.coverage.verbatim_failures)
+
+
+def test_empty_fixed_block_and_terms_are_dropped():
+    d = good_draft()
+    d.rules.append(tss.Rule(id="r5", section="FINDINGS", condition="x", effect="suppress", source_lines=[]))
+    d.fixed_blocks.append(tss.FixedBlock(id="f0", section="FINDINGS", text=""))
+    d.terminology.suppressed += ["", "  ", "pneumoperitoneum", "NORMAL"]   # empty, blank, outside section, dup
+    d.terminology.preferred += ["a"]
+    s = build(d)
+    assert [r.id for r in s.rules] == ["r0", "r1", "r2"] and s.fixed_blocks == []
+    assert s.terminology.suppressed == ["normal"] and s.terminology.preferred == ["unremarkable", "size significant"]
+
+
+def test_rule_target_must_come_from_its_own_line():
+    d = good_draft()
+    d.rules[0] = d.rules[0].model_copy(update={"effect": "suppress", "target": "No free intra-abdominal air or fluid."})
+    s = build(d)
+    assert "r0" not in [r.id for r in s.rules] and not s.usable
+
+
+def test_section_names_match_whole_listed_names_only():
+    d = good_draft()
+    d.sections += [tss.StructSection(name="IN", role="other", order=9),
+                   tss.StructSection(name="", role="other", order=10),
+                   tss.StructSection(name="FINDINGS (implicit header)", role="findings", order=11)]
+    assert [x.name for x in build(d).sections] == ["CLINICAL HISTORY", "FINDINGS", "IMPRESSION",
+                                                   "FINDINGS (implicit header)"]
+
+
+@pytest.mark.parametrize("pattern,names", [
+    ("- Sections included, in order: FINDINGS, IMPRESSION\n", {"findings", "impression"}),
+    ("- **Sections included, in order:**\n  1.  **COMPARISON** — `header: none` (Always)\n"
+     "  2. Body (Neck, Chest) (Header varies)\n     - Sub paragraph\n- For each section:\n  - OTHER\n",
+     {"comparison", "body"}),
+    ("- **FINDINGS**\n  - Always present\n- **CONCLUSION**\n  - `header: \"Conclusion\"`\n",
+     {"findings", "conclusion"}),
+])
+def test_section_names_parse_the_listed_shapes(pattern, names):
+    assert tss.section_names(f"## Structural Pattern\n{pattern}\n## Next\n- X\n") == names
+
+
+def test_if_present_dedupes_against_every_quoted_sheet_negative_and_caps_at_three():
+    d = good_draft()
+    d.if_present[0].negatives += [tss.IfPresentNeg(text=t, tag="core") for t in (
+        "No free intra-abdominal air or fluid", "No pneumoperitoneum!", "no  Pneumoperitoneum .",
+        "No acute intra-abdominal abnormality", "No appendicolith.", "No abscess", "No perforation",
+        "No fat stranding")]
+    assert [n.text for n in build(d).if_present[0].negatives] == ["No appendicolith", "No abscess", "No perforation"]
+
+
+def test_paragraph_refs_are_validated():
+    d = good_draft()
+    d.paragraphs.append(tss.Paragraph(id="p9", section="FINDINGS", name="invented"))
+    d.rules[0] = d.rules[0].model_copy(update={"paragraph": "p77"})
+    s = build(d)
+    assert [p.id for p in s.paragraphs] == ["p0"] and s.rules[0].paragraph == "" and s.negatives[0].paragraph == "p0"
+
+
+@pytest.mark.parametrize("sheet,expected", [
+    ('### P\n- **Mandatory negatives**:\n  - "No a."\n  - "No b."\n- **Normal pattern**: "x"\n',
+     ['  - "No a."', '  - "No b."']),
+    ('### P\n- **Mandatory negatives:** "No a.", "No b."\n- **Normal pattern**: "x"\n',
+     ['- **Mandatory negatives:** "No a.", "No b."']),
+    ('### P\n**Mandatory negatives:**\n- "No a."\n- "No b."\n\n**Normal pattern:**\n- "Unremarkable x."\n',
+     ['- "No a."', '- "No b."']),
+    ('### P\n- **Mandatory negatives**:\n  * "No a."\n', ['  * "No a."']),
+    ('### P\n- **Mandatory negatives**:\n  - No a.\n  - No b (if x).\n', ['  - No a.', '  - No b (if x).']),
+    ('### P\n- **Mandatory negatives**:\n\n  - "No a."\n', ['  - "No a."']),
+    ('### P\n- **mandatory negatives**:\n  - "No a."\n', ['  - "No a."']),
+    ('## Negative Finding Rules\n1. "No a."\n- Always state "No b."\n  - "No c."\n',
+     ['1. "No a."', '- Always state "No b."', '  - "No c."']),
+    ('## Negative Finding Rules\n- "No a."\n## Negative Finding Rules (global)\n- "No b."\n', ['- "No a."', '- "No b."']),
+    ('### P\n- **Mandatory negatives**:\n  - “No a.”\n', ['  - “No a.”']),
+    ('### P\n\t- **Mandatory negatives**:\n\t\t- "No a."\n\t- **Normal**: "x"\n', ['\t\t- "No a."']),
+    ('## Negative Finding Rules\n- **Lungs**: "Lungs clear. No effusion."\n- IF [x] THEN suppress "No a."\n',
+     ['- **Lungs**: "Lungs clear. No effusion."']),
+])
+def test_negative_lines_fail_closed_on_real_shapes(sheet, expected):
+    assert tss.negative_lines(sheet) == expected
+
+
+# ── store and schedule ───────────────────────────────────────────────────────────
+
+class FakeDB:
+    def __init__(self, tpl):
+        self.tpl, self.locked, self.committed = tpl, False, False
+
+    def query(self, *_):
+        return self
+
+    def filter(self, *_):
+        return self
+
+    def with_for_update(self):
+        self.locked = True
+        return self
+
+    def first(self):
+        return self.tpl
+
+    def commit(self):
+        self.committed = True
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        pass
+
+
+class Tpl:
+    def __init__(self, sheet):
+        self.template_config = {"skill_sheet": sheet, "generation_mode": "skill_sheet_guided"}
+
+
+TID = "00000000-0000-0000-0000-000000000000"
+
+
+def test_store_writes_locks_flags_and_commits(monkeypatch):
+    flagged = []
+    monkeypatch.setattr(tss, "flag_modified", lambda obj, key: flagged.append(key))
+    tpl, s = Tpl(SHEET), tss.build_structure(SHEET, good_draft(), model="m")
+    db = FakeDB(tpl)
+    assert tss.store_structure(db, TID, s) is True
+    assert db.locked and db.committed and flagged == ["template_config"]
+    assert tss.fresh(tpl.template_config) is not None
+    assert tpl.template_config["generation_mode"] == "skill_sheet_guided"
+
+
+def test_failure_marker_stops_retries_until_the_sheet_changes(monkeypatch):
+    monkeypatch.setattr(tss, "flag_modified", lambda *_: None)
+    tpl = Tpl(SHEET)
+    assert tss.store_failure(FakeDB(tpl), TID, SHEET, "RuntimeError: model down") is True
+    cfg = tpl.template_config
+    assert cfg["sheet_structure"]["failed"] is True
+    assert tss.fresh(cfg) is None and not tss.needs_restructure(cfg)
+    assert tss.needs_restructure({**cfg, "skill_sheet": SHEET + "\n- edited"})
+
+
+async def test_schedule_dedupes_and_records_failure(monkeypatch):
+    calls, stored = [], []
+
+    async def boom(sheet):
+        calls.append(sheet)
+        await asyncio.sleep(0)
+        raise RuntimeError("model down")
+    monkeypatch.setattr(tss, "structure_sheet", boom)
+    monkeypatch.setattr(tss, "SessionLocal", lambda: FakeDB(Tpl(SHEET)))
+    monkeypatch.setattr(tss, "store_failure", lambda db, tid, sheet, err: stored.append(err) or True)
+    tss.schedule_structure(TID, SHEET)
+    tss.schedule_structure(TID, SHEET)
+    await asyncio.gather(*list(tss._tasks))
+    assert len(calls) == 1 and stored == ["RuntimeError: model down"]
+    assert not tss._inflight and not tss._tasks
+
+
+async def test_schedule_stores_a_built_structure(monkeypatch):
+    stored = []
+
+    async def ok(sheet):
+        return tss.build_structure(sheet, good_draft(), model="m")
+    monkeypatch.setattr(tss, "structure_sheet", ok)
+    monkeypatch.setattr(tss, "SessionLocal", lambda: FakeDB(Tpl(SHEET)))
+    monkeypatch.setattr(tss, "store_structure", lambda db, tid, s: stored.append(s.usable) or True)
+    tss.schedule_structure(TID, SHEET)
+    await asyncio.gather(*list(tss._tasks))
+    assert stored == [True] and not tss._inflight
+
+
+def test_schedule_without_a_loop_warns_and_clears(monkeypatch):
+    # record directly: other suites reconfigure logging, so caplog is not reliable here
+    warned = []
+    monkeypatch.setattr(tss.logger, "warning", lambda msg, *a: warned.append(msg % a))
+    tss.schedule_structure(TID, SHEET)
+    assert not tss._inflight and not tss._tasks
+    assert any("no running event loop" in w for w in warned)
