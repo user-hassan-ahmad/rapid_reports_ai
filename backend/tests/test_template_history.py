@@ -20,34 +20,120 @@ def test_provenance_rejects_added_facts():
     assert not th.grounded("72F. Right iliac fossa pain.", HISTORY)
 
 
-@pytest.mark.parametrize("text,history", [
-    ("67F. Pain RIF. ?Appendicitis.", "67 yo F, pain RIF ?appendicitis"),
-    ("54M. Chest pain. ?PE.", "54-year-old man, chest pain, query PE"),
-    ("71F. History of bowel cancer. Weight loss. ?Recurrence.", "71 year old lady. Hx bowel cancer, weight loss ?recurrence"),
+# The prompt's target form: the referrer's own words and abbreviations, connecting words dropped,
+# age/sex as 67F, '?' for 'query', markers kept on their fact.
+ACCEPT = [
+    ("67F. RIF pain. ?Appendicitis.", "67 yo F, RIF pain ?appendicitis"),
+    ("67F. RIF pain. ?Appendicitis.", "67 year old female with RIF pain. Query appendicitis."),
+    ("54M. Chest pain 2/7. No fever. ?PE.", "54-year-old man, chest pain for 2/7, no fever. ?PE"),
+    ("71F. Hx bowel cancer. Weight loss. ?Recurrence.", "71 year old lady. Hx bowel cancer, weight loss, ?recurrence"),
+    ("History bowel cancer.", "Previous bowel cancer"),
     ("45M. Post-op day 3. Fever. ?Collection.", "45M post-op day 3 with fever, ?collection"),
-    ("60F. No trauma. Back pain.", "60 year old woman, back pain, no trauma"),
-])
-def test_provenance_accepts_realistic_restatements(text, history):
-    assert th.grounded(text, history)
+    ("60F. Back pain. No trauma.", "60 year old woman, back pain, no trauma"),
+    ("Known Crohn's disease. Abdo pain 2/52. ?Stricture.", "Known Crohn's disease, abdo pain for 2/52, ?stricture"),
+    ("67 y/o F. Pain.", "67 year old female, pain"),
+    ("67 year old female. Pain.", "67F pain"),
+    ("?PE or pneumonia.", "?PE or pneumonia"),
+    ("D-dimer +ve. Troponin -ve.", "D-dimer +ve, troponin -ve"),
+    ("Mass 3.5 cm.", "mass 3.5 cm, node 5.3 cm"),
+    ("Chest pain.", "chest pain and cough"),
+    ("Appendicitis?", "RIF pain, appendicitis?"),
+]
 
 
-@pytest.mark.parametrize("text,history", [
-    # a two-letter acronym is still a fact
-    ("54M. Chest pain. ?PE. AF.", "54-year-old man, chest pain, query PE"),
-    # a number glued to an age unit is still a number
-    ("72yo F. Pain RIF.", "67 yo F, pain RIF"),
-    # sex needs a matching word in the input
-    ("67M. Pain RIF.", "67 year old female, pain RIF"),
-    ("67F. Pain RIF.", "67 year old, pain RIF"),
-    # an added negation inverts a fact
-    ("60F. No back pain.", "60 year old woman, back pain"),
-    # a query must not become a known/past fact
-    ("71F. Known malignancy.", "71 year old woman ?malignancy"),
-    ("71F. Previous malignancy.", "71 year old woman ?malignancy"),
-])
-def test_provenance_rejects_subtle_additions(text, history):
+@pytest.mark.parametrize("text,history", ACCEPT)
+def test_provenance_accepts_the_target_form(text, history):
+    assert th.grounded(text, history), th._why_ungrounded(text, history)
+
+
+# Meaning-changing restatements (reviewer probe classes). Each must fail, and so fall back to verbatim.
+REJECT = [
+    ("negation dropped", "60F. Chest pain.", "60 year old woman, no chest pain, dyspnoea"),
+    ("query->fact", "67F. Appendicitis.", "67 year old female ?appendicitis"),
+    ("postfix query->fact", "Appendicitis.", "RIF pain, appendicitis?"),
+    ("fact->query", "67F. ?Appendicitis.", "67 year old female, known appendicitis"),
+    ("decimal swap", "Mass 5.3 cm.", "mass 3.5 cm, node 5.3 cm"),
+    ("number move", "Mass 5 cm. Node 3 cm.", "mass 3 cm, node 5 cm"),
+    ("unit swap", "Mass 3 cm.", "mass 3 mm, previous 2 cm"),
+    ("date swap", "Surgery 03/12.", "surgery 12/03, CT 03/12"),
+    ("laterality swap", "Right leg pain. Left leg swelling.", "left leg pain, right leg swelling"),
+    ("comparator flip", "CRP <100.", "CRP >100"),
+    ("+ve/-ve flip", "D-dimer -ve.", "D-dimer +ve, troponin -ve"),
+    ("sex via MR", "67M. Pain.", "67 year old, prior MR, pain"),
+    ("sex via MS", "40F. Weakness.", "40 year old, MS, weakness"),
+    ("sex via pronoun", "40M.", "40, patient says he fell? no - referral by partner"),
+    ("sex via lone letter", "67F.", "67 year old, f/u pain"),
+    ("sex swap", "60M.", "60 year old woman, husband present"),
+    ("past via any hx", "Previous stroke.", "Hx diabetes. ?stroke"),
+    ("age from other number", "3M. Pain.", "67 year old man, pain for 3 days"),
+    ("age from other number 2", "40F.", "female, CRP 40"),
+    ("not dropped", "Pain. Trauma.", "pain, not trauma"),
+    ("without->with", "Pain with fever.", "pain without fever"),
+    ("negation moved", "No fever. Cough.", "fever, no cough"),
+    ("excluded->query", "?PE.", "PE excluded last week"),
+    ("excluded dropped", "PE.", "PE excluded"),
+    ("scope carries over or", "Fever.", "no pain or fever"),
+    ("modifier cut off", "Pre-op.", "post-op day 3, pre-op CT normal"),
+    ("added fact", "67F. RIF pain. Previous appendicectomy.", "67 yo F, RIF pain"),
+    ("added acronym", "54M. Chest pain. AF.", "54 year old man, chest pain"),
+    ("expanded abbreviation", "Right iliac fossa pain.", "RIF pain"),
+    ("age words outside age", "Pain 3 years old.", "pain for 3 years"),
+]
+
+
+@pytest.mark.parametrize("name,text,history", REJECT, ids=[r[0] for r in REJECT])
+def test_provenance_rejects_meaning_changes(name, text, history):
     assert not th.grounded(text, history)
 
+
+def _fake_agent(text):
+    class R:
+        class output:
+            pass
+    R.output.text = text
+
+    async def fake(**kw):
+        return R
+    return fake
+
+
+@pytest.mark.parametrize("name,text,history", REJECT, ids=[r[0] for r in REJECT])
+async def test_rejected_restatements_fall_back_to_verbatim(monkeypatch, name, text, history):
+    monkeypatch.setattr(th, "_run_agent_with_model", _fake_agent(text))
+    assert await th.write_history(history) == (history, "verbatim")
+
+
+async def test_write_history_returns_grounded_text(monkeypatch):
+    monkeypatch.setattr(th, "_run_agent_with_model", _fake_agent(" 67F. Right iliac fossa pain. ?Appendicitis. "))
+    assert await th.write_history(HISTORY) == ("67F. Right iliac fossa pain. ?Appendicitis.", "restated")
+
+
+async def test_write_history_falls_back_on_failure_or_empty_and_tidies(monkeypatch):
+    messy = "  67 year old   female\n\n\n  RIF pain \t ?appendicitis  "
+    tidy = "67 year old female\nRIF pain ?appendicitis"
+
+    async def boom(**kw):
+        raise RuntimeError("down")
+    monkeypatch.setattr(th, "_run_agent_with_model", boom)
+    assert await th.write_history(messy) == (tidy, "verbatim")
+    monkeypatch.setattr(th, "_run_agent_with_model", _fake_agent("  "))
+    assert await th.write_history(messy) == (tidy, "verbatim")
+
+
+async def test_write_history_empty_input_is_none(monkeypatch):
+    monkeypatch.setattr(th, "_run_agent_with_model", _fake_agent("67F."))
+    assert await th.write_history("  \n ") is None
+
+
+async def test_ungrounded_restatement_logs_the_failing_fragment(monkeypatch):
+    logged = []
+    monkeypatch.setattr(th.logger, "warning", lambda msg, *a: logged.append(msg % a))
+    monkeypatch.setattr(th, "_run_agent_with_model", _fake_agent("67F. Chest pain."))
+    await th.write_history("67 year old woman, no chest pain")
+    assert any("'Chest pain'" in m for m in logged)
+
+
+# --------------------------------------------------------------------------------------- placement
 
 def test_insert_puts_the_section_first_when_findings_are_implicit():
     report = "The appendix is dilated.\n\nImpression\nAppendicitis."
@@ -62,32 +148,39 @@ def test_insert_goes_before_the_next_present_header():
     assert th.insert_history(report, "67F.", secs) == "TECHNIQUE\nCT.\n\nCLINICAL HISTORY\n67F.\n\nFINDINGS\nX."
 
 
-def _fake_agent(text):
-    class R:
-        class output:
-            pass
-    R.output.text = text
-
-    async def fake(**kw):
-        return R
-    return fake
+EXPLICIT = [ReportSection(name="CLINICAL HISTORY", header="CLINICAL HISTORY", role="history"),
+            ReportSection(name="FINDINGS", header="FINDINGS", role="findings"),
+            ReportSection(name="IMPRESSION", header="IMPRESSION", role="impression")]
 
 
-async def test_write_history_returns_none_when_ungrounded(monkeypatch):
-    monkeypatch.setattr(th, "_run_agent_with_model", _fake_agent("67F. Previous appendicectomy."))
-    assert await th.write_history(HISTORY) is None
+def test_insert_without_a_history_section_leaves_the_report_unchanged():
+    assert th.insert_history("FINDINGS\nX.", "67F.", EXPLICIT[1:]) == "FINDINGS\nX."
 
 
-async def test_write_history_returns_grounded_text(monkeypatch):
-    monkeypatch.setattr(th, "_run_agent_with_model", _fake_agent(" 67F. Right iliac fossa pain. ?Appendicitis. "))
-    assert await th.write_history(HISTORY) == "67F. Right iliac fossa pain. ?Appendicitis."
+def test_insert_replaces_a_generator_written_block():
+    report = "CLINICAL HISTORY\n67 year old with pain and a guess.\n\nFINDINGS\nX.\n\nIMPRESSION\nY."
+    assert th.insert_history(report, "67F.", EXPLICIT) == "CLINICAL HISTORY\n67F.\n\nFINDINGS\nX.\n\nIMPRESSION\nY."
 
 
-async def test_write_history_omits_on_failure_or_empty(monkeypatch):
-    async def boom(**kw):
-        raise RuntimeError("down")
-    monkeypatch.setattr(th, "_run_agent_with_model", boom)
-    assert await th.write_history(HISTORY) is None
-    monkeypatch.setattr(th, "_run_agent_with_model", _fake_agent("  "))
-    assert await th.write_history(HISTORY) is None
-    assert await th.write_history("   ") is None
+def test_insert_replaces_an_inline_generator_block_elsewhere():
+    report = "FINDINGS: X.\n\nClinical history: pain.\n\nIMPRESSION: Y."
+    out = th.insert_history(report, "67F.", EXPLICIT)
+    assert out == "CLINICAL HISTORY\n67F.\n\nFINDINGS: X.\n\nIMPRESSION: Y."
+    assert out.lower().count("clinical history") == 1
+
+
+def test_insert_places_before_inline_headers():
+    out = th.insert_history("FINDINGS: X.\n\nIMPRESSION: Y.", "67F.", EXPLICIT)
+    assert out == "CLINICAL HISTORY\n67F.\n\nFINDINGS: X.\n\nIMPRESSION: Y."
+
+
+def test_insert_does_not_treat_prose_as_a_header():
+    secs = [EXPLICIT[0], EXPLICIT[2]]
+    report = "Findings of note are minor.\n\nIMPRESSION\nY."
+    assert th.insert_history(report, "67F.", secs) == "Findings of note are minor.\n\nCLINICAL HISTORY\n67F.\n\nIMPRESSION\nY."
+
+
+def test_insert_appends_when_the_history_section_is_last():
+    secs = [EXPLICIT[1], EXPLICIT[2], EXPLICIT[0]]
+    assert th.insert_history("FINDINGS\nX.\n\nIMPRESSION\nY.", "67F.", secs) == \
+        "FINDINGS\nX.\n\nIMPRESSION\nY.\n\nCLINICAL HISTORY\n67F.\n"
