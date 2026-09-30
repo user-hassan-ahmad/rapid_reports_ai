@@ -28,7 +28,8 @@ ACCEPT = [
     ("54M. Chest pain 2/7. No fever. ?PE.", "54-year-old man, chest pain for 2/7, no fever. ?PE"),
     ("71F. Hx bowel cancer. Weight loss. ?Recurrence.", "71 year old lady. Hx bowel cancer, weight loss, ?recurrence"),
     ("History bowel cancer.", "Previous bowel cancer"),
-    ("45M. Post-op day 3. Fever. ?Collection.", "45M post-op day 3 with fever, ?collection"),
+    ("45M. Post-op day 3 with fever. ?Collection.", "45M post-op day 3 with fever, ?collection"),
+    ("45M. Post-op day 3 fever. ?Collection.", "45M post-op day 3 with fever, ?collection"),
     ("60F. Back pain. No trauma.", "60 year old woman, back pain, no trauma"),
     ("Known Crohn's disease. Abdo pain 2/52. ?Stricture.", "Known Crohn's disease, abdo pain for 2/52, ?stricture"),
     ("67 y/o F. Pain.", "67 year old female, pain"),
@@ -36,8 +37,14 @@ ACCEPT = [
     ("?PE or pneumonia.", "?PE or pneumonia"),
     ("D-dimer +ve. Troponin -ve.", "D-dimer +ve, troponin -ve"),
     ("Mass 3.5 cm.", "mass 3.5 cm, node 5.3 cm"),
-    ("Chest pain.", "chest pain and cough"),
     ("Appendicitis?", "RIF pain, appendicitis?"),
+    ("RIF pain. ?Appendicitis.", "RIF pain ?appendicitis"),
+    ("No fever. ?PE.", "no fever ?PE"),
+    ("No fever and cough.", "no fever and cough"),
+    ("67F. Pain.", "woman aged 67, pain"),
+    ("67M. Pain.", "67 M, pain"),
+    ("67F. Pain.", "67-year-old female, pain"),
+    ("Pain 3 years.", "pain for 3 years"),
 ]
 
 
@@ -78,6 +85,46 @@ REJECT = [
     ("added acronym", "54M. Chest pain. AF.", "54 year old man, chest pain"),
     ("expanded abbreviation", "Right iliac fossa pain.", "RIF pain"),
     ("age words outside age", "Pain 3 years old.", "pain for 3 years"),
+    # partial clauses: a tail or head dropped after/before a connective flips meaning (round 3 probe)
+    ("partial clause", "Chest pain.", "chest pain and cough"),
+    ("tail negation after connective", "Chest pain.", "chest pain is not present"),
+    ("ruled out after was", "PE.", "PE was ruled out"),
+    ("resolved after has", "Fever.", "fever has resolved"),
+    ("unlikely after is", "PE.", "PE is unlikely"),
+    ("family history", "History of breast cancer.", "family history of breast cancer"),
+    ("mother had", "Stroke.", "mother had stroke"),
+    ("wife has", "Cancer.", "wife has cancer"),
+    ("risk of", "DVT.", "at risk of DVT"),
+    ("concern for", "PE.", "concern for PE"),
+    ("assess for", "Metastases.", "assess for metastases"),
+    ("or scope: ?A or B -> B", "Pneumonia.", "?PE or pneumonia"),
+    ("split at or", "?PE. Pneumonia.", "?PE or pneumonia"),
+    ("split at or before marker", "?PE. ?Pneumonia.", "?PE or ?pneumonia"),
+    ("and scope: no A and B -> B", "Cough.", "no fever and cough"),
+    ("split at and", "No fever. Cough.", "no fever and cough"),
+    ("or scope: no A or B -> B", "Cough.", "no fever or cough"),
+    ("postfix across and", "Fever.", "fever and cough negative"),
+    ("postfix ? across or", "Pneumonia.", "PE or pneumonia?"),
+    ("split before postfix", "Troponin. Negative.", "troponin negative"),
+    ("age from duration", "3M. Pain.", "man with pain for 3 years"),
+    ("age from 'years ago'", "5 yo. Surgery.", "surgery 5 years ago"),
+    ("age via 'o'", "2 yo.", "o/e 2 lesions"),
+    ("sex outside age span", "67F. Pain.", "67 year old, female, pain"),
+    ("known dropped", "Crohn's.", "known Crohn's"),
+    ("possible dropped", "Fracture.", "possible fracture"),
+    ("? suffix mid", "PE.", "PE? pneumonia"),
+    ("unless", "Contrast.", "unless contrast allergy"),
+    ("rather than", "Pneumonia.", "infection rather than pneumonia"),
+    ("if", "Mass.", "if mass seen"),
+    ("was on", "Warfarin.", "was previously on warfarin"),
+    ("stopped", "Warfarin.", "warfarin stopped"),
+    ("age skip joins facts", "Pain swelling.", "pain 67 years swelling"),
+    ("negative after was", "Troponin.", "troponin was negative"),
+    ("not after fact", "Fracture.", "fracture not seen"),
+    ("no evidence", "Evidence of DVT.", "no evidence of DVT"),
+    ("denied", "Chest pain.", "denied chest pain"),
+    ("absent", "Pulses.", "pulses absent"),
+    ("normal dropped", "CT.", "CT was normal"),
 ]
 
 
@@ -162,13 +209,6 @@ def test_insert_replaces_a_generator_written_block():
     assert th.insert_history(report, "67F.", EXPLICIT) == "CLINICAL HISTORY\n67F.\n\nFINDINGS\nX.\n\nIMPRESSION\nY."
 
 
-def test_insert_replaces_an_inline_generator_block_elsewhere():
-    report = "FINDINGS: X.\n\nClinical history: pain.\n\nIMPRESSION: Y."
-    out = th.insert_history(report, "67F.", EXPLICIT)
-    assert out == "CLINICAL HISTORY\n67F.\n\nFINDINGS: X.\n\nIMPRESSION: Y."
-    assert out.lower().count("clinical history") == 1
-
-
 def test_insert_places_before_inline_headers():
     out = th.insert_history("FINDINGS: X.\n\nIMPRESSION: Y.", "67F.", EXPLICIT)
     assert out == "CLINICAL HISTORY\n67F.\n\nFINDINGS: X.\n\nIMPRESSION: Y."
@@ -184,3 +224,44 @@ def test_insert_appends_when_the_history_section_is_last():
     secs = [EXPLICIT[1], EXPLICIT[2], EXPLICIT[0]]
     assert th.insert_history("FINDINGS\nX.\n\nIMPRESSION\nY.", "67F.", secs) == \
         "FINDINGS\nX.\n\nIMPRESSION\nY.\n\nCLINICAL HISTORY\n67F.\n"
+
+
+HIST_LAST_OF_TWO = [ReportSection(name="CLINICAL HISTORY", header="History", role="history"),
+                    ReportSection(name="FINDINGS", header="FINDINGS", role="findings")]
+
+
+def test_insert_keeps_inline_history_text_inside_findings():
+    report = "FINDINGS\nLiver normal.\nHistory: nil.\nSpleen normal."
+    assert th.insert_history(report, "67F.", HIST_LAST_OF_TWO) == \
+        "History\n67F.\n\nFINDINGS\nLiver normal.\nHistory: nil.\nSpleen normal."
+
+
+def test_insert_keeps_a_standalone_history_line_out_of_place():
+    report = "FINDINGS\nLiver normal.\nHistory\nSpleen normal."
+    out = th.insert_history(report, "67F.", HIST_LAST_OF_TWO)
+    assert out.endswith("FINDINGS\nLiver normal.\nHistory\nSpleen normal.")
+
+
+def test_insert_keeps_text_when_the_block_end_is_unsure():
+    # next section implicit and no paragraph break: nothing is removed
+    report = "CLINICAL HISTORY\nPain.\nThe appendix is dilated.\n\nImpression\nAppendicitis."
+    out = th.insert_history(report, "67F.", SECTIONS)
+    assert "The appendix is dilated." in out
+
+
+def test_insert_removes_a_generator_block_before_implicit_findings():
+    report = "CLINICAL HISTORY\nPain, query appendicitis.\n\nThe appendix is dilated.\n\nImpression\nAppendicitis."
+    assert th.insert_history(report, "67F.", SECTIONS) == \
+        "CLINICAL HISTORY\n67F.\n\nThe appendix is dilated.\n\nImpression\nAppendicitis."
+
+
+@pytest.mark.parametrize("secs,report", [
+    (EXPLICIT, "FINDINGS\nX.\n\nIMPRESSION\nY."),
+    (EXPLICIT, "FINDINGS: X.\n\nIMPRESSION: Y."),
+    (SECTIONS, "The appendix is dilated.\n\nImpression\nAppendicitis."),
+    ([EXPLICIT[1], EXPLICIT[2], EXPLICIT[0]], "FINDINGS\nX.\n\nIMPRESSION\nY."),
+])
+def test_insert_is_idempotent(secs, report):
+    text = "Previous CT.\nImpression: stable nodule.\n?progression"
+    once = th.insert_history(report, text, secs)
+    assert th.insert_history(once, text, secs) == once
