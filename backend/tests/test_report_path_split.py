@@ -55,3 +55,17 @@ def test_quick_report_generator_has_its_own_role():
     from rapid_reports_ai.enhancement_utils import MODEL_CONFIG, MODEL_PROVIDERS
     for role in ("QUICK_REPORT_GENERATOR", "QUICK_REPORT_GENERATOR_FALLBACK"):
         assert MODEL_CONFIG[role] in MODEL_PROVIDERS
+
+
+SHARED_MODULES = ("report_reconcile.py", "report_review.py", "generation_artifacts.py")
+PATHWAY_MODULES = {"quick_report_brief", "quick_report_quality", "quick_report_generator", "quick_report_prompts",
+                   "quick_report_hardening", "quick_report_api", "quick_report_analyser", "template_manager",
+                   "global_style_guide", "template_brief", "template_pipeline", "template_sheet_structure",
+                   "template_history"}
+
+
+def test_shared_modules_import_neither_pathway():
+    for f in SHARED_MODULES:
+        path = SRC / f
+        assert path.exists(), f
+        assert not (_imports(path) & PATHWAY_MODULES), f
