@@ -96,6 +96,14 @@ Port from `quick_report_brief.compile_brief` into `report_reconcile` (as with th
 - New brief labels (OPEN DIFFERENTIAL, CLOSED, RECOMMEND/OFFERED …) go into the
   `TEMPLATE_SHEET_HEADER_BRIEF` sign-off package with the G3 labels.
 
+### Sign-off package
+
+Header lines staged here for `global_style_guide.TEMPLATE_SHEET_HEADER_BRIEF`; not in the code until signed off.
+
+- (2026-10-01, Jev wording v2 T5) "ADDRESS AS POSSIBLE — the dictation raises this as a possibility; the
+  impression keeps the hedge." A present branch (`q_present` ≥ 0.5) whose present-vs-possible choice in the
+  same findings-state call gives P(possible) ≥ 0.5 is labelled `ADDRESS AS POSSIBLE` instead of `ADDRESS`.
+
 ## Prompts
 
 1. **Lean template analyser** (replaces the G2 lab prompt): sections, paragraphs + COVERS, NORMAL per
