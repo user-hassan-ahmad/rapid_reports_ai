@@ -101,6 +101,11 @@ NOT_VISIBLE_REASON = "this study cannot show what it would exclude"
 Q_DENIES = "This report statement denies or excludes the following: {name} — {discriminator}. Statement: {text}"
 _UNIT_LINE = re.compile(r"^\s*(?:-\s+)?(SECTION|NORMAL|NEGATIVE|FIXED|TERM|IF_PRESENT|RULE|COVERS|QUESTION|DIFFERENTIAL|"
                         r"RECOMMEND)\b")
+# Denial questions per Jev call. Measured 2026-10-01 (synthetic statements, real Jev): one call of 20 / 40 /
+# 80 / 160 questions p95 0.33 / 0.32 / 0.33 / 0.35 s; 4 parallel calls of 40 p95 0.49 s, of 80 p95 1.01 s.
+# 80 is the largest size in the specified grid with p95 well under 3 s and headroom to JEV_TIMEOUT_S.
+X_CHUNK = 80
+X_BUDGET_WARN = 160  # above this, warn (never cap: every unit in scope is asked)
 _WHEN = re.compile(r"\bWHEN\s*\[[^\]]*\]")
 
 
@@ -540,32 +545,45 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                 normals_sent.append(u)
             normal_plans[u.id] = {"status": status, "forced": forced}
 
-        # Same claim, other wording: for each PRESENT differential, Jev reads every template negative and
-        # normal in its scope (the sections of the case negatives targeting it; else the findings sections)
-        # for a statement that denies it. Asked alongside the classifier.
+        # Same claim, other wording: for each PRESENT differential, Jev reads every unit that could state its
+        # absence in a findings-role section that is written (template negatives and normals, case negatives
+        # targeting another differential, case If-present negatives of a reported finding) for a statement
+        # that denies it. Asked alongside the classifier, in parallel chunks of X_CHUNK.
+        # Known quality limit (R4): a NORMAL listing several structures is marked as a whole (DO NOT ASSERT AS
+        # NORMAL) when one clause denies the differential; its other structures lose their normal wording.
         q_x: Dict[str, dict] = {}
         x_of: Dict[str, Tuple[_Unit, str]] = {}  # Jev key -> (unit, differential name)
         findings_sections = {x.name for x in s.sections if x.role == "findings"}
+        reported_ifp = list({u.id: u for u, _, pf in cands if pf >= MET}.values())
         for k, d in enumerate(s.differentials):
             if diff_route[d.name] != "present":
                 continue
-            scope = {u.section for u in negatives if u.origin == "case" and u.targets == d.name} or findings_sections
-            for u in negatives + normals:
-                if u.origin == "case" or u.section not in scope or unit_omitted(u):
+            for u in negatives + normals + reported_ifp:
+                if u.section not in findings_sections or unit_omitted(u):
                     continue
+                if u.kind == "negative" and u.origin == "case" and (
+                        u.targets == d.name or plans[u.id]["status"] == "differential_present"):
+                    continue  # its own differential, or already OMIT
                 key = f"x{k}_{u.id}"
                 q_x[key] = {"type": "noul", "instructions": Q_DENIES.format(
                     name=d.name, discriminator=d.discriminator, text=u.text)}
                 x_of[key] = (u, d.name)
+        if len(q_x) > X_BUDGET_WARN:
+            logger.warning("template brief: %d denial questions (> %d); asked in %d chunks", len(q_x),
+                           X_BUDGET_WARN, -(-len(q_x) // X_CHUNK))
 
         async def qwen_or_empty():
             if to_classify or normals_sent:
                 return await rc._qwen(state, to_classify, [u.text for u in normals_sent], [])
             return rc.QwenDecisions(negatives=[], affected_normals=[], applicable_measurements=[])
 
-        qw, jev_x = await asyncio.gather(qwen_or_empty(), rc._jev(state, q_x) if q_x else asyncio.sleep(0, {}))
+        keys_x = list(q_x)
+        chunks = [{k: q_x[k] for k in keys_x[i:i + X_CHUNK]} for i in range(0, len(keys_x), X_CHUNK)]
+        qw, *jev_x = await asyncio.gather(qwen_or_empty(), *(rc._jev(state, c) for c in chunks))
         _check_qwen(qw, len(to_classify), len(normals_sent))
-        sx = _scores(jev_x, q_x)
+        sx: Dict[str, float] = {}
+        for c, answers in zip(chunks, jev_x):  # every chunk answered in full, or the brief fails
+            sx.update(_scores(answers, c))
         denied: Dict[str, str] = {}  # unit id -> the present differential it denies
         for key, (u, name) in x_of.items():
             if sx[key] >= MET:
@@ -618,8 +636,17 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
             action = "differential_present"
         elif p["status"] == "target_not_visible":
             for part in p["parts"]:
-                new.append(f'- DO NOT ASSERT: "{_q(part)}" — {NOT_VISIBLE_REASON}')
-                labels.append((u, _key(part), "DO NOT ASSERT"))
+                if u.id in denied:  # it denies a present differential: the safer OMIT wins
+                    new.append(f'- OMIT: "{_q(part)}" — {CASE_OMIT_REASON}')
+                    labels.append((u, _key(part), "OMIT"))
+                    decisions["conflicts"].append({
+                        "text": _q(part), "winner": "OMIT", "differential": denied[u.id],
+                        "source": "jev_denies_present_differential",
+                        "labels": [{"origin": "case", "id": u.id, "label": "DO NOT ASSERT"},
+                                   {"origin": "case", "label": "OMIT", "targets": denied[u.id]}]})
+                else:
+                    new.append(f'- DO NOT ASSERT: "{_q(part)}" — {NOT_VISIBLE_REASON}')
+                    labels.append((u, _key(part), "DO NOT ASSERT"))
             action = "target_not_visible"
         else:
             for j, part in enumerate(p["parts"]):
@@ -702,6 +729,13 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                                                "present": None, "outcome": "differential_present",
                                                "source": "case", "differential": case_omit[_key(part)]})
     for u, part, pf in cands:
+        if u.id in denied:  # checked before route_finding: it denies a present differential
+            L.put(u.line, [f'- OMIT: "{_q(part)}" — {CASE_OMIT_REASON}'])
+            labels.append((u, _key(part), "OMIT"))
+            decisions["finding_negatives"].append({"finding": u.finding, "text": part, "tag": u.tag, "qwen": "n/a",
+                                                   "present": round(pf, 3), "outcome": "denies_present_differential",
+                                                   "source": "case", "differential": denied[u.id]})
+            continue
         d = qneg.get(_key(part)) if pf >= rc.PRESENT_LOW else None
         label = d.action if d else "keep"
         outcome = rc.route_finding(label, pf, u.tag)
