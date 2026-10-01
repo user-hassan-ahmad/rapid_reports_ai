@@ -546,6 +546,9 @@ def _drop_item(s: str, target: str) -> Optional[str]:
     return f"{m.group(1)} {body}."
 
 
+_EMPTY_ITEM = re.compile(r"^\s*(?:\d+[.)]|[-*\u2022])\s*$")
+
+
 def remove_negative_clause(report: str, clause: str, sections: Optional[List[ReportSection]] = None,
                            protected: Optional[List[str]] = None) -> str:
     """Take one flagged negative out of the report without asserting anything: a whole negative
@@ -579,6 +582,11 @@ def remove_negative_clause(report: str, clause: str, sections: Optional[List[Rep
                     hi += 1
                 left, right = report[:lo], report[hi:]
                 sep = "" if not left or left.endswith("\n") or not right or right.startswith("\n") else " "
+                # A numbered or bulleted item left holding only its marker loses its line too.
+                start = left.rfind("\n") + 1
+                end = right.find("\n")
+                if _EMPTY_ITEM.match(left[start:] + (right if end < 0 else right[:end])):
+                    return left[:start] + ("" if end < 0 else right[end + 1:])
                 return left + sep + right
             new = _drop_item(s, target)
             if new:

@@ -295,3 +295,12 @@ async def test_a_contradiction_also_written_outside_protected_text_is_still_repa
     await rr.run_quality_check(report.replace("The appendix is dilated measuring 11 mm. No", "No"), "x", "CT", [],
                                sections=SECTIONS, protected=[history])
     assert seen == []
+
+
+def test_template_removal_drops_a_list_item_left_empty():
+    report = REPORT.replace("Acute appendicitis.", "1. Acute appendicitis.\n2. No other acute abnormality.\nRecommend surgical review.")
+    out = rr.remove_negative_clause(report, "No other acute abnormality.", sections=SECTIONS)
+    assert out.endswith("Impression\n1. Acute appendicitis.\nRecommend surgical review.")
+    # a line with other text keeps its line
+    out = rr.remove_negative_clause(REPORT, "No pneumoperitoneum.", sections=SECTIONS)
+    assert "11 mm. Unremarkable appearances of the spleen.\n" in out
