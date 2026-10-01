@@ -90,6 +90,7 @@ UNKNOWN_PARAGRAPH_SECTION = "unknown section in a paragraph heading"
 DUPLICATE_SECTION = "duplicate SECTION"
 NO_SECTION = "unit outside any paragraph without section"
 PROSE_CONDITIONAL = "conditional phrase in prose"  # a WARNING (lint_warnings), never an error
+CONDITIONAL_NEGATIVE = "conditional negative in prose"  # a conditional that also states a negative: blocks
 OLD_SYNTAX = "old IF [ syntax"
 MALFORMED_UNIT = "malformed unit"
 UNKNOWN_SECTION = "unknown section"
@@ -133,6 +134,7 @@ _OLD_IF = re.compile(r"\bIF\s*\[")
 _KEYWORD_LIKE = re.compile(r"^([A-Z][A-Z_]+)\s*(?:\[|\"|WHEN\b)")
 _FIRST_WORD = re.compile(r"^([A-Z][A-Z_]*)\b")
 _CURLY = re.compile(r"[“”]")
+_QUOTED = re.compile(r'"([^"]*)"|“([^“”]*)”')  # straight or curly double-quoted text
 
 _NAME = r"[A-Z0-9][A-Z0-9 /&-]*?"
 _Q = r'"([^"]+)"'
@@ -212,7 +214,34 @@ def _content_words(statement: str) -> List[str]:
 
 
 def _outside_quotes(text: str) -> str:
-    return re.sub(r'"[^"]*"', " ", text)
+    return _QUOTED.sub(" ", text)
+
+
+# A statement of absence. In prose it should be a NEGATIVE unit. Normal-state voice ("the ducts are not
+# dilated") is not an absence statement and stays prose.
+_ABSENCE_START = re.compile(r"^(?:No|There\s+is\s+no|There\s+are\s+no|Without|Absent|Nil|Negative\s+for)\b", re.I)
+_ABSENCE_ANY = re.compile(r"\b(?:is|are)\s+absent\b", re.I)
+# A conditional line that also carries one of these cues states a negative under a condition: it should
+# have been a NEGATIVE unit (or Phase-1 material), so it blocks instead of warning.
+_QUOTED_NEG = re.compile(r"^\s*(?:No|There\s+is\s+no|There\s+are\s+no|Without)\b", re.I)
+_NEG_CUE = re.compile(r"\b(?:no|without|absent|nil|negative\s+for)\b|\bnot\s+\w+ed\b", re.I)
+
+
+def _negative_cue(plain: str) -> bool:
+    quoted = [a or b for a, b in _QUOTED.findall(plain)]
+    return any(_QUOTED_NEG.match(q) for q in quoted) or bool(_NEG_CUE.search(_outside_quotes(plain)))
+
+
+def _states_absence(plain: str) -> bool:
+    """A prose line written as an absence statement: "No X.", "There is no X.", "Without X.", "Absent X.",
+    "Nil X.", "Negative for X.", "X is absent.", also bulleted, bold, parenthesised or wholly quoted."""
+    stated = plain.replace("**", "").strip()
+    if stated[:1] in ('"', "“", "'"):
+        stated = re.sub(r'["“”]', "", stated)
+    else:
+        stated = _outside_quotes(stated)
+    stated = stated.strip().lstrip("('_ ").strip()
+    return bool(_ABSENCE_START.match(stated) or _ABSENCE_ANY.search(stated) or is_negative(stated))
 
 
 def _undecorate(line: str) -> str:
@@ -242,10 +271,11 @@ def _sweep(i: int, body: str, ctx: "_Ctx", err, warn) -> None:
         return
     cm = _PROSE_COND.search(_PROSE_COND_EXEMPT.sub(" ", _outside_quotes(plain)))
     if cm:
+        if _negative_cue(_PROSE_COND_EXEMPT.sub(" ", plain)):
+            err(i, CONDITIONAL_NEGATIVE, cm.group(0).lower())
+            return
         warn(i, PROSE_CONDITIONAL, cm.group(0).lower())
-    stated = plain.replace("**", "").strip()
-    stated = stated.replace('"', "") if stated.startswith('"') else _outside_quotes(stated).strip()
-    if re.match(r"^(?:No|There\s+is\s+no|There\s+are\s+no|Without)\b", stated) or is_negative(stated):
+    if _states_absence(plain):
         err(i, PROSE_NEGATIVE)
 
 
@@ -339,6 +369,7 @@ def parse_sheet(sheet: str, mode: Mode = "template") -> GrammarResult:
     recommendations: List[tss.Recommendation] = []
     case_targets: List[Tuple[int, int]] = []  # (sheet line, index into negatives) of case negatives
     case_block_line = 0
+    covers_tried = set()  # paragraphs with a COVERS line (a malformed one is reported as such, not as missing)
     cov = {"if_lines": 0, "if_covered": 0, "negative_lines": 0, "negative_covered": 0}
     uncovered: List[str] = []
     ctx = _Ctx()
@@ -401,9 +432,11 @@ def parse_sheet(sheet: str, mode: Mode = "template") -> GrammarResult:
         cov["if_lines"] += conditional
         cov["negative_lines"] += keyword == "NEGATIVE"
         n_err = len(errors)
+        if keyword == "COVERS" and ctx.kind == "paragraph":
+            covers_tried.add(ctx.paragraph)
         unit = _parse_unit(i, raw, body, keyword, ctx, by_name, default_section, err, condition, mode)
         if unit is not None and len(errors) == n_err:
-            _lean_check(i, unit, mode, err)
+            _mode_check(i, unit, mode, role_of, err)
         if unit is None or len(errors) > n_err:
             uncovered.append(raw)
             continue
@@ -458,7 +491,7 @@ def parse_sheet(sheet: str, mode: Mode = "template") -> GrammarResult:
             negatives[idx].targets = name  # canonical: as the DIFFERENTIAL line writes it
     if mode != "v1":
         for para in paragraphs:
-            if role_of.get(para.section) == "findings" and not para.covers:
+            if role_of.get(para.section) == "findings" and not para.covers and para.id not in covers_tried:
                 err(paragraph_lines[para.id], MISSING_COVERS, para.name)
     errors.sort(key=lambda e: e.line)  # stable: same-line errors keep their order
 
@@ -471,7 +504,7 @@ def parse_sheet(sheet: str, mode: Mode = "template") -> GrammarResult:
         created_at=datetime.now(timezone.utc).isoformat(), usable=usable,
         coverage=tss.Coverage(**cov, uncovered=uncovered),
         question=questions[0] if len(questions) == 1 else "", differentials=differentials,
-        recommendations=recommendations)
+        recommendations=recommendations, grammar_mode=mode)
     if errors:
         structure.lint_errors = [tss.LintIssue(line=e.line, text=e.text, reason=e.reason, detail=e.detail)
                                  for e in errors]
@@ -480,12 +513,16 @@ def parse_sheet(sheet: str, mode: Mode = "template") -> GrammarResult:
     return GrammarResult(structure=structure, errors=errors, warnings=warnings)
 
 
-def _lean_check(i, unit, mode: str, err) -> None:
+def _mode_check(i, unit, mode: str, role_of, err) -> None:
     """Template and master sheets carry the lean template grammar: study/context rules only, unconditional
-    or context-conditioned negatives, no template IF_PRESENT (spec 2026-10-01-template-two-phase)."""
+    negatives only, no template IF_PRESENT (spec 2026-10-01-template-two-phase). A case IF_PRESENT
+    belongs to a findings-role paragraph."""
+    kind, data = unit
+    if kind == "if_present" and data["origin"] == "case" and role_of.get(data["section"]) != "findings":
+        err(i, MALFORMED_UNIT, "a case IF_PRESENT belongs in a findings-role paragraph")
+        return
     if mode == "v1":
         return
-    kind, data = unit
     if kind == "rule":
         src, effect = data["condition_source"], data["effect"]
         if effect == "list_missing":
@@ -495,9 +532,9 @@ def _lean_check(i, unit, mode: str, err) -> None:
             err(i, NOT_LEAN, f"{src}-conditioned RULE (case-dependent: Phase 1 or voice prose)")
         elif effect not in CONTEXT_EFFECTS:
             err(i, NOT_LEAN, f"context RULE with {effect} (context rules: {', '.join(CONTEXT_EFFECTS)})")
-    elif kind == "negative" and data["origin"] == "template" and data["condition"] \
-            and data["condition_source"] != "context":
-        err(i, NOT_LEAN, f"NEGATIVE … WHEN [{data['condition_source']}: …] (case-dependent: Phase 1)")
+    elif kind == "negative" and data["origin"] == "template" and data["condition"]:
+        err(i, NOT_LEAN, f"NEGATIVE … WHEN [{data['condition_source']}: …] (template negatives are unconditional; "
+                         "case-dependent negatives come from Phase 1)")
     elif kind == "if_present" and data["origin"] == "template":
         err(i, NOT_LEAN, "IF_PRESENT without | origin: case (case-dependent: Phase 1)")
 
@@ -522,6 +559,9 @@ def _parse_unit(i, raw, body, keyword, ctx: _Ctx, by_name, default_section, err,
         if keyword == "QUESTION":
             return "question", {"text": m.group(1)}
         if keyword == "DIFFERENTIAL":
+            if not m.group("name").strip():
+                err(i, MALFORMED_UNIT, "DIFFERENTIAL [<name>] needs a name")
+                return None
             return "differential", {"name": m.group("name").strip(), "tier": m.group("tier"),
                                     "discriminator": m.group(3), "visible": m.group("visible")}
         cond = condition(i, m.group(3))
@@ -578,7 +618,9 @@ def _parse_unit(i, raw, body, keyword, ctx: _Ctx, by_name, default_section, err,
     where = {"section": section, "paragraph": paragraph}
     if keyword == "COVERS":
         if not _ITEMS.fullmatch(m.group("items")):
-            err(i, MALFORMED_UNIT, 'COVERS ["<structure>" | "<structure>" …]')
+            comma = re.search(r'"\s*,\s*"', m.group("items"))
+            err(i, MALFORMED_UNIT, 'COVERS ["<structure>" | "<structure>"]: separate items with " | ", not commas'
+                if comma else 'COVERS ["<structure>" | "<structure>"]: each item double-quoted, at least one')
             return None
         return "covers", {"items": re.findall(r'"([^"]+)"', m.group("items"))}
     if keyword == "NORMAL":

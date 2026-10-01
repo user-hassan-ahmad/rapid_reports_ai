@@ -261,10 +261,53 @@ def test_prose_conditional_is_a_stored_warning_not_an_error():
     assert [(x.line, x.reason, x.text) for x in r.structure.lint_warnings] == [(w.line, w.reason, w.text)]
 
 
-def test_prose_negative_with_a_conditional_still_blocks():
-    r = parse(PARA + "No collection if the organ is normal.\n")
-    assert [e.reason for e in r.warnings] == [g.PROSE_CONDITIONAL]
-    assert [e.reason for e in r.errors] == [g.PROSE_NEGATIVE] and not r.structure.usable
+@pytest.mark.parametrize("mode", ["template", "v1"])
+@pytest.mark.parametrize("prose", [
+    "No collection if the organ is normal.",
+    'If normal, write "No ascites."',
+    'When the liver is normal, state "No focal liver lesion."',
+    'State "No ascites." when there is none.',
+    'When normal, write “No ascites.”',
+    "Ensure no ascites is described when absent.",
+    "If the study is normal, state the absence of free fluid without further comment.",
+    "When the ducts are not dilated, say so in one clause.",
+    'If clear, write "There is no pleural effusion."',
+    "If negative for collection, say nothing more.",
+])
+def test_conditional_negatives_in_prose_block(prose, mode):
+    sheet = PARA + prose + "\n"
+    r = g.parse_sheet(sheet if mode == "v1" else sheet.replace(PARA, PARA + 'COVERS ["organ"]\n'), mode=mode)
+    assert [e.reason for e in r.errors] == [g.CONDITIONAL_NEGATIVE], r.errors
+    assert r.warnings == [] and not r.structure.usable
+
+
+@pytest.mark.parametrize("prose", [
+    "When present, give the maximal diameter.",
+    "If any segment is dilated, give its calibre.",
+    "List the dilated segments, if any.",
+    'When an aneurysm is present, use "aneurysmal" rather than "ectatic".',
+])
+def test_conditionals_without_a_negative_cue_only_warn(prose):
+    r = parse(PARA + prose + "\n")
+    assert r.errors == [] and r.structure.usable
+    assert [w.reason for w in r.warnings] in ([g.PROSE_CONDITIONAL], [])
+
+
+@pytest.mark.parametrize("prose", [
+    "Absent ascites.", "Ascites is absent.", "The pleural effusions are absent.", "Nil ascites.",
+    "Negative for ascites.", "(No ascites.)", "“No ascites.”", "'No ascites.'", "_No ascites._",
+])
+def test_absence_statements_in_prose_block(prose):
+    r = parse(PARA + prose + "\n")
+    assert [e.reason for e in r.errors] == [g.PROSE_NEGATIVE], r.errors
+
+
+@pytest.mark.parametrize("prose", ["The bile ducts are not dilated.", "Lymph nodes are not enlarged.",
+                                   "Unremarkable liver.", 'Prefer “unremarkable” over “normal”.',
+                                   'Prefer “No aneurysm.” over longer forms.'])  # as with straight quotes
+def test_normal_state_voice_prose_stays_prose(prose):
+    r = parse(PARA + prose + "\n")
+    assert r.errors == [] and r.structure.usable
 
 
 def test_unusable_without_findings_and_impression_roles():
@@ -331,16 +374,36 @@ def test_parse_is_deterministic():
     assert a.structure.model_dump(exclude={"created_at"}) == b.structure.model_dump(exclude={"created_at"})
 
 
-def test_fresh_serves_grammar_structures():
-    s = parse(FULL).structure
-    cfg = {"skill_sheet": FULL, "sheet_structure": s.model_dump(mode="json")}
+def test_fresh_serves_template_mode_grammar_structures_only():
+    s = g.parse_sheet(LEAN).structure
+    assert s.grammar_mode == "template"
+    cfg = {"skill_sheet": LEAN, "sheet_structure": s.model_dump(mode="json")}
     got = tss.fresh(cfg)
-    assert got is not None and got.source == "grammar" and got.rules[7].items == s.rules[7].items
-    assert tss.fresh({**cfg, "skill_sheet": FULL + "\nedited"}) is None
+    assert got is not None and got.source == "grammar" and got.rules[3].items == s.rules[3].items
+    assert tss.current_grammar(cfg)
+    assert tss.fresh({**cfg, "skill_sheet": LEAN + "\nedited"}) is None
     assert not tss.needs_restructure(cfg)
-    bad = parse(FULL + "\n## Paragraph: X (FINDINGS)\nNo abnormality.\n").structure
-    assert tss.fresh({"skill_sheet": FULL + "\n## Paragraph: X (FINDINGS)\nNo abnormality.\n",
+    bad = g.parse_sheet(LEAN + "\n## Paragraph: X (FINDINGS)\nNo abnormality.\n").structure
+    assert tss.fresh({"skill_sheet": LEAN + "\n## Paragraph: X (FINDINGS)\nNo abnormality.\n",
                       "sheet_structure": bad.model_dump(mode="json")}) is None
+
+
+@pytest.mark.parametrize("sheet,mode", [("FULL", "v1"), ("LEAN", "v1"), ("MASTER", "master")])
+def test_fresh_never_serves_v1_or_master_structures(sheet, mode):
+    sheet = globals()[sheet]
+    s = g.parse_sheet(sheet, mode=mode).structure
+    assert s.usable and s.grammar_mode == mode
+    cfg = {"skill_sheet": sheet, "sheet_structure": s.model_dump(mode="json")}
+    assert tss.fresh(cfg) is None and not tss.current_grammar(cfg)
+
+
+def test_fresh_compares_the_raw_stored_version():
+    raw = g.parse_sheet(LEAN).structure.model_dump(mode="json")
+    for stored in ({**raw, "version": 1}, {k: v for k, v in raw.items() if k != "version"}):
+        cfg = {"skill_sheet": LEAN, "sheet_structure": stored}
+        assert tss.fresh(cfg) is None and tss.fresh_any_source(cfg) is None and not tss.current_grammar(cfg)
+    no_mode = {k: v for k, v in raw.items() if k != "grammar_mode"}
+    assert tss.fresh({"skill_sheet": LEAN, "sheet_structure": no_mode}) is None
 
 
 # ── fail-closed sweep (review of G1) ─────────────────────────────────────────
@@ -482,7 +545,7 @@ COVERS ["primary organ" | "adjacent fat"]
 When present, give the maximal diameter.
 NORMAL [primary organ] "The primary organ is normal in size and contour."
 NEGATIVE "No focal lesion."
-NEGATIVE "No contrast extravasation." WHEN [context: a contrast-enhanced study is performed]
+NEGATIVE "No contrast extravasation."
 RULE WHEN [context: prior imaging is available for comparison] REPLACE "No focal lesion." WITH "No new focal lesion."
 RULE WHEN [context: a follow-up study of a known lesion] USE "stable appearances of the {lesion}"
 RULE WHEN [context: a non-contrast study is performed] SUPPRESS "No contrast extravasation."
@@ -533,8 +596,8 @@ def test_lean_template_sheet_parses_usable():
     assert [(x.effect, x.condition_source) for x in s.rules] == [
         ("replace", "context"), ("use", "context"), ("suppress", "context"), ("list_missing", "findings"),
         ("suppress_section", "context"), ("suppress_headers", "context")]
-    assert [(n.condition_source if n.condition else None, n.origin) for n in s.negatives] == [
-        (None, "template"), ("context", "template"), (None, "template")]
+    assert [(n.condition, n.origin) for n in s.negatives] == [(None, "template")] * 3
+    assert s.grammar_mode == "template"
     assert (s.question, s.differentials, s.recommendations) == ("", [], [])
     # the voice line "When present, give the maximal diameter." is a stored warning, not an error
     assert [(w.reason, w.text) for w in s.lint_warnings] == [
@@ -559,6 +622,7 @@ NOT_LEAN_LINES = [
     'RULE WHEN [history: any listed value is not stated in the request] LIST_MISSING ["volume"] AT END',
     'NEGATIVE "No surrounding collection." WHEN [findings: an inflammatory process of the organ is reported]',
     'NEGATIVE "No surrounding collection." WHEN [history: recent surgery to the organ is stated]',
+    'NEGATIVE "No contrast extravasation." WHEN [context: a contrast-enhanced study is performed]',
     'IF_PRESENT [focal lesion] "No regional lymphadenopathy." (core)',
 ]
 
@@ -679,6 +743,11 @@ REC = ('RECOMMEND IMAGING "Further characterisation with a dedicated study is su
     (_master(D0, D0.replace("TIER triage", "TIER urgent")), g.MALFORMED_UNIT),
     (_master(D0, D0.replace("VISIBLE yes", "VISIBLE maybe")), g.MALFORMED_UNIT),
     (_master(D0, D0.replace(" VISIBLE yes", "")), g.MALFORMED_UNIT),
+    (_master(D0, D0.replace("[focal mass]", "[  ]")), g.MALFORMED_UNIT),
+    (in_paragraph(CASE_IP, MASTER).replace("## Paragraph: Summary (IMPRESSION)\n",
+                                           "## Paragraph: Summary (IMPRESSION)\n" + CASE_IP + "\n"), g.MALFORMED_UNIT),
+    (MASTER.replace("## Paragraph: Measured values (MEASUREMENTS)\n",
+                    "## Paragraph: Measured values (MEASUREMENTS)\n" + CASE_IP + "\n"), g.MALFORMED_UNIT),
     (_master(REC, REC.replace("IMAGING", "SURGERY")), g.MALFORMED_UNIT),
     (_master(REC, REC.replace("[findings:", "[history:")), g.MALFORMED_UNIT),
     (_master(REC, REC.split(" WHEN")[0] + "\n"), g.MALFORMED_UNIT),

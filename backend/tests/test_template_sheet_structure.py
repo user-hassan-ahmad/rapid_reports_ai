@@ -1142,5 +1142,5 @@ def test_fresh_never_serves_an_extracted_structure():
     cfg = {"skill_sheet": SHEET, "sheet_structure": s.model_dump(mode="json")}
     assert tss.fresh(cfg) is None
     assert tss.fresh_any_source(cfg) is not None
-    grammar = {**cfg, "sheet_structure": {**cfg["sheet_structure"], "source": "grammar"}}
+    grammar = {**cfg, "sheet_structure": {**cfg["sheet_structure"], "source": "grammar", "grammar_mode": "template"}}
     assert tss.fresh(grammar) is not None and tss.fresh(grammar).source == "grammar"

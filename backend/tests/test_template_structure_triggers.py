@@ -96,8 +96,9 @@ def test_unusable_grammar_sheet_is_stored_with_its_lint_errors(lab_calls):
     main._queue_structure("t1", {"generation_mode": "skill_sheet_guided", "skill_sheet": bad})
     ((_, s),) = lab_calls["stored"]
     assert s.source == "grammar" and not s.usable
-    assert [e.text for e in s.lint_errors] == ["No collection when the organ is normal."]
-    assert [e.text for e in s.lint_warnings] == ["No collection when the organ is normal."]  # conditional: warning only
+    assert [(e.text, e.reason) for e in s.lint_errors] == [("No collection when the organ is normal.",
+                                                            tsg.CONDITIONAL_NEGATIVE)]
+    assert s.lint_warnings == [] and s.grammar_mode == "template"
 
 
 def test_save_path_parses_in_template_mode(lab_calls):

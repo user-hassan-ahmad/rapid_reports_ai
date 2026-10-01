@@ -240,6 +240,9 @@ class SheetStructure(StructureDraft):
     usable: bool = False
     coverage: Coverage = Coverage()
     lint_errors: List[LintIssue] = []  # grammar only: why the parse is unusable
+    # grammar only: the parse mode. Only "template" structures are stored and trusted (fresh); master
+    # structures are per case, v1 is lab-only.
+    grammar_mode: Optional[Literal["template", "master", "v1"]] = None
     lint_warnings: List[LintIssue] = []  # grammar only: stored, never blocking (e.g. a conditional in voice prose)
     # master sheets only (Phase-1 case units)
     question: str = ""
@@ -875,23 +878,24 @@ def fresh_any_source(config: dict) -> Optional[SheetStructure]:
     whatever produced it. Generation must use fresh(), never this."""
     s = _stored(config)
     sheet = (config or {}).get("skill_sheet", "")
-    if s and s.version == STRUCTURE_VERSION and s.sheet_hash == sheet_hash(sheet) and s.usable:
+    # the RAW stored version: a structure stored without one must not default to the current version
+    if s and _raw(config).get("version") == STRUCTURE_VERSION and s.sheet_hash == sheet_hash(sheet) and s.usable:
         return s
     return None
 
 
 def fresh(config: dict) -> Optional[SheetStructure]:
     """The structure generation may trust: fresh (this sheet, this version, usable) AND parsed by the
-    grammar parser. An extracted structure is never returned."""
+    grammar parser in template mode. An extracted, master or v1 structure is never returned."""
     s = fresh_any_source(config)
-    return s if s is not None and s.source == "grammar" else None
+    return s if s is not None and s.source == "grammar" and s.grammar_mode == "template" else None
 
 
 def current_grammar(config: dict) -> bool:
-    """A grammar structure (usable or not) of this sheet and version is already stored."""
+    """A template-mode grammar structure (usable or not) of this sheet and version is already stored."""
     raw = _raw(config)
-    return (raw.get("source") == "grammar" and raw.get("version") == STRUCTURE_VERSION
-            and raw.get("sheet_hash") == sheet_hash((config or {}).get("skill_sheet", "")))
+    return (raw.get("source") == "grammar" and raw.get("grammar_mode") == "template"
+            and raw.get("version") == STRUCTURE_VERSION and raw.get("sheet_hash") == sheet_hash((config or {}).get("skill_sheet", "")))
 
 
 def extractor_enabled() -> bool:
