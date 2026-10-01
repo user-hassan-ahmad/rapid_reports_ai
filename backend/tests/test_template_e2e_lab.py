@@ -84,3 +84,25 @@ def test_first_with_picks_the_dir_holding_the_set(tmp_path):
     (tmp_path / "b" / "set_x").mkdir(parents=True)
     assert lab.first_with(f"{tmp_path / 'a'},{tmp_path / 'b'}", "set_x") == tmp_path / "b"
     assert lab.first_with("", "set_x") is None
+
+
+async def test_jev_counter_records_requests_made_inside_a_counted_run(monkeypatch):
+    import asyncio
+
+    calls = []
+
+    async def fake(state, qs):
+        calls.append(state)
+        return {}
+    monkeypatch.setattr(lab.rc, "_jev", fake)
+    lab.install_jev_counter()
+    lab.install_jev_counter()  # idempotent: one wrapper
+
+    async def run():
+        log = []
+        lab._JEV_LOG.set(log)
+        await asyncio.gather(lab.rc._jev("a", {"x": 1, "y": 2}), lab.rc._jev("b", {"z": 3}))
+        return log
+    assert await run() == [2, 1]
+    await lab.rc._jev("outside", {"x": 1})  # outside a counted run: forwarded, not recorded
+    assert calls == ["a", "b", "outside"]

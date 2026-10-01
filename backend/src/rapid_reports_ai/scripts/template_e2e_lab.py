@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import contextvars
 import json
 import os
 import re
@@ -66,6 +67,25 @@ STEP_TIMEOUT_S = 300  # a hung provider call is recorded as a failure, never sta
 
 def log(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
+
+
+# Jev requests made by one dictation's NEW run (a list per run; tasks it spawns inherit the context).
+_JEV_LOG: contextvars.ContextVar = contextvars.ContextVar("jev_log", default=None)
+
+
+def install_jev_counter() -> None:
+    """Wrap rc._jev once so every request made inside a counted run is recorded (number of questions)."""
+    if getattr(rc._jev, "_counted", False):
+        return
+    inner = rc._jev
+
+    async def counted(state, questions):
+        log_ = _JEV_LOG.get()
+        if log_ is not None:
+            log_.append(len(questions))
+        return await inner(state, questions)
+    counted._counted = True
+    rc._jev = counted
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -381,6 +401,8 @@ async def run_new(sheet: str, d: dict) -> dict:
     from rapid_reports_ai.enhancement_utils import MODEL_CONFIG, _run_agent_with_model
 
     rec: dict = {"lat": {}}
+    jev_log: list = []
+    _JEV_LOG.set(jev_log)
     scan_type, history, findings = d["scan_type"], d.get("clinical_history", ""), d["findings"]
     lean = g.parse_sheet(sheet, mode="template").structure
     sections = [rr.ReportSection(name=x.name, header=x.header, role=x.role)
@@ -402,6 +424,7 @@ async def run_new(sheet: str, d: dict) -> dict:
     rec["master_usable"] = mres.structure.usable
     rec["master_errors"] = [f"{e.line}: {e.reason}: {e.text[:100]}" for e in mres.errors]
     rec["master_sheet"] = master
+    n_phase1 = len(jev_log)
     brief_sheet, brief_struct = (master, mres.structure) if mres.structure.usable else (sheet, lean)
 
     # Phase 2 brief
@@ -414,6 +437,7 @@ async def run_new(sheet: str, d: dict) -> dict:
     rec["lat"]["brief_s"] = round(time.time() - t, 2)
     rec["brief_text"] = brief.text if brief else None
     rec["decisions"] = brief.decisions if brief else None
+    n_brief = len(jev_log)
 
     # Generate + options in parallel (as quick)
     style = "\n".join(x for x in (_section_block(sheet, "Impression Construction"),
@@ -468,7 +492,8 @@ async def run_new(sheet: str, d: dict) -> dict:
     _, gate_dropped = rc.gate_apply(options, {**quality.get("extra_answers", {}), **imp_scores})
     drop_ids = {o.get("id") for o in gate_dropped}
     options = [o for o in checked_opts if o.get("id") not in drop_ids]
-    rec["jev_calls"] = {"check": 2, "gate_extra": 1 if gate_qs["impression"] else 0}
+    rec["jev_calls"] = {"phase1": n_phase1, "brief": n_brief - n_phase1, "post_generation": len(jev_log) - n_brief,
+                        "total": len(jev_log), "questions": sum(jev_log)}
     rec["quality"] = quality
     rec["gate_dropped"] = gate_dropped
     rec["options"] = options
@@ -661,7 +686,8 @@ def _decisions_summary(dec: Optional[dict]) -> List[str]:
         return ["(no brief: raw path)"]
     L = [f"- CLINICAL QUESTION: {dec.get('question') or '-'}"]
     for x in dec.get("differentials", []):
-        L.append(f"- differential [{x.get('name')}] visible {x.get('visible')} -> {x.get('action') or x.get('route')}")
+        L.append(f"- differential [{x.get('name')}] visible {x.get('visible')} -> {x.get('action') or x.get('route')}"
+                 + (f" (present {x['present']}, possible {x['possible']})" if "possible" in x else ""))
     acts = Counter(x.get("action") for x in dec.get("negatives", []))
     L.append(f"- negatives: {dict(acts)}")
     for x in dec.get("negatives", []):
@@ -1004,6 +1030,7 @@ async def main() -> None:
     from rapid_reports_ai.scripts.case_analyser_lab import _load_env  # loads backend/.env (model keys)
 
     _load_env()
+    install_jev_counter()
     sets = [s.strip() for s in a.sets.split(",") if s.strip()]
     if a.rescore:
         out = Path(a.rescore)
