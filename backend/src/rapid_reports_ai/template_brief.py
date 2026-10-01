@@ -44,7 +44,7 @@ quick's shared clinical routing in report_reconcile:
   leave (MAX_FINDING_OPTIONS in all). OMIT when its targeted differential is present (and the same claim
   anywhere is OMIT); DO NOT ASSERT when that differential is not VISIBLE yes (lint blocks it; defence).
 - Conditions: findings conditions are judged on the dictation; history conditions on the history alone;
-  context conditions on history + protocol text + the dictation. History and context need >= CTX_MET.
+  context conditions on history + protocol text + the dictation. Every condition needs >= MET (0.5).
 - IF_PRESENT (case): Jev finding reported + rc.route_finding -> KEEP on its own line (stated) / offered
   option (its paragraph's section) / DO NOT ASSERT / dropped; offers capped at MAX_FINDING_OPTIONS; a
   negative already handled (a sheet negative or an earlier If-present) is routed once, as in quick.
@@ -70,10 +70,18 @@ from .template_sheet_structure import SheetStructure, _covers, _key
 
 logger = logging.getLogger(__name__)
 
-Q_CONDITION = "This statement is true for this case: "
 Q_STATED = "The dictated findings state "
-MET = rc.PRESENT
-CTX_MET = 0.7  # a history / context condition: a boundary score (0.5) is not met
+MET = 0.5  # one cut-off for every condition (findings, history, context); the criteria say silence is not met
+
+
+def q_condition(cond: str) -> dict:
+    """A rule or conditional-negative condition, asked with criteria (Jev wording suite, 2026-10-01)."""
+    return {"type": "noul", "instructions": "Is this condition stated for this case? Condition: " + cond,
+            "criteria": {"true": "Stated: the history, protocol or dictation says this, in any wording (synonyms, "
+                                 "abbreviations and shorthand count; a condition worded in the negative is met when "
+                                 "the text says that thing was not done or is absent).",
+                         "false": "Not stated: the text says the opposite, says nothing about it, or only raises it "
+                                  "as a question. Silence is not met."}}
 
 _IF_PRESENT_LINE = re.compile(r"^\s*(?:-\s+)?IF_PRESENT\b")
 _H2 = re.compile(r"^#{1,2}\s")
@@ -373,12 +381,10 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
             for j, item in enumerate(r.items):
                 q_f[f"r{i}i{j}"] = {"type": "noul", "instructions": Q_STATED + item}
             continue
-        bucket(r.condition_source)[f"r{i}"] = {
-            "type": "noul", "instructions": Q_CONDITION + r.condition}
+        bucket(r.condition_source)[f"r{i}"] = q_condition(r.condition)
     for u in negatives:
         if u.condition:
-            bucket(u.condition_source)[u.jev_key] = {
-                "type": "noul", "instructions": Q_CONDITION + u.condition}
+            bucket(u.condition_source)[u.jev_key] = q_condition(u.condition)
     for u in normals:
         q_f[u.jev_key] = {"type": "noul", "instructions": rc.Q_AFFECTED + u.text}
     for k, d in enumerate(s.differentials):
@@ -417,7 +423,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
 
         # ── rules: met, and the sections they omit ───────────────────────────
         def is_met(key: str, source: str) -> bool:
-            return sc[key] >= (CTX_MET if source in ("history", "context") else MET)
+            return sc[key] >= MET
 
         met = {i: is_met(f"r{i}", r.condition_source) for i, r in enumerate(s.rules) if r.effect != "list_missing"}
         omitted = {r.target for i, r in enumerate(s.rules) if r.effect == "suppress_section" and met[i]}

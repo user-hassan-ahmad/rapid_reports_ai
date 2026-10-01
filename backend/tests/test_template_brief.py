@@ -183,8 +183,8 @@ async def test_history_conditions_never_see_the_findings_context_conditions_do(m
     assert len(findings) == 1 and not (findings[0] & CTX_RULES)
 
 
-@pytest.mark.parametrize("score,met", [(0.5, False), (0.69, False), (0.7, True)])
-async def test_history_and_context_conditions_need_0_7(monkeypatch, score, met):
+@pytest.mark.parametrize("score,met", [(0.49, False), (0.5, True), (0.7, True)])
+async def test_history_and_context_conditions_need_0_5(monkeypatch, score, met):
     stub(monkeypatch, jev_c={f"r{R_USE}": score, f"r{R_APPEND}": score})
     t = (await compile_()).text
     assert ('- USE: "stable appearances of the {lesion}"' in t) == met
@@ -727,13 +727,27 @@ async def test_context_condition_on_what_was_acquired_is_read_from_the_dictation
     assert s.usable and s.rules[0].condition_source == "context"
     stub(monkeypatch)
 
-    async def reader(state, qs):  # Jev stand-in: no from the dictation; unsure (0.5) without it
-        return {k: {"noul": (0.1 if "full protocol" in state else 0.5) if k == "r0" else 0.1} for k in qs}
+    asked = []
+
+    async def reader(state, qs):  # Jev stand-in: no from the dictation; just under the cut-off without it
+        asked.extend(q for k, q in qs.items() if k == "r0")
+        return {k: {"noul": (0.1 if "full protocol" in state else 0.49) if k == "r0" else 0.1} for k in qs}
     monkeypatch.setattr(tb.rc, "_jev", reader)
     b = await tb.compile_template_brief(sheet, s, "CMR", "full protocol. LV normal. T1 990.", "Family screening.")
     assert "stable appearances" not in b.text and b.decisions["rules"][0]["met"] is False
     b = await tb.compile_template_brief(sheet, s, "CMR", "LV normal.", "Family screening.")
-    assert "stable appearances" not in b.text  # 0.5 boundary: not met
+    assert "stable appearances" not in b.text  # 0.49: not met
+    assert asked[0] == tb.q_condition("a reduced protocol was performed and parametric mapping was not acquired")
+
+
+def test_condition_question_is_asked_with_criteria():
+    q = tb.q_condition("intravenous contrast was not given")
+    assert q["type"] == "noul"
+    assert q["instructions"] == "Is this condition stated for this case? Condition: intravenous contrast was not given"
+    assert q["criteria"]["true"].startswith("Stated: the history, protocol or dictation says this")
+    assert "a condition worded in the negative is met" in q["criteria"]["true"]
+    assert q["criteria"]["false"].endswith("Silence is not met.")
+    assert tb.MET == 0.5 and not hasattr(tb, "CTX_MET")
 
 
 # ── master sheets: Phase-1 case units through quick's shared clinical routing (H4) ──
