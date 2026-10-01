@@ -1671,6 +1671,37 @@ negative is expected" — a polarity inversion inside a choice criterion. The co
 3. **Q3 kept** (If-present score / 3) on the suite evidence: production cannot validate it yet (3 sheets
    with an If-present list, 9 keys, no band changed).
 
+**Omission selector (group F, ca15ea3).** Replaces the every-item rule. An item's omission flag counts only when
+mean(CH2sel, T1) ≥ 0.45, where CH2 is a six-label choice ('Read only this one dictated line, not the rest of the
+dictation: "{x}". What does this line report?'; CH2sel = P(abnormal_finding) + P(limitation) +
+P(mixed_abnormal_and_normal)) and T1 a noul ('The dictated line "{x}" itself reports an abnormality or a
+limitation of the study.' with true/false criteria). Both ride the dictation-state request; the conveys question
+still covers every item in the report request, in parallel. An unreadable answer or a failed dictation call
+selects by the L-46 regex. Suite: 0 unsafe / 0 over on DEV, HOLDOUT and stress, both runs
+(`jev_wording_suite/F_protocol_note/rules_92782.txt`).
+
+**Second production re-score (same 150 reports, `jev_v2_rescore/run_sel_49840/`, hand read in `handread.md`).**
+1,715 items, 819 selected; 2 empty reports; selector answered for every item (no regex fallback).
+- Omission flags: production today 155 → new 75 (58 shared, 17 new-only, 97 production flags gone).
+- The 63 fixed false omissions: 61 hold; 2 re-flag at the threshold (0.40 / 0.42; both production flags
+  too; the inserter skipped both).
+- The 12 better recommendation changes: 11 hold; "Radiotherapy oncology" (8a1a781c) flipped back to
+  removed on drift (met 0.61 → < 0.5; the identical case 3dddaae5 still keeps it).
+- **Insertions: 56 sentences, all hand-read: 24 better, 4 neutral, 16 duplicates with an added detail, 12 unsafe.**
+  **The gate (0 unsafe insertions) fails.** The unsafe 12 are not negatives any more; they are the writer
+  copying dictation errors or writing normals out of a selected line:
+  - typo / slip copies: "The bilateral kidneys are obstructed…" (report: unobstructed), "a beaver in the
+    liver", "The adrenals are acute…", "superior scapularis tendon", "paraesophageal hernia … anterior
+    abdominal wall" (report: paraumbilical), "Within this limits;.";
+  - conflicts with the report: "Moderate aortic valve calcification" after "Mild aortic valve calcification";
+    a second set of tear measurements; a conclusion line ("no opacification of the V4 segment … as described
+    above") beside the vertebral findings;
+  - normals the writer added: "The midfoot joints are unremarkable." (from a mixed line), "The partially
+    imaged femoral heads appear normal." (twice, from unflagged text).
+  Five of the 12 (and ~10 of the 16 duplicates) come from items production flags today, so production
+  already makes these insertions; the selector adds ~5 new unsafe ones from abnormal / mixed lines that the
+  regex excluded because they also contain "normal" or "unremarkable".
+
 Lessons:
 - **Polarity** (group D and Q7): a question's instructions and its criteria must point the same way; a
   choice criterion that names a cause and a denial ("would cause what the negative denies") is read the
@@ -1684,3 +1715,6 @@ Lessons:
   spinous process or transverse foramen fractures are identified" in 3.4 k-character reports). That raises
   false omission flags and weakens the 0.25 duplicate guard there (3 duplicates passed it). The selector
   removes the negatives from the check, but positive items in long reports keep this exposure.
+- **The inserter is the remaining risk, not the selector**: once an item is selected, Qwen writes it
+  verbatim, typos and all, and adds normals from the same line; and "not everything is stated" (correct)
+  leads to a whole-sentence duplicate beside the existing sentence (16 of 56).

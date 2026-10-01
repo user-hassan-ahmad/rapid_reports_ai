@@ -160,7 +160,7 @@ async def one(row: dict) -> dict:
 
 async def main(rows_path: str, out_dir: str):
     rows = json.loads(Path(rows_path).read_text())
-    if len(sys.argv) > 3:   # rerun only these ids, merged into an existing results.json
+    if len(sys.argv) > 3 and sys.argv[3] != "--selector":   # rerun only these ids, merged into an existing results.json
         only = set(Path(sys.argv[3]).read_text().split())
         prev = json.loads((Path(out_dir) / "results.json").read_text())
         redo = {r["id"]: r for r in await asyncio.gather(*(one(r) for r in rows if r["id"] in only))}
@@ -200,5 +200,81 @@ def _write(res: list, out: Path):
     print((out / "summary.md").read_text())
 
 
+# ── second re-score: the omission selector (group F) ─────────────────────────
+
+async def one_selector(row: dict) -> dict:
+    """Production today (regex selection, old wording < 0.5) vs the shipped check (qq.check: selector +
+    conveys < 0.40), then the shipped inserter on the new flags, keeping each inserted sentence with the
+    sentence it follows. Recommendations are re-asked to confirm the Q6 changes hold."""
+    v = row["input_data"].get("variables", {})
+    findings, scan = v.get("FINDINGS", ""), v.get("SCAN_TYPE", "") or row["input_data"].get("extracted_scan_type", "")
+    report = row["report_content"] or ""
+    out = {"id": row["id"], "created_at": row["created_at"], "scan": scan, "findings": findings, "errors": []}
+    if not report.strip():
+        out["errors"].append("empty report")
+        return out
+    old_items = qq.positive_items(findings)
+    try:
+        o_old = await jev(f"REPORT:\n{report}", {f"i{i}": {"type": "noul", "instructions": OLD_Q_OMIT + t}
+                                                for i, t in enumerate(old_items)})
+        res = await qq.check(report, findings, scan, [])   # live path; its own 6 s timeouts
+        out["old_flags"] = [t for i, t in enumerate(old_items) if float(o_old[f"i{i}"]["noul"]) < OLD_OMIT_FLAG]
+        out["old_scores"] = {t: float(o_old[f"i{i}"]["noul"]) for i, t in enumerate(old_items)}
+        out["new_flags"] = [f.text for f in res.flags if f.kind == "omission"]
+        out["selector"], out["n_items"], out["n_selected"], out["check_error"] = res.selector, res.n_items, res.n_selected, res.error
+        if out["new_flags"]:
+            ins = await qq.insert_findings(report, findings, out["new_flags"])
+            before = set(qq._sentences(report))
+            new_s = [x for x in qq._sentences(ins.report) if x not in before]
+            ctx = []
+            for x in new_s:
+                i = ins.report.find(x)
+                ctx.append({"sentence": x, "before": ins.report[max(0, i - 160):i].strip()})
+            out["insert"] = {"applied": ins.applied, "skipped": ins.skipped, "dup_check": ins.dup_check,
+                             "error": ins.error, "added": ctx}
+    except Exception as e:
+        out["errors"].append(f"omission: {type(e).__name__}: {e}")
+    secs = qb.parse_sheet(row["sheet"] or "")
+    recs = qb._recommendations(qb._section(secs, "Impression Exemplars"))
+    if recs:
+        try:
+            dstate = f"SCAN TYPE: {scan}\nDICTATED FINDINGS:\n{findings}"
+            a_old, a_new = await asyncio.gather(
+                jev(dstate, {f"r{k}": {"type": "noul", "instructions": OLD_Q_REC_UNMET + t} for k, t in enumerate(recs)}),
+                jev(dstate, {f"r{k}": {"type": "noul", "instructions": qb.Q_REC_MET + t} for k, t in enumerate(recs)}))
+            out["recs"] = [{"text": t, "old": "removed" if float(a_old[f"r{k}"]["noul"]) >= 0.5 else "kept",
+                            "new": "removed" if 1 - float(a_new[f"r{k}"]["noul"]) >= 0.5 else "kept"}
+                           for k, t in enumerate(recs)]
+        except Exception as e:
+            out["errors"].append(f"recs: {type(e).__name__}: {e}")
+    return out
+
+
+async def main_selector(rows_path: str, out_dir: str):
+    rows = json.loads(Path(rows_path).read_text())
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    case_sem, done = asyncio.Semaphore(4), [0]   # cases in flight; jev() keeps its own SEM (never nested)
+
+    async def bounded(r):
+        async with case_sem:
+            try:
+                res = await asyncio.wait_for(one_selector(r), 60)
+            except Exception as e:
+                res = {"id": r["id"], "created_at": r["created_at"], "errors": [f"case: {type(e).__name__}: {e}"]}
+        done[0] += 1
+        if done[0] % 25 == 0:
+            print(f"progress {done[0]}/{len(rows)}", flush=True)
+        return res
+    res = await asyncio.gather(*(bounded(r) for r in rows))
+    (out / "results.json").write_text(json.dumps(res, indent=1))
+    print(f"{len(res)} cases; errors {sum(bool(r['errors']) for r in res)}; "
+          f"old flags {sum(len(r.get('old_flags', [])) for r in res)}; new flags {sum(len(r.get('new_flags', [])) for r in res)}; "
+          f"inserted {sum(len((r.get('insert') or {}).get('added', [])) for r in res)}")
+
+
 if __name__ == "__main__":
-    asyncio.run(main(sys.argv[1], sys.argv[2]))
+    if len(sys.argv) > 3 and sys.argv[3] == "--selector":
+        asyncio.run(main_selector(sys.argv[1], sys.argv[2]))
+    else:
+        asyncio.run(main(sys.argv[1], sys.argv[2]))
