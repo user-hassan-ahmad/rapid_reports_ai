@@ -2,7 +2,7 @@
 
 Spec docs/superpowers/specs/2026-09-30-post-generation-check-design.md; probe ledger L-46.
 
-    units   -> report clauses, option sentences, positive dictated items (code)
+    units   -> report clauses, option sentences, every dictated item (code)
     check   -> two Jev calls in parallel: contradiction (dictation state), omission (report state)
     repair  -> one Qwen call returns verbatim find/replace edits; code applies each only when its
                find occurs exactly once
@@ -26,11 +26,13 @@ from .enhancement_utils import _run_agent_with_model
 logger = logging.getLogger(__name__)
 
 Q_CONTRA = "The dictated findings state something that this report statement denies or contradicts. Statement: "
-Q_OMIT = "The report states this dictated finding, in any wording: "
 Q_RESTATED = "The dictated findings report this finding: "
 CONTRA_FLAG = 0.6   # L-46: 31/31 genuine contradictions >= 0.5, 29/31 >= 0.7
 RESTATED_FLAG = 0.5  # a report negative is removed only when the finding it denies is dictated (L-47)
-OMIT_FLAG = 0.5     # L-46: 24/24 deleted findings < 0.5
+# One wording for "is it already in the report?" (Jev wording v2, group A S2, L-49). Thresholds differ per use.
+Q_CONVEYS = ("The report itself states everything this statement says, in any wording, abbreviation or synonym "
+             "(not merely implied or inferable): ")
+OMIT_FLAG = 0.40    # L-49: omission flagged below 0.40 (stated >= 0.51, omitted <= 0.31)
 JEV_TIMEOUT_S = 6.0
 REPAIR_TIMEOUT_S = 8.0
 REPAIR_MODEL = qb.QWEN
@@ -73,12 +75,13 @@ def restate(clause: str) -> Optional[str]:
     return m.group(1).strip() if m else None
 
 
-_BACKGROUND = re.compile(r"^\s*(no|nil)\b|\b(unremarkable|normal|intact|clear)\b", re.I)
+def dictated_items(findings: str) -> List[str]:
+    """Every dictated item is checked (wording v2: the conveys question handles shorthand normals;
+    negatives omitted from the report are restored, L-49)."""
+    return qb.split_findings(findings)
 
 
-def positive_items(findings: str) -> List[str]:
-    """Dictated positive findings; negatives and background lines are not checked for omission (L-46)."""
-    return [t for t in qb.split_findings(findings) if not _BACKGROUND.search(t)]
+positive_items = dictated_items   # old name, kept for the eval script
 
 
 # ── check ────────────────────────────────────────────────────────────────────
@@ -99,11 +102,11 @@ class CheckResult(BaseModel):
 
 async def check(report: str, findings: str, scan_type: str, options: List[dict]) -> CheckResult:
     """Two Jev calls in parallel: every report clause and option against the dictation, every
-    positive dictated item against the report."""
+    dictated item against the report."""
     fnd, imp = report_sections(report)
     cls = list(dict.fromkeys(clauses(fnd) + clauses(imp)))
     opts = [(o["id"], o["sentence"]) for o in options if o.get("sentence")]
-    items = positive_items(findings)
+    items = dictated_items(findings)
     contra_qs = {f"c{i}": {"type": "noul", "instructions": Q_CONTRA + t} for i, t in enumerate(cls)}
     contra_qs.update({f"o{i}": {"type": "noul", "instructions": Q_CONTRA + t} for i, (_, t) in enumerate(opts)})
     # A report negative is removed only if the finding it denies is itself dictated: Jev over-flags
@@ -111,7 +114,7 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict])
     # thickening' beside dictated segmental wall thickening). Same call, no added latency.
     restated = {i: restate(t) for i, t in enumerate(cls)}
     contra_qs.update({f"r{i}": {"type": "noul", "instructions": Q_RESTATED + r} for i, r in restated.items() if r})
-    omit_qs = {f"i{i}": {"type": "noul", "instructions": Q_OMIT + t} for i, t in enumerate(items)}
+    omit_qs = {f"i{i}": {"type": "noul", "instructions": Q_CONVEYS + t} for i, t in enumerate(items)}
 
     async def ask(state, qs):
         return await qb._jev(state, qs) if qs else {}
@@ -226,6 +229,20 @@ _FILLER = {"incidental", "noted", "identified", "seen", "present", "demonstrated
            "that", "this", "also", "further", "additional", "note"}
 
 
+def _content_words(t: str) -> set:
+    return set(re.findall(r"[a-z]{4,}", t.lower())) - _FILLER
+
+
+def _negative_allowed(sentence: str, items: List[str]) -> bool:
+    """An inserted sentence may carry negation only when it restores an omitted dictated negative:
+    some omitted item with negation shares a content word with it (L-49). A negative is never
+    invented beside an omitted positive finding."""
+    if not _NEGATION.search(sentence):
+        return True
+    w = _content_words(sentence)
+    return any(_NEGATION.search(t) and w & _content_words(t) for t in items)
+
+
 def _restates(new: str, existing: str) -> bool:
     """`new` says nothing `existing` does not: nearly all its words, and every number, are there."""
     words = lambda t: set(re.findall(r"[a-z]{4,}", t.lower())) - _FILLER
@@ -251,7 +268,7 @@ async def insert_findings(report: str, findings: str, items: List[str]) -> Repai
     out, applied, skipped = report, 0, 0
     for it in r.output.items:
         sent = it.sentence.strip()
-        if not sent or _NEGATION.search(sent) and not any(_NEGATION.search(t) for t in items):
+        if not sent or not _negative_allowed(sent, items):
             skipped += 1
             continue
         sent = sent if sent.endswith(".") else sent + "."

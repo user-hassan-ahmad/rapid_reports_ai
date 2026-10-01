@@ -38,10 +38,44 @@ def test_sections_and_clauses():
     ]
 
 
-def test_positive_items_drop_negatives_and_background():
-    findings = ("- 3 cm pancreatic head mass\n- CBD dilated to 12 mm\n- No ascites\n"
-                "- Liver, spleen, kidneys unremarkable\n- Lung bases clear\n- Nil else")
-    assert qq.positive_items(findings) == ["3 cm pancreatic head mass", "CBD dilated to 12 mm"]
+def test_every_split_item_is_checked_including_normals_and_negatives():
+    # Jev wording v2: the conveys question handles shorthand normals; omitted negatives are restored.
+    assert qq.dictated_items("appendix fine. no ascites. liver normal, 2cm cyst L kidney") == [
+        "appendix fine", "no ascites", "liver normal, 2cm cyst L kidney"]
+    assert qq.positive_items is qq.dictated_items          # alias for the eval script
+
+
+@pytest.mark.asyncio
+async def test_omission_question_uses_conveys_wording(monkeypatch):
+    asked = {}
+    async def fake_jev(state, qs):
+        if state.startswith("REPORT:"):
+            asked.update(qs)
+        return {k: {"noul": 0.9} for k in qs}
+    monkeypatch.setattr(qq.qb, "_jev", fake_jev)
+    await qq.check("FINDINGS:\nThe appendix is unremarkable.", "appendix fine. 5 mm defect D1", "CT", [])
+    omit = [q["instructions"] for k, q in asked.items() if k.startswith("i")]
+    assert len(omit) == 2 and all(t.startswith(qq.Q_CONVEYS) for t in omit)
+    assert qq.Q_CONVEYS == ("The report itself states everything this statement says, in any wording, abbreviation "
+                            "or synonym (not merely implied or inferable): ")
+
+
+@pytest.mark.asyncio
+async def test_omission_flag_threshold_is_040(monkeypatch):
+    async def fake_jev(state, qs):
+        return {k: {"noul": 0.45 if k == "i0" else 0.35} for k in qs}
+    monkeypatch.setattr(qq.qb, "_jev", fake_jev)
+    # (a one-letter word before a full stop reads as an initial, so the items end in words)
+    r = await qq.check("FINDINGS:\nx.", "item one. item two", "CT", [])
+    assert qq.OMIT_FLAG == 0.40
+    assert [f.text for f in r.flags if f.kind == "omission"] == ["item two"]
+
+
+def test_inserted_negative_must_come_from_an_omitted_negative_item():
+    assert qq._negative_allowed("No ascites.", ["no ascites"])
+    assert not qq._negative_allowed("No free fluid.", ["no ascites", "5 mm defect"])
+    assert not qq._negative_allowed("No ascites.", ["ascites small volume"])   # the item itself is not negative
+    assert qq._negative_allowed("A 5 mm defect at D1.", ["5 mm defect"])        # no negation: always allowed
 
 
 FINDINGS = "- 3 cm hypodense mass at the head of the pancreas\n- CBD dilated to 12 mm\n- Intrahepatic duct dilatation\n- No ascites"
@@ -60,7 +94,7 @@ def _stub_jev(monkeypatch, contra: dict, reported: dict):
             if t.startswith(qq.Q_CONTRA):
                 out[k] = {"noul": contra.get(t[len(qq.Q_CONTRA):], 0.05)}
             else:
-                out[k] = {"noul": reported.get(t[len(qq.Q_OMIT):], 0.95)}
+                out[k] = {"noul": reported.get(t[len(qq.Q_CONVEYS):], 0.95)}
         return out
     monkeypatch.setattr(qq.qb, "_jev", fake)
     return calls
@@ -76,8 +110,8 @@ async def test_check_asks_two_parallel_calls_and_flags(monkeypatch):
     contra_qs = [q["instructions"] for s, qs in calls if s.startswith("SCAN") for q in qs.values()]
     assert qq.Q_CONTRA + "No hepatic deposit" in contra_qs and qq.Q_CONTRA + "No splenic vein thrombus." in contra_qs
     omit_qs = [q["instructions"] for s, qs in calls if s.startswith("REPORT") for q in qs.values()]
-    assert omit_qs == [qq.Q_OMIT + t for t in ("3 cm hypodense mass at the head of the pancreas", "CBD dilated to 12 mm",
-                                               "Intrahepatic duct dilatation")]
+    assert omit_qs == [qq.Q_CONVEYS + t for t in ("3 cm hypodense mass at the head of the pancreas", "CBD dilated to 12 mm",
+                                                  "Intrahepatic duct dilatation", "No ascites")]
     assert [(f.kind, f.text) for f in res.flags] == [("contradiction", "No portal vein encasement"),
                                                      ("omission", "CBD dilated to 12 mm")]
     assert res.bad_option_ids == ["fn0"]
