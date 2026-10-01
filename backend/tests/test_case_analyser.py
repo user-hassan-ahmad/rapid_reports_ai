@@ -197,3 +197,9 @@ def test_prompt_asks_for_one_branch_specific_negative_never_a_shared_companion()
     assert "never more than one" in p and "specific to its branch" in p
     assert "A companion many branches share is never a targeted negative" in p
     assert "repeating the shared wording, even when the findings belong to the same differential" not in p
+
+
+def test_prompt_location_never_makes_a_companion_specific_and_differentials_are_diagnoses():
+    p = ca.CASE_ANALYSER_SYSTEM_PROMPT
+    assert "Naming where a shared companion lies never makes it specific to a branch" in p
+    assert "Each DIFFERENTIAL is a diagnosis, never a finding" in p
