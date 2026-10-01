@@ -211,8 +211,10 @@ def test_prose_conditional_heuristic_spares_units_headings_and_plain_prose():
         "\n## Paragraph: When abnormal (FINDINGS)\n"  # a heading is not prose
         "Field ordering: size, contour, then adjacent structures.\n"
         'Write "if any" in the radiologist\'s phrasing: "no collection when imaged".\n'  # quoted text is voice
-        "List the dilated segments, if any.\n"  # idiom, not a condition
-        "Whenever possible keep to one paragraph.\n"  # not if/when/unless as a word
+        "List the dilated segments, if any.\n"  # closing idiom, not a condition
+        "Give each segment (if any) its own clause\n"
+        "Normal appearances take one sentence.\n"  # a keyword word as plain prose
+        "Section order follows the structure above.\n"
         'NEGATIVE "No collection." WHEN [findings: an inflammatory process is reported]\n'
         'RULE WHEN [findings: a focal mass is reported] SUPPRESS "No collection."\n')
     r = parse(sheet)
@@ -220,9 +222,11 @@ def test_prose_conditional_heuristic_spares_units_headings_and_plain_prose():
     assert r.structure.usable
 
 
-def test_prose_conditional_only_under_a_paragraph():
-    r = parse(STRUCTURE + "\n## Voice\nWhen in doubt, be brief.\n")
+@pytest.mark.parametrize("heading", ["Voice", "Style", "Terminology", "voice"])
+def test_free_prose_sections_skip_conditional_and_negative_checks(heading):
+    r = parse(STRUCTURE + f"\n## {heading}\nWhen in doubt, be brief.\nNo paragraph headers in short reports.\n")
     assert r.errors == [] and r.structure.usable
+    assert tuple(g.FREE_PROSE_SECTIONS) == ("voice", "style", "terminology")
 
 
 def test_unusable_without_findings_and_impression_roles():
@@ -299,3 +303,130 @@ def test_fresh_serves_grammar_structures():
     bad = parse(FULL + "\n## Paragraph: X (FINDINGS)\nWhen abnormal, say so.\n").structure
     assert tss.fresh({"skill_sheet": FULL + "\n## Paragraph: X (FINDINGS)\nWhen abnormal, say so.\n",
                       "sheet_structure": bad.model_dump(mode="json")}) is None
+
+
+# ── fail-closed sweep (review of G1) ─────────────────────────────────────────
+
+HEAD = """## Report Structure
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION IMPRESSION | header: "Impression:" | role: impression
+SECTION COMPARISON | header: none | role: comparison
+
+## Paragraph: Aorta (FINDINGS)
+Describe the aorta in one sentence.
+"""
+
+
+@pytest.mark.parametrize("line", [
+    '* NEGATIVE "No aneurysm."', '1. NEGATIVE "No aneurysm."', '2) NEGATIVE "No aneurysm."',
+    '– NEGATIVE "No aneurysm."', '• NEGATIVE "No aneurysm."', '+ NEGATIVE "No aneurysm."',
+    '> NEGATIVE "No aneurysm."', '`NEGATIVE "No aneurysm."`', '**NEGATIVE** "No aneurysm."',
+    'negative "No aneurysm."', 'Negative "No aneurysm."', '\u200bNEGATIVE "No aneurysm."',
+    '* NEGATIVE "No dissection." WHEN [findings: aortic dissection is not reported]',
+    '* RULE WHEN [findings: aortic dissection is reported] SUPPRESS NEGATIVES',
+    'Rule WHEN [findings: aortic dissection is reported] SUPPRESS NEGATIVES',
+    '1. NORMAL [aorta] "The aorta is normal."', '- `FIXED "Correlate clinically."`',
+    '* TERM PREFER "aneurysmal"', 'term avoid "ectatic"', '* IF_PRESENT [aneurysm] "No mural thrombus." (core)',
+])
+def test_decorated_or_miscased_units_fail_closed(line):
+    r = parse(HEAD + line + "\n")
+    assert [e.reason for e in r.errors] == [g.DECORATED_UNIT], r.errors
+    assert not r.structure.usable and not r.structure.negatives and not r.structure.rules
+
+
+@pytest.mark.parametrize("line", [
+    "* SECTION COMPARISON | header: none | role: comparison",
+    "1. SECTION COMPARISON | header: none | role: comparison",
+    "Section COMPARISON | header: none | role: comparison",
+    "**SECTION** COMPARISON | header: none | role: comparison",
+])
+def test_decorated_or_miscased_section_lines_fail_closed(line):
+    sheet = HEAD.replace("SECTION COMPARISON | header: none | role: comparison", line)
+    r = parse(sheet)
+    assert g.DECORATED_UNIT in [e.reason for e in r.errors] and not r.structure.usable
+    assert [x.name for x in r.structure.sections] == ["FINDINGS", "IMPRESSION"]
+
+
+@pytest.mark.parametrize("heading", [
+    "### Paragraph: Heart (FINDINGS)", "##Paragraph: Heart (FINDINGS)", "**Paragraph: Heart (FINDINGS)**",
+    "# Paragraph: Heart (FINDINGS)", "## Paragraph : Heart (FINDINGS)", "- Paragraph: Heart (FINDINGS)",
+])
+def test_mislevelled_paragraph_headings_fail_closed(heading):
+    r = parse(HEAD + heading + '\nNEGATIVE "No pericardial effusion."\n')
+    assert g.MISLEVELLED_PARAGRAPH in [e.reason for e in r.errors], r.errors
+    assert not r.structure.usable
+    assert [p.name for p in r.structure.paragraphs] == ["Aorta"]
+
+
+@pytest.mark.parametrize("prose", [
+    "If any aortic aneurysm is present, give its maximal diameter.",
+    "Whenever an aneurysm is present, give its maximal diameter.",
+    "Wherever the wall is thickened, say so.",
+    "Where an aneurysm is present, give its maximal diameter.",
+    "In case of aneurysm, give its maximal diameter.",
+    "Provided the root is dilated, add a surveillance line.",
+    "Should dissection be present, omit the normal sentence.",
+    "For patients with prior repair, describe the graft.",
+    "In the presence of dissection, omit the normal sentence.",
+    "Once dissection is seen, omit the normal sentence.",
+    "Otherwise say the aorta is normal.",
+    "Wording depending on the root size.",
+    "Give the diameter if any aneurysm is seen.",
+    "Unless obscured, describe the wall.",
+])
+@pytest.mark.parametrize("where", ["", "\n## Report-wide\n", "\n## Reporting notes\n"])
+def test_prose_conditionals_fail_closed(prose, where):
+    r = parse(HEAD + where + prose + "\n")
+    assert [e.reason for e in r.errors] == [g.PROSE_CONDITIONAL], r.errors
+    assert not r.structure.usable
+
+
+def test_prose_conditional_checked_in_report_structure_block():
+    r = parse(HEAD.replace("SECTION COMPARISON", "Comparison appears when prior imaging exists.\nSECTION COMPARISON"))
+    assert [e.reason for e in r.errors] == [g.PROSE_CONDITIONAL]
+
+
+@pytest.mark.parametrize("prose", [
+    "- No aortic aneurysm or dissection.", "No aortic aneurysm.", "There is no aortic aneurysm.",
+    "There are no aortic aneurysms.", "Without aneurysm or dissection.", '- "No aneurysm." / "No dissection."',
+    '"No aneurysm."', "**No aortic aneurysm.**", "1. No aortic aneurysm.",
+])
+@pytest.mark.parametrize("where", ["", "\n## Report-wide\n"])
+def test_prose_negatives_fail_closed(prose, where):
+    r = parse(HEAD + where + prose + "\n")
+    assert [e.reason for e in r.errors] == [g.PROSE_NEGATIVE], r.errors
+    assert not r.structure.usable
+
+
+def test_quoted_negative_inside_instruction_prose_is_not_a_prose_negative():
+    r = parse(HEAD + 'Prefer "No aneurysm." over longer forms.\n')
+    assert r.errors == [] and r.structure.usable
+
+
+def test_section_attribute_inside_quotes_is_text():
+    r = parse(HEAD + 'NEGATIVE "No mass | section: IMPRESSION"\n'
+              'RULE WHEN [findings: aortic dissection is reported] APPEND "x | section: FINDINGS"\n')
+    assert r.errors == [], r.errors
+    assert r.structure.negatives[0].text == "No mass | section: IMPRESSION"
+    assert r.structure.negatives[0].section == "FINDINGS" and r.structure.rules[0].then_text == "x | section: FINDINGS"
+
+
+def test_probe_baselines_still_parse():
+    for line in ['NEGATIVE "No aneurysm."', '\tNEGATIVE\t"No aneurysm."', '\u00a0- NEGATIVE "No aneurysm."',
+                 'RULE WHEN [findings: aortic dissection is reported] REPLACE "No dissection." WITH "Dissection."',
+                 'RULE WHEN [history: coronary study is not requested] SUPPRESS_SECTION COMPARISON',
+                 'RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["LVEF | %" | "LVEDV"] AT TOP',
+                 '## Paragraph: Heart (findings)\nNEGATIVE "No pericardial effusion."',
+                 '## Paragraph: Heart (and pericardium) (FINDINGS)\nNEGATIVE "No pericardial effusion."']:
+        r = parse(HEAD + line + "\n")
+        assert r.errors == [] and r.structure.usable, (line, r.errors)
+
+
+def test_mixed_sheet_fresh_rejects_mislevelled_paragraph():
+    sheet = (HEAD.replace("Describe the aorta in one sentence.\n", "") + 'NEGATIVE "No aneurysm."\n'
+             "RULE WHEN [findings: aortic dissection is reported] SUPPRESS NEGATIVES\n"
+             "### Paragraph: Heart (FINDINGS)\n"
+             'NEGATIVE "No pericardial effusion."\n')
+    s = parse(sheet).structure
+    assert not s.usable
+    assert tss.fresh({"skill_sheet": sheet, "sheet_structure": s.model_dump()}) is None

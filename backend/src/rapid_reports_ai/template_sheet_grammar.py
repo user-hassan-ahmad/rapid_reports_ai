@@ -19,8 +19,20 @@ Unit lines (optional indentation and an optional "- " bullet before the keyword)
     IF_PRESENT [<finding>] "<negative>" (core|contextual)
     RULE WHEN [<source>: <statement>] <EFFECT>
 
-A unit outside a paragraph may name its section with a trailing "| section: <NAME>"; under
-"## Report-wide" it defaults to the first findings-role section. TERM units are sheet-wide.
+Sections of a unit. Under "## Paragraph: <name> (<SECTION>)" a unit belongs to that paragraph and
+section. Outside a paragraph a unit may name its section with a trailing "| section: <NAME>" (outside
+quotes); without one, a unit under "## Report-wide" belongs to the FIRST findings-role SECTION of the
+Report Structure, and a unit anywhere else is a lint error. TERM units are sheet-wide.
+
+LIST_MISSING's WHEN statement is free text like any other (the canonical one is
+"[findings: any listed value is not stated]"); it is parsed, not rewritten.
+
+Fail-closed sweep. Every line that is not a unit line is checked:
+- anywhere: a decorated or miscased unit (bullet "*", "1.", "–", ">", backticks, bold, zero-width or
+  NBSP prefix, lowercase keyword) and a paragraph heading at the wrong level or malformed;
+- in every section except the free-prose ones (FREE_PROSE_SECTIONS): a conditional phrase outside quotes
+  (it should be a RULE / NEGATIVE … WHEN) and a negative statement written as prose (it should be a
+  NEGATIVE unit — the brief can only reconcile units).
 """
 from __future__ import annotations
 
@@ -30,6 +42,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from . import template_sheet_structure as tss
+from .report_review import is_negative
 
 # The keywords that open a unit line. Anything else starting with an uppercase word followed by
 # `[`, `"` or WHEN is an unknown keyword-like line.
@@ -46,10 +59,13 @@ NO_SUBJECT = "statement without subject"
 UNKNOWN_PARAGRAPH_SECTION = "unknown section in a paragraph heading"
 DUPLICATE_SECTION = "duplicate SECTION"
 NO_SECTION = "unit outside any paragraph without section"
-PROSE_CONDITIONAL = "conditional phrase in prose under a paragraph"
+PROSE_CONDITIONAL = "conditional phrase in prose"
 OLD_SYNTAX = "old IF [ syntax"
 MALFORMED_UNIT = "malformed unit"
 UNKNOWN_SECTION = "unknown section"
+DECORATED_UNIT = "decorated or miscased unit"
+MISLEVELLED_PARAGRAPH = "mis-levelled paragraph heading"
+PROSE_NEGATIVE = "negative outside a NEGATIVE unit"
 SECTION_OUTSIDE_STRUCTURE = "SECTION outside the Report Structure block"
 DUPLICATE_STRUCTURE = "duplicate Report Structure block"
 
@@ -81,7 +97,7 @@ _CURLY = re.compile(r"[“”]")
 _NAME = r"[A-Z0-9][A-Z0-9 /&-]*?"
 _Q = r'"([^"]+)"'
 _COND = r"WHEN\s*\[([^\]]*)\]"
-_SECTION_ATTR = re.compile(r"\s*\|\s*section:\s*(.*?)\s*$")
+_SECTION_ATTR = re.compile(r"\s*\|\s*section:\s*([^\"]*?)\s*$")  # after the last quote only
 
 _SECTION = re.compile(rf"SECTION\s+(?P<name>{_NAME})\s*\|\s*header:\s*(?:none|\"(?P<header>[^\"]+)\")"
                       r"\s*\|\s*role:\s*(?P<role>\w+)\s*")
@@ -120,11 +136,23 @@ reported reports report stated states state described describes mentioned noted 
 documented given seen shown present absent found identified recorded
 """.split())
 
-# Prose under a paragraph that says "if", "when" or "unless" (outside quoted text) is a conditional
-# the analyser should have written as a RULE / NEGATIVE … WHEN. Idioms that are not conditions are
-# exempt.
-_PROSE_COND = re.compile(r"\b(?:if|when|unless)\b", re.I)
-_PROSE_COND_EXEMPT = re.compile(r"\bif\s+any\b", re.I)
+# Headings ("## <title>", case-insensitive) whose prose is free: the radiologist's voice and style
+# notes and terminology guidance. Prose everywhere else (paragraphs, Report-wide, the Report Structure
+# block, any other heading, text before the first "## ") is checked for conditionals and negatives.
+FREE_PROSE_SECTIONS = ("voice", "style", "terminology")
+
+# Prose that states a condition outside quoted text should have been a RULE / NEGATIVE … WHEN.
+# "if any" is exempt only as a closing idiom ("…, if any." / "(if any)").
+_PROSE_COND = re.compile(
+    r"\b(?:if|when|unless|whenever|wherever|where|provided|in\s+case|in\s+the\s+presence\s+of"
+    r"|should\s+\w+\s+be|otherwise|depending\s+on|once|for\s+patients\s+with)\b", re.I)
+_PROSE_COND_EXEMPT = re.compile(r"\bif\s+any\b(?=\s*(?:[,.)]|$))", re.I)
+
+# Decoration a model may put before a unit keyword or a paragraph heading.
+_INVISIBLE = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
+_DECORATION = re.compile(r"^(?:[\s\-*+•–—>`#_]|\d+[.)])+")
+_TOKEN = re.compile(r"^([A-Za-z_]+)(.*)$", re.S)
+_PARAGRAPH_LIKE = re.compile(r"^paragraph\s*:", re.I)
 
 
 def _norm_name(s: str) -> str:
@@ -139,9 +167,44 @@ def _outside_quotes(text: str) -> str:
     return re.sub(r'"[^"]*"', " ", text)
 
 
+def _undecorate(line: str) -> str:
+    """The line with invisible characters, NBSP and leading decoration (bullets, numbering, quote and
+    heading marks, backticks, bold) removed."""
+    s = _INVISIBLE.sub("", line).replace("\u00a0", " ")
+    return _DECORATION.sub("", s).strip()
+
+
+def _sweep(i: int, body: str, ctx: "_Ctx", err) -> None:
+    """Fail closed on a line that is not a unit line (at most one error per line)."""
+    km = _KEYWORD_LIKE.match(body)
+    if km:
+        err(i, UNKNOWN_KEYWORD, km.group(1))
+        return
+    plain = _undecorate(body)
+    if not plain:
+        return
+    tok = _TOKEN.match(plain)
+    if tok and tok.group(1).upper() in KEYWORDS and (tok.group(1).isupper() or re.search(r'["“”\[|]', tok.group(2))):
+        err(i, DECORATED_UNIT, tok.group(1))
+        return
+    if _PARAGRAPH_LIKE.match(plain):
+        err(i, MISLEVELLED_PARAGRAPH)
+        return
+    if ctx.kind == "free":
+        return
+    cm = _PROSE_COND.search(_PROSE_COND_EXEMPT.sub(" ", _outside_quotes(plain)))
+    if cm:
+        err(i, PROSE_CONDITIONAL, cm.group(0).lower())
+        return
+    stated = plain.replace("**", "").strip()
+    stated = stated.replace('"', "") if stated.startswith('"') else _outside_quotes(stated).strip()
+    if re.match(r"^(?:No|There\s+is\s+no|There\s+are\s+no|Without)\b", stated) or is_negative(stated):
+        err(i, PROSE_NEGATIVE)
+
+
 @dataclass
 class _Ctx:
-    kind: str = "none"  # none | structure | paragraph | report_wide | other
+    kind: str = "none"  # none | structure | paragraph | report_wide | free | other
     paragraph: str = ""  # paragraph id
     section: str = ""  # paragraph's section (canonical name, or as written when unknown)
 
@@ -178,8 +241,9 @@ def parse_sheet(sheet: str) -> GrammarResult:
                 if structure_blocks > 1:
                     err(i, DUPLICATE_STRUCTURE)
             continue
-        body = _BULLET.sub("", raw, count=1)
-        if _FIRST_WORD.match(body) and _FIRST_WORD.match(body).group(1) == "SECTION":
+        first = _FIRST_WORD.match(_BULLET.sub("", raw, count=1))
+        if first and first.group(1) == "SECTION":
+            body = _BULLET.sub("", raw, count=1)
             section_lines.add(i)
             if not in_structure:
                 err(i, SECTION_OUTSIDE_STRUCTURE)
@@ -249,7 +313,10 @@ def parse_sheet(sheet: str) -> GrammarResult:
             elif raw.startswith("## ") and title.lower() == "report-wide":
                 ctx = _Ctx("report_wide")
             else:
-                ctx = _Ctx("other")
+                if _PARAGRAPH_LIKE.match(_undecorate(raw)):
+                    err(i, MISLEVELLED_PARAGRAPH)
+                free = raw.startswith("## ") and title.lower() in FREE_PROSE_SECTIONS
+                ctx = _Ctx("free" if free else "other")
             continue
         if i in section_lines:
             continue
@@ -257,14 +324,7 @@ def parse_sheet(sheet: str) -> GrammarResult:
         first = _FIRST_WORD.match(body)
         keyword = first.group(1) if first and first.group(1) in KEYWORDS else ""
         if not keyword:
-            km = _KEYWORD_LIKE.match(body)
-            if km:
-                err(i, UNKNOWN_KEYWORD, km.group(1))
-            elif ctx.kind == "paragraph" and body.strip():
-                prose = _PROSE_COND_EXEMPT.sub(" ", _outside_quotes(body))
-                cm = _PROSE_COND.search(prose)
-                if cm:
-                    err(i, PROSE_CONDITIONAL, cm.group(0).lower())
+            _sweep(i, body, ctx, err)
             continue
 
         # A unit line.
@@ -314,7 +374,7 @@ def _parse_unit(i, raw, body, keyword, ctx: _Ctx, by_name, default_section, err,
         err(i, MALFORMED_QUOTES)
         return None
     # Section and paragraph.
-    sa = _SECTION_ATTR.search(body) if keyword != "SECTION" else None
+    sa = _SECTION_ATTR.search(body)
     named = _norm_name(sa.group(1)) if sa else ""
     if sa:
         body = body[:sa.start()]
