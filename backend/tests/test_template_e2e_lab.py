@@ -78,3 +78,9 @@ def test_stated_negatives_are_classified_and_flagged_beside_a_dictated_positive(
     assert lab.classify_negative("No organised collection.", findings, srcs) == "dictated"
     assert lab.beside_positive("No pericolic fluid.", findings)  # fluid / dictated free fluid
     assert not lab.beside_positive("No lymphadenopathy.", findings)
+
+
+def test_first_with_picks_the_dir_holding_the_set(tmp_path):
+    (tmp_path / "b" / "set_x").mkdir(parents=True)
+    assert lab.first_with(f"{tmp_path / 'a'},{tmp_path / 'b'}", "set_x") == tmp_path / "b"
+    assert lab.first_with("", "set_x") is None

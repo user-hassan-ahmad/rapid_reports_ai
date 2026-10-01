@@ -346,6 +346,12 @@ def is_no_json_failure(msg: str) -> bool:
     return "No JSON object found" in msg
 
 
+def first_with(dirs: str, name: str) -> Optional[Path]:
+    """The first of comma-separated output dirs holding <set> (so one run can reuse several earlier runs)."""
+    return next((Path(x.strip()) for x in (dirs or "").split(",") if x.strip() and (Path(x.strip()) / name).exists()),
+                None)
+
+
 def reused_sheets(reuse: Optional[Path], name: str) -> dict:
     """Saved sheets of a previous run: sheets.json, else lean_sheet.md / baseline_sheet.md. Empty when none."""
     if not reuse:
@@ -425,7 +431,7 @@ async def run_new(sheet: str, d: dict) -> dict:
         t0 = time.time()
         o = await rc.write_options(brief.decisions.get("options", []) if brief else [], findings, scan_type,
                                    model=MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"], runner=_run_agent_with_model,
-                                   style=style, impression_section=imp)
+                                   style=style, impression_section=imp, require_service=True)
         return o, round(time.time() - t0, 1)
 
     (out, rec["lat"]["generator_s"]), (options, rec["lat"]["options_s"]) = await asyncio.gather(gen(), opts())
@@ -917,6 +923,12 @@ def render_negatives(results: List[dict]) -> str:
                     b = beside_positive(c, r["findings"])
                     L.append(f"| {arm.upper()} | {c} | {classify_negative(c, r['findings'], srcs)} | "
                              f"{'; '.join(b) or ''} |")
+            for n in ((r.get("new") or {}).get("decisions") or {}).get("negatives", []):
+                for sg in n.get("signals", []):
+                    by = ("both" if sg["rule"] and sg["qwen"] == "superseded" else "rule" if sg["rule"]
+                          else "Qwen superseded")
+                    L.append(f"| NEW | OFFERED (not stated): {sg['text']} | case negative (Phase 1) → {n.get('targets')} | "
+                             f"demoted by {by} (Qwen: {sg['qwen']}) |")
             for arm in ("new", "quick"):
                 a = r.get(arm) or {}
                 stated = " ".join(negative_clauses(a.get("report") or "", key["sections"])) + " " + r["findings"]
@@ -987,9 +999,9 @@ async def main() -> None:
     runner_log = open(out / "runner_stdout.log", "w")
     with contextlib.redirect_stdout(runner_log):  # the model runner prints settings to stdout
         for name in sets:  # sets in sequence; within a set at most 2 model calls at once
-            results.append(await run_set(name, out, sem, Path(a.reuse_sheets) if a.reuse_sheets else None,
+            results.append(await run_set(name, out, sem, first_with(a.reuse_sheets, name),
                                          {x.strip() for x in a.only.split(",") if x.strip()} or None,
-                                         Path(a.reuse_reports) if a.reuse_reports else None, a.quick,
+                                         first_with(a.reuse_reports, name), a.quick,
                                          {x.strip() for x in a.rerun.split(",") if x.strip()}))
             write_outputs(results, out)
     print(out)
