@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic.json_schema import SkipJsonSchema
 from sqlalchemy.orm.attributes import flag_modified
 
 from .database import SessionLocal
@@ -34,7 +35,10 @@ LineRef = Union[int, str]  # the model cites a sheet line by its number; build_s
 
 
 def _listify(v):
-    return json.loads(v) if isinstance(v, str) else v
+    """A stringified list is parsed back; model instances in a list are dumped so the field's own item
+    class revalidates them (a Rule may hold a grammar effect a DraftRule may not)."""
+    v = json.loads(v) if isinstance(v, str) else v
+    return [x.model_dump() if isinstance(x, BaseModel) else x for x in v] if isinstance(v, list) else v
 
 
 def _takes_text(annotation) -> bool:
@@ -74,16 +78,36 @@ class Paragraph(_Model):
     name: str
 
 
+ConditionSource = Literal["findings", "history", "context"]
+LegacyEffect = Literal["suppress", "replace", "append", "use"]
+# Grammar v1 (spec 2026-10-01-template-sheet-grammar): effects only a grammar sheet expresses.
+Effect = Literal["suppress", "replace", "append", "use", "insert_before", "suppress_paragraph_negatives",
+                 "list_missing", "suppress_section", "suppress_headers", "order"]
+
+
 class Rule(_Model):
     id: str
     section: str
     paragraph: str = ""
     condition: str
-    condition_source: Literal["findings", "history", "context"] = "findings"
-    effect: Literal["suppress", "replace", "append", "use"]
-    target: str = ""
+    condition_source: ConditionSource = "findings"
+    effect: Effect
+    target: str = ""  # suppress/replace: the quoted text; suppress_section: the section name
     then_text: str = ""
     source_lines: List[LineRef]
+    items: List[str] = []  # list_missing
+    anchor: str = ""  # insert_before
+    position: Optional[Literal["top", "end", "first", "last"]] = None  # list_missing: top/end; order: first/last
+
+
+# A rule as the LLM extractor drafts it: the four legacy effects only, and the grammar-only fields kept
+# out of the schema the model sees (the extractor path is unchanged by the grammar). No docstring: it
+# would enter that schema.
+class DraftRule(Rule):
+    effect: LegacyEffect
+    items: SkipJsonSchema[List[str]] = []
+    anchor: SkipJsonSchema[str] = ""
+    position: SkipJsonSchema[Optional[Literal["top", "end", "first", "last"]]] = None
 
 
 class Negative(_Model):
@@ -92,6 +116,7 @@ class Negative(_Model):
     paragraph: str = ""
     text: str
     condition: Optional[str] = None
+    condition_source: SkipJsonSchema[ConditionSource] = "findings"  # grammar: NEGATIVE … WHEN [<source>: …]
     source_lines: List[LineRef]
     kind: Literal["negative", "stated_normal"] = "negative"  # stated_normal: a quoted normal-state line
 
@@ -154,7 +179,7 @@ class StructureDraft(_Model):
     structuring call retries instead of storing nothing."""
     sections: List[StructSection] = Field(min_length=1)
     paragraphs: List[Paragraph] = []
-    rules: List[Rule] = []
+    rules: List[DraftRule] = []
     negatives: List[Negative] = []
     normals: List[Normal] = []
     fixed_blocks: List[FixedBlock] = []
@@ -170,6 +195,8 @@ class StructureDraft(_Model):
 
 class SheetStructure(StructureDraft):
     sections: List[StructSection] = []  # verified; may be empty (then unusable)
+    rules: List[Rule] = []
+    source: Literal["grammar", "extracted"] = "extracted"  # grammar: parsed by code from a grammar sheet
     version: int = STRUCTURE_VERSION
     sheet_hash: str
     model: str
