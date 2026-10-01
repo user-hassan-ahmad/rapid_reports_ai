@@ -37,13 +37,14 @@ quick's shared clinical routing in report_reconcile:
 - DIFFERENTIAL: rc.route_differential (policy 1) -> ADDRESS (present) / removed (closed by silence) / OPEN
   (not visible on this technique, or imaging-silent: defer), rewritten in the "## Case Deliberation" block,
   which the brief marks as reasoning input, never report text; QUESTION -> CLINICAL QUESTION.
-- NEGATIVE … TARGETS (case): classified with the template negatives (same Qwen call, same exact-index
-  check); OMIT when its targeted differential is present; DO NOT ASSERT when that differential is not
-  VISIBLE yes (lint blocks it; defence). One label per claim, safer wins (OMIT > DO NOT ASSERT > KEEP),
-  logged in decisions["conflicts"]: the same claim (exact key) anywhere is OMIT when a case negative omits
-  it, whatever became of that case negative; and for each present VISIBLE yes differential Jev reads every template
-  negative / normal in scope (x<k>_<unit id>, findings state, alongside the classifier) for a statement
-  denying it -> negative OMIT, normal DO NOT ASSERT AS NORMAL. Case-driven OMITs name no differential.
+- NEGATIVE … TARGETS (case): never stated. Classified with the template negatives (one shared Qwen call);
+  a contradicted or expected one, or one whose claim a present differential's negative omits, is dropped;
+  the rest are offered (option kind finding_negative, its paragraph's section, reason "excludes <name>"),
+  after de-duplication against stated and dictated negatives and only in the room the finding-linked options
+  leave (MAX_FINDING_OPTIONS in all). OMIT when its targeted differential is present (and the same claim
+  anywhere is OMIT); DO NOT ASSERT when that differential is not VISIBLE yes (lint blocks it; defence).
+- Conditions: findings conditions are judged on the dictation; history conditions on the history alone;
+  context conditions on history + protocol text + the dictation. History and context need >= CTX_MET.
 - IF_PRESENT (case): Jev finding reported + rc.route_finding -> KEEP on its own line (stated) / offered
   option (its paragraph's section) / DO NOT ASSERT / dropped; offers capped at MAX_FINDING_OPTIONS; a
   negative already handled (a sheet negative or an earlier If-present) is routed once, as in quick.
@@ -72,6 +73,7 @@ logger = logging.getLogger(__name__)
 Q_CONDITION = "This statement is true for this case: "
 Q_STATED = "The dictated findings state "
 MET = rc.PRESENT
+CTX_MET = 0.7  # a history / context condition: a boundary score (0.5) is not met
 
 _IF_PRESENT_LINE = re.compile(r"^\s*(?:-\s+)?IF_PRESENT\b")
 _H2 = re.compile(r"^#{1,2}\s")
@@ -280,11 +282,12 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
         raise ValueError("template brief needs a usable sheet structure")
     t0 = time.monotonic()
     state = f"SCAN TYPE: {scan_type}\nDICTATED FINDINGS:\n{findings}"
-    # History and context conditions are judged WITHOUT the dictated findings, so a condition mislabelled
-    # history/context cannot be met by what the findings say. Context adds the sheet's protocol text.
+    # History conditions are judged without the dictated findings. Context conditions (what was performed) see
+    # the sheet's protocol text AND the dictation, which is where a reporter says what was acquired.
     hist_state = f"SCAN TYPE: {scan_type}\nCLINICAL HISTORY:\n{clinical_history or '(not given)'}"
     technique = _technique_text(sheet, s)
-    ctx_state = hist_state + (f"\nPROTOCOL / TECHNIQUE:\n{technique}" if technique else "")
+    ctx_state = (hist_state + (f"\nPROTOCOL / TECHNIQUE:\n{technique}" if technique else "")
+                 + f"\nDICTATED FINDINGS:\n{findings}")
     items = rc.split_findings(findings)
     findings_section = next((x.name for x in s.sections if x.role == "findings"), "FINDINGS")
     imp_section = next((x.name for x in s.sections if x.role == "impression"), "IMPRESSION")
@@ -422,7 +425,10 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
         parts_of = {_key(t): [p for p in parts if p.strip()] or [t] for t, parts in zip(distinct, split)}
 
         # ── rules: met, and the sections they omit ───────────────────────────
-        met = {i: sc[f"r{i}"] >= MET for i, r in enumerate(s.rules) if r.effect != "list_missing"}
+        def is_met(key: str, source: str) -> bool:
+            return sc[key] >= (CTX_MET if source in ("history", "context") else MET)
+
+        met = {i: is_met(f"r{i}", r.condition_source) for i, r in enumerate(s.rules) if r.effect != "list_missing"}
         omitted = {r.target for i, r in enumerate(s.rules) if r.effect == "suppress_section" and met[i]}
 
         def unit_omitted(u: _Unit) -> bool:
@@ -467,12 +473,6 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
         # ── differentials (policy 1, shared routing) ─────────────────────────
         diff_route = {d.name: rc.route_differential(sc[f"d{k}"], d.visible) for k, d in enumerate(s.differentials)}
         diff_visible = {d.name: d.visible for d in s.differentials}
-        # Once a TRIAGE branch is reported the question is answered: a case negative excluding a different
-        # triage branch is offered, never stated (aetiology, If-present and sweep negatives are unaffected).
-        triage = {d.name for d in s.differentials if d.tier == "triage"}
-        answered = next((d.name for d in s.differentials if d.name in triage and diff_route[d.name] == "present"), "")
-        # The template classifier also judges 'superseded' against the clinical question.
-        qstate = state + (f"\nCLINICAL QUESTION: {s.question}" if s.question else "")
 
         # ── plan each negative; collect what the classifier must judge ──────
         plans: Dict[str, dict] = {}
@@ -487,7 +487,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                 p["status"] = "differential_present"  # the branch it helps exclude is reported: OMIT
             elif u.origin == "case" and diff_visible.get(u.targets) != "yes":
                 p["status"] = "target_not_visible"  # lint blocks it; defence: silence cannot exclude it
-            elif u.condition and sc[u.jev_key] < MET and not forced:
+            elif u.condition and not is_met(u.jev_key, u.condition_source) and not forced:
                 p["status"] = "removed"
             elif u.paragraph in para_suppressed:
                 p["status"] = "paragraph_suppressed"
@@ -496,7 +496,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                 p["status"] = "paragraph_suppressed"
                 p["why"] = suppressed_keys[(u.section, _key(u.text))]
             else:
-                skip_unforced = bool(u.condition) and sc[u.jev_key] < MET  # unmet: only forced parts render
+                skip_unforced = bool(u.condition) and not is_met(u.jev_key, u.condition_source)  # unmet: forced parts only
                 for j, part in enumerate(parts):
                     if j not in forced and not skip_unforced and _key(part) not in {_key(x) for x in to_classify}:
                         to_classify.append(part)
@@ -547,7 +547,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
 
         async def qwen_or_empty():
             if to_classify or normals_sent:
-                return await rc._qwen(qstate, to_classify, [u.text for u in normals_sent], [], template=True)
+                return await rc._qwen(state, to_classify, [u.text for u in normals_sent], [])
             return rc.QwenDecisions(negatives=[], affected_normals=[], applicable_measurements=[])
 
         # Same claim, other wording, is not asked of Jev (owner decision 2026-10-01: inferring whether a
@@ -565,6 +565,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
     qneg = {_key(to_classify[d.index]): d for d in qw.negatives}
     q_affected = {normals_sent[i].id for i in qw.affected_normals}
     decisions: dict = {"rules": [], "negatives": [], "normals": [], "missing": [], "finding_negatives": [],
+                       "case_exclusions": [],
                        "options": [], "conflicts": [], "impression_plan": None,
                        "question": s.question, "differentials": [], "recommendations": []}
     labels: List[Tuple[_Unit, str, str]] = []  # (unit, text key, label) for anchors and conflicts
@@ -579,6 +580,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
         return out
 
     # ── negatives ────────────────────────────────────────────────────────────
+    case_offers: List[dict] = []  # case exclusions: offered after the finding-linked options, room permitting
     for u in negatives:
         p = plans[u.id]
         for x in u.extra_lines:
@@ -608,7 +610,6 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                 labels.append((u, _key(part), "DO NOT ASSERT"))
             action = "target_not_visible"
         else:
-            rule = bool(answered) and u.origin == "case" and u.targets in triage and u.targets != answered
             offered = 0
             for j, part in enumerate(p["parts"]):
                 if j in p["forced"]:
@@ -619,7 +620,19 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                     labels.append((u, _key(part), "REMOVED"))
                     continue
                 d = qneg[_key(part)]
-                if d.action != "contradicted" and _key(part) in case_omit:
+                if u.origin == "case":
+                    # A case exclusion is never stated: offered, or dropped when the dictation contradicts it,
+                    # predictably causes what it denies, or a present differential's negative omits the claim.
+                    if d.action in ("contradicted", "expected") or _key(part) in case_omit:
+                        entry.setdefault("dropped", []).append({"text": _q(part), "qwen": d.action})
+                        labels.append((u, _key(part), "REMOVED"))
+                    else:
+                        offered += 1
+                        case_offers.append({"kind": "finding_negative", "section": u.section,
+                                            "paragraph": para_name.get(u.paragraph, ""), "text": _q(part),
+                                            "finding": u.targets, "reason": f"excludes {u.targets}"})
+                        labels.append((u, _key(part), "OFFERED"))
+                elif d.action != "contradicted" and _key(part) in case_omit:
                     # One label per claim, safer wins: the claim a case negative omits (same text).
                     name = case_omit[_key(part)]
                     lost = "DO NOT ASSERT" if d.action == "expected" else "KEEP"
@@ -636,20 +649,11 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                 elif d.action == "expected":
                     new.append(f'- DO NOT ASSERT: "{_q(part)}" — expected consequence of: {d.dictated_finding}')
                     labels.append((u, _key(part), "DO NOT ASSERT"))
-                elif u.origin == "case" and (rule or d.action == "superseded"):
-                    # Either signal demotes (a disagreement is offered, never deleted); not in the brief text.
-                    offered += 1
-                    entry.setdefault("signals", []).append({"text": _q(part), "rule": rule, "qwen": d.action})
-                    why = (f"question answered by {answered}" if rule else f"superseded by: {d.dictated_finding}")
-                    decisions["options"].append({
-                        "kind": "finding_negative", "section": u.section, "paragraph": para_name.get(u.paragraph, ""),
-                        "text": _q(part), "finding": u.targets, "reason": f"alternative excluded; {why}"})
-                    labels.append((u, _key(part), "OFFERED"))
                 else:
                     new.append(f'- KEEP: "{_q(part)}"')
                     labels.append((u, _key(part), "KEEP"))
             action = ("rule_omitted" if p["forced"] and len(p["forced"]) == len(p["parts"])
-                      else "offered_alternative" if offered and offered == len(p["parts"]) else "labelled")
+                      else "offered" if offered else "dropped" if u.origin == "case" else "labelled")
         L.put(u.line, new)
         decisions["negatives"].append({**entry, "action": action, "lines": new})
 
@@ -692,7 +696,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                                                "source": "case", "differential": case_omit[_key(part)]})
     for u, part, pf in cands:
         d = qneg.get(_key(part)) if pf >= rc.PRESENT_LOW else None
-        label = d.action if d and d.action != "superseded" else "keep"  # superseded is for case negatives only
+        label = d.action if d else "keep"
         outcome = rc.route_finding(label, pf, u.tag)
         if outcome == "offered":
             if n_offered >= rc.MAX_FINDING_OPTIONS:
@@ -865,6 +869,18 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
     for fn in decisions["finding_negatives"]:
         if fn.get("outcome") == "offered" and fn.get("text") in dup:
             fn["outcome"] = "duplicate_dropped"
+    # Case exclusions fill what room the finding-linked options leave (MAX_FINDING_OPTIONS in all).
+    kept, dup = rc.dedupe_options(case_offers, stated, findings)
+    room = max(0, rc.MAX_FINDING_OPTIONS - sum(o["kind"] == "finding_negative" for o in decisions["options"]))
+    seen_case: Set[str] = set()
+    for o in case_offers:
+        outcome = ("duplicate_dropped" if o["text"] in dup or _key(o["text"]) in seen_case
+                   else "offered" if room else "trimmed")
+        if outcome == "offered":
+            room -= 1
+            decisions["options"].append(o)
+        seen_case.add(_key(o["text"]))
+        decisions["case_exclusions"].append({"text": o["text"], "differential": o["finding"], "outcome": outcome})
 
     text = re.sub(r"\n{3,}", "\n\n", text).strip() + "\n"
     return rc.Brief(text=text, decisions=decisions, reconcile_ms=int((time.monotonic() - t0) * 1000))

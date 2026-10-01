@@ -136,15 +136,6 @@ class QwenDecisions(BaseModel):
         return _unstring(v)
 
 
-class TemplateNegativeDecision(NegativeDecision):
-    """The templated pathway's label set: quick's plus 'superseded' (quick's schema is untouched)."""
-    action: Literal["keep", "contradicted", "expected", "superseded"]
-
-
-class TemplateQwenDecisions(QwenDecisions):
-    negatives: List[TemplateNegativeDecision]
-
-
 class Split(BaseModel):
     negatives: List[List[str]]
     @field_validator("negatives", mode="before")
@@ -202,21 +193,6 @@ QWEN_SYS = (
     "MEASUREMENTS: list the numbers of measurement conventions whose finding is present in the dictation.")
 
 
-# Templated pathway only (quick keeps QWEN_SYS byte-identical). The state carries the CLINICAL QUESTION.
-QWEN_SYS_TEMPLATE = (
-    "You check a radiology skill sheet against the radiologist's dictated findings for one case. Silence in the "
-    "dictation never makes a finding present.\n"
-    "NEGATIVES: for each numbered negative return 'contradicted' if the dictation reports it as present or reports a "
-    "finding of the same kind in the same place; 'expected' if a dictated finding would normally and predictably "
-    "cause what it denies (not merely make it possible); a dictated finding described as widespread or "
-    "large-volume predictably includes its presence at any particular site, so a negative denying that finding at "
-    "one site is 'expected'; 'superseded' if the negative excludes an alternative diagnosis and the dictated "
-    "findings already establish a different answer to the clinical question; otherwise 'keep'. For contradicted, "
-    "expected and superseded, quote the dictated finding responsible.\n"
-    "NORMAL LINES: list the numbers of normal-study statements that a dictated finding contradicts or acts on.\n"
-    "MEASUREMENTS: list the numbers of measurement conventions whose finding is present in the dictation.")
-
-
 def _words(s: str) -> set:
     return set(re.findall(r"[\w*'-]+", s.lower()))
 
@@ -260,15 +236,11 @@ async def _jev(state: str, questions: dict) -> dict:
     return r.json().get("answers") or r.json()
 
 
-async def _qwen(state: str, negs: List[str], normals: List[str], measurements: List[str], *,
-                template: bool = False) -> QwenDecisions:
-    """The shared classifier. `template` selects the templated label set ('superseded' added, 'expected'
-    sharpened); the default is quick's exact prompt and schema."""
+async def _qwen(state: str, negs: List[str], normals: List[str], measurements: List[str]) -> QwenDecisions:
     def block(title, items):
         return f"{title}:\n" + ("\n".join(f"{k}. {t}" for k, t in enumerate(items)) or "(none)")
     r = await asyncio.wait_for(_run_agent_with_model(
-        model_name=QWEN, output_type=TemplateQwenDecisions if template else QwenDecisions,
-        system_prompt=QWEN_SYS_TEMPLATE if template else QWEN_SYS,
+        model_name=QWEN, output_type=QwenDecisions, system_prompt=QWEN_SYS,
         user_prompt=f"{state}\n\n{block('NEGATIVES', negs)}\n\n{block('NORMAL LINES', normals)}\n\n{block('MEASUREMENTS', measurements)}",
         api_key="", model_settings={"temperature": 0, "max_tokens": 4000, "reasoning_effort": "none"}), QWEN_TIMEOUT_S)
     return r.output

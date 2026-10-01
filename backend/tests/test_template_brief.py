@@ -90,17 +90,16 @@ def stub(monkeypatch, jev_f: dict | None = None, jev_c: dict | None = None, qwen
         src = jev_c if ctx else jev_f
         return {k: {"noul": src.get(k, 0.1)} for k in qs}
 
-    async def fake_qwen(state, negs, normals, measurements, **kw):
+    async def fake_qwen(state, negs, normals, measurements):
         calls["qwen"].append((list(negs), list(normals)))
-        calls.setdefault("qwen_kw", []).append((state, kw))
+        calls.setdefault("qwen_state", []).append(state)
         if isinstance(qwen, rc.QwenDecisions):
             return qwen
         spec = qwen or {}
-        decs = [rc.TemplateNegativeDecision(index=i, action=spec.get(n.rstrip("."), ("keep", ""))[0],
-                                            dictated_finding=spec.get(n.rstrip("."), ("keep", ""))[1])
-                for i, n in enumerate(negs)]
+        decs = [rc.NegativeDecision(index=i, action=spec.get(n.rstrip("."), ("keep", ""))[0],
+                                    dictated_finding=spec.get(n.rstrip("."), ("keep", ""))[1]) for i, n in enumerate(negs)]
         aff = [i for i, t in enumerate(normals) if t in spec.get("affected", [])]
-        return rc.TemplateQwenDecisions(negatives=decs, affected_normals=aff, applicable_measurements=[])
+        return rc.QwenDecisions(negatives=decs, affected_normals=aff, applicable_measurements=[])
 
     async def no_split(negs):
         return [[n] for n in negs]
@@ -172,17 +171,24 @@ async def test_use_is_applied_from_the_context_state(monkeypatch):
     assert '- USE: "stable appearances of the {lesion}"' in (await compile_()).text
 
 
-async def test_history_and_context_conditions_never_see_the_findings(monkeypatch):
+async def test_history_conditions_never_see_the_findings_context_conditions_do(monkeypatch):
     calls = stub(monkeypatch)
     await compile_()
-    findings = [qs for st, qs in calls["states"] if "DICTATED FINDINGS" in st]
-    other = sorted((sorted(qs) for st, qs in calls["states"] if "DICTATED FINDINGS" not in st))
-    assert other == [[f"r{R_APPEND}"], sorted({f"r{R_USE}", f"r{R_SECTION}", f"r{R_HEADERS}"})]  # history, context
+    hist = [(st, qs) for st, qs in calls["states"] if "CLINICAL HISTORY" in st and "DICTATED FINDINGS" not in st]
+    ctx = [(st, qs) for st, qs in calls["states"] if "CLINICAL HISTORY" in st and "DICTATED FINDINGS" in st]
+    assert [sorted(qs) for _, qs in hist] == [[f"r{R_APPEND}"]]
+    assert [sorted(qs) for _, qs in ctx] == [sorted({f"r{R_USE}", f"r{R_SECTION}", f"r{R_HEADERS}"})]
+    assert "DICTATED FINDINGS:\nEnlarged primary organ with a 2 cm lesion." in ctx[0][0]
+    findings = [qs for st, qs in calls["states"] if "CLINICAL HISTORY" not in st]
     assert len(findings) == 1 and not (findings[0] & CTX_RULES)
-    assert f"r{R_REPLACE}" in findings[0] and "c1" in findings[0]
-    for st, qs in calls["states"]:
-        if qs & CTX_RULES:
-            assert "DICTATED FINDINGS" not in st and "lesion" not in st.split("CLINICAL HISTORY")[0]
+
+
+@pytest.mark.parametrize("score,met", [(0.5, False), (0.69, False), (0.7, True)])
+async def test_history_and_context_conditions_need_0_7(monkeypatch, score, met):
+    stub(monkeypatch, jev_c={f"r{R_USE}": score, f"r{R_APPEND}": score})
+    t = (await compile_()).text
+    assert ('- USE: "stable appearances of the {lesion}"' in t) == met
+    assert ('- APPLY: "Post-surgical appearances are noted."' in t) == met
 
 
 async def test_insert_before(monkeypatch):
@@ -726,18 +732,22 @@ async def test_brief_compiles_over_a_template_mode_structure(monkeypatch):
     assert b.decisions["differentials"] == [] and b.decisions["recommendations"] == []
 
 
-async def test_context_condition_about_a_finding_is_not_met_by_the_findings(monkeypatch):
-    """A context condition is judged without the dictated findings: a finding cannot satisfy it."""
-    s = g.parse_sheet(LEAN).structure
+async def test_context_condition_on_what_was_acquired_is_read_from_the_dictation(monkeypatch):
+    """CMR shape: 'a reduced protocol was performed and mapping was not acquired' is not met when the dictation
+    says a full protocol was performed (the history alone leaves it at the 0.5 boundary, which is not met)."""
+    sheet = LEAN.replace("a follow-up study of a known lesion",
+                         "a reduced protocol was performed and parametric mapping was not acquired")
+    s = g.parse_sheet(sheet).structure
+    assert s.usable and s.rules[0].condition_source == "context"
     stub(monkeypatch)
 
-    async def literal_jev(state, qs):  # Jev stand-in: true exactly when the state says "known lesion"
-        return {k: {"noul": 0.9 if k == "r0" and "known lesion" in state.lower() else 0.1} for k in qs}
-    monkeypatch.setattr(tb.rc, "_jev", literal_jev)
-    b = await tb.compile_template_brief(LEAN, s, "CT AP", "Known lesion, unchanged at 2 cm.", "Abdominal pain.")
-    assert "stable appearances" not in b.text
-    b = await tb.compile_template_brief(LEAN, s, "CT AP", "A 2 cm lesion.", "Known lesion, follow-up.")
-    assert '- USE: "stable appearances of the {lesion}"' in b.text
+    async def reader(state, qs):  # Jev stand-in: no from the dictation; unsure (0.5) without it
+        return {k: {"noul": (0.1 if "full protocol" in state else 0.5) if k == "r0" else 0.1} for k in qs}
+    monkeypatch.setattr(tb.rc, "_jev", reader)
+    b = await tb.compile_template_brief(sheet, s, "CMR", "full protocol. LV normal. T1 990.", "Family screening.")
+    assert "stable appearances" not in b.text and b.decisions["rules"][0]["met"] is False
+    b = await tb.compile_template_brief(sheet, s, "CMR", "LV normal.", "Family screening.")
+    assert "stable appearances" not in b.text  # 0.5 boundary: not met
 
 
 # ── master sheets: Phase-1 case units through quick's shared clinical routing (H4) ──
@@ -842,8 +852,12 @@ async def test_master_end_to_end(monkeypatch):
     assert "Branch alpha" not in block(t, "## Paragraph: Primary organ (FINDINGS)")
     case = [n for n in b.decisions["negatives"] if n["origin"] == "case"]
     assert [(n["targets"], n["action"]) for n in case] == [("Branch alpha", "differential_present"),
-                                                         ("Branch beta", "labelled")]
-    assert block(t, "## Paragraph: Primary organ (FINDINGS)").count('- KEEP: "No free fluid."') == 1
+                                                         ("Branch beta", "offered")]
+    # a case exclusion is never stated; here the template states the same claim, so it is not offered either
+    assert '"No free fluid."' not in block(t, "## Paragraph: Primary organ (FINDINGS)")
+    assert '- KEEP: "No free fluid."' in block(t, "## Paragraph: Adjacent structures (FINDINGS)")
+    assert b.decisions["case_exclusions"] == [
+        {"text": "No free fluid.", "differential": "Branch beta", "outcome": "duplicate_dropped"}]
     sent = calls["qwen"][0][0]
     assert "No adjacent collection" not in sent and LYMPH in sent and VASC in sent
     # If-present: core + clearly reported -> stated in its paragraph; contextual -> offered; a negative the
@@ -860,7 +874,6 @@ async def test_master_end_to_end(monkeypatch):
     assert "COVERS" not in t
     ctx = [st for st, qs in calls["states"] if "r0" in qs]
     assert ctx and "PROTOCOL / TECHNIQUE:\nPortal venous phase acquisition." in ctx[0]
-    assert "DICTATED FINDINGS" not in ctx[0]
     assert {"d0", "d1", "d2", "d3", "f0", "rec0", "rec1", "rec2"} <= next(qs for st, qs in calls["states"]
                                                                           if "DICTATED FINDINGS" in st)
 
@@ -1112,81 +1125,61 @@ async def test_offered_negatives_never_restate_a_kept_or_dictated_negative(monke
         "No cyst rupture": "offered"}
 
 
+# ── lean reset: Phase-1 case NEGATIVEs are never stated, only offered ──
 
-# ── alternatives once the question is answered: rule (triage present) + Qwen 'superseded' ──
-
-TRIAGE = MASTER.replace('DIFFERENTIAL [Branch beta] TIER aetiology', 'DIFFERENTIAL [Branch beta] TIER triage').replace(
-    ADJ, ADJ.replace('NEGATIVE "No free fluid."', 'NEGATIVE "No adjacent vessel thrombosis."'))
+NOFLUID = MASTER.replace(ADJ, ADJ.replace('NEGATIVE "No free fluid."', 'NEGATIVE "No adjacent vessel thrombosis."'))
 PRIMARY = "## Paragraph: Primary organ (FINDINGS)"
 
 
-def neg(b, text):
-    return next(n for n in b.decisions["negatives"] if n["text"] == text)
-
-
-async def test_triage_present_offers_the_other_triage_alternatives(monkeypatch):
-    b, _ = await probe(monkeypatch, TRIAGE, {"d0": 0.9})  # Branch alpha (triage) reported
+async def test_case_negatives_are_offered_never_stated(monkeypatch):
+    b, _ = await probe(monkeypatch, NOFLUID)  # nothing reported: every visible branch closed
     para = block(b.text, PRIMARY)
-    assert "No free fluid" not in para  # the other triage branch's negative: offered, never stated
-    n = neg(b, "No free fluid.")
-    assert n["action"] == "offered_alternative" and n["signals"] == [
-        {"text": "No free fluid.", "rule": True, "qwen": "keep"}]
-    (o,) = [o for o in b.decisions["options"] if o["kind"] == "finding_negative" and o["text"] == "No free fluid."]
-    assert o["reason"] == "alternative excluded; question answered by Branch alpha"
-    assert "question answered" not in b.text
-    # template sweep and If-present negatives are untouched
-    assert '- KEEP: "No focal lesion."' in para and '- KEEP: "No adjacent vessel thrombosis."' in b.text
+    assert "No adjacent collection" not in para and "No free fluid" not in para
+    assert '- KEEP: "No focal lesion."' in para  # template sweep negatives reconciled as before
+    offered = [o for o in b.decisions["options"] if o["kind"] == "finding_negative"]
+    assert offered == [
+        {"kind": "finding_negative", "section": "FINDINGS", "paragraph": "Primary organ",
+         "text": "No adjacent collection.", "finding": "Branch alpha", "reason": "excludes Branch alpha"},
+        {"kind": "finding_negative", "section": "FINDINGS", "paragraph": "Primary organ",
+         "text": "No free fluid.", "finding": "Branch beta", "reason": "excludes Branch beta"}]
+    assert "excludes" not in b.text
+    assert [n["action"] for n in b.decisions["negatives"] if n["origin"] == "case"] == ["offered", "offered"]
 
 
-async def test_no_triage_present_states_the_alternatives(monkeypatch):
-    b, _ = await probe(monkeypatch, TRIAGE, {})
-    para = block(b.text, PRIMARY)
-    assert '- KEEP: "No adjacent collection."' in para and '- KEEP: "No free fluid."' in para
-    assert not [o for o in b.decisions["options"] if o["kind"] == "finding_negative"]
+@pytest.mark.parametrize("label", ["contradicted", "expected"])
+async def test_a_contradicted_or_expected_case_negative_is_dropped_not_offered(monkeypatch, label):
+    b, _ = await probe(monkeypatch, NOFLUID, qwen={"No free fluid": (label, "free fluid in the pelvis")})
+    assert "No free fluid" not in b.text
+    assert [o["text"] for o in b.decisions["options"] if o["kind"] == "finding_negative"] == ["No adjacent collection."]
+    n = next(n for n in b.decisions["negatives"] if n["text"] == "No free fluid.")
+    assert n["action"] == "dropped" and n["dropped"] == [{"text": "No free fluid.", "qwen": label}]
 
 
-async def test_aetiology_alternatives_are_not_demoted_by_the_rule(monkeypatch):
-    sheet = MASTER.replace(ADJ, ADJ.replace('NEGATIVE "No free fluid."', 'NEGATIVE "No adjacent vessel thrombosis."'))
-    b, _ = await probe(monkeypatch, sheet, {"d0": 0.9})  # beta is aetiology
-    assert '- KEEP: "No free fluid."' in block(b.text, PRIMARY)
+async def test_a_dictated_case_negative_is_not_offered(monkeypatch):
+    s = g.parse_sheet(NOFLUID, mode="master").structure
+    calls = stub(monkeypatch)
+
+    async def fake_jev(state, qs):
+        return {k: {"noul": 0.1} for k in qs}
+    monkeypatch.setattr(tb.rc, "_jev", fake_jev)
+    b = await tb.compile_template_brief(NOFLUID, s, "CT AP", "Normal primary organ. no free fluid.", "Pain.")
+    assert [o["text"] for o in b.decisions["options"] if o["kind"] == "finding_negative"] == ["No adjacent collection."]
+    assert {"text": "No free fluid.", "differential": "Branch beta", "outcome": "duplicate_dropped"} in \
+        b.decisions["case_exclusions"]
 
 
-async def test_qwen_superseded_offers_a_case_negative_and_never_a_sweep_negative(monkeypatch):
-    sheet = MASTER.replace(ADJ, ADJ.replace('NEGATIVE "No free fluid."', 'NEGATIVE "No adjacent vessel thrombosis."'))
-    b, calls = await probe(monkeypatch, sheet, {"d0": 0.9}, qwen={
-        "No free fluid": ("superseded", "a reported collection"), "No focal lesion": ("superseded", "x")})
-    para = block(b.text, PRIMARY)
-    assert "No free fluid" not in para and neg(b, "No free fluid.")["signals"] == [
-        {"text": "No free fluid.", "rule": False, "qwen": "superseded"}]
-    assert '- KEEP: "No focal lesion."' in para  # a template sweep negative is never demoted
-    state, kw = calls["qwen_kw"][0]
-    assert kw == {"template": True} and "CLINICAL QUESTION: Is there a focal process" in state
+async def test_finding_linked_options_come_first_exclusions_fill_the_remaining_room(monkeypatch):
+    # two If-present offers (finding borderline) + one fallback offer, then one of the two exclusions fits
+    fb = rc.FallbackNegatives(items=[rc.FallbackItem(index=0, covered=False, negatives=["No perforation"])])
+    plan = rc.ImpressionPlan(recommendations=[], impression=[0])
+    s = g.parse_sheet(NOFLUID, mode="master").structure
+    stub(monkeypatch, plan=plan, fallback=fb)
 
-
-async def test_expected_beats_demotion_and_contradicted_still_omits(monkeypatch):
-    b, _ = await probe(monkeypatch, TRIAGE, {"d0": 0.9}, qwen={"No free fluid": ("expected", "a reported collection")})
-    assert '- DO NOT ASSERT: "No free fluid." — expected consequence of: a reported collection' in b.text
-    assert not [o for o in b.decisions["options"] if o.get("text") == "No free fluid."]
-    b, _ = await probe(monkeypatch, TRIAGE, {"d0": 0.9}, qwen={"No free fluid": ("contradicted", "free fluid")})
-    assert '- OMIT: "No free fluid." — the dictation reports: free fluid' in b.text
-
-
-async def test_superseded_on_an_if_present_negative_is_read_as_keep(monkeypatch):
-    b, _ = await probe(monkeypatch, jev={"f0": 0.95}, qwen={LYMPH: ("superseded", "x")})
-    assert outcome(b, LYMPH) == "stated"
-
-
-async def test_template_classifier_variant_keeps_the_quick_prompt_untouched(monkeypatch):
-    seen = []
-
-    async def runner(**kw):
-        seen.append((kw["system_prompt"], kw["output_type"]))
-        from types import SimpleNamespace
-        return SimpleNamespace(output=kw["output_type"](negatives=[], affected_normals=[], applicable_measurements=[]))
-    monkeypatch.setattr(rc, "_run_agent_with_model", runner)
-    await rc._qwen("s", ["No x"], [], [])
-    await rc._qwen("s", ["No x"], [], [], template=True)
-    assert seen[0] == (rc.QWEN_SYS, rc.QwenDecisions)
-    assert seen[1] == (rc.QWEN_SYS_TEMPLATE, rc.TemplateQwenDecisions)
-    assert "'superseded'" in rc.QWEN_SYS_TEMPLATE and "widespread or large-volume" in rc.QWEN_SYS_TEMPLATE
-    assert rc.QWEN_SYS_TEMPLATE.startswith(rc.QWEN_SYS.split("NEGATIVES:")[0])
+    async def fake_jev(state, qs):
+        return {k: {"noul": 0.6 if k == "f0" else 0.1} for k in qs}
+    monkeypatch.setattr(tb.rc, "_jev", fake_jev)
+    b = await tb.compile_template_brief(NOFLUID, s, "CT AP", FIND, "Pain.")
+    fn = [o for o in b.decisions["options"] if o["kind"] == "finding_negative"]
+    assert len(fn) == rc.MAX_FINDING_OPTIONS
+    assert [o["reason"] for o in fn][-1] == "excludes Branch alpha"  # one exclusion fits after the finding-linked
+    assert [x["outcome"] for x in b.decisions["case_exclusions"]] == ["offered", "trimmed"]
