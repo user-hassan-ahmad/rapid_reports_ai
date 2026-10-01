@@ -69,6 +69,39 @@ def route_finding(label: str, present: float, tag: str) -> str:
     return "offered"
 
 
+PRESENT = 0.5   # Jev cut-off for "present" (differentials) and "condition unmet" (recommendations)
+
+
+def route_differential(present: float, visible: str) -> str:
+    """Policy 1 for a differential branch: "present" when Jev finds a dictated finding showing it;
+    otherwise silence closes it ("closed", removed) only when this study would show it (visible "yes");
+    a branch not visible on this technique ("no") or imaging-silent ("silent") stays "open"."""
+    if present >= PRESENT:
+        return "present"
+    return "closed" if visible == "yes" else "open"
+
+
+def route_recommendation(unmet: float, decision: Optional["RecDecision"], *, tag: str = "",
+                         room: bool = True) -> str:
+    """A candidate recommendation: Jev's unmet condition removes it; of the rest, the impression plan
+    includes (or, with no plan decision, keeps), offers ("optional", while there is room for another
+    option) or excludes. A removed IMAGING / TISSUE candidate the plan excluded as routine workup of a
+    diagnosis already made is "do_not_recommend": named as barred, since the generator refills such a
+    test from its priors and a prohibition holds."""
+    if unmet >= PRESENT:
+        action = "removed"
+    elif decision is None or decision.decision == "include":
+        action = "keep"
+    elif decision.decision == "optional" and room:
+        action = "optional"
+    else:
+        action = "removed"
+    if action == "removed" and decision and decision.exclude_reason == "routine_workup" \
+            and f"{tag.rstrip(':').upper()}:" in _BAR_KINDS:
+        return "do_not_recommend"
+    return action
+
+
 _MEASUREMENT = re.compile(r"\d+(?:[.,]\d+)?\s*(?:%|°|(?:mm|cm|ml|mL|cc|HU|mmHg|m/s|degrees?)(?![A-Za-z]))")
 
 
