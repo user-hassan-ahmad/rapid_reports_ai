@@ -110,6 +110,22 @@ Q_AFFECTED = ("Is this statement from a report template affected by the dictated
               "into, extends to, involves it, or is a finding of the same kind in that structure), so it cannot be "
               "written as it stands. Statement: ")
 Q_PRESENT = "A dictated finding shows that this diagnosis or branch is present in this case. Branch: "
+# Diagnosis / branch presence (Jev wording suite group B, R3; R2 without a discriminator). Template-only on this
+# branch until Part Q's shared constants arrive on rebase (quick still asks Q_PRESENT).
+HEDGE = "(?, possible, query, cannot exclude, versus, no definite, equivocal)"
+PRESENT_TRUE = ("The dictation names this diagnosis (or a synonym or abbreviation), or describes findings that point to it, "
+                "including when it is raised as a possibility " + HEDGE + ".")
+PRESENT_FALSE = ("The diagnosis is not mentioned, is excluded, or the dictated findings are explained as a different "
+                 "diagnosis, even one in the same organ or sharing a sign.")
+
+
+def q_present(name: str, discriminator: str = "") -> dict:
+    instr = "The dictated findings name or describe this diagnosis as present or possible in this case: " + name
+    if discriminator:
+        instr += ". A typical sign (an example only; it need not be dictated): " + discriminator
+    return {"type": "noul", "instructions": instr, "criteria": {"true": PRESENT_TRUE, "false": PRESENT_FALSE}}
+
+
 Q_REC_UNMET = ("The condition for this recommendation is not met by the dictated findings, or it belongs to a "
                "diagnosis the findings rule out. Recommendation: ")
 Q_STYLE_MATCH = "This example report sentence describes the same kind of finding as one that is dictated in this case. Example: "

@@ -88,7 +88,9 @@ def stub(monkeypatch, jev_f: dict | None = None, jev_c: dict | None = None, qwen
         calls["jev"].append((ctx, set(qs)))
         calls["states"].append((state, set(qs)))
         src = jev_c if ctx else jev_f
-        return {k: {"noul": src.get(k, 0.1)} for k in qs}
+        return {k: ({"choice": "possible" if src.get(k, 0.1) >= 0.5 else "named",
+                     "probabilities": {"possible": src.get(k, 0.1), "named": 1 - src.get(k, 0.1)}}
+                    if q.get("type") == "choice" else {"noul": src.get(k, 0.1)}) for k, q in qs.items()}
 
     async def fake_qwen(state, negs, normals, measurements):
         calls["qwen"].append((list(negs), list(normals)))
@@ -968,6 +970,54 @@ async def test_master_case_units_not_in_the_sheet_fail_closed(monkeypatch):
     with pytest.raises(ValueError, match="IF_PRESENT"):
         await tb.compile_template_brief(no_ifp, MSTRUCT, "CT", "x", "")
 
+
+
+@pytest.mark.parametrize("possible,label", [(0.8, "- ADDRESS AS POSSIBLE: Branch alpha — the dictation raises it as a possibility"),
+                                            (0.1, "- ADDRESS: Branch alpha — the dictation reports it")])
+async def test_hedged_branch_is_addressed_as_a_possibility(monkeypatch, possible, label):
+    b, calls = await master(monkeypatch, {"d0": 0.9, "dp0": possible})
+    cb = case_block(b.text)
+    assert label in cb
+    assert ("ADDRESS AS POSSIBLE" in cb) == (possible >= 0.5)
+    d0 = b.decisions["differentials"][0]
+    assert d0["action"] == "present" and d0["possible"] == possible
+    findings = next(qs for st, qs in calls["states"] if "CLINICAL HISTORY" not in st)
+    assert {"d0", "dp0", "d1", "dp1"} <= findings  # asked in the same findings-state call
+
+
+async def test_branch_questions_name_the_diagnosis_and_ask_present_vs_possible(monkeypatch):
+    asked = {}
+    stub(monkeypatch)
+    inner = tb.rc._jev
+
+    async def spy(state, qs):
+        asked.update(qs)
+        return await inner(state, qs)
+    monkeypatch.setattr(tb.rc, "_jev", spy)
+    await tb.compile_template_brief(MASTER, MSTRUCT, "CT AP", FIND, "Pain.")
+    assert asked["d0"] == rc.q_present("Branch alpha", "a rim-enhancing collection")
+    assert asked["d0"]["instructions"] == ("The dictated findings name or describe this diagnosis as present or possible "
+                                           "in this case: Branch alpha. A typical sign (an example only; it need not be "
+                                           "dictated): a rim-enhancing collection")
+    assert asked["d0"]["criteria"] == {"true": rc.PRESENT_TRUE, "false": rc.PRESENT_FALSE}
+    assert asked["dp0"]["type"] == "choice"
+    assert asked["dp0"]["instructions"] == "How do the dictated findings relate to this diagnosis? Diagnosis: Branch alpha"
+    assert set(asked["dp0"]["criteria"]) == {"named", "described", "possible", "other", "absent"}
+    assert asked["dp0"]["criteria"]["possible"] == "It is raised only as a possibility " + rc.HEDGE
+    assert rc.q_present("X")["instructions"].endswith("in this case: X")
+
+
+async def test_a_missing_possible_answer_keeps_address(monkeypatch):
+    stub(monkeypatch, {"d0": 0.9})
+    inner = tb.rc._jev
+
+    async def no_choice(state, qs):
+        out = await inner(state, qs)
+        return {k: v for k, v in out.items() if not k.startswith("dp")}
+    monkeypatch.setattr(tb.rc, "_jev", no_choice)
+    b = await tb.compile_template_brief(MASTER, MSTRUCT, "CT AP", FIND, "Pain.")
+    assert "- ADDRESS: Branch alpha — the dictation reports it" in case_block(b.text)
+    assert b.decisions["differentials"][0]["possible"] is None
 
 # ── H4 review probes (P1-P10): claim conflicts via Jev, non-visible targets, recommendations, context ──
 

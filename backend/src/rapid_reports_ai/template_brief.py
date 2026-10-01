@@ -29,12 +29,13 @@ and prose) and the Report-wide units tagged "| section: <that section>"; untagge
 
 Jev keys: r<i> rule condition, r<i>i<j> LIST_MISSING item, c<k> conditional negative, m<i> NORMAL,
 s<k> stated-normal negative (k indexes structure.negatives, i structure.rules / structure.normals);
-master sheets also d<k> differential present, f<i> If-present finding reported, rec<k> recommendation
+master sheets also d<k> differential present, dp<k> present-vs-possible (choice), f<i> If-present finding reported, rec<k> recommendation
 condition unmet (k indexes structure.differentials / structure.recommendations, i the distinct findings).
 
 Master sheets (Phase-1 case units, spec 2026-10-01-template-two-phase "Phase 2 brief additions"), routed by
 quick's shared clinical routing in report_reconcile:
-- DIFFERENTIAL: rc.route_differential (policy 1) -> ADDRESS (present) / removed (closed by silence) / OPEN
+- DIFFERENTIAL: rc.q_present + rc.route_differential (policy 1) -> ADDRESS (present; ADDRESS AS POSSIBLE when
+  the same call's present-vs-possible choice gives P(possible) >= POSSIBLE) / removed (closed by silence) / OPEN
   (not visible on this technique, or imaging-silent: defer), rewritten in the "## Case Deliberation" block,
   which the brief marks as reasoning input, never report text; QUESTION -> CLINICAL QUESTION.
 - NEGATIVE … TARGETS (case): never stated. Classified with the template negatives (one shared Qwen call);
@@ -73,6 +74,29 @@ logger = logging.getLogger(__name__)
 MET = 0.5  # one cut-off for every condition (findings, history, context); the criteria say silence is not met
 
 
+def q_possible(name: str) -> dict:
+    """Present vs possible for a branch, asked beside rc.q_present in the findings-state call."""
+    return {"type": "choice", "instructions": "How do the dictated findings relate to this diagnosis? Diagnosis: " + name,
+            "criteria": {"named": "The diagnosis is named, abbreviated or given a synonym as present",
+                         "described": "Findings pointing to this diagnosis are described without naming it",
+                         "possible": "It is raised only as a possibility " + rc.HEDGE,
+                         "other": "The dictated findings are explained as a different diagnosis, or share a sign "
+                                  "with a different diagnosis",
+                         "absent": "Not mentioned, or excluded"}}
+
+
+def _possible_scores(answers, asked: Dict[str, dict]) -> Dict[str, Optional[float]]:
+    """P(possible) per key; None when the answer is missing or unreadable (the branch keeps ADDRESS)."""
+    out: Dict[str, Optional[float]] = {}
+    for k in asked:
+        try:
+            p = float(answers[k]["probabilities"]["possible"])
+            out[k] = p if math.isfinite(p) else None
+        except Exception:
+            out[k] = None
+    return out
+
+
 def q_stated(item: str) -> dict:
     """A LIST_MISSING item: stated when its value or result is dictated, a negative result included."""
     return {"type": "noul", "instructions": "The dictated findings state this item, with its value or result: " + item,
@@ -106,11 +130,15 @@ _CASE_KEYWORD = re.compile(r"^\s*(?:-\s+)?(QUESTION|DIFFERENTIAL|RECOMMEND)\b")
 
 # Phase-2 case labels (pending owner sign-off with the TEMPLATE_SHEET_HEADER_BRIEF package).
 CASE_HEADING = "## Case Deliberation (reconciled with this dictation)"
-CASE_NOTE = ("Reasoning input only: the CLINICAL QUESTION, ADDRESS and OPEN lines guide your reasoning; never "
+CASE_NOTE = ("Reasoning input only: the CLINICAL QUESTION, ADDRESS (AS POSSIBLE) and OPEN lines guide your reasoning; never "
              "write them into the report.")
 RECOMMENDATIONS_HEADING = "## Recommendations (reconciled with this dictation)"
 CLINICAL_QUESTION = "- CLINICAL QUESTION: {question}"
 ADDRESS = "- ADDRESS: {name} — the dictation reports it"
+# A present branch the dictation raises only as a possibility; the header line explaining it is staged in the
+# spec's sign-off package (2026-10-01-template-two-phase-design), not yet in global_style_guide.
+ADDRESS_POSSIBLE = "- ADDRESS AS POSSIBLE: {name} — the dictation raises it as a possibility"
+POSSIBLE = 0.5  # P(possible) at or above which a present branch is addressed as a possibility
 OPEN = "- OPEN: {name} — {discriminator}; {defer}"
 OPEN_DEFER = {"no": "not assessable on this study: defer", "silent": "imaging-silent: defer"}
 RECOMMEND = "- RECOMMEND: {text}"
@@ -397,8 +425,10 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
             bucket(u.condition_source)[u.jev_key] = q_condition(u.condition)
     for u in normals:
         q_f[u.jev_key] = {"type": "noul", "instructions": rc.Q_AFFECTED + u.text}
+    q_poss: Dict[str, dict] = {}  # choice questions: read apart from the noul scores, fail-open
     for k, d in enumerate(s.differentials):
-        q_f[f"d{k}"] = {"type": "noul", "instructions": f"{rc.Q_PRESENT}{d.name} — {d.discriminator}"}
+        q_f[f"d{k}"] = rc.q_present(d.name, d.discriminator)
+        q_poss[f"dp{k}"] = q_possible(d.name)
     for i, f in enumerate(fkeys):
         q_f[f"f{i}"] = {"type": "noul", "instructions": rc.Q_FINDING + f}
     for k, t in enumerate(rec_text):
@@ -422,11 +452,12 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
     plan_t = asyncio.ensure_future(plan_or_none())
     try:
         jev_f, jev_h, jev_c, split = await asyncio.gather(
-            rc._jev(state, q_f) if q_f else asyncio.sleep(0, {}),
+            rc._jev(state, {**q_f, **q_poss}) if q_f or q_poss else asyncio.sleep(0, {}),
             rc._jev(hist_state, q_h) if q_h else asyncio.sleep(0, {}),
             rc._jev(ctx_state, q_c) if q_c else asyncio.sleep(0, {}),
             rc._split_bundled(distinct) if distinct else asyncio.sleep(0, []))
         sc = {**_scores(jev_f, q_f), **_scores(jev_h, q_h), **_scores(jev_c, q_c)}
+        possible = _possible_scores(jev_f, q_poss)
         if len(split) != len(distinct):
             raise ValueError("negative split does not cover every negative")
         parts_of = {_key(t): [p for p in parts if p.strip()] or [t] for t, parts in zip(distinct, split)}
@@ -731,14 +762,17 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
             L.put(i, [CLINICAL_QUESTION.format(question=s.question)])
         for k, (d, i) in enumerate(zip(s.differentials, case_lines["DIFFERENTIAL"])):
             route = diff_route[d.name]
+            pp = possible.get(f"dp{k}")
             if route == "present":
-                L.put(i, [ADDRESS.format(name=d.name)])
+                hedged = pp is not None and pp >= POSSIBLE
+                L.put(i, [(ADDRESS_POSSIBLE if hedged else ADDRESS).format(name=d.name)])
             elif route == "open":
                 L.put(i, [OPEN.format(name=d.name, discriminator=d.discriminator, defer=OPEN_DEFER[d.visible])])
             else:
                 L.put(i, [])  # closed by silence: this study would show it
             decisions["differentials"].append({"id": d.id, "name": d.name, "tier": d.tier, "visible": d.visible,
-                                               "present": round(sc[f"d{k}"], 3), "action": route})
+                                               "present": round(sc[f"d{k}"], 3),
+                                               "possible": None if pp is None else round(pp, 3), "action": route})
         # Recommendations leave the reasoning block: kept / barred ones go to their own block before the
         # Impression Plan (report-bound guidance). With no plan (the call failed) an investigation is only
         # offered, never written; referral, MDT and correlation keep quick's Jev-alone behaviour.
