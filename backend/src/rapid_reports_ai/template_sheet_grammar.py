@@ -271,7 +271,11 @@ def _sweep(i: int, body: str, ctx: "_Ctx", err, warn) -> None:
     if not plain:
         return
     tok = _TOKEN.match(plain)
-    if tok and tok.group(1).upper() in KEYWORDS and (tok.group(1).isupper() or re.search(r'["“”\[|]', tok.group(2))):
+    # "Normal-appearing …", "Normal: …", "Covers: …" (a keyword word in ordinary case followed by a hyphen
+    # or colon) is a prose label, not a unit; "NORMAL [", "Normal \"" and any all-caps keyword still fail closed.
+    prose_label = tok and not tok.group(1).isupper() and tok.group(2)[:1] in ("-", ":")
+    if tok and not prose_label and tok.group(1).upper() in KEYWORDS and (
+            tok.group(1).isupper() or re.search(r'["“”\[|]', tok.group(2))):
         err(i, DECORATED_UNIT, tok.group(1))
         return
     if _PARAGRAPH_LIKE.match(plain):

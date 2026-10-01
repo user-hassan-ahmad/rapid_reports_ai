@@ -442,6 +442,24 @@ def test_decorated_or_miscased_units_fail_closed(line):
 
 
 @pytest.mark.parametrize("line", [
+    'Normal-appearing "aortic" calibre is described first.',
+    'Normal: the paragraph opens with "The aorta is of normal calibre."',
+    'Negative-phrasing style: "The {structure} is unremarkable."',
+    'Covers: the paragraph reports "aortic root" and "arch".',
+    'Fixed-wording note: "Correlate clinically."',
+])
+def test_keyword_word_followed_by_hyphen_or_colon_is_prose(line):
+    r = parse(HEAD + line + "\n")
+    assert g.DECORATED_UNIT not in [e.reason for e in r.errors], r.errors
+
+
+@pytest.mark.parametrize("line", ['NORMAL: [aorta] "The aorta is normal."', 'NEGATIVE: "No aneurysm."'])
+def test_uppercase_keyword_with_colon_still_fails_closed(line):
+    r = parse(HEAD + line + "\n")
+    assert r.errors and not r.structure.usable, r.errors
+
+
+@pytest.mark.parametrize("line", [
     "* SECTION COMPARISON | header: none | role: comparison",
     "1. SECTION COMPARISON | header: none | role: comparison",
     "Section COMPARISON | header: none | role: comparison",
