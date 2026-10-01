@@ -26,8 +26,9 @@ TEXT_MATCH, COND_MATCH = 0.5, 0.34
 
 
 def toks(text: Optional[str]) -> set:
+    """Content words, crudely stemmed to five letters (appendix/appendiceal, abnormal/abnormality)."""
     text = re.sub(r"\{[^}]*\}", " ", text or "").lower()
-    return {w for w in re.findall(r"[a-z0-9]+(?:'[a-z]+)?", text) if w not in _STOP and len(w) > 1}
+    return {w[:5] for w in re.findall(r"[a-z0-9]+(?:'[a-z]+)?", text) if w not in _STOP and len(w) > 1}
 
 
 def sim(a: Optional[str], b: Optional[str]) -> float:
@@ -86,7 +87,8 @@ def _sheet_units(s: Dict) -> Dict[str, List[Dict]]:
             continue
         texts = [r.get(k) for k in ("then_text", "target", "anchor") if r.get(k)]
         out.setdefault(f"RULE {r['effect']}", []).append(
-            {"text": r.get("then_text") or r.get("target") or "", "texts": texts, "cond": _cond(r.get("condition"))})
+            {"text": r.get("then_text") or r.get("target") or "", "texts": texts, "cond": _cond(r.get("condition")),
+             "rid": r["id"]})
     for ip in s.get("if_present", []):
         for n in ip["negatives"]:
             out.setdefault("IF_PRESENT", []).append({"text": n["text"], "finding": ip["finding"]})
@@ -128,10 +130,12 @@ def score(structure: Dict, key: Dict) -> Dict:
     kus, sus = _key_units(key), _sheet_units(structure)
     all_sheet_texts = [u["text"] for us in sus.values() for u in us]
     per_kind: Dict[str, Dict] = {}
-    misses, spurious = [], []
+    misses, spurious, rule_map = [], [], {}
     for kind in sorted(set(kus) | set(sus)):
         keys, units = kus.get(kind, []), sus.get(kind, [])
         pairs, mk, mu = _match(kind, keys, units)
+        if kind.startswith("RULE"):
+            rule_map.update({keys[i]["id"]: units[j]["rid"] for i, j in pairs})
         per_kind[kind] = {"planted": len(keys), "emitted": len(units), "matched": len(pairs),
                           "recall": round(len(pairs) / len(keys), 2) if keys else None,
                           "precision": round(len(pairs) / len(units), 2) if units else None}
@@ -153,4 +157,60 @@ def score(structure: Dict, key: Dict) -> Dict:
     planted = sum(v["planted"] for k, v in per_kind.items() if k != "SECTION")
     matched = sum(v["matched"] for k, v in per_kind.items() if k != "SECTION")
     return {"per_kind": per_kind, "units_recall": round(matched / planted, 2) if planted else None,
-            "misses": misses, "spurious": spurious}
+            "misses": misses, "spurious": spurious, "rule_map": rule_map}
+
+
+_OMITTED_NEG = {"rule_omitted", "paragraph_suppressed", "removed", "section_omitted"}
+_OMITTED_NORMAL = {"rule_omitted", "suppressed_by_rule", "do_not_assert", "section_omitted"}
+
+
+def brief_accuracy(decisions: Dict, expected: Dict, rule_map: Dict[str, str], structure: Dict) -> Dict:
+    """One dictation's brief decisions against the key's expected_per_dictation entry.
+
+    - rules: each expected met / not-met planted rule, through rule_map to the generated rule; a planted
+      rule with no generated counterpart is `unmapped` (a sheet miss, not a brief error).
+    - omissions: each expected omitted text, matched by text to a generated negative or normal; correct
+      when that unit was omitted or not asserted (for a negative, any OMIT / DO NOT ASSERT line for one
+      of its parts counts). Generated omissions with no expected counterpart are listed as extra.
+    - missing: LIST_MISSING items flagged as missing vs the expected missing items.
+    """
+    met_by_rid = {r["id"]: r.get("met") for r in decisions.get("rules", [])}
+    rules: Dict = {"correct": 0, "wrong": [], "unmapped": []}
+    for pid, want in [(p, True) for p in expected.get("rules_met", [])] + \
+                     [(p, False) for p in expected.get("rules_not_met", [])]:
+        rid = rule_map.get(pid)
+        if rid is None or rid not in met_by_rid:
+            rules["unmapped"].append(pid)
+        elif bool(met_by_rid[rid]) == want:
+            rules["correct"] += 1
+        else:
+            rules["wrong"].append({"planted": pid, "expected_met": want, "rule": rid})
+
+    text_by_id = {n["id"]: n["text"] for n in structure.get("negatives", []) + structure.get("normals", [])}
+    units = []
+    for n in decisions.get("negatives", []):
+        omitted = n["action"] in _OMITTED_NEG or any(
+            ln.lstrip("- ").startswith(("OMIT", "DO NOT ASSERT")) for ln in n.get("lines", []))
+        units.append({"text": n.get("text") or text_by_id.get(n["id"], ""), "omitted": omitted})
+    for n in decisions.get("normals", []):
+        units.append({"text": text_by_id.get(n["id"], ""), "omitted": n["action"] in _OMITTED_NORMAL})
+    omissions: Dict = {"correct": 0, "not_omitted": [], "not_found": [], "extra": []}
+    claimed = set()
+    for text in expected.get("negatives_omitted", []):
+        best = max(((sim(text, u["text"]), j) for j, u in enumerate(units)), default=(0.0, None))
+        if best[0] < TEXT_MATCH:
+            omissions["not_found"].append(text)
+            continue
+        claimed.add(best[1])
+        if units[best[1]]["omitted"]:
+            omissions["correct"] += 1
+        else:
+            omissions["not_omitted"].append(text)
+    omissions["extra"] = [u["text"] for j, u in enumerate(units) if u["omitted"] and j not in claimed]
+
+    flagged = [i for m in decisions.get("missing", []) for i in m.get("missing", [])]
+    want = expected.get("missing_items", [])
+    hit = [w for w in want if any(sim(w, f) >= TEXT_MATCH for f in flagged)]
+    missing = {"expected": len(want), "found": len(hit),
+               "extra": [f for f in flagged if not any(sim(w, f) >= TEXT_MATCH for w in want)]}
+    return {"rules": rules, "omissions": omissions, "missing": missing}

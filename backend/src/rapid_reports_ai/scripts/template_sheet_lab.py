@@ -161,8 +161,14 @@ async def analyse(examples: List[Dict], scan_type: str) -> Tuple[Dict, float, st
     raw = result.output if hasattr(result, "output") else str(result)
     try:
         parsed = TemplateManager._parse_skill_sheet_json(raw, ["skill_sheet", "summary", "questions"])
-    except Exception as e:  # noqa: BLE001 - keep the raw answer for the post-mortem
-        raise AnalyseError(f"{type(e).__name__}: {e}", raw, time.time() - t) from e
+    except Exception as e:  # noqa: BLE001
+        # The JSON around the sheet can break (seen: a missing comma in "questions") while the sheet
+        # string itself is intact. The lab salvages the sheet and records it; production would fail.
+        m = re.search(r'"skill_sheet"\s*:\s*("(?:[^"\\]|\\.)*")', raw)
+        if not m:
+            raise AnalyseError(f"{type(e).__name__}: {e}", raw, time.time() - t) from e
+        parsed = {"skill_sheet": json.loads(m.group(1)), "summary": None, "questions": None,
+                  "json_error": f"{type(e).__name__}: {e}"[:300]}
     return parsed, time.time() - t, raw
 
 
@@ -228,6 +234,9 @@ async def run_one(t: Dict, out: Path) -> Dict:
     structure, errors = parse(sheet)
     rec.update(first_pass_errors=errors, first_pass_ok=not errors, summary=parsed["summary"],
                questions=parsed["questions"])
+    if parsed.get("json_error"):
+        rec["json_salvaged"] = parsed["json_error"]
+        (out / f"{s}.raw.txt").write_text(raw)
     if errors:
         fixed, rec["repair_s"] = await repair(sheet, errors)
         (out / f"{s}.repaired.md").write_text(fixed)
@@ -292,6 +301,76 @@ def rescore(root: Path, out: Path) -> None:
             f.write_text(json.dumps(rec, indent=1, default=str))
             recs.append(rec)
     print(json.dumps(_score_summary(recs), indent=1))
+
+
+async def crosslink(root: Path, out: Path) -> None:
+    """Step 3: compile the template brief for every synthetic dictation against the generated sheet and
+    compare its decisions with the key's expected_per_dictation. Live Jev / Qwen calls."""
+    from rapid_reports_ai.scripts.template_sheet_lab_score import brief_accuracy
+    from rapid_reports_ai.template_brief import compile_template_brief
+    from rapid_reports_ai.template_sheet_grammar import parse_sheet
+
+    data = {t["slug"]: t for t in load_synthetic(root)["templates"]}
+    gate = asyncio.Semaphore(4)
+    reused = {p.name[: -len(".briefs.json")]: json.loads(p.read_text()) for p in out.glob("*.briefs.json")}
+
+    async def one(set_slug: str, sheet: str, s, d: Dict, exp: Dict, rule_map: Dict, structure: Dict) -> Dict:
+        saved = {r["id"]: r for r in reused.get(set_slug, []) if "decisions" in r}
+        if d["id"] in saved:  # re-score a saved brief (e.g. after a scorer change): no new calls
+            r = saved[d["id"]]
+            return {**r, "accuracy": brief_accuracy(r["decisions"], exp, rule_map, structure)}
+        async with gate:
+            t = time.time()
+            try:
+                b = await compile_template_brief(sheet, s, d["scan_type"], d["findings"], d.get("clinical_history", ""))
+            except Exception as e:  # noqa: BLE001 - the raw path in production; recorded here
+                return {"id": d["id"], "error": f"{type(e).__name__}: {e}"[:300]}
+            return {"id": d["id"], "seconds": round(time.time() - t, 1), "brief": b.text, "decisions": b.decisions,
+                    "accuracy": brief_accuracy(b.decisions, exp, rule_map, structure)}
+
+    jobs, sets = [], {}
+    for set_slug, t in data.items():
+        rec_path = out / f"{set_slug}.json"
+        if not rec_path.exists():
+            continue
+        rec = json.loads(rec_path.read_text())
+        sheet_path = out / f"{set_slug}.repaired.md"
+        sheet = (sheet_path if sheet_path.exists() else out / f"{set_slug}.sheet.md").read_text()
+        s = parse_sheet(sheet).structure
+        if not s.usable or "score" not in rec:
+            print(f"!! {set_slug}: no usable sheet or score", file=sys.stderr)
+            continue
+        dictations = json.loads((root / set_slug / "dictations.json").read_text())
+        expected = {e["dictation_id"]: e for e in t["answer_key"].get("expected_per_dictation", [])}
+        sets[set_slug] = []
+        for d in dictations:
+            if d["id"] in expected:
+                jobs.append((set_slug, one(set_slug, sheet, s, d, expected[d["id"]], rec["score"]["rule_map"],
+                                           rec["structure"])))
+    with contextlib.redirect_stdout(io.StringIO()):
+        results = await asyncio.gather(*(j for _, j in jobs))
+    for (set_slug, _), res in zip(jobs, results):
+        sets[set_slug].append(res)
+    summary: Dict = {}
+    for set_slug, res in sets.items():
+        (out / f"{set_slug}.briefs.json").write_text(json.dumps(res, indent=1, default=str))
+        acc = [r["accuracy"] for r in res if "accuracy" in r]
+        tot = lambda f: sum(f(a) for a in acc)  # noqa: E731
+        summary[set_slug] = {
+            "dictations": len(res), "errors": [r["id"] for r in res if "error" in r],
+            "rules_correct": tot(lambda a: a["rules"]["correct"]),
+            "rules_wrong": tot(lambda a: len(a["rules"]["wrong"])),
+            "rules_unmapped": tot(lambda a: len(a["rules"]["unmapped"])),
+            "omissions_correct": tot(lambda a: a["omissions"]["correct"]),
+            "omissions_expected": tot(lambda a: a["omissions"]["correct"] + len(a["omissions"]["not_omitted"])
+                                      + len(a["omissions"]["not_found"])),
+            "omissions_extra": tot(lambda a: len(a["omissions"]["extra"])),
+            "missing_found": tot(lambda a: a["missing"]["found"]),
+            "missing_expected": tot(lambda a: a["missing"]["expected"]),
+            "brief_seconds": [r.get("seconds") for r in res],
+        }
+    (out / "crosslink_summary.json").write_text(json.dumps(summary, indent=1))
+    print(json.dumps(summary, indent=1))
 
 
 def _classes(recs: List[Dict]) -> Dict[str, Dict[str, int]]:
@@ -381,9 +460,12 @@ def main() -> None:
     rp = sub.add_parser("reparse"); rp.add_argument("out")
     g = sub.add_parser("ground"); g.add_argument("data"); g.add_argument("out")
     sc = sub.add_parser("score"); sc.add_argument("fixtures"); sc.add_argument("out")
+    cl = sub.add_parser("crosslink"); cl.add_argument("fixtures"); cl.add_argument("out")
     a = ap.parse_args()
     if a.cmd == "score":
         return rescore(Path(a.fixtures), Path(a.out))
+    if a.cmd == "crosslink":
+        return asyncio.run(crosslink(Path(a.fixtures), Path(a.out)))
     if a.cmd == "pull":
         pull(Path(a.data))
     elif a.cmd == "run":
