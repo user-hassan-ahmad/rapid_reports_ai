@@ -1751,3 +1751,14 @@ stated / unclear → nothing. A failed report call or an unreadable answer inser
 - Duplicate guard (Step 3): the same 11 sentences with and without it, so the condition for removing it is met;
   kept for now (n = 11) pending Hassan's call.
 
+- **Addendum (2026-10-01): a dictated report negative is never removed.** p4_lab case f98a5930 (multi-level
+  lumbar MRI): the shipped check removed "No spinal canal stenosis" (dictated at L3/L4) in 2/4 runs; Jev read it as
+  contradicted by stenosis dictated at L4/L5 and L5/S1, and the restated gate passed it (stenosis is dictated). Fix:
+  one more question per negative clause in the same dictation-state call, `d<i>` = "the dictated findings themselves
+  state this negative, in any wording, for the same level, side and structure", quoting the clause with the report
+  sentence before it (so "at this level" resolves). Score >= 0.5, or an unreadable answer, keeps the clause
+  (telemetry `kept_dictated_negative`). Probe (24 items x 2 repeats: real f98a5930 clauses, other level / side /
+  vertebra, real contradictions, plain negatives): plain wording 4/48 wrong (context-less "at this level", "central"
+  vs "spinal"); context + "any wording, synonym" 0/48 wrong, stated >= 0.57, not stated <= 0.10, 0 real
+  contradictions kept. f98a5930 base arm, 4 runs: 0 removed (2 runs flagged and kept at d 0.88 / 0.90).
+  Production re-score, 30 of the 150: 3 clauses removed before and after, none dictated (no change).

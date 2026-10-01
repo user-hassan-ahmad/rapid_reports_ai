@@ -42,6 +42,28 @@ def q_restated(finding: str) -> dict:
                          "false": "It is not mentioned, is stated as absent or normal, or the dictation reports a different "
                                   "finding that only shares some words with it (a different qualifier such as size, "
                                   "severity, pattern, chronicity or location)."}}
+# A report negative the dictation itself states is never removed, whatever the contradiction score (L-49 addendum,
+# f98a5930: stenosis dictated at L4/L5 made Jev read the dictated "No spinal canal stenosis" at L3/L4 as contradicted).
+# Scope-aware: the clause is quoted with the report sentence before it, so "at this level" resolves. Probe
+# (scratchpad dictneg/): 24 items x 2 repeats, 0 wrong; stated >= 0.57, not stated <= 0.10.
+Q_DICTATED = "The dictated findings themselves state this negative, in any wording, for the same level, side and structure: "
+_DICTATED_TRUE = ("The dictation itself says this finding is absent, or the structure is normal in this respect, at the "
+                  "level, side or structure the statement refers to. Count any wording, synonym or equivalent term for "
+                  "the same finding or structure. When the statement refers to no particular level, side or structure, a "
+                  "dictated absence of this finding counts. Use the report text it follows only to tell which level, side "
+                  "or structure it refers to.")
+_DICTATED_FALSE = ("The dictation does not say this finding is absent there: it reports the finding as present or possible "
+                   "there, says nothing about it, or states its absence only for a different level, side, vertebra or "
+                   "structure.")
+DICTATED_KEEP = 0.5
+
+
+def q_dictated(clause: str, before: str) -> dict:
+    ctx = f' (in the report it follows: "{before}")' if before else ""
+    return {"type": "noul", "instructions": f'{Q_DICTATED}"{clause}"{ctx}',
+            "criteria": {"true": _DICTATED_TRUE, "false": _DICTATED_FALSE}}
+
+
 CONTRA_FLAG = 0.6   # L-46: 31/31 genuine contradictions >= 0.5, 29/31 >= 0.7
 RESTATED_FLAG = 0.5  # a report negative is removed only when the finding it denies is dictated (L-47)
 # "Is this new sentence already in the report?" (Jev wording v2, group A S2, L-49): the inserter's duplicate guard.
@@ -124,15 +146,23 @@ def _sentences(text: str) -> List[str]:
     return [s.strip() for s in re.split(r"(?<=[.;])\s+(?=[A-Z])", text) if len(s.strip()) > 3]
 
 
-def clauses(text: str) -> List[str]:
-    """Sentences, with a negative list split at its commas into one clause per finding. A bare
-    'or' never splits: 'No pericolic or paracolic fluid collection' is one finding (L-46)."""
-    out: List[str] = []
+def clauses_in_context(text: str) -> List[Tuple[str, str]]:
+    """(clause, the sentence before the clause's sentence, or ""): the context tells which level, side
+    or structure a clause such as 'No stenosis at this level' refers to."""
+    out: List[Tuple[str, str]] = []
+    prev = ""
     for s in _sentences(text):
         m = re.match(r"^(No|There is no|There are no|Without)\s+(.*?)\.?$", s, re.I)
         parts = [p.strip() for p in re.split(r",\s*(?:or\s+|and\s+)?", m.group(2)) if p.strip()] if m else []
-        out.extend(f"No {p}" for p in parts) if len(parts) > 1 else out.append(s)
+        out.extend((f"No {p}", prev) for p in parts) if len(parts) > 1 else out.append((s, prev))
+        prev = s
     return out
+
+
+def clauses(text: str) -> List[str]:
+    """Sentences, with a negative list split at its commas into one clause per finding. A bare
+    'or' never splits: 'No pericolic or paracolic fluid collection' is one finding (L-46)."""
+    return [c for c, _ in clauses_in_context(text)]
 
 
 _RESTATE = re.compile(r"^(?:No|There is no|There are no|Without)\s+(.*?)(?:\s+(?:is|are|was|were))?(?:\s+(?:identified|seen|present|demonstrated|noted))?\.?$", re.I)
@@ -213,8 +243,16 @@ class Flag(BaseModel):
     score: float
 
 
+class KeptNegative(BaseModel):
+    """A flagged report negative kept because the dictation itself states it (or Jev could not say)."""
+    text: str
+    contradiction: float
+    dictated: Optional[float]   # None: unreadable answer, kept as the conservative choice
+
+
 class CheckResult(BaseModel):
     flags: List[Flag] = []
+    kept_dictated: List[KeptNegative] = []
     bad_option_ids: List[str] = []
     n_clauses: int = 0
     n_items: int = 0
@@ -229,7 +267,10 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict])
     flag counts only on a selected item; a failed dictation call selects by the regex (L-46). A failed
     report call, or an unreadable answer, raises no line flag: nothing is inserted."""
     fnd, imp = report_sections(report)
-    cls = list(dict.fromkeys(clauses(fnd) + clauses(imp)))
+    before = {}
+    for c, b in clauses_in_context(fnd) + clauses_in_context(imp):
+        before.setdefault(c, b)
+    cls = list(before)
     opts = [(o["id"], o["sentence"]) for o in options if o.get("sentence")]
     items = dictated_items(findings)
     contra_qs = {f"c{i}": {"type": "noul", "instructions": Q_CONTRA + t} for i, t in enumerate(cls)}
@@ -239,6 +280,8 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict])
     # thickening' beside dictated segmental wall thickening). Same call, no added latency.
     restated = {i: restate(t) for i, t in enumerate(cls)}
     contra_qs.update({f"r{i}": q_restated(r) for i, r in restated.items() if r})
+    # ...and never when the dictation itself states the negative (L-49 addendum). Same call.
+    contra_qs.update({f"d{i}": q_dictated(cls[i], before[cls[i]]) for i, r in restated.items() if r})
     # The omission selector rides the same dictation-state call (no added latency).
     contra_qs.update({f"sel{i}": q_select_choice(t) for i, t in enumerate(items)})
     contra_qs.update({f"lt{i}": q_select_noul(t) for i, t in enumerate(items)})
@@ -259,11 +302,22 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict])
         return CheckResult(n_clauses=len(cls), n_items=len(items), error=error)
 
     score = lambda ans, k: float(ans[k]["noul"])
-    flags, bad = [], []
+    def maybe(ans, k):
+        try:
+            return score(ans, k)
+        except Exception:
+            return None
+    flags, bad, kept = [], [], []
     if not isinstance(contra, BaseException):
-        flags = [Flag(kind="contradiction", text=t, score=score(contra, f"c{i}"))
-                 for i, t in enumerate(cls) if score(contra, f"c{i}") >= CONTRA_FLAG
-                 and (not restated[i] or score(contra, f"r{i}") >= RESTATED_FLAG)]
+        for i, t in enumerate(cls):
+            c = score(contra, f"c{i}")
+            if c < CONTRA_FLAG or (restated[i] and score(contra, f"r{i}") < RESTATED_FLAG):
+                continue
+            d = maybe(contra, f"d{i}") if restated[i] else 0.0
+            if d is None or d >= DICTATED_KEEP:
+                kept.append(KeptNegative(text=t, contradiction=c, dictated=d))
+            else:
+                flags.append(Flag(kind="contradiction", text=t, score=c))
         bad = [oid for i, (oid, _) in enumerate(opts) if score(contra, f"o{i}") >= CONTRA_FLAG]
     sel_ans = {} if isinstance(contra, BaseException) else contra
     scores = [selection_score(sel_ans.get(f"sel{i}"), sel_ans.get(f"lt{i}")) for i in range(len(items))]
@@ -274,7 +328,7 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict])
         kind, p = omission_class(omit.get(f"i{i}"))
         if chosen[i] and kind in _OMIT_KIND:
             flags.append(Flag(kind=_OMIT_KIND[kind], text=t, score=p))
-    return CheckResult(flags=flags, bad_option_ids=bad, n_clauses=len(cls), n_items=len(items),
+    return CheckResult(flags=flags, kept_dictated=kept, bad_option_ids=bad, n_clauses=len(cls), n_items=len(items),
                        n_selected=sum(chosen), selector=selector, error=error)
 
 
@@ -546,12 +600,13 @@ async def run_quality_check(report: str, findings: str, scan_type: str,
         return report, options, {"enabled": False}
     t0 = time.time()
     tel: dict = {"enabled": True, "flags": [], "clauses_removed": 0, "edits_applied": 0, "edits_skipped": 0, "options_dropped": [],
-                 "clauses": 0, "items": 0, "jev_ms": None, "repair_ms": None, "error": None, "review": []}
+                 "clauses": 0, "items": 0, "kept_dictated_negative": [], "jev_ms": None, "repair_ms": None, "error": None, "review": []}
     try:
         res = await check(report, findings, scan_type, options)
         tel.update(flags=[f.model_dump() for f in res.flags], clauses=res.n_clauses, items=res.n_items,
                    items_selected=res.n_selected, selector=res.selector,
-                   jev_ms=int((time.time() - t0) * 1000), error=res.error, options_dropped=res.bad_option_ids)
+                   jev_ms=int((time.time() - t0) * 1000), error=res.error, options_dropped=res.bad_option_ids,
+                   kept_dictated_negative=[k.model_dump() for k in res.kept_dictated])
         options = [o for o in options if o.get("id") not in set(res.bad_option_ids)]
         # A partial or different line never edits the report: it is offered for review (the rail).
         tel["review"] = [{"kind": "partial", "line": f.text, "missing_detail": missing_detail(f.text, report)}
