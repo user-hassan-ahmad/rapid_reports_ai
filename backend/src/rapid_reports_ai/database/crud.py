@@ -178,7 +178,8 @@ def get_template(db: Session, template_id: str, user_id: Optional[str] = None) -
 def is_retired_template(template: Template) -> bool:
     """Legacy (non skill-sheet) templates are retired: hidden from lists and refused at
     generation, but never deleted — their reports and history stay intact."""
-    return (template.template_config or {}).get("generation_mode") != "skill_sheet_guided"
+    cfg = template.template_config
+    return not (isinstance(cfg, dict) and cfg.get("generation_mode") == "skill_sheet_guided")
 
 
 def get_templates(

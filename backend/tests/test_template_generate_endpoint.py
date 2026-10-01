@@ -40,3 +40,13 @@ def test_legacy_template_is_refused(client, auth_headers, legacy_template, db_se
     assert "retired template format" in r["error"] and "skill-sheet" in r["error"]
     # Retired, never deleted.
     assert db_session.get(Template, legacy_template.id) is not None
+
+
+def test_malformed_and_missing_configs_are_hidden_and_do_not_break_the_list(
+        client, auth_headers, db_session, test_user, guided_template):
+    bad = [Template(name=f"Bad{i}", template_config=cfg, user_id=test_user.id, tags=[], is_active=True)
+           for i, cfg in enumerate([["skill_sheet_guided"], "skill_sheet_guided", None])]
+    db_session.add_all(bad)
+    db_session.commit()
+    assert all(crud.is_retired_template(t) for t in bad)
+    assert _ids(client, auth_headers) == {str(guided_template.id)}
