@@ -212,8 +212,9 @@ def test_if_present_parses_keys_in_both_shapes():
 FINDINGS_R5 = "10 mm right acute subdural. 12 mm left adrenal nodule"
 
 
-def _stub_fallback(monkeypatch, carried, fallback):
-    _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(6)])
+def _stub_fallback(monkeypatch, carried, fallback, n_negs=6):
+    # the classifier answers every negative it is sent, exactly once
+    _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(n_negs)])
     async def fake_plan(scan_type, history, items, recs):
         return qb.ImpressionPlan(recommendations=[], impression=carried)
     monkeypatch.setattr(qb, "_plan", fake_plan)
@@ -295,7 +296,7 @@ async def test_fallback_does_not_run_without_an_if_present_list(monkeypatch):
         calls.append(items)
         return qb.FallbackNegatives(items=[qb.FallbackItem(index=0, covered=False, negatives=["No x"])])
     sheet = SHEET_C.split("- **If present:**")[0] + "\n## Impression Exemplars\n- **Abnormal exemplar:** \"Acute subdural.\"\n"
-    _stub_fallback(monkeypatch, [0, 1], spy)
+    _stub_fallback(monkeypatch, [0, 1], spy, n_negs=1)   # only the mandatory negative is sent
     b = await qb.compile_brief(sheet, "CT head", FINDINGS_R5)
     assert calls == []
     assert not [o for o in b.decisions["options"] if o["kind"] == "finding_negative"]
@@ -304,7 +305,8 @@ async def test_fallback_does_not_run_without_an_if_present_list(monkeypatch):
 @pytest.mark.asyncio
 async def test_bundled_finding_negatives_are_split_and_keep_their_key_and_tag(monkeypatch):
     sheet = SHEET_C.replace('"No midline shift" (core)', '"No superior mesenteric vein or portal vein encasement" (core)')
-    _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(8)])
+    # 1 mandatory + 6 finding-linked once the bundled negative is split in two
+    _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(7)])
     async def split(negs):
         return [["No superior mesenteric vein encasement", "No portal vein encasement"]
                 if n.startswith("No superior mesenteric vein or") else [n] for n in negs]

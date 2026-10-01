@@ -346,6 +346,25 @@ async def _qwen(state: str, negs: List[str], normals: List[str], measurements: L
     return r.output
 
 
+class IncompleteNegativeDecisions(RuntimeError):
+    """The classifier did not answer every negative exactly once."""
+
+
+async def _qwen_complete(state: str, negs: List[str], normals: List[str], measurements: List[str]) -> QwenDecisions:
+    """A negative without a decision would default to KEEP, so a contradicted negative could be
+    stated. The answer must cover indices 0..n-1 exactly once (no missing, extra, duplicate or
+    off-by-one); one retry, then raise so the report is written from the raw sheet."""
+    expected = list(range(len(negs)))
+    for attempt in (1, 2):
+        qw = await _qwen(state, negs, normals, measurements)
+        got = sorted(d.index for d in qw.negatives)
+        if got == expected:
+            return qw
+        logger.warning("negative classifier answer incomplete (attempt %d/2): sent %d negatives, got indices %s",
+                       attempt, len(negs), got)
+    raise IncompleteNegativeDecisions(f"sent {len(negs)} negatives, got indices {got}")
+
+
 class FallbackItem(BaseModel):
     index: int
     covered: bool
@@ -494,7 +513,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             return None
     jev, qw, plan, fb_out = await asyncio.gather(
         _jev(state, qs) if qs else asyncio.sleep(0, {}),
-        _qwen(state, [n for n, _ in negs] + [c.text for c in cands], normals, [" ".join(b.lines) for b in measurements]),
+        _qwen_complete(state, [n for n, _ in negs] + [c.text for c in cands], normals, [" ".join(b.lines) for b in measurements]),
         plan_or_none(), fallback_or_none())
     score = lambda k: float(jev[k]["noul"])
 
