@@ -98,9 +98,9 @@ def test_section_not_in_structural_pattern_is_dropped():
 def test_fresh_needs_matching_hash_version_and_usable():
     s = tss.build_structure(SHEET, good_draft(), model="m")
     cfg = {"skill_sheet": SHEET, "sheet_structure": s.model_dump(mode="json")}
-    assert tss.fresh(cfg) is not None
-    assert tss.fresh({**cfg, "skill_sheet": SHEET + "\n- edited"}) is None
-    assert tss.fresh({"skill_sheet": SHEET}) is None
+    assert tss.fresh_any_source(cfg) is not None
+    assert tss.fresh_any_source({**cfg, "skill_sheet": SHEET + "\n- edited"}) is None
+    assert tss.fresh_any_source({"skill_sheet": SHEET}) is None
     assert tss.needs_restructure({**cfg, "skill_sheet": SHEET + "x"}) and not tss.needs_restructure(cfg)
 
 
@@ -404,7 +404,7 @@ def test_store_writes_locks_flags_and_commits(monkeypatch):
     db = FakeDB(tpl)
     assert tss.store_structure(db, TID, s) is True
     assert db.locked and db.committed and flagged == ["template_config"]
-    assert tss.fresh(tpl.template_config) is not None
+    assert tss.fresh_any_source(tpl.template_config) is not None
     assert tpl.template_config["generation_mode"] == "skill_sheet_guided"
 
 
@@ -554,7 +554,7 @@ def test_failure_marker_never_replaces_a_usable_structure(monkeypatch):
     tpl = Tpl(SHEET)
     assert tss.store_structure(FakeDB(tpl), TID, tss.build_structure(SHEET, good_draft(), model="m"))
     assert tss.store_failure(FakeDB(tpl), TID, SHEET, "TimeoutError: ") is False
-    assert tss.fresh(tpl.template_config) is not None
+    assert tss.fresh_any_source(tpl.template_config) is not None
 
 
 def test_failure_marker_retries_after_an_hour(monkeypatch):
@@ -583,9 +583,9 @@ def test_store_round_trip_on_a_real_session(db_session):
         return db_session.query(Template).filter(Template.id == tpl.id).first().template_config
 
     assert tss.store_structure(db_session, tid, tss.build_structure(SHEET, good_draft(), model="m"))
-    assert tss.fresh(config()) is not None and config()["generation_mode"] == "skill_sheet_guided"
+    assert tss.fresh_any_source(config()) is not None and config()["generation_mode"] == "skill_sheet_guided"
     assert tss.store_failure(db_session, tid, SHEET, "TimeoutError: ") is False     # usable kept
-    assert tss.fresh(config()) is not None
+    assert tss.fresh_any_source(config()) is not None
 
     edited = SHEET + "\n- edited"
     row = db_session.query(Template).filter(Template.id == tpl.id).first()
@@ -1133,3 +1133,14 @@ def test_a_section_name_with_a_trailing_note_is_its_listed_name(name, kept):
                                         ('- Global: "No cord compression." (in keeping with prior)', False)])
 def test_an_in_context_note_is_a_condition(line, noted):
     assert tss._cond_noted(line) is noted
+
+
+def test_fresh_never_serves_an_extracted_structure():
+    """Owner decision 2026-10-01: only grammar structures are trusted at generation time."""
+    s = tss.build_structure(SHEET, good_draft(), model="m")
+    assert s.usable and s.source == "extracted"
+    cfg = {"skill_sheet": SHEET, "sheet_structure": s.model_dump(mode="json")}
+    assert tss.fresh(cfg) is None
+    assert tss.fresh_any_source(cfg) is not None
+    grammar = {**cfg, "sheet_structure": {**cfg["sheet_structure"], "source": "grammar"}}
+    assert tss.fresh(grammar) is not None and tss.fresh(grammar).source == "grammar"

@@ -6,6 +6,9 @@ kind sees ONLY those numbered lines (with the heading each sits under) and retur
 keyed by line number. Code assembles a StructureDraft and runs the unchanged verifier
 (template_sheet_structure.build_structure). A line no effect can represent is returned as effect
 "other" with a reason: it never becomes a rule, so its line stays uncovered and the gate fails.
+
+LAB ONLY: the LLM extractor is off in production (owner decision 2026-10-01). Its structures are
+source="extracted" and template_sheet_structure.fresh() never serves them at generation time.
 """
 from __future__ import annotations
 

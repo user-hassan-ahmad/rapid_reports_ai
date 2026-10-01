@@ -1,9 +1,15 @@
 """Save-time structure of a stored template skill sheet (spec 2026-09-30-template-pipeline-mirror §2).
 
-A template sheet is the radiologist's voice with irregular conditionals. A model pass turns it into
-typed items once; code keeps only what it can ground in the sheet, and marks the structure usable
-only when every conditional line and every negative line is covered. The lean _BRIEF prompts only
-ever meet a fully labelled sheet; anything else generates down the raw path.
+The SheetStructure schema, its freshness gate and the guarded store are shared by both producers:
+
+- the grammar parser (template_sheet_grammar.parse_sheet, source="grammar"): code parses a sheet in
+  grammar form on save. These are the ONLY structures generation may trust: fresh() returns nothing
+  else (owner decision 2026-10-01).
+- the LLM extractor (structure_sheet / build_structure here, template_sheet_flat): LAB ONLY. It is off
+  in production; the save path schedules it only when RR_SHEET_EXTRACTOR is on. Its structures
+  (source="extracted") are never served at generation time, usable or not.
+
+Anything without a fresh grammar structure generates down the raw path.
 """
 from __future__ import annotations
 
@@ -193,6 +199,14 @@ class StructureDraft(_Model):
         return _listify(v)
 
 
+class LintIssue(_Model):
+    """A grammar lint error kept on an unusable grammar structure, so it can be surfaced or repaired."""
+    line: int
+    text: str
+    reason: str
+    detail: str = ""
+
+
 class SheetStructure(StructureDraft):
     sections: List[StructSection] = []  # verified; may be empty (then unusable)
     rules: List[Rule] = []
@@ -203,6 +217,7 @@ class SheetStructure(StructureDraft):
     created_at: str
     usable: bool = False
     coverage: Coverage = Coverage()
+    lint_errors: List[LintIssue] = []  # grammar only: why the parse is unusable
 
 
 # ── verification ─────────────────────────────────────────────────────────────
@@ -828,13 +843,33 @@ def _stored(config: dict) -> Optional[SheetStructure]:
         return None
 
 
-def fresh(config: dict) -> Optional[SheetStructure]:
-    """The stored structure if it matches this sheet, this version, and passed the gate."""
+def fresh_any_source(config: dict) -> Optional[SheetStructure]:
+    """LAB ONLY: the stored structure if it matches this sheet, this version, and passed the gate,
+    whatever produced it. Generation must use fresh(), never this."""
     s = _stored(config)
     sheet = (config or {}).get("skill_sheet", "")
     if s and s.version == STRUCTURE_VERSION and s.sheet_hash == sheet_hash(sheet) and s.usable:
         return s
     return None
+
+
+def fresh(config: dict) -> Optional[SheetStructure]:
+    """The structure generation may trust: fresh (this sheet, this version, usable) AND parsed by the
+    grammar parser. An extracted structure is never returned."""
+    s = fresh_any_source(config)
+    return s if s is not None and s.source == "grammar" else None
+
+
+def current_grammar(config: dict) -> bool:
+    """A grammar structure (usable or not) of this sheet and version is already stored."""
+    raw = _raw(config)
+    return (raw.get("source") == "grammar" and raw.get("version") == STRUCTURE_VERSION
+            and raw.get("sheet_hash") == sheet_hash((config or {}).get("skill_sheet", "")))
+
+
+def extractor_enabled() -> bool:
+    """The LLM extractor runs on save only when RR_SHEET_EXTRACTOR is on (lab use; default off)."""
+    return os.getenv("RR_SHEET_EXTRACTOR", "").strip().lower() in ("1", "true", "on")
 
 
 def needs_restructure(config: dict) -> bool:
@@ -951,7 +986,7 @@ def _store(db, template_id: str, digest: str, payload: dict, keep_usable: bool =
     read-check-write so a concurrent sheet save cannot be overwritten."""
     tpl = (db.query(Template).filter(Template.id == uuid.UUID(str(template_id))).with_for_update().first())
     if (not tpl or sheet_hash((tpl.template_config or {}).get("skill_sheet", "")) != digest
-            or (keep_usable and fresh(tpl.template_config) is not None)):
+            or (keep_usable and fresh_any_source(tpl.template_config) is not None)):
         db.rollback()
         return False
     tpl.template_config = {**tpl.template_config, "sheet_structure": payload}
@@ -975,12 +1010,22 @@ def store_failure(db, template_id: str, sheet: str, error: str) -> bool:
                    "created_at": datetime.now(timezone.utc).isoformat()}, keep_usable=True)
 
 
+def store_parsed(template_id: str, structure: SheetStructure) -> bool:
+    """Store a structure in its own session (the guarded store: sheet-hash check under a row lock)."""
+    db = SessionLocal()
+    try:
+        return store_structure(db, template_id, structure)
+    finally:
+        db.close()
+
+
 _inflight: set = set()
 _tasks: set = set()
 
 
 def schedule_structure(template_id: str, sheet: str) -> None:
-    """Background: structure the sheet and store it. Never raises; one task per (template, sheet)."""
+    """LAB ONLY (RR_SHEET_EXTRACTOR): structure the sheet with the LLM extractor in the background and
+    store it. Never raises; one task per (template, sheet)."""
     key = (str(template_id), sheet_hash(sheet))
     if key in _inflight:
         return

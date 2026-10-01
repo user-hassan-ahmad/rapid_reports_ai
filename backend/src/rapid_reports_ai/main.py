@@ -67,6 +67,7 @@ from .database import (
 from .database.connection import engine
 from .template_manager import TemplateManager
 from . import template_sheet_structure as tss
+from . import template_sheet_grammar as tsg
 from .auth import (
     verify_password,
     get_password_hash,
@@ -1641,11 +1642,24 @@ def _carry_structure(new_config: dict, old_config: dict) -> dict:
 
 
 def _queue_structure(template_id: str, config: dict) -> None:
-    """Queue background structuring for a guided template whose structure is missing or stale.
-    Never raises: a template write must not fail because structuring could not be queued."""
+    """Structure a guided template's sheet on save. A sheet in grammar form ("## Report Structure") is
+    parsed now by the grammar parser and stored (usable or not: an unusable parse keeps its lint errors)
+    unless a grammar structure of this sheet is already stored. Any other sheet stays on the raw path;
+    the LLM extractor is lab-only and is scheduled only when RR_SHEET_EXTRACTOR is on.
+    Never raises: a template write must not fail because structuring failed."""
     try:
-        if (config or {}).get("generation_mode") == "skill_sheet_guided" and tss.needs_restructure(config):
-            tss.schedule_structure(template_id, config["skill_sheet"])
+        config = config or {}
+        sheet = config.get("skill_sheet") or ""
+        if config.get("generation_mode") != "skill_sheet_guided" or not sheet:
+            return
+        if tsg.is_grammar_sheet(sheet):
+            if not tss.current_grammar(config):
+                result = tsg.parse_sheet(sheet)
+                ok = tss.store_parsed(template_id, result.structure)
+                logger.info("sheet grammar %s: stored=%s usable=%s lint_errors=%d", template_id, ok,
+                            result.structure.usable, len(result.errors))
+        elif tss.extractor_enabled() and tss.needs_restructure(config):
+            tss.schedule_structure(template_id, sheet)
     except Exception as e:
         logger.warning("sheet structuring not queued for template %s: %s", template_id, e)
 

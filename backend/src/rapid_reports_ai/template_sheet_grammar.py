@@ -3,8 +3,10 @@
 
 Prose is the radiologist's voice and passes through untouched; every unit the brief reconciles against a
 dictation is a keyword-led line. The parser is pure and deterministic, and fails closed: any lint error
-leaves the structure unusable (the raw path generates). The LLM extractor stays the fallback for sheets
-not in grammar form (source="extracted").
+leaves the structure unusable (the raw path generates) and records the lint errors on it. Grammar
+structures are the only ones generation trusts (template_sheet_structure.fresh); they are parsed
+synchronously on save. A sheet not in grammar form (no "## Report Structure" line) stays on the raw
+path until converted; the LLM extractor is lab-only (RR_SHEET_EXTRACTOR) and never trusted.
 
 Unit lines (optional indentation and an optional "- " bullet before the keyword):
 
@@ -142,6 +144,14 @@ class _Ctx:
     kind: str = "none"  # none | structure | paragraph | report_wide | other
     paragraph: str = ""  # paragraph id
     section: str = ""  # paragraph's section (canonical name, or as written when unknown)
+
+
+_GRAMMAR_MARK = re.compile(r"^##\s+Report Structure\s*$", re.I | re.M)
+
+
+def is_grammar_sheet(sheet: str) -> bool:
+    """A sheet is in grammar form when it has a "## Report Structure" line."""
+    return bool(_GRAMMAR_MARK.search(sheet or ""))
 
 
 def parse_sheet(sheet: str) -> GrammarResult:
@@ -292,6 +302,9 @@ def parse_sheet(sheet: str) -> GrammarResult:
         if_present=if_present, sheet_hash=tss.sheet_hash(sheet or ""), model="grammar", source="grammar",
         created_at=datetime.now(timezone.utc).isoformat(), usable=usable,
         coverage=tss.Coverage(**cov, uncovered=uncovered))
+    if errors:
+        structure.lint_errors = [tss.LintIssue(line=e.line, text=e.text, reason=e.reason, detail=e.detail)
+                                 for e in errors]
     return GrammarResult(structure=structure, errors=errors)
 
 
