@@ -304,7 +304,8 @@ _NORMAL_STATE = re.compile(r"\b(?:unremarkable|normal|patent|intact|preserved|(?
 # "(when x)", "(only in x)", "if x: ...", "[if x]", "(in x cases)"
 # "[structure] demonstrates no [finding]": a negative whose negation is the main predicate (no clause before it)
 _NEG_PREDICATE = re.compile(r"^[^,;]*?\b(?:demonstrates?|shows?|there (?:is|are))\s+no\b", re.I)
-_COND_WORD = re.compile(r"\b(?:if|when|whenever|where|unless|only|provided)\b|\bin [^)\]]*cases?\b", re.I)
+_COND_WORD = re.compile(r"\b(?:if|when|whenever|where|unless|only|provided)\b"
+                       r"|\bin [^)\]]*(?:cases?|contexts?|settings?)\b", re.I)
 _MANDATORY_NONE = re.compile(r"mandatory negatives?\W*none\b", re.I)  # "Mandatory negatives: None …"
 
 
@@ -662,6 +663,8 @@ def build_structure(sheet: str, draft: StructureDraft, model: str) -> SheetStruc
     for s in draft.sections:
         k = _name_key(s.name)
         m = listed(k) if k else ""
+        if not m and (bare := _name_key(re.split(r"\s+[-—–]\s+", s.name, maxsplit=1)[0])) != k:
+            m, k = (listed(bare), bare) if bare else ("", k)   # "[Name] — always present": the name as listed
         if not m:
             reject(f"section: {s.name}")
         elif m in kept:

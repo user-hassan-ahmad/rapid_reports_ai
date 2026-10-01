@@ -1118,3 +1118,18 @@ def test_an_abnormal_pattern_line_is_not_a_normal_pattern():
     d.normals = [tss.Normal(id="m9", section="FINDINGS", structure="gallbladder",
                             text="Unremarkable appearances of the gallbladder.", source_line=line)]
     assert build(d, sheet).normals == []
+
+
+@pytest.mark.parametrize("name,kept", [("IMPRESSION — always present", True), ("IMPRESSION - Header varies", True),
+                                       ("IMPRESSION AND SUMMARY — always present", False)])
+def test_a_section_name_with_a_trailing_note_is_its_listed_name(name, kept):
+    d = good_draft()
+    d.sections[2] = d.sections[2].model_copy(update={"name": name})
+    assert build(d).usable is kept
+
+
+@pytest.mark.parametrize("line,noted", [('- Global: "No cord compression." (in oncology context)', True),
+                                        ('- Global: "No cord compression." (in the acute setting)', True),
+                                        ('- Global: "No cord compression." (in keeping with prior)', False)])
+def test_an_in_context_note_is_a_condition(line, noted):
+    assert tss._cond_noted(line) is noted
