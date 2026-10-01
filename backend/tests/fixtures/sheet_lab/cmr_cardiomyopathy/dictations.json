@@ -1,0 +1,20 @@
+[
+  {
+    "id": "cmr_cardiomyopathy-d1",
+    "scan_type": "Cardiac MRI (non-stress) - cardiomyopathy / viability",
+    "clinical_history": "Inferior MI 2022. Two-vessel disease, chronic total occlusion of the RCA. LVEF 30-35% on echo. Viability prior to CTO PCI.",
+    "findings": "viability protocol, cines and LGE only, no T2 or mapping done. LV mildly dilated, EDVi 124, ESVi 90, EF 27. basal and mid inferior and inferolateral walls thinned and akinetic, apex akinetic too. mass not done. RV not contoured, looks normal size and function by eye. atria fine, valves fine. no effusion, nothing extracardiac. LGE: subendocardial inferior and inferolateral, >75% basal and mid inferior, 51-75% mid inferolateral, 26-50% basal inferolateral, apex 1-25%. anterior wall and septum clear. no thrombus."
+  },
+  {
+    "id": "cmr_cardiomyopathy-d2",
+    "scan_type": "Cardiac MRI (non-stress) - cardiomyopathy / viability",
+    "clinical_history": "Mother has hypertrophic cardiomyopathy. Asymptomatic. Normal ECG. Family screening.",
+    "findings": "full protocol. LV normal size and thickness, max wall 10 mm basal septum, function normal, no RWMA. EDVi 80, ESVi 30, EF 63, mass index 55. RV normal, EDVi 84, ESVi 36, EF 57. atria and valves normal. no effusion. T1 990, T2 47, ECV 25, no oedema. no LGE."
+  },
+  {
+    "id": "cmr_cardiomyopathy-d3",
+    "scan_type": "Cardiac MRI (non-stress) - cardiomyopathy / viability",
+    "clinical_history": "Anterior STEMI 3 months ago, PCI to proximal LAD. Echo: apical akinesia, ?apical thrombus, poor apical views.",
+    "findings": "full protocol. LV mildly dilated, EDVi 112, ESVi 72, EF 36, mass index 62. apex and apical segments thin and akinetic, mid anterior hypokinetic. RV normal, 76, 33, 57. atria valves fine, no effusion. remote T1 1010, T2 50, ECV 28, no oedema. LGE subendocardial LAD territory, >75% apex and apical anterior and apical septal, 26-50% mid anterior, basal segments clear. non-enhancing filling defect 11 x 7 mm adherent to the akinetic apex on early and late gad."
+  }
+]

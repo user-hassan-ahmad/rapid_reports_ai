@@ -1,0 +1,20 @@
+[
+  {
+    "id": "ct_tavi-d1",
+    "scan_type": "CT TAVI work-up (non-valvular findings)",
+    "clinical_history": "Severe AS, NYHA III, for TAVI. Ex-smoker 40 pack-years.",
+    "findings": "65 ml omni 350, DLP 690. asc ao 36, arch and desc ok, no dissection, mild atheroma. subclavians fine. abdo ao normal calibre, branches patent. access: R CIA 7.8 EIA 6.9 CFA 7.2; L CIA 7.0 EIA 5.1 CFA 6.0. L EIA circumferential calc, moderate tortuosity left, mild right. lungs: 7 mm solid nodule RUL se5 im102, nothing else, mild emphysema, no consolidation. no effusions. nodes ok. upper abdo nil. bones degen only."
+  },
+  {
+    "id": "ct_tavi-d2",
+    "scan_type": "CT TAVI work-up (non-valvular findings)",
+    "clinical_history": "Severe AS, heart team referral for TAVI.",
+    "findings": "80 ml, DLP 640. asc ao 33, rest of thoracic aorta normal, no dissection. subclavians ok. abdo ao normal. access R CIA 8.6 EIA 7.5 CFA 8.1, L CIA 8.4 EIA 7.3 CFA 7.8, mild calc, mild tortuosity. lungs clear. pleura pericardium nil. nodes nil. upper abdo nil. bones degen."
+  },
+  {
+    "id": "ct_tavi-d3",
+    "scan_type": "CT TAVI work-up (non-valvular findings)",
+    "clinical_history": "Severe AS, previous TIA. TAVI work-up.",
+    "findings": "70 ml, DLP 598. asc ao 35, arch and desc fine. subclavians fine. infrarenal aorta 34 mm max AP, some eccentric mural thrombus, iliacs normal calibre. access R CIA 7.6 EIA 6.6 CFA 7.0, L CIA 7.9 EIA 6.8 CFA 7.2, moderate calc not circumferential, mild tortuosity. lungs: 3 mm solid nodule RML, nil else. no effusions. nodes nil. upper abdo nil. bones fine."
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "mri_knee-d1",
+    "scan_type": "MRI left knee",
+    "clinical_history": "38-year-old. Left ACL reconstruction (patellar tendon graft) 2019. Twisted knee playing squash last month, lateral joint line pain and catching.",
+    "findings": "No old imaging on the system. ACL graft intact, tunnels fine, no widening, no cyclops. PCL ok. Radial tear body of lateral meniscus at the free edge, definitely to the surface on 2 slices. Medial meniscus ok. Collaterals ok. Extensor fine. Cartilage ok. No bone oedema. Small effusion. No Baker's."
+  },
+  {
+    "id": "mri_knee-d2",
+    "scan_type": "MRI right knee",
+    "clinical_history": "28-year-old runner. Medial knee pain for two months. Radiographs last month normal.",
+    "findings": "Menisci intact. Cruciates and collaterals intact. Extensor mechanism fine, PF alignment ok. Cartilage preserved. No marrow oedema. No effusion, no Baker's. Soft tissues ok."
+  },
+  {
+    "id": "mri_knee-d3",
+    "scan_type": "MRI right knee",
+    "clinical_history": "19-year-old. Twisting injury at rugby three days ago, knee locked in flexion. Radiographs earlier this week: no fracture.",
+    "findings": "Bucket-handle tear medial meniscus, fragment flipped into the intercondylar notch, double PCL sign. ACL intact. PCL itself intact. Collaterals intact. Extensor fine. Cartilage preserved. No bone bruise or fracture. Moderate effusion. No Baker's."
+  }
+]
