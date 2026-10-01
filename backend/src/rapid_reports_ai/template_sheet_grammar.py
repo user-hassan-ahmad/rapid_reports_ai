@@ -220,7 +220,13 @@ def _outside_quotes(text: str) -> str:
 # A statement of absence. In prose it should be a NEGATIVE unit. Normal-state voice ("the ducts are not
 # dilated") is not an absence statement and stays prose.
 _ABSENCE_START = re.compile(r"^(?:No|There\s+is\s+no|There\s+are\s+no|Without|Absent|Nil|Negative\s+for)\b", re.I)
-_ABSENCE_ANY = re.compile(r"\b(?:is|are)\s+absent\b", re.I)
+_ABSENCE_ANY = re.compile(
+    r"\b(?:is|are)\s+absent\b"
+    r"|^Free\s+of\b"  # "Free of X."
+    r"|^Not\s+(?:seen|identified|demonstrated)\s*:"  # "Not seen: X."
+    r"|^[^:]+:\s*(?:none|nil|not\s+(?:seen|identified|demonstrated))\s*\.?\s*$"  # "X: none." / "X: not seen."
+    r"|\bnot\s+(?:seen|identified|demonstrated)\s*\.?\s*$",  # "X not seen." (at the end of the statement)
+    re.I)
 # A conditional line that also carries one of these cues states a negative under a condition: it should
 # have been a NEGATIVE unit (or Phase-1 material), so it blocks instead of warning.
 _QUOTED_NEG = re.compile(r"^\s*(?:No|There\s+is\s+no|There\s+are\s+no|Without)\b", re.I)
@@ -234,7 +240,8 @@ def _negative_cue(plain: str) -> bool:
 
 def _states_absence(plain: str) -> bool:
     """A prose line written as an absence statement: "No X.", "There is no X.", "Without X.", "Absent X.",
-    "Nil X.", "Negative for X.", "X is absent.", also bulleted, bold, parenthesised or wholly quoted."""
+    "Nil X.", "Negative for X.", "X is absent.", "Free of X.", "Not seen: X.", "X: none|nil|not seen.",
+    "X not seen|identified|demonstrated.", also bulleted, bold, parenthesised or wholly quoted."""
     stated = plain.replace("**", "").strip()
     if stated[:1] in ('"', "“", "'"):
         stated = re.sub(r'["“”]', "", stated)

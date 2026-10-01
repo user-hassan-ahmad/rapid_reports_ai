@@ -296,6 +296,9 @@ def test_conditionals_without_a_negative_cue_only_warn(prose):
 @pytest.mark.parametrize("prose", [
     "Absent ascites.", "Ascites is absent.", "The pleural effusions are absent.", "Nil ascites.",
     "Negative for ascites.", "(No ascites.)", "“No ascites.”", "'No ascites.'", "_No ascites._",
+    "Ascites: none.", "Ascites: nil.", "Ascites: not seen.", "Pleural effusion: not identified",
+    "Free of ascites.", "Not seen: ascites.", "Not identified: free fluid.", "Not demonstrated: collection.",
+    "Ascites not seen.", "Free fluid is not identified.", "A collection was not demonstrated.",
 ])
 def test_absence_statements_in_prose_block(prose):
     r = parse(PARA + prose + "\n")
@@ -304,7 +307,10 @@ def test_absence_statements_in_prose_block(prose):
 
 @pytest.mark.parametrize("prose", ["The bile ducts are not dilated.", "Lymph nodes are not enlarged.",
                                    "Unremarkable liver.", 'Prefer “unremarkable” over “normal”.',
-                                   'Prefer “No aneurysm.” over longer forms.'])  # as with straight quotes
+                                   'Prefer “No aneurysm.” over longer forms.',
+                                   "Field order: size, contour, then the adjacent fat.",
+                                   "Describe what was not seen in the arterial phase in the next sentence.",
+                                   "The ducts are not dilated and the fat is clear."])  # as with straight quotes
 def test_normal_state_voice_prose_stays_prose(prose):
     r = parse(PARA + prose + "\n")
     assert r.errors == [] and r.structure.usable
