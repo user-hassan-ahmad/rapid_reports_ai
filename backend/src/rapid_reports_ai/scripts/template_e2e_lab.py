@@ -447,11 +447,26 @@ async def run_new(sheet: str, d: dict) -> dict:
     fixed = [f.text for f in lean.fixed_blocks if "{" not in f.text]
     protected = [x for x in [hist_text] + fixed if x]
     avoid = list(lean.terminology.suppressed)
-    t = time.time()
-    report, options, quality = await rr.run_quality_check(report, findings, scan_type, options, sections=sections,
-                                                          protected=protected, suppressed=avoid)
-    rec["lat"]["check_s"] = round(time.time() - t, 1)
+    sec_dicts = [{"name": x.name, "header": x.header, "role": x.role} for x in sections]
+    impression = split_sections(report, sec_dicts).get(imp, "")
+
+    async def checked():
+        t0 = time.time()
+        out = await rr.run_quality_check(report, findings, scan_type, options, sections=sections,
+                                         protected=protected, suppressed=avoid)
+        return out, round(time.time() - t0, 1)
+
+    async def gated():  # uniqueness gate, beside the post-generation check
+        t0 = time.time()
+        out = await rc.gate_options(options, report, impression)
+        return out, round(time.time() - t0, 2)
+
+    ((report, checked_opts, quality), rec["lat"]["check_s"]), ((_, gate_dropped), rec["lat"]["gate_s"]) = \
+        await asyncio.gather(checked(), gated())
+    drop_ids = {o.get("id") for o in gate_dropped}
+    options = [o for o in checked_opts if o.get("id") not in drop_ids]
     rec["quality"] = quality
+    rec["gate_dropped"] = gate_dropped
     rec["options"] = options
     rec["report"] = report
     rec["protected"] = protected
@@ -711,6 +726,8 @@ def render_dictation(r: dict) -> str:
         L.append(f"- [{o.get('kind')} → {o.get('section')}] {o.get('sentence')}")
     if not new.get("options"):
         L.append("- none")
+    for o in new.get("gate_dropped") or []:
+        L.append(f"- GATE DROPPED ({o.get('score')}): [{o.get('kind')}] {o.get('sentence')}")
     q = new.get("quality") or {}
     L += ["", "## Post-generation check (NEW)", f"- flags: {[(f['kind'], f['text'][:100]) for f in q.get('flags', [])]}",
           f"- clauses removed {q.get('clauses_removed')}, edits applied {q.get('edits_applied')}, "
