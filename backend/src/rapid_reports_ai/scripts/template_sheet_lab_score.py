@@ -53,9 +53,34 @@ def _grammar_finding(p: Dict) -> str:
     return m.group(1) if m else (p.get("target") or "")
 
 
-def _key_units(key: Dict) -> Dict[str, List[Dict]]:
+_STUDY = re.compile(r"\bnot (?:performed|acquired|given|obtained|done)\b|\bprotocol\b|\bprior\b|\bprevious\b|"
+                    r"\bcomparison\b|\bacquisition\b|\bphase\b|\bsequences?\b", re.I)
+
+
+def is_intrinsic(p: Dict) -> bool:
+    """A planted unit the LEAN template sheet should carry (spec 2026-10-01 two-phase): NORMAL, routine
+    NEGATIVE, FIXED, TERM, LIST_MISSING, and study/context rules. Findings- or history-conditioned rules,
+    conditional negatives and IF_PRESENT are Phase 1's. A rule counts as a study rule when its source is
+    context, its effect is section/header suppression, or its statement is about what was performed
+    (some keys label those findings: "... was not performed")."""
+    kind, cond = p["kind"], p.get("condition")
+    src = cond.get("source") if isinstance(cond, dict) else None
+    statement = cond.get("statement", "") if isinstance(cond, dict) else (cond or "")
+    if kind == "IF_PRESENT":
+        return False
+    if kind == "NEGATIVE":
+        return src in (None, "context")
+    if kind == "RULE":
+        return (p.get("effect") in ("list_missing", "suppress_section", "suppress_headers") or src == "context"
+                or bool(_STUDY.search(statement)))
+    return True
+
+
+def _key_units(key: Dict, intrinsic_only: bool = False) -> Dict[str, List[Dict]]:
     out: Dict[str, List[Dict]] = {}
     for p in key["planted"]:
+        if intrinsic_only and not is_intrinsic(p):
+            continue
         kind = p["kind"]
         if kind == "RULE" and p.get("effect") == "list_missing":
             for item in p.get("items") or []:
@@ -99,6 +124,10 @@ def _sheet_units(s: Dict) -> Dict[str, List[Dict]]:
 
 
 def _pair_score(kind: str, k: Dict, u: Dict) -> float:
+    if kind == "PARAGRAPH":
+        a, b = (re.sub(r"[^a-z]", "", x["text"].lower()) for x in (k, u))
+        return 1.0 if a and b and (a == b or a in b or b in a) else (sim(k["text"], u["text"]) if
+                                                                    sim(k["text"], u["text"]) >= TEXT_MATCH else 0.0)
     if kind == "TERM":
         return 1.0 if k["text"].strip().lower() == u["text"].strip().lower() else 0.0
     if kind.startswith("RULE"):
@@ -126,8 +155,8 @@ def _match(kind: str, keys: List[Dict], units: List[Dict]) -> Tuple[List[Tuple[i
     return pairs, [i for i in range(len(keys)) if i not in used_k], [j for j in range(len(units)) if j not in used_u]
 
 
-def score(structure: Dict, key: Dict) -> Dict:
-    kus, sus = _key_units(key), _sheet_units(structure)
+def score(structure: Dict, key: Dict, intrinsic_only: bool = False) -> Dict:
+    kus, sus = _key_units(key, intrinsic_only), _sheet_units(structure)
     all_sheet_texts = [u["text"] for us in sus.values() for u in us]
     per_kind: Dict[str, Dict] = {}
     misses, spurious, rule_map = [], [], {}
@@ -154,8 +183,14 @@ def score(structure: Dict, key: Dict) -> Dict:
     per_kind["SECTION"] = {"planted": len(secs_key), "emitted": len(secs_sheet), "matched": len(found),
                            "recall": round(len(found) / len(secs_key), 2) if secs_key else None,
                            "precision": round(len(found) / len(secs_sheet), 2) if secs_sheet else None}
-    planted = sum(v["planted"] for k, v in per_kind.items() if k != "SECTION")
-    matched = sum(v["matched"] for k, v in per_kind.items() if k != "SECTION")
+    paras_key = [p["name"] for p in key.get("paragraphs", [])]
+    paras_sheet = [p["name"] for p in structure.get("paragraphs", [])]
+    pp, _, _ = _match("PARAGRAPH", [{"text": n} for n in paras_key], [{"text": n} for n in paras_sheet])
+    per_kind["PARAGRAPH"] = {"planted": len(paras_key), "emitted": len(paras_sheet), "matched": len(pp),
+                             "recall": round(len(pp) / len(paras_key), 2) if paras_key else None,
+                             "precision": round(len(pp) / len(paras_sheet), 2) if paras_sheet else None}
+    planted = sum(v["planted"] for k, v in per_kind.items() if k not in ("SECTION", "PARAGRAPH"))
+    matched = sum(v["matched"] for k, v in per_kind.items() if k not in ("SECTION", "PARAGRAPH"))
     return {"per_kind": per_kind, "units_recall": round(matched / planted, 2) if planted else None,
             "misses": misses, "spurious": spurious, "rule_map": rule_map}
 

@@ -44,7 +44,7 @@ def test_sim_needs_real_overlap():
 
 
 def test_score_counts_matches_misses_cross_kind_and_spurious():
-    structure, errs = lab.parse(SHEET)
+    structure, errs = lab.parse(SHEET, mode="v1")
     assert errs == []
     s = score(structure, KEY)
     pk = s["per_kind"]
@@ -68,3 +68,18 @@ def test_load_synthetic_reads_sets_with_keys(tmp_path):
     data = lab.load_synthetic(tmp_path)
     assert [t["slug"] for t in data["templates"]] == ["set_a"]
     assert data["templates"][0]["examples"][0]["content"] == "EXAMPLE"
+
+
+def test_intrinsic_scoring_leaves_case_units_to_phase_1():
+    from rapid_reports_ai.scripts.template_sheet_lab_score import is_intrinsic
+
+    assert not is_intrinsic({"kind": "IF_PRESENT"})
+    assert not is_intrinsic({"kind": "RULE", "effect": "append", "condition": {"source": "findings", "statement": "x y"}})
+    assert is_intrinsic({"kind": "RULE", "effect": "replace",
+                         "condition": {"source": "findings", "statement": "the <part> was not performed"}})
+    assert is_intrinsic({"kind": "RULE", "effect": "list_missing", "items": ["a"]})
+    assert not is_intrinsic({"kind": "NEGATIVE", "condition": {"source": "history", "statement": "x y"}})
+    structure, _ = lab.parse(SHEET, mode="v1")
+    pk = score(structure, KEY, intrinsic_only=True)["per_kind"]
+    assert pk["IF_PRESENT"]["planted"] == 0 and pk["RULE replace"]["planted"] == 0
+    assert pk["LIST_MISSING item"]["planted"] == 2 and pk["PARAGRAPH"]["planted"] == 0

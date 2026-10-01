@@ -13,21 +13,34 @@ def test_prompts_are_case_agnostic():
             assert clinical not in p.lower(), clinical
 
 
-def test_analyser_prompt_teaches_every_keyword_and_effect():
+def test_analyser_prompt_teaches_the_lean_grammar():
     p = P.ANALYSER_SYSTEM_PROMPT
-    for kw in ("## Report Structure", "## Paragraph:", "## Report-wide", "SECTION ", "NORMAL [", "NEGATIVE \"",
-               "FIXED \"", "TERM PREFER", "TERM AVOID", "IF_PRESENT [", "RULE WHEN [", "REPLACE \"", "SUPPRESS \"",
-               "SUPPRESS NEGATIVES", "APPEND \"", "USE \"", "INSERT \"", "BEFORE \"", "LIST_MISSING [", "AT TOP",
-               "AT END", "SUPPRESS_SECTION", "SUPPRESS_HEADERS", "ORDER FIRST", "ORDER LAST", "(core|contextual)",
-               "findings (what is dictated"):
+    for kw in ("## Report Structure", "## Paragraph:", "## Report-wide", "SECTION ", "COVERS [", "NORMAL [",
+               'NEGATIVE "', 'FIXED "', "TERM PREFER", "TERM AVOID", "LIST_MISSING [", "AT TOP", "AT END",
+               "RULE WHEN [context:", 'REPLACE "', 'SUPPRESS "', 'USE "', "SUPPRESS_SECTION", "SUPPRESS_HEADERS",
+               "Abnormal pattern:", "Interpretive phrasing:", "Recommendation phrasing:", "(optional)", "## Voice",
+               "## Impression Construction", "prose states no absence in any form", "never a WHEN"):
         assert kw in p, kw
-    assert "IF [" in p and "carries no conditional wording outside double quotes" in p and "no prose line states a negative" in p and "## Voice" in p  # old syntax named only to forbid it
+    # case-dependent units are named only to forbid them; the v1 convention text is gone
+    assert "NOT in this sheet" in p and "handled automatically" not in p
+    for gone in ("IF_PRESENT [", "(core|contextual)", "ORDER FIRST", 'INSERT "<text>" BEFORE'):
+        assert gone not in p, gone
 
 
-def test_user_prompt_keeps_production_contract():
+def test_user_prompt_returns_the_sheet_between_delimiters():
     u = P.analyser_user_prompt([{"content": "EXAMPLE TEXT"}], "<scan>", protocol_notes="NOTE")
-    assert '"skill_sheet"' in u and '"summary"' in u and '"questions"' in u
+    assert P.SHEET_OPEN in u and P.SHEET_CLOSE in u and '"summary"' in u and '"questions"' in u
     assert "### Example 1\n```\nEXAMPLE TEXT\n```" in u and "NOTE" in u
+
+
+def test_split_answer_keeps_the_sheet_when_the_json_breaks():
+    ok = (P.SHEET_OPEN + '\n# Skill Sheet: x\nNEGATIVE "No <thing>."\n' + P.SHEET_CLOSE
+          + '\n{"summary": {"a": 1}, "questions": []}')
+    d = P.split_answer(ok)
+    assert d["skill_sheet"] == '# Skill Sheet: x\nNEGATIVE "No <thing>."'
+    assert d["summary"] == {"a": 1} and not d["json_error"]
+    d = P.split_answer(ok.replace('"questions": []', '"questions": [ {"q": 1} {"q": 2} ]'))
+    assert d["skill_sheet"].startswith("# Skill Sheet: x") and d["json_error"]
 
 
 def test_repair_prompt_numbers_lines_and_errors():
@@ -35,6 +48,7 @@ def test_repair_prompt_numbers_lines_and_errors():
     assert "L1| a\nL2| b" in u and '1. L2: malformed RULE — "b"' in u
     assert P.strip_fences("```markdown\nx\ny\n```") == "x\ny"
     assert P.strip_fences("L1| x\nL2| y") == "x\ny"
+    assert P.strip_fences(P.SHEET_OPEN + "\nx\n" + P.SHEET_CLOSE) == "x"
 
 
 SHEET = """# Skill Sheet: <scan>
@@ -48,34 +62,38 @@ SECTION CONCLUSION | header: "Conclusion:" | role: impression
 
 ## Report-wide
 TERM PREFER "<term>"
-RULE WHEN [context: the <part> of the study was not performed] SUPPRESS_SECTION FINDINGS
+RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["<a>" | "<b>"] AT TOP | section: FINDINGS
+RULE WHEN [context: the <part> of the study was not performed] SUPPRESS_SECTION FINDINGS | section: FINDINGS
 
 ## Paragraph: <para> (FINDINGS)
-Heading: none
+COVERS ["<structure>" | "<other structure>"]
+Opening: the <structure> first.
+Order: <structure>; <other structure> (optional).
+Abnormal pattern: "There is a {size} <finding> of the <structure>."
+Interpretive phrasing: "likely <cause>"
 NORMAL [<structure>] "Normal <structure>."
 NEGATIVE "No <thing>."
-RULE WHEN [findings: <named finding> is reported] SUPPRESS NEGATIVES
-RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["<a>" | "<b>"] AT TOP
-IF_PRESENT [<finding>] "No <thing>." (core)
+RULE WHEN [context: prior <modality> imaging is available for comparison] REPLACE "Normal <structure>." WITH "Stable <structure>."
 
 ## Paragraph: Conclusion (CONCLUSION)
-RULE WHEN [findings: no abnormal finding is reported anywhere in the study] USE "Normal study."
+Opening: numbered points.
 """
 
 
-def test_the_prompt_shapes_parse_clean_with_the_grammar_parser():
+def test_a_lean_sheet_in_the_prompt_shapes_parses_usable():
     structure, errs = lab.parse(SHEET)
     assert errs == [] and structure["usable"]
-    kinds = {r["effect"] for r in structure["rules"]}
-    assert {"suppress_section", "suppress_paragraph_negatives", "list_missing", "use"} <= kinds
+    assert {r["effect"] for r in structure["rules"]} == {"suppress_section", "list_missing", "replace"}
+    assert structure["paragraphs"][0]["covers"] == ["<structure>", "<other structure>"]
+    v = lab.voice_stats(SHEET, structure)
+    assert v["paragraphs"]["<para>"] == {"covers": 2, "quotes": 2, "exemplars": 2}
 
 
-def test_lint_errors_reach_the_repair_prompt():
-    bad = SHEET.replace("[findings: <named finding> is reported]", "[findings: abnormal]")
-    bad += "Opening: written first when abnormal\n"
+def test_case_units_are_lint_errors_that_reach_the_repair_prompt():
+    bad = SHEET.replace('NEGATIVE "No <thing>."', 'NEGATIVE "No <thing>."\nIF_PRESENT [<finding>] "No <x>." (core)\n'
+                        'RULE WHEN [findings: <named finding> is reported] APPEND "<clause> here."')
     _, errs = lab.parse(bad)
-    reasons = {e["reason"] for e in errs}
-    assert {"statement without subject", "conditional phrase in prose"} <= reasons
+    assert len(errs) == 2 and {e["reason"] for e in errs} == {"unit not allowed in a template sheet"}
     u = P.repair_user_prompt(bad, errs)
     assert all(f"L{e['line']}: {e['reason']}" in u for e in errs)
 

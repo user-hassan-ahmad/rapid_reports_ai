@@ -44,6 +44,9 @@ TEMPLATES = [
     "CT Abdomen and Pelvis (Portal Venous)",
 ]
 MAX_EXAMPLES, HELD_OUT, MIN_EXAMPLES = 5, 2, 3
+# Lean template sheets (spec 2026-10-01 two-phase) are scored on template-intrinsic planted units only;
+# --all-units scores every planted unit (grammar v1 sheets).
+INTRINSIC_ONLY = True
 
 
 # ---------------------------------------------------------------------------------------------- data
@@ -126,15 +129,15 @@ def pull(out: Path) -> Dict:
 
 # -------------------------------------------------------------------------------------------- parser
 
-def parse(sheet: str) -> Tuple[Dict, List[Dict]]:
-    """The grammar parser (G1). Returns the structure as a dict and the lint errors; a sheet that lints
-    clean but is not usable (no findings- or impression-role section) gets one synthetic error so the
-    repair call sees it."""
+def parse(sheet: str, mode: str = "template") -> Tuple[Dict, List[Dict]]:
+    """The grammar parser (lean template mode by default). Returns the structure as a dict (its
+    lint_warnings included) and the lint errors; a sheet that lints clean but is not usable (no findings-
+    or impression-role section) gets one synthetic error so the repair call sees it."""
     import dataclasses
 
     from rapid_reports_ai.template_sheet_grammar import parse_sheet
 
-    res = parse_sheet(sheet)
+    res = parse_sheet(sheet, mode=mode)
     errs = [dataclasses.asdict(e) for e in res.errors]
     if not errs and not res.structure.usable:
         errs.append({"line": 0, "text": "", "reason": "structure not usable",
@@ -159,7 +162,9 @@ async def analyse(examples: List[Dict], scan_type: str) -> Tuple[Dict, float, st
         system_prompt=P.ANALYSER_SYSTEM_PROMPT, user_prompt=P.analyser_user_prompt(examples, scan_type),
         api_key="", use_thinking=True, model_settings=P.ANALYSER_SETTINGS)
     raw = result.output if hasattr(result, "output") else str(result)
-    try:
+    if P.SHEET_OPEN in raw:  # the lean prompt: sheet between delimiters, summary/questions JSON after
+        return P.split_answer(raw), time.time() - t, raw
+    try:  # fallback: the whole answer as production's JSON object
         parsed = TemplateManager._parse_skill_sheet_json(raw, ["skill_sheet", "summary", "questions"])
     except Exception as e:  # noqa: BLE001
         # The JSON around the sheet can break (seen: a missing comma in "questions") while the sheet
@@ -213,7 +218,7 @@ def _score(rec: Dict, t: Dict) -> None:
     if t.get("answer_key") and rec.get("structure"):
         from rapid_reports_ai.scripts.template_sheet_lab_score import score
 
-        rec["score"] = score(rec["structure"], t["answer_key"])
+        rec["score"] = score(rec["structure"], t["answer_key"], intrinsic_only=INTRINSIC_ONLY)
 
 
 async def run_one(t: Dict, out: Path) -> Dict:
@@ -237,14 +242,16 @@ async def run_one(t: Dict, out: Path) -> Dict:
     if parsed.get("json_error"):
         rec["json_salvaged"] = parsed["json_error"]
         (out / f"{s}.raw.txt").write_text(raw)
+    final = sheet
     if errors:
-        fixed, rec["repair_s"] = await repair(sheet, errors)
-        (out / f"{s}.repaired.md").write_text(fixed)
-        structure, errors = parse(fixed)
+        final, rec["repair_s"] = await repair(sheet, errors)
+        (out / f"{s}.repaired.md").write_text(final)
+        structure, errors = parse(final)
         rec.update(repair_errors=errors, repair_ok=not errors)
     rec["structure"] = structure
     rec["final_ok"] = not errors
     rec["grounding"] = grounding(structure, t["examples"])
+    rec["voice"] = voice_stats(final, structure)
     _score(rec, t)
     (out / f"{s}.json").write_text(json.dumps(rec, indent=1, default=str))
     print(f"{t['name'][:45]:45} analyse {rec['analyse_s']:5.1f}s  first {len(rec['first_pass_errors']):2} err"
@@ -268,6 +275,7 @@ async def run(data_path: Path, out: Path, only: Optional[List[str]]) -> None:
         "lint_classes": _classes(recs),
         "timings": {r["name"]: {k: round(r[k], 1) for k in ("analyse_s", "repair_s") if k in r} for r in recs},
         "grounded": {r["name"]: r["grounding"]["grounded"] for r in recs if "grounding" in r},
+        "voice": {r["name"]: {k: r["voice"][k] for k in ("mean_exemplars", "mean_quotes")} for r in recs if "voice" in r},
     }
     if any("score" in r for r in recs):
         summary["score"] = _score_summary(recs)
@@ -380,7 +388,39 @@ def _classes(recs: List[Dict]) -> Dict[str, Dict[str, int]]:
             for e in errs:
                 cls = re.sub(r"\s+\S*\d\S*|[\"'].*$", "", str(e.get("reason", e)))[:60]
                 out[key][cls] = out[key].get(cls, 0) + 1
+        for w in r.get("structure", {}).get("lint_warnings", []):  # final sheet's warnings (never blocking)
+            out.setdefault("warnings", {})
+            out["warnings"][w["reason"]] = out["warnings"].get(w["reason"], 0) + 1
     return out
+
+
+_UNIT_LINE = re.compile(r"^\s*(?:-\s+)?(SECTION|NORMAL|NEGATIVE|FIXED|TERM|IF_PRESENT|RULE|COVERS)\b")
+_EXEMPLAR_KINDS = ("abnormal pattern", "interpretive phrasing", "recommendation phrasing")
+
+
+def voice_stats(sheet: str, structure: Dict) -> Dict:
+    """Per paragraph: COVERS size, quoted exemplars in its prose (all quotes, and those on Abnormal
+    pattern / Interpretive / Recommendation lines)."""
+    covers = {p["name"]: len(p.get("covers") or []) for p in structure.get("paragraphs", [])}
+    paras: Dict[str, Dict[str, int]] = {}
+    cur = None
+    for ln in sheet.splitlines():
+        if re.match(r"^#{1,2}\s", ln):
+            m = re.match(r"^##\s+Paragraph:\s*(.*?)\s*\(", ln)
+            cur = m.group(1) if m else None
+            if cur:
+                paras[cur] = {"covers": covers.get(cur, 0), "quotes": 0, "exemplars": 0}
+            continue
+        if not cur or _UNIT_LINE.match(ln):
+            continue
+        n = len(re.findall(r'"[^"]+"', ln))
+        paras[cur]["quotes"] += n
+        if ln.strip().lower().lstrip("- ").startswith(_EXEMPLAR_KINDS):
+            paras[cur]["exemplars"] += n
+    vals = list(paras.values())
+    return {"paragraphs": paras,
+            "mean_exemplars": round(sum(v["exemplars"] for v in vals) / len(vals), 1) if vals else 0,
+            "mean_quotes": round(sum(v["quotes"] for v in vals) / len(vals), 1) if vals else 0}
 
 
 def _norm(text: str) -> str:
@@ -461,7 +501,10 @@ def main() -> None:
     g = sub.add_parser("ground"); g.add_argument("data"); g.add_argument("out")
     sc = sub.add_parser("score"); sc.add_argument("fixtures"); sc.add_argument("out")
     cl = sub.add_parser("crosslink"); cl.add_argument("fixtures"); cl.add_argument("out")
+    ap.add_argument("--all-units", action="store_true", help="score every planted unit (grammar v1 sheets)")
     a = ap.parse_args()
+    global INTRINSIC_ONLY
+    INTRINSIC_ONLY = not a.all_units
     if a.cmd == "score":
         return rescore(Path(a.fixtures), Path(a.out))
     if a.cmd == "crosslink":
