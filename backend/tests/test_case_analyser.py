@@ -180,3 +180,20 @@ def test_prompt_step1c_rules():
     assert 'never joins findings with "or"' in p
     assert "recommend that named test" in p
     assert "Six well-targeted" in p and "Default toward omission" not in p
+
+
+def test_one_targeted_negative_per_differential_first_kept():
+    out = OUTPUT + 'PLACE [Remainder] NEGATIVE "No wall thickening of the remaining structures." TARGETS [primary lesion]\n'
+    r = ca.parse_and_check(out, _summary(), TEMPLATE)
+    assert [(p.text, p.key) for p in r.placements if p.kind == "NEGATIVE"] == [
+        ("No dilatation of the adjacent duct.", "primary lesion")]
+    assert ('PLACE [Remainder] NEGATIVE "No wall thickening of the remaining structures." TARGETS [primary lesion]',
+            ca.R_SECOND_TARGET) in r.rejected
+    assert r.usable, r.errors
+
+
+def test_prompt_asks_for_one_branch_specific_negative_never_a_shared_companion():
+    p = ca.CASE_ANALYSER_SYSTEM_PROMPT
+    assert "never more than one" in p and "specific to its branch" in p
+    assert "A companion many branches share is never a targeted negative" in p
+    assert "repeating the shared wording, even when the findings belong to the same differential" not in p

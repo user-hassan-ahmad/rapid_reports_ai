@@ -50,6 +50,7 @@ R_NOT_FINDINGS = "placement paragraph is not a findings paragraph"
 R_BUNDLED = "negative is not single-finding"
 R_DUPLICATE = "duplicates a template negative or normal"
 R_DUPLICATE_CASE = "duplicates another case unit"
+R_SECOND_TARGET = "a second NEGATIVE targeting the same DIFFERENTIAL (the first is kept)"
 R_UNKNOWN_DIFF = "TARGETS names no listed DIFFERENTIAL"
 R_NOT_VISIBLE = "TARGETS a differential not visible on this technique"
 R_NO_VISIBLE = "DIFFERENTIAL without VISIBLE yes|no|silent"
@@ -106,9 +107,11 @@ Every differential is written on its own line with the imaging discriminator tha
 
 ### Phase 3 — Targeted negatives
 
-**One targeted negative for every differential you listed with VISIBLE yes** — the absence that would answer that differential on this study. The only exception is a differential whose absence the template's own negatives or normals already state; then the template carries it and you write nothing for it. A negative for a differential this technique cannot show (VISIBLE no or silent) cannot be asserted from this study and is not written. Generic negatives that do not tie to a listed differential do not appear.
+**One targeted negative for every differential you listed with VISIBLE yes, and never more than one** — the absence that would answer that differential on this study. The only exception is a differential whose absence the template's own negatives or normals already state; then the template carries it and you write nothing for it. A negative for a differential this technique cannot show (VISIBLE no or silent) cannot be asserted from this study and is not written. Generic negatives that do not tie to a listed differential do not appear.
 
-Write each in its final report form, quoted: the observable feature that would indicate the differential, named in this technique's own descriptive vocabulary, phrased the way the template's own negatives are phrased (match their grammatical shape, register and terminology). **One finding per negative.** Each negative states the absence of exactly one finding, so it can be checked against the dictation on its own: a list of findings in one sentence cannot be kept for some items and withdrawn for others. The test is mechanical: a negative contains no "or" and no comma-separated list of findings or locations. Where you would write "or" or a comma between findings, start a new line instead, repeating the shared wording, even when the findings belong to the same differential.
+**The sign is specific to its branch.** Name the sign that differential produces and no other listed differential (nor the branch the clinical question is about) also produces, so its absence answers that branch alone. A companion many branches share is never a targeted negative: fluid or gas and its distribution, fat stranding, a collection without a named organ of origin, enlarged nodes in general. Those belong to the template's sweep and the dictation; a targeted negative built on one would read as denying what another branch's reported finding already shows.
+
+Write each in its final report form, quoted: the observable feature that would indicate the differential, named in this technique's own descriptive vocabulary, phrased the way the template's own negatives are phrased (match their grammatical shape, register and terminology). **One finding per negative.** Each negative states the absence of exactly one finding, so it can be checked against the dictation on its own: a list of findings in one sentence cannot be kept for some items and withdrawn for others. The test is mechanical: a negative contains no "or" and no comma-separated list of findings or locations. Where you would write "or" or a comma between findings, choose the one finding most specific to the differential; a second negative for the same differential is not written.
 
 **Never duplicate the template.** If a negative or normal already in the paragraph inventory states the absence (in any paragraph, in any wording, alone or inside a longer sentence), the template already covers it — do not restate it, reword it or split it out.
 
@@ -155,7 +158,7 @@ This is a radiology report: it states what the imaging establishes. The history 
 Before emitting, verify:
 
 - **Differentials carry visibility** — every DIFFERENTIAL has a discriminator and VISIBLE yes, no or silent, judged against the template's technique.
-- **Negatives are targeted and single** — each targeted negative names a listed DIFFERENTIAL with VISIBLE yes in TARGETS (exactly as named there) and denies exactly one finding (no "or", no list).
+- **Negatives are targeted and single** — each targeted negative names a listed DIFFERENTIAL with VISIBLE yes in TARGETS (exactly as named there) and denies exactly one finding (no "or", no list); no differential is targeted twice, and no targeted negative denies a companion other branches share.
 - **No duplicates** — no negative restates, rewords or splits out a template negative or normal, and no negative appears twice.
 - **Placement** — every placement names a findings paragraph exactly as the inventory writes it, and that paragraph covers the negative's structure.
 - **Recommendations in remit** — each carries one tag from the closed set, names a specific UK service or a named test and the urgency, and nothing about procedures, treatment or management ("for consideration of …" is absent); its WHEN statement names exactly one triggering finding with its subject (no "or").
@@ -479,7 +482,12 @@ def parse_and_check(raw: str, summary: dict, template_sheet: Optional[str] = Non
         if mine in seen or ("neg", _norm(text)) in seen:
             res.rejected.append((s, R_DUPLICATE_CASE))
             continue
+        if kind == "NEGATIVE" and ("target", _norm(key)) in seen:  # one targeted negative per differential
+            res.rejected.append((s, R_SECOND_TARGET))
+            continue
         seen.add(mine)
+        if kind == "NEGATIVE":
+            seen.add(("target", _norm(key)))
         res.placements.append(Placement(paragraph=para["name"], line=line, kind=kind, text=text, key=key))
 
     if res.usable:
