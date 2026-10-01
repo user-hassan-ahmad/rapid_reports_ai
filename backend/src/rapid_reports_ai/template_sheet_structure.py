@@ -34,7 +34,7 @@ from .report_review import is_negative
 
 logger = logging.getLogger(__name__)
 
-STRUCTURE_VERSION = 1
+STRUCTURE_VERSION = 2  # 2: lean template grammar + case units (spec 2026-10-01-template-two-phase)
 RETRY_AFTER_S = 3600  # a failed structuring attempt for the same sheet is retried after this long
 Role = Literal["history", "technique", "comparison", "findings", "impression", "other"]
 LineRef = Union[int, str]  # the model cites a sheet line by its number; build_structure stores the line itself
@@ -82,9 +82,11 @@ class Paragraph(_Model):
     id: str
     section: str
     name: str
+    covers: SkipJsonSchema[List[str]] = []  # grammar: COVERS ["<structure>" | …], the structures it reports
 
 
 ConditionSource = Literal["findings", "history", "context"]
+Origin = Literal["template", "case"]  # case: written by the Phase-1 case analyser into a master sheet
 LegacyEffect = Literal["suppress", "replace", "append", "use"]
 # Grammar v1 (spec 2026-10-01-template-sheet-grammar): effects only a grammar sheet expresses.
 Effect = Literal["suppress", "replace", "append", "use", "insert_before", "suppress_paragraph_negatives",
@@ -125,6 +127,8 @@ class Negative(_Model):
     condition_source: SkipJsonSchema[ConditionSource] = "findings"  # grammar: NEGATIVE … WHEN [<source>: …]
     source_lines: List[LineRef]
     kind: Literal["negative", "stated_normal"] = "negative"  # stated_normal: a quoted normal-state line
+    origin: SkipJsonSchema[Origin] = "template"  # case: a Phase-1 case unit in a master sheet
+    targets: SkipJsonSchema[str] = ""  # case: the DIFFERENTIAL name this negative helps exclude
 
     @field_validator("condition", mode="before")
     @classmethod
@@ -168,6 +172,24 @@ class IfPresent(_Model):
     section: str
     paragraph: str = ""
     negatives: List[IfPresentNeg]
+    origin: SkipJsonSchema[Origin] = "template"
+
+
+# Phase-1 case units of a master sheet (spec 2026-10-01-template-two-phase "Case units"). Grammar only.
+class Differential(_Model):
+    id: str
+    name: str
+    tier: Literal["triage", "aetiology"]
+    discriminator: str
+    visible: Literal["yes", "no", "silent"]
+
+
+class Recommendation(_Model):
+    id: str
+    tag: Literal["IMAGING", "REFERRAL", "MDT", "TISSUE", "CORRELATION"]
+    text: str
+    condition: str
+    condition_source: ConditionSource = "findings"
 
 
 class Coverage(_Model):
@@ -218,6 +240,11 @@ class SheetStructure(StructureDraft):
     usable: bool = False
     coverage: Coverage = Coverage()
     lint_errors: List[LintIssue] = []  # grammar only: why the parse is unusable
+    lint_warnings: List[LintIssue] = []  # grammar only: stored, never blocking (e.g. a conditional in voice prose)
+    # master sheets only (Phase-1 case units)
+    question: str = ""
+    differentials: List[Differential] = []
+    recommendations: List[Recommendation] = []
 
 
 # ── verification ─────────────────────────────────────────────────────────────

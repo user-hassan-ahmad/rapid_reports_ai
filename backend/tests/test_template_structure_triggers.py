@@ -41,6 +41,7 @@ SECTION FINDINGS | header: "FINDINGS" | role: findings
 SECTION IMPRESSION | header: "Impression" | role: impression
 
 ## Paragraph: Organ (FINDINGS)
+COVERS ["organ"]
 NEGATIVE "No focal lesion."
 """
 
@@ -91,11 +92,19 @@ def test_grammar_sheet_is_parsed_and_stored_on_save_without_the_extractor(lab_ca
 
 
 def test_unusable_grammar_sheet_is_stored_with_its_lint_errors(lab_calls):
-    bad = GRAMMAR + "\n## Paragraph: X (FINDINGS)\nWhen abnormal, say so.\n"
+    bad = GRAMMAR + "\n## Paragraph: X (FINDINGS)\nCOVERS [\"x\"]\nNo collection when the organ is normal.\n"
     main._queue_structure("t1", {"generation_mode": "skill_sheet_guided", "skill_sheet": bad})
     ((_, s),) = lab_calls["stored"]
     assert s.source == "grammar" and not s.usable
-    assert [e.text for e in s.lint_errors] == ["When abnormal, say so."]
+    assert [e.text for e in s.lint_errors] == ["No collection when the organ is normal."]
+    assert [e.text for e in s.lint_warnings] == ["No collection when the organ is normal."]  # conditional: warning only
+
+
+def test_save_path_parses_in_template_mode(lab_calls):
+    findings_rule = GRAMMAR + 'RULE WHEN [findings: a focal lesion of the organ is reported] SUPPRESS "No focal lesion."\n'
+    main._queue_structure("t1", {"generation_mode": "skill_sheet_guided", "skill_sheet": findings_rule})
+    ((_, s),) = lab_calls["stored"]
+    assert not s.usable and [e.reason for e in s.lint_errors] == [tsg.NOT_LEAN]
 
 
 def test_grammar_sheet_with_a_current_grammar_structure_is_not_reparsed(lab_calls):

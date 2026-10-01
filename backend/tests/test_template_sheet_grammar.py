@@ -53,7 +53,9 @@ NEGATIVE "No acute abnormality."
 
 
 def parse(sheet: str) -> g.GrammarResult:
-    return g.parse_sheet(sheet)
+    """Grammar v1 (findings rules, IF_PRESENT, COVERS optional): the unit and lint tests below. The lean
+    template and master modes have their own section at the end."""
+    return g.parse_sheet(sheet, mode="v1")
 
 
 def one_rule(effect_line: str, paragraph: str = "## Paragraph: Organ (FINDINGS)") -> tss.Rule:
@@ -185,9 +187,6 @@ PARA = STRUCTURE + "\n## Paragraph: Organ (FINDINGS)\n"
     (STRUCTURE.replace("SECTION TECHNIQUE", "SECTION FINDINGS"), g.DUPLICATE_SECTION),
     (STRUCTURE + '\n## Notes\nNEGATIVE "No mass."\n', g.NO_SECTION),
     ('NEGATIVE "No mass."\n' + STRUCTURE, g.NO_SECTION),
-    (PARA + "Mention the vessels when they are abnormal.\n", g.PROSE_CONDITIONAL),
-    (PARA + "- If the organ is enlarged, give its length.\n", g.PROSE_CONDITIONAL),
-    (PARA + "Describe the margins unless obscured.\n", g.PROSE_CONDITIONAL),
     (PARA + '- IF [mass] THEN suppress "No mass."\n', g.OLD_SYNTAX),
     (STRUCTURE + '\n## Report-wide\nWrite IF [x] rules carefully.\n', g.OLD_SYNTAX),
     (PARA + 'RULE WHEN [findings: a focal mass is reported] DELETE "No mass."\n', g.MALFORMED_UNIT),
@@ -237,18 +236,35 @@ def test_free_prose_sections_skip_conditional_and_negative_checks(heading):
 @pytest.mark.parametrize("heading", ["Measurement and Grading Rules", "Incidental Findings Rules", "Scan context notes",
                                      "Reporting notes", "Report-wide", "Paragraph: Organ (FINDINGS)"])
 def test_other_headings_stay_checked(heading):
-    r = parse(STRUCTURE + f"\n## {heading}\nWhen in doubt, be brief.\n")
-    assert [e.reason for e in r.errors] == [g.PROSE_CONDITIONAL] and not r.structure.usable
+    r = parse(STRUCTURE + f"\n## {heading}\nWhen in doubt, be brief.\nNo paragraph headers in short reports.\n")
+    assert [e.reason for e in r.warnings] == [g.PROSE_CONDITIONAL]
+    assert [e.reason for e in r.errors] == [g.PROSE_NEGATIVE] and not r.structure.usable
 
 
 def test_free_prose_ends_at_the_next_section_heading():
     r = parse(STRUCTURE + "\n## Domain Rules\nIf limited, say so.\n## Paragraph: Organ (FINDINGS)\nIf limited, say so.\n")
-    assert [(e.line, e.reason) for e in r.errors] == [(len(STRUCTURE.splitlines()) + 5, g.PROSE_CONDITIONAL)]
+    assert [(e.line, e.reason) for e in r.warnings] == [(len(STRUCTURE.splitlines()) + 5, g.PROSE_CONDITIONAL)]
+    assert r.errors == []
 
 
 def test_preamble_prose_is_checked():
     r = parse("Use this sheet when reporting.\n" + STRUCTURE)
-    assert [e.reason for e in r.errors] == [g.PROSE_CONDITIONAL]
+    assert [e.reason for e in r.warnings] == [g.PROSE_CONDITIONAL] and r.errors == []
+
+
+def test_prose_conditional_is_a_stored_warning_not_an_error():
+    sheet = PARA + "Mention the vessels when they are abnormal.\n"
+    r = parse(sheet)
+    assert r.errors == [] and r.structure.usable and r.structure.lint_errors == []
+    (w,) = r.warnings
+    assert (w.reason, w.detail, w.text) == (g.PROSE_CONDITIONAL, "when", "Mention the vessels when they are abnormal.")
+    assert [(x.line, x.reason, x.text) for x in r.structure.lint_warnings] == [(w.line, w.reason, w.text)]
+
+
+def test_prose_negative_with_a_conditional_still_blocks():
+    r = parse(PARA + "No collection if the organ is normal.\n")
+    assert [e.reason for e in r.warnings] == [g.PROSE_CONDITIONAL]
+    assert [e.reason for e in r.errors] == [g.PROSE_NEGATIVE] and not r.structure.usable
 
 
 def test_unusable_without_findings_and_impression_roles():
@@ -322,8 +338,8 @@ def test_fresh_serves_grammar_structures():
     assert got is not None and got.source == "grammar" and got.rules[7].items == s.rules[7].items
     assert tss.fresh({**cfg, "skill_sheet": FULL + "\nedited"}) is None
     assert not tss.needs_restructure(cfg)
-    bad = parse(FULL + "\n## Paragraph: X (FINDINGS)\nWhen abnormal, say so.\n").structure
-    assert tss.fresh({"skill_sheet": FULL + "\n## Paragraph: X (FINDINGS)\nWhen abnormal, say so.\n",
+    bad = parse(FULL + "\n## Paragraph: X (FINDINGS)\nNo abnormality.\n").structure
+    assert tss.fresh({"skill_sheet": FULL + "\n## Paragraph: X (FINDINGS)\nNo abnormality.\n",
                       "sheet_structure": bad.model_dump(mode="json")}) is None
 
 
@@ -397,15 +413,15 @@ def test_mislevelled_paragraph_headings_fail_closed(heading):
     "Unless obscured, describe the wall.",
 ])
 @pytest.mark.parametrize("where", ["", "\n## Report-wide\n", "\n## Reporting notes\n"])
-def test_prose_conditionals_fail_closed(prose, where):
+def test_prose_conditionals_warn(prose, where):
     r = parse(HEAD + where + prose + "\n")
-    assert [e.reason for e in r.errors] == [g.PROSE_CONDITIONAL], r.errors
-    assert not r.structure.usable
+    assert [e.reason for e in r.warnings] == [g.PROSE_CONDITIONAL], r.warnings
+    assert r.errors == [] and r.structure.usable
 
 
 def test_prose_conditional_checked_in_report_structure_block():
     r = parse(HEAD.replace("SECTION COMPARISON", "Comparison appears when prior imaging exists.\nSECTION COMPARISON"))
-    assert [e.reason for e in r.errors] == [g.PROSE_CONDITIONAL]
+    assert [e.reason for e in r.warnings] == [g.PROSE_CONDITIONAL] and r.errors == []
 
 
 @pytest.mark.parametrize("prose", [
@@ -452,3 +468,277 @@ def test_mixed_sheet_fresh_rejects_mislevelled_paragraph():
     s = parse(sheet).structure
     assert not s.usable
     assert tss.fresh({"skill_sheet": sheet, "sheet_structure": s.model_dump()}) is None
+
+
+# ── lean template sheet + master sheet (spec 2026-10-01-template-two-phase) ─────
+
+LEAN = STRUCTURE + """
+## Voice
+Short declarative sentences.
+TERM PREFER "unremarkable"
+
+## Paragraph: Primary organ (FINDINGS)
+COVERS ["primary organ" | "adjacent fat"]
+When present, give the maximal diameter.
+NORMAL [primary organ] "The primary organ is normal in size and contour."
+NEGATIVE "No focal lesion."
+NEGATIVE "No contrast extravasation." WHEN [context: a contrast-enhanced study is performed]
+RULE WHEN [context: prior imaging is available for comparison] REPLACE "No focal lesion." WITH "No new focal lesion."
+RULE WHEN [context: a follow-up study of a known lesion] USE "stable appearances of the {lesion}"
+RULE WHEN [context: a non-contrast study is performed] SUPPRESS "No contrast extravasation."
+
+## Paragraph: Measured values (MEASUREMENTS)
+RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["chamber volume" | "wall thickness"] AT TOP
+
+## Report-wide
+FIXED "Images reviewed on a diagnostic workstation."
+NEGATIVE "No incidental finding of note."
+RULE WHEN [context: a limited protocol is stated in the request] SUPPRESS_SECTION MEASUREMENTS
+RULE WHEN [context: a short-form report is requested by the referrer] SUPPRESS_HEADERS
+
+## Paragraph: Summary (IMPRESSION)
+Numbered list, most important first.
+"""
+
+CASE_NEG = 'NEGATIVE "No surrounding fat stranding." TARGETS [inflammatory process] | origin: case'
+CASE_IP = 'IF_PRESENT [focal lesion] "No regional lymphadenopathy." (core) | origin: case'
+CASE_BLOCK = """
+## Case Deliberation
+QUESTION "Is there a cause for the presenting symptom?"
+DIFFERENTIAL [focal mass] TIER triage "a discrete lesion of the primary organ" VISIBLE yes
+DIFFERENTIAL [Inflammatory process] TIER aetiology "surrounding fat stranding" VISIBLE silent
+RECOMMEND IMAGING "Further characterisation with a dedicated study is suggested." WHEN [findings: an indeterminate lesion of the primary organ is reported]
+"""
+ANCHOR = 'RULE WHEN [context: a non-contrast study is performed] SUPPRESS "No contrast extravasation."\n'
+MASTER = LEAN.replace(ANCHOR, ANCHOR + CASE_NEG + "\n" + CASE_IP + "\n") + CASE_BLOCK
+
+
+def in_paragraph(line: str, sheet: str = LEAN) -> str:
+    return sheet.replace(ANCHOR, ANCHOR + line + "\n")
+
+
+def test_parse_sheet_defaults_to_template_mode_and_rejects_unknown_modes():
+    assert [e.reason for e in g.parse_sheet(in_paragraph(CASE_IP)).errors] == [g.CASE_IN_TEMPLATE]
+    with pytest.raises(ValueError):
+        g.parse_sheet(LEAN, mode="quick")
+
+
+def test_lean_template_sheet_parses_usable():
+    r = g.parse_sheet(LEAN, mode="template")
+    assert r.errors == [], r.errors
+    s = r.structure
+    assert s.usable and s.source == "grammar"
+    assert [(p.name, p.covers) for p in s.paragraphs] == [
+        ("Primary organ", ["primary organ", "adjacent fat"]), ("Measured values", []), ("Summary", [])]
+    assert [(x.effect, x.condition_source) for x in s.rules] == [
+        ("replace", "context"), ("use", "context"), ("suppress", "context"), ("list_missing", "findings"),
+        ("suppress_section", "context"), ("suppress_headers", "context")]
+    assert [(n.condition_source if n.condition else None, n.origin) for n in s.negatives] == [
+        (None, "template"), ("context", "template"), (None, "template")]
+    assert (s.question, s.differentials, s.recommendations) == ("", [], [])
+    # the voice line "When present, give the maximal diameter." is a stored warning, not an error
+    assert [(w.reason, w.text) for w in s.lint_warnings] == [
+        (g.PROSE_CONDITIONAL, "When present, give the maximal diameter.")]
+
+
+NOT_LEAN_LINES = [
+    'RULE WHEN [findings: a focal lesion of the primary organ is reported] SUPPRESS "No focal lesion."',
+    'RULE WHEN [findings: a focal lesion of the primary organ is reported] REPLACE "No focal lesion." WITH "A lesion."',
+    'RULE WHEN [findings: a focal lesion of the primary organ is reported] APPEND "Further assessment advised."',
+    'RULE WHEN [findings: a focal lesion of the primary organ is reported] USE "lesion"',
+    'RULE WHEN [findings: abnormal adjacent vessel calibre is reported] INSERT "Vessels:" BEFORE "No focal lesion."',
+    'RULE WHEN [findings: several organ abnormalities are reported] SUPPRESS NEGATIVES',
+    'RULE WHEN [findings: organ abnormality is the main finding] ORDER FIRST',
+    'RULE WHEN [findings: a focal lesion of the primary organ is reported] SUPPRESS_HEADERS',
+    'RULE WHEN [history: prior surgery to the primary organ is stated] APPEND "Post-surgical change."',
+    'RULE WHEN [history: prior surgery to the primary organ is stated] SUPPRESS "No focal lesion."',
+    'RULE WHEN [context: a follow-up study of a known lesion] APPEND "Compared with the prior study."',
+    'RULE WHEN [context: a follow-up study of a known lesion] INSERT "Comparison:" BEFORE "No focal lesion."',
+    'RULE WHEN [context: a follow-up study of a known lesion] SUPPRESS NEGATIVES',
+    'RULE WHEN [context: a follow-up study of a known lesion] ORDER FIRST',
+    'RULE WHEN [history: any listed value is not stated in the request] LIST_MISSING ["volume"] AT END',
+    'NEGATIVE "No surrounding collection." WHEN [findings: an inflammatory process of the organ is reported]',
+    'NEGATIVE "No surrounding collection." WHEN [history: recent surgery to the organ is stated]',
+    'IF_PRESENT [focal lesion] "No regional lymphadenopathy." (core)',
+]
+
+
+@pytest.mark.parametrize("mode", ["template", "master"])
+@pytest.mark.parametrize("line", NOT_LEAN_LINES)
+def test_findings_and_history_conditioned_units_are_not_lean(line, mode):
+    sheet = in_paragraph(line, MASTER if mode == "master" else LEAN)
+    r = g.parse_sheet(sheet, mode=mode)
+    assert [e.reason for e in r.errors] == [g.NOT_LEAN], r.errors
+    (e,) = r.errors
+    assert e.text == line and sheet.splitlines()[e.line - 1] == line
+    assert not r.structure.usable and line in r.structure.coverage.uncovered
+
+
+@pytest.mark.parametrize("line", NOT_LEAN_LINES)
+def test_v1_mode_keeps_the_full_grammar(line):
+    r = g.parse_sheet(in_paragraph(line), mode="v1")
+    assert r.errors == [] and r.structure.usable, r.errors
+
+
+# ── COVERS ──
+
+@pytest.mark.parametrize("mode", ["template", "master"])
+def test_covers_required_on_findings_paragraphs(mode):
+    base = MASTER if mode == "master" else LEAN
+    sheet = base.replace('COVERS ["primary organ" | "adjacent fat"]\n', "")
+    r = g.parse_sheet(sheet, mode=mode)
+    assert [(e.reason, e.detail, e.text) for e in r.errors] == [
+        (g.MISSING_COVERS, "Primary organ", "## Paragraph: Primary organ (FINDINGS)")]
+    assert not r.structure.usable
+
+
+def test_covers_not_required_outside_findings_role_and_optional_in_v1():
+    # MEASUREMENTS (role other) and IMPRESSION paragraphs have no COVERS in LEAN and parse clean
+    no_covers = LEAN.replace('COVERS ["primary organ" | "adjacent fat"]\n', "")
+    r = g.parse_sheet(no_covers, mode="v1")
+    assert r.errors == [] and r.structure.usable
+    r = g.parse_sheet(LEAN + '\n## Paragraph: Extra (MEASUREMENTS)\nCOVERS ["volume"]\n', mode="v1")
+    assert r.structure.paragraphs[-1].covers == ["volume"]
+
+
+@pytest.mark.parametrize("sheet,reason", [
+    (in_paragraph('COVERS ["kidneys"]'), g.DUPLICATE_COVERS),
+    (LEAN.replace("## Report-wide\n", '## Report-wide\nCOVERS ["kidneys"]\n'), g.MALFORMED_UNIT),
+    (LEAN.replace('COVERS ["primary organ" | "adjacent fat"]', 'COVERS [primary organ]'), g.MALFORMED_UNIT),
+    (LEAN.replace('COVERS ["primary organ" | "adjacent fat"]', 'COVERS []'), g.MALFORMED_UNIT),
+    (LEAN.replace('COVERS ["primary organ" | "adjacent fat"]', 'COVERS "primary organ"'), g.MALFORMED_UNIT),
+    (LEAN.replace('COVERS ["primary organ" | "adjacent fat"]', '* COVERS ["primary organ"]'), g.DECORATED_UNIT),
+])
+def test_covers_lint(sheet, reason):
+    r = g.parse_sheet(sheet, mode="template")
+    assert reason in [e.reason for e in r.errors], r.errors
+    assert not r.structure.usable
+
+
+def test_duplicate_covers_keeps_the_first():
+    r = g.parse_sheet(in_paragraph('COVERS ["kidneys"]'), mode="template")
+    assert r.structure.paragraphs[0].covers == ["primary organ", "adjacent fat"]
+
+
+# ── case units ──
+
+def test_master_sheet_parses_case_units():
+    r = g.parse_sheet(MASTER, mode="master")
+    assert r.errors == [], r.errors
+    s = r.structure
+    assert s.usable
+    assert s.question == "Is there a cause for the presenting symptom?"
+    assert [(d.id, d.name, d.tier, d.discriminator, d.visible) for d in s.differentials] == [
+        ("d0", "focal mass", "triage", "a discrete lesion of the primary organ", "yes"),
+        ("d1", "Inflammatory process", "aetiology", "surrounding fat stranding", "silent")]
+    (rec,) = s.recommendations
+    assert (rec.id, rec.tag, rec.text, rec.condition, rec.condition_source) == (
+        "rec0", "IMAGING", "Further characterisation with a dedicated study is suggested.",
+        "an indeterminate lesion of the primary organ is reported", "findings")
+    case = [n for n in s.negatives if n.origin == "case"]
+    assert [(n.text, n.targets, n.paragraph, n.section, n.condition) for n in case] == [
+        ("No surrounding fat stranding.", "Inflammatory process", "p0", "FINDINGS", None)]  # canonical name
+    assert [n.origin for n in s.negatives if n.origin != "case"] == ["template"] * 3
+    (ip,) = s.if_present
+    assert (ip.finding, ip.origin, ip.paragraph, ip.negatives[0].tag) == ("focal lesion", "case", "p0", "core")
+    assert g.render_negative(case[0]) == CASE_NEG.replace("[inflammatory process]", "[Inflammatory process]")
+
+
+@pytest.mark.parametrize("mode", ["template", "v1"])
+@pytest.mark.parametrize("sheet", [
+    in_paragraph(CASE_NEG), in_paragraph(CASE_IP),
+    LEAN + '\n## Case Deliberation\n',
+    LEAN + '\n## Case Deliberation\nQUESTION "Is there a cause for the presenting symptom?"\n',
+    LEAN + '\n## Case Deliberation\nDIFFERENTIAL [focal mass] TIER triage "a discrete lesion" VISIBLE yes\n',
+    LEAN + '\n## Case Deliberation\nRECOMMEND MDT "Discussion at the MDT is suggested." WHEN [findings: a focal mass is reported]\n',
+])
+def test_case_units_outside_a_master_sheet_are_errors(sheet, mode):
+    r = g.parse_sheet(sheet, mode=mode)
+    assert r.errors and {e.reason for e in r.errors} == {g.CASE_IN_TEMPLATE}, r.errors
+    assert not r.structure.usable
+    assert not [n for n in r.structure.negatives if n.origin == "case"] and not r.structure.differentials
+
+
+def _master(old: str, new: str) -> str:
+    assert old in MASTER
+    return MASTER.replace(old, new)
+
+
+Q = 'QUESTION "Is there a cause for the presenting symptom?"\n'
+D0 = 'DIFFERENTIAL [focal mass] TIER triage "a discrete lesion of the primary organ" VISIBLE yes\n'
+REC = ('RECOMMEND IMAGING "Further characterisation with a dedicated study is suggested." '
+       'WHEN [findings: an indeterminate lesion of the primary organ is reported]\n')
+
+
+@pytest.mark.parametrize("sheet,reason", [
+    (_master(Q, ""), g.QUESTION_COUNT),
+    (MASTER.replace(CASE_BLOCK, "").replace(CASE_NEG + "\n", ""), g.QUESTION_COUNT),
+    (_master(Q, Q + 'QUESTION "A second question about the organ?"\n'), g.QUESTION_COUNT),
+    (_master("TARGETS [inflammatory process]", "TARGETS [vascular cause]"), g.UNKNOWN_TARGET),
+    (_master(D0, D0 + D0.replace("triage", "aetiology")), g.DUPLICATE_DIFFERENTIAL),
+    (_master(D0, D0.replace("TIER triage", "TIER urgent")), g.MALFORMED_UNIT),
+    (_master(D0, D0.replace("VISIBLE yes", "VISIBLE maybe")), g.MALFORMED_UNIT),
+    (_master(D0, D0.replace(" VISIBLE yes", "")), g.MALFORMED_UNIT),
+    (_master(REC, REC.replace("IMAGING", "SURGERY")), g.MALFORMED_UNIT),
+    (_master(REC, REC.replace("[findings:", "[history:")), g.MALFORMED_UNIT),
+    (_master(REC, REC.split(" WHEN")[0] + "\n"), g.MALFORMED_UNIT),
+    (_master(REC, REC.replace("[findings: an indeterminate lesion of the primary organ is reported]",
+                              "[findings: abnormal]")), g.NO_SUBJECT),
+    (_master(Q, Q.replace('"Is', '"Is') + 'NEGATIVE "No mass."\n'), g.MALFORMED_UNIT),  # unit in the block
+    (_master(Q, Q + "No incidental finding of note.\n"), g.PROSE_NEGATIVE),  # block prose is checked
+    (_master(CASE_BLOCK, CASE_BLOCK + "\n## Case Deliberation\n"), g.DUPLICATE_CASE_BLOCK),
+    (in_paragraph(Q.strip(), MASTER), g.MALFORMED_UNIT),  # QUESTION outside the block
+    (in_paragraph('NEGATIVE "No abscess." | origin: case', MASTER), g.MALFORMED_UNIT),  # no TARGETS
+    (in_paragraph('NEGATIVE "No abscess." TARGETS [focal mass]', MASTER), g.MALFORMED_UNIT),  # TARGETS, no origin
+    (in_paragraph('NEGATIVE "No abscess." WHEN [findings: a focal mass is reported] TARGETS [focal mass] | origin: case',
+                  MASTER), g.MALFORMED_UNIT),
+    (in_paragraph('NORMAL [organ] "The organ is normal." | origin: case', MASTER), g.MALFORMED_UNIT),
+    (in_paragraph('NEGATIVE "No abscess." TARGETS [focal mass] | origin: phase1', MASTER), g.MALFORMED_UNIT),
+    (MASTER.replace("## Report-wide\n", "## Report-wide\n" + CASE_NEG + "\n"), g.MALFORMED_UNIT),  # outside a paragraph
+])
+def test_case_unit_lint(sheet, reason):
+    r = g.parse_sheet(sheet, mode="master")
+    assert reason in [e.reason for e in r.errors], r.errors
+    assert not r.structure.usable
+
+
+def test_targets_resolve_case_insensitively_against_a_block_after_the_paragraphs():
+    r = g.parse_sheet(_master("TARGETS [inflammatory process]", "TARGETS [FOCAL  MASS]"), mode="master")
+    assert r.errors == [] and r.structure.usable
+    assert [n.targets for n in r.structure.negatives if n.origin == "case"] == ["focal mass"]
+
+
+def test_unknown_target_points_at_the_negative_line():
+    sheet = _master("TARGETS [inflammatory process]", "TARGETS [vascular cause]")
+    (e,) = g.parse_sheet(sheet, mode="master").errors
+    assert (e.reason, e.detail) == (g.UNKNOWN_TARGET, "vascular cause")
+    assert e.text == CASE_NEG.replace("inflammatory process", "vascular cause")
+
+
+def test_missing_question_points_at_the_case_block_or_line_zero():
+    (e,) = g.parse_sheet(_master(Q, ""), mode="master").errors
+    assert (e.reason, e.text) == (g.QUESTION_COUNT, "## Case Deliberation")
+    (e,) = g.parse_sheet(LEAN, mode="master").errors
+    assert (e.reason, e.line, e.text) == (g.QUESTION_COUNT, 0, "")
+
+
+def test_case_deliberation_is_not_a_free_prose_section():
+    assert g.CASE_BLOCK not in g.FREE_PROSE_SECTIONS
+    r = g.parse_sheet(_master(Q, Q + "Weigh the differentials when the history is vague.\n"), mode="master")
+    assert r.errors == [] and r.structure.usable
+    assert ("Weigh the differentials when the history is vague.", g.PROSE_CONDITIONAL) in [
+        (w.text, w.reason) for w in r.warnings]
+
+
+def test_master_mode_is_deterministic():
+    a, b = g.parse_sheet(MASTER, mode="master"), g.parse_sheet(MASTER, mode="master")
+    assert a.structure.model_dump(exclude={"created_at"}) == b.structure.model_dump(exclude={"created_at"})
+    stored = tss.SheetStructure.model_validate(a.structure.model_dump(mode="json"))
+    assert stored.differentials == a.structure.differentials and stored.negatives == a.structure.negatives
+
+
+def test_case_fields_stay_out_of_the_extractor_schema():
+    schema = tss.StructureDraft.model_json_schema()["$defs"]
+    assert "origin" not in schema["Negative"]["properties"] and "targets" not in schema["Negative"]["properties"]
+    assert "covers" not in schema["Paragraph"]["properties"]
+    assert "origin" not in schema["IfPresent"]["properties"]

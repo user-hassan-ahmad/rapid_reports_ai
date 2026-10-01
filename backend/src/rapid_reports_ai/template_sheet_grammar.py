@@ -8,6 +8,17 @@ structures are the only ones generation trusts (template_sheet_structure.fresh);
 synchronously on save. A sheet not in grammar form (no "## Report Structure" line) stays on the raw
 path until converted; the LLM extractor is lab-only (RR_SHEET_EXTRACTOR) and never trusted.
 
+Modes. parse_sheet(sheet, mode=...):
+- "template" (default; the save path): a stored template sheet in the LEAN grammar (spec
+  2026-10-01-template-two-phase "Lean template sheet"). Findings- or history-conditioned RULEs (except
+  LIST_MISSING, whose WHEN is the fixed findings statement), NEGATIVE … WHEN [findings|history: …],
+  IF_PRESENT, context RULEs with an effect other than REPLACE/SUPPRESS/USE/SUPPRESS_SECTION/
+  SUPPRESS_HEADERS, and every case unit are lint errors. Every findings-role paragraph needs one COVERS.
+- "master": a template sheet plus the Phase-1 case units (the master sheet). Lean rules as "template";
+  case units allowed; exactly one QUESTION.
+- "v1": grammar v1 as first specified (findings rules, IF_PRESENT; no case units; COVERS optional).
+  Lab and tests only: kept so the brief's v1 rule handling stays testable. Never used on save.
+
 Unit lines (optional indentation and an optional "- " bullet before the keyword):
 
     SECTION <NAME> | header: none | role: <role>              (only in the "## Report Structure" block)
@@ -18,6 +29,17 @@ Unit lines (optional indentation and an optional "- " bullet before the keyword)
     TERM PREFER "<term>" | TERM AVOID "<term>"
     IF_PRESENT [<finding>] "<negative>" (core|contextual)
     RULE WHEN [<source>: <statement>] <EFFECT>
+    COVERS ["<structure>" | "<structure>" …]                  (one per paragraph)
+
+Case units (master mode only):
+
+    ## Case Deliberation                                        (one block, outside any paragraph)
+    QUESTION "<clinical question>"
+    DIFFERENTIAL [<name>] TIER triage|aetiology "<imaging discriminator>" VISIBLE yes|no|silent
+    RECOMMEND <IMAGING|REFERRAL|MDT|TISSUE|CORRELATION> "<text>" WHEN [findings: <statement>]
+    (inside paragraphs)
+    NEGATIVE "<text>" TARGETS [<differential>] | origin: case   (TARGETS names a DIFFERENTIAL)
+    IF_PRESENT [<finding>] "<negative>" (core|contextual) | origin: case
 
 Sections of a unit. Under "## Paragraph: <name> (<SECTION>)" a unit belongs to that paragraph and
 section. Outside a paragraph a unit may name its section with a trailing "| section: <NAME>" (outside
@@ -30,23 +52,31 @@ LIST_MISSING's WHEN statement is free text like any other (the canonical one is
 Fail-closed sweep. Every line that is not a unit line is checked:
 - anywhere: a decorated or miscased unit (bullet "*", "1.", "–", ">", backticks, bold, zero-width or
   NBSP prefix, lowercase keyword) and a paragraph heading at the wrong level or malformed;
-- in every section except the free-prose ones (FREE_PROSE_SECTIONS): a conditional phrase outside quotes
-  (it should be a RULE / NEGATIVE … WHEN) and a negative statement written as prose (it should be a
-  NEGATIVE unit — the brief can only reconcile units).
+- in every section except the free-prose ones (FREE_PROSE_SECTIONS): a negative statement written as
+  prose (it should be a NEGATIVE unit — the brief can only reconcile units), an error; and a conditional
+  phrase outside quotes, a WARNING only (stored on the structure, never blocking: voice guidance
+  legitimately says "when present, give the maximal diameter").
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Literal, Optional, Tuple
 
 from . import template_sheet_structure as tss
 from .report_review import is_negative
 
 # The keywords that open a unit line. Anything else starting with an uppercase word followed by
 # `[`, `"` or WHEN is an unknown keyword-like line.
-KEYWORDS = ("SECTION", "NORMAL", "NEGATIVE", "FIXED", "TERM", "IF_PRESENT", "RULE")
+KEYWORDS = ("SECTION", "NORMAL", "NEGATIVE", "FIXED", "TERM", "IF_PRESENT", "RULE", "COVERS",
+            "QUESTION", "DIFFERENTIAL", "RECOMMEND")
+CASE_BLOCK_KEYWORDS = ("QUESTION", "DIFFERENTIAL", "RECOMMEND")  # only inside "## Case Deliberation"
+CASE_BLOCK = "case deliberation"
+Mode = Literal["template", "master", "v1"]
+MODES = ("template", "master", "v1")
+# Context rules a lean template keeps: what was performed, protocol, prior imaging availability.
+CONTEXT_EFFECTS = ("replace", "suppress", "use", "suppress_section", "suppress_headers")
 ROLES = ("findings", "impression", "history", "technique", "comparison", "other")
 SOURCES = ("findings", "history", "context")
 
@@ -59,7 +89,7 @@ NO_SUBJECT = "statement without subject"
 UNKNOWN_PARAGRAPH_SECTION = "unknown section in a paragraph heading"
 DUPLICATE_SECTION = "duplicate SECTION"
 NO_SECTION = "unit outside any paragraph without section"
-PROSE_CONDITIONAL = "conditional phrase in prose"
+PROSE_CONDITIONAL = "conditional phrase in prose"  # a WARNING (lint_warnings), never an error
 OLD_SYNTAX = "old IF [ syntax"
 MALFORMED_UNIT = "malformed unit"
 UNKNOWN_SECTION = "unknown section"
@@ -68,6 +98,15 @@ MISLEVELLED_PARAGRAPH = "mis-levelled paragraph heading"
 PROSE_NEGATIVE = "negative outside a NEGATIVE unit"
 SECTION_OUTSIDE_STRUCTURE = "SECTION outside the Report Structure block"
 DUPLICATE_STRUCTURE = "duplicate Report Structure block"
+# lean template sheet + case units (spec 2026-10-01-template-two-phase)
+NOT_LEAN = "unit not allowed in a template sheet"
+CASE_IN_TEMPLATE = "case unit outside a master sheet"
+MISSING_COVERS = "findings paragraph without COVERS"
+DUPLICATE_COVERS = "second COVERS in a paragraph"
+QUESTION_COUNT = "master sheet needs exactly one QUESTION"
+DUPLICATE_CASE_BLOCK = "duplicate Case Deliberation block"
+DUPLICATE_DIFFERENTIAL = "duplicate DIFFERENTIAL"
+UNKNOWN_TARGET = "TARGETS names no DIFFERENTIAL"
 
 
 @dataclass(frozen=True)
@@ -82,6 +121,7 @@ class LintError:
 class GrammarResult:
     structure: tss.SheetStructure
     errors: List[LintError] = field(default_factory=list)
+    warnings: List[LintError] = field(default_factory=list)  # stored, never blocking usable
 
 
 # ── line shapes ──────────────────────────────────────────────────────────────
@@ -98,16 +138,22 @@ _NAME = r"[A-Z0-9][A-Z0-9 /&-]*?"
 _Q = r'"([^"]+)"'
 _COND = r"WHEN\s*\[([^\]]*)\]"
 _SECTION_ATTR = re.compile(r"\s*\|\s*section:\s*([^\"]*?)\s*$")  # after the last quote only
+_ORIGIN_ATTR = re.compile(r"\s*\|\s*origin:\s*([^\"|]*?)\s*$")  # after the last quote; before any section attr
 
 _SECTION = re.compile(rf"SECTION\s+(?P<name>{_NAME})\s*\|\s*header:\s*(?:none|\"(?P<header>[^\"]+)\")"
                       r"\s*\|\s*role:\s*(?P<role>\w+)\s*")
 _UNITS = {
     "NORMAL": re.compile(rf"NORMAL\s*\[(?P<structure>[^\]]+)\]\s*{_Q}\s*"),
-    "NEGATIVE": re.compile(rf"NEGATIVE\s*{_Q}(?:\s+{_COND})?\s*"),
+    "NEGATIVE": re.compile(rf"NEGATIVE\s*{_Q}(?:\s+{_COND})?(?:\s+TARGETS\s*\[(?P<targets>[^\]]+)\])?\s*"),
     "FIXED": re.compile(rf"FIXED\s*{_Q}\s*"),
     "TERM": re.compile(rf"TERM\s+(PREFER|AVOID)\s*{_Q}\s*"),
     "IF_PRESENT": re.compile(rf"IF_PRESENT\s*\[(?P<finding>[^\]]+)\]\s*{_Q}\s*\((core|contextual)\)\s*"),
     "RULE": re.compile(rf"RULE\s+{_COND}\s*(?P<effect>.*?)\s*"),
+    "COVERS": re.compile(r"COVERS\s*\[(?P<items>[^\]]*)\]\s*"),
+    "QUESTION": re.compile(rf"QUESTION\s*{_Q}\s*"),
+    "DIFFERENTIAL": re.compile(rf"DIFFERENTIAL\s*\[(?P<name>[^\]]+)\]\s*TIER\s+(?P<tier>triage|aetiology)\s*{_Q}"
+                               r"\s*VISIBLE\s+(?P<visible>yes|no|silent)\s*"),
+    "RECOMMEND": re.compile(rf"RECOMMEND\s+(?P<tag>IMAGING|REFERRAL|MDT|TISSUE|CORRELATION)\s*{_Q}\s*{_COND}\s*"),
 }
 _ITEMS = re.compile(r'\s*"[^"]+"(?:\s*\|\s*"[^"]+")*\s*')
 _EFFECTS: List[Tuple[str, re.Pattern]] = [
@@ -176,8 +222,8 @@ def _undecorate(line: str) -> str:
     return _DECORATION.sub("", s).strip()
 
 
-def _sweep(i: int, body: str, ctx: "_Ctx", err) -> None:
-    """Fail closed on a line that is not a unit line (at most one error per line)."""
+def _sweep(i: int, body: str, ctx: "_Ctx", err, warn) -> None:
+    """Fail closed on a line that is not a unit line (at most one error and one warning per line)."""
     km = _KEYWORD_LIKE.match(body)
     if km:
         err(i, UNKNOWN_KEYWORD, km.group(1))
@@ -196,8 +242,7 @@ def _sweep(i: int, body: str, ctx: "_Ctx", err) -> None:
         return
     cm = _PROSE_COND.search(_PROSE_COND_EXEMPT.sub(" ", _outside_quotes(plain)))
     if cm:
-        err(i, PROSE_CONDITIONAL, cm.group(0).lower())
-        return
+        warn(i, PROSE_CONDITIONAL, cm.group(0).lower())
     stated = plain.replace("**", "").strip()
     stated = stated.replace('"', "") if stated.startswith('"') else _outside_quotes(stated).strip()
     if re.match(r"^(?:No|There\s+is\s+no|There\s+are\s+no|Without)\b", stated) or is_negative(stated):
@@ -206,7 +251,7 @@ def _sweep(i: int, body: str, ctx: "_Ctx", err) -> None:
 
 @dataclass
 class _Ctx:
-    kind: str = "none"  # none | structure | paragraph | report_wide | free | other
+    kind: str = "none"  # none | structure | paragraph | report_wide | case | free | other
     paragraph: str = ""  # paragraph id
     section: str = ""  # paragraph's section (canonical name, or as written when unknown)
 
@@ -219,14 +264,21 @@ def is_grammar_sheet(sheet: str) -> bool:
     return bool(_GRAMMAR_MARK.search(sheet or ""))
 
 
-def parse_sheet(sheet: str) -> GrammarResult:
-    """Parse a grammar sheet. Deterministic: the same sheet gives the same structure and errors
-    (created_at aside)."""
+def parse_sheet(sheet: str, mode: Mode = "template") -> GrammarResult:
+    """Parse a grammar sheet. Deterministic: the same sheet gives the same structure, errors and warnings
+    (created_at aside). mode: "template" (a stored template sheet, lean grammar), "master" (template
+    sheet + Phase-1 case units) or "v1" (lab/tests only; see the module docstring)."""
+    if mode not in MODES:
+        raise ValueError(f"unknown grammar mode {mode!r}")
     lines = (sheet or "").splitlines()
     errors: List[LintError] = []
+    warnings: List[LintError] = []
 
     def err(i: int, reason: str, detail: str = "") -> None:
-        errors.append(LintError(line=i, text=lines[i - 1], reason=reason, detail=detail))
+        errors.append(LintError(line=i, text=lines[i - 1] if i else "", reason=reason, detail=detail))
+
+    def warn(i: int, reason: str, detail: str = "") -> None:
+        warnings.append(LintError(line=i, text=lines[i - 1], reason=reason, detail=detail))
 
     # Pass 1: the Report Structure block, so paragraph headings and units may name any section.
     sections: List[tss.StructSection] = []
@@ -270,9 +322,11 @@ def parse_sheet(sheet: str) -> GrammarResult:
             sections.append(tss.StructSection(name=name, role=m.group("role"), header=m.group("header"),
                                               order=len(sections)))
     default_section = next((s.name for s in sections if s.role == "findings"), "")
+    role_of = {s.name: s.role for s in sections}
 
     # Pass 2: headings, units, prose.
     paragraphs: List[tss.Paragraph] = []
+    paragraph_lines: Dict[str, int] = {}  # paragraph id -> heading line
     rules: List[tss.Rule] = []
     negatives: List[tss.Negative] = []
     normals: List[tss.Normal] = []
@@ -280,6 +334,11 @@ def parse_sheet(sheet: str) -> GrammarResult:
     preferred: List[str] = []
     suppressed: List[str] = []
     if_present: List[tss.IfPresent] = []
+    questions: List[str] = []
+    differentials: List[tss.Differential] = []
+    recommendations: List[tss.Recommendation] = []
+    case_targets: List[Tuple[int, int]] = []  # (sheet line, index into negatives) of case negatives
+    case_block_line = 0
     cov = {"if_lines": 0, "if_covered": 0, "negative_lines": 0, "negative_covered": 0}
     uncovered: List[str] = []
     ctx = _Ctx()
@@ -309,11 +368,19 @@ def parse_sheet(sheet: str) -> GrammarResult:
                     err(i, UNKNOWN_PARAGRAPH_SECTION, sec or "(none)")
                 pid = f"p{len(paragraphs)}"
                 paragraphs.append(tss.Paragraph(id=pid, section=sec, name=p.group("name")))
+                paragraph_lines[pid] = i
                 ctx = _Ctx("paragraph", pid, sec)
             elif title.lower() == "report structure":
                 ctx = _Ctx("structure")
             elif raw.startswith("## ") and title.lower() == "report-wide":
                 ctx = _Ctx("report_wide")
+            elif raw.startswith("## ") and title.lower() == CASE_BLOCK:
+                if mode != "master":
+                    err(i, CASE_IN_TEMPLATE, "## Case Deliberation")
+                elif case_block_line:
+                    err(i, DUPLICATE_CASE_BLOCK)
+                case_block_line = case_block_line or i
+                ctx = _Ctx("case")
             else:
                 if _PARAGRAPH_LIKE.match(_undecorate(raw)):
                     err(i, MISLEVELLED_PARAGRAPH)
@@ -326,7 +393,7 @@ def parse_sheet(sheet: str) -> GrammarResult:
         first = _FIRST_WORD.match(body)
         keyword = first.group(1) if first and first.group(1) in KEYWORDS else ""
         if not keyword:
-            _sweep(i, body, ctx, err)
+            _sweep(i, body, ctx, err, warn)
             continue
 
         # A unit line.
@@ -334,7 +401,9 @@ def parse_sheet(sheet: str) -> GrammarResult:
         cov["if_lines"] += conditional
         cov["negative_lines"] += keyword == "NEGATIVE"
         n_err = len(errors)
-        unit = _parse_unit(i, raw, body, keyword, ctx, by_name, default_section, err, condition)
+        unit = _parse_unit(i, raw, body, keyword, ctx, by_name, default_section, err, condition, mode)
+        if unit is not None and len(errors) == n_err:
+            _lean_check(i, unit, mode, err)
         if unit is None or len(errors) > n_err:
             uncovered.append(raw)
             continue
@@ -344,6 +413,8 @@ def parse_sheet(sheet: str) -> GrammarResult:
         if kind == "rule":
             rules.append(tss.Rule(id=f"r{len(rules)}", **data))
         elif kind == "negative":
+            if data["origin"] == "case":
+                case_targets.append((i, len(negatives)))
             negatives.append(tss.Negative(id=f"n{len(negatives)}", **data))
         elif kind == "normal":
             normals.append(tss.Normal(id=f"m{len(normals)}", **data))
@@ -355,6 +426,41 @@ def parse_sheet(sheet: str) -> GrammarResult:
                 bucket.append(data["text"])
         elif kind == "if_present":
             if_present.append(tss.IfPresent(**data))
+        elif kind == "covers":
+            para = paragraphs[int(ctx.paragraph[1:])]
+            if para.covers:
+                err(i, DUPLICATE_COVERS, para.name)
+                uncovered.append(raw)
+            else:
+                para.covers = data["items"]
+        elif kind == "question":
+            questions.append(data["text"])
+            if len(questions) > 1:
+                err(i, QUESTION_COUNT, f"{len(questions)} QUESTION lines")
+        elif kind == "differential":
+            if any(_norm_name(d.name) == _norm_name(data["name"]) for d in differentials):
+                err(i, DUPLICATE_DIFFERENTIAL, data["name"])
+                uncovered.append(raw)
+            else:
+                differentials.append(tss.Differential(id=f"d{len(differentials)}", **data))
+        elif kind == "recommendation":
+            recommendations.append(tss.Recommendation(id=f"rec{len(recommendations)}", **data))
+
+    # Whole-sheet checks.
+    if mode == "master" and not questions:
+        err(case_block_line, QUESTION_COUNT, "no QUESTION")
+    known = {_norm_name(d.name): d.name for d in differentials}
+    for line, idx in case_targets:
+        name = known.get(_norm_name(negatives[idx].targets))
+        if name is None:
+            err(line, UNKNOWN_TARGET, negatives[idx].targets)
+        else:
+            negatives[idx].targets = name  # canonical: as the DIFFERENTIAL line writes it
+    if mode != "v1":
+        for para in paragraphs:
+            if role_of.get(para.section) == "findings" and not para.covers:
+                err(paragraph_lines[para.id], MISSING_COVERS, para.name)
+    errors.sort(key=lambda e: e.line)  # stable: same-line errors keep their order
 
     roles = {s.role for s in sections}
     usable = not errors and structure_blocks == 1 and "findings" in roles and "impression" in roles
@@ -363,19 +469,87 @@ def parse_sheet(sheet: str) -> GrammarResult:
         fixed_blocks=fixed, terminology=tss.Terminology(preferred=preferred, suppressed=suppressed),
         if_present=if_present, sheet_hash=tss.sheet_hash(sheet or ""), model="grammar", source="grammar",
         created_at=datetime.now(timezone.utc).isoformat(), usable=usable,
-        coverage=tss.Coverage(**cov, uncovered=uncovered))
+        coverage=tss.Coverage(**cov, uncovered=uncovered),
+        question=questions[0] if len(questions) == 1 else "", differentials=differentials,
+        recommendations=recommendations)
     if errors:
         structure.lint_errors = [tss.LintIssue(line=e.line, text=e.text, reason=e.reason, detail=e.detail)
                                  for e in errors]
-    return GrammarResult(structure=structure, errors=errors)
+    structure.lint_warnings = [tss.LintIssue(line=w.line, text=w.text, reason=w.reason, detail=w.detail)
+                               for w in warnings]
+    return GrammarResult(structure=structure, errors=errors, warnings=warnings)
 
 
-def _parse_unit(i, raw, body, keyword, ctx: _Ctx, by_name, default_section, err, condition):
+def _lean_check(i, unit, mode: str, err) -> None:
+    """Template and master sheets carry the lean template grammar: study/context rules only, unconditional
+    or context-conditioned negatives, no template IF_PRESENT (spec 2026-10-01-template-two-phase)."""
+    if mode == "v1":
+        return
+    kind, data = unit
+    if kind == "rule":
+        src, effect = data["condition_source"], data["effect"]
+        if effect == "list_missing":
+            if src != "findings":
+                err(i, NOT_LEAN, f"LIST_MISSING conditioned on {src}")
+        elif src != "context":
+            err(i, NOT_LEAN, f"{src}-conditioned RULE (case-dependent: Phase 1 or voice prose)")
+        elif effect not in CONTEXT_EFFECTS:
+            err(i, NOT_LEAN, f"context RULE with {effect} (context rules: {', '.join(CONTEXT_EFFECTS)})")
+    elif kind == "negative" and data["origin"] == "template" and data["condition"] \
+            and data["condition_source"] != "context":
+        err(i, NOT_LEAN, f"NEGATIVE … WHEN [{data['condition_source']}: …] (case-dependent: Phase 1)")
+    elif kind == "if_present" and data["origin"] == "template":
+        err(i, NOT_LEAN, "IF_PRESENT without | origin: case (case-dependent: Phase 1)")
+
+
+def _parse_unit(i, raw, body, keyword, ctx: _Ctx, by_name, default_section, err, condition, mode="template"):
     """One unit line -> (kind, fields) or None (an error was recorded)."""
     if raw.count('"') % 2 or _CURLY.search(raw) or '""' in raw:
         err(i, MALFORMED_QUOTES)
         return None
-    # Section and paragraph.
+    # Case Deliberation block: its three keywords, nothing else; they appear nowhere else.
+    if keyword in CASE_BLOCK_KEYWORDS:
+        if mode != "master":
+            err(i, CASE_IN_TEMPLATE, keyword)
+            return None
+        if ctx.kind != "case":
+            err(i, MALFORMED_UNIT, f"{keyword} outside the ## Case Deliberation block")
+            return None
+        m = _UNITS[keyword].fullmatch(body)
+        if not m:
+            err(i, MALFORMED_UNIT, f"not a {keyword} unit")
+            return None
+        if keyword == "QUESTION":
+            return "question", {"text": m.group(1)}
+        if keyword == "DIFFERENTIAL":
+            return "differential", {"name": m.group("name").strip(), "tier": m.group("tier"),
+                                    "discriminator": m.group(3), "visible": m.group("visible")}
+        cond = condition(i, m.group(3))
+        if cond is None:
+            return None
+        if cond[0] != "findings":
+            err(i, MALFORMED_UNIT, "RECOMMEND is conditioned on findings")
+            return None
+        return "recommendation", {"tag": m.group("tag"), "text": m.group(2), "condition": cond[1],
+                                  "condition_source": cond[0]}
+    if ctx.kind == "case":
+        err(i, MALFORMED_UNIT, f"{keyword} in the Case Deliberation block (QUESTION, DIFFERENTIAL, RECOMMEND only)")
+        return None
+    # Origin (case units inside paragraphs), then section, both trailing attributes outside quotes.
+    origin = "template"
+    oa = _ORIGIN_ATTR.search(body)
+    if oa:
+        body = body[:oa.start()]
+        if oa.group(1).strip().lower() != "case" or keyword not in ("NEGATIVE", "IF_PRESENT"):
+            err(i, MALFORMED_UNIT, "| origin: case is for NEGATIVE … TARGETS and IF_PRESENT only")
+            return None
+        if mode != "master":
+            err(i, CASE_IN_TEMPLATE, "| origin: case")
+            return None
+        if ctx.kind != "paragraph":
+            err(i, MALFORMED_UNIT, "a case unit belongs inside a paragraph")
+            return None
+        origin = "case"
     sa = _SECTION_ATTR.search(body)
     named = _norm_name(sa.group(1)) if sa else ""
     if sa:
@@ -390,6 +564,9 @@ def _parse_unit(i, raw, body, keyword, ctx: _Ctx, by_name, default_section, err,
         section, paragraph = ctx.section, ctx.paragraph
     else:
         section, paragraph = named or (default_section if ctx.kind == "report_wide" else ""), ""
+    if keyword == "COVERS" and ctx.kind != "paragraph":
+        err(i, MALFORMED_UNIT, "COVERS outside a paragraph")
+        return None
     if keyword != "TERM" and not section:
         err(i, NO_SECTION)
         return None
@@ -399,23 +576,36 @@ def _parse_unit(i, raw, body, keyword, ctx: _Ctx, by_name, default_section, err,
         err(i, MALFORMED_UNIT, f"not a {keyword} unit")
         return None
     where = {"section": section, "paragraph": paragraph}
+    if keyword == "COVERS":
+        if not _ITEMS.fullmatch(m.group("items")):
+            err(i, MALFORMED_UNIT, 'COVERS ["<structure>" | "<structure>" …]')
+            return None
+        return "covers", {"items": re.findall(r'"([^"]+)"', m.group("items"))}
     if keyword == "NORMAL":
         return "normal", {**where, "structure": m.group("structure").strip(), "text": m.group(2),
                           "source_line": raw}
     if keyword == "NEGATIVE":
+        targets = (m.group("targets") or "").strip()
+        if origin == "case" and (not targets or m.group(2) is not None):
+            err(i, MALFORMED_UNIT, 'a case negative is NEGATIVE "<text>" TARGETS [<differential>] | origin: case')
+            return None
+        if origin == "template" and m.group("targets") is not None:
+            err(i, MALFORMED_UNIT, "TARGETS is for a case negative (| origin: case)")
+            return None
         cond = None
         if m.group(2) is not None:
             cond = condition(i, m.group(2))
             if cond is None:
                 return None
         return "negative", {**where, "text": m.group(1), "condition": cond[1] if cond else None,
-                            "condition_source": cond[0] if cond else "findings", "source_lines": [raw]}
+                            "condition_source": cond[0] if cond else "findings", "source_lines": [raw],
+                            "origin": origin, "targets": targets}
     if keyword == "FIXED":
         return "fixed", {"section": section, "text": m.group(1)}
     if keyword == "TERM":
         return "term", {"kind": m.group(1), "text": m.group(2)}
     if keyword == "IF_PRESENT":
-        return "if_present", {**where, "finding": m.group("finding").strip(),
+        return "if_present", {**where, "finding": m.group("finding").strip(), "origin": origin,
                               "negatives": [tss.IfPresentNeg(text=m.group(2), tag=m.group(3))]}
     # RULE
     cond = condition(i, m.group(1))
@@ -483,4 +673,5 @@ def render_rule(rule: tss.Rule) -> str:
 
 def render_negative(neg: tss.Negative) -> str:
     cond = f" {render_condition(neg.condition_source, neg.condition)}" if neg.condition else ""
-    return f'NEGATIVE "{neg.text}"{cond}'
+    case = f" TARGETS [{neg.targets}] | origin: case" if neg.origin == "case" else ""
+    return f'NEGATIVE "{neg.text}"{cond}{case}'

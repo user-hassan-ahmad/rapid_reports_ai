@@ -1656,8 +1656,8 @@ def _queue_structure(template_id: str, config: dict) -> None:
             if not tss.current_grammar(config):
                 result = tsg.parse_sheet(sheet)
                 ok = tss.store_parsed(template_id, result.structure)
-                logger.info("sheet grammar %s: stored=%s usable=%s lint_errors=%d", template_id, ok,
-                            result.structure.usable, len(result.errors))
+                logger.info("sheet grammar %s: stored=%s usable=%s lint_errors=%d lint_warnings=%d", template_id,
+                            ok, result.structure.usable, len(result.errors), len(result.warnings))
         elif tss.extractor_enabled() and tss.needs_restructure(config):
             tss.schedule_structure(template_id, sheet)
     except Exception as e:

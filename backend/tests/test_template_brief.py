@@ -62,7 +62,7 @@ Promoted to Impression: the main finding and its complications. Incidental findi
 Numbered list, most important first.
 """
 
-STRUCT = g.parse_sheet(SHEET).structure
+STRUCT = g.parse_sheet(SHEET, mode="v1").structure
 # rule positions (Jev keys r<i>)
 R_REPLACE, R_APPEND, R_USE, R_INSERT, R_ORDER, R_SUPNEG, R_LIST, R_SUPPRESS, R_SECTION, R_HEADERS = range(10)
 CTX_RULES = {f"r{R_APPEND}", f"r{R_USE}", f"r{R_SECTION}", f"r{R_HEADERS}"}
@@ -244,7 +244,7 @@ async def test_conditional_negative_unmet_is_removed_met_goes_to_the_classifier(
 async def test_conditional_negative_with_a_history_source_is_asked_in_the_history_state(monkeypatch):
     sheet = SHEET.replace("[findings: an inflammatory process of the primary organ is reported]",
                           "[history: an inflammatory process of the primary organ is suspected]")
-    s = g.parse_sheet(sheet).structure
+    s = g.parse_sheet(sheet, mode="v1").structure
     calls = stub(monkeypatch, jev_c={"c1": 0.9})
     b = await tb.compile_template_brief(sheet, s, "CT AP", "Lesion.", "?inflammation")
     assert '- KEEP: "No surrounding collection."' in b.text
@@ -404,7 +404,7 @@ async def test_suppress_negatives_makes_the_paragraphs_normals_not_assertable(mo
 async def test_suppress_negatives_covers_stated_normals(monkeypatch):
     sheet = SHEET.replace('NEGATIVE "No lymphadenopathy or collection."',
                           'NEGATIVE "No lymphadenopathy or collection."\nNEGATIVE "The adjacent fat is clear."')
-    s = g.parse_sheet(sheet).structure
+    s = g.parse_sheet(sheet, mode="v1").structure
     negs = [n.model_copy(update={"kind": "stated_normal"}) if n.text == "The adjacent fat is clear." else n
             for n in s.negatives]
     s = s.model_copy(update={"negatives": negs})
@@ -417,7 +417,7 @@ async def test_suppress_negatives_covers_stated_normals(monkeypatch):
 async def test_omitted_section_drops_its_paragraph_shells(monkeypatch):
     sheet = SHEET.replace('NEGATIVE "No measurement artefact."',
                           'Values in a single line.\nNEGATIVE "No measurement artefact."')
-    s = g.parse_sheet(sheet).structure
+    s = g.parse_sheet(sheet, mode="v1").structure
     assert s.usable
     stub(monkeypatch, jev_c={f"r{R_SECTION}": 0.9})
     b = await tb.compile_template_brief(sheet, s, "CT AP", "Lesion.", "")
@@ -445,7 +445,7 @@ TAIL = "\n## Paragraph: Summary (IMPRESSION)\nNumbered.\n"
 
 async def brief(monkeypatch, body: str, findings="A finding.", history="", split=None, **kw):
     sheet = HEAD + body + TAIL
-    s = g.parse_sheet(sheet).structure
+    s = g.parse_sheet(sheet, mode="v1").structure
     assert s.usable, s.lint_errors
     calls = stub(monkeypatch, **kw)
     if split:
@@ -641,7 +641,7 @@ async def test_q2_partial_or_non_numeric_jev_answer_fails(monkeypatch, answer):
     sheet = HEAD + Q + TAIL
     monkeypatch.setattr(tb.rc, "_jev", partial)
     with pytest.raises(ValueError):
-        await tb.compile_template_brief(sheet, g.parse_sheet(sheet).structure, "CT", "x", "")
+        await tb.compile_template_brief(sheet, g.parse_sheet(sheet, mode="v1").structure, "CT", "x", "")
 
 
 async def test_unlocatable_unit_fails(monkeypatch):
@@ -675,3 +675,42 @@ async def test_s1_split_keeps_the_original_when_a_part_loses_its_negation_or_is_
     monkeypatch.setattr(rc, "_run_agent_with_model", agent)
     out = await rc._split_bundled(["No lymphadenopathy or collection", "No fluid, or gas", "No A or B"])
     assert out == [["No lymphadenopathy or collection"], ["No fluid, or gas"], ["No A", "No B"]]
+
+
+# ── lean template sheet (H1: template-mode parse, spec 2026-10-01-template-two-phase) ──
+
+LEAN = """# Lean CT Template
+
+## Report Structure
+SECTION CLINICAL HISTORY | header: "Clinical history" | role: history
+SECTION FINDINGS | header: "FINDINGS" | role: findings
+SECTION MEASUREMENTS | header: "Measurements" | role: other
+SECTION IMPRESSION | header: "Impression" | role: impression
+
+## Paragraph: Primary organ (FINDINGS)
+COVERS ["primary organ" | "adjacent fat"]
+When present, give the maximal diameter.
+NORMAL [primary organ] "The primary organ is normal in size and contour."
+NEGATIVE "No focal lesion."
+RULE WHEN [context: a follow-up study of a known lesion] USE "stable appearances of the {lesion}"
+
+## Paragraph: Measured values (MEASUREMENTS)
+RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["chamber volume" | "wall thickness"] AT TOP
+
+## Report-wide
+RULE WHEN [context: a limited protocol is stated in the request] SUPPRESS_SECTION MEASUREMENTS
+
+## Paragraph: Summary (IMPRESSION)
+Numbered list, most important first.
+"""
+
+
+async def test_brief_compiles_over_a_template_mode_structure(monkeypatch):
+    s = g.parse_sheet(LEAN).structure  # default mode: template
+    assert s.usable and s.lint_warnings, s.lint_errors
+    stub(monkeypatch, {"r1i0": 0.9}, jev_c={"r0": 0.9})
+    b = await tb.compile_template_brief(LEAN, s, "CT AP", "A 2 cm lesion. Chamber volume 120 ml.", "Follow-up.")
+    assert '- KEEP: "No focal lesion."' in b.text
+    assert '- USE: "stable appearances of the {lesion}"' in b.text
+    assert "- MISSING (list at top): wall thickness" in b.text
+    assert "When present, give the maximal diameter." in b.text  # voice prose passes through
