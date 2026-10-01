@@ -1191,14 +1191,16 @@ async def test_r5_case_units_are_checked_for_denial(monkeypatch):
     assert "No intraperitoneal fluid." not in {st for _, st in asked}
 
 
-async def test_r6_many_denial_questions_are_chunked_never_capped(monkeypatch, caplog):
+async def test_r6_many_denial_questions_are_chunked_never_capped(monkeypatch):
+    warned = []
+    monkeypatch.setattr(tb.logger, "warning", lambda msg, *a, **k: warned.append(msg % a))
     many = "\n".join(f'NEGATIVE "No abnormality of structure {i}."' for i in range(60)) + "\n" + \
         "\n".join(f'NORMAL [structure {i}] "Structure {i} is normal."' for i in range(40))
     sheet = MASTER.replace(ADJ, ADJ + "\n" + many)
     b, asked, sizes = await probe_x(monkeypatch, sheet, {"d0": 0.9, "d1": 0.9})
     assert len(asked) > tb.X_BUDGET_WARN and len(asked) == len({k for k, _ in asked})
     assert sizes and max(sizes) <= tb.X_CHUNK and sum(sizes) == len(asked) and len(sizes) >= 3
-    assert "denial questions" in caplog.text
+    assert any("denial questions" in w for w in warned)
 
 
 async def test_r6b_any_failed_denial_chunk_fails_closed(monkeypatch):
