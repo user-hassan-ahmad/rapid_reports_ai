@@ -320,3 +320,105 @@ def strip_fences(text: str) -> str:
     if all(re.match(r"L\d+\| ", ln) for ln in t.splitlines() if ln.strip()):
         t = "\n".join(re.sub(r"^L\d+\| ", "", ln) for ln in t.splitlines())
     return t
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Conversion of a stored (legacy-format) sheet into the lean grammar (plan G6, lab only)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Same model and settings as the lean analyser (scripts/template_sheet_convert.py passes ANALYSER_SETTINGS).
+TEMPLATE_SHEET_CONVERT_PROMPT = f"""You convert a radiology report Skill Sheet from an older free-form layout into the lean sheet grammar below. The old sheet was written for one radiologist and one scan type, and the radiologist has been reporting with it. Your job is a faithful translation, not a rewrite: the new sheet must make the report writer produce the same reports in the same voice, with the same sections, paragraphs, order, routine negatives and fixed text.
+
+## YOUR INPUTS
+
+1. OLD SHEET: the authority. Everything it says about structure, wording, negatives, fixed text, terminology, measurements, reference values, impression construction and conventions is carried over.
+2. REPORTS: up to five recent reports made with the old sheet (some edited by the radiologist). They are evidence of how the sheet's instructions came out in practice: the headings and paragraph breaks as printed, the order of sentences, and further wording for the voice exemplars. They never add a unit: every NORMAL, NEGATIVE, FIXED, TERM, LIST_MISSING and RULE comes from the old sheet. Where a report and the old sheet word the same unit differently, keep the old sheet's wording. A sentence that recurs in the reports but is not in the old sheet (a negative, a normal statement, fixed wording) is quoted as an [NEEDS CLARIFICATION] item under Open Questions, never written as a unit.
+3. COVERAGE LIST (when given): the structures stored with the template. Use it to complete COVERS lines, placing each structure in the paragraph that reports it.
+
+## WHAT TO CARRY OVER, AND WHERE IT GOES
+
+- Sections and their headers (as the old sheet specifies them, or as printed in the reports) become SECTION lines, in the same order. Keep a section the old sheet declares even if a report omits it.
+- Every paragraph, block or per-section entry of the old sheet becomes a "## Paragraph:" block, in the old sheet's order, keeping its name. Do not merge or split paragraphs; do not drop one.
+- A paragraph with its own visible heading (a sub-heading inside a section, as the old sheet or the reports show it) keeps that heading: the paragraph name is the heading without its trailing colon, and the paragraph's first prose line is an "Opening:" that quotes the heading line exactly as printed, including its colon and letter case, and says the paragraph starts with it. A paragraph without a visible heading says nothing about one.
+- COVERS names the structures a paragraph reports. A paragraph of a findings section that reports no structure of its own (procedure text, acquisition parameters, a score) lists the measured elements it states (the score, the parameters) and never repeats a structure another paragraph covers.
+- Mandatory fields, field ordering and listed structures become the paragraph's COVERS line (structures only) and its "Order:" prose, in the old order. An element present only sometimes is marked "(optional)" in the Order line.
+- Normal patterns become NORMAL lines, word for word. A normal pattern that is one sentence stays whole as one NORMAL, even when it carries a negative clause; but a sentence that opens with an absence word ("No ...", "There is no ...", "Nil ...") is a NEGATIVE wherever the old sheet lists it. A normal pattern of several sentences is split at its full stops: each normal sentence is its own NORMAL, each negative sentence its own NEGATIVE.
+- Mandatory negatives, routine negatives and negative-finding lists become NEGATIVE lines, word for word, once each in the paragraph they belong to. Where the old sheet offers alternative wordings of one negative, keep the first as the NEGATIVE and quote the alternative in the Domain Rules prose.
+- Fixed blocks become FIXED lines, word for word, with their {{slots}}. Alternative wordings of one fixed statement (chosen by what was performed, prior imaging and the like) are ONE unit: the default wording as the FIXED line (or, where the old sheet gives no default, no FIXED line), and each alternative as a context RULE that REPLACEs the default or is a USE; an alternative is never a FIXED line of its own, because every FIXED line is printed in every report. A RULE's quoted target is the exact text of the unit it acts on, full stop included. Verification markers on them (such as [NEEDS VERIFICATION]) leave the quote and become an Open Questions item that names the block.
+- A wording choice that depends on the study itself (what was performed, protocol, phases or sequences, prior imaging available or not, a technical limitation of the acquisition) becomes a context RULE quoting both wordings from the old sheet. A suppression or replacement the old sheet ties to a limitation of the study (artefact, incomplete coverage, a part not performed) is such a context RULE, even when the old sheet names the cause of the limitation as something seen: its statement names the limitation.
+- Terminology: at most six TERM lines, chosen from the old sheet's preferred and suppressed terms (the most distinctive single terms first). Every other preferred phrase or substitution goes into the Voice prose, quoted, so nothing is lost. A suppressed term with a stated replacement keeps that replacement in the prose ("<avoided>" is written "<preferred>").
+- Values the old sheet itself says must appear in every report, or must be listed or flagged when not provided, become the one LIST_MISSING line. Never infer a LIST_MISSING from {{slots}} alone, and never list a value the old sheet says to leave out when it is not given.
+- Conditional wording keyed on what is found (conditional fields, IF ... THEN appends, interpretive-clause rules, finding-specific phrasing, multi-clause fields) becomes quoted exemplars in the paragraph's prose: "Abnormal pattern:", "Interpretive phrasing:", "Recommendation phrasing:" or "Measurement:", word for word with {{slots}}. Keep the old sheet's description of how wording varies as an "Order:" or "Opening:" note when it is voice guidance ("when present, ... is given first").
+- Exemplars: every exemplar the old sheet gives is kept, word for word. Add exemplars from the reports only for a way of wording that the old sheet's exemplars do not already show, up to five lines per prose label per paragraph in total (the old sheet's first).
+- A negative or suppression the old sheet ties to a particular finding is not carried as a unit: the per-case analyser now supplies case-dependent negatives. Its positive wording, if any, becomes an exemplar; its negative wording is dropped and the drop is listed in your accounting (PART 2).
+- Impression construction (quoted examples, numbering, sentence pattern, inclusion logic, recommendation integration, normal-study impression, restatement rules) goes into the "## Impression Construction" block with every quoted example kept verbatim and laid out line by line as written. The impression section's paragraph block holds only its Opening and Order lines and any FIXED or context RULE units; the quoted impressions live in "## Impression Construction", never in the paragraph block.
+- Measurement and grading, reference values, incidental findings, domain rules: the same-named prose blocks, keeping every value, threshold and quoted phrase. A rule that tells the writer to always state something (a sentence that must appear in every report) stays a unit (NEGATIVE, NORMAL or FIXED) as well as a Domain Rules line.
+- Scan context, clinical setting and any statement of what the report does or does not cover go into "## Scan Context", saying only what the old sheet says (no typical clinical question unless the old sheet states one).
+- Anything the old sheet marks as uncertain, and any conflict between the old sheet and the reports, goes into "## Open Questions" as [NEEDS CLARIFICATION].
+
+## NEVER
+
+- Never invent: every quoted text in the new sheet (unit or exemplar) is copied from the old sheet or from a report, word for word, with {{slots}} only where a value varies. Never write a new negative, normal sentence, fixed text, exemplar, threshold or rule. Never merge two old sentences into a new one, or reword one, to fit the grammar: a NORMAL, NEGATIVE or FIXED quote is a sentence the old sheet contains, letter for letter.
+- Never drop a section, paragraph, routine negative, fixed text, threshold, reference value or quoted impression example of the old sheet. What cannot be a unit becomes prose; only finding-specific negatives and suppressions are dropped, and each drop is listed.
+- Never change the order of sections or paragraphs, or the order of units within a paragraph, from the old sheet (or, where the old sheet is silent, the reports).
+
+{GRAMMAR}
+
+{SHEET_LAYOUT}
+
+## ANSWER FORMAT
+
+Answer in exactly two parts.
+
+PART 1: the complete converted Skill Sheet as plain markdown, between these delimiter lines (each on its own line, nothing else on it):
+{SHEET_OPEN}
+# Skill Sheet: ...
+...
+{SHEET_CLOSE}
+
+PART 2: after the closing delimiter, one JSON object accounting for the old sheet, with exactly these keys:
+{{"accounting": [{{"old": "<old sheet heading or item, short>", "new": "<where it went in the new sheet: paragraph or block name and unit kind or prose label>"}}],
+  "dropped": [{{"old": "<quoted old text>", "reason": "<one short reason>"}}]}}
+Every heading and every quoted negative, fixed text and normal pattern of the old sheet appears in "accounting" or "dropped"."""
+
+
+def convert_user_prompt(old_sheet: str, scan_type: str, reports: List[Dict[str, str]],
+                        coverage: Optional[List[str]] = None) -> str:
+    """The old sheet, the voice-evidence reports (labelled, fenced) and the stored coverage list."""
+    parts = [f"Convert the Skill Sheet for scan type: **{scan_type}**", "", "## OLD SHEET", "```", old_sheet.strip(), "```"]
+    if reports:
+        parts += ["", "## REPORTS"]
+        for i, r in enumerate(reports, 1):
+            parts += ["", f"### {r.get('label') or f'Report {i}'}", "```", (r.get("content") or "").strip(), "```"]
+    if coverage:
+        parts += ["", "## COVERAGE LIST", " | ".join(str(c) for c in coverage)]
+    parts += ["", "Return PART 1 (the sheet between the delimiters) then PART 2 (the accounting JSON)."]
+    return "\n".join(parts)
+
+
+def split_conversion(raw: str) -> Dict[str, object]:
+    """{"skill_sheet", "accounting", "dropped", "json_error"} from a conversion answer. The sheet is taken
+    between the delimiters exactly as split_answer does; a broken accounting JSON never loses the sheet.
+    No opening delimiter -> ValueError."""
+    start = raw.find(SHEET_OPEN)
+    if start < 0:
+        raise ValueError("no skill-sheet delimiter in the conversion answer")
+    body = raw[start + len(SHEET_OPEN):]
+    end = body.find(SHEET_CLOSE)
+    if end >= 0:
+        sheet, tail = body[:end], body[end + len(SHEET_CLOSE):]
+    else:
+        brace = re.search(r"\n\{\s*\n?\s*\"accounting\"", body)
+        sheet, tail = (body[:brace.start()], body[brace.start():]) if brace else (body, "")
+    out: Dict[str, object] = {"skill_sheet": strip_fences(sheet.strip("\n").strip()), "accounting": None,
+                              "dropped": None, "json_error": None}
+    m = re.search(r"\{[\s\S]*\}", tail)
+    if not m:
+        out["json_error"] = "no JSON after the sheet"
+        return out
+    try:
+        data = json.loads(m.group())
+        out["accounting"], out["dropped"] = data.get("accounting"), data.get("dropped")
+    except ValueError as e:
+        out["json_error"] = f"{type(e).__name__}: {e}"[:300]
+    return out
