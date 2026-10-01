@@ -98,14 +98,8 @@ DO_NOT_RECOMMEND = "- DO NOT RECOMMEND: {text}"
 # A case-driven OMIT names no differential: the label sits in a findings paragraph the generator writes from.
 CASE_OMIT_REASON = "a dictated finding makes this negative inapplicable"
 NOT_VISIBLE_REASON = "this study cannot show what it would exclude"
-Q_DENIES = "This report statement denies or excludes the following: {name} — {discriminator}. Statement: {text}"
 _UNIT_LINE = re.compile(r"^\s*(?:-\s+)?(SECTION|NORMAL|NEGATIVE|FIXED|TERM|IF_PRESENT|RULE|COVERS|QUESTION|DIFFERENTIAL|"
                         r"RECOMMEND)\b")
-# Denial questions per Jev call. Measured 2026-10-01 (synthetic statements, real Jev): one call of 20 / 40 /
-# 80 / 160 questions p95 0.33 / 0.32 / 0.33 / 0.35 s; 4 parallel calls of 40 p95 0.49 s, of 80 p95 1.01 s.
-# 80 is the largest size in the specified grid with p95 well under 3 s and headroom to JEV_TIMEOUT_S.
-X_CHUNK = 80
-X_BUDGET_WARN = 160  # above this, warn (never cap: every unit in scope is asked)
 _WHEN = re.compile(r"\bWHEN\s*\[[^\]]*\]")
 
 
@@ -545,51 +539,17 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                 normals_sent.append(u)
             normal_plans[u.id] = {"status": status, "forced": forced}
 
-        # Same claim, other wording: for each PRESENT differential, Jev reads every unit that could state its
-        # absence in a findings-role section that is written (template negatives and normals, case negatives
-        # targeting another differential, case If-present negatives of a reported finding) for a statement
-        # that denies it. Asked alongside the classifier, in parallel chunks of X_CHUNK.
-        # Known quality limit (R4): a NORMAL listing several structures is marked as a whole (DO NOT ASSERT AS
-        # NORMAL) when one clause denies the differential; its other structures lose their normal wording.
-        q_x: Dict[str, dict] = {}
-        x_of: Dict[str, Tuple[_Unit, str]] = {}  # Jev key -> (unit, differential name)
-        findings_sections = {x.name for x in s.sections if x.role == "findings"}
-        reported_ifp = list({u.id: u for u, _, pf in cands if pf >= MET}.values())
-        for k, d in enumerate(s.differentials):
-            # Only a branch this study can show (VISIBLE yes) has an imaging discriminator a report statement
-            # could deny; a present no/silent branch is never asked (e2e lab 2026-10-01).
-            if diff_route[d.name] != "present" or d.visible != "yes":
-                continue
-            for u in negatives + normals + reported_ifp:
-                if u.section not in findings_sections or unit_omitted(u):
-                    continue
-                if u.kind == "negative" and u.origin == "case" and (
-                        u.targets == d.name or plans[u.id]["status"] == "differential_present"):
-                    continue  # its own differential, or already OMIT
-                key = f"x{k}_{u.id}"
-                q_x[key] = {"type": "noul", "instructions": Q_DENIES.format(
-                    name=d.name, discriminator=d.discriminator, text=u.text)}
-                x_of[key] = (u, d.name)
-        if len(q_x) > X_BUDGET_WARN:
-            logger.warning("template brief: %d denial questions (> %d); asked in %d chunks", len(q_x),
-                           X_BUDGET_WARN, -(-len(q_x) // X_CHUNK))
-
         async def qwen_or_empty():
             if to_classify or normals_sent:
                 return await rc._qwen(state, to_classify, [u.text for u in normals_sent], [])
             return rc.QwenDecisions(negatives=[], affected_normals=[], applicable_measurements=[])
 
-        keys_x = list(q_x)
-        chunks = [{k: q_x[k] for k in keys_x[i:i + X_CHUNK]} for i in range(0, len(keys_x), X_CHUNK)]
-        qw, *jev_x = await asyncio.gather(qwen_or_empty(), *(rc._jev(state, c) for c in chunks))
+        # Same claim, other wording, is not asked of Jev (owner decision 2026-10-01: inferring whether a
+        # statement denies a differential is Jev's weak area). As in quick, a negative the dictation contradicts
+        # is caught by the shared classifier over every negative (template and case, one call) and by the
+        # post-generation contradiction check; only the exact-claim path (case_omit) is code-only here.
+        qw = await qwen_or_empty()
         _check_qwen(qw, len(to_classify), len(normals_sent))
-        sx: Dict[str, float] = {}
-        for c, answers in zip(chunks, jev_x):  # every chunk answered in full, or the brief fails
-            sx.update(_scores(answers, c))
-        denied: Dict[str, str] = {}  # unit id -> the present differential it denies
-        for key, (u, name) in x_of.items():
-            if sx[key] >= MET:
-                denied.setdefault(u.id, name)
         plan, fb = await plan_t, await fb_t
     finally:
         for t in (plan_t, fb_t):
@@ -638,17 +598,8 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
             action = "differential_present"
         elif p["status"] == "target_not_visible":
             for part in p["parts"]:
-                if u.id in denied:  # it denies a present differential: the safer OMIT wins
-                    new.append(f'- OMIT: "{_q(part)}" — {CASE_OMIT_REASON}')
-                    labels.append((u, _key(part), "OMIT"))
-                    decisions["conflicts"].append({
-                        "text": _q(part), "winner": "OMIT", "differential": denied[u.id],
-                        "source": "jev_denies_present_differential",
-                        "labels": [{"origin": "case", "id": u.id, "label": "DO NOT ASSERT"},
-                                   {"origin": "case", "label": "OMIT", "targets": denied[u.id]}]})
-                else:
-                    new.append(f'- DO NOT ASSERT: "{_q(part)}" — {NOT_VISIBLE_REASON}')
-                    labels.append((u, _key(part), "DO NOT ASSERT"))
+                new.append(f'- DO NOT ASSERT: "{_q(part)}" — {NOT_VISIBLE_REASON}')
+                labels.append((u, _key(part), "DO NOT ASSERT"))
             action = "target_not_visible"
         else:
             for j, part in enumerate(p["parts"]):
@@ -660,15 +611,13 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                     labels.append((u, _key(part), "REMOVED"))
                     continue
                 d = qneg[_key(part)]
-                if d.action != "contradicted" and (_key(part) in case_omit or u.id in denied):
-                    # One label per claim, safer wins: the claim a case negative omits (same text), or a
-                    # statement Jev reads as denying a present differential (other wording).
-                    exact = _key(part) in case_omit
-                    name = case_omit[_key(part)] if exact else denied[u.id]
+                if d.action != "contradicted" and _key(part) in case_omit:
+                    # One label per claim, safer wins: the claim a case negative omits (same text).
+                    name = case_omit[_key(part)]
                     lost = "DO NOT ASSERT" if d.action == "expected" else "KEEP"
                     decisions["conflicts"].append({
                         "text": _q(part), "winner": "OMIT", "differential": name,
-                        "source": "case_negative_same_claim" if exact else "jev_denies_present_differential",
+                        "source": "case_negative_same_claim",
                         "labels": [{"origin": u.origin, "id": u.id, "label": lost},
                                    {"origin": "case", "label": "OMIT", "targets": name}]})
                     new.append(f'- OMIT: "{_q(part)}" — {CASE_OMIT_REASON}')
@@ -705,13 +654,6 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
             new, label = [f'- DO NOT ASSERT AS NORMAL [{u.structure}]: "{u.text}"'], "DO NOT ASSERT AS NORMAL"
         else:
             flagged = sc[u.jev_key] >= MET or u.id in q_affected
-            if not flagged and u.id in denied:  # it states the absence of a present differential
-                flagged = True
-                decisions["conflicts"].append({
-                    "text": u.text, "winner": "DO NOT ASSERT AS NORMAL", "differential": denied[u.id],
-                    "source": "jev_denies_present_differential",
-                    "labels": [{"origin": "template", "id": u.id, "label": "KEEP NORMAL"},
-                               {"origin": "case", "label": "DO NOT ASSERT AS NORMAL", "targets": denied[u.id]}]})
             label = "DO NOT ASSERT AS NORMAL" if flagged else "KEEP NORMAL"
             new, status = [f'- {label} [{u.structure}]: "{u.text}"'], ("do_not_assert" if flagged else "keep")
         labels.append((u, _key(u.text), label))
@@ -731,13 +673,6 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                                                "present": None, "outcome": "differential_present",
                                                "source": "case", "differential": case_omit[_key(part)]})
     for u, part, pf in cands:
-        if u.id in denied:  # checked before route_finding: it denies a present differential
-            L.put(u.line, [f'- OMIT: "{_q(part)}" — {CASE_OMIT_REASON}'])
-            labels.append((u, _key(part), "OMIT"))
-            decisions["finding_negatives"].append({"finding": u.finding, "text": part, "tag": u.tag, "qwen": "n/a",
-                                                   "present": round(pf, 3), "outcome": "denies_present_differential",
-                                                   "source": "case", "differential": denied[u.id]})
-            continue
         d = qneg.get(_key(part)) if pf >= rc.PRESENT_LOW else None
         label = d.action if d else "keep"
         outcome = rc.route_finding(label, pf, u.tag)

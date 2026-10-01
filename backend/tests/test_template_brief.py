@@ -939,9 +939,8 @@ FIND = "A 3 cm focal lesion of the primary organ."
 CASE_OMIT = '— a dictated finding makes this negative inapplicable'
 
 
-async def probe(monkeypatch, sheet=MASTER, jev=None, denials=(), plan=None, qwen=None, struct=None):
-    """Compile a master sheet. Jev answers by key from `jev` (else 0.1); a "denies" question (x<k>_<unit>) is
-    yes when one of `denials` (differential name, statement fragment) matches it."""
+async def probe(monkeypatch, sheet=MASTER, jev=None, plan=None, qwen=None, struct=None):
+    """Compile a master sheet. Jev answers by key from `jev` (else 0.1)."""
     s = struct or g.parse_sheet(sheet, mode="master").structure
     assert s.usable, s.lint_errors
     calls = stub(monkeypatch, qwen=qwen, plan=plan)
@@ -949,15 +948,7 @@ async def probe(monkeypatch, sheet=MASTER, jev=None, denials=(), plan=None, qwen
 
     async def fake_jev(state, qs):
         calls["states"].append((state, set(qs)))
-        out = {}
-        for k, q in qs.items():
-            ins = q["instructions"]
-            if k.startswith("x"):
-                stmt = ins.split("Statement: ", 1)[1]
-                out[k] = {"noul": 0.9 if any(n in ins and f in stmt for n, f in denials) else 0.1}
-            else:
-                out[k] = {"noul": scores.get(k, 0.1)}
-        return out
+        return {k: {"noul": scores.get(k, 0.1)} for k in qs}
     monkeypatch.setattr(tb.rc, "_jev", fake_jev)
     return await tb.compile_template_brief(sheet, s, "CT AP", FIND, "Pain."), calls
 
@@ -965,42 +956,21 @@ async def probe(monkeypatch, sheet=MASTER, jev=None, denials=(), plan=None, qwen
 ADJ = '## Paragraph: Adjacent structures (FINDINGS)\nCOVERS ["adjacent vessels"]\nNEGATIVE "No free fluid."'
 
 
-async def test_p1_reworded_template_copy_of_a_present_differentials_negative_is_omitted(monkeypatch):
+async def test_p1_reworded_copy_is_not_asked_of_jev_and_goes_to_the_shared_classifier(monkeypatch):
+    # Owner decision 2026-10-01: Jev is never asked whether a statement denies a differential (inference is
+    # its weak area). A reworded copy of a present differential's negative is judged, as in quick, by the
+    # shared classifier with every other negative (template and case, one call) and the post-generation check.
     sheet = MASTER.replace(ADJ, ADJ.replace("No free fluid.", "No free intraperitoneal fluid."))
-    b, calls = await probe(monkeypatch, sheet, {"d1": 0.9}, denials=[("Branch beta", "free intraperitoneal fluid")])
-    adj = block(b.text, "## Paragraph: Adjacent structures (FINDINGS)")
-    assert f'- OMIT: "No free intraperitoneal fluid." {CASE_OMIT}' in adj
-    (c,) = [c for c in b.decisions["conflicts"] if c.get("source") == "jev_denies_present_differential"]
-    assert c["differential"] == "Branch beta" and c["labels"][0]["label"] == "KEEP"
-    asked = [q for st, qs in calls["states"] for q in qs if q.startswith("x")]
-    assert asked and all(q.startswith("x1_") for q in asked)  # only the present differential, template units only
-    # without Jev's yes, the reworded copy stands: the exact-key path alone cannot see it
-    b, _ = await probe(monkeypatch, sheet, {"d1": 0.9})
+    b, calls = await probe(monkeypatch, sheet, {"d1": 0.9})
+    assert not [q for _, qs in calls["states"] for q in qs if q.startswith("x")]
     assert '- KEEP: "No free intraperitoneal fluid."' in b.text
-
-
-async def test_p1b_bundled_template_copy_is_omitted(monkeypatch):
-    sheet = MASTER.replace(ADJ, ADJ.replace("No free fluid.", "No free fluid or adjacent collection."))
-    b, _ = await probe(monkeypatch, sheet, {"d0": 0.9, "d1": 0.9}, denials=[("Branch beta", "free fluid")])
-    assert f'- OMIT: "No free fluid or adjacent collection." {CASE_OMIT}' in b.text
-
-
-async def test_p1c_normal_stating_the_absence_is_not_asserted(monkeypatch):
-    sheet = MASTER.replace(ADJ, ADJ.replace('NEGATIVE "No free fluid."',
-                                            'NORMAL [peritoneum] "The peritoneum is clear with no free fluid."'))
-    b, _ = await probe(monkeypatch, sheet, {"d1": 0.9}, denials=[("Branch beta", "no free fluid")])
-    assert '- DO NOT ASSERT AS NORMAL [peritoneum]: "The peritoneum is clear with no free fluid."' in b.text
-    assert any(c.get("winner") == "DO NOT ASSERT AS NORMAL" for c in b.decisions["conflicts"])
-
-
-async def test_p1d_missing_denies_answer_fails_closed(monkeypatch):
-    stub(monkeypatch)
-
-    async def partial(state, qs):
-        return {k: {"noul": 0.9 if k == "d1" else 0.1} for k in qs if not k.startswith("x")}
-    monkeypatch.setattr(tb.rc, "_jev", partial)
-    with pytest.raises(ValueError, match="x1_"):
-        await tb.compile_template_brief(MASTER, MSTRUCT, "CT AP", FIND, "Pain.")
+    (negs, _), = calls["qwen"]
+    assert "No free intraperitoneal fluid" in negs and "No adjacent collection" in negs  # template + case
+    assert not [c for c in b.decisions["conflicts"] if c.get("source") != "case_negative_same_claim"]
+    # the classifier's contradiction omits it, whatever its wording
+    b, _ = await probe(monkeypatch, sheet, {"d1": 0.9},
+                       qwen={"No free intraperitoneal fluid": ("contradicted", "free fluid")})
+    assert '- OMIT: "No free intraperitoneal fluid." — the dictation reports: free fluid' in b.text
 
 
 OMIT_SHEET = MASTER.replace(
@@ -1126,116 +1096,3 @@ async def test_case_negative_targeting_a_differential_the_study_cannot_show_is_n
         "target_not_visible"
     assert g.UNSUPPORTED_TARGET in [e.reason for e in g.parse_sheet(
         MASTER.replace("TARGETS [Branch beta]", "TARGETS [Branch gamma]"), mode="master").errors]
-
-
-# ── H4 round 2 (R3/R5/R6/R7): denial scope spans every written findings section and case units; chunked ──
-
-async def probe_x(monkeypatch, sheet, jev, denials=(), struct=None):
-    """probe() that also records every denial question as (key, statement) and the size of each Jev call."""
-    s = struct or g.parse_sheet(sheet, mode="master").structure
-    assert s.usable, s.lint_errors
-    asked, sizes = [], []
-
-    async def fake_jev(state, qs):
-        xs = {k: q for k, q in qs.items() if k.startswith("x")}
-        if xs:
-            sizes.append(len(qs))
-        out = {}
-        for k, q in qs.items():
-            ins = q["instructions"]
-            if k.startswith("x"):
-                stmt = ins.split("Statement: ", 1)[1]
-                asked.append((k, stmt))
-                out[k] = {"noul": 0.9 if any(n in ins and f in stmt for n, f in denials) else 0.1}
-            else:
-                out[k] = {"noul": jev.get(k, 0.1)}
-        return out
-    stub(monkeypatch)
-    monkeypatch.setattr(tb.rc, "_jev", fake_jev)
-    b = await tb.compile_template_brief(sheet, s, "CT AP", FIND, "Pain.")
-    return b, asked, sizes
-
-
-TWO_SECT = MASTER.replace(ADJ, ADJ.replace("No free fluid.", "No free intraperitoneal fluid.")).replace(
-    'SECTION IMPRESSION | header: "Impression" | role: impression',
-    'SECTION OTHER | header: "Other" | role: findings\nSECTION IMPRESSION | header: "Impression" | role: impression',
-).replace("## Case Deliberation",
-          '## Paragraph: Pelvis (OTHER)\nCOVERS ["pelvis"]\nNEGATIVE "No pelvic free fluid."\n'
-          'NORMAL [pelvis] "The pelvic organs are normal, with no free fluid."\n\n## Case Deliberation')
-
-
-async def test_r3_denial_check_spans_every_findings_section(monkeypatch):
-    b, asked, _ = await probe_x(monkeypatch, TWO_SECT, {"d1": 0.9}, denials=[("Branch beta", "fluid")])
-    pelvis = block(b.text, "## Paragraph: Pelvis (OTHER)")
-    assert f'- OMIT: "No pelvic free fluid." {CASE_OMIT}' in pelvis
-    assert '- DO NOT ASSERT AS NORMAL [pelvis]: "The pelvic organs are normal, with no free fluid."' in pelvis
-    assert f'- OMIT: "No free intraperitoneal fluid." {CASE_OMIT}' in b.text
-    stmts = {st for _, st in asked}
-    assert "No pelvic free fluid." in stmts and "No free fluid." not in stmts  # its own case negative: not asked
-
-
-CASEREWORD = MASTER.replace(f'IF_PRESENT [focal lesion] "{VASC}." (contextual) | origin: case',
-                            'IF_PRESENT [focal lesion] "No intraperitoneal fluid." (core) | origin: case\n'
-                            'NEGATIVE "No peritoneal fluid collection." TARGETS [Branch alpha] | origin: case')
-
-
-async def test_r5_case_units_are_checked_for_denial(monkeypatch):
-    b, asked, _ = await probe_x(monkeypatch, CASEREWORD, {"d1": 0.9, "f0": 0.95}, denials=[("Branch beta", "fluid")])
-    para = block(b.text, "## Paragraph: Primary organ (FINDINGS)")
-    assert f'- OMIT: "No peritoneal fluid collection." {CASE_OMIT}' in para  # case negative, other target
-    assert f'- OMIT: "No intraperitoneal fluid." {CASE_OMIT}' in para  # case If-present, finding reported
-    assert outcome(b, "No intraperitoneal fluid") == "denies_present_differential"
-    assert '- KEEP: "No intraperitoneal fluid."' not in b.text
-    # an If-present negative of an unreported finding is not asked (it is dropped anyway)
-    _, asked, _ = await probe_x(monkeypatch, CASEREWORD, {"d1": 0.9, "f0": 0.2})
-    assert "No intraperitoneal fluid." not in {st for _, st in asked}
-
-
-async def test_r6_many_denial_questions_are_chunked_never_capped(monkeypatch):
-    warned = []
-    monkeypatch.setattr(tb.logger, "warning", lambda msg, *a, **k: warned.append(msg % a))
-    many = "\n".join(f'NEGATIVE "No abnormality of structure {i}."' for i in range(60)) + "\n" + \
-        "\n".join(f'NORMAL [structure {i}] "Structure {i} is normal."' for i in range(40))
-    sheet = MASTER.replace(ADJ, ADJ + "\n" + many)
-    b, asked, sizes = await probe_x(monkeypatch, sheet, {"d0": 0.9, "d1": 0.9})
-    assert len(asked) > tb.X_BUDGET_WARN and len(asked) == len({k for k, _ in asked})
-    assert sizes and max(sizes) <= tb.X_CHUNK and sum(sizes) == len(asked) and len(sizes) >= 3
-    assert any("denial questions" in w for w in warned)
-
-
-async def test_r6b_any_failed_denial_chunk_fails_closed(monkeypatch):
-    many = "\n".join(f'NEGATIVE "No abnormality of structure {i}."' for i in range(100))
-    sheet = MASTER.replace(ADJ, ADJ + "\n" + many)
-    s = g.parse_sheet(sheet, mode="master").structure
-    stub(monkeypatch)
-    seen = []
-
-    async def flaky(state, qs):
-        if any(k.startswith("x") for k in qs):
-            seen.append(1)
-            if len(seen) == 2:
-                raise TimeoutError("jev chunk timed out")
-        return {k: {"noul": 0.9 if k == "d1" else 0.1} for k in qs}
-    monkeypatch.setattr(tb.rc, "_jev", flaky)
-    with pytest.raises(TimeoutError):
-        await tb.compile_template_brief(sheet, s, "CT AP", FIND, "Pain.")
-
-
-async def test_r7_omitted_section_units_are_not_asked_and_the_claim_is_still_omitted(monkeypatch):
-    s = g.parse_sheet(OMIT_SHEET, mode="master").structure
-    ridx = next(i for i, r in enumerate(s.rules) if r.effect == "suppress_section")
-    b, asked, _ = await probe_x(monkeypatch, OMIT_SHEET, {"d1": 0.9, f"r{ridx}": 0.9, "f0": 0.95}, struct=s)
-    stmts = {st for _, st in asked}
-    assert "No distant metastasis." not in stmts  # in the omitted EXTRA section
-    assert "No focal lesion." in stmts and "No free fluid." in stmts  # every written findings unit
-    assert f'- OMIT: "No free fluid." {CASE_OMIT}' in block(b.text, "## Paragraph: Adjacent structures (FINDINGS)")
-
-
-async def test_denial_check_only_for_present_differentials_visible_on_this_study(monkeypatch):
-    # A VISIBLE no / silent differential has no imaging discriminator this study shows: no report statement can
-    # deny it, so it is never asked (e2e lab 2026-10-01: a present silent branch had Jev OMIT routine negatives).
-    b, asked, _ = await probe_x(monkeypatch, MASTER, {"d1": 0.9, "d2": 0.9, "d3": 0.9},
-                                denials=[("Branch gamma", "No"), ("Branch delta", "No")])
-    keys = {k for k, _ in asked}
-    assert keys and all(k.startswith("x1_") for k in keys)
-    assert not [c for c in b.decisions["conflicts"] if c.get("differential") in ("Branch gamma", "Branch delta")]
