@@ -50,3 +50,164 @@ def test_malformed_and_missing_configs_are_hidden_and_do_not_break_the_list(
     db_session.commit()
     assert all(crud.is_retired_template(t) for t in bad)
     assert _ids(client, auth_headers) == {str(guided_template.id)}
+
+
+# ── Phase 1 at "Set up workspace" (plan 2026-10-01-template-wiring W3) ─────────
+
+import asyncio  # noqa: E402
+import pathlib  # noqa: E402
+
+import httpx  # noqa: E402
+import pytest  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+
+from rapid_reports_ai import template_pipeline as tp  # noqa: E402
+from rapid_reports_ai import template_sheet_grammar as tsg  # noqa: E402
+from rapid_reports_ai.database import get_db  # noqa: E402
+from rapid_reports_ai.database.models import TemplateCaseSheet  # noqa: E402
+from rapid_reports_ai.main import LEGACY_RETIRED, app  # noqa: E402
+
+_FIX = pathlib.Path(__file__).parent / "fixtures" / "template_pipeline"
+LEAN = (_FIX / "lean_cmr.md").read_text()
+MASTER = (_FIX / "master_cmr.md").read_text()
+
+
+@pytest.fixture
+def mirror_template(db_session, test_user):
+    """A skill_sheet_guided template holding a lean grammar sheet and its fresh grammar structure."""
+    cfg = {"generation_mode": "skill_sheet_guided", "skill_sheet": LEAN, "scan_type": "CMR",
+           "sheet_structure": tsg.parse_sheet(LEAN).structure.model_dump(mode="json")}
+    t = Template(name="Lean CMR", template_config=cfg, user_id=test_user.id, tags=[], is_active=True)
+    db_session.add(t)
+    db_session.commit()
+    db_session.refresh(t)
+    return t
+
+
+class Phase1Stub:
+    """tp.run_phase1 stand-in: counts calls; held running while `hold` is set; raises when `fail`."""
+
+    def __init__(self):
+        self.calls, self.hold, self.fail = [], None, False
+
+    async def __call__(self, sheet, scan_type, history):
+        self.calls.append(history)
+        if self.hold is not None:
+            await self.hold.wait()
+        if self.fail:
+            raise RuntimeError("model call failed: boom")
+        return {"master_sheet": MASTER, "case_result": {"usable": True}, "model": "m", "latency_ms": 10,
+                "prompt_version": "p"}
+
+
+@pytest.fixture
+def phase1(monkeypatch, db_engine):
+    stub = Phase1Stub()
+    monkeypatch.setattr(tp, "run_phase1", stub)
+    monkeypatch.setattr(tp, "_session", sessionmaker(bind=db_engine, autoflush=False, autocommit=False))
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+    yield stub
+    tp._PHASE1_TASKS.clear()
+
+
+@pytest.fixture
+def aclient(db_session):
+    def _db():
+        yield db_session
+    app.dependency_overrides[get_db] = _db
+    yield httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t")
+    app.dependency_overrides.clear()
+
+
+async def _prepare(aclient, headers, template, history="?HCM family screening"):
+    r = await aclient.post(f"/api/templates/{template.id}/prepare", headers=headers,
+                           json={"clinical_history": history, "scan_type": "CMR"})
+    return r.json()
+
+
+async def _drain():
+    await asyncio.gather(*list(tp._PHASE1_TASKS.values()), return_exceptions=True)
+
+
+async def test_prepare_with_the_flag_off_is_skipped(aclient, auth_headers, mirror_template, phase1, monkeypatch):
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "0")
+    assert await _prepare(aclient, auth_headers, mirror_template) == {"success": True, "status": "skipped"}
+    await _drain()
+    assert phase1.calls == []
+
+
+async def test_prepare_skips_a_template_without_a_grammar_structure(aclient, auth_headers, guided_template, phase1):
+    assert (await _prepare(aclient, auth_headers, guided_template))["status"] == "skipped"
+    assert phase1.calls == []
+
+
+async def test_prepare_runs_phase1_once_per_case(aclient, auth_headers, mirror_template, phase1, db_session):
+    phase1.hold = asyncio.Event()
+    assert (await _prepare(aclient, auth_headers, mirror_template))["status"] == "running"
+    assert (await _prepare(aclient, auth_headers, mirror_template))["status"] == "running"  # in flight
+    phase1.hold.set()
+    await _drain()
+    assert (await _prepare(aclient, auth_headers, mirror_template))["status"] == "ready"
+    assert phase1.calls == ["?HCM family screening"]
+    row = db_session.query(TemplateCaseSheet).one()
+    db_session.refresh(row)
+    assert row.status == "ready" and row.master_sheet == MASTER and not tp._PHASE1_TASKS
+
+
+async def test_a_different_history_starts_a_new_phase1(aclient, auth_headers, mirror_template, phase1):
+    await _prepare(aclient, auth_headers, mirror_template, "history one")
+    await _drain()
+    assert (await _prepare(aclient, auth_headers, mirror_template, "history two"))["status"] == "running"
+    await _drain()
+    assert phase1.calls == ["history one", "history two"]
+
+
+async def test_resolve_master_awaits_an_in_flight_phase1(aclient, auth_headers, mirror_template, phase1, db_session,
+                                                         test_user):
+    phase1.hold = asyncio.Event()
+    await _prepare(aclient, auth_headers, mirror_template)
+    pending = asyncio.ensure_future(tp.resolve_master(db_session, test_user, mirror_template, LEAN, "CMR",
+                                                      "?HCM family screening"))
+    await asyncio.sleep(0.05)
+    assert not pending.done()  # waiting on the held task
+    phase1.hold.set()
+    assert await pending == (MASTER, "awaited")
+    assert phase1.calls == ["?HCM family screening"]
+    # the next generate of the same case reads the stored row
+    assert await tp.resolve_master(db_session, test_user, mirror_template, LEAN, "CMR",
+                                   "?HCM family screening") == (MASTER, "cached")
+
+
+async def test_resolve_master_without_prepare_runs_inline(db_session, test_user, mirror_template, phase1):
+    assert await tp.resolve_master(db_session, test_user, mirror_template, LEAN, "CMR", "h") == (MASTER, "inline")
+    assert phase1.calls == ["h"] and not tp._PHASE1_TASKS
+    assert db_session.query(TemplateCaseSheet).one().status == "ready"
+
+
+async def test_phase1_failure_marks_the_row_failed_and_resolves_to_none(aclient, auth_headers, mirror_template,
+                                                                        phase1, db_session, test_user):
+    phase1.fail = True
+    await _prepare(aclient, auth_headers, mirror_template)
+    await _drain()
+    row = db_session.query(TemplateCaseSheet).one()
+    db_session.refresh(row)
+    assert row.status == "failed" and "boom" in row.error
+    assert await tp.resolve_master(db_session, test_user, mirror_template, LEAN, "CMR",
+                                   "?HCM family screening") == (None, "failed")
+    assert len(phase1.calls) == 1
+
+
+async def test_resolve_master_times_out_to_failed(db_session, test_user, mirror_template, phase1, monkeypatch):
+    monkeypatch.setattr(tp, "PHASE1_AWAIT_S", 0.05)
+    phase1.hold = asyncio.Event()
+    assert await tp.resolve_master(db_session, test_user, mirror_template, LEAN, "CMR", "h") == (None, "failed")
+    task = next(iter(tp._PHASE1_TASKS.values()))
+    assert not task.cancelled()  # the timeout does not cancel the job: it still persists for the next generate
+    phase1.hold.set()
+    await _drain()
+    assert await tp.resolve_master(db_session, test_user, mirror_template, LEAN, "CMR", "h") == (MASTER, "cached")
+
+
+async def test_prepare_refuses_a_legacy_template(aclient, auth_headers, legacy_template, phase1):
+    assert await _prepare(aclient, auth_headers, legacy_template) == {"success": False, "error": LEGACY_RETIRED}
+    assert phase1.calls == []

@@ -67,6 +67,7 @@ from .database import (
 from .database.connection import engine
 from .template_manager import TemplateManager
 from . import template_sheet_structure as tss
+from . import template_pipeline as tp
 from . import template_sheet_grammar as tsg
 from .auth import (
     verify_password,
@@ -663,6 +664,11 @@ class TemplateGenerateRequest(BaseModel):
     # Legacy format (deprecated)
     variables: Optional[Dict[str, str]] = None
     model: str = MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
+
+
+class TemplatePrepareRequest(BaseModel):
+    clinical_history: str = ""
+    scan_type: Optional[str] = None
 
 
 # Wizard assistance request models
@@ -1744,6 +1750,40 @@ async def delete_template_endpoint(
         
         return {"success": True, "message": "Template deleted"}
     except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def _mirror_ready(template, email: Optional[str], requested: Optional[str] = None) -> bool:
+    """The templated mirror runs for this template and user: chosen (flag / allowlist), skill_sheet_guided,
+    and holding a fresh grammar-parsed structure (tss.fresh). Every other template keeps today's path."""
+    cfg = template.template_config if isinstance(template.template_config, dict) else {}
+    return (tp.choose_mirror(requested, email) and cfg.get("generation_mode") == "skill_sheet_guided"
+            and tss.fresh(cfg) is not None)
+
+
+@app.post("/api/templates/{template_id}/prepare")
+async def prepare_template_case(
+    template_id: str,
+    request: TemplatePrepareRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """"Set up workspace": start Phase 1 (the case analyser on the clinical history) in the background so
+    Generate finds the master sheet ready. Returns at once: skipped / running / ready."""
+    try:
+        template = get_template(db, template_id, user_id=str(current_user.id))
+        if not template:
+            return {"success": False, "error": "Template not found"}
+        if is_retired_template(template):
+            return {"success": False, "error": LEGACY_RETIRED}
+        if not _mirror_ready(template, current_user.email):
+            return {"success": True, "status": "skipped"}
+        cfg = template.template_config
+        status = await tp.prepare_phase1(db, current_user.id, template.id, cfg.get("skill_sheet", ""),
+                                         request.scan_type or cfg.get("scan_type", ""), request.clinical_history)
+        return {"success": True, "status": status}
+    except Exception as e:
+        logger.warning("template prepare failed for %s: %s", template_id, e)
         return {"success": False, "error": str(e)}
 
 

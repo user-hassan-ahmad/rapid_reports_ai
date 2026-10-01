@@ -113,6 +113,109 @@ async def run_phase1(sheet: str, scan_type: str, history: str) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Phase 1 at "Set up workspace", resolved at Generate
+# ─────────────────────────────────────────────────────────────────────────────
+
+PHASE1_AWAIT_S = 60  # Generate waits this long for an in-flight Phase 1, then runs on the lean sheet
+# In-flight Phase 1 jobs of this process, by case key (user, template, sheet hash, history hash). One uvicorn
+# process: a replica or worker that misses this dict runs Phase 1 inline once (about 15 s), nothing else.
+_PHASE1_TASKS: Dict[tuple, "asyncio.Task"] = {}
+
+
+def _session():
+    """A DB session of the job's own (the request's session is closed when the request returns)."""
+    from .database.connection import SessionLocal
+    return SessionLocal()
+
+
+def _persist(write) -> None:
+    db = _session()
+    try:
+        write(db)
+    except Exception as e:  # noqa: BLE001 - the in-memory result still serves the generate awaiting it
+        logger.warning("template Phase 1: persist failed (%s: %s)", type(e).__name__, str(e)[:200])
+    finally:
+        db.close()
+
+
+async def _phase1_job(key: tuple, row_id, sheet: str, scan_type: str, history: str) -> Optional[str]:
+    """Run Phase 1 and persist it (ready, or failed on any exception). Returns the master sheet, None on
+    failure. Always removes its own _PHASE1_TASKS entry."""
+    from .database import crud
+    try:
+        try:
+            out = await run_phase1(sheet, scan_type, history)
+        except Exception as e:  # noqa: BLE001
+            err = f"{type(e).__name__}: {e}"[:2000]
+            logger.warning("template Phase 1 failed: %s", err[:200])
+            _persist(lambda db: crud.fail_case_sheet(db, row_id, error=err))
+            return None
+        _persist(lambda db: crud.finish_case_sheet(
+            db, row_id, master_sheet=out["master_sheet"], case_result=out.get("case_result"), model=out.get("model"),
+            latency_ms=out.get("latency_ms"), prompt_version=out.get("prompt_version")))
+        return out["master_sheet"]
+    finally:
+        if _PHASE1_TASKS.get(key) is asyncio.current_task():
+            _PHASE1_TASKS.pop(key, None)
+
+
+def _start(db, key: tuple, sheet: str, scan_type: str, history: str) -> Optional["asyncio.Task"]:
+    """Create (or reset a failed) running row and start its job; None when the row is already ready."""
+    from .database import crud
+    user_id, template_id, sk, hk = key
+    row = crud.create_case_sheet(db, user_id=user_id, template_id=template_id, sheet_hash=sk, history_hash=hk,
+                                 clinical_history=history or "")
+    if row.status == "ready":
+        return None
+    task = asyncio.create_task(_phase1_job(key, row.id, sheet, scan_type, history))
+    _PHASE1_TASKS[key] = task
+    return task
+
+
+def _key(user_id, template_id, sheet: str, history: str) -> tuple:
+    return (str(user_id), str(template_id), *keys(sheet, history))
+
+
+async def prepare_phase1(db, user_id, template_id, sheet: str, scan_type: str, history: str) -> str:
+    """"ready" (stored), or "running" (in flight, or started now). No await between the lookups and the
+    task registration, so concurrent prepares of one case in this process start one job."""
+    from .database import crud
+    key = _key(user_id, template_id, sheet, history)
+    row = crud.get_case_sheet(db, *key)
+    if row is not None and row.status == "ready":
+        return "ready"
+    task = _PHASE1_TASKS.get(key)
+    if task is not None and not task.done():
+        return "running"
+    return "running" if _start(db, key, sheet, scan_type, history) is not None else "ready"
+
+
+async def resolve_master(db, user, template, sheet: str, scan_type: str, history: str) -> Tuple[Optional[str], str]:
+    """The case's master sheet for Generate, and where it came from: "cached" (stored), "awaited" (in flight
+    since prepare), "inline" (no prepare: run now), or (None, "failed") (failed row, timeout or error: the
+    pipeline then runs on the lean sheet). Waiting never cancels the job: it persists for the next generate."""
+    from .database import crud
+    key = _key(getattr(user, "id", user), getattr(template, "id", template), sheet, history)
+    try:
+        row = crud.get_case_sheet(db, *key)
+        if row is not None and row.status == "ready" and row.master_sheet:
+            return row.master_sheet, "cached"
+        task, source = _PHASE1_TASKS.get(key), "awaited"
+        if task is None or task.done():
+            if row is not None and row.status == "failed":
+                return None, "failed"
+            task, source = _start(db, key, sheet, scan_type, history), "inline"
+            if task is None:  # became ready meanwhile
+                row = crud.get_case_sheet(db, *key)
+                return (row.master_sheet, "cached") if row is not None and row.master_sheet else (None, "failed")
+        master = await asyncio.wait_for(asyncio.shield(task), PHASE1_AWAIT_S)
+        return (master, source) if master else (None, "failed")
+    except Exception as e:  # noqa: BLE001 - timeout or error: generate on the lean sheet
+        logger.warning("template Phase 1 unavailable (%s: %s); lean sheet", type(e).__name__, str(e)[:200])
+        return None, "failed"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Phase 2: brief -> generate (+ options, history) -> check + gate
 # ─────────────────────────────────────────────────────────────────────────────
 

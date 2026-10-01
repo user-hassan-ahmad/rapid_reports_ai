@@ -1497,7 +1497,7 @@ def _uuid(v):
 def get_case_sheet(db: Session, user_id: str, template_id: str, sheet_hash: str,
                    history_hash: str) -> Optional[TemplateCaseSheet]:
     """The Phase 1 row for this case (any status), or None."""
-    return (db.query(TemplateCaseSheet)
+    return (db.query(TemplateCaseSheet).populate_existing()  # another session (the Phase 1 job) writes it
             .filter(TemplateCaseSheet.user_id == _uuid(user_id), TemplateCaseSheet.template_id == _uuid(template_id),
                     TemplateCaseSheet.sheet_hash == sheet_hash, TemplateCaseSheet.history_hash == history_hash)
             .first())
