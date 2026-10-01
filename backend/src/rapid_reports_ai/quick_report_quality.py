@@ -1,4 +1,4 @@
-"""Post-generation check: Jev flags contradictions and omissions, one focal Qwen call repairs them.
+"""Post-generation check: Jev flags contradictions and omissions; only safe edits touch the report.
 
 Spec docs/superpowers/specs/2026-09-30-post-generation-check-design.md; probe ledger L-46.
 
@@ -8,8 +8,8 @@ Spec docs/superpowers/specs/2026-09-30-post-generation-check-design.md; probe le
                dictated line (report state): stated / partial / absent / different / unclear
     repair  -> only absent lines are inserted (one Qwen call, code places each sentence); partial
                and different lines go to the telemetry for review and never edit the report; a
-               flagged contradiction gets one Qwen find/replace edit, applied only when its find
-               occurs exactly once
+               flagged negative is removed in code; a flagged positive statement is review only
+               (a Qwen rewrite copied dictation slips over the generator's corrections, L-49)
 Flagged options are dropped, never repaired. Nothing here raises: on any failure the report and
 options ship as generated, with the reason in the telemetry.
 """
@@ -332,20 +332,7 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict])
                        n_selected=sum(chosen), selector=selector, error=error)
 
 
-# ── repair ───────────────────────────────────────────────────────────────────
-
-class Edit(BaseModel):
-    find: str
-    replace: str
-
-
-class RepairEdits(BaseModel):
-    edits: List[Edit]
-    @field_validator("edits", mode="before")
-    @classmethod
-    def _parse_stringified(cls, v):
-        return qb._unstring(v)
-
+# ── edits ────────────────────────────────────────────────────────────────────
 
 class RepairResult(BaseModel):
     report: str
@@ -355,50 +342,7 @@ class RepairResult(BaseModel):
     dup_check: Optional[str] = None   # insert_findings: "jev" | "words" (Jev failed)
 
 
-REPAIR_SYS = (
-    "You correct specific problems in a radiology report. The dictated findings are the source of truth. For each "
-    "numbered problem return one edit: 'find' is text copied exactly, character for character, from the report (the "
-    "clause or sentence at fault, or the sentence an omitted finding belongs beside), and 'replace' is that text "
-    "corrected. Remove or correct a statement the dictation contradicts; add an omitted dictated finding in the "
-    "report's own voice where it belongs. Change nothing else, keep British English, and add nothing that was not "
-    "dictated. Return JSON {\"edits\": [{\"find\": ..., \"replace\": ...}]}.")
-
-
 _NEGATION = re.compile(r"\b(no|not|without|nor|absent|negative for)\b", re.I)
-INSERT_ONLY_SYS = (" Each problem is an omitted finding: 'replace' must contain 'find' unchanged, with the omitted "
-                   "finding added to it.")
-
-
-def edit_allowed(e: Edit, insert_only: bool) -> bool:
-    """A repair never turns a negated statement into an assertion (L-47: a flagged negative was
-    'corrected' into the malignant finding it denied), and an insertion never rewrites text."""
-    if not e.find or e.find == e.replace:
-        return False
-    if _NEGATION.search(e.find) and not _NEGATION.search(e.replace):
-        return False
-    return not insert_only or e.find in e.replace
-
-
-async def repair_report(report: str, findings: str, problems: List[str], insert_only: bool = False) -> RepairResult:
-    """One focal Qwen call; each returned edit is applied only when allowed and its find occurs
-    exactly once. Shared by the post-generation check and (next) the audit's Fix with AI."""
-    user = (f"DICTATED FINDINGS:\n{findings}\n\nREPORT:\n{report}\n\nPROBLEMS:\n"
-            + "\n".join(f"{i}. {p}" for i, p in enumerate(problems, 1)))
-    try:
-        r = await asyncio.wait_for(_run_agent_with_model(
-            model_name=REPAIR_MODEL, output_type=RepairEdits,
-            system_prompt=REPAIR_SYS + (INSERT_ONLY_SYS if insert_only else ""), user_prompt=user, api_key="",
-            model_settings={"temperature": 0, "max_tokens": 3000, "reasoning_effort": "none"}), REPAIR_TIMEOUT_S)
-    except Exception as e:  # never blocks the report
-        logger.warning("quality repair failed (%s: %s)", type(e).__name__, str(e)[:200])
-        return RepairResult(report=report, error=f"{type(e).__name__}: {str(e)[:200]}")
-    out, applied, skipped = report, 0, 0
-    for e in r.output.edits:
-        if edit_allowed(e, insert_only) and out.count(e.find) == 1:
-            out, applied = out.replace(e.find, e.replace), applied + 1
-        else:
-            skipped += 1
-    return RepairResult(report=out, applied=applied, skipped=skipped)
 
 
 # ── omitted findings: Qwen writes the sentence, code inserts it ──────────────
@@ -573,28 +517,9 @@ def enabled() -> bool:
     return os.environ.get("RR_QUALITY_CHECK", "1").strip() not in ("0", "false", "off")
 
 
-def _diff_edits(before: str, after: str) -> List[Tuple[str, str]]:
-    """The changed spans between two versions, as (old, new) pairs with a little context."""
-    import difflib
-    sm = difflib.SequenceMatcher(a=before, b=after, autojunk=False)
-    out = []
-    for op, i1, i2, j1, j2 in sm.get_opcodes():
-        if op == "equal":
-            continue
-        lo = max(0, i1 - 40)
-        out.append((before[lo:i2], before[lo:i1] + after[j1:j2]))
-    return out
-
-
-def _problem(f: Flag) -> str:
-    if f.kind == "contradiction":
-        return f'The report states "{f.text}", which the dictated findings contradict.'
-    return f'The dictated finding "{f.text}" is missing from the report.'
-
-
 async def run_quality_check(report: str, findings: str, scan_type: str,
                             options: List[dict]) -> Tuple[str, List[dict], dict]:
-    """Check, then repair only when a report clause or item is flagged. Returns the report, the
+    """Check, then edit only for a flagged negative (removed) or an absent line (inserted). Returns the report, the
     options with flagged ones dropped, and telemetry. Never raises."""
     if not enabled():
         return report, options, {"enabled": False}
@@ -608,12 +533,15 @@ async def run_quality_check(report: str, findings: str, scan_type: str,
                    jev_ms=int((time.time() - t0) * 1000), error=res.error, options_dropped=res.bad_option_ids,
                    kept_dictated_negative=[k.model_dump() for k in res.kept_dictated])
         options = [o for o in options if o.get("id") not in set(res.bad_option_ids)]
-        # A partial or different line never edits the report: it is offered for review (the rail).
+        # A partial or different line, and a flagged positive statement, never edit the report: they are
+        # offered for review (the rail). A positive flag is often the generator correcting a dictation slip
+        # (template retest 42281: "LMS=872" for dictated "LMP 872"); the Qwen rewrite copied the slip back (L-49).
         tel["review"] = [{"kind": "partial", "line": f.text, "missing_detail": missing_detail(f.text, report)}
                          if f.kind == "partial" else {"kind": "differs", "line": f.text}
                          for f in res.flags if f.kind in ("partial", "differs")]
-        # A flagged negative is removed in code; a flagged positive statement is corrected, and an
-        # omitted finding inserted, by Qwen under edit_allowed (L-47).
+        tel["review"] += [{"kind": "contradiction", "text": f.text, "score": f.score}
+                          for f in res.flags if f.kind == "contradiction" and not is_negative(f.text)]
+        # A flagged negative is removed in code (L-47); an omitted finding is inserted by construction.
         removed = 0
         for f in res.flags:
             if f.kind == "contradiction" and is_negative(f.text):
@@ -621,22 +549,13 @@ async def run_quality_check(report: str, findings: str, scan_type: str,
                 removed += new != report
                 report = new
         tel["clauses_removed"] = removed
-        fix = [_problem(f) for f in res.flags if f.kind == "contradiction" and not is_negative(f.text)]
-        if fix or any(f.kind == "omission" for f in res.flags):
+        omitted = [f.text for f in res.flags if f.kind == "omission"]
+        if omitted:
             t1 = time.time()
-            omitted = [f.text for f in res.flags if f.kind == "omission"]
-            calls = ([repair_report(report, findings, fix)] if fix else []) + \
-                    ([insert_findings(report, findings, omitted)] if omitted else [])
-            reps = await asyncio.gather(*calls)
-            base, report = report, reps[0].report
-            for rep in reps[1:]:   # both were made from the same base: replay the second's changes
-                for old_s, new_s in _diff_edits(base, rep.report):
-                    if report.count(old_s) == 1:
-                        report = report.replace(old_s, new_s)
-            tel.update(edits_applied=sum(r.applied for r in reps), edits_skipped=sum(r.skipped for r in reps),
-                       dup_check=next((r.dup_check for r in reps if r.dup_check), None),
-                       repair_ms=int((time.time() - t1) * 1000),
-                       error=next((r.error for r in reps if r.error), None) or tel["error"])
+            rep = await insert_findings(report, findings, omitted)
+            report = rep.report
+            tel.update(edits_applied=rep.applied, edits_skipped=rep.skipped, dup_check=rep.dup_check,
+                       repair_ms=int((time.time() - t1) * 1000), error=rep.error or tel["error"])
     except Exception as e:  # never blocks the report
         logger.warning("quality check failed (%s: %s)", type(e).__name__, str(e)[:200])
         tel["error"] = f"{type(e).__name__}: {str(e)[:200]}"

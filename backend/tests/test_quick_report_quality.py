@@ -242,48 +242,18 @@ async def test_kept_dictated_negatives_stay_in_the_report_and_the_telemetry(monk
     async def must_not_run(*a, **k):
         raise AssertionError("no repair")
     monkeypatch.setattr(qq, "check", fake_check)
-    monkeypatch.setattr(qq, "repair_report", must_not_run)
     monkeypatch.setattr(qq, "insert_findings", must_not_run)
     report, _, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", [])
     assert report == REPORT and tel["clauses_removed"] == 0
     assert tel["kept_dictated_negative"] == [{"text": "No portal vein encasement", "contradiction": 0.9, "dictated": 0.8}]
 
 
-def _stub_repair(monkeypatch, edits, seen=None):
-    async def fake(**kw):
-        if seen is not None:
-            seen.update(kw)
-        class R:
-            output = qq.RepairEdits(edits=edits)
-        return R()
-    monkeypatch.setattr(qq, "_run_agent_with_model", fake)
-
-
 @pytest.mark.asyncio
-async def test_repair_applies_only_unique_verbatim_edits(monkeypatch):
-    seen = {}
-    _stub_repair(monkeypatch, [
-        {"find": "No superior mesenteric vein encasement, portal vein encasement, or hepatic deposit.",
-         "replace": "No superior mesenteric vein encasement or hepatic deposit."},
-        {"find": "compresses the distal common bile duct.",
-         "replace": "compresses the distal common bile duct, which is dilated to 12 mm."},
-        {"find": "text that is not in the report", "replace": "x"},
-        {"find": "No", "replace": "Yes"},                                      # occurs more than once
-    ], seen)
-    problems = ["The report states 'No portal vein encasement' but the dictation contradicts it.",
-                "The dictated finding 'CBD dilated to 12 mm' is missing from the report."]
-    res = await qq.repair_report(REPORT, FINDINGS, problems)
-    assert "1. The report states" in seen["user_prompt"] and "2. The dictated finding" in seen["user_prompt"]
-    assert "portal vein encasement" not in res.report and "dilated to 12 mm" in res.report
-    assert res.applied == 2 and res.skipped == 2 and res.error is None
-
-
-@pytest.mark.asyncio
-async def test_repair_failure_returns_the_report_unchanged(monkeypatch):
+async def test_insert_failure_returns_the_report_unchanged(monkeypatch):
     async def boom(**kw):
         raise asyncio.TimeoutError
     monkeypatch.setattr(qq, "_run_agent_with_model", boom)
-    res = await qq.repair_report(REPORT, FINDINGS, ["anything"])
+    res = await qq.insert_findings(REPORT, FINDINGS, ["anything"])
     assert res.report == REPORT and res.applied == 0 and res.error
 
 
@@ -297,10 +267,7 @@ async def test_run_quality_check_repairs_on_report_flags_and_drops_bad_options(m
     async def fake_insert(report, findings, items):
         seen["items"] = items
         return qq.RepairResult(report=report, applied=1, skipped=1)
-    async def no_repair(*a, **k):
-        raise AssertionError("no positive contradiction to correct")
     monkeypatch.setattr(qq, "check", fake_check)
-    monkeypatch.setattr(qq, "repair_report", no_repair)
     monkeypatch.setattr(qq, "insert_findings", fake_insert)
     report, options, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", OPTIONS)
     assert seen["items"] == ["CBD dilated to 12 mm"]
@@ -320,7 +287,6 @@ async def test_partial_and_differs_lines_are_recorded_for_review_never_inserted(
         raise AssertionError("nothing to insert or correct")
     monkeypatch.setattr(qq, "check", fake_check)
     monkeypatch.setattr(qq, "insert_findings", must_not_run)
-    monkeypatch.setattr(qq, "repair_report", must_not_run)
     out, _, tel = await qq.run_quality_check(rep, "x", "CT KUB", [])
     assert out == rep and tel["repair_ms"] is None
     assert tel["review"] == [{"kind": "partial", "line": "3 mm calculus left distal ureter, HU 254", "missing_detail": "HU 254"},
@@ -349,7 +315,7 @@ async def test_no_report_flags_means_no_repair_call(monkeypatch):
     async def must_not_run(*a):
         raise AssertionError("repair called without a report flag")
     monkeypatch.setattr(qq, "check", clean)
-    monkeypatch.setattr(qq, "repair_report", must_not_run)
+    monkeypatch.setattr(qq, "insert_findings", must_not_run)
     report, options, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", OPTIONS)
     assert report == REPORT and [o["id"] for o in options] == ["fn1"] and tel["repair_ms"] is None
 
@@ -402,53 +368,44 @@ def test_negative_clauses_are_removed_in_code_never_inverted():
     assert qq.remove_negative_clause(out, "text not present") == out
 
 
-def test_edits_that_drop_a_negation_or_rewrite_on_insert_only_are_rejected():
-    assert not qq.edit_allowed(qq.Edit(find="No focal mass-like colonic wall thickening is identified.",
-                                       replace="Focal mass-like colonic wall thickening is identified."), insert_only=False)
-    assert qq.edit_allowed(qq.Edit(find="mass with encasement of the SMV", replace="mass abutting the SMV"), insert_only=False)
-    assert not qq.edit_allowed(qq.Edit(find="focal active arterial extravasation", replace="focal active arterial blush"),
-                               insert_only=True)
-    assert qq.edit_allowed(qq.Edit(find="compresses the duct.", replace="compresses the duct. The CBD measures 12 mm."),
-                           insert_only=True)
+@pytest.mark.asyncio
+async def test_a_flagged_positive_statement_is_never_edited_only_reviewed(monkeypatch):
+    # Template retest 42281: the generator corrected the dictated slip "LMP 872" to "LMS=872"; Jev read the
+    # correction as a contradiction and the Qwen rewrite copied the slip back. A positive flag is flag-only.
+    async def fake_check(report, findings, scan_type, options):
+        return qq.CheckResult(flags=[qq.Flag(kind="contradiction", text="Pancreatic head mass causing biliary obstruction.", score=0.8)])
+    async def must_not_run(*a, **k):
+        raise AssertionError("a positive flag never edits the report")
+    monkeypatch.setattr(qq, "check", fake_check)
+    monkeypatch.setattr(qq, "insert_findings", must_not_run)
+    monkeypatch.setattr(qq, "_run_agent_with_model", must_not_run)
+    report, _, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", [])
+    assert report == REPORT and tel["repair_ms"] is None and tel["edits_applied"] == 0
+    assert tel["review"] == [{"kind": "contradiction", "text": "Pancreatic head mass causing biliary obstruction.", "score": 0.8}]
+    assert not hasattr(qq, "repair_report")
 
 
 @pytest.mark.asyncio
-async def test_run_quality_check_routes_each_flag_to_its_safe_repair(monkeypatch):
+async def test_run_quality_check_routes_each_flag(monkeypatch):
+    # Negative: removed in code. Positive: review only. Absent line: inserted. Partial: review only.
     async def fake_check(report, findings, scan_type, options):
         return qq.CheckResult(flags=[qq.Flag(kind="contradiction", text="No portal vein encasement", score=0.8),
-                                     qq.Flag(kind="contradiction", text="Pancreatic head mass causing biliary obstruction.", score=0.8),
-                                     qq.Flag(kind="omission", text="CBD dilated to 12 mm", score=0.2)])
+                                     qq.Flag(kind="contradiction", text="Pancreatic head mass causing biliary obstruction.", score=0.7),
+                                     qq.Flag(kind="omission", text="CBD dilated to 12 mm", score=0.2),
+                                     qq.Flag(kind="partial", text="Intrahepatic duct dilatation 6 mm", score=0.8)])
     calls = []
-    async def fake_repair(report, findings, problems, insert_only=False):
-        calls.append(("correct", problems))
-        return qq.RepairResult(report=report, applied=0, skipped=0)
     async def fake_insert(report, findings, items):
-        calls.append(("insert", items))
-        return qq.RepairResult(report=report, applied=0, skipped=0)
-    monkeypatch.setattr(qq, "check", fake_check)
-    monkeypatch.setattr(qq, "repair_report", fake_repair)
-    monkeypatch.setattr(qq, "insert_findings", fake_insert)
-    report, _, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", [])
-    assert "portal vein encasement" not in report and "No superior mesenteric vein encasement or hepatic deposit." in report
-    assert calls == [("correct", ['The report states "Pancreatic head mass causing biliary obstruction.", which the dictated findings contradict.']),
-                     ("insert", ["CBD dilated to 12 mm"])]
-    assert tel["clauses_removed"] == 1
-
-
-@pytest.mark.asyncio
-async def test_a_correction_and_an_insertion_both_land(monkeypatch):
-    async def fake_check(report, findings, scan_type, options):
-        return qq.CheckResult(flags=[qq.Flag(kind="contradiction", text="Pancreatic head mass causing biliary obstruction.", score=0.8),
-                                     qq.Flag(kind="omission", text="CBD dilated to 12 mm", score=0.2)])
-    async def fake_insert(report, findings, items):
+        calls.append(items)
         return qq.RepairResult(report=report.replace("distal common bile duct.", "distal common bile duct, dilated to 12 mm."), applied=1)
-    async def fake_repair(report, findings, problems, insert_only=False):
-        return qq.RepairResult(report=report.replace("causing biliary obstruction", "compressing the distal bile duct"), applied=1)
     monkeypatch.setattr(qq, "check", fake_check)
-    monkeypatch.setattr(qq, "repair_report", fake_repair)
     monkeypatch.setattr(qq, "insert_findings", fake_insert)
     report, _, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", [])
-    assert "dilated to 12 mm" in report and "compressing the distal bile duct" in report and tel["edits_applied"] == 2
+    assert calls == [["CBD dilated to 12 mm"]]
+    assert "portal vein encasement" not in report and "No superior mesenteric vein encasement or hepatic deposit." in report
+    assert "dilated to 12 mm." in report and "Pancreatic head mass causing biliary obstruction." in report
+    assert tel["clauses_removed"] == 1 and tel["edits_applied"] == 1
+    assert [r["kind"] for r in tel["review"]] == ["partial", "contradiction"]
+    assert tel["review"][1] == {"kind": "contradiction", "text": "Pancreatic head mass causing biliary obstruction.", "score": 0.7}
 
 
 @pytest.mark.asyncio
