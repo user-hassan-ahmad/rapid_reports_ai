@@ -29,8 +29,8 @@ and prose) and the Report-wide units tagged "| section: <that section>"; untagge
 
 Jev keys: r<i> rule condition, r<i>i<j> LIST_MISSING item, c<k> conditional negative, m<i> NORMAL,
 s<k> stated-normal negative (k indexes structure.negatives, i structure.rules / structure.normals);
-master sheets also d<k> differential present, dp<k> present-vs-possible (choice), f<i> If-present finding reported, rec<k> recommendation
-condition unmet (k indexes structure.differentials / structure.recommendations, i the distinct findings).
+master sheets also d<k> differential present, dp<k> present-vs-possible (choice), f<i> If-present finding presence (rc.q_finding, a graded
+score read as level / 3), rec<k> recommendation condition met (rc.Q_REC_MET; unmet = 1 - met) (k indexes structure.differentials / structure.recommendations, i the distinct findings).
 
 Master sheets (Phase-1 case units, spec 2026-10-01-template-two-phase "Phase 2 brief additions"), routed by
 quick's shared clinical routing in report_reconcile:
@@ -293,15 +293,17 @@ def _target_in_bundle(target: str, bundle: str) -> bool:
 
 
 def _scores(answers, asked: Dict[str, dict]) -> Dict[str, float]:
-    """Jev's answer for every key asked, as a number; a missing or non-numeric answer fails the brief."""
+    """Jev's answer for every key asked, as a number (a "score" question as rc.finding_presence: level / 3);
+    a missing or non-numeric answer fails the brief."""
     out: Dict[str, float] = {}
-    for k in asked:
+    for k, q in asked.items():
         v = answers.get(k) if isinstance(answers, dict) else None
-        p = v.get("noul") if isinstance(v, dict) else None
+        graded = q.get("type") == "score"
+        p = v.get("score" if graded else "noul") if isinstance(v, dict) else None
         try:
             if isinstance(p, bool) or p is None:
                 raise TypeError
-            out[k] = float(p)
+            out[k] = rc.finding_presence(v) if graded else float(p)
         except (TypeError, ValueError):
             raise ValueError(f"Jev answer for {k!r} is missing or non-numeric: {v!r}") from None
         if not math.isfinite(out[k]):
@@ -430,9 +432,9 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
         q_f[f"d{k}"] = rc.q_present(d.name, d.discriminator)
         q_poss[f"dp{k}"] = q_possible(d.name)
     for i, f in enumerate(fkeys):
-        q_f[f"f{i}"] = {"type": "noul", "instructions": rc.Q_FINDING + f}
+        q_f[f"f{i}"] = rc.q_finding(f)
     for k, t in enumerate(rec_text):
-        q_f[f"rec{k}"] = {"type": "noul", "instructions": rc.Q_REC_UNMET + t}
+        q_f[f"rec{k}"] = {"type": "noul", "instructions": rc.Q_REC_MET + t}
 
     # One split call covers the sheet negatives and the case If-present negatives, as in quick.
     distinct: List[str] = []
@@ -781,7 +783,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
             d = pdec.get(k)
             if plan is None and f"{r.tag}:" in rc._BAR_KINDS:
                 d = rc.RecDecision(index=k, decision="optional", reason="impression plan unavailable")
-            route = rc.route_recommendation(sc[f"rec{k}"], d, tag=r.tag,
+            route = rc.route_recommendation(1 - sc[f"rec{k}"], d, tag=r.tag,
                                             room=len(decisions["options"]) < rc.MAX_OPTIONS)
             L.put(i, [])
             if route == "keep":
@@ -793,7 +795,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                     decisions["options"].append({"kind": "recommendation", "section": imp_section,
                                                  "text": f"{r.tag}: {r.text}", "reason": d.reason})
             decisions["recommendations"].append({"id": r.id, "tag": r.tag, "text": r.text, "action": route,
-                                                 "unmet": round(sc[f"rec{k}"], 3), "reason": d.reason if d else ""})
+                                                 "unmet": round(1 - sc[f"rec{k}"], 3), "reason": d.reason if d else ""})
 
     # ── rules ────────────────────────────────────────────────────────────────
     for i, r in enumerate(s.rules):

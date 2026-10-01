@@ -23,6 +23,9 @@ def _no_live_models(monkeypatch):
     assert not calls, f"unstubbed calls: {calls}"
 
 
+# The omission classifier's answer for a line the report states (L-49 classify-first): no flag.
+STATED = {"choice": "stated", "probabilities": {"stated": 0.9, "partial": 0.05, "absent": 0.05}}
+
 SECTIONS = [rr.ReportSection(name="CLINICAL HISTORY", header="CLINICAL HISTORY", role="history"),
             rr.ReportSection(name="TECHNIQUE", header="TECHNIQUE", role="technique"),
             rr.ReportSection(name="FINDINGS", header=None, role="findings"),
@@ -162,7 +165,15 @@ def test_suppressed_terms_with_non_word_edges():
     assert rr.edit_allowed(rr.Edit(find="Ascites.", replace="Ascites, moderate."), False, suppressed=["+ve"])
 
 
+def _not_conveyed(monkeypatch):
+    """The inserter's Jev duplicate check (L-49): no candidate sentence is already in the report."""
+    async def jev(state, qs):
+        return {k: {"noul": 0.0} for k in qs}
+    monkeypatch.setattr(rr.rc, "_jev", jev)
+
+
 async def test_insertion_anchor_on_a_header_falls_back_to_the_findings_section(monkeypatch):
+    _not_conveyed(monkeypatch)
     _fake_model(monkeypatch, rr.Insertions(items=[
         rr.Insertion(after="CLINICAL HISTORY", sentence="Small volume pelvic free fluid.")]))
     res = await rr.insert_findings(REPORT, "x", ["pelvic fluid"], SECTIONS,
@@ -172,6 +183,7 @@ async def test_insertion_anchor_on_a_header_falls_back_to_the_findings_section(m
 
 
 async def test_insertion_anchor_in_protected_text_is_not_used(monkeypatch):
+    _not_conveyed(monkeypatch)
     _fake_model(monkeypatch, rr.Insertions(items=[
         rr.Insertion(after="Abdominal pain.", sentence="Small volume pelvic free fluid.")]))
     res = await rr.insert_findings(REPORT, "x", ["pelvic fluid"], SECTIONS,
@@ -223,7 +235,7 @@ def test_section_spans_split_out_of_order_headers():
 
 async def test_run_quality_check_normalises_crlf_and_reports_sections(monkeypatch):
     async def fake_jev(state, qs):
-        return {k: {"noul": 0.9 if k.startswith("i") else 0.1} for k in qs}
+        return {k: STATED if k.startswith("i") else {"noul": 0.1} for k in qs}
     monkeypatch.setattr(rr.rc, "_jev", fake_jev)
     secs = SECTIONS + [rr.ReportSection(name="RECOMMENDATION", header="Recommendation", role="other")]
     out, _, tel = await rr.run_quality_check(REPORT.replace("\n", "\r\n"), "11 mm appendix", "CT", [],
@@ -269,7 +281,7 @@ def test_an_empty_implicit_section_takes_the_preamble_after_its_first_line():
 
 async def test_run_quality_check_reports_empty_implicit_sections(monkeypatch):
     async def fake_jev(state, qs):
-        return {k: {"noul": 0.9 if k.startswith("i") else 0.1} for k in qs}
+        return {k: STATED if k.startswith("i") else {"noul": 0.1} for k in qs}
     monkeypatch.setattr(rr.rc, "_jev", fake_jev)
     _, _, tel = await rr.run_quality_check(NO_BLANK, "ascites", "CT", [], sections=PRE)
     assert tel["sections_empty"] == ["FINDINGS"] and tel["clauses"] == 2
@@ -311,7 +323,7 @@ async def test_extra_report_questions_ride_on_the_report_state_call(monkeypatch)
 
     async def fake_jev(state, qs):
         seen.append((state, sorted(qs)))
-        return {k: {"noul": 0.8 if k == "u0" else 0.9 if k.startswith("i") else 0.1} for k in qs}
+        return {k: {"noul": 0.8} if k == "u0" else STATED if k.startswith("i") else {"noul": 0.1} for k in qs}
     monkeypatch.setattr(rr.rc, "_jev", fake_jev)
     extra = {"u0": {"type": "noul", "instructions": rr.rc.Q_CONVEYS + "No free gas."}}
     res = await rr.check(REPORT, "11 mm appendix", "CT AP", [], sections=SECTIONS, extra_report_qs=extra)
@@ -353,7 +365,7 @@ async def _omission_state(monkeypatch, **kw) -> str:
 
     async def fake_jev(state, qs):
         seen.append(state)
-        return {k: {"noul": 0.9 if k.startswith("i") else 0.1} for k in qs}
+        return {k: STATED if k.startswith("i") else {"noul": 0.1} for k in qs}
     monkeypatch.setattr(rr.rc, "_jev", fake_jev)
     res = await rr.check(CMR, "full protocol\nperforation", "CMR", [], **kw)
     assert res.error is None
@@ -382,7 +394,7 @@ async def test_run_quality_check_passes_the_history_on(monkeypatch):
 
     async def fake_jev(state, qs):
         seen.append(state)
-        return {k: {"noul": 0.9 if k.startswith("i") else 0.1} for k in qs}
+        return {k: STATED if k.startswith("i") else {"noul": 0.1} for k in qs}
     monkeypatch.setattr(rr.rc, "_jev", fake_jev)
     out, _, tel = await rr.run_quality_check(CMR, "full protocol", "CMR", [], sections=SECTIONS,
                                              protected=[CMR_HISTORY, TECH], history=CMR_HISTORY)

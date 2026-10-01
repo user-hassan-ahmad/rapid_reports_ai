@@ -35,14 +35,30 @@ from typing import List, Optional
 
 from .report_reconcile import (  # noqa: F401 — re-exported; tests patch these names on this module
     JEV_MODEL, JEV_TIMEOUT_S, JEV_URL, MAX_FINDING_OPTIONS, MAX_OPTIONS, PLAN_SYS, PLAN_TIMEOUT_S,
-    PRESENT_HIGH, PRESENT_LOW, Q_AFFECTED, Q_FINDING, Q_PRESENT, Q_REC_UNMET, Q_STYLE_MATCH, QWEN,
+    PRESENT_HIGH, PRESENT_LOW, PRESENT_FALSE, PRESENT_TRUE, HEDGE, Q_AFFECTED, Q_REC_MET, Q_STYLE_MATCH, QWEN,
     QWEN_SYS, QWEN_TIMEOUT_S, FALLBACK_SYS, FALLBACK_TIMEOUT_S, _BAR_KINDS, _MEASUREMENT, Brief,
-    FallbackItem, FallbackNegatives, FindingNegative, ImpressionPlan, NegativeDecision, QwenDecisions,
-    RecDecision, Split, _fallback, _is_bundled, _jev, _plan, _quoted, _qwen, _split_bundled, _unstring,
-    _words, dedupe_options, route_finding, split_findings,
+    FallbackItem, FallbackNegatives, FindingNegative, ImpressionPlan, IncompleteNegativeDecisions,
+    NegativeDecision, QwenDecisions, RecDecision, Split, _fallback, _is_bundled, _jev, _plan, _quoted, _qwen,
+    _sentences, _split_bundled, _unstring, _words, dictated_negatives, duplicates_negative, finding_presence,
+    q_finding, q_present, route_finding, split_findings,
 )
+from . import report_reconcile as _rc
 
 logger = logging.getLogger(__name__)
+
+
+_VISIBILITY_TAG = re.compile(r"\s*\*\([^)]*\)\*")
+
+
+def present_question(line: str) -> dict:
+    """A quick differential line is '<name> — <discriminator> *(visible …)*'."""
+    name, _, disc = _VISIBILITY_TAG.sub("", line).partition(" — ")
+    return q_present(name.strip(), disc.strip())
+
+
+async def _qwen_complete(state: str, negs: List[str], normals: List[str], measurements: List[str]) -> QwenDecisions:
+    """report_reconcile._qwen_complete through this module's _qwen and logger (tests patch both here)."""
+    return await _rc._qwen_complete(state, negs, normals, measurements, ask=_qwen, log=logger)
 
 
 DROP_TOP_BULLETS = {"Out of scope", "Modality non-assessables", "In-scope companions", "Out-of-scope suppressed",
@@ -209,9 +225,9 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     state = f"SCAN TYPE: {scan_type}\nDICTATED FINDINGS:\n{findings}"
     qs = {}
     qs.update({f"n{k}": {"type": "noul", "instructions": Q_AFFECTED + t} for k, t in enumerate(normals)})
-    qs.update({f"d{k}": {"type": "noul", "instructions": Q_PRESENT + t} for k, t in enumerate(diffs)})
-    qs.update({f"r{k}": {"type": "noul", "instructions": Q_REC_UNMET + t} for k, t in enumerate(recs)})
-    qs.update({f"f{i}": {"type": "noul", "instructions": Q_FINDING + k} for i, k in enumerate(keys)})
+    qs.update({f"d{k}": present_question(t) for k, t in enumerate(diffs)})
+    qs.update({f"r{k}": {"type": "noul", "instructions": Q_REC_MET + t} for k, t in enumerate(recs)})
+    qs.update({f"f{i}": q_finding(k) for i, k in enumerate(keys)})
     qs.update({f"s{k}": {"type": "noul", "instructions": Q_STYLE_MATCH + " ".join(b.lines)} for k, b in enumerate(styles)})
     if len(variants) > 1:
         qs["imp"] = {"type": "choice", "instructions": "Which impression exemplar best matches the shape of this case's findings (severity, number of findings, complications)?",
@@ -234,7 +250,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             return None
     jev, qw, plan, fb_out = await asyncio.gather(
         _jev(state, qs) if qs else asyncio.sleep(0, {}),
-        _qwen(state, [n for n, _ in negs] + [c.text for c in cands], normals, [" ".join(b.lines) for b in measurements]),
+        _qwen_complete(state, [n for n, _ in negs] + [c.text for c in cands], normals, [" ".join(b.lines) for b in measurements]),
         plan_or_none(), fallback_or_none())
     score = lambda k: float(jev[k]["noul"])
 
@@ -261,6 +277,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     # Finding-linked negatives (policy 1): stated as KEEP, labelled DO NOT ASSERT, or offered.
     stated: List[str] = []
     n_offered = 0
+    pending: list = []
     handled = {n for n, _ in negs}   # a negative listed under two keys, or already mandatory, is routed once
     for j, c in enumerate(cands):
         if c.text in handled:
@@ -268,18 +285,12 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         handled.add(c.text)
         d = qneg.get(len(negs) + j)
         label = d.action if d else "keep"
-        p = score(f"f{keys.index(c.key)}")
+        p = finding_presence(jev[f"f{keys.index(c.key)}"])
         outcome = route_finding(label, p, c.tag)
-        if outcome == "offered":
-            if n_offered >= MAX_FINDING_OPTIONS:
-                outcome = "dropped"
-            else:
-                n_offered += 1
-                decisions["options"].append({"kind": "finding_negative", "section": "FINDINGS", "text": c.text,
-                                             "finding": c.key,
-                                             "reason": "contextual" if p >= PRESENT_HIGH else f"finding borderline (p={p:.2f})"})
-        decisions["finding_negatives"].append({"finding": c.key, "text": c.text, "tag": c.tag, "qwen": label,
-                                               "present": round(p, 3), "outcome": outcome})
+        record = {"finding": c.key, "text": c.text, "tag": c.tag, "qwen": label, "present": round(p, 3), "outcome": outcome}
+        decisions["finding_negatives"].append(record)
+        if outcome == "offered":   # decided once every stated negative is known
+            pending.append((c, p, record))
         if outcome == "stated":
             stated.append(c.text)
             neg_lines.append(f'  - KEEP: "{c.text}" (finding: {c.key})')
@@ -287,6 +298,20 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
                                            "source": f"finding:{c.key}"})
         elif outcome == "do_not_assert":
             neg_lines.append(f'  - DO NOT ASSERT: "{c.text}" — expected consequence of: {d.dictated_finding}')
+    # An offered negative the brief already states (KEEP) or the dictation already makes is a
+    # duplicate, never an option.
+    said = [n["text"] for n in decisions["negatives"] if n["action"] == "keep"] + dictated_negatives(items)
+    for c, p, record in pending:
+        if duplicates_negative(c.text, said):
+            record["outcome"] = "duplicate"
+        elif n_offered >= MAX_FINDING_OPTIONS:
+            record["outcome"] = "dropped"
+        else:
+            n_offered += 1
+            said.append(c.text)
+            decisions["options"].append({"kind": "finding_negative", "section": "FINDINGS", "text": c.text,
+                                         "finding": c.key,
+                                         "reason": "contextual" if p >= PRESENT_HIGH else f"finding borderline (p={p:.2f})"})
     if neg_bullet:
         neg_bullet.lines = neg_lines
     elif matrix and neg_lines:
@@ -331,7 +356,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         kept, barred = [], []
         for k, t in enumerate(recs):
             d = pdec.get(k)
-            if score(f"r{k}") >= 0.5:
+            if 1 - score(f"r{k}") >= 0.5:      # condition unmet
                 action = "removed"
             elif d is None or d.decision == "include":
                 action = "keep"
@@ -383,7 +408,12 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
                 neg = neg.strip().rstrip(".")
                 if not neg or neg in seen or n_offered >= MAX_FINDING_OPTIONS:
                     continue
+                if duplicates_negative(neg, said):
+                    decisions["finding_negatives"].append({"finding": items[it.index], "text": neg, "tag": "fallback",
+                                                           "qwen": "n/a", "present": None, "outcome": "duplicate"})
+                    continue
                 seen.add(neg)
+                said.append(neg)
                 n_offered += 1
                 decisions["options"].append({"kind": "finding_negative", "section": "FINDINGS", "text": neg,
                                              "finding": items[it.index], "reason": "unanticipated finding"})
@@ -412,13 +442,6 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         for k, b in enumerate(measurements):
             decisions["measurements"].append({"label": b.label, "action": "keep" if k in app else "removed"})
         meas.bullets = [b for k, b in enumerate(measurements) if k in app]
-
-    # An offered negative the report already states (KEEP) or the dictation states is not offered again.
-    decisions["options"], dup = dedupe_options(
-        decisions["options"], [n["text"] for n in decisions["negatives"] if n["action"] == "keep"], findings)
-    for fn in decisions["finding_negatives"]:
-        if fn["outcome"] == "offered" and fn["text"] in dup:
-            fn["outcome"] = "duplicate_dropped"
 
     # Lean removals.
     for s in secs:

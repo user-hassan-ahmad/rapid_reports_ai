@@ -75,6 +75,17 @@ def test_fixture_parses_usable():
                                                 "suppress_section", "suppress_headers"]
 
 
+def _ans(k: str, q: dict, v: float) -> dict:
+    """Jev's answer to question q, from a test's value v read as the routed number: an If-present finding's
+    presence (a graded "score" question, answered as presence x 3) or a recommendation's unmet condition
+    (asked with met polarity since L-49, answered as 1 - unmet); anything else, its yes-probability."""
+    if q.get("type") == "score":
+        return {"score": v * 3}
+    if k.startswith("rec"):
+        return {"noul": 1 - v}
+    return {"noul": v}
+
+
 def stub(monkeypatch, jev_f: dict | None = None, jev_c: dict | None = None, qwen=None,
          plan: rc.ImpressionPlan | None = None, fallback: rc.FallbackNegatives | None = None):
     """Jev answers by key ({"r0": 0.9}); unlisted keys score 0.1. Qwen: a QwenDecisions (returned as is) or a
@@ -90,7 +101,7 @@ def stub(monkeypatch, jev_f: dict | None = None, jev_c: dict | None = None, qwen
         src = jev_c if ctx else jev_f
         return {k: ({"choice": "possible" if src.get(k, 0.1) >= 0.5 else "named",
                      "probabilities": {"possible": src.get(k, 0.1), "named": 1 - src.get(k, 0.1)}}
-                    if q.get("type") == "choice" else {"noul": src.get(k, 0.1)}) for k, q in qs.items()}
+                    if q.get("type") == "choice" else _ans(k, q, src.get(k, 0.1))) for k, q in qs.items()}
 
     async def fake_qwen(state, negs, normals, measurements):
         calls["qwen"].append((list(negs), list(normals)))
@@ -1034,7 +1045,7 @@ async def probe(monkeypatch, sheet=MASTER, jev=None, plan=None, qwen=None, struc
 
     async def fake_jev(state, qs):
         calls["states"].append((state, set(qs)))
-        return {k: {"noul": scores.get(k, 0.1)} for k in qs}
+        return {k: _ans(k, q, scores.get(k, 0.1)) for k, q in qs.items()}
     monkeypatch.setattr(tb.rc, "_jev", fake_jev)
     return await tb.compile_template_brief(sheet, s, "CT AP", FIND, "Pain."), calls
 
@@ -1124,7 +1135,7 @@ async def test_p6_partial_jev_answer_fails_closed(monkeypatch, drop):
     stub(monkeypatch)
 
     async def partial(state, qs):
-        return {k: {"noul": 0.1} for k in qs if k != drop}
+        return {k: _ans(k, q, 0.1) for k, q in qs.items() if k != drop}
     monkeypatch.setattr(tb.rc, "_jev", partial)
     with pytest.raises(ValueError, match=drop):
         await tb.compile_template_brief(MASTER, MSTRUCT, "CT AP", FIND, "Pain.")
@@ -1228,7 +1239,7 @@ async def test_a_dictated_case_negative_is_not_offered(monkeypatch):
     calls = stub(monkeypatch)
 
     async def fake_jev(state, qs):
-        return {k: {"noul": 0.1} for k in qs}
+        return {k: _ans(k, q, 0.1) for k, q in qs.items()}
     monkeypatch.setattr(tb.rc, "_jev", fake_jev)
     b = await tb.compile_template_brief(NOFLUID, s, "CT AP", "Normal primary organ. no free fluid.", "Pain.")
     assert [o["text"] for o in b.decisions["options"] if o["kind"] == "finding_negative"] == ["No adjacent collection."]
@@ -1245,7 +1256,7 @@ async def test_if_present_offers_come_first_exclusions_fill_the_remaining_room(m
     calls = stub(monkeypatch, plan=rc.ImpressionPlan(recommendations=[], impression=[0]))
 
     async def fake_jev(state, qs):
-        return {k: {"noul": 0.6 if k == "f0" else 0.1} for k in qs}
+        return {k: _ans(k, q, 0.6 if k == "f0" else 0.1) for k, q in qs.items()}
     monkeypatch.setattr(tb.rc, "_jev", fake_jev)
     b = await tb.compile_template_brief(sheet, s, "CT AP", FIND, "Pain.")
     fn = [o for o in b.decisions["options"] if o["kind"] == "finding_negative"]

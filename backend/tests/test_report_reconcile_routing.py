@@ -61,14 +61,15 @@ BASE = {"n0": 0.1, "n1": 0.1, "n2": 0.1, "s0": 0.1, "s1": 0.1}
 
 
 def _jev(scores: dict) -> dict:
-    out = {k: {"noul": v} for k, v in {**BASE, **scores}.items()}
+    """Jev answers from yes-probabilities; an If-present key (f<i>) is a graded score, given as presence x 3."""
+    out = {k: {"score": v * 3} if k.startswith("f") else {"noul": v} for k, v in {**BASE, **scores}.items()}
     out["imp"] = {"choice": "v0"}
     return out
 
 
 @pytest.mark.parametrize("scores", list(itertools.product((0.1, 0.9), repeat=4)))
 async def test_route_differential_matches_quick(monkeypatch, scores):
-    _stub(monkeypatch, _jev({f"d{k}": p for k, p in enumerate(scores)} | {"r0": 0.1, "r1": 0.1}), QWEN)
+    _stub(monkeypatch, _jev({f"d{k}": p for k, p in enumerate(scores)} | {"r0": 0.9, "r1": 0.9}), QWEN)
     b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural")
     lines = qb.differential_lines(qb.parse_sheet(SHEET))
     quick = [d["action"] for d in b.decisions["differentials"]]
@@ -88,7 +89,7 @@ RECS = ("  - REFERRAL: Neurosurgery for haemorrhage with mass effect\n"
 # recommendations are routed: room=False.
 IF_PRESENT = ('- **If present:**\n'
               '  - Acute subdural → "No contralateral collection" (contextual)\n'
-              '  - Acute subdural → "No skull base fracture" (contextual)\n'
+              '  - Acute subdural → "No intraventricular extension" (contextual)\n'
               '  - Acute subdural → "No uncal herniation" (contextual)\n')
 ALL_RECS = SHEET[:SHEET.index("  - REFERRAL:")] + RECS
 FULL = ALL_RECS.replace("- **Out-of-scope suppressed:** CTA\n", "- **Out-of-scope suppressed:** CTA\n" + IF_PRESENT)
@@ -107,10 +108,15 @@ async def test_route_recommendation_matches_quick(monkeypatch, unmet, dec, k, ro
         d = rc.RecDecision(index=k, decision=dec[0], exclude_reason=dec[1])
         decs.append(d)
     plan = rc.ImpressionPlan(recommendations=decs, impression=[0])
-    jev = {"d0": 0.1, "d1": 0.1, "d2": 0.1, "d3": 0.1, **{f"r{i}": 0.1 for i in range(5)}, f"r{k}": unmet}
+    # quick asks the recommendation condition with met polarity (L-49): Jev's yes is 1 - unmet
+    jev = {"d0": 0.1, "d1": 0.1, "d2": 0.1, "d3": 0.1, **{f"r{i}": 0.9 for i in range(5)}, f"r{k}": 1 - unmet}
+    qwen = QWEN
     if not room:
         jev["f0"] = 0.9
-    _stub(monkeypatch, _jev(jev), QWEN, plan)
+        # the classifier answers every negative it is sent (L-49): the three If-present negatives too
+        qwen = QWEN.model_copy(update={"negatives": QWEN.negatives + [
+            rc.NegativeDecision(index=i, action="keep") for i in range(len(QWEN.negatives), len(QWEN.negatives) + 3)]})
+    _stub(monkeypatch, _jev(jev), qwen, plan)
     b = await qb.compile_brief(sheet, "CT head non-contrast", "8 mm right subdural")
     if not room:
         assert len([o for o in b.decisions["options"] if o["kind"] == "finding_negative"]) == 3
