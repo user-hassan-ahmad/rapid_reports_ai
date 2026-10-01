@@ -65,8 +65,8 @@ SHEET_C = '''# Skill Sheet: CT head — head injury
 def _stub_c(monkeypatch, subdural_present: float, qwen_negs):
     async def fake_jev(state, questions):
         fake_jev.questions = questions
-        out = {k: {"noul": 0.1} for k in questions}
-        out["f0"] = {"noul": subdural_present}
+        out = {k: {"score": 0.3} if k.startswith("f") else {"noul": 0.1} for k in questions}
+        out["f0"] = {"score": subdural_present * 3}
         return out
     async def no_fallback(*a):
         raise RuntimeError("no fallback in this test")
@@ -114,7 +114,9 @@ async def test_finding_negatives_are_stated_offered_or_labelled(monkeypatch):
                       "No effacement of the basal cisterns": "do_not_assert",
                       "No subfalcine herniation": "dropped", "No venous sinus involvement": "dropped"}
     jq = {k: v["instructions"] for k, v in fq.jev.questions.items() if k.startswith("f")}
-    assert jq == {"f0": qb.Q_FINDING + "subdural haematoma", "f1": qb.Q_FINDING + "extradural haematoma"}
+    assert jq == {"f0": qb.q_finding("subdural haematoma")["instructions"],
+                  "f1": qb.q_finding("extradural haematoma")["instructions"]}
+    assert all(v["type"] == "score" for k, v in fq.jev.questions.items() if k.startswith("f"))
     sources = {n["text"]: n["source"] for n in b.decisions["negatives"]}
     assert sources["No skull fracture"] == "sheet" and sources["No midline shift"] == "finding:subdural haematoma"
 
@@ -274,7 +276,7 @@ async def test_a_negative_listed_under_two_keys_is_stated_once(monkeypatch):
                             '  - extradural haematoma → "No midline shift" (core)')
     _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(6)])
     async def both(state, questions):
-        return {k: {"noul": 0.95 if k in ("f0", "f1") else 0.1} for k in questions}
+        return {k: {"score": 2.85} if k in ("f0", "f1") else {"noul": 0.1} for k in questions}
     monkeypatch.setattr(qb, "_jev", both)
     b = await qb.compile_brief(sheet, "CT head", "10 mm subdural and 5 mm extradural haematoma")
     assert b.text.count('KEEP: "No midline shift"') == 1

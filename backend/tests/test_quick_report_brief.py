@@ -305,3 +305,21 @@ async def test_generator_writes_from_raw_sheet_when_negative_answer_stays_incomp
     assert len(calls) == 2
     assert out["brief_used"] is False
     assert "Conditional Suppression Rules" in seen["system"]          # raw sheet
+
+
+# ── Jev wording v2 (L-49) ────────────────────────────────────────────────────
+
+def test_finding_questions_are_score_type():
+    q = qb.q_finding("Free air")
+    assert q["type"] == "score" and len(q["criteria"]) == 4
+    assert q["instructions"] == ("How definitely do the dictated findings report this imaging finding as present? "
+                                 "Finding: Free air")
+    assert q["criteria"][2] == "Raised only as a possibility " + qb.HEDGE
+
+
+def test_finding_score_reads_level_over_three():
+    assert qb.finding_presence({"score": 3.0}) == 1.0
+    assert abs(qb.finding_presence({"score": 2.0}) - 0.6667) < 1e-3   # hedged -> offered band
+    assert qb.route_finding("keep", qb.finding_presence({"score": 2.0}), "core") == "offered"
+    assert qb.route_finding("keep", qb.finding_presence({"score": 3.0}), "core") == "stated"
+    assert qb.route_finding("keep", qb.finding_presence({"score": 1.0}), "core") == "dropped"

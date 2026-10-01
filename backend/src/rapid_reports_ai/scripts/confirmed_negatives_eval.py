@@ -67,8 +67,8 @@ async def coverage(case: dict) -> dict:
     cands = qb.parse_if_present(b.lines) if b else []
     keys = qb.distinct_keys(cands)
     state = f"SCAN TYPE: {case['scan_type']}\nDICTATED FINDINGS:\n{case['findings']}"
-    ans = await qb._jev(state, {f"f{i}": {"type": "noul", "instructions": qb.Q_FINDING + k} for i, k in enumerate(keys)}) if keys else {}
-    scores = {k: round(float(ans[f"f{i}"]["noul"]), 3) for i, k in enumerate(keys)}
+    ans = await qb._jev(state, {f"f{i}": qb.q_finding(k) for i, k in enumerate(keys)}) if keys else {}
+    scores = {k: round(qb.finding_presence(ans[f"f{i}"]), 3) for i, k in enumerate(keys)}
     top = max(scores, key=scores.get) if scores else None
     return {"case": case["name"], "kind": case.get("kind", "silent"), "findings": case["findings"],
             "keys": scores, "top_key": top, "top_score": scores.get(top, 0.0) if top else 0.0,

@@ -165,7 +165,22 @@ _CONFIRMED_BRANCH = re.compile(r'^\s+-\s+([^"]+?)\s*(?:→|->)\s*$')
 _CONFIRMED_NEG = re.compile(r'^\s+-\s+"([^"]+)"\s*(?:\((core|contextual)\))?')
 
 
-Q_FINDING = "The dictated findings report this imaging finding, in any wording or size: "
+HEDGE = "(?, possible, query, cannot exclude, versus, no definite, equivocal)"
+
+
+# If-present finding presence (Jev wording v2, group B, L-49): a graded score read as level / 3, so
+# absent 0, unmentioned 0.33, possible 0.67, present 1.0 against the route_finding cut-offs.
+def q_finding(key: str) -> dict:
+    return {"type": "score",
+            "instructions": "How definitely do the dictated findings report this imaging finding as present? Finding: " + key,
+            "criteria": ["Stated as absent or normal",
+                         "Not mentioned, or only a different finding is reported",
+                         "Raised only as a possibility " + HEDGE,
+                         "Reported as present, in any wording or size"]}
+
+
+def finding_presence(a: dict) -> float:
+    return float(a["score"]) / 3
 
 
 @dataclass
@@ -528,7 +543,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     qs.update({f"n{k}": {"type": "noul", "instructions": Q_AFFECTED + t} for k, t in enumerate(normals)})
     qs.update({f"d{k}": {"type": "noul", "instructions": Q_PRESENT + t} for k, t in enumerate(diffs)})
     qs.update({f"r{k}": {"type": "noul", "instructions": Q_REC_UNMET + t} for k, t in enumerate(recs)})
-    qs.update({f"f{i}": {"type": "noul", "instructions": Q_FINDING + k} for i, k in enumerate(keys)})
+    qs.update({f"f{i}": q_finding(k) for i, k in enumerate(keys)})
     qs.update({f"s{k}": {"type": "noul", "instructions": Q_STYLE_MATCH + " ".join(b.lines)} for k, b in enumerate(styles)})
     if len(variants) > 1:
         qs["imp"] = {"type": "choice", "instructions": "Which impression exemplar best matches the shape of this case's findings (severity, number of findings, complications)?",
@@ -586,7 +601,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         handled.add(c.text)
         d = qneg.get(len(negs) + j)
         label = d.action if d else "keep"
-        p = score(f"f{keys.index(c.key)}")
+        p = finding_presence(jev[f"f{keys.index(c.key)}"])
         outcome = route_finding(label, p, c.tag)
         record = {"finding": c.key, "text": c.text, "tag": c.tag, "qwen": label, "present": round(p, 3), "outcome": outcome}
         decisions["finding_negatives"].append(record)
