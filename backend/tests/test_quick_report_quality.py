@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Optional
 
 import pytest
 
@@ -140,8 +141,10 @@ OPTIONS = [{"id": "fn0", "kind": "finding_negative", "sentence": "No intrahepati
            {"id": "fn1", "kind": "finding_negative", "sentence": "No splenic vein thrombus."}]
 
 
-def _stub_jev(monkeypatch, contra: dict, reported: dict):
-    """contra: clause/option text -> score; reported: dictated item -> score. Default 0.05 / 0.95."""
+def _stub_jev(monkeypatch, contra: dict, reported: dict, dictated: Optional[dict] = None):
+    """contra: clause/option text -> score; reported: dictated item -> score; dictated: negative clause ->
+    'the dictation itself states it'. Default 0.05 / 0.95 / 0.05."""
+    dictated = dictated or {}
     calls = []
     async def fake(state, questions):
         calls.append((state, questions))
@@ -150,6 +153,8 @@ def _stub_jev(monkeypatch, contra: dict, reported: dict):
             t = q["instructions"]
             if t.startswith(qq.Q_CONTRA):
                 out[k] = {"noul": contra.get(t[len(qq.Q_CONTRA):], 0.05)}
+            elif t.startswith(qq.Q_DICTATED):
+                out[k] = {"noul": dictated.get(t.split('"')[1], 0.05)}
             elif q["type"] == "choice" and k.startswith("i"):
                 line = t.split('"')[1]
                 out[k] = _cls("absent" if reported.get(line, 0.95) < 0.4 else "stated")
@@ -185,6 +190,63 @@ async def test_check_failure_returns_no_flags_and_the_reason(monkeypatch):
     monkeypatch.setattr(qq.qb, "_jev", boom)
     res = await qq.check(REPORT, FINDINGS, "CT AP", OPTIONS)
     assert res.flags == [] and res.bad_option_ids == [] and "jev down" in res.error
+
+
+def test_dictated_negative_question_quotes_the_clause_and_the_sentence_before_it():
+    q = qq.q_dictated("No canal stenosis at this level.", "Disc bulge at L3/L4.")
+    assert q["type"] == "noul"
+    assert q["instructions"] == (qq.Q_DICTATED + '"No canal stenosis at this level." (in the report it follows: '
+                                 '"Disc bulge at L3/L4.")')
+    assert "same level, side and structure" in q["instructions"]
+    assert q["criteria"]["true"].startswith("The dictation itself says this finding is absent")
+    assert "only for a different level, side" in q["criteria"]["false"]
+    assert qq.q_dictated("No ascites.", "")["instructions"] == qq.Q_DICTATED + '"No ascites."'
+
+
+@pytest.mark.asyncio
+async def test_a_dictated_negative_is_kept_whatever_the_contradiction_score(monkeypatch):
+    # L-49 addendum (f98a5930): stenosis dictated at another level made Jev read the dictated
+    # "No spinal canal stenosis" as contradicted, and the restated gate passed it.
+    calls = _stub_jev(monkeypatch, {"No portal vein encasement": 0.9, "No hepatic deposit": 0.9},
+                      {}, dictated={"No portal vein encasement": 0.8})
+    res = await qq.check(REPORT, FINDINGS, "CT AP", [])
+    asked = {q["instructions"].split('"')[1]: q for s, qs in calls if s.startswith("SCAN") for k, q in qs.items()
+             if k.startswith("d")}
+    assert set(asked) == {"No superior mesenteric vein encasement", "No portal vein encasement", "No hepatic deposit",
+                          "No pericolic or paracolic fluid collection."}        # negatives only
+    assert asked["No portal vein encasement"] == qq.q_dictated(
+        "No portal vein encasement", "A 3 cm hypodense mass in the pancreatic head compresses the distal common bile duct.")
+    assert [(f.kind, f.text) for f in res.flags] == [("contradiction", "No hepatic deposit")]
+    assert [k.model_dump() for k in res.kept_dictated] == [
+        {"text": "No portal vein encasement", "contradiction": 0.9, "dictated": 0.8}]
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_dictated_answer_keeps_the_negative(monkeypatch):
+    async def fake(state, qs):
+        if state.startswith("REPORT:"):
+            return {k: _cls("stated") for k in qs}
+        return {k: {"noul": 0.9} for k in qs if not k.startswith("d")}      # no d<i> answers
+    monkeypatch.setattr(qq.qb, "_jev", fake)
+    res = await qq.check(REPORT, FINDINGS, "CT AP", [])
+    assert [f for f in res.flags if f.kind == "contradiction" and qq.is_negative(f.text)] == []
+    assert {"text": "No portal vein encasement", "contradiction": 0.9, "dictated": None} in [
+        k.model_dump() for k in res.kept_dictated]
+
+
+@pytest.mark.asyncio
+async def test_kept_dictated_negatives_stay_in_the_report_and_the_telemetry(monkeypatch):
+    async def fake_check(report, findings, scan_type, options):
+        return qq.CheckResult(kept_dictated=[qq.KeptNegative(text="No portal vein encasement", contradiction=0.9,
+                                                             dictated=0.8)])
+    async def must_not_run(*a, **k):
+        raise AssertionError("no repair")
+    monkeypatch.setattr(qq, "check", fake_check)
+    monkeypatch.setattr(qq, "repair_report", must_not_run)
+    monkeypatch.setattr(qq, "insert_findings", must_not_run)
+    report, _, tel = await qq.run_quality_check(REPORT, FINDINGS, "CT AP", [])
+    assert report == REPORT and tel["clauses_removed"] == 0
+    assert tel["kept_dictated_negative"] == [{"text": "No portal vein encasement", "contradiction": 0.9, "dictated": 0.8}]
 
 
 def _stub_repair(monkeypatch, edits, seen=None):
@@ -425,6 +487,8 @@ async def test_a_negative_is_flagged_only_when_its_restatement_is_dictated(monke
                 out[k] = {"noul": 0.8 if "encasement" in t or "hepatic deposit" in t else 0.05}
             elif q.get("criteria") and t.startswith(qq.Q_RESTATED):
                 out[k] = {"noul": 0.9 if "portal vein" in t else 0.1}
+            elif t.startswith(qq.Q_DICTATED):
+                out[k] = {"noul": 0.05}
             else:
                 out[k] = {"noul": 0.95}
         return out
