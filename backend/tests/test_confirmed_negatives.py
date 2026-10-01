@@ -326,3 +326,57 @@ def test_tags_are_read_when_the_analyser_annotates_them():
              '  - Sigmoid wall thickening → "No free intraperitoneal fluid is identified" (generalised peritonitis) (core)']
     assert [(c.key, c.tag) for c in qb.parse_if_present(lines)] == [
         ("Pancreatic head mass", "core"), ("Pancreatic head mass", "contextual"), ("Sigmoid wall thickening", "core")]
+
+
+# Offered negatives never duplicate a stated or dictated negative (hotfix 2026-10-01).
+
+@pytest.mark.parametrize("option, said, dup", [
+    ("No free intraperitoneal gas", ["no free gas"], True),              # dictated, more general
+    ("No free gas.", ["No free gas is identified"], True),               # same claim, different filler
+    ("No ascites or pleural effusion", ["no ascites"], False),           # only one part already said
+    ("No ascites or pleural effusion", ["no ascites", "No pleural effusion"], True),
+    ("No acute ischaemic change", ["no change"], False),                 # one word never swallows a claim
+    ("No pelvic collection", ["no free gas", "No skull fracture"], False),
+])
+def test_duplicates_negative_compares_parts(option, said, dup):
+    assert qb.duplicates_negative(option, said) is dup
+
+
+def test_dictated_negatives_are_the_negated_clauses():
+    items = qb.split_findings("large volume free gas. no nodes, aorta normal. CBD not dilated")
+    assert qb.dictated_negatives(items) == ["no nodes", "CBD not dilated"]
+
+
+@pytest.mark.asyncio
+async def test_offered_negative_already_dictated_is_dropped(monkeypatch):
+    _stub_c(monkeypatch, 0.6, [NegativeDecision(index=i, action="keep") for i in range(6)])
+    b = await qb.compile_brief(SHEET_C, "CT head", "possible thin right subdural. there is no midline shift.")
+    offered = [o["text"] for o in b.decisions["options"] if o["kind"] == "finding_negative"]
+    assert offered == ["No uncal herniation", "No effacement of the basal cisterns", "No subfalcine herniation"]
+    routes = {c["text"]: c["outcome"] for c in b.decisions["finding_negatives"]}
+    assert routes["No midline shift"] == "duplicate"
+
+
+@pytest.mark.asyncio
+async def test_offered_negative_already_stated_is_dropped(monkeypatch):
+    sheet = SHEET_C.replace('"No uncal herniation" (contextual)', '"No fracture of the skull vault" (contextual)')
+    _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(6)])
+    b = await qb.compile_brief(sheet, "CT head", "10 mm right acute subdural")
+    assert 'KEEP: "No skull fracture"' in b.text                          # the mandatory negative is stated
+    assert not [o for o in b.decisions["options"] if o["kind"] == "finding_negative"]
+    routes = {c["text"]: c["outcome"] for c in b.decisions["finding_negatives"]}
+    assert routes["No fracture of the skull vault"] == "duplicate"
+
+
+@pytest.mark.asyncio
+async def test_fallback_negative_already_stated_or_dictated_is_dropped(monkeypatch):
+    async def fb(state, items, keys):
+        return qb.FallbackNegatives(items=[qb.FallbackItem(index=0, covered=True), qb.FallbackItem(
+            index=1, covered=False, negatives=["No adrenal haemorrhage.", "Midline shift is not present", "No local invasion"])])
+    _stub_fallback(monkeypatch, [0, 1], fb)
+    b = await qb.compile_brief(SHEET_C, "CT head",
+                               "10 mm right acute subdural. 12 mm left adrenal nodule, no haemorrhage of the adrenal")
+    fb_opts = [o["text"] for o in b.decisions["options"] if o.get("reason") == "unanticipated finding"]
+    assert fb_opts == ["No local invasion"]                               # distinct: kept
+    dups = {c["text"] for c in b.decisions["finding_negatives"] if c["outcome"] == "duplicate"}
+    assert dups == {"No adrenal haemorrhage", "Midline shift is not present"}

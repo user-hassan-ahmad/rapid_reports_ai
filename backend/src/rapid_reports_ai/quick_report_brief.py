@@ -211,7 +211,45 @@ def route_finding(label: str, present: float, tag: str) -> str:
     return "offered"
 
 
-_MEASUREMENT = re.compile(r"\d+(?:[.,]\d+)?\s*(?:%|°|(?:mm|cm|ml|mL|cc|HU|mmHg|m/s|degrees?)(?![A-Za-z]))")
+# Offered negatives never repeat a negative the brief states or the dictation already makes.
+# Comparison only (nothing is rewritten): lower-cased content words of each " or "/comma part,
+# negation and filler removed. Two parts match when their words are equal, or when one holds
+# all of the other's and the smaller has at least two words ("no free gas" covers "No free
+# intraperitoneal gas"; a one-word "no change" never swallows "No acute ischaemic change").
+_NEG_FILLER = {"no", "not", "without", "nor", "any", "is", "are", "was", "were", "be", "there", "the", "a", "an",
+               "of", "seen", "identified", "evident", "demonstrated", "present", "noted", "visible", "detected",
+               "evidence", "to", "suggest", "and"}
+_NEG_START = re.compile(r"(?i)\b(?:no|not|without|nor)\b")
+
+
+def _claim_parts(text: str) -> List[frozenset]:
+    parts = re.split(r",|;|\s+or\s+|\s+and\s+", text.lower())
+    out = []
+    for p in parts:
+        words = frozenset(w for w in re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", p) if w not in _NEG_FILLER)
+        if words:
+            out.append(words)
+    return out
+
+
+def _part_matches(a: frozenset, b: frozenset) -> bool:
+    small, big = (a, b) if len(a) <= len(b) else (b, a)
+    return a == b or (len(small) >= 2 and small <= big)
+
+
+def dictated_negatives(items: List[str]) -> List[str]:
+    """Negated clauses in the dictation: "no nodes, aorta normal" -> "no nodes"."""
+    return [c.strip() for t in items for c in re.split(r",|;", t) if _NEG_START.search(c)]
+
+
+def duplicates_negative(option: str, negatives: List[str]) -> bool:
+    """True when every part of the offered negative is already said by one of the negatives."""
+    have = [p for n in negatives for p in _claim_parts(n)]
+    parts = _claim_parts(option)
+    return bool(parts) and all(any(_part_matches(p, h) for h in have) for p in parts)
+
+
+_MEASUREMENT =re.compile(r"\d+(?:[.,]\d+)?\s*(?:%|°|(?:mm|cm|ml|mL|cc|HU|mmHg|m/s|degrees?)(?![A-Za-z]))")
 
 
 # ── reconcile ────────────────────────────────────────────────────────────────
@@ -540,6 +578,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     # Finding-linked negatives (policy 1): stated as KEEP, labelled DO NOT ASSERT, or offered.
     stated: List[str] = []
     n_offered = 0
+    pending: list = []
     handled = {n for n, _ in negs}   # a negative listed under two keys, or already mandatory, is routed once
     for j, c in enumerate(cands):
         if c.text in handled:
@@ -549,16 +588,10 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         label = d.action if d else "keep"
         p = score(f"f{keys.index(c.key)}")
         outcome = route_finding(label, p, c.tag)
-        if outcome == "offered":
-            if n_offered >= MAX_FINDING_OPTIONS:
-                outcome = "dropped"
-            else:
-                n_offered += 1
-                decisions["options"].append({"kind": "finding_negative", "section": "FINDINGS", "text": c.text,
-                                             "finding": c.key,
-                                             "reason": "contextual" if p >= PRESENT_HIGH else f"finding borderline (p={p:.2f})"})
-        decisions["finding_negatives"].append({"finding": c.key, "text": c.text, "tag": c.tag, "qwen": label,
-                                               "present": round(p, 3), "outcome": outcome})
+        record = {"finding": c.key, "text": c.text, "tag": c.tag, "qwen": label, "present": round(p, 3), "outcome": outcome}
+        decisions["finding_negatives"].append(record)
+        if outcome == "offered":   # decided once every stated negative is known
+            pending.append((c, p, record))
         if outcome == "stated":
             stated.append(c.text)
             neg_lines.append(f'  - KEEP: "{c.text}" (finding: {c.key})')
@@ -566,6 +599,20 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
                                            "source": f"finding:{c.key}"})
         elif outcome == "do_not_assert":
             neg_lines.append(f'  - DO NOT ASSERT: "{c.text}" — expected consequence of: {d.dictated_finding}')
+    # An offered negative the brief already states (KEEP) or the dictation already makes is a
+    # duplicate, never an option.
+    said = [n["text"] for n in decisions["negatives"] if n["action"] == "keep"] + dictated_negatives(items)
+    for c, p, record in pending:
+        if duplicates_negative(c.text, said):
+            record["outcome"] = "duplicate"
+        elif n_offered >= MAX_FINDING_OPTIONS:
+            record["outcome"] = "dropped"
+        else:
+            n_offered += 1
+            said.append(c.text)
+            decisions["options"].append({"kind": "finding_negative", "section": "FINDINGS", "text": c.text,
+                                         "finding": c.key,
+                                         "reason": "contextual" if p >= PRESENT_HIGH else f"finding borderline (p={p:.2f})"})
     if neg_bullet:
         neg_bullet.lines = neg_lines
     elif matrix and neg_lines:
@@ -662,7 +709,12 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
                 neg = neg.strip().rstrip(".")
                 if not neg or neg in seen or n_offered >= MAX_FINDING_OPTIONS:
                     continue
+                if duplicates_negative(neg, said):
+                    decisions["finding_negatives"].append({"finding": items[it.index], "text": neg, "tag": "fallback",
+                                                           "qwen": "n/a", "present": None, "outcome": "duplicate"})
+                    continue
                 seen.add(neg)
+                said.append(neg)
                 n_offered += 1
                 decisions["options"].append({"kind": "finding_negative", "section": "FINDINGS", "text": neg,
                                              "finding": items[it.index], "reason": "unanticipated finding"})
