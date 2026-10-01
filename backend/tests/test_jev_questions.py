@@ -6,9 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from rapid_reports_ai import dictation_triage, section_coverage, utterance_boundary, utterance_bundle
-from rapid_reports_ai.canvas_routes import TriageRouteConfig
-from rapid_reports_ai.dictation_triage import QWEN_SYSTEM_PROMPT
+from rapid_reports_ai import dictation_triage, section_coverage, utterance_bundle
 from rapid_reports_ai.jev_questions import (
     ACTION_DESCRIPTIONS,
     ASR_RISK_THRESHOLD,
@@ -27,7 +25,9 @@ from rapid_reports_ai.jev_questions import (
     coverage_questions,
 )
 
-QSET_DIGEST_2026_09_26_1 = "8ff8ce5b46562f0bfebde4fcd3da31843de7a7c3e25b9e7c9ae07d8d27e9fb1b"
+# 2026-09-29: the retired Qwen triage prompt left the payload; no Jev wording changed, so
+# QSET_VERSION stands (it is logged with every live decision).
+QSET_DIGEST_2026_09_29 = "dd4ce5b20dfd000ced0c5c0e8c230f21dc64a2cb3d08ef76b8fbe8bc853ddfa1"
 
 
 def qset_digest() -> str:
@@ -35,7 +35,6 @@ def qset_digest() -> str:
         "model": JEV_MODEL,
         "action_descriptions": ACTION_DESCRIPTIONS,
         "triage": TRIAGE_QUESTIONS,
-        "qwen_triage_prompt": QWEN_SYSTEM_PROMPT,
         "boundary": BOUNDARY_QUESTIONS,
         "standalone_bundle": STANDALONE_QUESTION,
         "coverage_criteria": COVERAGE_CRITERIA,
@@ -47,25 +46,22 @@ def qset_digest() -> str:
             "boundary_command": COMMAND_THRESHOLD,
             "asr_risk": ASR_RISK_THRESHOLD,
             "placement": PLACEMENT_THRESHOLD,
-            "route_default": TriageRouteConfig(candidate="jev").threshold,
+            "route_default": ROUTE_THRESHOLD_DEFAULT,  # read directly since the route config was retired
         },
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
 def test_qset_digest_pins_wording():
-    assert qset_digest() == QSET_DIGEST_2026_09_26_1
+    assert qset_digest() == QSET_DIGEST_2026_09_29
 
 
 def test_old_modules_reexport_the_registry_objects():
     assert dictation_triage.TRIAGE_QUESTIONS is TRIAGE_QUESTIONS
     assert dictation_triage.ACTION_DESCRIPTIONS is ACTION_DESCRIPTIONS
-    assert utterance_boundary.BOUNDARY_QUESTIONS is BOUNDARY_QUESTIONS
-    assert utterance_boundary.COMPLETE_THRESHOLD == COMPLETE_THRESHOLD
     assert section_coverage.COVERAGE_CRITERIA is COVERAGE_CRITERIA
     assert section_coverage.coverage_questions is coverage_questions
     assert utterance_bundle.bundle_questions is bundle_questions
-    assert TriageRouteConfig(candidate="jev").threshold == ROUTE_THRESHOLD_DEFAULT
 
 
 def test_qset_version_is_named():

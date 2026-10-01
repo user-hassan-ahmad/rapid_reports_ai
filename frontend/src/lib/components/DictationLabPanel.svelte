@@ -3,10 +3,7 @@
 	import { API_URL } from '$lib/config';
 	import { token } from '$lib/stores/auth';
 	import { labConfig } from '$lib/dictation-lab/labConfig';
-	import { buildFixtureLine, suggestId } from '$lib/dictation-lab/fixtureExport';
 	import { buildCoverageFixtureLine, coverageAgreement } from '$lib/dictation-lab/coverage';
-	import { derivePlacement } from '$lib/dictation-lab/frontDoor';
-	import { agreementClass, summariseTraces, type AgreementClass } from '$lib/dictation-lab/summary';
 	import {
 		FAST_ROUTES,
 		buildSessionExport,
@@ -14,22 +11,12 @@
 		type DecisionRecord,
 		type OutcomeEvent
 	} from '$lib/dictation-lab/decisionFirst';
-	import {
-		TRIAGE_ACTIONS,
-		type ChunkTrace,
-		type CoverageTrace,
-		type FixtureCase,
-		type ProcessTrace,
-		type TriageAction,
-		type TriageCandidateTrace
-	} from '$lib/dictation-lab/types';
+	import type { CoverageTrace } from '$lib/dictation-lab/types';
 
 	/** Feeds one utterance into the production scratchpad (IntelliDictateTab.injectTranscript). */
 	export let inject: (text: string) => void = () => {};
-	export let traces: ProcessTrace[] = [];
 	export let onClear: () => void = () => {};
 	export let coverageTrace: CoverageTrace | null = null;
-	export let chunkTraces: ChunkTrace[] = [];
 	export let decisions: { rec: DecisionRecord; display: string }[] = [];
 	export let outcomes: OutcomeEvent[] = [];
 	export let sessionStartedAt = 0;
@@ -63,47 +50,6 @@
 		URL.revokeObjectURL(a.href);
 	}
 
-	// ── Front door ─────────────────────────────────────────────────────────────
-	let boundaryBuffer = '';
-	let boundarySeq = 1;
-	$: chunkSummary = {
-		chunks: chunkTraces.filter((c) => !c.viaBackstop && c.silence_s == null).length,
-		rechecks: chunkTraces.filter((c) => c.silence_s != null && !c.viaBackstop).length,
-		sent: chunkTraces.filter((c) => c.sent !== null).length,
-		backstops: chunkTraces.filter((c) => c.viaBackstop).length,
-		placement: (() => {
-			// Shadow-compare Jev's placement with what the polish did, matched on the sent text.
-			let n = 0, agree = 0;
-			for (const c of chunkTraces) {
-				if (!c.sent || !c.placement) continue;
-				const p = traces.find((t) => t.utterance === c.sent);
-				if (!p) continue;
-				const d = derivePlacement(p.activeBefore, p.activeAfter);
-				if (!d) continue;
-				n += 1;
-				if (d === c.placement) agree += 1;
-			}
-			return { n, agree };
-		})(),
-		meanLatency: (() => {
-			const xs = chunkTraces.filter((c) => !c.viaBackstop && c.silence_s == null).map((c) => c.latency_ms);
-			return xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null;
-		})()
-	};
-	function addBoundaryFixture(c: ChunkTrace, expected: string): void {
-		const line = JSON.stringify({
-			id: `lab-bnd-${String(boundarySeq++).padStart(2, '0')}`,
-			scan_type: coverageState?.scanType ?? '',
-			buffered: c.buffered,
-			chunk: c.chunk,
-			scratchpad_tail: '',
-			expected_boundary: expected,
-			expected_asr_risk: (c.asr_risk ?? 0) >= 0.5,
-			hard: false,
-			note: 'from lab'
-		});
-		boundaryBuffer = boundaryBuffer ? `${boundaryBuffer}\n${line}` : line;
-	}
 	export let coverageState: { scratchpad: string; checklist: string[]; scanType: string } | null = null;
 
 	// ── Coverage ───────────────────────────────────────────────────────────────
@@ -148,7 +94,6 @@
 	let delayMs = 1500;
 	let playing = false;
 	let timer: ReturnType<typeof setTimeout> | null = null;
-	let fixtureNote = '';
 
 	$: lines = feederText
 		.split('\n')
@@ -189,78 +134,6 @@
 	}
 	onDestroy(stop);
 
-	async function loadFixtures(): Promise<void> {
-		fixtureNote = '';
-		try {
-			const headers: Record<string, string> = {};
-			if ($token) headers['Authorization'] = `Bearer ${$token}`;
-			const res = await fetch(`${API_URL}/api/canvas/triage/fixtures`, { headers });
-			if (!res.ok) {
-				fixtureNote = `fixtures unavailable (${res.status}) — is RR_TRIAGE_DEBUG=1 on the backend?`;
-				return;
-			}
-			const data = (await res.json()) as { cases: FixtureCase[] };
-			feederText = data.cases.map((c) => c.utterance).join('\n');
-			cursor = 0;
-			fixtureNote = `${data.cases.length} fixture utterances loaded (state is whatever the scratchpad holds now)`;
-		} catch (e) {
-			fixtureNote = `fixtures failed: ${(e as Error).message}`;
-		}
-	}
-
-	// ── Timeline ───────────────────────────────────────────────────────────────
-	let expanded: number | null = null;
-	const CLASS_STYLE: Record<AgreementClass, string> = {
-		none: 'border-gray-700',
-		deterministic: 'border-blue-500',
-		both: 'border-emerald-500',
-		one: 'border-amber-500',
-		neither: 'border-red-500'
-	};
-	function fmtCand(c: TriageCandidateTrace | null): string {
-		if (!c) return '—';
-		if (c.error) return `error:${c.error}`;
-		const conf = c.confidence == null ? '' : ` ${c.confidence.toFixed(2)}`;
-		return `${c.action}${conf} · ${c.latency_ms ?? '?'}ms`;
-	}
-	$: summary = summariseTraces(traces);
-
-	// ── Export ─────────────────────────────────────────────────────────────────
-	let exportBuffer = '';
-	let exportSeq = 1;
-	let exporting: ProcessTrace | null = null;
-	let exp = {
-		expected_action: 'append_new_finding' as TriageAction,
-		expected_is_correction: false,
-		expected_needs_committed_edit: false,
-		hard: false,
-		note: ''
-	};
-
-	function startExport(p: ProcessTrace): void {
-		exporting = p;
-		const guess = (p.triage?.jev?.action ?? p.triage?.qwen?.action ?? 'append_new_finding') as TriageAction;
-		exp = {
-			expected_action: guess,
-			expected_is_correction: guess === 'correct_previous_finding' || guess === 'delete_previous_utterance',
-			expected_needs_committed_edit: false,
-			hard: false,
-			note: ''
-		};
-	}
-	function confirmExport(): void {
-		if (!exporting) return;
-		const line = buildFixtureLine(exporting, { id: suggestId(exp.expected_action, exportSeq++), ...exp });
-		exportBuffer = exportBuffer ? `${exportBuffer}\n${line}` : line;
-		exporting = null;
-	}
-	async function copyBuffer(): Promise<void> {
-		try {
-			await navigator.clipboard.writeText(exportBuffer);
-		} catch {
-			/* clipboard may be blocked; the textarea is selectable */
-		}
-	}
 </script>
 
 <div class="space-y-4 text-sm">
@@ -268,31 +141,8 @@
 	<section class="card-dark space-y-2">
 		<h3 class="font-semibold">Strategy</h3>
 		<div class="flex flex-wrap gap-3">
-			{#each [['shadow', 'observe'], ['route:jev', 'route on Jev'], ['route:qwen', 'route on Qwen']] as [value, label]}
-				<label class="flex items-center gap-1">
-					<input type="radio" bind:group={$labConfig.strategy} {value} />
-					{label}
-				</label>
-			{/each}
-		</div>
-		<label class="flex items-center gap-2">
-			threshold
-			<input
-				type="range"
-				min="0.5"
-				max="1"
-				step="0.05"
-				bind:value={$labConfig.threshold}
-				disabled={$labConfig.strategy === 'route:qwen'}
-			/>
-			<span class="tabular-nums">{$labConfig.threshold.toFixed(2)}</span>
-			{#if $labConfig.strategy === 'route:qwen'}
-				<span class="text-gray-400">(Qwen has no confidence; always routes)</span>
-			{/if}
-		</label>
-		<div class="flex flex-wrap gap-3">
 			<span class="text-gray-400">front door</span>
-			{#each [['timer', 'silence timers'], ['jev', 'Jev boundary'], ['decision', 'decision-first (live)']] as [value, label]}
+			{#each [['timer', 'silence timers'], ['decision', 'decision-first (live)']] as [value, label]}
 				<label class="flex items-center gap-1">
 					<input type="radio" bind:group={$labConfig.frontDoor} {value} />
 					{label}
@@ -311,10 +161,6 @@
 				<span class="text-gray-500 text-xs">(race: Verbatim mode only)</span>
 			</div>
 		{/if}
-		<label class="flex items-center gap-2">
-			<input type="checkbox" bind:checked={$labConfig.showBoth} />
-			show both candidates (triage_debug)
-		</label>
 	</section>
 
 	<!-- Decision-first (front door 'decision') -->
@@ -364,52 +210,6 @@
 					</div>
 				{/each}
 			</div>
-		</section>
-	{/if}
-
-	<!-- Chunks (front door) -->
-	{#if $labConfig.frontDoor === 'jev' || chunkTraces.length > 0}
-		<section class="card-dark space-y-1">
-			<h3 class="font-semibold">
-				Chunks
-				<span class="text-gray-400 font-normal text-xs">
-					{chunkSummary.chunks} chunks · {chunkSummary.sent} sent · {chunkSummary.chunks - chunkSummary.sent} polish calls saved
-					· {chunkSummary.rechecks} silence re-checks · {chunkSummary.backstops} hard limit · mean {chunkSummary.meanLatency ?? '—'} ms
-					· placement agrees {chunkSummary.placement.agree}/{chunkSummary.placement.n}
-				</span>
-			</h3>
-			<div class="max-h-56 overflow-y-auto space-y-0.5">
-				{#each chunkTraces as c (c.seq)}
-					<div class="text-xs flex flex-wrap gap-x-2 items-baseline border-l-2 pl-2 {c.sent !== null ? 'border-emerald-500/60' : 'border-gray-700'}">
-						<span class="font-mono truncate max-w-[14rem]">“{c.viaBackstop ? c.buffered : c.chunk}”</span>
-						{#if c.silence_s != null && !c.viaBackstop}<span class="text-violet-300">silence {c.silence_s}s{c.standalone != null ? ` · standalone ${c.standalone.toFixed(2)}` : ''} →</span>{/if}
-						<span class={c.resolved === 'continues' ? 'text-gray-400' : c.resolved === 'command' ? 'text-blue-300' : 'text-emerald-300'}>{c.viaBackstop ? 'hard limit' : c.resolved}{c.via === 'punctuation' ? ' (punct.)' : c.via === 'silence' && c.resolved === 'complete' ? ' (silence)' : ''}</span>
-						{#if c.boundary && c.boundary !== c.resolved && !c.viaBackstop}<span class="text-gray-500">jev: {c.boundary}</span>{/if}
-						{#if c.confidence != null}<span class="tabular-nums text-gray-400">{c.confidence.toFixed(2)}</span>{/if}
-						{#if c.asr_risk != null && c.asr_risk >= 0.5}<span class="text-amber-300">asr {c.asr_risk.toFixed(2)}</span>{/if}
-						<span class="tabular-nums text-gray-500">{c.latency_ms} ms</span>
-						{#if c.placement}
-							{@const p = traces.find((t) => t.utterance === c.sent)}
-							{@const d = p ? derivePlacement(p.activeBefore, p.activeAfter) : null}
-							<span class={d == null ? 'text-gray-500' : d === c.placement ? 'text-emerald-300' : 'text-amber-300'}>
-								{c.placement.replace(/_/g, ' ')}{c.placement_confidence != null ? ` ${c.placement_confidence.toFixed(2)}` : ''}{d && d !== c.placement ? ` (polish: ${d.replace(/_/g, ' ')})` : ''}
-							</span>
-						{/if}
-						{#if c.error}<span class="text-red-300">{c.error}</span>{/if}
-						{#if !c.viaBackstop}
-							<span class="ml-auto flex gap-1">
-								{#each ['complete', 'continues', 'command'] as b}
-									<button class="text-[10px] text-gray-500 underline" on:click={() => addBoundaryFixture(c, b)}>{b[0]}</button>
-								{/each}
-							</span>
-						{/if}
-					</div>
-				{/each}
-			</div>
-			{#if boundaryBuffer}
-				<textarea class="w-full h-16 bg-gray-900 rounded p-2 font-mono text-xs" readonly value={boundaryBuffer}></textarea>
-				<p class="text-[10px] text-gray-500">→ backend/tests/fixtures/boundary_cases.jsonl (fill scratchpad_tail and note by hand)</p>
-			{/if}
 		</section>
 	{/if}
 
@@ -491,83 +291,6 @@
 				ms
 			</label>
 			<button class="btn-secondary" on:click={resetFeeder}>Reset feeder</button>
-			<button class="btn-secondary" on:click={loadFixtures}>Load fixtures</button>
 		</div>
-		{#if fixtureNote}<p class="text-gray-400">{fixtureNote}</p>{/if}
-	</section>
-
-	<!-- Summary -->
-	<section class="card-dark grid grid-cols-2 gap-x-4 gap-y-1">
-		<h3 class="font-semibold col-span-2">
-			Session
-			<button class="text-xs text-gray-400 underline ml-2" on:click={onClear}>clear timeline</button>
-		</h3>
-		<span>calls</span><span class="tabular-nums">{summary.total}</span>
-		<span>deterministic / model</span><span class="tabular-nums">{summary.deterministic} / {summary.model}</span>
-		<span>mean latency deterministic</span><span class="tabular-nums">{summary.meanLatencyDeterministicMs ?? '—'} ms</span>
-		<span>mean latency model</span><span class="tabular-nums">{summary.meanLatencyModelMs ?? '—'} ms</span>
-		<span>Jev agreement</span><span class="tabular-nums">{summary.agreement.jev.agreed}/{summary.agreement.jev.n}</span>
-		<span>Qwen agreement</span><span class="tabular-nums">{summary.agreement.qwen.agreed}/{summary.agreement.qwen.n}</span>
-	</section>
-
-	<!-- Timeline -->
-	<section class="card-dark space-y-1 max-h-[28rem] overflow-y-auto">
-		<h3 class="font-semibold">Timeline</h3>
-		{#if traces.length === 0}<p class="text-gray-400">No calls yet. Dictate or use the feeder.</p>{/if}
-		{#each traces as p (p.seq)}
-			{@const cls = agreementClass(p)}
-			<div class="border-l-4 pl-2 py-1 {CLASS_STYLE[cls]}">
-				<button class="text-left w-full" on:click={() => (expanded = expanded === p.seq ? null : p.seq)}>
-					<div class="flex justify-between gap-2">
-						<span class="font-mono truncate">#{p.seq} “{p.utterance || '(no delta)'}”</span>
-						<span class="tabular-nums text-gray-400">{p.latency_ms} ms</span>
-					</div>
-					<div class="text-xs text-gray-300">
-						derived={p.triage?.derived ?? '—'} · routed={p.triage?.routed ?? '—'}{p.triage?.routed_by
-							? ` by ${p.triage.routed_by}`
-							: ''}
-						· jev: {fmtCand(p.triage?.jev ?? null)} · qwen: {fmtCand(p.triage?.qwen ?? null)}
-					</div>
-				</button>
-				{#if expanded === p.seq}
-					<pre class="text-xs bg-gray-900 rounded p-2 overflow-x-auto">{JSON.stringify(p, null, 1)}</pre>
-					<button class="btn-secondary text-xs" on:click={() => startExport(p)}>Add to fixtures</button>
-				{/if}
-			</div>
-		{/each}
-	</section>
-
-	<!-- Export form -->
-	{#if exporting}
-		<section class="card-dark space-y-2 border border-amber-500/50">
-			<h3 class="font-semibold">Label #{exporting.seq}: “{exporting.utterance}”</h3>
-			<label class="block">
-				expected action
-				<select class="bg-gray-900 rounded px-1 ml-2" bind:value={exp.expected_action}>
-					{#each TRIAGE_ACTIONS as a}<option value={a}>{a}</option>{/each}
-				</select>
-			</label>
-			<label class="flex items-center gap-2">
-				<input type="checkbox" bind:checked={exp.expected_is_correction} /> is_correction
-			</label>
-			<label class="flex items-center gap-2">
-				<input type="checkbox" bind:checked={exp.expected_needs_committed_edit} /> needs_committed_edit
-			</label>
-			<label class="flex items-center gap-2"><input type="checkbox" bind:checked={exp.hard} /> hard</label>
-			<input class="w-full bg-gray-900 rounded px-2 py-1" placeholder="note" bind:value={exp.note} />
-			<div class="flex gap-2">
-				<button class="btn-primary" on:click={confirmExport}>Append line</button>
-				<button class="btn-secondary" on:click={() => (exporting = null)}>Cancel</button>
-			</div>
-		</section>
-	{/if}
-
-	<section class="card-dark space-y-2">
-		<h3 class="font-semibold">
-			Fixture buffer
-			<span class="text-gray-400 font-normal">→ paste into backend/tests/fixtures/triage_utterances.jsonl</span>
-		</h3>
-		<textarea class="w-full h-24 bg-gray-900 rounded p-2 font-mono text-xs" readonly value={exportBuffer}></textarea>
-		<button class="btn-secondary" on:click={copyBuffer} disabled={!exportBuffer}>Copy fixtures</button>
 	</section>
 </div>

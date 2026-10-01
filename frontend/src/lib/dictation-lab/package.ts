@@ -10,9 +10,6 @@ import type { LabConfig } from './types';
 export const DICTATION_V2_KEY = 'rr_dictation_v2';
 
 export const PACKAGE_CONFIG: LabConfig = {
-	strategy: 'shadow', // not used by decision-first
-	threshold: 0.9,
-	showBoth: false, // no comparison candidates on /process
 	coverageDebug: false, // no second coverage candidate on /review
 	pillThresholds: { hi: 0.8, lo: 0.4 },
 	frontDoor: 'decision',

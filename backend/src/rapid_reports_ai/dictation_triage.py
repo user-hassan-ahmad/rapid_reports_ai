@@ -1,27 +1,25 @@
-"""System 1 utterance triage: two interchangeable classifiers behind one interface.
+"""System 1 utterance triage: Jev's answer about the latest dictation utterance.
 
 A triager answers one question about the latest dictation utterance — what should
 the scratchpad do with it — plus two yes/no signals. It returns typed values, never
-prose. Nothing here edits the scratchpad; routing lives in dictation_triage_router.
+prose. The dictation package asks these questions inside one bundle per final
+(utterance_bundle), which parses the answers with JevTriager.parse; routing lives in
+fast_append.
 
-Candidates:
-  JevTriager  — TypeSafe Jev 1.13 via OpenRouter's System One endpoint. Calibrated
-                probabilities and a confidence. ~0.3 s.
-  QwenTriager — the production canvas model with reasoning off and a 3-field schema.
-                No confidence (an LLM's self-reported confidence is not calibrated).
+JevTriager — TypeSafe Jev 1.13 via OpenRouter's System One endpoint. Calibrated
+probabilities and a confidence. ~0.3 s. (The Qwen candidate and the /process
+route/debug/shadow modes were retired on 2026-09-29.)
 
 Spec: docs/superpowers/specs/2026-09-24-jev-dictation-triage-shadow-design.md
 """
 from __future__ import annotations
 
-import asyncio
 import os
 import time
 from dataclasses import asdict, dataclass
-from typing import Any, Awaitable, Callable, Literal, Optional, Protocol, get_args
+from typing import Any, Literal, Optional, get_args
 
 import httpx
-from pydantic import BaseModel
 
 from .jev_client import JEV_MODEL, JEV_URL, jev_post  # noqa: F401  (re-exported)
 from .jev_questions import ACTION_DESCRIPTIONS, QSET_VERSION, TRIAGE_QUESTIONS  # noqa: F401  (re-exported)
@@ -37,7 +35,6 @@ TriageAction = Literal[
 TRIAGE_ACTIONS: tuple[str, ...] = get_args(TriageAction)
 
 JEV_TIMEOUT_S = 3.0
-QWEN_TIMEOUT_S = 8.0
 
 Candidate = Literal["jev", "qwen"]
 
@@ -76,12 +73,6 @@ class TriageDecision:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
-
-
-class Triager(Protocol):
-    name: str
-
-    async def classify(self, state: TriageState) -> TriageDecision: ...
 
 
 def _check_unit(value: Any, what: str) -> float:
@@ -156,179 +147,3 @@ class JevTriager:
 
 
 YesNo = Literal["yes", "no"]
-
-
-class QwenTriageOutput(BaseModel):
-    """Tiny typed schema: three fields, nothing that invites prose.
-
-    The two signals are yes/no string literals, not JSON booleans: Groq's tool-call
-    validator rejects the "True"/"False" strings the model emits for bool fields
-    (seen on 11 of 48 fixtures in the first bake-off)."""
-
-    action: TriageAction
-    is_correction: YesNo
-    needs_committed_edit: YesNo
-
-
-def _build_qwen_system_prompt() -> str:
-    lines = [
-        "You classify the latest utterance of a radiologist's live dictation. Return only the structured fields.",
-        "",
-        "Choose exactly one action:",
-    ]
-    for action, desc in ACTION_DESCRIPTIONS.items():
-        lines.append(f"- {action}: {desc}")
-    lines += [
-        "",
-        "is_correction: yes when " + TRIAGE_QUESTIONS["is_correction"]["instructions"].lower() + " Otherwise no.",
-        "needs_committed_edit: yes when " + TRIAGE_QUESTIONS["needs_committed_edit"]["instructions"].lower() + " Otherwise no.",
-        "",
-        "Do not explain. Do not reason. Output the fields only.",
-    ]
-    return "\n".join(lines)
-
-
-QWEN_SYSTEM_PROMPT = _build_qwen_system_prompt()
-
-QWEN_USER_PROMPT_TEMPLATE = """## Scan type
-{scan_type}
-
-## COMMITTED (frozen)
-{committed}
-
-## ACTIVE
-{active}
-
-## Latest utterance
-{latest_utterance}"""
-
-Runner = Callable[..., Awaitable[Any]]
-
-
-class QwenTriager:
-    name: str = "qwen"
-
-    def __init__(
-        self,
-        runner: Runner | None = None,
-        model_name: str | None = None,
-        api_key: str | None = None,
-        timeout_s: float = QWEN_TIMEOUT_S,
-    ) -> None:
-        self._runner = runner
-        self._model_name = model_name
-        self._api_key = api_key
-        self._timeout_s = timeout_s
-
-    def _resolve(self) -> tuple[Runner, str, str, dict[str, Any]]:
-        # Lazy imports: enhancement_utils is heavy and canvas_routes imports this module.
-        from .canvas_routes import _adapt_canvas_settings
-        from .enhancement_utils import (
-            MODEL_CONFIG,
-            _get_api_key_for_provider,
-            _get_model_provider,
-            _run_agent_with_model,
-        )
-
-        model = self._model_name or MODEL_CONFIG["CANVAS_PROCESS"]
-        api_key = self._api_key or _get_api_key_for_provider(_get_model_provider(model))
-        settings = _adapt_canvas_settings(
-            model,
-            {"temperature": 0.0, "max_completion_tokens": 120, "extra_body": {"reasoning_effort": "none"}},
-        )
-        return (self._runner or _run_agent_with_model), model, api_key, settings
-
-    async def classify(self, state: TriageState) -> TriageDecision:
-        try:
-            runner, model, api_key, settings = self._resolve()
-        except Exception as e:  # unknown model / missing key => no decision
-            raise TriageError(f"qwen configuration failure: {type(e).__name__}") from e
-        user_prompt = QWEN_USER_PROMPT_TEMPLATE.format(
-            scan_type=state.scan_type or "(not specified)",
-            committed=state.committed or "(empty)",
-            active=state.active or "(empty)",
-            latest_utterance=state.latest_utterance,
-        )
-        t0 = time.perf_counter()
-        try:
-            result = await asyncio.wait_for(
-                runner(
-                    model_name=model,
-                    output_type=QwenTriageOutput,
-                    system_prompt=QWEN_SYSTEM_PROMPT,
-                    user_prompt=user_prompt,
-                    api_key=api_key,
-                    use_thinking=False,
-                    model_settings=settings,
-                ),
-                timeout=self._timeout_s,
-            )
-        except Exception as e:  # any provider/schema/timeout failure => no decision
-            raise TriageError(f"qwen failure: {type(e).__name__}") from e
-        latency_ms = int((time.perf_counter() - t0) * 1000)
-        out: QwenTriageOutput = result.output
-        return TriageDecision(
-            candidate="qwen",
-            action=out.action,
-            confidence=None,
-            probabilities=None,
-            is_correction=1.0 if out.is_correction == "yes" else 0.0,
-            needs_committed_edit=1.0 if out.needs_committed_edit == "yes" else 0.0,
-            latency_ms=latency_ms,
-            input_tokens=None,
-            cost_usd=None,
-        )
-
-
-_TRIAGERS: dict[str, Triager] = {}
-
-
-def get_triager(name: Candidate) -> Triager:
-    """Singleton per candidate. Raises ValueError for an unknown name, TriageError if
-    the candidate cannot be constructed (e.g. missing key)."""
-    if name not in ("jev", "qwen"):
-        raise ValueError(f"unknown triage candidate: {name!r}")
-    if name not in _TRIAGERS:
-        _TRIAGERS[name] = JevTriager() if name == "jev" else QwenTriager()
-    return _TRIAGERS[name]
-
-
-# --- Trace models: what the lab and the shadow log carry ------------------------
-
-
-class TriageCandidateTrace(BaseModel):
-    action: Optional[str] = None
-    confidence: Optional[float] = None
-    probabilities: Optional[dict[str, float]] = None
-    is_correction: Optional[float] = None
-    needs_committed_edit: Optional[float] = None
-    latency_ms: Optional[int] = None
-    input_tokens: Optional[int] = None
-    cost_usd: Optional[float] = None
-    error: Optional[str] = None
-
-
-class TriageTrace(BaseModel):
-    mode: Literal["debug", "route"]
-    qset: str = QSET_VERSION
-    derived: Optional[str] = None
-    routed: Optional[Literal["deterministic", "model"]] = None
-    routed_by: Optional[Candidate] = None
-    live_latency_ms: Optional[int] = None
-    jev: Optional[TriageCandidateTrace] = None
-    qwen: Optional[TriageCandidateTrace] = None
-
-
-def decision_to_trace(result: TriageDecision | BaseException) -> TriageCandidateTrace:
-    if isinstance(result, BaseException):
-        return TriageCandidateTrace(error=type(result).__name__)
-    return TriageCandidateTrace(
-        action=result.action,
-        confidence=result.confidence,
-        probabilities=result.probabilities,
-        is_correction=result.is_correction,
-        needs_committed_edit=result.needs_committed_edit,
-        latency_ms=result.latency_ms,
-        input_tokens=result.input_tokens,
-        cost_usd=result.cost_usd,
-    )
