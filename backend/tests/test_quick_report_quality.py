@@ -69,30 +69,63 @@ def test_selection_is_the_mean_of_ch2sel_and_t1_at_045():
     assert qq.selected("liver normal", None, None) is False
 
 
+def _cls(c, p=0.9):
+    """A Jev choice answer for the omission classifier with `c` on top."""
+    rest = [k for k in qq._OMIT_CHOICES if k != c]
+    probs = {c: p, **{k: (1 - p) / len(rest) for k in rest}}
+    return {"choice": c, "confidence": p, "probabilities": probs}
+
+
+def test_omission_question_is_the_classify_choice():
+    q = qq.q_omission("2cm cyst L kidney")
+    assert q["type"] == "choice"
+    assert q["instructions"] == ('Read only this one dictated line: "2cm cyst L kidney". Find what the report says about '
+                                 'the same finding or structure, then choose how the report covers this line.')
+    assert list(q["criteria"]) == ["stated", "partial", "absent", "different", "unclear"]
+    assert q["criteria"]["absent"].startswith("Nothing in the report is about this line's abnormality")
+    assert q["criteria"]["unclear"].startswith("The line is only a heading or a fragment")
+
+
 @pytest.mark.asyncio
-async def test_omission_question_uses_conveys_wording(monkeypatch):
+async def test_omission_classifier_rides_the_report_call(monkeypatch):
     asked = {}
     async def fake_jev(state, qs):
         if state.startswith("REPORT:"):
             asked.update(qs)
+            return {k: _cls("stated") for k in qs}
         return {k: {"noul": 0.9} for k in qs}
     monkeypatch.setattr(qq.qb, "_jev", fake_jev)
     await qq.check("FINDINGS:\nThe appendix is unremarkable.", "appendix fine. 5 mm defect D1", "CT", [])
-    omit = [q["instructions"] for k, q in asked.items() if k.startswith("i")]
-    assert len(omit) == 2 and all(t.startswith(qq.Q_CONVEYS) for t in omit)
-    assert qq.Q_CONVEYS == ("The report itself states everything this statement says, in any wording, abbreviation "
-                            "or synonym (not merely implied or inferable): ")
+    assert asked == {"i0": qq.q_omission("appendix fine"), "i1": qq.q_omission("5 mm defect D1")}
 
 
 @pytest.mark.asyncio
-async def test_omission_flag_threshold_is_040(monkeypatch):
+async def test_each_class_routes_to_its_own_flag(monkeypatch):
+    by_line = {"aa one": "absent", "bb two": "partial", "cc three": "different", "dd four": "stated",
+               "ee five": "unclear"}
     async def fake_jev(state, qs):
-        return {k: {"noul": 0.45 if k == "i0" else 0.35} for k in qs}
+        if state.startswith("REPORT:"):
+            return {k: _cls(next(c for t, c in by_line.items() if f'"{t}"' in q["instructions"])) for k, q in qs.items()}
+        return {k: {"noul": 0.05} for k in qs}    # no contradiction; unreadable selector choice -> the regex selects
     monkeypatch.setattr(qq.qb, "_jev", fake_jev)
-    # (a one-letter word before a full stop reads as an initial, so the items end in words)
+    r = await qq.check("FINDINGS:\nThe liver is cirrhotic.", "aa one. bb two. cc three. dd four. ee five", "CT", [])
+    assert [(f.kind, f.text) for f in r.flags] == [("omission", "aa one"), ("partial", "bb two"), ("differs", "cc three")]
+    assert r.flags[0].score == pytest.approx(0.9)
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_classifier_answer_raises_no_flag(monkeypatch):
+    async def fake_jev(state, qs):
+        return {k: {"noul": 0.05} for k in qs}     # no probabilities: the omission answer is unreadable
+    monkeypatch.setattr(qq.qb, "_jev", fake_jev)
     r = await qq.check("FINDINGS:\nx.", "item one. item two", "CT", [])
-    assert qq.OMIT_FLAG == 0.40
-    assert [f.text for f in r.flags if f.kind == "omission"] == ["item two"]
+    assert [f for f in r.flags if f.kind in ("omission", "partial", "differs")] == []
+
+
+def test_missing_detail_is_the_line_words_the_report_lacks():
+    rep = "FINDINGS:\nA 3 mm calculus is seen in the left distal ureter with mild hydronephrosis."
+    assert qq.missing_detail("3 mm calculus left distal ureter, HU 254, mild hydronephrosis", rep) == "HU 254"
+    assert qq.missing_detail("3 mm calculus left distal ureter", rep) is None
 
 
 def test_inserted_negative_must_come_from_an_omitted_negative_item():
@@ -117,8 +150,11 @@ def _stub_jev(monkeypatch, contra: dict, reported: dict):
             t = q["instructions"]
             if t.startswith(qq.Q_CONTRA):
                 out[k] = {"noul": contra.get(t[len(qq.Q_CONTRA):], 0.05)}
+            elif q["type"] == "choice" and k.startswith("i"):
+                line = t.split('"')[1]
+                out[k] = _cls("absent" if reported.get(line, 0.95) < 0.4 else "stated")
             else:
-                out[k] = {"noul": reported.get(t[len(qq.Q_CONVEYS):], 0.95)}
+                out[k] = {"noul": 0.95}
         return out
     monkeypatch.setattr(qq.qb, "_jev", fake)
     return calls
@@ -133,8 +169,8 @@ async def test_check_asks_two_parallel_calls_and_flags(monkeypatch):
     assert states == ["REPORT:", "SCAN TYPE: CT AP"]
     contra_qs = [q["instructions"] for s, qs in calls if s.startswith("SCAN") for q in qs.values()]
     assert qq.Q_CONTRA + "No hepatic deposit" in contra_qs and qq.Q_CONTRA + "No splenic vein thrombus." in contra_qs
-    omit_qs = [q["instructions"] for s, qs in calls if s.startswith("REPORT") for q in qs.values()]
-    assert omit_qs == [qq.Q_CONVEYS + t for t in ("3 cm hypodense mass at the head of the pancreas", "CBD dilated to 12 mm",
+    omit_qs = [q for s, qs in calls if s.startswith("REPORT") for q in qs.values()]
+    assert omit_qs == [qq.q_omission(t) for t in ("3 cm hypodense mass at the head of the pancreas", "CBD dilated to 12 mm",
                                                   "Intrahepatic duct dilatation", "No ascites")]
     assert [(f.kind, f.text) for f in res.flags] == [("contradiction", "No portal vein encasement"),
                                                      ("omission", "CBD dilated to 12 mm")]
@@ -210,6 +246,38 @@ async def test_run_quality_check_repairs_on_report_flags_and_drops_bad_options(m
     assert [o["id"] for o in options] == ["fn1"]
     assert tel["edits_applied"] == 1 and tel["edits_skipped"] == 1 and tel["options_dropped"] == ["fn0"]
     assert [f["kind"] for f in tel["flags"]] == ["contradiction", "omission"] and tel["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_partial_and_differs_lines_are_recorded_for_review_never_inserted(monkeypatch):
+    rep = "FINDINGS:\nA 3 mm calculus is seen in the left distal ureter.\n\nIMPRESSION:\nUreteric calculus."
+    async def fake_check(report, findings, scan_type, options):
+        return qq.CheckResult(flags=[qq.Flag(kind="partial", text="3 mm calculus left distal ureter, HU 254", score=0.8),
+                                     qq.Flag(kind="differs", text="5 mm calculus left distal ureter", score=0.7)])
+    async def must_not_run(*a, **k):
+        raise AssertionError("nothing to insert or correct")
+    monkeypatch.setattr(qq, "check", fake_check)
+    monkeypatch.setattr(qq, "insert_findings", must_not_run)
+    monkeypatch.setattr(qq, "repair_report", must_not_run)
+    out, _, tel = await qq.run_quality_check(rep, "x", "CT KUB", [])
+    assert out == rep and tel["repair_ms"] is None
+    assert tel["review"] == [{"kind": "partial", "line": "3 mm calculus left distal ureter, HU 254", "missing_detail": "HU 254"},
+                             {"kind": "differs", "line": "5 mm calculus left distal ureter"}]
+
+
+@pytest.mark.asyncio
+async def test_only_absent_lines_reach_the_inserter(monkeypatch):
+    async def fake_check(report, findings, scan_type, options):
+        return qq.CheckResult(flags=[qq.Flag(kind="partial", text="bb two", score=0.8),
+                                     qq.Flag(kind="omission", text="aa one", score=0.9)])
+    seen = {}
+    async def fake_insert(report, findings, items):
+        seen["items"] = items
+        return qq.RepairResult(report=report)
+    monkeypatch.setattr(qq, "check", fake_check)
+    monkeypatch.setattr(qq, "insert_findings", fake_insert)
+    await qq.run_quality_check(REPORT, FINDINGS, "CT", [])
+    assert seen["items"] == ["aa one"]
 
 
 @pytest.mark.asyncio
@@ -492,7 +560,7 @@ def _selector_jev(monkeypatch, selected_items, omitted, fail_dictation=False, se
                 else:
                     out[k] = {"noul": 0.05}
             return out
-        return {k: {"noul": 0.1 if any(q["instructions"].endswith(x) for x in omitted) else 0.9} for k, q in qs.items()}
+        return {k: _cls("absent" if any(f'"{x}"' in q["instructions"] for x in omitted) else "stated") for k, q in qs.items()}
     monkeypatch.setattr(qq.qb, "_jev", fake)
 
 
@@ -513,7 +581,7 @@ async def test_selector_questions_ride_the_dictation_state_call(monkeypatch):
     by_state = {s.split("\n")[0]: qs for s, qs in seen}
     dict_qs = by_state["SCAN TYPE: CT"]
     assert dict_qs["sel1"] == qq.q_select_choice("2cm cyst L kidney") and dict_qs["lt0"] == qq.q_select_noul("appendix fine")
-    assert sorted(by_state["REPORT:"]) == ["i0", "i1"]                    # conveys asked for every item, in parallel
+    assert sorted(by_state["REPORT:"]) == ["i0", "i1"]                    # classifier asked for every item, in parallel
     assert len(seen) == 2
 
 
@@ -524,3 +592,45 @@ async def test_selector_failure_falls_back_to_the_regex(monkeypatch):
     r = await qq.check("FINDINGS:\nx.", "liver normal. no ascites. 2cm cyst L kidney", "CT", [])
     assert [f.text for f in r.flags if f.kind == "omission"] == ["2cm cyst L kidney"]
     assert r.selector == "regex" and "jev down" in r.error
+
+
+# ── inserter rewrite (classify-first, L-49): only the abnormal part, report terms, slips corrected ──
+
+def test_insert_prompt_rules():
+    p = qq.INSERT_SYS
+    assert "Write only what the line reports as abnormal or present" in p
+    assert "Never write a sentence that only says structures are normal" in p
+    assert "Use the report's own terms" in p
+    assert "never guess a finding" in p
+    assert "Never state anything that differs from what the report already says" in p
+    assert '"sentence": ""' in p
+
+
+@pytest.mark.asyncio
+async def test_inserter_user_prompt_lists_the_lines_left_out(monkeypatch):
+    seen = {}
+    async def fake(**kw):
+        seen.update(kw)
+        from types import SimpleNamespace
+        return SimpleNamespace(output=qq.Insertions(items=[]))
+    monkeypatch.setattr(qq, "_run_agent_with_model", fake)
+    await qq.insert_findings("FINDINGS:\nx.", "d", ["aa one"])
+    assert "LINES LEFT OUT OF THE REPORT:\n1. aa one" in seen["user_prompt"]
+    assert seen["model_settings"]["reasoning_effort"] == "none"
+
+
+def test_normal_only_sentences_are_recognised():
+    assert qq._only_normal("The midfoot joints are unremarkable.")
+    assert qq._only_normal("Within the limits of the study, no abnormality is seen in the upper aerodigestive tract.")
+    assert qq._only_normal("The partially imaged femoral heads appear normal.")
+    assert not qq._only_normal("A 2 cm cyst is present in the right kidney, which is otherwise normal.")
+    assert not qq._only_normal("There is an abnormal signal in the cord.")
+    assert not qq._only_normal("Mild degenerative changes are noted in the spine.")
+
+
+@pytest.mark.asyncio
+async def test_inserter_drops_a_normal_only_sentence(monkeypatch):
+    _insertions(monkeypatch, "The midfoot joints are unremarkable.", "A 5 mm defect at D1.")
+    _jev_scores(monkeypatch, 0.05)
+    r = await qq.insert_findings("FINDINGS:\nThe appendix is unremarkable.", "x", ["midfoot fine, defect", "5 mm defect D1"])
+    assert "midfoot" not in r.report and "5 mm defect" in r.report and r.applied == 1 and r.skipped == 1
