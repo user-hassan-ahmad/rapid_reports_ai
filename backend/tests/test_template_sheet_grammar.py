@@ -222,11 +222,33 @@ def test_prose_conditional_heuristic_spares_units_headings_and_plain_prose():
     assert r.structure.usable
 
 
-@pytest.mark.parametrize("heading", ["Voice", "Style", "Terminology", "voice"])
+FREE = ["Scan Context", "Impression Construction", "Measurement and Grading", "Reference Values",
+        "Incidental Findings", "Domain Rules", "Open Questions", "Voice", "Style", "Terminology"]
+
+
+@pytest.mark.parametrize("heading", FREE + ["voice", "MEASUREMENT AND GRADING"])
 def test_free_prose_sections_skip_conditional_and_negative_checks(heading):
-    r = parse(STRUCTURE + f"\n## {heading}\nWhen in doubt, be brief.\nNo paragraph headers in short reports.\n")
+    r = parse(STRUCTURE + f"\n## {heading}\nWhen in doubt, be brief.\nNo paragraph headers in short reports.\n"
+              "### A subheading\nIf the study is limited, say so.\n")
     assert r.errors == [] and r.structure.usable
-    assert tuple(g.FREE_PROSE_SECTIONS) == ("voice", "style", "terminology")
+    assert len(g.FREE_PROSE_SECTIONS) == len(FREE)
+
+
+@pytest.mark.parametrize("heading", ["Measurement and Grading Rules", "Incidental Findings Rules", "Scan context notes",
+                                     "Reporting notes", "Report-wide", "Paragraph: Organ (FINDINGS)"])
+def test_other_headings_stay_checked(heading):
+    r = parse(STRUCTURE + f"\n## {heading}\nWhen in doubt, be brief.\n")
+    assert [e.reason for e in r.errors] == [g.PROSE_CONDITIONAL] and not r.structure.usable
+
+
+def test_free_prose_ends_at_the_next_section_heading():
+    r = parse(STRUCTURE + "\n## Domain Rules\nIf limited, say so.\n## Paragraph: Organ (FINDINGS)\nIf limited, say so.\n")
+    assert [(e.line, e.reason) for e in r.errors] == [(len(STRUCTURE.splitlines()) + 5, g.PROSE_CONDITIONAL)]
+
+
+def test_preamble_prose_is_checked():
+    r = parse("Use this sheet when reporting.\n" + STRUCTURE)
+    assert [e.reason for e in r.errors] == [g.PROSE_CONDITIONAL]
 
 
 def test_unusable_without_findings_and_impression_roles():

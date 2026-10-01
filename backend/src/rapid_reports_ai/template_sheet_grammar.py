@@ -136,10 +136,12 @@ reported reports report stated states state described describes mentioned noted 
 documented given seen shown present absent found identified recorded
 """.split())
 
-# Headings ("## <title>", case-insensitive) whose prose is free: the radiologist's voice and style
-# notes and terminology guidance. Prose everywhere else (paragraphs, Report-wide, the Report Structure
-# block, any other heading, text before the first "## ") is checked for conditionals and negatives.
-FREE_PROSE_SECTIONS = ("voice", "style", "terminology")
+# Headings (exact "## <title>", case-insensitive) whose prose is free: the analyser's generator-guidance
+# sections, not reconcilable units ("### " subheadings inside them stay free prose). Prose everywhere
+# else (paragraphs, Report-wide, the Report Structure block, any other heading, text before the first
+# "## ") is checked for conditionals and negatives.
+FREE_PROSE_SECTIONS = ("scan context", "impression construction", "measurement and grading", "reference values",
+                       "incidental findings", "domain rules", "open questions", "voice", "style", "terminology")
 
 # Prose that states a condition outside quoted text should have been a RULE / NEGATIVE … WHEN.
 # "if any" is exempt only as a closing idiom ("…, if any." / "(if any)").
