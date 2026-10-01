@@ -2,6 +2,9 @@
 options only."""
 from __future__ import annotations
 
+import asyncio
+import time
+
 from rapid_reports_ai import report_reconcile as rc
 from rapid_reports_ai import template_lean as tl
 
@@ -75,7 +78,8 @@ def _fakes(monkeypatch, present=None, qwen=None, plan=None):
     async def fake_jev(state, qs):
         calls.setdefault("jev", []).append(qs)
         sc = {"d0": 0.9, "d1": 0.1, "f0": 3, "f1": 1, "rec0": 0.9, "rec1": 0.1, **(present or {})}
-        return {k: ({"score": sc[k]} if k.startswith("f") else {"noul": sc[k]}) for k in qs}
+        dflt = lambda k: 0.1 if k.startswith(("dv", "dr")) else None  # noqa: E731 - no device presupposed
+        return {k: ({"score": sc[k]} if k.startswith("f") else {"noul": sc.get(k, dflt(k))}) for k in qs}
 
     async def fake_qwen(state, negs, normals, measurements, **kw):
         calls["qwen"] = list(negs)
@@ -129,9 +133,7 @@ async def test_case_options_fail_closed_on_jev_error_and_without_a_case(monkeypa
     assert not any(o["kind"] in ("finding_negative", "recommendation") for o in opts)
 
 
-async def test_lean_generation_is_todays_generator_then_check_then_gated_options(monkeypatch):
-    calls = {}
-
+def _gen_fakes(monkeypatch, calls, options_delay=0.0):
     async def fake_gen(self, template_config, user_inputs, user_signature=None, model_override=None,
                        brief_text=None, history_supplied=False):
         calls["gen"] = {"sheet": template_config["skill_sheet"], "brief_text": brief_text, "inputs": user_inputs}
@@ -139,38 +141,119 @@ async def test_lean_generation_is_todays_generator_then_check_then_gated_options
 
     async def fake_case_options(case, findings, scan_type, history, **kw):
         calls["case"] = case
+        await asyncio.sleep(options_delay)
         return ([{"kind": "finding_negative", "section": "FINDINGS", "text": "No regional lymphadenopathy"},
+                 {"kind": "finding_negative", "section": "FINDINGS", "text": "No free gas"},
                  {"kind": "recommendation", "section": "CONCLUSION", "text": "REFERRAL: Urgent referral."}], {"x": 1})
 
     async def fake_write(options, findings, scan_type, **kw):
         calls["style"] = kw.get("style")
         return [{"id": "fn0", "kind": "finding_negative", "section": "FINDINGS", "sentence": "No regional lymphadenopathy."},
+                {"id": "fn1", "kind": "finding_negative", "section": "FINDINGS", "sentence": "No free gas."},
                 {"id": "opt0", "kind": "recommendation", "section": "CONCLUSION", "sentence": "Urgent referral."}]
 
     async def fake_check(report, findings, scan, options, sections=None, protected=None, suppressed=None,
                          extra_report_qs=None, history=None):
-        calls["check"] = {"sections": [(s.name, s.role) for s in sections], "extra": extra_report_qs}
-        return report + "\nCHECKED", options, {"enabled": True, "extra_answers": {"u0": 0.95}}
+        calls["check"] = {"sections": [(s.name, s.role) for s in sections], "options": options, "extra": extra_report_qs}
+        return report + "\nCHECKED", options, {"enabled": True}
 
     async def fake_gate(state, qs):
-        calls["gate_state"] = state
+        calls.setdefault("gate", []).append((state, qs))
+        if state.startswith("SCAN TYPE"):   # contradiction of each option sentence against the dictation
+            return {k: (0.9 if "free gas" in q["instructions"] else 0.1) for k, q in qs.items()}
+        if state.startswith("REPORT:"):      # uniqueness against the report
+            return {k: (0.95 if "lymphadenopathy" in q["instructions"] else 0.1) for k, q in qs.items()}
         return {}
     monkeypatch.setattr(tl.TemplateManager, "_generate_report_skill_sheet_guided", fake_gen)
     monkeypatch.setattr(tl, "case_options", fake_case_options)
     monkeypatch.setattr(tl, "write_options", fake_write)
     monkeypatch.setattr(tl, "run_quality_check", fake_check)
     monkeypatch.setattr(tl.rc, "gate_scores", fake_gate)
+
+
+async def test_lean_generation_is_todays_generator_then_check_then_vetted_options(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
     out = await tl.generate_template_report_lean(sheet=OLD_SHEET, scan_type="CT", findings="A 2 cm lesion.",
                                                  history="?lesion", case=CASE, signature="Dr A")
     assert calls["gen"]["sheet"] == OLD_SHEET and calls["gen"]["brief_text"] is None
     assert calls["case"] is CASE and "Example impression." in calls["style"]
-    assert ("CONCLUSION", "impression") in calls["check"]["sections"] and "u0" in calls["check"]["extra"]
-    assert calls["gate_state"].startswith("CONCLUSION:\n1. A 2 cm lesion")
+    # the check reads the report alone; options are vetted beside it (contradiction + uniqueness)
+    assert ("CONCLUSION", "impression") in calls["check"]["sections"] and calls["check"]["options"] == []
+    assert any(st.startswith("CONCLUSION:\n1. A 2 cm lesion") for st, _ in calls["gate"])
     # nothing from Phase 1 is written into the report: generator text + check edits + signature only
     assert out["report_content"] == REPORT + "\nCHECKED\n\nDr A" and out["report_generated"] == REPORT
-    assert [o["id"] for o in out["options"]] == ["opt0"] and out["gate_dropped"][0]["id"] == "fn0"
-    assert set(out["lat"]) >= {"generator_s", "options_s", "check_s", "gate_s"}
+    assert [o["id"] for o in out["options"]] == ["opt0"]
+    assert {o["id"]: o["outcome"] for o in out["gate_dropped"]} == {"fn0": "already_in_report", "fn1": "contradicted"}
+    assert set(out["lat"]) >= {"generator_s", "options_s", "check_s"} and out["options_late"] is False
     assert out["phase1_used"] is True and out["brief_used"] is False
+
+
+async def test_late_options_are_dropped_and_never_delay_the_report(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls, options_delay=2.0)
+    monkeypatch.setattr(tl, "OPTIONS_GRACE_S", 0.05)
+    t0 = time.monotonic()
+    out = await tl.generate_template_report_lean(sheet=OLD_SHEET, scan_type="CT", findings="A 2 cm lesion.",
+                                                 history="?lesion", case=CASE, signature=None)
+    assert time.monotonic() - t0 < 0.5
+    assert out["options"] == [] and out["options_late"] is True
+    assert out["report_content"] == REPORT + "\nCHECKED"
+
+
+# ── device / prior-procedure guard (Phase 1 options) ─────────────────────────
+
+def test_device_questions_quote_the_option_and_point_the_same_way():
+    qs = tl.device_questions(3, "No contrast within the aneurysm sac.")
+    assert set(qs) == {"dv3", "dr3"}
+    assert '"No contrast within the aneurysm sac."' in qs["dv3"]["instructions"]
+    assert qs["dr3"]["instructions"].startswith("The dictated findings or the clinical history report the device")
+    assert "mention" in qs["dr3"]["criteria"]["true"] and "Neither" in qs["dr3"]["criteria"]["false"]
+    assert "CLINICAL HISTORY: EVAR 2019" in tl.device_state("CT", "EVAR 2019", "AAA.")
+
+
+def test_device_keep_drops_only_a_presupposed_device_that_is_not_reported():
+    ans = {"dv0": {"noul": 0.9}, "dr0": {"noul": 0.1},     # presupposed, not reported -> drop
+           "dv1": {"noul": 0.9}, "dr1": {"noul": 0.8},     # presupposed, reported -> keep
+           "dv2": {"noul": 0.1}, "dr2": {"noul": 0.05},    # nothing presupposed -> keep
+           "dv3": {"noul": 0.9}}                           # unreadable -> drop (conservative)
+    assert [tl.device_keep(ans, k) for k in range(4)] == [False, True, True, False]
+
+
+async def test_case_options_drop_a_device_negative_the_case_does_not_report(monkeypatch):
+    case = {**CASE, "placement_units": CASE["placement_units"] + [
+        {"kind": "NEGATIVE", "text": "No contrast within the aneurysm sac", "key": "endoleak", "paragraph": "PRIMARY FINDINGS"}]}
+    seen = {}
+
+    async def device_jev(state, qs):
+        if any(k.startswith("dv") for k in qs):
+            seen["state"] = state
+            return {k: {"noul": 0.9 if (k.startswith("dv") and "aneurysm sac" in qs[k]["instructions"]) else 0.1}
+                    for k in qs}
+        return await base(state, qs)
+    _fakes(monkeypatch)
+    base = rc._jev
+    monkeypatch.setattr(rc, "_jev", device_jev)
+    opts, dec = await tl.case_options(case, "A 2 cm lesion of the primary organ.", "CT", "?lesion",
+                                      findings_section="FINDINGS", impression_section="CONCLUSION")
+    assert "CLINICAL HISTORY: ?lesion" in seen["state"]
+    assert not any("aneurysm sac" in o["text"] for o in opts)
+    assert any(o["text"] == "No gas-containing collection" for o in opts)   # nothing presupposed: kept
+    assert {"text": "No contrast within the aneurysm sac", "differential": "endoleak",
+            "outcome": "device_not_reported"} in dec["case_exclusions"]
+
+
+# ── option cap ───────────────────────────────────────────────────────────────
+
+def test_cap_options_keeps_three_finding_negatives_and_five_in_all_by_usefulness():
+    fn = lambda t, o: {"kind": "finding_negative", "text": t, "origin": o}  # noqa: E731
+    opts = [fn("x1", "exclusion"), fn("i1", "if_present"), fn("x2", "exclusion"), fn("i2", "if_present"),
+            {"kind": "impression", "text": "imp1"}, {"kind": "recommendation", "text": "rec1"},
+            {"kind": "impression", "text": "imp2"}, {"kind": "recommendation", "text": "rec2"}]
+    kept, capped = tl.cap_options(opts)
+    assert [o["text"] for o in kept] == ["i1", "i2", "x1", "rec1", "rec2"]
+    assert [o["text"] for o in capped] == ["x2", "imp1", "imp2"]
+    assert tl.cap_options(opts[:2]) == (opts[1:2] + opts[:1], [])
 
 
 def test_a_standalone_impression_word_without_colon_is_a_header():

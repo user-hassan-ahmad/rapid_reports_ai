@@ -4,9 +4,9 @@ stored sheet; the post-generation check; Phase 1 used ONLY for options.
     prepare:  Phase 1 (case_analyser) on the stored sheet: grammar summary, or the sheet's own prose when the
               grammar parse is unusable (old-format sheets) -> case units, stored by template_pipeline's plumbing.
     generate: TemplateManager._generate_report_skill_sheet_guided (brief_text None)  ||  case_options
-              (Jev presence, Qwen contradicted / expected, impression plan, dedupe, caps) -> write_options
-           -> run_quality_check with sections read from the generated report's own headers  ||  uniqueness gate
-           -> gate drops -> signature last.
+              (Jev presence, Qwen contradicted / expected, impression plan, device guard, dedupe, cap) -> write_options
+           -> run_quality_check on the report alone (sections from its own headers)  ||  vet_options (contradiction
+              + uniqueness) -> signature last. Options wait at most until the check ends + OPTIONS_GRACE_S.
 
 Nothing from Phase 1 is written into the report: its targeted exclusion negatives, If-present negatives for
 dictated findings and recommendations whose trigger is dictated are only offered. No conversion, no grammar
@@ -23,7 +23,7 @@ from typing import Dict, List, Optional, Tuple
 from . import report_reconcile as rc
 from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model
 from .report_reconcile import write_options
-from .report_review import ReportSection, run_quality_check
+from .report_review import CONTRA_FLAG, Q_CONTRA, ReportSection, run_quality_check
 from .template_brief import _scores
 from .template_manager import TemplateManager
 from .template_sheet_structure import _key
@@ -114,6 +114,80 @@ def _split_report(report: str, sections: List[ReportSection], name: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Device / prior-procedure guard and the option cap
+# ─────────────────────────────────────────────────────────────────────────────
+
+# An option that presupposes a device or prior intervention ("No contrast within the aneurysm sac" is endoleak
+# framing) is offered only when the dictation or the history reports it. Two Jev questions per candidate, in one
+# call whose state carries the history (Jev reads history quoted inside a question poorly: EVAR in the history
+# scored 0.12 there, 0.95 in the state). Probe: scratchpad device_probe/probe3.json. A single combined question
+# ("reports it, or presupposes none") passed the native-aneurysm sac at 0.53 / 0.56, so it is not used.
+_DEVICE_EG = ("for example a stent graft, stent, prosthesis, valve replacement, line, drain, catheter, tube, closure "
+              "device, wires or a surgical anastomosis")
+DEVICE_KEEP = 0.5
+
+
+def device_state(scan_type: str, history: str, findings: str) -> str:
+    return f"SCAN TYPE: {scan_type}\nCLINICAL HISTORY: {history or 'none given'}\nDICTATED FINDINGS:\n{findings}"
+
+
+def device_questions(k, text: str) -> dict:
+    """dv<k>: the negative presupposes a device or prior procedure; dr<k>: the case reports it."""
+    return {
+        f"dv{k}": {"type": "noul",
+                   "instructions": f'This negative only makes sense for a patient who has a device or has had a prior '
+                                   f'procedure: "{text}"',
+                   "criteria": {"true": f"It is about a device or the result of a prior procedure ({_DEVICE_EG}): its "
+                                        "position, patency, migration, leak or complication, such as contrast in a "
+                                        "treated aneurysm sac.",
+                                "false": "It is about native anatomy or disease and makes sense for a patient with no "
+                                         "device and no prior procedure."}},
+        f"dr{k}": {"type": "noul",
+                   "instructions": f'The dictated findings or the clinical history report the device or prior procedure '
+                                   f'this negative presupposes: "{text}"',
+                   "criteria": {"true": "The dictated findings or the clinical history mention that device, or the "
+                                        "procedure that placed it or that it follows, in any wording, synonym or "
+                                        "abbreviation.",
+                                "false": "Neither the dictated findings nor the clinical history mention that device or "
+                                         "any procedure that would place it."}},
+    }
+
+
+def device_keep(answers: dict, k) -> bool:
+    """False when the negative presupposes a device or procedure the case does not report; an unreadable answer
+    drops it (conservative: an option is never needed)."""
+    try:
+        return float(answers[f"dv{k}"]["noul"]) < DEVICE_KEEP or float(answers[f"dr{k}"]["noul"]) >= DEVICE_KEEP
+    except Exception:  # noqa: BLE001
+        return False
+
+
+MAX_FINDING_NEGATIVES = 3
+MAX_TOTAL_OPTIONS = 5
+_RANK = {("finding_negative", "if_present"): 0, ("finding_negative", "exclusion"): 1, ("recommendation", None): 2,
+         ("impression", None): 3}
+
+
+def _rank(o: dict) -> int:
+    kind = o.get("kind")
+    return _RANK.get((kind, o.get("origin") if kind == "finding_negative" else None), _RANK.get((kind, None), 4))
+
+
+def cap_options(options: List[dict]) -> Tuple[List[dict], List[dict]]:
+    """(kept, capped): at most MAX_FINDING_NEGATIVES finding negatives and MAX_TOTAL_OPTIONS in all, by usefulness:
+    finding-linked If-present, then case exclusions, then recommendations, then impression items (stable within)."""
+    kept, capped, n_fn = [], [], 0
+    for o in sorted(options, key=_rank):
+        fn = o.get("kind") == "finding_negative"
+        if len(kept) >= MAX_TOTAL_OPTIONS or (fn and n_fn >= MAX_FINDING_NEGATIVES):
+            capped.append(o)
+            continue
+        n_fn += fn
+        kept.append(o)
+    return kept, capped
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Phase 1 units -> options (shared routing; never written into the report)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -122,12 +196,14 @@ async def case_options(case: Optional[dict], findings: str, scan_type: str, hist
                        section_names: Optional[List[str]] = None, inclusion_logic: str = "") -> Tuple[List[dict], dict]:
     """(raw options for write_options, decisions). Phase-1 units are routed as the heavy brief routes them:
     - IF_PRESENT: Jev finding presence (rc.q_finding) + Qwen contradicted / expected + rc.route_finding;
-      "stated" and "offered" are both offered (stated first), MAX_FINDING_OPTIONS in all;
+      "stated" and "offered" are both offered (stated first);
     - targeted NEGATIVE: dropped when its differential is reported (rc.q_present + rc.route_differential) or Qwen
-      finds it contradicted / expected; otherwise offered in the room the If-present options leave;
+      finds it contradicted / expected; otherwise offered;
+    - either kind is dropped when it presupposes a device or prior procedure the case does not report (Jev, one
+      parallel call whose state carries the history);
     - RECOMMEND: Jev condition met (rc.Q_REC_MET) + the impression plan (rc.route_recommendation) -> offered.
-    Plus the plan's optional impression items, as before. Fails closed: a Jev or Qwen error offers no Phase-1
-    negative or recommendation (the plan's impression items still go)."""
+    Plus the plan's optional impression items, as before; then cap_options. Fails closed: a Jev or Qwen error offers
+    no Phase-1 negative or recommendation (the plan's impression items still go)."""
     case = case or {}
     dec: dict = {"differentials": [], "finding_negatives": [], "case_exclusions": [], "recommendations": [],
                  "impression_plan": None}
@@ -163,9 +239,15 @@ async def case_options(case: Optional[dict], findings: str, scan_type: str, hist
             return None
 
     plan_t = asyncio.ensure_future(plan_or_none())
+    dev_texts = list(dict.fromkeys(u["text"] for u in units))
+    dqs = {k: q for i, t in enumerate(dev_texts) for k, q in device_questions(i, t).items()}
     options: List[dict] = []
+    excl: List[dict] = []
+    dev_t = asyncio.ensure_future(rc._jev(device_state(scan_type, history, findings), dqs)) if dqs else None
     try:
         sc = _scores(await rc._jev(state, qs), qs) if qs else {}
+        dev = await dev_t if dev_t else {}
+        dev_ok = lambda t: device_keep(dev, dev_texts.index(t))  # noqa: E731
         route = {d["name"]: rc.route_differential(sc[f"d{k}"], d.get("visible", "")) for k, d in enumerate(diffs)}
         dec["differentials"] = [{"name": d["name"], "visible": d.get("visible"), "present": round(sc[f"d{k}"], 3),
                                  "action": route[d["name"]]} for k, d in enumerate(diffs)]
@@ -197,25 +279,26 @@ async def case_options(case: Optional[dict], findings: str, scan_type: str, hist
             r = rc.route_finding(label.get(k, "keep") if pf >= rc.PRESENT_LOW else "keep", pf, u.get("tag", "contextual"))
             routed.append((u, pf, r))
         order = sorted((x for x in routed if x[2] in ("stated", "offered")), key=lambda x: x[2] != "stated")
-        offered = order[:rc.MAX_FINDING_OPTIONS]
+        offered = [x for x in order if dev_ok(x[0]["text"])]
         for u, pf, r in routed:
-            out = "offered" if any(u is o[0] for o in offered) else (r if r in ("dropped", "do_not_assert") else "trimmed")
+            out = ("offered" if any(u is o[0] for o in offered) else
+                   "device_not_reported" if r in ("stated", "offered") else r)
             dec["finding_negatives"].append({"finding": u.get("key"), "text": u["text"], "present": round(pf, 3),
                                              "qwen": label.get(_key(u["text"])), "route": r, "outcome": out})
-        options += [{"kind": "finding_negative", "section": section_of(u), "text": u["text"], "finding": u.get("key", ""),
-                     "reason": "finding reported" if r == "stated" else f"finding reported (p={pf:.2f})"}
+        options += [{"kind": "finding_negative", "origin": "if_present", "section": section_of(u), "text": u["text"],
+                     "finding": u.get("key", ""), "reason": "finding reported" if r == "stated" else f"finding reported (p={pf:.2f})"}
                     for u, pf, r in offered]
 
         # Targeted exclusions (never stated): offered unless the branch is reported or the dictation contradicts
-        excl = []
         for u in negs:
             k = _key(u["text"])
             why = ("differential_present" if k in omit else
-                   "qwen_" + label[k] if label.get(k) in ("contradicted", "expected") else None)
+                   "qwen_" + label[k] if label.get(k) in ("contradicted", "expected") else
+                   "device_not_reported" if not dev_ok(u["text"]) else None)
             if why:
                 dec["case_exclusions"].append({"text": u["text"], "differential": u.get("key"), "outcome": why})
             else:
-                excl.append({"kind": "finding_negative", "section": section_of(u), "text": u["text"],
+                excl.append({"kind": "finding_negative", "origin": "exclusion", "section": section_of(u), "text": u["text"],
                              "finding": u.get("key", ""), "reason": f"excludes {u.get('key', '')}"})
         plan = await plan_t
 
@@ -237,6 +320,8 @@ async def case_options(case: Optional[dict], findings: str, scan_type: str, hist
                        str(e)[:200])
         dec["error"] = f"{type(e).__name__}: {e}"[:300]
         options, excl = [], []
+        if dev_t and not dev_t.done():
+            dev_t.cancel()
         plan = await plan_t
 
     # The plan's optional impression items (as the heavy path and quick), in the room left
@@ -248,17 +333,16 @@ async def case_options(case: Optional[dict], findings: str, scan_type: str, hist
         options += [{"kind": "impression", "section": impression_section, "text": t, "reason": ""} for t in opt]
         dec["impression_plan"] = {"carry": sorted(carry), "optional": opt}
 
-    # De-duplicate against the dictation's own negatives; exclusions fill the finding-linked room
+    # De-duplicate against the dictation's own negatives and each other; then the cap, by usefulness
     options, dup = rc.dedupe_options(options, [], findings)
     kept, dup2 = rc.dedupe_options(excl, [o["text"] for o in options if o["kind"] == "finding_negative"], findings)
-    room = max(0, rc.MAX_FINDING_OPTIONS - sum(o["kind"] == "finding_negative" for o in options))
+    options += kept
+    options, capped = cap_options(options)
     for o in excl:
-        out = "duplicate_dropped" if o not in kept else ("offered" if room else "trimmed")
-        if out == "offered":
-            room -= 1
-            options.append(o)
+        out = "duplicate_dropped" if o not in kept else ("capped" if o in capped else "offered")
         dec["case_exclusions"].append({"text": o["text"], "differential": o["finding"], "outcome": out})
     dec["duplicates_dropped"] = dup + dup2
+    dec["capped"] = [{"kind": o["kind"], "text": o["text"]} for o in capped]
     return options, dec
 
 
@@ -266,12 +350,46 @@ async def case_options(case: Optional[dict], findings: str, scan_type: str, hist
 # Generate (arm E)
 # ─────────────────────────────────────────────────────────────────────────────
 
+OPTIONS_GRACE_S = 1.0   # how long generate waits for options after the generator and the check have finished
+
+
+async def vet_options(options: List[dict], report: str, impression: str, findings: str, scan_type: str
+                      ) -> Tuple[List[dict], List[dict]]:
+    """(kept, dropped). The post-generation check's option rules, asked beside it: an option sentence the dictation
+    contradicts is dropped (Q_CONTRA, CONTRA_FLAG), and so is one the report already states (the uniqueness gate:
+    finding negatives against the report, impression items against the conclusion). Three Jev calls in parallel;
+    each fails open, as in the check."""
+    if not options:
+        return [], []
+    contra_qs = {f"u{i}": {"type": "noul", "instructions": Q_CONTRA + (o.get("sentence") or o.get("text") or "")}
+                 for i, o in enumerate(options)}
+    gate_qs = rc.gate_questions(options)
+    contra, in_report, in_imp = await asyncio.gather(
+        rc.gate_scores(f"SCAN TYPE: {scan_type}\nDICTATED FINDINGS:\n{findings}", contra_qs),
+        rc.gate_scores(f"REPORT:\n{report}", gate_qs["report"]),
+        rc.gate_scores(f"CONCLUSION:\n{impression}", gate_qs["impression"]))
+    conveys = {**in_report, **in_imp}
+    kept, dropped = [], []
+    for i, o in enumerate(options):
+        c, u = contra.get(f"u{i}"), conveys.get(f"u{i}")
+        if c is not None and c >= CONTRA_FLAG:
+            dropped.append({**o, "outcome": "contradicted", "score": round(c, 3)})
+        elif u is not None and u >= rc.ALREADY_DROP:
+            dropped.append({**o, "outcome": "already_in_report", "score": round(u, 3)})
+        else:
+            kept.append(o)
+    return kept, dropped
+
+
 async def generate_template_report_lean(*, sheet: str, scan_type: str, findings: str, history: str,
                                         case: Optional[dict], signature: Optional[str]) -> dict:
-    """Today's single-pass generator on the stored sheet, Phase-1 options beside it, then the post-generation
-    check (sections from the report's own headers) beside the impression uniqueness gate. `case` is the stored
-    Phase 1 case_result (template_pipeline.phase1_record), or None."""
+    """Today's single-pass generator on the stored sheet, then the post-generation check (sections from the
+    report's own headers). Phase-1 options are routed and written beside the generator and vetted beside the check
+    (vet_options); they never delay the report: generate waits for them at most until the generator and the check
+    have finished plus OPTIONS_GRACE_S, and late options are dropped and logged. `case` is the stored Phase 1
+    case_result (template_pipeline.phase1_record), or None."""
     rec: dict = {"lat": {}}
+    t_start = time.time()
     style = "\n".join(x for x in (_block(sheet, "Impression Construction Rules") or _block(sheet, "Impression Construction"),
                                   _block(sheet, "Terminology Rules")) if x)
 
@@ -280,7 +398,8 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         out = await TemplateManager()._generate_report_skill_sheet_guided(
             template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": sheet, "scan_type": scan_type},
             user_inputs={"FINDINGS": findings, "CLINICAL_HISTORY": history})
-        return out, round(time.time() - t0, 1)
+        rec["lat"]["generator_s"] = round(time.time() - t0, 1)
+        return out
 
     async def opts():
         t0 = time.time()
@@ -290,44 +409,60 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         written = await write_options(raw, findings, scan_type, model=MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"],
                                       runner=_run_agent_with_model, style=style, impression_section="IMPRESSION",
                                       require_service=True)
-        return written, raw, dec, round(t1 - t0, 1), round(time.time() - t1, 1)
+        rec["lat"]["route_s"], rec["lat"]["options_s"] = round(t1 - t0, 1), round(time.time() - t1, 1)
+        return written, raw, dec
 
-    (out, rec["lat"]["generator_s"]), (options, raw, dec, rec["lat"]["route_s"], rec["lat"]["options_s"]) = \
-        await asyncio.gather(gen(), opts())
+    opts_t = asyncio.ensure_future(opts())
+    try:
+        out = await gen()
+    except BaseException:
+        opts_t.cancel()
+        raise
     report = out["report_content"]
     rec["report_generated"] = report
 
     # Sections come from the generated report; options are placed in its findings / impression sections
     sections = report_sections(report, sheet)
     imp = next((s.name for s in sections if s.role == "impression"), None)
-    for o in options:
-        o["section"] = option_section(o, sections)
     impression = _split_report(report, sections, imp) if imp else ""
-    gate_qs = rc.gate_questions(options)
 
     async def checked():
         t0 = time.time()
-        res = await run_quality_check(report, findings, scan_type, options, sections=sections, protected=[],
-                                      suppressed=[], extra_report_qs=gate_qs["report"], history=None)
-        return res, round(time.time() - t0, 1)
+        res = await run_quality_check(report, findings, scan_type, [], sections=sections, protected=[],
+                                      suppressed=[], history=None)
+        rec["lat"]["check_s"] = round(time.time() - t0, 1)
+        return res
 
-    async def gated():
+    async def vetted():
+        written, raw, dec = await opts_t
+        for o in written:
+            o["section"] = option_section(o, sections)
         t0 = time.time()
-        res = await rc.gate_scores(f"CONCLUSION:\n{impression}", gate_qs["impression"])
-        return res, round(time.time() - t0, 2)
+        kept, dropped = await vet_options(written, report, impression, findings, scan_type)
+        rec["lat"]["vet_s"] = round(time.time() - t0, 2)
+        return kept, dropped, raw, dec
 
-    ((report, checked_opts, quality), rec["lat"]["check_s"]), (imp_scores, rec["lat"]["gate_s"]) = \
-        await asyncio.gather(checked(), gated())
-    _, gate_dropped = rc.gate_apply(options, {**(quality or {}).get("extra_answers", {}), **imp_scores})
-    drop_ids = {o.get("id") for o in gate_dropped}
-    options = [o for o in checked_opts if o.get("id") not in drop_ids]
+    vet_t = asyncio.ensure_future(vetted())
+    final, checked_opts, quality = await checked()
+    late = False
+    try:
+        options, dropped, raw, dec = await asyncio.wait_for(vet_t, OPTIONS_GRACE_S)
+    except asyncio.TimeoutError:
+        opts_t.cancel()
+        late = True
+        options, dropped, raw, dec = [], [], [], {"late": True}
+        logger.warning("lean template: options not ready %.1fs after the check finished; dropped", OPTIONS_GRACE_S)
+    except Exception as e:  # noqa: BLE001 - options are optional; the report ships
+        logger.warning("lean template: options failed (%s: %s); none offered", type(e).__name__, str(e)[:200])
+        options, dropped, raw, dec = [], [], [], {"error": f"{type(e).__name__}: {e}"[:300]}
     if signature:
-        report = report.rstrip() + "\n\n" + signature
+        final = final.rstrip() + "\n\n" + signature
+    rec["lat"]["generate_s"] = round(time.time() - t_start, 1)
     rec.update({
-        "report_content": report, "model_used": out.get("model_used"), "description": out.get("description"),
+        "report_content": final, "model_used": out.get("model_used"), "description": out.get("description"),
         "scan_type": out.get("scan_type") or scan_type, "brief_used": False, "brief_text": None,
         "brief_decisions": None, "case_decisions": dec, "options_raw": raw, "options": options,
-        "gate_dropped": gate_dropped, "quality_check": quality, "sections": [s.name for s in sections],
-        "phase1_used": bool(case), "history_inserted": False,
+        "gate_dropped": dropped, "options_late": late, "quality_check": quality,
+        "sections": [s.name for s in sections], "phase1_used": bool(case), "history_inserted": False,
     })
     return rec
