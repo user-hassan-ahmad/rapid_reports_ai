@@ -79,24 +79,50 @@ async def test_route_differential_matches_quick(monkeypatch, scores):
 
 DECISIONS = [None, ("include", None), ("optional", None), ("exclude", "routine_workup"),
              ("exclude", "condition_unmet"), ("exclude", "not_radiology")]
+RECS = ("  - REFERRAL: Neurosurgery for haemorrhage with mass effect\n"
+        "  - IMAGING: CTA for large vessel occlusion\n"
+        "  - TISSUE: Biopsy of an indeterminate mass\n"
+        "  - MDT: Neuro-oncology MDT for a mass lesion\n"
+        "  - CORRELATION: Comparison with prior imaging\n")
+# Three contextual If-present negatives for a reported finding fill quick's options before the
+# recommendations are routed: room=False.
+IF_PRESENT = ('- **If present:**\n'
+              '  - Acute subdural → "No contralateral collection" (contextual)\n'
+              '  - Acute subdural → "No skull base fracture" (contextual)\n'
+              '  - Acute subdural → "No uncal herniation" (contextual)\n')
+ALL_RECS = SHEET[:SHEET.index("  - REFERRAL:")] + RECS
+FULL = ALL_RECS.replace("- **Out-of-scope suppressed:** CTA\n", "- **Out-of-scope suppressed:** CTA\n" + IF_PRESENT)
 
 
+@pytest.mark.parametrize("room", [True, False])
 @pytest.mark.parametrize("unmet,dec", list(itertools.product((0.1, 0.9), DECISIONS)))
-@pytest.mark.parametrize("k", [0, 1])  # 0: REFERRAL, 1: IMAGING
-async def test_route_recommendation_matches_quick(monkeypatch, unmet, dec, k):
-    recs = qb._recommendations(qb._section(qb.parse_sheet(SHEET), "Impression Exemplars"))
-    other = 1 - k
-    decs = [rc.RecDecision(index=other, decision="include")]
+@pytest.mark.parametrize("k", range(5))  # REFERRAL, IMAGING, TISSUE, MDT, CORRELATION
+async def test_route_recommendation_matches_quick(monkeypatch, unmet, dec, k, room):
+    sheet = ALL_RECS if room else FULL
+    recs = qb._recommendations(qb._section(qb.parse_sheet(sheet), "Impression Exemplars"))
+    assert len(recs) == 5
+    decs = [rc.RecDecision(index=i, decision="include") for i in range(5) if i != k]
     d = None
     if dec:
         d = rc.RecDecision(index=k, decision=dec[0], exclude_reason=dec[1])
         decs.append(d)
     plan = rc.ImpressionPlan(recommendations=decs, impression=[0])
-    _stub(monkeypatch, _jev({"d0": 0.1, "d1": 0.1, "d2": 0.1, "d3": 0.1, f"r{k}": unmet, f"r{other}": 0.1}),
-          QWEN, plan)
-    b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural")
+    jev = {"d0": 0.1, "d1": 0.1, "d2": 0.1, "d3": 0.1, **{f"r{i}": 0.1 for i in range(5)}, f"r{k}": unmet}
+    if not room:
+        jev["f0"] = 0.9
+    _stub(monkeypatch, _jev(jev), QWEN, plan)
+    b = await qb.compile_brief(sheet, "CT head non-contrast", "8 mm right subdural")
+    if not room:
+        assert len([o for o in b.decisions["options"] if o["kind"] == "finding_negative"]) == 3
     action = b.decisions["recommendations"][k]["action"]
     body = recs[k].split(":", 1)[1].strip()
     barred = "Do not recommend" in b.text and f'"{body}"' in b.text
     quick = "do_not_recommend" if barred else action
-    assert quick == rc.route_recommendation(unmet, d, tag=recs[k].split(":")[0], room=True)
+    assert quick == rc.route_recommendation(unmet, d, tag=recs[k].split(":")[0], room=room)
+
+
+@pytest.mark.parametrize("tag", ["IMAGING", "imaging", "Imaging", "IMAGING:", " imaging: "])
+def test_route_recommendation_tag_case(tag):
+    d = rec("exclude", "routine_workup")
+    assert rc.route_recommendation(0.1, d, tag=tag) == "do_not_recommend"
+    assert rc.route_recommendation(0.1, d, tag=tag.replace("maging", "MAGINGX").replace("MAGING", "MAGINGX")) == "removed"

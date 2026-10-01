@@ -825,14 +825,19 @@ async def test_master_end_to_end(monkeypatch):
     assert "- OPEN: Branch delta — a laboratory diagnosis; imaging-silent: defer" in cb
     assert not any(k in t for k in ("QUESTION \"", "DIFFERENTIAL [", "RECOMMEND REFERRAL", "RECOMMEND IMAGING"))
     assert [d["action"] for d in b.decisions["differentials"]] == ["present", "closed", "open", "open"]
-    # recommendations: keep / do not recommend (routine workup of an investigation) / removed (unmet)
-    assert "- RECOMMEND: Specialist team review" in cb
-    assert "- DO NOT RECOMMEND: Dedicated MRI of the primary organ" in cb
+    # recommendations: keep / do not recommend (routine workup of an investigation) / removed (unmet), written
+    # outside the reasoning block, before the Impression Plan
+    assert "RECOMMEND" not in cb
+    recs = block(t, tb.RECOMMENDATIONS_HEADING)
+    assert recs.splitlines()[:2] == ["- RECOMMEND: Specialist team review",
+                                     "- DO NOT RECOMMEND: Dedicated MRI of the primary organ"]
+    assert t.index(tb.RECOMMENDATIONS_HEADING) < t.index("## Impression Plan")
     assert "biopsy" not in t
     assert [r["action"] for r in b.decisions["recommendations"]] == ["keep", "do_not_recommend", "removed"]
     assert calls["recs"][0][0] == "REFERRAL: Specialist team review (when a focal lesion is reported)"
     # case negatives: OMIT when the differential they help exclude is reported, else classified as usual
-    assert '- OMIT: "No adjacent collection." — the differential it helps exclude is reported: Branch alpha' in t
+    assert '- OMIT: "No adjacent collection." — a dictated finding makes this negative inapplicable' in t
+    assert "Branch alpha" not in block(t, "## Paragraph: Primary organ (FINDINGS)")
     case = [n for n in b.decisions["negatives"] if n["origin"] == "case"]
     assert [(n["targets"], n["action"]) for n in case] == [("Branch alpha", "differential_present"),
                                                          ("Branch beta", "labelled")]
@@ -903,11 +908,12 @@ async def test_one_label_per_claim_safer_wins(monkeypatch, qwen_label, lost):
     # Branch beta reported: its case negative "No free fluid." is OMIT, and so is the template sweep's copy
     b, calls = await master(monkeypatch, {"d1": 0.9}, qwen={"No free fluid": (qwen_label, "a 3 cm focal lesion")})
     adj = block(b.text, "## Paragraph: Adjacent structures (FINDINGS)")
-    omit = '- OMIT: "No free fluid." — the differential it helps exclude is reported: Branch beta'
+    omit = '- OMIT: "No free fluid." — a dictated finding makes this negative inapplicable'
     assert omit in adj and omit in block(b.text, "## Paragraph: Primary organ (FINDINGS)")
     assert "KEEP: \"No free fluid" not in b.text and "DO NOT ASSERT: \"No free fluid" not in b.text
     (c,) = [c for c in b.decisions["conflicts"] if c.get("winner")]
-    assert c["text"] == "No free fluid." and c["winner"] == "OMIT"
+    assert c["text"] == "No free fluid." and c["winner"] == "OMIT" and c["differential"] == "Branch beta"
+    assert c["source"] == "case_negative_same_claim"
     assert c["labels"][0]["origin"] == "template" and c["labels"][0]["label"] == lost
 
 
@@ -925,3 +931,198 @@ async def test_master_case_units_not_in_the_sheet_fail_closed(monkeypatch):
     no_ifp = MASTER.replace('IF_PRESENT [focal lesion] "No vascular invasion." (contextual) | origin: case\n', "")
     with pytest.raises(ValueError, match="IF_PRESENT"):
         await tb.compile_template_brief(no_ifp, MSTRUCT, "CT", "x", "")
+
+
+# ── H4 review probes (P1-P10): claim conflicts via Jev, non-visible targets, recommendations, context ──
+
+FIND = "A 3 cm focal lesion of the primary organ."
+CASE_OMIT = '— a dictated finding makes this negative inapplicable'
+
+
+async def probe(monkeypatch, sheet=MASTER, jev=None, denials=(), plan=None, qwen=None, struct=None):
+    """Compile a master sheet. Jev answers by key from `jev` (else 0.1); a "denies" question (x<k>_<unit>) is
+    yes when one of `denials` (differential name, statement fragment) matches it."""
+    s = struct or g.parse_sheet(sheet, mode="master").structure
+    assert s.usable, s.lint_errors
+    calls = stub(monkeypatch, qwen=qwen, plan=plan)
+    scores = jev or {}
+
+    async def fake_jev(state, qs):
+        calls["states"].append((state, set(qs)))
+        out = {}
+        for k, q in qs.items():
+            ins = q["instructions"]
+            if k.startswith("x"):
+                stmt = ins.split("Statement: ", 1)[1]
+                out[k] = {"noul": 0.9 if any(n in ins and f in stmt for n, f in denials) else 0.1}
+            else:
+                out[k] = {"noul": scores.get(k, 0.1)}
+        return out
+    monkeypatch.setattr(tb.rc, "_jev", fake_jev)
+    return await tb.compile_template_brief(sheet, s, "CT AP", FIND, "Pain."), calls
+
+
+ADJ = '## Paragraph: Adjacent structures (FINDINGS)\nCOVERS ["adjacent vessels"]\nNEGATIVE "No free fluid."'
+
+
+async def test_p1_reworded_template_copy_of_a_present_differentials_negative_is_omitted(monkeypatch):
+    sheet = MASTER.replace(ADJ, ADJ.replace("No free fluid.", "No free intraperitoneal fluid."))
+    b, calls = await probe(monkeypatch, sheet, {"d1": 0.9}, denials=[("Branch beta", "free intraperitoneal fluid")])
+    adj = block(b.text, "## Paragraph: Adjacent structures (FINDINGS)")
+    assert f'- OMIT: "No free intraperitoneal fluid." {CASE_OMIT}' in adj
+    (c,) = [c for c in b.decisions["conflicts"] if c.get("source") == "jev_denies_present_differential"]
+    assert c["differential"] == "Branch beta" and c["labels"][0]["label"] == "KEEP"
+    asked = [q for st, qs in calls["states"] for q in qs if q.startswith("x")]
+    assert asked and all(q.startswith("x1_") for q in asked)  # only the present differential, template units only
+    # without Jev's yes, the reworded copy stands: the exact-key path alone cannot see it
+    b, _ = await probe(monkeypatch, sheet, {"d1": 0.9})
+    assert '- KEEP: "No free intraperitoneal fluid."' in b.text
+
+
+async def test_p1b_bundled_template_copy_is_omitted(monkeypatch):
+    sheet = MASTER.replace(ADJ, ADJ.replace("No free fluid.", "No free fluid or adjacent collection."))
+    b, _ = await probe(monkeypatch, sheet, {"d0": 0.9, "d1": 0.9}, denials=[("Branch beta", "free fluid")])
+    assert f'- OMIT: "No free fluid or adjacent collection." {CASE_OMIT}' in b.text
+
+
+async def test_p1c_normal_stating_the_absence_is_not_asserted(monkeypatch):
+    sheet = MASTER.replace(ADJ, ADJ.replace('NEGATIVE "No free fluid."',
+                                            'NORMAL [peritoneum] "The peritoneum is clear with no free fluid."'))
+    b, _ = await probe(monkeypatch, sheet, {"d1": 0.9}, denials=[("Branch beta", "no free fluid")])
+    assert '- DO NOT ASSERT AS NORMAL [peritoneum]: "The peritoneum is clear with no free fluid."' in b.text
+    assert any(c.get("winner") == "DO NOT ASSERT AS NORMAL" for c in b.decisions["conflicts"])
+
+
+async def test_p1d_missing_denies_answer_fails_closed(monkeypatch):
+    stub(monkeypatch)
+
+    async def partial(state, qs):
+        return {k: {"noul": 0.9 if k == "d1" else 0.1} for k in qs if not k.startswith("x")}
+    monkeypatch.setattr(tb.rc, "_jev", partial)
+    with pytest.raises(ValueError, match="x1_"):
+        await tb.compile_template_brief(MASTER, MSTRUCT, "CT AP", FIND, "Pain.")
+
+
+OMIT_SHEET = MASTER.replace(
+    'SECTION IMPRESSION | header: "Impression" | role: impression',
+    'SECTION EXTRA | header: "Extra" | role: findings\nSECTION IMPRESSION | header: "Impression" | role: impression',
+).replace(
+    "## Case Deliberation",
+    '## Paragraph: Extra organ (EXTRA)\nCOVERS ["extra organ"]\nNEGATIVE "No free fluid." TARGETS [Branch beta] | origin: case\n'
+    'IF_PRESENT [focal lesion] "No distant metastasis." (core) | origin: case\n\n'
+    '## Report-wide\nRULE WHEN [context: a limited study] SUPPRESS_SECTION EXTRA\n\n## Case Deliberation',
+).replace('NEGATIVE "No free fluid." TARGETS [Branch beta] | origin: case\nIF_PRESENT [focal lesion] "No regional',
+          'IF_PRESENT [focal lesion] "No regional')
+
+
+async def test_p2_case_negative_in_an_omitted_section_still_omits_its_claim(monkeypatch):
+    s = g.parse_sheet(OMIT_SHEET, mode="master").structure
+    ridx = next(i for i, r in enumerate(s.rules) if r.effect == "suppress_section")
+    b, _ = await probe(monkeypatch, OMIT_SHEET, {"d1": 0.9, f"r{ridx}": 0.9, "f0": 0.95}, struct=s)
+    assert f'- OMIT: "No free fluid." {CASE_OMIT}' in block(b.text, "## Paragraph: Adjacent structures (FINDINGS)")
+    assert '- KEEP: "No free fluid."' not in b.text
+    case = next(n for n in b.decisions["negatives"] if n["origin"] == "case" and n["text"] == "No free fluid.")
+    assert case["action"] == "section_omitted"
+    assert outcome(b, "No distant metastasis") == "section_omitted" and "metastasis" not in b.text
+    # an If-present negative carrying the claim is OMIT, checked before route_finding
+    sheet = OMIT_SHEET.replace(ADJ, ADJ.replace('\nNEGATIVE "No free fluid."', "")).replace(
+        f'IF_PRESENT [focal lesion] "{VASC}." (contextual) | origin: case',
+        f'IF_PRESENT [focal lesion] "{VASC}." (contextual) | origin: case\n'
+        'IF_PRESENT [focal lesion] "No free fluid." (core) | origin: case')
+    s = g.parse_sheet(sheet, mode="master").structure
+    b, calls = await probe(monkeypatch, sheet, {"d1": 0.9, f"r{ridx}": 0.9, "f0": 0.95}, struct=s)
+    assert outcome(b, "No free fluid") == "differential_present"
+    assert f'- OMIT: "No free fluid." {CASE_OMIT}' in block(b.text, "## Paragraph: Primary organ (FINDINGS)")
+    assert "No free fluid" not in calls["qwen"][0][0]
+
+
+async def test_p3_not_visible_or_silent_differential_reported_is_addressed(monkeypatch):
+    b, _ = await probe(monkeypatch, jev={"d2": 0.9, "d3": 0.9})
+    cb = case_block(b.text)
+    assert "- ADDRESS: Branch gamma — the dictation reports it" in cb and "- ADDRESS: Branch delta" in cb
+    assert "- OPEN:" not in cb
+
+
+async def test_p4_unmet_condition_beats_include_at_the_threshold(monkeypatch):
+    plan = rc.ImpressionPlan(recommendations=[rc.RecDecision(index=i, decision="include") for i in range(3)],
+                             impression=[0])
+    b, _ = await probe(monkeypatch, jev={"rec0": 0.9, "rec1": 0.5, "rec2": 0.49}, plan=plan)
+    assert [r["action"] for r in b.decisions["recommendations"]] == ["removed", "removed", "keep"]
+    assert block(b.text, tb.RECOMMENDATIONS_HEADING).strip() == "- RECOMMEND: Image-guided biopsy"
+
+
+async def test_p4b_unmet_investigation_excluded_as_routine_workup_is_barred(monkeypatch):
+    plan = rc.ImpressionPlan(recommendations=[
+        rc.RecDecision(index=1, decision="exclude", exclude_reason="routine_workup")], impression=[0])
+    b, _ = await probe(monkeypatch, jev={"rec1": 0.9}, plan=plan)
+    assert "- DO NOT RECOMMEND: Dedicated MRI of the primary organ" in block(b.text, tb.RECOMMENDATIONS_HEADING)
+
+
+async def test_p5_finding_at_085_states_core_offers_contextual(monkeypatch):
+    b, _ = await probe(monkeypatch, jev={"f0": 0.85})
+    assert outcome(b, LYMPH) == "stated" and outcome(b, VASC) == "offered"
+
+
+@pytest.mark.parametrize("drop", ["d0", "f0", "rec1", "r0"])
+async def test_p6_partial_jev_answer_fails_closed(monkeypatch, drop):
+    stub(monkeypatch)
+
+    async def partial(state, qs):
+        return {k: {"noul": 0.1} for k in qs if k != drop}
+    monkeypatch.setattr(tb.rc, "_jev", partial)
+    with pytest.raises(ValueError, match=drop):
+        await tb.compile_template_brief(MASTER, MSTRUCT, "CT AP", FIND, "Pain.")
+
+
+async def test_p6b_plan_failure_offers_investigations_never_writes_them(monkeypatch):
+    b, _ = await probe(monkeypatch, plan=None)
+    assert [(r["tag"], r["action"]) for r in b.decisions["recommendations"]] == [
+        ("REFERRAL", "keep"), ("IMAGING", "optional"), ("TISSUE", "optional")]
+    assert "MRI" not in b.text and "biopsy" not in b.text
+    assert [o["text"] for o in b.decisions["options"] if o["kind"] == "recommendation"] == [
+        "IMAGING: Dedicated MRI of the primary organ", "TISSUE: Image-guided biopsy"]
+
+
+def test_p8_differential_names_differing_only_in_case_are_duplicates():
+    r = g.parse_sheet(MASTER.replace("DIFFERENTIAL [Branch beta]", "DIFFERENTIAL [branch ALPHA]"), mode="master")
+    assert g.DUPLICATE_DIFFERENTIAL in [e.reason for e in r.errors] and not r.structure.usable
+
+
+async def test_p9_reasoning_block_holds_only_question_address_open(monkeypatch):
+    plan = rc.ImpressionPlan(recommendations=[rc.RecDecision(index=0, decision="include"),
+                                              rc.RecDecision(index=1, decision="exclude",
+                                                             exclude_reason="routine_workup")], impression=[0])
+    b, _ = await probe(monkeypatch, jev={"d0": 0.9, "f0": 0.95}, plan=plan)
+    cb = [ln for ln in case_block(b.text).splitlines() if ln.strip()]
+    assert cb[0] == tb.CASE_NOTE
+    assert all(ln.startswith(("- CLINICAL QUESTION:", "- ADDRESS:", "- OPEN:")) for ln in cb[1:])
+    assert "CLINICAL QUESTION" in tb.CASE_NOTE and "ADDRESS" in tb.CASE_NOTE and "OPEN" in tb.CASE_NOTE
+    assert "RECOMMEND" not in tb.CASE_NOTE
+
+
+async def test_p10_context_state_carries_prose_and_fixed_text_never_unit_lines(monkeypatch):
+    sheet = MASTER.replace("Portal venous phase acquisition.",
+                           "Portal venous phase acquisition.\n"
+                           'RULE WHEN [context: intravenous contrast was not given] USE "Non-contrast study."\n'
+                           'FIXED "Contrast: 100 ml intravenous."\n'
+                           "Delayed phase WHEN [context: a urinary question is asked] only.")
+    b, calls = await probe(monkeypatch, sheet)
+    (ctx,) = [st for st, qs in calls["states"] if "PROTOCOL" in st]
+    tech = ctx.split("PROTOCOL / TECHNIQUE:\n", 1)[1]
+    assert "Portal venous phase acquisition." in tech and "Contrast: 100 ml intravenous." in tech
+    assert "Delayed phase" in tech and "urinary" not in tech
+    assert not any(w in tech for w in ("RULE", "USE", "WHEN", "intravenous contrast was not given", "FIXED"))
+
+
+async def test_case_negative_targeting_a_differential_the_study_cannot_show_is_not_asserted(monkeypatch):
+    # the parser blocks it (UNSUPPORTED_TARGET); the brief defends anyway
+    negs = [n.model_copy(update={"targets": "Branch gamma"}) if n.targets == "Branch beta" else n
+            for n in MSTRUCT.negatives]
+    s = MSTRUCT.model_copy(update={"negatives": negs})
+    b, calls = await probe(monkeypatch, struct=s)
+    assert f'- DO NOT ASSERT: "No free fluid." — {tb.NOT_VISIBLE_REASON}' in block(
+        b.text, "## Paragraph: Primary organ (FINDINGS)")
+    assert next(n for n in b.decisions["negatives"] if n.get("targets") == "Branch gamma")["action"] == \
+        "target_not_visible"
+    assert g.UNSUPPORTED_TARGET in [e.reason for e in g.parse_sheet(
+        MASTER.replace("TARGETS [Branch beta]", "TARGETS [Branch gamma]"), mode="master").errors]

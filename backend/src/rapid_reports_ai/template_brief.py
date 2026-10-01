@@ -38,13 +38,19 @@ quick's shared clinical routing in report_reconcile:
   (not visible on this technique, or imaging-silent: defer), rewritten in the "## Case Deliberation" block,
   which the brief marks as reasoning input, never report text; QUESTION -> CLINICAL QUESTION.
 - NEGATIVE … TARGETS (case): classified with the template negatives (same Qwen call, same exact-index
-  check); OMIT when its targeted differential is present. One label per claim: a template or case negative
-  with the same claim takes the safer label (OMIT > DO NOT ASSERT > KEEP), logged in decisions["conflicts"].
+  check); OMIT when its targeted differential is present; DO NOT ASSERT when that differential is not
+  VISIBLE yes (lint blocks it; defence). One label per claim, safer wins (OMIT > DO NOT ASSERT > KEEP),
+  logged in decisions["conflicts"]: the same claim (exact key) anywhere is OMIT when a case negative omits
+  it, whatever became of that case negative; and for each present differential Jev reads every template
+  negative / normal in scope (x<k>_<unit id>, findings state, alongside the classifier) for a statement
+  denying it -> negative OMIT, normal DO NOT ASSERT AS NORMAL. Case-driven OMITs name no differential.
 - IF_PRESENT (case): Jev finding reported + rc.route_finding -> KEEP on its own line (stated) / offered
   option (its paragraph's section) / DO NOT ASSERT / dropped; offers capped at MAX_FINDING_OPTIONS; a
   negative already handled (a sheet negative or an earlier If-present) is routed once, as in quick.
 - RECOMMEND: rc.route_recommendation (Jev condition unmet + the impression plan) -> RECOMMEND / offered
-  option (the impression section) / removed / DO NOT RECOMMEND (routine workup of an investigation).
+  option (the impression section) / removed / DO NOT RECOMMEND (routine workup of an investigation),
+  written in "## Recommendations (reconciled with this dictation)" before the Impression Plan, never in
+  the reasoning block. A failed plan call offers IMAGING / TISSUE, never writes them.
 COVERS lines are metadata (what a paragraph reports), not generator guidance: never in the brief.
 """
 from __future__ import annotations
@@ -65,7 +71,7 @@ logger = logging.getLogger(__name__)
 
 Q_CONDITION = "This statement is true for this case: "
 Q_STATED = "The dictated findings state "
-MET = 0.5
+MET = rc.PRESENT
 
 _IF_PRESENT_LINE = re.compile(r"^\s*(?:-\s+)?IF_PRESENT\b")
 _H2 = re.compile(r"^#{1,2}\s")
@@ -80,16 +86,22 @@ _CASE_KEYWORD = re.compile(r"^\s*(?:-\s+)?(QUESTION|DIFFERENTIAL|RECOMMEND)\b")
 
 # Phase-2 case labels (pending owner sign-off with the TEMPLATE_SHEET_HEADER_BRIEF package).
 CASE_HEADING = "## Case Deliberation (reconciled with this dictation)"
-CASE_NOTE = ("Reasoning input only: never write the clinical question, the differentials or this block into "
-             "the report.")
+CASE_NOTE = ("Reasoning input only: the CLINICAL QUESTION, ADDRESS and OPEN lines guide your reasoning; never "
+             "write them into the report.")
+RECOMMENDATIONS_HEADING = "## Recommendations (reconciled with this dictation)"
 CLINICAL_QUESTION = "- CLINICAL QUESTION: {question}"
 ADDRESS = "- ADDRESS: {name} — the dictation reports it"
 OPEN = "- OPEN: {name} — {discriminator}; {defer}"
 OPEN_DEFER = {"no": "not assessable on this study: defer", "silent": "imaging-silent: defer"}
 RECOMMEND = "- RECOMMEND: {text}"
 DO_NOT_RECOMMEND = "- DO NOT RECOMMEND: {text}"
-DIFFERENTIAL_REPORTED = "the differential it helps exclude is reported: {name}"
-SAFER = {"OMIT": 3, "DO NOT ASSERT": 2, "KEEP": 1}  # one label per claim: the safer wins
+# A case-driven OMIT names no differential: the label sits in a findings paragraph the generator writes from.
+CASE_OMIT_REASON = "a dictated finding makes this negative inapplicable"
+NOT_VISIBLE_REASON = "this study cannot show what it would exclude"
+Q_DENIES = "This report statement denies or excludes the following: {name} — {discriminator}. Statement: {text}"
+_UNIT_LINE = re.compile(r"^\s*(?:-\s+)?(SECTION|NORMAL|NEGATIVE|FIXED|TERM|IF_PRESENT|RULE|COVERS|QUESTION|DIFFERENTIAL|"
+                        r"RECOMMEND)\b")
+_WHEN = re.compile(r"\bWHEN\s*\[[^\]]*\]")
 
 
 def _section_body(sheet: str, title: str) -> str:
@@ -109,7 +121,8 @@ def _section_body(sheet: str, title: str) -> str:
 
 def _technique_text(sheet: str, s: SheetStructure) -> str:
     """The sheet's protocol text for context conditions: its "## Scan Context" block and the paragraphs of
-    technique-role sections (unit keywords and all), never the findings."""
+    technique-role sections, prose and FIXED text only. Unit lines (a RULE, its WHEN condition, NEGATIVE,
+    NORMAL …) never enter it, so no condition is judged against its own wording; never the findings."""
     technique = {x.name.upper() for x in s.sections if x.role == "technique"}
     out: List[str] = []
     inside = False
@@ -119,8 +132,16 @@ def _technique_text(sheet: str, s: SheetStructure) -> str:
             inside = (bool(m) and re.sub(r"\s+", " ", m.group(1)).strip().upper() in technique) \
                 or ln.lstrip("#").strip().lower() == "scan context"
             continue
-        if inside and ln.strip() and not _COVERS_LINE.match(ln):
-            out.append(ln.strip())
+        if not inside or not ln.strip():
+            continue
+        unit = _UNIT_LINE.match(ln)
+        if unit:
+            if unit.group(1) == "FIXED":
+                out.extend(re.findall(r'"([^"]+)"', ln))
+            continue
+        prose = _WHEN.sub("", ln).strip()
+        if prose:
+            out.append(prose)
     return "\n".join(out)
 
 
@@ -306,8 +327,9 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
         if ip.origin != "case":
             continue
         for neg in ip.negatives:
-            line = L.find("if_present", lambda ln, ip=ip, neg=neg: bool(_IF_PRESENT_LINE.match(ln))
-                          and ip.finding in ln and f'"{neg.text}"' in ln)
+            anchor = re.compile(r"IF_PRESENT\s*\[\s*" + re.escape(ip.finding) + r"\s*\]\s*\"" + re.escape(neg.text) + '"')
+            line = L.find("if_present", lambda ln, anchor=anchor: bool(_IF_PRESENT_LINE.match(ln))
+                          and bool(anchor.search(ln)))
             if line is None:
                 raise ValueError(f"template brief cannot locate IF_PRESENT [{ip.finding}] in the sheet")
             ifp_units.append(_Unit(kind="if_present", id=f"ip{len(ifp_units)}", text=neg.text, structure="",
@@ -445,6 +467,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
 
         # ── differentials (policy 1, shared routing) ─────────────────────────
         diff_route = {d.name: rc.route_differential(sc[f"d{k}"], d.visible) for k, d in enumerate(s.differentials)}
+        diff_visible = {d.name: d.visible for d in s.differentials}
 
         # ── plan each negative; collect what the classifier must judge ──────
         plans: Dict[str, dict] = {}
@@ -457,6 +480,8 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                 p["status"] = "section_omitted"
             elif u.origin == "case" and diff_route.get(u.targets) == "present":
                 p["status"] = "differential_present"  # the branch it helps exclude is reported: OMIT
+            elif u.origin == "case" and diff_visible.get(u.targets) != "yes":
+                p["status"] = "target_not_visible"  # lint blocks it; defence: silence cannot exclude it
             elif u.condition and sc[u.jev_key] < MET and not forced:
                 p["status"] = "removed"
             elif u.paragraph in para_suppressed:
@@ -472,9 +497,11 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                         to_classify.append(part)
                 p["skip_unforced"] = skip_unforced
             plans[u.id] = p
-        # A claim a case negative omits because its differential is reported: OMIT wherever it appears.
-        case_omit = {_key(part): u.targets for u in negatives if plans[u.id]["status"] == "differential_present"
-                     for part in plans[u.id]["parts"]}
+        # A claim a case negative omits because its differential is reported: OMIT wherever it appears, whatever
+        # became of that case negative itself (an omitted section still reports the differential).
+        case_omit = {_key(part): u.targets for u in negatives
+                     if u.origin == "case" and diff_route.get(u.targets) == "present"
+                     for part in parts_of[_key(u.text)]}
 
         # ── case If-present: routed once each, after the sheet negatives (quick's "handled once") ──
         handled = {_key(part) for u in negatives
@@ -482,6 +509,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                    for part in plans[u.id]["parts"]}
         cands: List[Tuple[_Unit, str, float]] = []  # (If-present unit, negative part, finding score)
         ifp_omitted: List[Tuple[_Unit, str]] = []
+        ifp_case_omit: List[Tuple[_Unit, str]] = []
         for u in ifp_units:
             for part in parts_of[_key(u.text)]:
                 if unit_omitted(u):
@@ -490,6 +518,9 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                 if _key(part) in handled:
                     continue
                 handled.add(_key(part))
+                if _key(part) in case_omit:  # checked before route_finding: never stated nor offered
+                    ifp_case_omit.append((u, part))
+                    continue
                 pf = sc[f"f{fkeys.index(u.finding)}"]
                 cands.append((u, part, pf))
                 if pf >= rc.PRESENT_LOW and _key(part) not in {_key(x) for x in to_classify}:
@@ -509,11 +540,36 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                 normals_sent.append(u)
             normal_plans[u.id] = {"status": status, "forced": forced}
 
-        if to_classify or normals_sent:
-            qw = await rc._qwen(state, to_classify, [u.text for u in normals_sent], [])
-        else:
-            qw = rc.QwenDecisions(negatives=[], affected_normals=[], applicable_measurements=[])
+        # Same claim, other wording: for each PRESENT differential, Jev reads every template negative and
+        # normal in its scope (the sections of the case negatives targeting it; else the findings sections)
+        # for a statement that denies it. Asked alongside the classifier.
+        q_x: Dict[str, dict] = {}
+        x_of: Dict[str, Tuple[_Unit, str]] = {}  # Jev key -> (unit, differential name)
+        findings_sections = {x.name for x in s.sections if x.role == "findings"}
+        for k, d in enumerate(s.differentials):
+            if diff_route[d.name] != "present":
+                continue
+            scope = {u.section for u in negatives if u.origin == "case" and u.targets == d.name} or findings_sections
+            for u in negatives + normals:
+                if u.origin == "case" or u.section not in scope or unit_omitted(u):
+                    continue
+                key = f"x{k}_{u.id}"
+                q_x[key] = {"type": "noul", "instructions": Q_DENIES.format(
+                    name=d.name, discriminator=d.discriminator, text=u.text)}
+                x_of[key] = (u, d.name)
+
+        async def qwen_or_empty():
+            if to_classify or normals_sent:
+                return await rc._qwen(state, to_classify, [u.text for u in normals_sent], [])
+            return rc.QwenDecisions(negatives=[], affected_normals=[], applicable_measurements=[])
+
+        qw, jev_x = await asyncio.gather(qwen_or_empty(), rc._jev(state, q_x) if q_x else asyncio.sleep(0, {}))
         _check_qwen(qw, len(to_classify), len(normals_sent))
+        sx = _scores(jev_x, q_x)
+        denied: Dict[str, str] = {}  # unit id -> the present differential it denies
+        for key, (u, name) in x_of.items():
+            if sx[key] >= MET:
+                denied.setdefault(u.id, name)
         plan, fb = await plan_t, await fb_t
     finally:
         for t in (plan_t, fb_t):
@@ -557,9 +613,14 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
             action = "paragraph_suppressed"
         elif p["status"] == "differential_present":
             for part in p["parts"]:
-                new.append(f'- OMIT: "{_q(part)}" — ' + DIFFERENTIAL_REPORTED.format(name=u.targets))
+                new.append(f'- OMIT: "{_q(part)}" — {CASE_OMIT_REASON}')
                 labels.append((u, _key(part), "OMIT"))
             action = "differential_present"
+        elif p["status"] == "target_not_visible":
+            for part in p["parts"]:
+                new.append(f'- DO NOT ASSERT: "{_q(part)}" — {NOT_VISIBLE_REASON}')
+                labels.append((u, _key(part), "DO NOT ASSERT"))
+            action = "target_not_visible"
         else:
             for j, part in enumerate(p["parts"]):
                 if j in p["forced"]:
@@ -570,15 +631,18 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                     labels.append((u, _key(part), "REMOVED"))
                     continue
                 d = qneg[_key(part)]
-                if d.action != "contradicted" and _key(part) in case_omit:
-                    # One label per claim: a case negative omits this claim (its differential is reported).
-                    name = case_omit[_key(part)]
+                if d.action != "contradicted" and (_key(part) in case_omit or u.id in denied):
+                    # One label per claim, safer wins: the claim a case negative omits (same text), or a
+                    # statement Jev reads as denying a present differential (other wording).
+                    exact = _key(part) in case_omit
+                    name = case_omit[_key(part)] if exact else denied[u.id]
                     lost = "DO NOT ASSERT" if d.action == "expected" else "KEEP"
                     decisions["conflicts"].append({
-                        "text": _q(part), "winner": "OMIT", "reason": DIFFERENTIAL_REPORTED.format(name=name),
+                        "text": _q(part), "winner": "OMIT", "differential": name,
+                        "source": "case_negative_same_claim" if exact else "jev_denies_present_differential",
                         "labels": [{"origin": u.origin, "id": u.id, "label": lost},
                                    {"origin": "case", "label": "OMIT", "targets": name}]})
-                    new.append(f'- OMIT: "{_q(part)}" — ' + DIFFERENTIAL_REPORTED.format(name=name))
+                    new.append(f'- OMIT: "{_q(part)}" — {CASE_OMIT_REASON}')
                     labels.append((u, _key(part), "OMIT"))
                 elif d.action == "contradicted":
                     new.append(f'- OMIT: "{_q(part)}" — the dictation reports: {d.dictated_finding}')
@@ -612,6 +676,13 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
             new, label = [f'- DO NOT ASSERT AS NORMAL [{u.structure}]: "{u.text}"'], "DO NOT ASSERT AS NORMAL"
         else:
             flagged = sc[u.jev_key] >= MET or u.id in q_affected
+            if not flagged and u.id in denied:  # it states the absence of a present differential
+                flagged = True
+                decisions["conflicts"].append({
+                    "text": u.text, "winner": "DO NOT ASSERT AS NORMAL", "differential": denied[u.id],
+                    "source": "jev_denies_present_differential",
+                    "labels": [{"origin": "template", "id": u.id, "label": "KEEP NORMAL"},
+                               {"origin": "case", "label": "DO NOT ASSERT AS NORMAL", "targets": denied[u.id]}]})
             label = "DO NOT ASSERT AS NORMAL" if flagged else "KEEP NORMAL"
             new, status = [f'- {label} [{u.structure}]: "{u.text}"'], ("do_not_assert" if flagged else "keep")
         labels.append((u, _key(u.text), label))
@@ -624,6 +695,12 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
     for u, part in ifp_omitted:
         decisions["finding_negatives"].append({"finding": u.finding, "text": part, "tag": u.tag, "qwen": "n/a",
                                                "present": None, "outcome": "section_omitted", "source": "case"})
+    for u, part in ifp_case_omit:  # the claim a case negative omits (its differential is reported)
+        L.put(u.line, [f'- OMIT: "{_q(part)}" — {CASE_OMIT_REASON}'])
+        labels.append((u, _key(part), "OMIT"))
+        decisions["finding_negatives"].append({"finding": u.finding, "text": part, "tag": u.tag, "qwen": "n/a",
+                                               "present": None, "outcome": "differential_present",
+                                               "source": "case", "differential": case_omit[_key(part)]})
     for u, part, pf in cands:
         d = qneg.get(_key(part)) if pf >= rc.PRESENT_LOW else None
         label = d.action if d else "keep"
@@ -648,6 +725,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
         # offered and dropped: the IF_PRESENT line is removed (render drops unedited IF_PRESENT lines)
 
     # ── Case Deliberation: question, differentials, recommendations ─────────
+    rec_lines: List[str] = []
     if case_head is not None:
         L.put(case_head, [CASE_HEADING, CASE_NOTE])
         for i in case_lines["QUESTION"]:
@@ -662,17 +740,22 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                 L.put(i, [])  # closed by silence: this study would show it
             decisions["differentials"].append({"id": d.id, "name": d.name, "tier": d.tier, "visible": d.visible,
                                                "present": round(sc[f"d{k}"], 3), "action": route})
+        # Recommendations leave the reasoning block: kept / barred ones go to their own block before the
+        # Impression Plan (report-bound guidance). With no plan (the call failed) an investigation is only
+        # offered, never written; referral, MDT and correlation keep quick's Jev-alone behaviour.
         pdec = {d.index: d for d in plan.recommendations} if plan else {}
         for k, (r, i) in enumerate(zip(s.recommendations, case_lines["RECOMMEND"])):
             d = pdec.get(k)
+            if plan is None and f"{r.tag}:" in rc._BAR_KINDS:
+                d = rc.RecDecision(index=k, decision="optional", reason="impression plan unavailable")
             route = rc.route_recommendation(sc[f"rec{k}"], d, tag=r.tag,
                                             room=len(decisions["options"]) < rc.MAX_OPTIONS)
+            L.put(i, [])
             if route == "keep":
-                L.put(i, [RECOMMEND.format(text=r.text)])
+                rec_lines.append(RECOMMEND.format(text=r.text))
             elif route == "do_not_recommend":
-                L.put(i, [DO_NOT_RECOMMEND.format(text=r.text)])
+                rec_lines.append(DO_NOT_RECOMMEND.format(text=r.text))
             else:
-                L.put(i, [])
                 if route == "optional":
                     decisions["options"].append({"kind": "recommendation", "section": imp_section,
                                                  "text": f"{r.tag}: {r.text}", "reason": d.reason})
@@ -752,6 +835,8 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
     # Normal-study impression: dropped when anything positive is dictated.
     if positive_items(findings):
         text = _NORMAL_STUDY.sub("", text)
+    if rec_lines:
+        text = text.rstrip() + "\n\n" + RECOMMENDATIONS_HEADING + "\n" + "\n".join(rec_lines)
 
     # ── impression plan and options ─────────────────────────────────────────
     if plan and items:
@@ -771,14 +856,14 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
 
     # Finding-linked negatives: the shared fallback's, for carried findings; offered, never stated.
     if plan and fb:
-        seen_neg = {part for _, part, _ in cands}
+        seen_neg = {_key(part) for _, part, _ in cands}
         for it in fb.items:
             if it.covered or it.index not in plan.impression or not (0 <= it.index < len(items)):
                 continue
             for neg in it.negatives[:3]:
                 neg = neg.strip().rstrip(".")
-                if neg and neg not in seen_neg and n_offered < rc.MAX_FINDING_OPTIONS:
-                    seen_neg.add(neg)
+                if neg and _key(neg) not in seen_neg and n_offered < rc.MAX_FINDING_OPTIONS:
+                    seen_neg.add(_key(neg))
                     n_offered += 1
                     decisions["options"].append({"kind": "finding_negative", "section": findings_section, "text": neg,
                                                  "finding": items[it.index], "reason": "unanticipated finding"})

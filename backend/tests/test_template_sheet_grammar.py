@@ -575,7 +575,8 @@ CASE_BLOCK = """
 ## Case Deliberation
 QUESTION "Is there a cause for the presenting symptom?"
 DIFFERENTIAL [focal mass] TIER triage "a discrete lesion of the primary organ" VISIBLE yes
-DIFFERENTIAL [Inflammatory process] TIER aetiology "surrounding fat stranding" VISIBLE silent
+DIFFERENTIAL [Inflammatory process] TIER aetiology "surrounding fat stranding" VISIBLE yes
+DIFFERENTIAL [Systemic cause] TIER aetiology "no imaging correlate" VISIBLE silent
 RECOMMEND IMAGING "Further characterisation with a dedicated study is suggested." WHEN [findings: an indeterminate lesion of the primary organ is reported]
 """
 ANCHOR = 'RULE WHEN [context: a non-contrast study is performed] SUPPRESS "No contrast extravasation."\n'
@@ -700,7 +701,8 @@ def test_master_sheet_parses_case_units():
     assert s.question == "Is there a cause for the presenting symptom?"
     assert [(d.id, d.name, d.tier, d.discriminator, d.visible) for d in s.differentials] == [
         ("d0", "focal mass", "triage", "a discrete lesion of the primary organ", "yes"),
-        ("d1", "Inflammatory process", "aetiology", "surrounding fat stranding", "silent")]
+        ("d1", "Inflammatory process", "aetiology", "surrounding fat stranding", "yes"),
+        ("d2", "Systemic cause", "aetiology", "no imaging correlate", "silent")]
     (rec,) = s.recommendations
     assert (rec.id, rec.tag, rec.text, rec.condition, rec.condition_source) == (
         "rec0", "IMAGING", "Further characterisation with a dedicated study is suggested.",
@@ -745,6 +747,9 @@ REC = ('RECOMMEND IMAGING "Further characterisation with a dedicated study is su
     (MASTER.replace(CASE_BLOCK, "").replace(CASE_NEG + "\n", ""), g.QUESTION_COUNT),
     (_master(Q, Q + 'QUESTION "A second question about the organ?"\n'), g.QUESTION_COUNT),
     (_master("TARGETS [inflammatory process]", "TARGETS [vascular cause]"), g.UNKNOWN_TARGET),
+    (_master("TARGETS [inflammatory process]", "TARGETS [systemic cause]"), g.UNSUPPORTED_TARGET),
+    (_master("TARGETS [inflammatory process]", "TARGETS [inflammatory process]").replace(
+        "surrounding fat stranding\" VISIBLE yes", "surrounding fat stranding\" VISIBLE no"), g.UNSUPPORTED_TARGET),
     (_master(D0, D0 + D0.replace("triage", "aetiology")), g.DUPLICATE_DIFFERENTIAL),
     (_master(D0, D0.replace("TIER triage", "TIER urgent")), g.MALFORMED_UNIT),
     (_master(D0, D0.replace("VISIBLE yes", "VISIBLE maybe")), g.MALFORMED_UNIT),

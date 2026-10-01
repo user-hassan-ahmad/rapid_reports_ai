@@ -38,7 +38,7 @@ Case units (master mode only):
     DIFFERENTIAL [<name>] TIER triage|aetiology "<imaging discriminator>" VISIBLE yes|no|silent
     RECOMMEND <IMAGING|REFERRAL|MDT|TISSUE|CORRELATION> "<text>" WHEN [findings: <statement>]
     (inside paragraphs)
-    NEGATIVE "<text>" TARGETS [<differential>] | origin: case   (TARGETS names a DIFFERENTIAL)
+    NEGATIVE "<text>" TARGETS [<differential>] | origin: case   (TARGETS names a VISIBLE yes DIFFERENTIAL)
     IF_PRESENT [<finding>] "<negative>" (core|contextual) | origin: case
 
 Sections of a unit. Under "## Paragraph: <name> (<SECTION>)" a unit belongs to that paragraph and
@@ -108,6 +108,9 @@ QUESTION_COUNT = "master sheet needs exactly one QUESTION"
 DUPLICATE_CASE_BLOCK = "duplicate Case Deliberation block"
 DUPLICATE_DIFFERENTIAL = "duplicate DIFFERENTIAL"
 UNKNOWN_TARGET = "TARGETS names no DIFFERENTIAL"
+# A case negative excludes its differential by silence only when this study would show it (policy 1):
+# TARGETS naming a VISIBLE no / silent DIFFERENTIAL asks a negative the study cannot support.
+UNSUPPORTED_TARGET = "TARGETS names a DIFFERENTIAL this study cannot show (VISIBLE no/silent)"
 
 
 @dataclass(frozen=True)
@@ -490,10 +493,13 @@ def parse_sheet(sheet: str, mode: Mode = "template") -> GrammarResult:
     if mode == "master" and not questions:
         err(case_block_line, QUESTION_COUNT, "no QUESTION")
     known = {_norm_name(d.name): d.name for d in differentials}
+    visible = {_norm_name(d.name): d.visible for d in differentials}
     for line, idx in case_targets:
         name = known.get(_norm_name(negatives[idx].targets))
         if name is None:
             err(line, UNKNOWN_TARGET, negatives[idx].targets)
+        elif visible[_norm_name(name)] != "yes":
+            err(line, UNSUPPORTED_TARGET, f"{name} (VISIBLE {visible[_norm_name(name)]})")
         else:
             negatives[idx].targets = name  # canonical: as the DIFFERENTIAL line writes it
     if mode != "v1":

@@ -43,7 +43,8 @@ def _is_bundled(neg: str) -> bool:
 # Policy 1 for dictated findings: a finding Jev finds reported brings the negatives the analyser
 # listed for it. Cut-offs on Jev's score; PRESENT_HIGH sits in the measured gap between clear
 # (0.86-0.99) and hedged (<=0.72) reports (ledger L-45).
-PRESENT_LOW = 0.5
+PRESENT = 0.5   # the one Jev yes cut-off: present, condition met / unmet, statement affected
+PRESENT_LOW = PRESENT
 PRESENT_HIGH = 0.8
 MAX_FINDING_OPTIONS = 4
 
@@ -67,9 +68,6 @@ def route_finding(label: str, present: float, tag: str) -> str:
     if present >= PRESENT_HIGH and tag == "core":
         return "stated"
     return "offered"
-
-
-PRESENT = 0.5   # Jev cut-off for "present" (differentials) and "condition unmet" (recommendations)
 
 
 def route_differential(present: float, visible: str) -> str:
@@ -97,7 +95,7 @@ def route_recommendation(unmet: float, decision: Optional["RecDecision"], *, tag
     else:
         action = "removed"
     if action == "removed" and decision and decision.exclude_reason == "routine_workup" \
-            and f"{tag.rstrip(':').upper()}:" in _BAR_KINDS:
+            and f"{tag.strip().rstrip(':').strip().upper()}:" in _BAR_KINDS:
         return "do_not_recommend"
     return action
 
