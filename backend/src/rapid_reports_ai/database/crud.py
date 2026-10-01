@@ -175,6 +175,12 @@ def get_template(db: Session, template_id: str, user_id: Optional[str] = None) -
     return query.first()
 
 
+def is_retired_template(template: Template) -> bool:
+    """Legacy (non skill-sheet) templates are retired: hidden from lists and refused at
+    generation, but never deleted — their reports and history stay intact."""
+    return (template.template_config or {}).get("generation_mode") != "skill_sheet_guided"
+
+
 def get_templates(
     db: Session,
     user_id: str,
@@ -195,11 +201,12 @@ def get_templates(
         )
     )
     
+    # Retired templates are filtered in Python (template_config is JSON) before paging,
+    # so a hidden row never takes a visible template's page slot.
+    all_templates = [t for t in query.all() if not is_retired_template(t)]
+
     if tags and len(tags) > 0:
-        # Filter templates that contain ANY of the provided tags
-        # Load templates and filter in Python for cross-database compatibility
-        # This works with both SQLite and PostgreSQL
-        all_templates = query.all()
+        # Filter templates that contain ANY of the provided tags (Python, cross-database)
         filtered = []
         for template in all_templates:
             template_tags = template.tags or []
@@ -209,8 +216,8 @@ def get_templates(
             if any(req_tag in template_tags_lower for req_tag in requested_tags_lower):
                 filtered.append(template)
         return filtered[skip:skip+limit]
-    
-    return query.offset(skip).limit(limit).all()
+
+    return all_templates[skip:skip+limit]
 
 
 def get_all_tags(db: Session, user_id: str) -> List[str]:
@@ -227,10 +234,10 @@ def get_all_tags(db: Session, user_id: str) -> List[str]:
         )
     ).all()
     
-    # Collect all tags from all templates
+    # Collect all tags from visible (non-retired) templates
     all_tags = set()
     for template in templates:
-        if template.tags:
+        if template.tags and not is_retired_template(template):
             for tag in template.tags:
                 all_tags.add(tag)
     

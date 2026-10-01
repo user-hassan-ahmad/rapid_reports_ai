@@ -39,6 +39,7 @@ from .database import (
     create_template,
     get_template,
     get_templates,
+    is_retired_template,
     update_template,
     delete_template,
     rename_tag,
@@ -1432,6 +1433,10 @@ async def resend_verification(request: dict, db: Session = Depends(get_db)):
 # TEMPLATE API ENDPOINTS
 # ============================================================================
 
+LEGACY_RETIRED = ("This template uses the retired template format. Re-create it as a skill-sheet template "
+                  "(New template → from example reports).")
+
+
 @app.get("/api/templates")
 async def list_templates(
     skip: int = 0,
@@ -1754,6 +1759,8 @@ async def generate_report_from_template(
                 "success": False,
                 "error": "Template configuration is missing. Please recreate this template using the new template editor."
             }
+        if is_retired_template(template):
+            return {"success": False, "error": LEGACY_RETIRED}
         
         tm = TemplateManager()
         user_inputs = actual_user_inputs

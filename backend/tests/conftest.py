@@ -116,3 +116,45 @@ def _no_live_quality_check(request, monkeypatch):
     if request.module.__name__.endswith(_QUALITY_MODULES):
         return
     monkeypatch.setenv("RR_QUALITY_CHECK", "0")
+
+
+# ── Template endpoint fixtures (legacy retirement, generate endpoint) ──────────
+
+@pytest.fixture
+def test_user(db_session: Session) -> User:
+    import uuid as _uuid
+    user = User(
+        id=_uuid.uuid4(), email=f"{_uuid.uuid4()}@nhs.net", password_hash="x", full_name="T",
+        is_active=True, is_verified=True, is_approved=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    return user
+
+
+@pytest.fixture
+def auth_headers(test_user: User) -> dict[str, str]:
+    from rapid_reports_ai.auth import create_access_token
+    return {"Authorization": f"Bearer {create_access_token({'sub': str(test_user.id)})}"}
+
+
+def _make_template(db_session: Session, user: User, name: str, config: dict, tags=None) -> Template:
+    template = Template(name=name, template_config=config, user_id=user.id, tags=tags or [], is_active=True)
+    db_session.add(template)
+    db_session.commit()
+    db_session.refresh(template)
+    return template
+
+
+@pytest.fixture
+def guided_template(db_session: Session, test_user: User) -> Template:
+    """A current skill-sheet template."""
+    return _make_template(db_session, test_user, "Guided", {
+        "generation_mode": "skill_sheet_guided", "skill_sheet": "## FINDINGS\nDescribe the findings.",
+        "scan_type": "CT"}, tags=["guided-tag"])
+
+
+@pytest.fixture
+def legacy_template(db_session: Session, test_user: User) -> Template:
+    """A retired (section-based) template: hidden from lists, generation refused, never deleted."""
+    return _make_template(db_session, test_user, "Legacy", {"sections": []}, tags=["legacy-tag"])
