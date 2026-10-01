@@ -84,6 +84,9 @@ def report_sections(report: str, sheet: str = "") -> List[ReportSection]:
     return secs
 
 
+_FILLER = frozenset(("AND", "THE", "WITHIN", "SEPARATE", "PARAGRAPH", "SECTION", "FINDINGS", "FINDING", "OTHER"))
+
+
 def option_section(option: dict, sections: List[ReportSection]) -> str:
     """Where an option goes in this report: an impression / recommendation item in the impression section; a
     finding-linked negative in the section named as its Phase-1 paragraph, else the first findings section whose
@@ -92,9 +95,12 @@ def option_section(option: dict, sections: List[ReportSection]) -> str:
         return next((s.name for s in sections if s.role == "impression"), option.get("section") or "IMPRESSION")
     want = (option.get("section") or "").strip().upper()
     found = [s for s in sections if s.role == "findings"]
+    headed = [s for s in found if s.header] or found  # the implicit preface only when nothing else is a findings section
+    words = lambda t: {w for w in re.findall(r"[A-Z0-9]+", t.upper()) if len(w) >= 3 and w not in _FILLER}  # noqa: E731
     return (next((s.name for s in found if s.name == want), None)
-            or next((s.name for s in found if "FINDING" in s.name), None)
-            or (found[0].name if found else IMPLICIT))
+            or next((s.name for s in headed if words(s.name) & words(want)), None)
+            or next((s.name for s in headed if "FINDING" in s.name), None)
+            or (headed[0].name if headed else IMPLICIT))
 
 
 def _block(sheet: str, title: str) -> str:

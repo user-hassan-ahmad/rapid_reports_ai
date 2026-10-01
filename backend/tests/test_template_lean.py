@@ -188,3 +188,9 @@ def test_option_section_prefers_the_phase1_paragraph_then_a_findings_named_secti
     secs2 = tl.report_sections("Calcium scoring:\nX.\n\nCoronary Findings:\nY.\n\nConclusion:\nZ.", "")
     assert tl.option_section({"kind": "finding_negative", "section": "PRIMARY"}, secs2) == "CORONARY FINDINGS"
     assert tl.option_section({"kind": "recommendation", "section": "IMPRESSION"}, secs2) == "CONCLUSION"
+
+
+def test_option_section_matches_a_paragraph_by_shared_words_before_the_implicit_preface():
+    secs = tl.report_sections("No previous study.\n\nHead and C-spine:\nX.\n\nCAP:\nY.\n\nConclusion:\nZ.", "")
+    assert tl.option_section({"kind": "finding_negative", "section": "CHEST (within CAP or separate)"}, secs) == "CAP"
+    assert tl.option_section({"kind": "finding_negative", "section": "Unrelated"}, secs) == "HEAD AND C-SPINE"
