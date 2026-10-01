@@ -297,3 +297,31 @@ async def test_run_phase1_returns_the_master_and_raises_on_model_failure(monkeyp
     monkeypatch.setattr(tp.ca, "deliberate", failed)
     with pytest.raises(RuntimeError, match="model call failed"):
         await tp.run_phase1(LEAN, "CT", "h")
+
+
+async def test_run_phase1_on_an_old_sheet_keeps_the_sheet_unchanged(monkeypatch):
+    async def ok(sheet, summary, scan, history):
+        r = tp.ca.CaseResult(raw="r", ms=10, model="m", question="q", units_block="## Case Deliberation\nQUESTION \"q\"",
+                             differentials=[{"name": "x", "tier": "triage", "discriminator": "d", "visible": "yes"}])
+        r.grounding = "old_sheet"
+        return r
+    monkeypatch.setattr(tp.ca, "deliberate", ok)
+    out = await tp.run_phase1("# Skill Sheet: old\n## Scan Context\nCT\n", "CT", "h")
+    assert out["master_sheet"] == "# Skill Sheet: old\n## Scan Context\nCT\n"
+    assert out["case_result"]["grounding"] == "old_sheet"
+
+
+async def test_resolve_case_returns_the_stored_case_result_for_the_lean_path(monkeypatch):
+    from rapid_reports_ai.database import crud
+
+    async def master(db, user, template, sheet, scan, history):
+        return ("SHEET", "cached")
+    row = type("Row", (), {"case_result": {"differentials": [{"name": "x"}]}})()
+    monkeypatch.setattr(tp, "resolve_master", master)
+    monkeypatch.setattr(crud, "get_case_sheet", lambda db, *key: row)
+    assert await tp.resolve_case(None, "u", "t", "SHEET", "CT", "h") == ({"differentials": [{"name": "x"}]}, "cached")
+
+    async def failed(db, user, template, sheet, scan, history):
+        return (None, "failed")
+    monkeypatch.setattr(tp, "resolve_master", failed)
+    assert await tp.resolve_case(None, "u", "t", "SHEET", "CT", "h") == (None, "failed")

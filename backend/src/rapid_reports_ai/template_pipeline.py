@@ -97,7 +97,8 @@ def phase1_record(res: "ca.CaseResult") -> dict:
             "placement_paragraphs": [getattr(p, "paragraph", "") for p in res.placements],
             "placement_units": [{"kind": p.kind, "text": p.text, "key": p.key, "paragraph": p.paragraph}
                                 for p in res.placements if hasattr(p, "kind")],
-            "units_block": res.units_block, "rejected": res.rejected, "raw": res.raw}
+            "units_block": res.units_block, "rejected": res.rejected, "raw": res.raw,
+            "grounding": getattr(res, "grounding", "grammar")}
 
 
 async def run_phase1(sheet: str, scan_type: str, history: str) -> dict:
@@ -108,7 +109,9 @@ async def run_phase1(sheet: str, scan_type: str, history: str) -> dict:
     failed = [e for e in res.errors if e.startswith("model call failed")]
     if failed:
         raise RuntimeError(failed[0])
-    return {"master_sheet": ca.merge_master(sheet, res), "case_result": phase1_record(res), "model": res.model,
+    # An old-format sheet is never merged (its units serve options only): the master is the sheet as stored.
+    master = sheet if getattr(res, "grounding", "grammar") == "old_sheet" else ca.merge_master(sheet, res)
+    return {"master_sheet": master, "case_result": phase1_record(res), "model": res.model,
             "latency_ms": res.ms, "prompt_version": PROMPT_VERSION}
 
 
@@ -213,6 +216,21 @@ async def resolve_master(db, user, template, sheet: str, scan_type: str, history
         return (master, source) if master else (None, "failed")
     except Exception as e:  # noqa: BLE001 - timeout or error: generate on the lean sheet
         logger.warning("template Phase 1 unavailable (%s: %s); lean sheet", type(e).__name__, str(e)[:200])
+        return None, "failed"
+
+
+async def resolve_case(db, user, template, sheet: str, scan_type: str, history: str) -> Tuple[Optional[dict], str]:
+    """The lean path's view of Phase 1 (template_lean): the stored case_result (units for options only), and
+    where it came from, as resolve_master. (None, source) when Phase 1 is unavailable: no Phase-1 options."""
+    from .database import crud
+    master, source = await resolve_master(db, user, template, sheet, scan_type, history)
+    if master is None:
+        return None, source
+    try:
+        row = crud.get_case_sheet(db, *_key(getattr(user, "id", user), getattr(template, "id", template), sheet, history))
+        return (row.case_result if row is not None else None), source
+    except Exception as e:  # noqa: BLE001
+        logger.warning("template Phase 1 case read failed (%s: %s)", type(e).__name__, str(e)[:200])
         return None, "failed"
 
 

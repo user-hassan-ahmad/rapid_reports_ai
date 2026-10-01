@@ -319,3 +319,95 @@ async def test_deliberate_uses_the_jev_checks(monkeypatch):
     monkeypatch.setattr(rc, "_jev", jev_stub({}, {}))
     r = await ca.deliberate(TEMPLATE_J, None, "CT", "History.")
     assert _kept(r) == CASE_NEGS
+
+
+# ── Old-format sheets (lean design, arm E): Phase 1 grounded on the sheet's own prose ──────────────
+
+OLD_SHEET = """# Skill Sheet: Example study
+
+## Scan Context
+- Modality: single contrast-enhanced acquisition of the region
+
+## Structural Pattern
+- Sections included, in order:
+  1. FINDINGS (Always present)
+  2. CONCLUSION (Always present)
+
+## Per-Section Construction Rules
+
+### [PRIMARY FINDINGS]
+- **Mandatory negatives**:
+  - "No surrounding collection."
+- **Normal pattern**: "The primary organ is unremarkable."
+
+### Remainder Paragraph
+- **Normal pattern**: "The remaining structures are unremarkable."
+
+### [CONCLUSION]
+- **header**: "Conclusion:"
+
+## Terminology Rules
+- Prefer "lesion".
+
+## Negative Finding Rules
+- "No free fluid." when the sweep is negative.
+"""
+
+OLD_OUT = """## Case Deliberation
+QUESTION "Is there a lesion of the primary organ, to gate specialty referral?"
+DIFFERENTIAL [primary lesion] TIER triage "focal abnormality of the primary organ" VISIBLE yes
+RECOMMEND REFERRAL "Referral to the relevant specialty service is recommended." WHEN [findings: a focal lesion of the primary organ is reported]
+
+## Placements
+PLACE [PRIMARY FINDINGS] NEGATIVE "No dilatation of the adjacent duct." TARGETS [primary lesion]
+PLACE [Remainder Paragraph] IF_PRESENT [focal lesion] "No regional lymphadenopathy." (core)
+PLACE [PRIMARY FINDINGS] IF_PRESENT [focal lesion] "No surrounding collection." (core)
+PLACE [CONCLUSION] IF_PRESENT [focal lesion] "No distant spread." (core)
+"""
+
+
+def test_old_sheet_summary_reads_the_sheet_prose():
+    s = ca.summarise_old_sheet(OLD_SHEET)
+    assert s["errors"] == [] and s["mode"] == "old_sheet"
+    roles = {p["name"]: p["role"] for p in s["paragraphs"]}
+    assert roles["PRIMARY FINDINGS"] == "findings" and roles["Remainder Paragraph"] == "findings"
+    assert roles["CONCLUSION"] != "findings"
+    primary = next(p for p in s["paragraphs"] if p["name"] == "PRIMARY FINDINGS")
+    assert "No surrounding collection." in primary["negatives"]
+    assert "The primary organ is unremarkable." in primary["normals"]
+    assert "single contrast-enhanced acquisition" in s["technique"]
+    # The sheet's relevant prose is carried as grounding text (sections, routine negatives, terms)
+    assert "Mandatory negatives" in s["sheet_text"] and "No free fluid." in s["sheet_text"]
+    assert "Prefer \"lesion\"" in s["sheet_text"]
+    # report-wide negatives are template claims too (duplicate check), never a placement paragraph
+    assert any("No free fluid." in n for p in s["paragraphs"] for n in p["negatives"])
+
+
+def test_old_sheet_prompt_embeds_the_sheet_text():
+    p = ca.build_user_prompt(ca.summarise_old_sheet(OLD_SHEET), "CT", "History.")
+    assert "PRIMARY FINDINGS" in p and "No free fluid." in p and "Structural Pattern" in p
+    assert "{{" not in p
+
+
+async def test_deliberate_falls_back_to_the_old_sheet_and_places_by_its_paragraphs(monkeypatch):
+    from rapid_reports_ai import enhancement_utils as eu, report_reconcile as rc
+    seen = {}
+
+    async def fake_agent(**kw):
+        seen["user"] = kw["user_prompt"]
+        return type("R", (), {"output": OLD_OUT})()
+    monkeypatch.setattr(eu, "_run_agent_with_model", fake_agent)
+
+    async def no_jev(state, qs):
+        raise RuntimeError("down")
+    monkeypatch.setattr(rc, "_jev", no_jev)
+    assert ca.summarise_template(OLD_SHEET)["errors"]  # the grammar parse is unusable
+    r = await ca.deliberate(OLD_SHEET, None, "CT", "History.")
+    assert r.usable and r.grounding == "old_sheet" and "Structural Pattern" in seen["user"]
+    kept = [(p.kind, p.paragraph, p.text) for p in r.placements]
+    assert ("NEGATIVE", "PRIMARY FINDINGS", "No dilatation of the adjacent duct.") in kept
+    assert ("IF_PRESENT", "Remainder Paragraph", "No regional lymphadenopathy.") in kept
+    texts = [t for _, _, t in kept]
+    assert "No surrounding collection." not in texts      # duplicates the sheet's own negative
+    assert "No distant spread." not in texts              # CONCLUSION is not a findings paragraph
+    assert r.recommendations and r.recommendations[0]["tag"] == "REFERRAL"

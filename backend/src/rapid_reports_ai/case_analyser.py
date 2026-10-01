@@ -271,6 +271,77 @@ def summarise_template(sheet: str) -> dict:
     return {"technique": technique.strip(), "terms": terms, "paragraphs": paragraphs, "errors": errors}
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Old-format sheets (lean template design, arm E): the sheet's own prose as grounding
+# ─────────────────────────────────────────────────────────────────────────────
+# A stored sheet that the grammar parser cannot read is not converted: its relevant prose (scan context,
+# structure, per-section construction rules, routine negatives and normals, terminology) is embedded in the
+# user prompt as written. Paragraph names come from the '### ' headings of its per-section rules; template
+# negatives and normals are its quoted sentences, so the duplicate checks still run. No master sheet is made.
+
+_OLD_BLOCKS = ("structural pattern", "fixed blocks", "per-section construction rules", "negative finding rules",
+               "terminology rules")
+_OLD_NOT_FINDINGS = re.compile(r"\b(conclusion|impression|summary|opinion|comparison|technique|procedure|protocol|"
+                               r"clinical|history|indication)\b", re.I)
+_QUOTED = re.compile(r'"([^"{}]{4,})"')
+
+
+def _old_blocks(sheet: str) -> Dict[str, str]:
+    """'## ' block title (lowercased) -> its text up to the next '## ' heading ('### ' stays inside)."""
+    out: Dict[str, List[str]] = {}
+    key = None
+    for line in (sheet or "").splitlines():
+        if line.startswith("## "):
+            key = line[3:].strip().lower()
+            out.setdefault(key, [])
+            continue
+        if line.startswith("# "):
+            key = None
+            continue
+        if key is not None:
+            out[key].append(line)
+    return {k: "\n".join(v).strip() for k, v in out.items()}
+
+
+def _quoted_absences(text: str) -> List[str]:
+    return [q.strip() for q in _QUOTED.findall(text or "") if re.match(r"(?i)^(no|nil|not|without)\b", q.strip())]
+
+
+def summarise_old_sheet(sheet: str) -> dict:
+    """Grounding summary of an old-format (prose) skill sheet; same shape as summarise_template, plus
+    "mode": "old_sheet" and "sheet_text" (the relevant blocks as written). Never errors: a sheet without
+    per-section headings gets one findings paragraph, "Findings"."""
+    blocks = _old_blocks(sheet)
+    paragraphs = []
+    per = blocks.get("per-section construction rules", "")
+    for m in re.finditer(r"^###\s+(.+?)\s*$([\s\S]*?)(?=^###\s|\Z)", per, re.M):
+        name = m.group(1).strip().strip("[]").strip()
+        body = m.group(2)
+        normals = [q.strip() for ln in body.splitlines() if re.search(r"(?i)normal pattern", ln)
+                   for q in _QUOTED.findall(ln)]
+        negatives = [q for q in _quoted_absences(body) if q not in normals]
+        paragraphs.append({"name": name, "section": name,
+                           "role": "impression" if _OLD_NOT_FINDINGS.search(name) else "findings",
+                           "covers": [], "negatives": negatives, "normals": normals})
+    if not any(p["role"] == "findings" for p in paragraphs):
+        paragraphs.append({"name": "Findings", "section": "Findings", "role": "findings", "covers": [],
+                           "negatives": [], "normals": []})
+    sweep = _quoted_absences(blocks.get("negative finding rules", ""))
+    if sweep:  # report-wide negatives: template claims for the duplicate checks, never a placement paragraph
+        paragraphs.append({"name": "Report-wide negatives", "section": "", "role": "other", "covers": [],
+                           "negatives": sweep, "normals": []})
+    technique = "\n".join(x for x in (blocks.get("scan context", ""), blocks.get("fixed blocks", "")) if x)
+    sheet_text = "\n\n".join(f"### {t.title()}\n{blocks[t]}" for t in _OLD_BLOCKS if blocks.get(t))
+    return {"mode": "old_sheet", "technique": technique.strip(), "terms": [], "paragraphs": paragraphs,
+            "errors": [], "sheet_text": sheet_text}
+
+
+OLD_SHEET_NOTE = ("This template is written as prose, not as units: COVERS is not stated. The paragraphs above are its "
+                  "findings paragraphs; place each unit in the one whose rules below describe the structure. The "
+                  "negatives and normals the template already states are the quoted absences and normal patterns in "
+                  "the sheet text below.")
+
+
 def _inventory_text(summary: dict) -> str:
     out = []
     for p in summary["paragraphs"]:
@@ -286,12 +357,18 @@ def _inventory_text(summary: dict) -> str:
 
 
 def build_user_prompt(summary: dict, scan_type: str, clinical_history: str) -> str:
+    inventory = _inventory_text(summary)
+    terms = "\n".join(summary.get("terms") or []) or "(none)"
+    if summary.get("sheet_text"):  # old-format sheet: its prose is the grounding, as written
+        inventory += ("\n\n" + OLD_SHEET_NOTE + "\n\n## TEMPLATE SHEET TEXT (as the radiologist's sheet writes it)\n\n"
+                      + summary["sheet_text"])
+        terms = "(see Terminology Rules in the template sheet text)"
     return (CASE_ANALYSER_USER_TEMPLATE
             .replace("{{SCAN_TYPE}}", scan_type or "")
             .replace("{{CLINICAL_HISTORY}}", (clinical_history or "").strip() or "(none provided)")
             .replace("{{TECHNIQUE}}", summary.get("technique") or "(not stated in the template)")
-            .replace("{{INVENTORY}}", _inventory_text(summary))
-            .replace("{{TERMS}}", "\n".join(summary.get("terms") or []) or "(none)"))
+            .replace("{{TERMS}}", terms)
+            .replace("{{INVENTORY}}", inventory))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -331,6 +408,7 @@ class CaseResult:
     recommendations: List[dict] = field(default_factory=list)
     raw: str = ""
     model: str = ""
+    grounding: str = "grammar"  # "grammar" (lean sheet, master merge) | "old_sheet" (prose grounding, no master)
 
     @property
     def usable(self) -> bool:
@@ -616,8 +694,9 @@ async def deliberate(template_sheet: str, structure_summary: Optional[dict], sca
     from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model
 
     summary = structure_summary or summarise_template(template_sheet)
-    if summary.get("errors"):  # a template that does not parse is not deliberated on
-        return CaseResult(errors=[f"template sheet: {e}" for e in summary["errors"]])
+    if summary.get("errors"):  # the grammar parse is unusable: ground on the sheet's own prose (arm E)
+        summary = summarise_old_sheet(template_sheet)
+    old_sheet = summary.get("mode") == "old_sheet"
     user_prompt = build_user_prompt(summary, scan_type, clinical_history)
     model_name = model_override or MODEL_CONFIG["QUICK_REPORT_ANALYZER_BEST"]
     fallback = MODEL_CONFIG.get("QUICK_REPORT_ANALYZER_BEST_FALLBACK")
@@ -644,7 +723,9 @@ async def deliberate(template_sheet: str, structure_summary: Optional[dict], sca
         res.model = model_name
         return res
     raw = out.output if hasattr(out, "output") else str(out)
-    res = await parse_and_check_async(raw, summary, template_sheet)
+    res = await parse_and_check_async(raw, summary, None if old_sheet else template_sheet)
+    if old_sheet:
+        res.grounding = "old_sheet"
     res.ms = int((time.time() - t0) * 1000)
     res.model = model_name
     return res
