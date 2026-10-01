@@ -1616,7 +1616,7 @@ HOLDOUT splits, two runs each). Production re-score: `jev_v2_rescore/run_67723/{
 
 | Question | Old | New | Threshold | Suite evidence |
 |---|---|---|---|---|
-| Omission (quality check) | "The report states this dictated finding, in any wording: " over positive items only (`_BACKGROUND` filter) | `Q_CONVEYS` "The report itself states everything this statement says, in any wording, abbreviation or synonym (not merely implied or inferable): " over **every** dictated item | flag < 0.40 (was < 0.5) | A/S2: stated ≥ 0.51, omitted ≤ 0.31 |
+| Omission (quality check) — **superseded by the classifier below (b9951a6)** | "The report states this dictated finding, in any wording: " over positive items only (`_BACKGROUND` filter) | `Q_CONVEYS` "The report itself states everything this statement says, in any wording, abbreviation or synonym (not merely implied or inferable): " over **every** dictated item | flag < 0.40 (was < 0.5) | A/S2: stated ≥ 0.51, omitted ≤ 0.31 |
 | Inserter duplicate guard | `_restates` word overlap | Jev `Q_CONVEYS` on the report; `_restates` is the fallback when Jev fails | skip ≥ 0.25 | A: conveyed ≥ 0.32, new ≤ 0.14 |
 | Inserted negative | any negation allowed when any omitted item had negation | `_negative_allowed`: only when an omitted negated item shares a content word | — | user decision 1 (**reversed**, below) |
 | If-present finding presence | noul "report this imaging finding, in any wording or size" | score, 4 levels (absent / not mentioned / possible / present), read as level / 3 | route_finding cut-offs unchanged (0.5 / 0.8) | B |
@@ -1718,3 +1718,36 @@ Lessons:
 - **The inserter is the remaining risk, not the selector**: once an item is selected, Qwen writes it
   verbatim, typos and all, and adds normals from the same line; and "not everything is stated" (correct)
   leads to a whole-sentence duplicate beside the existing sentence (16 of 56).
+
+**Classify-first omission repair (b9951a6; lab `classify_probe/`, re-score `jev_v2_rescore/run_cls_17628/`).**
+Diagnosis: detection asked "is every detail of this line stated?" while the repair wrote the whole line back, so a
+line whose finding was reported with one detail missing became a duplicate, and a line the report states
+differently became a conflict. Now the report-state call asks one Jev choice per dictated line in place of the
+yes/no (no added round trip): 'Read only this one dictated line: "{x}". Find what the report says about the same
+finding or structure, then choose how the report covers this line.' with criteria stated / partial / absent /
+different / unclear (`_OMIT_CHOICES`). Routing on the most probable class: absent → inserted; partial → telemetry
+`review` {kind: partial, line, missing_detail} (a word-diff hint); different → `review` {kind: differs, line};
+stated / unclear → nothing. A failed report call or an unreadable answer inserts nothing.
+- Probe: 179 labelled lines (the 75 run_sel_49840 flags with the real report as state + 104 synthetic across 17
+  modalities/regions; ≥ 41 per class), DEV 116 / HOLDOUT 63 split by report. Four wordings: A1 plain 4-way, A2
+  structure-first 4-way, A3 = A2 + `unclear`, A4 action framing (nothing / add detail / add finding / conflict).
+  Unsafe = partial, different or stated chosen as absent. A3: **0 unsafe on DEV and HOLDOUT, both repeats**
+  (A1 2–3, A2 1–3: headings and fragments such as "conclusion:", "+ others" chosen absent; A4 6–7). A3 absent
+  recall 24–25/29 DEV, 9/13 HOLDOUT; misses go to partial (mixed lines, the safe error) or different. Highest
+  P(absent) on a non-absent line 0.49 (argmax still different); repeat flips 2/179; adding Q_CONVEYS changed nothing.
+- Inserter rewrite (`INSERT_SYS`, 7 rules): only the abnormal part the report lacks, never a normal-only sentence
+  (a study caveat is not a finding), the report's terms, speech-recognition slips corrected or the line left empty
+  ("never guess a finding"), never anything that differs from the report, 'after' about the same structure.
+  Code backstop `_only_normal`. Lab on the 42 absent lines (11 with slips): 39 sentences, all correct; 3 empty
+  (2 normal-only lines, 1 heart-team note). Reasoning off: median 0.6 s, p90 0.8 s. Reasoning low: median 1.8 s,
+  p90 3.9 s, 2/28 timeouts at 40 s, and it wrote sentences for lines it was not given (one a conflicting
+  "partial-thickness tear"): rejected. Stress (16 non-absent lines fed as absent): new prompt left 11 empty, old 0.
+- **Third production re-score (same 150, read only): 11 insertions, all hand-read correct: 0 copied typo,
+  0 conflict, 0 added normal, 0 duplicate (gate met).** 38 partial and 17 differs went to review only, never
+  edited; 5 of them are really absent or stated (recall lost, safe). The 63 fixed false omissions: 63/63 not
+  inserted (59 no flag, 4 review). The 12 better recommendation changes: 11/12 hold (ec8c91f8 MRCP flipped on
+  drift this time; the recommendation question is unchanged). Insert calls in 9/148 reports (was 41/148): calls per
+  report 2.12 (was 2.55).
+- Duplicate guard (Step 3): the same 11 sentences with and without it, so the condition for removing it is met;
+  kept for now (n = 11) pending Hassan's call.
+

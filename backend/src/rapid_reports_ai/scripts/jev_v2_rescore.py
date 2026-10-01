@@ -14,7 +14,7 @@ Per case, on the same inputs:
   recs       old "unmet" >= 0.5 vs new 1 - met >= 0.5
   (the Q7 relation arm was removed with Q7 itself; its run_67723 results stay in the scratchpad)
 
-    python -m rapid_reports_ai.scripts.jev_v2_rescore <rows.json> <out_dir>
+    python -m rapid_reports_ai.scripts.jev_v2_rescore <rows.json> <out_dir> [--selector | --classify]
 """
 from __future__ import annotations
 
@@ -91,7 +91,7 @@ async def one(row: dict) -> dict:
         new_omitted = []
         for t in new_items:
             was = t in old_flag and old_flag[t] < OLD_OMIT_FLAG
-            now = new_flag[t] < qq.OMIT_FLAG
+            now = new_flag[t] < 0.40   # the L-49 conveys threshold (the check now classifies instead)
             if now:
                 new_omitted.append(t)
             if was != now:
@@ -273,8 +273,98 @@ async def main_selector(rows_path: str, out_dir: str):
           f"inserted {sum(len((r.get('insert') or {}).get('added', [])) for r in res)}")
 
 
+# ── third re-score: classify-first (each selected line: stated / partial / absent / different) ──
+
+def _added(before: str, after: str) -> list:
+    old = set(qq._sentences(before))
+    out = []
+    for x in qq._sentences(after):
+        if x not in old:
+            i = after.find(x)
+            out.append({"sentence": x, "before": after[max(0, i - 160):i].strip()})
+    return out
+
+
+async def one_classify(row: dict) -> dict:
+    """The live check (selector + classifier), the live inserter on absent lines, and the same inserter with the
+    Jev duplicate guard switched off (to report whether Step 3 still catches anything). Old production flags and
+    the recommendation re-ask as in the selector re-score, so the earlier wins can be compared."""
+    v = row["input_data"].get("variables", {})
+    findings, scan = v.get("FINDINGS", ""), v.get("SCAN_TYPE", "") or row["input_data"].get("extracted_scan_type", "")
+    report = row["report_content"] or ""
+    out = {"id": row["id"], "created_at": row["created_at"], "scan": scan, "findings": findings, "errors": []}
+    if not report.strip():
+        out["errors"].append("empty report")
+        return out
+    old_items = qq.positive_items(findings)
+    try:
+        o_old = await jev(f"REPORT:\n{report}", {f"i{i}": {"type": "noul", "instructions": OLD_Q_OMIT + t}
+                                                for i, t in enumerate(old_items)})
+        out["old_flags"] = [t for i, t in enumerate(old_items) if float(o_old[f"i{i}"]["noul"]) < OLD_OMIT_FLAG]
+        res = await qq.check(report, findings, scan, [])   # live path; its own 6 s timeouts
+        out["flags"] = {k: [f.text for f in res.flags if f.kind == k] for k in ("omission", "partial", "differs")}
+        out["review"] = [{"kind": "partial", "line": t, "missing_detail": qq.missing_detail(t, report)}
+                         for t in out["flags"]["partial"]] + [{"kind": "differs", "line": t} for t in out["flags"]["differs"]]
+        out["selector"], out["n_items"], out["n_selected"], out["check_error"] = res.selector, res.n_items, res.n_selected, res.error
+        absent = out["flags"]["omission"]
+        if absent:
+            ins = await qq.insert_findings(report, findings, absent)
+            out["insert"] = {"applied": ins.applied, "skipped": ins.skipped, "dup_check": ins.dup_check,
+                             "error": ins.error, "added": _added(report, ins.report)}
+            dup = qq.INSERT_DUP
+            qq.INSERT_DUP = 2.0          # no Jev duplicate verdict can reach it: Step 3 off
+            try:
+                nodup = await qq.insert_findings(report, findings, absent)
+            finally:
+                qq.INSERT_DUP = dup
+            out["insert_nodup"] = {"applied": nodup.applied, "error": nodup.error, "added": _added(report, nodup.report)}
+    except Exception as e:
+        out["errors"].append(f"omission: {type(e).__name__}: {e}")
+    secs = qb.parse_sheet(row["sheet"] or "")
+    recs = qb._recommendations(qb._section(secs, "Impression Exemplars"))
+    if recs:
+        try:
+            dstate = f"SCAN TYPE: {scan}\nDICTATED FINDINGS:\n{findings}"
+            a_old, a_new = await asyncio.gather(
+                jev(dstate, {f"r{k}": {"type": "noul", "instructions": OLD_Q_REC_UNMET + t} for k, t in enumerate(recs)}),
+                jev(dstate, {f"r{k}": {"type": "noul", "instructions": qb.Q_REC_MET + t} for k, t in enumerate(recs)}))
+            out["recs"] = [{"text": t, "old": "removed" if float(a_old[f"r{k}"]["noul"]) >= 0.5 else "kept",
+                            "new": "removed" if 1 - float(a_new[f"r{k}"]["noul"]) >= 0.5 else "kept"}
+                           for k, t in enumerate(recs)]
+        except Exception as e:
+            out["errors"].append(f"recs: {type(e).__name__}: {e}")
+    return out
+
+
+async def main_classify(rows_path: str, out_dir: str):
+    rows = json.loads(Path(rows_path).read_text())
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    case_sem, done = asyncio.Semaphore(4), [0]   # cases in flight; jev() keeps its own SEM (never nested)
+
+    async def bounded(r):
+        async with case_sem:
+            try:
+                res = await asyncio.wait_for(one_classify(r), 120)
+            except Exception as e:
+                res = {"id": r["id"], "created_at": r["created_at"], "errors": [f"case: {type(e).__name__}: {e}"]}
+        done[0] += 1
+        if done[0] % 10 == 0:
+            print(f"progress {done[0]}/{len(rows)}", flush=True)
+        return res
+    res = await asyncio.gather(*(bounded(r) for r in rows))
+    (out / "results.json").write_text(json.dumps(res, indent=1))
+    n = lambda k: sum(len((r.get("flags") or {}).get(k, [])) for r in res)
+    print(f"{len(res)} cases; errors {sum(bool(r['errors']) for r in res)}; old flags "
+          f"{sum(len(r.get('old_flags', [])) for r in res)}; absent {n('omission')} partial {n('partial')} differs "
+          f"{n('differs')}; inserted {sum(len((r.get('insert') or {}).get('added', [])) for r in res)} "
+          f"(without Step 3: {sum(len((r.get('insert_nodup') or {}).get('added', [])) for r in res)})")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 3 and sys.argv[3] == "--selector":
         asyncio.run(main_selector(sys.argv[1], sys.argv[2]))
+    elif len(sys.argv) > 3 and sys.argv[3] == "--classify":
+        asyncio.run(main_classify(sys.argv[1], sys.argv[2]))
     else:
         asyncio.run(main(sys.argv[1], sys.argv[2]))
