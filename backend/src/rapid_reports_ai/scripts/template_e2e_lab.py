@@ -47,7 +47,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
-import contextvars
 import json
 import os
 import re
@@ -62,6 +61,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")  # the lab never tou
 from rapid_reports_ai import case_analyser as ca  # noqa: E402
 from rapid_reports_ai import report_reconcile as rc  # noqa: E402
 from rapid_reports_ai import report_review as rr  # noqa: E402
+from rapid_reports_ai import template_pipeline as tp  # noqa: E402
 from rapid_reports_ai import template_sheet_grammar as g  # noqa: E402
 
 HERE = Path(__file__).resolve()
@@ -76,23 +76,9 @@ def log(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
 
 
-# Jev requests made by one dictation's NEW run (a list per run; tasks it spawns inherit the context).
-_JEV_LOG: contextvars.ContextVar = contextvars.ContextVar("jev_log", default=None)
-
-
-def install_jev_counter() -> None:
-    """Wrap rc._jev once so every request made inside a counted run is recorded (number of questions)."""
-    if getattr(rc._jev, "_counted", False):
-        return
-    inner = rc._jev
-
-    async def counted(state, questions):
-        log_ = _JEV_LOG.get()
-        if log_ is not None:
-            log_.append(len(questions))
-        return await inner(state, questions)
-    counted._counted = True
-    rc._jev = counted
+# Jev request counting lives in template_pipeline (the lab installs it; production never does).
+_JEV_LOG = tp._JEV_LOG
+install_jev_counter = tp.install_jev_counter
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -156,26 +142,7 @@ def present(text: str, report: str, thresh: float = 0.6) -> float:
     return best
 
 
-def split_sections(report: str, sections: List[dict]) -> Dict[str, str]:
-    """{section name: text} by header lines (a line starting with the header, case-insensitive). Text before
-    the first found header goes to "_pre"; implicit sections are not split out."""
-    lines = report.splitlines()
-    marks = []
-    for s in sections:
-        h = (s.get("header") or "").strip()
-        if not h:
-            continue
-        for i, ln in enumerate(lines):
-            if ln.strip().lower().lstrip("#* ").startswith(h.lower().rstrip(":")) and len(ln.strip()) <= len(h) + 400:
-                marks.append((i, s["name"], h))
-                break
-    marks.sort()
-    out = {"_pre": "\n".join(lines[: marks[0][0]] if marks else lines)}
-    for k, (i, name, h) in enumerate(marks):
-        end = marks[k + 1][0] if k + 1 < len(marks) else len(lines)
-        first = re.sub(r"^[#*\s]*" + re.escape(h.rstrip(":")) + r":?\**", "", lines[i].strip(), flags=re.I)
-        out[name] = "\n".join([first] + lines[i + 1:end]).strip()
-    return out
+split_sections = tp.split_sections
 
 
 def without_history(report: str, sections: List[dict]) -> str:
@@ -395,11 +362,6 @@ def reused_sheets(reuse: Optional[Path], name: str) -> dict:
     return out
 
 
-def _section_block(sheet: str, title: str) -> str:
-    m = re.search(rf"^##\s+{re.escape(title)}\s*$([\s\S]*?)(?=^##\s|\Z)", sheet, re.M | re.I)
-    return m.group(1).strip() if m else ""
-
-
 def saved_phase1(dirs: str, name: str, did: str) -> Optional[dict]:
     """A dictation's saved Phase 1 output (the NEW arm's phase1 record and master sheet) from the first of
     comma-separated run dirs holding <dir>/<set>/<id>.json with both; None when no run saved it."""
@@ -414,15 +376,7 @@ def saved_phase1(dirs: str, name: str, did: str) -> Optional[dict]:
     return None
 
 
-def _phase1_record(res: "ca.CaseResult") -> dict:
-    """Everything of a CaseResult the lab keeps (raw and units_block included, so a later run can reuse it)."""
-    return {"usable": res.usable, "errors": res.errors, "model": res.model, "question": res.question,
-            "differentials": res.differentials, "recommendations": res.recommendations,
-            "placements": [p.line if hasattr(p, "line") else str(p) for p in res.placements],
-            "placement_paragraphs": [getattr(p, "paragraph", "") for p in res.placements],
-            "placement_units": [{"kind": p.kind, "text": p.text, "key": p.key, "paragraph": p.paragraph}
-                                for p in res.placements if hasattr(p, "kind")],
-            "units_block": res.units_block, "rejected": res.rejected, "raw": res.raw}
+_phase1_record = tp.phase1_record
 
 
 async def run_phase1(sheet: str, d: dict, saved: Optional[dict] = None, reuse_requested: bool = False) -> dict:
@@ -443,107 +397,29 @@ async def run_phase1(sheet: str, d: dict, saved: Optional[dict] = None, reuse_re
 
 
 async def run_new(sheet: str, d: dict, saved_p1: Optional[dict] = None, reuse_requested: bool = False) -> dict:
-    """Phase 1 (or its saved output) -> master -> brief -> generator (+ options, history) -> post-generation check."""
-    from rapid_reports_ai.template_brief import compile_template_brief
-    from rapid_reports_ai.template_history import insert_history, write_history
-    from rapid_reports_ai.template_manager import TemplateManager
-    from rapid_reports_ai.enhancement_utils import MODEL_CONFIG, _run_agent_with_model
-
-    rec: dict = {"lat": {}}
+    """Phase 1 (or its saved output) -> template_pipeline.generate_template_report (master -> brief -> generator
+    + options, history -> post-generation check + gate), the code production runs."""
     jev_log: list = []
     _JEV_LOG.set(jev_log)
-    scan_type, history, findings = d["scan_type"], d.get("clinical_history", ""), d["findings"]
-    lean = g.parse_sheet(sheet, mode="template").structure
-    sections = [rr.ReportSection(name=x.name, header=x.header, role=x.role)
-                for x in sorted(lean.sections, key=lambda x: x.order)]
-    hist_sec = next((x for x in sections if x.role == "history"), None)
-    imp = next((x.name for x in sections if x.role == "impression"), "IMPRESSION")
 
     # Phase 1 (or its saved output: --reuse-phase1)
     p1 = await run_phase1(sheet, d, saved_p1, reuse_requested=reuse_requested)
-    rec["lat"]["phase1_s"] = p1["phase1_s"]
-    master = p1["master_sheet"]
-    mres = g.parse_sheet(master, mode="master")
-    rec["phase1"] = p1["phase1"]
-    rec["master_usable"] = mres.structure.usable
-    rec["master_errors"] = [f"{e.line}: {e.reason}: {e.text[:100]}" for e in mres.errors]
-    rec["master_sheet"] = master
     n_phase1 = len(jev_log)
-    brief_sheet, brief_struct = (master, mres.structure) if mres.structure.usable else (sheet, lean)
-
-    # Phase 2 brief
-    t = time.time()
-    brief = None
-    try:
-        brief = await compile_template_brief(brief_sheet, brief_struct, scan_type, findings, history)
-    except Exception as e:  # noqa: BLE001 - production generates down the raw path
-        rec["brief_error"] = f"{type(e).__name__}: {e}"[:400]
-    rec["lat"]["brief_s"] = round(time.time() - t, 2)
-    rec["brief_text"] = brief.text if brief else None
-    rec["decisions"] = brief.decisions if brief else None
-    n_brief = len(jev_log)
-
-    # Generate + options in parallel (as quick)
-    style = "\n".join(x for x in (_section_block(sheet, "Impression Construction"),
-                                  "\n".join(re.findall(r"^TERM .*$", sheet, re.M))) if x)
-
-    async def gen():
-        t0 = time.time()
-        out = await TemplateManager()._generate_report_skill_sheet_guided(
-            template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": sheet, "scan_type": scan_type},
-            user_inputs={"FINDINGS": findings, "CLINICAL_HISTORY": history},
-            brief_text=brief.text if brief else None, history_supplied=hist_sec is not None)
-        return out, round(time.time() - t0, 1)
-
-    async def opts():
-        t0 = time.time()
-        o = await rc.write_options(brief.decisions.get("options", []) if brief else [], findings, scan_type,
-                                   model=MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"], runner=_run_agent_with_model,
-                                   style=style, impression_section=imp, require_service=True)
-        return o, round(time.time() - t0, 1)
-
-    (out, rec["lat"]["generator_s"]), (options, rec["lat"]["options_s"]) = await asyncio.gather(gen(), opts())
-    report = out["report_content"]
-    rec["generator_model"] = out.get("model_used")
-    rec["report_generated"] = report
-    hist_text = ""
-    if hist_sec is not None:
-        h = await write_history(history)
-        if h:
-            hist_text = h[0]
-            report = insert_history(report, hist_text, sections)
-    fixed = [f.text for f in lean.fixed_blocks if "{" not in f.text]
-    protected = [x for x in [hist_text] + fixed if x]
-    avoid = list(lean.terminology.suppressed)
-    sec_dicts = [{"name": x.name, "header": x.header, "role": x.role} for x in sections]
-    impression = split_sections(report, sec_dicts).get(imp, "")
-
-    gate_qs = rc.gate_questions(options)  # report-scope questions ride on the check's report-state request
-
-    async def checked():
-        t0 = time.time()
-        out = await rr.run_quality_check(report, findings, scan_type, options, sections=sections,
-                                         protected=protected, suppressed=avoid, extra_report_qs=gate_qs["report"],
-                                         history=hist_text)
-        return out, round(time.time() - t0, 1)
-
-    async def gated():  # impression-scope questions need the conclusion as state: one parallel request
-        t0 = time.time()
-        out = await rc.gate_scores(f"CONCLUSION:\n{impression}", gate_qs["impression"])
-        return out, round(time.time() - t0, 2)
-
-    ((report, checked_opts, quality), rec["lat"]["check_s"]), (imp_scores, rec["lat"]["gate_s"]) = \
-        await asyncio.gather(checked(), gated())
-    _, gate_dropped = rc.gate_apply(options, {**quality.get("extra_answers", {}), **imp_scores})
-    drop_ids = {o.get("id") for o in gate_dropped}
-    options = [o for o in checked_opts if o.get("id") not in drop_ids]
-    rec["jev_calls"] = {"phase1": n_phase1, "brief": n_brief - n_phase1, "post_generation": len(jev_log) - n_brief,
+    out = await tp.generate_template_report(sheet=sheet, scan_type=d["scan_type"], findings=d["findings"],
+                                            history=d.get("clinical_history", ""), master_sheet=p1["master_sheet"],
+                                            signature=None)
+    rec: dict = {"lat": {"phase1_s": p1["phase1_s"], **out["lat"]}, "phase1": p1["phase1"],
+                 "master_usable": out["master_usable"], "master_errors": out["master_errors"],
+                 "master_sheet": p1["master_sheet"]}
+    if out.get("brief_error"):
+        rec["brief_error"] = out["brief_error"]
+    rec.update(brief_text=out["brief_text"], decisions=out["brief_decisions"], generator_model=out["model_used"],
+               report_generated=out["report_generated"])
+    rec["jev_calls"] = {"phase1": n_phase1, "brief": out["jev_calls"]["brief"],
+                        "post_generation": out["jev_calls"]["post_generation"],
                         "total": len(jev_log), "questions": sum(jev_log)}
-    rec["quality"] = quality
-    rec["gate_dropped"] = gate_dropped
-    rec["options"] = options
-    rec["report"] = report
-    rec["protected"] = protected
+    rec.update(quality=out["quality_check"], gate_dropped=out["gate_dropped"], options=out["options"],
+               report=out["report_content"], protected=out["protected"])
     return rec
 
 

@@ -72,3 +72,8 @@ def test_shared_modules_import_neither_pathway():
         path = SRC / f
         assert path.exists(), f
         assert not (_imports(path) & PATHWAY_MODULES), f
+
+
+def test_template_pipeline_imports_no_quick_module():
+    for f in ("template_pipeline.py", "template_brief.py", "template_history.py"):
+        assert not any(i.startswith("quick_report") for i in _imports(SRC / f)), f
