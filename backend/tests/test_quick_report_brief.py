@@ -171,6 +171,29 @@ def test_split_findings_numbers_bullets_lines_and_sentences():
     assert qb.split_findings("- A mass. B node\n- No effusion") == ["A mass", "B node", "No effusion"]
 
 
+@pytest.mark.parametrize("dictation, expected", [
+    # radiologists dictate in lower case: every sentence is its own finding
+    ("large volume free gas. gas and fluid around D1. no nodes, aorta normal.",
+     ["large volume free gas", "gas and fluid around D1", "no nodes, aorta normal"]),
+    # mixed case, measurements with decimals stay whole
+    ("3.5 cm mass in segment 7. cbd 6.2 mm. No ascites.",
+     ["3.5 cm mass in segment 7", "cbd 6.2 mm", "No ascites"]),
+    # abbreviations and initials never end a sentence
+    ("collection, e.g. abscess vs. haematoma. approx. 4 cm. discussed with Dr. Smith. reviewed by J. Bloggs",
+     ["collection, e.g. abscess vs. haematoma", "approx. 4 cm", "discussed with Dr. Smith", "reviewed by J. Bloggs"]),
+    ("small effusion, i.e. reactive. cf. prior CT stable", ["small effusion, i.e. reactive", "cf. prior CT stable"]),
+    ("no. of lesions unchanged. no. 3 node enlarged. ascites: no. liver normal",
+     ["no. of lesions unchanged", "no. 3 node enlarged", "ascites: no", "liver normal"]),
+    # bullets, newlines and slashes still split, and lower-case sentences within them
+    ("- free fluid. no collection\n- spleen normal / kidneys normal",
+     ["free fluid", "no collection", "spleen normal", "kidneys normal"]),
+    # closing bracket or percent before the full stop
+    ("stenosis 70%. occluded ICA (left). patent vertebrals", ["stenosis 70%", "occluded ICA (left)", "patent vertebrals"]),
+])
+def test_split_findings_splits_lower_case_sentences(dictation, expected):
+    assert qb.split_findings(dictation) == expected
+
+
 @pytest.mark.asyncio
 async def test_removed_investigations_are_named_and_referrals_removed_silently(monkeypatch):
     plan = qb.ImpressionPlan(recommendations=[
