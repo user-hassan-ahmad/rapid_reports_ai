@@ -4,7 +4,8 @@ sheet reconciled with one dictation through the shared engine and rewritten IN P
 Every unit line the structure covers is rewritten where it sits (its label line or lines) or removed;
 every other line (prose, the radiologist's voice, SECTION / FIXED / TERM units) passes through verbatim.
 IF_PRESENT is off for templates: the structure's if_present is never read and its unit lines are removed
-(stored, unused in v1). Finding-linked negatives come only from the shared fallback, offered, never stated.
+(stored, unused in v1). There is no fallback (rc._fallback is quick's only): finding-linked options come only
+from Phase-1 If-present negatives routed 'offered', then case exclusions, MAX_FINDING_OPTIONS in all.
 
 Reconcile, in parallel:
 - Jev, findings state (scan type + dictated findings): findings-sourced rule conditions, conditional
@@ -15,12 +16,11 @@ Reconcile, in parallel:
 - Qwen classifier: each distinct sheet negative -> keep / contradicted / expected; second opinion on
   affected normals.
 - Impression plan, with the sheet's "## Impression Construction" prose as the reporter's inclusion logic.
-- Fallback for dictated findings (no If-present keys, so every item is unanticipated): offered only.
 
 Fails closed (raises; the caller generates down the raw path): an unusable structure, a unit line that
 cannot be found in the sheet, any Jev or Qwen error, a Jev answer missing or non-numeric for any key asked,
-and Qwen negative decisions that do not cover exactly the negatives sent. The plan and fallback fail soft
-(no plan section, no options), as in quick.
+and Qwen negative decisions that do not cover exactly the negatives sent. The plan fails soft
+(no plan section), as in quick.
 
 Scope. A paragraph RULE's SUPPRESS / REPLACE acts on units of its own paragraph only; a Report-wide RULE
 acts on units of its section. SUPPRESS NEGATIVES acts on its paragraph and on same-text Report-wide
@@ -402,17 +402,8 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
             logger.warning("template impression plan failed (%s: %s)", type(e).__name__, str(e)[:200])
             return None
 
-    async def fallback_or_none():
-        try:
-            return await rc._fallback(state, items, fkeys) if items else None
-        except Exception as e:  # the brief still compiles; dictated findings just get no options
-            logger.warning("template finding-negatives fallback failed (%s: %s)", type(e).__name__, str(e)[:200])
-            return None
-
-    # Jev and the split first (Qwen is sent only the negatives that survive them); plan and fallback
-    # run alongside throughout.
+    # Jev and the split first (Qwen is sent only the negatives that survive them); the plan runs alongside.
     plan_t = asyncio.ensure_future(plan_or_none())
-    fb_t = asyncio.ensure_future(fallback_or_none())
     try:
         jev_f, jev_h, jev_c, split = await asyncio.gather(
             rc._jev(state, q_f) if q_f else asyncio.sleep(0, {}),
@@ -556,11 +547,10 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
         # post-generation contradiction check; only the exact-claim path (case_omit) is code-only here.
         qw = await qwen_or_empty()
         _check_qwen(qw, len(to_classify), len(normals_sent))
-        plan, fb = await plan_t, await fb_t
+        plan = await plan_t
     finally:
-        for t in (plan_t, fb_t):
-            if not t.done():
-                t.cancel()
+        if not plan_t.done():
+            plan_t.cancel()
 
     qneg = {_key(to_classify[d.index]): d for d in qw.negatives}
     q_affected = {normals_sent[i].id for i in qw.affected_normals}
@@ -846,22 +836,6 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
             plan_lines.append("- **Findings only (not in the impression):** " + " ".join(f'"{t}"' for t in only))
         if plan_lines:
             text += "\n\n## Impression Plan\n" + "\n".join(plan_lines)
-
-    # Finding-linked negatives: the shared fallback's, for carried findings; offered, never stated.
-    if plan and fb:
-        seen_neg = {_key(part) for _, part, _ in cands}
-        for it in fb.items:
-            if it.covered or it.index not in plan.impression or not (0 <= it.index < len(items)):
-                continue
-            for neg in it.negatives[:3]:
-                neg = neg.strip().rstrip(".")
-                if neg and _key(neg) not in seen_neg and n_offered < rc.MAX_FINDING_OPTIONS:
-                    seen_neg.add(_key(neg))
-                    n_offered += 1
-                    decisions["options"].append({"kind": "finding_negative", "section": findings_section, "text": neg,
-                                                 "finding": items[it.index], "reason": "unanticipated finding"})
-                    decisions["finding_negatives"].append({"finding": items[it.index], "text": neg,
-                                                           "outcome": "offered", "source": "fallback"})
 
     # An offered negative the report already states (KEEP) or the dictation states is not offered again.
     stated = [k for _, k, lab in labels if lab == "KEEP"]  # claim keys of the negatives written as KEEP

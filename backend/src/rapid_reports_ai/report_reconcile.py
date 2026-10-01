@@ -447,6 +447,42 @@ def names_service(sentence: str, recommendation: str) -> bool:
     return not want or bool(want & stems(sentence))
 
 
+Q_ALREADY = "The report already states or implies this, in any wording: "
+_IMPRESSION_KINDS = ("impression", "recommendation")
+
+
+async def gate_options(options: List[dict], report_text: str, impression_text: str) -> tuple:
+    """Uniqueness gate after generation: drop an offered option the report already states or implies.
+    A finding_negative is asked against the whole report; an impression or recommendation item against the
+    conclusion only (a finding may sit in the findings yet stay optional for the conclusion). One Jev pass
+    (two scoped states in parallel); dropped at yes >= PRESENT. Fail-open: on any Jev error every option is
+    kept. Returns (kept, dropped); a dropped option carries outcome 'already_in_report' and its score."""
+    asked: dict = {"report": {}, "impression": {}}
+    for i, o in enumerate(options):
+        text = (o.get("sentence") or o.get("text") or "").strip()
+        if text:
+            scope = "impression" if o.get("kind") in _IMPRESSION_KINDS else "report"
+            asked[scope][f"g{i}"] = {"type": "noul", "instructions": Q_ALREADY + text}
+    states = {"report": f"REPORT:\n{report_text}", "impression": f"CONCLUSION:\n{impression_text}"}
+    scopes = [k for k in asked if asked[k]]
+    if not scopes:
+        return list(options), []
+    try:
+        answers = await asyncio.wait_for(asyncio.gather(*(_jev(states[k], asked[k]) for k in scopes)), JEV_TIMEOUT_S)
+        score = {key: float(a[key]["noul"]) for k, a in zip(scopes, answers) for key in asked[k]}
+    except Exception as e:  # consistency is guaranteed upstream; uniqueness is best effort
+        logger.warning("option gate: Jev failed (%s: %s); every option kept", type(e).__name__, str(e)[:200])
+        return list(options), []
+    kept, dropped = [], []
+    for i, o in enumerate(options):
+        sc = score.get(f"g{i}")
+        if sc is not None and sc >= PRESENT:
+            dropped.append({**o, "outcome": "already_in_report", "score": round(sc, 3)})
+        else:
+            kept.append(o)
+    return kept, dropped
+
+
 @dataclass
 class Brief:
     text: str

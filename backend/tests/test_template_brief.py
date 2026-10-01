@@ -337,22 +337,8 @@ async def test_if_present_is_ignored(monkeypatch):
     b = await compile_()
     assert not any(k.startswith("f") for _, qs in calls["jev"] for k in qs)
     assert "IF_PRESENT" not in b.text and "regional lymphadenopathy" not in b.text
-    assert calls["fallback"] == [[]]   # every dictated item is unanticipated
+    assert calls["fallback"] == []   # templates have no fallback: no unchecked option route
     assert not [o for o in b.decisions["options"] if o["kind"] == "finding_negative"]
-
-
-async def test_finding_negatives_come_from_the_fallback_offered_in_the_findings_section(monkeypatch):
-    fb = rc.FallbackNegatives(items=[rc.FallbackItem(index=0, covered=False, negatives=["No perforation.", "No abscess"]),
-                                     rc.FallbackItem(index=1, covered=False, negatives=["No x"])])
-    plan = rc.ImpressionPlan(recommendations=[], impression=[0], optional_impression=[1])
-    stub(monkeypatch, plan=plan, fallback=fb)
-    b = await compile_(findings="Enlarged primary organ. Small cyst in the adjacent fat.")
-    fn = [o for o in b.decisions["options"] if o["kind"] == "finding_negative"]
-    assert [o["text"] for o in fn] == ["No perforation", "No abscess"]
-    assert all(o["section"] == "FINDINGS" and o["finding"] == "Enlarged primary organ" for o in fn)
-    imp = [o for o in b.decisions["options"] if o["kind"] == "impression"]
-    assert imp == [{"kind": "impression", "section": "IMPRESSION", "text": "Small cyst in the adjacent fat", "reason": ""}]
-    assert "No perforation" not in b.text   # offered, never stated
 
 
 async def test_impression_plan_uses_the_impression_construction_prose(monkeypatch):
@@ -1113,16 +1099,13 @@ async def test_case_negative_targeting_a_differential_the_study_cannot_show_is_n
         MASTER.replace("TARGETS [Branch beta]", "TARGETS [Branch gamma]"), mode="master").errors]
 
 
-async def test_offered_negatives_never_restate_a_kept_or_dictated_negative(monkeypatch):
-    fb = rc.FallbackNegatives(items=[rc.FallbackItem(index=0, covered=False, negatives=[
-        "No surrounding collection or abscess.", "No perforation", "No cyst rupture"])])
-    stub(monkeypatch, {"c1": 0.9}, plan=rc.ImpressionPlan(recommendations=[], impression=[0]), fallback=fb)
-    b = await compile_(findings="Enlarged primary organ. No perforation.")
-    assert '- KEEP: "No surrounding collection."' in b.text
-    assert [o["text"] for o in b.decisions["options"] if o["kind"] == "finding_negative"] == ["No cyst rupture"]
-    assert {f["text"]: f["outcome"] for f in b.decisions["finding_negatives"]} == {
-        "No surrounding collection or abscess": "duplicate_dropped", "No perforation": "duplicate_dropped",
-        "No cyst rupture": "offered"}
+async def test_template_brief_makes_no_fallback_call_and_offers_no_fallback_options(monkeypatch):
+    fb = rc.FallbackNegatives(items=[rc.FallbackItem(index=0, covered=False, negatives=["No perforation"])])
+    calls = stub(monkeypatch, plan=rc.ImpressionPlan(recommendations=[], impression=[0]), fallback=fb)
+    b = await compile_(findings="Enlarged primary organ. Small cyst in the adjacent fat.")
+    assert calls["fallback"] == []
+    assert not [o for o in b.decisions["options"] if o["kind"] == "finding_negative"]
+    assert not [f for f in b.decisions["finding_negatives"] if f.get("source") == "fallback"]
 
 
 # ── lean reset: Phase-1 case NEGATIVEs are never stated, only offered ──
@@ -1168,18 +1151,20 @@ async def test_a_dictated_case_negative_is_not_offered(monkeypatch):
         b.decisions["case_exclusions"]
 
 
-async def test_finding_linked_options_come_first_exclusions_fill_the_remaining_room(monkeypatch):
-    # two If-present offers (finding borderline) + one fallback offer, then one of the two exclusions fits
-    fb = rc.FallbackNegatives(items=[rc.FallbackItem(index=0, covered=False, negatives=["No perforation"])])
-    plan = rc.ImpressionPlan(recommendations=[], impression=[0])
-    s = g.parse_sheet(NOFLUID, mode="master").structure
-    stub(monkeypatch, plan=plan, fallback=fb)
+async def test_if_present_offers_come_first_exclusions_fill_the_remaining_room(monkeypatch):
+    # three If-present offers (finding borderline), then one of the two exclusions fits; no fallback
+    sheet = NOFLUID.replace('IF_PRESENT [focal lesion] "No focal lesion." (core) | origin: case',
+                            'IF_PRESENT [focal lesion] "No focal lesion." (core) | origin: case\n'
+                            'IF_PRESENT [focal lesion] "No capsular breach." (core) | origin: case')
+    s = g.parse_sheet(sheet, mode="master").structure
+    calls = stub(monkeypatch, plan=rc.ImpressionPlan(recommendations=[], impression=[0]))
 
     async def fake_jev(state, qs):
         return {k: {"noul": 0.6 if k == "f0" else 0.1} for k in qs}
     monkeypatch.setattr(tb.rc, "_jev", fake_jev)
-    b = await tb.compile_template_brief(NOFLUID, s, "CT AP", FIND, "Pain.")
+    b = await tb.compile_template_brief(sheet, s, "CT AP", FIND, "Pain.")
     fn = [o for o in b.decisions["options"] if o["kind"] == "finding_negative"]
-    assert len(fn) == rc.MAX_FINDING_OPTIONS
-    assert [o["reason"] for o in fn][-1] == "excludes Branch alpha"  # one exclusion fits after the finding-linked
+    assert [o["text"].rstrip(".") for o in fn] == [LYMPH, VASC, "No capsular breach", "No adjacent collection"]
+    assert [o["reason"] for o in fn][-1] == "excludes Branch alpha"
     assert [x["outcome"] for x in b.decisions["case_exclusions"]] == ["offered", "trimmed"]
+    assert calls["fallback"] == []
