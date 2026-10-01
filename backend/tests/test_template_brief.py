@@ -1229,3 +1229,13 @@ async def test_r7_omitted_section_units_are_not_asked_and_the_claim_is_still_omi
     assert "No distant metastasis." not in stmts  # in the omitted EXTRA section
     assert "No focal lesion." in stmts and "No free fluid." in stmts  # every written findings unit
     assert f'- OMIT: "No free fluid." {CASE_OMIT}' in block(b.text, "## Paragraph: Adjacent structures (FINDINGS)")
+
+
+async def test_denial_check_only_for_present_differentials_visible_on_this_study(monkeypatch):
+    # A VISIBLE no / silent differential has no imaging discriminator this study shows: no report statement can
+    # deny it, so it is never asked (e2e lab 2026-10-01: a present silent branch had Jev OMIT routine negatives).
+    b, asked, _ = await probe_x(monkeypatch, MASTER, {"d1": 0.9, "d2": 0.9, "d3": 0.9},
+                                denials=[("Branch gamma", "No"), ("Branch delta", "No")])
+    keys = {k for k, _ in asked}
+    assert keys and all(k.startswith("x1_") for k in keys)
+    assert not [c for c in b.decisions["conflicts"] if c.get("differential") in ("Branch gamma", "Branch delta")]

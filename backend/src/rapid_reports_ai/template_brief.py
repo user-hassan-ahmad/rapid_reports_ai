@@ -41,7 +41,7 @@ quick's shared clinical routing in report_reconcile:
   check); OMIT when its targeted differential is present; DO NOT ASSERT when that differential is not
   VISIBLE yes (lint blocks it; defence). One label per claim, safer wins (OMIT > DO NOT ASSERT > KEEP),
   logged in decisions["conflicts"]: the same claim (exact key) anywhere is OMIT when a case negative omits
-  it, whatever became of that case negative; and for each present differential Jev reads every template
+  it, whatever became of that case negative; and for each present VISIBLE yes differential Jev reads every template
   negative / normal in scope (x<k>_<unit id>, findings state, alongside the classifier) for a statement
   denying it -> negative OMIT, normal DO NOT ASSERT AS NORMAL. Case-driven OMITs name no differential.
 - IF_PRESENT (case): Jev finding reported + rc.route_finding -> KEEP on its own line (stated) / offered
@@ -556,7 +556,9 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
         findings_sections = {x.name for x in s.sections if x.role == "findings"}
         reported_ifp = list({u.id: u for u, _, pf in cands if pf >= MET}.values())
         for k, d in enumerate(s.differentials):
-            if diff_route[d.name] != "present":
+            # Only a branch this study can show (VISIBLE yes) has an imaging discriminator a report statement
+            # could deny; a present no/silent branch is never asked (e2e lab 2026-10-01).
+            if diff_route[d.name] != "present" or d.visible != "yes":
                 continue
             for u in negatives + normals + reported_ifp:
                 if u.section not in findings_sections or unit_omitted(u):
