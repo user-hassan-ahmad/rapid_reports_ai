@@ -42,6 +42,7 @@ MET = 0.5
 
 _IF_PRESENT_LINE = re.compile(r"^\s*(?:-\s+)?IF_PRESENT\b")
 _H2 = re.compile(r"^#{1,2}\s")
+_PARAGRAPH_HEADING = re.compile(r"^##\s+Paragraph:.*\(([^()]*)\)\s*$", re.I)
 
 
 def _section_body(sheet: str, title: str) -> str:
@@ -93,6 +94,19 @@ class _Lines:
         if i is None:
             return
         self.edits.setdefault(i, []).extend(_indent(self.lines[i]) + x for x in new)
+
+    def drop_paragraphs(self, sections: set) -> None:
+        """Delete every '## Paragraph: <name> (<SECTION>)' block of these sections, heading to the next
+        '# '/'## ' heading, except lines that carry a label (a rule written there)."""
+        if not sections:
+            return
+        dropping = False
+        for i, ln in enumerate(self.lines):
+            if _H2.match(ln):
+                m = _PARAGRAPH_HEADING.match(ln)
+                dropping = bool(m) and re.sub(r"\s+", " ", m.group(1)).strip().upper() in sections
+            if dropping and not self.edits.get(i):
+                self.edits[i] = []
 
     def render(self) -> str:
         out: List[str] = []
@@ -296,41 +310,38 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
         decisions["negatives"].append({**entry, "action": action, "lines": new})
 
     # ── normals: kept verbatim, or never asserted (never deleted) ────────────
-    def normal_lines(text: str, structure: str, flagged: bool) -> List[str]:
+    def normal(line: Optional[int], nid: str, text: str, structure: str, section: str, paragraph: str,
+               jev_key: str, q_index: int, extra: dict) -> None:
+        entry = {"id": nid, "structure": structure, **extra}
+        if section in omitted_sections:
+            L.put(line, [])
+            decisions["normals"].append({**entry, "action": "section_omitted"})
+            return
         new = omit_lines(text, lambda t: t)
         if new:
-            return new
-        label = "DO NOT ASSERT AS NORMAL" if flagged else "KEEP NORMAL"
-        return [f'- {label} [{structure}]: "{text}"']
+            action = "rule_omitted"
+        elif paragraph in para_suppressed:  # SUPPRESS NEGATIVES: the paragraph is described from the dictation
+            new, action = [f'- DO NOT ASSERT AS NORMAL [{structure}]: "{text}"'], "suppressed_by_rule"
+        else:
+            flagged = score(jev_key) >= MET or q_index in q_affected
+            label = "DO NOT ASSERT AS NORMAL" if flagged else "KEEP NORMAL"
+            new, action = [f'- {label} [{structure}]: "{text}"'], ("do_not_assert" if flagged else "keep")
+        L.put(line, new)
+        decisions["normals"].append({**entry, "score": round(score(jev_key), 3),
+                                     "qwen_affected": q_index in q_affected, "action": action})
 
     for i, n in enumerate(s.normals):
-        line = L.locate("normal", n.source_line)
-        if n.section in omitted_sections:
-            L.put(line, [])
-            decisions["normals"].append({"id": n.id, "structure": n.structure, "action": "section_omitted"})
-            continue
-        flagged = score(f"m{i}") >= MET or i in q_affected
-        new = normal_lines(n.text, n.structure, flagged)
-        L.put(line, new)
-        decisions["normals"].append({"id": n.id, "structure": n.structure, "score": round(score(f"m{i}"), 3),
-                                     "qwen_affected": i in q_affected,
-                                     "action": "rule_omitted" if new[0].startswith("- OMIT")
-                                     else ("do_not_assert" if flagged else "keep")})
+        normal(L.locate("normal", n.source_line), n.id, n.text, n.structure, n.section, n.paragraph,
+               f"m{i}", i, {})
     for pos, (k, n) in enumerate(stated_normals):
         line = L.locate("negative", n.source_lines[0]) if n.source_lines else None
         for extra in n.source_lines[1:]:
             L.put(L.locate("negative", extra), [])
-        structure = para_name.get(n.paragraph) or n.section
-        if n.section in omitted_sections:
-            L.put(line, [])
-            decisions["normals"].append({"id": n.id, "structure": structure, "action": "section_omitted"})
-            continue
-        flagged = score(f"s{k}") >= MET or (len(s.normals) + pos) in q_affected
-        new = normal_lines(n.text, structure, flagged)
-        L.put(line, new)
-        decisions["normals"].append({"id": n.id, "structure": structure, "kind": "stated_normal",
-                                     "action": "rule_omitted" if new[0].startswith("- OMIT")
-                                     else ("do_not_assert" if flagged else "keep")})
+        normal(line, n.id, n.text, para_name.get(n.paragraph) or n.section, n.section, n.paragraph,
+               f"s{k}", len(s.normals) + pos, {"kind": "stated_normal"})
+
+    # An omitted section's paragraph shells (heading and prose) go too; the OMIT SECTION line stays.
+    L.drop_paragraphs(omitted_sections)
 
     text = L.render()
 

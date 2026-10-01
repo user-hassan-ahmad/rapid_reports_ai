@@ -383,3 +383,42 @@ def test_template_brief_imports_no_quick_report_module():
         elif isinstance(n, ast.Import):
             mods.update(a.name for a in n.names)
     assert not [m for m in mods if "quick_report" in m]
+
+
+# ── follow-ups: suppressed paragraphs drop their normals, omitted sections drop their shells ──
+
+async def test_suppress_negatives_makes_the_paragraphs_normals_not_assertable(monkeypatch):
+    stub(monkeypatch, {f"r{R_SUPNEG}": 0.9})   # m1 scores 0.1 and Qwen flags nothing: the rule decides
+    b = await compile_()
+    assert '- DO NOT ASSERT AS NORMAL [adjacent vessels]: "The adjacent vessels are of normal calibre."' in b.text
+    assert '- KEEP NORMAL [primary organ]: "The primary organ is normal in size and contour."' in b.text
+    assert [n["action"] for n in b.decisions["normals"]] == ["keep", "suppressed_by_rule"]
+
+
+async def test_suppress_negatives_covers_stated_normals(monkeypatch):
+    sheet = SHEET.replace('NEGATIVE "No lymphadenopathy or collection."',
+                          'NEGATIVE "No lymphadenopathy or collection."\nNEGATIVE "The adjacent fat is clear."')
+    s = g.parse_sheet(sheet).structure
+    negs = [n.model_copy(update={"kind": "stated_normal"}) if n.text == "The adjacent fat is clear." else n
+            for n in s.negatives]
+    s = s.model_copy(update={"negatives": negs})
+    stub(monkeypatch, {f"r{R_SUPNEG}": 0.9})
+    b = await tb.compile_template_brief(sheet, s, "CT AP", "Lesion.", "")
+    assert '- DO NOT ASSERT AS NORMAL [Adjacent structures]: "The adjacent fat is clear."' in b.text
+    assert next(n for n in b.decisions["normals"] if n.get("kind") == "stated_normal")["action"] == "suppressed_by_rule"
+
+
+async def test_omitted_section_drops_its_paragraph_shells(monkeypatch):
+    sheet = SHEET.replace('NEGATIVE "No measurement artefact."',
+                          'Values in a single line.\nNEGATIVE "No measurement artefact."')
+    s = g.parse_sheet(sheet).structure
+    assert s.usable
+    stub(monkeypatch, jev_c={f"r{R_SECTION}": 0.9})
+    b = await tb.compile_template_brief(sheet, s, "CT AP", "Lesion.", "")
+    assert "## Paragraph: Measured values (MEASUREMENTS)" not in b.text and "Values in a single line." not in b.text
+    assert "- OMIT SECTION: MEASUREMENTS — a limited protocol is stated in the request" in b.text
+    assert 'SECTION MEASUREMENTS | header: "Measurements" | role: other' in b.text
+    assert "## Report-wide" in b.text and "## Paragraph: Adjacent structures (FINDINGS)" in b.text
+    stub(monkeypatch)
+    b = await tb.compile_template_brief(sheet, s, "CT AP", "Lesion.", "")
+    assert "## Paragraph: Measured values (MEASUREMENTS)" in b.text and "Values in a single line." in b.text
