@@ -1618,16 +1618,16 @@ HOLDOUT splits, two runs each). Production re-score: `jev_v2_rescore/run_67723/{
 |---|---|---|---|---|
 | Omission (quality check) | "The report states this dictated finding, in any wording: " over positive items only (`_BACKGROUND` filter) | `Q_CONVEYS` "The report itself states everything this statement says, in any wording, abbreviation or synonym (not merely implied or inferable): " over **every** dictated item | flag < 0.40 (was < 0.5) | A/S2: stated ≥ 0.51, omitted ≤ 0.31 |
 | Inserter duplicate guard | `_restates` word overlap | Jev `Q_CONVEYS` on the report; `_restates` is the fallback when Jev fails | skip ≥ 0.25 | A: conveyed ≥ 0.32, new ≤ 0.14 |
-| Inserted negative | any negation allowed when any omitted item had negation | `_negative_allowed`: only when an omitted negated item shares a content word | — | user decision 1 |
+| Inserted negative | any negation allowed when any omitted item had negation | `_negative_allowed`: only when an omitted negated item shares a content word | — | user decision 1 (**reversed**, below) |
 | If-present finding presence | noul "report this imaging finding, in any wording or size" | score, 4 levels (absent / not mentioned / possible / present), read as level / 3 | route_finding cut-offs unchanged (0.5 / 0.8) | B |
 | Branch presence | "A dictated finding shows that this diagnosis or branch is present" + whole line | names the diagnosis; the discriminator is "an example only; it need not be dictated"; `PRESENT_TRUE/FALSE` criteria | 0.5 | B R3 (R2 without discriminator) |
 | Removal confirmation | "The dictated findings report this finding: " | "…, including as a possibility: " + criteria (different qualifier = false) | 0.5 | B S1 |
 | Recommendation condition | "condition … is not met" (unmet polarity) | `Q_REC_MET` met polarity; unmet = 1 − score | unmet ≥ 0.5 removes | D R2 |
-| Negatives the findings make untrue (Q7) | Qwen label only | Jev choice (contradicted / expected / keep) OR'd onto a Qwen keep | 1 − P(keep) ≥ 0.5; flag `RR_NEG_JEV_OR`, **off** | C ECH, n = 50, directional |
+| Negatives the findings make untrue (Q7) | Qwen label only | ~~Jev choice OR'd onto a Qwen keep~~ — **removed** (d790657, reverts 0b985a7) | — | C ECH, n = 50, directional; failed in production |
 
 User decisions (2026-10-01): (1) omitted dictated negatives are inserted back — restores dictated content,
 never turns a negative into a finding; (2) "organ unremarkable" does not make a specific negative option a
-repeat.
+repeat. **Decision 1 was reversed after the re-score below** (see "Decisions after the re-score").
 
 **Production re-score (Q9), 150 most recent prod quick reports (2026-04-19 → 2026-10-01), Jev on the same
 inputs, no regeneration.** Only 3 of the 150 have a compiled brief / quality telemetry and only 3 sheets
@@ -1650,13 +1650,26 @@ articular defect" from the other knee), 1 dictation typo inserted ("kidneys … 
 Jev guard scored < 0.25 ("No vertebral body fractures" in two 3.4 k-character reports; a conclusion line).
 A probe on the would-insert sentences (report state, noul "This sentence, added to the report, conflicts with
 what the report already states") scored all 19 at ≥ 0.64 and the correct new insertions mostly ≤ 0.3
-(`jev_v2_rescore/contra_gate.json`): a candidate gate, not shipped.
+(`jev_v2_rescore/contra_gate.json`). Not built: decision 1 was reversed instead.
 
-**Q7 is not enabled.** 93 of its 118 changes are "expected", and all 93 are wrong: on normal studies
+**Q7 failed.** 93 of its 118 changes are "expected", and all 93 are wrong: on normal studies
 (CT head "No acute intracranial haemorrhage", normal knee "No ACL tear", normal CTA "No large vessel
 occlusion") Jev chose `expected` for negatives the dictation states, i.e. it read the criterion as "this
 negative is expected" — a polarity inversion inside a choice criterion. The contradicted escalations are
 10 better / 6 neutral / 9 worse.
+
+**Decisions after the re-score (Hassan, 2026-10-01):**
+1. **Decision 1 reversed.** Dictated negatives and normals are never omission-checked or inserted, as in
+   L-46. Why: the dictation splitter loses a negative's scope (side, level, knee, structure), so a restored
+   negative reads as a global denial — 15 of the 19 worse insertions contradicted the report ("No calculi
+   or hydronephrosis" beside a left ureteric calculus; "No spinal canal stenosis" beside L4–5 stenosis;
+   "No articular defect" from the other knee). A Jev selector (abnormal findings, limitations, mixed lines)
+   will choose the checked items; until it lands, Q1's every-item check stays in the code. No conflict gate.
+2. **Q7 removed** (d790657): `RR_NEG_JEV_OR`, `q_negative_relation`, `decisions["negative_or"]` and their
+   tests. Why: the `expected` criterion is read inverted on normal studies (93/93 wrong, DO NOT ASSERT "No
+   acute intracranial haemorrhage" on a normal CT head); `contradicted` alone is near break-even (10 / 6 / 9).
+3. **Q3 kept** (If-present score / 3) on the suite evidence: production cannot validate it yet (3 sheets
+   with an If-present list, 9 keys, no band changed).
 
 Lessons:
 - **Polarity** (group D and Q7): a question's instructions and its criteria must point the same way; a
@@ -1666,6 +1679,8 @@ Lessons:
   never on a single run's boundary.
 - **Context**: the dictation splitter makes items context-free ("no oedema", "No calculi or hydronephrosis");
   restoring a negative needs its structure, side or level, or a conflict check against the report.
-- **Report length**: the conveys question under-scores items in long multi-region reports (0.1–0.2 for
-  plainly stated negatives in 3.4 k-character reports), which both raises omission flags and weakens the
-  duplicate guard there.
+- **Report length** (open weakness): the conveys question under-scores items in long multi-region reports
+  (0.1–0.2 for plainly stated negatives such as "No vertebral body fractures" against "No vertebral body,
+  spinous process or transverse foramen fractures are identified" in 3.4 k-character reports). That raises
+  false omission flags and weakens the 0.25 duplicate guard there (3 duplicates passed it). The selector
+  removes the negatives from the check, but positive items in long reports keep this exposure.
