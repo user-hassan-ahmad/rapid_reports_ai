@@ -6,7 +6,8 @@ stored sheet; the post-generation check; Phase 1 used ONLY for options.
     generate: TemplateManager._generate_report_skill_sheet_guided (brief_text None)  ||  case_options
               (Jev presence, Qwen contradicted / expected, impression plan, device guard, dedupe, cap) -> write_options
            -> run_quality_check on the report alone (sections from its own headers)  ||  vet_options (contradiction
-              + uniqueness) -> signature last. Options wait at most until the check ends + OPTIONS_GRACE_S.
+              + uniqueness) -> signature last. The report returns after the check and never waits for options:
+              routing / writing / vetting finish in the background (the returned `options_job`).
 
 Nothing from Phase 1 is written into the report: its targeted exclusion negatives, If-present negatives for
 dictated findings and recommendations whose trigger is dictated are only offered. No conversion, no grammar
@@ -350,9 +351,6 @@ async def case_options(case: Optional[dict], findings: str, scan_type: str, hist
 # Generate (arm E)
 # ─────────────────────────────────────────────────────────────────────────────
 
-OPTIONS_GRACE_S = 1.0   # how long generate waits for options after the generator and the check have finished
-
-
 async def vet_options(options: List[dict], report: str, impression: str, findings: str, scan_type: str
                       ) -> Tuple[List[dict], List[dict]]:
     """(kept, dropped). The post-generation check's option rules, asked beside it: an option sentence the dictation
@@ -385,11 +383,12 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
                                         case: "Optional[dict] | Callable[[], Awaitable[Optional[dict]]]",
                                         signature: Optional[str]) -> dict:
     """Today's single-pass generator on the stored sheet, then the post-generation check (sections from the
-    report's own headers). Phase-1 options are routed and written beside the generator and vetted beside the check
-    (vet_options); they never delay the report: generate waits for them at most until the generator and the check
-    have finished plus OPTIONS_GRACE_S, and late options are dropped and logged. `case` is the stored Phase 1
-    case_result (template_pipeline.phase1_record), None, or an async callable returning it: then Phase 1 is
-    resolved beside the generator, inside the same bound (no prepare: Phase 1 runs on and is stored for next time)."""
+    report's own headers). Returns as soon as the check has finished: the report never waits for options.
+    Phase-1 options are routed and written beside the generator and vetted (vet_options) after it, in the
+    returned `options_job` (an asyncio task the caller finishes in the background; it resolves to
+    {"options", "gate_dropped", "options_raw", "case_decisions", "phase1_used", "lat"} and may raise).
+    `case` is the stored Phase 1 case_result (template_pipeline.phase1_record), None, or an async callable
+    returning it: then Phase 1 is resolved inside the options job (no prepare: Phase 1 runs on and is stored)."""
     rec: dict = {"lat": {}}
     t_start = time.time()
     style = "\n".join(x for x in (_block(sheet, "Impression Construction Rules") or _block(sheet, "Impression Construction"),
@@ -403,18 +402,20 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         rec["lat"]["generator_s"] = round(time.time() - t0, 1)
         return out
 
+    job: dict = {"phase1_used": False, "lat": {}}   # the options job's own record (never the report's)
+
     async def opts():
         t0 = time.time()
         resolved = await case() if callable(case) else case
-        rec["phase1_used"] = bool(resolved)
-        rec["lat"]["phase1_wait_s"] = round(time.time() - t0, 1)
+        job["phase1_used"] = bool(resolved)
+        job["lat"]["phase1_wait_s"] = round(time.time() - t0, 1)
         raw, dec = await case_options(resolved, findings, scan_type, history, findings_section="FINDINGS",
                                       impression_section="IMPRESSION", inclusion_logic=style)
         t1 = time.time()
         written = await write_options(raw, findings, scan_type, model=MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"],
                                       runner=_run_agent_with_model, style=style, impression_section="IMPRESSION",
                                       require_service=True)
-        rec["lat"]["route_s"], rec["lat"]["options_s"] = round(t1 - t0, 1), round(time.time() - t1, 1)
+        job["lat"]["route_s"], job["lat"]["options_s"] = round(t1 - t0, 1), round(time.time() - t1, 1)
         return written, raw, dec
 
     opts_t = asyncio.ensure_future(opts())
@@ -438,37 +439,32 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         rec["lat"]["check_s"] = round(time.time() - t0, 1)
         return res
 
-    async def vetted():
+    async def vetted() -> dict:
         written, raw, dec = await opts_t
         for o in written:
             o["section"] = option_section(o, sections)
         t0 = time.time()
         kept, dropped = await vet_options(written, report, impression, findings, scan_type)
-        rec["lat"]["vet_s"] = round(time.time() - t0, 2)
-        return kept, dropped, raw, dec
+        job["lat"]["vet_s"] = round(time.time() - t0, 2)
+        job["lat"]["options_ready_s"] = round(time.time() - t_start, 1)   # from generate start
+        return {"options": kept, "gate_dropped": dropped, "options_raw": raw, "case_decisions": dec,
+                "phase1_used": job["phase1_used"], "lat": dict(job["lat"])}
 
     vet_t = asyncio.ensure_future(vetted())
-    final, checked_opts, quality = await checked()
-    late = False
     try:
-        options, dropped, raw, dec = await asyncio.wait_for(vet_t, OPTIONS_GRACE_S)
-    except asyncio.TimeoutError:
+        final, checked_opts, quality = await checked()
+    except BaseException:
+        vet_t.cancel()
         opts_t.cancel()
-        late = True
-        options, dropped, raw, dec = [], [], [], {"late": True}
-        logger.warning("lean template: options not ready %.1fs after the check finished; dropped", OPTIONS_GRACE_S)
-    except Exception as e:  # noqa: BLE001 - options are optional; the report ships
-        logger.warning("lean template: options failed (%s: %s); none offered", type(e).__name__, str(e)[:200])
-        options, dropped, raw, dec = [], [], [], {"error": f"{type(e).__name__}: {e}"[:300]}
+        raise
     if signature:
         final = final.rstrip() + "\n\n" + signature
     rec["lat"]["generate_s"] = round(time.time() - t_start, 1)
     rec.update({
         "report_content": final, "model_used": out.get("model_used"), "description": out.get("description"),
         "scan_type": out.get("scan_type") or scan_type, "brief_used": False, "brief_text": None,
-        "brief_decisions": None, "case_decisions": dec, "options_raw": raw, "options": options,
-        "gate_dropped": dropped, "options_late": late, "quality_check": quality,
-        "sections": [s.name for s in sections], "phase1_used": rec.get("phase1_used", False),
-        "history_inserted": False,
+        "brief_decisions": None, "case_decisions": None, "options_raw": [], "options": [],
+        "gate_dropped": [], "options_pending": True, "options_job": vet_t, "quality_check": quality,
+        "sections": [s.name for s in sections], "phase1_used": False, "history_inserted": False,
     })
     return rec

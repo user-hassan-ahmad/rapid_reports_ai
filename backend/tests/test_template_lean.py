@@ -177,31 +177,36 @@ async def test_lean_generation_is_todays_generator_then_check_then_vetted_option
     out = await tl.generate_template_report_lean(sheet=OLD_SHEET, scan_type="CT", findings="A 2 cm lesion.",
                                                  history="?lesion", case=CASE, signature="Dr A")
     assert calls["gen"]["sheet"] == OLD_SHEET and calls["gen"]["brief_text"] is None
-    assert calls["case"] is CASE and "Example impression." in calls["style"]
-    # the check reads the report alone; options are vetted beside it (contradiction + uniqueness)
+    # the check reads the report alone
     assert ("CONCLUSION", "impression") in calls["check"]["sections"] and calls["check"]["options"] == []
-    assert any(st.startswith("CONCLUSION:\n1. A 2 cm lesion") for st, _ in calls["gate"])
     # nothing from Phase 1 is written into the report: generator text + check edits + signature only
     assert out["report_content"] == REPORT + "\nCHECKED\n\nDr A" and out["report_generated"] == REPORT
-    assert [o["id"] for o in out["options"]] == ["opt0"]
-    assert {o["id"]: o["outcome"] for o in out["gate_dropped"]} == {"fn0": "already_in_report", "fn1": "contradicted"}
-    assert set(out["lat"]) >= {"generator_s", "options_s", "check_s"} and out["options_late"] is False
-    assert out["phase1_used"] is True and out["brief_used"] is False
+    assert out["options"] == [] and out["options_pending"] is True and out["brief_used"] is False
+    assert set(out["lat"]) >= {"generator_s", "check_s", "generate_s"}
+    # options finish in the job: vetted against the dictation (contradiction) and the report (uniqueness)
+    res = await out["options_job"]
+    assert calls["case"] is CASE and "Example impression." in calls["style"]
+    assert any(st.startswith("CONCLUSION:\n1. A 2 cm lesion") for st, _ in calls["gate"])
+    assert [o["id"] for o in res["options"]] == ["opt0"]
+    assert {o["id"]: o["outcome"] for o in res["gate_dropped"]} == {"fn0": "already_in_report", "fn1": "contradicted"}
+    assert set(res["lat"]) >= {"options_s", "vet_s", "options_ready_s"} and res["phase1_used"] is True
+    assert "options_s" not in out["lat"]   # the report's latencies are never touched by the job
 
 
-async def test_late_options_are_dropped_and_never_delay_the_report(monkeypatch):
+async def test_generate_returns_before_the_options_finish(monkeypatch):
     calls = {}
     _gen_fakes(monkeypatch, calls, options_delay=2.0)
-    monkeypatch.setattr(tl, "OPTIONS_GRACE_S", 0.05)
     t0 = time.monotonic()
     out = await tl.generate_template_report_lean(sheet=OLD_SHEET, scan_type="CT", findings="A 2 cm lesion.",
                                                  history="?lesion", case=CASE, signature=None)
     assert time.monotonic() - t0 < 0.5
-    assert out["options"] == [] and out["options_late"] is True
-    assert out["report_content"] == REPORT + "\nCHECKED"
+    assert out["report_content"] == REPORT + "\nCHECKED" and out["options"] == []
+    assert not out["options_job"].done()   # still routing: the report did not wait
+    res = await out["options_job"]
+    assert [o["id"] for o in res["options"]] == ["opt0"]
 
 
-async def test_case_may_be_resolved_beside_the_generator(monkeypatch):
+async def test_case_may_be_resolved_in_the_options_job(monkeypatch):
     calls = {}
     _gen_fakes(monkeypatch, calls)
 
@@ -209,7 +214,7 @@ async def test_case_may_be_resolved_beside_the_generator(monkeypatch):
         return CASE
     out = await tl.generate_template_report_lean(sheet=OLD_SHEET, scan_type="CT", findings="A 2 cm lesion.",
                                                  history="?lesion", case=resolve, signature=None)
-    assert calls["case"] is CASE and out["phase1_used"] is True
+    assert (await out["options_job"])["phase1_used"] is True and calls["case"] is CASE
 
 
 # ── device / prior-procedure guard (Phase 1 options) ─────────────────────────

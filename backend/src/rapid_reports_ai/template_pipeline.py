@@ -378,3 +378,76 @@ def candidate_record(result: dict, latency_ms: int) -> dict:
             "brief": ({"text": result.get("brief_text"), "decisions": result.get("brief_decisions")}
                       if result.get("brief_used") else None),
             "sections": result.get("sections") or [], "lat": result.get("lat") or {}}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Options in the background (lean path): the report returns first; options land on its candidate record
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Background option jobs of this process (held so they are not garbage-collected mid-flight)
+_OPTION_TASKS: "set[asyncio.Task]" = set()
+
+
+def _update_candidate(report_id: str, update) -> bool:
+    """Merge update(candidate) into the report's candidate_reports[0], in a session of its own. Only the
+    candidate record changes: the report's content, versions and other columns are never touched."""
+    import uuid as _uuid
+
+    from sqlalchemy.orm.attributes import flag_modified
+
+    from .database.models import Report
+    db = _session()
+    try:
+        row = db.get(Report, _uuid.UUID(str(report_id)))
+        if row is None or not row.candidate_reports:
+            return False
+        cands = [dict(c) for c in row.candidate_reports]
+        cands[0] = {**cands[0], **update(cands[0])}
+        row.candidate_reports = cands
+        flag_modified(row, "candidate_reports")
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+async def finish_options(report_id: Optional[str], job: "asyncio.Future", extra=None) -> Optional[dict]:
+    """Await the lean path's options job and save its result into the report's candidate_reports[0]
+    (options, gate_dropped, case_decisions, options_status "ready", the job's latencies merged into lat).
+    `extra()` -> further fields read when the job is done (e.g. phase1_source). A failure is logged and
+    marks options_status "failed" on the candidate record; the report itself is unaffected."""
+    try:
+        res = await job
+    except Exception as e:  # noqa: BLE001 - options are optional; the report already shipped
+        err = f"{type(e).__name__}: {e}"[:300]
+        logger.warning("template options failed for report %s (%s); report unaffected", report_id, err[:200])
+        if report_id:
+            try:
+                await asyncio.to_thread(_update_candidate, report_id, lambda c: {
+                    "options_pending": False, "options_status": "failed", "options_error": err})
+            except Exception as e2:  # noqa: BLE001
+                logger.warning("template options: failure mark not saved (%s)", e2)
+        return None
+    fields = {"options": res.get("options") or [], "gate_dropped": res.get("gate_dropped") or [],
+              "case_decisions": res.get("case_decisions"), "phase1_used": bool(res.get("phase1_used")),
+              "options_pending": False, "options_status": "ready",
+              "options_ready_at": datetime.now(timezone.utc).isoformat(), **((extra() if extra else None) or {})}
+    lat = res.get("lat") or {}
+    logger.info("template options ready for report %s: %d offered, %d dropped by vetting, phase1_used=%s, lat=%s",
+                report_id, len(fields["options"]), len(fields["gate_dropped"]), fields["phase1_used"], lat)
+    if report_id:
+        try:
+            await asyncio.to_thread(_update_candidate, report_id,
+                                    lambda c: {**fields, "lat": {**(c.get("lat") or {}), **lat}})
+        except Exception as e:  # noqa: BLE001
+            logger.warning("template options for report %s not saved (%s: %s)", report_id, type(e).__name__,
+                           str(e)[:200])
+    return fields
+
+
+def schedule_options(report_id: Optional[str], job: "asyncio.Future", extra=None) -> "asyncio.Task":
+    """Fire-and-forget finish_options; the task is held in _OPTION_TASKS until done."""
+    task = asyncio.create_task(finish_options(report_id, job, extra))
+    _OPTION_TASKS.add(task)
+    task.add_done_callback(_OPTION_TASKS.discard)
+    return task

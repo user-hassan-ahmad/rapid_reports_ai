@@ -226,23 +226,33 @@ CASE = {"usable": True, "placement_units": [{"kind": "IF_PRESENT", "text": "No L
 MIRROR_OUT = {"report_content": "Findings:\nThe left ventricle is normal in size and function.\n\nConclusion:\n"
                                 "1. Normal cardiac MRI.\n\nDr T", "model_used": "qwen-x",
               "description": "Normal CMR", "scan_type": "CMR", "brief_used": True, "brief_text": "BRIEF",
-              "brief_decisions": {"options": []},
-              "options": [{"id": "fn0", "kind": "finding_negative", "section": "FINDINGS", "sentence": "No LGE."}],
-              "gate_dropped": [], "case_decisions": {"capped": []}, "options_late": False,
-              "quality_check": {"enabled": True}, "history_inserted": True, "phase1_used": True,
-              "sections": ["CLINICAL DETAILS", "FINDINGS", "CONCLUSION"], "lat": {"brief_s": 1.2},
+              "brief_decisions": {"options": []}, "options": [], "options_pending": True,
+              "gate_dropped": [], "case_decisions": None,
+              "quality_check": {"enabled": True, "review": [{"kind": "partial", "line": "LV normal."}]},
+              "history_inserted": True, "phase1_used": False,
+              "sections": ["CLINICAL DETAILS", "FINDINGS", "CONCLUSION"], "lat": {"generator_s": 1.2},
               "jev_calls": {}}
+OPTION = {"id": "fn0", "kind": "finding_negative", "section": "FINDINGS", "sentence": "No LGE."}
 
 
 @pytest.fixture
-def stubs(monkeypatch):
-    seen = {"mirror": [], "current": [], "resolve": [], "heavy": []}
+def stubs(monkeypatch, db_engine):
+    seen = {"mirror": [], "current": [], "resolve": [], "heavy": [], "hold": None, "fail": False, "case": None}
 
     async def fake_lean(**kw):
-        case = kw["case"]
-        kw["case"] = await case() if callable(case) else case   # the lean path resolves Phase 1 beside the generator
         seen["mirror"].append(kw)
-        return dict(MIRROR_OUT)
+
+        async def job():   # the options job: Phase 1 resolved, routed, written, vetted (after the report)
+            if seen["hold"] is not None:
+                await seen["hold"].wait()
+            if seen["fail"]:
+                raise RuntimeError("option writer down")
+            case = kw["case"]
+            seen["case"] = await case() if callable(case) else case
+            return {"options": [dict(OPTION)], "gate_dropped": [{"id": "x", "outcome": "contradicted"}],
+                    "options_raw": [], "case_decisions": {"capped": []}, "phase1_used": True,
+                    "lat": {"options_s": 0.4, "options_ready_s": 3.0}}
+        return {**MIRROR_OUT, "options_job": asyncio.ensure_future(job())}
 
     async def fake_heavy(**kw):
         seen["heavy"].append(kw)
@@ -262,7 +272,12 @@ def stubs(monkeypatch):
     monkeypatch.setattr(tp, "resolve_case", fake_resolve)
     monkeypatch.setattr(TemplateManager, "generate_report_from_config", fake_current)
     monkeypatch.setattr("rapid_reports_ai.main._schedule_prefetch_task", lambda **kw: None)
+    monkeypatch.setattr(tp, "_session", sessionmaker(bind=db_engine, autoflush=False, autocommit=False))
     return seen
+
+
+async def _drain_options():
+    await asyncio.gather(*list(tp._OPTION_TASKS), return_exceptions=True)
 
 
 async def _generate(aclient, headers, template, pipeline=None):
@@ -278,14 +293,61 @@ async def test_flag_on_runs_the_mirror_and_persists_artifacts(aclient, auth_head
     r = await _generate(aclient, auth_headers, mirror_template)
     assert r["success"] and r["pipeline"] == "mirror" and not stubs["current"] and not stubs["heavy"]
     kw = stubs["mirror"][0]
-    assert kw["case"] == CASE and kw["sheet"] == LEAN and kw["history"] == "?HCM"
+    assert kw["sheet"] == LEAN and kw["history"] == "?HCM"
     assert kw["findings"] == "LV normal. No LGE." and kw["scan_type"] == "CMR"
-    assert r["artifacts"]["sections"] == MIRROR_OUT["sections"] and r["artifacts"]["options"][0]["id"] == "fn0"
+    assert r["artifacts"]["sections"] == MIRROR_OUT["sections"] and r["options_pending"] is True
+    await _drain_options()
+    assert stubs["case"] == CASE   # Phase 1 resolved inside the background job
     saved = db_session.get(Report, __import__("uuid").UUID(r["report_id"]))
+    db_session.refresh(saved)
     cand = saved.candidate_reports[0]
     assert cand["options"][0]["id"] == "fn0" and cand["phase1_source"] == "cached" and cand["sections"]
-    assert cand["case_decisions"] == {"capped": []} and cand["gate_dropped"] == [] and cand["options_late"] is False
+    assert cand["case_decisions"] == {"capped": []} and cand["gate_dropped"][0]["outcome"] == "contradicted"
+    assert cand["options_status"] == "ready" and cand["options_pending"] is False
+    assert cand["lat"]["generator_s"] == 1.2 and cand["lat"]["options_ready_s"] == 3.0
     assert saved.report_content == MIRROR_OUT["report_content"] and saved.report_type == "templated"
+
+
+async def test_generate_returns_before_the_options_finish_and_persists_them_later(
+        aclient, auth_headers, mirror_template, stubs, db_session, monkeypatch):
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+    stubs["hold"] = asyncio.Event()
+    r = await asyncio.wait_for(_generate(aclient, auth_headers, mirror_template), 2.0)   # never waits for options
+    assert r["success"] and r["options_pending"] is True and r["response"] == MIRROR_OUT["report_content"]
+    rid = r["report_id"]
+    saved = db_session.get(Report, __import__("uuid").UUID(rid))
+    assert saved.candidate_reports[0]["options"] == [] and saved.candidate_reports[0]["options_status"] == "pending"
+    poll = (await aclient.get(f"/api/reports/{rid}/options", headers=auth_headers)).json()
+    assert poll["status"] == "pending" and poll["options_pending"] is True and poll["options"] == []
+    stubs["hold"].set()
+    await _drain_options()
+    db_session.expire_all()
+    poll = (await aclient.get(f"/api/reports/{rid}/options", headers=auth_headers)).json()
+    assert poll["status"] == "ready" and [o["id"] for o in poll["options"]] == ["fn0"]
+    assert poll["review"] == [{"kind": "partial", "line": "LV normal."}] and poll["phase1_source"] == "cached"
+    assert poll["artifacts"]["options"][0]["id"] == "fn0"
+
+
+async def test_an_options_failure_leaves_the_report_untouched(aclient, auth_headers, mirror_template, stubs,
+                                                             db_session, monkeypatch):
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+    stubs["fail"] = True
+    stubs["hold"] = asyncio.Event()   # fail only after the report is saved and read back
+    warned = []
+    monkeypatch.setattr(tp.logger, "warning", lambda msg, *a: warned.append(msg % a))
+    r = await _generate(aclient, auth_headers, mirror_template)
+    assert r["success"] and r["pipeline"] == "mirror" and r["response"] == MIRROR_OUT["report_content"]
+    saved = db_session.get(Report, __import__("uuid").UUID(r["report_id"]))
+    before = (saved.report_content, saved.candidate_reports[0]["content"], saved.model_used)
+    stubs["hold"].set()
+    await _drain_options()
+    assert any("option writer down" in w for w in warned)   # logged
+    db_session.expire_all()
+    saved = db_session.get(Report, __import__("uuid").UUID(r["report_id"]))
+    assert (saved.report_content, saved.candidate_reports[0]["content"], saved.model_used) == before
+    assert saved.candidate_reports[0]["options"] == [] and saved.candidate_reports[0]["options_status"] == "failed"
+    poll = (await aclient.get(f"/api/reports/{r['report_id']}/options", headers=auth_headers)).json()
+    assert poll["status"] == "failed" and poll["options"] == []
 
 
 async def test_flag_off_runs_todays_path(aclient, auth_headers, mirror_template, stubs, monkeypatch):

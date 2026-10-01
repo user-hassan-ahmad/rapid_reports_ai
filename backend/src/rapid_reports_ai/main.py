@@ -1842,42 +1842,50 @@ async def generate_report_from_template(
                 user_id=str(current_user.id),
             )
         # The lean templated path (RR_TEMPLATE_MIRROR / allowlist), else today's path: today's generator on the
-        # stored sheet, the post-generation check, Phase 1 for options only (resolved beside the generator,
-        # bounded so it never delays the report). The heavy mirror (tp.generate_template_report) is parked.
+        # stored sheet, the post-generation check; Phase 1 for options only, finished in the background (the
+        # report never waits for options). The heavy mirror (tp.generate_template_report) is parked.
         use_mirror = _mirror_ready(template, current_user.email, request.pipeline)
-        mirror_candidate = None
+        mirror_candidate, options_job, _p1 = None, None, {"source": "pending"}
         if use_mirror:
             try:
                 _cfg = template.template_config
                 _sheet, _scan = _cfg.get("skill_sheet", ""), _cfg.get("scan_type", "")
                 _history = (user_inputs.get("CLINICAL_HISTORY") or "") if isinstance(user_inputs, dict) else ""
                 _findings = (user_inputs.get("FINDINGS") or "") if isinstance(user_inputs, dict) else ""
-                _p1 = {"source": "pending"}
+                _user_id, _template_id = current_user.id, template.id
 
                 async def _resolve_case():
-                    case, _p1["source"] = await tp.resolve_case(db, current_user, template, _sheet, _scan, _history)
-                    return case
+                    # Runs in the options job, which may outlive this request: a DB session of its own
+                    _db = tp._session()
+                    try:
+                        case, _p1["source"] = await tp.resolve_case(_db, _user_id, _template_id, _sheet, _scan,
+                                                                    _history)
+                        return case
+                    finally:
+                        _db.close()
                 mirror_result = await tl.generate_template_report_lean(
                     sheet=_sheet, scan_type=_scan, findings=_findings, history=_history, case=_resolve_case,
                     signature=current_user.signature)
+                options_job = mirror_result.get("options_job")
                 mirror_candidate = tp.candidate_record(mirror_result, int((time.perf_counter() - _tpl_gen_t0) * 1000))
-                mirror_candidate["phase1_source"] = _p1["source"]
-                mirror_candidate["options_late"] = bool(mirror_result.get("options_late"))
-                # Why each Phase-1 option was offered, dropped or capped, and what the vetting removed
+                mirror_candidate["phase1_source"] = _p1["source"]   # "pending" until the options job resolves it
+                # Options, and why each was offered, dropped or capped, arrive from the background job
+                mirror_candidate["options_pending"] = options_job is not None
+                mirror_candidate["options_status"] = "pending" if options_job is not None else "none"
                 mirror_candidate["case_decisions"] = mirror_result.get("case_decisions")
                 mirror_candidate["gate_dropped"] = mirror_result.get("gate_dropped") or []
-                _p1_source = _p1["source"]
-                _p1_wait_s = (mirror_result.get("lat") or {}).get("phase1_wait_s", 0.0)
                 report_output_dict = {"report_content": mirror_result["report_content"],
                                       "description": mirror_result.get("description") or template.name or "Templated report",
                                       "scan_type": mirror_result.get("scan_type") or _scan,
                                       "model_used": mirror_result.get("model_used")}
-                logger.info("template mirror %s: phase1=%s wait=%.1fs lat=%s", template_id, _p1_source, _p1_wait_s,
-                            mirror_candidate["lat"])
+                logger.info("template mirror %s: report ready, options pending=%s lat=%s", template_id,
+                            mirror_candidate["options_pending"], mirror_candidate["lat"])
             except Exception as e:  # fail-soft: a mirror failure falls back to today's path
                 logger.warning("template mirror failed for %s (%s: %s); today's path", template_id,
                                type(e).__name__, str(e)[:300])
-                use_mirror, mirror_candidate = False, None
+                if options_job is not None:
+                    options_job.cancel()
+                use_mirror, mirror_candidate, options_job = False, None, None
         if not use_mirror:
             report_output_dict = await tm.generate_report_from_config(
                 template_config=template.template_config,
@@ -2090,7 +2098,11 @@ Apply each fix while preserving grammatical completeness and report structure.""
                 print(f"Failed to save report: {e}")
         else:
             print("Auto-save is disabled, skipping report save")
-        
+        # Lean path: options finish in the background and land on this report's candidate record
+        # (GET /api/reports/{report_id}/options); the response below never waits for them.
+        if options_job is not None:
+            tp.schedule_options(report_id, options_job, extra=lambda: {"phase1_source": _p1["source"]})
+
         # Increment template usage count
         try:
             increment_template_usage(db, template_id)
@@ -2117,6 +2129,7 @@ Apply each fix while preserving grammatical completeness and report structure.""
             "success": True,
             "pipeline": "mirror" if use_mirror else "current",
             "artifacts": artifacts,
+            "options_pending": options_job is not None,
             "response": report_output.report_content,
             "model": model_full_name,
             "template_id": str(template.id),
@@ -3435,6 +3448,42 @@ async def get_single_report(
         return {
             "success": True,
             "report": report.to_dict()
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/reports/{report_id}/options")
+async def get_report_options(
+    report_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """A report's options and review items, once its background options job has finished (lean templated
+    path). status: "pending" (poll again), "ready", "failed" (no options; the report stands), or "none"."""
+    try:
+        report = get_report(db, report_id, user_id=str(current_user.id))
+        if not report:
+            return {"success": False, "error": "Report not found"}
+        cand = (report.candidate_reports or [None])[0] or {}
+        status = cand.get("options_status") or ("ready" if cand.get("options") else "none")
+        artifacts = None
+        if cand and status == "ready":
+            try:
+                variables = (report.input_data or {}).get("variables") or {}
+                artifacts = GenerationArtifacts.from_candidate(cand, variables.get("FINDINGS") or "").model_dump()
+            except Exception as e:  # noqa: BLE001 - options and review items still return
+                logger.warning("report options artifacts failed for %s: %s", report_id, e)
+        return {
+            "success": True,
+            "report_id": str(report.id),
+            "status": status,
+            "options_pending": status == "pending",
+            "options": cand.get("options") or [],
+            "review": (cand.get("quality_check") or {}).get("review") or [],
+            "phase1_source": cand.get("phase1_source"),
+            "options_ready_at": cand.get("options_ready_at"),
+            "artifacts": artifacts,
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
