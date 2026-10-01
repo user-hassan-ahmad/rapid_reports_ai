@@ -201,6 +201,17 @@ async def test_late_options_are_dropped_and_never_delay_the_report(monkeypatch):
     assert out["report_content"] == REPORT + "\nCHECKED"
 
 
+async def test_case_may_be_resolved_beside_the_generator(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+
+    async def resolve():
+        return CASE
+    out = await tl.generate_template_report_lean(sheet=OLD_SHEET, scan_type="CT", findings="A 2 cm lesion.",
+                                                 history="?lesion", case=resolve, signature=None)
+    assert calls["case"] is CASE and out["phase1_used"] is True
+
+
 # ── device / prior-procedure guard (Phase 1 options) ─────────────────────────
 
 def test_device_questions_quote_the_option_and_point_the_same_way():

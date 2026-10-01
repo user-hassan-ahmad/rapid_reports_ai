@@ -5,8 +5,9 @@ brief over the master (the lean sheet when the master is missing or unusable) ->
 in parallel -> verbatim CLINICAL HISTORY inserted by code -> post-generation check beside the impression
 uniqueness gate -> gate drops applied -> signature last.
 
-Production (main.py) and the lab (scripts/template_e2e_lab.py) run this same code, so the lab measures
-what ships. Behind RR_TEMPLATE_MIRROR (kill switch, default off) and the RR_PIPELINE_OVERRIDE_USERS
+PARKED: generate_template_report (the heavy Phase 2 above) is no longer called by main.py, which runs
+template_lean.generate_template_report_lean. Phase 1 plumbing here (prepare_phase1, resolve_case, candidate_record)
+still serves the lean path. The lab (scripts/template_e2e_lab.py) still runs the heavy path. Behind RR_TEMPLATE_MIRROR (kill switch, default off) and the RR_PIPELINE_OVERRIDE_USERS
 allowlist. Imports no quick_report* module (tests/test_report_path_split.py).
 """
 from __future__ import annotations
@@ -267,7 +268,10 @@ def split_sections(report: str, sections: List[dict]) -> Dict[str, str]:
 
 async def generate_template_report(*, sheet: str, scan_type: str, findings: str, history: str,
                                    master_sheet: Optional[str], signature: Optional[str]) -> dict:
-    """Phase 2 over a lean template sheet and its Phase 1 master sheet (None when Phase 1 is unavailable)."""
+    """PARKED (2026-10-01): production runs template_lean.generate_template_report_lean; this heavy path (brief over
+    the master sheet, verbatim history insertion) is kept, unused, for the lab and a possible return.
+
+    Phase 2 over a lean template sheet and its Phase 1 master sheet (None when Phase 1 is unavailable)."""
     rec: dict = {"lat": {}}
     jev_log = _JEV_LOG.get()
     jev0 = len(jev_log) if jev_log is not None else 0

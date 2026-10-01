@@ -67,6 +67,7 @@ from .database import (
 from .database.connection import engine
 from .template_manager import TemplateManager
 from . import template_sheet_structure as tss
+from . import template_lean as tl
 from . import template_pipeline as tp
 from .generation_artifacts import GenerationArtifacts
 from . import template_sheet_grammar as tsg
@@ -1753,11 +1754,11 @@ async def delete_template_endpoint(
 
 
 def _mirror_ready(template, email: Optional[str], requested: Optional[str] = None) -> bool:
-    """The templated mirror runs for this template and user: chosen (flag / allowlist), skill_sheet_guided,
-    and holding a fresh grammar-parsed structure (tss.fresh). Every other template keeps today's path."""
+    """The lean templated path (template_lean) runs for this template and user: chosen (RR_TEMPLATE_MIRROR /
+    allowlist) and skill_sheet_guided. No grammar structure is needed: the stored sheet is used as it is, and
+    Phase 1 serves options only. Every other template keeps today's path."""
     cfg = template.template_config if isinstance(template.template_config, dict) else {}
-    return (tp.choose_mirror(requested, email) and cfg.get("generation_mode") == "skill_sheet_guided"
-            and tss.fresh(cfg) is not None)
+    return tp.choose_mirror(requested, email) and cfg.get("generation_mode") == "skill_sheet_guided"
 
 
 @app.post("/api/templates/{template_id}/prepare")
@@ -1840,7 +1841,9 @@ async def generate_report_from_template(
                 clinical_history=_clinical,
                 user_id=str(current_user.id),
             )
-        # The templated mirror (RR_TEMPLATE_MIRROR / allowlist; grammar-parsed sheets only), else today's path.
+        # The lean templated path (RR_TEMPLATE_MIRROR / allowlist), else today's path: today's generator on the
+        # stored sheet, the post-generation check, Phase 1 for options only (resolved beside the generator,
+        # bounded so it never delays the report). The heavy mirror (tp.generate_template_report) is parked.
         use_mirror = _mirror_ready(template, current_user.email, request.pipeline)
         mirror_candidate = None
         if use_mirror:
@@ -1849,15 +1852,19 @@ async def generate_report_from_template(
                 _sheet, _scan = _cfg.get("skill_sheet", ""), _cfg.get("scan_type", "")
                 _history = (user_inputs.get("CLINICAL_HISTORY") or "") if isinstance(user_inputs, dict) else ""
                 _findings = (user_inputs.get("FINDINGS") or "") if isinstance(user_inputs, dict) else ""
-                _p1_t0 = time.perf_counter()
-                _master, _p1_source = await tp.resolve_master(db, current_user, template, _sheet, _scan, _history)
-                _p1_wait_s = round(time.perf_counter() - _p1_t0, 2)
-                mirror_result = await tp.generate_template_report(
-                    sheet=_sheet, scan_type=_scan, findings=_findings, history=_history, master_sheet=_master,
+                _p1 = {"source": "pending"}
+
+                async def _resolve_case():
+                    case, _p1["source"] = await tp.resolve_case(db, current_user, template, _sheet, _scan, _history)
+                    return case
+                mirror_result = await tl.generate_template_report_lean(
+                    sheet=_sheet, scan_type=_scan, findings=_findings, history=_history, case=_resolve_case,
                     signature=current_user.signature)
                 mirror_candidate = tp.candidate_record(mirror_result, int((time.perf_counter() - _tpl_gen_t0) * 1000))
-                mirror_candidate["phase1_source"] = _p1_source
-                mirror_candidate["lat"] = {"phase1_wait_s": _p1_wait_s, **mirror_candidate.get("lat", {})}
+                mirror_candidate["phase1_source"] = _p1["source"]
+                mirror_candidate["options_late"] = bool(mirror_result.get("options_late"))
+                _p1_source = _p1["source"]
+                _p1_wait_s = (mirror_result.get("lat") or {}).get("phase1_wait_s", 0.0)
                 report_output_dict = {"report_content": mirror_result["report_content"],
                                       "description": mirror_result.get("description") or template.name or "Templated report",
                                       "scan_type": mirror_result.get("scan_type") or _scan,

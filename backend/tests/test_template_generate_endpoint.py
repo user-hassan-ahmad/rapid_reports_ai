@@ -61,6 +61,7 @@ import httpx  # noqa: E402
 import pytest  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
+from rapid_reports_ai import template_lean as tl  # noqa: E402
 from rapid_reports_ai import template_pipeline as tp  # noqa: E402
 from rapid_reports_ai import template_sheet_grammar as tsg  # noqa: E402
 from rapid_reports_ai.database import get_db  # noqa: E402
@@ -136,9 +137,12 @@ async def test_prepare_with_the_flag_off_is_skipped(aclient, auth_headers, mirro
     assert phase1.calls == []
 
 
-async def test_prepare_skips_a_template_without_a_grammar_structure(aclient, auth_headers, guided_template, phase1):
-    assert (await _prepare(aclient, auth_headers, guided_template))["status"] == "skipped"
-    assert phase1.calls == []
+async def test_prepare_runs_phase1_on_an_old_sheet_without_a_grammar_structure(aclient, auth_headers,
+                                                                               guided_template, phase1):
+    """Lean path: Phase 1 serves options only, so any stored skill_sheet_guided sheet is prepared."""
+    assert (await _prepare(aclient, auth_headers, guided_template))["status"] == "running"
+    await _drain()
+    assert phase1.calls == ["?HCM family screening"]
 
 
 async def test_prepare_runs_phase1_once_per_case(aclient, auth_headers, mirror_template, phase1, db_session):
@@ -218,6 +222,7 @@ async def test_prepare_refuses_a_legacy_template(aclient, auth_headers, legacy_t
 from rapid_reports_ai.database.models import Report  # noqa: E402
 from rapid_reports_ai.template_manager import TemplateManager  # noqa: E402
 
+CASE = {"usable": True, "placement_units": [{"kind": "IF_PRESENT", "text": "No LGE", "key": "x", "paragraph": "F"}]}
 MIRROR_OUT = {"report_content": "Findings:\nThe left ventricle is normal in size and function.\n\nConclusion:\n"
                                 "1. Normal cardiac MRI.\n\nDr T", "model_used": "qwen-x",
               "description": "Normal CMR", "scan_type": "CMR", "brief_used": True, "brief_text": "BRIEF",
@@ -230,23 +235,30 @@ MIRROR_OUT = {"report_content": "Findings:\nThe left ventricle is normal in size
 
 @pytest.fixture
 def stubs(monkeypatch):
-    seen = {"mirror": [], "current": [], "resolve": []}
+    seen = {"mirror": [], "current": [], "resolve": [], "heavy": []}
 
-    async def fake_mirror(**kw):
+    async def fake_lean(**kw):
+        case = kw["case"]
+        kw["case"] = await case() if callable(case) else case   # the lean path resolves Phase 1 beside the generator
         seen["mirror"].append(kw)
+        return dict(MIRROR_OUT)
+
+    async def fake_heavy(**kw):
+        seen["heavy"].append(kw)
         return dict(MIRROR_OUT)
 
     async def fake_resolve(db, user, template, sheet, scan_type, history):
         seen["resolve"].append(history)
-        return MASTER, "cached"
+        return CASE, "cached"
 
     async def fake_current(self, template_config, user_inputs, user_signature=None, **kw):
         seen["current"].append(user_inputs)
         return {"report_content": "CURRENT REPORT: the left ventricle is normal in size and function.",
                 "description": "Normal CMR", "scan_type": "CMR", "model_used": "m"}
 
-    monkeypatch.setattr(tp, "generate_template_report", fake_mirror)
-    monkeypatch.setattr(tp, "resolve_master", fake_resolve)
+    monkeypatch.setattr(tl, "generate_template_report_lean", fake_lean)
+    monkeypatch.setattr(tp, "generate_template_report", fake_heavy)   # parked: never called
+    monkeypatch.setattr(tp, "resolve_case", fake_resolve)
     monkeypatch.setattr(TemplateManager, "generate_report_from_config", fake_current)
     monkeypatch.setattr("rapid_reports_ai.main._schedule_prefetch_task", lambda **kw: None)
     return seen
@@ -263,9 +275,9 @@ async def test_flag_on_runs_the_mirror_and_persists_artifacts(aclient, auth_head
                                                               db_session, monkeypatch):
     monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
     r = await _generate(aclient, auth_headers, mirror_template)
-    assert r["success"] and r["pipeline"] == "mirror" and not stubs["current"]
+    assert r["success"] and r["pipeline"] == "mirror" and not stubs["current"] and not stubs["heavy"]
     kw = stubs["mirror"][0]
-    assert kw["master_sheet"] == MASTER and kw["sheet"] == LEAN and kw["history"] == "?HCM"
+    assert kw["case"] == CASE and kw["sheet"] == LEAN and kw["history"] == "?HCM"
     assert kw["findings"] == "LV normal. No LGE." and kw["scan_type"] == "CMR"
     assert r["artifacts"]["sections"] == MIRROR_OUT["sections"] and r["artifacts"]["options"][0]["id"] == "fn0"
     saved = db_session.get(Report, __import__("uuid").UUID(r["report_id"]))
@@ -281,12 +293,11 @@ async def test_flag_off_runs_todays_path(aclient, auth_headers, mirror_template,
     assert stubs["current"] and not stubs["mirror"] and not stubs["resolve"] and r["response"].startswith("CURRENT REPORT")
 
 
-async def test_flag_on_without_a_grammar_structure_runs_todays_path(aclient, auth_headers, mirror_template, stubs,
-                                                                    monkeypatch):
+async def test_flag_on_with_an_old_sheet_runs_the_lean_path(aclient, auth_headers, guided_template, stubs,
+                                                            monkeypatch):
     monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
-    monkeypatch.setattr("rapid_reports_ai.main.tss.fresh", lambda cfg: None)  # an old-format sheet
-    r = await _generate(aclient, auth_headers, mirror_template)
-    assert r["pipeline"] == "current" and stubs["current"] and not stubs["mirror"]
+    r = await _generate(aclient, auth_headers, guided_template)   # no grammar structure: the lean path still runs
+    assert r["pipeline"] == "mirror" and not stubs["current"] and stubs["mirror"][0]["sheet"].startswith("## FINDINGS")
 
 
 async def test_allowlisted_user_can_choose_current(aclient, auth_headers, mirror_template, stubs, monkeypatch,
@@ -311,7 +322,7 @@ async def test_a_mirror_failure_falls_back_to_todays_path(aclient, auth_headers,
 
     async def broken(**kw):
         raise RuntimeError("provider down")
-    monkeypatch.setattr(tp, "generate_template_report", broken)
+    monkeypatch.setattr(tl, "generate_template_report_lean", broken)
     r = await _generate(aclient, auth_headers, mirror_template)
     assert r["success"] and r["pipeline"] == "current" and r["artifacts"] is None and stubs["current"]
 

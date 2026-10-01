@@ -18,7 +18,7 @@ import asyncio
 import logging
 import re
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Awaitable, Callable, Dict, List, Optional, Tuple
 
 from . import report_reconcile as rc
 from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model
@@ -382,12 +382,14 @@ async def vet_options(options: List[dict], report: str, impression: str, finding
 
 
 async def generate_template_report_lean(*, sheet: str, scan_type: str, findings: str, history: str,
-                                        case: Optional[dict], signature: Optional[str]) -> dict:
+                                        case: "Optional[dict] | Callable[[], Awaitable[Optional[dict]]]",
+                                        signature: Optional[str]) -> dict:
     """Today's single-pass generator on the stored sheet, then the post-generation check (sections from the
     report's own headers). Phase-1 options are routed and written beside the generator and vetted beside the check
     (vet_options); they never delay the report: generate waits for them at most until the generator and the check
     have finished plus OPTIONS_GRACE_S, and late options are dropped and logged. `case` is the stored Phase 1
-    case_result (template_pipeline.phase1_record), or None."""
+    case_result (template_pipeline.phase1_record), None, or an async callable returning it: then Phase 1 is
+    resolved beside the generator, inside the same bound (no prepare: Phase 1 runs on and is stored for next time)."""
     rec: dict = {"lat": {}}
     t_start = time.time()
     style = "\n".join(x for x in (_block(sheet, "Impression Construction Rules") or _block(sheet, "Impression Construction"),
@@ -403,7 +405,10 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
 
     async def opts():
         t0 = time.time()
-        raw, dec = await case_options(case, findings, scan_type, history, findings_section="FINDINGS",
+        resolved = await case() if callable(case) else case
+        rec["phase1_used"] = bool(resolved)
+        rec["lat"]["phase1_wait_s"] = round(time.time() - t0, 1)
+        raw, dec = await case_options(resolved, findings, scan_type, history, findings_section="FINDINGS",
                                       impression_section="IMPRESSION", inclusion_logic=style)
         t1 = time.time()
         written = await write_options(raw, findings, scan_type, model=MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"],
@@ -463,6 +468,7 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         "scan_type": out.get("scan_type") or scan_type, "brief_used": False, "brief_text": None,
         "brief_decisions": None, "case_decisions": dec, "options_raw": raw, "options": options,
         "gate_dropped": dropped, "options_late": late, "quality_check": quality,
-        "sections": [s.name for s in sections], "phase1_used": bool(case), "history_inserted": False,
+        "sections": [s.name for s in sections], "phase1_used": rec.get("phase1_used", False),
+        "history_inserted": False,
     })
     return rec
