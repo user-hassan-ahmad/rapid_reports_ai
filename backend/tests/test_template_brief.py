@@ -1096,3 +1096,15 @@ async def test_case_negative_targeting_a_differential_the_study_cannot_show_is_n
         "target_not_visible"
     assert g.UNSUPPORTED_TARGET in [e.reason for e in g.parse_sheet(
         MASTER.replace("TARGETS [Branch beta]", "TARGETS [Branch gamma]"), mode="master").errors]
+
+
+async def test_offered_negatives_never_restate_a_kept_or_dictated_negative(monkeypatch):
+    fb = rc.FallbackNegatives(items=[rc.FallbackItem(index=0, covered=False, negatives=[
+        "No surrounding collection or abscess.", "No perforation", "No cyst rupture"])])
+    stub(monkeypatch, {"c1": 0.9}, plan=rc.ImpressionPlan(recommendations=[], impression=[0]), fallback=fb)
+    b = await compile_(findings="Enlarged primary organ. No perforation.")
+    assert '- KEEP: "No surrounding collection."' in b.text
+    assert [o["text"] for o in b.decisions["options"] if o["kind"] == "finding_negative"] == ["No cyst rupture"]
+    assert {f["text"]: f["outcome"] for f in b.decisions["finding_negatives"]} == {
+        "No surrounding collection or abscess": "duplicate_dropped", "No perforation": "duplicate_dropped",
+        "No cyst rupture": "offered"}

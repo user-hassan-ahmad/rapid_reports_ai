@@ -39,7 +39,7 @@ from .report_reconcile import (  # noqa: F401 — re-exported; tests patch these
     QWEN_SYS, QWEN_TIMEOUT_S, FALLBACK_SYS, FALLBACK_TIMEOUT_S, _BAR_KINDS, _MEASUREMENT, Brief,
     FallbackItem, FallbackNegatives, FindingNegative, ImpressionPlan, NegativeDecision, QwenDecisions,
     RecDecision, Split, _fallback, _is_bundled, _jev, _plan, _quoted, _qwen, _split_bundled, _unstring,
-    _words, route_finding, split_findings,
+    _words, dedupe_options, route_finding, split_findings,
 )
 
 logger = logging.getLogger(__name__)
@@ -412,6 +412,13 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         for k, b in enumerate(measurements):
             decisions["measurements"].append({"label": b.label, "action": "keep" if k in app else "removed"})
         meas.bullets = [b for k, b in enumerate(measurements) if k in app]
+
+    # An offered negative the report already states (KEEP) or the dictation states is not offered again.
+    decisions["options"], dup = dedupe_options(
+        decisions["options"], [n["text"] for n in decisions["negatives"] if n["action"] == "keep"], findings)
+    for fn in decisions["finding_negatives"]:
+        if fn["outcome"] == "offered" and fn["text"] in dup:
+            fn["outcome"] = "duplicate_dropped"
 
     # Lean removals.
     for s in secs:

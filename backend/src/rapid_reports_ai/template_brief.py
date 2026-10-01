@@ -841,5 +841,12 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                     decisions["finding_negatives"].append({"finding": items[it.index], "text": neg,
                                                            "outcome": "offered", "source": "fallback"})
 
+    # An offered negative the report already states (KEEP) or the dictation states is not offered again.
+    stated = [k for _, k, lab in labels if lab == "KEEP"]  # claim keys of the negatives written as KEEP
+    decisions["options"], dup = rc.dedupe_options(decisions["options"], stated, findings)
+    for fn in decisions["finding_negatives"]:
+        if fn.get("outcome") == "offered" and fn.get("text") in dup:
+            fn["outcome"] = "duplicate_dropped"
+
     text = re.sub(r"\n{3,}", "\n\n", text).strip() + "\n"
     return rc.Brief(text=text, decisions=decisions, reconcile_ms=int((time.monotonic() - t0) * 1000))

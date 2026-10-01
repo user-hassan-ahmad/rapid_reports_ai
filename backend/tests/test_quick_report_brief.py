@@ -208,3 +208,36 @@ async def test_option_sentences_pair_with_their_items_and_fail_to_empty(monkeypa
     monkeypatch.setattr(qrg, "_run_agent_with_model", boom)
     assert await qrg._write_options(opts, "findings", "CT") == []
     assert await qrg._write_options([], "findings", "CT") == []
+
+
+# ── option de-duplication (shared dedupe_options) ───────────────────────────
+
+def test_dedupe_options_drops_stated_and_dictated_claims_part_by_part():
+    from rapid_reports_ai import report_reconcile as rc
+    opts = [{"kind": "finding_negative", "text": "No periaortic haematoma or aortic injury."},
+            {"kind": "finding_negative", "text": "No free intraperitoneal gas"},
+            {"kind": "finding_negative", "text": "No portal venous gas is identified."},
+            {"kind": "impression", "text": "No free intraperitoneal gas"}]
+    kept, dropped = rc.dedupe_options(
+        opts, ["No periaortic haematoma is identified."],
+        "large collection - perforated. no free intraperitoneal gas. no nodes, aorta normal")
+    assert dropped == ["No periaortic haematoma or aortic injury.", "No free intraperitoneal gas"]
+    assert [o["text"] for o in kept] == ["No portal venous gas is identified.", "No free intraperitoneal gas"]
+
+
+async def test_quick_brief_does_not_offer_a_stated_or_dictated_negative(monkeypatch):
+    from tests.test_confirmed_negatives import SHEET_C
+    from tests.test_golden_quick_pipeline import _brief
+    jev_c = {"n0": {"noul": 0.1}, "f0": {"noul": 0.95}, "f1": {"noul": 0.1}}
+    qwen_c = qb.QwenDecisions(negatives=[qb.NegativeDecision(index=i, action="keep") for i in range(6)],
+                              affected_normals=[], applicable_measurements=[])
+    fb = qb.FallbackNegatives(items=[qb.FallbackItem(index=0, covered=True), qb.FallbackItem(
+        index=1, covered=False, negatives=["No skull fracture or scalp haematoma", "No adrenal haemorrhage.",
+                                           "No local invasion"])])
+    r = await _brief(monkeypatch, SHEET_C, "10 mm right acute subdural. 12 mm left adrenal nodule, no local invasion",
+                     jev_c, qwen_c, qb.ImpressionPlan(recommendations=[], impression=[0, 1]), fb)
+    offered = [o["text"] for o in r["decisions"]["options"] if o["kind"] == "finding_negative"]
+    assert offered == ["No uncal herniation", "No adrenal haemorrhage"]  # distinct ones kept
+    outcome = {f["text"]: f["outcome"] for f in r["decisions"]["finding_negatives"]}
+    assert outcome["No skull fracture or scalp haematoma"] == "duplicate_dropped"  # stated: KEEP "No skull fracture"
+    assert outcome["No local invasion"] == "duplicate_dropped"  # dictated

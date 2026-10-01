@@ -282,6 +282,52 @@ async def _fallback(state: str, items: List[str], keys: List[str]) -> FallbackNe
     return r.output
 
 
+_CLAIM_NEG = re.compile(r"^(?:there\s+(?:is|are)\s+no|no|without)\s+", re.I)
+_CLAIM_TAIL = re.compile(r"(?:\s+(?:is|are|was|were))?(?:\s+(?:identified|seen|present|demonstrated|noted|evident))?$")
+
+
+def _claim_parts(negative: str) -> List[str]:
+    """Comparison keys of a negative's single claims: 'No A, B or C is identified.' -> ['a', 'b', 'c']. The
+    split on ',' / ' or ' is for comparison only (a bundled option is never rewritten)."""
+    body = re.sub(r"\s+", " ", negative.strip().lower()).rstrip(" .;")
+    m = _CLAIM_NEG.match(body)
+    if not m:
+        return []
+    body = _CLAIM_TAIL.sub("", body[m.end():])
+    parts = re.split(r",\s*(?:or\s+|and\s+)?(?:no\s+)?|\s+or\s+(?:no\s+)?|\s+and\s+no\s+", body)
+    return [_CLAIM_TAIL.sub("", p.strip()) for p in parts if p.strip()]
+
+
+def _dictated_negative_claims(findings: str) -> set:
+    """Claims the dictation states absent. Sentences split on '.', ';', newlines and ' - ' whatever the case;
+    within a sentence every comma part from the first negated one on is a claim ('no nodes, aorta normal')."""
+    out: set = set()
+    for sent in re.split(r"[.;\n]+|\s-\s", findings or ""):
+        negated = False
+        for frag in re.split(r",\s*", sent):
+            frag = frag.strip()
+            if _CLAIM_NEG.match(frag):
+                negated = True
+                out.update(_claim_parts(frag))
+            elif negated and frag:
+                out.update(_claim_parts("No " + frag))
+    return out
+
+
+def dedupe_options(options: List[dict], stated_negatives: List[str], findings: str) -> tuple:
+    """Finding-linked option negatives (kind 'finding_negative', incl. the fallback's) without the ones that
+    restate a negative the brief already states (KEEP) or a negative the dictation states. An option is dropped
+    when any of its claims, compared part by part, matches. Returns (kept options, dropped option texts)."""
+    taken = {p for n in stated_negatives for p in _claim_parts(n)} | _dictated_negative_claims(findings)
+    kept, dropped = [], []
+    for o in options:
+        if o.get("kind") == "finding_negative" and taken & set(_claim_parts(o.get("text", ""))):
+            dropped.append(o.get("text", ""))
+        else:
+            kept.append(o)
+    return kept, dropped
+
+
 def split_findings(findings: str) -> List[str]:
     """Dictated findings as numbered items: bullets, lines and sentences."""
     parts = []
