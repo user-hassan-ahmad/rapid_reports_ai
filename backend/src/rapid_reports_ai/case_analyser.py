@@ -31,13 +31,18 @@ Production is untouched: nothing imports this module outside the lab script and 
 """
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+from . import report_reconcile as rc
 from .report_reconcile import _is_bundled
 from .template_sheet_grammar import _content_words, parse_sheet
+
+logger = logging.getLogger(__name__)
 
 TAGS = ("IMAGING", "REFERRAL", "MDT", "TISSUE", "CORRELATION")
 TIERS = ("triage", "aetiology")
@@ -361,8 +366,12 @@ def _duplicates_template(text: str, claims) -> bool:
     return False
 
 
-def parse_and_check(raw: str, summary: dict, template_sheet: Optional[str] = None) -> CaseResult:
+def parse_and_check(raw: str, summary: dict, template_sheet: Optional[str] = None, *,
+                    judged: Optional[Dict[str, Tuple[Optional[bool], Optional[bool]]]] = None) -> CaseResult:
     """Read the model output, apply every check, and return the accepted units (fail closed per unit).
+
+    ``judged`` (from ``judge_case_negatives``): {normalised negative text: (bundled, duplicate)}; a None
+    or a text it lacks is judged by the regex checks (_is_bundled, _duplicates_template).
 
     With ``template_sheet``, the merged master sheet is then parsed with parse_sheet(mode="master"): any
     lint error there makes the whole result unusable (``errors``), so a master sheet that does not parse
@@ -470,10 +479,11 @@ def parse_and_check(raw: str, summary: dict, template_sheet: Optional[str] = Non
         else:
             res.rejected.append((s, R_MALFORMED))
             continue
-        if _is_bundled(text):
+        jb, jd = (judged or {}).get(_norm(text), (None, None))
+        if _is_bundled(text) if jb is None else jb:
             res.rejected.append((s, R_BUNDLED))
             continue
-        if _duplicates_template(text, claims):
+        if _duplicates_template(text, claims) if jd is None else jd:
             res.rejected.append((s, R_DUPLICATE))
             continue
         # A targeted negative is stated once; an If-present negative once per finding key (the same
@@ -505,6 +515,92 @@ def parse_and_check(raw: str, summary: dict, template_sheet: Optional[str] = Non
         res.placements = []
         res.units_block = ""
     return res
+
+
+# Duplicate and bundled checks by Jev (Jev wording suite group E, 2026-10-01); the regex is the fallback.
+DUP_STATE = "TEMPLATE STATEMENTS (written on every report from this template):\n"
+SAME_CUT = 0.5      # duplicate when P(same) >= 0.5
+BUNDLED_CUT = 0.6   # bundled (R_BUNDLED) when the yes score >= 0.6
+
+
+def q_duplicate(neg: str) -> dict:
+    return {"type": "choice", "instructions": f'How does this case negative relate to the template? "{neg}"',
+            "criteria": {"same": "A template statement already denies this same finding in the same structure, in "
+                                 "any wording (synonym, abbreviation, list item, normal-size or normal-calibre "
+                                 "statement)",
+                         "narrower": "The negative names a narrower finding or sub-site, or a specific finding that a "
+                                     "template 'normal' or 'unremarkable' sentence only implies",
+                         "different": "No template statement denies this finding: a different finding, a different "
+                                      "structure, or a broader claim than the template makes"}}
+
+
+def q_bundled(neg: str) -> dict:
+    return {"type": "noul", "instructions": "This negative could be split into two or more shorter negatives, each of "
+                                            "which could be true or false on its own: " + neg,
+            "criteria": {"true": "It denies two or more different findings, or one finding at two or more named sites "
+                                 "or structures that could each be present or absent on its own, whether joined by "
+                                 "commas, 'or', 'and', 'nor', a slash or a semicolon.",
+                         "false": "It denies a single finding: any comma or 'or' only adds qualifiers or adjectives to "
+                                  "that one finding, gives a size or percentage threshold ('or more'), restates the "
+                                  "same finding in other words, or covers all its types ('acute or chronic')."}}
+
+
+def _template_statements(summary: dict) -> List[str]:
+    out: List[str] = []
+    for p in summary["paragraphs"]:
+        for t in p["negatives"] + p["normals"]:
+            if t not in out:
+                out.append(t)
+    return out
+
+
+def _placed_negatives(raw: str) -> List[str]:
+    """The distinct negative texts of the model's PLACE lines (NEGATIVE and IF_PRESENT), in order."""
+    out: List[str] = []
+    for line in (raw or "").splitlines():
+        s = _DECOR.sub("", line.replace("“", '"').replace("”", '"')).replace("**", "").strip()
+        m = _PLACE_RE.match(s)
+        u = m and (_NEG_RE.match(m.group("unit")) or _IFP_RE.match(m.group("unit")))
+        if u and u.group("text").strip() not in out:
+            out.append(u.group("text").strip())
+    return out
+
+
+async def judge_case_negatives(texts: List[str], summary: dict, *, jev=None) -> Dict[str, Tuple[Optional[bool], Optional[bool]]]:
+    """One batched Jev call: {normalised text: (bundled, duplicate)}. An unanswered key is None (the regex
+    judges it); a failed call returns {} (the regex judges everything)."""
+    if not texts:
+        return {}
+    qs: Dict[str, dict] = {}
+    for i, t in enumerate(texts):
+        qs[f"dup{i}"] = q_duplicate(t)
+        qs[f"bun{i}"] = q_bundled(t)
+    state = DUP_STATE + "\n".join("- " + s for s in _template_statements(summary))
+    try:
+        answers = await asyncio.wait_for((jev or rc._jev)(state, qs), rc.JEV_TIMEOUT_S)
+    except Exception as e:
+        logger.warning("case analyser: Jev checks failed (%s: %s); regex checks used", type(e).__name__, str(e)[:200])
+        return {}
+
+    def read(key: str, fn):
+        try:
+            v = float(fn(answers[key]))
+            return v if 0.0 <= v <= 1.0 else None
+        except Exception:
+            return None
+    out: Dict[str, Tuple[Optional[bool], Optional[bool]]] = {}
+    for i, t in enumerate(texts):
+        b = read(f"bun{i}", lambda a: a["noul"])
+        d = read(f"dup{i}", lambda a: a["probabilities"]["same"])
+        out[_norm(t)] = (None if b is None else b >= BUNDLED_CUT, None if d is None else d >= SAME_CUT)
+    return out
+
+
+async def parse_and_check_async(raw: str, summary: dict, template_sheet: Optional[str] = None, *,
+                                jev=None) -> CaseResult:
+    """parse_and_check with the duplicate and bundled checks judged by one Jev call (Phase 1 entry point)."""
+    judged = await judge_case_negatives(_placed_negatives(raw), summary, jev=jev)
+    return parse_and_check(raw, summary, template_sheet, judged=judged)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -549,7 +645,7 @@ async def deliberate(template_sheet: str, structure_summary: Optional[dict], sca
         res.model = model_name
         return res
     raw = out.output if hasattr(out, "output") else str(out)
-    res = parse_and_check(raw, summary, template_sheet)
+    res = await parse_and_check_async(raw, summary, template_sheet)
     res.ms = int((time.time() - t0) * 1000)
     res.model = model_name
     return res

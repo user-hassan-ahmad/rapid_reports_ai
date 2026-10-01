@@ -203,3 +203,108 @@ def test_prompt_location_never_makes_a_companion_specific_and_differentials_are_
     p = ca.CASE_ANALYSER_SYSTEM_PROMPT
     assert "Naming where a shared companion lies never makes it specific to a branch" in p
     assert "Each DIFFERENTIAL is a diagnosis, never a finding" in p
+
+
+# ── duplicate and bundled checks by Jev (regex is the fallback) ──
+
+TEMPLATE_J = TEMPLATE.replace(
+    'NEGATIVE "No surrounding collection."',
+    'NEGATIVE "No surrounding collection."\nNEGATIVE "No free fluid."\n'
+    'NORMAL [adjacent duct] "No left ventricular thrombus. The left atrial size is normal."')
+HEAD = OUTPUT.split("## Placements")[0] + "## Placements\n"
+CASE_NEGS = ["No ascites.", "No left atrial thrombus.", "No focal, suspicious lesion."]
+OUT_J = HEAD + "".join(f'PLACE [Remainder] IF_PRESENT [finding {i}] "{t}" (core)\n' for i, t in enumerate(CASE_NEGS))
+
+
+def jev_stub(same: dict, bundled: dict, calls=None, fail=False, drop=()):
+    """P(same) and bundled yes score by negative text (default 0.1); keys in ``drop`` are left unanswered."""
+    async def fake(state, qs):
+        if calls is not None:
+            calls.append((state, dict(qs)))
+        if fail:
+            raise TimeoutError("jev down")
+        out = {}
+        for k, q in qs.items():
+            if k in drop:
+                continue
+            text = q["instructions"].split('"')[1] if q["type"] == "choice" else q["instructions"].split(": ", 1)[1]
+            if q["type"] == "choice":
+                p = same.get(text, 0.1)
+                out[k] = {"choice": "same" if p >= 0.5 else "different", "confidence": max(p, 1 - p),
+                          "probabilities": {"same": p, "narrower": 0.0, "different": 1 - p}}
+            else:
+                out[k] = {"noul": bundled.get(text, 0.1)}
+        return out
+    return fake
+
+
+def _kept(r):
+    return [p.text for p in r.placements]
+
+
+async def test_jev_duplicate_and_bundled_judgements_replace_the_regex():
+    s = ca.summarise_template(TEMPLATE_J)
+    regex = ca.parse_and_check(OUT_J, s, TEMPLATE_J)
+    assert _kept(regex) == ["No ascites."]  # the regex keeps the synonym and rejects the other two
+    calls = []
+    r = await ca.parse_and_check_async(OUT_J, s, TEMPLATE_J, jev=jev_stub(
+        {"No ascites.": 0.9, "No left atrial thrombus.": 0.1}, {"No focal, suspicious lesion.": 0.2}, calls))
+    assert r.usable, r.errors
+    assert _kept(r) == ["No left atrial thrombus.", "No focal, suspicious lesion."]
+    assert ('PLACE [Remainder] IF_PRESENT [finding 0] "No ascites." (core)', ca.R_DUPLICATE) in r.rejected
+    (state, qs), = calls  # one batched call per Phase 1 run
+    assert state == ("TEMPLATE STATEMENTS (written on every report from this template):\n"
+                     "- No surrounding collection.\n- No free fluid.\n"
+                     "- The primary organ is unremarkable.\n"
+                     "- No left ventricular thrombus. The left atrial size is normal.\n"
+                     "- The remaining structures are unremarkable with no focal lesion.\n- No acute abnormality.")
+    assert len(qs) == 2 * len(CASE_NEGS)
+    assert qs["dup0"] == ca.q_duplicate("No ascites.") and qs["bun0"] == ca.q_bundled("No ascites.")
+    assert qs["dup0"]["type"] == "choice" and set(qs["dup0"]["criteria"]) == {"same", "narrower", "different"}
+    assert qs["bun0"]["type"] == "noul" and qs["bun0"]["instructions"].startswith(
+        "This negative could be split into two or more shorter negatives")
+
+
+async def test_bundled_cut_off_is_0_6_and_same_is_0_5():
+    s = ca.summarise_template(TEMPLATE_J)
+    r = await ca.parse_and_check_async(OUT_J, s, TEMPLATE_J, jev=jev_stub(
+        {"No ascites.": 0.49}, {"No ascites.": 0.6, "No left atrial thrombus.": 0.59}))
+    assert ('PLACE [Remainder] IF_PRESENT [finding 0] "No ascites." (core)', ca.R_BUNDLED) in r.rejected
+    assert "No left atrial thrombus." in _kept(r)
+    r = await ca.parse_and_check_async(OUT_J, s, TEMPLATE_J, jev=jev_stub({"No left atrial thrombus.": 0.5}, {}))
+    assert ('PLACE [Remainder] IF_PRESENT [finding 1] "No left atrial thrombus." (core)', ca.R_DUPLICATE) in r.rejected
+
+
+async def test_jev_failure_falls_back_to_the_regex():
+    s = ca.summarise_template(TEMPLATE_J)
+    regex = ca.parse_and_check(OUT_J, s, TEMPLATE_J)
+    r = await ca.parse_and_check_async(OUT_J, s, TEMPLATE_J, jev=jev_stub({}, {}, fail=True))
+    assert _kept(r) == _kept(regex) and r.rejected == regex.rejected
+
+
+async def test_an_unanswered_key_falls_back_to_the_regex_for_that_check_only():
+    s = ca.summarise_template(TEMPLATE_J)
+    # dup1 unanswered: "No left atrial thrombus." is judged duplicate by the regex; bun2 unanswered: the comma
+    # in "No focal, suspicious lesion." is judged bundled by the regex
+    r = await ca.parse_and_check_async(OUT_J, s, TEMPLATE_J, jev=jev_stub({}, {}, drop=("dup1", "bun2")))
+    reasons = dict(r.rejected)
+    assert reasons['PLACE [Remainder] IF_PRESENT [finding 1] "No left atrial thrombus." (core)'] == ca.R_DUPLICATE
+    assert reasons['PLACE [Remainder] IF_PRESENT [finding 2] "No focal, suspicious lesion." (core)'] == ca.R_BUNDLED
+    assert _kept(r) == ["No ascites."]
+
+
+async def test_no_case_negatives_no_jev_call():
+    calls = []
+    r = await ca.parse_and_check_async(HEAD, _summary(), TEMPLATE, jev=jev_stub({}, {}, calls))
+    assert r.usable and calls == []
+
+
+async def test_deliberate_uses_the_jev_checks(monkeypatch):
+    from rapid_reports_ai import enhancement_utils as eu, report_reconcile as rc
+
+    async def fake_agent(**kw):
+        return type("R", (), {"output": OUT_J})()
+    monkeypatch.setattr(eu, "_run_agent_with_model", fake_agent)
+    monkeypatch.setattr(rc, "_jev", jev_stub({}, {}))
+    r = await ca.deliberate(TEMPLATE_J, None, "CT", "History.")
+    assert _kept(r) == CASE_NEGS
