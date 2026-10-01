@@ -165,7 +165,22 @@ _CONFIRMED_BRANCH = re.compile(r'^\s+-\s+([^"]+?)\s*(?:→|->)\s*$')
 _CONFIRMED_NEG = re.compile(r'^\s+-\s+"([^"]+)"\s*(?:\((core|contextual)\))?')
 
 
-Q_FINDING = "The dictated findings report this imaging finding, in any wording or size: "
+HEDGE = "(?, possible, query, cannot exclude, versus, no definite, equivocal)"
+
+
+# If-present finding presence (Jev wording v2, group B, L-49): a graded score read as level / 3, so
+# absent 0, unmentioned 0.33, possible 0.67, present 1.0 against the route_finding cut-offs.
+def q_finding(key: str) -> dict:
+    return {"type": "score",
+            "instructions": "How definitely do the dictated findings report this imaging finding as present? Finding: " + key,
+            "criteria": ["Stated as absent or normal",
+                         "Not mentioned, or only a different finding is reported",
+                         "Raised only as a possibility " + HEDGE,
+                         "Reported as present, in any wording or size"]}
+
+
+def finding_presence(a: dict) -> float:
+    return float(a["score"]) / 3
 
 
 @dataclass
@@ -211,7 +226,45 @@ def route_finding(label: str, present: float, tag: str) -> str:
     return "offered"
 
 
-_MEASUREMENT = re.compile(r"\d+(?:[.,]\d+)?\s*(?:%|°|(?:mm|cm|ml|mL|cc|HU|mmHg|m/s|degrees?)(?![A-Za-z]))")
+# Offered negatives never repeat a negative the brief states or the dictation already makes.
+# Comparison only (nothing is rewritten): lower-cased content words of each " or "/comma part,
+# negation and filler removed. Two parts match when their words are equal, or when one holds
+# all of the other's and the smaller has at least two words ("no free gas" covers "No free
+# intraperitoneal gas"; a one-word "no change" never swallows "No acute ischaemic change").
+_NEG_FILLER = {"no", "not", "without", "nor", "any", "is", "are", "was", "were", "be", "there", "the", "a", "an",
+               "of", "seen", "identified", "evident", "demonstrated", "present", "noted", "visible", "detected",
+               "evidence", "to", "suggest", "and"}
+_NEG_START = re.compile(r"(?i)\b(?:no|not|without|nor)\b")
+
+
+def _claim_parts(text: str) -> List[frozenset]:
+    parts = re.split(r",|;|\s+or\s+|\s+and\s+", text.lower())
+    out = []
+    for p in parts:
+        words = frozenset(w for w in re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", p) if w not in _NEG_FILLER)
+        if words:
+            out.append(words)
+    return out
+
+
+def _part_matches(a: frozenset, b: frozenset) -> bool:
+    small, big = (a, b) if len(a) <= len(b) else (b, a)
+    return a == b or (len(small) >= 2 and small <= big)
+
+
+def dictated_negatives(items: List[str]) -> List[str]:
+    """Negated clauses in the dictation: "no nodes, aorta normal" -> "no nodes"."""
+    return [c.strip() for t in items for c in re.split(r",|;", t) if _NEG_START.search(c)]
+
+
+def duplicates_negative(option: str, negatives: List[str]) -> bool:
+    """True when every part of the offered negative is already said by one of the negatives."""
+    have = [p for n in negatives for p in _claim_parts(n)]
+    parts = _claim_parts(option)
+    return bool(parts) and all(any(_part_matches(p, h) for h in have) for p in parts)
+
+
+_MEASUREMENT =re.compile(r"\d+(?:[.,]\d+)?\s*(?:%|°|(?:mm|cm|ml|mL|cc|HU|mmHg|m/s|degrees?)(?![A-Za-z]))")
 
 
 # ── reconcile ────────────────────────────────────────────────────────────────
@@ -220,9 +273,32 @@ Q_AFFECTED = ("Is this statement from a report template affected by the dictated
               "finding contradicts it, or acts on the structure it describes (displaces, compresses, obstructs, drains "
               "into, extends to, involves it, or is a finding of the same kind in that structure), so it cannot be "
               "written as it stands. Statement: ")
-Q_PRESENT = "A dictated finding shows that this diagnosis or branch is present in this case. Branch: "
-Q_REC_UNMET = ("The condition for this recommendation is not met by the dictated findings, or it belongs to a "
-               "diagnosis the findings rule out. Recommendation: ")
+# Diagnosis / branch presence (Jev wording v2, group B R3; R2 when the line has no discriminator, L-49).
+# The question names the diagnosis; the sheet's discriminator is an example sign only, so a case
+# that names the diagnosis without that sign still counts, and a shared sign alone does not.
+PRESENT_TRUE = ("The dictation names this diagnosis (or a synonym or abbreviation), or describes findings that point to it, "
+                "including when it is raised as a possibility " + HEDGE + ".")
+PRESENT_FALSE = ("The diagnosis is not mentioned, is excluded, or the dictated findings are explained as a different "
+                 "diagnosis, even one in the same organ or sharing a sign.")
+
+
+def q_present(name: str, discriminator: str = "") -> dict:
+    instr = "The dictated findings name or describe this diagnosis as present or possible in this case: " + name
+    if discriminator:
+        instr += ". A typical sign (an example only; it need not be dictated): " + discriminator
+    return {"type": "noul", "instructions": instr, "criteria": {"true": PRESENT_TRUE, "false": PRESENT_FALSE}}
+
+
+_VISIBILITY_TAG = re.compile(r"\s*\*\([^)]*\)\*")
+
+
+def present_question(line: str) -> dict:
+    """A quick differential line is '<name> — <discriminator> *(visible …)*'."""
+    name, _, disc = _VISIBILITY_TAG.sub("", line).partition(" — ")
+    return q_present(name.strip(), disc.strip())
+# Recommendation condition, asked with met polarity; unmet = 1 - score (Jev wording v2, group D R2, L-49).
+# Jev keeps to whether the finding is there; whether it warrants the test is the plan's (Qwen).
+Q_REC_MET = "The dictated findings show the finding or diagnosis this recommendation is for. Recommendation: "
 Q_STYLE_MATCH = "This example report sentence describes the same kind of finding as one that is dictated in this case. Example: "
 
 
@@ -346,6 +422,25 @@ async def _qwen(state: str, negs: List[str], normals: List[str], measurements: L
     return r.output
 
 
+class IncompleteNegativeDecisions(RuntimeError):
+    """The classifier did not answer every negative exactly once."""
+
+
+async def _qwen_complete(state: str, negs: List[str], normals: List[str], measurements: List[str]) -> QwenDecisions:
+    """A negative without a decision would default to KEEP, so a contradicted negative could be
+    stated. The answer must cover indices 0..n-1 exactly once (no missing, extra, duplicate or
+    off-by-one); one retry, then raise so the report is written from the raw sheet."""
+    expected = list(range(len(negs)))
+    for attempt in (1, 2):
+        qw = await _qwen(state, negs, normals, measurements)
+        got = sorted(d.index for d in qw.negatives)
+        if got == expected:
+            return qw
+        logger.warning("negative classifier answer incomplete (attempt %d/2): sent %d negatives, got indices %s",
+                       attempt, len(negs), got)
+    raise IncompleteNegativeDecisions(f"sent {len(negs)} negatives, got indices {got}")
+
+
 class FallbackItem(BaseModel):
     index: int
     covered: bool
@@ -382,12 +477,35 @@ async def _fallback(state: str, items: List[str], keys: List[str]) -> FallbackNe
     return r.output
 
 
+# Words whose full stop never ends a dictated sentence. "no." is only an abbreviation before a
+# number or "of" ("no. 3 node", "no. of lesions"); "ascites: no. liver normal" is two findings.
+_ABBREVIATIONS = {"e.g", "eg", "i.e", "ie", "vs", "approx", "cf", "dr", "mr", "mrs", "ms", "prof", "st", "fig", "ca", "c.f"}
+_NO_ABBREVIATION = re.compile(r"(?i)\s*(?:\d|of\b)")
+
+
+def _sentences(line: str) -> List[str]:
+    """Split on a full stop followed by whitespace, whatever the case of the next word: radiologists
+    dictate in lower case. Decimals ("3.5 cm") have no space after the stop and never split;
+    abbreviations and initials ("J. Bloggs") do not end a sentence."""
+    out, start = [], 0
+    for m in re.finditer(r"\.\s+", line):
+        word = re.search(r"[\w.]*$", line[start:m.start()]).group(0).lower().strip(".")
+        if word in _ABBREVIATIONS or (len(word) == 1 and word.isalpha()):
+            continue
+        if word == "no" and _NO_ABBREVIATION.match(line, m.end()):
+            continue
+        out.append(line[start:m.start()])
+        start = m.end()
+    out.append(line[start:])
+    return out
+
+
 def split_findings(findings: str) -> List[str]:
     """Dictated findings as numbered items: bullets, lines and sentences."""
     parts = []
     for line in re.split(r"\n+|\s/\s|(?:^|\s)-\s(?=[A-Za-z0-9])", findings):
         line = line.strip(" -\t")
-        for s in re.split(r"(?<=[a-z0-9%)])\.\s+(?=[A-Z0-9])", line):
+        for s in _sentences(line):
             s = s.strip().rstrip(".")
             if len(s) > 3:
                 parts.append(s)
@@ -446,9 +564,9 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     state = f"SCAN TYPE: {scan_type}\nDICTATED FINDINGS:\n{findings}"
     qs = {}
     qs.update({f"n{k}": {"type": "noul", "instructions": Q_AFFECTED + t} for k, t in enumerate(normals)})
-    qs.update({f"d{k}": {"type": "noul", "instructions": Q_PRESENT + t} for k, t in enumerate(diffs)})
-    qs.update({f"r{k}": {"type": "noul", "instructions": Q_REC_UNMET + t} for k, t in enumerate(recs)})
-    qs.update({f"f{i}": {"type": "noul", "instructions": Q_FINDING + k} for i, k in enumerate(keys)})
+    qs.update({f"d{k}": present_question(t) for k, t in enumerate(diffs)})
+    qs.update({f"r{k}": {"type": "noul", "instructions": Q_REC_MET + t} for k, t in enumerate(recs)})
+    qs.update({f"f{i}": q_finding(k) for i, k in enumerate(keys)})
     qs.update({f"s{k}": {"type": "noul", "instructions": Q_STYLE_MATCH + " ".join(b.lines)} for k, b in enumerate(styles)})
     if len(variants) > 1:
         qs["imp"] = {"type": "choice", "instructions": "Which impression exemplar best matches the shape of this case's findings (severity, number of findings, complications)?",
@@ -471,7 +589,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             return None
     jev, qw, plan, fb_out = await asyncio.gather(
         _jev(state, qs) if qs else asyncio.sleep(0, {}),
-        _qwen(state, [n for n, _ in negs] + [c.text for c in cands], normals, [" ".join(b.lines) for b in measurements]),
+        _qwen_complete(state, [n for n, _ in negs] + [c.text for c in cands], normals, [" ".join(b.lines) for b in measurements]),
         plan_or_none(), fallback_or_none())
     score = lambda k: float(jev[k]["noul"])
 
@@ -498,6 +616,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     # Finding-linked negatives (policy 1): stated as KEEP, labelled DO NOT ASSERT, or offered.
     stated: List[str] = []
     n_offered = 0
+    pending: list = []
     handled = {n for n, _ in negs}   # a negative listed under two keys, or already mandatory, is routed once
     for j, c in enumerate(cands):
         if c.text in handled:
@@ -505,18 +624,12 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         handled.add(c.text)
         d = qneg.get(len(negs) + j)
         label = d.action if d else "keep"
-        p = score(f"f{keys.index(c.key)}")
+        p = finding_presence(jev[f"f{keys.index(c.key)}"])
         outcome = route_finding(label, p, c.tag)
-        if outcome == "offered":
-            if n_offered >= MAX_FINDING_OPTIONS:
-                outcome = "dropped"
-            else:
-                n_offered += 1
-                decisions["options"].append({"kind": "finding_negative", "section": "FINDINGS", "text": c.text,
-                                             "finding": c.key,
-                                             "reason": "contextual" if p >= PRESENT_HIGH else f"finding borderline (p={p:.2f})"})
-        decisions["finding_negatives"].append({"finding": c.key, "text": c.text, "tag": c.tag, "qwen": label,
-                                               "present": round(p, 3), "outcome": outcome})
+        record = {"finding": c.key, "text": c.text, "tag": c.tag, "qwen": label, "present": round(p, 3), "outcome": outcome}
+        decisions["finding_negatives"].append(record)
+        if outcome == "offered":   # decided once every stated negative is known
+            pending.append((c, p, record))
         if outcome == "stated":
             stated.append(c.text)
             neg_lines.append(f'  - KEEP: "{c.text}" (finding: {c.key})')
@@ -524,6 +637,20 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
                                            "source": f"finding:{c.key}"})
         elif outcome == "do_not_assert":
             neg_lines.append(f'  - DO NOT ASSERT: "{c.text}" — expected consequence of: {d.dictated_finding}')
+    # An offered negative the brief already states (KEEP) or the dictation already makes is a
+    # duplicate, never an option.
+    said = [n["text"] for n in decisions["negatives"] if n["action"] == "keep"] + dictated_negatives(items)
+    for c, p, record in pending:
+        if duplicates_negative(c.text, said):
+            record["outcome"] = "duplicate"
+        elif n_offered >= MAX_FINDING_OPTIONS:
+            record["outcome"] = "dropped"
+        else:
+            n_offered += 1
+            said.append(c.text)
+            decisions["options"].append({"kind": "finding_negative", "section": "FINDINGS", "text": c.text,
+                                         "finding": c.key,
+                                         "reason": "contextual" if p >= PRESENT_HIGH else f"finding borderline (p={p:.2f})"})
     if neg_bullet:
         neg_bullet.lines = neg_lines
     elif matrix and neg_lines:
@@ -568,7 +695,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         kept, barred = [], []
         for k, t in enumerate(recs):
             d = pdec.get(k)
-            if score(f"r{k}") >= 0.5:
+            if 1 - score(f"r{k}") >= 0.5:      # condition unmet
                 action = "removed"
             elif d is None or d.decision == "include":
                 action = "keep"
@@ -620,7 +747,12 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
                 neg = neg.strip().rstrip(".")
                 if not neg or neg in seen or n_offered >= MAX_FINDING_OPTIONS:
                     continue
+                if duplicates_negative(neg, said):
+                    decisions["finding_negatives"].append({"finding": items[it.index], "text": neg, "tag": "fallback",
+                                                           "qwen": "n/a", "present": None, "outcome": "duplicate"})
+                    continue
                 seen.add(neg)
+                said.append(neg)
                 n_offered += 1
                 decisions["options"].append({"kind": "finding_negative", "section": "FINDINGS", "text": neg,
                                              "finding": items[it.index], "reason": "unanticipated finding"})
