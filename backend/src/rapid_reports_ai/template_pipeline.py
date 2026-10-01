@@ -129,6 +129,7 @@ def _session():
 
 
 def _persist(write) -> None:
+    """Run one write in a session of its own; called in a worker thread so the event loop never blocks."""
     db = _session()
     try:
         write(db)
@@ -148,9 +149,9 @@ async def _phase1_job(key: tuple, row_id, sheet: str, scan_type: str, history: s
         except Exception as e:  # noqa: BLE001
             err = f"{type(e).__name__}: {e}"[:2000]
             logger.warning("template Phase 1 failed: %s", err[:200])
-            _persist(lambda db: crud.fail_case_sheet(db, row_id, error=err))
+            await asyncio.to_thread(_persist, lambda db: crud.fail_case_sheet(db, row_id, error=err))
             return None
-        _persist(lambda db: crud.finish_case_sheet(
+        await asyncio.to_thread(_persist, lambda db: crud.finish_case_sheet(
             db, row_id, master_sheet=out["master_sheet"], case_result=out.get("case_result"), model=out.get("model"),
             latency_ms=out.get("latency_ms"), prompt_version=out.get("prompt_version")))
         return out["master_sheet"]

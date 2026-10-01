@@ -304,3 +304,28 @@ async def test_mirror_response_keeps_the_shape_the_frontend_reads(aclient, auth_
     assert r["response"] == MIRROR_OUT["report_content"] and isinstance(r["model"], str) and r["model"]
     assert r["report_id"] and r["template_id"] == str(mirror_template.id) and r["scan_type"] == "CMR"
     assert r["applicable_guidelines"] == []
+
+
+async def test_a_mirror_failure_falls_back_to_todays_path(aclient, auth_headers, mirror_template, stubs, monkeypatch):
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+
+    async def broken(**kw):
+        raise RuntimeError("provider down")
+    monkeypatch.setattr(tp, "generate_template_report", broken)
+    r = await _generate(aclient, auth_headers, mirror_template)
+    assert r["success"] and r["pipeline"] == "current" and r["artifacts"] is None and stubs["current"]
+
+
+async def test_prepare_runs_phase1_on_the_templates_scan_type(aclient, auth_headers, mirror_template, phase1,
+                                                              monkeypatch):
+    seen = []
+
+    async def p1(sheet, scan_type, history):
+        seen.append(scan_type)
+        return {"master_sheet": MASTER, "case_result": {}, "model": "m", "latency_ms": 1, "prompt_version": "p"}
+    monkeypatch.setattr(tp, "run_phase1", p1)
+    r = await aclient.post(f"/api/templates/{mirror_template.id}/prepare", headers=auth_headers,
+                           json={"clinical_history": "h", "scan_type": "something else"})
+    assert r.json()["status"] == "running"
+    await _drain()
+    assert seen == ["CMR"]  # generate reads the template's scan type, so Phase 1 must too

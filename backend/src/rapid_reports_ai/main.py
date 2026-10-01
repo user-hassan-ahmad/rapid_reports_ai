@@ -1782,7 +1782,7 @@ async def prepare_template_case(
             return {"success": True, "status": "skipped"}
         cfg = template.template_config
         status = await tp.prepare_phase1(db, current_user.id, template.id, cfg.get("skill_sheet", ""),
-                                         request.scan_type or cfg.get("scan_type", ""), request.clinical_history)
+                                         cfg.get("scan_type") or request.scan_type or "", request.clinical_history)
         return {"success": True, "status": status}
     except Exception as e:
         logger.warning("template prepare failed for %s: %s", template_id, e)
@@ -1847,26 +1847,31 @@ async def generate_report_from_template(
         use_mirror = _mirror_ready(template, current_user.email, request.pipeline)
         mirror_candidate = None
         if use_mirror:
-            _cfg = template.template_config
-            _sheet, _scan = _cfg.get("skill_sheet", ""), _cfg.get("scan_type", "")
-            _history = (user_inputs.get("CLINICAL_HISTORY") or "") if isinstance(user_inputs, dict) else ""
-            _findings = (user_inputs.get("FINDINGS") or "") if isinstance(user_inputs, dict) else ""
-            _p1_t0 = time.perf_counter()
-            _master, _p1_source = await tp.resolve_master(db, current_user, template, _sheet, _scan, _history)
-            _p1_wait_s = round(time.perf_counter() - _p1_t0, 2)
-            mirror_result = await tp.generate_template_report(
-                sheet=_sheet, scan_type=_scan, findings=_findings, history=_history, master_sheet=_master,
-                signature=current_user.signature)
-            mirror_candidate = tp.candidate_record(mirror_result, int((time.perf_counter() - _tpl_gen_t0) * 1000))
-            mirror_candidate["phase1_source"] = _p1_source
-            mirror_candidate["lat"] = {"phase1_wait_s": _p1_wait_s, **mirror_candidate.get("lat", {})}
-            report_output_dict = {"report_content": mirror_result["report_content"],
-                                  "description": mirror_result.get("description") or template.name or "Templated report",
-                                  "scan_type": mirror_result.get("scan_type") or _scan,
-                                  "model_used": mirror_result.get("model_used")}
-            logger.info("template mirror %s: phase1=%s wait=%.1fs lat=%s", template_id, _p1_source, _p1_wait_s,
-                        mirror_candidate["lat"])
-        else:
+            try:
+                _cfg = template.template_config
+                _sheet, _scan = _cfg.get("skill_sheet", ""), _cfg.get("scan_type", "")
+                _history = (user_inputs.get("CLINICAL_HISTORY") or "") if isinstance(user_inputs, dict) else ""
+                _findings = (user_inputs.get("FINDINGS") or "") if isinstance(user_inputs, dict) else ""
+                _p1_t0 = time.perf_counter()
+                _master, _p1_source = await tp.resolve_master(db, current_user, template, _sheet, _scan, _history)
+                _p1_wait_s = round(time.perf_counter() - _p1_t0, 2)
+                mirror_result = await tp.generate_template_report(
+                    sheet=_sheet, scan_type=_scan, findings=_findings, history=_history, master_sheet=_master,
+                    signature=current_user.signature)
+                mirror_candidate = tp.candidate_record(mirror_result, int((time.perf_counter() - _tpl_gen_t0) * 1000))
+                mirror_candidate["phase1_source"] = _p1_source
+                mirror_candidate["lat"] = {"phase1_wait_s": _p1_wait_s, **mirror_candidate.get("lat", {})}
+                report_output_dict = {"report_content": mirror_result["report_content"],
+                                      "description": mirror_result.get("description") or template.name or "Templated report",
+                                      "scan_type": mirror_result.get("scan_type") or _scan,
+                                      "model_used": mirror_result.get("model_used")}
+                logger.info("template mirror %s: phase1=%s wait=%.1fs lat=%s", template_id, _p1_source, _p1_wait_s,
+                            mirror_candidate["lat"])
+            except Exception as e:  # fail-soft: a mirror failure falls back to today's path
+                logger.warning("template mirror failed for %s (%s: %s); today's path", template_id,
+                               type(e).__name__, str(e)[:300])
+                use_mirror, mirror_candidate = False, None
+        if not use_mirror:
             report_output_dict = await tm.generate_report_from_config(
                 template_config=template.template_config,
                 user_inputs=user_inputs,

@@ -35,3 +35,23 @@ def test_create_resets_a_failed_row_to_running(db_session, test_user, guided_tem
 
 def test_get_missing_case_sheet_is_none(db_session, test_user, guided_template):
     assert crud.get_case_sheet(db_session, str(test_user.id), str(guided_template.id), "s9", "h9") is None
+
+
+def test_concurrent_insert_of_the_same_case_returns_the_winning_row(db_session, test_user, guided_template,
+                                                                    monkeypatch):
+    """Another process inserted the same key between our lookup and our insert: the unique index refuses
+    ours and the row that won is returned."""
+    uid, tid = str(test_user.id), str(guided_template.id)
+    winner = crud.create_case_sheet(db_session, user_id=uid, template_id=tid, sheet_hash="s1", history_hash="hr",
+                                    clinical_history="x")
+    real, first = crud.get_case_sheet, [True]
+
+    def miss_once(*a, **k):
+        if first[0]:
+            first[0] = False
+            return None
+        return real(*a, **k)
+    monkeypatch.setattr(crud, "get_case_sheet", miss_once)
+    got = crud.create_case_sheet(db_session, user_id=uid, template_id=tid, sheet_hash="s1", history_hash="hr",
+                                 clinical_history="x")
+    assert got.id == winner.id and got.status == "running"
