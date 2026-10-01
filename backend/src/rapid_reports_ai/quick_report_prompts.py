@@ -390,7 +390,7 @@ QR_VERIFICATION_CHECKLIST_BRIEF = _swaps(
 """,
      """- Every KEEP negative is present; no OMIT negative and no DO NOT ASSERT statement appears anywhere, impression included
 - No structure listed under "Do not assert as normal" is stated to be normal
-- Every Carry forward finding is addressed in the impression; no Findings only item appears there
+- Every Carry forward finding is addressed in the impression, with its dictated hedge unchanged
 - Every recommendation listed in the Recommendation scope appears in the impression
 - The impression contains at most one negative: the answer to the clinical question when no positive finding answers it, or one clause that changes the next step. It never lists absent findings
 """),

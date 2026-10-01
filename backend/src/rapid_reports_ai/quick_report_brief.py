@@ -342,8 +342,7 @@ class ImpressionPlan(BaseModel):
     recommendations: List[RecDecision]
     impression: List[int]
     optional_impression: List[int] = []
-    findings_only: List[int] = []
-    @field_validator("recommendations", "impression", "optional_impression", "findings_only", mode="before")
+    @field_validator("recommendations", "impression", "optional_impression", mode="before")
     @classmethod
     def _parse_stringified(cls, v):
         return _unstring(v)
@@ -361,8 +360,7 @@ Use optional only when a reasonable consultant could go either way on this case.
 
 impression — the numbers of the findings the impression must carry: the finding(s) that answer the clinical question, findings that change management or urgency, and, only when no dictated positive finding answers the clinical question, the one negative that does. Never carry more than one negative.
 optional_impression — findings with a management consequence that a reasonable consultant could either carry or leave in FINDINGS. Never use it for normal structures, devices or negatives.
-findings_only — findings that stay in FINDINGS: incidental or background findings needing no action, devices and procedure notes, normal structures the question did not ask about.
-A finding may be in none of the lists when either placement is acceptable. Never place a number in two lists."""
+A finding in neither list is placed as the writer judges. Never place a number in both lists."""
 
 PLAN_TIMEOUT_S = 10.0
 MAX_OPTIONS = 3
@@ -510,6 +508,34 @@ def split_findings(findings: str) -> List[str]:
             if len(s) > 3:
                 parts.append(s)
     return parts
+
+
+# The dictation's own conclusion is a floor of the Carry forward list (L-50): everything after the
+# first Conclusion / Impression / Opinion / Summary marker, one item per line, verbatim.
+_CONCLUSION_MARK = re.compile(
+    r"(?im)(?:^|(?<=[.\n]))[ \t]*[-*]?[ \t]*(?:conclusions?|impressions?|opinion|summary)[ \t]*(?::|-|$)")
+_CONCLUSION_HEADING = re.compile(r"(?i)^(?:conclusions?|impressions?|opinion|summary)\W*$")
+_HEDGE = re.compile(r"(?i)\b(suspicio(?:n|us)(?: of| for)?|suspected|likely|probabl[ey]|possibl[ey]|may represent|"
+                    r"could represent|suggesting|suggestive of|in keeping with|consistent with|query)\b|\?")
+
+
+def dictated_conclusion(findings: str) -> List[str]:
+    """Lines the dictation presents as its conclusion, bullets stripped; lines under two words dropped."""
+    m = _CONCLUSION_MARK.search(findings)
+    if not m:
+        return []
+    out = []
+    for line in findings[m.end():].splitlines():
+        line = line.strip().lstrip("-*\u2022 \t").strip().rstrip(".")
+        if len(re.findall(r"\w+", line)) >= 2:          # "+ others", a lone "Nil": not an item
+            out.append(line)
+    return out
+
+
+def hedge_tag(text: str) -> str:
+    """Name the dictated hedge words so the impression keeps the certainty dictated."""
+    words = dict.fromkeys(m.group(0) for m in _HEDGE.finditer(text))
+    return f' (dictated hedge: {", ".join(chr(34) + w + chr(34) for w in words)})' if words else ""
 
 
 async def _plan(scan_type: str, clinical_history: str, items: List[str], recs: List[str]) -> ImpressionPlan:
@@ -719,23 +745,25 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             rb.lines.append("- **Do not recommend (this study has answered it, or it falls to the receiving team):** "
                             + " ".join(f'"{t}"' for t in barred))
 
-    # Impression plan: what the impression must carry, and what stays in FINDINGS.
-    if plan and items:
+    # Impression plan: what the impression must carry (L-50). The dictated conclusion lines come
+    # first, verbatim; the plan's picks follow unless already inside a conclusion line. Nothing is
+    # listed as Findings only: that list dropped dictated conclusion items from the impression.
+    # Everything else is placed as the writer judges.
+    concl = dictated_conclusion(findings)
+    if (plan and items) or concl:
         pick = lambda idx: [items[i] for i in dict.fromkeys(idx) if 0 <= i < len(items)]
-        carry, only = pick(plan.impression), pick(plan.findings_only)
-        # Optional findings are left unlisted: the generator places them as it would without a
-        # plan (listing them as findings-only dropped findings the impression needed).
-        opt = [t for t in pick(plan.optional_impression) if t not in carry]
+        blob = " ".join(concl).lower()
+        picks = pick(plan.impression) if plan else []
+        carry = concl + [t for t in picks if t.lower() not in blob and not _CONCLUSION_HEADING.match(t)]
+        # Optional findings are left unlisted: the generator places them as it would without a plan.
+        opt = [t for t in pick(plan.optional_impression) if t not in carry] if plan else []
         room = MAX_OPTIONS - len(decisions["options"])
         decisions["options"].extend({"kind": "impression", "text": t, "reason": ""} for t in opt[:room])
-        decisions["impression_plan"] = {"carry": carry, "findings_only": only, "optional": opt[:room]}
-        plan_lines = []
+        decisions["impression_plan"] = {"conclusion": concl, "carry": carry, "optional": opt[:room]}
         if carry:
-            plan_lines.append("- **Carry forward (the impression addresses each):** " + " ".join(f'"{t}"' for t in carry))
-        if only:
-            plan_lines.append("- **Findings only (not in the impression):** " + " ".join(f'"{t}"' for t in only))
-        if plan_lines:
-            secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", plan_lines)]))
+            secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", [
+                "- **Carry forward (the impression addresses each, at the certainty dictated):** "
+                + " ".join(f'"{t}"{hedge_tag(t)}' for t in carry)])]))
 
     # Unanticipated carried findings: offered negatives from the fallback, never stated.
     if plan and fb_out:

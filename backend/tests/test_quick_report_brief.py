@@ -153,7 +153,7 @@ async def test_plan_routes_recommendations_and_writes_the_impression_plan(monkey
     plan = qb.ImpressionPlan(
         recommendations=[qb.RecDecision(index=0, decision="optional", reason="either way"),
                          qb.RecDecision(index=1, decision="include")],
-        impression=[0, 1], findings_only=[2])
+        impression=[0, 1])
 
     _stub(monkeypatch, JEV, QWEN, plan)
     b = await qb.compile_brief(SHEET, "CT head non-contrast", findings, "fall on anticoagulation")
@@ -164,7 +164,7 @@ async def test_plan_routes_recommendations_and_writes_the_impression_plan(monkey
                                        "reason": "either way"}]
     plan_block = t.split("## Impression Plan")[1]
     assert '"8 mm right subdural" "3 mm midline shift"' in plan_block
-    assert 'Findings only (not in the impression):** "Age-related involutional change"' in plan_block
+    assert "Findings only" not in plan_block and "Age-related involutional change" not in plan_block
 
 
 def test_split_findings_numbers_bullets_lines_and_sentences():

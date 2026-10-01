@@ -1787,3 +1787,91 @@ stated / unclear → nothing. A failed report call or an unreadable answer inser
   `repair_report` copy, not touched here). Validation: coronary B/C/D x2 and polytrauma C x3, quick-shaped stored
   reports through the fixed check: the same clauses flagged (0.64-0.76), all in `review`, report unchanged, no
   "LMP" or "No gallbladder" written.
+
+### L-50 · PLAN2: the quick impression plan only carries, with the dictated conclusion as its floor, 2026-10-01
+
+Trigger: the impression dropped things the radiologist dictated as the conclusion, or made them stronger. On
+a4dd302e (CTA) the BRIEF impression dropped the dictated lung conclusion ("likely in keeping with an infective
+process"). On d4181c74 (MRI shoulder) "Suspicion of adhesive capsulitis" became "consistent with". The plan's
+`findings_only` list had named dictated conclusion items as "not in the impression".
+
+**Change** (quick path only; branch `feat/quick-impression-plan-carry-only`):
+- `PLAN_SYS`: the `findings_only` instruction and "A finding may be in none of the lists…" are replaced by one
+  line: "A finding in neither list is placed as the writer judges. Never place a number in both lists."
+  `ImpressionPlan.findings_only` is removed from the schema and the validator.
+- `compile_brief` renders one bullet:
+  `- **Carry forward (the impression addresses each, at the certainty dictated):** "<item>" (dictated hedge: "<word>") …`
+  - The carry list puts the dictated conclusion lines first, then the plan's own picks. A pick is skipped if
+    its text is already inside a conclusion line, or if it is a bare "Conclusion:" heading.
+  - The conclusion floor is set in code by `dictated_conclusion`: everything after the first
+    Conclusion / Impression / Opinion / Summary marker, one item per line, verbatim with bullets stripped.
+    Lines with fewer than two word tokens are dropped (for example "+ others").
+  - The hedge tag comes from `hedge_tag`, a fixed regex list (suspicious for, likely, possible, in keeping
+    with, consistent with, query, ?, …).
+  - The floor still renders when the plan call fails.
+  - `decisions["impression_plan"]` is now `{conclusion, carry, optional}`; `findings_only` is gone.
+- `QR_VERIFICATION_CHECKLIST_BRIEF` now reads: "Every Carry forward finding is addressed in the impression,
+  with its dictated hedge unchanged".
+- Brief hardening principle 12 also changed. It used to say "Findings only items stay in FINDINGS…"; it now
+  says "every Carry forward finding is addressed in the impression, at the certainty dictated".
+  The lab did not patch this line; the confirmation run below includes it.
+
+**Lab** (`p4_lab/plan2lab.py`, out `plan2_87639.json`): cached brief with only its plan section re-planned
+at runtime, compared with the BRIEF arm. Check OFF.
+
+| Case | BRIEF impression | PLAN2 (lab) |
+|---|---|---|
+| a4dd302e CTA | lung conclusion dropped | both conclusions, "suspicious for" and "likely in keeping with" kept |
+| d4181c74 MRI shoulder | "consistent with adhesive capsulitis" (strengthened) | "A suspicion of adhesive capsulitis" |
+| c9a884d9 MRI ankle | "Suspected undisplaced fracture" | RA conclusion kept; "suggests an undisplaced fracture" |
+| ef6ea378 MRI knee | 3/3 conclusion items | 3/3 conclusion items |
+| 2310886a CTPA | "likely the lingula" kept | kept; adds "possible … (uncertain)" RUL defect |
+| 5c68daf3 CT urogram | undictated "PUJ obstruction has resolved" | carried items only, clean |
+
+**Confirmation run with the implemented code** (`p4_lab/plan2confirm.py lab`, out `plan2confirm_lab_{5708,12280}.json`):
+- Full `compile_brief` on the cached sheet (fresh reconcile and plan), then the generator. Check OFF. One run.
+- ef6ea378 and 2310886a hit Cerebras 429 and were retried at lower concurrency.
+
+| Case | Conclusion items | Hedges | Notes |
+|---|---|---|---|
+| a4dd302e | 2/2 | "suspicious for", "likely in keeping with" kept | adds the dictated <50% left ICA stenosis |
+| d4181c74 | none dictated | "with a suspicion of adhesive capsulitis" | holds |
+| c9a884d9 | 1/1 (RA) | "suggesting" → "Suspected" | "No imaging features of active synovitis or infection" (as in BRIEF) |
+| ef6ea378 | 3/3 | — | clean |
+| 2310886a | none dictated | "likely the lingula" kept | "Acute" PE (as in BRIEF and lab) |
+| 5c68daf3 | none dictated | — | **undictated:** "excludes a urine leak", "most consistent with inflammatory perinephric extension" (generator variance; the lab PLAN2 run was clean, BRIEF had its own) |
+
+Both target cases hold.
+
+**Production re-score** (`p4_lab/plan2confirm.py prod`, every 5th of `jev_v2_rescore/prod_quick_150.json`, 30
+reports, stored sheet → `compile_brief` → generator, check OFF, one run; 6 timeouts/429s retried; view
+`p4_lab/plan2_prod_view.txt`). The stored impression comes from the production pipeline of the day, with the
+post-generation check on.
+- **Dictated conclusions lost: 0.** Two reports have a conclusion section, a4dd302e (2 items) and c9a884d9 (1 item).
+  All 3 items are in the new impression.
+- **Dictated hedges lost or strengthened: 0 on carried items.**
+  - Borderline, on an item that was not carried: 3175d357 "likely representing chronic Baker's cyst" →
+    "consistent with a chronic Baker's cyst". The stored impression dropped the hedge entirely.
+  - Hedges the stored impression had strengthened and PLAN2 restores:
+    - d4181c74 "in keeping with" → "suspicious of";
+    - c9a884d9: definite "insufficiency fracture" → "possible";
+    - fcb38892: "likely" was dropped → "likely beak ligamentous discontinuity";
+    - a4dd302e: "to exclude an infective process" → "likely in keeping with".
+- **Impression length:** 1365 → 1649 words, mean 45 → 55 (+21%). The largest increases:
+  - 74053267: 41 → 110 (undictated TTE and CT venography recommendations);
+  - 0e0d7651: 45 → 116;
+  - a4dd302e: 38 → 79;
+  - 49185456: 36 → 76.
+- **Undictated assertions in the new impressions.** These are generator priors; the stored impressions show the
+  same kind ("arguing against pyelonephritis", "urgent image-guided drainage"). The plan change does not add them,
+  but this run does not separate them from variance:
+  - 173b1087 "consistent with a resectable pattern";
+  - 893c4af2 "a standard cervical surgical approach is feasible without the need for sternotomy";
+  - 0e0d7651 "without a drainable target … may not fully account for the ongoing sepsis";
+  - ce0c77ae "collapse and consolidation likely represent the source of sepsis";
+  - 599d7c97 "… as the likely cause of the bowel dilatation";
+  - 6dd62758 "traumatic", "No hydrocephalus or evidence of herniation";
+  - d03c2d3f "pattern is in keeping with chronic rhinosinusitis";
+  - 00c50571 "in keeping with a post-traumatic process" (its plan call failed, so it had no plan section).
+- **Impression omission versus the stored report:** 5c68daf3 "may represent appendiceal mucocele" is no longer in
+  the impression. The plan did not pick it, and it stays in FINDINGS. The dictated hedge is unchanged.
