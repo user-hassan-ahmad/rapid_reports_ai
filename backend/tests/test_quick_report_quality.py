@@ -307,6 +307,7 @@ async def test_omitted_findings_are_inserted_by_code_after_an_anchor(monkeypatch
                 {"after": "The spleen is normal in size.", "sentence": ""}])
         return R()
     monkeypatch.setattr(qq, "_run_agent_with_model", fake)
+    _jev_scores(monkeypatch, 0.05)
     res = await qq.insert_findings(REPORT, FINDINGS, ["CBD dilated to 12 mm", "Intrahepatic duct dilatation", "x"])
     fnd, _ = qq.report_sections(res.report)
     assert "compresses the distal common bile duct. The common bile duct is dilated to 12 mm." in fnd
@@ -348,6 +349,7 @@ async def test_an_insertion_that_repeats_a_report_sentence_is_skipped(monkeypatc
                                            "sentence": "A 3 cm hypodense mass in the pancreatic head compresses the common bile duct."}])
         return R()
     monkeypatch.setattr(qq, "_run_agent_with_model", fake)
+    _jev_down(monkeypatch)                                   # the word-overlap fallback
     res = await qq.insert_findings(REPORT, FINDINGS, ["3 cm hypodense mass at the head of the pancreas"])
     assert res.report == REPORT and res.applied == 0 and res.skipped == 1
 
@@ -357,3 +359,58 @@ def test_restates_ignores_filler_words():
                         "A 5 mm right upper lobe pulmonary nodule is present.")
     assert not qq._restates("The common bile duct is dilated to 12 mm.",
                             "A mass compresses the distal common bile duct.")
+
+
+# ── inserter duplicate guard: Jev, word overlap as the fallback (L-49) ──────
+
+def _jev_scores(monkeypatch, score, seen=None):
+    async def fake_jev(state, qs):
+        if seen is not None:
+            seen.append((state, qs))
+        return {k: {"noul": score(qs[k]["instructions"]) if callable(score) else score} for k in qs}
+    monkeypatch.setattr(qq.qb, "_jev", fake_jev)
+
+
+def _jev_down(monkeypatch):
+    import httpx
+    async def boom(state, qs):
+        raise httpx.ReadTimeout("jev timeout")
+    monkeypatch.setattr(qq.qb, "_jev", boom)
+
+
+def _insertions(monkeypatch, *sentences):
+    from types import SimpleNamespace
+    async def fake_run(**kw):
+        return SimpleNamespace(output=qq.Insertions(items=[qq.Insertion(after="", sentence=t) for t in sentences]))
+    monkeypatch.setattr(qq, "_run_agent_with_model", fake_run)
+
+
+@pytest.mark.asyncio
+async def test_inserter_skips_sentence_jev_says_is_conveyed(monkeypatch):
+    _insertions(monkeypatch, "The appendix is fine.")
+    seen = []
+    _jev_scores(monkeypatch, 0.9, seen)
+    r = await qq.insert_findings("FINDINGS:\nThe appendix is unremarkable.", "appendix fine", ["appendix fine"])
+    assert r.applied == 0 and r.skipped == 1 and "fine" not in r.report and r.dup_check == "jev"
+    (state, qs), = seen
+    assert state == "REPORT:\nFINDINGS:\nThe appendix is unremarkable."
+    assert [q["instructions"] for q in qs.values()] == [qq.Q_CONVEYS + "The appendix is fine."]
+
+
+@pytest.mark.asyncio
+async def test_inserter_dup_threshold_is_025(monkeypatch):
+    _insertions(monkeypatch, "Small bowel loops are normal.", "A 5 mm defect at D1.")
+    _jev_scores(monkeypatch, lambda t: 0.25 if "bowel" in t else 0.2)
+    r = await qq.insert_findings("FINDINGS:\nThe appendix is unremarkable.", "x", ["small bowel normal", "5 mm defect D1"])
+    assert qq.INSERT_DUP == 0.25
+    assert r.applied == 1 and r.skipped == 1 and "5 mm defect" in r.report and "bowel" not in r.report
+
+
+@pytest.mark.asyncio
+async def test_inserter_falls_back_to_word_overlap_when_jev_fails(monkeypatch):
+    _insertions(monkeypatch, "The appendix is unremarkable.", "5 mm defect at D1.")
+    _jev_down(monkeypatch)
+    r = await qq.insert_findings("FINDINGS:\nThe appendix is unremarkable.", "appendix fine. 5 mm defect D1",
+                                 ["appendix fine", "5 mm defect D1"])
+    assert r.applied == 1 and r.skipped == 1 and r.dup_check == "words"
+    assert r.report == "FINDINGS:\n5 mm defect at D1. The appendix is unremarkable."

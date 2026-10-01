@@ -33,6 +33,7 @@ RESTATED_FLAG = 0.5  # a report negative is removed only when the finding it den
 Q_CONVEYS = ("The report itself states everything this statement says, in any wording, abbreviation or synonym "
              "(not merely implied or inferable): ")
 OMIT_FLAG = 0.40    # L-49: omission flagged below 0.40 (stated >= 0.51, omitted <= 0.31)
+INSERT_DUP = 0.25   # L-49: an inserted sentence is skipped at >= 0.25 (conveyed >= 0.32, new <= 0.14)
 JEV_TIMEOUT_S = 6.0
 REPAIR_TIMEOUT_S = 8.0
 REPAIR_MODEL = qb.QWEN
@@ -156,6 +157,7 @@ class RepairResult(BaseModel):
     applied: int = 0
     skipped: int = 0
     error: Optional[str] = None
+    dup_check: Optional[str] = None   # insert_findings: "jev" | "words" (Jev failed)
 
 
 REPAIR_SYS = (
@@ -266,14 +268,31 @@ async def insert_findings(report: str, findings: str, items: List[str]) -> Repai
         logger.warning("quality insert failed (%s: %s)", type(e).__name__, str(e)[:200])
         return RepairResult(report=report, error=f"{type(e).__name__}: {str(e)[:200]}")
     out, applied, skipped = report, 0, 0
+    cands = []
     for it in r.output.items:
         sent = it.sentence.strip()
         if not sent or not _negative_allowed(sent, items):
             skipped += 1
             continue
-        sent = sent if sent.endswith(".") else sent + "."
-        if any(_restates(sent, x) for x in _sentences(out)):
-            skipped += 1   # already stated in other words (L-47: a reworded finding was re-inserted)
+        cands.append((it, sent if sent.endswith(".") else sent + "."))
+    # Already stated in other words (L-47: a reworded finding was re-inserted). Jev judges meaning
+    # (L-49); on any Jev failure, word overlap decides exactly as before.
+    conveyed, dup_check = None, None
+    if cands:
+        try:
+            ans = await asyncio.wait_for(qb._jev(f"REPORT:\n{report}", {
+                f"d{i}": {"type": "noul", "instructions": Q_CONVEYS + s} for i, (_, s) in enumerate(cands)}), JEV_TIMEOUT_S)
+            conveyed = [float(ans[f"d{i}"]["noul"]) >= INSERT_DUP for i in range(len(cands))]
+            dup_check = "jev"
+        except Exception as e:
+            logger.warning("insert duplicate check: Jev failed (%s: %s)", type(e).__name__, str(e)[:200])
+            dup_check = "words"
+    added: List[str] = []
+    for i, (it, sent) in enumerate(cands):
+        dup = (conveyed[i] or any(_restates(sent, x) for x in added)) if conveyed is not None \
+            else any(_restates(sent, x) for x in _sentences(out))
+        if dup:
+            skipped += 1
             continue
         if it.after and out.count(it.after) == 1:
             out = out.replace(it.after, f"{it.after} {sent}", 1)
@@ -285,7 +304,8 @@ async def insert_findings(report: str, findings: str, items: List[str]) -> Repai
                 continue
             out = out.replace(first, f"{sent} {first}", 1)
         applied += 1
-    return RepairResult(report=out, applied=applied, skipped=skipped)
+        added.append(sent)
+    return RepairResult(report=out, applied=applied, skipped=skipped, dup_check=dup_check)
 
 
 # ── deterministic removal of a flagged negative ─────────────────────────────
@@ -382,6 +402,7 @@ async def run_quality_check(report: str, findings: str, scan_type: str,
                     if report.count(old_s) == 1:
                         report = report.replace(old_s, new_s)
             tel.update(edits_applied=sum(r.applied for r in reps), edits_skipped=sum(r.skipped for r in reps),
+                       dup_check=next((r.dup_check for r in reps if r.dup_check), None),
                        repair_ms=int((time.time() - t1) * 1000),
                        error=next((r.error for r in reps if r.error), None) or tel["error"])
     except Exception as e:  # never blocks the report
