@@ -289,14 +289,33 @@ async def test_classifier_labels_and_every_copy_shares_one_label(monkeypatch):
     assert '- KEEP: "No measurement artefact."' in b.text
 
 
-async def test_bundled_negative_split_renders_one_label_per_part(monkeypatch):
-    stub(monkeypatch)
-
+async def _split_lymph(monkeypatch):
     async def split(negs):
         return [["No lymphadenopathy", "No collection"] if "or collection" in n else [n] for n in negs]
     monkeypatch.setattr(tb.rc, "_split_bundled", split)
+
+
+async def test_bundled_negative_all_parts_kept_is_written_as_the_original_sentence(monkeypatch):
+    # the split decides each claim; when every part is KEEP the radiologist's own sentence is written back
+    calls = stub(monkeypatch)
+    await _split_lymph(monkeypatch)
     b = await compile_()
-    assert '- KEEP: "No lymphadenopathy."\n- KEEP: "No collection."' in b.text
+    assert {"No lymphadenopathy", "No collection"} <= set(calls["qwen"][0][0])  # each claim is still decided
+    assert '- KEEP: "No lymphadenopathy or collection."' in b.text
+    assert '- KEEP: "No lymphadenopathy."' not in b.text and '- KEEP: "No collection."' not in b.text
+    n = next(x for x in b.decisions["negatives"] if x["text"] == "No lymphadenopathy or collection.")
+    assert n["lines"] == ['- KEEP: "No lymphadenopathy or collection."'] and n["kept_whole"] is True
+
+
+@pytest.mark.parametrize("label,line", [
+    ("contradicted", '- OMIT: "No collection." — the dictation reports: a collection'),
+    ("expected", '- DO NOT ASSERT: "No collection." — expected consequence of: a collection')])
+async def test_bundled_negative_with_a_changed_part_is_written_as_its_parts(monkeypatch, label, line):
+    stub(monkeypatch, qwen={"No collection": (label, "a collection")})
+    await _split_lymph(monkeypatch)
+    b = await compile_()
+    assert f'- KEEP: "No lymphadenopathy."\n{line}' in b.text
+    assert "No lymphadenopathy or collection" not in b.text.replace("NEGATIVE", "")
 
 
 # ── normals ─────────────────────────────────────────────────────────────────
@@ -871,15 +890,18 @@ async def test_master_end_to_end(monkeypatch):
     assert "- OPEN: Branch delta — a laboratory diagnosis; imaging-silent: defer" in cb
     assert not any(k in t for k in ("QUESTION \"", "DIFFERENTIAL [", "RECOMMEND REFERRAL", "RECOMMEND IMAGING"))
     assert [d["action"] for d in b.decisions["differentials"]] == ["present", "closed", "open", "open"]
-    # recommendations: keep / do not recommend (routine workup of an investigation) / removed (unmet), written
-    # outside the reasoning block, before the Impression Plan
+    # recommendations: a triggered one is offered, never written (Phase 1 writes nothing into a template
+    # report); do not recommend (routine workup of an investigation) stays a guard; removed (unmet)
     assert "RECOMMEND" not in cb
     recs = block(t, tb.RECOMMENDATIONS_HEADING)
-    assert recs.splitlines()[:2] == ["- RECOMMEND: Specialist team review",
-                                     "- DO NOT RECOMMEND: Dedicated MRI of the primary organ"]
+    assert recs.strip().splitlines() == ["- DO NOT RECOMMEND: Dedicated MRI of the primary organ"]
+    assert "- RECOMMEND:" not in t and "Specialist team review" not in t
     assert t.index(tb.RECOMMENDATIONS_HEADING) < t.index("## Impression Plan")
     assert "biopsy" not in t
-    assert [r["action"] for r in b.decisions["recommendations"]] == ["keep", "do_not_recommend", "removed"]
+    assert [(r["action"], r["route"]) for r in b.decisions["recommendations"]] == [
+        ("offered", "keep"), ("do_not_recommend", "do_not_recommend"), ("removed", "removed")]
+    assert {"kind": "recommendation", "section": "IMPRESSION", "text": "REFERRAL: Specialist team review",
+            "reason": "condition reported"} in b.decisions["options"]
     assert calls["recs"][0][0] == "REFERRAL: Specialist team review (when a focal lesion is reported)"
     # case negatives: OMIT when the differential they help exclude is reported, else classified as usual
     assert '- OMIT: "No adjacent collection." — a dictated finding makes this negative inapplicable' in t
@@ -894,15 +916,17 @@ async def test_master_end_to_end(monkeypatch):
         {"text": "No free fluid.", "differential": "Branch beta", "outcome": "duplicate_dropped"}]
     sent = calls["qwen"][0][0]
     assert "No adjacent collection" not in sent and LYMPH in sent and VASC in sent
-    # If-present: core + clearly reported -> stated in its paragraph; contextual -> offered; a negative the
-    # sheet already carries is routed once (by the sheet negative)
+    # If-present: never stated on a template. Core + clearly reported (quick would state it) -> offered first;
+    # contextual -> offered; a negative the sheet already carries is routed once (by the sheet negative)
     para = block(t, "## Paragraph: Primary organ (FINDINGS)")
-    assert f'- KEEP: "{LYMPH}." (finding: focal lesion)' in para
-    assert VASC not in t and "IF_PRESENT" not in t
-    assert outcome(b, LYMPH) == "stated" and outcome(b, VASC) == "offered"
-    assert [f["text"] for f in b.decisions["finding_negatives"]] == [LYMPH, VASC]
-    assert b.decisions["options"][0] == {"kind": "finding_negative", "section": "FINDINGS", "paragraph": "Primary organ",
-                                         "text": VASC, "finding": "focal lesion", "reason": "contextual"}
+    assert LYMPH not in t and VASC not in t and "IF_PRESENT" not in t
+    assert outcome(b, LYMPH) == "offered" and outcome(b, VASC) == "offered"
+    assert [(f["text"], f["route"]) for f in b.decisions["finding_negatives"]] == [(LYMPH, "stated"), (VASC, "offered")]
+    assert b.decisions["options"][:2] == [
+        {"kind": "finding_negative", "section": "FINDINGS", "paragraph": "Primary organ", "text": LYMPH,
+         "finding": "focal lesion", "reason": "finding reported"},
+        {"kind": "finding_negative", "section": "FINDINGS", "paragraph": "Primary organ", "text": VASC,
+         "finding": "focal lesion", "reason": "contextual"}]
     assert para.count('"No focal lesion."') == 1
     # COVERS is metadata; context conditions see the protocol text, never the findings
     assert "COVERS" not in t
@@ -913,13 +937,13 @@ async def test_master_end_to_end(monkeypatch):
 
 
 @pytest.mark.parametrize("present,label,expected", [
-    (0.95, "keep", "stated"), (0.6, "keep", "offered"), (0.95, "expected", "do_not_assert"),
+    (0.95, "keep", "offered"), (0.6, "keep", "offered"), (0.95, "expected", "do_not_assert"),
     (0.95, "contradicted", "dropped"), (0.2, "keep", "dropped")])
 async def test_master_if_present_rows(monkeypatch, present, label, expected):
     b, calls = await master(monkeypatch, {"f0": present}, qwen={LYMPH: (label, "a 3 cm focal lesion")})
     assert outcome(b, LYMPH) == expected
     para = block(b.text, "## Paragraph: Primary organ (FINDINGS)")
-    assert (f'- KEEP: "{LYMPH}." (finding: focal lesion)' in para) == (expected == "stated")
+    assert "- KEEP:" not in para.replace('- KEEP: "No focal lesion."', "")  # an If-present negative is never stated
     assert (f'- DO NOT ASSERT: "{LYMPH}." — expected consequence of: a 3 cm focal lesion' in para) \
         == (expected == "do_not_assert")
     assert any(o["text"] == LYMPH for o in b.decisions["options"]) == (expected == "offered")
@@ -933,7 +957,9 @@ async def test_master_if_present_offers_are_capped(monkeypatch):
     assert s.usable, s.lint_errors
     b, _ = await master(monkeypatch, {"f0": 0.95}, sheet=sheet, struct=s)
     outs = [f["outcome"] for f in b.decisions["finding_negatives"]]
-    assert outs.count("offered") == rc.MAX_FINDING_OPTIONS and outs.count("dropped") == 3  # VASC + 6 contextual
+    # LYMPH (reported, core) first, then 3 of VASC + 6 contextual; the rest dropped
+    assert outs.count("offered") == rc.MAX_FINDING_OPTIONS and outs.count("dropped") == 4
+    assert outcome(b, LYMPH) == "offered"
     # options are full: an optional recommendation is not offered (quick counts every option, as here)
     plan = rc.ImpressionPlan(recommendations=[rc.RecDecision(index=0, decision="optional", reason="either way")],
                              impression=[0])
@@ -948,8 +974,9 @@ async def test_master_optional_recommendation_is_offered_in_the_impression_secti
     assert "Specialist team review" not in b.text
     assert {"kind": "recommendation", "section": "IMPRESSION", "text": "REFERRAL: Specialist team review",
             "reason": "either way"} in b.decisions["options"]
-    # no plan decision: kept (Jev alone), as in quick
-    assert [r["action"] for r in b.decisions["recommendations"]] == ["optional", "keep", "keep"]
+    # no plan decision: kept (Jev alone) as in quick, which on a template means offered
+    assert [r["action"] for r in b.decisions["recommendations"]] == ["optional", "offered", "offered"]
+    assert "- RECOMMEND:" not in b.text
 
 
 @pytest.mark.parametrize("qwen_label,lost", [("keep", "KEEP"), ("expected", "DO NOT ASSERT")])
@@ -1114,8 +1141,9 @@ async def test_p4_unmet_condition_beats_include_at_the_threshold(monkeypatch):
     plan = rc.ImpressionPlan(recommendations=[rc.RecDecision(index=i, decision="include") for i in range(3)],
                              impression=[0])
     b, _ = await probe(monkeypatch, jev={"rec0": 0.9, "rec1": 0.5, "rec2": 0.49}, plan=plan)
-    assert [r["action"] for r in b.decisions["recommendations"]] == ["removed", "removed", "keep"]
-    assert block(b.text, tb.RECOMMENDATIONS_HEADING).strip() == "- RECOMMEND: Image-guided biopsy"
+    assert [r["action"] for r in b.decisions["recommendations"]] == ["removed", "removed", "offered"]
+    assert tb.RECOMMENDATIONS_HEADING not in b.text
+    assert [o["text"] for o in b.decisions["options"] if o["kind"] == "recommendation"] == ["TISSUE: Image-guided biopsy"]
 
 
 async def test_p4b_unmet_investigation_excluded_as_routine_workup_is_barred(monkeypatch):
@@ -1125,9 +1153,10 @@ async def test_p4b_unmet_investigation_excluded_as_routine_workup_is_barred(monk
     assert "- DO NOT RECOMMEND: Dedicated MRI of the primary organ" in block(b.text, tb.RECOMMENDATIONS_HEADING)
 
 
-async def test_p5_finding_at_085_states_core_offers_contextual(monkeypatch):
+async def test_p5_finding_at_085_offers_core_and_contextual(monkeypatch):
     b, _ = await probe(monkeypatch, jev={"f0": 0.85})
-    assert outcome(b, LYMPH) == "stated" and outcome(b, VASC) == "offered"
+    assert outcome(b, LYMPH) == "offered" and outcome(b, VASC) == "offered"
+    assert [f["route"] for f in b.decisions["finding_negatives"]] == ["stated", "offered"]
 
 
 @pytest.mark.parametrize("drop", ["d0", "f0", "rec1", "r0"])
@@ -1144,10 +1173,10 @@ async def test_p6_partial_jev_answer_fails_closed(monkeypatch, drop):
 async def test_p6b_plan_failure_offers_investigations_never_writes_them(monkeypatch):
     b, _ = await probe(monkeypatch, plan=None)
     assert [(r["tag"], r["action"]) for r in b.decisions["recommendations"]] == [
-        ("REFERRAL", "keep"), ("IMAGING", "optional"), ("TISSUE", "optional")]
-    assert "MRI" not in b.text and "biopsy" not in b.text
+        ("REFERRAL", "offered"), ("IMAGING", "optional"), ("TISSUE", "optional")]
+    assert "MRI" not in b.text and "biopsy" not in b.text and "Specialist" not in b.text
     assert [o["text"] for o in b.decisions["options"] if o["kind"] == "recommendation"] == [
-        "IMAGING: Dedicated MRI of the primary organ", "TISSUE: Image-guided biopsy"]
+        "REFERRAL: Specialist team review", "IMAGING: Dedicated MRI of the primary organ", "TISSUE: Image-guided biopsy"]
 
 
 def test_p8_differential_names_differing_only_in_case_are_duplicates():
@@ -1264,3 +1293,4 @@ async def test_if_present_offers_come_first_exclusions_fill_the_remaining_room(m
     assert [o["reason"] for o in fn][-1] == "excludes Branch alpha"
     assert [x["outcome"] for x in b.decisions["case_exclusions"]] == ["offered", "trimmed"]
     assert calls["fallback"] == []
+

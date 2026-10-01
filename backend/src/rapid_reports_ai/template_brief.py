@@ -46,13 +46,18 @@ quick's shared clinical routing in report_reconcile:
   anywhere is OMIT); DO NOT ASSERT when that differential is not VISIBLE yes (lint blocks it; defence).
 - Conditions: findings conditions are judged on the dictation; history conditions on the history alone;
   context conditions on history + protocol text + the dictation. Every condition needs >= MET (0.5).
-- IF_PRESENT (case): Jev finding reported + rc.route_finding -> KEEP on its own line (stated) / offered
-  option (its paragraph's section) / DO NOT ASSERT / dropped; offers capped at MAX_FINDING_OPTIONS; a
-  negative already handled (a sheet negative or an earlier If-present) is routed once, as in quick.
-- RECOMMEND: rc.route_recommendation (Jev condition unmet + the impression plan) -> RECOMMEND / offered
-  option (the impression section) / removed / DO NOT RECOMMEND (routine workup of an investigation),
-  written in "## Recommendations (reconciled with this dictation)" before the Impression Plan, never in
-  the reasoning block. A failed plan call offers IMAGING / TISSUE, never writes them.
+Phase 1 writes nothing into a template report; it reasons and offers (owner decision 2026-10-01):
+- IF_PRESENT (case): Jev finding reported + rc.route_finding -> offered option (its paragraph's section;
+  a negative quick would state, route "stated", is offered first) / DO NOT ASSERT (a guard) / dropped;
+  offers capped at MAX_FINDING_OPTIONS; never KEEP. A negative already handled (a sheet negative or an
+  earlier If-present) is routed once, as in quick.
+- RECOMMEND: rc.route_recommendation (Jev condition unmet + the impression plan) -> offered option (the
+  impression section; route "keep", the trigger is dictated, or "optional") / removed / DO NOT RECOMMEND
+  (routine workup of an investigation, a guard written in "## Recommendations (reconciled with this
+  dictation)" before the Impression Plan, never in the reasoning block). Never written as RECOMMEND. A
+  failed plan call offers IMAGING / TISSUE.
+Template units are unchanged. A compound template negative is split so each claim is decided; when every
+part is KEEP the original sentence is written back as one KEEP, otherwise its parts are written.
 COVERS lines are metadata (what a paragraph reports), not generator guidance: never in the brief.
 """
 from __future__ import annotations
@@ -141,7 +146,6 @@ ADDRESS_POSSIBLE = "- ADDRESS AS POSSIBLE: {name} — the dictation raises it as
 POSSIBLE = 0.5  # P(possible) at or above which a present branch is addressed as a possibility
 OPEN = "- OPEN: {name} — {discriminator}; {defer}"
 OPEN_DEFER = {"no": "not assessable on this study: defer", "silent": "imaging-silent: defer"}
-RECOMMEND = "- RECOMMEND: {text}"
 DO_NOT_RECOMMEND = "- DO NOT RECOMMEND: {text}"
 # A case-driven OMIT names no differential: the label sits in a findings paragraph the generator writes from.
 CASE_OMIT_REASON = "a dictated finding makes this negative inapplicable"
@@ -650,6 +654,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
             action = "target_not_visible"
         else:
             offered = 0
+            kept = 0
             for j, part in enumerate(p["parts"]):
                 if j in p["forced"]:
                     new.extend(omit(_q(part), p["forced"][j]))
@@ -691,6 +696,14 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                 else:
                     new.append(f'- KEEP: "{_q(part)}"')
                     labels.append((u, _key(part), "KEEP"))
+                    kept += 1
+            if len(p["parts"]) > 1 and kept == len(p["parts"]):
+                # Every claim of a compound negative is KEEP: write back the radiologist's own sentence, not
+                # the split parts (the split only lets each claim be decided). Any part omitted, not asserted
+                # or otherwise changed keeps the per-part lines above.
+                new = [f'- KEEP: "{_q(u.text)}"']
+                labels.append((u, _key(u.text), "KEEP"))
+                entry["kept_whole"] = True
             action = ("rule_omitted" if p["forced"] and len(p["forced"]) == len(p["parts"])
                       else "offered" if offered else "dropped" if u.origin == "case" else "labelled")
         L.put(u.line, new)
@@ -722,8 +735,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
         decisions["normals"].append({**entry, "score": round(sc[u.jev_key], 3), "qwen_affected": u.id in q_affected,
                                      "action": status})
 
-    # ── case If-present (L-45 rule C, shared route_finding) ─────────────────
-    n_offered = 0
+    # ── case If-present (L-45 rule C, shared route_finding; offered, never stated, on templates) ──
     for u, part in ifp_omitted:
         decisions["finding_negatives"].append({"finding": u.finding, "text": part, "tag": u.tag, "qwen": "n/a",
                                                "present": None, "outcome": "section_omitted", "source": "case"})
@@ -733,25 +745,31 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
         decisions["finding_negatives"].append({"finding": u.finding, "text": part, "tag": u.tag, "qwen": "n/a",
                                                "present": None, "outcome": "differential_present",
                                                "source": "case", "differential": case_omit[_key(part)]})
+    # Phase 1 writes nothing into a template report (owner decision 2026-10-01): a negative quick would state
+    # (route "stated": core, finding clearly reported) is offered instead, ahead of the other offers.
+    routed = []
     for u, part, pf in cands:
         d = qneg.get(_key(part)) if pf >= rc.PRESENT_LOW else None
         label = d.action if d else "keep"
-        outcome = rc.route_finding(label, pf, u.tag)
-        if outcome == "offered":
-            if n_offered >= rc.MAX_FINDING_OPTIONS:
-                outcome = "dropped"
-            else:
-                n_offered += 1
-                decisions["options"].append({
-                    "kind": "finding_negative", "section": u.section, "paragraph": para_name.get(u.paragraph, ""),
-                    "text": part, "finding": u.finding,
-                    "reason": "contextual" if pf >= rc.PRESENT_HIGH else f"finding borderline (p={pf:.2f})"})
+        routed.append((u, part, pf, d, label, rc.route_finding(label, pf, u.tag)))
+    offer_order = sorted((k for k, r in enumerate(routed) if r[5] in ("stated", "offered")),
+                         key=lambda k: routed[k][5] != "stated")
+    offered_ok = set(offer_order[:rc.MAX_FINDING_OPTIONS])
+    for k in offer_order:
+        if k not in offered_ok:
+            continue
+        u, part, pf, d, label, route = routed[k]
+        decisions["options"].append({
+            "kind": "finding_negative", "section": u.section, "paragraph": para_name.get(u.paragraph, ""),
+            "text": part, "finding": u.finding,
+            "reason": ("finding reported" if route == "stated" else "contextual" if pf >= rc.PRESENT_HIGH
+                       else f"finding borderline (p={pf:.2f})")})
+    for k, (u, part, pf, d, label, route) in enumerate(routed):
+        outcome = route if route in ("dropped", "do_not_assert") else "offered" if k in offered_ok else "dropped"
         decisions["finding_negatives"].append({"finding": u.finding, "text": part, "tag": u.tag, "qwen": label,
-                                               "present": round(pf, 3), "outcome": outcome, "source": "case"})
-        if outcome == "stated":
-            L.put(u.line, [f'- KEEP: "{_q(part)}" (finding: {u.finding})'])
-            labels.append((u, _key(part), "KEEP"))
-        elif outcome == "do_not_assert":
+                                               "present": round(pf, 3), "outcome": outcome, "route": route,
+                                               "source": "case"})
+        if outcome == "do_not_assert":  # a guard, not report text
             L.put(u.line, [f'- DO NOT ASSERT: "{_q(part)}" — expected consequence of: {d.dictated_finding}'])
             labels.append((u, _key(part), "DO NOT ASSERT"))
         # offered and dropped: the IF_PRESENT line is removed (render drops unedited IF_PRESENT lines)
@@ -786,16 +804,22 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
             route = rc.route_recommendation(1 - sc[f"rec{k}"], d, tag=r.tag,
                                             room=len(decisions["options"]) < rc.MAX_OPTIONS)
             L.put(i, [])
+            action = route
             if route == "keep":
-                rec_lines.append(RECOMMEND.format(text=r.text))
-            elif route == "do_not_recommend":
+                # Phase 1 writes nothing into a template report: a recommendation whose trigger is dictated
+                # is offered (always: it outranks the plan's optional ones), never written as RECOMMEND.
+                action = "offered"
+                decisions["options"].append({"kind": "recommendation", "section": imp_section,
+                                             "text": f"{r.tag}: {r.text}",
+                                             "reason": (d.reason if d and d.reason else "condition reported")})
+            elif route == "do_not_recommend":  # a guard against refilling routine workup, not report text
                 rec_lines.append(DO_NOT_RECOMMEND.format(text=r.text))
-            else:
-                if route == "optional":
-                    decisions["options"].append({"kind": "recommendation", "section": imp_section,
-                                                 "text": f"{r.tag}: {r.text}", "reason": d.reason})
-            decisions["recommendations"].append({"id": r.id, "tag": r.tag, "text": r.text, "action": route,
-                                                 "unmet": round(1 - sc[f"rec{k}"], 3), "reason": d.reason if d else ""})
+            elif route == "optional":
+                decisions["options"].append({"kind": "recommendation", "section": imp_section,
+                                             "text": f"{r.tag}: {r.text}", "reason": d.reason})
+            decisions["recommendations"].append({"id": r.id, "tag": r.tag, "text": r.text, "action": action,
+                                                 "route": route, "unmet": round(1 - sc[f"rec{k}"], 3),
+                                                 "reason": d.reason if d else ""})
 
     # ── rules ────────────────────────────────────────────────────────────────
     for i, r in enumerate(s.rules):
