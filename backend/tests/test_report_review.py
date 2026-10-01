@@ -332,3 +332,59 @@ async def test_extra_report_questions_fail_open_with_the_check(monkeypatch):
     extra = {"u0": {"type": "noul", "instructions": rr.rc.Q_CONVEYS + "No free gas."}}
     res = await rr.check(REPORT, "x", "CT AP", [], sections=SECTIONS, extra_report_qs=extra)
     assert res.error and res.extra_answers == {}
+
+
+TECH = "Cardiac MRI at 1.5 T, full protocol: cine, mapping and late gadolinium enhancement."
+CMR_HISTORY = "58M. Chest pain. ?Perforation."
+CMR = f"""CLINICAL HISTORY
+{CMR_HISTORY}
+
+TECHNIQUE
+{TECH}
+
+Normal biventricular size and function.
+
+Impression
+Normal study."""
+
+
+async def _omission_state(monkeypatch, **kw) -> str:
+    seen = []
+
+    async def fake_jev(state, qs):
+        seen.append(state)
+        return {k: {"noul": 0.9 if k.startswith("i") else 0.1} for k in qs}
+    monkeypatch.setattr(rr.rc, "_jev", fake_jev)
+    res = await rr.check(CMR, "full protocol\nperforation", "CMR", [], **kw)
+    assert res.error is None
+    return next(s for s in seen if s.startswith("REPORT"))
+
+
+async def test_template_omission_state_keeps_the_technique_text(monkeypatch):
+    state = await _omission_state(monkeypatch, sections=SECTIONS, protected=[CMR_HISTORY, TECH], history=CMR_HISTORY)
+    assert TECH in state
+
+
+async def test_template_omission_state_never_shows_the_history(monkeypatch):
+    state = await _omission_state(monkeypatch, sections=SECTIONS, protected=[CMR_HISTORY, TECH], history=CMR_HISTORY)
+    assert "Perforation" not in state and "Chest pain" not in state
+
+
+async def test_quick_omission_state_is_unchanged(monkeypatch):
+    state = await _omission_state(monkeypatch)
+    assert state == f"REPORT:\n{CMR}"
+    state = await _omission_state(monkeypatch, protected=[CMR_HISTORY, TECH])
+    assert state == f"REPORT:\n{rr.without(CMR, [CMR_HISTORY, TECH])}" and TECH not in state
+
+
+async def test_run_quality_check_passes_the_history_on(monkeypatch):
+    seen = []
+
+    async def fake_jev(state, qs):
+        seen.append(state)
+        return {k: {"noul": 0.9 if k.startswith("i") else 0.1} for k in qs}
+    monkeypatch.setattr(rr.rc, "_jev", fake_jev)
+    out, _, tel = await rr.run_quality_check(CMR, "full protocol", "CMR", [], sections=SECTIONS,
+                                             protected=[CMR_HISTORY, TECH], history=CMR_HISTORY)
+    state = next(s for s in seen if s.startswith("REPORT"))
+    assert TECH in state and "Perforation" not in state and out == CMR and tel["error"] is None

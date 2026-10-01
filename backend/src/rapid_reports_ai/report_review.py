@@ -293,9 +293,11 @@ class CheckResult(BaseModel):
 
 async def check(report: str, findings: str, scan_type: str, options: List[dict],
                 sections: Optional[List[ReportSection]] = None, protected: Optional[List[str]] = None,
-                extra_report_qs: Optional[dict] = None) -> CheckResult:
+                extra_report_qs: Optional[dict] = None, history: Optional[str] = None) -> CheckResult:
     """Two Jev calls in parallel: every checked report clause and option against the dictation,
-    every positive dictated item against the report (protected text removed)."""
+    every positive dictated item against the report (protected text removed). Templates (`sections`)
+    that pass `history` (the verbatim history, also in `protected`) remove only that from the omission
+    state: FIXED / technique text stays visible, so a dictated protocol note it states is not missing."""
     cls = checked_clauses(report, sections)
     opts = [(o["id"], o["sentence"]) for o in options if o.get("sentence")]
     items = positive_items(findings)
@@ -309,12 +311,16 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict],
     omit_qs = {f"i{i}": {"type": "noul", "instructions": Q_OMIT + t} for i, t in enumerate(items)}
     omit_qs.update(extra_report_qs or {})  # another caller's report-state questions, same request
 
+    hidden = protected or []
+    if sections is not None and history is not None:
+        hidden = [history] if history else []
+
     async def ask(state, qs):
         return await rc._jev(state, qs) if qs else {}
     try:
         contra, omit = await asyncio.wait_for(asyncio.gather(
             ask(f"SCAN TYPE: {scan_type}\nDICTATED FINDINGS:\n{findings}", contra_qs),
-            ask(f"REPORT:\n{without(report, protected or [], sections)}", omit_qs)), JEV_TIMEOUT_S)
+            ask(f"REPORT:\n{without(report, hidden, sections)}", omit_qs)), JEV_TIMEOUT_S)
     except Exception as e:  # never blocks the report
         logger.warning("quality check: Jev failed (%s: %s)", type(e).__name__, str(e)[:200])
         return CheckResult(n_clauses=len(cls), n_items=len(items), error=f"{type(e).__name__}: {str(e)[:200]}")
@@ -629,11 +635,13 @@ def _problem(f: Flag) -> str:
 async def run_quality_check(report: str, findings: str, scan_type: str, options: List[dict],
                             sections: Optional[List[ReportSection]] = None, protected: Optional[List[str]] = None,
                             suppressed: Optional[List[str]] = None,
-                            extra_report_qs: Optional[dict] = None) -> Tuple[str, List[dict], dict]:
+                            extra_report_qs: Optional[dict] = None,
+                            history: Optional[str] = None) -> Tuple[str, List[dict], dict]:
     """Check, then repair only when a report clause or item is flagged. Returns the report, the
     options with flagged ones dropped, and telemetry. Never raises. `sections` makes the check
     section-generic (templates); `protected` text is never checked for omission or edited; a repair
-    never introduces a `suppressed` term. All default to the quick behaviour. The template path works
+    never introduces a `suppressed` term; `history` (templates) is the protected text hidden from the
+    omission check, the rest stays visible there. All default to the quick behaviour. The template path works
     on the report with CRLF normalised to LF and returns it with LF line endings; protected text is an invariant: if a repair ever
     changes it, the repairs are reverted."""
     if not enabled():
@@ -644,13 +652,15 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
     if sections is not None:
         report = report.replace("\r\n", "\n")
         protected = [p.replace("\r\n", "\n") for p in protected] if protected is not None else None
+        history = history.replace("\r\n", "\n") if history is not None else None
         found, tel["sections_empty"] = _section_layout(report, sections)
         tel["sections_found"] = [s.name for s, _, _ in found]
         tel["sections_missing"] = [s.name for s in sections if s.header and not any(s is f for f, _, _ in found)]
     original = pre_repair = report
     try:
         res = await check(report, findings, scan_type, options,
-                          **_given(sections=sections, protected=protected, extra_report_qs=extra_report_qs))
+                          **_given(sections=sections, protected=protected, extra_report_qs=extra_report_qs,
+                                   history=history))
         if extra_report_qs is not None:
             tel["extra_answers"] = res.extra_answers
         tel.update(flags=[f.model_dump() for f in res.flags], clauses=res.n_clauses, items=res.n_items,

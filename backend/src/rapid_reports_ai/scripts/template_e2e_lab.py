@@ -15,7 +15,8 @@ Per synthetic set (backend/tests/fixtures/sheet_lab/<set>/):
  3. Phase 2: ``compile_template_brief`` over the master sheet (real Jev / Qwen).
  4. Generate: ``_generate_report_skill_sheet_guided`` with the brief (history_supplied when the sheet defines a
     history-role section), the option writer beside it; the verbatim history inserted; post-generation check
-    (sections from the lean structure, protected = history + FIXED texts, suppressed = TERM AVOID). A second
+    (sections from the lean structure, protected = history + FIXED texts with only the history hidden from the
+    omission check, suppressed = TERM AVOID). A second
     check call on the final report counts the contradictions left after repair.
  5. QUICK (``--quick``; the clinical-content reference): the production quick pipeline exactly as quick_report_api
     runs it: generate_ephemeral_skill_sheet (FAST analyser, production directives) -> generate_quick_report
@@ -522,7 +523,8 @@ async def run_new(sheet: str, d: dict, saved_p1: Optional[dict] = None, reuse_re
     async def checked():
         t0 = time.time()
         out = await rr.run_quality_check(report, findings, scan_type, options, sections=sections,
-                                         protected=protected, suppressed=avoid, extra_report_qs=gate_qs["report"])
+                                         protected=protected, suppressed=avoid, extra_report_qs=gate_qs["report"],
+                                         history=hist_text)
         return out, round(time.time() - t0, 1)
 
     async def gated():  # impression-scope questions need the conclusion as state: one parallel request
