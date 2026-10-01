@@ -360,14 +360,14 @@ def _quotes_a_negative(line: str) -> bool:
     return any(is_negative(q) for q in _quoted_statements(line))
 
 
-def negative_lines(sheet: str) -> List[str]:
-    """Lines that state a negative the structure must cover. Fails closed: inside a Mandatory
+def negative_line_numbers(sheet: str) -> List[int]:
+    """1-based numbers of the lines that state a negative the structure must cover. Fails closed: inside a Mandatory
     negatives block (header line included) or a '## Negative Finding Rules…' section, every line that
     carries a quote, or whose bullet body is itself a negative statement, counts."""
-    out: List[str] = []
+    out: List[int] = []
     in_nfr = in_mand = False
     mand_indent, mand_bulleted = 0, True
-    for ln in sheet.splitlines():
+    for no, ln in enumerate(sheet.splitlines(), 1):
         stripped = ln.strip()
         if stripped.startswith("#"):
             if ln.startswith("## "):
@@ -382,7 +382,7 @@ def negative_lines(sheet: str) -> List[str]:
             says_none = _MANDATORY_NONE.search(ln) and not any(is_negative(q) for q in _quoted_statements(ln))
             if (_QUOTE_CHARS.search(ln) and not _IF.search(ln) and not says_none
                     and (_quotes_a_negative(ln) or _statement_shape(ln))):
-                out.append(ln)
+                out.append(no)
             continue
         if in_mand and mand_indent >= 0 and ind <= mand_indent:
             child = not mand_bulleted and ind == mand_indent and _BULLET.match(ln) and not _LABEL.match(ln)
@@ -399,10 +399,15 @@ def negative_lines(sheet: str) -> List[str]:
             # guidance-shaped line quoting only positives is never required (the gate must never
             # demand a positive statement)
             if _quotes_a_negative(ln) or _statement_shape(ln):
-                out.append(ln)
+                out.append(no)
         elif is_negative(_bullet_body(ln)):
-            out.append(ln)
+            out.append(no)
     return out
+
+
+def negative_lines(sheet: str) -> List[str]:
+    lines = sheet.splitlines()
+    return [lines[i - 1] for i in negative_line_numbers(sheet)]
 
 
 def _section_body(sheet: str, title: str) -> str:
