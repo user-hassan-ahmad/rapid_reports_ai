@@ -76,6 +76,10 @@ class StructSection(_Model):
     role: Role
     header: Optional[str] = None
     order: int
+    # grammar: "| alt: \"<header>\"" (other headers the reports use for this section; the generator writes
+    # `header`) and "| optional: yes" (written only when the dictation has content for it)
+    alt_headers: SkipJsonSchema[List[str]] = []
+    optional: SkipJsonSchema[bool] = False
 
 
 class Paragraph(_Model):
@@ -83,6 +87,7 @@ class Paragraph(_Model):
     section: str
     name: str
     covers: SkipJsonSchema[List[str]] = []  # grammar: COVERS ["<structure>" | …], the structures it reports
+    header: SkipJsonSchema[Optional[str]] = None  # grammar: '| header: "<sub-heading>"' printed on its own line
 
 
 ConditionSource = Literal["findings", "history", "context"]

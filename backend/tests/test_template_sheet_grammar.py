@@ -840,3 +840,83 @@ def test_case_fields_stay_out_of_the_extractor_schema():
     assert "origin" not in schema["Negative"]["properties"] and "targets" not in schema["Negative"]["properties"]
     assert "covers" not in schema["Paragraph"]["properties"]
     assert "origin" not in schema["IfPresent"]["properties"]
+
+
+# ── grammar extensions (2026-10-01 retest): paragraph sub-heading, alternative and optional sections ──
+
+SUBHEAD = LEAN.replace("## Paragraph: Primary organ (FINDINGS)",
+                       '## Paragraph: Primary organ (FINDINGS) | header: "Primary organ:"')
+ALT_OPT = LEAN.replace('SECTION MEASUREMENTS | header: "Measurements" | role: other',
+                       'SECTION MEASUREMENTS | header: "Measurements" | role: other | optional: yes').replace(
+    'SECTION IMPRESSION | header: "Impression" | role: impression',
+    'SECTION IMPRESSION | header: "Impression" | role: impression | alt: "Conclusion:" | alt: "Summary:"')
+
+
+@pytest.mark.parametrize("mode", ["template", "master", "v1"])
+def test_paragraph_sub_heading_is_parsed(mode):
+    sheet = SUBHEAD + (CASE_BLOCK if mode == "master" else "")
+    r = g.parse_sheet(sheet, mode=mode)
+    assert r.errors == [], r.errors
+    p = r.structure.paragraphs[0]
+    assert (p.name, p.section, p.header) == ("Primary organ", "FINDINGS", "Primary organ:")
+    assert [x.header for x in r.structure.paragraphs[1:]] == [None, None]
+    assert g.paragraph_heading('Paragraph: Primary organ (FINDINGS) | header: "Primary organ:"') == \
+        ("Primary organ", "FINDINGS", "Primary organ:")
+    assert g.paragraph_heading("Paragraph: Primary organ (FINDINGS)") == ("Primary organ", "FINDINGS", None)
+    assert g.paragraph_heading("Voice") is None
+
+
+@pytest.mark.parametrize("attr", ['| header: Primary organ:', '| header: ""', '| heading: "Primary organ:"',
+                                  '| header: "A" | header: "B"'])
+def test_malformed_paragraph_sub_heading_is_an_error(attr):
+    sheet = LEAN.replace("## Paragraph: Primary organ (FINDINGS)", "## Paragraph: Primary organ (FINDINGS) " + attr)
+    r = g.parse_sheet(sheet)
+    assert g.MALFORMED_UNIT in [e.reason for e in r.errors] or g.MALFORMED_QUOTES in [e.reason for e in r.errors]
+    assert not r.structure.usable
+
+
+def test_alternative_and_optional_sections_are_parsed():
+    r = g.parse_sheet(ALT_OPT)
+    assert r.errors == [], r.errors
+    by = {s.name: s for s in r.structure.sections}
+    assert (by["IMPRESSION"].header, by["IMPRESSION"].alt_headers, by["IMPRESSION"].optional) == \
+        ("Impression", ["Conclusion:", "Summary:"], False)
+    assert (by["MEASUREMENTS"].alt_headers, by["MEASUREMENTS"].optional) == ([], True)
+    assert by["FINDINGS"].alt_headers == [] and not by["FINDINGS"].optional
+
+
+@pytest.mark.parametrize("line", [
+    'SECTION FINDINGS | header: none | role: findings | alt: "Findings:"',  # an alternative needs a primary header
+    'SECTION FINDINGS | header: "FINDINGS" | role: findings | optional: no',
+    'SECTION FINDINGS | header: "FINDINGS" | role: findings | optional: yes | alt: "Findings:"',  # alt before optional
+])
+def test_section_attribute_lint(line):
+    sheet = LEAN.replace('SECTION FINDINGS | header: "FINDINGS" | role: findings', line)
+    assert g.MALFORMED_UNIT in [e.reason for e in g.parse_sheet(sheet).errors]
+
+
+def test_impression_section_cannot_be_optional():
+    sheet = LEAN.replace('SECTION IMPRESSION | header: "Impression" | role: impression',
+                         'SECTION IMPRESSION | header: "Impression" | role: impression | optional: yes')
+    assert [e.reason for e in g.parse_sheet(sheet).errors] == [g.MALFORMED_UNIT]
+
+
+def test_optional_section_holds_no_stated_units():
+    # an optional section is written only from dictated content: a NORMAL, NEGATIVE or FIXED there would force it
+    opt = ALT_OPT.replace("## Paragraph: Measured values (MEASUREMENTS)\n",
+                          '## Paragraph: Measured values (MEASUREMENTS)\nNEGATIVE "No measurable abnormality."\n')
+    assert [e.reason for e in g.parse_sheet(opt).errors] == [g.OPTIONAL_SECTION_UNIT]
+    fixed = ALT_OPT.replace("## Report-wide\n", '## Report-wide\nFIXED "Values per protocol." | section: MEASUREMENTS\n')
+    assert [e.reason for e in g.parse_sheet(fixed).errors] == [g.OPTIONAL_SECTION_UNIT]
+
+
+def test_extension_fields_round_trip_and_stay_out_of_the_extractor_schema():
+    s = g.parse_sheet(SUBHEAD.replace("## Paragraph: Primary organ", "## Paragraph: Primary organ")).structure
+    s2 = g.parse_sheet(ALT_OPT).structure
+    for st in (s, s2):
+        assert tss.SheetStructure.model_validate(st.model_dump(mode="json")) .model_dump(exclude={"created_at"}) == \
+            st.model_dump(exclude={"created_at"})
+    schema = tss.StructureDraft.model_json_schema()["$defs"]
+    assert "header" not in schema["Paragraph"]["properties"]
+    assert "alt_headers" not in schema["StructSection"]["properties"]
+    assert "optional" not in schema["StructSection"]["properties"]

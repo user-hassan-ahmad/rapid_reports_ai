@@ -22,7 +22,7 @@ Modes. parse_sheet(sheet, mode=...):
 Unit lines (optional indentation and an optional "- " bullet before the keyword):
 
     SECTION <NAME> | header: none | role: <role>              (only in the "## Report Structure" block)
-    SECTION <NAME> | header: "<as written>" | role: <role>
+    SECTION <NAME> | header: "<as written>" | role: <role> [| alt: "<other header>"]… [| optional: yes]
     NORMAL [<structure>] "<text>"
     NEGATIVE "<text>"  [WHEN [<source>: <statement>]]
     FIXED "<text>"
@@ -40,6 +40,12 @@ Case units (master mode only):
     (inside paragraphs)
     NEGATIVE "<text>" TARGETS [<differential>] | origin: case   (TARGETS names a VISIBLE yes DIFFERENTIAL)
     IF_PRESENT [<finding>] "<negative>" (core|contextual) | origin: case
+
+Headings (2026-10-01 retest extensions). A paragraph with its own visible sub-heading is
+"## Paragraph: <name> (<SECTION>) | header: \"<sub-heading as printed>\"": the generator prints it on its own
+line above the paragraph. A SECTION's "| alt: \"<header>\"" lists other headers the reports use for it (the
+generator writes the primary one; alternatives only help parsing a report); "| optional: yes" marks a section
+written only when the dictation has content for it (never the impression; it holds no NORMAL, NEGATIVE or FIXED).
 
 Sections of a unit. Under "## Paragraph: <name> (<SECTION>)" a unit belongs to that paragraph and
 section. Outside a paragraph a unit may name its section with a trailing "| section: <NAME>" (outside
@@ -111,6 +117,8 @@ UNKNOWN_TARGET = "TARGETS names no DIFFERENTIAL"
 # A case negative excludes its differential by silence only when this study would show it (policy 1):
 # TARGETS naming a VISIBLE no / silent DIFFERENTIAL asks a negative the study cannot support.
 UNSUPPORTED_TARGET = "TARGETS names a DIFFERENTIAL this study cannot show (VISIBLE no/silent)"
+# An optional section is written only from dictated content: a stated unit there would force it.
+OPTIONAL_SECTION_UNIT = "NORMAL, NEGATIVE or FIXED in an optional section"
 
 
 @dataclass(frozen=True)
@@ -146,7 +154,10 @@ _SECTION_ATTR = re.compile(r"\s*\|\s*section:\s*([^\"]*?)\s*$")  # after the las
 _ORIGIN_ATTR = re.compile(r"\s*\|\s*origin:\s*([^\"|]*?)\s*$")  # after the last quote; before any section attr
 
 _SECTION = re.compile(rf"SECTION\s+(?P<name>{_NAME})\s*\|\s*header:\s*(?:none|\"(?P<header>[^\"]+)\")"
-                      r"\s*\|\s*role:\s*(?P<role>\w+)\s*")
+                      r"\s*\|\s*role:\s*(?P<role>\w+)"
+                      r"(?P<alts>(?:\s*\|\s*alt:\s*\"[^\"]+\")*)(?P<optional>\s*\|\s*optional:\s*yes)?\s*")
+_ALT = re.compile(r'alt:\s*"([^"]+)"')
+_PARAGRAPH_HEADER_ATTR = re.compile(r'\s*header:\s*"(?P<header>[^"]+)"\s*')
 _UNITS = {
     "NORMAL": re.compile(rf"NORMAL\s*\[(?P<structure>[^\]]+)\]\s*{_Q}\s*"),
     "NEGATIVE": re.compile(rf"NEGATIVE\s*{_Q}(?:\s+{_COND})?(?:\s+TARGETS\s*\[(?P<targets>[^\]]+)\])?\s*"),
@@ -206,6 +217,23 @@ _INVISIBLE = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
 _DECORATION = re.compile(r"^(?:[\s\-*+•–—>`#_]|\d+[.)])+")
 _TOKEN = re.compile(r"^([A-Za-z_]+)(.*)$", re.S)
 _PARAGRAPH_LIKE = re.compile(r"^paragraph\s*:", re.I)
+
+
+def paragraph_heading(title: str) -> Optional[Tuple[str, str, Optional[str]]]:
+    """(name, section as written, sub-heading or None) of a "Paragraph: <name> (<SECTION>) [| header: \"…\"]"
+    heading title (the text after "## "); None when the title is not a paragraph heading or its attribute is
+    malformed. The shared reader for every module that walks paragraph headings."""
+    head, bar, attr = title.partition("|")
+    p = _PARAGRAPH.fullmatch(head.strip())
+    if not p:
+        return None
+    header = None
+    if bar:
+        a = _PARAGRAPH_HEADER_ATTR.fullmatch(attr)
+        if not a:
+            return None
+        header = a.group("header")
+    return p.group("name"), (p.group("sec") or ""), header
 
 
 def _norm_name(s: str) -> str:
@@ -353,18 +381,24 @@ def parse_sheet(sheet: str, mode: Mode = "template") -> GrammarResult:
                 continue
             m = _SECTION.fullmatch(body)
             if not m:
-                err(i, MALFORMED_UNIT, "SECTION <NAME> | header: none|\"…\" | role: <role>")
+                err(i, MALFORMED_UNIT, "SECTION <NAME> | header: none|\"…\" | role: <role> [| alt: \"…\"]… [| optional: yes]")
                 continue
             if m.group("role") not in ROLES:
                 err(i, MALFORMED_UNIT, f"unknown role {m.group('role')!r}")
                 continue
+            alts, optional = _ALT.findall(m.group("alts") or ""), bool(m.group("optional"))
+            # Attribute errors still register the section, so its paragraphs do not cascade into errors.
+            if alts and not m.group("header"):
+                err(i, MALFORMED_UNIT, "| alt: needs a primary header (header: none has no alternative)")
+            if optional and m.group("role") == "impression":
+                err(i, MALFORMED_UNIT, "the impression section is never optional")
             name = _norm_name(m.group("name"))
             if name in by_name:
                 err(i, DUPLICATE_SECTION, name)
                 continue
             by_name[name] = name
             sections.append(tss.StructSection(name=name, role=m.group("role"), header=m.group("header"),
-                                              order=len(sections)))
+                                              order=len(sections), alt_headers=alts, optional=optional))
     default_section = next((s.name for s in sections if s.role == "findings"), "")
     role_of = {s.name: s.role for s in sections}
 
@@ -383,6 +417,7 @@ def parse_sheet(sheet: str, mode: Mode = "template") -> GrammarResult:
     recommendations: List[tss.Recommendation] = []
     case_targets: List[Tuple[int, int]] = []  # (sheet line, index into negatives) of case negatives
     case_block_line = 0
+    stated_lines: List[Tuple[int, str]] = []  # (sheet line, section) of NORMAL / NEGATIVE / FIXED units
     covers_tried = set()  # paragraphs with a COVERS line (a malformed one is reported as such, not as missing)
     cov = {"if_lines": 0, "if_covered": 0, "negative_lines": 0, "negative_covered": 0}
     uncovered: List[str] = []
@@ -406,13 +441,18 @@ def parse_sheet(sheet: str, mode: Mode = "template") -> GrammarResult:
         h = _HEADING.match(raw)
         if h:
             title = h.group(1).strip()
-            p = _PARAGRAPH.fullmatch(title) if raw.startswith("## ") else None
+            p = paragraph_heading(title) if raw.startswith("## ") else None
+            bare = _PARAGRAPH.fullmatch(title.partition("|")[0].strip()) if raw.startswith("## ") else None
+            if p is None and bare:  # a paragraph heading whose "| header:" attribute is malformed
+                err(i, MALFORMED_QUOTES if title.count('"') % 2 or _CURLY.search(title) else MALFORMED_UNIT,
+                    '## Paragraph: <name> (<SECTION>) | header: "<sub-heading as printed>"')
+                p = (bare.group("name"), bare.group("sec") or "", None)
             if p:
-                sec = _norm_name(p.group("sec") or "")
+                sec = _norm_name(p[1])
                 if sec not in by_name:
                     err(i, UNKNOWN_PARAGRAPH_SECTION, sec or "(none)")
                 pid = f"p{len(paragraphs)}"
-                paragraphs.append(tss.Paragraph(id=pid, section=sec, name=p.group("name")))
+                paragraphs.append(tss.Paragraph(id=pid, section=sec, name=p[0], header=p[2]))
                 paragraph_lines[pid] = i
                 ctx = _Ctx("paragraph", pid, sec)
             elif title.lower() == "report structure":
@@ -457,6 +497,8 @@ def parse_sheet(sheet: str, mode: Mode = "template") -> GrammarResult:
         cov["if_covered"] += conditional
         cov["negative_covered"] += keyword == "NEGATIVE"
         kind, data = unit
+        if kind in ("negative", "normal", "fixed"):
+            stated_lines.append((i, data["section"]))
         if kind == "rule":
             rules.append(tss.Rule(id=f"r{len(rules)}", **data))
         elif kind == "negative":
@@ -506,6 +548,10 @@ def parse_sheet(sheet: str, mode: Mode = "template") -> GrammarResult:
             err(line, UNSUPPORTED_TARGET, f"{name} (VISIBLE {visible[_norm_name(name)]})")
         else:
             negatives[idx].targets = name  # canonical: as the DIFFERENTIAL line writes it
+    optional = {s.name for s in sections if s.optional}
+    for unit_line, unit_section in stated_lines:
+        if unit_section in optional:
+            err(unit_line, OPTIONAL_SECTION_UNIT, unit_section)
     if mode != "v1":
         for para in paragraphs:
             if role_of.get(para.section) == "findings" and not para.covers and para.id not in covers_tried:

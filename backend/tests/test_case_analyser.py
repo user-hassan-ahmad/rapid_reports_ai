@@ -145,6 +145,17 @@ def test_merge_master_inserts_after_paragraph_units_and_appends_block():
     assert [x for x in lines if "origin: case" not in x][: len(TEMPLATE.splitlines())] == TEMPLATE.splitlines()
 
 
+def test_merge_master_places_units_under_a_sub_headed_paragraph():
+    sub = TEMPLATE.replace("## Paragraph: Primary organ (FINDINGS)",
+                           '## Paragraph: Primary organ (FINDINGS) | header: "Primary organ:"')
+    r = ca.parse_and_check(OUTPUT, ca.summarise_template(sub))
+    assert r.usable, r.errors
+    lines = ca.merge_master(sub, r).splitlines()
+    i = lines.index('NEGATIVE "No surrounding collection."')
+    assert lines[i + 1] == 'NEGATIVE "No dilatation of the adjacent duct." TARGETS [primary lesion] | origin: case'
+    assert [p["name"] for p in ca.summarise_template(sub)["paragraphs"]][:2] == ["Technique", "Primary organ"]
+
+
 # Case-agnostic prompt (feedback_case_agnostic_prompts): structural placeholders only, no clinical stems.
 _CLINICAL_STEMS = (
     "append", "fractur", "coronar", "haemorrh", "hemorrh", "embol", "pancrea", "aneurys", "stenos", "tumour",

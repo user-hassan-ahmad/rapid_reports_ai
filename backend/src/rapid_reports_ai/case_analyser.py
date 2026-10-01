@@ -40,7 +40,7 @@ from typing import Dict, List, Optional, Tuple
 
 from . import report_reconcile as rc
 from .report_reconcile import _is_bundled
-from .template_sheet_grammar import _content_words, parse_sheet
+from .template_sheet_grammar import _content_words, paragraph_heading, parse_sheet
 
 logger = logging.getLogger(__name__)
 
@@ -216,7 +216,6 @@ Run all phases internally. Return ONLY the two blocks of the OUTPUT FORMAT."""
 # ─────────────────────────────────────────────────────────────────────────────
 
 _H2 = re.compile(r"^##\s+(.*?)\s*$")
-_PARA = re.compile(r"^Paragraph:\s*(?P<name>.*?)\s*(?:\((?P<sec>[^()]*)\))?\s*$", re.I)
 _UNIT_LINE = re.compile(r"^\s*(?:-\s+)?[A-Z][A-Z_]+\b")
 
 
@@ -227,8 +226,8 @@ def _prose_by_block(sheet: str) -> Dict[str, List[str]]:
     for line in (sheet or "").splitlines():
         m = _H2.match(line)
         if m:
-            pm = _PARA.match(m.group(1))
-            key = ("paragraph:" + pm.group("name").strip().lower()) if pm else m.group(1).strip().lower()
+            pm = paragraph_heading(m.group(1))
+            key = ("paragraph:" + pm[0].strip().lower()) if pm else m.group(1).strip().lower()
             continue
         if line.startswith("# "):
             key = None
@@ -679,8 +678,8 @@ def merge_master(template_sheet: str, result: CaseResult) -> str:
         if line.startswith("# ") or _H2.match(line):
             flush()
             m = _H2.match(line)
-            pm = _PARA.match(m.group(1)) if m else None
-            current = _norm(pm.group("name")) if pm else None
+            pm = paragraph_heading(m.group(1)) if m else None
+            current = _norm(pm[0]) if pm else None
         out.append(line)
     flush()
     while out and not out[-1].strip():
