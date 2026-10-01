@@ -84,12 +84,9 @@ def test_atomic_normal_must_come_from_its_source_line():
     assert [n.id for n in s.normals] == ["m1"]
 
 
-def test_if_present_must_be_a_negative_and_not_a_sheet_duplicate():
-    d = good_draft()
-    d.if_present[0].negatives += [tss.IfPresentNeg(text="Appendix dilated", tag="core"),
-                                  tss.IfPresentNeg(text="No pneumoperitoneum", tag="core")]
-    s = tss.build_structure(SHEET, d, model="m")
-    assert [n.text for n in s.if_present[0].negatives] == ["No appendicolith"]
+
+def test_if_present_is_off_for_templates():
+    assert build(good_draft()).if_present == [] and "if_present" not in tss.STRUCTURE_SYS
 
 
 def test_section_not_in_structural_pattern_is_dropped():
@@ -328,14 +325,6 @@ def test_section_names_parse_the_listed_shapes(pattern, names):
     assert tss.section_names(f"## Structural Pattern\n{pattern}\n## Next\n- X\n") == names
 
 
-def test_if_present_dedupes_against_every_quoted_sheet_negative_and_caps_at_three():
-    d = good_draft()
-    d.if_present[0].negatives += [tss.IfPresentNeg(text=t, tag="core") for t in (
-        "No free intra-abdominal air or fluid", "No pneumoperitoneum!", "no  Pneumoperitoneum .",
-        "No acute intra-abdominal abnormality", "No appendicolith.", "No abscess", "No perforation",
-        "No fat stranding")]
-    assert [n.text for n in build(d).if_present[0].negatives] == ["No appendicolith", "No abscess", "No perforation"]
-
 
 def test_paragraph_refs_are_validated():
     d = good_draft()
@@ -529,7 +518,6 @@ def test_stated_normal_is_tagged_and_needs_a_normal_state_marker():
     (lambda d: d.negatives.__setitem__(0, d.negatives[0].model_copy(update={"section": "LIMITATIONS"})), False),
     (lambda d: d.rules.__setitem__(2, d.rules[2].model_copy(update={"section": "BONES"})), False),
     (lambda d: d.normals.__setitem__(0, d.normals[0].model_copy(update={"section": "LIMITATIONS"})), True),
-    (lambda d: d.if_present.__setitem__(0, d.if_present[0].model_copy(update={"section": "LIMITATIONS"})), True),
     (lambda d: d.paragraphs.__setitem__(0, d.paragraphs[0].model_copy(update={"section": "LIMITATIONS"})), True),
 ])
 def test_items_in_an_unknown_section_are_dropped_not_remapped(mutate, usable):
@@ -889,7 +877,7 @@ def test_non_gated_fields_do_not_fail_the_whole_draft():
     raw["if_present"][0]["negatives"] = [{"text": "No appendicolith"}]
     d = tss.StructureDraft.model_validate(raw)
     s = build(d)
-    assert s.usable and s.fixed_blocks == [] and s.if_present[0].negatives[0].tag == "contextual"
+    assert s.usable and s.fixed_blocks == [] and d.if_present[0].negatives[0].tag == "contextual"
 
 
 def test_citations_disagreeing_with_the_items_condition_are_dropped():
@@ -1044,3 +1032,80 @@ def test_an_atomic_normal_is_a_normal_without_example_values(pattern, text, kept
     d = good_draft()
     d.normals = [tss.Normal(id="m9", section="FINDINGS", structure="x", text=text, source_line=line)]
     assert (build(d, sheet).normals != []) is kept
+
+
+# ── owner decisions after E1: section completeness, label-prefixed normals, if_present off ──
+
+def test_a_missing_pattern_section_fails_the_gate():
+    d = good_draft()
+    d.sections = d.sections[:2]
+    s = build(d)
+    assert not s.usable and s.coverage.missing_sections == ["impression"]
+
+
+TYPO_SHEET = SHEET.replace("  - IMPRESSION\n", "  - IMPPRESSION\n")
+
+
+def test_the_sheets_misspelt_section_is_kept_as_written_and_items_follow_it():
+    d = good_draft()
+    d.negatives[0] = d.negatives[0].model_copy(update={"section": "IMPRESSION"})
+    s = build(d, TYPO_SHEET)
+    assert s.usable and [x.name for x in s.sections][2] == "IMPPRESSION"
+    assert s.negatives[0].section == "IMPPRESSION"
+
+
+@pytest.mark.parametrize("pattern,name", [
+    ("  - CLINICAL HISTORY\n  - FINDINGS (implicit header)\n  - BODY\n", "BONE"),             # short names never fuzzy
+    ("  - CLINICAL HISTORY\n  - FINDINGS (implicit header)\n  - CONCLUSION\n  - CONCLUSIONS\n", "CONCLUSIOM"),  # ambiguous
+])
+def test_fuzzy_section_names_are_narrow(pattern, name):
+    sheet = SHEET.replace("  - CLINICAL HISTORY\n  - FINDINGS (implicit header)\n  - IMPRESSION\n", pattern)
+    d = good_draft()
+    d.sections[2] = d.sections[2].model_copy(update={"name": name})
+    s = build(d, sheet)
+    assert f"section: {name}" in s.coverage.verbatim_failures and not s.usable
+
+
+def test_alternatives_satisfy_one_listed_section():
+    sheet = SHEET.replace("  - IMPRESSION\n", "  - **IMPRESSION** or **CONCLUSION**\n")
+    d = good_draft()
+    d.sections[2] = d.sections[2].model_copy(update={"name": "CONCLUSION"})
+    assert build(d, sheet).usable
+    assert tss.section_groups(sheet)[2] == ["impression or conclusion", "impression", "conclusion"]
+
+
+def test_nested_objects_returned_as_json_strings_are_parsed():
+    import json
+    raw = good_draft().model_dump(mode="json")
+    raw["terminology"] = json.dumps(raw["terminology"])
+    raw["negatives"][0]["source_lines"] = json.dumps(raw["negatives"][0]["source_lines"])
+    d = tss.StructureDraft.model_validate(raw)
+    assert d.terminology.preferred == ["unremarkable", "size significant"] and build(d).usable
+    raw["rules"][0]["condition"] = '{"not": "parsed"}'                 # text fields stay text
+    assert tss.StructureDraft.model_validate(raw).rules[0].condition == '{"not": "parsed"}'
+
+
+@pytest.mark.parametrize("line,kept", [
+    ('- **Portal vein**: "The portal vein is patent."', True),
+    ('- Vascular: "The portal vein is patent."', True),
+    ('- **Prefer**: "The portal vein is patent."', False),
+    ('- Use instead: "The portal vein is patent."', False),
+    ('- Never write: "The portal vein is patent."', False),
+    ('- When the vein is opacified write: "The portal vein is patent."', False),     # more than a label
+    ('- One two three four five six: "The portal vein is patent."', False),
+])
+def test_a_label_prefixed_normal_is_a_stated_normal(line, kept):
+    sheet = with_nfr_line(line)
+    assert (line in tss.negative_lines(sheet)) is kept
+    d = good_draft()
+    d.negatives.append(tss.Negative(id="n9", section="FINDINGS", text="The portal vein is patent.", source_lines=[line]))
+    s = build(d, sheet)
+    assert ([n.kind for n in s.negatives if n.id == "n9"] == ["stated_normal"]) is kept and s.usable
+
+
+def test_without_sections_included_an_ordered_list_is_the_section_list():
+    pattern = ("**Fixed Opening:**\n- **Part 1 (Conditional):** a checklist\n\n**Body Sections (ordered):**\n"
+               "1. **ALPHA** (`header: \"ALPHA\"`) — Always present.\n2. **Beta Part** — Always present.\n\n"
+               "**Fixed Closing:**\n- Text: \"x\"\n")
+    groups = tss.section_groups(f"## Structural Pattern\n{pattern}\n## Next\n- X\n")
+    assert [g[0] for g in groups] == ["alpha", "beta part"]

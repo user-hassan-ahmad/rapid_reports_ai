@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm.attributes import flag_modified
 
 from .database import SessionLocal
@@ -37,20 +37,44 @@ def _listify(v):
     return json.loads(v) if isinstance(v, str) else v
 
 
-class StructSection(BaseModel):
+def _takes_text(annotation) -> bool:
+    return annotation is str or str in getattr(annotation, "__args__", ()) or getattr(annotation, "__origin__", None) is Literal
+
+
+class _Model(BaseModel):
+    """Models sometimes return a nested object or list as a JSON string; every field that is not
+    text is parsed back from one (a string that is not JSON is left to fail validation)."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _unstringify(cls, data):
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        for name, f in cls.model_fields.items():
+            v = out.get(name)
+            if isinstance(v, str) and v.strip()[:1] in ("[", "{") and not _takes_text(f.annotation):
+                try:
+                    out[name] = json.loads(v)
+                except ValueError:
+                    pass
+        return out
+
+
+class StructSection(_Model):
     name: str
     role: Role
     header: Optional[str] = None
     order: int
 
 
-class Paragraph(BaseModel):
+class Paragraph(_Model):
     id: str
     section: str
     name: str
 
 
-class Rule(BaseModel):
+class Rule(_Model):
     id: str
     section: str
     paragraph: str = ""
@@ -62,7 +86,7 @@ class Rule(BaseModel):
     source_lines: List[LineRef]
 
 
-class Negative(BaseModel):
+class Negative(_Model):
     id: str
     section: str
     paragraph: str = ""
@@ -78,7 +102,7 @@ class Negative(BaseModel):
         return None if isinstance(v, str) and v.strip().lower() in {"", "null", "none", "n/a"} else v
 
 
-class Normal(BaseModel):
+class Normal(_Model):
     id: str
     section: str
     paragraph: str = ""
@@ -87,7 +111,7 @@ class Normal(BaseModel):
     source_line: LineRef
 
 
-class FixedBlock(BaseModel):
+class FixedBlock(_Model):
     id: str
     section: str = ""  # a missing section drops the block in verification, not the whole draft
     text: str
@@ -98,33 +122,34 @@ class FixedBlock(BaseModel):
         return "" if v is None else v
 
 
-class Terminology(BaseModel):
+class Terminology(_Model):
     preferred: List[str] = []
     suppressed: List[str] = []
 
 
-class IfPresentNeg(BaseModel):
+class IfPresentNeg(_Model):
     text: str
     tag: Literal["core", "contextual"] = "contextual"  # untagged: the weaker tag, not a failed draft
 
 
-class IfPresent(BaseModel):
+class IfPresent(_Model):
     finding: str
     section: str
     paragraph: str = ""
     negatives: List[IfPresentNeg]
 
 
-class Coverage(BaseModel):
+class Coverage(_Model):
     if_lines: int = 0
     if_covered: int = 0
     negative_lines: int = 0
     negative_covered: int = 0
     uncovered: List[str] = []
+    missing_sections: List[str] = []  # Structural Pattern sections with no section in the structure
     verbatim_failures: List[str] = []
 
 
-class StructureDraft(BaseModel):
+class StructureDraft(_Model):
     """What the model returns; build_structure verifies it. An empty draft fails validation, so the
     structuring call retries instead of storing nothing."""
     sections: List[StructSection] = Field(min_length=1)
@@ -307,14 +332,25 @@ _STATEMENT_TAIL = re.compile(r"^(?:[\s/,;.]|\x00|\bor\b|\band\b)*(?:$|[(\[]|[—
 
 
 def _statement_shape(line: str) -> bool:
-    """Allow-list of the shape a listed statement takes: an optional bullet (or a bare Mandatory
-    negatives label), then the quote(s), then optionally a trailing "(…)", "[…]" or "— …" note. Any other
+    """Allow-list of the shape a listed statement takes: an optional bullet (and a bare Mandatory
+    negatives label or a short "[Label]:"), then the quote(s), then optionally a trailing "(…)", "[…]" or "— …" note. Any other
     text before the first quote makes it wording guidance ("Prefer "…" for …", "Use "…" when …")."""
     body = _bullet_body(line)
     m = _QUOTE_CHARS.search(body)
-    if not m or (body[:m.start()].strip() and not _MAND_LABEL.match(body[:m.start()])):
+    prefix = body[:m.start()] if m else ""
+    if not m or (prefix.strip() and not _MAND_LABEL.match(prefix) and not _is_label(prefix)):
         return False
     return bool(_STATEMENT_TAIL.match(_QUOTED.sub("\x00", body[m.start():])))
+
+
+_GUIDE_WORD = re.compile(r"\b(?:prefer\w*|use[sd]?|write|never|instead|rather|avoid|replace[sd]?|do not)\b", re.I)
+
+
+def _is_label(prefix: str) -> bool:
+    """A short label before the quote ("[Label]: ", bold or not): at most five words, ending in a
+    colon, with no wording-guidance word."""
+    m = re.fullmatch(r"\s*([^:\"“`]+?)\s*:\s*", prefix)
+    return bool(m) and len(m.group(1).split()) <= 5 and not _GUIDE_WORD.search(m.group(1))
 
 
 _LABEL = re.compile(r"^\s*(?:[-*]\s+)?\*\*")
@@ -390,17 +426,32 @@ def _item_names(item: str) -> List[str]:
     return [k for k in (_name_key(n) for n in names) if k]
 
 
-def section_names(sheet: str) -> set:
-    """Output section names listed under the Structural Pattern's 'Sections included' (list items or
-    an inline comma list). Without that line, the pattern's top-level item labels."""
+_ALT = re.compile(r"\s*/\s*|\s+or\s+")
+
+
+def _group(names: List[str]) -> List[str]:
+    """One listed section's names: as written, its bold parts, and each listed alternative."""
+    out = []
+    for n in names:
+        for k in [n, *_ALT.split(n)]:
+            k = k.strip()
+            if k and k not in out:
+                out.append(k)
+    return out
+
+
+def section_groups(sheet: str) -> List[List[str]]:
+    """The output sections listed under the Structural Pattern's 'Sections included' (list items or
+    an inline comma list), one group of acceptable names per listed section (its alternatives,
+    "[A] or [B]", "[A]/[B]"). Without that line, the pattern's top-level item labels."""
     lines = _structural_pattern(sheet).splitlines()
-    names: set = set()
+    groups: List[List[str]] = []
     for i, ln in enumerate(lines):
         if "sections included" not in ln.lower():
             continue
         inline = ln.replace("*", "").split(":", 1)
         if len(inline) == 2 and inline[1].strip():
-            names |= {k for part in re.sub(r"\([^)]*\)", "", inline[1]).split(",") if (k := _name_key(part))}
+            groups += [_group([k]) for part in re.sub(r"\([^)]*\)", "", inline[1]).split(",") if (k := _name_key(part))]
         head, level = _indent(ln), None
         for nxt in lines[i + 1:]:
             if not nxt.strip():
@@ -409,15 +460,38 @@ def section_names(sheet: str) -> set:
             if ind <= head:
                 break
             level = ind if level is None else level
-            if ind == level and _BULLET.match(nxt):
-                names.update(_item_names(nxt))
-        return names
+            if ind == level and _BULLET.match(nxt) and (names := _item_names(nxt)) and _group(names) not in groups:
+                groups.append(_group(names))
+        return groups
     items = [ln for ln in lines if _BULLET.match(ln)]
     top = min((_indent(ln) for ln in items), default=0)
-    for ln in items:
-        if _indent(ln) == top:
-            names.update(_item_names(ln))
-    return names
+    items = [ln for ln in items if _indent(ln) == top]
+    numbered = [ln for ln in items if re.match(r"\s*\d+\.", ln)]
+    out: List[List[str]] = []
+    for ln in numbered or items:   # an ordered list, when there is one, is the section list
+        if (names := _item_names(ln)) and (g := _group(names)) not in out:
+            out.append(g)
+    return out
+
+
+def section_names(sheet: str) -> set:
+    return {n for g in section_groups(sheet) for n in g}
+
+
+def _edit_distance(a: str, b: str) -> int:
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+
+def _sheet_spelling(sheet: str, key: str) -> str:
+    """A listed name as the Structural Pattern writes it (case and spelling kept)."""
+    m = re.search(re.escape(key).replace("\\ ", r"\s+"), _structural_pattern(sheet), re.I)
+    return m.group(0) if m else key
 
 
 def _heading_key(s: str) -> str:
@@ -563,29 +637,39 @@ def build_structure(sheet: str, draft: StructureDraft, model: str) -> SheetStruc
         failures.append(label)
         return False
 
-    allowed_sections = section_names(sheet)
-    sections, kept = [], set()
-    canon_sections = {re.sub(r"\s*/\s*|\s+or\s+", " or ", a) for a in allowed_sections}
+    groups = section_groups(sheet)
+    allowed_sections = {n for g in groups for n in g}
+    canon_sections = {_ALT.sub(" or ", a) for a in allowed_sections}
 
-    def listed(k: str) -> bool:
-        """A listed name, or alternatives the pattern lists for one section ("[A]/[B]", "[A] or [B]")."""
-        alts = [a.strip() for a in re.split(r"\s*/\s*|\s+or\s+", k)]
-        return (k in allowed_sections or " or ".join(alts) in canon_sections
-                or (len(alts) > 1 and all(a in allowed_sections for a in alts)))
+    def listed(k: str) -> str:
+        """The listed name a section name stands for: itself, its listed alternatives ("[A]/[B]",
+        "[A] or [B]"), or, for a name of six or more letters, the one listed name within edit
+        distance 2 (a sheet's own misspelling is kept as written). "" when none."""
+        alts = [a.strip() for a in _ALT.split(k)]
+        if k in allowed_sections or " or ".join(alts) in canon_sections \
+                or (len(alts) > 1 and all(a in allowed_sections for a in alts)):
+            return k
+        near = {a for a in allowed_sections if len(k) >= 6 and _edit_distance(k, a) <= 2}
+        return near.pop() if len(near) == 1 else ""
 
+    sections, kept, alias = [], set(), {}
     for s in draft.sections:
         k = _name_key(s.name)
-        if not (k and listed(k)):
+        m = listed(k) if k else ""
+        if not m:
             reject(f"section: {s.name}")
-        elif k in kept:
+        elif m in kept:
             reject(f"duplicate section: {s.name}")
         else:
-            kept.add(k)
-            sections.append(s)
+            kept.add(m)
+            alias[k] = m
+            sections.append(s if m == k else s.model_copy(update={"name": _sheet_spelling(sheet, m)}))
+    missing = [g[0] for g in groups
+               if not any(n in kept or any(set(_ALT.split(n)) <= set(_ALT.split(x)) for x in kept) for n in g)]
 
     def in_section(label: str, item) -> bool:
         """Every item must belong to a kept output section; no remapping."""
-        return _name_key(item.section) in kept or reject(f"{label}: unknown section {item.section}")
+        return alias.get(_name_key(item.section), "") in kept or reject(f"{label}: unknown section {item.section}")
 
     def condition_matches(n) -> bool:
         noted = any(_cond_noted(ln) for ln in n.source_lines)
@@ -670,18 +754,7 @@ def build_structure(sheet: str, draft: StructureDraft, model: str) -> SheetStruc
     term = Terminology(preferred=terms("preferred", draft.terminology.preferred),
                        suppressed=terms("suppressed", draft.terminology.suppressed))
 
-    sheet_negs = {_key(s) for q in _QUOTED.finditer(sheet) for s in _sentences(next(g for g in q.groups() if g))}
-    sheet_negs |= {_key(n.text) for n in negatives}
-    if_present = []
-    for ip in draft.if_present:
-        keep, seen = [], set()
-        for x in ip.negatives:
-            k = _key(x.text)
-            if is_negative(x.text) and k and k not in sheet_negs and k not in seen:
-                keep.append(x)
-                seen.add(k)
-        if _norm(ip.finding) and keep and in_section(f"if_present {ip.finding}", ip):
-            if_present.append(para(ip.model_copy(update={"negatives": keep[:3]})))
+    if_present: list = []  # off for templates in this release: finding negatives come from the per-case fallback
 
     ifs = conditional_lines(sheet)
     rule_src = {_norm(sl) for r in rules for sl in r.source_lines}
@@ -690,12 +763,18 @@ def build_structure(sheet: str, draft: StructureDraft, model: str) -> SheetStruc
     unc_neg = [ln for ln in neg_lines if _norm(ln) not in neg_src]
     cov = Coverage(if_lines=len(ifs), if_covered=len(ifs) - len(unc_if), negative_lines=len(neg_lines),
                    negative_covered=len(neg_lines) - len(unc_neg), uncovered=[ln.strip() for ln in unc_if + unc_neg],
-                   verbatim_failures=failures)
+                   missing_sections=missing, verbatim_failures=failures)
+    named = {_name_key(x.name): x.name for x in sections}
+    stored = {k: named.get(m, named.get(k, "")) for k, m in alias.items()}
+
+    def sec(items):   # items name their section as it is stored (the sheet's spelling)
+        return [x.model_copy(update={"section": stored.get(_name_key(x.section), x.section)}) for x in items]
+    rules, negatives, normals, fixed, paragraphs = map(sec, (rules, negatives, normals, fixed, paragraphs))
     return SheetStructure(
         sections=sections, paragraphs=paragraphs, rules=rules, negatives=negatives, normals=normals,
         fixed_blocks=fixed, terminology=term, if_present=if_present, sheet_hash=sheet_hash(sheet), model=model,
         created_at=datetime.now(timezone.utc).isoformat(), coverage=cov,
-        usable=bool(sections) and not unc_if and not unc_neg)
+        usable=bool(sections) and not missing and not unc_if and not unc_neg)
 
 
 def _raw(config: dict) -> dict:
@@ -754,7 +833,7 @@ def structure_model() -> str:
     return os.environ.get("RR_STRUCTURE_MODEL", "gpt-oss-120b")
 
 
-STRUCTURE_SYS = """You convert a radiology report skill sheet into typed items. The sheet is the reporter's own style guide; you do not change it, judge it or add to it, except for the if_present list. Return JSON only.
+STRUCTURE_SYS = """You convert a radiology report skill sheet into typed items. The sheet is the reporter's own style guide; you do not change it, judge it or add to it. Return JSON only.
 
 The sheet is given with every line numbered: "L12| <line>". The "L12| " prefix is not part of the line.
 
@@ -780,9 +859,7 @@ normals — only lines labelled Normal pattern: split each into one item per str
 
 fixed_blocks — each fixed block's text, copied exactly (without the line prefixes). Empty when the sheet says none were identified.
 
-terminology — preferred and suppressed terms, exactly as written, one term each.
-
-if_present — the only list you write rather than copy. For the findings this scan commonly reports, give the finding (a short general name) and up to three negatives a consultant states once that finding is reported: the absence of each extension, spread or complication this technique shows and the next management step depends on. One finding per negative, starting "No", written in this sheet's own negative style. tag core when the next management step depends on it, contextual otherwise. Never repeat a negative the sheet already lists. Assign each to the section and paragraph where the finding is described."""
+terminology — preferred and suppressed terms, exactly as written, one term each."""
 
 
 async def draft_sheet(sheet: str, model: Optional[str] = None, extra: str = "") -> StructureDraft:
