@@ -1,0 +1,20 @@
+[
+  {
+    "id": "ct_ap_acute-d1",
+    "scan_type": "CT abdomen and pelvis (acute)",
+    "clinical_history": "58M. Sudden severe epigastric pain 6 hours ago, regular ibuprofen for back pain, board-like abdomen. ?Perforation.",
+    "findings": "large volume free intraperitoneal gas, falciform ligament outlined. gas and fluid around D1, 5 mm anterior wall defect first part of duodenum - perforated DU. moderate free fluid upper abdo and pelvis, no organised collection. rest of small bowel and colon normal calibre. appendix fine. liver gb biliary fine. pancreas spleen adrenals fine. kidneys bladder fine. no nodes, aorta normal. pelvis fine. bases clear, bones fine."
+  },
+  {
+    "id": "ct_ap_acute-d2",
+    "scan_type": "CT abdomen and pelvis (acute)",
+    "clinical_history": "19F. 24 hours right iliac fossa pain, WCC 12.1, negative pregnancy test. ?Appendicitis.",
+    "findings": "appendix normal calibre, no stranding. bowel normal. no free gas, no free fluid. solid organs, kidneys, bladder fine. no nodes. pelvic organs fine. bases clear, bones fine. nothing acute."
+  },
+  {
+    "id": "ct_ap_acute-d3",
+    "scan_type": "CT abdomen and pelvis (acute)",
+    "clinical_history": "42M. 5 days right iliac fossa pain, swinging pyrexia, tender RIF mass. ?Appendix mass.",
+    "findings": "thick-walled appendix 13 mm, tip poorly defined, appendicolith. locules of extraluminal gas at the tip and 41 mm rim-enhancing RIF collection - perforated appendicitis with abscess. reactive thickening adjacent terminal ileum, small bowel not dilated. no free intraperitoneal gas. small volume pelvic free fluid. reactive RIF nodes up to 11 mm. liver gb pancreas spleen adrenals kidneys bladder fine. aorta normal. pelvis fine. bases clear, bones fine."
+  }
+]

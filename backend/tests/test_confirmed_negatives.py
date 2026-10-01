@@ -147,6 +147,7 @@ async def test_finding_negatives_never_reach_the_impression_plan(monkeypatch):
 
 
 from rapid_reports_ai import quick_report_generator as qrg
+from rapid_reports_ai import report_reconcile
 
 
 @pytest.mark.asyncio
@@ -155,7 +156,7 @@ async def test_options_carry_a_section_and_finding_negatives_skip_the_writer(mon
     async def fake_run(**kw):
         calls.append(kw["user_prompt"])
         class R:
-            output = qrg._OptionSentences(sentences=["MRI brain is recommended."])
+            output = report_reconcile._OptionSentences(sentences=["MRI brain is recommended."])
         return R()
     monkeypatch.setattr(qrg, "_run_agent_with_model", fake_run)
     opts = [{"kind": "recommendation", "text": "IMAGING: MRI brain", "reason": "either way"},

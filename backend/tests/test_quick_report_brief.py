@@ -5,6 +5,7 @@ import pytest
 
 from rapid_reports_ai import quick_report_brief as qb
 from rapid_reports_ai import quick_report_generator as qrg
+from rapid_reports_ai import report_reconcile
 
 SHEET = '''# Skill Sheet: CT head non-contrast — query haemorrhage
 
@@ -218,7 +219,7 @@ async def test_option_sentences_pair_with_their_items_and_fail_to_empty(monkeypa
 
     async def fake_run(**kw):
         class R:
-            output = qrg._OptionSentences(sentences='["MRI brain is recommended.", "Small right pleural effusion."]')
+            output = report_reconcile._OptionSentences(sentences='["MRI brain is recommended.", "Small right pleural effusion."]')
         return R()
     monkeypatch.setattr(qrg, "_run_agent_with_model", fake_run)
     out = await qrg._write_options(opts, "findings", "CT")
@@ -230,6 +231,42 @@ async def test_option_sentences_pair_with_their_items_and_fail_to_empty(monkeypa
     monkeypatch.setattr(qrg, "_run_agent_with_model", boom)
     assert await qrg._write_options(opts, "findings", "CT") == []
     assert await qrg._write_options([], "findings", "CT") == []
+
+
+# ── option de-duplication (shared dedupe_options) ───────────────────────────
+
+def test_dedupe_options_uses_the_quick_part_by_part_comparison():
+    """Templates de-duplicate their routed options with the same comparison quick applies inline (L-49):
+    an option is a duplicate only when every part is already said (stated, dictated or kept before it)."""
+    from rapid_reports_ai import report_reconcile as rc
+    opts = [{"kind": "finding_negative", "text": "No periaortic haematoma or aortic injury."},   # one part new
+            {"kind": "finding_negative", "text": "No periaortic haematoma or free gas."},         # both parts said
+            {"kind": "finding_negative", "text": "No free intraperitoneal gas"},                 # dictated
+            {"kind": "finding_negative", "text": "No portal venous gas is identified."},
+            {"kind": "finding_negative", "text": "No portal venous gas."},                      # an earlier option
+            {"kind": "impression", "text": "No free intraperitoneal gas"}]
+    kept, dropped = rc.dedupe_options(
+        opts, ["No periaortic haematoma is identified."],
+        "large collection - perforated. no free intraperitoneal gas. no nodes, aorta normal")
+    assert dropped == ["No periaortic haematoma or free gas.", "No free intraperitoneal gas", "No portal venous gas."]
+    assert [o["text"] for o in kept] == ["No periaortic haematoma or aortic injury.",
+                                         "No portal venous gas is identified.", "No free intraperitoneal gas"]
+
+
+async def test_option_writer_guard_drops_a_recommendation_sentence_that_names_another_thing():
+    from types import SimpleNamespace
+    from rapid_reports_ai import report_reconcile as rc
+    opts = [{"kind": "recommendation", "text": "REFERRAL: Interventional radiology, urgent"},
+            {"kind": "recommendation", "text": "IMAGING: Dedicated MRI of the region"},
+            {"kind": "impression", "text": "Small cyst"}]
+
+    async def runner(**kw):
+        return SimpleNamespace(output=rc._OptionSentences(sentences=[
+            "1. Perforated appendicitis with a 41 mm abscess.", "Dedicated MRI is recommended.", "Small simple cyst."]))
+    guarded = await rc.write_options(opts, "f", "CT", model="m", runner=runner, require_service=True)
+    assert [o["source"] for o in guarded] == ["IMAGING: Dedicated MRI of the region", "Small cyst"]
+    plain = await rc.write_options(opts, "f", "CT", model="m", runner=runner)  # quick: unchanged by default
+    assert len(plain) == 3
 
 
 def _neg(i, action="keep", f=""):

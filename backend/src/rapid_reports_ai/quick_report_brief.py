@@ -21,30 +21,45 @@ Who decides what (docs/superpowers/research/2026-09-29-sheet-reconciliation-bake
 
 Removed outright (lean): Conditional Suppression Rules (generic; replaced by per-item labels),
 Out of scope, Modality non-assessables, In-scope companions, Out-of-scope suppressed.
+
+The Jev/Qwen calls and routing now live in report_reconcile (shared with the templated pathway).
 """
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import os
 import re
 import time
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import List, Optional
 
-import httpx
-from pydantic import BaseModel, field_validator
-
-from .enhancement_utils import _run_agent_with_model
+from .report_reconcile import (  # noqa: F401 — re-exported; tests patch these names on this module
+    JEV_MODEL, JEV_TIMEOUT_S, JEV_URL, MAX_FINDING_OPTIONS, MAX_OPTIONS, PLAN_SYS, PLAN_TIMEOUT_S,
+    PRESENT_HIGH, PRESENT_LOW, PRESENT_FALSE, PRESENT_TRUE, HEDGE, Q_AFFECTED, Q_REC_MET, Q_STYLE_MATCH, QWEN,
+    QWEN_SYS, QWEN_TIMEOUT_S, FALLBACK_SYS, FALLBACK_TIMEOUT_S, _BAR_KINDS, _MEASUREMENT, Brief,
+    FallbackItem, FallbackNegatives, FindingNegative, ImpressionPlan, IncompleteNegativeDecisions,
+    NegativeDecision, QwenDecisions, RecDecision, Split, _fallback, _is_bundled, _jev, _plan, _quoted, _qwen,
+    _sentences, _split_bundled, _unstring, _words, dictated_negatives, duplicates_negative, finding_presence,
+    q_finding, q_present, route_finding, split_findings,
+)
+from . import report_reconcile as _rc
 
 logger = logging.getLogger(__name__)
 
-JEV_URL = "https://openrouter.ai/api/v1/systemone"
-JEV_MODEL = "typesafe/jev-1.13"
-QWEN = "qwen-3.8-27b"
-JEV_TIMEOUT_S = 6.0
-QWEN_TIMEOUT_S = 10.0
+
+_VISIBILITY_TAG = re.compile(r"\s*\*\([^)]*\)\*")
+
+
+def present_question(line: str) -> dict:
+    """A quick differential line is '<name> — <discriminator> *(visible …)*'."""
+    name, _, disc = _VISIBILITY_TAG.sub("", line).partition(" — ")
+    return q_present(name.strip(), disc.strip())
+
+
+async def _qwen_complete(state: str, negs: List[str], normals: List[str], measurements: List[str]) -> QwenDecisions:
+    """report_reconcile._qwen_complete through this module's _qwen and logger (tests patch both here)."""
+    return await _rc._qwen_complete(state, negs, normals, measurements, ask=_qwen, log=logger)
+
 
 DROP_TOP_BULLETS = {"Out of scope", "Modality non-assessables", "In-scope companions", "Out-of-scope suppressed",
                     "If present"}
@@ -110,14 +125,6 @@ def _bullet(section: Optional[Section], label: str) -> Optional[Bullet]:
 
 # ── items ────────────────────────────────────────────────────────────────────
 
-def _quoted(text: str) -> List[str]:
-    return re.findall(r'"([^"]+)"', text)
-
-
-def _is_bundled(neg: str) -> bool:
-    return bool(re.search(r",|\bor\b", re.split(r"\s+to suggest\s", neg)[0]))
-
-
 _DIFF = re.compile(r"^\s+- (?!\*\*)(.+)$")
 
 
@@ -153,41 +160,10 @@ def _recommendations(section: Optional[Section]) -> List[str]:
     return out
 
 
-# Policy 1 for dictated findings: a finding Jev finds reported brings the negatives the analyser
-# listed for it. Cut-offs on Jev's score; PRESENT_HIGH sits in the measured gap between clear
-# (0.86-0.99) and hedged (<=0.72) reports (ledger L-45).
-PRESENT_LOW = 0.5
-PRESENT_HIGH = 0.8
-MAX_FINDING_OPTIONS = 4
 _CONFIRMED = re.compile(r'^\s+-\s+(.+?)\s*(?:→|->)\s*"([^"]+)"\s*(?:\((core|contextual)\))?')
 # The analyser also nests: the key on its own line, its negatives as sub-bullets.
 _CONFIRMED_BRANCH = re.compile(r'^\s+-\s+([^"]+?)\s*(?:→|->)\s*$')
 _CONFIRMED_NEG = re.compile(r'^\s+-\s+"([^"]+)"\s*(?:\((core|contextual)\))?')
-
-
-HEDGE = "(?, possible, query, cannot exclude, versus, no definite, equivocal)"
-
-
-# If-present finding presence (Jev wording v2, group B, L-49): a graded score read as level / 3, so
-# absent 0, unmentioned 0.33, possible 0.67, present 1.0 against the route_finding cut-offs.
-def q_finding(key: str) -> dict:
-    return {"type": "score",
-            "instructions": "How definitely do the dictated findings report this imaging finding as present? Finding: " + key,
-            "criteria": ["Stated as absent or normal",
-                         "Not mentioned, or only a different finding is reported",
-                         "Raised only as a possibility " + HEDGE,
-                         "Reported as present, in any wording or size"]}
-
-
-def finding_presence(a: dict) -> float:
-    return float(a["score"]) / 3
-
-
-@dataclass
-class FindingNegative:
-    key: str
-    text: str
-    tag: str   # "core" | "contextual"
 
 
 def _tag(line: str) -> str:
@@ -215,322 +191,7 @@ def distinct_keys(cands: List[FindingNegative]) -> List[str]:
     return list(dict.fromkeys(c.key for c in cands))
 
 
-def route_finding(label: str, present: float, tag: str) -> str:
-    """Rule C: stated only when the finding is clearly reported and the negative is core."""
-    if present < PRESENT_LOW or label == "contradicted":
-        return "dropped"
-    if label == "expected":
-        return "do_not_assert"
-    if present >= PRESENT_HIGH and tag == "core":
-        return "stated"
-    return "offered"
-
-
-# Offered negatives never repeat a negative the brief states or the dictation already makes.
-# Comparison only (nothing is rewritten): lower-cased content words of each " or "/comma part,
-# negation and filler removed. Two parts match when their words are equal, or when one holds
-# all of the other's and the smaller has at least two words ("no free gas" covers "No free
-# intraperitoneal gas"; a one-word "no change" never swallows "No acute ischaemic change").
-_NEG_FILLER = {"no", "not", "without", "nor", "any", "is", "are", "was", "were", "be", "there", "the", "a", "an",
-               "of", "seen", "identified", "evident", "demonstrated", "present", "noted", "visible", "detected",
-               "evidence", "to", "suggest", "and"}
-_NEG_START = re.compile(r"(?i)\b(?:no|not|without|nor)\b")
-
-
-def _claim_parts(text: str) -> List[frozenset]:
-    parts = re.split(r",|;|\s+or\s+|\s+and\s+", text.lower())
-    out = []
-    for p in parts:
-        words = frozenset(w for w in re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", p) if w not in _NEG_FILLER)
-        if words:
-            out.append(words)
-    return out
-
-
-def _part_matches(a: frozenset, b: frozenset) -> bool:
-    small, big = (a, b) if len(a) <= len(b) else (b, a)
-    return a == b or (len(small) >= 2 and small <= big)
-
-
-def dictated_negatives(items: List[str]) -> List[str]:
-    """Negated clauses in the dictation: "no nodes, aorta normal" -> "no nodes"."""
-    return [c.strip() for t in items for c in re.split(r",|;", t) if _NEG_START.search(c)]
-
-
-def duplicates_negative(option: str, negatives: List[str]) -> bool:
-    """True when every part of the offered negative is already said by one of the negatives."""
-    have = [p for n in negatives for p in _claim_parts(n)]
-    parts = _claim_parts(option)
-    return bool(parts) and all(any(_part_matches(p, h) for h in have) for p in parts)
-
-
-_MEASUREMENT =re.compile(r"\d+(?:[.,]\d+)?\s*(?:%|°|(?:mm|cm|ml|mL|cc|HU|mmHg|m/s|degrees?)(?![A-Za-z]))")
-
-
-# ── reconcile ────────────────────────────────────────────────────────────────
-
-Q_AFFECTED = ("Is this statement from a report template affected by the dictated findings? Affected means a dictated "
-              "finding contradicts it, or acts on the structure it describes (displaces, compresses, obstructs, drains "
-              "into, extends to, involves it, or is a finding of the same kind in that structure), so it cannot be "
-              "written as it stands. Statement: ")
-# Diagnosis / branch presence (Jev wording v2, group B R3; R2 when the line has no discriminator, L-49).
-# The question names the diagnosis; the sheet's discriminator is an example sign only, so a case
-# that names the diagnosis without that sign still counts, and a shared sign alone does not.
-PRESENT_TRUE = ("The dictation names this diagnosis (or a synonym or abbreviation), or describes findings that point to it, "
-                "including when it is raised as a possibility " + HEDGE + ".")
-PRESENT_FALSE = ("The diagnosis is not mentioned, is excluded, or the dictated findings are explained as a different "
-                 "diagnosis, even one in the same organ or sharing a sign.")
-
-
-def q_present(name: str, discriminator: str = "") -> dict:
-    instr = "The dictated findings name or describe this diagnosis as present or possible in this case: " + name
-    if discriminator:
-        instr += ". A typical sign (an example only; it need not be dictated): " + discriminator
-    return {"type": "noul", "instructions": instr, "criteria": {"true": PRESENT_TRUE, "false": PRESENT_FALSE}}
-
-
-_VISIBILITY_TAG = re.compile(r"\s*\*\([^)]*\)\*")
-
-
-def present_question(line: str) -> dict:
-    """A quick differential line is '<name> — <discriminator> *(visible …)*'."""
-    name, _, disc = _VISIBILITY_TAG.sub("", line).partition(" — ")
-    return q_present(name.strip(), disc.strip())
-# Recommendation condition, asked with met polarity; unmet = 1 - score (Jev wording v2, group D R2, L-49).
-# Jev keeps to whether the finding is there; whether it warrants the test is the plan's (Qwen).
-Q_REC_MET = "The dictated findings show the finding or diagnosis this recommendation is for. Recommendation: "
-Q_STYLE_MATCH = "This example report sentence describes the same kind of finding as one that is dictated in this case. Example: "
-
-
-class NegativeDecision(BaseModel):
-    index: int
-    action: Literal["keep", "contradicted", "expected"]
-    dictated_finding: str = ""
-
-
-def _unstring(v):
-    """Qwen sometimes returns a nested list as a JSON string inside the tool call."""
-    return json.loads(v) if isinstance(v, str) else v
-
-
-class QwenDecisions(BaseModel):
-    negatives: List[NegativeDecision]
-    affected_normals: List[int]
-    applicable_measurements: List[int]
-    @field_validator("negatives", "affected_normals", "applicable_measurements", mode="before")
-    @classmethod
-    def _parse_stringified(cls, v):
-        return _unstring(v)
-
-
-class Split(BaseModel):
-    negatives: List[List[str]]
-    @field_validator("negatives", mode="before")
-    @classmethod
-    def _parse_stringified(cls, v):
-        return _unstring(v)
-
-
-class RecDecision(BaseModel):
-    index: int
-    decision: Literal["include", "exclude", "optional"]
-    exclude_reason: Optional[Literal["condition_unmet", "routine_workup", "not_radiology", "duplicate"]] = None
-    reason: str = ""
-
-
-class ImpressionPlan(BaseModel):
-    recommendations: List[RecDecision]
-    impression: List[int]
-    optional_impression: List[int] = []
-    findings_only: List[int] = []
-    @field_validator("recommendations", "impression", "optional_impression", "findings_only", mode="before")
-    @classmethod
-    def _parse_stringified(cls, v):
-        return _unstring(v)
-
-
-# Clinical judgement about what the impression carries is Qwen's (reasoning low); Jev keeps to
-# whether a recommendation's condition is met; code routes include / exclude / optional.
-PLAN_SYS = """You plan the impression of a radiology report before it is written. You see the scan type, the clinical question, the dictated findings (numbered) and candidate recommendations (numbered). Return JSON only.
-
-recommendations — decide every candidate by its kind; a candidate whose condition the dictated findings do not meet is always exclude.
-- REFERRAL and MDT: routing a finding to the team that must act on it, at the urgency the findings warrant, is the radiologist's job even when the diagnosis is already made. include when the condition is met; exclude only when an included candidate already covers it.
-- IMAGING and TISSUE: include only when it answers a question this study raises but cannot answer itself, and the answer would change management. exclude routine workup of a diagnosis this study has already made — looking for its cause, source or spread when the receiving team manages it the same way regardless.
-- CORRELATION: include only retrieving prior imaging to compare against; exclude laboratory tests, clinical monitoring, treatment decisions and bare clinical correlation.
-Use optional only when a reasonable consultant could go either way on this case. For every exclude, set exclude_reason: condition_unmet (the findings do not meet its condition), routine_workup (routine workup of a diagnosis this study has already made), not_radiology (laboratory tests, monitoring, treatment, bare correlation) or duplicate. Give a one-line reason.
-
-impression — the numbers of the findings the impression must carry: the finding(s) that answer the clinical question, findings that change management or urgency, and, only when no dictated positive finding answers the clinical question, the one negative that does. Never carry more than one negative.
-optional_impression — findings with a management consequence that a reasonable consultant could either carry or leave in FINDINGS. Never use it for normal structures, devices or negatives.
-findings_only — findings that stay in FINDINGS: incidental or background findings needing no action, devices and procedure notes, normal structures the question did not ask about.
-A finding may be in none of the lists when either placement is acceptable. Never place a number in two lists."""
-
-PLAN_TIMEOUT_S = 10.0
-MAX_OPTIONS = 3
-_BAR_KINDS = ("IMAGING:", "TISSUE:")
-
-
-QWEN_SYS = (
-    "You check a radiology skill sheet against the radiologist's dictated findings for one case. Silence in the "
-    "dictation never makes a finding present.\n"
-    "NEGATIVES: for each numbered negative return 'contradicted' if the dictation reports it as present or reports a "
-    "finding of the same kind in the same place; 'expected' if a dictated finding would normally and predictably "
-    "cause what it denies (not merely make it possible); otherwise 'keep'. For contradicted and expected, quote the "
-    "dictated finding responsible.\n"
-    "NORMAL LINES: list the numbers of normal-study statements that a dictated finding contradicts or acts on.\n"
-    "MEASUREMENTS: list the numbers of measurement conventions whose finding is present in the dictation.")
-
-
-def _words(s: str) -> set:
-    return set(re.findall(r"[\w*'-]+", s.lower()))
-
-
-async def _split_bundled(negs: List[str]) -> List[List[str]]:
-    """Split bundled negatives into single claims; keep the original where the split adds words."""
-    bundled = [i for i, n in enumerate(negs) if _is_bundled(n)]
-    if not bundled:
-        return [[n] for n in negs]
-    r = await asyncio.wait_for(_run_agent_with_model(
-        model_name=QWEN, output_type=Split,
-        system_prompt=("Rewrite each radiology negative statement as a list of single-claim sentences, one claim each, "
-                       "keeping the wording and any shared qualifier attached to every claim it applies to. Return one "
-                       "list per input statement, in order."),
-        user_prompt="\n".join(f"{k + 1}. {negs[i]}" for k, i in enumerate(bundled)), api_key="",
-        model_settings={"temperature": 0, "max_tokens": 3000, "reasoning_effort": "none"}), QWEN_TIMEOUT_S)
-    out = [[n] for n in negs]
-    for i, parts in zip(bundled, r.output.negatives):
-        if parts and all(_words(p) <= _words(negs[i]) for p in parts):
-            out[i] = [p.strip().rstrip(".") for p in parts]
-    return out
-
-
-async def _jev(state: str, questions: dict) -> dict:
-    key = os.environ.get("OPENROUTER_API_KEY", "")
-    async with httpx.AsyncClient() as client:
-        r = await client.post(JEV_URL, headers={"Authorization": f"Bearer {key}"},
-                              json={"model": JEV_MODEL, "state": state, "questions": questions}, timeout=JEV_TIMEOUT_S)
-    r.raise_for_status()
-    return r.json().get("answers") or r.json()
-
-
-async def _qwen(state: str, negs: List[str], normals: List[str], measurements: List[str]) -> QwenDecisions:
-    def block(title, items):
-        return f"{title}:\n" + ("\n".join(f"{k}. {t}" for k, t in enumerate(items)) or "(none)")
-    r = await asyncio.wait_for(_run_agent_with_model(
-        model_name=QWEN, output_type=QwenDecisions, system_prompt=QWEN_SYS,
-        user_prompt=f"{state}\n\n{block('NEGATIVES', negs)}\n\n{block('NORMAL LINES', normals)}\n\n{block('MEASUREMENTS', measurements)}",
-        api_key="", model_settings={"temperature": 0, "max_tokens": 4000, "reasoning_effort": "none"}), QWEN_TIMEOUT_S)
-    return r.output
-
-
-class IncompleteNegativeDecisions(RuntimeError):
-    """The classifier did not answer every negative exactly once."""
-
-
-async def _qwen_complete(state: str, negs: List[str], normals: List[str], measurements: List[str]) -> QwenDecisions:
-    """A negative without a decision would default to KEEP, so a contradicted negative could be
-    stated. The answer must cover indices 0..n-1 exactly once (no missing, extra, duplicate or
-    off-by-one); one retry, then raise so the report is written from the raw sheet."""
-    expected = list(range(len(negs)))
-    for attempt in (1, 2):
-        qw = await _qwen(state, negs, normals, measurements)
-        got = sorted(d.index for d in qw.negatives)
-        if got == expected:
-            return qw
-        logger.warning("negative classifier answer incomplete (attempt %d/2): sent %d negatives, got indices %s",
-                       attempt, len(negs), got)
-    raise IncompleteNegativeDecisions(f"sent {len(negs)} negatives, got indices {got}")
-
-
-class FallbackItem(BaseModel):
-    index: int
-    covered: bool
-    negatives: List[str] = []
-
-
-class FallbackNegatives(BaseModel):
-    items: List[FallbackItem]
-    @field_validator("items", mode="before")
-    @classmethod
-    def _parse_stringified(cls, v):
-        return _unstring(v)
-
-
-# A dictated finding the sheet did not anticipate has no If-present key. Qwen judges coverage
-# (Jev scores keys, not dictated items) and writes negatives for the uncovered; written at
-# reasoning off, these are only ever offered, never stated.
-FALLBACK_SYS = (
-    "You check whether each dictated radiology finding is covered by a prepared list of finding types, and write "
-    "pertinent negatives only for findings that are not. For each numbered dictated finding return covered=true "
-    "when one of the FINDING TYPES describes the same kind of finding in the same place; otherwise covered=false "
-    "and up to three negatives a consultant states once that finding is reported: the absence of each extension, "
-    "spread or complication this technique shows and the next management step depends on. One finding per "
-    "negative, no 'or', no list, final report form. Never deny anything dictated or its expected consequence.")
-FALLBACK_TIMEOUT_S = 6.0
-
-
-async def _fallback(state: str, items: List[str], keys: List[str]) -> FallbackNegatives:
-    r = await asyncio.wait_for(_run_agent_with_model(
-        model_name=QWEN, output_type=FallbackNegatives, system_prompt=FALLBACK_SYS,
-        user_prompt=(f"{state}\n\nNUMBERED DICTATED FINDINGS:\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(items))
-                     + "\n\nFINDING TYPES:\n" + ("\n".join(f"- {k}" for k in keys) or "(none)")),
-        api_key="", model_settings={"temperature": 0, "max_tokens": 3000, "reasoning_effort": "none"}), FALLBACK_TIMEOUT_S)
-    return r.output
-
-
-# Words whose full stop never ends a dictated sentence. "no." is only an abbreviation before a
-# number or "of" ("no. 3 node", "no. of lesions"); "ascites: no. liver normal" is two findings.
-_ABBREVIATIONS = {"e.g", "eg", "i.e", "ie", "vs", "approx", "cf", "dr", "mr", "mrs", "ms", "prof", "st", "fig", "ca", "c.f"}
-_NO_ABBREVIATION = re.compile(r"(?i)\s*(?:\d|of\b)")
-
-
-def _sentences(line: str) -> List[str]:
-    """Split on a full stop followed by whitespace, whatever the case of the next word: radiologists
-    dictate in lower case. Decimals ("3.5 cm") have no space after the stop and never split;
-    abbreviations and initials ("J. Bloggs") do not end a sentence."""
-    out, start = [], 0
-    for m in re.finditer(r"\.\s+", line):
-        word = re.search(r"[\w.]*$", line[start:m.start()]).group(0).lower().strip(".")
-        if word in _ABBREVIATIONS or (len(word) == 1 and word.isalpha()):
-            continue
-        if word == "no" and _NO_ABBREVIATION.match(line, m.end()):
-            continue
-        out.append(line[start:m.start()])
-        start = m.end()
-    out.append(line[start:])
-    return out
-
-
-def split_findings(findings: str) -> List[str]:
-    """Dictated findings as numbered items: bullets, lines and sentences."""
-    parts = []
-    for line in re.split(r"\n+|\s/\s|(?:^|\s)-\s(?=[A-Za-z0-9])", findings):
-        line = line.strip(" -\t")
-        for s in _sentences(line):
-            s = s.strip().rstrip(".")
-            if len(s) > 3:
-                parts.append(s)
-    return parts
-
-
-async def _plan(scan_type: str, clinical_history: str, items: List[str], recs: List[str]) -> ImpressionPlan:
-    user = (f"SCAN TYPE: {scan_type}\nCLINICAL QUESTION (context only): {clinical_history or '(not given)'}\n\n"
-            "DICTATED FINDINGS:\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(items))
-            + "\n\nCANDIDATE RECOMMENDATIONS:\n" + ("\n".join(f"{i}. {t}" for i, t in enumerate(recs)) or "(none)"))
-    r = await asyncio.wait_for(_run_agent_with_model(
-        model_name=QWEN, output_type=ImpressionPlan, system_prompt=PLAN_SYS,
-        user_prompt=user, api_key="",
-        model_settings={"temperature": 0, "max_tokens": 8000, "reasoning_effort": "low"}), PLAN_TIMEOUT_S)
-    return r.output
-
-
 # ── compile ──────────────────────────────────────────────────────────────────
-
-@dataclass
-class Brief:
-    text: str
-    decisions: dict
-    reconcile_ms: int
-
 
 async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_history: str = "") -> Brief:
     t0 = time.time()

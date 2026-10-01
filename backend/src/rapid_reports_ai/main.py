@@ -39,6 +39,7 @@ from .database import (
     create_template,
     get_template,
     get_templates,
+    is_retired_template,
     update_template,
     delete_template,
     rename_tag,
@@ -65,6 +66,11 @@ from .database import (
 )
 from .database.connection import engine
 from .template_manager import TemplateManager
+from . import template_sheet_structure as tss
+from . import template_lean as tl
+from . import template_pipeline as tp
+from .generation_artifacts import GenerationArtifacts
+from . import template_sheet_grammar as tsg
 from .auth import (
     verify_password,
     get_password_hash,
@@ -659,6 +665,12 @@ class TemplateGenerateRequest(BaseModel):
     # Legacy format (deprecated)
     variables: Optional[Dict[str, str]] = None
     model: str = MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
+    pipeline: Optional[str] = None  # "mirror" / "current": honoured for allowlisted users only
+
+
+class TemplatePrepareRequest(BaseModel):
+    clinical_history: str = ""
+    scan_type: Optional[str] = None
 
 
 # Wizard assistance request models
@@ -1428,6 +1440,10 @@ async def resend_verification(request: dict, db: Session = Depends(get_db)):
 # TEMPLATE API ENDPOINTS
 # ============================================================================
 
+LEGACY_RETIRED = ("This template uses the retired template format. Re-create it as a skill-sheet template "
+                  "(New template → from example reports).")
+
+
 @app.get("/api/templates")
 async def list_templates(
     skip: int = 0,
@@ -1622,6 +1638,38 @@ def _normalize_template_config_styles(config: dict) -> dict:
     return config
 
 
+def _carry_structure(new_config: dict, old_config: dict) -> dict:
+    """sheet_structure is server-written only: drop any client copy, carry the stored one when the sheet is unchanged."""
+    new = {k: v for k, v in (new_config or {}).items() if k != "sheet_structure"}
+    old = old_config or {}
+    if new.get("skill_sheet") and old.get("skill_sheet") == new["skill_sheet"] and old.get("sheet_structure"):
+        new["sheet_structure"] = old["sheet_structure"]
+    return new
+
+
+def _queue_structure(template_id: str, config: dict) -> None:
+    """Structure a guided template's sheet on save. A sheet in grammar form ("## Report Structure") is
+    parsed now by the grammar parser and stored (usable or not: an unusable parse keeps its lint errors)
+    unless a grammar structure of this sheet is already stored. Any other sheet stays on the raw path;
+    the LLM extractor is lab-only and is scheduled only when RR_SHEET_EXTRACTOR is on.
+    Never raises: a template write must not fail because structuring failed."""
+    try:
+        config = config or {}
+        sheet = config.get("skill_sheet") or ""
+        if config.get("generation_mode") != "skill_sheet_guided" or not sheet:
+            return
+        if tsg.is_grammar_sheet(sheet):
+            if not tss.current_grammar(config):
+                result = tsg.parse_sheet(sheet)
+                ok = tss.store_parsed(template_id, result.structure)
+                logger.info("sheet grammar %s: stored=%s usable=%s lint_errors=%d lint_warnings=%d", template_id,
+                            ok, result.structure.usable, len(result.errors), len(result.warnings))
+        elif tss.extractor_enabled() and tss.needs_restructure(config):
+            tss.schedule_structure(template_id, sheet)
+    except Exception as e:
+        logger.warning("sheet structuring not queued for template %s: %s", template_id, e)
+
+
 @app.post("/api/templates")
 async def create_template_endpoint(
     template_data: TemplateCreate,
@@ -1632,7 +1680,7 @@ async def create_template_endpoint(
     try:
         if not template_data.template_config:
             return {"success": False, "error": "template_config is required"}
-        normalized_config = _normalize_template_config_styles(template_data.template_config)
+        normalized_config = _carry_structure(_normalize_template_config_styles(template_data.template_config), {})
         template = create_template(
             db=db,
             name=template_data.name,
@@ -1642,7 +1690,8 @@ async def create_template_endpoint(
             is_pinned=template_data.is_pinned or False,
             user_id=str(current_user.id),
         )
-        
+        _queue_structure(str(template.id), template.template_config)
+
         return {"success": True, "template": template.to_dict()}
     except Exception as e:
         import traceback
@@ -1663,6 +1712,8 @@ async def update_template_endpoint(
         template_config = template_data.template_config
         if template_config:
             template_config = _normalize_template_config_styles(template_config)
+            existing = get_template(db, template_id, user_id=str(current_user.id))
+            template_config = _carry_structure(template_config, existing.template_config if existing else {})
         updated_template = update_template(
             db=db,
             template_id=template_id,
@@ -1676,7 +1727,8 @@ async def update_template_endpoint(
         
         if not updated_template:
             return {"success": False, "error": "Template not found"}
-        
+        _queue_structure(template_id, updated_template.template_config)
+
         return {"success": True, "template": updated_template.to_dict()}
     except Exception as e:
         import traceback
@@ -1698,6 +1750,40 @@ async def delete_template_endpoint(
         
         return {"success": True, "message": "Template deleted"}
     except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def _mirror_ready(template, email: Optional[str], requested: Optional[str] = None) -> bool:
+    """The lean templated path (template_lean) runs for this template and user: chosen (RR_TEMPLATE_MIRROR /
+    allowlist) and skill_sheet_guided. No grammar structure is needed: the stored sheet is used as it is, and
+    Phase 1 serves options only. Every other template keeps today's path."""
+    cfg = template.template_config if isinstance(template.template_config, dict) else {}
+    return tp.choose_mirror(requested, email) and cfg.get("generation_mode") == "skill_sheet_guided"
+
+
+@app.post("/api/templates/{template_id}/prepare")
+async def prepare_template_case(
+    template_id: str,
+    request: TemplatePrepareRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """"Set up workspace": start Phase 1 (the case analyser on the clinical history) in the background so
+    Generate finds the master sheet ready. Returns at once: skipped / running / ready."""
+    try:
+        template = get_template(db, template_id, user_id=str(current_user.id))
+        if not template:
+            return {"success": False, "error": "Template not found"}
+        if is_retired_template(template):
+            return {"success": False, "error": LEGACY_RETIRED}
+        if not _mirror_ready(template, current_user.email):
+            return {"success": True, "status": "skipped"}
+        cfg = template.template_config
+        status = await tp.prepare_phase1(db, current_user.id, template.id, cfg.get("skill_sheet", ""),
+                                         cfg.get("scan_type") or request.scan_type or "", request.clinical_history)
+        return {"success": True, "status": status}
+    except Exception as e:
+        logger.warning("template prepare failed for %s: %s", template_id, e)
         return {"success": False, "error": str(e)}
 
 
@@ -1727,6 +1813,8 @@ async def generate_report_from_template(
                 "success": False,
                 "error": "Template configuration is missing. Please recreate this template using the new template editor."
             }
+        if is_retired_template(template):
+            return {"success": False, "error": LEGACY_RETIRED}
         
         tm = TemplateManager()
         user_inputs = actual_user_inputs
@@ -1753,11 +1841,57 @@ async def generate_report_from_template(
                 clinical_history=_clinical,
                 user_id=str(current_user.id),
             )
-        report_output_dict = await tm.generate_report_from_config(
-            template_config=template.template_config,
-            user_inputs=user_inputs,
-            user_signature=current_user.signature
-        )
+        # The lean templated path (RR_TEMPLATE_MIRROR / allowlist), else today's path: today's generator on the
+        # stored sheet, the post-generation check; Phase 1 for options only, finished in the background (the
+        # report never waits for options). The heavy mirror (tp.generate_template_report) is parked.
+        use_mirror = _mirror_ready(template, current_user.email, request.pipeline)
+        mirror_candidate, options_job, _p1 = None, None, {"source": "pending"}
+        if use_mirror:
+            try:
+                _cfg = template.template_config
+                _sheet, _scan = _cfg.get("skill_sheet", ""), _cfg.get("scan_type", "")
+                _history = (user_inputs.get("CLINICAL_HISTORY") or "") if isinstance(user_inputs, dict) else ""
+                _findings = (user_inputs.get("FINDINGS") or "") if isinstance(user_inputs, dict) else ""
+                _user_id, _template_id = current_user.id, template.id
+
+                async def _resolve_case():
+                    # Runs in the options job, which may outlive this request: a DB session of its own
+                    _db = tp._session()
+                    try:
+                        case, _p1["source"] = await tp.resolve_case(_db, _user_id, _template_id, _sheet, _scan,
+                                                                    _history)
+                        return case
+                    finally:
+                        _db.close()
+                mirror_result = await tl.generate_template_report_lean(
+                    sheet=_sheet, scan_type=_scan, findings=_findings, history=_history, case=_resolve_case,
+                    signature=current_user.signature)
+                options_job = mirror_result.get("options_job")
+                mirror_candidate = tp.candidate_record(mirror_result, int((time.perf_counter() - _tpl_gen_t0) * 1000))
+                mirror_candidate["phase1_source"] = _p1["source"]   # "pending" until the options job resolves it
+                # Options, and why each was offered, dropped or capped, arrive from the background job
+                mirror_candidate["options_pending"] = options_job is not None
+                mirror_candidate["options_status"] = "pending" if options_job is not None else "none"
+                mirror_candidate["case_decisions"] = mirror_result.get("case_decisions")
+                mirror_candidate["gate_dropped"] = mirror_result.get("gate_dropped") or []
+                report_output_dict = {"report_content": mirror_result["report_content"],
+                                      "description": mirror_result.get("description") or template.name or "Templated report",
+                                      "scan_type": mirror_result.get("scan_type") or _scan,
+                                      "model_used": mirror_result.get("model_used")}
+                logger.info("template mirror %s: report ready, options pending=%s lat=%s", template_id,
+                            mirror_candidate["options_pending"], mirror_candidate["lat"])
+            except Exception as e:  # fail-soft: a mirror failure falls back to today's path
+                logger.warning("template mirror failed for %s (%s: %s); today's path", template_id,
+                               type(e).__name__, str(e)[:300])
+                if options_job is not None:
+                    options_job.cancel()
+                use_mirror, mirror_candidate, options_job = False, None, None
+        if not use_mirror:
+            report_output_dict = await tm.generate_report_from_config(
+                template_config=template.template_config,
+                user_inputs=user_inputs,
+                user_signature=current_user.signature
+            )
         print(
             f"[FLOW_TIMING] template_generate: llm_done "
             f"wall_ms={int((time.perf_counter() - _tpl_gen_t0) * 1000)} "
@@ -1776,7 +1910,7 @@ async def generate_report_from_template(
         # Controlled by ENABLE_TEMPLATE_STRUCTURE_VALIDATION env var
         ENABLE_TEMPLATE_STRUCTURE_VALIDATION = os.getenv("ENABLE_TEMPLATE_STRUCTURE_VALIDATION", "false").lower() == "true"
         
-        if ENABLE_TEMPLATE_STRUCTURE_VALIDATION:
+        if ENABLE_TEMPLATE_STRUCTURE_VALIDATION and not use_mirror:
             from .enhancement_utils import validate_report_structure
             
             user_inputs = request.user_inputs or request.variables or {}
@@ -1822,7 +1956,8 @@ Original report:
 
 Apply each fix while preserving grammatical completeness and report structure."""
                     
-                    # Import enhancement utilities for model configuration
+                    # Import enhancement utilities (MODEL_CONFIG is module-level: importing it here made it local
+                    # to the whole endpoint, so the path without validation raised UnboundLocalError)
                     from .enhancement_utils import (
                         _get_model_provider,
                         _get_api_key_for_provider,
@@ -1954,7 +2089,8 @@ Apply each fix while preserving grammatical completeness and report structure.""
                     model_used=model_to_store,
                     input_data=input_data_to_save,
                     template_id=str(template.id),
-                    description=context_title
+                    description=context_title,
+                    candidate_reports=[mirror_candidate] if mirror_candidate else None,
                 )
                 report_id = str(saved_report.id)
                 print(f"✅ Report saved with ID: {report_id}")
@@ -1962,7 +2098,11 @@ Apply each fix while preserving grammatical completeness and report structure.""
                 print(f"Failed to save report: {e}")
         else:
             print("Auto-save is disabled, skipping report save")
-        
+        # Lean path: options finish in the background and land on this report's candidate record
+        # (GET /api/reports/{report_id}/options); the response below never waits for them.
+        if options_job is not None:
+            tp.schedule_options(report_id, options_job, extra=lambda: {"phase1_source": _p1["source"]})
+
         # Increment template usage count
         try:
             increment_template_usage(db, template_id)
@@ -1974,9 +2114,22 @@ Apply each fix while preserving grammatical completeness and report structure.""
             "claude": MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"],
             "qwen": MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"],
         }.get(request.model, request.model)
+        if use_mirror:
+            model_full_name = report_output_dict.get("model_used") or model_full_name
+        artifacts = None
+        if mirror_candidate is not None:
+            try:
+                artifacts = GenerationArtifacts.from_candidate(
+                    mirror_candidate, (user_inputs.get("FINDINGS") or "") if isinstance(user_inputs, dict) else ""
+                ).model_dump()
+            except Exception as e:  # the report stands without the review rail's artifacts
+                logger.warning("template mirror artifacts failed: %s", e)
         
         return {
             "success": True,
+            "pipeline": "mirror" if use_mirror else "current",
+            "artifacts": artifacts,
+            "options_pending": options_job is not None,
             "response": report_output.report_content,
             "model": model_full_name,
             "template_id": str(template.id),
@@ -2073,11 +2226,13 @@ async def restore_template_version_endpoint(
             db=db,
             template_id=template_id,
             version_id=version_id,
-            user_id=str(current_user.id)
+            user_id=str(current_user.id),
+            config_transform=_carry_structure,
         )
         
         if not restored_template:
             return {"success": False, "error": "Template or version not found, or you don't have permission"}
+        _queue_structure(template_id, restored_template.template_config)
         
         return {
             "success": True,
@@ -2539,6 +2694,7 @@ async def skill_sheet_save_endpoint(
             is_pinned=False,
             user_id=str(current_user.id),
         )
+        _queue_structure(str(template.id), template_config)
         return {"success": True, "template_id": str(template.id)}
     except Exception as e:
         import traceback
@@ -3292,6 +3448,42 @@ async def get_single_report(
         return {
             "success": True,
             "report": report.to_dict()
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/reports/{report_id}/options")
+async def get_report_options(
+    report_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """A report's options and review items, once its background options job has finished (lean templated
+    path). status: "pending" (poll again), "ready", "failed" (no options; the report stands), or "none"."""
+    try:
+        report = get_report(db, report_id, user_id=str(current_user.id))
+        if not report:
+            return {"success": False, "error": "Report not found"}
+        cand = (report.candidate_reports or [None])[0] or {}
+        status = cand.get("options_status") or ("ready" if cand.get("options") else "none")
+        artifacts = None
+        if cand and status == "ready":
+            try:
+                variables = (report.input_data or {}).get("variables") or {}
+                artifacts = GenerationArtifacts.from_candidate(cand, variables.get("FINDINGS") or "").model_dump()
+            except Exception as e:  # noqa: BLE001 - options and review items still return
+                logger.warning("report options artifacts failed for %s: %s", report_id, e)
+        return {
+            "success": True,
+            "report_id": str(report.id),
+            "status": status,
+            "options_pending": status == "pending",
+            "options": cand.get("options") or [],
+            "review": (cand.get("quality_check") or {}).get("review") or [],
+            "phase1_source": cand.get("phase1_source"),
+            "options_ready_at": cand.get("options_ready_at"),
+            "artifacts": artifacts,
         }
     except Exception as e:
         return {"success": False, "error": str(e)}

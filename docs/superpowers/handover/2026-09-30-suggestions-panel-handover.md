@@ -182,3 +182,110 @@ report is shown.
   section lists the payload fields.
 - Memory: `project_finding_negatives`, `project_post_generation_check`,
   `feedback_impression_negatives`, `project_compiled_brief` (naming primes; plans are floors).
+
+---
+
+## Brainstorm outcome (2026-09-30, later session): design agreed, spec not yet written
+
+Every design section (parts 1–6) was approved in the brainstorm. The next step is to **write the
+spec** to `docs/superpowers/specs/2026-09-30-suggestions-panel-design.md` on `feat/review-rail`, have
+Hassan review it, then use `superpowers:writing-plans`. It is paused while the template pipeline is
+rebuilt (`2026-09-30-template-pipeline-mirror-handover.md`). **The "Scope: phase 2" above is replaced
+by that rebuild.**
+
+**Scope grew into a copilot restructure.** The panel is now the heart of a single **Review rail**
+that replaces the `ReportEnhancementSidebar` drawer and `OptionalAdditions`.
+
+- **Layout.**
+  - The rail is always open beside the editor in `ReportResponseViewer` (layout option A). Below
+    about 1100 px it collapses to a strip showing the open count and opens as an overlay.
+  - Tabs: **Review** and **Guidelines**. Guidelines content moves across as it is; items and
+    answers cite it through chips.
+  - The narrow/dual/tri layout modes go away.
+- **The audit has no score.** No score ring and no full list of criteria. Actionable warnings and
+  flags become Review items. Passes and dismissed items sit in a collapsed line
+  "▸ N other checks passed", which never blocks anything.
+- **Review item model.**
+  - Fields: `key, source (option|finding_negative|audit|chat|contradiction|classification), kind,
+    section, label, reason, edit {find, replace} | null, probe, status
+    (open|applied|dismissed|addressed|stale), history[], links`.
+  - Grouped by section, using **generic** headings.
+  - Stored in new tables `report_review_items` and `report_chat_messages`, plus the column
+    `reports.workspace_state`.
+  - `report_audit_criteria.resolution_method` and `options_applied` are still written.
+- **Edit engine: Qwen proposes, Jev verifies, code applies.**
+  - Every edit is prepared **ahead of time**: options and negatives at generation, audit fixes
+    when the audit finishes, classifications when enhancement finishes. Ticking is instant, done
+    in code.
+  - No Fix-with-AI button or chat round-trip.
+  - Items with no verified fix show "Ask in chat" or Dismiss.
+- **Live loop.**
+  - After every change (a tick, a chat edit, or about 1.5 s after typing stops), **one Jev call**
+    runs each open item's **probe**, plus the contradiction check on the changed clauses.
+  - Probe ≥ 0.8 → addressed. Contradiction ≥ 0.6 → a contradiction item, whose fix is
+    code-only negative removal.
+  - Code checks anchors and locality. Only affected items (anchor lost, paragraph touched, or
+    probe between 0.5 and 0.8) are re-prepared, in **one batched Qwen call**; they show
+    "updating…" meanwhile.
+  - Answers carry a `text_hash` and out-of-date ones are discarded. The full audit never re-runs
+    automatically; Re-audit stays manual.
+- **Probe rule, from the spike (memory `reference_jev_capability_profile`).**
+  - A probe asks whether a **topic is covered, scoped to its section**, never whether a claim is
+    true. For example: "Does the FINDINGS section of the report say whether there is ascites?"
+  - Contradiction owns polarity.
+  - Results with hand-written probes: 44/44 resolutions caught, 1/392 false, and that one was
+    caught by contradiction.
+  - Qwen-written probes (the prompt must say "general terms, not the edit's wording"): 42/44 caught
+    with 1 false; the misses fail safe. The scripts are in the session scratchpad and are **not
+    kept**; rebuild them from this description for the pre-rollout evaluation.
+- **Chat.**
+  - Sending a message switches the rail to the thread, with a strip at the top reading
+    "← Review · N open". "⤢ Expand" widens the rail for long answers.
+  - A reply is prose plus an optional `edits[]` (`{section, find, replace}`), not a whole-report
+    `edit_proposal`. Each edit goes through the same checks.
+  - The request includes the open items, so chat doesn't duplicate them.
+  - Applied chat edits become Review items (`source: chat`) linked to their message; unapplied
+    ones stay in the thread.
+- **Classifications.** Guideline synthesis `classifications[]` (system, grade, criteria,
+  "This patient: …") become Review items, IMPRESSION by default.
+  - The criteria and source are shown when the item is expanded.
+  - They are checked against the dictation for contradiction.
+  - If the grade depends on something that wasn't dictated, the item shows no quick fix.
+  - Never applied automatically.
+- **Sessions.** Live and continuous (option a). History reopens the full viewer and rail from saved
+  data, with nothing rerun. Frozen snapshots come later, rebuilt from event timestamps.
+- **Every item's outcome** is recorded (history events), and exposed to Metabase.
+- **Command registry.** Every rail action is a named command: `apply`, `undo`, `dismiss`,
+  `apply_all(source)`, `ask_chat`, `reaudit`, `finalise`, and so on. This way the later
+  **dictate-to-edit** voice controller (a Jev `choice` over commands plus open items, following the
+  voice-browser research P-01 to P-04 and F-15) can be layered on without reworking the rail.
+- **Build slices:**
+  - A: backend engine, tables, endpoints;
+  - B: frontend logic plus the command registry;
+  - C: rail, flag `rr_review_rail`, kill switch `RR_REVIEW_RAIL=0`, `/dev/review-rail` behind
+    `requireDevRoute`;
+  - D: chat edits;
+  - E: sessions and History.
+
+  **Gate before default-on:** an evaluation on de42a105, a templated report and about 8 others,
+  with a hand read. Then a live check in Chrome on both sides.
+- **Later, with their own specs:** the dictate-to-edit controller, chat threads and search, and
+  frozen snapshots.
+
+**Update (2026-09-30):** the template rebuild's spec
+(`docs/superpowers/specs/2026-09-30-template-pipeline-mirror-design.md`, branch
+`feat/template-pipeline-mirror`) creates `report_review.py`, `report_reconcile.py` and
+`generation_artifacts.py`, and defines `GenerationArtifacts` with generic, ordered `sections[]`.
+`feat/review-rail` rebases onto it and reads that model; don't move the repair functions here.
+
+## Addendum (2026-10-01): "upgrade" options for the rail spec
+
+Decided while tuning the option uniqueness gate on `feat/template-pipeline-mirror` (Jev wording v2, ledger L-49):
+
+- **Gate rule:** an option is dropped only when the report already *states* it, not when it merely *implies* it. Hassan chose to keep a specific negative even when the report already calls the organ normal.
+  - Report: "The adrenal glands are unremarkable." Option: "No adrenal metastases." The option is kept, because in staging the explicit negative is the answer the referrer reads for.
+- **Today options only add in.** Impression and recommendation options are appended to the IMPRESSION (`impressionOptions.ts` `insertEdit`). Finding-negative options are hidden from the current panel (`panelOptions`) and wait for the rail. Ticking the example above would give "The adrenal glands are unremarkable. No adrenal metastases.", which is acceptable but slightly redundant.
+- **For the rail spec:** support an **upgrade** apply mode. When a finding-negative option concerns a structure the report already describes as normal, applying it rewrites that sentence instead of adding a new one:
+  - "The adrenal glands are unremarkable, with no evidence of metastatic disease."
+  - Use the existing focal-edit / revert-guard machinery (report_review protected spans, edit_allowed). The rail needs the anchor sentence, so the option payload should carry the matched report sentence, found by the conveys question or a section-scoped lookup.
+- **Grey zone:** pairs that are near-definitions, such as "ventricles normal in size" vs "No hydrocephalus". Jev scores these 0.57–0.97, so at the 0.85 drop line some still appear as options. Accepted as the safe direction; revisit only if it proves noisy.

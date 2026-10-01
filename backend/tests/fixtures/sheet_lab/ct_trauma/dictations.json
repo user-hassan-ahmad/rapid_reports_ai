@@ -1,0 +1,20 @@
+[
+  {
+    "id": "ct_trauma-d1",
+    "scan_type": "CT head and cervical spine (trauma)",
+    "clinical_history": "52M, fell approx 2 m from ladder onto head and neck. Left neck pain, no focal neurology. GCS 15. Trauma team alert.",
+    "findings": "head fine, no bleed no skull #. c spine: undisplaced # left C5 pedicle running into left foramen transversarium. also undisplaced left C5 lamina #. alignment ok. CCJ ok. prevertebral swelling C4 to C6. nothing else. relayed TTL 16:20."
+  },
+  {
+    "id": "ct_trauma-d2",
+    "scan_type": "CT whole body trauma",
+    "clinical_history": "34M, fall approx 4 m from scaffolding, landed on feet then back. Back pain. GCS 15, haemodynamically stable. Trauma call.",
+    "findings": "head normal. c spine normal. chest: no ptx, lungs clear, no rib #, mediastinum normal, aorta ok. abdo: solid organs intact, no free fluid no free gas, kidneys fine. pelvis intact. TL spine no #. no acute injury anywhere. relayed TTL 11:05."
+  },
+  {
+    "id": "ct_trauma-d3",
+    "scan_type": "CT whole body trauma",
+    "clinical_history": "Driver, frontal RTC approx 60 mph, restrained. Seatbelt bruising across lower abdomen. Abdominal tenderness. HR 105, BP 118/72. Trauma call.",
+    "findings": "head and c spine normal. chest: small left anterior pneumothorax, 1 cm depth. no haemothorax. no rib fractures. no contusion. mediastinum and aorta fine. abdo: solid organs intact. focal thickened proximal jejunal loop LUQ with adjacent mesenteric fat stranding and small vol free fluid between loops and in pelvis. no free gas. kidneys fine. pelvis intact. TL spine ok. subcut stranding anterior abdo wall from belt. relayed TTL 19:40."
+  }
+]

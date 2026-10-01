@@ -40,8 +40,9 @@ Pattern. Do not add sections, headers, or preambles not listed there. If the ski
 sheet defines FINDINGS and IMPRESSION as the only sections, the output contains
 only FINDINGS and IMPRESSION — no CLINICAL HISTORY section, no report title header,
 no TECHNIQUE section unless the skill sheet explicitly includes them. The clinical
-history from the input is used for reasoning only. It is never reproduced — not as a
-section, and not as content in any section: no demographics, presenting symptoms,
+history from the input is used for reasoning only. It is never reproduced outside a
+CLINICAL HISTORY section the skill sheet defines — not as content in any other section:
+no demographics, presenting symptoms,
 medications, laboratory values, prior diagnoses or referral wording. It changes what
 the report asserts and how confidently; it is not itself written. The impression
 answers the question asked; it never comments on whether the findings explain the
@@ -75,7 +76,7 @@ Do not fabricate sections the skill sheet does not define.
 If a CLINICAL HISTORY section is defined in the skill sheet: write in terse
 referral format — age and sex abbreviated (e.g. 61M, 52F), key clinical facts
 as noun phrases separated by full stops, no connective prose, query statement
-last. Never long-form prose.
+last. Never long-form prose. Restate the clinical history input only; add nothing.
 
 ### Findings Discipline
 
@@ -289,3 +290,134 @@ VERIFICATION_CHECKLIST = """
 - No descriptor, qualifier, or reference value appears in the report that was not either present in the dictation or defined as a fixed reference in the skill sheet — not inferred from an adjacent pattern
 - The report contains ONLY the sections defined in the skill sheet's Structural Pattern — no additional sections, headers, or preambles
 - No skill sheet internal labels (paragraph names marked header: none) appear as text in the output"""
+
+# ── Brief variants (signed off 2026-09-30, spec template-pipeline-mirror §5) ────────────────
+# Used only when the generator reads a reconciled template brief. Built by exact passage swaps so a
+# drift in the originals fails at import; the originals stay the raw-sheet fallback.
+
+def _swap(text: str, old: str, new: str) -> str:
+    if text.count(old) != 1:
+        raise ValueError(f"passage not found exactly once: {old[:60]!r}")
+    return text.replace(old, new)
+
+
+def _swaps(text: str, *pairs: tuple[str, str]) -> str:
+    for old, new in pairs:
+        text = _swap(text, old, new)
+    return text
+
+
+def _between(text: str, start: str, end: str) -> str:
+    return text[text.index(start):text.index(end)]
+
+
+TEMPLATE_SHEET_HEADER_BRIEF = """## TEMPLATE SKILL SHEET
+
+The following skill sheet defines this radiologist's reporting conventions, reconciled with this
+dictation. Before you received it, every conditional item was checked against the dictated
+findings; items that do not apply were removed. Act on its labels exactly; do not re-derive them
+and do not reintroduce removed items.
+
+- **KEEP**: state the negative as written. **OMIT**: the dictation reports this finding; describe
+  it as dictated and never state the negative, in any section. **DO NOT ASSERT**: a dictated
+  finding is expected to cause this; do not state it as absent.
+- **INSTEAD**: in place of the omitted text, write what this rule prescribes, from the dictation.
+  **APPLY**: append this interpretive clause where the rule places it. **USE**: this phrasing
+  variant applies to this case.
+- **Do not assert as normal**: a dictated finding acts on these structures; describe them only as
+  the dictation does.
+- **Impression plan**: address every Carry forward finding in the impression; Findings only items
+  stay out of it. The plan is a minimum: add the synthesis the evidence supports.
+
+Coverage is obligatory, assertion is earned: every structure the sheet's paragraphs visit is still
+covered, and what is said about it is only what the dictation and the labels support.
+
+The skill sheet inherits the Global Style Guide; where they conflict, the skill sheet takes
+precedence."""
+
+GLOBAL_STYLE_GUIDE_BRIEF = _swaps(
+    GLOBAL_STYLE_GUIDE,
+    # S2
+    ("It is never reproduced outside a\nCLINICAL HISTORY section the skill sheet defines — not as content in any other section:",
+     "It is never reproduced in any section you write:"),
+    # S1
+    (_between(GLOBAL_STYLE_GUIDE, "### Conditional Style Application", "### Findings Discipline"),
+     "### Structure\n\nThe skill sheet governs structure; do not fabricate sections it does not define. If the skill\n"
+     "sheet defines a CLINICAL HISTORY section, it is supplied separately and inserted after\n"
+     "writing: do not write it.\n\n"),
+    # S3
+    (_between(GLOBAL_STYLE_GUIDE, "### Conditional Awareness", "### Missing Data Handling"), ""),
+    # S4
+    ("""But the skill sheet's
+mandatory negatives and systems review statements exist independently of the
+dictation. A radiologist does not dictate "no pleural effusion" — the reporting
+convention requires it to be stated. The absence of a structure from the
+dictation does not mean it was not assessed; it means it was normal and the
+convention expects an explicit normal statement.""",
+     """Silence about a structure the sheet's paragraphs visit means it was assessed
+and normal: state its Normal pattern where the sheet gives one, unless it is
+listed under Do not assert as normal."""),
+    # S5
+    ("The principle: generate everything the skill sheet says must always be present.",
+     "The principle: generate every KEEP line and every Normal pattern the dictation leaves unaddressed."),
+    # S6
+    (_between(GLOBAL_STYLE_GUIDE, "### Parameter Placeholders", "### Output Consistency"),
+     "### Pattern Slots\n\nCurly-brace slots in a sheet's patterns (`{measurement}`, `{structure}`) are shapes: fill\n"
+     "them from the dictation or leave the clause out. A slot is never written as text.\n\n"),
+    # S7
+    ("matches the clinical history and\nfindings input", "matches the findings input"),
+    # 4a
+    ("Do not add sections, headers, or preambles not listed there.",
+     "Do not add sections, headers, or preambles not listed there. A CLINICAL HISTORY section the skill sheet"
+     " defines is the exception: it is supplied separately; do not write it."),
+    # 5
+    ("do not lose mandatory negative statements during consolidation",
+     "do not lose KEEP negatives during consolidation"),
+)
+
+PRE_WRITING_ANALYSIS_BRIEF = _swaps(
+    PRE_WRITING_ANALYSIS,
+    # P1
+    ("""Cross-reference against the skill sheet's mandatory negatives
+   — any mandatory negative not addressed by the dictation must still appear.
+   Check each mandatory negative against the skill sheet's Conditional Suppression
+   Rules: if the current finding state triggers a suppression condition, suppress
+   the negative and apply the replacement phrase (or omit entirely).""",
+     """Apply each reconciliation label:
+   KEEP, OMIT, DO NOT ASSERT, INSTEAD."""),
+    # P2
+    (_between(PRE_WRITING_ANALYSIS, "   **Clinical history as checklist**", "2. **Impression plan**"),
+     """   **Clinical history as focus**: Use prior events, diagnoses and procedures in the
+   history to decide which dictated findings the report must address and emphasise.
+   The history never creates a field to fill: a structure, measurement or negative the
+   dictation does not mention is not added because the history makes it relevant.
+
+"""),
+    # P3
+    ("""Scan the skill sheet for conditional fields
+   triggered by these findings. Verify all IF/THEN interpretive clauses that
+   apply.""", "Place each APPLY clause and USE variant."),
+)
+
+VERIFICATION_CHECKLIST_BRIEF = _swaps(
+    VERIFICATION_CHECKLIST,
+    # V1 + V3
+    ("""- Every mandatory negative from the skill sheet is present with exact phrasing
+- Every triggered Conditional Suppression Rule has been applied — suppressed phrase removed, replacement phrase inserted
+""",
+     """- Every KEEP negative is present; no OMIT negative and no DO NOT ASSERT statement appears anywhere, impression included
+- Every INSTEAD, APPLY and USE is applied
+- No structure listed under "Do not assert as normal" is stated to be normal
+- Every Carry forward finding is addressed in the impression; no Findings only item appears there
+- The impression contains at most one negative — the answer to the clinical question when no positive finding answers it, or one clause that changes the next step — or one cluster of negatives bearing on the index finding's next step (staging, resectability, complication). It never lists unrelated or excluded alternatives
+- No curly-brace slot appears as text
+"""),
+    # V2
+    ("- All triggered interpretive clauses are appended\n", ""),
+    # V4
+    ("- No clinical history item (demographic, symptom, medication, laboratory value, prior diagnosis, referral wording) is restated anywhere in the report",
+     "- No clinical history item (demographic, symptom, medication, laboratory value, prior diagnosis, referral wording) is written anywhere; the CLINICAL HISTORY section, if defined, is supplied separately"),
+    # 4b
+    ("- The report contains ONLY the sections defined in the skill sheet's Structural Pattern — no additional sections, headers, or preambles",
+     "- The report contains ONLY the sections defined in the skill sheet's Structural Pattern — no additional sections, headers, or preambles; a CLINICAL HISTORY section the skill sheet defines is supplied separately and not written by you"),
+)

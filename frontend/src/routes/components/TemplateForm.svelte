@@ -242,6 +242,22 @@
 				prePoppedSections = Array.isArray(storedSections) && storedSections.length > 0
 					? storedSections
 					: [];
+
+				// Start Phase 1 (case analysis on the clinical history) so Generate finds it ready.
+				// Fire and forget: no UI; the backend skips it unless the template mirror is on.
+				// "Regenerate workspace" runs this again, so a changed history gets its own Phase 1.
+				if (selectedTemplate?.id) {
+					const prepHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+					if ($token) prepHeaders['Authorization'] = `Bearer ${$token}`;
+					fetch(`${API_URL}/api/templates/${selectedTemplate.id}/prepare`, {
+						method: 'POST',
+						headers: prepHeaders,
+						body: JSON.stringify({
+							clinical_history: variableValues['CLINICAL_HISTORY'] || '',
+							scan_type: scanType
+						})
+					}).catch(() => {});
+				}
 			} else {
 				// Production wizard templates: fetch sections from FINDINGS template_content via API
 				console.log('[SetUpWorkspace] template:', templateId, templateName, 'findingsTemplateContent len:', findingsTemplateContent?.length ?? 0, 'content_style:', findingsContentStyle);

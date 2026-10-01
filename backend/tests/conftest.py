@@ -31,6 +31,7 @@ from rapid_reports_ai.database.models import (  # noqa: E402
     EphemeralSkillSheet,
     Template,
     ReportQualityScore,
+    TemplateCaseSheet,
 )
 from rapid_reports_ai.main import app  # noqa: E402
 
@@ -45,6 +46,7 @@ _TEST_TABLES = [
     EphemeralSkillSheet.__table__,
     Report.__table__,
     ReportQualityScore.__table__,
+    TemplateCaseSheet.__table__,
 ]
 
 
@@ -105,10 +107,56 @@ def client(db_session: Session, monkeypatch) -> Iterator[TestClient]:
         app.dependency_overrides.clear()
 
 
+_QUALITY_MODULES = ("test_quick_report_quality", "test_report_review", "test_template_pipeline",
+                    "test_golden_quick_pipeline")
+
+
 @pytest.fixture(autouse=True)
 def _no_live_quality_check(request, monkeypatch):
-    """The post-generation check calls Jev over the network; unit tests outside its own module
-    run the generator with it switched off."""
-    if request.module.__name__.endswith("test_quick_report_quality"):
+    """The post-generation check calls Jev over the network; unit tests outside the modules that
+    stub it run the generators with it switched off."""
+    if request.module.__name__.endswith(_QUALITY_MODULES):
         return
     monkeypatch.setenv("RR_QUALITY_CHECK", "0")
+
+
+# ── Template endpoint fixtures (legacy retirement, generate endpoint) ──────────
+
+@pytest.fixture
+def test_user(db_session: Session) -> User:
+    import uuid as _uuid
+    user = User(
+        id=_uuid.uuid4(), email=f"{_uuid.uuid4()}@nhs.net", password_hash="x", full_name="T",
+        is_active=True, is_verified=True, is_approved=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    return user
+
+
+@pytest.fixture
+def auth_headers(test_user: User) -> dict[str, str]:
+    from rapid_reports_ai.auth import create_access_token
+    return {"Authorization": f"Bearer {create_access_token({'sub': str(test_user.id)})}"}
+
+
+def _make_template(db_session: Session, user: User, name: str, config: dict, tags=None) -> Template:
+    template = Template(name=name, template_config=config, user_id=user.id, tags=tags or [], is_active=True)
+    db_session.add(template)
+    db_session.commit()
+    db_session.refresh(template)
+    return template
+
+
+@pytest.fixture
+def guided_template(db_session: Session, test_user: User) -> Template:
+    """A current skill-sheet template."""
+    return _make_template(db_session, test_user, "Guided", {
+        "generation_mode": "skill_sheet_guided", "skill_sheet": "## FINDINGS\nDescribe the findings.",
+        "scan_type": "CT"}, tags=["guided-tag"])
+
+
+@pytest.fixture
+def legacy_template(db_session: Session, test_user: User) -> Template:
+    """A retired (section-based) template: hidden from lists, generation refused, never deleted."""
+    return _make_template(db_session, test_user, "Legacy", {"sections": []}, tags=["legacy-tag"])

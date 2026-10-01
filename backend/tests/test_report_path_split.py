@@ -9,8 +9,11 @@ import pathlib
 
 SRC = pathlib.Path(__file__).resolve().parents[1] / "src" / "rapid_reports_ai"
 QR_MODULES = ("quick_report_generator.py", "quick_report_prompts.py", "quick_report_api.py")
-TEMPLATE_PROMPTS = {"GLOBAL_STYLE_GUIDE": "94aa643c", "PRE_WRITING_ANALYSIS": "c45d9d5d",
-                    "VERIFICATION_CHECKLIST": "20e21f1f", "SYSTEM_PREAMBLE": None}
+TEMPLATE_PROMPTS = {"GLOBAL_STYLE_GUIDE": "598bdfe9",  # T0, signed off 2026-09-30
+                    "PRE_WRITING_ANALYSIS": "c45d9d5d",
+                    "VERIFICATION_CHECKLIST": "20e21f1f", "SYSTEM_PREAMBLE": None,
+                    "GLOBAL_STYLE_GUIDE_BRIEF": "4f34928a", "PRE_WRITING_ANALYSIS_BRIEF": "7f0a70c3",
+                    "VERIFICATION_CHECKLIST_BRIEF": "adbc75f1", "TEMPLATE_SHEET_HEADER_BRIEF": "bc9f1a23"}
 
 
 def _imports(path: pathlib.Path) -> set[str]:
@@ -55,3 +58,22 @@ def test_quick_report_generator_has_its_own_role():
     from rapid_reports_ai.enhancement_utils import MODEL_CONFIG, MODEL_PROVIDERS
     for role in ("QUICK_REPORT_GENERATOR", "QUICK_REPORT_GENERATOR_FALLBACK"):
         assert MODEL_CONFIG[role] in MODEL_PROVIDERS
+
+
+SHARED_MODULES = ("report_reconcile.py", "report_review.py", "generation_artifacts.py")
+PATHWAY_MODULES = {"quick_report_brief", "quick_report_quality", "quick_report_generator", "quick_report_prompts",
+                   "quick_report_hardening", "quick_report_api", "quick_report_analyser", "template_manager",
+                   "global_style_guide", "template_brief", "template_pipeline", "template_sheet_structure",
+                   "template_history"}
+
+
+def test_shared_modules_import_neither_pathway():
+    for f in SHARED_MODULES:
+        path = SRC / f
+        assert path.exists(), f
+        assert not (_imports(path) & PATHWAY_MODULES), f
+
+
+def test_template_pipeline_imports_no_quick_module():
+    for f in ("template_pipeline.py", "template_brief.py", "template_history.py"):
+        assert not any(i.startswith("quick_report") for i in _imports(SRC / f)), f

@@ -17,6 +17,7 @@ from .models import (
     ReportAudit,
     ReportAuditCriterion,
     EphemeralSkillSheet,
+    TemplateCaseSheet,
 )
 
 
@@ -175,6 +176,13 @@ def get_template(db: Session, template_id: str, user_id: Optional[str] = None) -
     return query.first()
 
 
+def is_retired_template(template: Template) -> bool:
+    """Legacy (non skill-sheet) templates are retired: hidden from lists and refused at
+    generation, but never deleted — their reports and history stay intact."""
+    cfg = template.template_config
+    return not (isinstance(cfg, dict) and cfg.get("generation_mode") == "skill_sheet_guided")
+
+
 def get_templates(
     db: Session,
     user_id: str,
@@ -195,11 +203,12 @@ def get_templates(
         )
     )
     
+    # Retired templates are filtered in Python (template_config is JSON) before paging,
+    # so a hidden row never takes a visible template's page slot.
+    all_templates = [t for t in query.all() if not is_retired_template(t)]
+
     if tags and len(tags) > 0:
-        # Filter templates that contain ANY of the provided tags
-        # Load templates and filter in Python for cross-database compatibility
-        # This works with both SQLite and PostgreSQL
-        all_templates = query.all()
+        # Filter templates that contain ANY of the provided tags (Python, cross-database)
         filtered = []
         for template in all_templates:
             template_tags = template.tags or []
@@ -209,8 +218,8 @@ def get_templates(
             if any(req_tag in template_tags_lower for req_tag in requested_tags_lower):
                 filtered.append(template)
         return filtered[skip:skip+limit]
-    
-    return query.offset(skip).limit(limit).all()
+
+    return all_templates[skip:skip+limit]
 
 
 def get_all_tags(db: Session, user_id: str) -> List[str]:
@@ -227,10 +236,10 @@ def get_all_tags(db: Session, user_id: str) -> List[str]:
         )
     ).all()
     
-    # Collect all tags from all templates
+    # Collect all tags from visible (non-retired) templates
     all_tags = set()
     for template in templates:
-        if template.tags:
+        if template.tags and not is_retired_template(template):
             for tag in template.tags:
                 all_tags.add(tag)
     
@@ -644,9 +653,11 @@ def restore_template_version(
     db: Session,
     template_id: str,
     version_id: str,
-    user_id: str
+    user_id: str,
+    config_transform=None,
 ) -> Optional[Template]:
-    """Restore a template to a specific version"""
+    """Restore a template to a specific version. config_transform(version_config, current_config), when
+    given, produces the config actually written (used to keep server-written keys out of snapshots)."""
     # Verify ownership
     template = get_template(db, template_id, user_id=user_id)
     if not template:
@@ -669,7 +680,10 @@ def restore_template_version(
     template.name = version.name
     template.description = version.description
     template.tags = version.tags
-    template.template_config = version.template_config
+    restored_config = version.template_config
+    if config_transform is not None:
+        restored_config = config_transform(restored_config, template.template_config or {})
+    template.template_config = restored_config
     
     db.commit()
     db.refresh(template)
@@ -724,8 +738,10 @@ def create_report(
     use_case: Optional[str] = None,
     template_id: Optional[str] = None,
     description: Optional[str] = None,
+    candidate_reports: Optional[list] = None,
 ) -> Report:
-    """Create a new report"""
+    """Create a new report. ``candidate_reports``: the generation record(s) (quick's candidate shape), as
+    the templated mirror persists its options, brief and check."""
     report = Report(
         user_id=uuid.UUID(user_id) if isinstance(user_id, str) else user_id,
         report_type=report_type,
@@ -735,6 +751,7 @@ def create_report(
         use_case=use_case,
         template_id=uuid.UUID(template_id) if template_id and isinstance(template_id, str) else template_id,
         description=description,
+        candidate_reports=candidate_reports,
     )
     db.add(report)
     db.commit()
@@ -1472,3 +1489,71 @@ def set_quick_report_selection(
 
 
 
+
+
+# ============ Template case sheets (templated pipeline Phase 1) ============
+
+def _uuid(v):
+    return uuid.UUID(v) if isinstance(v, str) else v
+
+
+def get_case_sheet(db: Session, user_id: str, template_id: str, sheet_hash: str,
+                   history_hash: str) -> Optional[TemplateCaseSheet]:
+    """The Phase 1 row for this case (any status), or None."""
+    return (db.query(TemplateCaseSheet).populate_existing()  # another session (the Phase 1 job) writes it
+            .filter(TemplateCaseSheet.user_id == _uuid(user_id), TemplateCaseSheet.template_id == _uuid(template_id),
+                    TemplateCaseSheet.sheet_hash == sheet_hash, TemplateCaseSheet.history_hash == history_hash)
+            .first())
+
+
+def create_case_sheet(db: Session, *, user_id: str, template_id: str, sheet_hash: str, history_hash: str,
+                      clinical_history: str) -> TemplateCaseSheet:
+    """Start a Phase 1 row (status running). Upserts on the case key: a failed row is reset to running;
+    a running or ready row is returned unchanged. A concurrent insert of the same key (unique index) is
+    resolved by returning the row that won."""
+    from sqlalchemy.exc import IntegrityError
+
+    row = get_case_sheet(db, user_id, template_id, sheet_hash, history_hash)
+    if row is None:
+        row = TemplateCaseSheet(user_id=_uuid(user_id), template_id=_uuid(template_id), sheet_hash=sheet_hash,
+                                history_hash=history_hash, clinical_history=clinical_history or "",
+                                status="running")
+        db.add(row)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            row = get_case_sheet(db, user_id, template_id, sheet_hash, history_hash)
+            if row is None:
+                raise
+            return row
+        db.refresh(row)
+        return row
+    if row.status == "failed":
+        row.status, row.error, row.master_sheet, row.case_result = "running", None, None, None
+        row.clinical_history = clinical_history or ""
+        db.commit()
+        db.refresh(row)
+    return row
+
+
+def finish_case_sheet(db: Session, row_id, *, master_sheet: str, case_result: Optional[dict], model: Optional[str],
+                      latency_ms: Optional[int], prompt_version: Optional[str]) -> Optional[TemplateCaseSheet]:
+    row = db.get(TemplateCaseSheet, _uuid(row_id))
+    if row is None:
+        return None
+    row.status, row.master_sheet, row.case_result, row.error = "ready", master_sheet, case_result, None
+    row.model, row.latency_ms, row.prompt_version = model, latency_ms, prompt_version
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def fail_case_sheet(db: Session, row_id, *, error: str) -> Optional[TemplateCaseSheet]:
+    row = db.get(TemplateCaseSheet, _uuid(row_id))
+    if row is None:
+        return None
+    row.status, row.error = "failed", (error or "")[:2000]
+    db.commit()
+    db.refresh(row)
+    return row

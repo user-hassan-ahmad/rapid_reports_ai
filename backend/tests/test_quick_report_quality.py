@@ -6,7 +6,7 @@ from typing import Optional
 
 import pytest
 
-from rapid_reports_ai import quick_report_quality as qq
+from rapid_reports_ai import report_review as qq
 
 REPORT = """COMPARISON:
 None.
@@ -95,7 +95,7 @@ async def test_omission_classifier_rides_the_report_call(monkeypatch):
             asked.update(qs)
             return {k: _cls("stated") for k in qs}
         return {k: {"noul": 0.9} for k in qs}
-    monkeypatch.setattr(qq.qb, "_jev", fake_jev)
+    monkeypatch.setattr(qq.rc, "_jev", fake_jev)
     await qq.check("FINDINGS:\nThe appendix is unremarkable.", "appendix fine. 5 mm defect D1", "CT", [])
     assert asked == {"i0": qq.q_omission("appendix fine"), "i1": qq.q_omission("5 mm defect D1")}
 
@@ -108,7 +108,7 @@ async def test_each_class_routes_to_its_own_flag(monkeypatch):
         if state.startswith("REPORT:"):
             return {k: _cls(next(c for t, c in by_line.items() if f'"{t}"' in q["instructions"])) for k, q in qs.items()}
         return {k: {"noul": 0.05} for k in qs}    # no contradiction; unreadable selector choice -> the regex selects
-    monkeypatch.setattr(qq.qb, "_jev", fake_jev)
+    monkeypatch.setattr(qq.rc, "_jev", fake_jev)
     r = await qq.check("FINDINGS:\nThe liver is cirrhotic.", "aa one. bb two. cc three. dd four. ee five", "CT", [])
     assert [(f.kind, f.text) for f in r.flags] == [("omission", "aa one"), ("partial", "bb two"), ("differs", "cc three")]
     assert r.flags[0].score == pytest.approx(0.9)
@@ -118,7 +118,7 @@ async def test_each_class_routes_to_its_own_flag(monkeypatch):
 async def test_an_unreadable_classifier_answer_raises_no_flag(monkeypatch):
     async def fake_jev(state, qs):
         return {k: {"noul": 0.05} for k in qs}     # no probabilities: the omission answer is unreadable
-    monkeypatch.setattr(qq.qb, "_jev", fake_jev)
+    monkeypatch.setattr(qq.rc, "_jev", fake_jev)
     r = await qq.check("FINDINGS:\nx.", "item one. item two", "CT", [])
     assert [f for f in r.flags if f.kind in ("omission", "partial", "differs")] == []
 
@@ -161,7 +161,7 @@ def _stub_jev(monkeypatch, contra: dict, reported: dict, dictated: Optional[dict
             else:
                 out[k] = {"noul": 0.95}
         return out
-    monkeypatch.setattr(qq.qb, "_jev", fake)
+    monkeypatch.setattr(qq.rc, "_jev", fake)
     return calls
 
 
@@ -187,7 +187,7 @@ async def test_check_asks_two_parallel_calls_and_flags(monkeypatch):
 async def test_check_failure_returns_no_flags_and_the_reason(monkeypatch):
     async def boom(state, questions):
         raise RuntimeError("jev down")
-    monkeypatch.setattr(qq.qb, "_jev", boom)
+    monkeypatch.setattr(qq.rc, "_jev", boom)
     res = await qq.check(REPORT, FINDINGS, "CT AP", OPTIONS)
     assert res.flags == [] and res.bad_option_ids == [] and "jev down" in res.error
 
@@ -227,7 +227,7 @@ async def test_an_unreadable_dictated_answer_keeps_the_negative(monkeypatch):
         if state.startswith("REPORT:"):
             return {k: _cls("stated") for k in qs}
         return {k: {"noul": 0.9} for k in qs if not k.startswith("d")}      # no d<i> answers
-    monkeypatch.setattr(qq.qb, "_jev", fake)
+    monkeypatch.setattr(qq.rc, "_jev", fake)
     res = await qq.check(REPORT, FINDINGS, "CT AP", [])
     assert [f for f in res.flags if f.kind == "contradiction" and qq.is_negative(f.text)] == []
     assert {"text": "No portal vein encasement", "contradiction": 0.9, "dictated": None} in [
@@ -449,7 +449,7 @@ async def test_a_negative_is_flagged_only_when_its_restatement_is_dictated(monke
             else:
                 out[k] = {"noul": 0.95}
         return out
-    monkeypatch.setattr(qq.qb, "_jev", fake)
+    monkeypatch.setattr(qq.rc, "_jev", fake)
     res = await qq.check(REPORT, FINDINGS, "CT AP", [])
     assert [f.text for f in res.flags] == ["No portal vein encasement"]   # SMV and hepatic deposit not confirmed
 
@@ -481,14 +481,14 @@ def _jev_scores(monkeypatch, score, seen=None):
         if seen is not None:
             seen.append((state, qs))
         return {k: {"noul": score(qs[k]["instructions"]) if callable(score) else score} for k in qs}
-    monkeypatch.setattr(qq.qb, "_jev", fake_jev)
+    monkeypatch.setattr(qq.rc, "_jev", fake_jev)
 
 
 def _jev_down(monkeypatch):
     import httpx
     async def boom(state, qs):
         raise httpx.ReadTimeout("jev timeout")
-    monkeypatch.setattr(qq.qb, "_jev", boom)
+    monkeypatch.setattr(qq.rc, "_jev", boom)
 
 
 def _insertions(monkeypatch, *sentences):
@@ -549,7 +549,7 @@ async def test_a_report_negative_contradicting_a_hedged_dictated_finding_is_remo
                               0.6 if t == qq.q_restated("pneumothorax")["instructions"] else
                               0.9 if t.startswith(qq.Q_CONVEYS) else 0.05}
         return out
-    monkeypatch.setattr(qq.qb, "_jev", fake)
+    monkeypatch.setattr(qq.rc, "_jev", fake)
     report = "FINDINGS:\nNo pneumothorax. The lungs are clear.\n\nIMPRESSION:\nNo acute abnormality."
     out, _, tel = await qq.run_quality_check(report, "?pneumothorax", "CXR", [])
     assert any(q == qq.q_restated("pneumothorax") for q in asked.values())
@@ -582,7 +582,7 @@ def _selector_jev(monkeypatch, selected_items, omitted, fail_dictation=False, se
                     out[k] = {"noul": 0.05}
             return out
         return {k: _cls("absent" if any(f'"{x}"' in q["instructions"] for x in omitted) else "stated") for k, q in qs.items()}
-    monkeypatch.setattr(qq.qb, "_jev", fake)
+    monkeypatch.setattr(qq.rc, "_jev", fake)
 
 
 @pytest.mark.asyncio

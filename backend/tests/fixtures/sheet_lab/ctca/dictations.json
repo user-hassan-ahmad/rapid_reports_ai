@@ -1,0 +1,20 @@
+[
+  {
+    "id": "ctca-d1",
+    "scan_type": "CT coronary angiography",
+    "clinical_history": "69-year-old woman. Exertional chest pain and palpitations. Persistent AF, on bisoprolol.",
+    "findings": "calcium score only - HR 98 to 115 AF despite metoprolol 20 IV, CTCA abandoned, no contrast given. DLP 41. Agatston total 1186, LMS 22 LAD 610 LCx 148 RCA 406, 91st centile MESA. LA big. no effusion. ascending ao 36 PA 26. lung bases clear."
+  },
+  {
+    "id": "ctca-d2",
+    "scan_type": "CT coronary angiography",
+    "clinical_history": "39-year-old man. Atypical chest pain. Family history of premature coronary disease.",
+    "findings": "HR 55 SR, metoprolol 5, GTN, 55 ml. DLP 121. calcium zero. right dom, origins normal. all vessels clean no plaque. no bridge. heart normal, no effusion, LAA fills fine. ao 32 PA 23. lungs clear."
+  },
+  {
+    "id": "ctca-d3",
+    "scan_type": "CT coronary angiography",
+    "clinical_history": "51-year-old man. Exertional breathlessness and one episode of presyncope while running.",
+    "findings": "HR 60 SR, metoprolol 10, GTN, 60 ml. DLP 158. calcium 0. right dom. RCA comes off the left cusp with its own ostium just next to the left main, runs between aorta and PA, proximal segment slit-like and oval. no plaque anywhere. no bridging. LAA - tip doesn't fill on this phase, SR, probably mixing. chambers normal size, no effusion. ao 33 PA 24. lungs clear."
+  }
+]
