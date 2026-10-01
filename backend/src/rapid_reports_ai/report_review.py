@@ -19,7 +19,7 @@ import re
 import time
 from typing import List, Optional, Tuple
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from . import report_reconcile as rc
 from .enhancement_utils import _run_agent_with_model
@@ -286,10 +286,14 @@ class CheckResult(BaseModel):
     n_clauses: int = 0
     n_items: int = 0
     error: Optional[str] = None
+    # Answers to extra_report_qs, asked inside the report-state call (template gate). Excluded from dumps so
+    # quick's serialised CheckResult is unchanged.
+    extra_answers: dict = Field(default_factory=dict, exclude=True)
 
 
 async def check(report: str, findings: str, scan_type: str, options: List[dict],
-                sections: Optional[List[ReportSection]] = None, protected: Optional[List[str]] = None) -> CheckResult:
+                sections: Optional[List[ReportSection]] = None, protected: Optional[List[str]] = None,
+                extra_report_qs: Optional[dict] = None) -> CheckResult:
     """Two Jev calls in parallel: every checked report clause and option against the dictation,
     every positive dictated item against the report (protected text removed)."""
     cls = checked_clauses(report, sections)
@@ -303,6 +307,7 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict],
     restated = {i: restate(t) for i, t in enumerate(cls)}
     contra_qs.update({f"r{i}": {"type": "noul", "instructions": Q_RESTATED + r} for i, r in restated.items() if r})
     omit_qs = {f"i{i}": {"type": "noul", "instructions": Q_OMIT + t} for i, t in enumerate(items)}
+    omit_qs.update(extra_report_qs or {})  # another caller's report-state questions, same request
 
     async def ask(state, qs):
         return await rc._jev(state, qs) if qs else {}
@@ -321,7 +326,8 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict],
     flags += [Flag(kind="omission", text=t, score=score(omit, f"i{i}"))
               for i, t in enumerate(items) if score(omit, f"i{i}") < OMIT_FLAG]
     bad = [oid for i, (oid, _) in enumerate(opts) if score(contra, f"o{i}") >= CONTRA_FLAG]
-    return CheckResult(flags=flags, bad_option_ids=bad, n_clauses=len(cls), n_items=len(items))
+    return CheckResult(flags=flags, bad_option_ids=bad, n_clauses=len(cls), n_items=len(items),
+                       extra_answers={k: score(omit, k) for k in (extra_report_qs or {})})
 
 
 # ── repair ───────────────────────────────────────────────────────────────────
@@ -622,7 +628,8 @@ def _problem(f: Flag) -> str:
 
 async def run_quality_check(report: str, findings: str, scan_type: str, options: List[dict],
                             sections: Optional[List[ReportSection]] = None, protected: Optional[List[str]] = None,
-                            suppressed: Optional[List[str]] = None) -> Tuple[str, List[dict], dict]:
+                            suppressed: Optional[List[str]] = None,
+                            extra_report_qs: Optional[dict] = None) -> Tuple[str, List[dict], dict]:
     """Check, then repair only when a report clause or item is flagged. Returns the report, the
     options with flagged ones dropped, and telemetry. Never raises. `sections` makes the check
     section-generic (templates); `protected` text is never checked for omission or edited; a repair
@@ -642,7 +649,10 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
         tel["sections_missing"] = [s.name for s in sections if s.header and not any(s is f for f, _, _ in found)]
     original = pre_repair = report
     try:
-        res = await check(report, findings, scan_type, options, **_given(sections=sections, protected=protected))
+        res = await check(report, findings, scan_type, options,
+                          **_given(sections=sections, protected=protected, extra_report_qs=extra_report_qs))
+        if extra_report_qs is not None:
+            tel["extra_answers"] = res.extra_answers
         tel.update(flags=[f.model_dump() for f in res.flags], clauses=res.n_clauses, items=res.n_items,
                    jev_ms=int((time.time() - t0) * 1000), error=res.error, options_dropped=res.bad_option_ids)
         options = [o for o in options if o.get("id") not in set(res.bad_option_ids)]

@@ -304,3 +304,31 @@ def test_template_removal_drops_a_list_item_left_empty():
     # a line with other text keeps its line
     out = rr.remove_negative_clause(REPORT, "No pneumoperitoneum.", sections=SECTIONS)
     assert "11 mm. Unremarkable appearances of the spleen.\n" in out
+
+
+async def test_extra_report_questions_ride_on_the_report_state_call(monkeypatch):
+    seen = []
+
+    async def fake_jev(state, qs):
+        seen.append((state, sorted(qs)))
+        return {k: {"noul": 0.8 if k == "u0" else 0.9 if k.startswith("i") else 0.1} for k in qs}
+    monkeypatch.setattr(rr.rc, "_jev", fake_jev)
+    extra = {"u0": {"type": "noul", "instructions": rr.rc.Q_ALREADY + "No free gas."}}
+    res = await rr.check(REPORT, "11 mm appendix", "CT AP", [], sections=SECTIONS, extra_report_qs=extra)
+    assert len(seen) == 2  # no additional Jev request
+    report_call = next(k for s, k in seen if s.startswith("REPORT"))
+    assert "u0" in report_call and res.extra_answers == {"u0": 0.8}
+    _, _, tel = await rr.run_quality_check(REPORT, "11 mm appendix", "CT AP", [], sections=SECTIONS,
+                                           extra_report_qs=extra)
+    assert tel["extra_answers"] == {"u0": 0.8}
+    _, _, tel = await rr.run_quality_check(REPORT, "11 mm appendix", "CT AP", [], sections=SECTIONS)
+    assert "extra_answers" not in tel  # quick's telemetry shape is unchanged
+
+
+async def test_extra_report_questions_fail_open_with_the_check(monkeypatch):
+    async def down(state, qs):
+        raise TimeoutError("jev down")
+    monkeypatch.setattr(rr.rc, "_jev", down)
+    extra = {"u0": {"type": "noul", "instructions": rr.rc.Q_ALREADY + "No free gas."}}
+    res = await rr.check(REPORT, "x", "CT AP", [], sections=SECTIONS, extra_report_qs=extra)
+    assert res.error and res.extra_answers == {}

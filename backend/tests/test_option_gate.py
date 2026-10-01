@@ -76,3 +76,15 @@ async def test_no_options_no_call(monkeypatch):
     stub(monkeypatch, {}, calls)
     assert await rc.gate_options([], REPORT, IMPRESSION) == ([], [])
     assert calls == []
+
+
+async def test_report_scope_can_reuse_answers_from_the_check(monkeypatch):
+    qs = rc.gate_questions(OPTS)
+    assert sorted(qs["report"]) == ["u0", "u1"] and sorted(qs["impression"]) == ["u2", "u3", "u4"]
+    calls = []
+    stub(monkeypatch, {("impression", "No free intraperitoneal gas."): 0.9}, calls)
+    imp = await rc.gate_scores(f"CONCLUSION:\n{IMPRESSION}", qs["impression"])
+    kept, dropped = rc.gate_apply(OPTS, {"u0": 0.93, "u1": 0.1, **imp})  # u0/u1 answered inside the check's call
+    assert [d["id"] for d in dropped] == ["fn0", "opt0"] and len(calls) == 1
+    kept, dropped = rc.gate_apply(OPTS, {})  # no answers (Jev failed): fail-open
+    assert kept == OPTS and dropped == []
