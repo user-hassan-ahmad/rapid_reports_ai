@@ -75,9 +75,11 @@ def test_fixture_parses_usable():
                                                 "suppress_section", "suppress_headers"]
 
 
-def stub(monkeypatch, jev_f: dict | None = None, jev_c: dict | None = None, qwen: rc.QwenDecisions | None = None,
+def stub(monkeypatch, jev_f: dict | None = None, jev_c: dict | None = None, qwen=None,
          plan: rc.ImpressionPlan | None = None, fallback: rc.FallbackNegatives | None = None):
-    """Jev answers by key ({"r0": 0.9}); unlisted keys score 0.1. Records every call."""
+    """Jev answers by key ({"r0": 0.9}); unlisted keys score 0.1. Qwen: a QwenDecisions (returned as is) or a
+    dict {negative text without stop: (action, finding)} plus {"affected": [normal text, …]}; every negative
+    sent and not listed is "keep". Records every call."""
     calls: dict = {"jev": [], "qwen": [], "fallback": [], "plan": []}
     jev_f, jev_c = jev_f or {}, jev_c or {}
 
@@ -89,7 +91,13 @@ def stub(monkeypatch, jev_f: dict | None = None, jev_c: dict | None = None, qwen
 
     async def fake_qwen(state, negs, normals, measurements):
         calls["qwen"].append((list(negs), list(normals)))
-        return qwen or rc.QwenDecisions(negatives=[], affected_normals=[], applicable_measurements=[])
+        if isinstance(qwen, rc.QwenDecisions):
+            return qwen
+        spec = qwen or {}
+        decs = [rc.NegativeDecision(index=i, action=spec.get(n.rstrip("."), ("keep", ""))[0],
+                                    dictated_finding=spec.get(n.rstrip("."), ("keep", ""))[1]) for i, n in enumerate(negs)]
+        aff = [i for i, t in enumerate(normals) if t in spec.get("affected", [])]
+        return rc.QwenDecisions(negatives=decs, affected_normals=aff, applicable_measurements=[])
 
     async def no_split(negs):
         return [[n] for n in negs]
@@ -188,7 +196,8 @@ async def test_suppress_paragraph_negatives_omits_that_paragraphs_negatives_only
     assert f'- OMIT: "No lymphadenopathy or collection." — {why}' in para
     assert "- DESCRIBE FROM DICTATION: this paragraph's normal wording does not apply" in para
     report_wide = b.text.split("## Report-wide")[1].split("## ")[0]
-    assert '- KEEP: "No free fluid."' in report_wide   # the same negative elsewhere is not suppressed
+    assert f'- OMIT: "No free fluid." — {why}' in report_wide   # a Report-wide copy in the same section follows
+    assert '- KEEP: "No focal lesion."' in b.text                # other paragraphs are untouched
 
 
 async def test_list_missing_partial(monkeypatch):
@@ -244,9 +253,7 @@ async def test_conditional_negative_with_a_history_source_is_asked_in_the_histor
 
 async def test_classifier_labels_and_every_copy_shares_one_label(monkeypatch):
     # distinct negatives in sheet order: focal lesion, surrounding collection, free fluid, lymphadenopathy…, artefact
-    q = rc.QwenDecisions(negatives=[rc.NegativeDecision(index=2, action="contradicted", dictated_finding="free fluid"),
-                                    rc.NegativeDecision(index=3, action="expected", dictated_finding="the mass")],
-                         affected_normals=[], applicable_measurements=[])
+    q = {"No free fluid": ("contradicted", "free fluid"), "No lymphadenopathy or collection": ("expected", "the mass")}
     calls = stub(monkeypatch, qwen=q)
     b = await compile_()
     assert calls["qwen"][0][0].count("No free fluid") == 1
@@ -272,8 +279,7 @@ async def test_normals_kept_or_not_asserted_by_jev_or_qwen(monkeypatch):
     b = await compile_()
     assert '- DO NOT ASSERT AS NORMAL [primary organ]: "The primary organ is normal in size and contour."' in b.text
     assert '- KEEP NORMAL [adjacent vessels]: "The adjacent vessels are of normal calibre."' in b.text
-    q = rc.QwenDecisions(negatives=[], affected_normals=[1], applicable_measurements=[])
-    stub(monkeypatch, qwen=q)
+    stub(monkeypatch, qwen={"affected": ["The adjacent vessels are of normal calibre."]})
     b = await compile_()
     assert '- DO NOT ASSERT AS NORMAL [adjacent vessels]: "The adjacent vessels are of normal calibre."' in b.text
     assert [n["action"] for n in b.decisions["normals"]] == ["keep", "do_not_assert"]
@@ -422,3 +428,250 @@ async def test_omitted_section_drops_its_paragraph_shells(monkeypatch):
     stub(monkeypatch)
     b = await tb.compile_template_brief(sheet, s, "CT AP", "Lesion.", "")
     assert "## Paragraph: Measured values (MEASUREMENTS)" in b.text and "Values in a single line." in b.text
+
+
+# ── G3 review: rule scope, bundled targets, fail-closed model answers (probes P/Q/S/L) ──
+
+HEAD = """# T
+
+## Report Structure
+SECTION CLINICAL HISTORY | header: "Clinical history" | role: history
+SECTION FINDINGS | header: "FINDINGS" | role: findings
+SECTION MEASUREMENTS | header: "Measurements" | role: other
+SECTION IMPRESSION | header: "Impression" | role: impression
+"""
+TAIL = "\n## Paragraph: Summary (IMPRESSION)\nNumbered.\n"
+
+
+async def brief(monkeypatch, body: str, findings="A finding.", history="", split=None, **kw):
+    sheet = HEAD + body + TAIL
+    s = g.parse_sheet(sheet).structure
+    assert s.usable, s.lint_errors
+    calls = stub(monkeypatch, **kw)
+    if split:
+        async def fake_split(negs):
+            return split(negs)
+        monkeypatch.setattr(tb.rc, "_split_bundled", fake_split)
+    return await tb.compile_template_brief(sheet, s, "CT", findings, history), calls
+
+
+def block(text: str, heading: str) -> str:
+    return text.split(heading + "\n", 1)[1].split("\n## ", 1)[0]
+
+
+P1 = """
+## Paragraph: A (FINDINGS)
+NEGATIVE "No free fluid."
+RULE WHEN [findings: multiple abnormal adjacent structures are reported] SUPPRESS NEGATIVES
+
+## Paragraph: B (FINDINGS)
+NEGATIVE "No free fluid."
+
+## Report-wide
+NEGATIVE "No free fluid."
+"""
+
+
+async def test_p1_suppress_negatives_scope_and_conflict_telemetry(monkeypatch):
+    b, _ = await brief(monkeypatch, P1, jev_f={"r0": 0.9})
+    why = "multiple abnormal adjacent structures are reported"
+    assert f'- OMIT: "No free fluid." — {why}' in block(b.text, "## Paragraph: A (FINDINGS)")
+    assert '- KEEP: "No free fluid."' in block(b.text, "## Paragraph: B (FINDINGS)")
+    assert f'- OMIT: "No free fluid." — {why}' in block(b.text, "## Report-wide")
+    assert b.decisions["conflicts"] == [{"text": "No free fluid.", "omitted_in": ["A", "Report-wide (FINDINGS)"],
+                                         "kept_in": ["B"]}]
+
+
+async def test_p1b_contradicted_labels_every_copy_without_conflict(monkeypatch):
+    b, _ = await brief(monkeypatch, P1, qwen={"No free fluid": ("contradicted", "ascites")})
+    assert b.text.count('- OMIT: "No free fluid." — the dictation reports: ascites') == 3
+    assert b.decisions["conflicts"] == []
+
+
+async def test_p2_paragraph_replace_acts_on_its_own_paragraph_only(monkeypatch):
+    body = """
+## Paragraph: Liver (FINDINGS)
+NEGATIVE "No focal lesion."
+RULE WHEN [findings: a focal liver lesion is reported] REPLACE "No focal lesion." WITH "A 2 cm lesion is present."
+
+## Paragraph: Spleen (FINDINGS)
+NEGATIVE "No focal lesion."
+"""
+    b, _ = await brief(monkeypatch, body, jev_f={"r0": 0.9})
+    liver = block(b.text, "## Paragraph: Liver (FINDINGS)")
+    assert '- OMIT: "No focal lesion." — a focal liver lesion is reported\n- INSTEAD: "A 2 cm lesion is present."' in liver
+    assert '- KEEP: "No focal lesion."' in block(b.text, "## Paragraph: Spleen (FINDINGS)")
+    assert b.text.count("INSTEAD") == 1 and "REPLACE" not in b.text
+
+
+async def test_report_wide_rule_acts_on_its_section(monkeypatch):
+    body = """
+## Paragraph: A (FINDINGS)
+NEGATIVE "No calcification."
+
+## Paragraph: M (MEASUREMENTS)
+NEGATIVE "No calcification."
+
+## Report-wide
+RULE WHEN [findings: a calcified focus is reported] SUPPRESS "No calcification." | section: MEASUREMENTS
+"""
+    b, _ = await brief(monkeypatch, body, jev_f={"r0": 0.9})
+    assert '- KEEP: "No calcification."' in block(b.text, "## Paragraph: A (FINDINGS)")
+    assert '- OMIT: "No calcification." — a calcified focus is reported' in block(b.text, "## Paragraph: M (MEASUREMENTS)")
+
+
+P3 = """
+## Paragraph: A (FINDINGS)
+NEGATIVE "No lymphadenopathy or collection."
+RULE WHEN [findings: a collection adjacent to the organ is reported] SUPPRESS "No collection."
+"""
+
+
+async def test_p3_target_inside_an_unsplit_bundle_omits_the_bundle(monkeypatch):
+    b, calls = await brief(monkeypatch, P3, jev_f={"r0": 0.9})
+    para = block(b.text, "## Paragraph: A (FINDINGS)")
+    assert para.strip() == '- OMIT: "No lymphadenopathy or collection." — a collection adjacent to the organ is reported'
+    assert "KEEP" not in b.text and calls["qwen"] == []
+
+
+async def test_p3b_target_equal_to_a_split_part_omits_that_part_only(monkeypatch):
+    b, calls = await brief(monkeypatch, P3, jev_f={"r0": 0.9},
+                           split=lambda negs: [["No lymphadenopathy", "No collection"] if " or " in n else [n] for n in negs])
+    para = block(b.text, "## Paragraph: A (FINDINGS)")
+    assert para.strip() == ('- KEEP: "No lymphadenopathy."\n'
+                            '- OMIT: "No collection." — a collection adjacent to the organ is reported')
+    assert calls["qwen"][0][0] == ["No lymphadenopathy"]
+
+
+P4 = """
+## Paragraph: A (FINDINGS)
+NEGATIVE "No focal lesion."
+
+## Paragraph: M (MEASUREMENTS)
+Measured on axial.
+NEGATIVE "No measurement artefact."
+NORMAL [ventricle] "Normal ventricular volume."
+
+## Report-wide
+NEGATIVE "No measurement artefact." | section: MEASUREMENTS
+NEGATIVE "No measurement artefact."
+RULE WHEN [findings: a limited measurement set is reported] REPLACE "No measurement artefact." WITH "Measurements limited by artefact." | section: MEASUREMENTS
+RULE WHEN [context: a limited protocol is stated in the request] SUPPRESS_SECTION MEASUREMENTS
+RULE WHEN [findings: a limited measurement set is reported] SUPPRESS_HEADERS | section: MEASUREMENTS
+RULE WHEN [findings: a short report is requested by the referrer] SUPPRESS_HEADERS
+"""
+
+
+async def test_p4_suppress_section_removes_tagged_units_only(monkeypatch):
+    b, _ = await brief(monkeypatch, P4, jev_f={"r0": 0.9, "r2": 0.9, "r3": 0.9}, jev_c={"r1": 0.9})
+    rw = block(b.text, "## Report-wide")
+    assert rw.strip().splitlines() == ['- KEEP: "No measurement artefact."',
+                                       "- OMIT SECTION: MEASUREMENTS — a limited protocol is stated in the request",
+                                       "- NO PARAGRAPH HEADERS — a short report is requested by the referrer"]
+    assert "## Paragraph: M" not in b.text and "Measured on axial" not in b.text and "INSTEAD" not in b.text
+    assert [r["action"] for r in b.decisions["rules"]] == ["section_omitted", "applied", "section_omitted", "applied"]
+
+
+async def test_replace_whose_target_is_only_in_an_omitted_section_is_dropped(monkeypatch):
+    body = """
+## Paragraph: A (FINDINGS)
+NEGATIVE "No focal lesion."
+
+## Report-wide
+RULE WHEN [findings: a focal lesion of the organ is reported] REPLACE "No focal lesion." WITH "A lesion."
+RULE WHEN [context: a limited protocol is stated in the request] SUPPRESS_SECTION FINDINGS
+"""
+    b, _ = await brief(monkeypatch, body, jev_f={"r0": 0.9}, jev_c={"r1": 0.9})
+    assert "INSTEAD" not in b.text and "No focal lesion" not in b.text
+    assert b.decisions["rules"][0]["action"] == "target_omitted"
+
+
+async def test_insert_whose_anchor_is_omitted_is_dropped(monkeypatch):
+    stub(monkeypatch, {f"r{R_REPLACE}": 0.9, f"r{R_INSERT}": 0.9})
+    b = await compile_()
+    assert "INSERT:" not in b.text and rule_decision(b, R_INSERT)["action"] == "anchor_removed"
+    stub(monkeypatch, {f"r{R_INSERT}": 0.9})
+    assert '- INSERT: "Adjacent vessels:" BEFORE "No focal lesion."' in (await compile_()).text
+
+
+Q = """
+## Paragraph: A (FINDINGS)
+NORMAL [organ] "The organ is normal."
+NEGATIVE "No focal lesion."
+NEGATIVE "No free fluid."
+NEGATIVE "No collection." WHEN [history: prior surgery is stated]
+NEGATIVE "No stent fracture." WHEN [findings: an aortic stent graft is reported]
+RULE WHEN [findings: a calcified focus is reported] SUPPRESS "No calcification."
+RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["chamber volume" | "wall thickness"] AT END
+"""
+
+
+async def test_removed_negatives_are_not_sent_to_the_classifier(monkeypatch):
+    _, calls = await brief(monkeypatch, Q)
+    assert calls["qwen"][0][0] == ["No focal lesion", "No free fluid"]
+
+
+@pytest.mark.parametrize("indices", [[1], [0, 2], [0, 1, 1], [0, 1, 2]])
+async def test_q1_classifier_must_cover_exactly_the_negatives_sent(monkeypatch, indices):
+    q = rc.QwenDecisions(negatives=[rc.NegativeDecision(index=i, action="keep") for i in indices],
+                         affected_normals=[], applicable_measurements=[])
+    with pytest.raises(ValueError):
+        await brief(monkeypatch, Q, qwen=q)
+
+
+async def test_q1_affected_normal_out_of_range_fails(monkeypatch):
+    q = rc.QwenDecisions(negatives=[rc.NegativeDecision(index=i, action="keep") for i in range(2)],
+                         affected_normals=[5], applicable_measurements=[])
+    with pytest.raises(ValueError):
+        await brief(monkeypatch, Q, qwen=q)
+
+
+@pytest.mark.parametrize("answer", [None, {}, {"noul": None}, {"noul": "high"}, {"noul": True}, {"noul": float("nan")}])
+async def test_q2_partial_or_non_numeric_jev_answer_fails(monkeypatch, answer):
+    stub(monkeypatch)
+
+    async def partial(state, qs):
+        out = {k: {"noul": 0.1} for k in qs}
+        if "r1i0" in out:
+            if answer is None:
+                del out["r1i0"]
+            else:
+                out["r1i0"] = answer
+        return out
+    sheet = HEAD + Q + TAIL
+    monkeypatch.setattr(tb.rc, "_jev", partial)
+    with pytest.raises(ValueError):
+        await tb.compile_template_brief(sheet, g.parse_sheet(sheet).structure, "CT", "x", "")
+
+
+async def test_unlocatable_unit_fails(monkeypatch):
+    stub(monkeypatch)
+    with pytest.raises(ValueError):
+        await tb.compile_template_brief(SHEET.replace('NEGATIVE "No free fluid."\n', "", 1), STRUCT, "CT", "x", "")
+
+
+async def test_l5_normal_study_heading_tolerates_case_and_colon(monkeypatch):
+    body = """
+## Paragraph: A (FINDINGS)
+NEGATIVE "No free fluid."
+
+## Impression Construction
+Promote the main finding.
+
+### Normal Study Impression:
+"No acute abnormality."
+"""
+    b, _ = await brief(monkeypatch, body, findings="2 cm liver lesion.")
+    assert "No acute abnormality" not in b.text and "Promote the main finding." in b.text
+
+
+async def test_s1_split_keeps_the_original_when_a_part_loses_its_negation_or_is_empty(monkeypatch):
+    class R:
+        def __init__(self, o):
+            self.output = o
+
+    async def agent(**kw):
+        return R(rc.Split(negatives=[["No lymphadenopathy", "collection"], [""], ["No A", "No B"]]))
+    monkeypatch.setattr(rc, "_run_agent_with_model", agent)
+    out = await rc._split_bundled(["No lymphadenopathy or collection", "No fluid, or gas", "No A or B"])
+    assert out == [["No lymphadenopathy or collection"], ["No fluid, or gas"], ["No A", "No B"]]

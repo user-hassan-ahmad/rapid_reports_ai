@@ -16,8 +16,15 @@ Reconcile, in parallel:
 - Impression plan, with the sheet's "## Impression Construction" prose as the reporter's inclusion logic.
 - Fallback for dictated findings (no If-present keys, so every item is unanticipated): offered only.
 
-Any exception from Jev or Qwen propagates: the caller generates down the raw path. The plan and fallback
-fail soft (no plan section, no options), as in quick.
+Fails closed (raises; the caller generates down the raw path): an unusable structure, a unit line that
+cannot be found in the sheet, any Jev or Qwen error, a Jev answer missing or non-numeric for any key asked,
+and Qwen negative decisions that do not cover exactly the negatives sent. The plan and fallback fail soft
+(no plan section, no options), as in quick.
+
+Scope. A paragraph RULE's SUPPRESS / REPLACE acts on units of its own paragraph only; a Report-wide RULE
+acts on units of its section. SUPPRESS NEGATIVES acts on its paragraph and on same-text Report-wide
+negatives of that paragraph's section. SUPPRESS_SECTION removes the section's paragraphs (units, headings
+and prose) and the Report-wide units tagged "| section: <that section>"; untagged Report-wide units stay.
 
 Jev keys: r<i> rule condition, r<i>i<j> LIST_MISSING item, c<k> conditional negative, m<i> NORMAL,
 s<k> stated-normal negative (k indexes structure.negatives, i structure.rules / structure.normals).
@@ -26,9 +33,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import re
 import time
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Set, Tuple
 
 from . import report_reconcile as rc
 from .report_review import positive_items
@@ -43,6 +52,10 @@ MET = 0.5
 _IF_PRESENT_LINE = re.compile(r"^\s*(?:-\s+)?IF_PRESENT\b")
 _H2 = re.compile(r"^#{1,2}\s")
 _PARAGRAPH_HEADING = re.compile(r"^##\s+Paragraph:.*\(([^()]*)\)\s*$", re.I)
+_SECTION_TAG = re.compile(r"\|\s*section:[^\"]*$")  # a Report-wide unit's explicit "| section: <NAME>"
+_NORMAL_STUDY = re.compile(r"^###\s+Normal\s+study\s+(?:impression|conclusion)\s*:?\s*\n.*?(?=^#|\Z)",
+                           re.M | re.S | re.I)
+STATED = ("KEEP", "KEEP NORMAL")  # labels under which a unit's text is written in the report
 
 
 def _section_body(sheet: str, title: str) -> str:
@@ -118,9 +131,67 @@ class _Lines:
         return "\n".join(out)
 
 
+
+
+@dataclass
+class _Unit:
+    """A NEGATIVE, stated-normal NEGATIVE or NORMAL unit, located on its sheet line."""
+    kind: str  # "negative" | "stated_normal" | "normal"
+    id: str
+    text: str
+    structure: str  # normals: the bracketed structure; stated normals: the paragraph name or section
+    section: str
+    paragraph: str  # paragraph id; "" = Report-wide
+    explicit: bool  # a Report-wide unit tagged "| section: <NAME>"
+    line: int
+    extra_lines: List[int]
+    jev_key: str  # c<k> conditional negative (None when unconditional), s<k> stated normal, m<i> normal
+    condition: Optional[str] = None
+    condition_source: str = "findings"
+
+
+def _explicit(source_line) -> bool:
+    return isinstance(source_line, str) and bool(_SECTION_TAG.search(source_line))
+
+
+def _target_in_bundle(target: str, bundle: str) -> bool:
+    """An unsplit bundled negative ("No A or B") carrying the target claim ("No B")."""
+    claim = rc._words(target) - rc._NEGATION
+    return bool(claim) and rc._is_bundled(bundle) and claim <= rc._words(bundle)
+
+
+def _scores(answers, asked: Dict[str, dict]) -> Dict[str, float]:
+    """Jev's answer for every key asked, as a number; a missing or non-numeric answer fails the brief."""
+    out: Dict[str, float] = {}
+    for k in asked:
+        v = answers.get(k) if isinstance(answers, dict) else None
+        p = v.get("noul") if isinstance(v, dict) else None
+        try:
+            if isinstance(p, bool) or p is None:
+                raise TypeError
+            out[k] = float(p)
+        except (TypeError, ValueError):
+            raise ValueError(f"Jev answer for {k!r} is missing or non-numeric: {v!r}") from None
+        if not math.isfinite(out[k]):
+            raise ValueError(f"Jev answer for {k!r} is not finite")
+    return out
+
+
+def _check_qwen(qw: rc.QwenDecisions, n_negs: int, n_normals: int) -> None:
+    idx = [d.index for d in qw.negatives]
+    if len(idx) != n_negs or set(idx) != set(range(n_negs)):
+        raise ValueError(f"Qwen negative decisions {sorted(idx)} do not cover exactly 0..{n_negs - 1}")
+    if any(not 0 <= i < n_normals for i in qw.affected_normals):
+        raise ValueError(f"Qwen affected normals {qw.affected_normals} outside 0..{n_normals - 1}")
+
+
+def _pick(items: List[str], idx: List[int]) -> List[str]:
+    return [items[i] for i in dict.fromkeys(idx) if 0 <= i < len(items)]
+
+
 async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, findings: str,
                                  clinical_history: str = "") -> rc.Brief:
-    """The brief for one case. Raises on an unusable structure or a Jev/Qwen failure (raw path)."""
+    """The brief for one case. Raises when it cannot be trusted (see the module docstring): raw path."""
     if not s.usable:
         raise ValueError("template brief needs a usable sheet structure")
     t0 = time.monotonic()
@@ -130,9 +201,35 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
     findings_section = next((x.name for x in s.sections if x.role == "findings"), "FINDINGS")
     imp_section = next((x.name for x in s.sections if x.role == "impression"), "IMPRESSION")
     ctx_sources = ("history", "context")
+    para_name = {p.id: p.name for p in s.paragraphs}
+    para_section = {p.id: p.section for p in s.paragraphs}
 
-    negs = [(k, n) for k, n in enumerate(s.negatives) if n.kind == "negative"]
-    stated_normals = [(k, n) for k, n in enumerate(s.negatives) if n.kind == "stated_normal"]
+    # ── locate every unit on its own line (fail closed) ──────────────────────
+    L = _Lines(sheet)
+
+    def where(kind: str, refs: list, what: str) -> Tuple[int, List[int]]:
+        found = [L.locate(kind, r) for r in refs]
+        if not found or any(i is None for i in found):
+            raise ValueError(f"template brief cannot locate {what} in the sheet")
+        return found[0], found[1:]
+
+    units: List[_Unit] = []
+    for k, n in enumerate(s.negatives):
+        line, extra = where("negative", list(n.source_lines), f"negative {n.id}")
+        stated_normal = n.kind == "stated_normal"
+        units.append(_Unit(kind=n.kind, id=n.id, text=n.text, section=n.section, paragraph=n.paragraph,
+                           structure=(para_name.get(n.paragraph) or n.section) if stated_normal else "",
+                           explicit=not n.paragraph and _explicit(n.source_lines[0]), line=line, extra_lines=extra,
+                           jev_key=f"s{k}" if stated_normal else (f"c{k}" if n.condition else ""),
+                           condition=None if stated_normal else n.condition, condition_source=n.condition_source))
+    for i, n in enumerate(s.normals):
+        line, extra = where("normal", [n.source_line], f"normal {n.id}")
+        units.append(_Unit(kind="normal", id=n.id, text=n.text, structure=n.structure, section=n.section,
+                           paragraph=n.paragraph, explicit=not n.paragraph and _explicit(n.source_line),
+                           line=line, extra_lines=extra, jev_key=f"m{i}"))
+    rule_lines = [where("rule", list(r.source_lines), f"rule {r.id}") for r in s.rules]
+    negatives = [u for u in units if u.kind == "negative"]
+    normals = [u for u in units if u.kind != "negative"]
 
     # ── questions ────────────────────────────────────────────────────────────
     q_f: Dict[str, dict] = {}
@@ -144,23 +241,17 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
             continue
         (q_c if r.condition_source in ctx_sources else q_f)[f"r{i}"] = {
             "type": "noul", "instructions": Q_CONDITION + r.condition}
-    for k, n in negs:
-        if n.condition:
-            (q_c if n.condition_source in ctx_sources else q_f)[f"c{k}"] = {
-                "type": "noul", "instructions": Q_CONDITION + n.condition}
-    for i, n in enumerate(s.normals):
-        q_f[f"m{i}"] = {"type": "noul", "instructions": rc.Q_AFFECTED + n.text}
-    for k, n in stated_normals:
-        q_f[f"s{k}"] = {"type": "noul", "instructions": rc.Q_AFFECTED + n.text}
+    for u in negatives:
+        if u.condition:
+            (q_c if u.condition_source in ctx_sources else q_f)[u.jev_key] = {
+                "type": "noul", "instructions": Q_CONDITION + u.condition}
+    for u in normals:
+        q_f[u.jev_key] = {"type": "noul", "instructions": rc.Q_AFFECTED + u.text}
 
-    # Each distinct negative is classified once, so every copy carries the same label.
     distinct: List[str] = []
-    for _, n in negs:
-        if _key(n.text) not in {_key(t) for t in distinct}:
-            distinct.append(n.text.strip().rstrip("."))
-    split = await rc._split_bundled(distinct)
-    flat: List[Tuple[int, str]] = [(d, part) for d, parts in enumerate(split) for part in parts]
-    normal_texts = [n.text for n in s.normals] + [n.text for _, n in stated_normals]
+    for u in negatives:
+        if _key(u.text) not in {_key(t) for t in distinct}:
+            distinct.append(u.text.strip().rstrip("."))
 
     async def plan_or_none():
         try:
@@ -177,184 +268,273 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
             logger.warning("template finding-negatives fallback failed (%s: %s)", type(e).__name__, str(e)[:200])
             return None
 
-    jev_f, jev_c, qw, plan, fb = await asyncio.gather(
-        rc._jev(state, q_f) if q_f else asyncio.sleep(0, {}),
-        rc._jev(ctx_state, q_c) if q_c else asyncio.sleep(0, {}),
-        rc._qwen(state, [p for _, p in flat], normal_texts, []),
-        plan_or_none(), fallback_or_none())
+    # Jev and the split first (Qwen is sent only the negatives that survive them); plan and fallback
+    # run alongside throughout.
+    plan_t = asyncio.ensure_future(plan_or_none())
+    fb_t = asyncio.ensure_future(fallback_or_none())
+    try:
+        jev_f, jev_c, split = await asyncio.gather(
+            rc._jev(state, q_f) if q_f else asyncio.sleep(0, {}),
+            rc._jev(ctx_state, q_c) if q_c else asyncio.sleep(0, {}),
+            rc._split_bundled(distinct) if distinct else asyncio.sleep(0, []))
+        sc = {**_scores(jev_f, q_f), **_scores(jev_c, q_c)}
+        if len(split) != len(distinct):
+            raise ValueError("negative split does not cover every negative")
+        parts_of = {_key(t): [p for p in parts if p.strip()] or [t] for t, parts in zip(distinct, split)}
 
-    def score(k: str) -> float:
-        ans = jev_c if k in q_c else jev_f
-        try:
-            return float(ans[k]["noul"])
-        except (KeyError, TypeError, ValueError):
-            return 0.0
+        # ── rules: met, and the sections they omit ───────────────────────────
+        met = {i: sc[f"r{i}"] >= MET for i, r in enumerate(s.rules) if r.effect != "list_missing"}
+        omitted = {r.target for i, r in enumerate(s.rules) if r.effect == "suppress_section" and met[i]}
 
-    qneg = {d.index: d for d in qw.negatives}
-    q_affected = set(qw.affected_normals)
-    para_name = {p.id: p.name for p in s.paragraphs}
-    L = _Lines(sheet)
+        def unit_omitted(u: _Unit) -> bool:
+            return u.section in omitted and (bool(u.paragraph) or u.explicit)
+
+        def rule_omitted(i: int) -> bool:
+            r = s.rules[i]
+            if r.effect == "suppress_section" and r.target == r.section:
+                return False
+            return r.section in omitted and (bool(r.paragraph) or _explicit(r.source_lines[0]))
+
+        def in_scope(r, u: _Unit) -> bool:
+            return u.paragraph == r.paragraph if r.paragraph else u.section == r.section
+
+        targeting = [i for i, r in enumerate(s.rules)
+                     if r.effect in ("suppress", "replace") and r.target and met[i] and not rule_omitted(i)]
+        para_suppressed = {r.paragraph: r.condition for i, r in enumerate(s.rules)
+                           if r.effect == "suppress_paragraph_negatives" and r.paragraph and met[i]
+                           and not rule_omitted(i)}
+        suppressed_keys = {(para_section.get(u.paragraph), _key(u.text)): para_suppressed[u.paragraph]
+                           for u in negatives if u.paragraph in para_suppressed and not unit_omitted(u)}
+        target_hits: Dict[int, str] = {}  # rule -> "live" (a target unit renders its OMIT) | "omitted"
+
+        def forced_parts(u: _Unit, parts: List[str]) -> Dict[int, int]:
+            """part index -> the met SUPPRESS / REPLACE rule (in scope) that omits it."""
+            out: Dict[int, int] = {}
+            for i in targeting:
+                r = s.rules[i]
+                if not in_scope(r, u):
+                    continue
+                tk = _key(r.target)
+                if tk == _key(u.text) or (u.kind == "negative" and len(parts) == 1 and _target_in_bundle(r.target, u.text)):
+                    hit = list(range(len(parts)))
+                else:
+                    hit = [j for j, p in enumerate(parts) if _key(p) == tk] if u.kind == "negative" else []
+                for j in hit:
+                    out.setdefault(j, i)
+                if hit:
+                    target_hits[i] = "omitted" if unit_omitted(u) and target_hits.get(i) != "live" else "live"
+            return out
+
+        # ── plan each negative; collect what the classifier must judge ──────
+        plans: Dict[str, dict] = {}
+        to_classify: List[str] = []
+        for u in negatives:
+            parts = parts_of[_key(u.text)]
+            forced = forced_parts(u, parts)
+            p = {"parts": parts, "forced": forced, "status": "labelled"}
+            if unit_omitted(u):
+                p["status"] = "section_omitted"
+            elif u.condition and sc[u.jev_key] < MET and not forced:
+                p["status"] = "removed"
+            elif u.paragraph in para_suppressed:
+                p["status"] = "paragraph_suppressed"
+                p["why"] = para_suppressed[u.paragraph]
+            elif not u.paragraph and (u.section, _key(u.text)) in suppressed_keys:
+                p["status"] = "paragraph_suppressed"
+                p["why"] = suppressed_keys[(u.section, _key(u.text))]
+            else:
+                skip_unforced = bool(u.condition) and sc[u.jev_key] < MET  # unmet: only forced parts render
+                for j, part in enumerate(parts):
+                    if j not in forced and not skip_unforced and _key(part) not in {_key(x) for x in to_classify}:
+                        to_classify.append(part)
+                p["skip_unforced"] = skip_unforced
+            plans[u.id] = p
+        normal_plans: Dict[str, dict] = {}
+        normals_sent: List[_Unit] = []
+        for u in normals:
+            forced = forced_parts(u, [u.text])
+            if unit_omitted(u):
+                status = "section_omitted"
+            elif forced:
+                status = "rule_omitted"
+            elif u.paragraph in para_suppressed:
+                status = "suppressed_by_rule"
+            else:
+                status = "judged"
+                normals_sent.append(u)
+            normal_plans[u.id] = {"status": status, "forced": forced}
+
+        if to_classify or normals_sent:
+            qw = await rc._qwen(state, to_classify, [u.text for u in normals_sent], [])
+        else:
+            qw = rc.QwenDecisions(negatives=[], affected_normals=[], applicable_measurements=[])
+        _check_qwen(qw, len(to_classify), len(normals_sent))
+        plan, fb = await plan_t, await fb_t
+    finally:
+        for t in (plan_t, fb_t):
+            if not t.done():
+                t.cancel()
+
+    qneg = {_key(to_classify[d.index]): d for d in qw.negatives}
+    q_affected = {normals_sent[i].id for i in qw.affected_normals}
     decisions: dict = {"rules": [], "negatives": [], "normals": [], "missing": [], "finding_negatives": [],
-                       "options": [], "impression_plan": None}
+                       "options": [], "conflicts": [], "impression_plan": None}
+    labels: List[Tuple[_Unit, str, str]] = []  # (unit, text key, label) for anchors and conflicts
+    instead_done: Set[int] = set()
 
-    # ── rules: decide first; suppressions act on other units ────────────────
-    met_rule: Dict[int, bool] = {}
-    rule_score: Dict[int, float] = {}
-    for i, r in enumerate(s.rules):
-        if r.effect != "list_missing":
-            rule_score[i] = score(f"r{i}")
-            met_rule[i] = rule_score[i] >= MET
-    omitted_sections = {r.target for i, r in enumerate(s.rules)
-                        if r.effect == "suppress_section" and met_rule.get(i)}
-    para_suppressed: Dict[str, str] = {}  # paragraph id -> the statement that suppresses its negatives
-    targeted: Dict[str, List[tuple]] = {}  # target key -> [(statement, instead text)]
-    for i, r in enumerate(s.rules):
-        if not met_rule.get(i) or r.section in omitted_sections:
-            continue
-        if r.effect == "suppress_paragraph_negatives" and r.paragraph:
-            para_suppressed.setdefault(r.paragraph, r.condition)
-        elif r.effect in ("suppress", "replace") and r.target:
-            targeted.setdefault(_key(r.target), []).append(
-                (r.condition, r.then_text if r.effect == "replace" else ""))
-    unit_keys = {_key(n.text) for n in s.negatives} | {_key(n.text) for n in s.normals}
-
-    def omit_lines(text: str, quote) -> List[str]:
-        out: List[str] = []
-        for statement, instead in targeted.get(_key(text), []):
-            out.append(f'- OMIT: "{quote(text)}" — {statement}')
-            if instead:
-                out.append(f'- INSTEAD: "{instead}"')
+    def omit(text: str, i: int) -> List[str]:
+        r = s.rules[i]
+        out = [f'- OMIT: "{text}" — {r.condition}']
+        if r.effect == "replace" and r.then_text and i not in instead_done:
+            instead_done.add(i)
+            out.append(f'- INSTEAD: "{r.then_text}"')
         return out
 
-    for i, r in enumerate(s.rules):
-        line = L.locate("rule", r.source_lines[0]) if r.source_lines else None
-        for extra in r.source_lines[1:]:
-            L.put(L.locate("rule", extra), [])
-        entry = {"id": r.id, "effect": r.effect, "condition": r.condition, "source": r.condition_source}
-        if r.section in omitted_sections and not (r.effect == "suppress_section" and r.target == r.section):
-            L.put(line, [])
-            decisions["rules"].append({**entry, "met": met_rule.get(i), "score": round(rule_score.get(i, 0.0), 3),
-                                       "action": "section_omitted"})
-            continue
-        if r.effect == "list_missing":
-            missing = [item for j, item in enumerate(r.items) if score(f"r{i}i{j}") < MET]
-            where = "end" if r.position == "end" else "top"
-            L.put(line, [f"- MISSING (list at {where}): " + ", ".join(missing)] if missing else [])
-            decisions["missing"].append({"id": r.id, "items": r.items, "missing": missing, "position": where})
-            decisions["rules"].append({**entry, "met": bool(missing), "score": None,
-                                       "action": "listed" if missing else "removed"})
-            continue
-        met = met_rule[i]
+    # ── negatives ────────────────────────────────────────────────────────────
+    for u in negatives:
+        p = plans[u.id]
+        for x in u.extra_lines:
+            L.put(x, [])
+        entry = {"id": u.id, "text": u.text, "paragraph": para_name.get(u.paragraph, "")}
         new: List[str] = []
-        if met:
-            if r.effect in ("suppress", "replace"):
-                # The OMIT (and INSTEAD) sit where the target is when it is a unit; else on the rule's line.
-                if _key(r.target) not in unit_keys:
-                    new.append(f'- OMIT: "{r.target}" — {r.condition}')
-                    if r.effect == "replace" and r.then_text:
-                        new.append(f'- INSTEAD: "{r.then_text}"')
-            elif r.effect == "append":
-                new.append(f'- APPLY: "{r.then_text}"')
-            elif r.effect == "use":
-                new.append(f'- USE: "{r.then_text}"')
-            elif r.effect == "insert_before":
-                new.append(f'- INSERT: "{r.then_text}" BEFORE "{r.anchor}"')
-            elif r.effect == "suppress_paragraph_negatives":
-                new.append("- DESCRIBE FROM DICTATION: this paragraph's normal wording does not apply")
-            elif r.effect == "suppress_section":
-                new.append(f"- OMIT SECTION: {r.target} — {r.condition}")
-            elif r.effect == "suppress_headers":
-                new.append(f"- NO PARAGRAPH HEADERS — {r.condition}")
-            elif r.effect == "order":
-                new.append(f"- PLACE THIS PARAGRAPH {(r.position or 'first').upper()} — {r.condition}")
-        L.put(line, new)
-        decisions["rules"].append({**entry, "met": met, "score": round(rule_score[i], 3),
-                                   "action": "applied" if met else "removed"})
-
-    # ── negatives ───────────────────────────────────────────────────────────
-    for k, n in negs:
-        line = L.locate("negative", n.source_lines[0]) if n.source_lines else None
-        for extra in n.source_lines[1:]:
-            L.put(L.locate("negative", extra), [])
-        d_idx = next(d for d, t in enumerate(distinct) if _key(t) == _key(n.text))
-        parts = [(j, part) for j, (d, part) in enumerate(flat) if d == d_idx]
-        entry = {"id": n.id, "text": n.text, "paragraph": para_name.get(n.paragraph, "")}
-        if n.section in omitted_sections:
-            L.put(line, [])
-            decisions["negatives"].append({**entry, "action": "section_omitted", "lines": []})
+        if p["status"] in ("section_omitted", "removed"):
+            labels.extend((u, _key(part), "REMOVED") for part in p["parts"])
+            extra = {"condition": u.condition, "score": round(sc[u.jev_key], 3)} if p["status"] == "removed" else {}
+            L.put(u.line, [])
+            decisions["negatives"].append({**entry, "action": p["status"], **extra, "lines": []})
             continue
-        # A met SUPPRESS / REPLACE of this negative wins over its own condition: the OMIT and the
-        # INSTEAD the rule prescribes are stated whether or not the negative would have been.
-        new = omit_lines(n.text, _q)
-        if not new and n.condition and score(f"c{k}") < MET:
-            L.put(line, [])
-            decisions["negatives"].append({**entry, "action": "removed", "condition": n.condition,
-                                           "score": round(score(f"c{k}"), 3), "lines": []})
-            continue
-        if new:
-            action = "rule_omitted"
-        elif n.paragraph in para_suppressed:
-            new = [f'- OMIT: "{_q(part)}" — {para_suppressed[n.paragraph]}' for _, part in parts]
+        if p["status"] == "paragraph_suppressed":
+            for part in p["parts"]:
+                new.append(f'- OMIT: "{_q(part)}" — {p["why"]}')
+                labels.append((u, _key(part), "RULE OMIT"))
             action = "paragraph_suppressed"
         else:
-            for j, part in parts:
-                d = qneg.get(j)
-                if d and d.action == "contradicted":
+            for j, part in enumerate(p["parts"]):
+                if j in p["forced"]:
+                    new.extend(omit(_q(part), p["forced"][j]))
+                    labels.append((u, _key(part), "RULE OMIT"))
+                    continue
+                if p["skip_unforced"]:
+                    labels.append((u, _key(part), "REMOVED"))
+                    continue
+                d = qneg[_key(part)]
+                if d.action == "contradicted":
                     new.append(f'- OMIT: "{_q(part)}" — the dictation reports: {d.dictated_finding}')
-                elif d and d.action == "expected":
+                    labels.append((u, _key(part), "OMIT"))
+                elif d.action == "expected":
                     new.append(f'- DO NOT ASSERT: "{_q(part)}" — expected consequence of: {d.dictated_finding}')
+                    labels.append((u, _key(part), "DO NOT ASSERT"))
                 else:
                     new.append(f'- KEEP: "{_q(part)}"')
-            action = "labelled"
-        L.put(line, new)
+                    labels.append((u, _key(part), "KEEP"))
+            action = "rule_omitted" if p["forced"] and len(p["forced"]) == len(p["parts"]) else "labelled"
+        L.put(u.line, new)
         decisions["negatives"].append({**entry, "action": action, "lines": new})
 
     # ── normals: kept verbatim, or never asserted (never deleted) ────────────
-    def normal(line: Optional[int], nid: str, text: str, structure: str, section: str, paragraph: str,
-               jev_key: str, q_index: int, extra: dict) -> None:
-        entry = {"id": nid, "structure": structure, **extra}
-        if section in omitted_sections:
-            L.put(line, [])
-            decisions["normals"].append({**entry, "action": "section_omitted"})
-            return
-        new = omit_lines(text, lambda t: t)
-        if new:
-            action = "rule_omitted"
-        elif paragraph in para_suppressed:  # SUPPRESS NEGATIVES: the paragraph is described from the dictation
-            new, action = [f'- DO NOT ASSERT AS NORMAL [{structure}]: "{text}"'], "suppressed_by_rule"
+    for u in normals:
+        p = normal_plans[u.id]
+        for x in u.extra_lines:
+            L.put(x, [])
+        entry = {"id": u.id, "structure": u.structure, **({"kind": "stated_normal"} if u.kind == "stated_normal" else {})}
+        status = p["status"]
+        if status == "section_omitted":
+            L.put(u.line, [])
+            labels.append((u, _key(u.text), "REMOVED"))
+            decisions["normals"].append({**entry, "action": status})
+            continue
+        if status == "rule_omitted":
+            new = omit(u.text, p["forced"][0])
+            label = "RULE OMIT"
+        elif status == "suppressed_by_rule":  # SUPPRESS NEGATIVES: the paragraph is described from the dictation
+            new, label = [f'- DO NOT ASSERT AS NORMAL [{u.structure}]: "{u.text}"'], "DO NOT ASSERT AS NORMAL"
         else:
-            flagged = score(jev_key) >= MET or q_index in q_affected
+            flagged = sc[u.jev_key] >= MET or u.id in q_affected
             label = "DO NOT ASSERT AS NORMAL" if flagged else "KEEP NORMAL"
-            new, action = [f'- {label} [{structure}]: "{text}"'], ("do_not_assert" if flagged else "keep")
-        L.put(line, new)
-        decisions["normals"].append({**entry, "score": round(score(jev_key), 3),
-                                     "qwen_affected": q_index in q_affected, "action": action})
+            new, status = [f'- {label} [{u.structure}]: "{u.text}"'], ("do_not_assert" if flagged else "keep")
+        labels.append((u, _key(u.text), label))
+        L.put(u.line, new)
+        decisions["normals"].append({**entry, "score": round(sc[u.jev_key], 3), "qwen_affected": u.id in q_affected,
+                                     "action": status})
 
-    for i, n in enumerate(s.normals):
-        normal(L.locate("normal", n.source_line), n.id, n.text, n.structure, n.section, n.paragraph,
-               f"m{i}", i, {})
-    for pos, (k, n) in enumerate(stated_normals):
-        line = L.locate("negative", n.source_lines[0]) if n.source_lines else None
-        for extra in n.source_lines[1:]:
-            L.put(L.locate("negative", extra), [])
-        normal(line, n.id, n.text, para_name.get(n.paragraph) or n.section, n.section, n.paragraph,
-               f"s{k}", len(s.normals) + pos, {"kind": "stated_normal"})
+    # ── rules ────────────────────────────────────────────────────────────────
+    for i, r in enumerate(s.rules):
+        line, extra = rule_lines[i]
+        for x in extra:
+            L.put(x, [])
+        entry = {"id": r.id, "effect": r.effect, "condition": r.condition, "source": r.condition_source}
+        if rule_omitted(i):
+            L.put(line, [])
+            decisions["rules"].append({**entry, "met": met.get(i), "score": round(sc.get(f"r{i}", 0.0), 3),
+                                       "action": "section_omitted"})
+            continue
+        if r.effect == "list_missing":
+            missing = [item for j, item in enumerate(r.items) if sc[f"r{i}i{j}"] < MET]
+            pos = "end" if r.position == "end" else "top"
+            L.put(line, [f"- MISSING (list at {pos}): " + ", ".join(missing)] if missing else [])
+            decisions["missing"].append({"id": r.id, "items": r.items, "missing": missing, "position": pos})
+            decisions["rules"].append({**entry, "met": bool(missing), "score": None,
+                                       "action": "listed" if missing else "removed"})
+            continue
+        new: List[str] = []
+        action = "applied" if met[i] else "removed"
+        if met[i]:
+            if r.effect in ("suppress", "replace"):
+                hit = target_hits.get(i)
+                if hit is None:  # the target is no unit in scope: the OMIT sits on the rule's line
+                    new = omit(r.target, i)
+                elif hit == "omitted":
+                    action = "target_omitted"
+                    logger.info("template brief: rule %s dropped, its target is only in an omitted section", r.id)
+            elif r.effect == "append":
+                new = [f'- APPLY: "{r.then_text}"']
+            elif r.effect == "use":
+                new = [f'- USE: "{r.then_text}"']
+            elif r.effect == "insert_before":
+                anchors = [lab for u, k, lab in labels if in_scope(r, u) and k == _key(r.anchor)]
+                if anchors and not any(lab in STATED for lab in anchors):
+                    action = "anchor_removed"
+                    logger.info("template brief: rule %s dropped, its anchor is not stated", r.id)
+                else:
+                    new = [f'- INSERT: "{r.then_text}" BEFORE "{r.anchor}"']
+            elif r.effect == "suppress_paragraph_negatives":
+                new = ["- DESCRIBE FROM DICTATION: this paragraph's normal wording does not apply"]
+            elif r.effect == "suppress_section":
+                new = [f"- OMIT SECTION: {r.target} — {r.condition}"]
+            elif r.effect == "suppress_headers":
+                new = [f"- NO PARAGRAPH HEADERS — {r.condition}"]
+            elif r.effect == "order":
+                new = [f"- PLACE THIS PARAGRAPH {(r.position or 'first').upper()} — {r.condition}"]
+        L.put(line, new)
+        decisions["rules"].append({**entry, "met": met[i], "score": round(sc[f"r{i}"], 3), "action": action})
+
+    # Same text omitted by a rule in one place and kept in another: allowed (scope), but made visible.
+    def place(u: _Unit) -> str:
+        return para_name.get(u.paragraph) or f"Report-wide ({u.section})"
+
+    by_key: Dict[str, List[Tuple[_Unit, str]]] = {}
+    for u, k, lab in labels:
+        by_key.setdefault(k, []).append((u, lab))
+    for k, seen in by_key.items():
+        omitted_in = [u for u, lab in seen if lab == "RULE OMIT"]
+        kept_in = [u for u, lab in seen if lab in STATED]
+        if omitted_in and kept_in:
+            decisions["conflicts"].append({"text": omitted_in[0].text if _key(omitted_in[0].text) == k else k,
+                                           "omitted_in": [place(u) for u in omitted_in],
+                                           "kept_in": [place(u) for u in kept_in]})
 
     # An omitted section's paragraph shells (heading and prose) go too; the OMIT SECTION line stays.
-    L.drop_paragraphs(omitted_sections)
-
+    L.drop_paragraphs(omitted)
     text = L.render()
 
     # Normal-study impression: dropped when anything positive is dictated.
     if positive_items(findings):
-        text = re.sub(r"^###\s+Normal study (?:impression|conclusion)\s*\n.*?(?=^#|\Z)", "", text,
-                      flags=re.M | re.S | re.I)
+        text = _NORMAL_STUDY.sub("", text)
 
     # ── impression plan and options ─────────────────────────────────────────
     if plan and items:
-        pick = lambda idx: [items[i] for i in dict.fromkeys(idx) if 0 <= i < len(items)]
-        carry, only = pick(plan.impression), pick(plan.findings_only)
-        opt = [t for t in pick(plan.optional_impression) if t not in carry][:rc.MAX_OPTIONS]
+        carry, only = _pick(items, plan.impression), _pick(items, plan.findings_only)
+        opt = [t for t in _pick(items, plan.optional_impression) if t not in carry][:rc.MAX_OPTIONS]
         decisions["options"].extend({"kind": "impression", "section": imp_section, "text": t, "reason": ""}
                                     for t in opt)
         decisions["impression_plan"] = {"carry": carry, "findings_only": only, "optional": opt}
@@ -368,15 +548,15 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
 
     # Finding-linked negatives: the shared fallback's, for carried findings; offered, never stated.
     if plan and fb:
-        seen: set = set()
+        seen_neg: set = set()
         n_offered = 0
         for it in fb.items:
             if it.covered or it.index not in plan.impression or not (0 <= it.index < len(items)):
                 continue
             for neg in it.negatives[:3]:
                 neg = neg.strip().rstrip(".")
-                if neg and neg not in seen and n_offered < rc.MAX_FINDING_OPTIONS:
-                    seen.add(neg)
+                if neg and neg not in seen_neg and n_offered < rc.MAX_FINDING_OPTIONS:
+                    seen_neg.add(neg)
                     n_offered += 1
                     decisions["options"].append({"kind": "finding_negative", "section": findings_section, "text": neg,
                                                  "finding": items[it.index], "reason": "unanticipated finding"})

@@ -180,9 +180,20 @@ async def _split_bundled(negs: List[str]) -> List[List[str]]:
         model_settings={"temperature": 0, "max_tokens": 3000, "reasoning_effort": "none"}), QWEN_TIMEOUT_S)
     out = [[n] for n in negs]
     for i, parts in zip(bundled, r.output.negatives):
-        if parts and all(_words(p) <= _words(negs[i]) for p in parts):
+        if _split_keeps_claims(negs[i], parts):
             out[i] = [p.strip().rstrip(".") for p in parts]
     return out
+
+
+_NEGATION = frozenset({"no", "not", "without", "nil", "none", "never"})
+
+
+def _split_keeps_claims(original: str, parts: List[str]) -> bool:
+    """A split is used only when every part is a non-empty claim made of the original's words and keeps
+    a negation word the original had: "No A or B" -> "No A", "B" would turn a negative into an assertion."""
+    neg = _words(original) & _NEGATION
+    return bool(parts) and all(
+        p and p.strip(" .") and _words(p) <= _words(original) and (not neg or _words(p) & neg) for p in parts)
 
 
 async def _jev(state: str, questions: dict) -> dict:
