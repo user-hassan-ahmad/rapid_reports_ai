@@ -331,7 +331,7 @@ async def test_a_negative_is_flagged_only_when_its_restatement_is_dictated(monke
             t = q["instructions"]
             if t.startswith(qq.Q_CONTRA):
                 out[k] = {"noul": 0.8 if "encasement" in t or "hepatic deposit" in t else 0.05}
-            elif t.startswith(qq.Q_RESTATED):
+            elif q.get("criteria") and t.startswith(qq.Q_RESTATED):
                 out[k] = {"noul": 0.9 if "portal vein" in t else 0.1}
             else:
                 out[k] = {"noul": 0.95}
@@ -414,3 +414,31 @@ async def test_inserter_falls_back_to_word_overlap_when_jev_fails(monkeypatch):
                                  ["appendix fine", "5 mm defect D1"])
     assert r.applied == 1 and r.skipped == 1 and r.dup_check == "words"
     assert r.report == "FINDINGS:\n5 mm defect at D1. The appendix is unremarkable."
+
+
+def test_restated_question_counts_a_finding_raised_as_a_possibility():
+    q = qq.q_restated("pneumothorax")
+    assert q["type"] == "noul"
+    assert q["instructions"] == "The dictated findings report this finding, including as a possibility: pneumothorax"
+    assert q["criteria"]["true"].startswith("This same finding is reported") and "as present or possible" in q["criteria"]["true"]
+    assert "a different qualifier such as size" in q["criteria"]["false"]
+
+
+@pytest.mark.asyncio
+async def test_a_report_negative_contradicting_a_hedged_dictated_finding_is_removed(monkeypatch):
+    asked = {}
+    async def fake(state, questions):
+        asked.update(questions)
+        out = {}
+        for k, q in questions.items():
+            t = q["instructions"]
+            out[k] = {"noul": 0.8 if t == qq.Q_CONTRA + "No pneumothorax." else
+                              0.6 if t == qq.q_restated("pneumothorax")["instructions"] else
+                              0.9 if t.startswith(qq.Q_CONVEYS) else 0.05}
+        return out
+    monkeypatch.setattr(qq.qb, "_jev", fake)
+    report = "FINDINGS:\nNo pneumothorax. The lungs are clear.\n\nIMPRESSION:\nNo acute abnormality."
+    out, _, tel = await qq.run_quality_check(report, "?pneumothorax", "CXR", [])
+    assert any(q == qq.q_restated("pneumothorax") for q in asked.values())
+    assert qq.RESTATED_FLAG == 0.5
+    assert "No pneumothorax" not in out and "The lungs are clear." in out and tel["clauses_removed"] == 1

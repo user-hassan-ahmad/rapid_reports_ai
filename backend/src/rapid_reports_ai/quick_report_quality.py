@@ -26,7 +26,18 @@ from .enhancement_utils import _run_agent_with_model
 logger = logging.getLogger(__name__)
 
 Q_CONTRA = "The dictated findings state something that this report statement denies or contradicts. Statement: "
-Q_RESTATED = "The dictated findings report this finding: "
+Q_RESTATED = "The dictated findings report this finding, including as a possibility: "
+
+
+def q_restated(finding: str) -> dict:
+    """Removal confirmation for a flagged report negative (Jev wording v2, group B S1, L-49): a finding
+    dictated only as a possibility still confirms the removal."""
+    return {"type": "noul", "instructions": Q_RESTATED + finding,
+            "criteria": {"true": "This same finding is reported, in any wording (synonym, abbreviation, or a more specific "
+                                 "form of it), as present or possible.",
+                         "false": "It is not mentioned, is stated as absent or normal, or the dictation reports a different "
+                                  "finding that only shares some words with it (a different qualifier such as size, "
+                                  "severity, pattern, chronicity or location)."}}
 CONTRA_FLAG = 0.6   # L-46: 31/31 genuine contradictions >= 0.5, 29/31 >= 0.7
 RESTATED_FLAG = 0.5  # a report negative is removed only when the finding it denies is dictated (L-47)
 # One wording for "is it already in the report?" (Jev wording v2, group A S2, L-49). Thresholds differ per use.
@@ -114,7 +125,7 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict])
     # negatives that share words with a dictated finding (L-47: 'No irregular asymmetric wall
     # thickening' beside dictated segmental wall thickening). Same call, no added latency.
     restated = {i: restate(t) for i, t in enumerate(cls)}
-    contra_qs.update({f"r{i}": {"type": "noul", "instructions": Q_RESTATED + r} for i, r in restated.items() if r})
+    contra_qs.update({f"r{i}": q_restated(r) for i, r in restated.items() if r})
     omit_qs = {f"i{i}": {"type": "noul", "instructions": Q_CONVEYS + t} for i, t in enumerate(items)}
 
     async def ask(state, qs):
