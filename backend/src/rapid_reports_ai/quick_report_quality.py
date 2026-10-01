@@ -2,7 +2,8 @@
 
 Spec docs/superpowers/specs/2026-09-30-post-generation-check-design.md; probe ledger L-46.
 
-    units   -> report clauses, option sentences, every dictated item (code)
+    units   -> report clauses, option sentences, every dictated item (code); a Jev selector
+               keeps omission flags only on abnormal / limitation / mixed lines
     check   -> two Jev calls in parallel: contradiction (dictation state), omission (report state)
     repair  -> one Qwen call returns verbatim find/replace edits; code applies each only when its
                find occurs exactly once
@@ -88,12 +89,64 @@ def restate(clause: str) -> Optional[str]:
 
 
 def dictated_items(findings: str) -> List[str]:
-    """Every dictated item is checked (wording v2: the conveys question handles shorthand normals;
-    negatives omitted from the report are restored, L-49)."""
+    """Every dictated item; each is asked the conveys question, and the selector decides which flags count."""
     return qb.split_findings(findings)
 
 
-positive_items = dictated_items   # old name, kept for the eval script
+_BACKGROUND = re.compile(r"^\s*(no|nil)\b|\b(unremarkable|normal|intact|clear)\b", re.I)
+
+
+def positive_items(findings: str) -> List[str]:
+    """The regex selection (L-46): negatives and background lines are not checked for omission. Now the
+    fallback when the Jev selector cannot answer for an item."""
+    return [t for t in dictated_items(findings) if not _BACKGROUND.search(t)]
+
+
+# Omission selector (Jev wording v2, group F, L-49): only lines that report an abnormality, a study
+# limitation, or both alongside normals are checked. Dictated negatives and normals are never
+# omission-checked or inserted: split from their line they lose their scope (side, level, structure)
+# and a restored one reads as a global denial (L-49 re-score: 15 contradicting insertions).
+_SEL_LT = ("The line itself reports something abnormal or present in the patient (a lesion, abnormal measurement, device or line "
+           "position, post-operative change or interval change), or a problem with the study (artefact, degraded or non-diagnostic "
+           "images, incomplete coverage, a structure not seen or not assessed), even alongside normal findings or technique details.")
+_SEL_LF = ("The line itself only says that structures are normal or findings are absent, only says how the study was performed "
+           "(protocol, sequences, views, phases, contrast, dose, adequate quality), or only names the prior study used for comparison.")
+_SEL_CHOICES = {
+    "abnormal_finding": "The line reports something abnormal or present in the patient (a lesion, abnormal measurement, device or line position, post-operative change or interval change)",
+    "limitation": "The line reports a problem with the study: artefact, degraded or non-diagnostic images, incomplete coverage, or a structure not seen or not assessed",
+    "normal_or_negative": "The line only says that structures are normal or that findings are absent",
+    "protocol_note": "The line only says how the study was performed (protocol, sequences, views, phases, contrast, dose) or that image quality was adequate",
+    "comparison": "The line only names the prior study used for comparison, or says none is available",
+    "mixed_abnormal_and_normal": "The line reports something abnormal, or a study problem, alongside normal findings or technique details",
+}
+_SEL_KEEP = ("abnormal_finding", "limitation", "mixed_abnormal_and_normal")
+SELECT_FLAG = 0.45   # mean(CH2sel, T1): 0 unsafe / 0 over on DEV, HOLDOUT and stress, both runs
+
+
+def q_select_choice(item: str) -> dict:
+    return {"type": "choice",
+            "instructions": "Read only this one dictated line, not the rest of the dictation: " + f'"{item}". What does this line report?',
+            "criteria": _SEL_CHOICES}
+
+
+def q_select_noul(item: str) -> dict:
+    return {"type": "noul",
+            "instructions": f'The dictated line "{item}" itself reports an abnormality or a limitation of the study.',
+            "criteria": {"true": _SEL_LT, "false": _SEL_LF}}
+
+
+def selection_score(ch, t1) -> Optional[float]:
+    """mean(P(abnormal) + P(limitation) + P(mixed), T1); None when either answer is unreadable."""
+    try:
+        ch2 = sum(float(ch["probabilities"][k]) for k in _SEL_KEEP)
+        return (ch2 + float(t1["noul"])) / 2
+    except Exception:
+        return None
+
+
+def selected(item: str, ch, t1) -> bool:
+    sc = selection_score(ch, t1)
+    return not _BACKGROUND.search(item) if sc is None else sc >= SELECT_FLAG
 
 
 # ── check ────────────────────────────────────────────────────────────────────
@@ -109,12 +162,15 @@ class CheckResult(BaseModel):
     bad_option_ids: List[str] = []
     n_clauses: int = 0
     n_items: int = 0
+    n_selected: int = 0
+    selector: Optional[str] = None   # "jev" | "regex" | "mixed" (regex where Jev's answer was unreadable)
     error: Optional[str] = None
 
 
 async def check(report: str, findings: str, scan_type: str, options: List[dict]) -> CheckResult:
-    """Two Jev calls in parallel: every report clause and option against the dictation, every
-    dictated item against the report."""
+    """Two Jev calls in parallel: every report clause and option against the dictation (plus the
+    omission selector per dictated item), every dictated item against the report. An omission flag
+    counts only on a selected item; a failed dictation call selects by the regex (L-46)."""
     fnd, imp = report_sections(report)
     cls = list(dict.fromkeys(clauses(fnd) + clauses(imp)))
     opts = [(o["id"], o["sentence"]) for o in options if o.get("sentence")]
@@ -126,26 +182,41 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict])
     # thickening' beside dictated segmental wall thickening). Same call, no added latency.
     restated = {i: restate(t) for i, t in enumerate(cls)}
     contra_qs.update({f"r{i}": q_restated(r) for i, r in restated.items() if r})
+    # The omission selector rides the same dictation-state call (no added latency).
+    contra_qs.update({f"sel{i}": q_select_choice(t) for i, t in enumerate(items)})
+    contra_qs.update({f"lt{i}": q_select_noul(t) for i, t in enumerate(items)})
     omit_qs = {f"i{i}": {"type": "noul", "instructions": Q_CONVEYS + t} for i, t in enumerate(items)}
 
     async def ask(state, qs):
         return await qb._jev(state, qs) if qs else {}
-    try:
-        contra, omit = await asyncio.wait_for(asyncio.gather(
-            ask(f"SCAN TYPE: {scan_type}\nDICTATED FINDINGS:\n{findings}", contra_qs),
-            ask(f"REPORT:\n{report}", omit_qs)), JEV_TIMEOUT_S)
-    except Exception as e:  # never blocks the report
-        logger.warning("quality check: Jev failed (%s: %s)", type(e).__name__, str(e)[:200])
-        return CheckResult(n_clauses=len(cls), n_items=len(items), error=f"{type(e).__name__}: {str(e)[:200]}")
+    async def timed(state, qs):
+        return await asyncio.wait_for(ask(state, qs), JEV_TIMEOUT_S)
+    contra, omit = await asyncio.gather(
+        timed(f"SCAN TYPE: {scan_type}\nDICTATED FINDINGS:\n{findings}", contra_qs),
+        timed(f"REPORT:\n{report}", omit_qs), return_exceptions=True)
+    err = next((e for e in (contra, omit) if isinstance(e, BaseException)), None)
+    error = f"{type(err).__name__}: {str(err)[:200]}" if err else None
+    if err:
+        logger.warning("quality check: Jev failed (%s: %s)", type(err).__name__, str(err)[:200])
+    if isinstance(omit, BaseException):   # never blocks the report
+        return CheckResult(n_clauses=len(cls), n_items=len(items), error=error)
 
     score = lambda ans, k: float(ans[k]["noul"])
-    flags = [Flag(kind="contradiction", text=t, score=score(contra, f"c{i}"))
-             for i, t in enumerate(cls) if score(contra, f"c{i}") >= CONTRA_FLAG
-             and (not restated[i] or score(contra, f"r{i}") >= RESTATED_FLAG)]
+    flags, bad = [], []
+    if not isinstance(contra, BaseException):
+        flags = [Flag(kind="contradiction", text=t, score=score(contra, f"c{i}"))
+                 for i, t in enumerate(cls) if score(contra, f"c{i}") >= CONTRA_FLAG
+                 and (not restated[i] or score(contra, f"r{i}") >= RESTATED_FLAG)]
+        bad = [oid for i, (oid, _) in enumerate(opts) if score(contra, f"o{i}") >= CONTRA_FLAG]
+    sel_ans = {} if isinstance(contra, BaseException) else contra
+    scores = [selection_score(sel_ans.get(f"sel{i}"), sel_ans.get(f"lt{i}")) for i in range(len(items))]
+    chosen = [selected(t, sel_ans.get(f"sel{i}"), sel_ans.get(f"lt{i}")) for i, t in enumerate(items)]
+    readable = sum(s is not None for s in scores)
+    selector = "jev" if readable == len(items) else ("regex" if readable == 0 else "mixed")
     flags += [Flag(kind="omission", text=t, score=score(omit, f"i{i}"))
-              for i, t in enumerate(items) if score(omit, f"i{i}") < OMIT_FLAG]
-    bad = [oid for i, (oid, _) in enumerate(opts) if score(contra, f"o{i}") >= CONTRA_FLAG]
-    return CheckResult(flags=flags, bad_option_ids=bad, n_clauses=len(cls), n_items=len(items))
+              for i, t in enumerate(items) if chosen[i] and score(omit, f"i{i}") < OMIT_FLAG]
+    return CheckResult(flags=flags, bad_option_ids=bad, n_clauses=len(cls), n_items=len(items),
+                       n_selected=sum(chosen), selector=selector, error=error)
 
 
 # ── repair ───────────────────────────────────────────────────────────────────
@@ -389,6 +460,7 @@ async def run_quality_check(report: str, findings: str, scan_type: str,
     try:
         res = await check(report, findings, scan_type, options)
         tel.update(flags=[f.model_dump() for f in res.flags], clauses=res.n_clauses, items=res.n_items,
+                   items_selected=res.n_selected, selector=res.selector,
                    jev_ms=int((time.time() - t0) * 1000), error=res.error, options_dropped=res.bad_option_ids)
         options = [o for o in options if o.get("id") not in set(res.bad_option_ids)]
         # A flagged negative is removed in code; a flagged positive statement is corrected, and an

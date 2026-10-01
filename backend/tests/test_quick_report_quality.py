@@ -38,11 +38,35 @@ def test_sections_and_clauses():
     ]
 
 
-def test_every_split_item_is_checked_including_normals_and_negatives():
-    # Jev wording v2: the conveys question handles shorthand normals; omitted negatives are restored.
-    assert qq.dictated_items("appendix fine. no ascites. liver normal, 2cm cyst L kidney") == [
-        "appendix fine", "no ascites", "liver normal, 2cm cyst L kidney"]
-    assert qq.positive_items is qq.dictated_items          # alias for the eval script
+def test_regex_fallback_selection_drops_negatives_and_background():
+    findings = ("- 3 cm pancreatic head mass\n- CBD dilated to 12 mm\n- No ascites\n"
+                "- Liver, spleen, kidneys unremarkable\n- Lung bases clear\n- Nil else")
+    assert qq.positive_items(findings) == ["3 cm pancreatic head mass", "CBD dilated to 12 mm"]
+
+
+def test_selector_questions_are_the_group_f_strings():
+    ch = qq.q_select_choice("2cm cyst L kidney")
+    assert ch["type"] == "choice"
+    assert ch["instructions"] == ('Read only this one dictated line, not the rest of the dictation: "2cm cyst L kidney". '
+                                  'What does this line report?')
+    assert list(ch["criteria"]) == ["abnormal_finding", "limitation", "normal_or_negative", "protocol_note", "comparison",
+                                    "mixed_abnormal_and_normal"]
+    t1 = qq.q_select_noul("2cm cyst L kidney")
+    assert t1["type"] == "noul"
+    assert t1["instructions"] == 'The dictated line "2cm cyst L kidney" itself reports an abnormality or a limitation of the study.'
+    assert t1["criteria"]["true"].startswith("The line itself reports something abnormal or present in the patient")
+    assert t1["criteria"]["false"].startswith("The line itself only says that structures are normal")
+
+
+def test_selection_is_the_mean_of_ch2sel_and_t1_at_045():
+    ch = lambda a, l, m: {"probabilities": {"abnormal_finding": a, "limitation": l, "normal_or_negative": 1 - a - l - m,
+                                            "protocol_note": 0, "comparison": 0, "mixed_abnormal_and_normal": m}}
+    assert qq.selected("x", ch(0.3, 0.1, 0.05), {"noul": 0.45}) is True          # (0.45 + 0.45) / 2
+    assert qq.selected("x", ch(0.2, 0.1, 0.05), {"noul": 0.5}) is False          # (0.35 + 0.5) / 2
+    # unreadable answers fall back to the regex, item by item
+    assert qq.selected("2cm cyst L kidney", None, {"noul": 0.9}) is True
+    assert qq.selected("appendix fine", {"choice": "x"}, None) is True             # regex has no background word here
+    assert qq.selected("liver normal", None, None) is False
 
 
 @pytest.mark.asyncio
@@ -442,3 +466,61 @@ async def test_a_report_negative_contradicting_a_hedged_dictated_finding_is_remo
     assert any(q == qq.q_restated("pneumothorax") for q in asked.values())
     assert qq.RESTATED_FLAG == 0.5
     assert "No pneumothorax" not in out and "The lungs are clear." in out and tel["clauses_removed"] == 1
+
+
+# ── omission selector (Jev wording v2, group F): only abnormal / limitation / mixed lines ──
+
+def _selector_jev(monkeypatch, selected_items, omitted, fail_dictation=False, seen=None):
+    """Selector answers from the dictation-state call; every item scored omitted (0.1) when in `omitted`."""
+    async def fake(state, qs):
+        if seen is not None:
+            seen.append((state, qs))
+        if state.startswith("SCAN TYPE"):
+            if fail_dictation:
+                raise RuntimeError("jev down")
+            out = {}
+            for k, q in qs.items():
+                t = q["instructions"]
+                if k.startswith("sel"):
+                    hit = any(f'"{x}"' in t for x in selected_items)
+                    out[k] = {"choice": "abnormal_finding" if hit else "normal_or_negative",
+                              "probabilities": {"abnormal_finding": 0.9 if hit else 0.02, "limitation": 0.0,
+                                                "normal_or_negative": 0.1 if hit else 0.98, "protocol_note": 0.0,
+                                                "comparison": 0.0, "mixed_abnormal_and_normal": 0.0}}
+                elif k.startswith("lt"):
+                    out[k] = {"noul": 0.9 if any(f'"{x}"' in t for x in selected_items) else 0.05}
+                else:
+                    out[k] = {"noul": 0.05}
+            return out
+        return {k: {"noul": 0.1 if any(q["instructions"].endswith(x) for x in omitted) else 0.9} for k, q in qs.items()}
+    monkeypatch.setattr(qq.qb, "_jev", fake)
+
+
+@pytest.mark.asyncio
+async def test_unselected_normal_and_negative_omission_flags_are_ignored(monkeypatch):
+    _selector_jev(monkeypatch, selected_items=["2cm cyst L kidney"],
+                  omitted=["appendix fine", "no calculi or hydro", "2cm cyst L kidney"])
+    r = await qq.check("FINDINGS:\nx.", "appendix fine. no calculi or hydro. 2cm cyst L kidney", "CT", [])
+    assert [f.text for f in r.flags if f.kind == "omission"] == ["2cm cyst L kidney"]
+    assert r.selector == "jev" and r.n_items == 3
+
+
+@pytest.mark.asyncio
+async def test_selector_questions_ride_the_dictation_state_call(monkeypatch):
+    seen = []
+    _selector_jev(monkeypatch, ["2cm cyst L kidney"], [], seen=seen)
+    await qq.check("FINDINGS:\nx.", "appendix fine. 2cm cyst L kidney", "CT", [])
+    by_state = {s.split("\n")[0]: qs for s, qs in seen}
+    dict_qs = by_state["SCAN TYPE: CT"]
+    assert dict_qs["sel1"] == qq.q_select_choice("2cm cyst L kidney") and dict_qs["lt0"] == qq.q_select_noul("appendix fine")
+    assert sorted(by_state["REPORT:"]) == ["i0", "i1"]                    # conveys asked for every item, in parallel
+    assert len(seen) == 2
+
+
+@pytest.mark.asyncio
+async def test_selector_failure_falls_back_to_the_regex(monkeypatch):
+    _selector_jev(monkeypatch, ["2cm cyst L kidney"], omitted=["liver normal", "2cm cyst L kidney", "no ascites"],
+                  fail_dictation=True)
+    r = await qq.check("FINDINGS:\nx.", "liver normal. no ascites. 2cm cyst L kidney", "CT", [])
+    assert [f.text for f in r.flags if f.kind == "omission"] == ["2cm cyst L kidney"]
+    assert r.selector == "regex" and "jev down" in r.error
