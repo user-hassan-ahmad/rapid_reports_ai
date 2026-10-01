@@ -106,3 +106,57 @@ async def test_jev_counter_records_requests_made_inside_a_counted_run(monkeypatc
     assert await run() == [2, 1]
     await lab.rc._jev("outside", {"x": 1})  # outside a counted run: forwarded, not recorded
     assert calls == ["a", "b", "outside"]
+
+
+def _saved_run(tmp_path, set_name="set_a", did="set_a-d1"):
+    d = tmp_path / "run1" / set_name
+    d.mkdir(parents=True)
+    rec = {"id": did, "new": {"lat": {"phase1_s": 12.3}, "master_sheet": "# Master\n\n## Case Deliberation\nQUESTION \"q\"\n",
+                              "phase1": {"usable": True, "errors": [], "model": "m", "question": "q",
+                                         "differentials": [{"name": "A", "tier": "triage", "visible": "yes"}],
+                                         "recommendations": [], "placements": [], "placement_paragraphs": [],
+                                         "rejected": [], "raw": "## Case Deliberation\nQUESTION \"q\"\n"}}}
+    (d / f"{did}.json").write_text(__import__("json").dumps(rec))
+    return tmp_path / "run1"
+
+
+async def test_reuse_phase1_loads_saved_output_and_skips_the_call(tmp_path, monkeypatch):
+    run = _saved_run(tmp_path)
+
+    async def boom(*a, **k):
+        raise AssertionError("Phase 1 must not be called when its output is reused")
+    monkeypatch.setattr(lab.ca, "deliberate", boom)
+    saved = lab.saved_phase1(f"{tmp_path / 'nope'},{run}", "set_a", "set_a-d1")
+    assert saved and saved["reused_from"].endswith("set_a-d1.json")
+    got = await lab.run_phase1("# Skill Sheet\n", {"id": "set_a-d1", "scan_type": "CMR", "clinical_history": "h"}, saved)
+    assert got["master_sheet"].startswith("# Master") and got["phase1"]["question"] == "q"
+    assert got["phase1"]["reused_from"] == saved["reused_from"] and got["phase1_s"] == 12.3
+
+
+async def test_reuse_phase1_runs_phase1_when_nothing_saved(tmp_path, monkeypatch):
+    run = _saved_run(tmp_path)
+    calls = []
+
+    async def fake(sheet, summary, scan_type, history):
+        calls.append(history)
+        return lab.ca.CaseResult(errors=["x"], raw="r", ms=1000)
+    monkeypatch.setattr(lab.ca, "deliberate", fake)
+    monkeypatch.setattr(lab.ca, "summarise_template", lambda s: {})
+    assert lab.saved_phase1(str(run), "set_a", "set_a-d9") is None
+    got = await lab.run_phase1("# Skill Sheet\n", {"id": "set_a-d9", "scan_type": "CMR", "clinical_history": "h"},
+                               None, reuse_requested=True)
+    assert calls == ["h"] and got["phase1"]["reuse_missing"] is True and got["master_sheet"] == "# Skill Sheet\n"
+    assert got["phase1"]["raw"] == "r" and "units_block" in got["phase1"]
+
+
+def test_phase1_repeat_markdown_lists_each_run_side_by_side():
+    runs = [{"differentials": [{"name": "HCM", "tier": "triage", "visible": "yes"}],
+             "recommendations": [{"tag": "REFERRAL", "text": "Refer", "when": "LVH"}],
+             "placement_units": [{"kind": "NEGATIVE", "text": "No RV thinning", "key": "ACM", "paragraph": "RV"},
+                                 {"kind": "IF_PRESENT", "text": "No apical aneurysm", "key": "LVH", "paragraph": "LV"}]},
+            {"differentials": [{"name": "DCM", "tier": "secondary", "visible": "no"}], "recommendations": [],
+             "placement_units": []}]
+    md = lab.render_phase1_repeat([{"set": "s", "id": "s-d1", "runs": runs}])
+    assert "s-d1" in md and "HCM (triage, visible yes)" in md and "DCM (secondary, visible no)" in md
+    assert "No RV thinning" in md and "No apical aneurysm" in md and "Refer" in md
+    assert "run 1" in md and "run 2" in md

@@ -4,6 +4,8 @@
     uv run python -m rapid_reports_ai.scripts.template_e2e_lab --reuse-sheets <prev out dir>   # no analyser calls
     uv run python -m rapid_reports_ai.scripts.template_e2e_lab --sets ct_ap_acute --only ct_ap_acute-d1,ct_ap_acute-d3
     uv run python -m rapid_reports_ai.scripts.template_e2e_lab --rescore <prev out dir>        # no model calls
+    uv run python -m rapid_reports_ai.scripts.template_e2e_lab --reuse-phase1 <dir>[,<dir>]    # Phase 1 held fixed
+    uv run python -m rapid_reports_ai.scripts.template_e2e_lab --phase1-repeat 3 --only <id>   # Phase 1 across runs
 
 Per synthetic set (backend/tests/fixtures/sheet_lab/<set>/):
  1. Lean sheet: the lean analyser (template_sheet_lab_prompts) on examples/*.md, one lint-repair call when the
@@ -32,7 +34,11 @@ Outputs to SCRATCH/e2e_<pid>/: <set>/<dictation>.md + .json, <set>/lean_sheet.md
 summary.md, summary.json, hand_read.md. ``--reuse-sheets`` reads <dir>/<set>/sheets.json, else its
 lean_sheet.md / baseline_sheet.md; a missing or empty sheet is rebuilt. ``--reuse-reports <dir>`` takes the NEW
 (and QUICK) arms of each dictation from <dir>/<set>/<id>.json (no model calls for those arms); ``--rerun new``
-runs the named arms again while the others are reused. With ``--quick``,
+runs the named arms again while the others are reused. ``--reuse-phase1 <dir>[,<dir>]`` takes each case's saved
+Phase 1 output (phase1 record + master sheet of the NEW arm) and makes no Phase 1 call: Phase 1 runs at temperature
+0.5 by design, so a downstream change is tested with it held fixed; a case with nothing saved runs Phase 1 and is
+logged and marked reuse_missing. ``--phase1-repeat N`` runs only Phase 1, N times per case, saving each to
+<set>/<id>.phase1_<k>.json, and writes phase1_repeat.md side by side. With ``--quick``,
 negatives.md lists every negative clause stated in each report with its likely source.
 """
 from __future__ import annotations
@@ -393,8 +399,50 @@ def _section_block(sheet: str, title: str) -> str:
     return m.group(1).strip() if m else ""
 
 
-async def run_new(sheet: str, d: dict) -> dict:
-    """Phase 1 -> master -> brief -> generator (+ options, history) -> post-generation check."""
+def saved_phase1(dirs: str, name: str, did: str) -> Optional[dict]:
+    """A dictation's saved Phase 1 output (the NEW arm's phase1 record and master sheet) from the first of
+    comma-separated run dirs holding <dir>/<set>/<id>.json with both; None when no run saved it."""
+    for x in (dirs or "").split(","):
+        f = Path(x.strip()) / name / f"{did}.json" if x.strip() else None
+        if not f or not f.exists():
+            continue
+        new = json.loads(f.read_text()).get("new") or {}
+        if new.get("phase1") and new.get("master_sheet"):
+            return {"phase1": new["phase1"], "master_sheet": new["master_sheet"],
+                    "phase1_s": (new.get("lat") or {}).get("phase1_s"), "reused_from": str(f)}
+    return None
+
+
+def _phase1_record(res: "ca.CaseResult") -> dict:
+    """Everything of a CaseResult the lab keeps (raw and units_block included, so a later run can reuse it)."""
+    return {"usable": res.usable, "errors": res.errors, "model": res.model, "question": res.question,
+            "differentials": res.differentials, "recommendations": res.recommendations,
+            "placements": [p.line if hasattr(p, "line") else str(p) for p in res.placements],
+            "placement_paragraphs": [getattr(p, "paragraph", "") for p in res.placements],
+            "placement_units": [{"kind": p.kind, "text": p.text, "key": p.key, "paragraph": p.paragraph}
+                                for p in res.placements if hasattr(p, "kind")],
+            "units_block": res.units_block, "rejected": res.rejected, "raw": res.raw}
+
+
+async def run_phase1(sheet: str, d: dict, saved: Optional[dict] = None, reuse_requested: bool = False) -> dict:
+    """Phase 1 -> master sheet. A saved output (``saved_phase1``) is used as is, with no model call: Phase 1
+    runs at temperature 0.5 by design, so a downstream test holds it fixed. With reuse requested and nothing
+    saved, Phase 1 runs and the record says so (reuse_missing)."""
+    if saved:
+        log(f"   {d['id']}: Phase 1 reused from {saved['reused_from']}")
+        return {"phase1": {**saved["phase1"], "reused_from": saved["reused_from"]},
+                "master_sheet": saved["master_sheet"], "phase1_s": saved.get("phase1_s")}
+    if reuse_requested:
+        log(f"!! {d['id']}: no saved Phase 1 output; running Phase 1")
+    res = await ca.deliberate(sheet, ca.summarise_template(sheet), d["scan_type"], d.get("clinical_history", ""))
+    rec = _phase1_record(res)
+    if reuse_requested:
+        rec["reuse_missing"] = True
+    return {"phase1": rec, "master_sheet": ca.merge_master(sheet, res), "phase1_s": round(res.ms / 1000, 1)}
+
+
+async def run_new(sheet: str, d: dict, saved_p1: Optional[dict] = None, reuse_requested: bool = False) -> dict:
+    """Phase 1 (or its saved output) -> master -> brief -> generator (+ options, history) -> post-generation check."""
     from rapid_reports_ai.template_brief import compile_template_brief
     from rapid_reports_ai.template_history import insert_history, write_history
     from rapid_reports_ai.template_manager import TemplateManager
@@ -410,17 +458,12 @@ async def run_new(sheet: str, d: dict) -> dict:
     hist_sec = next((x for x in sections if x.role == "history"), None)
     imp = next((x.name for x in sections if x.role == "impression"), "IMPRESSION")
 
-    # Phase 1
-    summary = ca.summarise_template(sheet)
-    res = await ca.deliberate(sheet, summary, scan_type, history)
-    rec["lat"]["phase1_s"] = round(res.ms / 1000, 1)
-    master = ca.merge_master(sheet, res)
+    # Phase 1 (or its saved output: --reuse-phase1)
+    p1 = await run_phase1(sheet, d, saved_p1, reuse_requested=reuse_requested)
+    rec["lat"]["phase1_s"] = p1["phase1_s"]
+    master = p1["master_sheet"]
     mres = g.parse_sheet(master, mode="master")
-    rec["phase1"] = {"usable": res.usable, "errors": res.errors, "model": res.model, "question": res.question,
-                     "differentials": res.differentials, "recommendations": res.recommendations,
-                     "placements": [p.line if hasattr(p, "line") else str(p) for p in res.placements],
-                     "placement_paragraphs": [getattr(p, "paragraph", "") for p in res.placements],
-                     "rejected": res.rejected, "raw": res.raw}
+    rec["phase1"] = p1["phase1"]
     rec["master_usable"] = mres.structure.usable
     rec["master_errors"] = [f"{e.line}: {e.reason}: {e.text[:100]}" for e in mres.errors]
     rec["master_sheet"] = master
@@ -565,7 +608,7 @@ def _examples(name: str) -> List[dict]:
 
 async def run_set(name: str, out: Path, sem: asyncio.Semaphore, reuse: Optional[Path],
                   only: Optional[set] = None, reuse_reports: Optional[Path] = None, quick: bool = False,
-                  rerun: Optional[set] = None) -> dict:
+                  rerun: Optional[set] = None, reuse_phase1: str = "") -> dict:
     key = json.loads((FIXTURES / name / "answer_key.json").read_text())
     dictations = [d for d in json.loads((FIXTURES / name / "dictations.json").read_text())
                   if not only or d["id"] in only]
@@ -629,7 +672,9 @@ async def run_set(name: str, out: Path, sem: asyncio.Semaphore, reuse: Optional[
             log(f"[{name}] {d['id']} new pipeline")
             if lean.get("sheet") and g.parse_sheet(lean["sheet"], mode="template").structure.usable:
                 try:
-                    rec["new"] = await asyncio.wait_for(run_new(lean["sheet"], d), STEP_TIMEOUT_S)
+                    saved = saved_phase1(reuse_phase1, name, d["id"]) if reuse_phase1 else None
+                    rec["new"] = await asyncio.wait_for(run_new(lean["sheet"], d, saved, bool(reuse_phase1)),
+                                                        STEP_TIMEOUT_S)
                 except Exception as e:  # noqa: BLE001
                     rec["new"] = {"error": f"{type(e).__name__}: {e}"[:500]}
                     log(f"!! {d['id']} new: {rec['new']['error'][:200]}")
@@ -655,6 +700,63 @@ async def run_set(name: str, out: Path, sem: asyncio.Semaphore, reuse: Optional[
     recs = await asyncio.gather(*(one(d) for d in dictations))
     setrec["dictations"] = recs
     return setrec
+
+
+async def run_phase1_repeat(name: str, out: Path, sem: asyncio.Semaphore, reuse: Optional[Path],
+                            only: Optional[set], n: int) -> List[dict]:
+    """Phase 1 N times per dictation on the set's lean sheet (reused when saved); each run saved to
+    <out>/<set>/<id>.phase1_<k>.json. For judging Phase 1 across runs; no downstream pipeline."""
+    key = json.loads((FIXTURES / name / "answer_key.json").read_text())
+    dictations = [d for d in json.loads((FIXTURES / name / "dictations.json").read_text()) if not only or d["id"] in only]
+    d_out = out / name
+    d_out.mkdir(parents=True, exist_ok=True)
+    lean = reused_sheets(reuse, name).get("lean") or {}
+    if not lean.get("sheet"):
+        async with sem:
+            log(f"[{name}] lean analyser")
+            lean = await lean_sheet(_examples(name), key["scan_type"])
+    (d_out / "lean_sheet.md").write_text(lean.get("sheet", ""))
+
+    async def once(d: dict, k: int) -> dict:
+        async with sem:
+            log(f"[{name}] {d['id']} Phase 1 run {k}")
+            p1 = await run_phase1(lean["sheet"], d)
+        (d_out / f"{d['id']}.phase1_{k}.json").write_text(json.dumps(p1, indent=1, default=str))
+        return {**p1["phase1"], "phase1_s": p1["phase1_s"]}
+
+    return [{"set": name, "id": d["id"], "history": d.get("clinical_history", ""),
+             "runs": list(await asyncio.gather(*(once(d, k) for k in range(1, n + 1))))} for d in dictations]
+
+
+def render_phase1_repeat(cases: List[dict]) -> str:
+    """Side by side per case: differentials (tier, visible), targeted negatives, If-present units and
+    recommendations of each Phase 1 run."""
+    def cell(items: List[str]) -> str:
+        return "<br>".join(_esc(x).replace("|", "\\|") for x in items) or "-"
+
+    L = ["# Phase 1 across runs", ""]
+    for c in cases:
+        runs = c["runs"]
+        L += [f"## {c['id']}", "", f"History: {c.get('history', '')}", "",
+              "| | " + " | ".join(f"run {i}" for i in range(1, len(runs) + 1)) + " |",
+              "|---|" + "---|" * len(runs)]
+        units = lambda r, kind: [u for u in r.get("placement_units") or [] if u.get("kind") == kind]
+        rows = {
+            "differentials": lambda r: [f"{x.get('name')} ({x.get('tier')}, visible {x.get('visible')})"
+                                        for x in r.get("differentials") or []],
+            "targeted negatives": lambda r: [f"{u['text']} -> [{u.get('key')}] ({u.get('paragraph')})"
+                                             for u in units(r, "NEGATIVE")],
+            "If-present": lambda r: [f"[{u.get('key')}] {u['text']} ({u.get('paragraph')})" for u in units(r, "IF_PRESENT")],
+            "recommendations": lambda r: [f"{x.get('tag')}: {x.get('text')} (when {x.get('when')})"
+                                          for x in r.get("recommendations") or []],
+            "errors / rejected": lambda r: [str(e) for e in r.get("errors") or []]
+                                           + [f"rejected: {x}" for x in r.get("rejected") or []],
+        }
+        for label, f in rows.items():
+            L.append(f"| {label} | " + " | ".join(cell(f(r)) for r in runs) + " |")
+        L.append("| phase1_s | " + " | ".join(str(r.get("phase1_s")) for r in runs) + " |")
+        L.append("")
+    return "\n".join(L)
 
 
 def score_all(results: List[dict]) -> None:
@@ -1026,6 +1128,10 @@ async def main() -> None:
     ap.add_argument("--quick", action="store_true", help="add the production quick pipeline arm (QUICK)")
     ap.add_argument("--rerun", default="", help="with --reuse-reports: comma-separated arms to run again (new,quick,baseline)")
     ap.add_argument("--rescore", default="", help="a previous output dir: re-score and re-render, no model calls")
+    ap.add_argument("--reuse-phase1", default="",
+                    help="comma-separated previous output dirs: reuse each case's saved Phase 1 output (no Phase 1 call)")
+    ap.add_argument("--phase1-repeat", type=int, default=0,
+                    help="run Phase 1 N times per case and write phase1_repeat.md (no downstream pipeline)")
     a = ap.parse_args()
     from rapid_reports_ai.scripts.case_analyser_lab import _load_env  # loads backend/.env (model keys)
 
@@ -1046,12 +1152,21 @@ async def main() -> None:
 
     faulthandler.register(signal.SIGUSR1, all_threads=True)  # kill -USR1 <pid>: stack dump to stderr
     runner_log = open(out / "runner_stdout.log", "w")
+    only = {x.strip() for x in a.only.split(",") if x.strip()} or None
+    if a.phase1_repeat:
+        with contextlib.redirect_stdout(runner_log):
+            reps = []
+            for name in sets:
+                reps += await run_phase1_repeat(name, out, sem, first_with(a.reuse_sheets, name), only, a.phase1_repeat)
+                (out / "phase1_repeat.md").write_text(render_phase1_repeat(reps))
+        print(out)
+        return
     with contextlib.redirect_stdout(runner_log):  # the model runner prints settings to stdout
         for name in sets:  # sets in sequence; within a set at most 2 model calls at once
             results.append(await run_set(name, out, sem, first_with(a.reuse_sheets, name),
                                          {x.strip() for x in a.only.split(",") if x.strip()} or None,
                                          first_with(a.reuse_reports, name), a.quick,
-                                         {x.strip() for x in a.rerun.split(",") if x.strip()}))
+                                         {x.strip() for x in a.rerun.split(",") if x.strip()}, a.reuse_phase1))
             write_outputs(results, out)
     print(out)
 
