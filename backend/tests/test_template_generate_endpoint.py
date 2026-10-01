@@ -211,3 +211,96 @@ async def test_resolve_master_times_out_to_failed(db_session, test_user, mirror_
 async def test_prepare_refuses_a_legacy_template(aclient, auth_headers, legacy_template, phase1):
     assert await _prepare(aclient, auth_headers, legacy_template) == {"success": False, "error": LEGACY_RETIRED}
     assert phase1.calls == []
+
+
+# ── Generate runs the mirror behind RR_TEMPLATE_MIRROR (plan 2026-10-01-template-wiring W4) ──
+
+from rapid_reports_ai.database.models import Report  # noqa: E402
+from rapid_reports_ai.template_manager import TemplateManager  # noqa: E402
+
+MIRROR_OUT = {"report_content": "Findings:\nThe left ventricle is normal in size and function.\n\nConclusion:\n"
+                                "1. Normal cardiac MRI.\n\nDr T", "model_used": "qwen-x",
+              "description": "Normal CMR", "scan_type": "CMR", "brief_used": True, "brief_text": "BRIEF",
+              "brief_decisions": {"options": []},
+              "options": [{"id": "fn0", "kind": "finding_negative", "section": "FINDINGS", "sentence": "No LGE."}],
+              "gate_dropped": [], "quality_check": {"enabled": True}, "history_inserted": True, "phase1_used": True,
+              "sections": ["CLINICAL DETAILS", "FINDINGS", "CONCLUSION"], "lat": {"brief_s": 1.2},
+              "jev_calls": {}}
+
+
+@pytest.fixture
+def stubs(monkeypatch):
+    seen = {"mirror": [], "current": [], "resolve": []}
+
+    async def fake_mirror(**kw):
+        seen["mirror"].append(kw)
+        return dict(MIRROR_OUT)
+
+    async def fake_resolve(db, user, template, sheet, scan_type, history):
+        seen["resolve"].append(history)
+        return MASTER, "cached"
+
+    async def fake_current(self, template_config, user_inputs, user_signature=None, **kw):
+        seen["current"].append(user_inputs)
+        return {"report_content": "CURRENT REPORT: the left ventricle is normal in size and function.",
+                "description": "Normal CMR", "scan_type": "CMR", "model_used": "m"}
+
+    monkeypatch.setattr(tp, "generate_template_report", fake_mirror)
+    monkeypatch.setattr(tp, "resolve_master", fake_resolve)
+    monkeypatch.setattr(TemplateManager, "generate_report_from_config", fake_current)
+    monkeypatch.setattr("rapid_reports_ai.main._schedule_prefetch_task", lambda **kw: None)
+    return seen
+
+
+async def _generate(aclient, headers, template, pipeline=None):
+    body = {"user_inputs": {"FINDINGS": "LV normal. No LGE.", "CLINICAL_HISTORY": "?HCM"}}
+    if pipeline:
+        body["pipeline"] = pipeline
+    return (await aclient.post(f"/api/templates/{template.id}/generate", headers=headers, json=body)).json()
+
+
+async def test_flag_on_runs_the_mirror_and_persists_artifacts(aclient, auth_headers, mirror_template, stubs,
+                                                              db_session, monkeypatch):
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+    r = await _generate(aclient, auth_headers, mirror_template)
+    assert r["success"] and r["pipeline"] == "mirror" and not stubs["current"]
+    kw = stubs["mirror"][0]
+    assert kw["master_sheet"] == MASTER and kw["sheet"] == LEAN and kw["history"] == "?HCM"
+    assert kw["findings"] == "LV normal. No LGE." and kw["scan_type"] == "CMR"
+    assert r["artifacts"]["sections"] == MIRROR_OUT["sections"] and r["artifacts"]["options"][0]["id"] == "fn0"
+    saved = db_session.get(Report, __import__("uuid").UUID(r["report_id"]))
+    cand = saved.candidate_reports[0]
+    assert cand["options"][0]["id"] == "fn0" and cand["phase1_source"] == "cached" and cand["sections"]
+    assert saved.report_content == MIRROR_OUT["report_content"] and saved.report_type == "templated"
+
+
+async def test_flag_off_runs_todays_path(aclient, auth_headers, mirror_template, stubs, monkeypatch):
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "0")
+    r = await _generate(aclient, auth_headers, mirror_template)
+    assert r["success"] and r["pipeline"] == "current" and r["artifacts"] is None
+    assert stubs["current"] and not stubs["mirror"] and not stubs["resolve"] and r["response"].startswith("CURRENT REPORT")
+
+
+async def test_flag_on_without_a_grammar_structure_runs_todays_path(aclient, auth_headers, mirror_template, stubs,
+                                                                    monkeypatch):
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+    monkeypatch.setattr("rapid_reports_ai.main.tss.fresh", lambda cfg: None)  # an old-format sheet
+    r = await _generate(aclient, auth_headers, mirror_template)
+    assert r["pipeline"] == "current" and stubs["current"] and not stubs["mirror"]
+
+
+async def test_allowlisted_user_can_choose_current(aclient, auth_headers, mirror_template, stubs, monkeypatch,
+                                                   test_user):
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+    monkeypatch.setenv("RR_PIPELINE_OVERRIDE_USERS", test_user.email)
+    r = await _generate(aclient, auth_headers, mirror_template, pipeline="current")
+    assert r["pipeline"] == "current" and stubs["current"] and not stubs["mirror"]
+
+
+async def test_mirror_response_keeps_the_shape_the_frontend_reads(aclient, auth_headers, mirror_template, stubs,
+                                                                  monkeypatch):
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+    r = await _generate(aclient, auth_headers, mirror_template)
+    assert r["response"] == MIRROR_OUT["report_content"] and isinstance(r["model"], str) and r["model"]
+    assert r["report_id"] and r["template_id"] == str(mirror_template.id) and r["scan_type"] == "CMR"
+    assert r["applicable_guidelines"] == []

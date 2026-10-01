@@ -738,8 +738,10 @@ def create_report(
     use_case: Optional[str] = None,
     template_id: Optional[str] = None,
     description: Optional[str] = None,
+    candidate_reports: Optional[list] = None,
 ) -> Report:
-    """Create a new report"""
+    """Create a new report. ``candidate_reports``: the generation record(s) (quick's candidate shape), as
+    the templated mirror persists its options, brief and check."""
     report = Report(
         user_id=uuid.UUID(user_id) if isinstance(user_id, str) else user_id,
         report_type=report_type,
@@ -749,6 +751,7 @@ def create_report(
         use_case=use_case,
         template_id=uuid.UUID(template_id) if template_id and isinstance(template_id, str) else template_id,
         description=description,
+        candidate_reports=candidate_reports,
     )
     db.add(report)
     db.commit()

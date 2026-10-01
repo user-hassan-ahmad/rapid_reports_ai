@@ -68,6 +68,7 @@ from .database.connection import engine
 from .template_manager import TemplateManager
 from . import template_sheet_structure as tss
 from . import template_pipeline as tp
+from .generation_artifacts import GenerationArtifacts
 from . import template_sheet_grammar as tsg
 from .auth import (
     verify_password,
@@ -664,6 +665,7 @@ class TemplateGenerateRequest(BaseModel):
     # Legacy format (deprecated)
     variables: Optional[Dict[str, str]] = None
     model: str = MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
+    pipeline: Optional[str] = None  # "mirror" / "current": honoured for allowlisted users only
 
 
 class TemplatePrepareRequest(BaseModel):
@@ -1841,11 +1843,35 @@ async def generate_report_from_template(
                 clinical_history=_clinical,
                 user_id=str(current_user.id),
             )
-        report_output_dict = await tm.generate_report_from_config(
-            template_config=template.template_config,
-            user_inputs=user_inputs,
-            user_signature=current_user.signature
-        )
+        # The templated mirror (RR_TEMPLATE_MIRROR / allowlist; grammar-parsed sheets only), else today's path.
+        use_mirror = _mirror_ready(template, current_user.email, request.pipeline)
+        mirror_candidate = None
+        if use_mirror:
+            _cfg = template.template_config
+            _sheet, _scan = _cfg.get("skill_sheet", ""), _cfg.get("scan_type", "")
+            _history = (user_inputs.get("CLINICAL_HISTORY") or "") if isinstance(user_inputs, dict) else ""
+            _findings = (user_inputs.get("FINDINGS") or "") if isinstance(user_inputs, dict) else ""
+            _p1_t0 = time.perf_counter()
+            _master, _p1_source = await tp.resolve_master(db, current_user, template, _sheet, _scan, _history)
+            _p1_wait_s = round(time.perf_counter() - _p1_t0, 2)
+            mirror_result = await tp.generate_template_report(
+                sheet=_sheet, scan_type=_scan, findings=_findings, history=_history, master_sheet=_master,
+                signature=current_user.signature)
+            mirror_candidate = tp.candidate_record(mirror_result, int((time.perf_counter() - _tpl_gen_t0) * 1000))
+            mirror_candidate["phase1_source"] = _p1_source
+            mirror_candidate["lat"] = {"phase1_wait_s": _p1_wait_s, **mirror_candidate.get("lat", {})}
+            report_output_dict = {"report_content": mirror_result["report_content"],
+                                  "description": mirror_result.get("description") or template.name or "Templated report",
+                                  "scan_type": mirror_result.get("scan_type") or _scan,
+                                  "model_used": mirror_result.get("model_used")}
+            logger.info("template mirror %s: phase1=%s wait=%.1fs lat=%s", template_id, _p1_source, _p1_wait_s,
+                        mirror_candidate["lat"])
+        else:
+            report_output_dict = await tm.generate_report_from_config(
+                template_config=template.template_config,
+                user_inputs=user_inputs,
+                user_signature=current_user.signature
+            )
         print(
             f"[FLOW_TIMING] template_generate: llm_done "
             f"wall_ms={int((time.perf_counter() - _tpl_gen_t0) * 1000)} "
@@ -1864,7 +1890,7 @@ async def generate_report_from_template(
         # Controlled by ENABLE_TEMPLATE_STRUCTURE_VALIDATION env var
         ENABLE_TEMPLATE_STRUCTURE_VALIDATION = os.getenv("ENABLE_TEMPLATE_STRUCTURE_VALIDATION", "false").lower() == "true"
         
-        if ENABLE_TEMPLATE_STRUCTURE_VALIDATION:
+        if ENABLE_TEMPLATE_STRUCTURE_VALIDATION and not use_mirror:
             from .enhancement_utils import validate_report_structure
             
             user_inputs = request.user_inputs or request.variables or {}
@@ -1910,9 +1936,9 @@ Original report:
 
 Apply each fix while preserving grammatical completeness and report structure."""
                     
-                    # Import enhancement utilities for model configuration
+                    # Import enhancement utilities (MODEL_CONFIG is module-level: importing it here made it local
+                    # to the whole endpoint, so the path without validation raised UnboundLocalError)
                     from .enhancement_utils import (
-                        MODEL_CONFIG,
                         _get_model_provider,
                         _get_api_key_for_provider,
                         _run_agent_with_model,
@@ -2043,7 +2069,8 @@ Apply each fix while preserving grammatical completeness and report structure.""
                     model_used=model_to_store,
                     input_data=input_data_to_save,
                     template_id=str(template.id),
-                    description=context_title
+                    description=context_title,
+                    candidate_reports=[mirror_candidate] if mirror_candidate else None,
                 )
                 report_id = str(saved_report.id)
                 print(f"✅ Report saved with ID: {report_id}")
@@ -2063,9 +2090,21 @@ Apply each fix while preserving grammatical completeness and report structure.""
             "claude": MODEL_CONFIG["FALLBACK_REPORT_GENERATOR"],
             "qwen": MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"],
         }.get(request.model, request.model)
+        if use_mirror:
+            model_full_name = report_output_dict.get("model_used") or model_full_name
+        artifacts = None
+        if mirror_candidate is not None:
+            try:
+                artifacts = GenerationArtifacts.from_candidate(
+                    mirror_candidate, (user_inputs.get("FINDINGS") or "") if isinstance(user_inputs, dict) else ""
+                ).model_dump()
+            except Exception as e:  # the report stands without the review rail's artifacts
+                logger.warning("template mirror artifacts failed: %s", e)
         
         return {
             "success": True,
+            "pipeline": "mirror" if use_mirror else "current",
+            "artifacts": artifacts,
             "response": report_output.report_content,
             "model": model_full_name,
             "template_id": str(template.id),
