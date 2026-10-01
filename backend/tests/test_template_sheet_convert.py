@@ -5,7 +5,7 @@ import asyncio
 from rapid_reports_ai import template_sheet_lab_prompts as P
 from rapid_reports_ai.scripts import template_sheet_convert as C
 
-from test_template_sheet_lab_prompts import CLINICAL, SHEET
+from tests.test_template_sheet_lab_prompts import CLINICAL, SHEET
 
 OLD = """# Skill Sheet: <scan>
 
