@@ -74,25 +74,25 @@ SECTION <NAME> | header: "<heading exactly as written in the reports>" | role: <
 ### Unit keywords (template-intrinsic units only)
 
 COVERS ["<structure>" | "<structure>" | ...]
-  Exactly one in every paragraph of a findings section, as the first unit line under its heading. Items are separated by " | " (a straight bar with a space each side), each in its own double quotes; never commas between items. Every anatomical structure, organ, compartment or measured element this paragraph reports, in plain words, in the order the paragraph covers them, including structures the examples mention only when abnormal. Structures, not diseases or findings: name the place a finding would be reported in. Another analyser places case-specific sentences into paragraphs by this list, so it must be complete for the paragraph's territory and must not list structures another paragraph reports.
+  Exactly one in every paragraph of a findings-role section, as the first unit line under its heading; never in a paragraph of any other section (impression, history, technique, comparison, other). Items are separated by " | " (a straight bar with a space each side), each in its own double quotes; never commas between items. Every anatomical structure, organ, compartment or measured element this paragraph reports, in plain words, in the order the paragraph covers them, including structures the examples mention only when abnormal. Anatomical structures only: never a finding, disease, pathology, abnormality or appearance name; name the place a finding would be reported in, not the finding. Another analyser places case-specific sentences into paragraphs by this list, so it must be complete for the paragraph's territory and must not list structures another paragraph reports.
 NORMAL [<structure>] "<text>"
-  The sentence the radiologist writes to state that one named structure (or group) is normal. One per structure. Always with the bracketed [<structure>]. Only ever a normal-state sentence, and only one sentence: where the example follows a normal statement with a negative sentence, the negative sentence is its own NEGATIVE line.
+  The sentence the radiologist writes to state that one named structure (or group) is normal. One per structure. Always with the bracketed [<structure>]. Exactly ONE sentence per NORMAL line (one full stop, at the end): where the example follows a normal statement with a negative sentence ("<structure> is normal. No <thing>."), the normal sentence is the NORMAL and the negative sentence is its own NEGATIVE line; never join them in one quote.
 NEGATIVE "<text>"
   A routine negative the radiologist writes in every normal study of this type (the standard sweep), one per sentence as written. No [label] and never a WHEN: a negative that depends on what was performed is an unconditional NEGATIVE plus a context RULE that SUPPRESSes or REPLACEs it.
 FIXED "<text>"
   Verbatim text that never depends on the patient's state: what was performed and how, standard wording, field labels followed by a {slot} ("<Label>: {value} <unit>"). A statement that could be false for a different patient is never FIXED. Impression sentences are never FIXED.
 TERM PREFER "<term>"
 TERM AVOID "<term>"
-  A term is a word or short phrase, not a sentence. PREFER: a term the radiologist uses consistently where a common synonym exists. AVOID: only a variant that actually appears in the examples and that their predominant usage replaces. Few and distinctive beats many.
+  A term is a word or short phrase, not a sentence. PREFER: a distinctive term the radiologist uses consistently where a common synonym exists, found at least twice across the examples. AVOID: only a variant that actually appears in the examples and that their predominant usage replaces. At most six TERM lines in the sheet; ordinary anatomical or descriptive words are not terms. Few and distinctive beats many.
 RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["<item>" | "<item>" | ...] AT TOP
 RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["<item>" | "<item>" | ...] AT END
-  Values expected in every report of this type, flagged when the dictation leaves them out. Use it when an example shows a list of values not provided (under any label), or contains unfilled placeholders (curly-brace slots or blank values), or when every example states the same set of measured values. Items are short plain names of every such value, each expected in every report regardless of findings (a value that only applies when some finding is present is not an item). At most one per sheet, under ## Report-wide.
+  Values expected in every report of this type, flagged when the dictation leaves them out. Use it when an example shows a list of values not provided (under any label), or contains unfilled placeholders (curly-brace slots or blank values), or when every example states the same set of measured values. Items are short plain names of every such value, each expected in EVERY report of this type regardless of findings: an item carries no condition or qualifier ("if", "when", "where applicable", "if present", "for <finding>"), and a value that only applies when some finding is present is not an item. At most one per sheet, under ## Report-wide.
 RULE WHEN [context: <statement>] <EFFECT>
   Study-level circumstances only: what was performed or not, the protocol or phases acquired, technical limitation, prior imaging available or not. <statement> names the circumstance in plain words with at least two content words ("context: <named part of the study> was not performed", "context: prior <modality> imaging is available for comparison"). Effects:
   REPLACE "<target>" WITH "<text>"   (<target>: the exact quoted text of a NORMAL, NEGATIVE or FIXED line in the same paragraph)
   SUPPRESS "<target>"
   USE "<text>"
-  SUPPRESS_SECTION <NAME>            (under ## Report-wide, with "| section: <NAME>")
+  SUPPRESS_SECTION <NAME>            (under ## Report-wide, with "| section: <NAME>"; only when an example report actually omits that section and shows the visible reason for it)
   SUPPRESS_HEADERS                   (under ## Report-wide, with "| section: <NAME>")
   Every quoted text is taken from an example report word for word, with {slots}.
 
@@ -116,10 +116,10 @@ TERM lines; LIST_MISSING; section-level context rules.
 
 ## Paragraph: <name> (<SECTION NAME>)
 One block per paragraph, in report order, covering every section. Each block holds, in this order:
-COVERS ["..." | ...]
+COVERS ["..." | ...]   (findings-role sections only)
 Opening: how the paragraph opens (quote the opening words of a normal and of an abnormal example).
 Order: the sequence of structures and elements; an element that appears only sometimes is marked "(optional)".
-Abnormal pattern: "<quoted sentence>" — one line per distinct way pathology is described in this paragraph across the examples; give several (every distinct one the examples show, up to five), each quoted word for word with {slots} for values.
+Abnormal pattern: "<quoted sentence>" — one line per distinct way pathology is described in this paragraph across the examples; give several (every distinct one the examples show, up to five), each quoted word for word with {slots} for values. Quote the abnormal wording only, never a negative sentence.
 Interpretive phrasing: "<quoted clause>" — how the radiologist attributes cause, significance or likelihood here (every example of it, quoted).
 Recommendation phrasing: "<quoted clause>" — any recommendation or advice worded in this paragraph (quoted).
 Measurement: how values and sizes are written here (quoted).
@@ -161,10 +161,12 @@ IMPORTANT: A Global Style Guide already covers universal rules (British English,
 Compare the examples with each other, paragraph by paragraph.
 - Sections and paragraphs: the headings and paragraph breaks the reports show, in their order.
 - COVERS: for each paragraph, every structure it reports in any example, normal or abnormal.
-- NORMAL and NEGATIVE: what the radiologist writes about each structure when it is normal, and what they routinely state as absent. A sentence that recurs across examples (allowing for varying values, which become {{slots}}) is a unit. Quote one representative wording per unit. A negative written only beside a particular finding is not routine: quote it as an exemplar in prose instead.
+- NORMAL and NEGATIVE: what the radiologist writes about each structure when it is normal, and what they routinely state as absent. A sentence that recurs across examples (allowing for varying values, which become {{slots}}) is a unit. Quote one representative wording per unit. A negative written only beside a particular finding is not routine and is left out of the sheet: the per-case analyser supplies such negatives.
 - FIXED: text that recurs word for word and never depends on the patient's state.
-- Voice exemplars: every distinct abnormal description, interpretive clause and recommendation in a paragraph, quoted with {{slots}} for values. Where examples differ in how a paragraph is built, describe the variation in the Opening/Order prose.
-- LIST_MISSING: the values the radiologist expects in every report of this type.
+- Voice exemplars: every distinct abnormal description, interpretive clause and recommendation in a paragraph, quoted with {{slots}} for values. An exemplar quotes positive, interpretive or recommendation wording only: never a negative sentence, and the quote stops before any negative sentence that follows it. Where examples differ in how a paragraph is built, describe the variation in the Opening/Order prose.
+- LIST_MISSING: the values the radiologist expects in every report of this type, unconditionally.
+- TERM: only distinctive terms seen at least twice; at most six.
+- SUPPRESS_SECTION: only where an example omits the section and the reason is visible in that example.
 - Context rules: where examples differ because of what was performed, the protocol, a technical limitation or prior imaging, write the context RULE that produces the variant wording, quoting it.
 
 Parameter placeholders: where a field's value varies across studies but the field itself is invariant, keep the field and put a named slot in curly braces in place of the value.
@@ -277,7 +279,8 @@ REPAIR_SYSTEM_PROMPT = f"""You correct lint errors in a radiology report skill s
 
 - Change only the flagged lines, plus whatever else the fix strictly needs (a missing COVERS line, a SECTION line a paragraph heading refers to). Every line not listed is returned character for character, in place, even if you would word it differently.
 - Keep the meaning and the quoted wording. Never invent new text or units.
-- A unit not allowed in this sheet (a findings- or history-conditioned RULE, APPEND, INSERT, ORDER, SUPPRESS NEGATIVES, IF_PRESENT) becomes a prose exemplar line in the same paragraph that keeps its quoted wording: "Abnormal pattern:", "Interpretive phrasing:" or "Recommendation phrasing:" followed by the quote. A NEGATIVE ... WHEN loses its WHEN when the negative is routine; otherwise it is deleted (it is case-dependent).
+- A unit not allowed in this sheet (a findings- or history-conditioned RULE, APPEND, INSERT, ORDER, SUPPRESS NEGATIVES) becomes a prose exemplar line in the same paragraph that keeps its quoted wording: "Abnormal pattern:", "Interpretive phrasing:" or "Recommendation phrasing:" followed by the quote, unless the quoted wording is a negative, in which case the line is deleted. An IF_PRESENT line is deleted (it is case-dependent). A NEGATIVE ... WHEN loses its WHEN when the negative is routine; otherwise it is deleted (it is case-dependent).
+- A COVERS line outside a findings-role section is deleted; a COVERS item naming a finding rather than a structure is deleted.
 - Prose that states an absence (in any form: "No ...", "There is no ...", "Without ...", "Absent ...", "Nil ...", "Negative for ...", "<x> is absent", bracketed, or a bare quoted negative line) becomes a NEGATIVE line with the same wording when it is a routine negative, and is otherwise deleted. A conditional prose line that also mentions an absence is rewritten without the absence (or deleted).
 - A prose line starting with a keyword word (Normal, Negative, Fixed, Term, Rule, Section, Covers) is reworded to start with its label ("Opening:", "Abnormal pattern:" ...).
 - A malformed COVERS line is rewritten as COVERS ["<structure>" | "<structure>"], items separated by " | ". A findings paragraph without COVERS gets one: the structures its units and prose report, as the first unit line under the heading.

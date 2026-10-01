@@ -105,3 +105,17 @@ def test_split_reports_dedupes_regenerations_and_holds_out_newest():
     assert [r["report_id"] for r in held] == [7, 8] and [r["report_id"] for r in ex] == [2, 3, 4, 5, 6]
     ex, held = lab.split_reports(rows[:4])
     assert held == [] and len(ex) == 3
+
+
+def test_lean_prompt_tightening_rules():
+    p = P.ANALYSER_SYSTEM_PROMPT
+    assert "Exactly ONE sentence per NORMAL line" in p
+    assert "Anatomical structures only: never a finding" in p and "never in a paragraph of any other section" in p
+    assert "found at least twice" in p and "At most six TERM lines" in p
+    assert "an item carries no condition or qualifier" in p
+    assert "only when an example report actually omits that section" in p
+    assert "never a negative sentence" in p
+    # no instruction tells the analyser to quote a finding-specific negative as an exemplar
+    assert "quote it as an exemplar in prose instead" not in p
+    r = P.REPAIR_SYSTEM_PROMPT
+    assert "An IF_PRESENT line is deleted" in r and "COVERS line outside a findings-role section is deleted" in r
