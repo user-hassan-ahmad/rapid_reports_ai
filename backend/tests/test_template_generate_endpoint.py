@@ -228,7 +228,8 @@ MIRROR_OUT = {"report_content": "Findings:\nThe left ventricle is normal in size
               "description": "Normal CMR", "scan_type": "CMR", "brief_used": True, "brief_text": "BRIEF",
               "brief_decisions": {"options": []},
               "options": [{"id": "fn0", "kind": "finding_negative", "section": "FINDINGS", "sentence": "No LGE."}],
-              "gate_dropped": [], "quality_check": {"enabled": True}, "history_inserted": True, "phase1_used": True,
+              "gate_dropped": [], "case_decisions": {"capped": []}, "options_late": False,
+              "quality_check": {"enabled": True}, "history_inserted": True, "phase1_used": True,
               "sections": ["CLINICAL DETAILS", "FINDINGS", "CONCLUSION"], "lat": {"brief_s": 1.2},
               "jev_calls": {}}
 
@@ -283,6 +284,7 @@ async def test_flag_on_runs_the_mirror_and_persists_artifacts(aclient, auth_head
     saved = db_session.get(Report, __import__("uuid").UUID(r["report_id"]))
     cand = saved.candidate_reports[0]
     assert cand["options"][0]["id"] == "fn0" and cand["phase1_source"] == "cached" and cand["sections"]
+    assert cand["case_decisions"] == {"capped": []} and cand["gate_dropped"] == [] and cand["options_late"] is False
     assert saved.report_content == MIRROR_OUT["report_content"] and saved.report_type == "templated"
 
 

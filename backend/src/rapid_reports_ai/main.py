@@ -1863,6 +1863,9 @@ async def generate_report_from_template(
                 mirror_candidate = tp.candidate_record(mirror_result, int((time.perf_counter() - _tpl_gen_t0) * 1000))
                 mirror_candidate["phase1_source"] = _p1["source"]
                 mirror_candidate["options_late"] = bool(mirror_result.get("options_late"))
+                # Why each Phase-1 option was offered, dropped or capped, and what the vetting removed
+                mirror_candidate["case_decisions"] = mirror_result.get("case_decisions")
+                mirror_candidate["gate_dropped"] = mirror_result.get("gate_dropped") or []
                 _p1_source = _p1["source"]
                 _p1_wait_s = (mirror_result.get("lat") or {}).get("phase1_wait_s", 0.0)
                 report_output_dict = {"report_content": mirror_result["report_content"],
