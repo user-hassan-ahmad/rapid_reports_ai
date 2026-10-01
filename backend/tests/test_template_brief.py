@@ -90,15 +90,17 @@ def stub(monkeypatch, jev_f: dict | None = None, jev_c: dict | None = None, qwen
         src = jev_c if ctx else jev_f
         return {k: {"noul": src.get(k, 0.1)} for k in qs}
 
-    async def fake_qwen(state, negs, normals, measurements):
+    async def fake_qwen(state, negs, normals, measurements, **kw):
         calls["qwen"].append((list(negs), list(normals)))
+        calls.setdefault("qwen_kw", []).append((state, kw))
         if isinstance(qwen, rc.QwenDecisions):
             return qwen
         spec = qwen or {}
-        decs = [rc.NegativeDecision(index=i, action=spec.get(n.rstrip("."), ("keep", ""))[0],
-                                    dictated_finding=spec.get(n.rstrip("."), ("keep", ""))[1]) for i, n in enumerate(negs)]
+        decs = [rc.TemplateNegativeDecision(index=i, action=spec.get(n.rstrip("."), ("keep", ""))[0],
+                                            dictated_finding=spec.get(n.rstrip("."), ("keep", ""))[1])
+                for i, n in enumerate(negs)]
         aff = [i for i, t in enumerate(normals) if t in spec.get("affected", [])]
-        return rc.QwenDecisions(negatives=decs, affected_normals=aff, applicable_measurements=[])
+        return rc.TemplateQwenDecisions(negatives=decs, affected_normals=aff, applicable_measurements=[])
 
     async def no_split(negs):
         return [[n] for n in negs]
@@ -1108,3 +1110,83 @@ async def test_offered_negatives_never_restate_a_kept_or_dictated_negative(monke
     assert {f["text"]: f["outcome"] for f in b.decisions["finding_negatives"]} == {
         "No surrounding collection or abscess": "duplicate_dropped", "No perforation": "duplicate_dropped",
         "No cyst rupture": "offered"}
+
+
+
+# ── alternatives once the question is answered: rule (triage present) + Qwen 'superseded' ──
+
+TRIAGE = MASTER.replace('DIFFERENTIAL [Branch beta] TIER aetiology', 'DIFFERENTIAL [Branch beta] TIER triage').replace(
+    ADJ, ADJ.replace('NEGATIVE "No free fluid."', 'NEGATIVE "No adjacent vessel thrombosis."'))
+PRIMARY = "## Paragraph: Primary organ (FINDINGS)"
+
+
+def neg(b, text):
+    return next(n for n in b.decisions["negatives"] if n["text"] == text)
+
+
+async def test_triage_present_offers_the_other_triage_alternatives(monkeypatch):
+    b, _ = await probe(monkeypatch, TRIAGE, {"d0": 0.9})  # Branch alpha (triage) reported
+    para = block(b.text, PRIMARY)
+    assert "No free fluid" not in para  # the other triage branch's negative: offered, never stated
+    n = neg(b, "No free fluid.")
+    assert n["action"] == "offered_alternative" and n["signals"] == [
+        {"text": "No free fluid.", "rule": True, "qwen": "keep"}]
+    (o,) = [o for o in b.decisions["options"] if o["kind"] == "finding_negative" and o["text"] == "No free fluid."]
+    assert o["reason"] == "alternative excluded; question answered by Branch alpha"
+    assert "question answered" not in b.text
+    # template sweep and If-present negatives are untouched
+    assert '- KEEP: "No focal lesion."' in para and '- KEEP: "No adjacent vessel thrombosis."' in b.text
+
+
+async def test_no_triage_present_states_the_alternatives(monkeypatch):
+    b, _ = await probe(monkeypatch, TRIAGE, {})
+    para = block(b.text, PRIMARY)
+    assert '- KEEP: "No adjacent collection."' in para and '- KEEP: "No free fluid."' in para
+    assert not [o for o in b.decisions["options"] if o["kind"] == "finding_negative"]
+
+
+async def test_aetiology_alternatives_are_not_demoted_by_the_rule(monkeypatch):
+    sheet = MASTER.replace(ADJ, ADJ.replace('NEGATIVE "No free fluid."', 'NEGATIVE "No adjacent vessel thrombosis."'))
+    b, _ = await probe(monkeypatch, sheet, {"d0": 0.9})  # beta is aetiology
+    assert '- KEEP: "No free fluid."' in block(b.text, PRIMARY)
+
+
+async def test_qwen_superseded_offers_a_case_negative_and_never_a_sweep_negative(monkeypatch):
+    sheet = MASTER.replace(ADJ, ADJ.replace('NEGATIVE "No free fluid."', 'NEGATIVE "No adjacent vessel thrombosis."'))
+    b, calls = await probe(monkeypatch, sheet, {"d0": 0.9}, qwen={
+        "No free fluid": ("superseded", "a reported collection"), "No focal lesion": ("superseded", "x")})
+    para = block(b.text, PRIMARY)
+    assert "No free fluid" not in para and neg(b, "No free fluid.")["signals"] == [
+        {"text": "No free fluid.", "rule": False, "qwen": "superseded"}]
+    assert '- KEEP: "No focal lesion."' in para  # a template sweep negative is never demoted
+    state, kw = calls["qwen_kw"][0]
+    assert kw == {"template": True} and "CLINICAL QUESTION: Is there a focal process" in state
+
+
+async def test_expected_beats_demotion_and_contradicted_still_omits(monkeypatch):
+    b, _ = await probe(monkeypatch, TRIAGE, {"d0": 0.9}, qwen={"No free fluid": ("expected", "a reported collection")})
+    assert '- DO NOT ASSERT: "No free fluid." — expected consequence of: a reported collection' in b.text
+    assert not [o for o in b.decisions["options"] if o.get("text") == "No free fluid."]
+    b, _ = await probe(monkeypatch, TRIAGE, {"d0": 0.9}, qwen={"No free fluid": ("contradicted", "free fluid")})
+    assert '- OMIT: "No free fluid." — the dictation reports: free fluid' in b.text
+
+
+async def test_superseded_on_an_if_present_negative_is_read_as_keep(monkeypatch):
+    b, _ = await probe(monkeypatch, jev={"f0": 0.95}, qwen={LYMPH: ("superseded", "x")})
+    assert outcome(b, LYMPH) == "stated"
+
+
+async def test_template_classifier_variant_keeps_the_quick_prompt_untouched(monkeypatch):
+    seen = []
+
+    async def runner(**kw):
+        seen.append((kw["system_prompt"], kw["output_type"]))
+        from types import SimpleNamespace
+        return SimpleNamespace(output=kw["output_type"](negatives=[], affected_normals=[], applicable_measurements=[]))
+    monkeypatch.setattr(rc, "_run_agent_with_model", runner)
+    await rc._qwen("s", ["No x"], [], [])
+    await rc._qwen("s", ["No x"], [], [], template=True)
+    assert seen[0] == (rc.QWEN_SYS, rc.QwenDecisions)
+    assert seen[1] == (rc.QWEN_SYS_TEMPLATE, rc.TemplateQwenDecisions)
+    assert "'superseded'" in rc.QWEN_SYS_TEMPLATE and "widespread or large-volume" in rc.QWEN_SYS_TEMPLATE
+    assert rc.QWEN_SYS_TEMPLATE.startswith(rc.QWEN_SYS.split("NEGATIVES:")[0])

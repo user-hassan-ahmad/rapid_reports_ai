@@ -241,3 +241,19 @@ async def test_quick_brief_does_not_offer_a_stated_or_dictated_negative(monkeypa
     outcome = {f["text"]: f["outcome"] for f in r["decisions"]["finding_negatives"]}
     assert outcome["No skull fracture or scalp haematoma"] == "duplicate_dropped"  # stated: KEEP "No skull fracture"
     assert outcome["No local invasion"] == "duplicate_dropped"  # dictated
+
+
+async def test_option_writer_guard_drops_a_recommendation_sentence_that_names_another_thing():
+    from types import SimpleNamespace
+    from rapid_reports_ai import report_reconcile as rc
+    opts = [{"kind": "recommendation", "text": "REFERRAL: Interventional radiology, urgent"},
+            {"kind": "recommendation", "text": "IMAGING: Dedicated MRI of the region"},
+            {"kind": "impression", "text": "Small cyst"}]
+
+    async def runner(**kw):
+        return SimpleNamespace(output=rc._OptionSentences(sentences=[
+            "1. Perforated appendicitis with a 41 mm abscess.", "Dedicated MRI is recommended.", "Small simple cyst."]))
+    guarded = await rc.write_options(opts, "f", "CT", model="m", runner=runner, require_service=True)
+    assert [o["source"] for o in guarded] == ["IMAGING: Dedicated MRI of the region", "Small cyst"]
+    plain = await rc.write_options(opts, "f", "CT", model="m", runner=runner)  # quick: unchanged by default
+    assert len(plain) == 3

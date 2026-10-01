@@ -136,6 +136,15 @@ class QwenDecisions(BaseModel):
         return _unstring(v)
 
 
+class TemplateNegativeDecision(NegativeDecision):
+    """The templated pathway's label set: quick's plus 'superseded' (quick's schema is untouched)."""
+    action: Literal["keep", "contradicted", "expected", "superseded"]
+
+
+class TemplateQwenDecisions(QwenDecisions):
+    negatives: List[TemplateNegativeDecision]
+
+
 class Split(BaseModel):
     negatives: List[List[str]]
     @field_validator("negatives", mode="before")
@@ -193,6 +202,21 @@ QWEN_SYS = (
     "MEASUREMENTS: list the numbers of measurement conventions whose finding is present in the dictation.")
 
 
+# Templated pathway only (quick keeps QWEN_SYS byte-identical). The state carries the CLINICAL QUESTION.
+QWEN_SYS_TEMPLATE = (
+    "You check a radiology skill sheet against the radiologist's dictated findings for one case. Silence in the "
+    "dictation never makes a finding present.\n"
+    "NEGATIVES: for each numbered negative return 'contradicted' if the dictation reports it as present or reports a "
+    "finding of the same kind in the same place; 'expected' if a dictated finding would normally and predictably "
+    "cause what it denies (not merely make it possible); a dictated finding described as widespread or "
+    "large-volume predictably includes its presence at any particular site, so a negative denying that finding at "
+    "one site is 'expected'; 'superseded' if the negative excludes an alternative diagnosis and the dictated "
+    "findings already establish a different answer to the clinical question; otherwise 'keep'. For contradicted, "
+    "expected and superseded, quote the dictated finding responsible.\n"
+    "NORMAL LINES: list the numbers of normal-study statements that a dictated finding contradicts or acts on.\n"
+    "MEASUREMENTS: list the numbers of measurement conventions whose finding is present in the dictation.")
+
+
 def _words(s: str) -> set:
     return set(re.findall(r"[\w*'-]+", s.lower()))
 
@@ -236,11 +260,15 @@ async def _jev(state: str, questions: dict) -> dict:
     return r.json().get("answers") or r.json()
 
 
-async def _qwen(state: str, negs: List[str], normals: List[str], measurements: List[str]) -> QwenDecisions:
+async def _qwen(state: str, negs: List[str], normals: List[str], measurements: List[str], *,
+                template: bool = False) -> QwenDecisions:
+    """The shared classifier. `template` selects the templated label set ('superseded' added, 'expected'
+    sharpened); the default is quick's exact prompt and schema."""
     def block(title, items):
         return f"{title}:\n" + ("\n".join(f"{k}. {t}" for k, t in enumerate(items)) or "(none)")
     r = await asyncio.wait_for(_run_agent_with_model(
-        model_name=QWEN, output_type=QwenDecisions, system_prompt=QWEN_SYS,
+        model_name=QWEN, output_type=TemplateQwenDecisions if template else QwenDecisions,
+        system_prompt=QWEN_SYS_TEMPLATE if template else QWEN_SYS,
         user_prompt=f"{state}\n\n{block('NEGATIVES', negs)}\n\n{block('NORMAL LINES', normals)}\n\n{block('MEASUREMENTS', measurements)}",
         api_key="", model_settings={"temperature": 0, "max_tokens": 4000, "reasoning_effort": "none"}), QWEN_TIMEOUT_S)
     return r.output
@@ -372,7 +400,8 @@ OPTION_SYS = ("Write one sentence for the IMPRESSION of a radiology report for e
 
 async def write_options(options: List[dict], findings: str, scan_type: str, *, model: str,
                         runner: Callable[..., Awaitable[Any]],
-                        style: str = "", impression_section: str = "IMPRESSION") -> List[dict]:
+                        style: str = "", impression_section: str = "IMPRESSION",
+                        require_service: bool = False) -> List[dict]:
     """Reporter-choice items. Impression and recommendation items get one sentence each from a
     writer call beside the generator; finding-linked negatives are already in report form and
     pass through. On a writer failure only the written items are lost. `runner` is the caller's
@@ -401,7 +430,26 @@ async def write_options(options: List[dict], findings: str, scan_type: str, *, m
     written = [{"id": f"opt{i}", "kind": o["kind"], "section": impression_section, "sentence": s.strip(),
                 "reason": o.get("reason", ""), "source": o["text"]}
                for i, (o, s) in enumerate(zip(to_write, sentences)) if s and s.strip()]
+    if require_service:  # templated pathway: a recommendation sentence must name what it recommends
+        bad = [w for w in written if w["kind"] == "recommendation" and not names_service(w["sentence"], w["source"])]
+        for w in bad:
+            logger.warning("option writer: recommendation %r written as %r; dropped", w["source"], w["sentence"][:120])
+        written = [w for w in written if w not in bad]
     return written + passed
+
+
+_GENERIC_REC = frozenset(("referral", "refer", "review", "urgent", "urgently", "emergency", "routine", "soon",
+                          "recommended", "recommend", "suggested", "consider", "team", "service", "the", "a", "an",
+                          "to", "of", "for", "and", "with", "is", "be", "further", "clinical", "acute"))
+
+
+def names_service(sentence: str, recommendation: str) -> bool:
+    """The written sentence shares a service / test word (4-letter stem) with the recommendation text (its 'TAG:'
+    prefix and generic referral and urgency words ignored). Without such a word to check, it passes."""
+    body = re.sub(r"^[A-Z]+:\s*", "", recommendation)
+    stems = lambda t: {w[:4] for w in re.findall(r"[a-z0-9]+", t.lower()) if w not in _GENERIC_REC and len(w) > 1}  # noqa: E731
+    want = stems(body)
+    return not want or bool(want & stems(sentence))
 
 
 @dataclass

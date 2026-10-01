@@ -467,6 +467,12 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
         # ── differentials (policy 1, shared routing) ─────────────────────────
         diff_route = {d.name: rc.route_differential(sc[f"d{k}"], d.visible) for k, d in enumerate(s.differentials)}
         diff_visible = {d.name: d.visible for d in s.differentials}
+        # Once a TRIAGE branch is reported the question is answered: a case negative excluding a different
+        # triage branch is offered, never stated (aetiology, If-present and sweep negatives are unaffected).
+        triage = {d.name for d in s.differentials if d.tier == "triage"}
+        answered = next((d.name for d in s.differentials if d.name in triage and diff_route[d.name] == "present"), "")
+        # The template classifier also judges 'superseded' against the clinical question.
+        qstate = state + (f"\nCLINICAL QUESTION: {s.question}" if s.question else "")
 
         # ── plan each negative; collect what the classifier must judge ──────
         plans: Dict[str, dict] = {}
@@ -541,7 +547,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
 
         async def qwen_or_empty():
             if to_classify or normals_sent:
-                return await rc._qwen(state, to_classify, [u.text for u in normals_sent], [])
+                return await rc._qwen(qstate, to_classify, [u.text for u in normals_sent], [], template=True)
             return rc.QwenDecisions(negatives=[], affected_normals=[], applicable_measurements=[])
 
         # Same claim, other wording, is not asked of Jev (owner decision 2026-10-01: inferring whether a
@@ -602,6 +608,8 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                 labels.append((u, _key(part), "DO NOT ASSERT"))
             action = "target_not_visible"
         else:
+            rule = bool(answered) and u.origin == "case" and u.targets in triage and u.targets != answered
+            offered = 0
             for j, part in enumerate(p["parts"]):
                 if j in p["forced"]:
                     new.extend(omit(_q(part), p["forced"][j]))
@@ -628,10 +636,20 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                 elif d.action == "expected":
                     new.append(f'- DO NOT ASSERT: "{_q(part)}" — expected consequence of: {d.dictated_finding}')
                     labels.append((u, _key(part), "DO NOT ASSERT"))
+                elif u.origin == "case" and (rule or d.action == "superseded"):
+                    # Either signal demotes (a disagreement is offered, never deleted); not in the brief text.
+                    offered += 1
+                    entry.setdefault("signals", []).append({"text": _q(part), "rule": rule, "qwen": d.action})
+                    why = (f"question answered by {answered}" if rule else f"superseded by: {d.dictated_finding}")
+                    decisions["options"].append({
+                        "kind": "finding_negative", "section": u.section, "paragraph": para_name.get(u.paragraph, ""),
+                        "text": _q(part), "finding": u.targets, "reason": f"alternative excluded; {why}"})
+                    labels.append((u, _key(part), "OFFERED"))
                 else:
                     new.append(f'- KEEP: "{_q(part)}"')
                     labels.append((u, _key(part), "KEEP"))
-            action = "rule_omitted" if p["forced"] and len(p["forced"]) == len(p["parts"]) else "labelled"
+            action = ("rule_omitted" if p["forced"] and len(p["forced"]) == len(p["parts"])
+                      else "offered_alternative" if offered and offered == len(p["parts"]) else "labelled")
         L.put(u.line, new)
         decisions["negatives"].append({**entry, "action": action, "lines": new})
 
@@ -674,7 +692,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
                                                "source": "case", "differential": case_omit[_key(part)]})
     for u, part, pf in cands:
         d = qneg.get(_key(part)) if pf >= rc.PRESENT_LOW else None
-        label = d.action if d else "keep"
+        label = d.action if d and d.action != "superseded" else "keep"  # superseded is for case negatives only
         outcome = rc.route_finding(label, pf, u.tag)
         if outcome == "offered":
             if n_offered >= rc.MAX_FINDING_OPTIONS:
