@@ -169,3 +169,14 @@ def test_prompt_carries_the_rules():
                  "Clinical history is never emitted", "IMAGING", "REFERRAL", "MDT", "TISSUE", "CORRELATION",
                  "COVERS", "If present"):
         assert must in p, must
+
+
+def test_prompt_step1c_rules():
+    p = ca.CASE_ANALYSER_SYSTEM_PROMPT
+    assert "One targeted negative for every differential you listed with VISIBLE yes" in p
+    assert "Editorial restraint applies to duplication only" in p
+    assert "plausibly reports" in p
+    assert "names the service or the test, and the urgency" in p and '"for consideration of …"' in p
+    assert 'never joins findings with "or"' in p
+    assert "recommend that named test" in p
+    assert "Six well-targeted" in p and "Default toward omission" not in p

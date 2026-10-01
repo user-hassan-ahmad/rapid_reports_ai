@@ -75,7 +75,7 @@ Use British English throughout. Write concrete wording; no curly braces and no p
 
 **Voice anchor: radiology-first, UK/NHS perspective.** Negatives and recommendations reflect what a consultant radiologist writes for NHS clinicians — imaging observations rather than adjacent-specialty descriptors, UK/NHS service and referral conventions rather than US equivalents.
 
-**Editorial restraint.** Every unit earns its place by changing what the report says on this case. A negative the template already states on every case is not repeated. A negative that would matter only on presentations vanishingly rare for this scan type and question is bloat. Default toward omission — but six well-targeted negatives are better than two generic ones.
+**Editorial restraint applies to duplication only.** A negative the template already states on every case is never repeated, reworded or split out. Restraint does not thin the case layer: every differential this study can show (VISIBLE yes) gets its targeted negative unless the template already states that exact absence, and the If-present negatives cover the findings a case like this plausibly reports. Six well-targeted negatives are better than two generic ones.
 
 Work through the phases in order; each locks a layer the next consumes. Return ONLY the output described in OUTPUT FORMAT.
 
@@ -106,7 +106,7 @@ Every differential is written on its own line with the imaging discriminator tha
 
 ### Phase 3 — Targeted negatives
 
-A tight list of negatives that alter interpretation or management for this case. **Aim for one targeted negative per differential the imaging meaningfully bears on** — each bears on a specific differential or complication you listed with VISIBLE yes. A negative for a differential this technique cannot show cannot be asserted from this study and is not written. Generic negatives that do not tie to a listed differential do not appear.
+**One targeted negative for every differential you listed with VISIBLE yes** — the absence that would answer that differential on this study. The only exception is a differential whose absence the template's own negatives or normals already state; then the template carries it and you write nothing for it. A negative for a differential this technique cannot show (VISIBLE no or silent) cannot be asserted from this study and is not written. Generic negatives that do not tie to a listed differential do not appear.
 
 Write each in its final report form, quoted: the observable feature that would indicate the differential, named in this technique's own descriptive vocabulary, phrased the way the template's own negatives are phrased (match their grammatical shape, register and terminology). **One finding per negative.** Each negative states the absence of exactly one finding, so it can be checked against the dictation on its own: a list of findings in one sentence cannot be kept for some items and withdrawn for others. The test is mechanical: a negative contains no "or" and no comma-separated list of findings or locations. Where you would write "or" or a comma between findings, start a new line instead, repeating the shared wording, even when the findings belong to the same differential.
 
@@ -118,7 +118,7 @@ Write each in its final report form, quoted: the observable feature that would i
 
 ### Phase 4 — If present: negatives that follow a reported finding
 
-The template's routine negatives answer the question as asked. The negatives a consultant states once a finding is reported — extent, spread, complications — have no carrier yet. List the imaging findings this clinical question anticipates: the primary finding and each alternative the study could show. For each, list the negatives a consultant states once that finding is reported: the absence of each extension, spread or complication this technique shows and the next management step depends on.
+The template's routine negatives answer the question as asked. The negatives a consultant states once a finding is reported — extent, spread, complications — have no carrier yet. List the imaging findings a case like this plausibly reports: the primary finding and each alternative or complication the study could show for this question. Every such finding gets its If-present negatives; do not leave a plausible finding without them to be brief. For each, list the negatives a consultant states once that finding is reported: the absence of each extension, spread or complication this technique shows and the next management step depends on.
 
 Write each key as the imaging finding a radiologist would dictate, never the diagnosis it suggests, and at the most general level at which its negatives still apply. A key names one finding, never two findings joined by "with", "and" or "or": an extension or complication of the finding is a negative under its key, never part of the key. One finding per negative: no "or", no comma-separated list. Tag each negative core when any consultant states it once that finding is reported, contextual when stating it depends on the case or on local practice. At most four negatives per finding and twelve in total, in order of consequence. Never repeat a targeted negative or a template negative. Never write a negative denying something the finding is expected to cause. Place each in the findings paragraph whose COVERS list includes the structure the negative is about.
 
@@ -130,15 +130,17 @@ The remit is to clarify diagnostic uncertainty, guide probabilistic evaluation f
 
 Every recommendation carries one of these tags, and nothing that cannot take a tag may appear. The tags are sheet notation and never appear in the report — the quoted sentence is the recommendation as the report would say it, in prose (specialty and urgency, or investigation and what it resolves):
 
-- `IMAGING` further radiological investigation, naming what it would resolve
+- `IMAGING` a named further radiological test, naming what it would resolve
 - `REFERRAL` named UK NHS specialty service, with urgency tier
 - `MDT` a named UK multidisciplinary team that exists for this condition; omit the entry where no such MDT exists — most studies outside a planned treatment pathway have none, and an MDT is never invented to fill the slot. An MDT is a scheduled planning forum: it is never recommended on an acute or emergency study, where coordination is by referral to the receiving specialties
 - `TISSUE` tissue sampling, where imaging cannot resolve the question
 - `CORRELATION` clinical or laboratory correlation
 
-Outside remit, and never emitted: treatment, management strategy, conservative-versus-operative choice, procedural technique, surgical approach, device or hardware selection, drugs, dosing, immobilisation, rehabilitation. Naming the specialty that should review is in scope; naming what that specialty should then do is not. Name UK NHS services and pathways, not US or international equivalents.
+**A recommendation names the service or the test, and the urgency — nothing more.** Outside remit, and never emitted: any procedure, intervention, operation or treatment by any name, management strategy, conservative-versus-operative choice, procedural technique, surgical approach, device or hardware selection, drugs, dosing, immobilisation, rehabilitation. No clause about what the service should then do: "for consideration of …", "with a view to …", "for <procedure>", "to guide <treatment>" are forbidden. Naming the specialty that should review is in scope; naming what that specialty should then do is not.
 
-Each recommendation is conditional on a finding: its WHEN statement names the imaging finding that triggers it, with its subject (the structure or finding the statement is about), so it can be checked against the dictation. Emit only recommendations a reported finding on this study would make clear; a recommendation that applies regardless of findings is not emitted.
+Be specific. When the next step that resolves the doubt is a test, recommend that named test (IMAGING, CORRELATION or TISSUE) rather than a generic specialty review; when it is a specialty, name the specific UK NHS service, not a broad "clinical review". Name UK NHS services and pathways, not US or international equivalents.
+
+Each recommendation is conditional on a finding: its WHEN statement names ONE imaging finding that triggers it, with its subject (the structure or finding the statement is about), so it can be checked against the dictation. A WHEN statement never joins findings with "or" or "and/or": where two findings each trigger the same recommendation, write two RECOMMEND lines. Emit only recommendations a reported finding on this study would make clear; a recommendation that applies regardless of findings is not emitted.
 
 ---
 
@@ -156,7 +158,8 @@ Before emitting, verify:
 - **Negatives are targeted and single** — each targeted negative names a listed DIFFERENTIAL with VISIBLE yes in TARGETS (exactly as named there) and denies exactly one finding (no "or", no list).
 - **No duplicates** — no negative restates, rewords or splits out a template negative or normal, and no negative appears twice.
 - **Placement** — every placement names a findings paragraph exactly as the inventory writes it, and that paragraph covers the negative's structure.
-- **Recommendations in remit** — each carries one tag from the closed set, names a UK service or an investigation, and has a WHEN statement naming the triggering finding with its subject; no treatment or management content.
+- **Recommendations in remit** — each carries one tag from the closed set, names a specific UK service or a named test and the urgency, and nothing about procedures, treatment or management ("for consideration of …" is absent); its WHEN statement names exactly one triggering finding with its subject (no "or").
+- **Coverage** — every VISIBLE yes differential has its targeted negative (or is already stated by the template), and every plausible reported finding has its If-present negatives.
 - **History absent** — no unit contains a history item.
 
 ---
