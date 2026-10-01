@@ -15,7 +15,10 @@ Per synthetic set (backend/tests/fixtures/sheet_lab/<set>/):
     history-role section), the option writer beside it; the verbatim history inserted; post-generation check
     (sections from the lean structure, protected = history + FIXED texts, suppressed = TERM AVOID). A second
     check call on the final report counts the contradictions left after repair.
- 5. Baseline (today's production template path): the production analyser on the same examples (once per set;
+ 5. QUICK (``--quick``; the clinical-content reference): the production quick pipeline exactly as quick_report_api
+    runs it: generate_ephemeral_skill_sheet (FAST analyser, production directives) -> generate_quick_report
+    (GENERATOR_MODEL, brief on, post-generation check on per RR_QUALITY_CHECK).
+ 6. Baseline (today's production template path): the production analyser on the same examples (once per set;
     retried once on its "No JSON object found" failure, every failed attempt recorded: a production exposure)
     -> the generator with the raw sheet, no brief, no check. One check call (no repair) counts its
     contradictions for a like-for-like score.
@@ -27,7 +30,9 @@ the history section, brief label words in the report, options stated vs offered.
 
 Outputs to SCRATCH/e2e_<pid>/: <set>/<dictation>.md + .json, <set>/lean_sheet.md, <set>/baseline_sheet.md,
 summary.md, summary.json, hand_read.md. ``--reuse-sheets`` reads <dir>/<set>/sheets.json, else its
-lean_sheet.md / baseline_sheet.md; a missing or empty sheet is rebuilt.
+lean_sheet.md / baseline_sheet.md; a missing or empty sheet is rebuilt. ``--reuse-reports <dir>`` takes the NEW
+and BASELINE arms of each dictation from <dir>/<set>/<id>.json (no model calls for those arms). With ``--quick``,
+negatives.md lists every negative clause stated in each report with its likely source.
 """
 from __future__ import annotations
 
@@ -456,6 +461,37 @@ async def run_baseline(sheet: str, d: dict) -> dict:
     return {"report": out["report_content"], "generator_s": round(time.time() - t, 1), "model": out.get("model_used")}
 
 
+def _md_section(sheet: str, title: str) -> str:
+    """A '## <title>' block of a quick sheet, up to the next '## ' heading."""
+    m = re.search(rf"^##\s+{re.escape(title)}[^\n]*\n([\s\S]*?)(?=^##\s|\Z)", sheet or "", re.M | re.I)
+    return m.group(1).strip() if m else ""
+
+
+async def run_quick(d: dict) -> dict:
+    """The production quick pipeline, as quick_report_api runs it (analyser, then generator with brief + check)."""
+    from rapid_reports_ai.enhancement_utils import MODEL_CONFIG
+    from rapid_reports_ai.quick_report_analyser import generate_ephemeral_skill_sheet
+    from rapid_reports_ai.quick_report_generator import generate_quick_report
+
+    rec: dict = {"lat": {}}
+    t = time.time()
+    a = await generate_ephemeral_skill_sheet(scan_type=d["scan_type"], clinical_history=d.get("clinical_history", ""),
+                                             api_key="", model_override=MODEL_CONFIG["QUICK_REPORT_ANALYZER_FAST"])
+    rec["lat"]["analyser_s"] = round(time.time() - t, 1)
+    sheet = a.get("skill_sheet", "")
+    rec.update(sheet=sheet, analyser_model=a.get("model_used"), matrix=_md_section(sheet, "Companion Matrix"))
+    t = time.time()
+    gen_model = MODEL_CONFIG["QUICK_REPORT_GENERATOR"]
+    out = await generate_quick_report(skill_sheet=sheet, scan_type=d["scan_type"], findings=d["findings"],
+                                      clinical_history=d.get("clinical_history", ""), model_override=gen_model)
+    rec["lat"]["generator_s"] = round(time.time() - t, 1)
+    rec.update(report=out.get("report_content", ""), generator_model=out.get("model_used"),
+               brief_used=out.get("brief_used"), brief_text=out.get("brief_text"),
+               decisions=out.get("brief_decisions"), options=out.get("brief_options") or [],
+               quality=out.get("quality_check"))
+    return rec
+
+
 async def contradictions_left(report: str, d: dict, key: dict, options: List[dict], protected=None) -> dict:
     """One check call (no repair) on a final report: the contradiction flags it still raises."""
     secs = [rr.ReportSection(name=s["name"], header=s.get("header"), role=s["role"]) for s in key["sections"]]
@@ -477,7 +513,7 @@ def _examples(name: str) -> List[dict]:
 
 
 async def run_set(name: str, out: Path, sem: asyncio.Semaphore, reuse: Optional[Path],
-                  only: Optional[set] = None) -> dict:
+                  only: Optional[set] = None, reuse_reports: Optional[Path] = None, quick: bool = False) -> dict:
     key = json.loads((FIXTURES / name / "answer_key.json").read_text())
     dictations = [d for d in json.loads((FIXTURES / name / "dictations.json").read_text())
                   if not only or d["id"] in only]
@@ -511,7 +547,26 @@ async def run_set(name: str, out: Path, sem: asyncio.Semaphore, reuse: Optional[
     async def one(d: dict) -> dict:
         rec: dict = {"id": d["id"], "history": d.get("clinical_history", ""), "findings": d["findings"],
                      "scan_type": d["scan_type"]}
-        exp = expected.get(d["id"])
+        prev_rec = reuse_reports / name / f"{d['id']}.json" if reuse_reports else None
+        if prev_rec and prev_rec.exists():
+            old = json.loads(prev_rec.read_text())
+            for arm in ("new", "baseline"):
+                if (old.get(arm) or {}).get("report"):
+                    rec[arm] = {k: v for k, v in old[arm].items() if k != "score"}
+                    rec[arm]["reused_from"] = str(prev_rec)
+        if quick:
+            async with sem:
+                log(f"[{name}] {d['id']} quick pipeline")
+                try:
+                    rec["quick"] = await asyncio.wait_for(run_quick(d), STEP_TIMEOUT_S)
+                except Exception as e:  # noqa: BLE001
+                    rec["quick"] = {"error": f"{type(e).__name__}: {e}"[:500]}
+        if "new" not in rec:
+            await run_new_and_baseline(rec, d)
+        (d_out / f"{d['id']}.json").write_text(json.dumps(rec, indent=1, default=str))
+        return rec
+
+    async def run_new_and_baseline(rec: dict, d: dict) -> None:
         async with sem:
             log(f"[{name}] {d['id']} new pipeline")
             if lean.get("sheet") and g.parse_sheet(lean["sheet"], mode="template").structure.usable:
@@ -537,8 +592,6 @@ async def run_set(name: str, out: Path, sem: asyncio.Semaphore, reuse: Optional[
                                                            rec["new"].get("protected") or None)
         if rec["baseline"].get("report"):
             rec["baseline"]["left"] = await contradictions_left(rec["baseline"]["report"], d, key, [])
-        (d_out / f"{d['id']}.json").write_text(json.dumps(rec, indent=1, default=str))
-        return rec
 
     recs = await asyncio.gather(*(one(d) for d in dictations))
     setrec["dictations"] = recs
@@ -550,7 +603,7 @@ def score_all(results: List[dict]) -> None:
         key = json.loads((FIXTURES / s["set"] / "answer_key.json").read_text())
         exp = {e["dictation_id"]: e for e in key["expected_per_dictation"]}
         for r in s["dictations"]:
-            for arm in ("new", "baseline"):
+            for arm in ("new", "quick", "baseline"):
                 a = r.get(arm) or {}
                 if a.get("report") and r["id"] in exp:
                     a["score"] = score_report(a["report"], exp[r["id"]], key, r["history"], r["findings"])
@@ -682,13 +735,17 @@ def render_summary(results: List[dict]) -> str:
     allrecs = []
     for s in results:
         allrecs += s["dictations"]
-        for arm in ("new", "baseline"):
+        for arm in ("new", "quick", "baseline"):
             a = _agg(s["dictations"], arm)
+            if not a["reports"]:
+                continue
             L.append(f"| {s['set']} | {arm} | {a['reports']} | {a['omit_ok']}/{a['omit_exp']} | {a['rules_ok']}/{a['rules_scored']} "
                      f"({a['rules_expected']}) | {a['missing_ok']}/{a['missing_exp']} | {a['contradictions_left']} | "
                      f"{a['label_leak_reports']} | {a['history_leak_reports']} |")
-    for arm in ("new", "baseline"):
+    for arm in ("new", "quick", "baseline"):
         a = _agg(allrecs, arm)
+        if not a["reports"]:
+            continue
         L.append(f"| **all** | {arm} | {a['reports']} | {a['omit_ok']}/{a['omit_exp']} | {a['rules_ok']}/{a['rules_scored']} "
                  f"({a['rules_expected']}) | {a['missing_ok']}/{a['missing_exp']} | {a['contradictions_left']} | "
                  f"{a['label_leak_reports']} | {a['history_leak_reports']} |")
@@ -754,14 +811,112 @@ def render_hand_read(results: List[dict]) -> str:
         L += [f"## {s['set']} — {s['scan_type']}", ""]
         for r in s["dictations"]:
             n, b = r.get("new") or {}, r.get("baseline") or {}
+            arms = [("NEW", n)] + ([("QUICK", r["quick"])] if r.get("quick") else []) + [("BASELINE", b)]
+            w = 100 // len(arms)
             L += [f"### {r['id']}", "", f"**History:** {r['history']}", "", f"**Findings:** {r['findings']}", "",
-                  '<table><tr><th width="50%">NEW</th><th width="50%">BASELINE</th></tr><tr>',
-                  f'<td valign="top"><pre style="white-space:pre-wrap">{_esc(n.get("report") or "ERROR: " + str(n.get("error")))}</pre></td>',
-                  f'<td valign="top"><pre style="white-space:pre-wrap">{_esc(b.get("report") or "ERROR: " + str(b.get("error")))}</pre></td>',
-                  "</tr></table>", ""]
+                  "<table><tr>" + "".join(f'<th width="{w}%">{lab_}</th>' for lab_, _ in arms) + "</tr><tr>"]
+            L += [f'<td valign="top"><pre style="white-space:pre-wrap">{_esc(a.get("report") or "ERROR: " + str(a.get("error")))}</pre></td>'
+                  for _, a in arms]
+            L += ["</tr></table>", ""]
             if n.get("options"):
                 L.append("NEW options offered: " + " | ".join(f"[{o.get('kind')}] {o.get('sentence')}" for o in n["options"]))
                 L.append("")
+            if (r.get("quick") or {}).get("options"):
+                L.append("QUICK options offered: " + " | ".join(f"[{o.get('kind')}] {o.get('sentence') or o.get('text')}"
+                                                               for o in r["quick"]["options"]))
+                L.append("")
+    return "\n".join(L) + "\n"
+
+
+_NEG_CUE = re.compile(r"\b(?:no|not|without|nil|absent|unremarkable|normal)\b", re.I)
+
+
+def negative_clauses(report: str, sections: List[dict]) -> List[str]:
+    """Clauses outside the history section that state an absence (a 'no'/'without'/'not seen' negation)."""
+    body = without_history(report, sections)
+    return [c for c in _clauses(body) if _negated_span(c) and not re.match(r"^\d+\.?$", c)]
+
+
+def _source_texts(arm: str, a: dict) -> Dict[str, List[str]]:
+    """{source label: [negative texts]} the arm's brief or sheet supplied."""
+    dec = a.get("decisions") or {}
+    out: Dict[str, List[str]] = {}
+    if arm == "new":
+        for n in dec.get("negatives", []):
+            out.setdefault("case negative (Phase 1)" if n.get("origin") == "case" else "template sweep negative",
+                           []).append(n.get("text", ""))
+        for n in dec.get("finding_negatives", []):
+            out.setdefault("case If-present (Phase 1)", []).append(n.get("text", ""))
+        for n in dec.get("normals", []):
+            out.setdefault("template normal", []).append(n.get("text", "") or "")
+    elif arm == "quick":
+        for n in dec.get("negatives", []):
+            src = n.get("source", "sheet")
+            out.setdefault("quick finding-linked negative" if src.startswith("finding:") else
+                           "quick sheet mandatory negative", []).append(n.get("text", ""))
+        for n in dec.get("finding_negatives", []):
+            out.setdefault("quick finding-linked negative", []).append(n.get("text", ""))
+    return out
+
+
+def classify_negative(clause: str, findings: str, sources: Dict[str, List[str]]) -> str:
+    """Likely source of a stated negative: dictated (its negated words all sit in a negated dictation clause),
+    else the brief/sheet source with the best word overlap, else 'unsourced'. A heuristic for the hand read."""
+    cw = _w(_negated_span(clause)) or _w(clause)
+    for dc in _clauses(findings.replace(",", ".")):
+        span = _w(_negated_span(dc))
+        if span and cw and len(cw & span) / len(cw) >= 0.6:
+            return "dictated"
+    best, label = 0.0, "unsourced (generator)"
+    for lab_, texts in sources.items():
+        for t in texts:
+            tw = _w(t)
+            if tw and cw:
+                sc = len(cw & tw) / len(cw | tw)
+                if sc > best:
+                    best, label = sc, lab_
+    return label if best >= 0.34 else "unsourced (generator)"
+
+
+def beside_positive(clause: str, findings: str) -> List[str]:
+    """Dictated POSITIVE clauses sharing a content word with what this negative denies (e.g. fluid / fluid)."""
+    cw = _w(_negated_span(clause))
+    hits = []
+    for dc in _clauses(findings.replace(",", ".")):
+        pos = _w(dc) - _w(_negated_span(dc))
+        common = cw & pos
+        if common:
+            hits.append(f"{'/'.join(sorted(common))} ← \"{dc[:70]}\"")
+    return hits
+
+
+def render_negatives(results: List[dict]) -> str:
+    L = ["# Stated negatives — NEW / QUICK / BASELINE", "",
+         "Every clause outside the history section that states an absence. Source and 'beside' are heuristics: "
+         "the hand read decides. 'beside' = shares a content word with a dictated positive finding.", ""]
+    for s in results:
+        key = json.loads((FIXTURES / s["set"] / "answer_key.json").read_text())
+        for r in s["dictations"]:
+            L += [f"## {r['id']}", "", f"**Findings:** {r['findings']}", "",
+                  "| arm | stated negative | source | beside a dictated positive |", "|---|---|---|---|"]
+            for arm in ("new", "quick", "baseline"):
+                a = r.get(arm) or {}
+                if not a.get("report"):
+                    continue
+                srcs = _source_texts(arm, a)
+                for c in negative_clauses(a["report"], key["sections"]):
+                    b = beside_positive(c, r["findings"])
+                    L.append(f"| {arm.upper()} | {c} | {classify_negative(c, r['findings'], srcs)} | "
+                             f"{'; '.join(b) or ''} |")
+            for arm in ("new", "quick"):
+                a = r.get(arm) or {}
+                stated = " ".join(negative_clauses(a.get("report") or "", key["sections"])) + " " + r["findings"]
+                dup = [o.get("sentence") or o.get("text") for o in a.get("options") or []
+                       if (o.get("sentence") or o.get("text")) and asserted_parts(o.get("sentence") or o.get("text"), stated)]
+                L += ["", f"{arm.upper()} options offered: "
+                      + (" | ".join(str(o.get("sentence") or o.get("text")) for o in a.get("options") or []) or "none")
+                      + (f"  \n**{arm.upper()} options already stated or dictated:** {dup}" if dup else "")]
+            L.append("")
     return "\n".join(L) + "\n"
 
 
@@ -774,6 +929,8 @@ def write_outputs(results: List[dict], out: Path) -> None:
     (out / "summary.json").write_text(json.dumps(results, indent=1, default=str))
     (out / "summary.md").write_text(render_summary(results))
     (out / "hand_read.md").write_text(render_hand_read(results))
+    if any(r.get("quick") for s in results for r in s["dictations"]):
+        (out / "negatives.md").write_text(render_negatives(results))
 
 
 def load_saved(out: Path, sets: List[str]) -> List[dict]:
@@ -796,6 +953,8 @@ async def main() -> None:
     ap.add_argument("--concurrency", type=int, default=2)
     ap.add_argument("--reuse-sheets", default="", help="a previous output dir: reuse its lean and baseline sheets")
     ap.add_argument("--only", default="", help="comma-separated dictation ids (e.g. ct_ap_acute-d1); default all")
+    ap.add_argument("--reuse-reports", default="", help="a previous output dir: reuse its NEW and BASELINE reports")
+    ap.add_argument("--quick", action="store_true", help="add the production quick pipeline arm (QUICK)")
     ap.add_argument("--rescore", default="", help="a previous output dir: re-score and re-render, no model calls")
     a = ap.parse_args()
     from rapid_reports_ai.scripts.case_analyser_lab import _load_env  # loads backend/.env (model keys)
@@ -819,7 +978,8 @@ async def main() -> None:
     with contextlib.redirect_stdout(runner_log):  # the model runner prints settings to stdout
         for name in sets:  # sets in sequence; within a set at most 2 model calls at once
             results.append(await run_set(name, out, sem, Path(a.reuse_sheets) if a.reuse_sheets else None,
-                                         {x.strip() for x in a.only.split(",") if x.strip()} or None))
+                                         {x.strip() for x in a.only.split(",") if x.strip()} or None,
+                                         Path(a.reuse_reports) if a.reuse_reports else None, a.quick))
             write_outputs(results, out)
     print(out)
 

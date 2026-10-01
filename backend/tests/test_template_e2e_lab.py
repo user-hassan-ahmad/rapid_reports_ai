@@ -67,3 +67,14 @@ async def test_baseline_retries_once_only_on_no_json(monkeypatch):
     monkeypatch.setattr(tm.TemplateManager, "analyze_examples_to_skill_sheet", broken)
     got = await lab.baseline_sheet([{"content": "x"}], "CT")
     assert got["sheet"] == "" and len(calls) == 1  # any other failure: no retry
+
+
+def test_stated_negatives_are_classified_and_flagged_beside_a_dictated_positive():
+    findings = "moderate free fluid upper abdo and pelvis, no organised collection. no nodes"
+    negs = lab.negative_clauses(REPORT + "\nNo pericolic fluid. No lymphadenopathy.", SECTIONS)
+    assert "No pericolic fluid." in negs and not any("ibuprofen" in c for c in negs)
+    srcs = {"case negative (Phase 1)": ["No pericolic fluid."], "template sweep negative": ["No lymphadenopathy."]}
+    assert lab.classify_negative("No pericolic fluid.", findings, srcs) == "case negative (Phase 1)"
+    assert lab.classify_negative("No organised collection.", findings, srcs) == "dictated"
+    assert lab.beside_positive("No pericolic fluid.", findings)  # fluid / dictated free fluid
+    assert not lab.beside_positive("No lymphadenopathy.", findings)
