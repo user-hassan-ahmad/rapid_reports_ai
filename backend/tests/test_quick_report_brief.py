@@ -372,3 +372,70 @@ async def test_recommendation_unmet_is_one_minus_met(monkeypatch, met, action):
     recs = {r["text"]: r["action"] for r in b.decisions["recommendations"]}
     assert recs["REFERRAL: Neurosurgery for haemorrhage with mass effect"] == action
     assert recs["IMAGING: CTA for large vessel occlusion"] == "keep"          # met 0.9 -> unmet 0.1
+
+
+# ── Q7: Jev relation check OR'd with Qwen's negative label (RR_NEG_JEV_OR, default off) ──
+
+def _rel(contradicted, expected, keep):
+    return {"type": "choice", "choice": max({"contradicted": contradicted, "expected": expected, "keep": keep}.items(),
+                                            key=lambda kv: kv[1])[0],
+            "probabilities": {"contradicted": contradicted, "expected": expected, "keep": keep}}
+
+
+JEV_X = {**JEV, "x0": _rel(0.1, 0.1, 0.8), "x1": _rel(0.1, 0.2, 0.7), "x2": _rel(0.5, 0.2, 0.3)}
+
+
+def test_negative_relation_question_is_the_ech_choice():
+    q = qb.q_negative_relation("No ascites")
+    assert q["type"] == "choice" and set(q["criteria"]) == {"contradicted", "expected", "keep"}
+    assert q["instructions"] == "How does this negative statement relate to the dictated findings? Negative: No ascites"
+
+
+@pytest.mark.asyncio
+async def test_negative_or_off_by_default_asks_nothing_and_keeps_qwen_labels(monkeypatch):
+    monkeypatch.delenv("RR_NEG_JEV_OR", raising=False)
+    seen = {}
+    _stub(monkeypatch, JEV_X, QWEN)
+    inner = qb._jev
+    async def spy(state, questions):
+        seen.update(questions)
+        return await inner(state, questions)
+    monkeypatch.setattr(qb, "_jev", spy)
+    b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, 3 mm midline shift")
+    assert not any(k.startswith("x") for k in seen)
+    assert 'KEEP: "No skull fracture"' in b.text and "negative_or" not in b.decisions
+
+
+@pytest.mark.asyncio
+async def test_negative_or_on_jev_overrides_a_qwen_keep(monkeypatch):
+    monkeypatch.setenv("RR_NEG_JEV_OR", "1")
+    seen = {}
+    _stub(monkeypatch, JEV_X, QWEN)
+    inner = qb._jev
+    async def spy(state, questions):
+        seen.update(questions)
+        return await inner(state, questions)
+    monkeypatch.setattr(qb, "_jev", spy)
+    b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, 3 mm midline shift")
+    assert seen["x2"] == qb.q_negative_relation("No skull fracture")
+    assert 'KEEP: "No skull fracture"' not in b.text
+    assert 'OMIT: "No skull fracture"' in b.text
+    actions = {n["text"]: n["action"] for n in b.decisions["negatives"]}
+    assert actions == {"No subdural collection": "contradicted", "No ventricular compression": "expected",
+                       "No skull fracture": "contradicted"}          # Jev never downgrades Qwen's labels
+    assert b.decisions["negative_or"][2] == {"text": "No skull fracture", "qwen": "keep", "jev": "contradicted",
+                                             "final": "contradicted"}
+
+
+@pytest.mark.asyncio
+async def test_negative_or_keeps_qwen_when_jev_keep_is_likely_or_the_answer_is_unreadable(monkeypatch):
+    monkeypatch.setenv("RR_NEG_JEV_OR", "1")
+    jev = {**JEV_X, "x2": _rel(0.3, 0.19, 0.51)}
+    _stub(monkeypatch, jev, QWEN)
+    b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, 3 mm midline shift")
+    assert 'KEEP: "No skull fracture"' in b.text
+    jev = {**JEV_X, "x2": {"type": "choice"}}                            # malformed: Qwen's label stands
+    _stub(monkeypatch, jev, QWEN)
+    b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, 3 mm midline shift")
+    assert 'KEEP: "No skull fracture"' in b.text
+    assert b.decisions["negative_or"][2]["jev"] is None and b.decisions["negative_or"][2]["final"] == "keep"
