@@ -9,7 +9,8 @@ grammar structure: SCRATCH/sheet_conversion/data.json), then for one dictation
  1. "cached": POST /api/templates/{id}/prepare (as "Set up workspace"), sleep a realistic dictation time, then
     POST /api/templates/{id}/generate (expect phase1_source "cached" and Phase-1 options);
  2. "inline": generate with no prepare, on its own template copy (Phase 1 resolves beside the generator; the
-    report must not wait for it: expect options_late or few options, and the Phase 1 row stored afterwards).
+    report must not wait for it: expect options_status "pending" at return, then "ready", and the Phase 1 row
+    stored afterwards).
 Records phase1_source, latencies (generator, route, options, check, vet, total), the report, options, review items.
 
 The guideline prefetch that generate schedules is stubbed out (not part of this flow). Outputs to
@@ -133,7 +134,8 @@ async def run_case(client: httpx.AsyncClient, headers: dict, did: str, scan_type
     rec["candidate"] = cand
     rec["phase1_source"] = cand.get("phase1_source")
     rec["lat"] = cand.get("lat")
-    rec["options_late"] = cand.get("options_late")
+    rec["options_status"] = cand.get("options_status")
+    rec["options_pending"] = cand.get("options_pending")
     rec["phase1_rows_at_return"] = phase1_row(template_id)
     if mode == "inline":   # the inline Phase 1 runs on after the report returns and is stored for next time
         for _ in range(60):
@@ -156,7 +158,8 @@ def render_case(rec: dict) -> str:
     L += [f"- [{o.get('kind')} -> {o.get('section')}] {o.get('sentence')}" for o in c.get("options") or []] or ["- none"]
     q = c.get("quality_check") or {}
     L += ["", "## Check", f"- flags {[(f.get('kind'), (f.get('text') or '')[:100]) for f in q.get('flags', [])]}",
-          f"- review {q.get('review')}", f"- options_late {rec.get('options_late')}",
+          f"- review {q.get('review')}",
+          f"- options_status {rec.get('options_status')} (pending {rec.get('options_pending')})",
           f"- artifacts sections {((rec.get('artifacts') or {}).get('sections'))}"]
     return "\n".join(L) + "\n"
 
@@ -167,7 +170,7 @@ def _row(rec: dict) -> str:
     return (f"| {rec['case']} | {rec['mode']} | {rec['phase1_source']} | {round(p1 / 1000, 1) if p1 else '-'} | "
             f"{lat.get('phase1_wait_s')} | {lat.get('generator_s')} | {lat.get('route_s')} | {lat.get('options_s')} | "
             f"{lat.get('check_s')} | {lat.get('vet_s')} | {lat.get('generate_s')} | {rec['generate_wait_s']} | "
-            f"{rec.get('options_late')} | {len((rec.get('candidate') or {}).get('options') or [])} |")
+            f"{rec.get('options_status')} | {len((rec.get('candidate') or {}).get('options') or [])} |")
 
 
 async def main() -> None:
@@ -191,7 +194,7 @@ async def main() -> None:
     L = ["# Lean templated path: local production-workflow check", "",
          f"Case {a.case}; dictation sleep {a.dictation_s} s; RR_TEMPLATE_MIRROR=1; scratch DB {engine.url}", "",
          "| case | mode | phase1_source | Phase 1 s | phase1 wait s | generator s | route s | options s | check s | "
-         "vet s | generate s | generate wait s | options late | options |",
+         "vet s | generate s | generate wait s | options status | options |",
          "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     L += [_row(r) for r in recs]
     (OUT / "summary.md").write_text("\n".join(L) + "\n")

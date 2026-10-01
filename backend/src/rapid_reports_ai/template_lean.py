@@ -123,9 +123,16 @@ def _split_report(report: str, sections: List[ReportSection], name: str) -> str:
 # call whose state carries the history (Jev reads history quoted inside a question poorly: EVAR in the history
 # scored 0.12 there, 0.95 in the state). Probe: scratchpad device_probe/probe3.json. A single combined question
 # ("reports it, or presupposes none") passed the native-aneurysm sac at 0.53 / 0.56, so it is not used.
-_DEVICE_EG = ("for example a stent graft, stent, prosthesis, valve replacement, line, drain, catheter, tube, closure "
-              "device, wires or a surgical anastomosis")
-DEVICE_KEEP = 0.5
+# Wording "C" and the thresholds come from the wide probe (scratchpad device_probe_wide/, results_C_68238.json):
+# 124 items (DEV + HOLD), two reps, 0 errors in both directions (no device option kept without the device, no
+# native option dropped), every item at least 0.12 from the deciding threshold. Drop when dv >= 0.4 AND dr < 0.6.
+# The 0.6 was chosen with the holdout in view, so it is not an unseen-data estimate; it leans on dropping being
+# the safe direction (an option is never needed, a wrongly offered device negative is a false statement).
+_DEVICE_EG = ("for example a stent graft, stent, bypass graft, valve prosthesis, closure or occluder device, pacemaker "
+              "lead, line, catheter, drain, endotracheal or feeding tube, mesh, stoma, joint replacement, fixation "
+              "hardware, sternal wires, a surgical anastomosis, a resection cavity or a radiotherapy field")
+DEVICE_PRESUPPOSES = 0.4   # dv at or above: the negative presupposes a device, procedure or treatment
+DEVICE_REPORTED = 0.6      # dr at or above: the case reports it
 
 
 def device_state(scan_type: str, history: str, findings: str) -> str:
@@ -133,24 +140,26 @@ def device_state(scan_type: str, history: str, findings: str) -> str:
 
 
 def device_questions(k, text: str) -> dict:
-    """dv<k>: the negative presupposes a device or prior procedure; dr<k>: the case reports it."""
+    """dv<k>: the negative presupposes a device, procedure or treatment; dr<k>: the case reports it."""
     return {
         f"dv{k}": {"type": "noul",
                    "instructions": f'This negative only makes sense for a patient who has a device or has had a prior '
-                                   f'procedure: "{text}"',
-                   "criteria": {"true": f"It is about a device or the result of a prior procedure ({_DEVICE_EG}): its "
-                                        "position, patency, migration, leak or complication, such as contrast in a "
-                                        "treated aneurysm sac.",
-                                "false": "It is about native anatomy or disease and makes sense for a patient with no "
-                                         "device and no prior procedure."}},
+                                   f'procedure or treatment: "{text}"',
+                   "criteria": {"true": f"It is about a device, or the result of a prior procedure or treatment "
+                                        f"({_DEVICE_EG}): its position, patency, migration, leak or complication, or a "
+                                        "change that can only occur after it, such as contrast in a treated aneurysm "
+                                        "sac.",
+                                "false": "It is about native anatomy or disease that can occur in a patient who has "
+                                         "never had a device, procedure or treatment."}},
         f"dr{k}": {"type": "noul",
-                   "instructions": f'The dictated findings or the clinical history report the device or prior procedure '
-                                   f'this negative presupposes: "{text}"',
-                   "criteria": {"true": "The dictated findings or the clinical history mention that device, or the "
-                                        "procedure that placed it or that it follows, in any wording, synonym or "
-                                        "abbreviation.",
-                                "false": "Neither the dictated findings nor the clinical history mention that device or "
-                                         "any procedure that would place it."}},
+                   "instructions": f'The dictated findings or the clinical history report the same device, prior '
+                                   f'procedure or treatment that this negative presupposes: "{text}"',
+                   "criteria": {"true": "The dictated findings or the clinical history mention that device, procedure "
+                                        "or treatment, or the procedure that placed the device, in any wording, synonym "
+                                        "or abbreviation.",
+                                "false": "Neither the dictated findings nor the clinical history mention that device, "
+                                         "procedure or treatment; a different kind of device, procedure or treatment "
+                                         "does not count."}},
     }
 
 
@@ -158,9 +167,10 @@ def device_keep(answers: dict, k) -> bool:
     """False when the negative presupposes a device or procedure the case does not report; an unreadable answer
     drops it (conservative: an option is never needed)."""
     try:
-        return float(answers[f"dv{k}"]["noul"]) < DEVICE_KEEP or float(answers[f"dr{k}"]["noul"]) >= DEVICE_KEEP
+        dv, dr = float(answers[f"dv{k}"]["noul"]), float(answers[f"dr{k}"]["noul"])
     except Exception:  # noqa: BLE001
         return False
+    return not (dv >= DEVICE_PRESUPPOSES and dr < DEVICE_REPORTED)
 
 
 MAX_FINDING_NEGATIVES = 3

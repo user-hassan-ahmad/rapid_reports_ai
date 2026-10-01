@@ -223,8 +223,15 @@ def test_device_questions_quote_the_option_and_point_the_same_way():
     qs = tl.device_questions(3, "No contrast within the aneurysm sac.")
     assert set(qs) == {"dv3", "dr3"}
     assert '"No contrast within the aneurysm sac."' in qs["dv3"]["instructions"]
-    assert qs["dr3"]["instructions"].startswith("The dictated findings or the clinical history report the device")
+    assert qs["dv3"]["instructions"].startswith("This negative only makes sense for a patient who has a device or "
+                                                "has had a prior procedure or treatment")
+    assert "radiotherapy field" in qs["dv3"]["criteria"]["true"]
+    assert "can only occur after it" in qs["dv3"]["criteria"]["true"]
+    assert "never had a device, procedure or treatment" in qs["dv3"]["criteria"]["false"]
+    assert qs["dr3"]["instructions"].startswith("The dictated findings or the clinical history report the same device, "
+                                                "prior procedure or treatment")
     assert "mention" in qs["dr3"]["criteria"]["true"] and "Neither" in qs["dr3"]["criteria"]["false"]
+    assert "a different kind of device, procedure or treatment does not count" in qs["dr3"]["criteria"]["false"]
     assert "CLINICAL HISTORY: EVAR 2019" in tl.device_state("CT", "EVAR 2019", "AAA.")
 
 
@@ -234,6 +241,15 @@ def test_device_keep_drops_only_a_presupposed_device_that_is_not_reported():
            "dv2": {"noul": 0.1}, "dr2": {"noul": 0.05},    # nothing presupposed -> keep
            "dv3": {"noul": 0.9}}                           # unreadable -> drop (conservative)
     assert [tl.device_keep(ans, k) for k in range(4)] == [False, True, True, False]
+
+
+def test_device_keep_thresholds_are_asymmetric():
+    assert (tl.DEVICE_PRESUPPOSES, tl.DEVICE_REPORTED) == (0.4, 0.6)
+    k = lambda dv, dr: tl.device_keep({"dv0": {"noul": dv}, "dr0": {"noul": dr}}, 0)  # noqa: E731
+    assert k(0.4, 0.59) is False      # presupposes at 0.4, reported below 0.6 -> drop
+    assert k(0.39, 0.0) is True       # below 0.4 does not presuppose -> keep
+    assert k(0.9, 0.6) is True        # reported at 0.6 -> keep
+    assert k(0.9, 0.55) is False      # 0.55 is not enough to count as reported -> drop
 
 
 async def test_case_options_drop_a_device_negative_the_case_does_not_report(monkeypatch):
