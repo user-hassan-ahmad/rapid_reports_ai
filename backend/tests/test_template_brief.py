@@ -750,6 +750,27 @@ def test_condition_question_is_asked_with_criteria():
     assert tb.MET == 0.5 and not hasattr(tb, "CTX_MET")
 
 
+
+async def test_list_missing_counts_a_negative_result_as_stated(monkeypatch):
+    sheet = LEAN.replace('LIST_MISSING ["chamber volume" | "wall thickness"]', 'LIST_MISSING ["LGE"]')
+    s = g.parse_sheet(sheet).structure
+    assert s.usable and s.rules[1].items == ["LGE"]
+    stub(monkeypatch)
+    asked = {}
+
+    async def reader(state, qs):
+        asked.update(qs)
+        return {k: {"noul": 0.6 if k == "r1i0" else 0.1} for k in qs}
+    monkeypatch.setattr(tb.rc, "_jev", reader)
+    b = await tb.compile_template_brief(sheet, s, "CMR", "LV normal. No LGE.", "Family screening.")
+    assert "MISSING" not in b.text
+    assert asked["r1i0"] == tb.q_stated("LGE")
+    q = tb.q_stated("LGE")
+    assert q["type"] == "noul"
+    assert q["instructions"] == "The dictated findings state this item, with its value or result: LGE"
+    assert "including a negative result (such as 'no X')" in q["criteria"]["true"]
+    assert "belongs to a different item or structure" in q["criteria"]["false"]
+
 # ── master sheets: Phase-1 case units through quick's shared clinical routing (H4) ──
 
 MASTER = """# Master CT Template

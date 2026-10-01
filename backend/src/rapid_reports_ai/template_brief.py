@@ -70,8 +70,18 @@ from .template_sheet_structure import SheetStructure, _covers, _key
 
 logger = logging.getLogger(__name__)
 
-Q_STATED = "The dictated findings state "
 MET = 0.5  # one cut-off for every condition (findings, history, context); the criteria say silence is not met
+
+
+def q_stated(item: str) -> dict:
+    """A LIST_MISSING item: stated when its value or result is dictated, a negative result included."""
+    return {"type": "noul", "instructions": "The dictated findings state this item, with its value or result: " + item,
+            "criteria": {"true": "The dictation gives this item's value, grade or result, in any wording or "
+                                 "abbreviation, including a negative result (such as 'no X'). A value written after "
+                                 "a structure's name belongs to that structure.",
+                         "false": "The item is not given: it is not mentioned, not assessed, described only in "
+                                  "general words without the value it needs, or the only value given belongs to a "
+                                  "different item or structure."}}
 
 
 def q_condition(cond: str) -> dict:
@@ -379,7 +389,7 @@ async def compile_template_brief(sheet: str, s: SheetStructure, scan_type: str, 
     for i, r in enumerate(s.rules):
         if r.effect == "list_missing":  # always evaluated: one question per item, findings state
             for j, item in enumerate(r.items):
-                q_f[f"r{i}i{j}"] = {"type": "noul", "instructions": Q_STATED + item}
+                q_f[f"r{i}i{j}"] = q_stated(item)
             continue
         bucket(r.condition_source)[f"r{i}"] = q_condition(r.condition)
     for u in negatives:
