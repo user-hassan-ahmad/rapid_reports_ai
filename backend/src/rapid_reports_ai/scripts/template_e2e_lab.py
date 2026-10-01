@@ -450,21 +450,25 @@ async def run_new(sheet: str, d: dict) -> dict:
     sec_dicts = [{"name": x.name, "header": x.header, "role": x.role} for x in sections]
     impression = split_sections(report, sec_dicts).get(imp, "")
 
+    gate_qs = rc.gate_questions(options)  # report-scope questions ride on the check's report-state request
+
     async def checked():
         t0 = time.time()
         out = await rr.run_quality_check(report, findings, scan_type, options, sections=sections,
-                                         protected=protected, suppressed=avoid)
+                                         protected=protected, suppressed=avoid, extra_report_qs=gate_qs["report"])
         return out, round(time.time() - t0, 1)
 
-    async def gated():  # uniqueness gate, beside the post-generation check
+    async def gated():  # impression-scope questions need the conclusion as state: one parallel request
         t0 = time.time()
-        out = await rc.gate_options(options, report, impression)
+        out = await rc.gate_scores(f"CONCLUSION:\n{impression}", gate_qs["impression"])
         return out, round(time.time() - t0, 2)
 
-    ((report, checked_opts, quality), rec["lat"]["check_s"]), ((_, gate_dropped), rec["lat"]["gate_s"]) = \
+    ((report, checked_opts, quality), rec["lat"]["check_s"]), (imp_scores, rec["lat"]["gate_s"]) = \
         await asyncio.gather(checked(), gated())
+    _, gate_dropped = rc.gate_apply(options, {**quality.get("extra_answers", {}), **imp_scores})
     drop_ids = {o.get("id") for o in gate_dropped}
     options = [o for o in checked_opts if o.get("id") not in drop_ids]
+    rec["jev_calls"] = {"check": 2, "gate_extra": 1 if gate_qs["impression"] else 0}
     rec["quality"] = quality
     rec["gate_dropped"] = gate_dropped
     rec["options"] = options
