@@ -923,12 +923,13 @@ def render_negatives(results: List[dict]) -> str:
                     b = beside_positive(c, r["findings"])
                     L.append(f"| {arm.upper()} | {c} | {classify_negative(c, r['findings'], srcs)} | "
                              f"{'; '.join(b) or ''} |")
-            for n in ((r.get("new") or {}).get("decisions") or {}).get("negatives", []):
-                for sg in n.get("signals", []):
-                    by = ("both" if sg["rule"] and sg["qwen"] == "superseded" else "rule" if sg["rule"]
-                          else "Qwen superseded")
-                    L.append(f"| NEW | OFFERED (not stated): {sg['text']} | case negative (Phase 1) → {n.get('targets')} | "
-                             f"demoted by {by} (Qwen: {sg['qwen']}) |")
+            dec = (r.get("new") or {}).get("decisions") or {}
+            for x in dec.get("case_exclusions", []):
+                L.append(f"| NEW | NOT STATED, {x['outcome']}: {x['text']} | case negative (Phase 1) → {x['differential']} | |")
+            for n in dec.get("negatives", []):
+                for x in n.get("dropped", []):
+                    L.append(f"| NEW | NOT STATED, dropped (Qwen {x['qwen']}): {x['text']} | case negative (Phase 1) → "
+                             f"{n.get('targets')} | |")
             for arm in ("new", "quick"):
                 a = r.get(arm) or {}
                 stated = " ".join(negative_clauses(a.get("report") or "", key["sections"])) + " " + r["findings"]
