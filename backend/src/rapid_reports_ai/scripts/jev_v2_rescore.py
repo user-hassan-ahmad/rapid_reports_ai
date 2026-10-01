@@ -12,7 +12,7 @@ Per case, on the same inputs:
   if-present old noul presence vs new score / 3, banded by route_finding (label keep)
   branches   old Q_PRESENT vs new present_question, through the policy-1 action rule
   recs       old "unmet" >= 0.5 vs new 1 - met >= 0.5
-  negatives  Qwen labels (after the live split) vs Qwen OR Jev relation (Q7)
+  (the Q7 relation arm was removed with Q7 itself; its run_67723 results stay in the scratchpad)
 
     python -m rapid_reports_ai.scripts.jev_v2_rescore <rows.json> <out_dir>
 """
@@ -42,7 +42,6 @@ OLD_OMIT_FLAG = 0.5
 _BACKGROUND = __import__("re").compile(r"^\s*(no|nil)\b|\b(unremarkable|normal|intact|clear)\b", __import__("re").I)
 
 SEM = asyncio.Semaphore(6)
-QSEM = asyncio.Semaphore(3)
 
 
 async def jev(state: str, qs: dict) -> dict:
@@ -156,35 +155,6 @@ async def one(row: dict) -> dict:
     except Exception as e:
         out["errors"].append(f"brief: {type(e).__name__}: {e}")
 
-    # ── Q7: Qwen labels vs Qwen OR Jev ──
-    neg_bullet = qb._bullet(matrix, "Mandatory negatives")
-    raw_negs = [n.strip().rstrip(".") for n in qb._quoted(" ".join(neg_bullet.lines))] if neg_bullet else []
-    try:
-        async with QSEM:   # the live 10 s Qwen timeout; prod runs one case at a time
-            for attempt in range(3):
-                try:
-                    split = await qb._split_bundled(raw_negs + [c.text for c in cands])
-                    all_negs = [p for parts in split for p in parts]
-                    qw = await qb._qwen_complete(dstate, all_negs, [], [])
-                    break
-                except asyncio.TimeoutError:
-                    if attempt == 2:
-                        raise
-        rel = await jev(dstate, {f"x{i}": qb.q_negative_relation(t) for i, t in enumerate(all_negs)})
-        lab = {d.index: d for d in qw.negatives}
-        out["neg_or"] = []
-        for i, t in enumerate(all_negs):
-            d = lab.get(i)
-            ql = d.action if d else "keep"
-            r = qb._relation(rel.get(f"x{i}"))
-            final = r[2] if (r and ql == "keep" and r[1] >= 0.5) else ql
-            out["neg_or"].append({"text": t, "qwen": ql, "jev": r[0] if r else None, "final": final})
-            if final != ql:
-                out["changes"].append({"q": "negative_or", "item": t, "old": ql, "new": final,
-                                       "scores": rel[f"x{i}"].get("probabilities")})
-        out["counts"] = {**out.get("counts", {}), "negs": len(all_negs)}
-    except Exception as e:
-        out["errors"].append(f"neg_or: {type(e).__name__}: {e}")
     return out
 
 

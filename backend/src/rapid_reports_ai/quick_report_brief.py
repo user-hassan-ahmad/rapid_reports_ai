@@ -302,29 +302,6 @@ Q_REC_MET = "The dictated findings show the finding or diagnosis this recommenda
 Q_STYLE_MATCH = "This example report sentence describes the same kind of finding as one that is dictated in this case. Example: "
 
 
-# Sheet negatives the findings make untrue: a Jev choice OR'd with Qwen's label (Jev wording v2,
-# group C ECH, L-49). Jev can only escalate a Qwen 'keep'; it never downgrades. Flagged off
-# (RR_NEG_JEV_OR) until the production re-score holds.
-def q_negative_relation(neg: str) -> dict:
-    return {"type": "choice", "instructions": "How does this negative statement relate to the dictated findings? Negative: " + neg,
-            "criteria": {"contradicted": "The dictation reports the denied finding as present, or a finding of the same kind in the same place",
-                         "expected": "A dictated finding would normally and predictably cause what the negative denies (not merely make it possible)",
-                         "keep": "Neither: the negative can stand beside the dictated findings"}}
-
-
-def negative_or_enabled() -> bool:
-    return os.environ.get("RR_NEG_JEV_OR", "0").strip().lower() in ("1", "true", "on", "yes")
-
-
-def _relation(a) -> Optional[tuple]:
-    """(argmax label, 1 - P(keep), higher of contradicted / expected) from a choice answer; None when unreadable."""
-    try:
-        p = {k: float(a["probabilities"][k]) for k in ("contradicted", "expected", "keep")}
-    except Exception:
-        return None
-    return max(p, key=p.get), 1 - p["keep"], max(("contradicted", "expected"), key=p.get)
-
-
 class NegativeDecision(BaseModel):
     index: int
     action: Literal["keep", "contradicted", "expected"]
@@ -595,11 +572,6 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         qs["imp"] = {"type": "choice", "instructions": "Which impression exemplar best matches the shape of this case's findings (severity, number of findings, complications)?",
                      "criteria": {f"v{k}": " ".join(b.lines)[:400] for k, b in enumerate(variants)}}
     items = split_findings(findings)
-    # The split has already run, so Jev sees exactly the negatives Qwen classifies.
-    all_negs = [n for n, _ in negs] + [c.text for c in cands]
-    neg_or = negative_or_enabled()
-    if neg_or:
-        qs.update({f"x{i}": q_negative_relation(t) for i, t in enumerate(all_negs)})
 
     async def plan_or_none():
         try:
@@ -617,7 +589,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             return None
     jev, qw, plan, fb_out = await asyncio.gather(
         _jev(state, qs) if qs else asyncio.sleep(0, {}),
-        _qwen_complete(state, all_negs, normals, [" ".join(b.lines) for b in measurements]),
+        _qwen_complete(state, [n for n, _ in negs] + [c.text for c in cands], normals, [" ".join(b.lines) for b in measurements]),
         plan_or_none(), fallback_or_none())
     score = lambda k: float(jev[k]["noul"])
 
@@ -627,26 +599,15 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
 
     # Mandatory negatives: one line each, with its action and the dictated finding.
     qneg = {d.index: d for d in qw.negatives}
-    if neg_or:
-        decisions["negative_or"] = []
-        for i, t in enumerate(all_negs):
-            d = qneg.get(i)
-            qlabel = d.action if d else "keep"
-            rel = _relation(jev.get(f"x{i}"))
-            final = qlabel
-            if rel and qlabel == "keep" and rel[1] >= 0.5:
-                final = rel[2]
-                qneg[i] = NegativeDecision(index=i, action=final, dictated_finding="")
-            decisions["negative_or"].append({"text": t, "qwen": qlabel, "jev": rel[0] if rel else None, "final": final})
     neg_lines = [neg_bullet.lines[0].split("**Mandatory negatives:**")[0] + "**Mandatory negatives:** (reconciled with this dictation; one finding each)"] if neg_bullet else []
     for k, (text, target) in enumerate(negs):
         d = qneg.get(k)
         action = d.action if d else "keep"
         why = f" ({target})" if target else ""
         if action == "contradicted":
-            neg_lines.append(f'  - OMIT: "{text}" — the dictation reports: {d.dictated_finding or "a finding it denies"}')
+            neg_lines.append(f'  - OMIT: "{text}" — the dictation reports: {d.dictated_finding}')
         elif action == "expected":
-            neg_lines.append(f'  - DO NOT ASSERT: "{text}" — expected consequence of: {d.dictated_finding or "the dictated findings"}')
+            neg_lines.append(f'  - DO NOT ASSERT: "{text}" — expected consequence of: {d.dictated_finding}')
         else:
             neg_lines.append(f'  - KEEP: "{text}"{why}')
         decisions["negatives"].append({"text": text, "action": action, "dictated_finding": d.dictated_finding if d else "",
@@ -675,7 +636,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             decisions["negatives"].append({"text": c.text, "action": "keep", "dictated_finding": "",
                                            "source": f"finding:{c.key}"})
         elif outcome == "do_not_assert":
-            neg_lines.append(f'  - DO NOT ASSERT: "{c.text}" — expected consequence of: {d.dictated_finding or "the dictated findings"}')
+            neg_lines.append(f'  - DO NOT ASSERT: "{c.text}" — expected consequence of: {d.dictated_finding}')
     # An offered negative the brief already states (KEEP) or the dictation already makes is a
     # duplicate, never an option.
     said = [n["text"] for n in decisions["negatives"] if n["action"] == "keep"] + dictated_negatives(items)
