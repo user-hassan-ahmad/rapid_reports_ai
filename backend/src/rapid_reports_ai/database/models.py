@@ -328,6 +328,40 @@ class EphemeralSkillSheet(Base):
     def __repr__(self):
         return f"<EphemeralSkillSheet(id={self.id}, scan_type='{self.scan_type_normalized}')>"
 
+
+class TemplateCaseSheet(Base):
+    """Phase 1 output of the templated pipeline (the case analyser's master sheet) for one case.
+
+    Written when the reporter sets up the workspace (POST /api/templates/{id}/prepare) and read by
+    generate. Keyed by (user, template, sheet hash, history hash): a sheet edit or a changed clinical
+    history is a different case. status: running / ready / failed.
+    """
+
+    __tablename__ = "template_case_sheets"
+    __table_args__ = (
+        Index("uq_template_case_sheet_key", "user_id", "template_id", "sheet_hash", "history_hash", unique=True),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    sheet_hash = Column(String(64), nullable=False)
+    history_hash = Column(String(64), nullable=False)
+    clinical_history = Column(Text, nullable=False, default="")
+    status = Column(String(16), nullable=False, default="running")
+    master_sheet = Column(Text, nullable=True)
+    case_result = Column(JSONBType(), nullable=True)
+    model = Column(String(100), nullable=True)
+    latency_ms = Column(Integer, nullable=True)
+    prompt_version = Column(String(64), nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    def __repr__(self):
+        return f"<TemplateCaseSheet(id={self.id}, template={self.template_id}, status={self.status})>"
+
     def to_dict(self):
         return {
             "id": str(self.id),

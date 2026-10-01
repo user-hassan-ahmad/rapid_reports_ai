@@ -31,6 +31,7 @@ from rapid_reports_ai.database.models import (  # noqa: E402
     EphemeralSkillSheet,
     Template,
     ReportQualityScore,
+    TemplateCaseSheet,
 )
 from rapid_reports_ai.main import app  # noqa: E402
 
@@ -45,6 +46,7 @@ _TEST_TABLES = [
     EphemeralSkillSheet.__table__,
     Report.__table__,
     ReportQualityScore.__table__,
+    TemplateCaseSheet.__table__,
 ]
 
 

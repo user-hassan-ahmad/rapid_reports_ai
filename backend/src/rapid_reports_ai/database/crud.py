@@ -17,6 +17,7 @@ from .models import (
     ReportAudit,
     ReportAuditCriterion,
     EphemeralSkillSheet,
+    TemplateCaseSheet,
 )
 
 
@@ -1485,3 +1486,71 @@ def set_quick_report_selection(
 
 
 
+
+
+# ============ Template case sheets (templated pipeline Phase 1) ============
+
+def _uuid(v):
+    return uuid.UUID(v) if isinstance(v, str) else v
+
+
+def get_case_sheet(db: Session, user_id: str, template_id: str, sheet_hash: str,
+                   history_hash: str) -> Optional[TemplateCaseSheet]:
+    """The Phase 1 row for this case (any status), or None."""
+    return (db.query(TemplateCaseSheet)
+            .filter(TemplateCaseSheet.user_id == _uuid(user_id), TemplateCaseSheet.template_id == _uuid(template_id),
+                    TemplateCaseSheet.sheet_hash == sheet_hash, TemplateCaseSheet.history_hash == history_hash)
+            .first())
+
+
+def create_case_sheet(db: Session, *, user_id: str, template_id: str, sheet_hash: str, history_hash: str,
+                      clinical_history: str) -> TemplateCaseSheet:
+    """Start a Phase 1 row (status running). Upserts on the case key: a failed row is reset to running;
+    a running or ready row is returned unchanged. A concurrent insert of the same key (unique index) is
+    resolved by returning the row that won."""
+    from sqlalchemy.exc import IntegrityError
+
+    row = get_case_sheet(db, user_id, template_id, sheet_hash, history_hash)
+    if row is None:
+        row = TemplateCaseSheet(user_id=_uuid(user_id), template_id=_uuid(template_id), sheet_hash=sheet_hash,
+                                history_hash=history_hash, clinical_history=clinical_history or "",
+                                status="running")
+        db.add(row)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            row = get_case_sheet(db, user_id, template_id, sheet_hash, history_hash)
+            if row is None:
+                raise
+            return row
+        db.refresh(row)
+        return row
+    if row.status == "failed":
+        row.status, row.error, row.master_sheet, row.case_result = "running", None, None, None
+        row.clinical_history = clinical_history or ""
+        db.commit()
+        db.refresh(row)
+    return row
+
+
+def finish_case_sheet(db: Session, row_id, *, master_sheet: str, case_result: Optional[dict], model: Optional[str],
+                      latency_ms: Optional[int], prompt_version: Optional[str]) -> Optional[TemplateCaseSheet]:
+    row = db.get(TemplateCaseSheet, _uuid(row_id))
+    if row is None:
+        return None
+    row.status, row.master_sheet, row.case_result, row.error = "ready", master_sheet, case_result, None
+    row.model, row.latency_ms, row.prompt_version = model, latency_ms, prompt_version
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def fail_case_sheet(db: Session, row_id, *, error: str) -> Optional[TemplateCaseSheet]:
+    row = db.get(TemplateCaseSheet, _uuid(row_id))
+    if row is None:
+        return None
+    row.status, row.error = "failed", (error or "")[:2000]
+    db.commit()
+    db.refresh(row)
+    return row
