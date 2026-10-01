@@ -447,7 +447,10 @@ def names_service(sentence: str, recommendation: str) -> bool:
     return not want or bool(want & stems(sentence))
 
 
-Q_ALREADY = "The report already states or implies this, in any wording: "
+# One wording for "is it already in the report?" (Jev wording suite group A, S2); thresholds differ per use.
+Q_CONVEYS = ("The report itself states everything this statement says, in any wording, abbreviation or synonym "
+             "(not merely implied or inferable): ")
+ALREADY_DROP = 0.85  # option uniqueness gate: drop when the conveys score is >= 0.85
 _IMPRESSION_KINDS = ("impression", "recommendation")
 
 
@@ -461,7 +464,7 @@ def gate_questions(options: List[dict]) -> dict:
         text = (o.get("sentence") or o.get("text") or "").strip()
         if text:
             qs["impression" if o.get("kind") in _IMPRESSION_KINDS else "report"][f"u{i}"] = {
-                "type": "noul", "instructions": Q_ALREADY + text}
+                "type": "noul", "instructions": Q_CONVEYS + text}
     return qs
 
 
@@ -478,12 +481,12 @@ async def gate_scores(state: str, qs: dict) -> dict:
 
 
 def gate_apply(options: List[dict], scores: dict) -> tuple:
-    """(kept, dropped): an option whose yes score is >= PRESENT is dropped with outcome 'already_in_report';
+    """(kept, dropped): an option whose conveys score is >= ALREADY_DROP is dropped with outcome 'already_in_report';
     an option without a score (not asked, or Jev failed) is kept."""
     kept, dropped = [], []
     for i, o in enumerate(options):
         sc = scores.get(f"u{i}")
-        if sc is not None and sc >= PRESENT:
+        if sc is not None and sc >= ALREADY_DROP:
             dropped.append({**o, "outcome": "already_in_report", "score": round(sc, 3)})
         else:
             kept.append(o)

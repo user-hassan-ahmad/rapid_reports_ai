@@ -55,7 +55,7 @@ async def test_finding_options_are_checked_against_the_whole_report(monkeypatch)
     await rc.gate_options(OPTS[:2], REPORT, IMPRESSION)
     (state, qs), = calls
     assert state == "REPORT:\n" + REPORT and len(qs) == 2
-    assert all(q["instructions"].startswith(rc.Q_ALREADY) for q in qs.values())
+    assert all(q["instructions"].startswith(rc.Q_CONVEYS) for q in qs.values())
 
 
 async def test_jev_failure_keeps_every_option(monkeypatch):
@@ -64,8 +64,8 @@ async def test_jev_failure_keeps_every_option(monkeypatch):
     assert kept == OPTS and dropped == []
 
 
-@pytest.mark.parametrize("score,drops", [(0.49, False), (0.5, True)])
-async def test_threshold_is_present(monkeypatch, score, drops):
+@pytest.mark.parametrize("score,drops", [(0.5, False), (0.84, False), (0.85, True)])
+async def test_threshold_is_already_drop(monkeypatch, score, drops):
     stub(monkeypatch, {("report", "No psoas collection."): score})
     kept, dropped = await rc.gate_options([OPTS[1]], REPORT, IMPRESSION)
     assert bool(dropped) == drops and bool(kept) != drops
@@ -88,3 +88,11 @@ async def test_report_scope_can_reuse_answers_from_the_check(monkeypatch):
     assert [d["id"] for d in dropped] == ["fn0", "opt0"] and len(calls) == 1
     kept, dropped = rc.gate_apply(OPTS, {})  # no answers (Jev failed): fail-open
     assert kept == OPTS and dropped == []
+
+
+def test_every_scope_asks_the_conveys_question():
+    qs = rc.gate_questions(OPTS)
+    assert rc.ALREADY_DROP == 0.85
+    assert all(q["type"] == "noul" and q["instructions"].startswith(rc.Q_CONVEYS)
+               for scope in ("report", "impression") for q in qs[scope].values())
+    assert qs["impression"]["u2"]["instructions"] == rc.Q_CONVEYS + "No free intraperitoneal gas."

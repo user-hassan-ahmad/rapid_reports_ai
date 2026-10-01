@@ -313,7 +313,7 @@ async def test_extra_report_questions_ride_on_the_report_state_call(monkeypatch)
         seen.append((state, sorted(qs)))
         return {k: {"noul": 0.8 if k == "u0" else 0.9 if k.startswith("i") else 0.1} for k in qs}
     monkeypatch.setattr(rr.rc, "_jev", fake_jev)
-    extra = {"u0": {"type": "noul", "instructions": rr.rc.Q_ALREADY + "No free gas."}}
+    extra = {"u0": {"type": "noul", "instructions": rr.rc.Q_CONVEYS + "No free gas."}}
     res = await rr.check(REPORT, "11 mm appendix", "CT AP", [], sections=SECTIONS, extra_report_qs=extra)
     assert len(seen) == 2  # no additional Jev request
     report_call = next(k for s, k in seen if s.startswith("REPORT"))
@@ -329,6 +329,6 @@ async def test_extra_report_questions_fail_open_with_the_check(monkeypatch):
     async def down(state, qs):
         raise TimeoutError("jev down")
     monkeypatch.setattr(rr.rc, "_jev", down)
-    extra = {"u0": {"type": "noul", "instructions": rr.rc.Q_ALREADY + "No free gas."}}
+    extra = {"u0": {"type": "noul", "instructions": rr.rc.Q_CONVEYS + "No free gas."}}
     res = await rr.check(REPORT, "x", "CT AP", [], sections=SECTIONS, extra_report_qs=extra)
     assert res.error and res.extra_answers == {}
