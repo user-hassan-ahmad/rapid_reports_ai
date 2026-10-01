@@ -323,3 +323,33 @@ def test_finding_score_reads_level_over_three():
     assert qb.route_finding("keep", qb.finding_presence({"score": 2.0}), "core") == "offered"
     assert qb.route_finding("keep", qb.finding_presence({"score": 3.0}), "core") == "stated"
     assert qb.route_finding("keep", qb.finding_presence({"score": 1.0}), "core") == "dropped"
+
+
+def test_present_question_names_diagnosis_and_marks_sign_as_example():
+    q = qb.present_question("Perforated peptic ulcer — perigastric fluid and free gas *(visible on this technique: yes)*")
+    assert q["type"] == "noul"
+    assert q["instructions"] == ("The dictated findings name or describe this diagnosis as present or possible in this "
+                                 "case: Perforated peptic ulcer. A typical sign (an example only; it need not be "
+                                 "dictated): perigastric fluid and free gas")
+    assert q["criteria"] == {"true": qb.PRESENT_TRUE, "false": qb.PRESENT_FALSE}
+
+
+def test_present_question_without_discriminator_has_no_sign_clause():
+    q = qb.present_question("Haemorrhage *(imaging-silent)*")
+    assert "example only" not in q["instructions"] and q["instructions"].endswith(": Haemorrhage")
+    assert q["instructions"] == qb.q_present("Haemorrhage")["instructions"]
+
+
+@pytest.mark.asyncio
+async def test_compile_asks_branch_presence_with_the_named_diagnosis(monkeypatch):
+    seen = {}
+    _stub(monkeypatch, JEV, QWEN)
+    inner = qb._jev
+    async def spy(state, questions):
+        seen.update(questions)
+        return await inner(state, questions)
+    monkeypatch.setattr(qb, "_jev", spy)
+    await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, 3 mm midline shift")
+    assert seen["d0"] == qb.present_question("Acute subdural — crescentic hyperdensity *(visible on this technique: yes)*")
+    assert seen["d0"]["instructions"].endswith(": Acute subdural. A typical sign (an example only; it need not be "
+                                               "dictated): crescentic hyperdensity")

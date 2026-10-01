@@ -273,7 +273,29 @@ Q_AFFECTED = ("Is this statement from a report template affected by the dictated
               "finding contradicts it, or acts on the structure it describes (displaces, compresses, obstructs, drains "
               "into, extends to, involves it, or is a finding of the same kind in that structure), so it cannot be "
               "written as it stands. Statement: ")
-Q_PRESENT = "A dictated finding shows that this diagnosis or branch is present in this case. Branch: "
+# Diagnosis / branch presence (Jev wording v2, group B R3; R2 when the line has no discriminator, L-49).
+# The question names the diagnosis; the sheet's discriminator is an example sign only, so a case
+# that names the diagnosis without that sign still counts, and a shared sign alone does not.
+PRESENT_TRUE = ("The dictation names this diagnosis (or a synonym or abbreviation), or describes findings that point to it, "
+                "including when it is raised as a possibility " + HEDGE + ".")
+PRESENT_FALSE = ("The diagnosis is not mentioned, is excluded, or the dictated findings are explained as a different "
+                 "diagnosis, even one in the same organ or sharing a sign.")
+
+
+def q_present(name: str, discriminator: str = "") -> dict:
+    instr = "The dictated findings name or describe this diagnosis as present or possible in this case: " + name
+    if discriminator:
+        instr += ". A typical sign (an example only; it need not be dictated): " + discriminator
+    return {"type": "noul", "instructions": instr, "criteria": {"true": PRESENT_TRUE, "false": PRESENT_FALSE}}
+
+
+_VISIBILITY_TAG = re.compile(r"\s*\*\([^)]*\)\*")
+
+
+def present_question(line: str) -> dict:
+    """A quick differential line is '<name> — <discriminator> *(visible …)*'."""
+    name, _, disc = _VISIBILITY_TAG.sub("", line).partition(" — ")
+    return q_present(name.strip(), disc.strip())
 Q_REC_UNMET = ("The condition for this recommendation is not met by the dictated findings, or it belongs to a "
                "diagnosis the findings rule out. Recommendation: ")
 Q_STYLE_MATCH = "This example report sentence describes the same kind of finding as one that is dictated in this case. Example: "
@@ -541,7 +563,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     state = f"SCAN TYPE: {scan_type}\nDICTATED FINDINGS:\n{findings}"
     qs = {}
     qs.update({f"n{k}": {"type": "noul", "instructions": Q_AFFECTED + t} for k, t in enumerate(normals)})
-    qs.update({f"d{k}": {"type": "noul", "instructions": Q_PRESENT + t} for k, t in enumerate(diffs)})
+    qs.update({f"d{k}": present_question(t) for k, t in enumerate(diffs)})
     qs.update({f"r{k}": {"type": "noul", "instructions": Q_REC_UNMET + t} for k, t in enumerate(recs)})
     qs.update({f"f{i}": q_finding(k) for i, k in enumerate(keys)})
     qs.update({f"s{k}": {"type": "noul", "instructions": Q_STYLE_MATCH + " ".join(b.lines)} for k, b in enumerate(styles)})
