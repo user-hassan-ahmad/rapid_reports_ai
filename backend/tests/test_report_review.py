@@ -69,16 +69,6 @@ def test_quick_default_is_unchanged():
     assert rr.checked_clauses(quick, None) == list(dict.fromkeys(rr.clauses(fnd) + rr.clauses(imp)))
 
 
-def test_edit_guard_rejects_protected_spans_and_suppressed_terms():
-    history = "67F. Abdominal pain. ?Appendicitis."
-    assert not rr.edit_allowed(rr.Edit(find="Abdominal pain.", replace="Pain."), False, protected=[history],
-                               report=REPORT)
-    assert not rr.edit_allowed(rr.Edit(find="The spleen is unremarkable.", replace="The spleen is normal."),
-                               False, suppressed=["normal"])
-    assert rr.edit_allowed(rr.Edit(find="The appendix is dilated.", replace="The appendix is dilated to 11 mm."),
-                           False, protected=[history], suppressed=["normal"], report=REPORT)
-
-
 def test_omission_state_drops_the_history_text():
     assert "Abdominal pain" not in rr.without(REPORT, ["67F. Abdominal pain. ?Appendicitis."])
 
@@ -109,7 +99,6 @@ async def test_a_flag_inside_protected_text_is_reported_but_never_edited(monkeyp
     async def no_repair(*a, **kw):
         raise AssertionError("a protected flag reached a repair")
     monkeypatch.setattr(rr, "check", fake_check)
-    monkeypatch.setattr(rr, "repair_report", no_repair)
     monkeypatch.setattr(rr, "insert_findings", no_repair)
     out, _, tel = await rr.run_quality_check(report, "x", "CT", [], sections=SECTIONS, protected=[fixed])
     assert out == report and tel["flags"][0]["text"] == fixed and tel["clauses_removed"] == 0
@@ -146,23 +135,6 @@ def test_negative_removal_edits_only_the_checked_span():
     report = "COMPARISON\nPrior CT. No free air.\n\nFINDINGS\nLiver normal. No free air."
     out = rr.remove_negative_clause(report, "No free air", secs)
     assert out == "COMPARISON\nPrior CT. No free air.\n\nFINDINGS\nLiver normal."
-
-
-def test_edit_guard_rejects_partial_overlap_with_protected_text():
-    history = "67F. Abdominal pain. ?Appendicitis."
-    e = rr.Edit(find="?Appendicitis.\n\nTECHNIQUE", replace="?Appendicitis.\n\nMETHOD")
-    assert not rr.edit_allowed(e, False, protected=[history], report=REPORT)
-    assert not rr.edit_allowed(rr.Edit(find="pain. ?App", replace="pain. App"), False, protected=[history],
-                               report=REPORT)
-    with pytest.raises(ValueError):   # protected text is located by position: the report is required
-        rr.edit_allowed(e, False, protected=[history])
-    assert rr.edit_allowed(rr.Edit(find="Portal venous phase CT.", replace="Portal venous phase CT abdomen."),
-                           False, protected=[history], report=REPORT)
-
-
-def test_suppressed_terms_with_non_word_edges():
-    assert not rr.edit_allowed(rr.Edit(find="Ascites.", replace="Ascites +ve."), False, suppressed=["+ve"])
-    assert rr.edit_allowed(rr.Edit(find="Ascites.", replace="Ascites, moderate."), False, suppressed=["+ve"])
 
 
 def _not_conveyed(monkeypatch):
@@ -287,26 +259,38 @@ async def test_run_quality_check_reports_empty_implicit_sections(monkeypatch):
     assert tel["sections_empty"] == ["FINDINGS"] and tel["clauses"] == 2
 
 
-async def test_a_contradiction_also_written_outside_protected_text_is_still_repaired(monkeypatch):
-    history = "67F. Abdominal pain. ?Appendicitis. The appendix is dilated measuring 11 mm."
-    report = REPORT.replace("67F. Abdominal pain. ?Appendicitis.", history)
-    seen = []
+async def test_a_template_positive_contradiction_is_review_only(monkeypatch):
+    """Main PR #7 (L-49): a flagged positive statement never edits the report, on either path."""
+    flag = "The appendix is dilated measuring 11 mm."
 
     async def fake_check(*a, **kw):
-        return rr.CheckResult(flags=[rr.Flag(kind="contradiction", text="The appendix is dilated measuring 11 mm.",
-                                             score=0.9)])
+        return rr.CheckResult(flags=[rr.Flag(kind="contradiction", text=flag, score=0.9)])
 
-    async def fake_repair(report, findings, problems, **kw):
-        seen.append(problems)
-        return rr.RepairResult(report=report)
+    async def no_model(*a, **kw):
+        raise AssertionError("a positive contradiction reached a model")
     monkeypatch.setattr(rr, "check", fake_check)
-    monkeypatch.setattr(rr, "repair_report", fake_repair)
-    await rr.run_quality_check(report, "x", "CT", [], sections=SECTIONS, protected=[history])
-    assert len(seen) == 1
-    seen.clear()   # the same clause only inside protected text is kept off the repair
-    await rr.run_quality_check(report.replace("The appendix is dilated measuring 11 mm. No", "No"), "x", "CT", [],
-                               sections=SECTIONS, protected=[history])
-    assert seen == []
+    monkeypatch.setattr(rr, "insert_findings", no_model)
+    out, _, tel = await rr.run_quality_check(REPORT, "x", "CT", [], sections=SECTIONS)
+    assert out == REPORT and tel["review"] == [{"kind": "contradiction", "text": flag, "score": 0.9}]
+    assert not hasattr(rr, "repair_report")
+
+
+async def test_a_template_negative_the_dictation_states_is_never_removed(monkeypatch):
+    """Main PR #6 (L-49): the d<i> question, quoted with the sentence before it, keeps a dictated negative."""
+    asked = {}
+
+    async def fake_jev(state, qs):
+        if state.startswith("REPORT:"):
+            return {k: STATED for k in qs}
+        asked.update({k: q for k, q in qs.items()})
+        return {k: {"noul": 0.8 if k.startswith("d") else 0.9} for k in qs}
+    monkeypatch.setattr(rr.rc, "_jev", fake_jev)
+    out, _, tel = await rr.run_quality_check(REPORT, "No pneumoperitoneum. 11 mm appendix.", "CT", [],
+                                             sections=SECTIONS)
+    i = rr.checked_clauses(REPORT, SECTIONS).index("No pneumoperitoneum.")
+    assert asked[f"d{i}"] == rr.q_dictated("No pneumoperitoneum.", "The appendix is dilated measuring 11 mm.")
+    assert out == REPORT and tel["clauses_removed"] == 0
+    assert {"text": "No pneumoperitoneum.", "contradiction": 0.9, "dictated": 0.8} in tel["kept_dictated_negative"]
 
 
 def test_template_removal_drops_a_list_item_left_empty():

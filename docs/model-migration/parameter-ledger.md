@@ -1751,3 +1751,39 @@ stated / unclear → nothing. A failed report call or an unreadable answer inser
 - Duplicate guard (Step 3): the same 11 sentences with and without it, so the condition for removing it is met;
   kept for now (n = 11) pending Hassan's call.
 
+- **Addendum (2026-10-01): a dictated report negative is never removed.** p4_lab case f98a5930 (multi-level
+  lumbar MRI): the shipped check removed "No spinal canal stenosis" (dictated at L3/L4) in 2/4 runs; Jev read it as
+  contradicted by stenosis dictated at L4/L5 and L5/S1, and the restated gate passed it (stenosis is dictated). Fix:
+  one more question per negative clause in the same dictation-state call, `d<i>` = "the dictated findings themselves
+  state this negative, in any wording, for the same level, side and structure", quoting the clause with the report
+  sentence before it (so "at this level" resolves). Score >= 0.5, or an unreadable answer, keeps the clause
+  (telemetry `kept_dictated_negative`). Probe (24 items x 2 repeats: real f98a5930 clauses, other level / side /
+  vertebra, real contradictions, plain negatives): plain wording 4/48 wrong (context-less "at this level", "central"
+  vs "spinal"); context + "any wording, synonym" 0/48 wrong, stated >= 0.57, not stated <= 0.10, 0 real
+  contradictions kept. f98a5930 base arm, 4 runs: 0 removed (2 runs flagged and kept at d 0.88 / 0.90).
+  Production re-score, 30 of the 150: 3 clauses removed before and after, none dictated (no change).
+
+- **Addendum (2026-10-01): a flagged positive statement is flag-only; `repair_report` removed.** Template retest
+  42281: the generator corrected dictation slips and Jev read each correction as a contradiction, so the Qwen
+  rewrite copied the slip back ("LMS=872" -> "LMP 872" from dictated "LMP 872"; "The gallbladder is unremarkable
+  with no calculi." -> "No gallbladder with no calculi."). Measured on stored outputs, every applied edit hand-read:
+
+  | source | reports | positive flags (reports) | edits applied | good | neutral | bad |
+  |---|---|---|---|---|---|---|
+  | p4_lab (48 generations, check on) | 48 | 5 | 4 | 2 | 1 | 1 |
+  | prod_quick_150, first 30, shipped check re-run (would-be edits) | 30 | 10 | 8 | 1 | 2 | 5 |
+  | template retest 42281 (coronary, polytrauma) | 2 cases | 2 | 2 | 0 | 0 | 2 |
+  | **total** | | | **14** | **3** | **3** | **8** |
+
+  Good: an undictated "normal" removed where the dictation states the abnormality (knee distal thigh tendons x2,
+  wrist proximal metacarpals). Bad: invented findings ("liver surface is irregular" from lesions with irregular
+  margins; "DRUJ degenerative change"), self-contradiction ("soft tissues are unremarkable, with periappendiceal
+  fat stranding"), wholesale rewrites that drop correct statements and duplicate others, and the two slip copies.
+  The rewrite was the only LLM path allowed to change existing report text. Fix: a positive contradiction never
+  edits the report; telemetry `review` gets `{"kind": "contradiction", "text", "score"}` beside partial/differs.
+  Negatives keep code removal (with the dictated-negative guard); absent-line insertion is unchanged. Deleted:
+  `repair_report`, `REPAIR_SYS`, `INSERT_ONLY_SYS`, `edit_allowed`, `Edit`, `RepairEdits`, `_problem`,
+  `_diff_edits` (nothing else on main used them; feat/template-wiring `report_review.py` has its own
+  `repair_report` copy, not touched here). Validation: coronary B/C/D x2 and polytrauma C x3, quick-shaped stored
+  reports through the fixed check: the same clauses flagged (0.64-0.76), all in `review`, report unchanged, no
+  "LMP" or "No gallbladder" written.

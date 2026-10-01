@@ -696,6 +696,38 @@
        "instructions": "The dictated findings state something that this report statement denies or contradicts. Statement: Acute right subdural haematoma with 3 mm midline shift.",
        "type": "noul"
       },
+      "d1": {
+       "criteria": {
+        "false": "The dictation does not say this finding is absent there: it reports the finding as present or possible there, says nothing about it, or states its absence only for a different level, side, vertebra or structure.",
+        "true": "The dictation itself says this finding is absent, or the structure is normal in this respect, at the level, side or structure the statement refers to. Count any wording, synonym or equivalent term for the same finding or structure. When the statement refers to no particular level, side or structure, a dictated absence of this finding counts. Use the report text it follows only to tell which level, side or structure it refers to."
+       },
+       "instructions": "The dictated findings themselves state this negative, in any wording, for the same level, side and structure: \"No skull fracture.\" (in the report it follows: \"An 8 mm right subdural haematoma.\")",
+       "type": "noul"
+      },
+      "d2": {
+       "criteria": {
+        "false": "The dictation does not say this finding is absent there: it reports the finding as present or possible there, says nothing about it, or states its absence only for a different level, side, vertebra or structure.",
+        "true": "The dictation itself says this finding is absent, or the structure is normal in this respect, at the level, side or structure the statement refers to. Count any wording, synonym or equivalent term for the same finding or structure. When the statement refers to no particular level, side or structure, a dictated absence of this finding counts. Use the report text it follows only to tell which level, side or structure it refers to."
+       },
+       "instructions": "The dictated findings themselves state this negative, in any wording, for the same level, side and structure: \"No hydrocephalus\" (in the report it follows: \"No skull fracture.\")",
+       "type": "noul"
+      },
+      "d3": {
+       "criteria": {
+        "false": "The dictation does not say this finding is absent there: it reports the finding as present or possible there, says nothing about it, or states its absence only for a different level, side, vertebra or structure.",
+        "true": "The dictation itself says this finding is absent, or the structure is normal in this respect, at the level, side or structure the statement refers to. Count any wording, synonym or equivalent term for the same finding or structure. When the statement refers to no particular level, side or structure, a dictated absence of this finding counts. Use the report text it follows only to tell which level, side or structure it refers to."
+       },
+       "instructions": "The dictated findings themselves state this negative, in any wording, for the same level, side and structure: \"No no herniation\" (in the report it follows: \"No skull fracture.\")",
+       "type": "noul"
+      },
+      "d4": {
+       "criteria": {
+        "false": "The dictation does not say this finding is absent there: it reports the finding as present or possible there, says nothing about it, or states its absence only for a different level, side, vertebra or structure.",
+        "true": "The dictation itself says this finding is absent, or the structure is normal in this respect, at the level, side or structure the statement refers to. Count any wording, synonym or equivalent term for the same finding or structure. When the statement refers to no particular level, side or structure, a dictated absence of this finding counts. Use the report text it follows only to tell which level, side or structure it refers to."
+       },
+       "instructions": "The dictated findings themselves state this negative, in any wording, for the same level, side and structure: \"No no intraventricular extension\" (in the report it follows: \"No skull fracture.\")",
+       "type": "noul"
+      },
       "lt0": {
        "criteria": {
         "false": "The line itself only says that structures are normal or findings are absent, only says how the study was performed (protocol, sequences, views, phases, contrast, dose, adequate quality), or only names the prior study used for comparison.",
@@ -820,6 +852,7 @@
      "text": "3 mm midline shift"
     }
    ],
+   "kept_dictated": [],
    "n_clauses": 6,
    "n_items": 2,
    "n_selected": 2,
@@ -915,12 +948,11 @@
   "qb.present_question()": "d219553b279c",
   "qb.q_finding()": "fa1cc758f91d",
   "qb.q_present()": "ede0a47af564",
-  "qq.INSERT_ONLY_SYS": "c05279075b45",
   "qq.INSERT_SYS": "6610e7a42578",
   "qq.Q_CONTRA": "ed1074aa3ba8",
   "qq.Q_CONVEYS": "334aae68cc8d",
+  "qq.Q_DICTATED": "aaf28d67a619",
   "qq.Q_RESTATED": "fe04d7c9fd1d",
-  "qq.REPAIR_SYS": "9b36156d4423",
   "qq.q_omission()": "a5a732964c06",
   "qq.q_restated()": "e1be74e7b4e8",
   "qq.q_select_choice()": "5bcb5c6d396f",

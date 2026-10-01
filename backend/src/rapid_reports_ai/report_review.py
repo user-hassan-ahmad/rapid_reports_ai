@@ -9,8 +9,9 @@ Spec docs/superpowers/specs/2026-09-30-post-generation-check-design.md; probe le
                dictated line (report state): stated / partial / absent / different / unclear
     repair  -> only absent lines are inserted (one Qwen call, code places each sentence); partial
                and different lines go to the telemetry for review and never edit the report; a
-               flagged contradiction gets one Qwen find/replace edit, applied only when its find
-               occurs exactly once
+               flagged negative is removed in code unless the dictation itself states it; a flagged
+               positive statement is review only (a Qwen rewrite copied dictation slips over the
+               generator's corrections, L-49)
 Flagged options are dropped, never repaired. Nothing here raises: on any failure the report and
 options ship as generated, with the reason in the telemetry.
 """
@@ -43,6 +44,28 @@ def q_restated(finding: str) -> dict:
                          "false": "It is not mentioned, is stated as absent or normal, or the dictation reports a different "
                                   "finding that only shares some words with it (a different qualifier such as size, "
                                   "severity, pattern, chronicity or location)."}}
+# A report negative the dictation itself states is never removed, whatever the contradiction score (L-49 addendum,
+# f98a5930: stenosis dictated at L4/L5 made Jev read the dictated "No spinal canal stenosis" at L3/L4 as contradicted).
+# Scope-aware: the clause is quoted with the report sentence before it, so "at this level" resolves. Probe
+# (scratchpad dictneg/): 24 items x 2 repeats, 0 wrong; stated >= 0.57, not stated <= 0.10.
+Q_DICTATED = "The dictated findings themselves state this negative, in any wording, for the same level, side and structure: "
+_DICTATED_TRUE = ("The dictation itself says this finding is absent, or the structure is normal in this respect, at the "
+                  "level, side or structure the statement refers to. Count any wording, synonym or equivalent term for "
+                  "the same finding or structure. When the statement refers to no particular level, side or structure, a "
+                  "dictated absence of this finding counts. Use the report text it follows only to tell which level, side "
+                  "or structure it refers to.")
+_DICTATED_FALSE = ("The dictation does not say this finding is absent there: it reports the finding as present or possible "
+                   "there, says nothing about it, or states its absence only for a different level, side, vertebra or "
+                   "structure.")
+DICTATED_KEEP = 0.5
+
+
+def q_dictated(clause: str, before: str) -> dict:
+    ctx = f' (in the report it follows: "{before}")' if before else ""
+    return {"type": "noul", "instructions": f'{Q_DICTATED}"{clause}"{ctx}',
+            "criteria": {"true": _DICTATED_TRUE, "false": _DICTATED_FALSE}}
+
+
 CONTRA_FLAG = 0.6   # L-46: 31/31 genuine contradictions >= 0.5, 29/31 >= 0.7
 RESTATED_FLAG = 0.5  # a report negative is removed only when the finding it denies is dictated (L-47)
 # "Is this new sentence already in the report?" (Jev wording v2, group A S2, L-49): the inserter's duplicate guard.
@@ -125,15 +148,23 @@ def _sentences(text: str) -> List[str]:
     return [s.strip() for s in re.split(r"(?<=[.;])\s+(?=[A-Z])", text) if len(s.strip()) > 3]
 
 
-def clauses(text: str) -> List[str]:
-    """Sentences, with a negative list split at its commas into one clause per finding. A bare
-    'or' never splits: 'No pericolic or paracolic fluid collection' is one finding (L-46)."""
-    out: List[str] = []
+def clauses_in_context(text: str) -> List[Tuple[str, str]]:
+    """(clause, the sentence before the clause's sentence, or ""): the context tells which level, side
+    or structure a clause such as 'No stenosis at this level' refers to."""
+    out: List[Tuple[str, str]] = []
+    prev = ""
     for s in _sentences(text):
         m = re.match(r"^(No|There is no|There are no|Without)\s+(.*?)\.?$", s, re.I)
         parts = [p.strip() for p in re.split(r",\s*(?:or\s+|and\s+)?", m.group(2)) if p.strip()] if m else []
-        out.extend(f"No {p}" for p in parts) if len(parts) > 1 else out.append(s)
+        out.extend((f"No {p}", prev) for p in parts) if len(parts) > 1 else out.append((s, prev))
+        prev = s
     return out
+
+
+def clauses(text: str) -> List[str]:
+    """Sentences, with a negative list split at its commas into one clause per finding. A bare
+    'or' never splits: 'No pericolic or paracolic fluid collection' is one finding (L-46)."""
+    return [c for c, _ in clauses_in_context(text)]
 
 
 _RESTATE = re.compile(r"^(?:No|There is no|There are no|Without)\s+(.*?)(?:\s+(?:is|are|was|were))?(?:\s+(?:identified|seen|present|demonstrated|noted))?\.?$", re.I)
@@ -340,7 +371,16 @@ def _checked_texts(report: str, sections: Optional[List[ReportSection]]) -> List
 def checked_clauses(report: str, sections: Optional[List[ReportSection]]) -> List[str]:
     """Clauses the contradiction check reads. Quick (no sections): FINDINGS + IMPRESSION as before.
     Templates: every section whose role carries dictated content."""
-    return list(dict.fromkeys(c for t in _checked_texts(report, sections) for c in clauses(t)))
+    return list(checked_clauses_in_context(report, sections))
+
+
+def checked_clauses_in_context(report: str, sections: Optional[List[ReportSection]]) -> dict:
+    """{clause: the sentence before it} for the checked clauses, in order (first occurrence wins)."""
+    before: dict = {}
+    for t in _checked_texts(report, sections):
+        for c, b in clauses_in_context(t):
+            before.setdefault(c, b)
+    return before
 
 
 # ── protected text: an invariant by position ────────────────────────────────
@@ -404,8 +444,16 @@ class Flag(BaseModel):
     score: float
 
 
+class KeptNegative(BaseModel):
+    """A flagged report negative kept because the dictation itself states it (or Jev could not say)."""
+    text: str
+    contradiction: float
+    dictated: Optional[float]   # None: unreadable answer, kept as the conservative choice
+
+
 class CheckResult(BaseModel):
     flags: List[Flag] = []
+    kept_dictated: List[KeptNegative] = []
     bad_option_ids: List[str] = []
     n_clauses: int = 0
     n_items: int = 0
@@ -426,7 +474,8 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict],
     A failed report call, or an unreadable answer, raises no line flag: nothing is inserted. Templates
     (`sections`) that pass `history` (the verbatim history, also in `protected`) remove only that from the
     omission state: FIXED / technique text stays visible, so a dictated protocol note it states is not missing."""
-    cls = checked_clauses(report, sections)
+    before = checked_clauses_in_context(report, sections)
+    cls = list(before)
     opts = [(o["id"], o["sentence"]) for o in options if o.get("sentence")]
     items = dictated_items(findings)
     contra_qs = {f"c{i}": {"type": "noul", "instructions": Q_CONTRA + t} for i, t in enumerate(cls)}
@@ -436,6 +485,8 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict],
     # thickening' beside dictated segmental wall thickening). Same call, no added latency.
     restated = {i: restate(t) for i, t in enumerate(cls)}
     contra_qs.update({f"r{i}": q_restated(r) for i, r in restated.items() if r})
+    # ...and never when the dictation itself states the negative (L-49 addendum). Same call.
+    contra_qs.update({f"d{i}": q_dictated(cls[i], before[cls[i]]) for i, r in restated.items() if r})
     # The omission selector rides the same dictation-state call (no added latency).
     contra_qs.update({f"sel{i}": q_select_choice(t) for i, t in enumerate(items)})
     contra_qs.update({f"lt{i}": q_select_noul(t) for i, t in enumerate(items)})
@@ -461,11 +512,22 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict],
         return CheckResult(n_clauses=len(cls), n_items=len(items), error=error)
 
     score = lambda ans, k: float(ans[k]["noul"])
-    flags, bad = [], []
+    def maybe(ans, k):
+        try:
+            return score(ans, k)
+        except Exception:
+            return None
+    flags, bad, kept = [], [], []
     if not isinstance(contra, BaseException):
-        flags = [Flag(kind="contradiction", text=t, score=score(contra, f"c{i}"))
-                 for i, t in enumerate(cls) if score(contra, f"c{i}") >= CONTRA_FLAG
-                 and (not restated[i] or score(contra, f"r{i}") >= RESTATED_FLAG)]
+        for i, t in enumerate(cls):
+            c = score(contra, f"c{i}")
+            if c < CONTRA_FLAG or (restated[i] and score(contra, f"r{i}") < RESTATED_FLAG):
+                continue
+            d = maybe(contra, f"d{i}") if restated[i] else 0.0
+            if d is None or d >= DICTATED_KEEP:
+                kept.append(KeptNegative(text=t, contradiction=c, dictated=d))
+            else:
+                flags.append(Flag(kind="contradiction", text=t, score=c))
         bad = [oid for i, (oid, _) in enumerate(opts) if score(contra, f"o{i}") >= CONTRA_FLAG]
     sel_ans = {} if isinstance(contra, BaseException) else contra
     scores = [selection_score(sel_ans.get(f"sel{i}"), sel_ans.get(f"lt{i}")) for i in range(len(items))]
@@ -476,25 +538,12 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict],
         kind, p = omission_class(omit.get(f"i{i}"))
         if chosen[i] and kind in _OMIT_KIND:
             flags.append(Flag(kind=_OMIT_KIND[kind], text=t, score=p))
-    return CheckResult(flags=flags, bad_option_ids=bad, n_clauses=len(cls), n_items=len(items),
+    return CheckResult(flags=flags, kept_dictated=kept, bad_option_ids=bad, n_clauses=len(cls), n_items=len(items),
                        n_selected=sum(chosen), selector=selector, error=error,
                        extra_answers={k: score(omit, k) for k in (extra_report_qs or {})})
 
 
-# ── repair ───────────────────────────────────────────────────────────────────
-
-class Edit(BaseModel):
-    find: str
-    replace: str
-
-
-class RepairEdits(BaseModel):
-    edits: List[Edit]
-    @field_validator("edits", mode="before")
-    @classmethod
-    def _parse_stringified(cls, v):
-        return rc._unstring(v)
-
+# ── edits ────────────────────────────────────────────────────────────────────
 
 class RepairResult(BaseModel):
     report: str
@@ -504,71 +553,7 @@ class RepairResult(BaseModel):
     dup_check: Optional[str] = None   # insert_findings: "jev" | "words" (Jev failed)
 
 
-REPAIR_SYS = (
-    "You correct specific problems in a radiology report. The dictated findings are the source of truth. For each "
-    "numbered problem return one edit: 'find' is text copied exactly, character for character, from the report (the "
-    "clause or sentence at fault, or the sentence an omitted finding belongs beside), and 'replace' is that text "
-    "corrected. Remove or correct a statement the dictation contradicts; add an omitted dictated finding in the "
-    "report's own voice where it belongs. Change nothing else, keep British English, and add nothing that was not "
-    "dictated. Return JSON {\"edits\": [{\"find\": ..., \"replace\": ...}]}.")
-
-
 _NEGATION = re.compile(r"\b(no|not|without|nor|absent|negative for)\b", re.I)
-INSERT_ONLY_SYS = (" Each problem is an omitted finding: 'replace' must contain 'find' unchanged, with the omitted "
-                   "finding added to it.")
-
-
-def _touches_protected(find: str, protected: Optional[List[str]], report: Optional[str]) -> bool:
-    """Whether editing `find` would touch protected text, by position: any occurrence of `find` in
-    the report that overlaps any occurrence of a protected string. The report is required whenever
-    protected text is given."""
-    if not protected:
-        return False
-    if report is None:
-        raise ValueError("edit_allowed: protected text needs the report to locate it")
-    spans = protected_spans(report, protected)
-    return any(_overlaps(a, b, spans) for a, b in _occurrences(report, find))
-
-
-def edit_allowed(e: Edit, insert_only: bool, protected: Optional[List[str]] = None,
-                 suppressed: Optional[List[str]] = None, report: Optional[str] = None) -> bool:
-    """A repair never turns a negated statement into an assertion (L-47: a flagged negative was
-    'corrected' into the malignant finding it denied), an insertion never rewrites text, protected
-    text (history section, fixed blocks) is never edited, even in part, and a repair never introduces
-    a term the sheet suppresses."""
-    if not e.find or e.find == e.replace:
-        return False
-    if _NEGATION.search(e.find) and not _NEGATION.search(e.replace):
-        return False
-    if _touches_protected(e.find, protected, report):
-        return False
-    for term in suppressed or []:
-        if term and _term(term).search(e.replace) and not _term(term).search(e.find):
-            return False
-    return not insert_only or e.find in e.replace
-
-
-async def repair_report(report: str, findings: str, problems: List[str], insert_only: bool = False,
-                        protected: Optional[List[str]] = None, suppressed: Optional[List[str]] = None) -> RepairResult:
-    """One focal Qwen call; each returned edit is applied only when allowed and its find occurs
-    exactly once. Shared by the post-generation check and (next) the audit's Fix with AI."""
-    user = (f"DICTATED FINDINGS:\n{findings}\n\nREPORT:\n{report}\n\nPROBLEMS:\n"
-            + "\n".join(f"{i}. {p}" for i, p in enumerate(problems, 1)))
-    try:
-        r = await asyncio.wait_for(_run_agent_with_model(
-            model_name=REPAIR_MODEL, output_type=RepairEdits,
-            system_prompt=REPAIR_SYS + (INSERT_ONLY_SYS if insert_only else ""), user_prompt=user, api_key="",
-            model_settings={"temperature": 0, "max_tokens": 3000, "reasoning_effort": "none"}), REPAIR_TIMEOUT_S)
-    except Exception as e:  # never blocks the report
-        logger.warning("quality repair failed (%s: %s)", type(e).__name__, str(e)[:200])
-        return RepairResult(report=report, error=f"{type(e).__name__}: {str(e)[:200]}")
-    out, applied, skipped = report, 0, 0
-    for e in r.output.edits:
-        if edit_allowed(e, insert_only, protected, suppressed, report=out) and out.count(e.find) == 1:
-            out, applied = out.replace(e.find, e.replace), applied + 1
-        else:
-            skipped += 1
-    return RepairResult(report=out, applied=applied, skipped=skipped)
 
 
 # ── omitted findings: Qwen writes the sentence, code inserts it ──────────────
@@ -822,33 +807,14 @@ def enabled() -> bool:
     return os.environ.get("RR_QUALITY_CHECK", "1").strip() not in ("0", "false", "off")
 
 
-def _diff_edits(before: str, after: str) -> List[Tuple[str, str]]:
-    """The changed spans between two versions, as (old, new) pairs with a little context."""
-    import difflib
-    sm = difflib.SequenceMatcher(a=before, b=after, autojunk=False)
-    out = []
-    for op, i1, i2, j1, j2 in sm.get_opcodes():
-        if op == "equal":
-            continue
-        lo = max(0, i1 - 40)
-        out.append((before[lo:i2], before[lo:i1] + after[j1:j2]))
-    return out
-
-
-def _problem(f: Flag) -> str:
-    if f.kind == "contradiction":
-        return f'The report states "{f.text}", which the dictated findings contradict.'
-    return f'The dictated finding "{f.text}" is missing from the report.'
-
-
 async def run_quality_check(report: str, findings: str, scan_type: str, options: List[dict],
                             sections: Optional[List[ReportSection]] = None, protected: Optional[List[str]] = None,
                             suppressed: Optional[List[str]] = None,
                             extra_report_qs: Optional[dict] = None,
                             history: Optional[str] = None) -> Tuple[str, List[dict], dict]:
-    """Check, then repair only when a report clause or item is flagged. Returns the report, the
+    """Check, then edit only for a flagged negative (removed) or an absent line (inserted). Returns the report, the
     options with flagged ones dropped, and telemetry. Never raises. `sections` makes the check
-    section-generic (templates); `protected` text is never checked for omission or edited; a repair
+    section-generic (templates); `protected` text is never checked for omission or edited; an insertion
     never introduces a `suppressed` term; `history` (templates) is the protected text hidden from the
     omission check, the rest stays visible there. All default to the quick behaviour. The template path works
     on the report with CRLF normalised to LF and returns it with LF line endings; protected text is an invariant: if a repair ever
@@ -857,7 +823,7 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
         return report, options, {"enabled": False}
     t0 = time.time()
     tel: dict = {"enabled": True, "flags": [], "clauses_removed": 0, "edits_applied": 0, "edits_skipped": 0, "options_dropped": [],
-                 "clauses": 0, "items": 0, "jev_ms": None, "repair_ms": None, "error": None, "review": []}
+                 "clauses": 0, "items": 0, "kept_dictated_negative": [], "jev_ms": None, "repair_ms": None, "error": None, "review": []}
     if sections is not None:
         report = report.replace("\r\n", "\n")
         protected = [p.replace("\r\n", "\n") for p in protected] if protected is not None else None
@@ -874,17 +840,20 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
             tel["extra_answers"] = res.extra_answers
         tel.update(flags=[f.model_dump() for f in res.flags], clauses=res.n_clauses, items=res.n_items,
                    items_selected=res.n_selected, selector=res.selector,
-                   jev_ms=int((time.time() - t0) * 1000), error=res.error, options_dropped=res.bad_option_ids)
+                   jev_ms=int((time.time() - t0) * 1000), error=res.error, options_dropped=res.bad_option_ids,
+                   kept_dictated_negative=[k.model_dump() for k in res.kept_dictated])
         options = [o for o in options if o.get("id") not in set(res.bad_option_ids)]
-        # A partial or different line never edits the report: it is offered for review (the rail).
+        # A partial or different line, and a flagged positive statement, never edit the report: they are
+        # offered for review (the rail). A positive flag is often the generator correcting a dictation slip
+        # (template retest 42281: "LMS=872" for dictated "LMP 872"); the Qwen rewrite copied the slip back (L-49).
         tel["review"] = [{"kind": "partial", "line": f.text, "missing_detail": missing_detail(f.text, report)}
                          if f.kind == "partial" else {"kind": "differs", "line": f.text}
                          for f in res.flags if f.kind in ("partial", "differs")]
-        # A flagged negative is removed in code; a flagged positive statement is corrected, and an
-        # omitted finding inserted, by Qwen under edit_allowed (L-47).
-        # A contradiction inside protected text stays in tel["flags"] for the rail but is never edited.
-        # A clause found only inside protected text is not edited; one also written elsewhere still
-        # is. The positional guards in the repairs are the invariant; this keeps such flags off the LLM.
+        tel["review"] += [{"kind": "contradiction", "text": f.text, "score": f.score}
+                          for f in res.flags if f.kind == "contradiction" and not is_negative(f.text)]
+        # A flagged negative is removed in code (L-47); an omitted finding is inserted by construction.
+        # A contradiction inside protected text stays in tel["flags"] for the rail but is never edited: a
+        # clause found only inside protected text is not removed; one also written elsewhere still is.
         editable = [f for f in res.flags if not (f.kind == "contradiction" and _only_protected(report, f.text, protected))]
         removed = 0
         for f in editable:
@@ -894,25 +863,14 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
                 report = new
         tel["clauses_removed"] = removed
         pre_repair = report
-        fix = [_problem(f) for f in editable if f.kind == "contradiction" and not is_negative(f.text)]
-        if fix or any(f.kind == "omission" for f in editable):
+        omitted = [f.text for f in editable if f.kind == "omission"]
+        if omitted:
             t1 = time.time()
-            omitted = [f.text for f in editable if f.kind == "omission"]
-            calls = ([repair_report(report, findings, fix, **_given(protected=protected, suppressed=suppressed))]
-                     if fix else []) + \
-                    ([insert_findings(report, findings, omitted,
-                                      **_given(sections=sections, protected=protected, suppressed=suppressed))]
-                     if omitted else [])
-            reps = await asyncio.gather(*calls)
-            base, report = report, reps[0].report
-            for rep in reps[1:]:   # both were made from the same base: replay the second's changes
-                for old_s, new_s in _diff_edits(base, rep.report):
-                    if report.count(old_s) == 1:
-                        report = report.replace(old_s, new_s)
-            tel.update(edits_applied=sum(r.applied for r in reps), edits_skipped=sum(r.skipped for r in reps),
-                       dup_check=next((r.dup_check for r in reps if r.dup_check), None),
-                       repair_ms=int((time.time() - t1) * 1000),
-                       error=next((r.error for r in reps if r.error), None) or tel["error"])
+            rep = await insert_findings(report, findings, omitted,
+                                        **_given(sections=sections, protected=protected, suppressed=suppressed))
+            report = rep.report
+            tel.update(edits_applied=rep.applied, edits_skipped=rep.skipped, dup_check=rep.dup_check,
+                       repair_ms=int((time.time() - t1) * 1000), error=rep.error or tel["error"])
     except Exception as e:  # never blocks the report
         logger.warning("quality check failed (%s: %s)", type(e).__name__, str(e)[:200])
         tel["error"] = f"{type(e).__name__}: {str(e)[:200]}"

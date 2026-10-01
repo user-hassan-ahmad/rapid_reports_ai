@@ -6,7 +6,11 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_quick_pipeline.py
 
 Re-pinned 2026-10-01 for PR #5 (L-49, Jev wording v2 + classify-first omission repair): the snapshot was
 generated on the PR #5 branch (origin/fix/quick-split-and-classifier) and on this branch from this same
-file, and the two are identical."""
+file, and the two are identical.
+
+Re-pinned 2026-10-01 for main PR #6 (dictated negatives never removed) and PR #7 (positive contradictions
+review only, repair_report deleted): generated on origin/main (f5e25a2) and on this branch from this same
+file; the two are identical."""
 from __future__ import annotations
 
 import hashlib
@@ -37,7 +41,7 @@ FINDINGS_C = "10 mm right acute subdural. 12 mm left adrenal nodule"
 
 BRIEF_PROMPTS = ("Q_AFFECTED", "HEDGE", "PRESENT_TRUE", "PRESENT_FALSE", "Q_REC_MET", "Q_STYLE_MATCH",
                  "QWEN_SYS", "PLAN_SYS", "FALLBACK_SYS")
-QUALITY_PROMPTS = ("Q_CONTRA", "Q_RESTATED", "Q_CONVEYS", "REPAIR_SYS", "INSERT_SYS", "INSERT_ONLY_SYS")
+QUALITY_PROMPTS = ("Q_CONTRA", "Q_RESTATED", "Q_CONVEYS", "INSERT_SYS", "Q_DICTATED")
 # Question builders (L-49): each pinned by the question it builds for a fixed input.
 BRIEF_QUESTIONS = {"q_finding": "free air", "q_present": "Perforation",
                    "present_question": "Perforated ulcer — free gas *(visible on this technique: yes)*"}
