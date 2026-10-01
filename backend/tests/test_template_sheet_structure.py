@@ -1109,3 +1109,12 @@ def test_without_sections_included_an_ordered_list_is_the_section_list():
                "**Fixed Closing:**\n- Text: \"x\"\n")
     groups = tss.section_groups(f"## Structural Pattern\n{pattern}\n## Next\n- X\n")
     assert [g[0] for g in groups] == ["alpha", "beta part"]
+
+
+def test_an_abnormal_pattern_line_is_not_a_normal_pattern():
+    line = '- **Abnormal pattern**: "Unremarkable appearances of the gallbladder."'
+    sheet = SHEET.replace(NORMAL_LINE, NORMAL_LINE + "\n" + line)
+    d = good_draft()
+    d.normals = [tss.Normal(id="m9", section="FINDINGS", structure="gallbladder",
+                            text="Unremarkable appearances of the gallbladder.", source_line=line)]
+    assert build(d, sheet).normals == []

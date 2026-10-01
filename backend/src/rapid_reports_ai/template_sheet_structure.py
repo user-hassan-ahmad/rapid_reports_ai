@@ -294,6 +294,7 @@ def conditional_lines(sheet: str) -> List[str]:
     return [ln for ln in sheet.splitlines() if _IF.search(ln) and not ln.lstrip().startswith("#")]
 
 
+_NORMAL_PATTERN = re.compile(r"\bnormal pattern\b")  # not "abnormal pattern"
 _MANDATORY = re.compile(r"mandatory negatives?", re.I)
 _INSTRUCTION = re.compile(r"\b(?:never|instead|rather than|replace[sd]?|avoid|do not|don't|only when)\b"
                           r"|\bwhen\b.*\bis seen\b", re.I)
@@ -732,7 +733,7 @@ def build_structure(sheet: str, draft: StructureDraft, model: str) -> SheetStruc
     rules = _fold_rules(rules)
     normals = [para(n) for n in _dedupe(draft.normals, "normal", failures)
                if in_section(f"normal {n.id}", n)
-               and (n.source_line.strip() and "normal pattern" in _norm(n.source_line)
+               and (n.source_line.strip() and _NORMAL_PATTERN.search(_norm(n.source_line))
                    and whole_lines(f"normal {n.id}", [n.source_line], sheet_lines)
                    and _atomic_normal_ok(n.text, n.source_line))
                or reject(f"normal {n.id}: {n.text}")]

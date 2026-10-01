@@ -127,7 +127,7 @@ def candidates(sheet: str) -> Dict[str, List[int]]:
         "paragraphs": [i for i in sorted(per_section) if lines[i - 1].startswith("### ")],
         "if": [i for i, ln in enumerate(lines, 1) if tss._IF.search(ln) and not ln.lstrip().startswith("#")],
         "negative": tss.negative_line_numbers(sheet),
-        "normal": [i for i, ln in enumerate(lines, 1) if "normal pattern" in tss._norm(ln)],
+        "normal": [i for i, ln in enumerate(lines, 1) if tss._NORMAL_PATTERN.search(tss._norm(ln))],
         "terminology": [i for i in _section_range(lines, "Terminology Rules") if lines[i - 1].strip()],
         "fixed": [i for i in _section_range(lines, "Fixed Blocks") if lines[i - 1].strip()],
     }
@@ -182,6 +182,7 @@ Each line holds an uppercase IF conditional. One row per line; several rows citi
 - condition: the IF condition as one plain statement that can be judged true or false for a case: "The dictated findings report [X]" for an imaging condition, "The clinical history reports [Y]" or "The clinical context is [Z]" otherwise. Keep the subject: when the IF names no subject of its own ("IF abnormal", "IF present"), take it from the line's label or from the line it is under ("<Label>: IF abnormal THEN …" gives "The dictated findings report abnormal <Label>").
 - condition_source: findings | history | context.
 - effect: suppress (drop the target text) | replace (drop the target text and write then_text) | append (add then_text) | use (write then_text as a phrasing variant) | other.
+- A line "IF [X] THEN "[text]"" that only says what to write (nothing quoted is dropped) is use (a whole sentence) or append (a clause added to a sentence), never replace.
 - target: the quoted text it suppresses or replaces, else "". then_text: the quoted or [bracketed] text it adds or uses, else "". suppress and replace need a target; replace, append and use need a then_text.
 - effect other, when none of the four fits; reason: missing_values_list (generate a list of missing values) | ordering (place or move content) | insert_before (insert text before a named text) | implicit_target (drop or replace something not quoted on the line, e.g. "the phrase", "the standard sentence") | whole_section (drop a whole section or block) | header_choice (choose a header) | other; note: a few words."""
 
