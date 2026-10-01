@@ -465,7 +465,6 @@ async def regenerate_report_with_actions(
     
     # Import enhancement utilities for model configuration
     from .enhancement_utils import (
-        MODEL_CONFIG,
         _get_model_provider,
         _get_api_key_for_provider,
         _run_agent_with_model,
@@ -888,7 +887,6 @@ async def chat(
             try:
                 pm = get_prompt_manager()
                 # Get primary model from MODEL_CONFIG for auto template selection
-                from .enhancement_utils import MODEL_CONFIG
                 primary_model = MODEL_CONFIG.get("PRIMARY_REPORT_GENERATOR")
                 # Use "default" to load prompt, but pass primary_model to check for gptoss.json
                 prompt_data = pm.load_prompt(request.use_case, "default", primary_model=primary_model)
@@ -927,7 +925,7 @@ async def chat(
         
         # Primary model: zai-glm-4.7 (Cerebras), fallback: claude-sonnet-4-6 (Anthropic)
         # Require at least one key (primary or fallback)
-        from .enhancement_utils import MODEL_CONFIG, _get_model_provider
+        from .enhancement_utils import _get_model_provider
         primary_model = MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
         primary_provider = _get_model_provider(primary_model)
         provider_env = {"cerebras": "CEREBRAS_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "groq": "GROQ_API_KEY"}
@@ -1038,7 +1036,6 @@ Apply each fix while preserving grammatical completeness and report structure.""
                     
                     # Import enhancement utilities for model configuration
                     from .enhancement_utils import (
-                        MODEL_CONFIG,
                         _get_model_provider,
                         _get_api_key_for_provider,
                         _run_agent_with_model,
@@ -2350,7 +2347,7 @@ async def skill_sheet_check_diversity_endpoint(
 ):
     """Lightweight diversity check on example reports before full analysis."""
     try:
-        from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model, _get_model_provider, _get_api_key_for_provider
+        from .enhancement_utils import _run_agent_with_model, _get_model_provider, _get_api_key_for_provider
         from pydantic import BaseModel
 
         class DiversityResult(BaseModel):
@@ -3110,10 +3107,9 @@ async def suggest_placeholder_fill_endpoint(
     """Generate AI suggestion for filling a specific placeholder"""
     try:
         from .enhancement_utils import (
-            MODEL_CONFIG,
             _get_model_provider,
             _get_api_key_for_provider,
-            _run_agent_with_model
+            _run_agent_with_model,
         )
         
         # Use fast model for quick tips

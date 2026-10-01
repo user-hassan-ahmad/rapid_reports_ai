@@ -49,7 +49,22 @@ PRESENT_HIGH = 0.8
 MAX_FINDING_OPTIONS = 4
 
 
-Q_FINDING = "The dictated findings report this imaging finding, in any wording or size: "
+HEDGE = "(?, possible, query, cannot exclude, versus, no definite, equivocal)"
+
+
+# If-present finding presence (Jev wording v2, group B, L-49): a graded score read as level / 3, so
+# absent 0, unmentioned 0.33, possible 0.67, present 1.0 against the route_finding cut-offs.
+def q_finding(key: str) -> dict:
+    return {"type": "score",
+            "instructions": "How definitely do the dictated findings report this imaging finding as present? Finding: " + key,
+            "criteria": ["Stated as absent or normal",
+                         "Not mentioned, or only a different finding is reported",
+                         "Raised only as a possibility " + HEDGE,
+                         "Reported as present, in any wording or size"]}
+
+
+def finding_presence(a: dict) -> float:
+    return float(a["score"]) / 3
 
 
 @dataclass
@@ -109,10 +124,9 @@ Q_AFFECTED = ("Is this statement from a report template affected by the dictated
               "finding contradicts it, or acts on the structure it describes (displaces, compresses, obstructs, drains "
               "into, extends to, involves it, or is a finding of the same kind in that structure), so it cannot be "
               "written as it stands. Statement: ")
-Q_PRESENT = "A dictated finding shows that this diagnosis or branch is present in this case. Branch: "
-# Diagnosis / branch presence (Jev wording suite group B, R3; R2 without a discriminator). Template-only on this
-# branch until Part Q's shared constants arrive on rebase (quick still asks Q_PRESENT).
-HEDGE = "(?, possible, query, cannot exclude, versus, no definite, equivocal)"
+# Diagnosis / branch presence (Jev wording v2, group B R3; R2 when the line has no discriminator, L-49).
+# The question names the diagnosis; the sheet's discriminator is an example sign only, so a case
+# that names the diagnosis without that sign still counts, and a shared sign alone does not.
 PRESENT_TRUE = ("The dictation names this diagnosis (or a synonym or abbreviation), or describes findings that point to it, "
                 "including when it is raised as a possibility " + HEDGE + ".")
 PRESENT_FALSE = ("The diagnosis is not mentioned, is excluded, or the dictated findings are explained as a different "
@@ -126,8 +140,9 @@ def q_present(name: str, discriminator: str = "") -> dict:
     return {"type": "noul", "instructions": instr, "criteria": {"true": PRESENT_TRUE, "false": PRESENT_FALSE}}
 
 
-Q_REC_UNMET = ("The condition for this recommendation is not met by the dictated findings, or it belongs to a "
-               "diagnosis the findings rule out. Recommendation: ")
+# Recommendation condition, asked with met polarity; unmet = 1 - score (Jev wording v2, group D R2, L-49).
+# Jev keeps to whether the finding is there; whether it warrants the test is the plan's (Qwen).
+Q_REC_MET = "The dictated findings show the finding or diagnosis this recommendation is for. Recommendation: "
 Q_STYLE_MATCH = "This example report sentence describes the same kind of finding as one that is dictated in this case. Example: "
 
 
@@ -262,6 +277,29 @@ async def _qwen(state: str, negs: List[str], normals: List[str], measurements: L
     return r.output
 
 
+class IncompleteNegativeDecisions(RuntimeError):
+    """The classifier did not answer every negative exactly once."""
+
+
+async def _qwen_complete(state: str, negs: List[str], normals: List[str], measurements: List[str], *,
+                         ask: Optional[Callable[..., Awaitable[QwenDecisions]]] = None,
+                         log: Optional[logging.Logger] = None) -> QwenDecisions:
+    """A negative without a decision would default to KEEP, so a contradicted negative could be
+    stated. The answer must cover indices 0..n-1 exactly once (no missing, extra, duplicate or
+    off-by-one); one retry, then raise so the report is written from the raw sheet. `ask` and `log`
+    are the caller's _qwen and logger (each pathway's tests patch their own module)."""
+    ask, log = ask or _qwen, log or logger
+    expected = list(range(len(negs)))
+    for attempt in (1, 2):
+        qw = await ask(state, negs, normals, measurements)
+        got = sorted(d.index for d in qw.negatives)
+        if got == expected:
+            return qw
+        log.warning("negative classifier answer incomplete (attempt %d/2): sent %d negatives, got indices %s",
+                    attempt, len(negs), got)
+    raise IncompleteNegativeDecisions(f"sent {len(negs)} negatives, got indices {got}")
+
+
 class FallbackItem(BaseModel):
     index: int
     covered: bool
@@ -298,49 +336,59 @@ async def _fallback(state: str, items: List[str], keys: List[str]) -> FallbackNe
     return r.output
 
 
-_CLAIM_NEG = re.compile(r"^(?:there\s+(?:is|are)\s+no|no|without)\s+", re.I)
-_CLAIM_TAIL = re.compile(r"(?:\s+(?:is|are|was|were))?(?:\s+(?:identified|seen|present|demonstrated|noted|evident))?$")
+# Offered negatives never repeat a negative the brief states or the dictation already makes (L-49).
+# Comparison only (nothing is rewritten): lower-cased content words of each " or "/comma part,
+# negation and filler removed. Two parts match when their words are equal, or when one holds
+# all of the other's and the smaller has at least two words ("no free gas" covers "No free
+# intraperitoneal gas"; a one-word "no change" never swallows "No acute ischaemic change").
+_NEG_FILLER = {"no", "not", "without", "nor", "any", "is", "are", "was", "were", "be", "there", "the", "a", "an",
+               "of", "seen", "identified", "evident", "demonstrated", "present", "noted", "visible", "detected",
+               "evidence", "to", "suggest", "and"}
+_NEG_START = re.compile(r"(?i)\b(?:no|not|without|nor)\b")
 
 
-def _claim_parts(negative: str) -> List[str]:
-    """Comparison keys of a negative's single claims: 'No A, B or C is identified.' -> ['a', 'b', 'c']. The
-    split on ',' / ' or ' is for comparison only (a bundled option is never rewritten)."""
-    body = re.sub(r"\s+", " ", negative.strip().lower()).rstrip(" .;")
-    m = _CLAIM_NEG.match(body)
-    if not m:
-        return []
-    body = _CLAIM_TAIL.sub("", body[m.end():])
-    parts = re.split(r",\s*(?:or\s+|and\s+)?(?:no\s+)?|\s+or\s+(?:no\s+)?|\s+and\s+no\s+", body)
-    return [_CLAIM_TAIL.sub("", p.strip()) for p in parts if p.strip()]
-
-
-def _dictated_negative_claims(findings: str) -> set:
-    """Claims the dictation states absent. Sentences split on '.', ';', newlines and ' - ' whatever the case;
-    within a sentence every comma part from the first negated one on is a claim ('no nodes, aorta normal')."""
-    out: set = set()
-    for sent in re.split(r"[.;\n]+|\s-\s", findings or ""):
-        negated = False
-        for frag in re.split(r",\s*", sent):
-            frag = frag.strip()
-            if _CLAIM_NEG.match(frag):
-                negated = True
-                out.update(_claim_parts(frag))
-            elif negated and frag:
-                out.update(_claim_parts("No " + frag))
+def _claim_parts(text: str) -> List[frozenset]:
+    parts = re.split(r",|;|\s+or\s+|\s+and\s+", text.lower())
+    out = []
+    for p in parts:
+        words = frozenset(w for w in re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", p) if w not in _NEG_FILLER)
+        if words:
+            out.append(words)
     return out
 
 
+def _part_matches(a: frozenset, b: frozenset) -> bool:
+    small, big = (a, b) if len(a) <= len(b) else (b, a)
+    return a == b or (len(small) >= 2 and small <= big)
+
+
+def dictated_negatives(items: List[str]) -> List[str]:
+    """Negated clauses in the dictation: "no nodes, aorta normal" -> "no nodes"."""
+    return [c.strip() for t in items for c in re.split(r",|;", t) if _NEG_START.search(c)]
+
+
+def duplicates_negative(option: str, negatives: List[str]) -> bool:
+    """True when every part of the offered negative is already said by one of the negatives."""
+    have = [p for n in negatives for p in _claim_parts(n)]
+    parts = _claim_parts(option)
+    return bool(parts) and all(any(_part_matches(p, h) for h in have) for p in parts)
+
+
 def dedupe_options(options: List[dict], stated_negatives: List[str], findings: str) -> tuple:
-    """Finding-linked option negatives (kind 'finding_negative', incl. the fallback's) without the ones that
-    restate a negative the brief already states (KEEP) or a negative the dictation states. An option is dropped
-    when any of its claims, compared part by part, matches. Returns (kept options, dropped option texts)."""
-    taken = {p for n in stated_negatives for p in _claim_parts(n)} | _dictated_negative_claims(findings)
+    """Finding-linked option negatives (kind 'finding_negative') without the ones that duplicate a
+    negative the brief states (KEEP), a negative the dictation makes, or an option kept before them. For a
+    caller that routes its options before de-duplicating (templates); quick checks each candidate inline
+    with duplicates_negative, before the option cap. Returns (kept options, dropped option texts)."""
+    said = list(stated_negatives) + dictated_negatives(split_findings(findings or ""))
     kept, dropped = [], []
     for o in options:
-        if o.get("kind") == "finding_negative" and taken & set(_claim_parts(o.get("text", ""))):
+        if o.get("kind") != "finding_negative":
+            kept.append(o)
+        elif duplicates_negative(o.get("text", ""), said):
             dropped.append(o.get("text", ""))
         else:
             kept.append(o)
+            said.append(o.get("text", ""))
     return kept, dropped
 
 

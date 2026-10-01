@@ -1,12 +1,13 @@
-"""Run the fixture set through both triage candidates, live, and print/save a summary.
+"""Run the fixture set through the triage candidates, live, and print/save a summary.
 
 Usage (from backend/, keys in .env):
     set -a; . ./.env; set +a
-    .venv/bin/python -m rapid_reports_ai.scripts.triage_bakeoff [--only code|jev|qwen|qwen-lp] [--concurrency 4]
+    .venv/bin/python -m rapid_reports_ai.scripts.triage_bakeoff [--only code|jev|qwen-lp] [--concurrency 4]
 
-Candidates: code (lexicon), jev, qwen (shipped: Groq qwen3.6, hard labels) and qwen-lp
-(Cerebras qwen-3.8 first-token logprobs, eval only). Calibration is printed per question
-for jev, qwen and qwen-lp over the cases all three answered.
+Candidates: code (lexicon), jev (the questions the dictation package asks per utterance) and
+qwen-lp (Cerebras qwen-3.8 first-token logprobs, eval only). Calibration is printed per
+question for jev and qwen-lp over the cases both answered. (The Groq Qwen hard-label
+candidate was retired on 2026-09-29.)
 
 Never run by pytest. Writes docs/model-migration/triage-bakeoff-<date>.json.
 """
@@ -21,9 +22,9 @@ import time
 from datetime import date
 from pathlib import Path
 
-from rapid_reports_ai.dictation_triage import TRIAGE_QUESTIONS, TriageState, get_triager
+from rapid_reports_ai.dictation_triage import TRIAGE_QUESTIONS, JevTriager, TriageState
 from rapid_reports_ai.scripts.bakeoff_baselines import baseline_triage
-from rapid_reports_ai.scripts.calibration_report import calibration_block, hard_choice, hard_noul
+from rapid_reports_ai.scripts.calibration_report import calibration_block, hard_choice
 from rapid_reports_ai.scripts.qwen_logprob import QWEN_LP_LABEL, QwenLogprob
 from rapid_reports_ai.scripts.triage_summary import Record, format_summary, summarise
 
@@ -48,7 +49,7 @@ def code_record(case: dict) -> Record:
     )
 
 
-CALIBRATED = ("jev", "qwen", "qwen-lp")
+CALIBRATED = ("jev", "qwen-lp")
 
 
 def triage_calibration(records: list[Record]) -> list[tuple[dict, str]]:
@@ -74,7 +75,7 @@ def triage_calibration(records: list[Record]) -> list[tuple[dict, str]]:
 
         def val(r: Record, q: str = q) -> float:
             v = getattr(r, q)
-            return hard_noul(v) if r.candidate == "qwen" else v
+            return v
 
         out.append(calibration_block(q, "noul", {
             k: ([val(c[k]) for c in rows], [int(getattr(c[k], exp)) for c in rows]) for k in present
@@ -112,7 +113,7 @@ async def run_case(case: dict, candidates: list[str], sem: asyncio.Semaphore) ->
                 if cand == "qwen-lp":
                     out.append(await qwen_lp_record(case, state))
                     continue
-                d = await get_triager(cand).classify(state)
+                d = await JevTriager().classify(state)
                 out.append(Record(
                     id=case["id"], candidate=cand, expected_action=case["expected_action"], action=d.action,
                     confidence=d.confidence, latency_ms=d.latency_ms, cost_usd=d.cost_usd, hard=case["hard"],
@@ -133,12 +134,12 @@ async def run_case(case: dict, candidates: list[str], sem: asyncio.Semaphore) ->
 
 async def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--only", choices=["code", "jev", "qwen", "qwen-lp"])
+    ap.add_argument("--only", choices=["code", "jev", "qwen-lp"])
     ap.add_argument("--concurrency", type=int, default=4)
     args = ap.parse_args()
 
-    candidates = [args.only] if args.only else ["code", "jev", "qwen", "qwen-lp"]
-    needed = {"jev": "OPENROUTER_API_KEY", "qwen": "GROQ_API_KEY", "qwen-lp": "CEREBRAS_API_KEY"}
+    candidates = [args.only] if args.only else ["code", "jev", "qwen-lp"]
+    needed = {"jev": "OPENROUTER_API_KEY", "qwen-lp": "CEREBRAS_API_KEY"}
     missing = [needed[c] for c in candidates if c in needed and not os.environ.get(needed[c])]
     if missing:
         print(f"missing env: {', '.join(missing)}", file=sys.stderr)

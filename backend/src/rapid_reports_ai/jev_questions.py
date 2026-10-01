@@ -15,7 +15,7 @@ from typing import Any
 
 from .jev_client import JEV_MODEL  # noqa: F401  (the wording is written for this model)
 
-QSET_VERSION = "2026-09-27.5"  # 09-26.2 bands; .3 gate 0.70; 09-27.1 gate 0.80; 09-27.2 word-sense; .3 underline; .4 fix 0.65; .5 audit
+QSET_VERSION = "2026-09-27.5"  # 09-26.2 bands; .3 gate 0.70; 09-27.1 gate 0.80; 09-27.2 word-sense; .3 underline; .4 fix 0.65; .5 audit (experiment removed 2026-09-29)
 
 # --- triage (dictation_triage) ------------------------------------------------------
 
@@ -46,7 +46,8 @@ TRIAGE_QUESTIONS: dict[str, dict[str, Any]] = {
     },
 }
 
-# Default confidence floor for lab route mode (canvas_routes.TriageRouteConfig).
+# Default confidence floor of the retired lab route mode (2026-09-29). Kept: it is part of
+# the wording digest in tests/test_jev_questions.py.
 ROUTE_THRESHOLD_DEFAULT = 0.9
 
 # --- fast-append band router (fast_append, work-order step 5) ------------------------
@@ -255,44 +256,3 @@ def bundle_questions(checklist: list[str]) -> dict[str, dict[str, Any]]:
             "instructions": q["instructions"].replace("The scratchpad", "The scratchpad (COMMITTED plus ACTIVE)", 1),
         }
     return questions
-
-
-# --- tier-2 scratchpad audit (audit_candidates → jev_audit), lab ----------------------
-# PROVISIONAL: a candidate is flagged when Jev gives its "all is well" statement ≤ this.
-# Precision first: an advisory flag that is often wrong teaches the radiologist to ignore it.
-AUDIT_BANDS: dict[str, float] = {"flag_max_noul": 0.20}
-
-_AUDIT_Q: dict[str, tuple[str, str, str]] = {
-    "pair": (
-        'The statements "{a}" and "{b}" can both be true of this patient at the same time.',
-        "They concern different structures, sides, times or aspects, or one adds detail to the other without denying it.",
-        "One denies what the other asserts about the same structure at the same time, or they give incompatible values for the same measurement.",
-    ),
-    "side": (
-        'The side (left or right) in the statement "{a}" agrees with the side given for the same structure elsewhere in the scratchpad and in the clinical history.',
-        "The side matches, or the other mentions concern a different structure, or findings on both sides are described.",
-        "The same structure is given one side here and the other side elsewhere in the scratchpad or in the clinical history.",
-    ),
-    "measure": (
-        'Each measurement in the statement "{a}" is plausible in size and unit for what it describes, and agrees with the statement\'s own words about size or calibre.',
-        "The value and unit fit the structure, and any size word in the statement is consistent with the value.",
-        "The value or unit is implausible for the structure, or the statement's own size words contradict the value.",
-    ),
-    "negation": (
-        'Nothing else in the scratchpad asserts what the statement "{a}" denies.',
-        "No other statement describes the denied finding, in any wording.",
-        "Another statement describes the denied finding, possibly in different words or as a more specific finding of the same kind.",
-    ),
-}
-
-
-def audit_questions(cands: list) -> dict[str, dict[str, Any]]:
-    """One noul per candidate, keyed audit_<i>; wording is structural (no single-domain examples)."""
-    out = {}
-    for i, c in enumerate(cands):
-        ins, true, false = _AUDIT_Q[c.kind]
-        a = c.statements[0].text if c.kind != "pair" else c.statements[0].text
-        b = c.statements[1].text if c.kind == "pair" else ""
-        out[f"audit_{i}"] = {"type": "noul", "instructions": ins.format(a=a, b=b),
-                             "criteria": {"true": true, "false": false}}
-    return out

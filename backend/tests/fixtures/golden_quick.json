@@ -20,12 +20,24 @@
       "SCAN TYPE: CT head\nDICTATED FINDINGS:\n10 mm right acute subdural. 12 mm left adrenal nodule",
       {
        "f0": {
-        "instructions": "The dictated findings report this imaging finding, in any wording or size: subdural haematoma",
-        "type": "noul"
+        "criteria": [
+         "Stated as absent or normal",
+         "Not mentioned, or only a different finding is reported",
+         "Raised only as a possibility (?, possible, query, cannot exclude, versus, no definite, equivocal)",
+         "Reported as present, in any wording or size"
+        ],
+        "instructions": "How definitely do the dictated findings report this imaging finding as present? Finding: subdural haematoma",
+        "type": "score"
        },
        "f1": {
-        "instructions": "The dictated findings report this imaging finding, in any wording or size: extradural haematoma",
-        "type": "noul"
+        "criteria": [
+         "Stated as absent or normal",
+         "Not mentioned, or only a different finding is reported",
+         "Raised only as a possibility (?, possible, query, cannot exclude, versus, no definite, equivocal)",
+         "Reported as present, in any wording or size"
+        ],
+        "instructions": "How definitely do the dictated findings report this imaging finding as present? Finding: extradural haematoma",
+        "type": "score"
        },
        "n0": {
         "instructions": "Is this statement from a report template affected by the dictated findings? Affected means a dictated finding contradicts it, or acts on the structure it describes (displaces, compresses, obstructs, drains into, extends to, involves it, or is a finding of the same kind in that structure), so it cannot be written as it stands. Statement: The orbits are clear.",
@@ -133,6 +145,14 @@
       "qwen": "n/a",
       "tag": "fallback",
       "text": "No local invasion"
+     },
+     {
+      "finding": "12 mm left adrenal nodule",
+      "outcome": "duplicate",
+      "present": null,
+      "qwen": "n/a",
+      "tag": "fallback",
+      "text": "No midline shift is identified"
      }
     ],
     "impression_plan": {
@@ -212,19 +232,35 @@
       "SCAN TYPE: CT head\nDICTATED FINDINGS:\n8 mm right subdural haematoma. 3 mm midline shift.",
       {
        "d0": {
-        "instructions": "A dictated finding shows that this diagnosis or branch is present in this case. Branch: Acute subdural \u2014 crescentic hyperdensity *(visible on this technique: yes)*",
+        "criteria": {
+         "false": "The diagnosis is not mentioned, is excluded, or the dictated findings are explained as a different diagnosis, even one in the same organ or sharing a sign.",
+         "true": "The dictation names this diagnosis (or a synonym or abbreviation), or describes findings that point to it, including when it is raised as a possibility (?, possible, query, cannot exclude, versus, no definite, equivocal)."
+        },
+        "instructions": "The dictated findings name or describe this diagnosis as present or possible in this case: Acute subdural. A typical sign (an example only; it need not be dictated): crescentic hyperdensity",
         "type": "noul"
        },
        "d1": {
-        "instructions": "A dictated finding shows that this diagnosis or branch is present in this case. Branch: Epidural \u2014 biconvex hyperdensity *(visible on this technique: yes)*",
+        "criteria": {
+         "false": "The diagnosis is not mentioned, is excluded, or the dictated findings are explained as a different diagnosis, even one in the same organ or sharing a sign.",
+         "true": "The dictation names this diagnosis (or a synonym or abbreviation), or describes findings that point to it, including when it is raised as a possibility (?, possible, query, cannot exclude, versus, no definite, equivocal)."
+        },
+        "instructions": "The dictated findings name or describe this diagnosis as present or possible in this case: Epidural. A typical sign (an example only; it need not be dictated): biconvex hyperdensity",
         "type": "noul"
        },
        "d2": {
-        "instructions": "A dictated finding shows that this diagnosis or branch is present in this case. Branch: Vascular malformation \u2014 needs angiography *(visible on this technique: no \u2014 requires CTA)*",
+        "criteria": {
+         "false": "The diagnosis is not mentioned, is excluded, or the dictated findings are explained as a different diagnosis, even one in the same organ or sharing a sign.",
+         "true": "The dictation names this diagnosis (or a synonym or abbreviation), or describes findings that point to it, including when it is raised as a possibility (?, possible, query, cannot exclude, versus, no definite, equivocal)."
+        },
+        "instructions": "The dictated findings name or describe this diagnosis as present or possible in this case: Vascular malformation. A typical sign (an example only; it need not be dictated): needs angiography",
         "type": "noul"
        },
        "d3": {
-        "instructions": "A dictated finding shows that this diagnosis or branch is present in this case. Branch: Coagulopathy *(imaging-silent \u2014 requires clinical/laboratory correlation)*",
+        "criteria": {
+         "false": "The diagnosis is not mentioned, is excluded, or the dictated findings are explained as a different diagnosis, even one in the same organ or sharing a sign.",
+         "true": "The dictation names this diagnosis (or a synonym or abbreviation), or describes findings that point to it, including when it is raised as a possibility (?, possible, query, cannot exclude, versus, no definite, equivocal)."
+        },
+        "instructions": "The dictated findings name or describe this diagnosis as present or possible in this case: Coagulopathy",
         "type": "noul"
        },
        "imp": {
@@ -249,11 +285,11 @@
         "type": "noul"
        },
        "r0": {
-        "instructions": "The condition for this recommendation is not met by the dictated findings, or it belongs to a diagnosis the findings rule out. Recommendation: REFERRAL: Neurosurgery for haemorrhage with mass effect",
+        "instructions": "The dictated findings show the finding or diagnosis this recommendation is for. Recommendation: REFERRAL: Neurosurgery for haemorrhage with mass effect",
         "type": "noul"
        },
        "r1": {
-        "instructions": "The condition for this recommendation is not met by the dictated findings, or it belongs to a diagnosis the findings rule out. Recommendation: IMAGING: CTA for large vessel occlusion",
+        "instructions": "The dictated findings show the finding or diagnosis this recommendation is for. Recommendation: IMAGING: CTA for large vessel occlusion",
         "type": "noul"
        },
        "s0": {
@@ -409,19 +445,35 @@
       "SCAN TYPE: CT head\nDICTATED FINDINGS:\n8 mm right subdural haematoma. 3 mm midline shift.",
       {
        "d0": {
-        "instructions": "A dictated finding shows that this diagnosis or branch is present in this case. Branch: Acute subdural \u2014 crescentic hyperdensity *(visible on this technique: yes)*",
+        "criteria": {
+         "false": "The diagnosis is not mentioned, is excluded, or the dictated findings are explained as a different diagnosis, even one in the same organ or sharing a sign.",
+         "true": "The dictation names this diagnosis (or a synonym or abbreviation), or describes findings that point to it, including when it is raised as a possibility (?, possible, query, cannot exclude, versus, no definite, equivocal)."
+        },
+        "instructions": "The dictated findings name or describe this diagnosis as present or possible in this case: Acute subdural. A typical sign (an example only; it need not be dictated): crescentic hyperdensity",
         "type": "noul"
        },
        "d1": {
-        "instructions": "A dictated finding shows that this diagnosis or branch is present in this case. Branch: Epidural \u2014 biconvex hyperdensity *(visible on this technique: yes)*",
+        "criteria": {
+         "false": "The diagnosis is not mentioned, is excluded, or the dictated findings are explained as a different diagnosis, even one in the same organ or sharing a sign.",
+         "true": "The dictation names this diagnosis (or a synonym or abbreviation), or describes findings that point to it, including when it is raised as a possibility (?, possible, query, cannot exclude, versus, no definite, equivocal)."
+        },
+        "instructions": "The dictated findings name or describe this diagnosis as present or possible in this case: Epidural. A typical sign (an example only; it need not be dictated): biconvex hyperdensity",
         "type": "noul"
        },
        "d2": {
-        "instructions": "A dictated finding shows that this diagnosis or branch is present in this case. Branch: Vascular malformation \u2014 needs angiography *(visible on this technique: no \u2014 requires CTA)*",
+        "criteria": {
+         "false": "The diagnosis is not mentioned, is excluded, or the dictated findings are explained as a different diagnosis, even one in the same organ or sharing a sign.",
+         "true": "The dictation names this diagnosis (or a synonym or abbreviation), or describes findings that point to it, including when it is raised as a possibility (?, possible, query, cannot exclude, versus, no definite, equivocal)."
+        },
+        "instructions": "The dictated findings name or describe this diagnosis as present or possible in this case: Vascular malformation. A typical sign (an example only; it need not be dictated): needs angiography",
         "type": "noul"
        },
        "d3": {
-        "instructions": "A dictated finding shows that this diagnosis or branch is present in this case. Branch: Coagulopathy *(imaging-silent \u2014 requires clinical/laboratory correlation)*",
+        "criteria": {
+         "false": "The diagnosis is not mentioned, is excluded, or the dictated findings are explained as a different diagnosis, even one in the same organ or sharing a sign.",
+         "true": "The dictation names this diagnosis (or a synonym or abbreviation), or describes findings that point to it, including when it is raised as a possibility (?, possible, query, cannot exclude, versus, no definite, equivocal)."
+        },
+        "instructions": "The dictated findings name or describe this diagnosis as present or possible in this case: Coagulopathy",
         "type": "noul"
        },
        "imp": {
@@ -446,11 +498,11 @@
         "type": "noul"
        },
        "r0": {
-        "instructions": "The condition for this recommendation is not met by the dictated findings, or it belongs to a diagnosis the findings rule out. Recommendation: REFERRAL: Neurosurgery for haemorrhage with mass effect",
+        "instructions": "The dictated findings show the finding or diagnosis this recommendation is for. Recommendation: REFERRAL: Neurosurgery for haemorrhage with mass effect",
         "type": "noul"
        },
        "r1": {
-        "instructions": "The condition for this recommendation is not met by the dictated findings, or it belongs to a diagnosis the findings rule out. Recommendation: IMAGING: CTA for large vessel occlusion",
+        "instructions": "The dictated findings show the finding or diagnosis this recommendation is for. Recommendation: IMAGING: CTA for large vessel occlusion",
         "type": "noul"
        },
        "s0": {
@@ -644,25 +696,81 @@
        "instructions": "The dictated findings state something that this report statement denies or contradicts. Statement: Acute right subdural haematoma with 3 mm midline shift.",
        "type": "noul"
       },
+      "lt0": {
+       "criteria": {
+        "false": "The line itself only says that structures are normal or findings are absent, only says how the study was performed (protocol, sequences, views, phases, contrast, dose, adequate quality), or only names the prior study used for comparison.",
+        "true": "The line itself reports something abnormal or present in the patient (a lesion, abnormal measurement, device or line position, post-operative change or interval change), or a problem with the study (artefact, degraded or non-diagnostic images, incomplete coverage, a structure not seen or not assessed), even alongside normal findings or technique details."
+       },
+       "instructions": "The dictated line \"8 mm right subdural haematoma\" itself reports an abnormality or a limitation of the study.",
+       "type": "noul"
+      },
+      "lt1": {
+       "criteria": {
+        "false": "The line itself only says that structures are normal or findings are absent, only says how the study was performed (protocol, sequences, views, phases, contrast, dose, adequate quality), or only names the prior study used for comparison.",
+        "true": "The line itself reports something abnormal or present in the patient (a lesion, abnormal measurement, device or line position, post-operative change or interval change), or a problem with the study (artefact, degraded or non-diagnostic images, incomplete coverage, a structure not seen or not assessed), even alongside normal findings or technique details."
+       },
+       "instructions": "The dictated line \"3 mm midline shift\" itself reports an abnormality or a limitation of the study.",
+       "type": "noul"
+      },
       "o0": {
        "instructions": "The dictated findings state something that this report statement denies or contradicts. Statement: No hydrocephalus.",
        "type": "noul"
       },
       "r1": {
-       "instructions": "The dictated findings report this finding: skull fracture",
+       "criteria": {
+        "false": "It is not mentioned, is stated as absent or normal, or the dictation reports a different finding that only shares some words with it (a different qualifier such as size, severity, pattern, chronicity or location).",
+        "true": "This same finding is reported, in any wording (synonym, abbreviation, or a more specific form of it), as present or possible."
+       },
+       "instructions": "The dictated findings report this finding, including as a possibility: skull fracture",
        "type": "noul"
       },
       "r2": {
-       "instructions": "The dictated findings report this finding: hydrocephalus",
+       "criteria": {
+        "false": "It is not mentioned, is stated as absent or normal, or the dictation reports a different finding that only shares some words with it (a different qualifier such as size, severity, pattern, chronicity or location).",
+        "true": "This same finding is reported, in any wording (synonym, abbreviation, or a more specific form of it), as present or possible."
+       },
+       "instructions": "The dictated findings report this finding, including as a possibility: hydrocephalus",
        "type": "noul"
       },
       "r3": {
-       "instructions": "The dictated findings report this finding: no herniation",
+       "criteria": {
+        "false": "It is not mentioned, is stated as absent or normal, or the dictation reports a different finding that only shares some words with it (a different qualifier such as size, severity, pattern, chronicity or location).",
+        "true": "This same finding is reported, in any wording (synonym, abbreviation, or a more specific form of it), as present or possible."
+       },
+       "instructions": "The dictated findings report this finding, including as a possibility: no herniation",
        "type": "noul"
       },
       "r4": {
-       "instructions": "The dictated findings report this finding: no intraventricular extension",
+       "criteria": {
+        "false": "It is not mentioned, is stated as absent or normal, or the dictation reports a different finding that only shares some words with it (a different qualifier such as size, severity, pattern, chronicity or location).",
+        "true": "This same finding is reported, in any wording (synonym, abbreviation, or a more specific form of it), as present or possible."
+       },
+       "instructions": "The dictated findings report this finding, including as a possibility: no intraventricular extension",
        "type": "noul"
+      },
+      "sel0": {
+       "criteria": {
+        "abnormal_finding": "The line reports something abnormal or present in the patient (a lesion, abnormal measurement, device or line position, post-operative change or interval change)",
+        "comparison": "The line only names the prior study used for comparison, or says none is available",
+        "limitation": "The line reports a problem with the study: artefact, degraded or non-diagnostic images, incomplete coverage, or a structure not seen or not assessed",
+        "mixed_abnormal_and_normal": "The line reports something abnormal, or a study problem, alongside normal findings or technique details",
+        "normal_or_negative": "The line only says that structures are normal or that findings are absent",
+        "protocol_note": "The line only says how the study was performed (protocol, sequences, views, phases, contrast, dose) or that image quality was adequate"
+       },
+       "instructions": "Read only this one dictated line, not the rest of the dictation: \"8 mm right subdural haematoma\". What does this line report?",
+       "type": "choice"
+      },
+      "sel1": {
+       "criteria": {
+        "abnormal_finding": "The line reports something abnormal or present in the patient (a lesion, abnormal measurement, device or line position, post-operative change or interval change)",
+        "comparison": "The line only names the prior study used for comparison, or says none is available",
+        "limitation": "The line reports a problem with the study: artefact, degraded or non-diagnostic images, incomplete coverage, or a structure not seen or not assessed",
+        "mixed_abnormal_and_normal": "The line reports something abnormal, or a study problem, alongside normal findings or technique details",
+        "normal_or_negative": "The line only says that structures are normal or that findings are absent",
+        "protocol_note": "The line only says how the study was performed (protocol, sequences, views, phases, contrast, dose) or that image quality was adequate"
+       },
+       "instructions": "Read only this one dictated line, not the rest of the dictation: \"3 mm midline shift\". What does this line report?",
+       "type": "choice"
       }
      }
     ],
@@ -670,12 +778,26 @@
      "REPORT:\nFINDINGS:\nAn 8 mm right subdural haematoma. No skull fracture. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.\n\nDr A",
      {
       "i0": {
-       "instructions": "The report states this dictated finding, in any wording: 8 mm right subdural haematoma",
-       "type": "noul"
+       "criteria": {
+        "absent": "Nothing in the report is about this line's abnormality: the report neither reports it nor says anything about that structure that would cover it.",
+        "different": "The report says something about the same structure that disagrees with the line: a different severity, grade, size or measurement, the other side or another level, or normal or absent where the line reports an abnormality.",
+        "partial": "The report already reports this line's abnormality, but without one or more of the line's details (a measurement, density value, side, level, grade, descriptor, extent, or a normal or negative that the line adds).",
+        "stated": "The report already says everything in this line, possibly in other words, abbreviations or synonyms, or spread over more than one sentence.",
+        "unclear": "The line is only a heading or a fragment, or its words make no sense as a finding, so there is nothing clear to compare."
+       },
+       "instructions": "Read only this one dictated line: \"8 mm right subdural haematoma\". Find what the report says about the same finding or structure, then choose how the report covers this line.",
+       "type": "choice"
       },
       "i1": {
-       "instructions": "The report states this dictated finding, in any wording: 3 mm midline shift",
-       "type": "noul"
+       "criteria": {
+        "absent": "Nothing in the report is about this line's abnormality: the report neither reports it nor says anything about that structure that would cover it.",
+        "different": "The report says something about the same structure that disagrees with the line: a different severity, grade, size or measurement, the other side or another level, or normal or absent where the line reports an abnormality.",
+        "partial": "The report already reports this line's abnormality, but without one or more of the line's details (a measurement, density value, side, level, grade, descriptor, extent, or a normal or negative that the line adds).",
+        "stated": "The report already says everything in this line, possibly in other words, abbreviations or synonyms, or spread over more than one sentence.",
+        "unclear": "The line is only a heading or a fragment, or its words make no sense as a finding, so there is nothing clear to compare."
+       },
+       "instructions": "Read only this one dictated line: \"3 mm midline shift\". Find what the report says about the same finding or structure, then choose how the report covers this line.",
+       "type": "choice"
       }
      }
     ]
@@ -693,18 +815,15 @@
      "text": "No skull fracture."
     },
     {
-     "kind": "omission",
-     "score": 0.1,
-     "text": "8 mm right subdural haematoma"
-    },
-    {
-     "kind": "omission",
-     "score": 0.1,
+     "kind": "partial",
+     "score": 0.7,
      "text": "3 mm midline shift"
     }
    ],
    "n_clauses": 6,
-   "n_items": 2
+   "n_items": 2,
+   "n_selected": 2,
+   "selector": "regex"
   }
  },
  "clauses": [
@@ -715,6 +834,47 @@
   "No no intraventricular extension",
   "Acute right subdural haematoma with 3 mm midline shift."
  ],
+ "insert": {
+  "calls": {
+   "_jev": [
+    [
+     "REPORT:\nFINDINGS:\nAn 8 mm right subdural haematoma. No skull fracture. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.\n\nDr A",
+     {
+      "d0": {
+       "instructions": "The report itself states everything this statement says, in any wording, abbreviation or synonym (not merely implied or inferable): There is 3 mm of midline shift.",
+       "type": "noul"
+      },
+      "d1": {
+       "instructions": "The report itself states everything this statement says, in any wording, abbreviation or synonym (not merely implied or inferable): Midline shift of 3 mm.",
+       "type": "noul"
+      },
+      "d2": {
+       "instructions": "The report itself states everything this statement says, in any wording, abbreviation or synonym (not merely implied or inferable): Small left frontal contusion.",
+       "type": "noul"
+      }
+     }
+    ]
+   ],
+   "model": [
+    {
+     "model_settings": {
+      "max_tokens": 2000,
+      "reasoning_effort": "none",
+      "temperature": 0
+     },
+     "system_prompt": "A radiology report left out some dictated lines. For each numbered line, write at most one sentence to add to the report, following these rules.\n1. Write only what the line reports as abnormal or present (a finding, device, post-operative change or artefact) that the report does not already state. Leave out every normal or negative part of the line, and anything the report already says.\n2. Never write a sentence that only says structures are normal, unremarkable or without abnormality, or that findings are absent. A caveat about the study (such as the limits of the technique) is not a finding. A line with nothing abnormal left gets an empty sentence.\n3. Use the report's own terms for that structure, in the report's voice and British English.\n4. The dictation is speech-recognised. Where a word makes no sense in context and one similar-sounding word is plainly meant, write that word instead of copying it. If no single word is plainly meant, or the meaning of the line is not clear, return an empty sentence for it; never guess a finding.\n5. Never state anything that differs from what the report already says about that structure (presence, severity, size, side, level or measurement). If the line disagrees with the report, return an empty sentence.\n6. Add nothing that was not dictated.\n7. In 'after', copy exactly, character for character, the report sentence about the same region or structure that the new sentence should follow.\nReturn JSON {\"items\": [{\"after\": ..., \"sentence\": ...}]}, one entry per numbered line, in order, with \"sentence\": \"\" when nothing should be added.",
+     "user_prompt": "DICTATED FINDINGS:\n8 mm right subdural haematoma. 3 mm midline shift.\n\nREPORT:\nFINDINGS:\nAn 8 mm right subdural haematoma. No skull fracture. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.\n\nDr A\n\nLINES LEFT OUT OF THE REPORT:\n1. 3 mm midline shift\n2. small left frontal contusion\n3. ventricles normal"
+    }
+   ]
+  },
+  "result": {
+   "applied": 2,
+   "dup_check": "jev",
+   "error": null,
+   "report": "FINDINGS:\nSmall left frontal contusion. An 8 mm right subdural haematoma. There is 3 mm of midline shift. No skull fracture. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.\n\nDr A",
+   "skipped": 3
+  }
+ },
  "plan_prompt": {
   "model_name": "qwen-3.8-27b",
   "model_settings": {
@@ -744,19 +904,27 @@
  },
  "prompt_hashes": {
   "qb.FALLBACK_SYS": "3bb1d01f72c7",
+  "qb.HEDGE": "b4ca9f041f3c",
   "qb.PLAN_SYS": "90e5cef94ee1",
+  "qb.PRESENT_FALSE": "657f5a743790",
+  "qb.PRESENT_TRUE": "f4bfa0a9b409",
   "qb.QWEN_SYS": "8a77446e6499",
   "qb.Q_AFFECTED": "11fa1a77c91f",
-  "qb.Q_FINDING": "2d14203db375",
-  "qb.Q_PRESENT": "15977af07a11",
-  "qb.Q_REC_UNMET": "6741cf47acee",
+  "qb.Q_REC_MET": "2217050d8113",
   "qb.Q_STYLE_MATCH": "6a3a810a3e67",
+  "qb.present_question()": "d219553b279c",
+  "qb.q_finding()": "fa1cc758f91d",
+  "qb.q_present()": "ede0a47af564",
   "qq.INSERT_ONLY_SYS": "c05279075b45",
-  "qq.INSERT_SYS": "684666873967",
+  "qq.INSERT_SYS": "6610e7a42578",
   "qq.Q_CONTRA": "ed1074aa3ba8",
-  "qq.Q_OMIT": "17a4ca2c881a",
-  "qq.Q_RESTATED": "3d1c1f42aeb7",
-  "qq.REPAIR_SYS": "9b36156d4423"
+  "qq.Q_CONVEYS": "334aae68cc8d",
+  "qq.Q_RESTATED": "fe04d7c9fd1d",
+  "qq.REPAIR_SYS": "9b36156d4423",
+  "qq.q_omission()": "a5a732964c06",
+  "qq.q_restated()": "e1be74e7b4e8",
+  "qq.q_select_choice()": "5bcb5c6d396f",
+  "qq.q_select_noul()": "deb2aa7e1bce"
  },
  "removed_list": "FINDINGS:\nNo collection or free air.\n\nIMPRESSION:\nNormal.",
  "removed_sentence": "FINDINGS:\nAn 8 mm right subdural haematoma. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.\n\nDr A"

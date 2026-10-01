@@ -65,8 +65,8 @@ SHEET_C = '''# Skill Sheet: CT head — head injury
 def _stub_c(monkeypatch, subdural_present: float, qwen_negs):
     async def fake_jev(state, questions):
         fake_jev.questions = questions
-        out = {k: {"noul": 0.1} for k in questions}
-        out["f0"] = {"noul": subdural_present}
+        out = {k: {"score": 0.3} if k.startswith("f") else {"noul": 0.1} for k in questions}
+        out["f0"] = {"score": subdural_present * 3}
         return out
     async def no_fallback(*a):
         raise RuntimeError("no fallback in this test")
@@ -114,7 +114,9 @@ async def test_finding_negatives_are_stated_offered_or_labelled(monkeypatch):
                       "No effacement of the basal cisterns": "do_not_assert",
                       "No subfalcine herniation": "dropped", "No venous sinus involvement": "dropped"}
     jq = {k: v["instructions"] for k, v in fq.jev.questions.items() if k.startswith("f")}
-    assert jq == {"f0": qb.Q_FINDING + "subdural haematoma", "f1": qb.Q_FINDING + "extradural haematoma"}
+    assert jq == {"f0": qb.q_finding("subdural haematoma")["instructions"],
+                  "f1": qb.q_finding("extradural haematoma")["instructions"]}
+    assert all(v["type"] == "score" for k, v in fq.jev.questions.items() if k.startswith("f"))
     sources = {n["text"]: n["source"] for n in b.decisions["negatives"]}
     assert sources["No skull fracture"] == "sheet" and sources["No midline shift"] == "finding:subdural haematoma"
 
@@ -213,8 +215,9 @@ def test_if_present_parses_keys_in_both_shapes():
 FINDINGS_R5 = "10 mm right acute subdural. 12 mm left adrenal nodule"
 
 
-def _stub_fallback(monkeypatch, carried, fallback):
-    _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(6)])
+def _stub_fallback(monkeypatch, carried, fallback, n_negs=6):
+    # the classifier answers every negative it is sent, exactly once
+    _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(n_negs)])
     async def fake_plan(scan_type, history, items, recs):
         return qb.ImpressionPlan(recommendations=[], impression=carried)
     monkeypatch.setattr(qb, "_plan", fake_plan)
@@ -274,7 +277,7 @@ async def test_a_negative_listed_under_two_keys_is_stated_once(monkeypatch):
                             '  - extradural haematoma → "No midline shift" (core)')
     _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(6)])
     async def both(state, questions):
-        return {k: {"noul": 0.95 if k in ("f0", "f1") else 0.1} for k in questions}
+        return {k: {"score": 2.85} if k in ("f0", "f1") else {"noul": 0.1} for k in questions}
     monkeypatch.setattr(qb, "_jev", both)
     b = await qb.compile_brief(sheet, "CT head", "10 mm subdural and 5 mm extradural haematoma")
     assert b.text.count('KEEP: "No midline shift"') == 1
@@ -296,7 +299,7 @@ async def test_fallback_does_not_run_without_an_if_present_list(monkeypatch):
         calls.append(items)
         return qb.FallbackNegatives(items=[qb.FallbackItem(index=0, covered=False, negatives=["No x"])])
     sheet = SHEET_C.split("- **If present:**")[0] + "\n## Impression Exemplars\n- **Abnormal exemplar:** \"Acute subdural.\"\n"
-    _stub_fallback(monkeypatch, [0, 1], spy)
+    _stub_fallback(monkeypatch, [0, 1], spy, n_negs=1)   # only the mandatory negative is sent
     b = await qb.compile_brief(sheet, "CT head", FINDINGS_R5)
     assert calls == []
     assert not [o for o in b.decisions["options"] if o["kind"] == "finding_negative"]
@@ -305,7 +308,8 @@ async def test_fallback_does_not_run_without_an_if_present_list(monkeypatch):
 @pytest.mark.asyncio
 async def test_bundled_finding_negatives_are_split_and_keep_their_key_and_tag(monkeypatch):
     sheet = SHEET_C.replace('"No midline shift" (core)', '"No superior mesenteric vein or portal vein encasement" (core)')
-    _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(8)])
+    # 1 mandatory + 6 finding-linked once the bundled negative is split in two
+    _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(7)])
     async def split(negs):
         return [["No superior mesenteric vein encasement", "No portal vein encasement"]
                 if n.startswith("No superior mesenteric vein or") else [n] for n in negs]
@@ -325,3 +329,57 @@ def test_tags_are_read_when_the_analyser_annotates_them():
              '  - Sigmoid wall thickening → "No free intraperitoneal fluid is identified" (generalised peritonitis) (core)']
     assert [(c.key, c.tag) for c in qb.parse_if_present(lines)] == [
         ("Pancreatic head mass", "core"), ("Pancreatic head mass", "contextual"), ("Sigmoid wall thickening", "core")]
+
+
+# Offered negatives never duplicate a stated or dictated negative (hotfix 2026-10-01).
+
+@pytest.mark.parametrize("option, said, dup", [
+    ("No free intraperitoneal gas", ["no free gas"], True),              # dictated, more general
+    ("No free gas.", ["No free gas is identified"], True),               # same claim, different filler
+    ("No ascites or pleural effusion", ["no ascites"], False),           # only one part already said
+    ("No ascites or pleural effusion", ["no ascites", "No pleural effusion"], True),
+    ("No acute ischaemic change", ["no change"], False),                 # one word never swallows a claim
+    ("No pelvic collection", ["no free gas", "No skull fracture"], False),
+])
+def test_duplicates_negative_compares_parts(option, said, dup):
+    assert qb.duplicates_negative(option, said) is dup
+
+
+def test_dictated_negatives_are_the_negated_clauses():
+    items = qb.split_findings("large volume free gas. no nodes, aorta normal. CBD not dilated")
+    assert qb.dictated_negatives(items) == ["no nodes", "CBD not dilated"]
+
+
+@pytest.mark.asyncio
+async def test_offered_negative_already_dictated_is_dropped(monkeypatch):
+    _stub_c(monkeypatch, 0.6, [NegativeDecision(index=i, action="keep") for i in range(6)])
+    b = await qb.compile_brief(SHEET_C, "CT head", "possible thin right subdural. there is no midline shift.")
+    offered = [o["text"] for o in b.decisions["options"] if o["kind"] == "finding_negative"]
+    assert offered == ["No uncal herniation", "No effacement of the basal cisterns", "No subfalcine herniation"]
+    routes = {c["text"]: c["outcome"] for c in b.decisions["finding_negatives"]}
+    assert routes["No midline shift"] == "duplicate"
+
+
+@pytest.mark.asyncio
+async def test_offered_negative_already_stated_is_dropped(monkeypatch):
+    sheet = SHEET_C.replace('"No uncal herniation" (contextual)', '"No fracture of the skull vault" (contextual)')
+    _stub_c(monkeypatch, 0.95, [NegativeDecision(index=i, action="keep") for i in range(6)])
+    b = await qb.compile_brief(sheet, "CT head", "10 mm right acute subdural")
+    assert 'KEEP: "No skull fracture"' in b.text                          # the mandatory negative is stated
+    assert not [o for o in b.decisions["options"] if o["kind"] == "finding_negative"]
+    routes = {c["text"]: c["outcome"] for c in b.decisions["finding_negatives"]}
+    assert routes["No fracture of the skull vault"] == "duplicate"
+
+
+@pytest.mark.asyncio
+async def test_fallback_negative_already_stated_or_dictated_is_dropped(monkeypatch):
+    async def fb(state, items, keys):
+        return qb.FallbackNegatives(items=[qb.FallbackItem(index=0, covered=True), qb.FallbackItem(
+            index=1, covered=False, negatives=["No adrenal haemorrhage.", "Midline shift is not present", "No local invasion"])])
+    _stub_fallback(monkeypatch, [0, 1], fb)
+    b = await qb.compile_brief(SHEET_C, "CT head",
+                               "10 mm right acute subdural. 12 mm left adrenal nodule, no haemorrhage of the adrenal")
+    fb_opts = [o["text"] for o in b.decisions["options"] if o.get("reason") == "unanticipated finding"]
+    assert fb_opts == ["No local invasion"]                               # distinct: kept
+    dups = {c["text"] for c in b.decisions["finding_negatives"] if c["outcome"] == "duplicate"}
+    assert dups == {"No adrenal haemorrhage", "Midline shift is not present"}

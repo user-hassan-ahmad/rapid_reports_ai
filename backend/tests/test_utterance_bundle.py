@@ -8,7 +8,7 @@ import pytest
 from rapid_reports_ai.dictation_triage import JEV_MODEL, TRIAGE_QUESTIONS, TriageError
 from rapid_reports_ai.jev_questions import QSET_VERSION
 from rapid_reports_ai.section_coverage import coverage_questions
-from rapid_reports_ai.utterance_boundary import BOUNDARY_QUESTIONS
+from rapid_reports_ai.jev_questions import BOUNDARY_QUESTIONS
 from rapid_reports_ai.utterance_bundle import BundleState, JevBundle, bundle_questions
 
 STATE = BundleState(scan_type="CT chest", committed="- 6 mm nodule RUL", active="- no effusion",

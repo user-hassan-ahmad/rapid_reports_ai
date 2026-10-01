@@ -82,7 +82,7 @@ def _stub(monkeypatch, jev: dict, qwen: qb.QwenDecisions, plan: qb.ImpressionPla
 
 JEV = {"n0": {"noul": 0.9}, "n1": {"noul": 0.1}, "n2": {"noul": 0.8},        # ventricles, orbits, midline
        "d0": {"noul": 0.9}, "d1": {"noul": 0.1}, "d2": {"noul": 0.1}, "d3": {"noul": 0.1},
-       "r0": {"noul": 0.1}, "r1": {"noul": 0.9},
+       "r0": {"noul": 0.9}, "r1": {"noul": 0.1},                         # condition met (L-49 polarity)
        "s0": {"noul": 0.9}, "s1": {"noul": 0.1},
        "imp": {"choice": "v1"}}
 QWEN = qb.QwenDecisions(
@@ -235,35 +235,22 @@ async def test_option_sentences_pair_with_their_items_and_fail_to_empty(monkeypa
 
 # ── option de-duplication (shared dedupe_options) ───────────────────────────
 
-def test_dedupe_options_drops_stated_and_dictated_claims_part_by_part():
+def test_dedupe_options_uses_the_quick_part_by_part_comparison():
+    """Templates de-duplicate their routed options with the same comparison quick applies inline (L-49):
+    an option is a duplicate only when every part is already said (stated, dictated or kept before it)."""
     from rapid_reports_ai import report_reconcile as rc
-    opts = [{"kind": "finding_negative", "text": "No periaortic haematoma or aortic injury."},
-            {"kind": "finding_negative", "text": "No free intraperitoneal gas"},
+    opts = [{"kind": "finding_negative", "text": "No periaortic haematoma or aortic injury."},   # one part new
+            {"kind": "finding_negative", "text": "No periaortic haematoma or free gas."},         # both parts said
+            {"kind": "finding_negative", "text": "No free intraperitoneal gas"},                 # dictated
             {"kind": "finding_negative", "text": "No portal venous gas is identified."},
+            {"kind": "finding_negative", "text": "No portal venous gas."},                      # an earlier option
             {"kind": "impression", "text": "No free intraperitoneal gas"}]
     kept, dropped = rc.dedupe_options(
         opts, ["No periaortic haematoma is identified."],
         "large collection - perforated. no free intraperitoneal gas. no nodes, aorta normal")
-    assert dropped == ["No periaortic haematoma or aortic injury.", "No free intraperitoneal gas"]
-    assert [o["text"] for o in kept] == ["No portal venous gas is identified.", "No free intraperitoneal gas"]
-
-
-async def test_quick_brief_does_not_offer_a_stated_or_dictated_negative(monkeypatch):
-    from tests.test_confirmed_negatives import SHEET_C
-    from tests.test_golden_quick_pipeline import _brief
-    jev_c = {"n0": {"noul": 0.1}, "f0": {"noul": 0.95}, "f1": {"noul": 0.1}}
-    qwen_c = qb.QwenDecisions(negatives=[qb.NegativeDecision(index=i, action="keep") for i in range(6)],
-                              affected_normals=[], applicable_measurements=[])
-    fb = qb.FallbackNegatives(items=[qb.FallbackItem(index=0, covered=True), qb.FallbackItem(
-        index=1, covered=False, negatives=["No skull fracture or scalp haematoma", "No adrenal haemorrhage.",
-                                           "No local invasion"])])
-    r = await _brief(monkeypatch, SHEET_C, "10 mm right acute subdural. 12 mm left adrenal nodule, no local invasion",
-                     jev_c, qwen_c, qb.ImpressionPlan(recommendations=[], impression=[0, 1]), fb)
-    offered = [o["text"] for o in r["decisions"]["options"] if o["kind"] == "finding_negative"]
-    assert offered == ["No uncal herniation", "No adrenal haemorrhage"]  # distinct ones kept
-    outcome = {f["text"]: f["outcome"] for f in r["decisions"]["finding_negatives"]}
-    assert outcome["No skull fracture or scalp haematoma"] == "duplicate_dropped"  # stated: KEEP "No skull fracture"
-    assert outcome["No local invasion"] == "duplicate_dropped"  # dictated
+    assert dropped == ["No periaortic haematoma or free gas.", "No free intraperitoneal gas", "No portal venous gas."]
+    assert [o["text"] for o in kept] == ["No periaortic haematoma or aortic injury.",
+                                         "No portal venous gas is identified.", "No free intraperitoneal gas"]
 
 
 async def test_option_writer_guard_drops_a_recommendation_sentence_that_names_another_thing():
@@ -280,3 +267,145 @@ async def test_option_writer_guard_drops_a_recommendation_sentence_that_names_an
     assert [o["source"] for o in guarded] == ["IMAGING: Dedicated MRI of the region", "Small cyst"]
     plain = await rc.write_options(opts, "f", "CT", model="m", runner=runner)  # quick: unchanged by default
     assert len(plain) == 3
+
+
+def _neg(i, action="keep", f=""):
+    return qb.NegativeDecision(index=i, action=action, dictated_finding=f)
+
+
+INCOMPLETE = {
+    "missing": [_neg(0, "contradicted", "8 mm right subdural"), _neg(2)],
+    "off_by_one": [_neg(1, "contradicted", "8 mm right subdural"), _neg(2, "expected", "3 mm midline shift"), _neg(3)],
+    "duplicate": [_neg(0, "contradicted", "8 mm right subdural"), _neg(0), _neg(2)],
+    "extra": [_neg(0, "contradicted", "8 mm right subdural"), _neg(1, "expected", "3 mm midline shift"), _neg(2), _neg(3)],
+}
+
+
+def _sequenced_qwen(monkeypatch, answers):
+    calls = []
+    async def fake_qwen(state, negs, normals, measurements):
+        calls.append(negs)
+        return qb.QwenDecisions(negatives=answers[len(calls) - 1], affected_normals=[2], applicable_measurements=[0])
+    monkeypatch.setattr(qb, "_qwen", fake_qwen)
+    return calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("shape", sorted(INCOMPLETE))
+async def test_incomplete_negative_answer_retries_then_raises(monkeypatch, shape):
+    _stub(monkeypatch, JEV, QWEN)
+    calls = _sequenced_qwen(monkeypatch, [INCOMPLETE[shape], INCOMPLETE[shape]])
+    warnings = []
+    monkeypatch.setattr(qb.logger, "warning", lambda msg, *a: warnings.append(msg % a))
+    with pytest.raises(qb.IncompleteNegativeDecisions):
+        await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, 3 mm midline shift")
+    assert len(calls) == 2
+    assert sum("negative classifier answer incomplete" in w for w in warnings) == 2
+
+
+@pytest.mark.asyncio
+async def test_incomplete_negative_answer_recovers_on_retry(monkeypatch):
+    _stub(monkeypatch, JEV, QWEN)
+    calls = _sequenced_qwen(monkeypatch, [INCOMPLETE["missing"], QWEN.negatives])
+    b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, 3 mm midline shift")
+    assert len(calls) == 2
+    assert 'DO NOT ASSERT: "No ventricular compression" — expected consequence of: 3 mm midline shift' in b.text
+
+
+@pytest.mark.asyncio
+async def test_complete_negative_answer_is_used_once_unchanged(monkeypatch):
+    _stub(monkeypatch, JEV, QWEN)
+    baseline = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, 3 mm midline shift")
+    # the order of the decisions does not matter, only that each index appears once
+    calls = _sequenced_qwen(monkeypatch, [list(reversed(QWEN.negatives))])
+    b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, 3 mm midline shift")
+    assert len(calls) == 1
+    assert b.text == baseline.text and b.decisions["negatives"] == baseline.decisions["negatives"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("shape", sorted(INCOMPLETE))
+async def test_generator_writes_from_raw_sheet_when_negative_answer_stays_incomplete(monkeypatch, shape):
+    _stub(monkeypatch, JEV, QWEN)
+    calls = _sequenced_qwen(monkeypatch, [INCOMPLETE[shape], INCOMPLETE[shape]])
+    seen = {}
+    async def fake_run(**kw):
+        if kw.get("output_type") is str:
+            seen["system"] = kw["system_prompt"]
+        from types import SimpleNamespace
+        return SimpleNamespace(output="COMPARISON:\nNone.\n\nFINDINGS:\nx.\n\nIMPRESSION:\ny." if kw.get("output_type") is str
+                               else SimpleNamespace(description="d"))
+    monkeypatch.setattr(qrg, "_run_agent_with_model", fake_run)
+    monkeypatch.setattr(qrg, "_get_api_key_for_provider", lambda p, fallback_api_key=None: "k")
+    out = await qrg.generate_quick_report(skill_sheet=SHEET, scan_type="CT head non-contrast",
+                                          findings="8 mm right subdural, 3 mm midline shift", clinical_history="h")
+    assert len(calls) == 2
+    assert out["brief_used"] is False
+    assert "Conditional Suppression Rules" in seen["system"]          # raw sheet
+
+
+# ── Jev wording v2 (L-49) ────────────────────────────────────────────────────
+
+def test_finding_questions_are_score_type():
+    q = qb.q_finding("Free air")
+    assert q["type"] == "score" and len(q["criteria"]) == 4
+    assert q["instructions"] == ("How definitely do the dictated findings report this imaging finding as present? "
+                                 "Finding: Free air")
+    assert q["criteria"][2] == "Raised only as a possibility " + qb.HEDGE
+
+
+def test_finding_score_reads_level_over_three():
+    assert qb.finding_presence({"score": 3.0}) == 1.0
+    assert abs(qb.finding_presence({"score": 2.0}) - 0.6667) < 1e-3   # hedged -> offered band
+    assert qb.route_finding("keep", qb.finding_presence({"score": 2.0}), "core") == "offered"
+    assert qb.route_finding("keep", qb.finding_presence({"score": 3.0}), "core") == "stated"
+    assert qb.route_finding("keep", qb.finding_presence({"score": 1.0}), "core") == "dropped"
+
+
+def test_present_question_names_diagnosis_and_marks_sign_as_example():
+    q = qb.present_question("Perforated peptic ulcer — perigastric fluid and free gas *(visible on this technique: yes)*")
+    assert q["type"] == "noul"
+    assert q["instructions"] == ("The dictated findings name or describe this diagnosis as present or possible in this "
+                                 "case: Perforated peptic ulcer. A typical sign (an example only; it need not be "
+                                 "dictated): perigastric fluid and free gas")
+    assert q["criteria"] == {"true": qb.PRESENT_TRUE, "false": qb.PRESENT_FALSE}
+
+
+def test_present_question_without_discriminator_has_no_sign_clause():
+    q = qb.present_question("Haemorrhage *(imaging-silent)*")
+    assert "example only" not in q["instructions"] and q["instructions"].endswith(": Haemorrhage")
+    assert q["instructions"] == qb.q_present("Haemorrhage")["instructions"]
+
+
+@pytest.mark.asyncio
+async def test_compile_asks_branch_presence_with_the_named_diagnosis(monkeypatch):
+    seen = {}
+    _stub(monkeypatch, JEV, QWEN)
+    inner = qb._jev
+    async def spy(state, questions):
+        seen.update(questions)
+        return await inner(state, questions)
+    monkeypatch.setattr(qb, "_jev", spy)
+    await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, 3 mm midline shift")
+    assert seen["d0"] == qb.present_question("Acute subdural — crescentic hyperdensity *(visible on this technique: yes)*")
+    assert seen["d0"]["instructions"].endswith(": Acute subdural. A typical sign (an example only; it need not be "
+                                               "dictated): crescentic hyperdensity")
+
+
+@pytest.mark.parametrize("met,action", [(0.7, "keep"), (0.3, "removed"), (0.5, "removed")])
+@pytest.mark.asyncio
+async def test_recommendation_unmet_is_one_minus_met(monkeypatch, met, action):
+    seen = {}
+    jev = {**JEV, "r0": {"noul": met}, "r1": {"noul": 0.9}}
+    _stub(monkeypatch, jev, QWEN)
+    inner = qb._jev
+    async def spy(state, questions):
+        seen.update(questions)
+        return await inner(state, questions)
+    monkeypatch.setattr(qb, "_jev", spy)
+    b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, 3 mm midline shift")
+    assert seen["r0"] == {"type": "noul", "instructions": qb.Q_REC_MET + "REFERRAL: Neurosurgery for haemorrhage with mass effect"}
+    assert qb.Q_REC_MET == "The dictated findings show the finding or diagnosis this recommendation is for. Recommendation: "
+    recs = {r["text"]: r["action"] for r in b.decisions["recommendations"]}
+    assert recs["REFERRAL: Neurosurgery for haemorrhage with mass effect"] == action
+    assert recs["IMAGING: CTA for large vessel occlusion"] == "keep"          # met 0.9 -> unmet 0.1

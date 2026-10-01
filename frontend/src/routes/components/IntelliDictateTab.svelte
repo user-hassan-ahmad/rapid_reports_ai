@@ -10,7 +10,7 @@ import Toast from '$lib/components/Toast.svelte';
 import { API_URL } from '$lib/config';
 import { readSSEStream } from '$lib/utils/sse';
 import { appliedOptionIds, panelOptions, type ReportOption } from '$lib/utils/impressionOptions';
-import type { ChunkTrace, CoverageTrace, LabConfig, PillThresholds, ProcessTrace } from '$lib/dictation-lab/types';
+import type { CoverageTrace, LabConfig, PillThresholds } from '$lib/dictation-lab/types';
 import type { DecisionRecord, OutcomeEvent } from '$lib/dictation-lab/decisionFirst';
 import { pillState } from '$lib/dictation-lab/coverage';
 import { effectiveConfig } from '$lib/dictation-lab/package';
@@ -125,11 +125,9 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 	// The dictation package: the lab page's config, or the package where the server allows it
 	// (apiKeyStatus.dictation_v2) unless this browser opted out, or null (today's dictation).
 	$: dictationConfig = effectiveConfig(labConfig, undefined, (apiKeyStatus as { dictation_v2?: boolean })?.dictation_v2 === true);
-	export let onProcessTrace: (trace: ProcessTrace) => void = () => {};
 	/** Dictation Lab only: three-state pills from coverage scores. null = binary pills as in production. */
 	export let pillThresholds: PillThresholds | null = null;
 	export let onCoverageTrace: (trace: CoverageTrace) => void = () => {};
-	export let onChunkTrace: (trace: ChunkTrace) => void = () => {};
 	/** Dictation Lab only: decision-first records (upserted by id) and their outcomes. */
 	export let onDecision: (record: DecisionRecord, display: string) => void = () => {};
 	export let onOutcome: (event: OutcomeEvent) => void = () => {};
@@ -921,10 +919,8 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 			onPromptsChange={handlePromptsChange}
 			onScratchpadClear={() => { coveredSections = new Set(); activePrompts = []; }}
 			labConfig={dictationConfig}
-			{onProcessTrace}
 			onCoverageScoresChange={(s) => { coverageScores = s; }}
 			{onCoverageTrace}
-			{onChunkTrace}
 			{onDecision}
 			{onOutcome}
 		/>
