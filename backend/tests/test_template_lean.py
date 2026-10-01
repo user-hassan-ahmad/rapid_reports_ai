@@ -110,7 +110,7 @@ async def test_case_options_route_phase1_units_into_options_only(monkeypatch):
     # recommendation: trigger dictated -> offered in the impression section; trigger absent -> removed
     assert ("recommendation", "REFERRAL: Urgent referral to the specialty service.") in texts
     assert not any("MRI" in t for _, t in texts)
-    assert all(o["section"] == ("CONCLUSION" if o["kind"] != "finding_negative" else "FINDINGS") for o in opts)
+    assert all(o["section"] == ("CONCLUSION" if o["kind"] != "finding_negative" else "PRIMARY FINDINGS") for o in opts)
     assert sum(o["kind"] == "finding_negative" for o in opts) <= rc.MAX_FINDING_OPTIONS
     assert dec["finding_negatives"] and dec["case_exclusions"] and dec["recommendations"]
 
@@ -171,3 +171,20 @@ async def test_lean_generation_is_todays_generator_then_check_then_gated_options
     assert [o["id"] for o in out["options"]] == ["opt0"] and out["gate_dropped"][0]["id"] == "fn0"
     assert set(out["lat"]) >= {"generator_s", "options_s", "check_s", "gate_s"}
     assert out["phase1_used"] is True and out["brief_used"] is False
+
+
+def test_a_standalone_impression_word_without_colon_is_a_header():
+    secs = tl.report_sections("No free fluid.\n\nImpression\n\nA 2 cm lesion.", "")
+    assert [(s.name, s.header, s.role) for s in secs] == [("FINDINGS", None, "findings"),
+                                                          ("IMPRESSION", "Impression", "impression")]
+    # an ordinary short sentence line is not a header
+    assert len(tl.report_sections("No free fluid.\nNormal spleen\n\nConclusion:\nX.", "")) == 2
+
+
+def test_option_section_prefers_the_phase1_paragraph_then_a_findings_named_section():
+    secs = tl.report_sections(REPORT, OLD_SHEET)
+    assert tl.option_section({"kind": "finding_negative", "section": "Other findings"}, secs) == "OTHER FINDINGS"
+    # unknown paragraph: a findings section whose name says FINDINGS, before an earlier generic one
+    secs2 = tl.report_sections("Calcium scoring:\nX.\n\nCoronary Findings:\nY.\n\nConclusion:\nZ.", "")
+    assert tl.option_section({"kind": "finding_negative", "section": "PRIMARY"}, secs2) == "CORONARY FINDINGS"
+    assert tl.option_section({"kind": "recommendation", "section": "IMPRESSION"}, secs2) == "CONCLUSION"

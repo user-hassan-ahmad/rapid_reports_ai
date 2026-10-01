@@ -62,12 +62,14 @@ def report_sections(report: str, sheet: str = "") -> List[ReportSection]:
         s = ln.strip().strip("*#").strip()
         if not s:
             continue
-        label = None
+        label, colon = None, True
         m = _ALONE.match(s)
         if m:
             label = m.group(1).strip()
-        elif s.isupper() and len(s) <= 60 and re.search(r"[A-Z]{3}", s) and not s.endswith("."):
-            label = s
+        elif len(s) <= 60 and not s.endswith(".") and (
+                (s.isupper() and re.search(r"[A-Z]{3}", s)) or s.lower() in declared
+                or re.fullmatch(_IMPRESSION.pattern + r"\s*", s, re.I)):
+            label, colon = s, False  # a header line without a colon: capitals, declared, or an impression word
         else:
             m = _INLINE.match(s)
             if m and (m.group(1).strip().lower() in declared or _IMPRESSION.match(m.group(1).strip())):
@@ -75,12 +77,24 @@ def report_sections(report: str, sheet: str = "") -> List[ReportSection]:
         if not label or label.upper() in {x.name for x in secs}:
             continue
         first = i if first is None else first
-        secs.append(ReportSection(name=label.upper(), header=label if label.isupper() and not m else label + ":",
-                                  role=_role(label)))
+        secs.append(ReportSection(name=label.upper(), header=label + (":" if colon else ""), role=_role(label)))
     if first is None or any(x.strip() for x in lines[:first]):
         name = IMPLICIT if IMPLICIT not in {x.name for x in secs} else IMPLICIT + " (BODY)"
         secs.insert(0, ReportSection(name=name, header=None, role="findings"))
     return secs
+
+
+def option_section(option: dict, sections: List[ReportSection]) -> str:
+    """Where an option goes in this report: an impression / recommendation item in the impression section; a
+    finding-linked negative in the section named as its Phase-1 paragraph, else the first findings section whose
+    name says FINDINGS, else the first findings section."""
+    if option.get("kind") != "finding_negative":
+        return next((s.name for s in sections if s.role == "impression"), option.get("section") or "IMPRESSION")
+    want = (option.get("section") or "").strip().upper()
+    found = [s for s in sections if s.role == "findings"]
+    return (next((s.name for s in found if s.name == want), None)
+            or next((s.name for s in found if "FINDING" in s.name), None)
+            or (found[0].name if found else IMPLICIT))
 
 
 def _block(sheet: str, title: str) -> str:
@@ -122,7 +136,7 @@ async def case_options(case: Optional[dict], findings: str, scan_type: str, hist
     names = {n.upper(): n for n in (section_names or [])}
 
     def section_of(u: dict) -> str:
-        return names.get((u.get("paragraph") or "").upper(), findings_section)
+        return names.get((u.get("paragraph") or "").upper()) or u.get("paragraph") or findings_section
 
     state = f"SCAN TYPE: {scan_type}\nDICTATED FINDINGS:\n{findings}"
     qs: Dict[str, dict] = {}
@@ -280,9 +294,8 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
     # Sections come from the generated report; options are placed in its findings / impression sections
     sections = report_sections(report, sheet)
     imp = next((s.name for s in sections if s.role == "impression"), None)
-    fnd = next((s.name for s in sections if s.role == "findings"), IMPLICIT)
     for o in options:
-        o["section"] = (imp or o.get("section", "IMPRESSION")) if o.get("kind") != "finding_negative" else fnd
+        o["section"] = option_section(o, sections)
     impression = _split_report(report, sections, imp) if imp else ""
     gate_qs = rc.gate_questions(options)
 
