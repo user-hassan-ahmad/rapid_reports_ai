@@ -356,12 +356,35 @@ def dedupe_options(options: List[dict], stated_negatives: List[str], findings: s
     return kept, dropped
 
 
+# Words whose full stop never ends a dictated sentence. "no." is only an abbreviation before a
+# number or "of" ("no. 3 node", "no. of lesions"); "ascites: no. liver normal" is two findings.
+_ABBREVIATIONS = {"e.g", "eg", "i.e", "ie", "vs", "approx", "cf", "dr", "mr", "mrs", "ms", "prof", "st", "fig", "ca", "c.f"}
+_NO_ABBREVIATION = re.compile(r"(?i)\s*(?:\d|of\b)")
+
+
+def _sentences(line: str) -> List[str]:
+    """Split on a full stop followed by whitespace, whatever the case of the next word: radiologists
+    dictate in lower case. Decimals ("3.5 cm") have no space after the stop and never split;
+    abbreviations and initials ("J. Bloggs") do not end a sentence."""
+    out, start = [], 0
+    for m in re.finditer(r"\.\s+", line):
+        word = re.search(r"[\w.]*$", line[start:m.start()]).group(0).lower().strip(".")
+        if word in _ABBREVIATIONS or (len(word) == 1 and word.isalpha()):
+            continue
+        if word == "no" and _NO_ABBREVIATION.match(line, m.end()):
+            continue
+        out.append(line[start:m.start()])
+        start = m.end()
+    out.append(line[start:])
+    return out
+
+
 def split_findings(findings: str) -> List[str]:
     """Dictated findings as numbered items: bullets, lines and sentences."""
     parts = []
     for line in re.split(r"\n+|\s/\s|(?:^|\s)-\s(?=[A-Za-z0-9])", findings):
         line = line.strip(" -\t")
-        for s in re.split(r"(?<=[a-z0-9%)])\.\s+(?=[A-Z0-9])", line):
+        for s in _sentences(line):
             s = s.strip().rstrip(".")
             if len(s) > 3:
                 parts.append(s)
