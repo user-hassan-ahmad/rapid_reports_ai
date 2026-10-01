@@ -187,9 +187,32 @@ def slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")[:40]
 
 
+def load_synthetic(root: Path) -> Dict:
+    """Synthetic consultant-grade sets (tests/fixtures/sheet_lab/<set>/examples/NN.md + answer_key.json),
+    in the same shape as the pulled prod data. A set without an answer key yet is skipped."""
+    templates = []
+    for d in sorted(p for p in root.iterdir() if p.is_dir()):
+        key_path = d / "answer_key.json"
+        examples = sorted((d / "examples").glob("*.md"))
+        if not key_path.exists() or not examples:
+            print(f"!! {d.name}: no answer key or examples yet, skipped", file=sys.stderr)
+            continue
+        key = json.loads(key_path.read_text())
+        templates.append({"name": key.get("scan_type") or d.name, "slug": d.name, "answer_key": key,
+                          "examples": [{"report_id": f.name, "content": f.read_text()} for f in examples]})
+    return {"templates": templates}
+
+
+def _score(rec: Dict, t: Dict) -> None:
+    if t.get("answer_key") and rec.get("structure"):
+        from rapid_reports_ai.scripts.template_sheet_lab_score import score
+
+        rec["score"] = score(rec["structure"], t["answer_key"])
+
+
 async def run_one(t: Dict, out: Path) -> Dict:
     rec: Dict = {"name": t["name"], "examples": len(t["examples"])}
-    s = slug(t["name"])
+    s = t.get("slug") or slug(t["name"])
     try:
         parsed, rec["analyse_s"], raw = await analyse(t["examples"], t["name"])
     except Exception as e:  # noqa: BLE001 - a lab run records failures and moves on
@@ -213,6 +236,7 @@ async def run_one(t: Dict, out: Path) -> Dict:
     rec["structure"] = structure
     rec["final_ok"] = not errors
     rec["grounding"] = grounding(structure, t["examples"])
+    _score(rec, t)
     (out / f"{s}.json").write_text(json.dumps(rec, indent=1, default=str))
     print(f"{t['name'][:45]:45} analyse {rec['analyse_s']:5.1f}s  first {len(rec['first_pass_errors']):2} err"
           + (f"  repair {rec['repair_s']:5.1f}s -> {len(errors)} err" if "repair_s" in rec else ""),
@@ -221,7 +245,7 @@ async def run_one(t: Dict, out: Path) -> Dict:
 
 
 async def run(data_path: Path, out: Path, only: Optional[List[str]]) -> None:
-    data = json.loads(data_path.read_text())
+    data = load_synthetic(data_path) if data_path.is_dir() else json.loads(data_path.read_text())
     out.mkdir(parents=True, exist_ok=True)
     templates = [t for t in data["templates"] if not only or any(o.lower() in t["name"].lower() for o in only)]
     with contextlib.redirect_stdout(io.StringIO()):
@@ -234,9 +258,40 @@ async def run(data_path: Path, out: Path, only: Optional[List[str]]) -> None:
         "errors": [r["name"] for r in recs if "error" in r],
         "lint_classes": _classes(recs),
         "timings": {r["name"]: {k: round(r[k], 1) for k in ("analyse_s", "repair_s") if k in r} for r in recs},
+        "grounded": {r["name"]: r["grounding"]["grounded"] for r in recs if "grounding" in r},
     }
+    if any("score" in r for r in recs):
+        summary["score"] = _score_summary(recs)
     (out / "summary.json").write_text(json.dumps(summary, indent=1))
     print(json.dumps(summary, indent=1))
+
+
+def _score_summary(recs: List[Dict]) -> Dict:
+    """Per-set unit recall, and per-kind recall/precision pooled over the sets."""
+    pooled: Dict[str, List[int]] = {}
+    for r in recs:
+        for kind, v in r.get("score", {}).get("per_kind", {}).items():
+            p = pooled.setdefault(kind, [0, 0, 0])
+            p[0], p[1], p[2] = p[0] + v["planted"], p[1] + v["emitted"], p[2] + v["matched"]
+    return {
+        "units_recall": {r["name"]: r["score"]["units_recall"] for r in recs if "score" in r},
+        "per_kind": {k: {"planted": a, "emitted": b, "matched": m,
+                         "recall": round(m / a, 2) if a else None, "precision": round(m / b, 2) if b else None}
+                     for k, (a, b, m) in sorted(pooled.items())},
+    }
+
+
+def rescore(root: Path, out: Path) -> None:
+    """Score saved sheets of a synthetic run against the answer keys (e.g. after a key is revised)."""
+    data = {t["slug"]: t for t in load_synthetic(root)["templates"]}
+    recs = []
+    for f in sorted(out.glob("*.json")):
+        if f.stem in data:
+            rec = json.loads(f.read_text())
+            _score(rec, data[f.stem])
+            f.write_text(json.dumps(rec, indent=1, default=str))
+            recs.append(rec)
+    print(json.dumps(_score_summary(recs), indent=1))
 
 
 def _classes(recs: List[Dict]) -> Dict[str, Dict[str, int]]:
@@ -325,7 +380,10 @@ def main() -> None:
     r = sub.add_parser("run"); r.add_argument("data"); r.add_argument("out"); r.add_argument("--only", default="")
     rp = sub.add_parser("reparse"); rp.add_argument("out")
     g = sub.add_parser("ground"); g.add_argument("data"); g.add_argument("out")
+    sc = sub.add_parser("score"); sc.add_argument("fixtures"); sc.add_argument("out")
     a = ap.parse_args()
+    if a.cmd == "score":
+        return rescore(Path(a.fixtures), Path(a.out))
     if a.cmd == "pull":
         pull(Path(a.data))
     elif a.cmd == "run":
