@@ -296,8 +296,9 @@ def present_question(line: str) -> dict:
     """A quick differential line is '<name> — <discriminator> *(visible …)*'."""
     name, _, disc = _VISIBILITY_TAG.sub("", line).partition(" — ")
     return q_present(name.strip(), disc.strip())
-Q_REC_UNMET = ("The condition for this recommendation is not met by the dictated findings, or it belongs to a "
-               "diagnosis the findings rule out. Recommendation: ")
+# Recommendation condition, asked with met polarity; unmet = 1 - score (Jev wording v2, group D R2, L-49).
+# Jev keeps to whether the finding is there; whether it warrants the test is the plan's (Qwen).
+Q_REC_MET = "The dictated findings show the finding or diagnosis this recommendation is for. Recommendation: "
 Q_STYLE_MATCH = "This example report sentence describes the same kind of finding as one that is dictated in this case. Example: "
 
 
@@ -564,7 +565,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     qs = {}
     qs.update({f"n{k}": {"type": "noul", "instructions": Q_AFFECTED + t} for k, t in enumerate(normals)})
     qs.update({f"d{k}": present_question(t) for k, t in enumerate(diffs)})
-    qs.update({f"r{k}": {"type": "noul", "instructions": Q_REC_UNMET + t} for k, t in enumerate(recs)})
+    qs.update({f"r{k}": {"type": "noul", "instructions": Q_REC_MET + t} for k, t in enumerate(recs)})
     qs.update({f"f{i}": q_finding(k) for i, k in enumerate(keys)})
     qs.update({f"s{k}": {"type": "noul", "instructions": Q_STYLE_MATCH + " ".join(b.lines)} for k, b in enumerate(styles)})
     if len(variants) > 1:
@@ -694,7 +695,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         kept, barred = [], []
         for k, t in enumerate(recs):
             d = pdec.get(k)
-            if score(f"r{k}") >= 0.5:
+            if 1 - score(f"r{k}") >= 0.5:      # condition unmet
                 action = "removed"
             elif d is None or d.decision == "include":
                 action = "keep"

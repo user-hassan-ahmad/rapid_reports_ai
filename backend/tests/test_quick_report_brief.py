@@ -81,7 +81,7 @@ def _stub(monkeypatch, jev: dict, qwen: qb.QwenDecisions, plan: qb.ImpressionPla
 
 JEV = {"n0": {"noul": 0.9}, "n1": {"noul": 0.1}, "n2": {"noul": 0.8},        # ventricles, orbits, midline
        "d0": {"noul": 0.9}, "d1": {"noul": 0.1}, "d2": {"noul": 0.1}, "d3": {"noul": 0.1},
-       "r0": {"noul": 0.1}, "r1": {"noul": 0.9},
+       "r0": {"noul": 0.9}, "r1": {"noul": 0.1},                         # condition met (L-49 polarity)
        "s0": {"noul": 0.9}, "s1": {"noul": 0.1},
        "imp": {"choice": "v1"}}
 QWEN = qb.QwenDecisions(
@@ -353,3 +353,22 @@ async def test_compile_asks_branch_presence_with_the_named_diagnosis(monkeypatch
     assert seen["d0"] == qb.present_question("Acute subdural — crescentic hyperdensity *(visible on this technique: yes)*")
     assert seen["d0"]["instructions"].endswith(": Acute subdural. A typical sign (an example only; it need not be "
                                                "dictated): crescentic hyperdensity")
+
+
+@pytest.mark.parametrize("met,action", [(0.7, "keep"), (0.3, "removed"), (0.5, "removed")])
+@pytest.mark.asyncio
+async def test_recommendation_unmet_is_one_minus_met(monkeypatch, met, action):
+    seen = {}
+    jev = {**JEV, "r0": {"noul": met}, "r1": {"noul": 0.9}}
+    _stub(monkeypatch, jev, QWEN)
+    inner = qb._jev
+    async def spy(state, questions):
+        seen.update(questions)
+        return await inner(state, questions)
+    monkeypatch.setattr(qb, "_jev", spy)
+    b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, 3 mm midline shift")
+    assert seen["r0"] == {"type": "noul", "instructions": qb.Q_REC_MET + "REFERRAL: Neurosurgery for haemorrhage with mass effect"}
+    assert qb.Q_REC_MET == "The dictated findings show the finding or diagnosis this recommendation is for. Recommendation: "
+    recs = {r["text"]: r["action"] for r in b.decisions["recommendations"]}
+    assert recs["REFERRAL: Neurosurgery for haemorrhage with mass effect"] == action
+    assert recs["IMAGING: CTA for large vessel occlusion"] == "keep"          # met 0.9 -> unmet 0.1
