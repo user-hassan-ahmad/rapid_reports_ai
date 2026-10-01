@@ -31,7 +31,8 @@ the history section, brief label words in the report, options stated vs offered.
 Outputs to SCRATCH/e2e_<pid>/: <set>/<dictation>.md + .json, <set>/lean_sheet.md, <set>/baseline_sheet.md,
 summary.md, summary.json, hand_read.md. ``--reuse-sheets`` reads <dir>/<set>/sheets.json, else its
 lean_sheet.md / baseline_sheet.md; a missing or empty sheet is rebuilt. ``--reuse-reports <dir>`` takes the NEW
-and BASELINE arms of each dictation from <dir>/<set>/<id>.json (no model calls for those arms). With ``--quick``,
+(and QUICK) arms of each dictation from <dir>/<set>/<id>.json (no model calls for those arms); ``--rerun new``
+runs the named arms again while the others are reused. With ``--quick``,
 negatives.md lists every negative clause stated in each report with its likely source.
 """
 from __future__ import annotations
@@ -513,7 +514,8 @@ def _examples(name: str) -> List[dict]:
 
 
 async def run_set(name: str, out: Path, sem: asyncio.Semaphore, reuse: Optional[Path],
-                  only: Optional[set] = None, reuse_reports: Optional[Path] = None, quick: bool = False) -> dict:
+                  only: Optional[set] = None, reuse_reports: Optional[Path] = None, quick: bool = False,
+                  rerun: Optional[set] = None) -> dict:
     key = json.loads((FIXTURES / name / "answer_key.json").read_text())
     dictations = [d for d in json.loads((FIXTURES / name / "dictations.json").read_text())
                   if not only or d["id"] in only]
@@ -550,23 +552,29 @@ async def run_set(name: str, out: Path, sem: asyncio.Semaphore, reuse: Optional[
         prev_rec = reuse_reports / name / f"{d['id']}.json" if reuse_reports else None
         if prev_rec and prev_rec.exists():
             old = json.loads(prev_rec.read_text())
-            for arm in ("new", "baseline"):
-                if (old.get(arm) or {}).get("report"):
+            for arm in ("new", "quick", "baseline"):
+                if arm not in (rerun or set()) and (old.get(arm) or {}).get("report"):
                     rec[arm] = {k: v for k, v in old[arm].items() if k != "score"}
                     rec[arm]["reused_from"] = str(prev_rec)
-        if quick:
+        if quick and "quick" not in rec:
             async with sem:
                 log(f"[{name}] {d['id']} quick pipeline")
                 try:
                     rec["quick"] = await asyncio.wait_for(run_quick(d), STEP_TIMEOUT_S)
                 except Exception as e:  # noqa: BLE001
                     rec["quick"] = {"error": f"{type(e).__name__}: {e}"[:500]}
-        if "new" not in rec:
+        if "new" not in rec or "baseline" not in rec:
             await run_new_and_baseline(rec, d)
         (d_out / f"{d['id']}.json").write_text(json.dumps(rec, indent=1, default=str))
         return rec
 
     async def run_new_and_baseline(rec: dict, d: dict) -> None:
+        if "new" not in rec:
+            await run_new_arm(rec, d)
+        if "baseline" not in rec:
+            await run_baseline_arm(rec, d)
+
+    async def run_new_arm(rec: dict, d: dict) -> None:
         async with sem:
             log(f"[{name}] {d['id']} new pipeline")
             if lean.get("sheet") and g.parse_sheet(lean["sheet"], mode="template").structure.usable:
@@ -577,6 +585,11 @@ async def run_set(name: str, out: Path, sem: asyncio.Semaphore, reuse: Optional[
                     log(f"!! {d['id']} new: {rec['new']['error'][:200]}")
             else:
                 rec["new"] = {"error": "lean sheet unusable"}
+        if rec["new"].get("report"):
+            rec["new"]["left"] = await contradictions_left(rec["new"]["report"], d, key, rec["new"].get("options", []),
+                                                           rec["new"].get("protected") or None)
+
+    async def run_baseline_arm(rec: dict, d: dict) -> None:
         async with sem:
             log(f"[{name}] {d['id']} baseline")
             if base.get("sheet"):
@@ -586,11 +599,7 @@ async def run_set(name: str, out: Path, sem: asyncio.Semaphore, reuse: Optional[
                     rec["baseline"] = {"error": f"{type(e).__name__}: {e}"[:500]}
             else:
                 rec["baseline"] = {"error": "baseline sheet failed"}
-        # contradictions left (one check call each, no repair)
-        if rec["new"].get("report"):
-            rec["new"]["left"] = await contradictions_left(rec["new"]["report"], d, key, rec["new"].get("options", []),
-                                                           rec["new"].get("protected") or None)
-        if rec["baseline"].get("report"):
+        if rec["baseline"].get("report"):  # contradictions left (one check call, no repair)
             rec["baseline"]["left"] = await contradictions_left(rec["baseline"]["report"], d, key, [])
 
     recs = await asyncio.gather(*(one(d) for d in dictations))
@@ -955,6 +964,7 @@ async def main() -> None:
     ap.add_argument("--only", default="", help="comma-separated dictation ids (e.g. ct_ap_acute-d1); default all")
     ap.add_argument("--reuse-reports", default="", help="a previous output dir: reuse its NEW and BASELINE reports")
     ap.add_argument("--quick", action="store_true", help="add the production quick pipeline arm (QUICK)")
+    ap.add_argument("--rerun", default="", help="with --reuse-reports: comma-separated arms to run again (new,quick,baseline)")
     ap.add_argument("--rescore", default="", help="a previous output dir: re-score and re-render, no model calls")
     a = ap.parse_args()
     from rapid_reports_ai.scripts.case_analyser_lab import _load_env  # loads backend/.env (model keys)
@@ -979,7 +989,8 @@ async def main() -> None:
         for name in sets:  # sets in sequence; within a set at most 2 model calls at once
             results.append(await run_set(name, out, sem, Path(a.reuse_sheets) if a.reuse_sheets else None,
                                          {x.strip() for x in a.only.split(",") if x.strip()} or None,
-                                         Path(a.reuse_reports) if a.reuse_reports else None, a.quick))
+                                         Path(a.reuse_reports) if a.reuse_reports else None, a.quick,
+                                         {x.strip() for x in a.rerun.split(",") if x.strip()}))
             write_outputs(results, out)
     print(out)
 
