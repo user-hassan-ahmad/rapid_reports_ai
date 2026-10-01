@@ -277,3 +277,15 @@ that replaces the `ReportEnhancementSidebar` drawer and `OptionalAdditions`.
 `feat/template-pipeline-mirror`) creates `report_review.py`, `report_reconcile.py` and
 `generation_artifacts.py`, and defines `GenerationArtifacts` with generic, ordered `sections[]`.
 `feat/review-rail` rebases onto it and reads that model; don't move the repair functions here.
+
+## Addendum (2026-10-01): "upgrade" options for the rail spec
+
+Decided while tuning the option uniqueness gate on `feat/template-pipeline-mirror` (Jev wording v2, ledger L-49):
+
+- **Gate rule:** an option is dropped only when the report already *states* it, not when it merely *implies* it. Hassan chose to keep a specific negative even when the report already calls the organ normal.
+  - Report: "The adrenal glands are unremarkable." Option: "No adrenal metastases." The option is kept, because in staging the explicit negative is the answer the referrer reads for.
+- **Today options only add in.** Impression and recommendation options are appended to the IMPRESSION (`impressionOptions.ts` `insertEdit`). Finding-negative options are hidden from the current panel (`panelOptions`) and wait for the rail. Ticking the example above would give "The adrenal glands are unremarkable. No adrenal metastases.", which is acceptable but slightly redundant.
+- **For the rail spec:** support an **upgrade** apply mode. When a finding-negative option concerns a structure the report already describes as normal, applying it rewrites that sentence instead of adding a new one:
+  - "The adrenal glands are unremarkable, with no evidence of metastatic disease."
+  - Use the existing focal-edit / revert-guard machinery (report_review protected spans, edit_allowed). The rail needs the anchor sentence, so the option payload should carry the matched report sentence, found by the conveys question or a section-scoped lookup.
+- **Grey zone:** pairs that are near-definitions, such as "ventricles normal in size" vs "No hydrocephalus". Jev scores these 0.57–0.97, so at the 0.85 drop line some still appear as options. Accepted as the safe direction; revisit only if it proves noisy.
