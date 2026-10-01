@@ -119,3 +119,9 @@ def test_lean_prompt_tightening_rules():
     assert "quote it as an exemplar in prose instead" not in p
     r = P.REPAIR_SYSTEM_PROMPT
     assert "An IF_PRESENT line is deleted" in r and "COVERS line outside a findings-role section is deleted" in r
+
+
+def test_impression_exemplars_keep_their_line_breaks():
+    from rapid_reports_ai import template_sheet_lab_prompts as P
+    text = " ".join(str(v) for k, v in vars(P).items() if isinstance(v, str))
+    assert "keeping its line breaks (each numbered or separate item on its own line" in text

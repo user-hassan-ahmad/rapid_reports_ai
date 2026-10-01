@@ -127,7 +127,7 @@ then its FIXED, NORMAL and NEGATIVE lines in the order they appear in the report
 Omit a prose line kind the examples give nothing for; never invent an exemplar. The impression section's paragraph holds its prose (opening, numbering, sentence pattern, quoted exemplars) and units only for fixed or context-dependent wording.
 
 ## Impression Construction
-Prose (### subheadings allowed): the full impression of every example quoted verbatim; sentence construction pattern; inclusion logic (which findings were promoted from the findings sections and which stayed there; the threshold); sentence grouping and count; every recommendation phrase quoted, and how recommendations are integrated; the normal-study impression quoted; restatement of measurements and grades.
+Prose (### subheadings allowed): the full impression of every example quoted verbatim, keeping its line breaks (each numbered or separate item on its own line, as the example lays it out; never joined onto one line); sentence construction pattern; inclusion logic (which findings were promoted from the findings sections and which stayed there; the threshold); sentence grouping and count; every recommendation phrase quoted, and how recommendations are integrated; the normal-study impression quoted; restatement of measurements and grades.
 
 ## Measurement and Grading
 Prose: how measurements sit in sentences (quoted), grading systems used and when, explicit numeric thresholds and the language for each tier.
