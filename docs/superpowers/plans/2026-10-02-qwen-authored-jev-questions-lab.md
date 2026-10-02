@@ -1919,6 +1919,8 @@ Expected: FAIL with `FileNotFoundError`
 
 - [ ] **Step 3: Write `wording_check.json` (48 items)**
 
+> **Execution note (2026-10-02), scoped ids:** also write `backend/test_cases/jev_tool_lab/scoped_ids.json` = `["t2d-21", …, "t2d-28"]`, and copy `context_side_ids.json` from the drafts.
+>
 > **Execution note (2026-10-02):** the fixtures were drafted, peer-reviewed and revised in the scratchpad (`jev_tool_lab/drafts/`). Steps 3–4 copy `wording_check.json` and `s1_pilot.json` from there instead of re-authoring them, plus `context_side_ids.json`, the ids scored separately in Task 12. The rules below remain the contract.
 
 **T2d (20 items, 10 true, 10 false).** The question is "does the dictation say anything about this topic?"
@@ -2003,8 +2005,12 @@ Write `$LAB_OUT/labels_review.md`. Show each item's dictation, the question (top
 
 ```bash
 cd backend && .venv/bin/python -m rapid_reports_ai.scripts.jev_tool_lab.wording_check \
-  --items test_cases/jev_tool_lab/wording_check.json --out-dir "$LAB_OUT"
+  --items test_cases/jev_tool_lab/wording_check.json --out-dir "$LAB_OUT" \
+  --group scoped=test_cases/jev_tool_lab/scoped_ids.json \
+  --group context_side=test_cases/jev_tool_lab/context_side_ids.json
 ```
+
+The finding-scoped topic items (`scoped`) and the context-side pairs are reported under their own keys, e.g. `T2d|w1|scoped`. **The `scoped` group must also pass the bars below.** It is the nearest-finding trap arm B faces in S1. If the main set passes but `scoped` fails, treat T2d as failed.
 
 Expected: a JSON report with the keys `T2d|w1`, `T2d|w2`, `T6|w1` and `T6|w2`. Each has `n: 20` plus `auc`, `brier`, `ece`, `confident_errors`, `unsure_share` and `max_drift`.
 
