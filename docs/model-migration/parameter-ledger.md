@@ -1787,3 +1787,30 @@ stated / unclear → nothing. A failed report call or an unreadable answer inser
   `repair_report` copy, not touched here). Validation: coronary B/C/D x2 and polytrauma C x3, quick-shaped stored
   reports through the fixed check: the same clauses flagged (0.64-0.76), all in `review`, report unchanged, no
   "LMP" or "No gallbladder" written.
+
+### L-50 · Qwen-authored Jev questions and "list the inputs, then decide": lab result (negative), 2026-10-02/03
+
+**References:**
+- Spec: `docs/superpowers/specs/2026-10-02-qwen-authored-jev-questions-lab-design.md`, which has the full results sections.
+- Code and fixtures: `backend/src/rapid_reports_ai/scripts/jev_tool_lab/`, `backend/test_cases/jev_tool_lab/`. Branch `feat/review-rail`.
+- Raw results: session scratchpad, `jev_tool_lab/{pilot,phase3}/`.
+
+**Question:** does Qwen do better at a gradability judgement ("is this finding gradable with system X from what was dictated?") when it hands narrow stated-text questions to Jev, or when it lists the system's inputs before deciding?
+
+**Results:**
+
+| Phase | Items | Result |
+|---|---|---|
+| Jev wording check | 48 synthetic | New wordings pass (AUC 1.0, margins ≥ 0.71, including finding-scoped topics). Chosen: T2-dictation w1, T6 w2. |
+| Pilot | 20 | Jev-as-tool **no-go**. B (Qwen plans, Jev answers, code decides) cost more than A (1.3× tokens). C's lift over A was matched by its no-Jev control (C vs Cb 1/1, 1/0). |
+| Phase 3 | 100 (50/50, 8 categories), run 2 on a 40-item subset | **No arm beats single-pass A.** Run-1 balanced accuracy: A 0.82, E1on 0.80, E2 0.78, E1off 0.765. Gains/losses vs A: E1off 7/13, E1on 3/5, E2 5/10. Stability 1.0 for every arm. |
+
+**What we learned:**
+1. **Over-demanding is the dominant failure.** All arms label gradable items "not gradable" because they require inputs the system doesn't need: false alarms 0.16 for A, 0.25–0.27 for the listing arms. Listing every input makes this worse. It helps with overcalls from silence and with neighbouring findings, but loses more on knowledge traps and complete items.
+2. **The limiting factor is Qwen's knowledge of each system's inputs, not its reading.** Jev answered stated-text questions correctly, and E1's checklists were self-consistent (1.0) and grounded (quotes found in the dictation 0.98–0.99).
+3. **Prompt wording sets the trade-off.** The "standard meaning / ordinarily dictated features" rule (Hassan's rulings) fixed A's over-demands, but invited overcalls from silence on multi-segment systems such as CAD-RADS.
+4. **Qwen structured output string-encodes nested values** (an object or a list) in some calls. Fix it with a flat schema and decode string-encoded JSON at the boundary. Retries at temperature 0 repeat the same output, so they never help.
+
+**Decision:** keep the single-call adjudicator. Jev stays a detector and verifier, not a reasoning tool.
+
+**Open lead, untested:** give the judge the system's criteria (the guideline synthesis already carries `criteria` text per classification) instead of relying on Qwen's recall. That targets failure 1 directly.

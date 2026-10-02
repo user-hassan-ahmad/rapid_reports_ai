@@ -311,3 +311,40 @@ This cuts about 30% of calls (≈ 1,000 → ≈ 700) with no loss of accuracy re
 **Latency caveat:** with 4 concurrent calls the provider sometimes queues (the pilot saw stalls of about 64 s), so p90 is reported with that caveat. Compare on p50.
 
 **Smoke test (2 items):** all arms ran with no errors, including E1off's checklist with reasoning off (the string-encoded-list decoding is in place).
+
+## Results: Phase 3 (2026-10-03): no E arm passes
+
+| | A | E1off | E1on | E2 |
+|---|---|---|---|---|
+| Run-1 balanced accuracy (n) | **0.82** (100) | 0.765 (98) | 0.80 (100) | 0.784 (97) |
+| Gains / losses vs A, run 1 · run-2 subset | – | 7/13 · 3/5 | 3/5 · 1/2 | 5/10 · 3/4 |
+| False alarms | 0.16 | 0.26 | 0.25 | 0.27 |
+| Overcall recall | 0.79 | 0.79 | 0.84 | 0.86 |
+| Stability (40-item subset) | 1.0 | 1.0 | 1.0 | 1.0 |
+| p50 latency · tokens vs A | 1.15 s · 1× | 0.49 s · 0.58× | 1.56 s · 1.47× | 4.0 s · 4.18× |
+
+**By category** (both runs pooled):
+- **Where listing helps:** silence-overcall (A 10/19 against E1off 13/19 and E2 13/17) and neighbour-carries-input (E2 20/20 against A 18/20).
+- **Where listing loses:**
+  - knowledge-trap: A 13/15 against E1off 8/13 and E2 8/15;
+  - complete-plain: A 18/19 against E1off 15/19 and E2 15/19.
+
+**Labels checked:** all 8 items that every arm got wrong were checked against the criteria, and every label holds.
+- 3 are CAD-RADS overcalls from silence.
+- 5 are over-demands: T2 for a PI-RADS PZ lesion, enhancement for a Bosniak 2019 portal-venous lesion, calcification for IIF, growth and tumour-in-vein for LR-4, and the meaning of "sol nod" in Lung-RADS.
+
+**Confound, recorded honestly:** the prompt gained the standard-meaning rule between the pilot and Phase 3.
+- On the pilot's own 20 items, A went from 16/20 to 18/20, and the listing arm from 19/20 (Cb) to 17/20 (E2).
+- On the 80 new items, which had only the new prompt, the listing arms still don't beat A (A 64/80, E1on 64/80, E2 59/77, E1off 58/78).
+- So the pilot's advantage came from small-n noise, a set rich in overcall items, and A's over-demands that the rule later fixed.
+
+**Errors:**
+- E2 failed on 3 Lung-RADS items in both runs: the provider returned 400 "Failed to generate tool_calls" in the plan stage. Counting all 3 as correct, E2 would score 62/80 on the new items, still below A.
+- E1off failed on 2 items: output retries exhausted.
+
+**Verdict:** negative. The engine keeps the single-call adjudicator (ledger L-50). The open lead is to supply the system's criteria from the guideline synthesis, rather than relying on recall.
+
+**Self-review caveats:**
+- The labels were drafted and reviewed by Claude; Hassan delegated the 80-item review.
+- The items are synthetic, and only one judge model was tested (qwen-3.8-27b).
+- The checklist prompt could be tuned ("list only inputs that decide the core category"). That would be a fix on a fix, tuned on the same set, so it is deliberately not done.
