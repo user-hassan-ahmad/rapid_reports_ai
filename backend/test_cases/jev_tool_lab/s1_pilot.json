@@ -1,0 +1,257 @@
+[
+ {
+  "id": "s1-01",
+  "origin": "synthetic",
+  "seed": "",
+  "scan_type": "US thyroid",
+  "dictation": "Thyroid normal in size. R lobe mid pole: 15 mm nodule. Entirely solid. Echogenicity lower than surrounding thyroid. Parallel orientation. Margins well circumscribed. No microcalcs, macrocalcs, rim calcification or comet tail artefact. L lobe and isthmus clear. Nodes: nil suspicious.",
+  "finding": "R lobe mid pole: 15 mm nodule.",
+  "system": "ACR TI-RADS",
+  "gradable": true,
+  "missing": []
+ },
+ {
+  "id": "s1-02",
+  "origin": "synthetic",
+  "seed": "",
+  "scan_type": "US thyroid",
+  "dictation": "Left lower pole nodule 22 x 15 x 13 mm, mixed cystic and solid, isoechoic, wider than tall, smooth margin, no echogenic foci. Right upper pole nodule 9 x 8 x 7 mm, solid, markedly hypoechoic. No cervical lymphadenopathy.",
+  "finding": "Right upper pole nodule 9 x 8 x 7 mm, solid, markedly hypoechoic.",
+  "system": "ACR TI-RADS",
+  "gradable": false,
+  "missing": [
+   "shape of the right nodule (wider- vs taller-than-wide)",
+   "margin of the right nodule",
+   "echogenic foci in the right nodule"
+  ]
+ },
+ {
+  "id": "s1-03",
+  "origin": "synthetic",
+  "seed": "8a1189af",
+  "scan_type": "CT chest",
+  "dictation": "CT thorax with contrast. Single part-solid nodule right upper lobe, 11 mm overall with a 4 mm solid component. No other pulmonary nodules. Mild paraseptal emphysema. No mediastinal or hilar lymphadenopathy. No pleural effusion.",
+  "finding": "Single part-solid nodule right upper lobe, 11 mm overall with a 4 mm solid component.",
+  "system": "Fleischner 2017",
+  "gradable": true,
+  "missing": []
+ },
+ {
+  "id": "s1-04",
+  "origin": "synthetic",
+  "seed": "8a1189af",
+  "scan_type": "CT chest",
+  "dictation": "Right upper lobe nodule 9 mm, smooth margin, no spiculation. No other pulmonary nodules. Centrilobular emphysema, upper zone predominant. No lymphadenopathy. No pleural effusion.",
+  "finding": "Right upper lobe nodule 9 mm, smooth margin, no spiculation.",
+  "system": "Fleischner 2017",
+  "gradable": false,
+  "missing": [
+   "nodule density (solid, part-solid or ground-glass)"
+  ]
+ },
+ {
+  "id": "s1-05",
+  "origin": "synthetic",
+  "seed": "d3e7786e",
+  "scan_type": "CT abdomen and pelvis",
+  "dictation": "CT abdomen and pelvis portal venous phase. 5 mm nodule at the right lung base. Liver, spleen, pancreas and adrenals unremarkable. Kidneys normal. No free fluid. No lymphadenopathy.",
+  "finding": "5 mm nodule at the right lung base.",
+  "system": "Fleischner 2017",
+  "gradable": false,
+  "missing": [
+   "nodule density (solid or subsolid)",
+   "number of nodules (lungs only partly imaged)",
+   "patient risk category (needed if solid)"
+  ]
+ },
+ {
+  "id": "s1-06",
+  "origin": "synthetic",
+  "seed": "26a9758c",
+  "scan_type": "CT coronary angiogram",
+  "dictation": "CaSc 0. R dom. LM, LAD/diags, Cx/OMs, RCA/PDA: smooth lumen throughout, nil plaque, nil luminal narrowing. Image quality good. Non-coronary: nil.",
+  "finding": "LM, LAD/diags, Cx/OMs, RCA/PDA: smooth lumen throughout, nil plaque, nil luminal narrowing.",
+  "system": "CAD-RADS 2.0",
+  "gradable": true,
+  "missing": []
+ },
+ {
+  "id": "s1-07",
+  "origin": "synthetic",
+  "seed": "6b55b637",
+  "scan_type": "CT coronary angiogram",
+  "dictation": "Calcium score 0. Left dominant. LMS normal. LAD: non-calcified plaque in the mid LAD and at the origin of D2 causing minimal stenosis (1-24%). Cx and RCA: no plaque or stenosis. Overall plaque burden mild.",
+  "finding": "LAD: non-calcified plaque in the mid LAD and at the origin of D2 causing minimal stenosis (1-24%).",
+  "system": "CAD-RADS 2.0",
+  "gradable": true,
+  "missing": []
+ },
+ {
+  "id": "s1-08",
+  "origin": "synthetic",
+  "seed": "47c0d3f5",
+  "scan_type": "CT coronary angiogram",
+  "dictation": "Calcium score 4.3. Eccentric non-calcified plaque in the proximal RCA causing minimal stenosis, approximately 24%. Small pericardial recess. Lung bases clear.",
+  "finding": "Eccentric non-calcified plaque in the proximal RCA causing minimal stenosis, approximately 24%.",
+  "system": "CAD-RADS 2.0",
+  "gradable": false,
+  "missing": [
+   "stenosis status of the LMS",
+   "stenosis status of the LAD",
+   "stenosis status of the Cx"
+  ]
+ },
+ {
+  "id": "s1-09",
+  "origin": "synthetic",
+  "seed": "0342c355",
+  "scan_type": "CT calcium score",
+  "dictation": "Non-contrast ECG-gated calcium score. Total Agatston 426: LMS 141, LAD 117, Cx 110, RCA 58. No pericardial effusion. Lung bases clear.",
+  "finding": "Total Agatston 426: LMS 141, LAD 117, Cx 110, RCA 58.",
+  "system": "CAC-DRS",
+  "gradable": true,
+  "missing": []
+ },
+ {
+  "id": "s1-10",
+  "origin": "synthetic",
+  "seed": "522181ec",
+  "scan_type": "CT TAVI",
+  "dictation": "CT TAVI planning. Tricuspid aortic valve with severe aortic valve calcification. Annulus perimeter 76 mm, area 4.4 cm2. Severe coronary artery calcification. Iliofemoral access adequate, minimum diameter 6.8 mm on the right.",
+  "finding": "Tricuspid aortic valve with severe aortic valve calcification.",
+  "system": "ACC/AHA aortic stenosis severity",
+  "gradable": false,
+  "missing": [
+   "aortic valve area",
+   "mean transvalvular gradient",
+   "peak aortic jet velocity"
+  ]
+ },
+ {
+  "id": "s1-11",
+  "origin": "synthetic",
+  "seed": "",
+  "scan_type": "US pelvis",
+  "dictation": "TV US. Post-menopausal. Uterus 7.6 cm, ET 4 mm. LO: 3.8 cm cyst. Unilocular. Thin smooth wall. Anechoic, nil solid elements. CS 1. RO not visualised. No FF.",
+  "finding": "LO: 3.8 cm cyst.",
+  "system": "O-RADS US",
+  "gradable": true,
+  "missing": []
+ },
+ {
+  "id": "s1-12",
+  "origin": "synthetic",
+  "seed": "2f5304f8",
+  "scan_type": "US pelvis",
+  "dictation": "Uterus normal size, endometrium 7 mm. Right ovary contains a 5.2 x 4.0 cm cyst. Left ovary 2.8 x 1.9 cm, normal. Small amount of free fluid.",
+  "finding": "Right ovary contains a 5.2 x 4.0 cm cyst.",
+  "system": "O-RADS US",
+  "gradable": false,
+  "missing": [
+   "locularity",
+   "inner wall smoothness",
+   "solid component",
+   "echo content",
+   "colour score",
+   "menopausal status"
+  ]
+ },
+ {
+  "id": "s1-13",
+  "origin": "synthetic",
+  "seed": "",
+  "scan_type": "US pelvis",
+  "dictation": "Left ovary: multilocular cyst 6.3 cm with smooth inner walls, no solid component. Right ovary: unilocular cyst 3.4 cm with a 7 mm papillary projection, colour score 3. Uterus unremarkable.",
+  "finding": "Left ovary: multilocular cyst 6.3 cm with smooth inner walls, no solid component.",
+  "system": "O-RADS US",
+  "gradable": false,
+  "missing": [
+   "colour score of the left cyst"
+  ]
+ },
+ {
+  "id": "s1-14",
+  "origin": "synthetic",
+  "seed": "",
+  "scan_type": "CT liver multiphase",
+  "dictation": "Cirrhosis (HCV). Seg 6: 26 mm obs. APHE, non-rim. WO on PVP, nonperipheral. EC present. No TIV, PV patent. Spleen 15 cm.",
+  "finding": "Seg 6: 26 mm obs.",
+  "system": "LI-RADS v2018",
+  "gradable": true,
+  "missing": []
+ },
+ {
+  "id": "s1-15",
+  "origin": "synthetic",
+  "seed": "",
+  "scan_type": "CT liver multiphase",
+  "dictation": "Cirrhosis. Segment 8 observation 22 mm with washout and capsule on the portal venous phase. No other observation. Portal vein patent. Moderate splenomegaly.",
+  "finding": "Segment 8 observation 22 mm with washout and capsule on the portal venous phase.",
+  "system": "LI-RADS v2018",
+  "gradable": false,
+  "missing": [
+   "arterial phase hyperenhancement"
+  ]
+ },
+ {
+  "id": "s1-16",
+  "origin": "synthetic",
+  "seed": "",
+  "scan_type": "X-ray knee",
+  "dictation": "Right knee AP and lateral weight-bearing. Moderate medial tibiofemoral joint space narrowing. Definite marginal osteophytes at the medial femoral condyle and tibial plateau. Subchondral sclerosis medial compartment. No bone end deformity. Lateral compartment and patellofemoral joint preserved. Small effusion.",
+  "finding": "Moderate medial tibiofemoral joint space narrowing. Definite marginal osteophytes at the medial femoral condyle and tibial plateau.",
+  "system": "Kellgren-Lawrence",
+  "gradable": true,
+  "missing": []
+ },
+ {
+  "id": "s1-17",
+  "origin": "synthetic",
+  "seed": "4f5ecec4",
+  "scan_type": "X-ray knee",
+  "dictation": "Left knee AP. Medial joint space narrowing. Small suprapatellar effusion. No fracture. Vascular calcification.",
+  "finding": "Medial joint space narrowing.",
+  "system": "Kellgren-Lawrence",
+  "gradable": false,
+  "missing": [
+   "osteophytes",
+   "degree of joint space narrowing"
+  ]
+ },
+ {
+  "id": "s1-18",
+  "origin": "synthetic",
+  "seed": "",
+  "scan_type": "CT abdomen trauma",
+  "dictation": "Trauma CT. Splenic laceration 4 cm in depth through the lower pole, not involving the hilar vessels. Subcapsular haematoma less than 10% of the surface area. No active contrast extravasation, no pseudoaneurysm. Liver intact. Moderate haemoperitoneum.",
+  "finding": "Splenic laceration 4 cm in depth through the lower pole, not involving the hilar vessels.",
+  "system": "AAST 2018 spleen",
+  "gradable": true,
+  "missing": []
+ },
+ {
+  "id": "s1-19",
+  "origin": "synthetic",
+  "seed": "173b1087",
+  "scan_type": "CT abdomen trauma",
+  "dictation": "Trauma CT. Segment 6 hepatic laceration with surrounding haematoma. Splenic laceration 2.5 cm deep, upper pole. No active extravasation in either organ. Small haemoperitoneum. Kidneys intact.",
+  "finding": "Segment 6 hepatic laceration with surrounding haematoma.",
+  "system": "AAST 2018 liver",
+  "gradable": false,
+  "missing": [
+   "depth of the hepatic laceration",
+   "extent of the hepatic haematoma (subcapsular % or intraparenchymal size)"
+  ]
+ },
+ {
+  "id": "s1-20",
+  "origin": "synthetic",
+  "seed": "",
+  "scan_type": "CT renal mass protocol",
+  "dictation": "Left upper pole cystic mass 4.1 cm with a thin smooth wall and two thin septa, no measurable enhancement (unenhanced 10 HU, nephrographic 13 HU). No nodularity or calcification. Right kidney simple cyst 1.2 cm. No hydronephrosis.",
+  "finding": "Left upper pole cystic mass 4.1 cm with a thin smooth wall and two thin septa, no measurable enhancement (unenhanced 10 HU, nephrographic 13 HU).",
+  "system": "Bosniak 2019",
+  "gradable": true,
+  "missing": []
+ }
+]

@@ -1,0 +1,406 @@
+[
+ {
+  "id": "t2d-01",
+  "kind": "T2d",
+  "scan_type": "CT abdomen and pelvis",
+  "dictation": "Liver normal size and attenuation. No focal liver lesion. Gallbladder contains a 12 mm calculus, no wall thickening. CBD 5 mm. Pancreas and spleen unremarkable. Kidneys normal.",
+  "topic": "gallbladder wall thickening",
+  "label": true
+ },
+ {
+  "id": "t2d-02",
+  "kind": "T2d",
+  "scan_type": "CT abdomen and pelvis",
+  "dictation": "Liver normal size and attenuation. No focal liver lesion. Gallbladder contains a 12 mm calculus, no wall thickening. CBD 5 mm. Pancreas and spleen unremarkable. Kidneys normal.",
+  "topic": "gallbladder distension",
+  "label": false
+ },
+ {
+  "id": "t2d-03",
+  "kind": "T2d",
+  "scan_type": "CT abdomen and pelvis",
+  "dictation": "Liver normal size and attenuation. No focal liver lesion. Gallbladder contains a 12 mm calculus, no wall thickening. CBD 5 mm. Pancreas and spleen unremarkable. Kidneys normal.",
+  "topic": "common bile duct",
+  "label": true
+ },
+ {
+  "id": "t2d-04",
+  "kind": "T2d",
+  "scan_type": "MRI knee",
+  "dictation": "Complex tear posterior horn medial meniscus. Lateral meniscus intact. Cruciates intact. Grade 2 MCL sprain. Moderate joint effusion. Partial thickness chondral loss medial femoral condyle.",
+  "topic": "medial collateral ligament",
+  "label": true
+ },
+ {
+  "id": "t2d-05",
+  "kind": "T2d",
+  "scan_type": "MRI knee",
+  "dictation": "Complex tear posterior horn medial meniscus. Lateral meniscus intact. Cruciates intact. Grade 2 MCL sprain. Moderate joint effusion. Partial thickness chondral loss medial femoral condyle.",
+  "topic": "patellar cartilage",
+  "label": false
+ },
+ {
+  "id": "t2d-06",
+  "kind": "T2d",
+  "scan_type": "US thyroid",
+  "dictation": "Right lobe 5.1 x 1.8 x 1.7 cm. Left lobe 4.6 x 1.5 x 1.4 cm. Right lower pole nodule 14 x 10 x 9 mm, solid, hypoechoic, wider than tall, smooth margin, no echogenic foci. Left lobe homogeneous. No cervical lymphadenopathy.",
+  "topic": "echogenic foci in the nodule",
+  "label": true
+ },
+ {
+  "id": "t2d-07",
+  "kind": "T2d",
+  "scan_type": "US thyroid",
+  "dictation": "Right lobe 5.1 x 1.8 x 1.7 cm. Left lobe 4.6 x 1.5 x 1.4 cm. Right lower pole nodule 14 x 10 x 9 mm, solid, hypoechoic, wider than tall, smooth margin, no echogenic foci. Left lobe homogeneous. No cervical lymphadenopathy.",
+  "topic": "vascularity of the thyroid nodule",
+  "label": false
+ },
+ {
+  "id": "t2d-08",
+  "kind": "T2d",
+  "scan_type": "CT chest",
+  "dictation": "Spiculated right upper lobe mass 3.4 cm abutting the pleura. Right hilar node 15 mm short axis. Small right pleural effusion. Mild centrilobular emphysema. No left lung nodule.",
+  "topic": "pleural fluid",
+  "label": true
+ },
+ {
+  "id": "t2d-09",
+  "kind": "T2d",
+  "scan_type": "CT chest",
+  "dictation": "Spiculated right upper lobe mass 3.4 cm abutting the pleura. Right hilar node 15 mm short axis. Small right pleural effusion. Mild centrilobular emphysema. No left lung nodule.",
+  "topic": "mediastinal lymph nodes",
+  "label": false
+ },
+ {
+  "id": "t2d-10",
+  "kind": "T2d",
+  "scan_type": "MRI brain",
+  "dictation": "Single 8 mm focus of T2/FLAIR hyperintensity in the left frontal white matter, nonspecific. No restricted diffusion. Ventricles and sulci appropriate for age. No haemorrhage. Normal flow voids.",
+  "topic": "diffusion restriction",
+  "label": true
+ },
+ {
+  "id": "t2d-11",
+  "kind": "T2d",
+  "scan_type": "MRI brain",
+  "dictation": "Single 8 mm focus of T2/FLAIR hyperintensity in the left frontal white matter, nonspecific. No restricted diffusion. Ventricles and sulci appropriate for age. No haemorrhage. Normal flow voids.",
+  "topic": "enhancement of the white matter focus",
+  "label": false
+ },
+ {
+  "id": "t2d-12",
+  "kind": "T2d",
+  "scan_type": "US pelvis",
+  "dictation": "Uterus anteverted, 8.2 x 4.1 x 5.0 cm. Endometrium 6 mm. Right ovary 3.1 x 2.0 cm. Left ovary contains a 4.2 cm unilocular anechoic cyst with a smooth wall. Small volume free fluid in the pouch of Douglas.",
+  "topic": "endometrial thickness",
+  "label": true
+ },
+ {
+  "id": "t2d-13",
+  "kind": "T2d",
+  "scan_type": "US pelvis",
+  "dictation": "Uterus anteverted, 8.2 x 4.1 x 5.0 cm. Endometrium 6 mm. Right ovary 3.1 x 2.0 cm. Left ovary contains a 4.2 cm unilocular anechoic cyst with a smooth wall. Small volume free fluid in the pouch of Douglas.",
+  "topic": "blood flow in the ovarian cyst",
+  "label": false
+ },
+ {
+  "id": "t2d-14",
+  "kind": "T2d",
+  "scan_type": "US pelvis",
+  "dictation": "Uterus anteverted, 8.2 x 4.1 x 5.0 cm. Endometrium 6 mm. Right ovary 3.1 x 2.0 cm. Left ovary contains a 4.2 cm unilocular anechoic cyst with a smooth wall. Small volume free fluid in the pouch of Douglas.",
+  "topic": "right ovarian follicles",
+  "label": false
+ },
+ {
+  "id": "t2d-15",
+  "kind": "T2d",
+  "scan_type": "CT coronary angiogram",
+  "dictation": "Calcium score 0. Right dominant. LMS normal. LAD: non-calcified plaque proximal LAD with mild stenosis 25-49%. Cx and RCA normal. Lung bases clear.",
+  "topic": "coronary artery calcium",
+  "label": true
+ },
+ {
+  "id": "t2d-16",
+  "kind": "T2d",
+  "scan_type": "CT coronary angiogram",
+  "dictation": "Calcium score 0. Right dominant. LMS normal. LAD: non-calcified plaque proximal LAD with mild stenosis 25-49%. Cx and RCA normal. Lung bases clear.",
+  "topic": "left ventricular myocardium",
+  "label": false
+ },
+ {
+  "id": "t2d-17",
+  "kind": "T2d",
+  "scan_type": "X-ray chest",
+  "dictation": "Heart size within normal limits. Lungs clear. No pneumothorax. Right costophrenic angle blunted. Old healed left 7th rib fracture.",
+  "topic": "cardiac size",
+  "label": true
+ },
+ {
+  "id": "t2d-18",
+  "kind": "T2d",
+  "scan_type": "X-ray chest",
+  "dictation": "Heart size within normal limits. Lungs clear. No pneumothorax. Right costophrenic angle blunted. Old healed left 7th rib fracture.",
+  "topic": "mediastinal contour",
+  "label": false
+ },
+ {
+  "id": "t2d-19",
+  "kind": "T2d",
+  "scan_type": "MRI lumbar spine",
+  "dictation": "L4/5 broad-based disc bulge with mild bilateral foraminal narrowing. L5/S1 left paracentral disc protrusion contacting the descending left S1 nerve root. Conus terminates at L1. Vertebral body heights maintained.",
+  "topic": "central canal stenosis",
+  "label": false
+ },
+ {
+  "id": "t2d-20",
+  "kind": "T2d",
+  "scan_type": "MRI lumbar spine",
+  "dictation": "L4/5 broad-based disc bulge with mild bilateral foraminal narrowing. L5/S1 left paracentral disc protrusion contacting the descending left S1 nerve root. Conus terminates at L1. Vertebral body heights maintained.",
+  "topic": "vertebral body height",
+  "label": true
+ },
+ {
+  "id": "t2d-21",
+  "kind": "T2d",
+  "scan_type": "US pelvis",
+  "dictation": "Left ovary: multilocular cyst 5.8 cm, smooth inner walls, no solid component. Right ovary: unilocular cyst 3.2 cm, colour score 2. Uterus normal.",
+  "topic": "colour score of the left cyst",
+  "label": false
+ },
+ {
+  "id": "t2d-22",
+  "kind": "T2d",
+  "scan_type": "US pelvis",
+  "dictation": "Left ovary: multilocular cyst 5.8 cm, smooth inner walls, no solid component, colour score 1. Right ovary: unilocular cyst 3.2 cm, colour score 2. Uterus normal.",
+  "topic": "colour score of the left cyst",
+  "label": true
+ },
+ {
+  "id": "t2d-23",
+  "kind": "T2d",
+  "scan_type": "CT abdomen trauma",
+  "dictation": "Trauma CT. Segment 6 hepatic laceration with perihepatic haematoma. Splenic laceration 2.5 cm deep, upper pole. No active extravasation. Small haemoperitoneum.",
+  "topic": "depth of the liver laceration",
+  "label": false
+ },
+ {
+  "id": "t2d-24",
+  "kind": "T2d",
+  "scan_type": "CT abdomen trauma",
+  "dictation": "Trauma CT. Segment 6 hepatic laceration 2 cm deep with perihepatic haematoma. Splenic laceration 2.5 cm deep, upper pole. No active extravasation. Small haemoperitoneum.",
+  "topic": "depth of the liver laceration",
+  "label": true
+ },
+ {
+  "id": "t2d-25",
+  "kind": "T2d",
+  "scan_type": "US thyroid",
+  "dictation": "Left lower pole nodule 18 mm, solid, isoechoic, smooth margin. Right upper pole nodule 9 mm, solid, markedly hypoechoic. No cervical lymphadenopathy.",
+  "topic": "margin of the right nodule",
+  "label": false
+ },
+ {
+  "id": "t2d-26",
+  "kind": "T2d",
+  "scan_type": "US thyroid",
+  "dictation": "Left lower pole nodule 18 mm, solid, isoechoic, smooth margin. Right upper pole nodule 9 mm, solid, markedly hypoechoic, lobulated margin. No cervical lymphadenopathy.",
+  "topic": "margin of the right nodule",
+  "label": true
+ },
+ {
+  "id": "t2d-27",
+  "kind": "T2d",
+  "scan_type": "CT chest",
+  "dictation": "Right upper lobe part-solid nodule 12 mm, solid component 5 mm. Left lower lobe nodule 6 mm, stable. No consolidation or effusion.",
+  "topic": "density of the left nodule",
+  "label": false
+ },
+ {
+  "id": "t2d-28",
+  "kind": "T2d",
+  "scan_type": "CT chest",
+  "dictation": "Right upper lobe part-solid nodule 12 mm, solid component 5 mm. Left lower lobe ground-glass nodule 6 mm, stable. No consolidation or effusion.",
+  "topic": "density of the left nodule",
+  "label": true
+ },
+ {
+  "id": "t6-01",
+  "kind": "T6",
+  "scan_type": "MRI knee",
+  "dictation": "Complete tear of the anterior cruciate ligament. Grade 1 MCL sprain. Lateral femoral condyle bone bruise in keeping with pivot shift. Menisci intact. Summary: ACL rupture.",
+  "a": "Complete tear of the anterior cruciate ligament",
+  "b": "ACL rupture",
+  "label": true
+ },
+ {
+  "id": "t6-02",
+  "kind": "T6",
+  "scan_type": "MRI knee",
+  "dictation": "Oblique tear of the posterior horn of the medial meniscus. Separate radial tear of the anterior horn of the medial meniscus. Lateral meniscus intact. ACL and PCL intact. Small effusion.",
+  "a": "Oblique tear of the posterior horn of the medial meniscus",
+  "b": "radial tear of the anterior horn of the medial meniscus",
+  "label": false
+ },
+ {
+  "id": "t6-03",
+  "kind": "T6",
+  "scan_type": "CT chest",
+  "dictation": "8 mm solid nodule right upper lobe. 5 mm solid nodule left upper lobe, new since prior. No consolidation. Right upper lobe nodule stable since prior.",
+  "a": "8 mm solid nodule right upper lobe",
+  "b": "Right upper lobe nodule stable since prior",
+  "label": true
+ },
+ {
+  "id": "t6-04",
+  "kind": "T6",
+  "scan_type": "CT chest",
+  "dictation": "8 mm solid nodule right upper lobe. 5 mm solid nodule left upper lobe, new since prior. No consolidation. Right upper lobe nodule stable since prior.",
+  "a": "5 mm solid nodule left upper lobe",
+  "b": "Right upper lobe nodule stable since prior",
+  "label": false
+ },
+ {
+  "id": "t6-05",
+  "kind": "T6",
+  "scan_type": "MRI lumbar spine",
+  "dictation": "L4/5 left paracentral disc protrusion compressing the traversing left L5 nerve root. L5/S1 left paracentral disc protrusion, no nerve root compression. Conus normal. Conclusion: L4/5 disc protrusion with left L5 root compression.",
+  "a": "L4/5 left paracentral disc protrusion compressing the traversing left L5 nerve root",
+  "b": "L4/5 disc protrusion with left L5 root compression",
+  "label": true
+ },
+ {
+  "id": "t6-06",
+  "kind": "T6",
+  "scan_type": "MRI lumbar spine",
+  "dictation": "L4/5 left paracentral disc protrusion compressing the traversing left L5 nerve root. L5/S1 left paracentral disc protrusion, no nerve root compression. Conus normal. Conclusion: L4/5 disc protrusion with left L5 root compression.",
+  "a": "L5/S1 left paracentral disc protrusion",
+  "b": "L4/5 disc protrusion with left L5 root compression",
+  "label": false
+ },
+ {
+  "id": "t6-07",
+  "kind": "T6",
+  "scan_type": "CT abdomen",
+  "dictation": "Right kidney: 18 mm hyperdense lesion upper pole, 62 HU unenhanced, 110 HU nephrographic. Left kidney: 15 mm simple cyst lower pole. No hydronephrosis. Impression: enhancing right upper pole renal mass, suspicious for RCC.",
+  "a": "18 mm hyperdense lesion upper pole",
+  "b": "enhancing right upper pole renal mass",
+  "label": true
+ },
+ {
+  "id": "t6-08",
+  "kind": "T6",
+  "scan_type": "CT abdomen",
+  "dictation": "Right kidney: 18 mm hyperdense lesion upper pole, 62 HU unenhanced, 110 HU nephrographic. Left kidney: 15 mm simple cyst lower pole. No hydronephrosis. Impression: enhancing right upper pole renal mass, suspicious for RCC.",
+  "a": "15 mm simple cyst lower pole",
+  "b": "enhancing right upper pole renal mass",
+  "label": false
+ },
+ {
+  "id": "t6-09",
+  "kind": "T6",
+  "scan_type": "US thyroid",
+  "dictation": "Right lobe: 12 mm solid hypoechoic nodule with microcalcifications. Right lobe also contains a 6 mm spongiform nodule. Left lobe normal. The microcalcified right nodule is the dominant lesion.",
+  "a": "12 mm solid hypoechoic nodule with microcalcifications",
+  "b": "The microcalcified right nodule",
+  "label": true
+ },
+ {
+  "id": "t6-10",
+  "kind": "T6",
+  "scan_type": "US thyroid",
+  "dictation": "Right lobe: 12 mm solid hypoechoic nodule with microcalcifications. Right lobe also contains a 6 mm spongiform nodule. Left lobe normal. The microcalcified right nodule is the dominant lesion.",
+  "a": "6 mm spongiform nodule",
+  "b": "The microcalcified right nodule",
+  "label": false
+ },
+ {
+  "id": "t6-11",
+  "kind": "T6",
+  "scan_type": "CT liver multiphase",
+  "dictation": "Cirrhotic liver. Segment 7 arterially enhancing lesion 2.1 cm with portal venous washout. Segment 4 subcentimetre hypodensity, too small to characterise. Patent portal vein. The segment 7 observation is suspicious for HCC.",
+  "a": "Segment 7 arterially enhancing lesion",
+  "b": "The segment 7 observation",
+  "label": true
+ },
+ {
+  "id": "t6-12",
+  "kind": "T6",
+  "scan_type": "CT liver multiphase",
+  "dictation": "Cirrhotic liver. Segment 7 arterially enhancing lesion 2.1 cm with portal venous washout. Segment 4 subcentimetre hypodensity, too small to characterise. Patent portal vein. The segment 7 observation is suspicious for HCC.",
+  "a": "Segment 4 subcentimetre hypodensity",
+  "b": "The segment 7 observation",
+  "label": false
+ },
+ {
+  "id": "t6-13",
+  "kind": "T6",
+  "scan_type": "MRI brain",
+  "dictation": "Acute infarct left caudate head. Chronic infarct right caudate head. Moderate small vessel change. The left caudate infarct shows restricted diffusion. No haemorrhage.",
+  "a": "Acute infarct left caudate head",
+  "b": "The left caudate infarct",
+  "label": true
+ },
+ {
+  "id": "t6-14",
+  "kind": "T6",
+  "scan_type": "MRI brain",
+  "dictation": "Acute infarct left caudate head. Chronic infarct right caudate head. Moderate small vessel change. The left caudate infarct shows restricted diffusion. No haemorrhage.",
+  "a": "Acute infarct left caudate head",
+  "b": "Chronic infarct right caudate head",
+  "label": false
+ },
+ {
+  "id": "t6-15",
+  "kind": "T6",
+  "scan_type": "US pelvis",
+  "dictation": "Uterus normal. Left ovary: 4 cm unilocular cyst with thin wall, anechoic. Right ovary: 3 cm haemorrhagic cyst with reticular pattern. The left adnexal cyst is simple.",
+  "a": "4 cm unilocular cyst with thin wall",
+  "b": "The left adnexal cyst",
+  "label": true
+ },
+ {
+  "id": "t6-16",
+  "kind": "T6",
+  "scan_type": "US pelvis",
+  "dictation": "Uterus normal. Left ovary: 4 cm unilocular cyst with thin wall, anechoic. Right ovary: 3 cm haemorrhagic cyst with reticular pattern. The left adnexal cyst is simple.",
+  "a": "3 cm haemorrhagic cyst with reticular pattern",
+  "b": "The left adnexal cyst",
+  "label": false
+ },
+ {
+  "id": "t6-17",
+  "kind": "T6",
+  "scan_type": "CT spine",
+  "dictation": "Wedge compression fracture T12 with 30% anterior height loss. Endplate fracture L1 without height loss. Posterior elements intact. T12 fracture has no retropulsion.",
+  "a": "Wedge compression fracture T12",
+  "b": "T12 fracture has no retropulsion",
+  "label": true
+ },
+ {
+  "id": "t6-18",
+  "kind": "T6",
+  "scan_type": "CT spine",
+  "dictation": "Wedge compression fracture T12 with 30% anterior height loss. Endplate fracture L1 without height loss. Posterior elements intact. T12 fracture has no retropulsion.",
+  "a": "Endplate fracture L1",
+  "b": "T12 fracture has no retropulsion",
+  "label": false
+ },
+ {
+  "id": "t6-19",
+  "kind": "T6",
+  "scan_type": "CT coronary angiogram",
+  "dictation": "Calcium score 212. Proximal LAD mixed plaque with moderate stenosis 50-69%. Mid RCA calcified plaque with minimal stenosis. Cx normal. The LAD lesion is the most significant.",
+  "a": "Proximal LAD mixed plaque",
+  "b": "The LAD lesion",
+  "label": true
+ },
+ {
+  "id": "t6-20",
+  "kind": "T6",
+  "scan_type": "CT coronary angiogram",
+  "dictation": "Calcium score 188. Proximal LAD mixed plaque with moderate stenosis 50-69%. Mid LAD calcified plaque with minimal stenosis. Cx and RCA normal. The proximal LAD lesion is the most significant.",
+  "a": "Mid LAD calcified plaque",
+  "b": "The proximal LAD lesion",
+  "label": false
+ }
+]

@@ -99,3 +99,39 @@ def test_wording_report_groups_are_split_out():
     rep = wc.report(rows, groups={"scoped": {"s1", "s2"}})
     assert rep["T2d|w1"]["n"] == 2 and rep["T2d|w1"]["confident_errors"] == 0      # main set excludes the group
     assert rep["T2d|w1|scoped"]["n"] == 2 and rep["T2d|w1|scoped"]["confident_errors"] == 1
+
+
+import json as _json
+from pathlib import Path as _Path
+
+from rapid_reports_ai.scripts.jev_tool_lab.catalogue import Case, QuestionSpec, validate
+
+_FIX = _Path(__file__).resolve().parents[1] / "test_cases" / "jev_tool_lab"
+
+
+def test_wording_fixture_shape():
+    items = [wc.CheckItem(**x) for x in _json.loads((_FIX / "wording_check.json").read_text())]
+    for kind, n in (("T2d", 28), ("T6", 20)):            # T2d includes 8 finding-scoped items (peer review)
+        k = [i for i in items if i.kind == kind]
+        assert len(k) == n and sum(i.label for i in k) == n // 2
+    for i in items:
+        spec = (QuestionSpec(id=i.id, type="T2", source="dictation", topic=i.topic) if i.kind == "T2d"
+                else QuestionSpec(id=i.id, type="T6", source="dictation", a=i.a, b=i.b))
+        assert validate(spec, Case(dictation=i.dictation)) is None, i.id
+
+
+def test_s1_fixture_shape():
+    items = [S1Item(**x) for x in _json.loads((_FIX / "s1_pilot.json").read_text())]
+    assert len(items) == 20 and sum(i.gradable for i in items) == 10
+    assert len({i.system for i in items}) >= 5 and len({i.scan_type for i in items}) >= 4
+    for i in items:
+        assert i.finding in i.dictation, i.id
+        assert i.gradable == (not i.missing), i.id
+
+
+def test_group_id_files_name_real_items():
+    ids = {x["id"] for x in _json.loads((_FIX / "wording_check.json").read_text())}
+    scoped = _json.loads((_FIX / "scoped_ids.json").read_text())
+    side = _json.loads((_FIX / "context_side_ids.json").read_text())
+    assert scoped == [f"t2d-{n}" for n in range(21, 29)] and set(scoped) <= ids
+    assert set(side) <= ids and side
