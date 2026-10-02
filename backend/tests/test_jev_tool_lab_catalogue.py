@@ -56,3 +56,47 @@ def test_t6_spans_verbatim():
 def test_empty_source_text_rejected():
     case = Case(dictation="Normal study.")
     assert validate(q(type="T2", source="report", section="FINDINGS", topic="septa"), case) == "source text is empty"
+from rapid_reports_ai.report_review import Q_CONTRA
+from rapid_reports_ai.scripts.jev_tool_lab.catalogue import CANT_TELL, WORDINGS, render, state_for
+
+
+def test_render_t1_quotes_item_and_names_source():
+    out = render(q(type="T1", source="dictation", item="thin septa"))
+    assert out["type"] == "noul"
+    assert '"thin septa"' in out["instructions"]
+    assert out["instructions"].startswith("Read only this one quoted text:")
+    assert "The dictated findings themselves state" in out["instructions"]
+    assert set(out["criteria"]) == {"true", "false"}
+
+
+def test_render_t2_report_uses_probe_wording():
+    out = render(q(type="T2", source="report", section="FINDINGS", topic="ascites"))
+    assert out == {"type": "noul", "instructions": "Does the FINDINGS section of the report say whether there is ascites?"}
+
+
+def test_render_t2_dictation_uses_chosen_wording():
+    out = render(q(type="T2", source="dictation", topic="septal thickness"), wording="w2")
+    assert out["instructions"] == WORDINGS["T2d"]["w2"]["instructions"].format(topic="septal thickness")
+    assert "septal thickness" in out["criteria"]["true"]
+
+
+def test_render_t3_is_production_contradiction():
+    out = render(q(type="T3", clause="Left renal cyst 3 cm with thin septa."))
+    assert out == {"type": "noul", "instructions": Q_CONTRA + "Left renal cyst 3 cm with thin septa."}
+
+
+def test_render_t4_appends_cant_tell():
+    out = render(q(type="T4", source="dictation", item="two thin septa", options=["thin septa", "thick septa"]))
+    assert out["type"] == "choice"
+    assert list(out["criteria"]) == ["o1", "o2", CANT_TELL]
+
+
+def test_render_t5_and_t6():
+    assert render(q(type="T5", item="No enhancement.", property="abnormal"))["instructions"] == \
+        'The quoted text "No enhancement." itself reports an abnormality or a limitation, including as a possibility.'
+    t6 = render(q(type="T6", a="lesion", b="cyst"))
+    assert '"lesion"' in t6["instructions"] and '"cyst"' in t6["instructions"]
+
+
+def test_state_for_dictation_matches_production_state():
+    assert state_for(CASE, "dictation").startswith("SCAN TYPE: CT abdomen\nDICTATED FINDINGS:\n")

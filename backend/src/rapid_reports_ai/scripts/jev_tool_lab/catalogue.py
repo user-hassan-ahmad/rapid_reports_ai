@@ -161,3 +161,41 @@ def validate(spec: QuestionSpec, case: Case) -> Optional[str]:
         if not (_quoted_in(spec.a, *texts) and _quoted_in(spec.b, *texts)):
             return "span not verbatim"
     return None
+
+
+def _from_wording(kind: str, wording: Optional[str], **slots) -> dict:
+    w = WORDINGS[kind][wording or DEFAULT_WORDING[kind]]
+    return {"type": "noul", "instructions": w["instructions"].format(**slots),
+            "criteria": {k: v.format(**slots) for k, v in w["criteria"].items()}}
+
+
+def render(spec: QuestionSpec, wording: Optional[str] = None) -> dict:
+    """The Jev question JSON for a validated spec. `wording` overrides DEFAULT_WORDING for T2-dictation and T6."""
+    t = spec.type
+    if t == "T1":
+        return {"type": "noul",
+                "instructions": f'Read only this one quoted text: "{spec.item}". {SUBJECT[spec.source]} what it says, '
+                                "in any wording, abbreviation or synonym, or spread over more than one sentence, "
+                                "including as a possibility (not merely implied or inferable).",
+                "criteria": {"true": "It is stated there, in any wording (synonym, abbreviation or a more specific "
+                                     "form), as present or possible.",
+                             "false": "It is not mentioned there, is stated as absent or normal, or only something "
+                                      "different that shares some words with it is stated."}}
+    if t == "T2":
+        if spec.source == "report":
+            return {"type": "noul",
+                    "instructions": f"Does the {spec.section} section of the report say whether there is {spec.topic}?"}
+        return _from_wording("T2d", wording, topic=spec.topic)
+    if t == "T3":
+        return {"type": "noul", "instructions": Q_CONTRA + spec.clause}
+    if t == "T4":
+        name = SOURCE_NAME[spec.source]
+        criteria = {f"o{i + 1}": o for i, o in enumerate(spec.options)}
+        criteria[CANT_TELL] = "It is not possible to tell from this text which description fits."
+        return {"type": "choice",
+                "instructions": f'Read only this one quoted text: "{spec.item}". Using only the {name}, choose the '
+                                "description that fits it.",
+                "criteria": criteria}
+    if t == "T5":
+        return {"type": "noul", "instructions": f'The quoted text "{spec.item}" itself {PROPERTIES[spec.property]}.'}
+    return _from_wording("T6", wording, a=spec.a, b=spec.b)
