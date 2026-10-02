@@ -2,9 +2,10 @@
 """Scenario S1, grade grounding (spec §4): is the finding gradable with the named system from what was dictated?"""
 from __future__ import annotations
 
-from typing import List, Literal
+import json
+from typing import Any, List, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from .catalogue import Case
 
@@ -48,3 +49,32 @@ def s1_user(item: S1Item) -> str:
             f"FINDING (identifies which finding; its description may continue elsewhere in the dictation): "
             f"{item.finding}\nCLASSIFICATION SYSTEM: {item.system}\n"
             "AVAILABLE TEXTS: the dictation only (there is no report and no clinical history).")
+
+
+def _loads_if_str(v: Any) -> Any:
+    """Qwen sometimes JSON-encodes a nested list as a string inside a tool call (pilot, 2026-10-02)."""
+    if isinstance(v, str):
+        try:
+            return json.loads(v)
+        except ValueError:
+            return v
+    return v
+
+
+class InputCheck(BaseModel):
+    input: str
+    stated: bool
+    quote: str = ""          # the dictation's own words stating it; empty when not stated
+
+
+class Checklist(BaseModel):
+    """Arm E1's one-call output: the system's inputs checked one by one, then the verdict."""
+    inputs: List[InputCheck]
+    gradable: bool
+    missing: List[str] = []
+    reason: str = ""
+
+    @field_validator("inputs", "missing", mode="before")
+    @classmethod
+    def _decode(cls, v: Any) -> Any:
+        return _loads_if_str(v)

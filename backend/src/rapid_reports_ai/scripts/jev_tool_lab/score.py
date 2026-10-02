@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .arms import ArmResult
+from .catalogue import _quoted_in
 from .scenarios import S1Item
 
 
@@ -138,6 +139,13 @@ def summarise(rows: List[ArmResult], items: Dict[str, S1Item]) -> Dict[str, dict
             asked = sum(len((r.plan or {}).get("questions", [])) for r in rs)
             linted = sum(len({e.split(":")[0] for e in r.lint if not e.startswith("rule:")}) for r in rs)
             s["lint_share"] = round(linted / asked, 3) if asked else None
+        if arm.startswith("E1"):                       # checklist self-consistency and quote grounding
+            with_list = [r for r in ok if r.checklist is not None]
+            consistent = [r.decision.gradable == all(c["stated"] for c in r.checklist) for r in with_list]
+            stated = [(r, c) for r in with_list for c in r.checklist if c["stated"]]
+            grounded = [_quoted_in(c["quote"], items[r.item_id].dictation) for r, c in stated]
+            s["checklist_consistent"] = round(sum(consistent) / len(consistent), 3) if consistent else None
+            s["quote_grounded"] = sum(grounded) / len(grounded) if grounded else None
         out[arm] = s
     base = out.get("A")
     if base and base["p90_latency_s"] and base["mean_tokens"]:   # the §7.1 cost bars, read straight off the summary

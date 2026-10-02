@@ -51,3 +51,11 @@ def decide_system() -> str:
             "are listed below the case as yes / no / unsure (or \"not asked\"), or the chosen option, with the raw probability. Treat them "
             "as evidence about what the text states, not as verdicts: check each against the case yourself, and "
             "overrule an answer you can see is wrong. Return gradable, missing and a one-sentence reason.")
+
+
+def checklist_system() -> str:
+    return (f"{ROLE}\n\n{JUDGEMENT_S1}\n\nWork as a checklist. First list every input the system needs to assign "
+            "its core category to this finding. For each input, set stated to true only if the dictation states it, "
+            "and copy into quote the exact words of the dictation that state it (leave quote empty when it is not "
+            "stated). Then decide: gradable is true only if every listed input is stated. Return inputs, gradable, "
+            "missing (the inputs not stated) and a one-sentence reason.")

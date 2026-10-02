@@ -18,7 +18,7 @@ from typing import Dict, List, TextIO
 
 from dotenv import load_dotenv
 
-from .arms import ArmResult, arm_a, arm_b, arm_c, arm_cb, arm_d
+from .arms import ArmResult, arm_a, arm_b, arm_c, arm_cb, arm_d, arm_e1, arm_e2
 from .scenarios import S1Item
 
 CONCURRENCY = 4
@@ -70,6 +70,12 @@ async def run_lab(items: List[S1Item], arms: List[str], runs: int, d_runs: int, 
                 jobs.append(go("C", it, r, lambda it=it: arm_c(it, run=r)))
             if "D" in arms and r <= d_runs:
                 jobs.append(go("D", it, r, lambda it=it: arm_d(it, run=r)))
+            if "E1off" in arms:
+                jobs.append(go("E1off", it, r, lambda it=it: arm_e1(it, run=r, reasoning=False)))
+            if "E1on" in arms:
+                jobs.append(go("E1on", it, r, lambda it=it: arm_e1(it, run=r, reasoning=True)))
+            if "E2" in arms:
+                jobs.append(go("E2", it, r, lambda it=it: arm_e2(it, run=r)))
         results = await asyncio.gather(*jobs)
         if "Cb" in arms:                              # C-blank control reuses C's plan for the same item and run
             c = {x.item_id: x for x in results if x.arm == "C"}

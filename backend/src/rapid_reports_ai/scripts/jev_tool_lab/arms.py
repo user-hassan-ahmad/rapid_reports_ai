@@ -5,14 +5,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from pydantic import BaseModel
 
 from . import calls, prompts
 from .catalogue import MAX_QUESTIONS, QuestionSpec, question_source, render, state_for, validate
 from .rules import UNSURE, Condition, Rule, band, evaluate, validate_rule
-from .scenarios import Decision, S1Item, s1_user
+from .scenarios import Checklist, Decision, S1Item, s1_user
 
 
 class Plan(BaseModel):
@@ -49,6 +49,7 @@ class ArmResult(BaseModel):
     plan_out: int = 0
     jev_calls: int = 0
     plan: Optional[dict] = None
+    checklist: Optional[List[dict]] = None   # E1: the inputs it checked
     answers: Optional[dict] = None
     banded: Optional[dict] = None
     invalid: List[str] = []
@@ -86,19 +87,26 @@ class Asked:
     latency_s: float = 0.0
 
 
-async def _ask(questions: List[QuestionSpec], item: S1Item, jev_fn) -> Asked:
-    case, out, seen = item.case(), Asked(), set()
+def _valid_specs(questions: List[QuestionSpec], item: S1Item) -> Tuple[List[QuestionSpec], List[str]]:
+    """Catalogue questions that pass validation (first of a duplicate id kept, cap applied), and the rejections."""
+    case, valid, invalid, seen = item.case(), [], [], set()
     for s in questions[:MAX_QUESTIONS]:
         if s.id in seen:
-            out.invalid.append(f"{s.id}: duplicate id")
+            invalid.append(f"{s.id}: duplicate id")
             continue
         seen.add(s.id)
         err = validate(s, case)
         if err:
-            out.invalid.append(f"{s.id}: {err}")
+            invalid.append(f"{s.id}: {err}")
         else:
-            out.valid.append(s)
-    out.invalid += [f"{s.id}: over the cap" for s in questions[MAX_QUESTIONS:]]
+            valid.append(s)
+    invalid += [f"{s.id}: over the cap" for s in questions[MAX_QUESTIONS:]]
+    return valid, invalid
+
+
+async def _ask(questions: List[QuestionSpec], item: S1Item, jev_fn) -> Asked:
+    case, out = item.case(), Asked()
+    out.valid, out.invalid = _valid_specs(questions, item)
     by_state: Dict[str, Dict[str, dict]] = {}
     types: Dict[str, str] = {}
     for s in out.valid:
@@ -341,6 +349,44 @@ async def arm_d(item: S1Item, *, run: int, qwen_fn=calls.qwen, jev_fn=calls.jev)
     res.latency_s += jlat
     try:
         dec, u2 = await _decide(item, [(q.id, _describe(jq[q.id])) for q in send], answers, banded, qwen_fn)
+    except Exception as e:
+        return _fail(res, "decide", e)
+    res.decision = dec
+    _add_usage(res, u2)
+    _store_decide(res, u2)
+    res.latency_s = round(res.latency_s, 6)
+    return res
+
+
+async def arm_e1(item: S1Item, *, run: int, reasoning: bool, qwen_fn=calls.qwen) -> ArmResult:
+    """Phase 3: list the inputs, then decide, in one structured call. No Jev."""
+    res = ArmResult(arm="E1on" if reasoning else "E1off", item_id=item.id, run=run)
+    try:
+        out, u = await qwen_fn(Checklist, prompts.checklist_system(), s1_user(item), reasoning)
+    except Exception as e:
+        return _fail(res, "checklist", e)
+    _add_usage(res, u)
+    res.checklist = [c.model_dump() for c in out.inputs]
+    res.decision = Decision(gradable=out.gradable, missing=out.missing, reason=out.reason)
+    res.latency_s = round(res.latency_s, 6)
+    return res
+
+
+async def arm_e2(item: S1Item, *, run: int, qwen_fn=calls.qwen) -> ArmResult:
+    """Phase 3: the pilot's Cb, stand-alone. Plan the inputs as catalogue questions, then decide with every
+    answer shown as 'not asked'. Two calls, reasoning on, no Jev."""
+    res = ArmResult(arm="E2", item_id=item.id, run=run)
+    try:
+        plan, u1 = await qwen_fn(Plan, prompts.author_system(), s1_user(item), True)
+    except Exception as e:
+        return _fail(res, "plan", e)
+    _add_usage(res, u1)
+    res.plan_latency_s, res.plan_in, res.plan_out = u1.latency_s, u1.input_tokens, u1.output_tokens
+    res.plan = plan.model_dump()
+    valid, res.invalid = _valid_specs(plan.questions, item)
+    try:
+        described = [(s.id, _describe(render(s))) for s in valid]
+        dec, u2 = await _decide(item, described, {}, {}, qwen_fn, blank=True)
     except Exception as e:
         return _fail(res, "decide", e)
     res.decision = dec
