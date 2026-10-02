@@ -69,3 +69,33 @@ def test_summarise_excludes_rule_entries_and_reports_ratios():
     assert s["D"]["lint_share"] == 0.5                                 # q1 only; "rule" is not a question id
     assert s["A"]["mean_requests"] == 1 and s["B"]["mean_requests"] == 2
     assert s["B"]["p90_latency_vs_A"] == 0.2 and s["B"]["tokens_vs_A"] == 0.2
+
+
+from rapid_reports_ai.scripts.jev_tool_lab import wording_check as wc
+
+
+async def test_wording_check_runs_and_reports():
+    items = [wc.CheckItem(id="t1", kind="T2d", dictation="Thin septa.", topic="septa of the lesion", label=True),
+             wc.CheckItem(id="t2", kind="T2d", dictation="Thin septa.", topic="calcification", label=False),
+             wc.CheckItem(id="s1", kind="T6", dictation="Left cyst. Right cyst.", a="Left cyst", b="Right cyst",
+                          label=False)]
+    async def fake_jev(by_state):
+        ans = {}
+        for qs in by_state.values():
+            for qid in qs:
+                ans[qid] = {"noul": 0.9 if qid.startswith("t1") else 0.1}
+        return ans, len(by_state), 0.1
+    rows = await wc.run(items, wordings=("w1", "w2"), repeats=2, jev_fn=fake_jev)
+    assert len(rows) == 3 * 2 * 2
+    rep = wc.report(rows)
+    t2 = rep["T2d|w1"]
+    assert t2["auc"] == 1.0 and t2["confident_errors"] == 0 and t2["unsure_share"] == 0.0 and t2["max_drift"] == 0.0
+    assert rep["T6|w1"]["n"] == 1
+
+
+def test_wording_report_groups_are_split_out():
+    rows = [{"id": i, "kind": "T2d", "wording": "w1", "repeat": 1, "p": p, "label": y}
+            for i, p, y in (("a", 0.9, True), ("b", 0.1, False), ("s1", 0.9, False), ("s2", 0.9, True))]
+    rep = wc.report(rows, groups={"scoped": {"s1", "s2"}})
+    assert rep["T2d|w1"]["n"] == 2 and rep["T2d|w1"]["confident_errors"] == 0      # main set excludes the group
+    assert rep["T2d|w1|scoped"]["n"] == 2 and rep["T2d|w1|scoped"]["confident_errors"] == 1
