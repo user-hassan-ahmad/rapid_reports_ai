@@ -433,3 +433,12 @@ def test_plan_rule_is_a_flat_list_for_qwen():
     assert FreePlan.model_validate({"questions": [], "rule": [cond]}).rule[0].want == "yes"
     assert "rule is a list of conditions" in prompts.author_system()
     assert "rule is a list of conditions" in prompts.free_author_system()
+
+
+def test_s1_judgement_reads_descriptors_by_standard_meaning():
+    """Hassan's rulings on s1-01 and s1-18 (2026-10-02), stated structurally (case-agnostic prompt rule)."""
+    from rapid_reports_ai.scripts.jev_tool_lab.scenarios import JUDGEMENT_S1
+    assert "standard meaning" in JUDGEMENT_S1
+    assert "ordinarily dictate" in JUDGEMENT_S1
+    for word in ("thyroid", "hypoechoic", "hilar", "segmental", "spleen"):
+        assert word not in JUDGEMENT_S1.lower()

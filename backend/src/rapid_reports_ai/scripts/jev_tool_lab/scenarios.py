@@ -14,7 +14,11 @@ JUDGEMENT_S1 = ("Decide whether the finding can be graded with the named classif
                 "that is not dictated. Grade means the system's core category: ignore optional modifiers and "
                 "eligibility criteria unless they change that category. Read the dictation literally: an input "
                 "counts only if it is stated, never inferred from radiological convention (for example, an "
-                "unqualified nodule is not assumed solid). If it is not gradable, list each missing input in a few "
+                "unqualified nodule is not assumed solid). Read each descriptor by its standard meaning in the system's "
+                "lexicon (a "
+                "synonym or a relative description counts), and treat a criterion as described when the dictation covers "
+                "the features radiologists ordinarily dictate to assess it; do not demand finer sub-features that are not "
+                "normally dictated. If it is not gradable, list each missing input in a few "
                 "words.")
 
 
