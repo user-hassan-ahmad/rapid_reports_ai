@@ -1873,7 +1873,7 @@ This note is the template for the synthetic items in Task 11. Don't copy patient
 
 ---
 
-### Task 11: Synthetic fixtures: wording check (40) and S1 pilot (20)
+### Task 11: Synthetic fixtures: wording check (48) and S1 pilot (20)
 
 **Files:**
 - Create: `backend/test_cases/jev_tool_lab/wording_check.json`
@@ -1894,9 +1894,9 @@ _FIX = _Path(__file__).resolve().parents[1] / "test_cases" / "jev_tool_lab"
 
 def test_wording_fixture_shape():
     items = [wc.CheckItem(**x) for x in _json.loads((_FIX / "wording_check.json").read_text())]
-    for kind in ("T2d", "T6"):
+    for kind, n in (("T2d", 28), ("T6", 20)):            # T2d includes 8 finding-scoped items (peer review)
         k = [i for i in items if i.kind == kind]
-        assert len(k) == 20 and sum(i.label for i in k) == 10
+        assert len(k) == n and sum(i.label for i in k) == n // 2
     for i in items:
         spec = (QuestionSpec(id=i.id, type="T2", source="dictation", topic=i.topic) if i.kind == "T2d"
                 else QuestionSpec(id=i.id, type="T6", source="dictation", a=i.a, b=i.b))
@@ -1917,7 +1917,9 @@ def test_s1_fixture_shape():
 Run: `cd backend && .venv/bin/python -m pytest tests/test_jev_tool_lab_score.py -k fixture -q`
 Expected: FAIL with `FileNotFoundError`
 
-- [ ] **Step 3: Write `wording_check.json` (40 items)**
+- [ ] **Step 3: Write `wording_check.json` (48 items)**
+
+> **Execution note (2026-10-02):** the fixtures were drafted, peer-reviewed and revised in the scratchpad (`jev_tool_lab/drafts/`). Steps 3–4 copy `wording_check.json` and `s1_pilot.json` from there instead of re-authoring them, plus `context_side_ids.json`, the ids scored separately in Task 12. The rules below remain the contract.
 
 **T2d (20 items, 10 true, 10 false).** The question is "does the dictation say anything about this topic?"
 - The **true** set must include:
