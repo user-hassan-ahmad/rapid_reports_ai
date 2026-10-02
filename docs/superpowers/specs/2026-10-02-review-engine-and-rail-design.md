@@ -648,5 +648,5 @@ These are interpretations made while writing the spec. Each follows the principl
 3. **No runtime stability rule.** Stability is a lab metric (Gates A and F), never a run-time flip → suppress rule.
 4. **v1 `inconsistent` is code-only.** An LLM anatomy check joins only if Gate B shows the need.
 5. **Gate thresholds** are the proposed bar. They move into measured gaps once each lab runs.
-7. **Gradability lab folded in** (L-50, 2026-10-03): one adjudicator call stays; `characterise` capped at `minor`; flat Qwen schemas; the criteria-supply lead goes into Gate C; Jev follow-ups demoted.
 6. **Jev confidence routing** (§6.5), added at Hassan's request (2026-10-02). Unsure answers go to the adjudicator by default. Targeted same-call Jev follow-ups are an upgrade for named confusion pairs, each needing lab evidence. The verifier marks an unsure fix `unconfirmed` rather than asking Qwen to grade its own fix.
+7. **Gradability lab folded in** (L-50, 2026-10-03): one adjudicator call stays; `characterise` capped at `minor`; flat Qwen schemas; the criteria-supply lead goes into Gate C; Jev follow-ups demoted.
