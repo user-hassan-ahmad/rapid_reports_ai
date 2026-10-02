@@ -133,3 +133,81 @@ These land as Guidelines-tab cards to read. Phase 2 audit turns them into 3 pros
 - **Timing:** non-blocking. Items stream into the rail when S4 lands, tagged "Guideline", and are re-verified against the current text by the live loop.
 - **This replaces Phase 2's audit criteria.**
 - **Suggested first step:** a lab prototype on the 41 production reports already compared (stored synthesis in `enhancement_json`), producing guideline cards for Hassan to eyeball.
+
+## Agreed direction (2026-10-02, rail brainstorm session): start the spec from here
+
+Hassan approved everything below. It supersedes the composition list in the addenda above, wherever they differ.
+
+### Principles
+
+1. **Simple first, then small, focused upgrades that each earn their place.** A mechanism goes in only with lab evidence on real data against a baseline. When a fix needs a fix, change the earlier design choice instead of adding a layer.
+2. **One reasoning call owns each judgement.** Qwen with reasoning reads the whole case for one item, decides, and writes the fix in the same call. No OR'd questions, no split streams, no stacked gates that bias the same way. Those are the patterns that broke Q7, v3 recall and repair_report.
+3. **Roles:**
+   - **Code:** deterministic checks (numbers, dates, hedges, alignment), applying edits, guards.
+   - **Jev:** narrow yes/no or distinct-choice questions on stated text, for detection and fix verification. It never vetoes Qwen's reading.
+   - **Qwen:** reading, judgement and writing.
+4. **Testing:**
+   - Code changes are test-first.
+   - Model behaviour is tested with mocked calls in unit tests, plus golden fixtures from labs and a separate live evaluation harness.
+   - **Every Jev gate gets its own wording lab first.** Compare candidate questions, options and criteria for that task.
+   - Real production cases are the base. They also seed synthetic cases and targeted stress tests on each weakness found.
+   - Tests start small and contained, then grow only if needed.
+   - Labels must be balanced across classes. Measure stability over 2 runs, put thresholds in measured gaps, and treat Hassan's hand read as the gate.
+
+### The engine: three lanes, one adjudicator
+
+| Lane | Question | Item kinds |
+|---|---|---|
+| **Coverage** (dictation → report) | Is everything dictated carried, as dictated? | absent (pre-applied), partial, differs, laterality, slip (info) |
+| **Accuracy** (report → source and itself) | Is everything in the report supported and consistent? | contradicted (a negative is removed in code and pre-applied; a positive becomes an action), unsupported (invented finding or prior), overstated (certainty), misattributed (measurement), inconsistent (modality term, anatomy, size word against measurement) |
+| **Additions** (report → knowledge) | What would a consultant add? | option, grade, threshold, follow_up (upgrades the existing recommendation line), characterise (including "can't grade: X not described"), safety (critical steps only), urgency (banner) |
+
+**What it replaces:**
+- Coverage replaces `input_fidelity` and the check's partial/differs/absent.
+- Accuracy replaces the check's contradiction, the grounding lane, `anatomical_accuracy` and the consistency check.
+- Additions replaces the guideline lane, `characterisation_gap`, safety-critical recommendations, brief/Phase 1 options and `clinical_flagging`.
+- Dropped: `report_completeness`, `scan_coverage`, `diagnostic_fidelity`, `clinical_relevance` and `language_quality`.
+
+**The lean pipeline:**
+1. **One alignment, mostly code:** report clauses ↔ dictated lines, keeping side and level as context. Coverage reads it forwards; Accuracy reads it backwards.
+2. **Code checks along it:**
+   - every report number matched in the source;
+   - dates and "compared with previous" matched in the source;
+   - hedges compared on paired clauses (`hedge_tag`);
+   - modality vocabulary;
+   - size words against measurements.
+3. **Two Jev calls, reusing today's state calls.**
+   - Report-state call: classify-first per dictated line.
+   - Dictation-state call: contradiction, plus a scoped "is this positive finding stated" per unmatched report clause.
+   - **Caveat:** L-46 measured the naive "undictated abnormal finding" question at 5/32 with 49 false alarms. Code goes first, and the Jev question gets its own wording lab.
+4. **Additions has no detector.** The brief and Phase 1 options, the S4 synthesis, and one clinical LLM pass (characterisation and safety only, replacing about 8 criterion passes) produce candidates. Then comes the Jev "already in report" gate.
+5. **One adjudicator** over the merged candidate list:
+   - de-duplicate by overlapping span across lanes;
+   - class action / **minor** / info / suppress;
+   - smallest fix;
+   - Jev and code verification.
+   - **Uncertain → minor (shown low-salience, fix ready), not suppress.** Suppress is only for clear noise.
+   - No flip → suppress rule, and no Jev conveys veto.
+
+Coverage and Accuracy items are ready before the report renders. Additions items stream in when S4 lands. The rail groups by report section, with the lane as a badge.
+
+### Automatic edits (still open; production data decides)
+
+- Hassan's inclination: keep the two automatic edits that have been proven.
+- Recommendation: keep them, but route them through the adjudicator. Pre-apply only when the item is a stable, verified `absent` with no slip; contradicted-negative removal stays in code. Make them **visible** in the rail and overlays ("added from your dictation · undo").
+- Diagnosis of the past failures: every one came from a detect → write shortcut with no reading step. The causes were whole-line rewrites of partially stated lines, `differs` misclassed as `absent`, slips copied from the raw dictation, splitter context loss, and free rewrites. The adjudicator is that reading step.
+
+### Sequence
+
+0. **Spec and plan:** one spec covering engine and rail, with each lane as an interface and the labs as explicit gates.
+1. **Labs, in parallel:**
+   - Coverage recall: Hassan labels the 23 disputed v3 cards (2, 3, 4, 5, 6, 7, 9, 24, 25, 28, 31, 33, 35, 38, 39, 40, 42, 43, 44, 47, 48, 49, plus #18 for the data question). Then add the minor tier and drop the veto.
+   - Accuracy: alignment plus code checks on the 41 production reports, with the four fabrication cases (599d7c97, 16cb806c, …).
+   - Additions: guideline prototype on the stored synthesis.
+   - Read-only production audit of the automatic edits since L-49.
+2. **Engine (backend), behind a flag:** first in **shadow mode in production**, logging items with no UI. Hand-read the shadow output.
+3. **Rail and overlays (frontend),** in parallel once the contract is fixed: chat edits, the live probe loop, sessions and History, the command registry.
+4. **Rollout:** dogfood, then default-on. Retire AuditBanner, the audit criteria and OptionalAdditions. Then turn on `RR_TEMPLATE_MIRROR`.
+5. **Later, each with its own spec:** dictate-to-edit, chat threads and search, frozen snapshots.
+
+Independent review of v3 (blind Claude readers; actions 7/7 precise, 23 likely suppressed wrongly) is in memory `feedback_review_item_policy`. Principles are in memory `feedback_simplicity_single_unit`.
