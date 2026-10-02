@@ -209,7 +209,7 @@ Every lane is independently switchable (`RR_REVIEW_LANES`, §10). A lane enters 
 
 **`hedge_tag(clause) -> Literal["negated", "possible", "probable", "definite"]`** is new code, built from a small lexicon fixed in Gate B.
 
-**Starting point.** v1 `inconsistent` is code-only. An LLM anatomy-consistency check (from `anatomical_accuracy`, 4/7 useful) is added only if Gate B shows the code misses those cases. The naive "undictated abnormal finding" Jev question measured 5/32 with 49 false alarms (L-46), which is why code runs first and the scoped question needs its own lab.
+**Starting point.** v1 `inconsistent` is code-only, but code is not assumed sufficient (wording variety limits its recall). Gate B1 runs three arms on the 41 reports: (1) the code checks; (2) the Additions clinical pass also listing internal inconsistencies; (3) both, code items immediate and clinical-pass items streaming. The winning arm is adopted (confirmed 2026-10-03). The naive "undictated abnormal finding" Jev question measured 5/32 with 49 false alarms (L-46), which is why code runs first and the scoped question needs its own lab.
 
 ### 6.4 Additions lane: what would a consultant add?
 
@@ -229,7 +229,7 @@ This lane has no detector. It has producers, then one Jev gate.
 3. **One recommendation line in the core.** A `follow_up` edits the existing line (an `upgrade` edit); extra recommendations stay `option`.
 4. **Citations.** Every guideline-derived item carries a citation chip to its Guidelines-tab card.
 
-**Pre-classed options.** Brief options were already judged and written by one reasoning call (the brief), so they arrive `preclassed="minor"` with their sentence as `proposed`. They are not judged again (Principle 2). They pass through de-duplication, the "already in report" gate and the verifier. The one exception is a `finding_negative` whose structure the report already calls normal. It goes to the adjudicator for an `upgrade` edit that rewrites that sentence (handover addendum 2026-10-01).
+**Pre-classed options.** Brief options were already judged and written by one reasoning call (the brief), so they arrive `preclassed="minor"` with their sentence as `proposed`. They are not judged again (Principle 2). They pass through de-duplication, the "already in report" gate and the verifier. **Their probe is that same "already in report" question**, re-asked on the current text by the live loop (§12.4), so an edit that covers an option marks it `addressed` with no Qwen call. **Re-prepare may lower a brief option** (`minor` → `suppress` when now redundant) **but never raise it to `action`** (confirmed 2026-10-03). The one exception is a `finding_negative` whose structure the report already calls normal. It goes to the adjudicator for an `upgrade` edit that rewrites that sentence (handover addendum 2026-10-01).
 
 **Grade and characterise items: evidence from the gradability lab** (ledger L-50, spec `2026-10-02-qwen-authored-jev-questions-lab-design.md`). Qwen judged "is this finding gradable with system X from the dictation?" on 100 labelled items:
 - **One call wins.** Single-pass Qwen with reasoning on scored balanced accuracy 0.82. Listing the inputs first (one call or two) and Jev-as-tool did not beat it.
@@ -470,7 +470,7 @@ Data stays in the scratchpad (standing production-read permission). Repo fixture
 - **Calibration needs hard or real items.** Clean synthetic wording items produced no unsure answers, so the escalation bands of §6.5 must be set on real data.
 
 ### Gate A: Coverage recall
-*Data:* the 50 v3 cards. Hassan labels the 23 disputed cards (2, 3, 4, 5, 6, 7, 9, 24, 25, 28, 31, 33, 35, 38, 39, 40, 42, 43, 44, 47, 48, 49) plus #18 (the data question). Then every Jev flag in the source reports (~72) is adjudicated, not a sample.
+*Data:* the 50 v3 cards. Hassan labels **27 cards**: the 22 originally disputed (2, 3, 4, 5, 6, 7, 9, 24, 25, 28, 31, 33, 35, 38, 39, 40, 42, 43, 44, 47, 48, 49), #18 (the data question), and #11, #46 (action) and #20, #50 (minor) added by a second blind peer read on 2026-10-03, which confirmed 21 of the 22 (not #47). The original "23" count could not be reconciled card by card; the per-card first read was not saved. The labelling page hides the peer read until Hassan has entered a verdict. Then every Jev flag in the source reports (~72) is adjudicated, not a sample.
 
 *Change under test:* adjudicator v4, with the minor tier, no veto, no flip rule and the uncertain → minor wording.
 
@@ -489,7 +489,7 @@ Data stays in the scratchpad (standing production-read permission). Repo fixture
 - Alignment is hand-checked on 10 reports: ≥ 95% of report clauses correctly paired or correctly unmatched.
 - Code catches every fabricated number, prior study and certainty upgrade in the fabrication cases. An invented finding with no number (the hiatus hernia type) is B2's job, not code's.
 - False alarms: ≤ 1 per report on mean across the 41, after hand read.
-- The `inconsistent` checks catch the audit's useful anatomical_accuracy cases that are modality or size-word errors.
+- The `inconsistent` arms (code; clinical pass listing inconsistencies; both) are scored against the audit's useful anatomical_accuracy cases and Hassan's hand read, with false alarms per report. The best arm is adopted.
 
 **B2, the Jev wording lab for "is this positive finding stated":**
 - *Baseline:* L-46 naive wording, 5/32 with 49 false alarms.
@@ -640,6 +640,8 @@ Tests start with one case per kind and grow only where a gate exposes a weakness
 Slices B–E can start once §10.1 is fixed. They develop against shadow runs through `/dev/review-rail`.
 
 ## 15. Points for Hassan's review
+
+**All seven confirmed 2026-10-03**, with these refinements: (1) re-prepare may lower a brief option but never raise it, and its probe is the "already in report" question; (2) re-prepare stays eager, gated by code and the Jev probe; lazy re-prepare was considered and dropped until shadow data shows waste; (4) `inconsistent` gets the three Gate B1 arms rather than being assumed code-only.
 
 These are interpretations made while writing the spec. Each follows the principles, but none was spelled out in the agreed direction:
 
