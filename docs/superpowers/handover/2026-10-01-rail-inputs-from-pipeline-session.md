@@ -64,3 +64,43 @@ Proposed shape:
 - **Output:** review items into the rail and CM6 overlays, each with Apply / Edit / Dismiss.
 - **Open decision:** keep the two remaining automatic edits (code removal of a contradicted negative; insertion of an absent finding, which was 11/148 correct in the production re-score) as pre-render fixes, or move them to one-click rail items. The pipeline session leans towards moving them, for consistency: the radiologist confirms every change.
 - **Lab artefacts** (adjudicator prompt v3, harness, cards) are in the pipeline session's scratchpad: `cards50/prompt_v3.txt`, `run_v3.py`, `review_cards50_v3.json`.
+
+## Addendum (2026-10-02): production audit vs the new fidelity lane, same reports
+
+The comparison covered 41 production quick reports, 37 of them with a stored audit, and 81 non-pass audit criteria hand-read against Hassan's rules. Data: `scratchpad/audit_compare/compare.json` in the pipeline session.
+
+**Audit usefulness by criterion:**
+
+| Criterion | Useful |
+|---|---|
+| input_fidelity | 11/13 |
+| clinical_flagging banners | 16/22 |
+| anatomical_accuracy | 4/7 |
+| characterisation_gap | 3/7 |
+| recommendations | 4/20 (mostly noise) |
+| report_completeness | 1/7 |
+
+**What the audit uniquely catches:**
+- report-only errors with no dictation anchor: wrong modality terms ("signal" on CT), impossible anatomy, a size word that contradicts the measurement;
+- banners;
+- a few safety-critical missing steps (anticoagulant reversal, MSCC MRI within 24 h).
+
+**What the fidelity lane uniquely catches:**
+- fine descriptor losses;
+- correct slip handling (info tags);
+- Jev-verified find/replace fixes;
+- stable results. The audit runs once at temperature 0.8 and flips between runs.
+
+**Neither catches FABRICATION** (an invented hiatus hernia, an invented prior study, an invented "CBD 6 mm"), certainty upgrades ("may represent" → "in keeping with"), or re-attributed measurements. A unified engine needs a **report-to-source grounding lane**: every positive finding, measurement and prior-study reference in the report must trace back to the dictation or history.
+
+**Recommended composition:**
+1. **The fidelity lane** as the backbone, adjudicating EVERY Jev flag (the lab sampled 50 of about 72), with the suppress bias softened. 4 audit-flagged real losses were detected but suppressed.
+2. **The new grounding/fabrication lane.**
+3. **An internal-consistency check,** from anatomical_accuracy.
+4. **Banners as a separate feature,** with tightened tiers.
+5. **Low-salience extras:** characterisation_gap, and safety-critical recommendations only.
+6. **Drop** report_completeness, scan_coverage and diagnostic_fidelity as currently prompted.
+
+Phase 1a becomes redundant only after the fidelity lane's recall is fixed.
+
+Cost: comparable to the audit with two adjudication runs, about half with one; latency about the same as Phase 1.
