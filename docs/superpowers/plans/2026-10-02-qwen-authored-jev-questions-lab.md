@@ -1267,18 +1267,21 @@ async def test_run_lab_order_reuse_and_d_runs(monkeypatch):
             log.append((arm if arm != "A" or kw.get("reasoning", True) else "A0", item.id, run))
             if arm == "B":
                 assert kw["fallback"].arm == "A"            # B receives A's result for the same item and run
+            if arm == "Cb":
+                assert kw["c_result"].arm == "C"            # Cb reuses C's plan for the same item and run
             name = "A0" if arm == "A" and kw.get("reasoning") is False else arm
             return ArmResult(arm=name, item_id=item.id, run=run, decision=Decision(gradable=True))
         return fn
-    for name, arm in (("arm_a", "A"), ("arm_b", "B"), ("arm_c", "C"), ("arm_d", "D")):
+    for name, arm in (("arm_a", "A"), ("arm_b", "B"), ("arm_c", "C"), ("arm_cb", "Cb"), ("arm_d", "D")):
         monkeypatch.setattr(run_lab, name, mk(arm))
     reuse = {run_lab.key("A", ITEM.id, 1): ArmResult(arm="A", item_id=ITEM.id, run=1, decision=Decision(gradable=True))}
     out = _io.StringIO()
-    await run_lab.run_lab([ITEM], ["A", "A0", "B", "C", "D"], runs=2, d_runs=1, out=out, reuse=reuse)
+    await run_lab.run_lab([ITEM], ["A", "A0", "B", "C", "Cb", "D"], runs=2, d_runs=1, out=out, reuse=reuse)
     assert ("A", ITEM.id, 1) not in log                       # reused, not re-run
     assert ("A", ITEM.id, 2) in log and ("B", ITEM.id, 2) in log
     assert [x for x in log if x[0] == "D"] == [("D", ITEM.id, 1)]
-    assert len(out.getvalue().strip().splitlines()) == 8      # run 1: A0,B,C,D ; run 2: A,A0,B,C
+    assert ("Cb", ITEM.id, 1) in log and ("Cb", ITEM.id, 2) in log
+    assert len(out.getvalue().strip().splitlines()) == 10     # run 1: A0,B,C,Cb,D ; run 2: A,A0,B,C,Cb
 ```
 
 - [ ] **Step 2: Run the test and check it fails**
@@ -1301,6 +1304,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
@@ -1308,7 +1313,7 @@ from typing import Dict, List, TextIO
 
 from dotenv import load_dotenv
 
-from .arms import ArmResult, arm_a, arm_b, arm_c, arm_d
+from .arms import ArmResult, arm_a, arm_b, arm_c, arm_cb, arm_d
 from .scenarios import S1Item
 
 CONCURRENCY = 4
@@ -1356,11 +1361,14 @@ async def run_lab(items: List[S1Item], arms: List[str], runs: int, d_runs: int, 
                 jobs.append(go("A0", it, r, lambda it=it: arm_a(it, run=r, reasoning=False)))
             if "B" in arms:
                 jobs.append(go("B", it, r, lambda it=it: arm_b(it, run=r, fallback=a[it.id])))
-            if "C" in arms:
+            if "C" in arms or "Cb" in arms:
                 jobs.append(go("C", it, r, lambda it=it: arm_c(it, run=r)))
             if "D" in arms and r <= d_runs:
                 jobs.append(go("D", it, r, lambda it=it: arm_d(it, run=r)))
-        await asyncio.gather(*jobs)
+        results = await asyncio.gather(*jobs)
+        if "Cb" in arms:                              # C-blank control reuses C's plan for the same item and run
+            c = {x.item_id: x for x in results if x.arm == "C"}
+            await asyncio.gather(*(go("Cb", it, r, lambda it=it: arm_cb(it, run=r, c_result=c[it.id])) for it in items))
 
 
 def main() -> None:
@@ -1368,7 +1376,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--items", required=True)
     ap.add_argument("--out-dir", required=True)
-    ap.add_argument("--arms", default="A,A0,B,C,D")
+    ap.add_argument("--arms", default="A,A0,B,C,Cb,D")
     ap.add_argument("--runs", type=int, default=2)
     ap.add_argument("--d-runs", type=int, default=1)
     ap.add_argument("--reuse", nargs="*", default=[])
@@ -1376,7 +1384,8 @@ def main() -> None:
     items = [S1Item(**x) for x in json.loads(Path(args.items).read_text())]
     out_path = Path(args.out_dir) / f"results_{os.getpid()}.jsonl"
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with out_path.open("a") as out:
+    # The agent runner prints; silence stdout once for the whole run (a per-call redirect breaks under concurrency).
+    with out_path.open("a") as out, contextlib.redirect_stdout(io.StringIO()):
         asyncio.run(run_lab(items, args.arms.split(","), args.runs, args.d_runs, out, load_reuse(args.reuse)))
     print(out_path)
 
@@ -1462,11 +1471,13 @@ def test_summarise_core_fields():
     rows += [res("B", i, 1, True, latency_s=2.0, rule_outcome="yes", plan={"questions": [{}, {}]},
                  invalid=["q1: x"] if i == 0 else []) for i in range(4)]
     rows.append(res("C", 0, 1, False, rule_outcome="yes"))
+    rows.append(res("Cb", 0, 1, True))
     s = summarise(rows, ITEMS)
     assert s["A"]["bal_acc"] == 1.0 and s["A"]["stability"] == 1.0 and s["A"]["p90_latency_s"] == 10.0
     assert s["B"]["bal_acc"] == 0.5 and s["B"]["invalid_share"] == pytest.approx(1 / 8)
     assert (s["B"]["vs_A"]["run1"]["gains"], s["B"]["vs_A"]["run1"]["losses"]) == (0, 2)
     assert s["C"]["overrule_share"] == 1.0 and s["C"]["overrule_right_share"] == 0.0
+    assert s["C"]["vs_Cb"]["run1"] == {"gains": 0, "losses": 1}
 ```
 
 - [ ] **Step 2: Run the tests and check they fail**
@@ -1602,6 +1613,8 @@ def summarise(rows: List[ArmResult], items: Dict[str, S1Item]) -> Dict[str, dict
             asked = sum(len((r.plan or {}).get("questions", [])) for r in rs)
             s["invalid_share"] = sum(len(r.invalid) for r in rs) / asked if asked else None
             s["fallback_share"] = round(sum(r.fallback for r in rs) / len(rs), 3)
+        if arm == "C" and "Cb" in by_arm:          # Jev's share of C's lift: C against its own blank-evidence control
+            s["vs_Cb"] = {f"run{run}": paired(rs, by_arm["Cb"], items, run) for run in runs}
         if arm in ("C", "D"):
             decided = [r for r in ok if r.rule_outcome in ("yes", "no")]
             over = [r for r in decided if r.decision.gradable != (r.rule_outcome == "yes")]
@@ -2031,7 +2044,7 @@ cd backend && jq '.[0:2]' test_cases/jev_tool_lab/s1_pilot.json > "$LAB_OUT/smok
 jq -c '{arm, item_id, error, g: .decision.gradable, inv: .invalid, fb: .fallback, lat: .latency_s}' "$LAB_OUT"/smoke/results_*.jsonl
 ```
 
-Expected: 10 lines (5 arms × 2 items) with `error: null`.
+Expected: 12 lines (6 arms × 2 items) with `error: null`.
 
 - **If arm B or C shows a structured-output failure:** Qwen's nested `Plan` failed to parse. Look at the error text before changing anything. The memory note `project_model_routing` records nested-output trouble that turned out to be a schema bug.
 - **If `invalid` is non-empty:** read the reasons. They are a result in their own right (question quality), not a bug.
@@ -2044,7 +2057,7 @@ Expected: 10 lines (5 arms × 2 items) with `error: null`.
   --reuse "$LAB_OUT"/smoke/results_*.jsonl
 ```
 
-Expected: one results file, about 180 lines. The smoke items' run-1 rows are reused rather than re-run.
+Expected: one results file, about 220 lines. The smoke items' run-1 rows are reused rather than re-run.
 
 - [ ] **Step 3: Score it**
 
@@ -2053,7 +2066,7 @@ Expected: one results file, about 180 lines. The smoke items' run-1 rows are reu
   --items test_cases/jev_tool_lab/s1_pilot.json --results "$LAB_OUT"/pilot/results_*.jsonl "$LAB_OUT"/smoke/results_*.jsonl
 ```
 
-Expected: a summary per arm (A, A0, B, C, D) with `bal_acc`, `p90_latency_s`, token means, `stability` (not for D), `vs_A` gains and losses per run, B's `invalid_share` and `fallback_share`, C/D's `overrule_share`, and D's `lint_share`.
+Expected: a summary per arm (A, A0, B, C, Cb, D) with `bal_acc`, `p90_latency_s`, token means, `stability` (not for D), `vs_A` gains and losses per run, B's `invalid_share` and `fallback_share`, C/D's `overrule_share`, and D's `lint_share`.
 
 - [ ] **Step 4: Prepare the read for Hassan**
 
@@ -2061,7 +2074,7 @@ Write `$LAB_OUT/pilot_read.md` with three parts.
 
 1. **The go / no-go table from spec §7.1,** filled in from the summary:
    - **B:** losses ≤ 1 in both runs; p90 latency or cost ≤ 70% of A; stability ≥ A.
-   - **C:** gains ≥ 3 with losses ≤ 1 in both runs.
+   - **C:** gains ≥ 3 with losses ≤ 1 in both runs, **and** against Cb (`vs_Cb`) gains > losses, so the lift is Jev's and not just from listing the inputs.
    - **A0 vs B:** compare their losses against A, so any B gain can be credited to Jev.
 
    Cost uses Qwen tokens, since Jev is negligible. State the token ratio B/A and the latency ratio.

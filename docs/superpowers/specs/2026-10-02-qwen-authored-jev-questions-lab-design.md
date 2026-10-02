@@ -85,10 +85,11 @@ Qwen gets:
 | **A0** | Qwen, reasoning **off**, decides alone | 1 | whether any gain in B is Jev's contribution or just "reasoning off" |
 | **B, deterministic** | Qwen, reasoning **off**, picks templates, fills slots and declares the rule → Jev (one call) → **code** applies the rule. `unsure` → falls back to A for that item | 1 (+A on unsure items) | speed, cost and determinism |
 | **C, tool round** | Qwen, reasoning **on**, plans templated questions → Jev → the same Qwen conversation continues and decides, treating the answers as evidence, not verdicts | 2 turns | accuracy lift from Jev evidence |
+| **Cb, C-blank control** | C's own plan, but the decide turn sees every answer as "not asked" | 1 (reuses C's plan) | how much of C's gain comes from listing the inputs rather than from Jev's answers (added after code review, 2026-10-02) |
 | **D, free-form** | as C, but Qwen writes its own Jev questions (no catalogue) | 2 turns | the cost of dropping the catalogue; measures the wording risk |
 
 **Running rules:**
-- C is run as two turns rather than native tool calling, which is simpler and behaves the same.
+- C is run as two turns rather than native tool calling. The decide turn is a fresh call that sees the case, the questions and the answers, but not the plan's reasoning, so C's token count is slightly lower than a true continued conversation. The write-up notes this.
 - Qwen is qwen-3.8-27b on Cerebras, through `normalise_model_settings`, with `max_tokens` + `extra_body` for reasoning settings (memory `reference_pydantic_ai_settings_shape`).
 - Jev is pinned at jev-1.13.
 
@@ -156,7 +157,7 @@ Latency, cost and stability are continuous or per-run measures, so they are read
 | Arm | Go if, in both runs… |
 |---|---|
 | **B** | losses ≤ 1, **and** p90 latency or cost ≤ 70% of A, **and** B's own run-to-run agreement ≥ A's |
-| **C** | gains ≥ 3, with losses ≤ 1 |
+| **C** | gains ≥ 3, with losses ≤ 1, **and** against Cb, gains > losses (so the lift is Jev's, not the enumeration's) |
 | **D** | informative only |
 
 The pilot also yields its main product: **a hand read, with Hassan, of every item where the arms disagree,** and why. A go means "expand to measure properly", not "adopt".
