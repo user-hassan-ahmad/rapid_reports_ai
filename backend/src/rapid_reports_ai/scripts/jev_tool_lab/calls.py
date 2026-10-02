@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
-import io
 import os
 import time
 from typing import Any, Dict, Tuple
@@ -24,21 +22,23 @@ class Usage(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
     latency_s: float = 0.0
+    requests: int = 0
 
 
 async def qwen(output_type, system: str, user: str, reasoning: bool) -> Tuple[Any, Usage]:
     t = time.monotonic()
-    settings = {"temperature": 0, "max_tokens": 8000 if reasoning else 3000,
+    # 16384 when reasoning: normalise_model_settings raises max_tokens to that floor anyway.
+    settings = {"temperature": 0, "max_tokens": 16384 if reasoning else 3000,
                 "reasoning_effort": "medium" if reasoning else "none"}
-    with contextlib.redirect_stdout(io.StringIO()):
-        r = await asyncio.wait_for(_run_agent_with_model(model_name=QWEN_MODEL, output_type=output_type,
-                                                         system_prompt=system, user_prompt=user, api_key="",
-                                                         model_settings=settings), QWEN_TIMEOUT_S)
+    r = await asyncio.wait_for(_run_agent_with_model(model_name=QWEN_MODEL, output_type=output_type,
+                                                     system_prompt=system, user_prompt=user, api_key="",
+                                                     model_settings=settings), QWEN_TIMEOUT_S)
     usage = Usage(latency_s=time.monotonic() - t)
     try:
         u = r.usage()
         usage.input_tokens = getattr(u, "input_tokens", None) or getattr(u, "request_tokens", 0) or 0
         usage.output_tokens = getattr(u, "output_tokens", None) or getattr(u, "response_tokens", 0) or 0
+        usage.requests = getattr(u, "requests", 0) or 0
     except Exception:
         pass
     return r.output, usage
@@ -55,7 +55,9 @@ async def jev(by_state: Dict[str, Dict[str, dict]]) -> Tuple[Dict[str, Any], int
                                   json={"model": JEV_MODEL, "state": state, "questions": qs}, timeout=JEV_TIMEOUT_S)
             r.raise_for_status()
             d = r.json()
-            return d.get("answers") or d
+            if "answers" not in d:
+                raise RuntimeError(f"jev: no answers in response: {str(d)[:200]}")
+            return d["answers"]
         parts = await asyncio.gather(*(one(s, qs) for s, qs in by_state.items() if qs))
     merged: Dict[str, Any] = {}
     for p in parts:

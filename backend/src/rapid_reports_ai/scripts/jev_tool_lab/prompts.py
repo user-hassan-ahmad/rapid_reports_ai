@@ -18,7 +18,8 @@ RULES FOR QUESTIONS
 - Ask only about what a text STATES. Never ask what imaging would show, what is expected or likely, or what a grade, system or guideline requires: you know that, so work it out yourself, then ask only whether each input is stated.
 - Copy quotes exactly from the case. Never paraphrase inside a quote.
 - One judgement per question. Never join two with "or" or "and also".
-- For coverage, ask about the topic in general terms (for example "wall thickness of the lesion"), never about a claim or its polarity (not "no enhancement").
+- For coverage, ask about the topic in general terms (for example "property P of finding X"), never about a claim or its polarity (not "no P").
+- A topic must not contain negation words (no, not, without, absent, negative, normal, unremarkable, nil, none, non) or digits.
 - Never ask about numbers, sizes, dates or counts.
 - Ask the fewest questions that settle the judgement, at most 8.
 

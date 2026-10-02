@@ -13,6 +13,7 @@ def test_s1_user_carries_case_finding_and_system():
     assert "DICTATED FINDINGS:\nLeft renal lesion" in u
     assert "FINDING: Left renal lesion 3 cm" in u
     assert "CLASSIFICATION SYSTEM: Bosniak 2019" in u
+    assert u.endswith("AVAILABLE TEXTS: the dictation only (there is no report and no clinical history).")
 
 
 def test_author_prompt_lists_catalogue_and_forbids_inference():
@@ -21,6 +22,8 @@ def test_author_prompt_lists_catalogue_and_forbids_inference():
         assert t in p
     assert "Never ask what imaging would show" in p
     assert "before seeing any answer" in p
+    assert not any(w in p.lower() for w in ("lesion", "enhancement", "wall"))
+    assert "must not contain negation words" in p
 
 
 def test_free_prompt_has_no_catalogue():
@@ -126,12 +129,25 @@ def test_lint_free():
     ok = FreeQuestion(id="q1", type="noul",
                       instructions='The dictated findings describe the "septa" of the lesion in some way.')
     assert lint_free(ok) == []
-    assert "unquoted" in lint_free(FreeQuestion(id="q2", type="noul", instructions="Is the wall thin?"))
+    # a plain topic question without a quote is fine; an unquoted reference to an item is not
+    assert lint_free(FreeQuestion(id="q2", type="noul", instructions="Is the wall thin?")) == []
+    assert "unquoted" in lint_free(FreeQuestion(id="q2", type="noul", instructions="Is this thin?"))
     assert "embedded_negative" in lint_free(FreeQuestion(id="q3", type="noul", instructions='"No enhancement" is stated.'))
+    assert "embedded_negative" in lint_free(FreeQuestion(id="q3", type="noul", instructions="There is no wall."))
     assert "numbers" in lint_free(FreeQuestion(id="q4", type="noul", instructions='"septa" are over 2 mm.'))
+    assert "numbers" in lint_free(FreeQuestion(id="q4", type="noul", instructions='"septa" are present twice.'))
+    assert "numbers" in lint_free(FreeQuestion(id="q4", type="noul", instructions='Are "septa" described?',
+                                               criteria={"true": "over 2 mm", "false": "other"}))
+    assert "numbers" not in lint_free(FreeQuestion(id="q4", type="noul", instructions='Does "left 3 cm lesion" appear?'))
     assert "two_judgements" in lint_free(FreeQuestion(id="q5", type="noul", instructions='Is "wall" thin? Is it smooth?'))
+    assert "two_judgements" in lint_free(FreeQuestion(id="q5", type="noul", instructions="Is the wall thin or thick?"))
     assert "inference" in lint_free(FreeQuestion(id="q6", type="noul", instructions='The "lesion" would enhance.'))
+    assert "inference" in lint_free(FreeQuestion(id="q6", type="noul",
+                                                 instructions='Does "left renal lesion" meet Bosniak IIF criteria?'))
     assert "choice_without_options" in lint_free(FreeQuestion(id="q7", type="choice", instructions='Pick "wall".'))
+    # quote styles
+    assert "embedded_negative" in lint_free(FreeQuestion(id="q8", type="noul", instructions="Is “no enhancement” stated?"))
+    assert "embedded_negative" in lint_free(FreeQuestion(id="q8", type="noul", instructions="Is 'no enhancement' stated?"))
 
 
 from rapid_reports_ai.scripts.jev_tool_lab.arms import FreePlan, arm_c, arm_d
@@ -150,7 +166,7 @@ async def test_arm_c_second_turn_sees_answers_and_records_overrule_basis():
 
 
 async def test_arm_d_sends_free_questions_and_lints():
-    free = FreePlan(questions=[FreeQuestion(id="q1", type="noul", instructions="Is the wall thin?"),
+    free = FreePlan(questions=[FreeQuestion(id="q1", type="noul", instructions="Is this thin?"),
                                FreeQuestion(id="q2", type="choice", instructions='Pick "septa".')],
                     rule=Rule(all_of=[Condition(q="q1", want="yes", label="wall")]))
     q = fake_qwen([free, Decision(gradable=False, missing=["wall"])])
@@ -160,3 +176,141 @@ async def test_arm_d_sends_free_questions_and_lints():
     assert "q1: unquoted" in d.lint and "q2: choice_without_options" in d.lint
     sent = [qid for qs in j.seen[0].values() for qid in qs]
     assert sent == ["q1"]                                                # the option-less choice is not sent
+
+
+# ---- review fixes ----
+import inspect
+
+import httpx
+import pytest
+
+from rapid_reports_ai.scripts.jev_tool_lab import calls
+from rapid_reports_ai.scripts.jev_tool_lab.arms import _raw, arm_cb, validate_free_rule
+
+
+def test_calls_has_no_stdout_redirect_and_tracks_requests():
+    src = inspect.getsource(calls)
+    assert "redirect_stdout" not in src and "contextlib" not in src
+    assert "16384" in src
+    assert Usage().requests == 0
+
+
+async def test_jev_without_answers_key_raises(monkeypatch):
+    real = httpx.AsyncClient
+    monkeypatch.setattr(calls.httpx, "AsyncClient",
+                        lambda *a, **k: real(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"x": 1}))))
+    with pytest.raises(RuntimeError, match="jev: no answers in response"):
+        await calls.jev({"state": {"q1": {"type": "noul", "instructions": "x"}}})
+
+
+async def test_arm_b_errored_fallback_is_an_error():
+    q = fake_qwen([PLAN])
+    j = fake_jev({"q1": {"noul": 0.9}, "q2": {"noul": 0.5}, "q3": {"noul": 0.9}})
+    fb = ArmResult(arm="A", item_id=ITEM.id, run=1, error="RuntimeError: down")
+    b = await arm_b(ITEM, run=1, fallback=fb, qwen_fn=q, jev_fn=j)
+    assert b.fallback and b.decision is None and b.error == "fallback A failed: RuntimeError: down"
+
+
+async def test_duplicate_ids_dropped_in_b():
+    dup = Plan(questions=[PLAN.questions[0],
+                          QuestionSpec(id="q1", type="T2", source="dictation", topic="septa of the lesion")],
+               rule=Rule(all_of=[Condition(q="q1", want="yes", label="wall")]))
+    fb = ArmResult(arm="A", item_id=ITEM.id, run=1, decision=Decision(gradable=True))
+    j = fake_jev({"q1": {"noul": 0.9}})
+    b = await arm_b(ITEM, run=1, fallback=fb, qwen_fn=fake_qwen([dup]), jev_fn=j)
+    assert "q1: duplicate id" in b.invalid
+    assert sum(len(qs) for qs in j.seen[0].values()) == 1
+    assert "wall" in str(j.seen[0])
+
+
+T4PLAN = Plan(questions=[QuestionSpec(id="q1", type="T4", source="dictation", item="Left renal lesion 3 cm",
+                                      options=["a cystic lesion", "a solid lesion"])],
+              rule=Rule(all_of=[Condition(q="q1", want="o1", label="kind")]))
+
+
+async def test_arm_c_evidence_explains_options():
+    q = fake_qwen([T4PLAN, Decision(gradable=True)])
+    j = fake_jev({"q1": {"probabilities": {"o1": 0.8, "o2": 0.1, "cant_tell": 0.1}}})
+    await arm_c(ITEM, run=1, qwen_fn=q, jev_fn=j)
+    user = q.calls[1]["user"]
+    assert " Options: " in user and "o1 = a cystic lesion; o2 = a solid lesion" in user
+
+
+def test_validate_free_rule():
+    from rapid_reports_ai.scripts.jev_tool_lab.arms import FreeQuestion as FQ
+    qs = [FQ(id="q1", type="noul", instructions='x "a"'),
+          FQ(id="q2", type="choice", instructions='y "b"', criteria={"o1": "p", "o2": "r"})]
+    def r(*c): return Rule(all_of=[Condition(q=a, want=b, label="l") for a, b in c])
+    assert validate_free_rule(r(("q1", "yes"), ("q2", "o2")), qs) is None
+    assert validate_free_rule(r(("q9", "yes")), qs) == "rule names unknown question q9"
+    assert validate_free_rule(Rule(all_of=[]), qs) == "empty rule"
+    assert validate_free_rule(r(("q1", "o1")), qs) == "bad want 'o1' for q1"
+    assert validate_free_rule(r(("q2", "yes")), qs) == "bad want 'yes' for q2"
+
+
+async def test_arm_d_validates_rule_dedups_caps_and_checks_criteria_keys():
+    qs = [FreeQuestion(id="q1", type="noul", instructions='Is "wall" described?',
+                       criteria={"yes": "a", "no": "b"}),
+          FreeQuestion(id="q1", type="noul", instructions='Is "septa" described?')]
+    qs += [FreeQuestion(id=f"x{i}", type="noul", instructions=f'Is "t{i}" described?') for i in range(8)]
+    free = FreePlan(questions=qs, rule=Rule(all_of=[Condition(q="q1", want="o1", label="wall")]))
+    q = fake_qwen([free, Decision(gradable=False)])
+    j = fake_jev({})
+    d = await arm_d(ITEM, run=1, qwen_fn=q, jev_fn=j)
+    assert "q1: duplicate id" in d.lint and "q1: bad_criteria_keys" in d.lint
+    assert any(x.endswith("over the cap") for x in d.lint)
+    assert "rule: bad want 'o1' for q1" in d.lint and d.rule_outcome == "unsure"
+    sent = {qid: v for qs_ in j.seen[0].values() for qid, v in qs_.items()}
+    assert "criteria" not in sent["q1"] and len(sent) == 7
+
+
+async def test_arm_c_stores_decide_usage():
+    c = await arm_c(ITEM, run=1, qwen_fn=fake_qwen([PLAN, Decision(gradable=True)]),
+                    jev_fn=fake_jev({"q1": {"noul": 0.9}, "q2": {"noul": 0.9}, "q3": {"noul": 0.9}}))
+    assert (c.decide_latency_s, c.decide_in, c.decide_out) == (1.0, 100, 50)
+
+
+async def test_arm_cb_blank_control():
+    q = fake_qwen([PLAN, Decision(gradable=True)])
+    c = await arm_c(ITEM, run=1, qwen_fn=q,
+                    jev_fn=fake_jev({"q1": {"noul": 0.9}, "q2": {"noul": 0.9}, "q3": {"noul": 0.9}}))
+    q2 = fake_qwen([Decision(gradable=False, missing=["x"])])
+    cb = await arm_cb(ITEM, run=1, c_result=c, qwen_fn=q2)
+    assert len(q2.calls) == 1 and q2.calls[0]["reasoning"] is True
+    user = q2.calls[0]["user"]
+    assert "not asked" in user and "raw:" not in user and "0.9" not in user
+    assert cb.arm == "Cb" and cb.decision.gradable is False
+    assert cb.latency_s == c.latency_s - c.decide_latency_s + 1.0 and cb.qwen_in == 200
+
+
+async def test_arm_cb_without_plan_errors():
+    cb = await arm_cb(ITEM, run=1, c_result=ArmResult(arm="C", item_id=ITEM.id, run=1, error="plan: x"),
+                      qwen_fn=fake_qwen([]))
+    assert cb.error == "no C plan"
+
+
+async def test_stage_prefixed_errors_keep_usage():
+    async def jev_boom(by_state):
+        raise RuntimeError("jev down")
+    b = await arm_b(ITEM, run=1, fallback=ArmResult(arm="A", item_id=ITEM.id, run=1),
+                    qwen_fn=fake_qwen([PLAN]), jev_fn=jev_boom)
+    assert b.error.startswith("jev: RuntimeError") and b.qwen_in == 100
+    async def qboom(*a, **k):
+        raise RuntimeError("q down")
+    c = await arm_c(ITEM, run=1, qwen_fn=qboom, jev_fn=fake_jev({}))
+    assert c.error.startswith("plan: RuntimeError")
+    n = {"i": 0}
+    async def second_boom(output_type, system, user, reasoning):
+        n["i"] += 1
+        if n["i"] == 1:
+            return PLAN, Usage(input_tokens=7, output_tokens=3, latency_s=1.0)
+        raise RuntimeError("decide down")
+    c = await arm_c(ITEM, run=1, qwen_fn=second_boom,
+                    jev_fn=fake_jev({"q1": {"noul": 0.9}, "q2": {"noul": 0.9}, "q3": {"noul": 0.9}}))
+    assert c.error.startswith("decide: RuntimeError") and c.qwen_in == 7
+
+
+def test_raw_is_robust():
+    assert _raw({"noul": "abc"}) == "unreadable"
+    assert _raw({"probabilities": {"o1": None}}) == "unreadable"
+    assert _raw({"noul": 0.5}) == "0.50"
