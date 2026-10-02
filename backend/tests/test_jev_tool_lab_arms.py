@@ -132,3 +132,31 @@ def test_lint_free():
     assert "two_judgements" in lint_free(FreeQuestion(id="q5", type="noul", instructions='Is "wall" thin? Is it smooth?'))
     assert "inference" in lint_free(FreeQuestion(id="q6", type="noul", instructions='The "lesion" would enhance.'))
     assert "choice_without_options" in lint_free(FreeQuestion(id="q7", type="choice", instructions='Pick "wall".'))
+
+
+from rapid_reports_ai.scripts.jev_tool_lab.arms import FreePlan, arm_c, arm_d
+
+
+async def test_arm_c_second_turn_sees_answers_and_records_overrule_basis():
+    q = fake_qwen([PLAN, Decision(gradable=True, reason="septa described as 'two thin septa'")])
+    j = fake_jev({"q1": {"noul": 0.9}, "q2": {"noul": 0.2}, "q3": {"noul": 0.9}})
+    c = await arm_c(ITEM, run=1, qwen_fn=q, jev_fn=j)
+    assert [x["type"] for x in q.calls] == ["Plan", "Decision"]
+    assert all(x["reasoning"] for x in q.calls)
+    second = q.calls[1]["user"]
+    assert "CLASSIFIER ANSWERS:" in second and "q2" in second and "no" in second
+    assert c.rule_outcome == "no" and c.decision.gradable is True       # Qwen overruled the rule
+    assert c.latency_s == 2.4 and c.qwen_in == 200
+
+
+async def test_arm_d_sends_free_questions_and_lints():
+    free = FreePlan(questions=[FreeQuestion(id="q1", type="noul", instructions="Is the wall thin?"),
+                               FreeQuestion(id="q2", type="choice", instructions='Pick "septa".')],
+                    rule=Rule(all_of=[Condition(q="q1", want="yes", label="wall")]))
+    q = fake_qwen([free, Decision(gradable=False, missing=["wall"])])
+    j = fake_jev({"q1": {"noul": 0.1}})
+    d = await arm_d(ITEM, run=1, qwen_fn=q, jev_fn=j)
+    assert d.arm == "D" and d.decision.gradable is False
+    assert "q1: unquoted" in d.lint and "q2: choice_without_options" in d.lint
+    sent = [qid for qs in j.seen[0].values() for qid in qs]
+    assert sent == ["q1"]                                                # the option-less choice is not sent

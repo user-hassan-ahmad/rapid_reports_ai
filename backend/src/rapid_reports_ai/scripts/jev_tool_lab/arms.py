@@ -153,3 +153,63 @@ def lint_free(q: FreeQuestion) -> List[str]:
     if q.type == "choice" and not q.criteria:
         codes.append("choice_without_options")
     return codes
+
+
+def _raw(ans: Any) -> str:
+    if isinstance(ans, dict) and "probabilities" in ans:
+        return ", ".join(f"{k} {float(v):.2f}" for k, v in ans["probabilities"].items())
+    if isinstance(ans, dict) and "noul" in ans:
+        return f"{float(ans['noul']):.2f}"
+    return "no answer"
+
+
+def _evidence(described: List[tuple], answers: Dict[str, Any], banded: Dict[str, str]) -> str:
+    return "\n".join(f"{qid} ({desc}): {banded.get(qid, UNSURE)} [raw: {_raw(answers.get(qid))}]"
+                     for qid, desc in described) or "(no valid questions)"
+
+
+async def _decide(item: S1Item, described: List[tuple], answers, banded, qwen_fn):
+    user = f"{s1_user(item)}\n\nCLASSIFIER ANSWERS:\n{_evidence(described, answers, banded)}"
+    return await qwen_fn(Decision, prompts.decide_system(), user, True)
+
+
+async def arm_c(item: S1Item, *, run: int, qwen_fn=calls.qwen, jev_fn=calls.jev) -> ArmResult:
+    try:
+        plan, u1 = await qwen_fn(Plan, prompts.author_system(), s1_user(item), True)
+        asked = await _ask(plan.questions, item, jev_fn)
+        rule_err = validate_rule(plan.rule, plan.questions)
+        outcome = UNSURE if rule_err else evaluate(plan.rule, asked.banded)[0]
+        described = [(s.id, render(s)["instructions"]) for s in asked.valid]
+        dec, u2 = await _decide(item, described, asked.answers, asked.banded, qwen_fn)
+        res = ArmResult(arm="C", item_id=item.id, run=run, decision=dec, plan=plan.model_dump(), answers=asked.answers,
+                        banded=asked.banded, invalid=asked.invalid + ([f"rule: {rule_err}"] if rule_err else []),
+                        rule_outcome=outcome, jev_calls=asked.calls,
+                        latency_s=asked.latency_s)
+        _add_usage(res, u1)
+        _add_usage(res, u2)
+        res.latency_s = round(res.latency_s, 6)
+        return res
+    except Exception as e:
+        return _err("C", item, run, e)
+
+
+async def arm_d(item: S1Item, *, run: int, qwen_fn=calls.qwen, jev_fn=calls.jev) -> ArmResult:
+    try:
+        plan, u1 = await qwen_fn(FreePlan, prompts.free_author_system(), s1_user(item), True)
+        qs = plan.questions[:MAX_QUESTIONS]
+        lint = [f"{q.id}: {code}" for q in qs for code in lint_free(q)]
+        send = [q for q in qs if not (q.type == "choice" and not q.criteria)]
+        jq = {q.id: {"type": q.type, "instructions": q.instructions, **({"criteria": q.criteria} if q.criteria else {})}
+              for q in send}
+        answers, n, jlat = (await jev_fn({state_for(item.case(), "dictation"): jq})) if jq else ({}, 0, 0.0)
+        banded = {q.id: band(answers.get(q.id), q.type) for q in send}
+        outcome, _ = evaluate(plan.rule, banded)
+        dec, u2 = await _decide(item, [(q.id, q.instructions) for q in send], answers, banded, qwen_fn)
+        res = ArmResult(arm="D", item_id=item.id, run=run, decision=dec, plan=plan.model_dump(), answers=answers,
+                        banded=banded, lint=lint, rule_outcome=outcome, jev_calls=n, latency_s=jlat)
+        _add_usage(res, u1)
+        _add_usage(res, u2)
+        res.latency_s = round(res.latency_s, 6)
+        return res
+    except Exception as e:
+        return _err("D", item, run, e)
