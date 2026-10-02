@@ -35,7 +35,7 @@ async def qwen(output_type, system: str, user: str, reasoning: bool) -> Tuple[An
                                                      model_settings=settings), QWEN_TIMEOUT_S)
     usage = Usage(latency_s=time.monotonic() - t)
     try:
-        u = r.usage()
+        u = r.usage() if callable(r.usage) else r.usage   # pydantic-ai: usage became a property
         usage.input_tokens = getattr(u, "input_tokens", None) or getattr(u, "request_tokens", 0) or 0
         usage.output_tokens = getattr(u, "output_tokens", None) or getattr(u, "response_tokens", 0) or 0
         usage.requests = getattr(u, "requests", 0) or 0

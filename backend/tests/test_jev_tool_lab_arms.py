@@ -72,9 +72,9 @@ def fake_jev(answers):
 PLAN = Plan(questions=[QuestionSpec(id="q1", type="T2", source="dictation", topic="wall thickness of the lesion"),
                        QuestionSpec(id="q2", type="T2", source="dictation", topic="septa of the lesion"),
                        QuestionSpec(id="q3", type="T2", source="dictation", topic="enhancement of the lesion")],
-            rule=Rule(all_of=[Condition(q="q1", want="yes", label="wall"),
+            rule=[Condition(q="q1", want="yes", label="wall"),
                               Condition(q="q2", want="yes", label="septa"),
-                              Condition(q="q3", want="yes", label="enhancement")]))
+                              Condition(q="q3", want="yes", label="enhancement")])
 
 
 async def test_arm_a_and_a0():
@@ -109,7 +109,7 @@ async def test_arm_b_falls_back_to_a_when_unsure():
 
 async def test_arm_b_drops_invalid_questions():
     bad = Plan(questions=[QuestionSpec(id="q1", type="T2", source="dictation", topic="no enhancement")],
-               rule=Rule(all_of=[Condition(q="q1", want="yes", label="enhancement")]))
+               rule=[Condition(q="q1", want="yes", label="enhancement")])
     fb = ArmResult(arm="A", item_id=ITEM.id, run=1, decision=Decision(gradable=False), latency_s=2.0)
     b = await arm_b(ITEM, run=1, fallback=fb, qwen_fn=fake_qwen([bad]), jev_fn=fake_jev({}))
     assert b.invalid == ["q1: topic carries a negation"]
@@ -117,7 +117,7 @@ async def test_arm_b_drops_invalid_questions():
 
 
 async def test_arm_b_malformed_rule_falls_back():
-    bad = Plan(questions=PLAN.questions, rule=Rule(all_of=[Condition(q="q1", want="o1", label="wall")]))
+    bad = Plan(questions=PLAN.questions, rule=[Condition(q="q1", want="o1", label="wall")])
     fb = ArmResult(arm="A", item_id=ITEM.id, run=1, decision=Decision(gradable=True), latency_s=2.0)
     j = fake_jev({"q1": {"noul": 0.9}, "q2": {"noul": 0.9}, "q3": {"noul": 0.9}})
     b = await arm_b(ITEM, run=1, fallback=fb, qwen_fn=fake_qwen([bad]), jev_fn=j)
@@ -177,7 +177,7 @@ async def test_arm_c_second_turn_sees_answers_and_records_overrule_basis():
 async def test_arm_d_sends_free_questions_and_lints():
     free = FreePlan(questions=[FreeQuestion(id="q1", type="noul", instructions="Is this lesion thin?"),
                                FreeQuestion(id="q2", type="choice", instructions='Pick "septa".')],
-                    rule=Rule(all_of=[Condition(q="q1", want="yes", label="wall")]))
+                    rule=[Condition(q="q1", want="yes", label="wall")])
     q = fake_qwen([free, Decision(gradable=False, missing=["wall"])])
     j = fake_jev({"q1": {"noul": 0.1}})
     d = await arm_d(ITEM, run=1, qwen_fn=q, jev_fn=j)
@@ -226,7 +226,7 @@ async def test_arm_b_errored_fallback_is_an_error():
 async def test_duplicate_ids_dropped_in_b():
     dup = Plan(questions=[PLAN.questions[0],
                           QuestionSpec(id="q1", type="T2", source="dictation", topic="septa of the lesion")],
-               rule=Rule(all_of=[Condition(q="q1", want="yes", label="wall")]))
+               rule=[Condition(q="q1", want="yes", label="wall")])
     fb = ArmResult(arm="A", item_id=ITEM.id, run=1, decision=Decision(gradable=True))
     j = fake_jev({"q1": {"noul": 0.9}})
     b = await arm_b(ITEM, run=1, fallback=fb, qwen_fn=fake_qwen([dup]), jev_fn=j)
@@ -237,7 +237,7 @@ async def test_duplicate_ids_dropped_in_b():
 
 T4PLAN = Plan(questions=[QuestionSpec(id="q1", type="T4", source="dictation", item="Left renal lesion 3 cm",
                                       options=["a cystic lesion", "a solid lesion"])],
-              rule=Rule(all_of=[Condition(q="q1", want="o1", label="kind")]))
+              rule=[Condition(q="q1", want="o1", label="kind")])
 
 
 async def test_arm_c_evidence_explains_options():
@@ -265,7 +265,7 @@ async def test_arm_d_validates_rule_dedups_caps_and_checks_criteria_keys():
                        criteria={"yes": "a", "no": "b"}),
           FreeQuestion(id="q1", type="noul", instructions='Is "septa" described?')]
     qs += [FreeQuestion(id=f"x{i}", type="noul", instructions=f'Is "t{i}" described?') for i in range(8)]
-    free = FreePlan(questions=qs, rule=Rule(all_of=[Condition(q="q1", want="o1", label="wall")]))
+    free = FreePlan(questions=qs, rule=[Condition(q="q1", want="o1", label="wall")])
     q = fake_qwen([free, Decision(gradable=False)])
     j = fake_jev({})
     d = await arm_d(ITEM, run=1, qwen_fn=q, jev_fn=j)
@@ -368,7 +368,7 @@ def test_validate_rule_first_duplicate_wins():
 
 async def test_arm_d_passes_the_system_to_lint():
     free = FreePlan(questions=[FreeQuestion(id="q1", type="noul", instructions="Is the lesion Bosniak IIF?")],
-                    rule=Rule(all_of=[Condition(q="q1", want="yes", label="g")]))
+                    rule=[Condition(q="q1", want="yes", label="g")])
     d = await arm_d(ITEM, run=1, qwen_fn=fake_qwen([free, Decision(gradable=False)]), jev_fn=fake_jev({}))
     assert "q1: inference" in d.lint
 
@@ -424,3 +424,12 @@ def test_lint_numbers_ignores_quote_meta_but_flags_counts():
     count = FreeQuestion(id="q2", type="noul", instructions='The "cyst" has two septa.')
     assert "numbers" not in lint_free(meta)
     assert "numbers" in lint_free(count)
+
+
+def test_plan_rule_is_a_flat_list_for_qwen():
+    """Qwen JSON-encodes a nested object (rule={all_of: [...]}) as a string; a flat list validates (smoke, 2026-10-02)."""
+    cond = {"q": "q1", "want": "yes", "label": "x"}
+    assert Plan.model_validate({"questions": [], "rule": [cond]}).rule[0].q == "q1"
+    assert FreePlan.model_validate({"questions": [], "rule": [cond]}).rule[0].want == "yes"
+    assert "rule is a list of conditions" in prompts.author_system()
+    assert "rule is a list of conditions" in prompts.free_author_system()

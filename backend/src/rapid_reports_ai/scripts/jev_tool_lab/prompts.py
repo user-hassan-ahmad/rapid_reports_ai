@@ -26,12 +26,12 @@ RULES FOR QUESTIONS
 STRUCTURAL EXAMPLE (not a clinical one): to decide whether finding X can be classified, where the system needs inputs P, Q and R for X, ask three T2 questions on the dictation, one per input, each topic naming that input of X in general terms.
 
 THE RULE
-Declare, before seeing any answer, how the answers decide the judgement. all_of is a list of conditions {q, want, label}. want is "yes" or "no" for T1, T2, T3, T5 and T6, or an option key ("o1", "o2", ...) for T4. label names what the condition checks in a few words; it becomes the missing-input text. The judgement holds only if every condition holds."""
+Declare, before seeing any answer, how the answers decide the judgement. rule is a list of conditions {q, want, label}. want is "yes" or "no" for T1, T2, T3, T5 and T6, or an option key ("o1", "o2", ...) for T4. label names what the condition checks in a few words; it becomes the missing-input text. The judgement holds only if every condition holds."""
 
 FREE = """Write your own questions for a fast classifier (Jev) that reads the dictation and answers each question. Give each an id: q1, q2, ... Each question has: type ("noul" for a yes/no statement, answered with a probability that it is true; "choice" for picking one option), instructions (the question or statement), and criteria (for a choice: option key -> description; for a noul: optional "true" and "false" descriptions). Ask the fewest questions that settle the judgement, at most 8.
 
 THE RULE
-Declare, before seeing any answer, how the answers decide the judgement. all_of is a list of conditions {q, want, label}. want is "yes" or "no" for a noul, or an option key for a choice. label names what the condition checks in a few words; it becomes the missing-input text. The judgement holds only if every condition holds."""
+Declare, before seeing any answer, how the answers decide the judgement. rule is a list of conditions {q, want, label}. want is "yes" or "no" for a noul, or an option key for a choice. label names what the condition checks in a few words; it becomes the missing-input text. The judgement holds only if every condition holds."""
 
 
 def baseline_system() -> str:

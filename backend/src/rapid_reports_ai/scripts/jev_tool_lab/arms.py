@@ -11,13 +11,13 @@ from pydantic import BaseModel
 
 from . import calls, prompts
 from .catalogue import MAX_QUESTIONS, QuestionSpec, question_source, render, state_for, validate
-from .rules import UNSURE, Rule, band, evaluate, validate_rule
+from .rules import UNSURE, Condition, Rule, band, evaluate, validate_rule
 from .scenarios import Decision, S1Item, s1_user
 
 
 class Plan(BaseModel):
     questions: List[QuestionSpec]
-    rule: Rule
+    rule: List[Condition]   # flat: Qwen string-encodes a nested {all_of: [...]} object
 
 
 class FreeQuestion(BaseModel):
@@ -29,7 +29,7 @@ class FreeQuestion(BaseModel):
 
 class FreePlan(BaseModel):
     questions: List[FreeQuestion]
-    rule: Rule
+    rule: List[Condition]
 
 
 class ArmResult(BaseModel):
@@ -132,8 +132,8 @@ async def arm_b(item: S1Item, *, run: int, fallback: ArmResult, qwen_fn=calls.qw
     res.plan = plan.model_dump()
     try:
         asked = await _ask(plan.questions, item, jev_fn)
-        rule_err = validate_rule(plan.rule, plan.questions)       # review fix: a malformed rule is unsure, never "no"
-        outcome, failed = (UNSURE, []) if rule_err else evaluate(plan.rule, asked.banded)
+        rule_err = validate_rule(Rule(all_of=plan.rule), plan.questions)       # review fix: a malformed rule is unsure, never "no"
+        outcome, failed = (UNSURE, []) if rule_err else evaluate(Rule(all_of=plan.rule), asked.banded)
     except Exception as e:
         return _fail(res, "jev", e)
     res.answers, res.banded = asked.answers, asked.banded
@@ -254,8 +254,8 @@ async def arm_c(item: S1Item, *, run: int, qwen_fn=calls.qwen, jev_fn=calls.jev)
     res.plan = plan.model_dump()
     try:
         asked = await _ask(plan.questions, item, jev_fn)
-        rule_err = validate_rule(plan.rule, plan.questions)
-        outcome = UNSURE if rule_err else evaluate(plan.rule, asked.banded)[0]
+        rule_err = validate_rule(Rule(all_of=plan.rule), plan.questions)
+        outcome = UNSURE if rule_err else evaluate(Rule(all_of=plan.rule), asked.banded)[0]
     except Exception as e:
         return _fail(res, "jev", e)
     res.answers, res.banded = asked.answers, asked.banded
@@ -330,10 +330,10 @@ async def arm_d(item: S1Item, *, run: int, qwen_fn=calls.qwen, jev_fn=calls.jev)
               for q in send}
         answers, n, jlat = (await jev_fn({state_for(item.case(), "dictation"): jq})) if jq else ({}, 0, 0.0)
         banded = {q.id: band(answers.get(q.id), q.type) for q in send}
-        rule_err = validate_free_rule(plan.rule, kept)
+        rule_err = validate_free_rule(Rule(all_of=plan.rule), kept)
         if rule_err:
             lint.append(f"rule: {rule_err}")
-        outcome = UNSURE if rule_err else evaluate(plan.rule, banded)[0]
+        outcome = UNSURE if rule_err else evaluate(Rule(all_of=plan.rule), banded)[0]
     except Exception as e:
         return _fail(res, "jev", e)
     res.answers, res.banded, res.lint, res.rule_outcome = answers, banded, lint, outcome
