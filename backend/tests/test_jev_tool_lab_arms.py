@@ -131,7 +131,7 @@ def test_lint_free():
     assert lint_free(ok) == []
     # a plain topic question without a quote is fine; an unquoted reference to an item is not
     assert lint_free(FreeQuestion(id="q2", type="noul", instructions="Is the wall thin?")) == []
-    assert "unquoted" in lint_free(FreeQuestion(id="q2", type="noul", instructions="Is this thin?"))
+    assert "unquoted" in lint_free(FreeQuestion(id="q2", type="noul", instructions="Is this lesion thin?"))
     assert "embedded_negative" in lint_free(FreeQuestion(id="q3", type="noul", instructions='"No enhancement" is stated.'))
     assert "embedded_negative" in lint_free(FreeQuestion(id="q3", type="noul", instructions="There is no wall."))
     assert "numbers" in lint_free(FreeQuestion(id="q4", type="noul", instructions='"septa" are over 2 mm.'))
@@ -140,7 +140,9 @@ def test_lint_free():
                                                criteria={"true": "over 2 mm", "false": "other"}))
     assert "numbers" not in lint_free(FreeQuestion(id="q4", type="noul", instructions='Does "left 3 cm lesion" appear?'))
     assert "two_judgements" in lint_free(FreeQuestion(id="q5", type="noul", instructions='Is "wall" thin? Is it smooth?'))
-    assert "two_judgements" in lint_free(FreeQuestion(id="q5", type="noul", instructions="Is the wall thin or thick?"))
+    assert "two_judgements" in lint_free(FreeQuestion(id="q5", type="noul",
+                                                      instructions="Is the wall thin or is it smooth?"))
+    assert "two_judgements" not in lint_free(FreeQuestion(id="q5", type="noul", instructions="Is the wall thin or thick?"))
     assert "inference" in lint_free(FreeQuestion(id="q6", type="noul", instructions='The "lesion" would enhance.'))
     assert "inference" in lint_free(FreeQuestion(id="q6", type="noul",
                                                  instructions='Does "left renal lesion" meet Bosniak IIF criteria?'))
@@ -166,7 +168,7 @@ async def test_arm_c_second_turn_sees_answers_and_records_overrule_basis():
 
 
 async def test_arm_d_sends_free_questions_and_lints():
-    free = FreePlan(questions=[FreeQuestion(id="q1", type="noul", instructions="Is this thin?"),
+    free = FreePlan(questions=[FreeQuestion(id="q1", type="noul", instructions="Is this lesion thin?"),
                                FreeQuestion(id="q2", type="choice", instructions='Pick "septa".')],
                     rule=Rule(all_of=[Condition(q="q1", want="yes", label="wall")]))
     q = fake_qwen([free, Decision(gradable=False, missing=["wall"])])
@@ -179,6 +181,9 @@ async def test_arm_d_sends_free_questions_and_lints():
 
 
 # ---- review fixes ----
+from rapid_reports_ai.scripts.jev_tool_lab.catalogue import render as _render
+from rapid_reports_ai.scripts.jev_tool_lab.arms import FreeQuestion as _FQ
+from rapid_reports_ai.scripts.jev_tool_lab.rules import validate_rule as _vr
 import inspect
 
 import httpx
@@ -280,7 +285,7 @@ async def test_arm_cb_blank_control():
     user = q2.calls[0]["user"]
     assert "not asked" in user and "raw:" not in user and "0.9" not in user
     assert cb.arm == "Cb" and cb.decision.gradable is False
-    assert cb.latency_s == c.latency_s - c.decide_latency_s + 1.0 and cb.qwen_in == 200
+    assert cb.latency_s == c.plan_latency_s + 1.0 and cb.qwen_in == 200
 
 
 async def test_arm_cb_without_plan_errors():
@@ -314,3 +319,66 @@ def test_raw_is_robust():
     assert _raw({"noul": "abc"}) == "unreadable"
     assert _raw({"probabilities": {"o1": None}}) == "unreadable"
     assert _raw({"noul": 0.5}) == "0.50"
+
+
+def test_catalogue_wordings_lint_clean():
+    specs = [QuestionSpec(id="q", type="T1", source="dictation", item="Left renal lesion 3 cm"),
+             QuestionSpec(id="q", type="T2", source="dictation", topic="wall thickness of the lesion"),
+             QuestionSpec(id="q", type="T2", source="report", section="Findings", topic="renal lesion"),
+             QuestionSpec(id="q", type="T3", clause="No renal lesion is seen"),
+             QuestionSpec(id="q", type="T4", source="dictation", item="Left renal lesion 3 cm",
+                          options=["a cystic lesion", "a solid lesion"]),
+             QuestionSpec(id="q", type="T5", source="dictation", item="Left renal lesion 3 cm", property="abnormal"),
+             QuestionSpec(id="q", type="T6", source="dictation", a="Left renal lesion", b="Left renal cyst")]
+    for sp in specs:
+        r = _render(sp)
+        q = _FQ(id="q", type=r["type"], instructions=r["instructions"], criteria=r.get("criteria"))
+        assert lint_free(q) == [], (sp.type, sp.source, lint_free(q))
+
+
+def test_lint_free_flags_the_grade_asked_directly():
+    q = _FQ(id="q", type="noul", instructions="Is the lesion Bosniak IIF?")
+    assert "inference" in lint_free(q, system="Bosniak 2019")
+    assert "inference" not in lint_free(q)
+    assert "inference" not in lint_free(_FQ(id="q", type="noul", instructions='Does "Bosniak IIF" appear?'),
+                                        system="Bosniak 2019")
+
+
+def test_lint_free_unquoted_and_number_words():
+    assert "unquoted" in lint_free(_FQ(id="q", type="noul", instructions="Is the above described?"))
+    assert "unquoted" not in lint_free(_FQ(id="q", type="noul", instructions="Is that thin?"))
+    assert "numbers" not in lint_free(_FQ(id="q", type="noul", instructions="Is only one side described, or half?"))
+    assert "numbers" in lint_free(_FQ(id="q", type="noul", instructions="Are there three septa described?"))
+
+
+def test_validate_rule_first_duplicate_wins():
+    specs = [QuestionSpec(id="q1", type="T4", source="dictation", item="Left renal lesion 3 cm",
+                          options=["a", "b"]),
+             QuestionSpec(id="q1", type="T2", source="dictation", topic="septa")]
+    assert _vr(Rule(all_of=[Condition(q="q1", want="o2", label="k")]), specs) is None
+    assert _vr(Rule(all_of=[Condition(q="q1", want="yes", label="k")]), specs) == "bad want 'yes' for q1"
+
+
+async def test_arm_d_passes_the_system_to_lint():
+    free = FreePlan(questions=[FreeQuestion(id="q1", type="noul", instructions="Is the lesion Bosniak IIF?")],
+                    rule=Rule(all_of=[Condition(q="q1", want="yes", label="g")]))
+    d = await arm_d(ITEM, run=1, qwen_fn=fake_qwen([free, Decision(gradable=False)]), jev_fn=fake_jev({}))
+    assert "q1: inference" in d.lint
+
+
+async def test_requests_summed_and_cb_cost_is_plan_turn_plus_own_decide():
+    async def qfn(output_type, system, user, reasoning):
+        out = PLAN if output_type is Plan else Decision(gradable=True)
+        return out, Usage(input_tokens=10, output_tokens=5, latency_s=2.0, requests=3)
+    j = fake_jev({"q1": {"noul": 0.9}, "q2": {"noul": 0.9}, "q3": {"noul": 0.9}})
+    c = await arm_c(ITEM, run=1, qwen_fn=qfn, jev_fn=j)
+    assert c.requests == 6 and (c.plan_latency_s, c.plan_in, c.plan_out) == (2.0, 10, 5)
+    cb = await arm_cb(ITEM, run=1, c_result=c, qwen_fn=qfn)
+    assert (cb.latency_s, cb.qwen_in, cb.qwen_out, cb.requests) == (4.0, 20, 10, 3)
+    # C that failed at decide still has a plan and answers: Cb runs
+    broken = c.model_copy(update={"error": "decide: x", "decision": None})
+    assert (await arm_cb(ITEM, run=1, c_result=broken, qwen_fn=qfn)).error is None
+
+
+def test_decide_prompt_mentions_not_asked():
+    assert 'yes / no / unsure (or "not asked")' in prompts.decide_system()

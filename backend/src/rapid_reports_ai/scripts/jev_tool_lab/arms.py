@@ -43,6 +43,10 @@ class ArmResult(BaseModel):
     decide_latency_s: float = 0.0
     decide_in: int = 0
     decide_out: int = 0
+    requests: int = 0
+    plan_latency_s: float = 0.0
+    plan_in: int = 0
+    plan_out: int = 0
     jev_calls: int = 0
     plan: Optional[dict] = None
     answers: Optional[dict] = None
@@ -69,6 +73,7 @@ def _add_usage(res: ArmResult, u) -> None:
     res.latency_s += u.latency_s
     res.qwen_in += u.input_tokens
     res.qwen_out += u.output_tokens
+    res.requests += getattr(u, "requests", 0)
 
 
 @dataclass
@@ -154,12 +159,13 @@ _NEG_WORDS = re.compile(r"\b(no|not|without|absent|negative|nil|none)\b", re.I)
 _NEG_CLAIM = re.compile(r"\b(is|are|there is|there are)\s+(no|not)\b", re.I)
 _INFER = re.compile(r"\b(would|expected|likely|should|typical|typically|suggests?|meets?|criteria|grade|classif\w*|"
                     r"requires?|consistent with|implies?)\b", re.I)
-_TWO = re.compile(r"\b(and also|or whether|and whether|as well as|or)\b", re.I)
-_REF = re.compile(r"\b(this|that|these|the above)\b", re.I)
-_NUMWORD = re.compile(r"\b(one|two|three|four|five|six|seven|eight|nine|ten|twice|half)\b", re.I)
+_TWO = re.compile(r"\b(and also|or whether|and whether|as well as)\b|"
+                  r"\b(is|are|does|do|has|have)\b[^?.]*\bor\b\s+(is|are|does|do|has|have|whether)\b", re.I)
+_REF = re.compile(r"\b(this (finding|lesion|abnormality|item|line)|that finding|the above)\b", re.I)
+_NUMWORD = re.compile(r"\b(two|three|four|five|six|seven|eight|nine|ten|twice)\b", re.I)
 
 
-def lint_free(q: FreeQuestion) -> List[str]:
+def lint_free(q: FreeQuestion, system: Optional[str] = None) -> List[str]:
     """Rule breaks in a free-form question (spec §2.1 forbidden list); D's risk measure."""
     text = q.instructions
     quotes = [next(g for g in m.groups() if g is not None) for m in _QUOTE.finditer(text)]
@@ -174,7 +180,9 @@ def lint_free(q: FreeQuestion) -> List[str]:
         codes.append("numbers")
     if text.count("?") > 1 or _TWO.search(outside):
         codes.append("two_judgements")
-    if _INFER.search(outside):
+    low = outside.casefold()
+    asks_grade = bool(system and (system.casefold() in low or system.split()[0].casefold() in low))
+    if _INFER.search(outside) or asks_grade:
         codes.append("inference")
     if q.type == "choice" and not q.criteria:
         codes.append("choice_without_options")
@@ -241,6 +249,7 @@ async def arm_c(item: S1Item, *, run: int, qwen_fn=calls.qwen, jev_fn=calls.jev)
     except Exception as e:
         return _fail(res, "plan", e)
     _add_usage(res, u1)
+    res.plan_latency_s, res.plan_in, res.plan_out = u1.latency_s, u1.input_tokens, u1.output_tokens
     res.plan = plan.model_dump()
     try:
         asked = await _ask(plan.questions, item, jev_fn)
@@ -267,7 +276,7 @@ async def arm_c(item: S1Item, *, run: int, qwen_fn=calls.qwen, jev_fn=calls.jev)
 async def arm_cb(item: S1Item, *, run: int, c_result: ArmResult, qwen_fn=calls.qwen) -> ArmResult:
     """C-blank control: C's own plan, the decide turn with every answer shown as 'not asked'."""
     res = ArmResult(arm="Cb", item_id=item.id, run=run)
-    if c_result.plan is None or c_result.error:
+    if c_result.plan is None or c_result.banded is None:
         res.error = "no C plan"
         return res
     try:
@@ -280,9 +289,7 @@ async def arm_cb(item: S1Item, *, run: int, c_result: ArmResult, qwen_fn=calls.q
     except Exception as e:
         return _fail(res, "plan", e)
     res.plan = c_result.plan
-    res.latency_s = c_result.latency_s - c_result.decide_latency_s
-    res.qwen_in = c_result.qwen_in - c_result.decide_in
-    res.qwen_out = c_result.qwen_out - c_result.decide_out
+    res.latency_s, res.qwen_in, res.qwen_out = c_result.plan_latency_s, c_result.plan_in, c_result.plan_out
     try:
         dec, u = await _decide(item, described, {}, {}, qwen_fn, blank=True)
     except Exception as e:
@@ -311,7 +318,7 @@ async def arm_d(item: S1Item, *, run: int, qwen_fn=calls.qwen, jev_fn=calls.jev)
             seen.add(q.id)
             kept.append(q)
         lint += [f"{q.id}: over the cap" for q in plan.questions[MAX_QUESTIONS:]]
-        lint += [f"{q.id}: {code}" for q in kept for code in lint_free(q)]
+        lint += [f"{q.id}: {code}" for q in kept for code in lint_free(q, item.system)]
         for q in kept:
             if q.type == "noul" and q.criteria and set(q.criteria) != {"true", "false"}:
                 lint.append(f"{q.id}: bad_criteria_keys")

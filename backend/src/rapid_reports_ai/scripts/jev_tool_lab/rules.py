@@ -41,7 +41,9 @@ def validate_rule(rule: Rule, specs: List[QuestionSpec]) -> Optional[str]:
     validate() later drops: those stay UNSURE in evaluate), else the reason the rule is invalid."""
     if not rule.all_of:
         return "empty rule"
-    by_id = {s.id: s for s in specs}
+    by_id: dict = {}
+    for s in specs:
+        by_id.setdefault(s.id, s)      # first occurrence wins, matching _ask
     for c in rule.all_of:
         spec = by_id.get(c.q)
         if spec is None:

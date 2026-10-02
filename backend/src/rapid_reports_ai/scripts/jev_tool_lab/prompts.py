@@ -48,6 +48,6 @@ def free_author_system() -> str:
 
 def decide_system() -> str:
     return (f"{ROLE}\n\n{JUDGEMENT_S1}\n\nYou asked a fast classifier some questions about the case text. Its answers "
-            "are listed below the case as yes / no / unsure, or the chosen option, with the raw probability. Treat them "
+            "are listed below the case as yes / no / unsure (or \"not asked\"), or the chosen option, with the raw probability. Treat them "
             "as evidence about what the text states, not as verdicts: check each against the case yourself, and "
             "overrule an answer you can see is wrong. Return gradable, missing and a one-sentence reason.")
