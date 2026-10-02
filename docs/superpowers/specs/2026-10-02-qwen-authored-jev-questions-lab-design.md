@@ -105,6 +105,15 @@ Each scenario is one judgement with a label per item. Start with S1, and add the
 | S4 | **Unsupported finding:** is a positive report clause stated in the dictation? | L-46's weak spot (5/32, 49 false alarms) | fabrication cases + synthetic |
 | S5 | **Laterality bounded:** is the side fixed by the title or a subheading? | T5 + T1 | by construction |
 
+**S1 labelling rules (Hassan, 2026-10-02):** these are part of the shared judgement prompt, so every arm and every label uses them.
+- **Scope:** grade means the system's **core category**. Optional modifiers and eligibility criteria are ignored unless they change that category.
+- **Literal reading:** an input counts only if it is stated, never inferred from radiological convention. For example, an unqualified "nodule" is not assumed solid.
+
+**Fixture design from the peer review (2026-10-02):**
+- **Finding-scoped T2d items:** the wording check includes topics tied to one finding while a neighbour carries the same attribute. This is S1's nearest-finding trap, and Jev's known overlapping-span weakness.
+- **Separate scoring:** T6 items whose side lives only in a line prefix are scored separately.
+- **No ceiling:** the S1 set is hardened by category, blind to model results, so baseline A doesn't score at the ceiling.
+
 ## 5. Data and procedure
 
 **Data:**
