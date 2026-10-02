@@ -271,3 +271,37 @@ The review engine spec resumes either way. The lab feeds it in three places:
 - **C's latency is unreliable:** four C calls took about 64 s, probably provider queueing or rate limiting at 4 concurrent calls.
 - **B plan failures:** 2 of 20 B plans failed because Qwen (reasoning off) JSON-encoded the `questions` array as a string. That is the same class as the rule-object failure.
 - **Sample size:** n = 20 synthetic items, so all of this is directional.
+
+## Phase 3: "list the inputs, then decide", tested at ≥ 100 items (approved by Hassan, 2026-10-02)
+
+**Hypothesis (from the pilot):** making Qwen list the system's inputs before it judges fixes overcalling, and needs no Jev.
+
+**Arms:**
+
+| Arm | Calls | Reasoning | Flow |
+|---|---|---|---|
+| A | 1 | on | baseline single-pass judgement |
+| E1off | 1 | off | one structured call: `inputs: [{input, stated, quote}]` → `gradable`, `missing` |
+| E1on | 1 | on | as E1off, with reasoning on |
+| E2 | 2 | on | the pilot's Cb, stand-alone: plan the inputs as catalogue questions, then decide with no answers ("not asked") |
+
+**Data:**
+- 100 items: the 20 pilot items plus 80 new, 50 gradable and 50 not.
+- **Category tags** on the new items, 10 per category:
+  - gradable: complete-plain, scattered-or-abbreviated, absent-unusual-phrasing, measurement-only;
+  - not gradable: silence-overcall, neighbour-carries-input, implied-not-stated, knowledge-trap.
+- Labels follow the judgement prompt, which now includes Hassan's rulings: read descriptors by their standard meaning, and treat a criterion as described when its ordinarily dictated features are covered.
+- Hassan reviews the new labels before any run.
+
+**Pass bars** (2 runs; paired against A item by item):
+- **Accuracy:** an E arm passes if its balanced accuracy is ≥ A + 5 points in both runs, with losses against A ≤ 3 per run. McNemar p is reported as a guide.
+- **Choice:** among passing E arms, adopt the **cheapest** whose balanced accuracy is within 2 points of the best E arm. Cheapest means tokens, then p50 latency.
+- **Stability:** ≥ A.
+- **Overcall categories:** the adopted arm must not be worse than A on `silence-overcall` and `neighbour-carries-input`. These are the production failure modes.
+- **Reported, not gated:** per-category accuracy, E1's checklist self-consistency (does the verdict match its own checklist?) and quote grounding (are the "stated" quotes really in the dictation?).
+
+**If no E arm passes,** the negative result goes in the ledger, and the engine keeps the single-call adjudicator.
+
+**Latency caveat:** with 4 concurrent calls the provider sometimes queues (the pilot saw stalls of about 64 s), so p90 is reported with that caveat. Compare on p50.
+
+**Smoke test (2 items):** all arms ran with no errors, including E1off's checklist with reasoning off (the string-encoded-list decoding is in place).

@@ -33,6 +33,7 @@ class S1Item(BaseModel):
     system: str               # e.g. "Bosniak 2019"
     gradable: bool            # the label
     missing: List[str] = []   # the label's missing inputs, for the hand read
+    category: str = ""       # difficulty category (phase 3 expansion); empty for pilot items
 
     def case(self) -> Case:
         return Case(scan_type=self.scan_type, dictation=self.dictation)

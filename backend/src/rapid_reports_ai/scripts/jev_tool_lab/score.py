@@ -139,6 +139,12 @@ def summarise(rows: List[ArmResult], items: Dict[str, S1Item]) -> Dict[str, dict
             asked = sum(len((r.plan or {}).get("questions", [])) for r in rs)
             linted = sum(len({e.split(":")[0] for e in r.lint if not e.startswith("rule:")}) for r in rs)
             s["lint_share"] = round(linted / asked, 3) if asked else None
+        cats: Dict[str, dict] = {}
+        for r in ok:
+            c = cats.setdefault(items[r.item_id].category or "uncategorised", {"n": 0, "correct": 0})
+            c["n"] += 1
+            c["correct"] += int(bool(_correct(r, items)))
+        s["by_category"] = dict(sorted(cats.items()))
         if arm.startswith("E1"):                       # checklist self-consistency and quote grounding
             with_list = [r for r in ok if r.checklist is not None]
             consistent = [r.decision.gradable == all(c["stated"] for c in r.checklist) for r in with_list]

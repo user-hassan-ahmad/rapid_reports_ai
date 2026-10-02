@@ -106,3 +106,14 @@ async def test_run_lab_runs_e_arms(monkeypatch):
     out = io.StringIO()
     await run_lab.run_lab([ITEM], ["A", "E1off", "E1on", "E2"], runs=1, d_runs=0, out=out, reuse={})
     assert sorted(log) == ["A", "E1off", "E1on", "E2"]
+
+
+def test_score_reports_accuracy_per_category():
+    def it(i, g, cat):
+        return S1Item(id=f"c{i}", origin="synthetic", scan_type="CT", dictation="d", finding="d", system="S",
+                      gradable=g, missing=[] if g else ["x"], category=cat)
+    items = {x.id: x for x in (it(1, False, "silence-overcall"), it(2, False, "silence-overcall"), it(3, True, "complete-plain"))}
+    rows = [ArmResult(arm="A", item_id=i, run=1, decision=Decision(gradable=g))
+            for i, g in (("c1", True), ("c2", False), ("c3", True))]
+    s = summarise(rows, items)["A"]
+    assert s["by_category"] == {"complete-plain": {"n": 1, "correct": 1}, "silence-overcall": {"n": 2, "correct": 1}}
