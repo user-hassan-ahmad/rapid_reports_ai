@@ -117,3 +117,15 @@ def test_score_reports_accuracy_per_category():
             for i, g in (("c1", True), ("c2", False), ("c3", True))]
     s = summarise(rows, items)["A"]
     assert s["by_category"] == {"complete-plain": {"n": 1, "correct": 1}, "silence-overcall": {"n": 2, "correct": 1}}
+
+
+async def test_run_lab_restricts_later_runs_to_a_subset(monkeypatch):
+    seen = []
+    async def fake(item, *, run, **kw):
+        seen.append((item.id, run))
+        return ArmResult(arm="A", item_id=item.id, run=run, decision=Decision(gradable=True))
+    monkeypatch.setattr(run_lab, "arm_a", fake)
+    other = ITEM.model_copy(update={"id": "s1-u"})
+    await run_lab.run_lab([ITEM, other], ["A"], runs=2, d_runs=0, out=io.StringIO(), reuse={},
+                          later_run_ids={"s1-u"})
+    assert sorted(seen) == [("s1-t", 1), ("s1-u", 1), ("s1-u", 2)]

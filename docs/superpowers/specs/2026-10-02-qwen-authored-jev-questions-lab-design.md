@@ -293,8 +293,14 @@ The review engine spec resumes either way. The lab feeds it in three places:
 - Labels follow the judgement prompt, which now includes Hassan's rulings: read descriptors by their standard meaning, and treat a criterion as described when its ordinarily dictated features are covered.
 - Hassan reviews the new labels before any run.
 
-**Pass bars** (2 runs; paired against A item by item):
-- **Accuracy:** an E arm passes if its balanced accuracy is ≥ A + 5 points in both runs, with losses against A ≤ 3 per run. McNemar p is reported as a guide.
+**Runs (Hassan, 2026-10-02):**
+- **Run 1:** all 100 items × 4 arms.
+- **Run 2:** a stratified 40-item subset, 5 per category, to measure stability only.
+
+This cuts about 30% of calls (≈ 1,000 → ≈ 700) with no loss of accuracy resolution.
+
+**Pass bars** (accuracy on run 1; stability on the run-2 subset; paired against A item by item):
+- **Accuracy:** an E arm passes if its run-1 balanced accuracy is ≥ A + 5 points, with losses against A ≤ 3 (on run 1, and on the run-2 subset). McNemar p is reported as a guide.
 - **Choice:** among passing E arms, adopt the **cheapest** whose balanced accuracy is within 2 points of the best E arm. Cheapest means tokens, then p50 latency.
 - **Stability:** ≥ A.
 - **Overcall categories:** the adopted arm must not be worse than A on `silence-overcall` and `neighbour-carries-input`. These are the production failure modes.

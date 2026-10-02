@@ -14,7 +14,7 @@ import io
 import json
 import os
 from pathlib import Path
-from typing import Dict, List, TextIO
+from typing import Dict, List, Optional, Set, TextIO
 
 from dotenv import load_dotenv
 
@@ -40,7 +40,9 @@ def load_reuse(paths: List[str]) -> Dict[str, ArmResult]:
 
 
 async def run_lab(items: List[S1Item], arms: List[str], runs: int, d_runs: int, out: TextIO,
-                  reuse: Dict[str, ArmResult]) -> None:
+                  reuse: Dict[str, ArmResult], later_run_ids: Optional[Set[str]] = None) -> None:
+    """later_run_ids: runs after the first use only these items (phase 3: stability on a stratified subset)."""
+    all_items = items
     done = dict(reuse)
     sem = asyncio.Semaphore(CONCURRENCY)
 
@@ -56,6 +58,7 @@ async def run_lab(items: List[S1Item], arms: List[str], runs: int, d_runs: int, 
         return res
 
     for r in range(1, runs + 1):
+        items = all_items if r == 1 or later_run_ids is None else [it for it in all_items if it.id in later_run_ids]
         a: Dict[str, ArmResult] = {}
         if "A" in arms or "B" in arms:
             got = await asyncio.gather(*(go("A", it, r, lambda it=it: arm_a(it, run=r)) for it in items))
@@ -91,13 +94,15 @@ def main() -> None:
     ap.add_argument("--runs", type=int, default=2)
     ap.add_argument("--d-runs", type=int, default=1)
     ap.add_argument("--reuse", nargs="*", default=[])
+    ap.add_argument("--later-run-ids", help="JSON list of item ids; runs after the first use only these")
     args = ap.parse_args()
     items = [S1Item(**x) for x in json.loads(Path(args.items).read_text())]
     out_path = Path(args.out_dir) / f"results_{os.getpid()}.jsonl"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # The agent runner prints; silence stdout once for the whole run (a per-call redirect breaks under concurrency).
     with out_path.open("a") as out, contextlib.redirect_stdout(io.StringIO()):
-        asyncio.run(run_lab(items, args.arms.split(","), args.runs, args.d_runs, out, load_reuse(args.reuse)))
+        asyncio.run(run_lab(items, args.arms.split(","), args.runs, args.d_runs, out, load_reuse(args.reuse),
+                            set(json.loads(Path(args.later_run_ids).read_text())) if args.later_run_ids else None))
     print(out_path)
 
 
