@@ -235,3 +235,8 @@ The review engine spec resumes either way. The lab feeds it in three places:
 - **Caveat 2:** with no unsure answers and no errors, this run can't test calibration or the escalation band. That needs harder or real items (field research D-03 is still open).
 
 **Side effect:** with T6 on w2, the free-form lint flagged its "these two quoted texts" as a number word. The calibration test caught it, and the lint now ignores that meta-phrase but still flags counts (e.g. "two septa").
+
+## Pilot smoke-test changes (2026-10-02, before the pilot run)
+
+- **Flat plan rule.** Qwen JSON-encoded the nested `rule: {all_of: [...]}` object as a string in every B/C/D plan, and the temperature-0 retries were identical, so all planning calls failed. A flat `rule: [conditions]` validated 9/9 live calls (reasoning on and off, and D). Same lesson as before: nested structured-output failures are schema-shape problems.
+- **Topic cap raised from 6 to 8 words.** The 6-word cap (an unmeasured choice) rejected good topics that name their finding, e.g. "focal echogenic foci of right upper pole nodule". **Caveat:** the Jev wording check covered topics of up to 6 words only.

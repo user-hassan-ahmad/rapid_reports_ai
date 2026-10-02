@@ -8,7 +8,7 @@ ROLE = "You are a consultant radiologist checking a report draft against the rad
 
 CATALOGUE = """QUESTION TYPES. These are the only questions you may ask. Give each an id: q1, q2, ...
 T1 STATED: is a quoted piece of text stated in a source text? Slots: source (dictation | report | history), item (an exact quote copied from the case).
-T2 TOPIC COVERED: does the source say anything at all about a topic? Slots: source (dictation | report), section (report only: its heading), topic (1-6 plain words, general terms, no negation, no numbers).
+T2 TOPIC COVERED: does the source say anything at all about a topic? Slots: source (dictation | report), section (report only: its heading), topic (1-8 plain words naming the finding briefly, general terms, no negation, no numbers).
 T3 CONTRADICTED: does the dictation contradict a report clause? Slots: clause (an exact quote from the report).
 T4 WHICH ONE: which of 2-5 clearly different descriptions fits a quoted text, judged from the source? Slots: source, item (an exact quote), options (2-5 short descriptions, clearly different, none the negation of another). A "can't tell" option is added for you.
 T5 PROPERTY: does the quoted text itself report an abnormality or a limitation? Slots: source, item (an exact quote), property ("abnormal").

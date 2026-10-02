@@ -21,7 +21,7 @@ SUBJECT = {"dictation": "The dictated findings themselves state",
            "history": "The clinical history itself states"}
 CANT_TELL = "cant_tell"
 MAX_QUESTIONS = 8
-MAX_TOPIC_WORDS = 6
+MAX_TOPIC_WORDS = 8   # 6 rejected topics that name their finding (smoke, 2026-10-02); Jev wording checked to 6
 MAX_OPTION_WORDS = 25
 # T5 starts with its one proven property (group F selector noul, AUC ~1.0); more join only after a mini-check.
 PROPERTIES = {"abnormal": "reports an abnormality or a limitation, including as a possibility"}
@@ -140,7 +140,7 @@ def validate(spec: QuestionSpec, case: Case) -> Optional[str]:
         if any(ch.isdigit() for ch in topic):
             return "topic carries a number"
         if not 1 <= len(words) <= MAX_TOPIC_WORDS:
-            return "topic must be 1-6 words"
+            return f"topic must be 1-{MAX_TOPIC_WORDS} words"
     elif t == "T3":
         if not _quoted_in(spec.clause, case.report):
             return "clause not verbatim in the report"

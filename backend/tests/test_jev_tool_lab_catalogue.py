@@ -26,7 +26,8 @@ def test_t2_topic_rules():
     assert validate(q(type="T2", source="dictation", topic="no enhancement"), CASE) == "topic carries a negation"
     assert validate(q(type="T2", source="dictation", topic="non-enhancing"), CASE) == "topic carries a negation"
     assert validate(q(type="T2", source="dictation", topic="septa over 2 mm"), CASE) == "topic carries a number"
-    assert validate(q(type="T2", source="dictation", topic="a b c d e f g"), CASE) == "topic must be 1-6 words"
+    assert validate(q(type="T2", source="dictation", topic="focal echogenic foci of right upper pole nodule"), CASE) is None
+    assert validate(q(type="T2", source="dictation", topic="a b c d e f g h i"), CASE) == "topic must be 1-8 words"
     assert validate(q(type="T2", source="report", topic="septa"), CASE) == "T2 on the report needs a section"
     assert validate(q(type="T2", source="report", section="FINDINGS", topic="septa"), CASE) is None
     assert validate(q(type="T2", source="history", topic="septa"), CASE) == "T2 source must be dictation or report"
