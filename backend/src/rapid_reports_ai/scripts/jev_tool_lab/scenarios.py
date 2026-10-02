@@ -11,7 +11,11 @@ from .catalogue import Case
 JUDGEMENT_S1 = ("Decide whether the finding can be graded with the named classification system using only what the "
                 "dictation states. It is gradable only if every input the system needs for this finding is described "
                 "in the dictation; an input stated as absent or normal counts as described. Never assume an input "
-                "that is not dictated. If it is not gradable, list each missing input in a few words.")
+                "that is not dictated. Grade means the system's core category: ignore optional modifiers and "
+                "eligibility criteria unless they change that category. Read the dictation literally: an input "
+                "counts only if it is stated, never inferred from radiological convention (for example, an "
+                "unqualified nodule is not assumed solid). If it is not gradable, list each missing input in a few "
+                "words.")
 
 
 class S1Item(BaseModel):

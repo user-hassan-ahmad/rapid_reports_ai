@@ -16,6 +16,12 @@ def test_s1_user_carries_case_finding_and_system():
     assert u.endswith("AVAILABLE TEXTS: the dictation only (there is no report and no clinical history).")
 
 
+def test_s1_judgement_states_scope_and_literal_rules():
+    from rapid_reports_ai.scripts.jev_tool_lab.scenarios import JUDGEMENT_S1
+    assert "core category" in JUDGEMENT_S1 and "modifiers" in JUDGEMENT_S1 and "eligibility" in JUDGEMENT_S1
+    assert "literally" in JUDGEMENT_S1 and "convention" in JUDGEMENT_S1
+
+
 def test_author_prompt_lists_catalogue_and_forbids_inference():
     p = prompts.author_system()
     for t in ("T1", "T2", "T3", "T4", "T5", "T6"):
