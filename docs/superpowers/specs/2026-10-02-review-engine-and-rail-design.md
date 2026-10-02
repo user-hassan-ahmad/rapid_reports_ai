@@ -231,6 +231,21 @@ This lane has no detector. It has producers, then one Jev gate.
 
 **Pre-classed options.** Brief options were already judged and written by one reasoning call (the brief), so they arrive `preclassed="minor"` with their sentence as `proposed`. They are not judged again (Principle 2). They pass through de-duplication, the "already in report" gate and the verifier. The one exception is a `finding_negative` whose structure the report already calls normal. It goes to the adjudicator for an `upgrade` edit that rewrites that sentence (handover addendum 2026-10-01).
 
+**Grade and characterise items: evidence from the gradability lab** (ledger L-50, spec `2026-10-02-qwen-authored-jev-questions-lab-design.md`). Qwen judged "is this finding gradable with system X from the dictation?" on 100 labelled items:
+- **One call wins.** Single-pass Qwen with reasoning on scored balanced accuracy 0.82. Listing the inputs first (one call or two) and Jev-as-tool did not beat it.
+- **The dominant failure is over-demanding.** Every method marks gradable findings "can't grade" because it requires inputs the system doesn't need: a false-alarm rate of 0.16 for the single call, and 0.25–0.27 for checklists.
+- **Overcalls from silence persist** on multi-part systems: CAD-RADS with vessels unmentioned is read as normal.
+
+What this means for the engine:
+1. **One adjudicator call, unchanged.** It has no enumeration or checklist step and no Jev tool round.
+2. **The labelling rules go into the adjudicator prompt** for grade and characterise items, written structurally:
+   - **core category only:** ignore modifiers and eligibility unless they change the category;
+   - **literal:** an input counts only if stated;
+   - **standard meaning:** read descriptors by their standard meaning, and a criterion counts as described when its ordinarily dictated features are covered.
+3. **`characterise` ("can't grade: X not described") ships as `minor` at most,** never `action`. It is promoted only if Gate C measures its false "can't grade" rate at ≤ 10%.
+4. **Untested lead: supply the criteria.** Pass the guideline synthesis's `criteria` text for that classification into the adjudicator call, rather than relying on Qwen's recall. It is tested in Gate C as an arm (with vs without criteria), and adopted only if it lowers false "can't grade" without raising overcalls.
+5. **Reusable test set:** `backend/test_cases/jev_tool_lab/s1_phase3.json` holds 100 labelled gradability items, 50/50, in 8 difficulty categories. It is Gate C's seed set for grade items.
+
 **Urgency** renders as the rail banner, not a row. Its tiers are tightened in Gate C. This replaces `clinical_flagging`.
 
 **Gate C** governs this lane.
@@ -255,6 +270,12 @@ The band edges for each question are set in that question's wording lab (§11), 
    - A follow-up must be a different angle on the item, never a rewording of it. Rewordings correlate 0.94–0.999 and never helped (wording suite).
    - A follow-up that settles the item confidently replaces escalation for that item. If it is still unsure, the item goes to Qwen.
    - Follow-ups are added per confusion pair, only where their lab shows they settle unsure items at least as accurately as Qwen does.
+   - **Lowest priority (L-50).** In the gradability lab, Jev's answers didn't measurably improve Qwen's judgement (C vs its no-Jev control: 1/1 and 1/0). Build escalation to Qwen first; consider follow-ups only if a wording lab shows a confusion pair Qwen also gets wrong.
+
+**Validated Jev wordings available** (L-50, `backend/src/rapid_reports_ai/scripts/jev_tool_lab/catalogue.py`; AUC 1.0, margins ≥ 0.71, on synthetic items):
+- **T2-dictation w1:** "does the dictation say anything about {topic}", including finding-scoped topics with a neighbour carrying the attribute.
+- **T6 w2:** "are these two quoted spans the same structure or finding, same side and level".
+- **Candidate uses:** T6 for cross-lane de-duplication when spans don't overlap, and T2-dictation for coverage checks. Each still needs its own run on real data before it becomes a gate.
 
 **Where the rule applies:**
 
@@ -281,21 +302,25 @@ The band edges for each question are set in that question's wording lab (§11), 
 **Input:** the full dictation, the history, the report, the group's candidates with their evidence, and the paired clauses.
 
 ```python
-class Edit(BaseModel):
-    mode: Literal["replace", "insert", "upgrade", "remove"]
-    find: str | None                      # verbatim, must occur exactly once (replace/upgrade/remove)
-    replace: str | None
-    after: str | None                     # verbatim anchor sentence for insert
-    section: str
-
-class Judgement(BaseModel):
+class Judgement(BaseModel):               # FLAT on purpose (L-50): Qwen string-encodes nested objects/lists
     cls: Literal["action", "minor", "info", "suppress"]
     kind: str                             # may refine, e.g. differs → slip
     label: str                            # ≤ 80 chars, rail row text
     reason: str                           # one sentence, shown on expand
-    edit: Edit | None                     # the smallest fix; None when no change is right
+    edit_mode: Literal["none", "replace", "insert", "upgrade", "remove"]   # "none" when no change is right
+    edit_find: str | None                 # verbatim, must occur exactly once (replace/upgrade/remove)
+    edit_replace: str | None
+    edit_after: str | None                # verbatim anchor sentence for insert
+    edit_section: str | None
     probe: str | None                     # topic-coverage question, section-scoped, general terms
+
+# Code builds the internal Edit (mode, find, replace, after, section) from the edit_* fields.
 ```
+
+**Structured-output rules (L-50):**
+- **Flat schemas:** no nested objects in any Qwen output model.
+- **Decode string-encoded fields:** any list field gets a `before` validator that decodes a JSON-encoded string.
+- **Retries at temperature 0 are futile,** because they repeat the identical output. On a validation failure, the item becomes `minor` with no fix, and the failure is logged.
 
 **Prompt.** Short and principle-based. It carries:
 - the review-item policy (missing detail flagged unless absorbed, dictation is truth, bounded laterality, slips are info, genuine contradictions only, undictated sensible recommendations are a feature, "no change" → no action card);
@@ -436,6 +461,14 @@ Data stays in the scratchpad (standing production-read permission). Repo fixture
 4. **The unsure pile:** its size per report, and how Qwen's adjudication does on it, against Hassan's labels.
 5. **Targeted follow-ups:** where a confusion pair dominates the unsure pile, whether same-call follow-ups settle it at least as accurately as Qwen.
 
+**Lab method (lessons from L-50):**
+- **20-item pilots are directional only.** Decide go / no-go on paired counts against the baseline. In L-50 a pilot's 0.97 fell to below baseline at 100 items.
+- **Adoption needs ≥ 100 balanced items with difficulty-category tags,** and per-category results. The run-2 stability check can use a stratified subset (40 items, 5 per category).
+- **Labelling rules go into the shared prompt before labelling.** A rule added between runs confounds comparisons; record it if it happens.
+- **Smoke-test 2 items on every arm before each live run.** Both L-50 structured-output failures were caught this way.
+- **Latency:** p90 measured at 4 concurrent calls includes provider queueing (stalls of about 64 s), so measure latency sequentially when it gates a decision.
+- **Calibration needs hard or real items.** Clean synthetic wording items produced no unsure answers, so the escalation bands of §6.5 must be set on real data.
+
 ### Gate A: Coverage recall
 *Data:* the 50 v3 cards. Hassan labels the 23 disputed cards (2, 3, 4, 5, 6, 7, 9, 24, 25, 28, 31, 33, 35, 38, 39, 40, 42, 43, 44, 47, 48, 49) plus #18 (the data question). Then every Jev flag in the source reports (~72) is adjudicated, not a sample.
 
@@ -474,6 +507,8 @@ Data stays in the scratchpad (standing production-read permission). Repo fixture
 - ≥ 80% of `action`-class guideline items judged correct and useful by Hassan.
 - The clinical pass surfaces the known safety-critical misses from the audit comparison, with less noise than the audit's recommendations criterion (4/20 useful).
 - Urgency tiers are agreed against the audit's 16/22 useful banners, with no more false banners than today.
+- **Grade items (L-50):** on `s1_phase3.json` plus the production cases, report false "can't grade" (baseline 0.16) and overcalls from silence. `characterise` stays `minor` unless false "can't grade" is ≤ 10%.
+- **Criteria-supply arm:** the adjudicator with vs without the synthesis `criteria` text. Adopt it if false "can't grade" drops with no rise in overcalls (paired counts at ≥ 100 items).
 
 ### Gate D: production audit of the automatic edits (read-only)
 *Data:* every quick report since L-49 (2026-10-01) with an automatic edit in `quality_check`. If fewer than 20 edits exist, extend back to L-47 (2026-09-30), or replay the current code on earlier reports.
@@ -613,4 +648,5 @@ These are interpretations made while writing the spec. Each follows the principl
 3. **No runtime stability rule.** Stability is a lab metric (Gates A and F), never a run-time flip → suppress rule.
 4. **v1 `inconsistent` is code-only.** An LLM anatomy check joins only if Gate B shows the need.
 5. **Gate thresholds** are the proposed bar. They move into measured gaps once each lab runs.
+7. **Gradability lab folded in** (L-50, 2026-10-03): one adjudicator call stays; `characterise` capped at `minor`; flat Qwen schemas; the criteria-supply lead goes into Gate C; Jev follow-ups demoted.
 6. **Jev confidence routing** (§6.5), added at Hassan's request (2026-10-02). Unsure answers go to the adjudicator by default. Targeted same-call Jev follow-ups are an upgrade for named confusion pairs, each needing lab evidence. The verifier marks an unsure fix `unconfirmed` rather than asking Qwen to grade its own fix.
