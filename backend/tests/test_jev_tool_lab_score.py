@@ -135,3 +135,17 @@ def test_group_id_files_name_real_items():
     side = _json.loads((_FIX / "context_side_ids.json").read_text())
     assert scoped == [f"t2d-{n}" for n in range(21, 29)] and set(scoped) <= ids
     assert set(side) <= ids and side
+
+
+def test_phase3_fixture_and_run2_subset():
+    items = [S1Item(**x) for x in _json.loads((_FIX / "s1_phase3.json").read_text())]
+    ids = [i.id for i in items]
+    assert len(items) == 100 and len(set(ids)) == 100 and sum(i.gradable for i in items) == 50
+    assert all(i.category for i in items) and len({i.category for i in items}) == 8
+    for i in items:
+        assert i.finding in i.dictation, i.id
+        assert i.gradable == (not i.missing), i.id
+    sub = _json.loads((_FIX / "s1_phase3_run2_ids.json").read_text())
+    cats = [next(i.category for i in items if i.id == s) for s in sub]
+    assert len(sub) == 40 and set(sub) <= set(ids)
+    assert all(cats.count(c) == 5 for c in set(cats))

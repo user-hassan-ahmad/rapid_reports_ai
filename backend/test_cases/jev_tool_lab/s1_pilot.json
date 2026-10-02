@@ -8,7 +8,8 @@
   "finding": "R lobe mid pole: 15 mm nodule.",
   "system": "ACR TI-RADS",
   "gradable": true,
-  "missing": []
+  "missing": [],
+  "category": "scattered-or-abbreviated"
  },
  {
   "id": "s1-02",
@@ -23,7 +24,8 @@
    "shape of the right nodule (wider- vs taller-than-wide)",
    "margin of the right nodule",
    "echogenic foci in the right nodule"
-  ]
+  ],
+  "category": "neighbour-carries-input"
  },
  {
   "id": "s1-03",
@@ -34,7 +36,8 @@
   "finding": "Single part-solid nodule right upper lobe, 11 mm overall with a 4 mm solid component.",
   "system": "Fleischner 2017",
   "gradable": true,
-  "missing": []
+  "missing": [],
+  "category": "complete-plain"
  },
  {
   "id": "s1-04",
@@ -47,7 +50,8 @@
   "gradable": false,
   "missing": [
    "nodule density (solid, part-solid or ground-glass)"
-  ]
+  ],
+  "category": "implied-not-stated"
  },
  {
   "id": "s1-05",
@@ -62,7 +66,8 @@
    "nodule density (solid or subsolid)",
    "number of nodules (lungs only partly imaged)",
    "patient risk category (needed if solid)"
-  ]
+  ],
+  "category": "implied-not-stated"
  },
  {
   "id": "s1-06",
@@ -73,7 +78,8 @@
   "finding": "LM, LAD/diags, Cx/OMs, RCA/PDA: smooth lumen throughout, nil plaque, nil luminal narrowing.",
   "system": "CAD-RADS 2.0",
   "gradable": true,
-  "missing": []
+  "missing": [],
+  "category": "absent-unusual-phrasing"
  },
  {
   "id": "s1-07",
@@ -84,7 +90,8 @@
   "finding": "LAD: non-calcified plaque in the mid LAD and at the origin of D2 causing minimal stenosis (1-24%).",
   "system": "CAD-RADS 2.0",
   "gradable": true,
-  "missing": []
+  "missing": [],
+  "category": "complete-plain"
  },
  {
   "id": "s1-08",
@@ -99,7 +106,8 @@
    "stenosis status of the LMS",
    "stenosis status of the LAD",
    "stenosis status of the Cx"
-  ]
+  ],
+  "category": "silence-overcall"
  },
  {
   "id": "s1-09",
@@ -110,7 +118,8 @@
   "finding": "Total Agatston 426: LMS 141, LAD 117, Cx 110, RCA 58.",
   "system": "CAC-DRS",
   "gradable": true,
-  "missing": []
+  "missing": [],
+  "category": "measurement-only"
  },
  {
   "id": "s1-10",
@@ -125,7 +134,8 @@
    "aortic valve area",
    "mean transvalvular gradient",
    "peak aortic jet velocity"
-  ]
+  ],
+  "category": "implied-not-stated"
  },
  {
   "id": "s1-11",
@@ -136,7 +146,8 @@
   "finding": "LO: 3.8 cm cyst.",
   "system": "O-RADS US",
   "gradable": true,
-  "missing": []
+  "missing": [],
+  "category": "scattered-or-abbreviated"
  },
  {
   "id": "s1-12",
@@ -154,7 +165,8 @@
    "echo content",
    "colour score",
    "menopausal status"
-  ]
+  ],
+  "category": "implied-not-stated"
  },
  {
   "id": "s1-13",
@@ -167,7 +179,8 @@
   "gradable": false,
   "missing": [
    "colour score of the left cyst"
-  ]
+  ],
+  "category": "neighbour-carries-input"
  },
  {
   "id": "s1-14",
@@ -178,7 +191,8 @@
   "finding": "Seg 6: 26 mm obs.",
   "system": "LI-RADS v2018",
   "gradable": true,
-  "missing": []
+  "missing": [],
+  "category": "scattered-or-abbreviated"
  },
  {
   "id": "s1-15",
@@ -191,7 +205,8 @@
   "gradable": false,
   "missing": [
    "arterial phase hyperenhancement"
-  ]
+  ],
+  "category": "silence-overcall"
  },
  {
   "id": "s1-16",
@@ -202,7 +217,8 @@
   "finding": "Moderate medial tibiofemoral joint space narrowing. Definite marginal osteophytes at the medial femoral condyle and tibial plateau.",
   "system": "Kellgren-Lawrence",
   "gradable": true,
-  "missing": []
+  "missing": [],
+  "category": "complete-plain"
  },
  {
   "id": "s1-17",
@@ -216,7 +232,8 @@
   "missing": [
    "osteophytes",
    "degree of joint space narrowing"
-  ]
+  ],
+  "category": "implied-not-stated"
  },
  {
   "id": "s1-18",
@@ -227,7 +244,8 @@
   "finding": "Splenic laceration 4 cm in depth through the lower pole, not involving the hilar vessels.",
   "system": "AAST 2018 spleen",
   "gradable": true,
-  "missing": []
+  "missing": [],
+  "category": "complete-plain"
  },
  {
   "id": "s1-19",
@@ -241,7 +259,8 @@
   "missing": [
    "depth of the hepatic laceration",
    "extent of the hepatic haematoma (subcapsular % or intraparenchymal size)"
-  ]
+  ],
+  "category": "neighbour-carries-input"
  },
  {
   "id": "s1-20",
@@ -252,6 +271,7 @@
   "finding": "Left upper pole cystic mass 4.1 cm with a thin smooth wall and two thin septa, no measurable enhancement (unenhanced 10 HU, nephrographic 13 HU).",
   "system": "Bosniak 2019",
   "gradable": true,
-  "missing": []
+  "missing": [],
+  "category": "complete-plain"
  }
 ]
