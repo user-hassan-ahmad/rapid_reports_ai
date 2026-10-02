@@ -53,7 +53,7 @@ WORDINGS: Dict[str, Dict[str, dict]] = {
                             "false": "A different structure or finding, or a different side or level."}},
     },
 }
-DEFAULT_WORDING = {"T2d": "w1", "T6": "w1"}
+DEFAULT_WORDING = {"T2d": "w1", "T6": "w2"}   # phase 1 mini-check, 2026-10-02 (spec Results)
 
 
 class Case(BaseModel):

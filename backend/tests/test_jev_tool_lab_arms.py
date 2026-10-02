@@ -417,3 +417,10 @@ async def test_run_lab_order_reuse_and_d_runs(monkeypatch):
     assert [x for x in log if x[0] == "D"] == [("D", ITEM.id, 1)]
     assert ("Cb", ITEM.id, 1) in log and ("Cb", ITEM.id, 2) in log
     assert len(out.getvalue().strip().splitlines()) == 10     # run 1: A0,B,C,Cb,D ; run 2: A,A0,B,C,Cb
+
+
+def test_lint_numbers_ignores_quote_meta_but_flags_counts():
+    meta = FreeQuestion(id="q1", type="noul", instructions='Read only these two quoted texts: "a" and "b".')
+    count = FreeQuestion(id="q2", type="noul", instructions='The "cyst" has two septa.')
+    assert "numbers" not in lint_free(meta)
+    assert "numbers" in lint_free(count)

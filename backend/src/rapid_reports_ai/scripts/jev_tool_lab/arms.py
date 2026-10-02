@@ -163,13 +163,14 @@ _TWO = re.compile(r"\b(and also|or whether|and whether|as well as)\b|"
                   r"\b(is|are|does|do|has|have)\b[^?.]*\bor\b\s+(is|are|does|do|has|have|whether)\b", re.I)
 _REF = re.compile(r"\b(this (finding|lesion|abnormality|item|line)|that finding|the above)\b", re.I)
 _NUMWORD = re.compile(r"\b(two|three|four|five|six|seven|eight|nine|ten|twice)\b", re.I)
+_QUOTE_META = re.compile(r"\b(these|the|both) two quoted texts\b", re.I)   # catalogue T6 wording, not a count
 
 
 def lint_free(q: FreeQuestion, system: Optional[str] = None) -> List[str]:
     """Rule breaks in a free-form question (spec §2.1 forbidden list); D's risk measure."""
     text = q.instructions
     quotes = [next(g for g in m.groups() if g is not None) for m in _QUOTE.finditer(text)]
-    outside = _QUOTE.sub(" ", text)
+    outside = _QUOTE_META.sub(" ", _QUOTE.sub(" ", text))
     crit = " ".join((q.criteria or {}).values())
     codes = []
     if not quotes and _REF.search(text):

@@ -207,3 +207,31 @@ The review engine spec resumes either way. The lab feeds it in three places:
 - **Jev:** negligible ($0.042/M input).
 - **Qwen:** the pilot is about 20 items × (A, A0, B, C×2 turns) × 2 runs + D once ≈ 220 calls.
 - **Full run:** each scenario at ≥ 100 items is about 5× the pilot, about 1,100 Qwen calls, if every scenario proceeds.
+
+## Results: phase 1 (wording mini-check, 2026-10-02)
+
+**Setup:** jev-1.13, 48 synthetic items (labels reviewed by Hassan), 2 wordings × 2 repeats, giving 192 answers with none missing. Bands fixed at 0.3 / 0.7.
+
+| Group | Wording | n | AUC | Brier | ECE | Confident errors | Unsure | Max drift | Gap (min true − max false) |
+|---|---|---|---|---|---|---|---|---|---|
+| T2d main | **w1** | 20 | 1.00 | 0.004 | 0.042 | 0 | 0% | 0.03 | 0.76 |
+| T2d main | w2 | 20 | 1.00 | 0.008 | 0.067 | 0 | 0% | 0.01 | 0.81 |
+| T2d finding-scoped | **w1** | 8 | 1.00 | 0.007 | 0.065 | 0 | 0% | 0.01 | 0.80 |
+| T2d finding-scoped | w2 | 8 | 1.00 | 0.016 | 0.099 | 0 | 0% | 0.01 | 0.75 |
+| T6 main | w1 | 18 | 1.00 | 0.003 | 0.034 | 0 | 0% | 0.03 | 0.71 |
+| T6 main | **w2** | 18 | 1.00 | 0.002 | 0.035 | 0 | 0% | 0.04 | 0.76 |
+| T6 context-side | w1 / w2 | 2 | n/a | 0.001 / 0.001 | | 0 | 0% | 0.00 | |
+
+**Chosen:** T2d **w1**, T6 **w2** (lower Brier; w2's weakest true T6 is 0.93 against w1's 0.78). `DEFAULT_WORDING` is updated to match.
+
+**Closest calls,** all correct:
+- t2d-09, hilar vs mediastinal nodes (0.19–0.22);
+- t2d-27, density of an unqualified nodule (0.15);
+- t6-17 under w1 (0.78–0.81).
+
+**Reading:**
+- Both new wordings pass with wide margins, including the finding-scoped trap items. Topic coverage tied to one finding (with a neighbour carrying the attribute) did **not** show the overlapping-span weakness on these items.
+- **Caveat 1:** the items are synthetic and cleanly written. The margins on real dictations will be narrower, and the S1 pilot's arm B is where that shows.
+- **Caveat 2:** with no unsure answers and no errors, this run can't test calibration or the escalation band. That needs harder or real items (field research D-03 is still open).
+
+**Side effect:** with T6 on w2, the free-form lint flagged its "these two quoted texts" as a number word. The calibration test caught it, and the lint now ignores that meta-phrase but still flags counts (e.g. "two septa").
