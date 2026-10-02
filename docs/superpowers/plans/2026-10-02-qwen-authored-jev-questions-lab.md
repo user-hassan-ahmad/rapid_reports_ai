@@ -19,6 +19,8 @@
 
 **Tech stack:** Python 3.13, pydantic 2, pydantic-ai 1.104 (through the existing `_run_agent_with_model`, which already applies `normalise_model_settings`), httpx, and pytest with `asyncio_mode = "auto"`. Jev is `typesafe/jev-1.13` through OpenRouter `/api/v1/systemone`. Qwen is `qwen-3.8-27b` on Cerebras.
 
+**Test counts:** the expected counts in each step predate the review fixes made during execution, which added tests. Treat a step as passing when every test in the named files passes.
+
 **Conventions:**
 - Run everything from `backend/` with `.venv/bin/python`.
 - Tests live in `backend/tests/` (flat, `test_*.py`).
@@ -911,6 +913,15 @@ async def test_arm_b_drops_invalid_questions():
     assert b.fallback and b.jev_calls == 0
 
 
+async def test_arm_b_malformed_rule_falls_back():
+    bad = Plan(questions=PLAN.questions, rule=Rule(all_of=[Condition(q="q1", want="o1", label="wall")]))
+    fb = ArmResult(arm="A", item_id=ITEM.id, run=1, decision=Decision(gradable=True), latency_s=2.0)
+    j = fake_jev({"q1": {"noul": 0.9}, "q2": {"noul": 0.9}, "q3": {"noul": 0.9}})
+    b = await arm_b(ITEM, run=1, fallback=fb, qwen_fn=fake_qwen([bad]), jev_fn=j)
+    assert b.fallback and b.rule_outcome == "unsure"
+    assert b.invalid == ["rule: bad want 'o1' for q1"]
+
+
 async def test_arm_errors_are_recorded_not_raised():
     async def boom(*a, **k):
         raise RuntimeError("down")
@@ -951,7 +962,7 @@ from pydantic import BaseModel
 
 from . import calls, prompts
 from .catalogue import MAX_QUESTIONS, QuestionSpec, question_source, render, state_for, validate
-from .rules import UNSURE, Rule, band, evaluate
+from .rules import UNSURE, Rule, band, evaluate, validate_rule
 from .scenarios import Decision, S1Item, s1_user
 
 
@@ -1047,9 +1058,11 @@ async def arm_b(item: S1Item, *, run: int, fallback: ArmResult, qwen_fn=calls.qw
     try:
         plan, u = await qwen_fn(Plan, prompts.author_system(), s1_user(item), False)
         asked = await _ask(plan.questions, item, jev_fn)
-        outcome, failed = evaluate(plan.rule, asked.banded)
+        rule_err = validate_rule(plan.rule, plan.questions)       # review fix: a malformed rule is unsure, never "no"
+        outcome, failed = (UNSURE, []) if rule_err else evaluate(plan.rule, asked.banded)
         res = ArmResult(arm="B", item_id=item.id, run=run, plan=plan.model_dump(), answers=asked.answers,
-                        banded=asked.banded, invalid=asked.invalid, rule_outcome=outcome, jev_calls=asked.calls,
+                        banded=asked.banded, invalid=asked.invalid + ([f"rule: {rule_err}"] if rule_err else []),
+                        rule_outcome=outcome, jev_calls=asked.calls,
                         latency_s=asked.latency_s)
         _add_usage(res, u)
         if outcome == UNSURE:
@@ -1179,11 +1192,13 @@ async def arm_c(item: S1Item, *, run: int, qwen_fn=calls.qwen, jev_fn=calls.jev)
     try:
         plan, u1 = await qwen_fn(Plan, prompts.author_system(), s1_user(item), True)
         asked = await _ask(plan.questions, item, jev_fn)
-        outcome, _ = evaluate(plan.rule, asked.banded)
+        rule_err = validate_rule(plan.rule, plan.questions)
+        outcome = UNSURE if rule_err else evaluate(plan.rule, asked.banded)[0]
         described = [(s.id, render(s)["instructions"]) for s in asked.valid]
         dec, u2 = await _decide(item, described, asked.answers, asked.banded, qwen_fn)
         res = ArmResult(arm="C", item_id=item.id, run=run, decision=dec, plan=plan.model_dump(), answers=asked.answers,
-                        banded=asked.banded, invalid=asked.invalid, rule_outcome=outcome, jev_calls=asked.calls,
+                        banded=asked.banded, invalid=asked.invalid + ([f"rule: {rule_err}"] if rule_err else []),
+                        rule_outcome=outcome, jev_calls=asked.calls,
                         latency_s=asked.latency_s)
         _add_usage(res, u1)
         _add_usage(res, u2)
