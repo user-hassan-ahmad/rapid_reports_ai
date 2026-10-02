@@ -388,3 +388,31 @@ async def test_requests_summed_and_cb_cost_is_plan_turn_plus_own_decide():
 
 def test_decide_prompt_mentions_not_asked():
     assert 'yes / no / unsure (or "not asked")' in prompts.decide_system()
+
+
+import io as _io
+from rapid_reports_ai.scripts.jev_tool_lab import run_lab
+
+
+async def test_run_lab_order_reuse_and_d_runs(monkeypatch):
+    log = []
+    def mk(arm):
+        async def fn(item, *, run, **kw):
+            log.append((arm if arm != "A" or kw.get("reasoning", True) else "A0", item.id, run))
+            if arm == "B":
+                assert kw["fallback"].arm == "A"            # B receives A's result for the same item and run
+            if arm == "Cb":
+                assert kw["c_result"].arm == "C"            # Cb reuses C's plan for the same item and run
+            name = "A0" if arm == "A" and kw.get("reasoning") is False else arm
+            return ArmResult(arm=name, item_id=item.id, run=run, decision=Decision(gradable=True))
+        return fn
+    for name, arm in (("arm_a", "A"), ("arm_b", "B"), ("arm_c", "C"), ("arm_cb", "Cb"), ("arm_d", "D")):
+        monkeypatch.setattr(run_lab, name, mk(arm))
+    reuse = {run_lab.key("A", ITEM.id, 1): ArmResult(arm="A", item_id=ITEM.id, run=1, decision=Decision(gradable=True))}
+    out = _io.StringIO()
+    await run_lab.run_lab([ITEM], ["A", "A0", "B", "C", "Cb", "D"], runs=2, d_runs=1, out=out, reuse=reuse)
+    assert ("A", ITEM.id, 1) not in log                       # reused, not re-run
+    assert ("A", ITEM.id, 2) in log and ("B", ITEM.id, 2) in log
+    assert [x for x in log if x[0] == "D"] == [("D", ITEM.id, 1)]
+    assert ("Cb", ITEM.id, 1) in log and ("Cb", ITEM.id, 2) in log
+    assert len(out.getvalue().strip().splitlines()) == 10     # run 1: A0,B,C,Cb,D ; run 2: A,A0,B,C,Cb
