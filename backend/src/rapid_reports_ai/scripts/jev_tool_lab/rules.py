@@ -3,11 +3,12 @@
 Bands are fixed with a wide margin, never tuned on the pilot: repeat drift is up to 0.2 (wording suite)."""
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
-from .catalogue import CANT_TELL
+from .catalogue import CANT_TELL, QuestionSpec
 
 UNSURE = "unsure"
 NOUL_HI = 0.7
@@ -20,9 +21,38 @@ class Condition(BaseModel):
     want: str     # "yes" / "no" for a noul; an option key ("o1", ...) for a choice
     label: str    # what the condition checks, in a few words; becomes the missing-input text
 
+    @field_validator("want")
+    @classmethod
+    def _normalise_want(cls, v: str) -> str:
+        v = v.strip().casefold()
+        if v in ("true", "yes", "y"):
+            return "yes"
+        if v in ("false", "no", "n"):
+            return "no"
+        return v
+
 
 class Rule(BaseModel):
     all_of: List[Condition]
+
+
+def validate_rule(rule: Rule, specs: List[QuestionSpec]) -> Optional[str]:
+    """None when every condition can be met by a Jev answer to one of `specs` (ALL planned questions, including any
+    validate() later drops: those stay UNSURE in evaluate), else the reason the rule is invalid."""
+    if not rule.all_of:
+        return "empty rule"
+    by_id = {s.id: s for s in specs}
+    for c in rule.all_of:
+        spec = by_id.get(c.q)
+        if spec is None:
+            return f"rule names unknown question {c.q}"
+        if spec.type == "T4":
+            allowed = {f"o{i + 1}" for i in range(len(spec.options or []))}
+        else:
+            allowed = {"yes", "no"}
+        if c.want not in allowed:
+            return f"bad want {c.want!r} for {c.q}"
+    return None
 
 
 def _p_yes(ans: Any) -> Optional[float]:
@@ -38,6 +68,8 @@ def band(ans: Any, jev_type: str) -> str:
         try:
             probs = {k: float(v) for k, v in ans["probabilities"].items()}
         except Exception:
+            return UNSURE
+        if not all(math.isfinite(v) for v in probs.values()):
             return UNSURE
         ranked = sorted(probs.items(), key=lambda kv: kv[1], reverse=True)
         if not ranked or ranked[0][0] == CANT_TELL:

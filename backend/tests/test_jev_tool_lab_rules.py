@@ -1,5 +1,5 @@
-from rapid_reports_ai.scripts.jev_tool_lab.catalogue import CANT_TELL
-from rapid_reports_ai.scripts.jev_tool_lab.rules import UNSURE, Condition, Rule, band, evaluate
+from rapid_reports_ai.scripts.jev_tool_lab.catalogue import CANT_TELL, QuestionSpec
+from rapid_reports_ai.scripts.jev_tool_lab.rules import UNSURE, Condition, Rule, band, evaluate, validate_rule
 
 
 def test_band_noul():
@@ -45,3 +45,24 @@ def test_evaluate_missing_question_is_unsure_and_empty_rule_is_unsure():
 def test_evaluate_choice_condition():
     assert evaluate(rule(("q1", "o2", "thick septa")), {"q1": "o2"}) == ("yes", [])
     assert evaluate(rule(("q1", "o2", "thick septa")), {"q1": "o1"}) == ("no", ["thick septa"])
+
+
+def test_band_choice_nan_is_unsure():
+    assert band({"probabilities": {"o1": float("nan"), "o2": 0.1}}, "choice") == UNSURE
+
+
+def test_condition_want_normalised():
+    assert Condition(q="q1", want="True", label="x").want == "yes"
+    assert Condition(q="q1", want=" No ", label="x").want == "no"
+    assert Condition(q="q1", want="O2", label="x").want == "o2"
+
+
+def test_validate_rule():
+    specs = [QuestionSpec(id="q1", type="T2", source="dictation", topic="septa"),
+             QuestionSpec(id="q2", type="T4", source="dictation", item="x", options=["a", "b"])]
+    assert validate_rule(rule(("q1", "yes", "s"), ("q2", "o2", "t")), specs) is None
+    assert validate_rule(rule(("q9", "yes", "s")), specs) == "rule names unknown question q9"
+    assert validate_rule(rule(("q2", "o7", "t")), specs) == "bad want 'o7' for q2"
+    assert validate_rule(rule(("q1", "o1", "s")), specs) == "bad want 'o1' for q1"
+    assert validate_rule(rule(("q1", "maybe", "s")), specs) == "bad want 'maybe' for q1"
+    assert validate_rule(Rule(all_of=[]), specs) == "empty rule"

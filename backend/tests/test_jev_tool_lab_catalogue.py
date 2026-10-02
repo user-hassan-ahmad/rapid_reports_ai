@@ -1,4 +1,6 @@
-from rapid_reports_ai.scripts.jev_tool_lab.catalogue import Case, QuestionSpec, validate
+from rapid_reports_ai.report_review import Q_CONTRA
+from rapid_reports_ai.scripts.jev_tool_lab.catalogue import (CANT_TELL, WORDINGS, Case, QuestionSpec, render, state_for,
+                                                             validate)
 
 CASE = Case(scan_type="CT abdomen",
             dictation="Left renal lesion 3 cm with a thin wall and two thin septa. No enhancement.",
@@ -22,6 +24,7 @@ def test_t1_needs_source():
 def test_t2_topic_rules():
     assert validate(q(type="T2", source="dictation", topic="wall thickness of the lesion"), CASE) is None
     assert validate(q(type="T2", source="dictation", topic="no enhancement"), CASE) == "topic carries a negation"
+    assert validate(q(type="T2", source="dictation", topic="non-enhancing"), CASE) == "topic carries a negation"
     assert validate(q(type="T2", source="dictation", topic="septa over 2 mm"), CASE) == "topic carries a number"
     assert validate(q(type="T2", source="dictation", topic="a b c d e f g"), CASE) == "topic must be 1-6 words"
     assert validate(q(type="T2", source="report", topic="septa"), CASE) == "T2 on the report needs a section"
@@ -56,8 +59,6 @@ def test_t6_spans_verbatim():
 def test_empty_source_text_rejected():
     case = Case(dictation="Normal study.")
     assert validate(q(type="T2", source="report", section="FINDINGS", topic="septa"), case) == "source text is empty"
-from rapid_reports_ai.report_review import Q_CONTRA
-from rapid_reports_ai.scripts.jev_tool_lab.catalogue import CANT_TELL, WORDINGS, render, state_for
 
 
 def test_render_t1_quotes_item_and_names_source():
@@ -100,3 +101,20 @@ def test_render_t5_and_t6():
 
 def test_state_for_dictation_matches_production_state():
     assert state_for(CASE, "dictation").startswith("SCAN TYPE: CT abdomen\nDICTATED FINDINGS:\n")
+
+
+def test_quote_match_is_whole_word():
+    adrenal = Case(dictation="Adrenal lesion 2 cm.")
+    assert validate(q(type="T1", source="dictation", item="renal lesion"), adrenal) == "item not verbatim"
+    assert validate(q(type="T1", source="dictation", item="Adrenal lesion"), adrenal) is None
+    renal = Case(dictation="Renal cyst.")
+    assert validate(q(type="T1", source="dictation", item="R"), renal) == "item not verbatim"
+
+
+def test_t4_duplicate_options():
+    dup = q(type="T4", source="dictation", item="two thin septa", options=["thin septa", " Thin  SEPTA"])
+    assert validate(dup, CASE) == "duplicate options"
+
+
+def test_t6_same_text_rejected():
+    assert validate(q(type="T6", a="Left renal cyst", b="left  renal CYST"), CASE) == "a and b are the same text"

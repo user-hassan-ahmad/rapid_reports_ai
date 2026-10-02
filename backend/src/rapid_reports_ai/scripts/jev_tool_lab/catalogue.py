@@ -25,7 +25,7 @@ MAX_TOPIC_WORDS = 6
 MAX_OPTION_WORDS = 25
 # T5 starts with its one proven property (group F selector noul, AUC ~1.0); more join only after a mini-check.
 PROPERTIES = {"abnormal": "reports an abnormality or a limitation, including as a possibility"}
-_NEGATION = {"no", "not", "without", "absent", "negative", "normal", "unremarkable", "nil", "none"}
+_NEGATION = {"no", "not", "without", "absent", "negative", "normal", "unremarkable", "nil", "none", "non"}
 _AUX = {"do", "does", "did", "is", "are", "was", "were", "has", "have"}   # "X enhance" vs "X do not enhance"
 _WORD = re.compile(r"[a-z0-9']+")
 
@@ -100,12 +100,14 @@ def _norm(t: str) -> str:
     return " ".join(t.split()).casefold()
 
 
-def _quoted_in(quote: Optional[str], *texts: str) -> bool:
-    return bool(quote and quote.strip()) and any(_norm(quote) in _norm(t) for t in texts if t)
-
-
 def _words(t: str) -> List[str]:
     return _WORD.findall(t.casefold())
+
+
+def _quoted_in(quote: Optional[str], *texts: str) -> bool:
+    """Whole-word sequence match, so "renal lesion" is not found inside "adrenal lesion"."""
+    q = " ".join(_words(quote or ""))
+    return bool(q) and any(f" {q} " in f" {' '.join(_words(t))} " for t in texts if t)
 
 
 def _negation_pair(x: str, y: str) -> bool:
@@ -150,6 +152,8 @@ def validate(spec: QuestionSpec, case: Case) -> Optional[str]:
             return "T4 needs 2-5 options"
         if any(not o.strip() or len(_words(o)) > MAX_OPTION_WORDS for o in opts):
             return "option too long or empty"
+        if len({_norm(o) for o in opts}) < len(opts):
+            return "duplicate options"
         if any(_negation_pair(x, y) for i, x in enumerate(opts) for y in opts[i + 1:]):
             return "an option negates another"
     elif t == "T5":
@@ -160,6 +164,8 @@ def validate(spec: QuestionSpec, case: Case) -> Optional[str]:
     elif t == "T6":
         if not (_quoted_in(spec.a, *texts) and _quoted_in(spec.b, *texts)):
             return "span not verbatim"
+        if _norm(spec.a) == _norm(spec.b):
+            return "a and b are the same text"
     return None
 
 
