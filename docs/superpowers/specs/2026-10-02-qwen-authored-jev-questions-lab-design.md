@@ -240,3 +240,34 @@ The review engine spec resumes either way. The lab feeds it in three places:
 
 - **Flat plan rule.** Qwen JSON-encoded the nested `rule: {all_of: [...]}` object as a string in every B/C/D plan, and the temperature-0 retries were identical, so all planning calls failed. A flat `rule: [conditions]` validated 9/9 live calls (reasoning on and off, and D). Same lesson as before: nested structured-output failures are schema-shape problems.
 - **Topic cap raised from 6 to 8 words.** The 6-word cap (an unmeasured choice) rejected good topics that name their finding, e.g. "focal echogenic foci of right upper pole nodule". **Caveat:** the Jev wording check covered topics of up to 6 words only.
+
+## Results: phase 2 (S1 pilot, 2026-10-02): directional, pending Hassan's read
+
+**Setup:** 20 items, 2 runs (D once), 220 results, 5 errors.
+
+| | A | A0 | B | C | Cb | D |
+|---|---|---|---|---|---|---|
+| Balanced accuracy | 0.80 | 0.85 | 0.83 | 0.97 | 0.95 | 0.80 |
+| Gains / losses vs A, run 1 · run 2 | n/a | 2/1 · 2/1 | 2/1 · 2/1 | 3/0 · 4/0 | 4/1 · 4/1 | 1/1 |
+| Stability | 1.00 | 1.00 | 1.00 | 0.95 | 1.00 | n/a |
+| p50 latency | 1.05 s | 0.39 s | 0.72 s | 4.5 s | 3.6 s | 3.0 s |
+| Tokens vs A | n/a | 0.42× | 1.30× | 4.07× | 3.86× | 2.85× |
+
+**§7.1 verdicts:**
+- **B: no-go.** Losses ≤ 1 passes, but cost fails: p90 latency is 1.26× A and tokens 1.30× A, against a bar of ≤ 0.7×.
+- **C: no-go on credit to Jev.** It gained over A in both runs (3/0 and 4/0), but against Cb it was 1/1 in run 1 and 1/0 in run 2. The bar requires gains > losses in both runs.
+
+**Main findings:**
+1. **Listing the inputs is the lever, not Jev.** A and A0 fail both production-style overcall traps (s1-08 CAD-RADS with only the RCA described, s1-13 O-RADS where the colour score belongs to the neighbouring cyst) in both runs. Every arm that first plans the system's inputs (B, C, Cb) gets both right.
+2. **C and Cb differ only on s1-01 and s1-18,** and both of those labels are now disputed (see below).
+3. **B's errors are plan-knowledge errors made with reasoning off,** which Jev and the rule then carry out faithfully. B asked about lung-cancer risk for a subsolid Fleischner nodule, and about age and sex for CAC-DRS. Jev answered both correctly.
+4. **Reasoning didn't help one-shot judging:** A0 (0.85) ≥ A (0.80), at a third of the latency.
+
+**Label disputes the models raised** (Hassan to rule):
+- **s1-01:** "echogenicity lower than surrounding thyroid" doesn't literally exclude very hypoechoic (less than the strap muscles).
+- **s1-18:** segmental-vessel involvement is unstated, and that decides AAST III vs IV.
+
+**Caveats:**
+- **C's latency is unreliable:** four C calls took about 64 s, probably provider queueing or rate limiting at 4 concurrent calls.
+- **B plan failures:** 2 of 20 B plans failed because Qwen (reasoning off) JSON-encoded the `questions` array as a string. That is the same class as the rule-object failure.
+- **Sample size:** n = 20 synthetic items, so all of this is directional.
