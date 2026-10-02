@@ -41,5 +41,6 @@ class Decision(BaseModel):
 
 def s1_user(item: S1Item) -> str:
     return (f"SCAN TYPE: {item.scan_type}\n\nDICTATED FINDINGS:\n{item.dictation}\n\n"
-            f"FINDING: {item.finding}\nCLASSIFICATION SYSTEM: {item.system}\n"
+            f"FINDING (identifies which finding; its description may continue elsewhere in the dictation): "
+            f"{item.finding}\nCLASSIFICATION SYSTEM: {item.system}\n"
             "AVAILABLE TEXTS: the dictation only (there is no report and no clinical history).")

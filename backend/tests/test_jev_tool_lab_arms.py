@@ -11,7 +11,8 @@ ITEM = S1Item(id="s1-t", origin="synthetic", scan_type="CT abdomen",
 def test_s1_user_carries_case_finding_and_system():
     u = s1_user(ITEM)
     assert "DICTATED FINDINGS:\nLeft renal lesion" in u
-    assert "FINDING: Left renal lesion 3 cm" in u
+    assert ("FINDING (identifies which finding; its description may continue elsewhere in the dictation): "
+            "Left renal lesion 3 cm") in u
     assert "CLASSIFICATION SYSTEM: Bosniak 2019" in u
     assert u.endswith("AVAILABLE TEXTS: the dictation only (there is no report and no clinical history).")
 
