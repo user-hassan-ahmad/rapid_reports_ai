@@ -104,3 +104,32 @@ The comparison covered 41 production quick reports, 37 of them with a stored aud
 Phase 1a becomes redundant only after the fidelity lane's recall is fixed.
 
 Cost: comparable to the audit with two adjudication runs, about half with one; latency about the same as Phase 1.
+
+## Addendum (2026-10-02): guideline lane, turning Phase 2 research into applicable review items
+
+**Today:** the prefetch (S1–S3, run from the findings alongside generation) feeds the S4 synthesis cards (`enhancement_models.py`):
+- PathwaySynthesis: urgency, authority, refs, follow_up_actions[] (modality, timing, indication, urgency, guideline_source);
+- ClassificationSynthesis: classifications[] (system, grade, criteria, management) and thresholds[];
+- DifferentialSynthesis;
+- the `tnm_staging` table: UICC 9th edition, with search.
+
+These land as Guidelines-tab cards to read. Phase 2 audit turns them into 3 prose criteria (4/20 useful). Nothing produces applicable edits. The synthesis is stored per report in `enhancement_json`.
+
+**Proposed: a guideline lane in the same review engine.**
+- Synthesis outputs become candidate items, then go through the same adjudicate → propose fix → Jev verify path as fidelity items.
+- Candidate mappings:
+  - **A classification gradable from dictated features** → action: add the grade to the finding or impression line (e.g. "…complex cyst, Bosniak IIF").
+  - **Not gradable from the dictation** → info (or not shown), stating what is missing.
+  - **A threshold crossed** (AAA ≥ 5.5 cm, nodule size…) → action: name it in the impression where it changes management.
+  - **A sourced follow-up action** → an UPGRADE of the existing recommendation line, made specific: "follow-up CT" → "CT chest at 3 months (Fleischner 2017)".
+  - **Further actions** → options only.
+  - **Differentials and imaging flags** → low-salience options.
+- Every item carries a citation chip linking to its Guidelines-tab card.
+- Safety rules:
+  - (1) **grounding:** never infer a grade or threshold from undictated features; every input must be dictated;
+  - (2) **radiology remit only:** no management;
+  - (3) **one recommendation line in the core;** extras are options (Hassan's rule);
+  - (4) **the same reasoning adjudicator** (uncertain → no card), plus the Jev already-in-report gate.
+- **Timing:** non-blocking. Items stream into the rail when S4 lands, tagged "Guideline", and are re-verified against the current text by the live loop.
+- **This replaces Phase 2's audit criteria.**
+- **Suggested first step:** a lab prototype on the 41 production reports already compared (stored synthesis in `enhancement_json`), producing guideline cards for Hassan to eyeball.
