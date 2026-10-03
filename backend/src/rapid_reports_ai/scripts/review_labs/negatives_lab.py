@@ -39,10 +39,15 @@ def is_normal_or_negative(clause: str) -> bool:
     return bool(_NEG.search(clause))
 
 
+_RECOMMENDATION = re.compile(r"\b(recommend\w*|advis\w*|suggest\w*|referr\w*|refer|follow-?up|"
+                             r"for (?:surgical|further|treatment)|correlat\w*)\b", re.I)
+
+
 def candidates(report: str) -> List[dict]:
-    """Every normal/negative clause the check reads (FINDINGS + IMPRESSION), with the sentence before it."""
+    """Every normal/negative clause the check reads (FINDINGS + IMPRESSION), with the sentence before it.
+    Recommendation sentences are never candidates ("CT spine without contrast" is not a negative)."""
     return [{"clause": c, "before": b} for c, b in checked_clauses_in_context(report, None).items()
-            if is_normal_or_negative(c)]
+            if is_normal_or_negative(c) and not _RECOMMENDATION.search(c)]
 
 
 class Labels(BaseModel):

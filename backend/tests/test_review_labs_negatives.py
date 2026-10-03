@@ -59,3 +59,10 @@ def test_code_number_flag_ignores_sequence_and_level_names():
 
 def test_code_number_flag_matches_units_glued_to_digits():
     assert not NL.code_number_flag("A 4 cm × 3 cm × 2 cm cyst.", "4cm x 3cm x 2cm cyst", "")
+
+
+def test_recommendation_sentences_are_not_candidates():
+    rep = ("FINDINGS:\nNo hydronephrosis.\nIMPRESSION:\nCord compression. Urgent referral recommended; "
+           "CT spine without contrast for surgical planning. Follow-up MRI without delay is advised.")
+    got = [c["clause"] for c in NL.candidates(rep)]
+    assert got == ["No hydronephrosis."]
