@@ -57,10 +57,69 @@ def cmd_page(_args) -> None:
     print(p)
 
 
+def _candidate(kind: str, text: str, evidence: Optional[dict] = None) -> dict:
+    lane, k = KIND_MAP[kind]
+    is_report_side = lane == "accuracy"
+    return {"lane": lane, "kind": k, "detector": "jev.contradiction" if is_report_side else "jev.classify_first",
+            "anchor": text if is_report_side else None, "line": None if is_report_side else text,
+            "evidence": evidence or {}}
+
+
+def build_items(cards: List[dict], compare: List[dict], cases: Dict[str, dict]) -> List[dict]:
+    items = []
+    for c in sorted(cards, key=lambda c: c["n"]):
+        items.append({"id": f"c{c['n']}", "id8": c["id8"], "case": cases[c["id8"]],
+                      "candidate": _candidate(c["kind"], c["detector_line"])})
+    for r in compare:
+        for k, u in enumerate(r.get("jev_pool_unsampled") or []):
+            items.append({"id": f"u-{r['id8']}-{k}", "id8": r["id8"], "case": cases[r["id8"]],
+                          "candidate": _candidate(u["kind"], u["text"])})
+    return items
+
+
+def _load_items() -> List[dict]:
+    ps = common.pipeline_scratch()
+    return build_items(common.read_json(ps / "review_cards50_v3.json"),
+                       common.read_json(ps / "audit_compare" / "compare.json"), common.prod_cases())
+
+
+def cmd_items(_args) -> None:
+    items = _load_items()
+    p = common.write_json(common.lab_out("gate_a") / "items.json", items)
+    print(p, len(items))
+
+
+async def _run(items: List[dict], runs: int, out_path) -> None:
+    sem = asyncio.Semaphore(8)                     # spec §7: at most 8 concurrent calls per report
+    system = judgement.prompt("adjudicator_v4")
+    with open(out_path, "a") as fh:
+        for run in range(1, runs + 1):
+            async def one(it):
+                r = await judgement.judge_and_verify(it["case"], [it["candidate"]], sem, system)
+                return {"item_id": it["id"], "id8": it["id8"], "run": run, **r}
+            for row in await asyncio.gather(*(one(it) for it in items)):
+                fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+            print(f"run {run}: {len(items)} items")
+
+
+def cmd_run(args) -> None:
+    common.load_env()
+    items = _load_items()
+    if args.only:
+        keep = set(args.only.split(","))
+        items = [i for i in items if i["id"] in keep]
+    out = common.out_file("gate_a", f"v4_{args.tag}", "jsonl")
+    asyncio.run(_run(items, args.runs, out))
+    print(out)
+
+
 def main(argv: Optional[List[str]] = None) -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("page").set_defaults(fn=cmd_page)
+    sub.add_parser("items").set_defaults(fn=cmd_items)
+    r = sub.add_parser("run"); r.add_argument("--runs", type=int, default=2); r.add_argument("--only", default="")
+    r.add_argument("--tag", default="full"); r.set_defaults(fn=cmd_run)
     args = ap.parse_args(argv)
     args.fn(args)
 
