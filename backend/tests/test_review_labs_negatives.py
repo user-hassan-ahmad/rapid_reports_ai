@@ -41,6 +41,6 @@ def test_score_unsafe_misses_and_recall():
 
 
 def test_prompts_load_and_v2_default():
-    assert NL.DEFAULT_PROMPT == "negatives_v2"
+    assert NL.DEFAULT_PROMPT == "negatives_v4"
     assert "When in doubt between default and implicated, choose implicated" in NL.prompt()
     assert "Classify each numbered statement" in NL.prompt("negatives_v1")

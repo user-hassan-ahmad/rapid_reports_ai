@@ -25,7 +25,7 @@ from rapid_reports_ai.scripts.jev_tool_lab import calls
 from . import common, label_page
 
 PROMPTS = Path(__file__).parent / "prompts"
-DEFAULT_PROMPT = "negatives_v2"
+DEFAULT_PROMPT = "negatives_v4"
 
 
 def prompt(name: str = DEFAULT_PROMPT) -> str:
