@@ -39,6 +39,33 @@ A background task (the held-set pattern from `template_pipeline.schedule_options
 - Prompts are case-agnostic, with structural examples only.
 - **Nothing in this plan changes what the user sees.** `RR_REVIEW_ENGINE` defaults to `off`. Shadow mode only writes rows.
 
+## Binding corrections from Plan 1's wave 0 review (2026-10-03)
+
+The lab copy of the adjudicator and verifier (`scripts/review_labs/judgement.py`, commits e6c6b9a and 17e2b46) was reviewed and fixed before any lab run. Tasks 8 and 9 below were drafted before that review and repeat its bugs. **Where Tasks 8–9 conflict with this section, this section wins.** The implementer ports the lab's tested functions and their tests, `tests/test_review_labs_judgement.py`, adapting only types (`Edit`/`ReviewItem` in place of the lab `Judgement`).
+
+1. **No pydantic-ai output retries for the adjudicator.** `_run_agent_with_model` builds `Agent(..., retries=2)`, so a validation failure costs up to 3 calls (spec §7: retries at T=0 are futile).
+   - Task 8 adds a keyword `retries: int = 2` to `enhancement_utils._run_agent_with_model`. The default is unchanged, so no existing caller moves. The adjudicator passes `retries=0`.
+   - Test: the adjudicator's call kwargs include `retries=0`, and `_run_agent_with_model` forwards it to `Agent`.
+2. **`apply_edit`:**
+   - **Remove** splices at the index and tidies only the seam: collapse a double space at the seam, drop a line the removal emptied, strip a leading space at line start or a trailing space before a newline. Never run a whole-report `re.sub`; the draft's Task 9 `re.sub(r"[ \t]{2,}", ...)` is wrong.
+   - **Insert** strips the anchor and returns `None` when the anchor ends mid-word. After a heading anchor, the new text goes on the next line. Otherwise it goes after the anchor with exactly one space.
+3. **Verifier failure rules:**
+   - `addressed` < 0.5 → `code False`, `failed += "not_addressed"`.
+   - A Jev exception → `code False`, `failed += "jev_error"`.
+   - An edit with no probe → `unconfirmed True`.
+   - 0.5 ≤ `addressed` < 0.8 → kept, `unconfirmed True`.
+4. **The contradiction check runs on the changed sentence located by position,** with `changed_sentence(report, after, edit)`. It is skipped for `remove` (there is nothing to contradict).
+5. **Guards:**
+   - `outside_section`: compares `edit.section` with the heading at the edit position, case-insensitively; skipped when the report has no headings.
+   - `duplicate`: `_restates` against the target paragraph's sentences. For an insert, every sentence. For a replace or upgrade, the *other* sentences only.
+   - Number and side grounding: `bilateral` counts as grounded when the source says "both" or names both sides.
+   - **For the additions lane, grounding also accepts the candidate's evidence values** (threshold, timing, grade, criteria, parameter, system, text). Otherwise every guideline-derived number fails.
+   - `drops_negation`: also fires when the 2 content words after a negator in `find` reappear in `replace` with no negator before them.
+   - The `kind == "contradicted"` exemption from `drops_negation` (draft Task 9) stays.
+6. **The candidate render names the kind explicitly:** `Flag kind "partial" (from the coverage check, detector …)`. The prompt says to copy the quoted kind, never a check name. With the bracketed `[coverage/partial]` form, Qwen returned the lane as `kind` in the Gate A smoke.
+7. **The `Q_CONVEYS` "conveys" veto must not be imported into the adjudicator or verifier** (spec §7 removed it). `Q_CONVEYS` remains correct for the Additions "already in report" gate (Task 7).
+8. **The fallback `Judgement` on failure** carries every field (`reason=""`, all `edit_*` None) plus `error_kind` (`validation` / `transport`) in the run's `errors` log.
+
 ## File structure
 
 | File | Responsibility |
