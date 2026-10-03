@@ -41,6 +41,12 @@ def test_score_unsafe_misses_and_recall():
 
 
 def test_prompts_load_and_v2_default():
-    assert NL.DEFAULT_PROMPT == "negatives_v4"
+    assert NL.DEFAULT_PROMPT == "negatives_v5"
     assert "When in doubt between default and implicated, choose implicated" in NL.prompt()
     assert "Classify each numbered statement" in NL.prompt("negatives_v1")
+
+
+def test_v5_adds_history_contradiction_rule_only():
+    v4, v5 = NL.prompt("negatives_v4"), NL.prompt("negatives_v5")
+    assert "clinical history names as diseased" in v5 and "clinical history names as diseased" not in v4
+    assert len(v5) - len(v4) < 250

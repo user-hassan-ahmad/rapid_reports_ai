@@ -25,7 +25,7 @@ from rapid_reports_ai.scripts.jev_tool_lab import calls
 from . import common, label_page
 
 PROMPTS = Path(__file__).parent / "prompts"
-DEFAULT_PROMPT = "negatives_v4"
+DEFAULT_PROMPT = "negatives_v5"
 
 
 def prompt(name: str = DEFAULT_PROMPT) -> str:
@@ -134,7 +134,7 @@ async def _classify(cases: List[dict], runs: int, path, system: str) -> None:
 
 def cmd_classify(args) -> None:
     common.load_env()
-    cases = common.read_json(_out() / "candidates.json")
+    cases = common.read_json(args.candidates or (_out() / "candidates.json"))
     if args.only:
         cases = [c for c in cases if c["id8"] in set(args.only.split(","))]
     path = common.out_file("neg_lab", f"classify_{args.tag}", "jsonl")
@@ -214,7 +214,8 @@ def main(argv: Optional[List[str]] = None) -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("candidates"); c.add_argument("--replay", nargs="+", required=True); c.set_defaults(fn=cmd_candidates)
     k = sub.add_parser("classify"); k.add_argument("--runs", type=int, default=2); k.add_argument("--only", default="")
-    k.add_argument("--tag", default="v2"); k.add_argument("--prompt", default=DEFAULT_PROMPT); k.set_defaults(fn=cmd_classify)
+    k.add_argument("--tag", default="v5"); k.add_argument("--prompt", default=DEFAULT_PROMPT);
+    k.add_argument("--candidates", default=""); k.set_defaults(fn=cmd_classify)
     p = sub.add_parser("page"); p.add_argument("--results", required=True); p.set_defaults(fn=cmd_page)
     s = sub.add_parser("score"); s.add_argument("--labels", required=True); s.add_argument("--results", required=True)
     s.set_defaults(fn=cmd_score)
