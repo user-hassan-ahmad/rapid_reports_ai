@@ -188,3 +188,14 @@ describe('negatives proto state', () => {
 		expect(() => parseBundle({ ...bundle, version: 2 })).toThrow(/version/);
 	});
 });
+
+
+import { checkReason } from './decorations';
+
+describe('check reasons', () => {
+	it('names why an amber item needs a check, with the matching evidence label', () => {
+		expect(checkReason({}).evidenceLabel).toBe('Your finding');
+		expect(checkReason({ reason: 'conflict' }).line).toMatch(/conflicts with your dictation/);
+		expect(checkReason({ reason: 'number' }).evidenceLabel).toBe('Not in your dictation');
+	});
+});

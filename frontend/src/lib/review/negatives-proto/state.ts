@@ -12,7 +12,7 @@
  */
 import { EditorState, StateEffect, StateField, type ChangeDesc, type Extension, type TransactionSpec } from '@codemirror/state';
 import { invertedEffects } from '@codemirror/commands';
-import type { NegativesBundle, NegClass } from './bundle';
+import type { CheckReason, NegativesBundle, NegClass } from './bundle';
 
 export interface LiveMark {
 	id: string;
@@ -21,6 +21,7 @@ export interface LiveMark {
 	to: number;
 	text: string;
 	pointer?: string;
+	reason?: CheckReason;
 }
 
 export type WidgetItem =
@@ -33,6 +34,7 @@ export type WidgetItem =
 			text: string;
 			cls: NegClass;
 			pointer?: string;
+			reason?: CheckReason;
 			lead: string; // whitespace trimmed before the text on exclude (restored verbatim)
 			trail: string; // whitespace trimmed after it
 	  };
@@ -98,7 +100,7 @@ export function negItems(state: EditorState): NegItems {
 
 export function itemsFromBundle(b: NegativesBundle): NegItems {
 	return {
-		marks: b.marked.map((m) => ({ id: m.id, cls: m.cls, from: m.start, to: m.end, text: m.text, pointer: m.pointer })),
+		marks: b.marked.map((m) => ({ id: m.id, cls: m.cls, from: m.start, to: m.end, text: m.text, pointer: m.pointer, reason: m.reason })),
 		widgets: [
 			...b.removed.map(
 				(r): WidgetItem => ({ kind: 'removed', id: r.id, pos: r.anchor, text: r.text, reason: r.reason, pointer: r.pointer })
@@ -177,7 +179,7 @@ export function restoreRemoved(state: EditorState, id: string): TransactionSpec 
 export function restoreExcluded(state: EditorState, id: string): TransactionSpec | null {
 	const w = negItems(state).widgets.find((x) => x.id === id && x.kind === 'excluded');
 	if (!w || w.kind !== 'excluded') return null;
-	return insertAsMark(state, w.pos, w.text, { id: w.id, cls: w.cls, pointer: w.pointer }, w.id, w.lead, w.trail);
+	return insertAsMark(state, w.pos, w.text, { id: w.id, cls: w.cls, pointer: w.pointer, reason: w.reason }, w.id, w.lead, w.trail);
 }
 
 /** Option (ghost) widget → insert " " + text at the anchor as plain (dictated-style) text. */
@@ -212,7 +214,7 @@ export function excludeMark(state: EditorState, id: string): TransactionSpec | n
 	const text = state.sliceDoc(m.from, m.to);
 	const changes = state.changes({ from, to });
 	const rest = mapItems({ marks: items.marks.filter((x) => x.id !== id), widgets: items.widgets }, changes);
-	const widget: WidgetItem = { kind: 'excluded', id, pos: changes.mapPos(from, -1), text, cls: m.cls, pointer: m.pointer, lead, trail };
+	const widget: WidgetItem = { kind: 'excluded', id, pos: changes.mapPos(from, -1), text, cls: m.cls, pointer: m.pointer, reason: m.reason, lead, trail };
 	return {
 		changes,
 		effects: setItems.of({ marks: rest.marks, widgets: [...rest.widgets, widget] }),

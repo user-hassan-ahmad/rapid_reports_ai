@@ -24,7 +24,7 @@ import {
 export const LABELS = {
 	dictated: 'Your dictation.',
 	default: 'Assumed normal: not mentioned in your dictation, so stated as normal.',
-	implicated: 'Assumed normal · confirm: not mentioned, but your findings make this uncertain. Confirm or remove.',
+	implicated: 'Check: in the report, but needs your eye. Click it to see why.',
 	removed: 'Removed: contradicts your dictation. Restore if needed.',
 	removedNumber: 'Removed: carries a measurement you did not dictate. Restore if needed.',
 	excluded: 'Removed by you. Restore if needed.',
@@ -32,6 +32,18 @@ export const LABELS = {
 } as const;
 
 /** Small non-colour markers, shared by the legend and the editor. */
+/** The amber popover's reason line and the label for its evidence, by check reason. */
+export function checkReason(m: { reason?: string; pointer?: string }): { line: string; evidenceLabel: string } {
+	switch (m.reason) {
+		case 'conflict':
+			return { line: 'Likely conflicts with your dictation; could not be removed automatically.', evidenceLabel: 'Your dictation' };
+		case 'number':
+			return { line: 'Contains a measurement you did not dictate.', evidenceLabel: 'Not in your dictation' };
+		default:
+			return { line: 'Assumed normal, but one of your findings makes it uncertain.', evidenceLabel: 'Your finding' };
+	}
+}
+
 export const ICONS = {
 	dictated: '✎',
 	default: '+',
@@ -160,12 +172,13 @@ const popoverField = StateField.define<string | null>({
 					dom.className = `cm-neg-popover cm-neg-popover-${m.cls}`;
 					const head = document.createElement('div');
 					head.className = 'cm-neg-popover-label';
-					head.textContent = `${m.cls === 'default' ? ICONS.default : ICONS.implicated} ${clsLabel(m.cls)}`;
+					const why = m.cls === 'implicated' ? checkReason(m) : null;
+					head.textContent = why ? `${ICONS.implicated} Check · ${why.line}` : `${ICONS.default} ${clsLabel(m.cls)}`;
 					dom.append(head);
 					if (m.pointer) {
 						const p = document.createElement('div');
 						p.className = 'cm-neg-popover-pointer';
-						p.textContent = `Dictated finding: “${m.pointer}”`;
+						p.textContent = `${why ? why.evidenceLabel : 'Dictated finding'}: “${m.pointer}”`;
 						dom.append(p);
 					}
 					const row = document.createElement('div');

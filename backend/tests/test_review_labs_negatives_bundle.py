@@ -47,3 +47,19 @@ def test_number_in_a_dictated_sentence_is_amber_not_removed():
                      {"1": {"cls": "dictated", "pointer": "normal uterus"}})
     assert b["report"] == rep and b["removed"] == []
     assert [m["cls"] for m in b["marked"]] == ["implicated"]
+
+
+def test_amber_items_carry_a_check_reason_and_evidence():
+    rep = ("FINDINGS:\nGallstones. No free fluid, collection or pneumoperitoneum. "
+           "The uterus is normal, with a junctional zone under 12 mm. No duct dilatation.\n\nIMPRESSION:\nX.")
+    cands = [{"clause": "No collection", "number_code": False},
+             {"clause": "The uterus is normal, with a junctional zone under 12 mm.", "number_code": True},
+             {"clause": "No duct dilatation.", "number_code": False}]
+    labels = {"1": {"cls": "contradicted", "pointer": "collection in the gallbladder fossa"},
+              "2": {"cls": "dictated", "pointer": "normal uterus"},
+              "3": {"cls": "implicated", "pointer": "Gallstones"}}
+    b = build_bundle({**CASE, "dictation": "Gallstones. Normal uterus."}, rep, cands, labels)
+    got = {m["text"]: (m["reason"], m["pointer"]) for m in b["marked"]}
+    assert got["collection"] == ("conflict", "collection in the gallbladder fossa")
+    assert got["The uterus is normal, with a junctional zone under 12 mm"] == ("number", "12 mm")
+    assert got["No duct dilatation"] == ("uncertain", "Gallstones")

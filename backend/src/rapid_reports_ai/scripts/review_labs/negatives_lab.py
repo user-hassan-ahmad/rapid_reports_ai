@@ -74,7 +74,7 @@ def user_message(case: dict, cands: List[dict]) -> str:
             f"DICTATION:\n{case['dictation']}\n\nREPORT:\n{case['report']}\n\nSTATEMENTS TO CLASSIFY:\n{listing}")
 
 
-_NUM = re.compile(r"(?<![A-Za-z/])\d+(?:\.\d+)?(?![A-Za-z])")  # skips T1, C7, L4/5
+_NUM = re.compile(r"(?<![A-Za-z/\d.])\d+(?:\.\d+)?")  # skips T1, C7, L4/5; keeps 4cm
 
 
 def code_number_flag(clause: str, dictation: str, history: str) -> bool:

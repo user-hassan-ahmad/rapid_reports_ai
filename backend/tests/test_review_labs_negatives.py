@@ -55,3 +55,7 @@ def test_v5_adds_history_contradiction_rule_only():
 def test_code_number_flag_ignores_sequence_and_level_names():
     assert not NL.code_number_flag("No T1 hypointensity at C7 or L4/5.", "cord compression", "")
     assert NL.code_number_flag("The junctional zone measures less than 12 mm.", "normal uterus", "")
+
+
+def test_code_number_flag_matches_units_glued_to_digits():
+    assert not NL.code_number_flag("A 4 cm × 3 cm × 2 cm cyst.", "4cm x 3cm x 2cm cyst", "")

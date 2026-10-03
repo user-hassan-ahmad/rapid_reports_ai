@@ -8,6 +8,8 @@
  * options are never in `report` either. Copy/export = document text.
  */
 export type NegClass = 'default' | 'implicated';
+/** Why an amber (implicated) item needs a check. */
+export type CheckReason = 'uncertain' | 'conflict' | 'number';
 
 export interface MarkedItem {
 	id: string;
@@ -15,7 +17,8 @@ export interface MarkedItem {
 	start: number; // offsets into `report`
 	end: number;
 	text: string;
-	pointer?: string; // the dictated finding that implicates it (implicated only)
+	pointer?: string; // evidence: the dictated words behind the check (or the undictated number)
+	reason?: CheckReason; // implicated only; absent = 'uncertain'
 }
 
 export interface RemovedItem {

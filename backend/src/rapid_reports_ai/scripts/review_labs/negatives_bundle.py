@@ -50,6 +50,16 @@ def _section_end(report: str, section: str) -> int:
     return len(report.rstrip())
 
 
+_NUMBER_UNIT = re.compile(r"(?<![A-Za-z/\d.])(\d+(?:\.\d+)?)(\s*(?:mm|cm|ml|mL|%|HU|degrees?))?")
+
+
+def _undictated_numbers(clause: str, case: dict) -> str:
+    """The measurement(s) in a clause that the dictation and history do not contain, e.g. "12 mm"."""
+    source = f"{case.get('dictation', '')}\n{case.get('history', '')}"
+    have = {m.group(1) for m in _NUMBER_UNIT.finditer(source)}
+    return ", ".join(m.group(0).strip() for m in _NUMBER_UNIT.finditer(clause) if m.group(1) not in have)
+
+
 def build_bundle(case: dict, report: str, cands: List[dict], labels: Dict[str, dict],
                  options: Optional[List[dict]] = None) -> dict:
     """cands: [{clause, number_code}] in classifier order; labels: {"1": {cls, pointer, number}, ...}."""
@@ -81,8 +91,17 @@ def build_bundle(case: dict, report: str, cands: List[dict], labels: Dict[str, d
         if not span:
             continue
         taken.append(span)
-        marked.append({"id": f"m{i}", "cls": cls, "start": span[0], "end": span[1], "text": doc[span[0]:span[1]],
-                       "pointer": lab.get("pointer", "")})
+        item = {"id": f"m{i}", "cls": cls, "start": span[0], "end": span[1], "text": doc[span[0]:span[1]],
+                "pointer": lab.get("pointer", "")}
+        if cls == "implicated":
+            if lab.get("cls") == "contradicted":
+                item["reason"] = "conflict"            # a conflict code could not remove
+            elif c.get("number_code"):
+                item["reason"] = "number"
+                item["pointer"] = _undictated_numbers(c["clause"], case)
+            else:
+                item["reason"] = "uncertain"
+        marked.append(item)
     opts = [{"id": o.get("id") or f"o{k}", "anchor": _section_end(doc, o.get("section") or "FINDINGS"),
              "text": o.get("sentence") or o.get("text") or "", "reason": o.get("reason") or o.get("kind") or ""}
             for k, o in enumerate(options or []) if (o.get("sentence") or o.get("text"))]
