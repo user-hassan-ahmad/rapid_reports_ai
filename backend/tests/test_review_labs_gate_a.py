@@ -65,3 +65,26 @@ def test_gate_a_synthetic_items():
     assert items == [{"id": "s-1", "id8": "s-1", "case": {"scan": "CT", "dictation": "d", "history": "", "report": "r"},
                       "candidate": data[0]["candidate"]}]
     assert labels == {"s-1": {"verdict": "action"}}
+
+
+def test_gate_a_read_page_excludes_labelled_and_shows_call(tmp_path, monkeypatch):
+    import argparse
+    import json
+    monkeypatch.setenv("RR_LAB_OUT", str(tmp_path))
+    case = {"scan": "CT", "dictation": "d", "history": "", "report": "r"}
+    cand = {"lane": "coverage", "kind": "partial", "detector": "x", "line": "LINE", "anchor": None, "evidence": {}}
+    items = [{"id": i, "id8": "r1", "case": case, "candidate": cand} for i in ("c2", "c1", "u-r1-0", "c9")]
+    out = tmp_path / "gate_a"
+    out.mkdir()
+    (out / "items.json").write_text(json.dumps(items))
+    rows = [{"item_id": i, "id8": "r1", "run": 1, "cls": "minor", "kind": "partial", "label": "LBL-" + i,
+             "reason": "why", "edit_mode": "none"} for i in ("c2", "c1", "u-r1-0")]
+    rows.append({"item_id": "c9", "id8": "r1", "run": 1, "error": "boom"})
+    rows.append({"item_id": "c1", "id8": "r1", "run": 2, "cls": "action"})
+    res = tmp_path / "res.jsonl"
+    res.write_text("\n".join(json.dumps(r) for r in rows))
+    GA.cmd_read_page(argparse.Namespace(results=str(res), synthetic=""))
+    html = (out / "read_v4.html").read_text()
+    assert "LBL-c1" in html and "LBL-u-r1-0" in html and "v4 call: minor" in html
+    assert "LBL-c2" not in html          # c2 is in LABEL_SET
+    assert "c9 ·" not in html            # no cls -> skipped

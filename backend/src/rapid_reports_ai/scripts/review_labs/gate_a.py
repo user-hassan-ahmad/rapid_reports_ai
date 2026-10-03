@@ -128,6 +128,40 @@ def cmd_run(args) -> None:
     print(out)
 
 
+READ_FIELDS = [{"key": "verdict", "label": "Correct class", "type": "choice",
+                "options": ["action", "minor", "info", "suppress"], "required": True},
+               {"key": "fix_ok", "label": "Fix right", "type": "choice", "options": ["yes", "no", "n/a"]},
+               {"key": "material", "type": "check", "label": "Material loss"},
+               {"key": "note", "type": "text", "label": "Note"}]
+
+
+def cmd_read_page(args) -> None:
+    rows = [r for r in common.read_jsonl(args.results) if r["run"] == 1 and r.get("cls")]
+    items = {i["id"]: i for i in common.read_json(common.lab_out("gate_a") / "items.json")}
+    if getattr(args, "synthetic", ""):
+        items.update({i["id"]: i for i in build_synthetic_items(common.read_json(args.synthetic))[0]})
+    labelled = {f"c{n}" for n in LABEL_SET}
+    cards = []
+    for r in rows:
+        if r["item_id"] in labelled or r["item_id"] not in items:
+            continue
+        it = items[r["item_id"]]
+        c = it["candidate"]
+        flagged = c.get("line") or c.get("anchor") or ""
+        fix = (f"{r.get('edit_mode')}: find «{r.get('edit_find') or r.get('edit_after') or ''}» → «{r.get('edit_replace') or ''}»"
+               if r.get("edit_mode") not in (None, "none") else "no edit")
+        cards.append({"id": r["item_id"], "title": f"{r['item_id']} · {c['lane']}/{c['kind']}", "meta": it["case"]["scan"],
+                      "blocks": [{"label": "Flagged", "text": flagged},
+                                 {"label": f"v4 call: {r.get('cls')} · {r.get('kind')}", "text": f"{r.get('label')}\n{r.get('reason') or ''}"},
+                                 {"label": "v4 fix", "text": fix + f"\nverified: {json.dumps(r.get('verified'))}"},
+                                 {"label": "Full dictation", "text": it["case"]["dictation"], "highlight": [flagged], "collapsed": True},
+                                 {"label": "Full report", "text": it["case"]["report"], "highlight": [flagged], "collapsed": True}],
+                      "hidden": []})
+    p = label_page.write_page(common.lab_out("gate_a") / "read_v4.html", "Gate A · read v4 output",
+                              "gateA-read-v4-v1", cards, READ_FIELDS)
+    print(p, len(cards))
+
+
 def score(labels: dict, read: Optional[dict], rows: List[dict]) -> dict:
     merged = {**labels, **(read or {})}
     labels = {k: v for k, v in merged.items() if k != "rules" and isinstance(v, dict) and v.get("verdict")}
@@ -159,6 +193,8 @@ def main(argv: Optional[List[str]] = None) -> None:
     r = sub.add_parser("run"); r.add_argument("--runs", type=int, default=2); r.add_argument("--only", default="")
     r.add_argument("--tag", default="full"); r.add_argument("--synthetic", default="")
     r.set_defaults(fn=cmd_run)
+    rp = sub.add_parser("read-page"); rp.add_argument("--results", required=True)
+    rp.add_argument("--synthetic", default=""); rp.set_defaults(fn=cmd_read_page)
     s = sub.add_parser("score"); s.add_argument("--labels", required=True); s.add_argument("--read", default="")
     s.add_argument("--results", required=True); s.set_defaults(fn=cmd_score)
     args = ap.parse_args(argv)
