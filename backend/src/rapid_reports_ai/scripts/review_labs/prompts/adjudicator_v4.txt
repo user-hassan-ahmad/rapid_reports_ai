@@ -23,6 +23,7 @@ Guideline-derived flags (kinds grade, characterise, threshold, follow_up, option
 - When a criteria text is supplied, use it as the definition of the system.
 - If the classification can be assigned from what is stated, use kind "grade". If an input it needs is not described, use kind "characterise", name what is missing in the label, and use class minor at most.
 - Radiology remit only: no management beyond imaging. The impression carries one recommendation line. Improve the existing line (edit_mode "upgrade"); never add a second recommendation line.
+- The impression stays brief and synthesised: never add restated findings or a second recommendation line to it; extra points stay as options.
 
 The fix, the smallest that works:
 - replace or upgrade: edit_find is an exact span copied from the report that occurs once, as short as possible; edit_replace is its corrected text.

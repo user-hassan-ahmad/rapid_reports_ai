@@ -1,6 +1,9 @@
 """Lab copy of the review-engine adjudicator (spec §7) and verifier (spec §8).
 
-Flat schema on purpose (L-50). One Qwen call per candidate group. The verifier checks the FIX, never the reading."""
+Flat schema on purpose (L-50). One Qwen call per candidate group. The verifier checks the FIX, never the reading.
+
+The shared runner (_run_agent_with_model) uses pydantic-ai retries=2, so a validation failure can cost up to
+3 calls; usage.requests records it (lab deviation from spec §7, fixed in Plan 2)."""
 from __future__ import annotations
 
 import asyncio
@@ -10,9 +13,9 @@ from typing import Dict, List, Literal, Optional, Tuple
 
 from pydantic import BaseModel
 
-from rapid_reports_ai.report_reconcile import Q_CONVEYS
-from rapid_reports_ai.report_review import CONTRA_FLAG, Q_CONTRA
+from rapid_reports_ai.report_review import CONTRA_FLAG, Q_CONTRA, _restates
 from rapid_reports_ai.scripts.jev_tool_lab import calls
+from rapid_reports_ai.scripts.review_labs import common
 
 PROMPTS = Path(__file__).parent / "prompts"
 ADDRESSED_OK = 0.8          # spec §8; confirmed or re-set in Gate E
@@ -94,71 +97,190 @@ def _once(text: str, needle: Optional[str]) -> bool:
     return bool(needle) and text.count(needle) == 1
 
 
+def _remove_span(report: str, i: int, n: int) -> str:
+    """Splice out [i, i+n) and tidy only the seam; the rest of the report is never touched."""
+    a, b = report[:i], report[i + n:]
+    at, bt = a.rstrip(" \t"), b.lstrip(" \t")
+    if not at or at.endswith("\n"):            # seam at a line start
+        a, b = at, bt
+        if b.startswith("\n"):                 # the line is now empty: drop it
+            b = b[1:]
+        elif not b and a.endswith("\n"):
+            a = a[:-1]
+    elif not bt or bt.startswith("\n"):        # seam at a line end
+        a, b = at, bt
+    elif a != at and b != bt:                  # spaces on both sides: one space at the seam
+        a, b = at + " ", bt
+    return a + b
+
+
 def apply_edit(report: str, j: Judgement) -> Optional[str]:
     m = j.edit_mode
     if m in ("replace", "upgrade") and _once(report, j.edit_find) and j.edit_replace is not None:
         return report.replace(j.edit_find, j.edit_replace, 1)
     if m == "remove" and _once(report, j.edit_find):
-        return re.sub(r"[ \t]{2,}", " ", report.replace(j.edit_find, "", 1))
-    if m == "insert" and _once(report, j.edit_after) and j.edit_replace:
-        i = report.index(j.edit_after) + len(j.edit_after)
-        return report[:i] + " " + j.edit_replace.strip() + report[i:]
+        return _remove_span(report, report.index(j.edit_find), len(j.edit_find))
+    anchor = (j.edit_after or "").strip()
+    new = (j.edit_replace or "").strip()
+    if m == "insert" and _once(report, anchor) and new:
+        i = report.index(anchor) + len(anchor)
+        if i < len(report) and not report[i].isspace():
+            return None                         # anchor ends mid-word
+        if common._HEADING.fullmatch(anchor):
+            return report[:i] + "\n" + new + report[i:]
+        return report[:i] + " " + new + report[i:]
     return None
+
+
+def _edit_pos(report: str, j: Judgement) -> Optional[int]:
+    """Where the edit lands in the original report (start of find, or end of the insert anchor)."""
+    if j.edit_mode == "insert":
+        anchor = (j.edit_after or "").strip()
+        return report.index(anchor) + len(anchor) if anchor and anchor in report else None
+    return report.index(j.edit_find) if j.edit_find and j.edit_find in report else None
+
+
+_BLOCK_BREAK = re.compile(r"\n[ \t]*\n|" + common._HEADING.pattern, re.M)
+
+
+def _paragraph(report: str, pos: int) -> Tuple[int, int]:
+    """The text between blank lines / headings that contains `pos`."""
+    lo, hi = 0, len(report)
+    for m in _BLOCK_BREAK.finditer(report):
+        if m.end() <= pos:
+            lo = m.end()
+        elif m.start() > pos:
+            hi = m.start()
+            break
+    return lo, hi
 
 
 _NUM = re.compile(r"\d+(?:\.\d+)?")
 _SIDE = re.compile(r"\b(left|right|bilateral)\b", re.I)
 _NEG = re.compile(r"\b(no|not|without|absent|negative for)\b", re.I)
+_NEGATOR = re.compile(r"\b(no|not|without)\b", re.I)
+_NEG_SKIP = {"a", "an", "the", "any", "evidence", "of", "is", "are", "was", "were", "seen", "identified"}
 
 
-def guard_failures(report: str, j: Judgement, dictation: str, history: str) -> List[str]:
-    """Spec §8 code guards. An empty list means the fix may be shown with Apply."""
+def _negated_phrases(text: str) -> List[List[str]]:
+    """The 2 content words after each negator (no / not / without)."""
+    out = []
+    for m in _NEGATOR.finditer(text):
+        words = [w for w in re.findall(r"[a-z]+", text[m.end():].lower()) if w not in _NEG_SKIP][:2]
+        if words:
+            out.append(words)
+    return out
+
+
+def _loses_negation(old: str, new: str) -> bool:
+    for words in _negated_phrases(old):
+        for m in re.finditer(r"\b" + r"\W+".join(map(re.escape, words)) + r"\b", new, re.I):
+            before = re.findall(r"[a-z]+", new[:m.start()].lower())[-3:]
+            if not any(w in ("no", "not", "without") for w in before):
+                return True
+    return False
+
+
+def _sides(text: str) -> set:
+    return {s.lower() for s in _SIDE.findall(text)}
+
+
+def _side_grounded(side: str, source: str) -> bool:
+    src = _sides(source)
+    if side == "bilateral":
+        return "bilateral" in src or bool(re.search(r"\bboth\b", source, re.I)) or {"left", "right"} <= src
+    return side in src
+
+
+def guard_failures(report: str, j: Judgement, dictation: str, history: str, extra_source: str = "") -> List[str]:
+    """Spec §8 code guards. An empty list means the fix may be shown with Apply.
+    `extra_source` (additions lane: the guideline evidence) also grounds numbers and sides."""
     if j.edit_mode == "none":
         return []
     fails = []
     if apply_edit(report, j) is None:
         fails.append("anchor_not_unique")
-    source = f"{dictation}\n{history}"
+    source = f"{dictation}\n{history}\n{extra_source}"
     new, old = j.edit_replace or "", j.edit_find or ""
     if set(_NUM.findall(new)) - set(_NUM.findall(old)) - set(_NUM.findall(source)):
         fails.append("ungrounded_number")
-    added_sides = {s.lower() for s in _SIDE.findall(new)} - {s.lower() for s in _SIDE.findall(old)}
-    if added_sides - {s.lower() for s in _SIDE.findall(source)}:
+    if any(not _side_grounded(s, source) for s in _sides(new) - _sides(old)):
         fails.append("ungrounded_side")
-    if j.edit_mode in ("replace", "upgrade") and len(_NEG.findall(old)) > len(_NEG.findall(new)):
+    if j.edit_mode in ("replace", "upgrade") and (
+            len(_NEG.findall(old)) > len(_NEG.findall(new)) or _loses_negation(old, new)):
         fails.append("drops_negation")
     if j.edit_mode == "remove" and j.kind != "contradicted":
         fails.append("remove_not_allowed")
+    pos = _edit_pos(report, j)
+    if pos is not None and j.edit_section:
+        sec = common.section_of(report, pos)
+        if sec != "Report" and sec.lower() != j.edit_section.strip().rstrip(":").strip().lower():
+            fails.append("outside_section")
+    if pos is not None and j.edit_mode in ("insert", "upgrade", "replace") and new.strip():
+        lo, hi = _paragraph(report, pos)
+        para = report[lo:hi]
+        own = pos - lo                         # a replace is checked against its neighbours, not its own sentence
+        neighbours = [para[a:b] for a, b in common.sentences(para)
+                      if j.edit_mode == "insert" or not (a <= own < b)]
+        if any(_restates(new, s) for s in neighbours):
+            fails.append("duplicate")
     return fails
 
 
-def changed_sentence(after: str, j: Judgement) -> str:
-    key = (j.edit_replace or "").strip() or (j.edit_after or "")
-    for s in re.split(r"(?<=[.;])\s+|\n+", after):
-        if key and key[:40] in s:
-            return s.strip()
-    return key
+def changed_sentence(report: str, after: str, j: Judgement) -> str:
+    """The sentence of `after` that contains the edit, located by position (never by text search)."""
+    pos = _edit_pos(report, j)
+    if pos is None:
+        return (j.edit_replace or "").strip()
+    if j.edit_mode == "insert":
+        pos += 1
+    for a, b in common.sentences(after):
+        if pos < b:
+            return after[a:b].strip()
+    return (j.edit_replace or "").strip()
 
 
-async def verify(case: dict, j: Judgement, jev_fn=calls.jev) -> Dict:
+_EVIDENCE_KEYS = ("threshold", "timing", "grade", "criteria", "parameter", "system", "text")
+
+
+def _extra_source(group: Optional[List[dict]]) -> str:
+    if not group or not any(c.get("lane") == "additions" for c in group):
+        return ""
+    return "\n".join(str(ev[k]) for c in group for ev in [c.get("evidence") or {}] for k in _EVIDENCE_KEYS if ev.get(k))
+
+
+async def verify(case: dict, j: Judgement, group: Optional[List[dict]] = None, jev_fn=calls.jev) -> Dict:
     """Code guards, then one batched Jev call: the probe on the edited report, contradiction on the changed text."""
-    fails = guard_failures(case["report"], j, case.get("dictation", ""), case.get("history", ""))
+    fails = guard_failures(case["report"], j, case.get("dictation", ""), case.get("history", ""), _extra_source(group))
     res = {"code": not fails, "failed": fails, "addressed": None, "contra": None, "unconfirmed": False}
     if fails or j.edit_mode == "none":
         return res
     after = apply_edit(case["report"], j)
-    by_state = {f"SCAN TYPE: {case.get('scan', '')}\nDICTATED FINDINGS:\n{case.get('dictation', '')}":
-                    {"contra": {"type": "noul", "instructions": Q_CONTRA + changed_sentence(after, j)}}}
+    by_state: Dict[str, dict] = {}
+    if j.edit_mode != "remove":
+        by_state[f"SCAN TYPE: {case.get('scan', '')}\nDICTATED FINDINGS:\n{case.get('dictation', '')}"] = \
+            {"contra": {"type": "noul", "instructions": Q_CONTRA + changed_sentence(case["report"], after, j)}}
     if j.probe:
         by_state[f"REPORT:\n{after}"] = {"addressed": {"type": "noul", "instructions": j.probe}}
+    else:
+        res["unconfirmed"] = True               # nothing checks that the fix addresses the item
+    if not by_state:
+        return res
     try:
         answers, _, _ = await jev_fn(by_state)
-        res["contra"] = float(answers["contra"]["noul"])
+        if "contra" in answers:
+            res["contra"] = float(answers["contra"]["noul"])
         if j.probe:
             res["addressed"] = float(answers["addressed"]["noul"])
-            res["unconfirmed"] = UNSURE_LO <= res["addressed"] < ADDRESSED_OK
+            if res["addressed"] < UNSURE_LO:
+                res["code"] = False
+                res["failed"].append("not_addressed")
+            else:
+                res["unconfirmed"] = res["addressed"] < ADDRESSED_OK
     except Exception as e:   # noqa: BLE001
         res["error"] = f"{type(e).__name__}: {str(e)[:200]}"
+        res["code"] = False
+        res["failed"].append("jev_error")
     if res["contra"] is not None and res["contra"] >= CONTRA_FLAG:
         res["code"] = False
         res["failed"].append("fix_contradicts_dictation")
@@ -169,11 +291,14 @@ async def judge_and_verify(case: dict, group: List[dict], sem: asyncio.Semaphore
     async with sem:
         j, usage, err = await adjudicate(case, group, system)
     if j is None:
-        return {"cls": "minor", "kind": group[0].get("kind"), "label": "", "edit_mode": "none", "error": err,
-                "usage": usage, "verified": None}
-    v = await verify(case, j)
+        fallback = Judgement(cls="minor", kind=(group[0].get("kind") if group else None) or "unknown",
+                             label="", reason="", edit_mode="none").model_dump()
+        kind = "validation" if any(t in (err or "").split(":")[0] for t in ("Validation", "UnexpectedModelBehavior")) \
+            else "transport"
+        return {**fallback, "error": err, "error_kind": kind, "usage": usage, "verified": None}
+    v = await verify(case, j, group)
     return {**j.model_dump(), "usage": usage, "verified": v, "error": None}
 
 
 __all__ = ["Judgement", "prompt", "render_candidate", "user_message", "adjudicate", "apply_edit",
-           "guard_failures", "verify", "judge_and_verify", "Q_CONVEYS"]
+           "guard_failures", "changed_sentence", "verify", "judge_and_verify"]
