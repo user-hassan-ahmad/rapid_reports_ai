@@ -50,3 +50,8 @@ def test_v5_adds_history_contradiction_rule_only():
     v4, v5 = NL.prompt("negatives_v4"), NL.prompt("negatives_v5")
     assert "clinical history names as diseased" in v5 and "clinical history names as diseased" not in v4
     assert len(v5) - len(v4) < 250
+
+
+def test_code_number_flag_ignores_sequence_and_level_names():
+    assert not NL.code_number_flag("No T1 hypointensity at C7 or L4/5.", "cord compression", "")
+    assert NL.code_number_flag("The junctional zone measures less than 12 mm.", "normal uterus", "")

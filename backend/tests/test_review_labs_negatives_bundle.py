@@ -39,3 +39,11 @@ def test_contradicted_item_code_cannot_remove_falls_back_to_amber_mark():
                      {"1": {"cls": "contradicted", "pointer": "collection"}})
     assert b["report"] == rep and b["removed"] == []
     assert [(m["cls"], m["text"]) for m in b["marked"]] == [("implicated", "collection")]
+
+
+def test_number_in_a_dictated_sentence_is_amber_not_removed():
+    rep = "FINDINGS:\nThe uterus is normal, with a junctional zone under 12 mm.\n\nIMPRESSION:\nNormal."
+    b = build_bundle(CASE, rep, [{"clause": "The uterus is normal, with a junctional zone under 12 mm.", "number_code": True}],
+                     {"1": {"cls": "dictated", "pointer": "normal uterus"}})
+    assert b["report"] == rep and b["removed"] == []
+    assert [m["cls"] for m in b["marked"]] == ["implicated"]

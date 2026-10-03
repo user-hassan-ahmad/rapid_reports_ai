@@ -56,7 +56,9 @@ def build_bundle(case: dict, report: str, cands: List[dict], labels: Dict[str, d
     removed, doc = [], report
     for i, c in enumerate(cands, 1):
         lab = labels.get(str(i)) or {}
-        reason = "contradicted" if lab.get("cls") == "contradicted" else "number" if c.get("number_code") else None
+        # A number never auto-removes a sentence the radiologist dictated: that one is marked amber below.
+        reason = ("contradicted" if lab.get("cls") == "contradicted"
+                  else "number" if c.get("number_code") and lab.get("cls") != "dictated" else None)
         if not reason:
             continue
         new = remove_negative_clause(doc, c["clause"])
@@ -72,7 +74,7 @@ def build_bundle(case: dict, report: str, cands: List[dict], labels: Dict[str, d
     marked, taken = [], []
     for i, c in enumerate(cands, 1):
         lab = labels.get(str(i)) or {}
-        if c.get("_removed") or lab.get("cls") == "dictated":
+        if c.get("_removed") or (lab.get("cls") == "dictated" and not c.get("number_code")):
             continue
         cls = "implicated" if lab.get("cls") in ("implicated", "contradicted") or c.get("number_code") else "default"
         span = _locate(doc, c["clause"], taken)
