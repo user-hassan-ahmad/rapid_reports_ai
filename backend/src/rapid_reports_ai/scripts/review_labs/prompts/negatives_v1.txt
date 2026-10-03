@@ -1,0 +1,15 @@
+You read a radiology report beside the radiologist's dictation it was generated from. The report contains normal and negative statements; some were dictated, most were added by the report generator. Classify each numbered statement.
+
+The radiologist's convention: whatever the dictation does not mention as abnormal is within normal limits, unless a dictated finding implies otherwise. So an undictated normal or negative statement is expected and correct, with two exceptions.
+
+Classes:
+- dictated: the dictation itself states this normal or negative, in any wording, for the same structure, side and level.
+- default: not dictated, and no dictated finding points towards the abnormality it denies. It follows the convention and is correct.
+- implicated: not dictated, but a dictated finding points towards the abnormality it denies, or makes it plausible enough that a radiologist would want to decide: a known consequence, complication, extension, cause or associated finding of what was dictated, or the same structure, region, level or compartment as dictated disease. Stating it as negative pre-empts the radiologist's judgement. Example forms: a dictated narrowing or obstruction and a negative about what lies upstream of it; a dictated destructive or space-occupying process and a negative about its spread to the adjacent structure; a dictated finding in a region and a blanket normal statement covering that region.
+- contradicted: the dictation states the opposite, or reports disease in the very thing the statement calls normal.
+
+Read before deciding. For each statement: name what it denies or calls normal; find every dictated finding in the same or a connected structure; ask whether any of them points towards what is denied. When unsure between default and implicated, choose implicated.
+
+Also report, for each statement, whether it contains a number (a measurement, size, count or value) that the dictation and history do not contain.
+
+Output one line per statement in `labels`, in order, exactly: "<n> | <class> | <the dictated words that point towards it, or -> | <number: yes or no>".
