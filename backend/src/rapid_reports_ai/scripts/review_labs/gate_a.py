@@ -102,9 +102,24 @@ async def _run(items: List[dict], runs: int, out_path) -> None:
             print(f"run {run}: {len(items)} items")
 
 
+def build_synthetic_items(data: List[dict]):
+    """Synthetic cases -> (items, labels). Ids come from the file; id8 = id (one report per case)."""
+    items, labels = [], {}
+    for d in data:
+        items.append({"id": d["id"], "id8": d["id"],
+                      "case": {k: d.get(k, "") for k in ("scan", "dictation", "history", "report")},
+                      "candidate": d["candidate"]})
+        labels[d["id"]] = {"verdict": d["label"]}
+    return items, labels
+
+
 def cmd_run(args) -> None:
     common.load_env()
-    items = _load_items()
+    if args.synthetic:
+        items, labels = build_synthetic_items(common.read_json(args.synthetic))
+        print(common.write_json(common.out_file("gate_a", "synthetic_labels"), labels))
+    else:
+        items = _load_items()
     if args.only:
         keep = set(args.only.split(","))
         items = [i for i in items if i["id"] in keep]
@@ -113,13 +128,39 @@ def cmd_run(args) -> None:
     print(out)
 
 
+def score(labels: dict, read: Optional[dict], rows: List[dict]) -> dict:
+    merged = {**labels, **(read or {})}
+    labels = {k: v for k, v in merged.items() if k != "rules" and isinstance(v, dict) and v.get("verdict")}
+    runs = [{r["item_id"]: r["cls"] for r in rows if r["run"] == n and r.get("cls")} for n in (1, 2)]
+    runs = [r for r in runs if r]
+    report_of = {r["item_id"]: r["id8"] for r in rows}
+    m = metrics.gate_a(runs, labels, report_of)
+    m["pass"] = metrics.gate_a_pass(m)
+    m["errors"] = sum(1 for r in rows if r.get("error"))
+    m["fix_rejected_by_guards"] = sum(1 for r in rows if r["run"] == 1 and r.get("verified") and not r["verified"]["code"])
+    m["unconfirmed"] = sum(1 for r in rows if r["run"] == 1 and (r.get("verified") or {}).get("unconfirmed"))
+    m["disagreements"] = sorted(i for i, l in labels.items() if runs[0].get(i) and
+                                (runs[0][i] in metrics.SHOWN) != (l["verdict"] in metrics.SHOWN))
+    return m
+
+
+def cmd_score(args) -> None:
+    m = score(common.read_json(args.labels), common.read_json(args.read) if args.read else {},
+              common.read_jsonl(args.results))
+    p = common.write_json(common.out_file("gate_a", "score"), m)
+    print(json.dumps(m, indent=1)); print(p)
+
+
 def main(argv: Optional[List[str]] = None) -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("page").set_defaults(fn=cmd_page)
     sub.add_parser("items").set_defaults(fn=cmd_items)
     r = sub.add_parser("run"); r.add_argument("--runs", type=int, default=2); r.add_argument("--only", default="")
-    r.add_argument("--tag", default="full"); r.set_defaults(fn=cmd_run)
+    r.add_argument("--tag", default="full"); r.add_argument("--synthetic", default="")
+    r.set_defaults(fn=cmd_run)
+    s = sub.add_parser("score"); s.add_argument("--labels", required=True); s.add_argument("--read", default="")
+    s.add_argument("--results", required=True); s.set_defaults(fn=cmd_score)
     args = ap.parse_args(argv)
     args.fn(args)
 

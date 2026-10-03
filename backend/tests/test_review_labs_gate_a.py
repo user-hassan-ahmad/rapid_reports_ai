@@ -31,3 +31,37 @@ def test_gate_a_items_map_kinds_and_ids():
     assert items[0]["candidate"] == {"lane": "accuracy", "kind": "contradicted", "detector": "jev.contradiction",
                                      "anchor": "No X.", "line": None, "evidence": {}}
     assert items[1]["candidate"]["kind"] == "absent" and items[1]["candidate"]["line"] == "Y seen"
+
+
+def _row(i, run, cls, id8, **kw):
+    return {"item_id": i, "id8": id8, "run": run, "cls": cls, **kw}
+
+
+def test_gate_a_score_core():
+    rows = [
+        _row("c1", 1, "action", "r1", verified={"code": True}),
+        _row("c1", 2, "action", "r1"),
+        _row("c2", 1, "suppress", "r1", verified={"code": False}),
+        _row("c2", 2, "minor", "r1", error="boom"),
+        _row("c3", 1, "action", "r2", verified={"code": True, "unconfirmed": True}),
+        _row("c3", 2, "action", "r2"),
+    ]
+    labels = {"rules": "text", "c1": {"verdict": "action", "material": True},
+              "c2": {"verdict": "action"}, "c3": {"verdict": "suppress"}, "c4": {"at": 123}}
+    read = {"c5": {"at": 1}}
+    m = GA.score(labels, read, rows)
+    assert {"recall", "material", "precision", "noise"} <= set(m["pass"])
+    assert m["errors"] == 1 and m["n_labelled"] == 3
+    assert m["fix_rejected_by_guards"] == 1 and m["unconfirmed"] == 1
+    assert m["disagreements"] == ["c2", "c3"]
+    assert m["class_change_share"] == pytest.approx(1 / 3)
+
+
+def test_gate_a_synthetic_items():
+    data = [{"id": "s-1", "category": "x", "label": "action", "scan": "CT", "dictation": "d", "history": "",
+             "report": "r", "candidate": {"lane": "coverage", "kind": "partial", "detector": "synthetic",
+                                          "line": "L", "anchor": None, "evidence": {}}}]
+    items, labels = GA.build_synthetic_items(data)
+    assert items == [{"id": "s-1", "id8": "s-1", "case": {"scan": "CT", "dictation": "d", "history": "", "report": "r"},
+                      "candidate": data[0]["candidate"]}]
+    assert labels == {"s-1": {"verdict": "action"}}
