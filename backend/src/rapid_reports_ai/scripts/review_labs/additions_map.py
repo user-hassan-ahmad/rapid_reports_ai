@@ -11,26 +11,37 @@ _ALIASES = {"cadrads": "cadrads", "tirads": "tirads", "acrtirads": "tirads", "or
             "fleischner": "fleischner", "kellgrenlawrence": "kellgrenlawrence", "cacdrs": "cacdrs", "garden": "garden",
             "nascet": "nascet", "modic": "modic", "pfirrmann": "pfirrmann", "aast": "aast"}
 
+_QUAL_NORM = {"splenic": "spleen", "hepatic": "liver", "renal": "kidney"}
+
 
 def system_key(name: str) -> str:
-    """Lower-case letters of the system name up to its first version/year token, mapped through _ALIASES."""
-    head = re.split(r"\b(?:v?\d{2,4}|classification|criteria|system|version)\b", name or "", maxsplit=1, flags=re.I)[0]
+    """Lower-case letters of the system name up to its first version/year token, mapped through _ALIASES.
+    A qualifier (modality or organ) is kept as a suffix so O-RADS US and O-RADS MRI stay distinct."""
+    n = re.sub(r"^\s*(?:the\s+)?(?:(?:19|20)\d{2}\s+)?", "", name or "", flags=re.I)
+    qm = re.search(r"\b(us|mri|ct|spleen|splenic|liver|hepatic|kidney|renal)\b", n, flags=re.I)
+    qual = _QUAL_NORM.get(qm.group(1).lower(), qm.group(1).lower()) if qm else ""
+    if qm:
+        n = n[:qm.start()] + " " + n[qm.end():]
+    head = re.split(r"\b(?:v?\d+(?:\.\d+)*|classification|criteria|system|version)\b", n, maxsplit=1, flags=re.I)[0]
     key = re.sub(r"[^a-z]", "", head.lower())
     for k, v in _ALIASES.items():
         if key.startswith(k):
-            return v
-    return key
+            key = v
+            break
+    return f"{key}_{qual}" if qual and key else key
 
 
 def _citation(card: dict) -> dict:
     src = (card.get("sources") or [{}])[0]
+    if not isinstance(src, dict):
+        src = {}
     return {"card": card.get("finding_number"), "source": src.get("url"), "label": src.get("title")}
 
 
 def _cand(card: dict, kind: str, detector: str, evidence: dict) -> dict:
     return {"lane": "additions", "kind": kind, "detector": detector, "line": None,
             "anchor": card.get("finding_short_label") or card.get("finding"),
-            "evidence": {"finding": card.get("finding"), **{k: v for k, v in evidence.items() if v}},
+            "evidence": {"finding": card.get("finding"), **{k: v for k, v in evidence.items() if v not in (None, "")}},
             "citation": _citation(card)}
 
 

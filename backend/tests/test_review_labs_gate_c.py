@@ -32,6 +32,18 @@ def test_map_card_with_criteria_arm():
 def test_system_key_normalises():
     assert AM.system_key("Bosniak classification v2019") == AM.system_key("Bosniak 2019") == "bosniak"
     assert AM.system_key("LI-RADS v2018") == "lirads"
+    assert AM.system_key("C-RADS v2") == AM.system_key("C-RADS")
+    assert AM.system_key("2019 Bosniak") == AM.system_key("Bosniak 2019") == AM.system_key("The Bosniak classification") == "bosniak"
+    assert AM.system_key("O-RADS US") != AM.system_key("O-RADS MRI")
+    assert AM.system_key("O-RADS US") == "orads_us" and AM.system_key("LI-RADS US") == "lirads_us"
+    assert AM.system_key("AAST 2018 splenic") == "aast_spleen"
+
+
+def test_cand_keeps_zero_grade_and_citation_guards_sources():
+    card = {"finding": "f", "sources": ["not a dict"], "classifications": [{"system": "Garden", "grade": 0}]}
+    c = AM.map_card(card)[0]
+    assert c["evidence"]["grade"] == 0
+    assert c["citation"]["source"] is None
 
 
 def test_system_key_covers_s1_phase3_systems():
@@ -41,4 +53,4 @@ def test_system_key_covers_s1_phase3_systems():
     assert all(keys.values()), {s: k for s, k in keys.items() if not k}
     aast = [s for s in systems if s.startswith("AAST 2018")]
     print("AAST systems collapsing to one key:", {s: keys[s] for s in aast})
-    assert len(aast) == 3 and {keys[s] for s in aast} == {"aast"}
+    assert len(aast) == 3 and {keys[s] for s in aast} == {"aast_kidney", "aast_liver", "aast_spleen"}

@@ -34,13 +34,13 @@ button[aria-pressed="true"]{background:var(--on);color:var(--onfg);border-color:
 <script id="data" type="application/json">__DATA__</script>
 <script>
 const D = JSON.parse(document.getElementById('data').textContent);
-let S = {}; try { S = JSON.parse(localStorage.getItem(D.storage_key) || '{}'); } catch (e) {}
+let S = {}; let lastDecided = null; try { S = JSON.parse(localStorage.getItem(D.storage_key) || '{}'); } catch (e) {}
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function marked(text, hl) { let h = esc(text); for (const m of (hl || [])) { if (!m) continue; const e = esc(m); h = h.split(e).join('<mark>' + e + '</mark>'); } return h; }
 function decided(id) { const v = S[id] || {}; return D.fields.filter(f => f.required).every(f => v[f.key] !== undefined && v[f.key] !== ''); }
 function save() { try { localStorage.setItem(D.storage_key, JSON.stringify(S)); } catch (e) {} progress(); }
 function progress() { const n = D.cards.filter(c => decided(c.id)).length; document.getElementById('progress').textContent = n + ' / ' + D.cards.length + ' labelled'; }
-function setv(id, key, val) { S[id] = S[id] || {}; S[id][key] = val; S[id].at = new Date().toISOString(); save(); render(); }
+function setv(id, key, val, quiet) { S[id] = S[id] || {}; S[id][key] = val; S[id].at = new Date().toISOString(); lastDecided = id; save(); if (!quiet) render(); }
 function blockHtml(b) { const body = '<pre>' + marked(b.text, b.highlight) + '</pre>';
   return '<div class="block"><b>' + esc(b.label) + '</b>' + (b.collapsed ? '<details><summary>show</summary>' + body + '</details>' : body) + '</div>'; }
 function fieldHtml(c, f) { const v = (S[c.id] || {})[f.key];
@@ -49,14 +49,14 @@ function fieldHtml(c, f) { const v = (S[c.id] || {})[f.key];
   if (f.type === 'check') return '<label><input type="checkbox" data-id="' + esc(c.id) + '" data-k="' + esc(f.key) + '"' + (v ? ' checked' : '') + '> ' + esc(f.label || f.key) + '</label>';
   return '<div><span class="meta">' + esc(f.label || f.key) + '</span><textarea data-id="' + esc(c.id) + '" data-k="' + esc(f.key) + '">' + esc(v || '') + '</textarea></div>'; }
 function render() { const todo = document.getElementById('todo').checked; const m = document.getElementById('cards');
-  m.innerHTML = D.cards.filter(c => !todo || !decided(c.id)).map(c => '<section class="card' + (decided(c.id) ? ' done' : '') + '" id="card-' + esc(c.id) + '">' +
+  m.innerHTML = D.cards.filter(c => !todo || !decided(c.id) || c.id === lastDecided).map(c => '<section class="card' + (decided(c.id) ? ' done' : '') + '" id="card-' + esc(c.id) + '">' +
     '<div><strong>' + esc(c.title) + '</strong> <span class="meta">' + esc(c.meta || '') + '</span></div>' + c.blocks.map(blockHtml).join('') +
     '<div class="fields">' + D.fields.map(f => fieldHtml(c, f)).join('') + '</div>' +
     (decided(c.id) && (c.hidden || []).length ? '<div class="hidden">' + c.hidden.map(blockHtml).join('') + '</div>' : '') + '</section>').join('');
   progress(); }
 document.addEventListener('click', e => { const b = e.target.closest('button[data-k]'); if (b) setv(b.dataset.id, b.dataset.k, b.dataset.v); });
 document.addEventListener('change', e => { const t = e.target; if (!t.dataset || !t.dataset.k) return;
-  if (t.type === 'checkbox') { if (t.id !== 'todo') setv(t.dataset.id, t.dataset.k, t.checked); } else setv(t.dataset.id, t.dataset.k, t.value); });
+  if (t.type === 'checkbox') { if (t.id !== 'todo') setv(t.dataset.id, t.dataset.k, t.checked); } else setv(t.dataset.id, t.dataset.k, t.value, true); });
 document.getElementById('todo').addEventListener('change', render);
 document.getElementById('copy').addEventListener('click', () => { const json = JSON.stringify(S, null, 1); const out = document.getElementById('out');
   (navigator.clipboard ? navigator.clipboard.writeText(json) : Promise.reject()).then(() => { document.getElementById('copy').textContent = 'Copied ✓'; },
@@ -67,11 +67,13 @@ render();
 
 
 def build_page(title: str, storage_key: str, cards: List[dict], fields: List[dict]) -> str:
+    if not any(f.get("required") for f in fields):
+        raise ValueError("at least one field must be required")
     ids = [c["id"] for c in cards]
     if len(ids) != len(set(ids)):
         raise ValueError("card ids must be unique")
     data = json.dumps({"storage_key": storage_key, "cards": cards, "fields": fields}, ensure_ascii=False)
-    data = data.replace("</", "<\\/")
+    data = data.replace("<", "\\u003c")
     return _TEMPLATE.replace("__TITLE__", _html.escape(title)).replace("__DATA__", data)
 
 

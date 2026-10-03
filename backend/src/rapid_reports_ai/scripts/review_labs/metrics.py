@@ -13,6 +13,9 @@ SHOWN = {"action", "minor"}
 def gate_a(runs: List[Dict[str, str]], labels: Dict[str, dict], report_of: Dict[str, str]) -> dict:
     """runs: [{item_id: cls}] (run 1 first). labels: Hassan's {item_id: {verdict, material?}}."""
     r1 = runs[0]
+    missing = sorted(i for i in r1 if i not in report_of)
+    if missing:
+        raise ValueError(f"run-1 items missing from report_of: {missing[:5]}")
     action = [i for i, l in labels.items() if l.get("verdict") == "action"]
     material = [i for i, l in labels.items() if l.get("material")]
     engine_action = [i for i, c in r1.items() if c == "action" and i in labels]
@@ -32,9 +35,11 @@ def gate_a(runs: List[Dict[str, str]], labels: Dict[str, dict], report_of: Dict[
         "minor_per_report_median": float(statistics.median(minors)),
         "class_change_share": None,
         "crossed_shown_hidden": [],
+        "n_missing_run2": 0,
     }
     if len(runs) > 1:
         r2 = runs[1]
+        out["n_missing_run2"] = sum(i not in r2 for i in r1)
         common_ids = [i for i in r1 if i in r2]
         out["class_change_share"] = sum(r1[i] != r2[i] for i in common_ids) / len(common_ids) if common_ids else None
         out["crossed_shown_hidden"] = sorted(i for i in common_ids if (r1[i] in SHOWN) != (r2[i] in SHOWN))

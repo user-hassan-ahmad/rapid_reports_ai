@@ -50,3 +50,14 @@ def test_section_of_reads_nearest_heading():
     text = "FINDINGS:\nA.\nIMPRESSION:\nB."
     assert common.section_of(text, text.index("B.")) == "Impression"
     assert common.section_of(text, text.index("A.")) == "Findings"
+
+
+def test_lab_out_refuses_resolved_repo_and_git_ancestors(monkeypatch, tmp_path):
+    (tmp_path / ".git").mkdir()
+    monkeypatch.setenv("RR_LAB_OUT", str(tmp_path / "scratch"))
+    with pytest.raises(SystemExit):
+        common.lab_out("gate_a")
+
+
+def test_decode_json_list_quoted_json_string():
+    assert common.decode_json_list('"just one"') == ["just one"]

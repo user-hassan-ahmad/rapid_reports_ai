@@ -27,3 +27,11 @@ def test_binary_and_bands():
     probs, labels = [0.9, 0.6, 0.1, 0.65], [True, True, False, False]
     e = M.errors_by_band(probs, labels, lo=0.3, hi=0.7)
     assert e["yes"] == {"n": 1, "errors": 0} and e["unsure"] == {"n": 2, "errors": 1} and e["no"] == {"n": 1, "errors": 0}
+
+
+def test_gate_a_missing_ids_and_run2_gap():
+    labels = {"a": {"verdict": "action"}}
+    with pytest.raises(ValueError):
+        M.gate_a([{"a": "action", "b": "minor"}], labels, {"a": "r1"})
+    m = M.gate_a([{"a": "action", "b": "minor"}, {"a": "action"}], labels, {"a": "r1", "b": "r1"})
+    assert m["n_missing_run2"] == 1

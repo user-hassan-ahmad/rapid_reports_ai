@@ -13,7 +13,7 @@ import httpx
 from dotenv import load_dotenv
 
 BACKEND = Path(__file__).resolve().parents[4]
-REPO = BACKEND.parent
+REPO = BACKEND.parent.resolve()
 
 
 def load_env() -> None:
@@ -27,6 +27,9 @@ def lab_out(gate: str) -> Path:
     p = (Path(root) / gate).resolve()
     if p == REPO or REPO in p.parents:
         raise SystemExit(f"RR_LAB_OUT must be outside the repo: {p}")
+    for d in (p, *p.parents):
+        if (d / ".git").exists():
+            raise SystemExit(f"RR_LAB_OUT must not sit inside a git checkout ({d}): {p}")
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -79,6 +82,13 @@ def decode_json_list(v: Any) -> List[Any]:
     s = str(v).strip()
     if not s:
         return []
+    if s.startswith('"'):
+        try:
+            out = json.loads(s)
+            if isinstance(out, str):
+                return [out]
+        except json.JSONDecodeError:
+            pass
     if s.startswith("["):
         try:
             out = json.loads(s)
