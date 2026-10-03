@@ -14,9 +14,13 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import json
 from typing import List, Optional
 
-from . import common, label_page
+from pydantic import BaseModel
+
+from . import clinical_pass, common, judgement, label_page, metrics
 
 GOLD_KINDS = ["invented_finding", "invented_measurement", "invented_prior", "certainty_upgrade", "misattributed",
               "inconsistent_modality", "inconsistent_size_word", "other"]
@@ -80,11 +84,31 @@ def cmd_gold_page(_args) -> None:
           len(cards))
 
 
+async def _clinical(cases: List[dict]) -> List[dict]:
+    sem = asyncio.Semaphore(8)
+
+    async def one(c):
+        async with sem:
+            out, usage, err = await clinical_pass.run(c)
+        return {"id8": c["id8"], "error": err, "usage": usage, **(out.model_dump() if out else {})}
+    return await asyncio.gather(*(one(c) for c in cases))
+
+
+def cmd_inconsistent_run(args) -> None:
+    common.load_env()
+    cases = common.read_json(common.lab_out("gate_b") / "cases.json")
+    if args.only:
+        cases = [c for c in cases if c["id8"] in set(args.only.split(","))]
+    rows = asyncio.run(_clinical(cases))
+    print(common.write_json(common.out_file("gate_b", "clinical_pass"), rows))
+
+
 def main(argv: Optional[List[str]] = None) -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("cases").set_defaults(fn=cmd_cases)
     sub.add_parser("gold-page").set_defaults(fn=cmd_gold_page)
+    ir = sub.add_parser("inconsistent-run"); ir.add_argument("--only", default=""); ir.set_defaults(fn=cmd_inconsistent_run)
     args = ap.parse_args(argv)
     args.fn(args)
 
