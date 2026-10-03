@@ -20,6 +20,8 @@
 
 	// Legend wording candidates (prototype only): pick one to see it in place.
 	const LABEL_SETS: Record<string, Record<string, string>> = {
+		'E · meaning': { dictated: 'your dictation', default: 'assumed normal', implicated: 'assumed normal · confirm',
+			removed: 'removed · contradicts your dictation', excluded: 'removed by you', option: 'suggested · not included' },
 		'A · current': { dictated: 'dictated', default: 'added (likely stays)', implicated: 'added (check)',
 			removed: 'removed (contradicted by dictation · restore)', excluded: 'excluded by you', option: 'option (not in report)' },
 		'B · source': { dictated: 'your dictation', default: 'standard normal', implicated: 'normal · may conflict',
@@ -29,8 +31,8 @@
 		'D · short': { dictated: 'dictated', default: 'inferred normal', implicated: 'needs review',
 			removed: 'conflict removed', excluded: 'excluded', option: 'optional' }
 	};
-	let labelSet = $state('A · current');
-	let density = $state<'full' | 'quiet' | 'hidden'>('full');
+	let labelSet = $state('E · meaning');
+	let density = $state<'full' | 'quiet' | 'hidden'>('quiet');
 	const KEYS = ['dictated', 'default', 'implicated', 'removed', 'excluded', 'option'] as const;
 	let legend = $derived(KEYS.map((key) => ({ key, icon: ICONS[key], label: LABEL_SETS[labelSet][key], title: LABELS[key] })));
 	$effect(() => {

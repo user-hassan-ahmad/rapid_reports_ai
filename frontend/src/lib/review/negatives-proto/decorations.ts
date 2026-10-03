@@ -22,13 +22,13 @@ import {
 } from './state';
 
 export const LABELS = {
-	dictated: 'dictated by you',
-	default: 'added beyond your dictation · likely stays',
-	implicated: 'added · check: a dictated finding makes this uncertain',
-	removed: 'removed · contradicted by dictation · restore',
-	removedNumber: 'removed · carries a number you did not dictate · restore',
-	excluded: 'excluded by you · restore',
-	option: 'option · not in report · include'
+	dictated: 'Your dictation.',
+	default: 'Assumed normal: not mentioned in your dictation, so stated as normal.',
+	implicated: 'Assumed normal · confirm: not mentioned, but your findings make this uncertain. Confirm or remove.',
+	removed: 'Removed: contradicts your dictation. Restore if needed.',
+	removedNumber: 'Removed: carries a measurement you did not dictate. Restore if needed.',
+	excluded: 'Removed by you. Restore if needed.',
+	option: 'Suggested · not included. Add if relevant.'
 } as const;
 
 /** Small non-colour markers, shared by the legend and the editor. */
@@ -265,7 +265,16 @@ const negTheme = EditorView.theme({
 		borderRadius: '6px',
 		boxShadow: '0 4px 14px rgba(0,0,0,0.18)'
 	},
-	'.cm-neg-popover': { padding: '8px 10px', maxWidth: '340px', fontSize: '0.85em', lineHeight: '1.4' },
+	'.cm-neg-popover': {
+		padding: '8px 10px',
+		maxWidth: '340px',
+		fontSize: '0.85em',
+		lineHeight: '1.4',
+		background: 'var(--neg-surface)',
+		color: 'var(--neg-text)',
+		border: '1px solid var(--neg-border)',
+		borderRadius: '6px'
+	},
 	'.cm-neg-popover-label': { fontWeight: '600' },
 	'.cm-neg-popover-pointer': { marginTop: '4px', color: 'var(--neg-muted)' },
 	'.cm-neg-popover-actions': { marginTop: '6px', display: 'flex', gap: '4px' },
