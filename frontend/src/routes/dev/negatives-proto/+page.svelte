@@ -18,14 +18,25 @@
 	let copied = $state(false);
 	let dragging = $state(false);
 
-	const legend = [
-		{ key: 'dictated', icon: ICONS.dictated, label: 'dictated', title: LABELS.dictated },
-		{ key: 'default', icon: ICONS.default, label: 'added (likely stays)', title: LABELS.default },
-		{ key: 'implicated', icon: ICONS.implicated, label: 'added (check)', title: LABELS.implicated },
-		{ key: 'removed', icon: ICONS.removed, label: 'removed (contradicted by dictation · restore)', title: LABELS.removed },
-		{ key: 'excluded', icon: ICONS.excluded, label: 'excluded by you', title: LABELS.excluded },
-		{ key: 'option', icon: ICONS.option, label: 'option (not in report)', title: LABELS.option }
-	];
+	// Legend wording candidates (prototype only): pick one to see it in place.
+	const LABEL_SETS: Record<string, Record<string, string>> = {
+		'A · current': { dictated: 'dictated', default: 'added (likely stays)', implicated: 'added (check)',
+			removed: 'removed (contradicted by dictation · restore)', excluded: 'excluded by you', option: 'option (not in report)' },
+		'B · source': { dictated: 'your dictation', default: 'standard normal', implicated: 'normal · may conflict',
+			removed: 'removed · conflicts with dictation', excluded: 'removed by you', option: 'suggestion' },
+		'C · action': { dictated: 'dictated', default: 'added · keep', implicated: 'added · review',
+			removed: 'auto-removed · restore?', excluded: 'you removed · restore?', option: 'optional · add?' },
+		'D · short': { dictated: 'dictated', default: 'inferred normal', implicated: 'needs review',
+			removed: 'conflict removed', excluded: 'excluded', option: 'optional' }
+	};
+	let labelSet = $state('A · current');
+	let density = $state<'full' | 'quiet' | 'hidden'>('full');
+	const KEYS = ['dictated', 'default', 'implicated', 'removed', 'excluded', 'option'] as const;
+	let legend = $derived(KEYS.map((key) => ({ key, icon: ICONS[key], label: LABEL_SETS[labelSet][key], title: LABELS[key] })));
+	$effect(() => {
+		const d = density; // read first so the effect tracks it even before the editor exists
+		if (view) view.dom.dataset.density = d;
+	});
 
 	function extensions() {
 		return [
@@ -126,6 +137,16 @@
 					{#if bundle}<strong>{bundle.scan}</strong> <span class="muted">{bundle.id8}</span>{:else}<span class="muted"
 							>No bundle loaded</span
 						>{/if}
+				</div>
+				<div class="controls">
+					<span class="muted">Added normals:</span>
+					{#each [['full', 'Highlighted'], ['quiet', 'Quiet'], ['hidden', 'Hidden']] as [v, t]}
+						<button type="button" class="seg" class:on={density === v} onclick={() => (density = v as typeof density)}>{t}</button>
+					{/each}
+					<span class="muted" style="margin-left:12px">Legend wording:</span>
+					<select bind:value={labelSet}>
+						{#each Object.keys(LABEL_SETS) as k}<option value={k}>{k}</option>{/each}
+					</select>
 				</div>
 				<ul class="legend" aria-label="Legend">
 					{#each legend as l}
@@ -309,6 +330,10 @@
 		padding: 10px 14px;
 		border-bottom: 1px solid var(--neg-border);
 	}
+	.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; font-size: 0.85em; }
+	.seg { padding: 2px 8px; border-radius: 6px; border: 1px solid var(--neg-border); background: var(--neg-surface); color: var(--neg-text); cursor: pointer; }
+	.seg.on { background: var(--neg-surface-hover); font-weight: 600; }
+	.controls select { background: var(--neg-surface); color: var(--neg-text); border: 1px solid var(--neg-border); border-radius: 6px; padding: 2px 6px; }
 	.legend {
 		list-style: none;
 		margin: 8px 0 0;

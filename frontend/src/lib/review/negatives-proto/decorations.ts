@@ -216,6 +216,16 @@ const negTheme = EditorView.theme({
 		backgroundColor: 'var(--neg-amber-bg)',
 		borderBottom: '2px dashed var(--neg-amber-line)'
 	},
+	// Density of added normals (green): highlighted (default) | quiet (dotted underline, tint on hover) |
+	// hidden (plain text, tint on hover). Amber and red are always shown.
+	'&[data-density="quiet"] .cm-neg-default': {
+		backgroundColor: 'transparent',
+		borderBottom: '1px dotted var(--neg-green-line)'
+	},
+	'&[data-density="hidden"] .cm-neg-default': { backgroundColor: 'transparent', borderBottom: 'none' },
+	'&[data-density="quiet"] .cm-neg-default:hover, &[data-density="hidden"] .cm-neg-default:hover': {
+		backgroundColor: 'var(--neg-green-bg)'
+	},
 	'.cm-neg-widget': { opacity: '0.85' },
 	'.cm-neg-icon': { fontSize: '0.75em', marginRight: '3px', verticalAlign: '1px' },
 	'.cm-neg-wtext': { opacity: '0.7' },
