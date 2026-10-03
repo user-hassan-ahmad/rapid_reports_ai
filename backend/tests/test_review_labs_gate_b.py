@@ -26,3 +26,17 @@ def test_confirmed_gold_keeps_unsupported_and_overrides_kind(tmp_path):
                                 "g1": {"verdict": "supported"}, "g2": {"verdict": "unsupported"}})
     res = gate_b.confirmed_gold(tmp_path)
     assert [(x["gid"], x["kind"]) for x in res] == [("g0", "invented_prior"), ("g2", "other")]
+
+
+def test_b2_questions_shapes():
+    q = gate_b.b2_question("W1n", "A 5 mm nodule.")
+    assert q["type"] == "noul" and q["instructions"].endswith('"A 5 mm nodule."')
+    q = gate_b.b2_question("W3c", "A 5 mm nodule.")
+    assert q["type"] == "choice" and set(q["criteria"]) == {"stated", "not_stated", "cant_tell"}
+    assert "W3n" not in gate_b.B2_ARMS
+
+
+def test_b2_p_stated_from_answers():
+    assert gate_b.p_stated("W1n", {"noul": 0.8}) == 0.8
+    assert gate_b.p_stated("W1c", {"choice": "stated", "probabilities": {"stated": 0.7, "not_stated": 0.2, "cant_tell": 0.1}}) == 0.7
+    assert gate_b.is_cant_tell("W1c", {"choice": "cant_tell", "probabilities": {"cant_tell": 0.5}})
