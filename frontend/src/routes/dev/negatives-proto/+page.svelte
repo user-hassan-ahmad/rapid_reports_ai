@@ -60,6 +60,7 @@
 			error = '';
 			const state = createNegState(parsed.bundle, extensions());
 			view?.setState(state);
+			if (view) view.dom.dataset.density = density; // a new state must keep the chosen density
 			counts = negCounts(negItems(state));
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
