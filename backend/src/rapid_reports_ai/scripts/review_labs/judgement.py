@@ -20,6 +20,7 @@ from rapid_reports_ai.scripts.review_labs import common
 PROMPTS = Path(__file__).parent / "prompts"
 ADDRESSED_OK = 0.8          # spec §8; confirmed or re-set in Gate E
 UNSURE_LO = 0.5             # §6.5: 0.5–0.8 = unsure → "unconfirmed"
+DEFAULT_ADJUDICATOR = "adjudicator_v4_1"   # v4 stays loadable by name for comparison
 
 
 class Judgement(BaseModel):
@@ -35,7 +36,7 @@ class Judgement(BaseModel):
     probe: Optional[str] = None
 
 
-def prompt(name: str = "adjudicator_v4") -> str:
+def prompt(name: str = DEFAULT_ADJUDICATOR) -> str:
     return (PROMPTS / f"{name}.txt").read_text().strip()
 
 
@@ -49,8 +50,8 @@ _KIND_TEXT = {
     "overstated": "This report statement seems more certain than the dictation.",
     "misattributed": "A measurement seems attached to a different structure than dictated.",
     "inconsistent": "This report statement seems internally inconsistent (modality wording or size word).",
-    "grade": "A guideline classification may be assignable for this finding.",
-    "characterise": "A guideline classification may need an input that is not described.",
+    "grade": "A guideline classification is named for this finding; check whether every input it needs is stated.",
+    "characterise": "A guideline classification is named for this finding; an input it needs may not be described.",
     "threshold": "A guideline threshold may apply to this finding.",
     "follow_up": "The guideline may change the existing recommendation.",
     "option": "A guideline point the radiologist may want to add.",
@@ -229,9 +230,34 @@ def _side_grounded(side: str, source: str) -> bool:
     return side in src
 
 
-def guard_failures(report: str, j: Judgement, dictation: str, history: str, extra_source: str = "") -> List[str]:
+_MANAGEMENT = re.compile(r"\b(?:treat|therapy|conservative|physio|surgery|surgical|refer to (?!radiology)|prescrib|"
+                         r"commence|anticoagul|antibiotic)", re.I)
+_ADD_STOP = {"with", "this", "that", "these", "those", "there", "which", "from", "into", "also", "than", "then",
+             "within", "after", "would", "should", "could", "further", "recommend", "recommended", "suggest",
+             "suggested", "consider", "imaging", "follow", "interval", "months", "weeks", "week", "month", "year",
+             "years", "days", "urgent", "urgently", "discussed", "communicated", "referrer", "clinical", "grade",
+             "category", "classification", "appearances", "appearance", "finding", "findings"}
+
+
+def _additions_failures(old: str, new: str, source: str) -> List[str]:
+    """Additions lane (guideline-derived): a fix may only upgrade the recommendation or add the grade. It never adds
+    a negative, a descriptor or a finding (content words grounded nowhere), or management."""
+    fails = []
+    old_neg = {tuple(p) for p in _negated_phrases(old)}
+    grounded = set(_words(f"{old}\n{source}"))
+    if any(tuple(p) not in old_neg for p in _negated_phrases(new)) or any(
+            len(w) >= 4 and w not in _ADD_STOP and w not in grounded for w in _words(new)):
+        fails.append("additions_new_content")
+    if {m.lower() for m in _MANAGEMENT.findall(new)} - {m.lower() for m in _MANAGEMENT.findall(old)}:
+        fails.append("management")
+    return fails
+
+
+def guard_failures(report: str, j: Judgement, dictation: str, history: str, extra_source: str = "",
+                   additions: bool = False) -> List[str]:
     """Spec §8 code guards. An empty list means the fix may be shown with Apply.
-    `extra_source` (additions lane: the guideline evidence) also grounds numbers and sides."""
+    `extra_source` (additions lane: the guideline evidence) also grounds numbers and sides.
+    `additions`: the group comes from the additions lane, so new content and management are refused."""
     if j.edit_mode == "none":
         return []
     fails = []
@@ -248,6 +274,8 @@ def guard_failures(report: str, j: Judgement, dictation: str, history: str, extr
         fails.append("drops_negation")
     if j.edit_mode == "remove" and j.kind != "contradicted":
         fails.append("remove_not_allowed")
+    if additions and j.edit_mode in ("insert", "replace", "upgrade"):
+        fails += _additions_failures(old, new, source)
     pos = _edit_pos(report, j)
     if pos is not None and j.edit_section:
         sec = common.section_of(report, pos)
@@ -280,11 +308,15 @@ def changed_sentence(report: str, after: str, j: Judgement) -> str:
     return " ".join(hit) if hit else (j.edit_replace or "").strip()
 
 
-_EVIDENCE_KEYS = ("threshold", "timing", "grade", "criteria", "parameter", "system", "text")
+_EVIDENCE_KEYS = ("threshold", "timing", "grade", "criteria", "parameter", "system", "modality", "text")
+
+
+def _is_additions(group: Optional[List[dict]]) -> bool:
+    return bool(group) and any(c.get("lane") == "additions" for c in group)
 
 
 def _extra_source(group: Optional[List[dict]]) -> str:
-    if not group or not any(c.get("lane") == "additions" for c in group):
+    if not _is_additions(group):
         return ""
     return "\n".join(str(ev[k]) for c in group for ev in [c.get("evidence") or {}] for k in _EVIDENCE_KEYS
                      if ev.get(k) not in (None, ""))
@@ -292,7 +324,8 @@ def _extra_source(group: Optional[List[dict]]) -> str:
 
 async def verify(case: dict, j: Judgement, group: Optional[List[dict]] = None, jev_fn=calls.jev) -> Dict:
     """Code guards, then one batched Jev call: the probe on the edited report, contradiction on the changed text."""
-    fails = guard_failures(case["report"], j, case.get("dictation", ""), case.get("history", ""), _extra_source(group))
+    fails = guard_failures(case["report"], j, case.get("dictation", ""), case.get("history", ""), _extra_source(group),
+                           additions=_is_additions(group))
     res = {"code": not fails, "failed": fails, "addressed": None, "contra": None, "unconfirmed": False}
     if fails or j.edit_mode == "none":
         return res
@@ -341,5 +374,6 @@ async def judge_and_verify(case: dict, group: List[dict], sem: asyncio.Semaphore
     return {**j.model_dump(), "usage": usage, "verified": v, "error": None}
 
 
-__all__ = ["Judgement", "prompt", "render_candidate", "user_message", "adjudicate", "apply_edit",
+__all__ = ["Judgement", "DEFAULT_ADJUDICATOR", "prompt", "render_candidate", "user_message", "adjudicate",
+           "apply_edit",
            "guard_failures", "changed_sentence", "verify", "judge_and_verify"]

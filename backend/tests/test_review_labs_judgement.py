@@ -297,3 +297,61 @@ def test_verify_missing_contra_key_is_jev_error():
         return {"addressed": {"noul": 0.9}}, {}, None
     v = asyncio.run(J.verify(CASE, J_(**FIX, probe="p"), jev_fn=fn))
     assert v["code"] is False and "jev_error" in v["failed"]
+
+
+# --- v4.1: prompt version, kind text, additions guard --------------------------------------------
+
+def test_prompt_default_is_v4_1_and_v4_still_loads():
+    assert J.DEFAULT_ADJUDICATOR == "adjudicator_v4_1"
+    assert J.prompt() == J.prompt("adjudicator_v4_1")
+    assert "Decide gradability first" in J.prompt()
+    v4 = J.prompt("adjudicator_v4")
+    assert v4 and "Decide gradability first" not in v4
+
+
+def test_kind_text_grade_and_characterise():
+    assert J._KIND_TEXT["grade"] == ("A guideline classification is named for this finding; "
+                                     "check whether every input it needs is stated.")
+    assert J._KIND_TEXT["characterise"] == ("A guideline classification is named for this finding; "
+                                            "an input it needs may not be described.")
+
+
+def test_additions_guard_new_negative_fails():
+    j = J_(kind="option", edit_mode="insert", edit_after="Left renal cyst.", edit_replace="No hydronephrosis.")
+    assert "additions_new_content" in J.guard_failures(REPORT, j, "cyst left kidney", "", "", additions=True)
+    assert "additions_new_content" not in J.guard_failures(REPORT, j, "cyst left kidney", "", "")
+
+
+def test_additions_guard_grade_from_evidence_passes():
+    j = J_(kind="grade", edit_mode="upgrade", edit_find="Left renal cyst.", edit_replace="Left renal cyst, Bosniak 2.")
+    fails = J.guard_failures(REPORT, j, "cyst left kidney", "", "system: Bosniak\ngrade: 2", additions=True)
+    assert fails == []
+
+
+def test_additions_guard_new_content_word_fails():
+    j = J_(kind="grade", edit_mode="upgrade", edit_find="Left renal cyst.",
+           edit_replace="Left renal cyst with thickened septation, Bosniak 3.")
+    fails = J.guard_failures(REPORT, j, "cyst left kidney", "", "system: Bosniak\ngrade: 3", additions=True)
+    assert "additions_new_content" in fails
+
+
+def test_additions_guard_management_fails():
+    j = J_(kind="follow_up", edit_mode="upgrade", edit_find="Left renal cyst.",
+           edit_replace="Left renal cyst. Refer to urology for surgical treatment.")
+    fails = J.guard_failures(REPORT, j, "cyst left kidney", "", "", additions=True)
+    assert "management" in fails
+    assert "management" not in J.guard_failures(REPORT, j, "cyst left kidney", "", "")
+    ok = J_(kind="follow_up", edit_mode="upgrade", edit_find="Left renal cyst.",
+            edit_replace="Left renal cyst. Refer to radiology for follow-up.")
+    assert "management" not in J.guard_failures(REPORT, ok, "cyst left kidney", "", "", additions=True)
+
+
+def test_verify_threads_additions_from_group():
+    j = J_(kind="option", edit_mode="insert", edit_after="Left renal cyst.", edit_replace="No hydronephrosis.")
+    case = {**CASE, "report": REPORT, "dictation": "cyst left kidney"}
+    v = asyncio.run(J.verify(case, j, group=[{"lane": "additions", "kind": "option", "evidence": {}}],
+                             jev_fn=_jev_stub()))
+    assert "additions_new_content" in v["failed"]
+    v = asyncio.run(J.verify(case, j, group=[{"lane": "coverage", "kind": "partial", "evidence": {}}],
+                             jev_fn=_jev_stub()))
+    assert "additions_new_content" not in v["failed"]

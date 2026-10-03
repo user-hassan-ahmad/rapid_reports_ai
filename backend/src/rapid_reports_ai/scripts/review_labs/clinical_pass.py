@@ -11,17 +11,26 @@ from rapid_reports_ai.scripts.jev_tool_lab import calls
 
 from .common import decode_json_list
 
-PROMPT = (Path(__file__).parent / "prompts" / "clinical_pass_v1.txt").read_text().strip()
+PROMPTS = Path(__file__).parent / "prompts"
+CLINICAL_PROMPT_VERSION = "clinical_pass_v1_1"   # v1 stays loadable by name for comparison
+
+
+def prompt(version: str = CLINICAL_PROMPT_VERSION) -> str:
+    return (PROMPTS / f"{version}.txt").read_text().strip()
+
+
+PROMPT = prompt()
 
 
 class ClinicalPass(BaseModel):
     characterise: List[str] = []
     safety: List[str] = []
     inconsistencies: List[str] = []
+    unsupported: List[str] = []
     urgency: Literal["routine", "soon", "urgent", "critical"]
     urgency_reason: str = ""
 
-    @field_validator("characterise", "safety", "inconsistencies", mode="before")
+    @field_validator("characterise", "safety", "inconsistencies", "unsupported", mode="before")
     @classmethod
     def _decode(cls, v):
         return [str(x) for x in decode_json_list(v)]
@@ -39,9 +48,9 @@ def user_message(case: dict) -> str:
             f"\n\nDICTATION:\n{case.get('dictation', '')}\n\nREPORT:\n{case.get('report', '')}")
 
 
-async def run(case: dict, qwen_fn=calls.qwen):
+async def run(case: dict, qwen_fn=calls.qwen, version: str = CLINICAL_PROMPT_VERSION):
     try:
-        out, usage = await qwen_fn(ClinicalPass, PROMPT, user_message(case), True)
+        out, usage = await qwen_fn(ClinicalPass, prompt(version), user_message(case), True)
         return out, usage.model_dump(), None
     except Exception as e:   # noqa: BLE001
         return None, {}, f"{type(e).__name__}: {str(e)[:300]}"
