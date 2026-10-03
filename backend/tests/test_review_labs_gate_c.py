@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from rapid_reports_ai.scripts.review_labs import additions_map as AM
+from rapid_reports_ai.scripts.review_labs import gate_c as GC
 
 CARD = {"finding_number": 1, "finding": "12 mm left renal lesion", "finding_short_label": "Left renal lesion",
         "classifications": [{"system": "Bosniak 2019", "grade": "II", "criteria": "Thin septa ...", "management": "x"}],
@@ -70,3 +71,58 @@ def test_criteria_lookup_falls_back_to_unqualified_key():
     assert AM.criteria_lookup(idx, "O-RADS US") == ["3: y"]
     assert AM.criteria_lookup(idx, "Bosniak 2019") == []
     assert "criteria_lookup" in dir(AM)
+
+
+def test_hard_checks():
+    rep = "FINDINGS:\nA 12 mm lesion.\nIMPRESSION:\nLesion. Recommend MRI."
+    row = {"kind": "threshold", "edit_mode": "upgrade", "edit_find": "Recommend MRI.",
+           "edit_replace": "Recommend MRI in 6 months; lesions over 40 mm need surgery referral.", "cls": "action"}
+    v = GC.hard_violations(row, rep, dictation="12 mm lesion", history="")
+    assert "ungrounded_number" in v and "management" in v
+    row2 = {"kind": "option", "edit_mode": "insert", "edit_after": "Lesion.", "edit_replace": "Suggest follow-up CT.",
+            "cls": "minor"}
+    assert "second_recommendation" in GC.hard_violations(row2, rep, dictation="", history="")
+
+
+def _adj(id8, k, arm="nocrit", cls="action", **kw):
+    return {"id8": id8, "k": k, "arm": arm, "cls": cls, **kw}
+
+
+def _s1(item, arm, run, kind, gradable, cat="a", **kw):
+    return {"item_id": item, "arm": arm, "run": run, "kind": kind, "gradable": gradable, "category": cat, **kw}
+
+
+def test_score_core_skips_and_gate_read():
+    labels = {"a-0": {"correct": "yes", "violation": "none", "in_report": "no"},
+              "a-1": {"correct": "no", "violation": "management", "in_report": "yes"},
+              "a-2": {"correct": "yes", "in_report": "yes"},
+              "a-3-dropped": {"in_report": "yes"}}
+    adj = [_adj("a", 0), _adj("a", 1), _adj("a", 2, cls="minor"), _adj("a", 3, error="boom"),
+           _adj("a", 4, arm="crit")]
+    s1 = [_s1("s1", "nocrit", 1, "grade", True), _s1("s2", "nocrit", 1, "characterise", True),
+          _s1("s3", "nocrit", 1, "grade", False), _s1("s1", "crit", 1, "grade", True),
+          _s1("s2", "crit", 1, "grade", True), {"item_id": "s3", "arm": "crit", "run": 1, "skipped": "no_criteria"},
+          _s1("s4", "nocrit", 1, "grade", True, error="x")]
+    gate = [{"id8": "a", "k": 0, "run": 1, "noul": 0.1, "choice": {"choice": "not_stated"}},
+            {"id8": "a", "k": 1, "run": 1, "noul": 0.9, "choice": {"choice": "stated"}},
+            {"id8": "a", "k": 2, "run": 1, "noul": 0.2, "choice": {"choice": "stated"}},
+            {"id8": "a", "k": 3, "run": 1, "noul": 0.8, "choice": {"choice": "stated"}}]
+    r = GC.score(labels, adj, s1, gate)
+    assert r["action_correct_share"] == 0.5 and r["n_action"] == 2     # error row and crit arm excluded
+    assert r["hard_violations_hand"] == ["a-1"]
+    n1 = r["s1_nocrit_run1"]
+    assert n1["n"] == 3 and n1["false_cant_grade"] == 0.5 and n1["overcall"] == 1.0
+    assert r["s1_crit_run1"]["n"] == 2
+    assert r["crit_vs_nocrit_paired"]["n"] == 2 and r["crit_vs_nocrit_paired"]["gains"] == 1
+    g = r["in_report_gate"]
+    assert g["n_labelled"] == 4
+    assert g["noul"]["recall"] == 2 / 3 and g["noul"]["false_alarm"] == 0.0     # a-2 missed (0.2)
+    assert g["choice_stated"]["recall"] == 1.0 and g["choice_stated"]["false_alarm"] == 0.0
+    assert set(g["noul_bands"]) == {"yes", "unsure", "no"}
+
+
+def test_dropped_sample_spread():
+    rows = [{"id8": i, "k": k, "run": 1, "choice": {"choice": "stated"}} for i in "ab" for k in range(5)]
+    rows.append({"id8": "a", "k": 9, "run": 2, "choice": {"choice": "stated"}})
+    s = GC.dropped_sample(rows, limit=4)
+    assert [(r["id8"], r["k"]) for r in s] == [("a", 0), ("b", 0), ("a", 1), ("b", 1)]

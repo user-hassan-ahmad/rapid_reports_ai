@@ -5,19 +5,20 @@
     python -m rapid_reports_ai.scripts.review_labs.gate_c gate --runs 2     # "already in report" Jev (noul + Choice)
     python -m rapid_reports_ai.scripts.review_labs.gate_c adjudicate [--only id,id]   # arms: nocrit, crit
     python -m rapid_reports_ai.scripts.review_labs.gate_c s1 --runs 2 [--only s1-01,s1-02]
-    python -m rapid_reports_ai.scripts.review_labs.gate_c page --adjudicated <jsonl> --clinical <json>
-    python -m rapid_reports_ai.scripts.review_labs.gate_c score --labels <json> --adjudicated <jsonl> --s1 <jsonl>"""
+    python -m rapid_reports_ai.scripts.review_labs.gate_c page --adjudicated <jsonl> --clinical <json> --gate <in_report jsonl>
+    python -m rapid_reports_ai.scripts.review_labs.gate_c score --labels <json> --adjudicated <jsonl> --s1 <jsonl> --gate <in_report jsonl>"""
 from __future__ import annotations
 
 import argparse
 import asyncio
 import json
+import re
 from typing import List, Optional
 
 from rapid_reports_ai.report_reconcile import Q_CONVEYS
 
 from . import additions_map as AM
-from . import common, judgement
+from . import common, judgement, label_page, metrics
 
 IN_REPORT_CHOICES = {
     "stated": "The report itself already states this point, in any wording (not merely implied or inferable).",
@@ -98,7 +99,7 @@ async def _adjudicate(cases: List[dict], gate_rows: List[dict], out_path) -> Non
         async def one(r, arm):
             cand = json.loads(json.dumps(r["candidate"]))
             if arm == "crit" and cand["kind"] == "grade":
-                crit = idx.get(AM.system_key(cand["evidence"].get("system", "")))
+                crit = AM.criteria_lookup(idx, cand["evidence"].get("system", ""))
                 if not crit:
                     return None
                 cand["evidence"]["criteria"] = " | ".join(crit)
@@ -137,7 +138,7 @@ async def _s1(items: List[dict], runs: int, out_path) -> None:
             async def one(it, arm):
                 ev = {"system": it["system"], "finding": it["finding"]}
                 if arm == "crit":
-                    crit = idx.get(AM.system_key(it["system"]))
+                    crit = AM.criteria_lookup(idx, it["system"])
                     if not crit:
                         return {"item_id": it["id"], "run": run, "arm": arm, "skipped": "no_criteria"}
                     ev["criteria"] = " | ".join(crit)
@@ -160,6 +161,160 @@ def cmd_s1(args) -> None:
     asyncio.run(_s1(items, args.runs, out))
     print(out)
 
+_REC = re.compile(r"\b(recommend\w*|suggest\w*|advise\w*|consider|follow-?up)\b", re.I)
+_MGMT = re.compile(r"\b(refer\w*|surgery|surgical|prescrib\w*|commence|start(?:ing)?|anticoagul\w*|biopsy should|treat\w*)\b", re.I)
+_NUM = re.compile(r"\d+(?:\.\d+)?")
+
+
+def hard_violations(row: dict, report: str, dictation: str, history: str) -> List[str]:
+    """Spec §11 Gate C hard bar, checked in code where possible; the hand read decides the rest."""
+    v = []
+    new, old = row.get("edit_replace") or "", row.get("edit_find") or ""
+    if row.get("kind") in ("grade", "threshold") and set(_NUM.findall(new)) - set(_NUM.findall(old)) - set(_NUM.findall(f"{dictation}\n{history}")):
+        v.append("ungrounded_number")
+    if _MGMT.search(new):
+        v.append("management")
+    imp = report.split("IMPRESSION:", 1)[1] if "IMPRESSION:" in report else ""
+    if row.get("edit_mode") == "insert" and _REC.search(new) and _REC.search(imp) and (row.get("edit_after") or "") in imp:
+        v.append("second_recommendation")
+    return v
+
+
+C_FIELDS = [{"key": "verdict", "label": "Should show as", "type": "choice",
+             "options": ["action", "minor", "info", "suppress"], "required": True},
+            {"key": "correct", "label": "Correct and useful", "type": "choice", "options": ["yes", "no"]},
+            {"key": "in_report", "label": "Already in report", "type": "choice", "options": ["yes", "no"]},
+            {"key": "violation", "label": "Hard violation", "type": "choice",
+             "options": ["none", "undictated grade/threshold", "management", "second recommendation"]},
+            {"key": "note", "type": "text", "label": "Note"}]
+
+
+def _gate_by_key(gate_rows: List[dict]) -> dict:
+    return {f"{r['id8']}-{r['k']}": r for r in gate_rows if r.get("run") == 1}
+
+
+def _gate_block(g: Optional[dict]) -> dict:
+    if not g:
+        return {"label": "Already in report (gate)", "text": "(no gate row)"}
+    return {"label": "Already in report (gate)",
+            "text": f"noul = {g.get('noul')}\nchoice = {json.dumps(g.get('choice'), ensure_ascii=False)}"}
+
+
+def dropped_sample(gate_rows: List[dict], limit: int = 40) -> List[dict]:
+    """Run-1 rows the gate judged `stated` (so dropped), up to `limit`, spread evenly across reports."""
+    by: dict = {}
+    for r in gate_rows:
+        if r.get("run") == 1 and (r.get("choice") or {}).get("choice") == "stated":
+            by.setdefault(r["id8"], []).append(r)
+    out, i = [], 0
+    queues = [by[k] for k in sorted(by)]
+    while len(out) < limit and any(i < len(q) for q in queues):
+        out += [q[i] for q in queues if i < len(q)][: limit - len(out)]
+        i += 1
+    return out
+
+
+def cmd_page(args) -> None:
+    out = common.lab_out("gate_c")
+    cases = {c["id8"]: c for c in common.read_json(out / "cases.json")}
+    rows = [r for r in common.read_jsonl(args.adjudicated) if r["arm"] == "nocrit"]
+    clinical = {r["id8"]: r for r in common.read_json(args.clinical)}
+    gate_rows = common.read_jsonl(args.gate)
+    gate = _gate_by_key(gate_rows)
+    cards = []
+    for r in rows:
+        c = cases[r["id8"]]
+        fix = (f"{r.get('edit_mode')}: «{r.get('edit_find') or r.get('edit_after') or ''}» → «{r.get('edit_replace') or ''}»"
+               if r.get("edit_mode") not in (None, "none") else "no edit")
+        cards.append({"id": f"{r['id8']}-{r['k']}", "title": f"{r['id8']} · {r['kind_in']} → {r.get('cls')}/{r.get('kind')}",
+                      "meta": f"{c['scan']} · {json.dumps(r.get('citation'))}",
+                      "blocks": [{"label": "Guideline point", "text": r["text"]},
+                                 _gate_block(gate.get(f"{r['id8']}-{r['k']}")),
+                                 {"label": "Engine label / reason", "text": f"{r.get('label')}\n{r.get('reason') or ''}"},
+                                 {"label": "Fix", "text": fix + "\ncode hard checks: " +
+                                  (", ".join(hard_violations(r, c["report"], c["dictation"], c["history"])) or "none")},
+                                 {"label": "Full report", "text": c["report"], "collapsed": True},
+                                 {"label": "Full dictation", "text": c["dictation"], "collapsed": True}], "hidden": []})
+    for g in dropped_sample(gate_rows):
+        c = cases.get(g["id8"])
+        if not c:
+            continue
+        cards.append({"id": f"{g['id8']}-{g['k']}-dropped", "title": f"{g['id8']} · dropped as already stated",
+                      "meta": c["scan"],
+                      "blocks": [{"label": "Guideline point", "text": g["text"]}, _gate_block(g),
+                                 {"label": "Full report", "text": c["report"]},
+                                 {"label": "Full dictation", "text": c["dictation"], "collapsed": True}], "hidden": []})
+    for id8, r in clinical.items():
+        c = cases.get(id8)
+        if not c:
+            continue
+        for key in ("characterise", "safety"):
+            for k, s in enumerate(r.get(key) or []):
+                cards.append({"id": f"{id8}-cp-{key}-{k}", "title": f"{id8} · clinical pass {key}", "meta": c["scan"],
+                              "blocks": [{"label": key, "text": s},
+                                         {"label": "Audit items (for comparison)",
+                                          "text": "\n".join(f"{a['criterion']} [{a.get('verdict')}]: {a.get('finding') or ''}"
+                                                            for a in c.get("audit_items") or []) or "(none)", "collapsed": True},
+                                         {"label": "Full report", "text": c["report"], "collapsed": True}], "hidden": []})
+        cards.append({"id": f"{id8}-cp-urgency", "title": f"{id8} · urgency {r.get('urgency')}", "meta": c["scan"],
+                      "blocks": [{"label": "Urgency reason", "text": r.get("urgency_reason") or "(routine)"},
+                                 {"label": "Audit banners", "text": "\n".join(
+                                     f"[{a.get('verdict')}] {a.get('banners') or a.get('finding') or ''}"
+                                     for a in c.get("audit_items") or [] if a.get("category") == "banner") or "(none)"}],
+                      "hidden": []})
+    print(label_page.write_page(out / "cards.html", "Gate C · additions read", "gateC-read-v1", cards, C_FIELDS), len(cards))
+
+
+def _ok(r: dict) -> bool:
+    return not r.get("skipped") and not r.get("error")
+
+
+def score(labels: dict, adj_rows: List[dict], s1_rows: List[dict], gate_rows: Optional[List[dict]] = None) -> dict:
+    adj = [r for r in adj_rows if _ok(r)]
+    s1 = [r for r in s1_rows if _ok(r)]
+    res: dict = {}
+    act = [r for r in adj if r["arm"] == "nocrit" and r.get("cls") == "action"]
+    good = [r for r in act if (labels.get(f"{r['id8']}-{r['k']}") or {}).get("correct") == "yes"]
+    res["n_action"] = len(act)
+    res["action_correct_share"] = len(good) / len(act) if act else None
+    res["hard_violations_hand"] = sorted(k for k, v in labels.items() if v.get("violation") not in (None, "none"))
+    for arm in ("nocrit", "crit"):
+        for run in (1, 2):
+            rows = [r for r in s1 if r["arm"] == arm and r["run"] == run]
+            g = [r for r in rows if r["gradable"]]
+            ng = [r for r in rows if not r["gradable"]]
+            res[f"s1_{arm}_run{run}"] = {
+                "n": len(rows),
+                "false_cant_grade": sum(r["kind"] == "characterise" for r in g) / len(g) if g else None,
+                "overcall": sum(r["kind"] == "grade" for r in ng) / len(ng) if ng else None,
+                "by_category": {cat: sum((r["kind"] == "grade") == r["gradable"] for r in rows if r["category"] == cat) /
+                                max(1, sum(1 for r in rows if r["category"] == cat))
+                                for cat in sorted({r["category"] for r in rows})}}
+    nc = {r["item_id"]: (r["kind"] == "grade") == r["gradable"] for r in s1 if r["arm"] == "nocrit" and r["run"] == 1}
+    cr = {r["item_id"]: (r["kind"] == "grade") == r["gradable"] for r in s1 if r["arm"] == "crit" and r["run"] == 1}
+    both = [i for i in nc if i in cr]
+    b = sum(1 for i in both if cr[i] and not nc[i])
+    c = sum(1 for i in both if nc[i] and not cr[i])
+    res["crit_vs_nocrit_paired"] = {"n": len(both), "gains": b, "losses": c, "mcnemar_p": metrics.mcnemar_exact(b, c)}
+    gate = _gate_by_key(gate_rows or [])
+    pairs = []                                    # (label_positive, noul, choice_stated) per in_report-labelled card
+    for key, lab in labels.items():
+        g = gate.get(key[: -len("-dropped")] if key.endswith("-dropped") else key)
+        if lab.get("in_report") in ("yes", "no") and g and g.get("noul") is not None:
+            pairs.append((lab["in_report"] == "yes", float(g["noul"]), (g.get("choice") or {}).get("choice") == "stated"))
+    res["in_report_gate"] = {
+        "n_labelled": len(pairs),
+        "noul": metrics.binary([(l, n >= 0.5) for l, n, _ in pairs]),
+        "choice_stated": metrics.binary([(l, st) for l, _, st in pairs]),
+        "noul_bands": metrics.errors_by_band([n for _, n, _ in pairs], [l for l, _, _ in pairs], 0.3, 0.7)}
+    return res
+
+
+def cmd_score(args) -> None:
+    res = score(common.read_json(args.labels), common.read_jsonl(args.adjudicated), common.read_jsonl(args.s1),
+                common.read_jsonl(args.gate) if args.gate else [])
+    print(json.dumps(res, indent=1)); print(common.write_json(common.out_file("gate_c", "score"), res))
+
 
 def main(argv: Optional[List[str]] = None) -> None:
     ap = argparse.ArgumentParser()
@@ -171,6 +326,10 @@ def main(argv: Optional[List[str]] = None) -> None:
     a.set_defaults(fn=cmd_adjudicate)
     s = sub.add_parser("s1"); s.add_argument("--runs", type=int, default=2); s.add_argument("--only", default="")
     s.set_defaults(fn=cmd_s1)
+    pg = sub.add_parser("page"); pg.add_argument("--adjudicated", required=True); pg.add_argument("--clinical", required=True)
+    pg.add_argument("--gate", required=True); pg.set_defaults(fn=cmd_page)
+    sc = sub.add_parser("score"); sc.add_argument("--labels", required=True); sc.add_argument("--adjudicated", required=True)
+    sc.add_argument("--s1", required=True); sc.add_argument("--gate", default=""); sc.set_defaults(fn=cmd_score)
     args = ap.parse_args(argv)
     args.fn(args)
 
