@@ -59,7 +59,8 @@ _KIND_TEXT = {
 
 def render_candidate(c: dict) -> str:
     """One candidate as prompt text. An unsure Jev answer is named, never its leaning (§6.5)."""
-    lines = [f"- [{c.get('lane')}/{c.get('kind')}, detector {c.get('detector')}] {_KIND_TEXT.get(c.get('kind'), '')}"]
+    lines = [f"- Flag kind \"{c.get('kind')}\" (from the {c.get('lane')} check, detector {c.get('detector')}). "
+             f"{_KIND_TEXT.get(c.get('kind'), '')}"]
     if c.get("line"):
         lines.append(f'  Dictated line: "{c["line"]}"')
     if c.get("anchor"):

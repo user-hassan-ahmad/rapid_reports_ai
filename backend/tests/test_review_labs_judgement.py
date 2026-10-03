@@ -228,3 +228,8 @@ def test_judge_and_verify_fallback_dict(monkeypatch):
 
 def test_prompt_keeps_impression_brief():
     assert "never add restated findings or a second recommendation line" in J.prompt()
+
+
+def test_render_candidate_names_kind_not_lane_as_kind():
+    s = J.render_candidate({"lane": "coverage", "kind": "partial", "detector": "d", "line": "x", "evidence": {}})
+    assert 'Flag kind "partial"' in s and "coverage/" not in s

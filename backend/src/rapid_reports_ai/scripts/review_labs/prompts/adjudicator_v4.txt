@@ -35,4 +35,4 @@ The fix, the smallest that works:
 
 The probe is one statement that becomes true once the problem is fixed. It says whether the topic is covered, scoped to its section, in general terms, never the wording of your edit. Form: "The <SECTION> section states <the topic> for <the structure>."
 
-Fields: cls; kind (keep the flag's kind unless your reading refines it, for example differs to slip); label (at most 80 characters, what the radiologist sees in the list); reason (one sentence); edit_mode; edit_find; edit_replace; edit_after; edit_section; probe. Leave the edit fields empty when edit_mode is none, and leave probe empty for suppress.
+Fields: cls; kind (copy the quoted flag kind exactly, for example "partial", unless your reading refines it, for example differs to slip or grade to characterise; never a check name such as "coverage"); label (at most 80 characters, what the radiologist sees in the list); reason (one sentence); edit_mode; edit_find; edit_replace; edit_after; edit_section; probe. Leave the edit fields empty when edit_mode is none, and leave probe empty for suppress.
