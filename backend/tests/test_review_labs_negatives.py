@@ -38,3 +38,9 @@ def test_score_unsafe_misses_and_recall():
     s = NL.score(labels, results)
     assert s["run1"]["unsafe_misses"] == ["a-1"] and s["run1"]["implicated_recall"] == 0.0
     assert s["run2"]["implicated_recall"] == 1.0 and s["run_flip_share"] == 1 / 3
+
+
+def test_prompts_load_and_v2_default():
+    assert NL.DEFAULT_PROMPT == "negatives_v2"
+    assert "When in doubt between default and implicated, choose implicated" in NL.prompt()
+    assert "Classify each numbered statement" in NL.prompt("negatives_v1")

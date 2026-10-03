@@ -24,7 +24,12 @@ from rapid_reports_ai.scripts.jev_tool_lab import calls
 
 from . import common, label_page
 
-PROMPT = (Path(__file__).parent / "prompts" / "negatives_v1.txt").read_text().strip()
+PROMPTS = Path(__file__).parent / "prompts"
+DEFAULT_PROMPT = "negatives_v2"
+
+
+def prompt(name: str = DEFAULT_PROMPT) -> str:
+    return (PROMPTS / f"{name}.txt").read_text().strip()
 CLASSES = ("dictated", "default", "implicated", "contradicted")
 _NEG = re.compile(r"\b(no|not|nil|without|normal(ly)?|unremarkable|patent|intact|clear|preserved|maintained|"
                   r"within normal limits|non-?dilated|undilated|no evidence)\b", re.I)
@@ -110,13 +115,13 @@ def cmd_candidates(args) -> None:
     print(common.write_json(_out() / "candidates.json", out), sum(len(c["candidates"]) for c in out))
 
 
-async def _classify(cases: List[dict], runs: int, path) -> None:
+async def _classify(cases: List[dict], runs: int, path, system: str) -> None:
     with open(path, "a") as fh:
         for run in range(1, runs + 1):
             for case in cases:                           # strictly sequential
                 cands = case["candidates"]
                 try:
-                    out, usage = await calls.qwen(Labels, PROMPT, user_message(case, cands), True)
+                    out, usage = await calls.qwen(Labels, system, user_message(case, cands), True)
                     parsed, err = parse_labels(out.labels, len(cands)), None
                 except Exception as e:   # noqa: BLE001
                     parsed, usage, err = {}, None, f"{type(e).__name__}: {str(e)[:200]}"
@@ -133,7 +138,7 @@ def cmd_classify(args) -> None:
     if args.only:
         cases = [c for c in cases if c["id8"] in set(args.only.split(","))]
     path = common.out_file("neg_lab", f"classify_{args.tag}", "jsonl")
-    asyncio.run(_classify(cases, args.runs, path))
+    asyncio.run(_classify(cases, args.runs, path, prompt(args.prompt)))
     print(path)
 
 
@@ -209,7 +214,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("candidates"); c.add_argument("--replay", nargs="+", required=True); c.set_defaults(fn=cmd_candidates)
     k = sub.add_parser("classify"); k.add_argument("--runs", type=int, default=2); k.add_argument("--only", default="")
-    k.add_argument("--tag", default="v1"); k.set_defaults(fn=cmd_classify)
+    k.add_argument("--tag", default="v2"); k.add_argument("--prompt", default=DEFAULT_PROMPT); k.set_defaults(fn=cmd_classify)
     p = sub.add_parser("page"); p.add_argument("--results", required=True); p.set_defaults(fn=cmd_page)
     s = sub.add_parser("score"); s.add_argument("--labels", required=True); s.add_argument("--results", required=True)
     s.set_defaults(fn=cmd_score)
