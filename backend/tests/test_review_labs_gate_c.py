@@ -54,3 +54,11 @@ def test_system_key_covers_s1_phase3_systems():
     aast = [s for s in systems if s.startswith("AAST 2018")]
     print("AAST systems collapsing to one key:", {s: keys[s] for s in aast})
     assert len(aast) == 3 and {keys[s] for s in aast} == {"aast_kidney", "aast_liver", "aast_spleen"}
+
+
+def test_candidate_text_kinds():
+    from rapid_reports_ai.scripts.review_labs import gate_c as G
+    assert G.candidate_text({"kind": "grade", "anchor": "lesion", "evidence": {"system": "Bosniak"}}) == "a Bosniak category for the lesion"
+    assert "4 cm" in G.candidate_text({"kind": "threshold", "anchor": "a", "evidence": {"parameter": "size", "threshold": "4 cm"}})
+    assert G.candidate_text({"kind": "follow_up", "anchor": "a", "evidence": {"modality": "US", "timing": "6 months"}}) == "US follow-up 6 months for the a"
+    assert G.candidate_text({"kind": "option", "anchor": "a", "evidence": {"text": "adenoma"}}) == "adenoma (for the a)"
