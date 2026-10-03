@@ -89,9 +89,9 @@ def cmd_items(_args) -> None:
     print(p, len(items))
 
 
-async def _run(items: List[dict], runs: int, out_path) -> None:
+async def _run(items: List[dict], runs: int, out_path, prompt_name: str = judgement.DEFAULT_ADJUDICATOR) -> None:
     sem = asyncio.Semaphore(8)                     # spec §7: at most 8 concurrent calls per report
-    system = judgement.prompt("adjudicator_v4")
+    system = judgement.prompt(prompt_name)
     with open(out_path, "a") as fh:
         for run in range(1, runs + 1):
             async def one(it):
@@ -124,7 +124,7 @@ def cmd_run(args) -> None:
         keep = set(args.only.split(","))
         items = [i for i in items if i["id"] in keep]
     out = common.out_file("gate_a", f"v4_{args.tag}", "jsonl")
-    asyncio.run(_run(items, args.runs, out))
+    asyncio.run(_run(items, args.runs, out, args.prompt))
     print(out)
 
 
@@ -191,7 +191,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     sub.add_parser("page").set_defaults(fn=cmd_page)
     sub.add_parser("items").set_defaults(fn=cmd_items)
     r = sub.add_parser("run"); r.add_argument("--runs", type=int, default=2); r.add_argument("--only", default="")
-    r.add_argument("--tag", default="full"); r.add_argument("--synthetic", default="")
+    r.add_argument("--tag", default="full"); r.add_argument("--prompt", default=judgement.DEFAULT_ADJUDICATOR); r.add_argument("--synthetic", default="")
     r.set_defaults(fn=cmd_run)
     rp = sub.add_parser("read-page"); rp.add_argument("--results", required=True)
     rp.add_argument("--synthetic", default=""); rp.set_defaults(fn=cmd_read_page)
