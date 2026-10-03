@@ -73,3 +73,11 @@ def criteria_index(cards: Iterable[dict]) -> Dict[str, List[str]]:
             if c.get("criteria"):
                 idx[system_key(c.get("system", ""))].add(f"{c.get('grade')}: {c['criteria'].strip()}")
     return {k: sorted(v) for k, v in idx.items()}
+
+
+def criteria_lookup(idx: Dict[str, List[str]], system: str) -> List[str]:
+    """Criteria for `system`: its qualified key first, then the unqualified one ("lirads_ct" → "lirads")."""
+    key = system_key(system)
+    if key in idx:
+        return idx[key]
+    return idx.get(key.split("_", 1)[0], [])

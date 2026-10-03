@@ -62,3 +62,11 @@ def test_candidate_text_kinds():
     assert "4 cm" in G.candidate_text({"kind": "threshold", "anchor": "a", "evidence": {"parameter": "size", "threshold": "4 cm"}})
     assert G.candidate_text({"kind": "follow_up", "anchor": "a", "evidence": {"modality": "US", "timing": "6 months"}}) == "US follow-up 6 months for the a"
     assert G.candidate_text({"kind": "option", "anchor": "a", "evidence": {"text": "adenoma"}}) == "adenoma (for the a)"
+
+
+def test_criteria_lookup_falls_back_to_unqualified_key():
+    idx = {"lirads": ["LR-5: x"], "orads_us": ["3: y"]}
+    assert AM.criteria_lookup(idx, "LI-RADS CT/MRI v2018") == ["LR-5: x"]
+    assert AM.criteria_lookup(idx, "O-RADS US") == ["3: y"]
+    assert AM.criteria_lookup(idx, "Bosniak 2019") == []
+    assert "criteria_lookup" in dir(AM)

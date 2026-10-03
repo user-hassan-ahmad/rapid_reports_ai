@@ -71,7 +71,7 @@ def render_candidate(c: dict) -> str:
     if ev.get("missing_detail"):
         lines.append(f"  Possibly missing detail: {ev['missing_detail']}")
     for k in ("system", "grade", "parameter", "threshold", "significance", "modality", "timing", "indication", "text"):
-        if ev.get(k):
+        if ev.get(k) not in (None, ""):          # grade 0 is a real grade
             lines.append(f"  {k}: {ev[k]}")
     if ev.get("criteria"):
         lines.append(f"  Criteria text for this system: {ev['criteria']}")
@@ -115,12 +115,20 @@ def _remove_span(report: str, i: int, n: int) -> str:
     return a + b
 
 
+def _mid_word(report: str, i: int) -> bool:
+    """True when position i splits a word (alphanumerics on both sides)."""
+    return 0 < i < len(report) and report[i - 1].isalnum() and report[i].isalnum()
+
+
 def apply_edit(report: str, j: Judgement) -> Optional[str]:
     m = j.edit_mode
     if m in ("replace", "upgrade") and _once(report, j.edit_find) and j.edit_replace is not None:
         return report.replace(j.edit_find, j.edit_replace, 1)
     if m == "remove" and _once(report, j.edit_find):
-        return _remove_span(report, report.index(j.edit_find), len(j.edit_find))
+        i, n = report.index(j.edit_find), len(j.edit_find)
+        if _mid_word(report, i) or _mid_word(report, i + n):
+            return None                         # find starts or ends mid-word
+        return _remove_span(report, i, n)
     anchor = (j.edit_after or "").strip()
     new = (j.edit_replace or "").strip()
     if m == "insert" and _once(report, anchor) and new:
@@ -161,23 +169,51 @@ _SIDE = re.compile(r"\b(left|right|bilateral)\b", re.I)
 _NEG = re.compile(r"\b(no|not|without|absent|negative for)\b", re.I)
 _NEGATOR = re.compile(r"\b(no|not|without)\b", re.I)
 _NEG_SKIP = {"a", "an", "the", "any", "evidence", "of", "is", "are", "was", "were", "seen", "identified"}
+_VERB = {"is", "are", "was", "were", "seen", "identified", "noted", "demonstrated"}
+_LIST_SEP = re.compile(r",|\b(?:or|and|nor)\b", re.I)
+_SENT_STOP = re.compile(r"[.;!?\n]")
+_CLAUSE_BREAK = {"but", "however", "although", "though", "with", "which", "while", "whereas", "except"}
+_POST_NEG = {"not", "absent", "negative"}
+
+
+def _words(text: str) -> List[str]:
+    return re.findall(r"[a-z]+", text.lower())
 
 
 def _negated_phrases(text: str) -> List[List[str]]:
-    """The 2 content words after each negator (no / not / without)."""
+    """Each listed item after a negator (no / not / without), up to the sentence end: its first 2 content words.
+    Items split on ',', 'or', 'and', 'nor'; the list ends after an item carrying a verb ("... is seen")."""
     out = []
     for m in _NEGATOR.finditer(text):
-        words = [w for w in re.findall(r"[a-z]+", text[m.end():].lower()) if w not in _NEG_SKIP][:2]
-        if words:
-            out.append(words)
+        rest = text[m.end():]
+        stop = _SENT_STOP.search(rest)
+        for item in _LIST_SEP.split(rest[:stop.start()] if stop else rest):
+            ws = _words(item)
+            words = [w for w in ws if w not in _NEG_SKIP][:2]
+            if words:
+                out.append(words)
+            if _VERB & set(ws):
+                break
     return out
+
+
+def _is_negated(new: str, a: int, b: int) -> bool:
+    """The phrase at [a, b) of `new` is negated within its own sentence: a negator governs the list it sits in,
+    or not / absent / negative follows within 4 words."""
+    starts = [m.end() for m in _SENT_STOP.finditer(new, 0, a)]
+    before = new[starts[-1] if starts else 0:a]
+    negs = list(_NEGATOR.finditer(before))
+    if negs and not (_CLAUSE_BREAK & set(_words(before[negs[-1].end():]))):
+        return True
+    stop = _SENT_STOP.search(new, b)
+    after = _words(new[b:stop.start() if stop else len(new)])[:4]
+    return bool(_POST_NEG & set(after))
 
 
 def _loses_negation(old: str, new: str) -> bool:
     for words in _negated_phrases(old):
         for m in re.finditer(r"\b" + r"\W+".join(map(re.escape, words)) + r"\b", new, re.I):
-            before = re.findall(r"[a-z]+", new[:m.start()].lower())[-3:]
-            if not any(w in ("no", "not", "without") for w in before):
+            if not _is_negated(new, m.start(), m.end()):
                 return True
     return False
 
@@ -220,25 +256,28 @@ def guard_failures(report: str, j: Judgement, dictation: str, history: str, extr
     if pos is not None and j.edit_mode in ("insert", "upgrade", "replace") and new.strip():
         lo, hi = _paragraph(report, pos)
         para = report[lo:hi]
-        own = pos - lo                         # a replace is checked against its neighbours, not its own sentence
+        own = pos - lo                         # a replace is checked against its neighbours, not its own sentences
+        own_end = own + max(len(old), 1)
         neighbours = [para[a:b] for a, b in common.sentences(para)
-                      if j.edit_mode == "insert" or not (a <= own < b)]
+                      if j.edit_mode == "insert" or not (a < own_end and own < b)]
         if any(_restates(new, s) for s in neighbours):
             fails.append("duplicate")
     return fails
 
 
 def changed_sentence(report: str, after: str, j: Judgement) -> str:
-    """The sentence of `after` that contains the edit, located by position (never by text search)."""
+    """Every sentence of `after` overlapping the new text, located by position (never by text search)."""
     pos = _edit_pos(report, j)
     if pos is None:
         return (j.edit_replace or "").strip()
     if j.edit_mode == "insert":
         pos += 1
-    for a, b in common.sentences(after):
-        if pos < b:
-            return after[a:b].strip()
-    return (j.edit_replace or "").strip()
+        n = len((j.edit_replace or "").strip())
+    else:
+        n = len(j.edit_replace or "")
+    end = pos + max(n, 1)
+    hit = [after[a:b].strip() for a, b in common.sentences(after) if a < end and pos < b]
+    return " ".join(hit) if hit else (j.edit_replace or "").strip()
 
 
 _EVIDENCE_KEYS = ("threshold", "timing", "grade", "criteria", "parameter", "system", "text")
@@ -247,7 +286,8 @@ _EVIDENCE_KEYS = ("threshold", "timing", "grade", "criteria", "parameter", "syst
 def _extra_source(group: Optional[List[dict]]) -> str:
     if not group or not any(c.get("lane") == "additions" for c in group):
         return ""
-    return "\n".join(str(ev[k]) for c in group for ev in [c.get("evidence") or {}] for k in _EVIDENCE_KEYS if ev.get(k))
+    return "\n".join(str(ev[k]) for c in group for ev in [c.get("evidence") or {}] for k in _EVIDENCE_KEYS
+                     if ev.get(k) not in (None, ""))
 
 
 async def verify(case: dict, j: Judgement, group: Optional[List[dict]] = None, jev_fn=calls.jev) -> Dict:
@@ -269,7 +309,7 @@ async def verify(case: dict, j: Judgement, group: Optional[List[dict]] = None, j
         return res
     try:
         answers, _, _ = await jev_fn(by_state)
-        if "contra" in answers:
+        if j.edit_mode != "remove":            # asked: a missing answer is a Jev error, like "addressed"
             res["contra"] = float(answers["contra"]["noul"])
         if j.probe:
             res["addressed"] = float(answers["addressed"]["noul"])

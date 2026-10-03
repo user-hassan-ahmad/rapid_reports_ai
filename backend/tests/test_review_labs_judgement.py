@@ -233,3 +233,67 @@ def test_prompt_keeps_impression_brief():
 def test_render_candidate_names_kind_not_lane_as_kind():
     s = J.render_candidate({"lane": "coverage", "kind": "partial", "detector": "d", "line": "x", "evidence": {}})
     assert 'Flag kind "partial"' in s and "coverage/" not in s
+
+
+# --- re-review fixes ----------------------------------------------------------------------------
+
+def test_grade_zero_evidence_is_rendered_and_grounds():
+    c = {"lane": "additions", "kind": "grade", "detector": "s4", "evidence": {"system": "CAD-RADS", "grade": 0}}
+    assert "grade: 0" in J.render_candidate(c)
+    assert "0" in J._extra_source([c]).split("\n")
+    assert J._extra_source([{"lane": "additions", "evidence": {"grade": "", "system": None}}]) == ""
+
+
+REP2 = "FINDINGS:\nThe liver is normal. No gallstones.\n\nIMPRESSION:\nNormal.\n"
+
+
+def test_changed_sentence_returns_all_sentences_of_new_text():
+    j = J_(edit_mode="upgrade", edit_find="Normal.", edit_replace="Normal. Follow up in 6 months.")
+    assert J.changed_sentence(REP2, J.apply_edit(REP2, j), j) == "Normal. Follow up in 6 months."
+    j = J_(edit_mode="insert", edit_after="The liver is normal.", edit_replace="Small effusion. Moderate ascites.")
+    assert J.changed_sentence(REP2, J.apply_edit(REP2, j), j) == "Small effusion. Moderate ascites."
+
+
+def _drops(old, new, rep=None):
+    rep = rep or f"FINDINGS:\n{old} The heart is normal."
+    j = J_(kind="differs", edit_mode="replace", edit_find=old, edit_replace=new)
+    return "drops_negation" in J.guard_failures(rep, j, "left pneumothorax", "")
+
+
+def test_negation_list_items_each_checked():
+    assert _drops("No pneumothorax or effusion.", "Pneumothorax, no effusion.")
+    assert _drops("No pneumothorax or effusion.", "Small left pneumothorax. No effusion.")
+    assert _drops("No pneumothorax or effusion.", "No effusion. Pneumothorax.")
+    assert not _drops("No pneumothorax or effusion.", "No pneumothorax. No pleural effusion.")
+    assert not _drops("No pneumothorax, effusion or consolidation.", "No pneumothorax, effusion or consolidation.")
+
+
+def test_post_positioned_negators_count():
+    assert not _drops("No free fluid is seen.", "Free fluid is not seen.")
+    assert not _drops("There is no hydronephrosis.", "Hydronephrosis is absent.")
+    assert not _drops("The liver is not enlarged.", "The liver is normal in size and not enlarged.")
+    assert _drops("No free fluid is seen.", "Free fluid is seen. Collection is not seen.")
+
+
+def test_remove_rejects_mid_word_find():
+    rep = "FINDINGS:\nThe liver is normal. No gallstones. The spleen is normal."
+    assert J.apply_edit(rep, J_(kind="contradicted", edit_mode="remove", edit_find="is normal. No gall")) is None
+    assert J.apply_edit(rep, J_(kind="contradicted", edit_mode="remove", edit_find="iver is normal. ")) is None
+    assert J.apply_edit(rep, J_(kind="contradicted", edit_mode="remove", edit_find="No gallstones. ")) is not None
+
+
+def test_duplicate_guard_excludes_every_sentence_of_the_find():
+    rep = "FINDINGS:\nThe spleen is normal. Kidneys normal. The liver is normal."
+    j = J_(kind="differs", edit_mode="replace", edit_find="The spleen is normal. Kidneys normal.",
+           edit_replace="Kidneys normal.")
+    assert "duplicate" not in J.guard_failures(rep, j, "", "")
+    j = J_(kind="differs", edit_mode="replace", edit_find="The spleen is normal. Kidneys normal.",
+           edit_replace="The liver is normal.")
+    assert "duplicate" in J.guard_failures(rep, j, "", "")
+
+
+def test_verify_missing_contra_key_is_jev_error():
+    async def fn(by_state):
+        return {"addressed": {"noul": 0.9}}, {}, None
+    v = asyncio.run(J.verify(CASE, J_(**FIX, probe="p"), jev_fn=fn))
+    assert v["code"] is False and "jev_error" in v["failed"]
