@@ -9,8 +9,9 @@ re-checked against the text, so a wrong alignment can only unanchor, never mis-a
 - an anchor that cannot be mapped verbatim is dropped (the original kept in `evidence.original_anchor`);
 - a pre-applied removal's anchor becomes zero-width at its removal point (as the shadow log's post-removal anchors);
 - a pre-applied insert's anchor is the inserted text when it occurs once in the written text;
-- every pre-applied item gets `evidence.undo = {"final_span": [j1, j2], "original_text": ...}`: replacing that
-  span of the written text with `original_text` restores the pre-edit text of that edit.
+- every pre-applied item gets `evidence.undo = {"final_span": [j1, j2], "original_text", "final_text", "left",
+  "right"}`: replacing that span of the written text (`final_text`) with `original_text` restores the pre-edit text
+  of that edit; `left` / `right` are up to UNDO_CONTEXT characters of written text either side of the span.
 Pure code."""
 from __future__ import annotations
 
@@ -21,6 +22,9 @@ from typing import List, Optional, Tuple
 from .items import ReviewItem, Span, text_hash
 
 Op = Tuple[str, int, int, int, int]
+# Characters of written text kept each side of an undo span, so a client can re-find the edit by context once the
+# report has changed (it never trusts stored offsets on a text it has not hashed as the written one).
+UNDO_CONTEXT = 16
 
 
 def _now() -> str:
@@ -83,7 +87,8 @@ def rebase_items(items: List[ReviewItem], original: str, final: str) -> None:
                     region = _changed(ops, k, k + len(new), "j")
             if region:
                 i1, i2, j1, j2 = region
-                ev["undo"] = {"final_span": [j1, j2], "original_text": original[i1:i2]}
+                ev["undo"] = {"final_span": [j1, j2], "original_text": original[i1:i2], "final_text": final[j1:j2],
+                              "left": final[max(0, j1 - UNDO_CONTEXT):j1], "right": final[j2:j2 + UNDO_CONTEXT]}
         elif old is not None:
             it.anchor = rebase_span(old, ops, final, h)
         if old is not None and (it.anchor is None or it.anchor.start != old.start or it.anchor.end != old.end):

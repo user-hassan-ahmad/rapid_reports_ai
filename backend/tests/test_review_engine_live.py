@@ -154,3 +154,27 @@ def test_rebase_insert_and_unmappable_anchor():
     assert final[:u["final_span"][0]] + u["original_text"] + final[u["final_span"][1]:] == orig
     assert final[moved.anchor.start:moved.anchor.end] == "The liver is normal." and moved.anchor.start > s
     assert gone.anchor is None and gone.evidence["original_anchor"]["text"] == "XXXXX"
+
+
+def test_rebase_undo_carries_context_and_final_text():
+    """The frontend never guesses where a pre-applied edit sits: undo carries the written text of the span and 16
+    characters each side, so the edit can be re-found by context once the report has changed."""
+    orig = "FINDINGS:\nNo ascites. The liver is normal.\nIMPRESSION:\nNormal."
+    final = "FINDINGS:\nNo ascites. 14 mm left renal cyst. The liver is normal.\nIMPRESSION:\nNormal."
+    ins = ReviewItem(key="a", report_id="r", run_id="x", lane="coverage", kind="absent", cls="action",
+                     status="pre_applied", edit=Edit(mode="insert", after="No ascites.",
+                                                     replace="14 mm left renal cyst."))
+    live.rebase_items([ins], orig, final)
+    u = ins.evidence["undo"]
+    j1, j2 = u["final_span"]
+    assert u["final_text"] == final[j1:j2]
+    assert u["left"] == final[max(0, j1 - 16):j1] and len(u["left"]) == 16
+    assert u["right"] == final[j2:j2 + 16] and len(u["right"]) == 16
+    assert final.count(u["left"] + u["final_text"] + u["right"]) == 1
+    # a removal: zero-width in the written text, context still unique
+    rem = ReviewItem(key="b", report_id="r", run_id="x", lane="accuracy", kind="removed", cls="action",
+                     status="pre_applied", anchor=Span(start=10, end=22, text="No ascites. "),
+                     edit=Edit(mode="remove", find="No ascites."))
+    live.rebase_items([rem], orig, orig[:10] + orig[22:])
+    u = rem.evidence["undo"]
+    assert u["final_text"] == "" and u["left"] == "FINDINGS:\n" and u["right"] == "The liver is nor"
