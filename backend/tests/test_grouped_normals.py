@@ -16,16 +16,16 @@ def test_directive_off_leaves_the_production_prompt_byte_identical(monkeypatch):
     assert qa.production_directives() == qa.PRODUCTION_DIRECTIVES
     base = qa.ANALYSER_SYSTEM_PROMPT_OPEN_WEIGHTS + qa.PRUNE_V1 + qa.FINDING_NEGATIVES
     assert qa.get_analyser_prompt(model, directives=qa.production_directives()) == base
-    assert "grouped sentences" not in base
+    assert "linked atoms and prose" not in base
 
 
 def test_directive_on_appends_the_grouped_block_once(monkeypatch):
     monkeypatch.setenv("RR_GROUPED_NORMALS", "1")
     assert qa.production_directives() == qa.PRODUCTION_DIRECTIVES + ("grouped_normals",)
     p = qa.get_analyser_prompt("qwen-3.8-27b", directives=qa.production_directives())
-    assert p.endswith(qa.GROUPED_NORMALS) and p.count("Normal-study path as grouped sentences") == 1
+    assert p.endswith(qa.GROUPED_NORMALS) and p.count("Normal-study path as linked atoms and prose") == 1
     # Case-agnostic: structural placeholders only.
-    assert '"The A, B and C are unremarkable."' in qa.GROUPED_NORMALS
+    assert "P1 | N1 N2 N3 | The A, B and C are unremarkable." in qa.GROUPED_NORMALS
 
 
 def test_prompt_version_unchanged_when_off(monkeypatch):
@@ -210,55 +210,7 @@ async def test_brief_off_asks_one_question_per_sentence(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_brief_on_subtracts_the_affected_structure(monkeypatch):
-    monkeypatch.setenv("RR_GROUPED_NORMALS", "1")
-    seen = _stub(monkeypatch, {"n0a2"})                     # pancreas affected (Jev)
-    b = await qb.compile_brief(SHEET, "CT", "3 cm mass in the head of the pancreas")
-    assert {"n0a0", "n0a1", "n0a2", "n1a0", "n1a1", "n2a0", "n2a1", "n3"} == {k for k in seen["q"] if k.startswith("n")}
-    assert "The kidneys are unremarkable." in seen["normals"] and "No hydronephrosis." in seen["normals"]
-    assert ('**Normal-study path:** "The liver and spleen are unremarkable. The kidneys are unremarkable with no '
-            'hydronephrosis. The bladder and pelvic viscera are unremarkable. The visualised osseous structures show '
-            'no aggressive lesion."') in b.text
-    assert 'acts on these):** "The pancreas is unremarkable."' in b.text
-    d = b.decisions["normals"][0]
-    assert d["mode"] == "subtracted" and d["rendered"] == "The liver and spleen are unremarkable."
-    assert [(a["name"], a["action"]) for a in d["atoms"]] == [("liver", "keep"), ("spleen", "keep"),
-                                                               ("pancreas", "do_not_assert")]
-    assert d["rendered"][slice(*d["atoms"][1]["span"])] == "spleen"
-    k1 = b.decisions["normals"][1]
-    assert k1["offset"] == len(d["rendered"]) + 1 and k1["mode"] == "verbatim"
-
-
-@pytest.mark.asyncio
-async def test_brief_on_qwen_second_opinion_flags_an_atom(monkeypatch):
-    monkeypatch.setenv("RR_GROUPED_NORMALS", "1")
-    _stub(monkeypatch, set(), qaff={4})                    # index 4 = "No hydronephrosis."
-    b = await qb.compile_brief(SHEET, "CT", "Obstructing ureteric calculus")
-    assert "The kidneys are unremarkable. The bladder" in b.text
-    assert '"No hydronephrosis."' in b.text.split("Do not assert as normal")[1]
-
-
-@pytest.mark.asyncio
-async def test_brief_on_dictated_overlap_renders_per_structure_and_lists_dictated_negatives(monkeypatch):
-    monkeypatch.setenv("RR_GROUPED_NORMALS", "1")
-    _stub(monkeypatch, set())
-    b = await qb.compile_brief(SHEET, "CT", "- Small simple cyst in the liver, no follow-up\n- No hydronephrosis")
-    path = b.text.split("**Normal-study path:** ")[1].split("\n")[0]
-    # Liver named by a dictated finding -> one line per structure; the dictated "No hydronephrosis"
-    # leaves the kidney sentence (the dictation states it) and is a must-appear bullet.
-    assert path.startswith('"The liver is unremarkable. The spleen is unremarkable. The pancreas is unremarkable. '
-                           'The kidneys are unremarkable. The bladder and pelvic viscera')
-    assert '**Dictated negatives (state each as dictated):** "no follow-up" "No hydronephrosis"' in b.text
-    assert '"No hydronephrosis."' not in b.text            # neither rendered nor do-not-assert
-    modes = [n.get("mode") for n in b.decisions["normals"]]
-    assert modes == ["per_structure_dictated", "subtracted", "verbatim", None]
-    tail = b.decisions["normals"][1]["atoms"][1]
-    assert (tail["action"], tail["dictated"]) == ("dictated", "No hydronephrosis")
-    assert b.decisions["dictated_negatives"] == ["no follow-up", "No hydronephrosis"]
-
-
-@pytest.mark.asyncio
-async def test_brief_on_reads_a_sub_bulleted_path(monkeypatch):
+async def test_brief_on_without_atoms_takes_the_per_line_path(monkeypatch):
     monkeypatch.setenv("RR_GROUPED_NORMALS", "1")
     _stub(monkeypatch, set())
     sheet = SHEET.replace('- **Normal-study path:** "The liver, spleen and pancreas are unremarkable. The kidneys are '

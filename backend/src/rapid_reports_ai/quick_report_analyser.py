@@ -858,35 +858,58 @@ is expected to cause.
 This bullet is an addition: the Sections line and every other part of the sheet stay exactly as they would without it.
 """
 
-# Opt-in (RR_GROUPED_NORMALS): the Normal-study path as consultant group sentences, so the brief
-# can verify each structure and render the sentence minus the affected ones (normal_groups).
-# Structural placeholders only (feedback_case_agnostic_prompts).
+# Opt-in (RR_GROUPED_NORMALS): the Normal-study path as two linked views — one atom per structure
+# or structure-specific negative, and consultant prose sentences naming their atoms — so the brief
+# can label each atom, check each sentence against its atoms, and render the sentence minus the
+# atoms that cannot be asserted (linked_normals). Structural placeholders only
+# (feedback_case_agnostic_prompts).
 GROUPED_NORMALS = """
 
 ---
 
-## Normal-study path as grouped sentences — OVERRIDES conflicting guidance above
+## Normal-study path as linked atoms and prose — OVERRIDES conflicting guidance above
 
 This governs the Normal-study path wherever it is described above (the Structural Pattern
 guidance and the output template field). Where it conflicts with "one canonical line per
-system" for that field, this section governs. The sweep, its order and its coverage are
-unchanged: every in-scope structure the sweep visits still appears exactly once. The field stays
-one quoted string on the bullet line, as the template shows, never sub-bullets.
+system" or with the quoted-string form of that field, this section governs. The sweep, its
+order and its coverage are unchanged: every in-scope structure the sweep visits still appears.
 
-- Write one sentence per sweep paragraph, in sweep order. The sentence names that paragraph's
-  structures as a list and gives one bare descriptor for all of them:
-  "The A, B and C are unremarkable."
-- A structure that carries a structure-specific negative gets its own sentence, with the
-  negative as a short tail clause: "The D is unremarkable with no X." / "The E and F are
-  unremarkable with no Y or Z." Never pool negatives from different structures into one tail.
-- A negative that belongs to no single structure stays its own short sentence: "No X."
-- Structure names only in the list: no qualifiers, sizes, measurements, comparisons or
-  descriptions of appearance. The descriptor is bare: "unremarkable", "normal", "clear",
-  "intact", "patent".
-- Every structure is named once, at its own sweep position; a structure that leads the
-  clinical question keeps its own sentence.
+Write the field as indented sub-bullets of exactly two kinds, and nothing else (no quotes, no
+headers, no commentary). Every line has three parts separated by " | ":
+
+- **Normal-study path:**
+  - N1 | A | The A is unremarkable.
+  - N2 | B | The B is unremarkable.
+  - N3 | C | The C is unremarkable.
+  - N4 | D | The D is unremarkable.
+  - N5 | X | No X in the D.
+  - N6 | Y | No Y.
+  - P1 | N1 N2 N3 | The A, B and C are unremarkable.
+  - P2 | N4 N5 | The D is unremarkable with no X.
+  - P3 | N6 | No Y.
+
+Atoms (N lines) come first, in sweep order, numbered N1, N2, ... :
+- One N line per structure the sweep visits: the structure's exact term, then one short
+  sentence stating that structure alone is normal.
+- A structure-specific negative is its own N line: the finding's exact term, then "No <finding>
+  in the <structure>." A negative that belongs to no single structure: "No <finding>."
+- One structure or one finding per atom; never a list, "or", or "and" inside an atom.
+
+Prose (P lines) follows, in sweep order, numbered P1, P2, ... : one sentence per sweep
+paragraph, written as a consultant would, preceded by the ids of the atoms it states.
+- Every N id appears in exactly one P line, and a P line states only its own atoms.
+- The sentence reuses each atom's term exactly, word for word: never a broader, narrower,
+  shortened or merged name. Items that share a word are written in full ("the A tendons and
+  B tendons"), never contracted.
+- A structure-specific negative is a short tail on its own structure's sentence: "The D is
+  unremarkable with no X." Never pool negatives from different structures into one tail.
+- Ducts, vessels and hollow organs are not grouped in one sentence with solid organs unless the
+  sweep visits them in the same step.
+- No measurements, sizes, qualifiers, comparisons or descriptions of appearance anywhere in the
+  field. The descriptor is bare: "unremarkable", "normal", "clear", "intact", "patent".
+- A structure that leads the clinical question keeps its own sentence.
 - Where a Canonical default-normal lines list is emitted, it keeps one line per system; only
-  the Normal-study path is grouped.
+  the Normal-study path is written this way.
 """
 
 # Directives every production analyser call carries. Harnesses that pass an
