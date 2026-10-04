@@ -79,6 +79,11 @@ The lab copy of the adjudicator and verifier (`scripts/review_labs/judgement.py`
     - **C1n** "Read only this one report statement: "{c}". It states a finding as more certain or more severe than the dictated findings do, for example a possibility stated as a fact, or a milder grade stated as a worse one." If it is ≥ 0.5, raise `overstated`, detector `jev.certainty`.
 
     The unsure band 0.4–0.6 on either question goes to the adjudicator, with `evidence.jev_unsure` naming the question. The thresholds are named constants marked `# provisional: Gate F`. Task 3's code `overstated` detector is removed: code owns numbers, dates, priors, modality and size words only.
+12. **Only code-built edits are pre-applied (Hassan, 2026-10-04; verifier re-review of 431c96c found 40 breaks, 18 on auto paths).** Guards around LLM-written edits are not a safe basis for automatic change. `verifier.preapply_failures(report, edit, kind, dictation, *, code_built, line_text, sections)` returns `[]` only when all of these hold; Task 10's `build_item` sets `pre_applied` only on `[]` (plus the usual verifier pass), otherwise the item stays a one-click `action`:
+    - **Removal** (`kind` in `REMOVAL_KINDS`): `code_built` is True (the edit came from `_negative_fix` / `remove_negative_clause`), mode `remove`, the removed text is negative-only, and it is not dictated text.
+    - **Insert** (`kind == "absent"`): code builds the text from the dictated line (`insert_from_line`: tidy only: strip a list marker, capitalise, end with a full stop; no rewording). The anchor ends at a sentence end or is a label line inside FINDINGS; no newline or section name in the text; every number and side is in the dictated line.
+    - **Positive correction** (`kind == "contradicted"` on a positive statement, mode `replace`): the changed tokens equal a contiguous run of the dictated line's tokens (side, number or hedge), token for token; nothing else in the sentence changes.
+    - Every other edit, including anything Qwen wrote, is never pre-applied.
 10. **Task 14 items bypass the adjudicator.** The negatives classifier is the one reasoning call that owns that judgement, so its `ReviewItem`s are built directly. They are not merged with coverage candidates, so a negative's `pre_applied` removal can't be swallowed by a group adjudication.
 
 ## File structure
