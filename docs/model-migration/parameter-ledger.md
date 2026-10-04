@@ -1901,3 +1901,30 @@ Live data was too thin: one report since L-47 carried an automatic edit. Hassan 
 - **Auto-correct a positive contradiction** only as a verbatim restoration of dictated wording, verified.
 
 The replay of earlier reports (`gate_d replay`) is built and tested, and stays available for the Gate F shadow read.
+
+### L-55 · Certainty and severity: Jev beats code; Jev owns it, 2026-10-04
+
+Code checks (Gate B1, peer gold, 41 reports):
+- invented numbers, priors and modality words: 3/5 caught;
+- dropped hedges: **6/14** via `hedge_tag`;
+- 0.68 flags per report that match no gold span;
+- invented findings without a number: 0/16, by design (W1n's job, L-53).
+
+The `hedge_tag` misses split three ways:
+- lexicon gaps ("suspicion of", "cannot exclude");
+- comparing against the wrong paired line;
+- **meaning upgrades with no hedge word** ("near-occlusion" → "occlusion", "sclerosis" → "MRONJ extension", "subtle erosion" → "metastasis"). Code can never see these.
+
+Certainty wording lab (`scripts/review_labs/certainty_lab.py`): 85 items, made up of 35 overstated (14 real upgrades, 14 synthetic hedge-hardenings, 7 synthetic severity bumps) and 50 faithful (the B2 stated set, including 10 that keep their hedge). 2 runs. **Directional: below the 100 items needed for adoption, and 35/50 rather than balanced.**
+
+| Wording | Real caught | Synth hedge | Synth severity | False alarms | Drift | AUC |
+|---|---|---|---|---|---|---|
+| **C1n** "states a finding as more certain or more severe than the dictated findings do…" | **12/14** | 11/14 | **7/7** | **1/50** | 0.08 | 0.955 |
+| C2n (positive polarity) | 12/14 | 8/14 | 7/7 | 1/50 | 0.09 | 0.963 |
+| C3c Choice same / more / less / can't tell | 13/14 | 11/14 | 7/7 | 3/50 | 0.12 | 0.959 |
+
+**Decision (Hassan: "code isn't best for this; keep code where it's good"):**
+- **C1n owns certainty and severity** in the Accuracy lane, asked of every positive report clause, at < 0.5 in the measured gap. Its unsure band goes to the adjudicator.
+- **The code `overstated` detector is removed**, so one judgement has one owner; `hedge_tag` stays only as an evidence helper.
+- **Code keeps the mechanical checks:** numbers, dates, prior studies, modality words and size words.
+- Before adoption, re-run C1n at ≥ 100 balanced items, using the Gate F shadow sample.

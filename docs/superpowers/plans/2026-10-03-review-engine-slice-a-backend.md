@@ -74,6 +74,11 @@ The lab copy of the adjudicator and verifier (`scripts/review_labs/judgement.py`
      
      Nothing the radiologist dictated is ever pre-applied as a removal.
    - **Keys use the candidate's ORIGINAL kind,** never the adjudicator's refined kind, so they stay stable across runs. Task 10's `build_item` passes `first.kind` to `item_key`. When an item has neither anchor nor line text, key on `first.kind` plus the candidate evidence, never on the LLM-written label.
+11. **Accuracy-lane Jev questions (ledger L-53, L-55; 2026-10-04).** Task 6's shared Jev pass asks every positive (non-negative) report clause, in the dictation-plus-history state, two noul questions:
+    - **W1n** "The dictated findings report this finding, including as a possibility, in any wording. Report statement: "{c}"". If it is < 0.5, raise `unsupported`, detector `jev.supported`.
+    - **C1n** "Read only this one report statement: "{c}". It states a finding as more certain or more severe than the dictated findings do, for example a possibility stated as a fact, or a milder grade stated as a worse one." If it is ≥ 0.5, raise `overstated`, detector `jev.certainty`.
+
+    The unsure band 0.4–0.6 on either question goes to the adjudicator, with `evidence.jev_unsure` naming the question. The thresholds are named constants marked `# provisional: Gate F`. Task 3's code `overstated` detector is removed: code owns numbers, dates, priors, modality and size words only.
 10. **Task 14 items bypass the adjudicator.** The negatives classifier is the one reasoning call that owns that judgement, so its `ReviewItem`s are built directly. They are not merged with coverage candidates, so a negative's `pre_applied` removal can't be swallowed by a group adjudication.
 
 ## File structure
