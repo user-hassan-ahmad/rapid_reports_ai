@@ -368,7 +368,7 @@ The verifier checks the **fix**, never the reading. A failed check removes the e
 **Decided 2026-10-04 (Hassan):**
 - **Missed dictated findings are auto-inserted,** visibly and undoably ("restored from your dictation · undo"). Only `absent` items (a whole finding missing) that pass the verifier qualify. Partial and differs items stay one-click (amber), because v4 over-calls those (Gate A peer read) and the old live insertions were 11/148 correct.
 - **Contradicted *generated* negatives are auto-removed,** visibly and restorably ("removed · contradicts your dictation", negatives classifier, Plan 2 Task 14). A statement the radiologist dictated is never auto-removed (f85aa670, PR #6).
-- **Positive statements the dictation contradicts:** proposed, pending Hassan: auto-correct only when the fix restores dictated wording verbatim (side, number or hedge) and is verified; everything else is one-click. Measure it in the Gate F shadow read before going live.
+- **Positive statements the dictation contradicts (decided 2026-10-04):** auto-correct only when the fix restores dictated wording verbatim (a side, number or hedge the dictation states explicitly) and the verifier confirms it; everything else is one-click. Measure it in the Gate F shadow read before going live.
 - **Gate labels:** Hassan delegated labelling to Claude's peer reads plus the agreed principles (2026-10-04). Hassan spot-checks on request instead of labelling every item.
 
 The original framing below is kept for the record.
