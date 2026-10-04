@@ -53,3 +53,33 @@ def test_review_input_shape():
     art = GenerationArtifacts(report="R", dictated_findings="D", sections=["FINDINGS"], options=[])
     inp = ReviewInput(report_id="r1", pathway="quick", artifacts=art, clinical_history="", scan_type="CT")
     assert inp.synthesis is None and inp.pre_edit_report is None
+
+
+def test_zero_length_span_within_or_at_boundary_overlaps():
+    assert len(merge([C(anchor=(0, 10)), C(anchor=(5, 5))])) == 1
+    assert len(merge([C(anchor=(0, 5)), C(anchor=(5, 5))])) == 1
+    assert len(merge([C(anchor=(5, 5)), C(anchor=(5, 9))])) == 1
+    assert len(merge([C(anchor=(5, 5)), C(anchor=(5, 5))])) == 1
+    assert len(merge([C(anchor=(0, 4)), C(anchor=(5, 5))])) == 2
+
+
+def test_empty_line_id_never_joins():
+    assert len(merge([C(line_id=""), C(line_id="")])) == 2
+
+
+def test_span_validates_bounds():
+    import pytest
+    for s, e in [(-1, 2), (5, 4)]:
+        with pytest.raises(ValueError):
+            Span(start=s, end=e, text="x")
+    assert Span(start=0, end=0, text="").end == 0
+
+
+def test_evidence_and_pre_apply_fields():
+    it = ReviewItem(key="k", report_id="r", run_id="u", lane="accuracy", kind="k", cls="action")
+    assert it.evidence is None
+    it2 = ReviewItem(key="k", report_id="r", run_id="u", lane="accuracy", kind="k", cls="action",
+                     evidence={"check_reason": "number", "pointer": "p"})
+    assert it2.evidence["check_reason"] == "number"
+    assert C().pre_apply is False
+    assert Candidate(lane="additions", kind="k", detector="d", pre_apply=True).pre_apply is True
