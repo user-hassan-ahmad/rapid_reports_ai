@@ -38,7 +38,12 @@ Pre-apply (binding corrections 9, 10, 12; spec §9). An item is `pre_applied` on
 - it still applies cleanly in sequence: negatives' removals go first (already sequential, `log["report"]`), then the
   lane edits in item order, each re-checked with `preapply_failures` against the text it is actually applied to.
   One that no longer applies falls back to an open one-click item.
-Negatives items (Task 14) bypass merge and the adjudicator and are appended as built."""
+Negatives items (Task 14) bypass merge and the adjudicator and are appended as built.
+
+One card per claim (`claims`): a lane claim flagged in FINDINGS and repeated in IMPRESSION (same lane and kind, a
+conservative content match) is grouped before adjudication (`group_claims`), so one verdict covers both; the item's
+anchor is the FINDINGS copy and `evidence.also_anchors` lists the IMPRESSION copy. The negatives classifier does the
+same in its routing (`negatives.route`)."""
 from __future__ import annotations
 
 import asyncio
@@ -53,7 +58,7 @@ from typing import Dict, List, Optional, Tuple
 from pydantic import BaseModel
 
 from ..report_review import is_negative
-from . import adjudicator, jev_pass, negatives, store, verifier
+from . import adjudicator, claims, jev_pass, negatives, store, verifier
 from .alignment import Alignment, align
 from .checks import run_checks
 from .items import Candidate, Edit, ReviewInput, ReviewItem, Span, item_key, merge, text_hash
@@ -397,14 +402,61 @@ def one_card_per_clause(items: List[ReviewItem], neg_items: List[ReviewItem]
     return ([it for it in items if it.id not in drop_lane], [n for n in neg_items if n.id not in drop_neg], log)
 
 
+def _cand_section(c: Candidate, report: str, names: List[str]) -> Optional[str]:
+    if c.section:
+        return c.section
+    return verifier._section_of(report, c.anchor.start, names) if c.anchor is not None else None
+
+
+def group_claims(cands: List[Candidate], report: str, names: List[str]
+                 ) -> Tuple[List[List[Candidate]], List[bool]]:
+    """(groups, linked): `merge` plus one claim flagged in FINDINGS and repeated in IMPRESSION (same lane and kind,
+    `claims.same_claim`), grouped BEFORE adjudication so one verdict covers both. A linked group lists its
+    findings-role members first, so the item's primary anchor is the FINDINGS copy."""
+    idx = [i for i, c in enumerate(cands) if c.anchor is not None and c.anchor.text]
+    entries = [(_cand_section(cands[i], report, names), cands[i].anchor.text, f"{cands[i].lane}|{cands[i].kind}")
+               for i in idx]
+    links = [(idx[f], idx[m]) for f, m in claims.link_pairs(entries)]
+    linked_ids = {id(cands[i]) for pair in links for i in pair}
+    groups, linked = [], []
+    for g in merge(cands, links):
+        is_linked = any(id(c) in linked_ids for c in g)
+        if is_linked:
+            sec = {id(c): claims.role_of(_cand_section(c, report, names)) for c in g}
+            g = [c for c in g if sec[id(c)] == "findings"] + [c for c in g if sec[id(c)] != "findings"]
+        groups.append(g)
+        linked.append(is_linked)
+    return groups, linked
+
+
+def also_anchors(primary: Optional[Span], group: List[Candidate], h: Optional[str] = None) -> List[dict]:
+    """The other copies of a linked claim: distinct anchors in the group that do not overlap the primary."""
+    out: List[Span] = []
+    for c in group:
+        a = c.anchor
+        if a is None or primary is None or a.end <= a.start:
+            continue
+        if a.start < primary.end and primary.start < a.end:
+            continue
+        if any(a.start < o.end and o.start < a.end for o in out):
+            continue
+        out.append(a)
+    return [a.model_copy(update={"text_hash": h}).model_dump() for a in sorted(out, key=lambda a: a.start)]
+
+
 async def _judge_and_verify(inp: ReviewInput, run_id: str, cands: List[Candidate], al: Optional[Alignment],
                             items: List[ReviewItem], plans: Dict[str, "_Plan"],
                             group_of: Dict[str, List[Candidate]], timings: Dict[str, int]) -> List[adjudicator.Outcome]:
-    """merge → adjudicate → items (+ pre-apply plans) → verify; appends to `items` / `plans` / `group_of`."""
-    outcomes = await adjudicator.adjudicate(inp, merge(cands))
+    """merge (+ one claim across FINDINGS / IMPRESSION) → adjudicate → items (+ pre-apply plans) → verify; appends to `items` / `plans` / `group_of`."""
+    groups, linked = group_claims(cands, inp.artifacts.report, list(inp.artifacts.sections or []))
+    outcomes = await adjudicator.adjudicate(inp, groups)
     new: List[ReviewItem] = []
-    for o in outcomes:
+    for o, is_linked in zip(outcomes, linked):     # adjudicate keeps group order
         it = build_item(inp, run_id, o)
+        if is_linked:
+            also = also_anchors(it.anchor, o.group, text_hash(inp.artifacts.report))
+            if also:
+                it.evidence = {**(it.evidence or {}), "also_anchors": also}
         p = plan_preapply(inp, o, it, al)
         if p is not None:
             plans[it.id] = p

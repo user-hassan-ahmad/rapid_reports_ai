@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import re
 import uuid
-from typing import Dict, List, Literal, Optional
+from typing import Dict, Iterable, List, Literal, Optional, Tuple
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -114,9 +114,9 @@ def _overlap(a: Optional[Span], b: Optional[Span]) -> bool:
     return a.start < b.end and b.start < a.end
 
 
-def merge(cands: List[Candidate]) -> List[List[Candidate]]:
-    """Group candidates whose anchors overlap or that share a dictated line (transitively). Groups keep
-    first-seen order, and members keep input order."""
+def merge(cands: List[Candidate], links: Iterable[Tuple[int, int]] = ()) -> List[List[Candidate]]:
+    """Group candidates whose anchors overlap or that share a dictated line (transitively), plus the given index
+    `links` (one claim in FINDINGS and IMPRESSION). Groups keep first-seen order, and members keep input order."""
     parent = list(range(len(cands)))
 
     def root(i: int) -> int:
@@ -125,13 +125,18 @@ def merge(cands: List[Candidate]) -> List[List[Candidate]]:
             i = parent[i]
         return i
 
+    def union(i: int, j: int) -> None:
+        ri, rj = root(i), root(j)
+        if ri != rj:
+            parent[max(ri, rj)] = min(ri, rj)
+
     for i in range(len(cands)):
         for j in range(i + 1, len(cands)):
             a, b = cands[i], cands[j]
             if _overlap(a.anchor, b.anchor) or (a.line_id and a.line_id == b.line_id):
-                ri, rj = root(i), root(j)
-                if ri != rj:
-                    parent[max(ri, rj)] = min(ri, rj)
+                union(i, j)
+    for i, j in links:
+        union(i, j)
     groups: Dict[int, List[Candidate]] = {}
     for i, c in enumerate(cands):
         groups.setdefault(root(i), []).append(c)
