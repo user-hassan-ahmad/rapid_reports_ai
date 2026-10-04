@@ -1814,3 +1814,56 @@ stated / unclear → nothing. A failed report call or an unreadable answer inser
 **Decision:** keep the single-call adjudicator. Jev stays a detector and verifier, not a reasoning tool.
 
 **Open lead, untested:** give the judge the system's criteria (the guideline synthesis already carries `criteria` text per classification) instead of relying on Qwen's recall. That targets failure 1 directly.
+
+### L-51 · Gate A: coverage recall with adjudicator v4 / v4.1, 2026-10-04
+
+Plan `docs/superpowers/plans/2026-10-03-review-engine-gate-labs.md` Part A; code `backend/src/rapid_reports_ai/scripts/review_labs/` (gate_a, judgement). Data: the 50 v3 cards plus the 22 unsampled Jev flags from the same 41 reports (72 items). **Labels are Claude peer reads, blind and radiologist-cap**, following the policy in memory `review-item-policy` (Hassan delegated labelling on 2026-10-04: memory `peer-read-as-gate`). Production text stays in the scratchpad.
+
+| Measure (bar) | v4 (2 runs) | v4.1 (1 run) |
+|---|---|---|
+| Action recall (≥ 90%) | **14/14** | 13/14 |
+| Material losses shown (all) | **all** | missed c42 |
+| Everything worth showing (action + minor) actually shown | **47/53** | 44/53 |
+| Action precision (≥ 85%) | 48% | 57% |
+| Minor per report, median (≤ 2) | 1 | 0 |
+| Class change across runs (≤ 10%) | **0/72** | n/a |
+| Fixes right (peer, items 1–36) | 14/23 | 16/20 |
+
+- **v4 fixes v3's recall loss.** v3 suppressed 23 likely-real items; v4 hides none of the material losses.
+- **v4.1** adds a sharper action definition, a blanket-normal rule and gradability rules. It improved precision a little and fixed more of the fixes, but lost one material item (c42), so a recall regression.
+- **Both fail the action-precision bar.** v4 promotes low-impact descriptor drops to action. Because action and minor are both shown, this is a ranking issue, not a safety one.
+- **Recurrent misses:**
+  - c6: the duct calibre written as the pancreatic body/tail size, a misattribution neither version catches;
+  - c2: a dropped right effusion;
+  - c21/c23: false actions from not separating a collection from free fluid, or a focal from a global finding.
+
+**Decision:** keep **v4** for Coverage, since it has full recall with zero material loss, and leave the action/minor boundary alone until the Gate F shadow read. v4.1's gradability rules stay with the Additions adjudicator (L-52); they are lane-specific.
+
+### L-52 · Gate C: additions, 2026-10-04
+
+Data: stored S4 synthesis for 33 of the 41 reports, the "already in report" Jev gate, the adjudicator with and without supplied criteria, the 100-item `s1_phase3.json` grade set, and the clinical pass on all 41. Labels: Claude peer reads.
+
+- **Safety:**
+  - v4: 12 hard violations, with only 2 caught by the verifier (invented negatives, grades from undictated or misread features, clinical-only scales, management, a slip-based grade).
+  - **v4.1 plus additions code guards:** hard violations with a working Apply fix fell from 10/12 to **1/12**, and none in the 8 newly shown rows; action rows fell from 16 to 1.
+  - Soft risk remaining: a follow-up interval that is wrong but passes the verifier.
+- **Value:** about a third of the shown items are correct and useful (v4 14/49; v4.1's new rows 1/8). The lane still promotes "nothing to add" points to minor, a calibration issue.
+- **s1 gradability:**
+
+  | | False "can't grade" | Overcall | Balanced accuracy |
+  |---|---|---|---|
+  | v4 | 0.04 | 0.58 | 0.69 |
+  | v4.1 | 0.30 | 0.16 | 0.77 |
+
+  L-50's single call reached 0.82. Over-demanding is the safer error, since `characterise` is capped at minor.
+- **Criteria arm:** only 22 of 100 items had production criteria (per-grade text only), so it is directional only and not adopted.
+- **"Already in report" Jev gate:** 5% false "stated" in the peer sample, with no exit-option use.
+- **Clinical pass v1.1:**
+  - characterise 17/20 useful, inconsistencies 9/11, safety 3/4;
+  - urgency agreement 32/41, and critical-tier recall rose from 1/4 to 3/4;
+  - catches history-contradicted normals.
+
+**Decision:**
+- Additions ships as **minor/option only**, behind the code guards (no new findings, negatives or management). Guideline items render as "suggested · not included" ghost text.
+- Next calibration step: an Additions-specific class rule so that the adjudicator's own "nothing to add" reasoning becomes suppress.
+- The clinical pass is the strongest Additions producer and is kept.
