@@ -40,6 +40,16 @@ _PLURAL_WORDS = {"viscera", "adnexa", "adnexae", "vertebrae", "bronchi", "data"}
 _SINGULAR_WORDS = {"pons", "lens", "series", "mons"}
 
 
+_MODIFIERS = {"left", "right", "upper", "lower", "deep", "superficial", "internal", "external", "central",
+              "peripheral", "small", "large", "intra", "extra", "both"}
+
+
+def _is_modifier(item: str) -> bool:
+    """A one-word list item that is an adjective sharing the next item's head noun."""
+    w = item.lower()
+    return " " not in w and (w in _MODIFIERS or bool(re.search(r"(?:al|ar|ic|ior|ous)$", w)))
+
+
 def is_plural(structure: str) -> bool:
     w = re.findall(r"[a-z]+", structure.lower())[-1:] or [""]
     w = w[0]
@@ -89,6 +99,8 @@ def parse_grouped(sentence: str) -> Optional[Grouped]:
     structures = [p.strip() for p in _SUBJ_SEP.split(subj)]
     if not all(structures) or any(_BAD_ITEM.search(p) for p in structures) or _BAD_DESC.search(desc):
         return None
+    if len(structures) > 1 and any(_is_modifier(p) for p in structures[:-1]):
+        return None   # "dorsal and volar soft tissues": a shared head noun, not two structures
     if subj[:1].isupper() and not m.group("lead") and len(structures) > 1:
         return None   # "Visualised A and B": an unled subject is left alone
     tail, conj = [], "or"
@@ -199,6 +211,17 @@ def _stems(text: str) -> set:
             continue
         out.add(w[:-1] if w.endswith("s") and len(w) > 4 and not w.endswith("ss") else w)
     return out
+
+
+_DICTATED_NORMAL = re.compile(r"\b(?:normal|unremarkable|intact|preserved|clear|patent)\b", re.I)
+_NEGATED = re.compile(r"^\s*(?:no|not|nil|without)\b", re.I)
+
+
+def guard_items(items: List[str], negatives: List[str]) -> List[str]:
+    """What the guard compares against: every dictated negative and every dictated positive finding.
+    A dictated normal statement ("tendons normal") is left out: the grouped sentence saying the same
+    structure is unremarkable cannot displace it, and including it fired on nearly every sentence."""
+    return list(negatives) + [i for i in items if not _NEGATED.search(i) and not _DICTATED_NORMAL.search(i)]
 
 
 def dictated_overlap(atom_texts: List[str], dictated: List[str]) -> List[str]:

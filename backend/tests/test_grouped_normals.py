@@ -114,6 +114,20 @@ def test_dictated_overlap_on_structure_and_tail_words():
     assert ng.dictated_overlap(["small bowel"], ["small left pleural effusion"]) == []
 
 
+def test_shared_modifier_subject_is_left_alone():
+    assert ng.parse_grouped("The remaining metacarpal bases and dorsal and volar soft tissues are unremarkable.") is None
+    assert ng.parse_grouped("The left and right kidneys are unremarkable.") is None
+    assert ng.parse_grouped("The distal radius, ulna and distal radioulnar joint are unremarkable.").structures == [
+        "distal radius", "ulna", "distal radioulnar joint"]
+
+
+def test_guard_compares_against_negatives_and_positive_findings_not_dictated_normals():
+    items = ["Normal tendons", "No oedema of the ligaments", "3 mm effusion in the joint"]
+    g = ng.guard_items(items, ["No oedema of the ligaments"])
+    assert g == ["No oedema of the ligaments", "3 mm effusion in the joint"]
+    assert ng.dictated_overlap(["extensor tendons"], g) == []
+
+
 # ── brief wiring ────────────────────────────────────────────────────────────
 
 SHEET = '''# Skill Sheet: CT abdomen — test

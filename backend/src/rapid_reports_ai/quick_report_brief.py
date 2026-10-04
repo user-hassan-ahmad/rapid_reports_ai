@@ -342,7 +342,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         keep, flagged = [], []
         qaff = set(qw.affected_normals)
         affected = lambda k, j=None: score(f"n{k}" if j is None else f"n{k}a{j}") >= 0.5 or normal_qidx[(k, j)] in qaff
-        said_items = dictated_negatives(items) + items
+        said_items = _ng.guard_items(items, dictated_negatives(items))
         offset = 0
         for k, t in enumerate(normals):
             g = grouped[k]
