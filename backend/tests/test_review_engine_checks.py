@@ -209,6 +209,31 @@ def test_number_regressions(report, dictation, history, flag):
     assert has(run(f"FINDINGS:\n{report}\n", dictation, history=history), "unsupported", "code.numbers") is flag
 
 
+@pytest.mark.parametrize("report,dictation,flag", [
+    ("Reported by Dr Smith, GMC 1234567.", "- liver normal", False),
+    ("Dr Jones GMC 7662932", "- liver normal", False),
+    ("NMC 12345678.", "- liver normal", False),
+    ("Contact ext 4567 for queries.", "- liver normal", False),
+    ("Bosniak IIF cyst.", "- renal cyst", False),
+    ("Grade II injury.", "- injury", False),
+    ("Type IV lesion.", "- lesion", False),
+    ("Clavien III complication.", "- complication", False),
+    ("Bosniak III cyst.", "- bosniak 2 cyst", True),
+    ("No lymphadenopathy (>10 mm).", "- no nodes", False),
+    ("No nodes greater than 10 mm short axis.", "- no nodes", False),
+    ("Within normal limits (<7 mm).", "- normal", False),
+    ("No nodes up to 12 mm.", "- no nodes", False),
+    ("Node measures 12 mm.", "- node", True),
+    ("Node greater than 12 mm.", "- node", True),
+    ("Lesion of 45 Hounsfield units.", "- lesion 45 HU", False),
+    ("Lesion of 45 H.U.", "- lesion 45 HU", False),
+    ("Lesion of 45 HU.", "- lesion 45 Hounsfield units", False),
+    ("Lesion of 50 HU.", "- lesion 45 HU", True),
+])
+def test_false_positive_sources(report, dictation, flag):
+    assert has(run(f"FINDINGS:\n{report}\n", dictation), "unsupported", "code.numbers") is flag
+
+
 def test_list_dash_marker_is_not_a_number():
     assert not run("IMPRESSION:\n1 - Cholecystitis.\n", "- cholecystitis")
 

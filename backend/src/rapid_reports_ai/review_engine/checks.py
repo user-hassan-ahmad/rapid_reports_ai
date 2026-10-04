@@ -65,6 +65,15 @@ _PRIOR = re.compile(rf"\b(?:{'|'.join(PRIOR_PHRASES)})\b", re.I)
 _PRIOR_HISTORY = re.compile(rf"\b(?:prior|previous)\s+(?:\w+\s+)?(?:{_alt(PRIOR_HISTORY_NOUNS)})\b", re.I)
 _SRC_PRIOR = re.compile(rf"\b(?:{_alt(SOURCE_PRIOR_WORDS)})\b(?:\W+\w+){{0,{PRIOR_WINDOW_TOKENS}}}?\W+"
                         rf"(?:{_alt(SOURCE_STUDY_NOUNS)}|(?:19|20)\d\d|{DATE_PATTERN})\b", re.I)
+# Signature / registration lines are not findings: "GMC 7662932", "Reported by Dr X", "tel 0123", "ext 4567".
+_SIGNATURE = re.compile(r"\b(?:GMC|NMC|HCPC|registration|reg\.?\s*(?:no|number)|ext(?:ension)?|tel(?:ephone)?|"
+                        r"phone|bleep|pager)\b\.?\s*(?:no\.?|number|#|:)?\s*\d|"
+                        r"\b(?:reported|dictated|verified|authori[sz]ed|signed)\s+by\b", re.I)
+# A comparator number inside a negative / normal clause is a reference threshold, not a measurement.
+_NORMAL_CLAUSE = re.compile(r"\b(?:normal|unremarkable|within normal limits|wnl)\b", re.I)
+_THRESHOLD = re.compile(r"(?:[<>≥≤]=?|\b(?:greater|more|larger|bigger|less|smaller|fewer)\s+than|\bup\s+to|"
+                        r"\bover|\bunder|\bexceeding)\s*\d+(?:\.\d+)?(?:\s*[x×]\s*\d+(?:\.\d+)?)*"
+                        r"(?:\s*(?:mm|cm|ml|%|HU))?", re.I)
 _LIST_MARK = re.compile(r"^\s*\d+(?:[.)]\s+|\s*[-–]\s+(?=[A-Za-z]))")
 _MONTHS = {m: i for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov",
                                        "dec"), 1)}
@@ -72,7 +81,7 @@ _MONTHS = {m: i for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun",
 # ── number normalisation ─────────────────────────────────────────────────────
 UNIT_SPELLINGS = ((r"millimet(?:re|er)s?", "mm"), (r"centimet(?:re|er)s?", "cm"),
                   (r"cc|cm3|cubic centimet(?:re|er)s?", "ml"), (r"millilit(?:re|er)s?", "ml"),
-                  (r"per ?cent", "%"))               # provisional: Gate B1
+                  (r"per ?cent", "%"), (r"hounsfield\s+units?|h\.u(?=\.|\b)\.?|hu", "HU"))  # provisional: Gate B1
 NUMBER_WORDS = ("one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
                 "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen",
                 "twenty")                                                              # provisional: Gate B1
@@ -143,10 +152,21 @@ def modality(scan: Optional[str]) -> Optional[str]:
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
-def _norm_numbers(text: str, spelled: bool = False) -> str:
+def _grade_words(text: str) -> Set[str]:
+    """Classification words (grade, type, Bosniak...) the text actually grades ("Bosniak IIF", "grade 2")."""
+    return {m.group(1).lower() for m in re.finditer(rf"\b({_alt(GRADE_WORDS)})\s+(?:[ivx]+|\d+)\b", text or "", re.I)}
+
+
+def _norm_numbers(text: str, spelled: bool = False, grades: Optional[Set[str]] = None) -> str:
     """Units to their abbreviation (cc → ml, millimetres → mm), roman grades to arabic, and (source side only)
-    spelled numbers one–twenty to digits."""
-    t = _GRADE_ROMAN.sub(lambda m: f"{m.group(1)} {_ROMAN[m.group(2).lower()]}", text or "")
+    spelled numbers one–twenty to digits. With `grades` (report side), a roman grade converts only when the
+    source grades with the same classification word; otherwise the numeral is dropped (grading is not a number
+    check's job)."""
+    def _roman(m):
+        if grades is not None and m.group(1).lower() not in grades:
+            return m.group(1)
+        return f"{m.group(1)} {_ROMAN[m.group(2).lower()]}"
+    t = _GRADE_ROMAN.sub(_roman, text or "")
     if spelled:
         t = _NUMWORD.sub(lambda m: str(NUMBER_WORDS.index(m.group(0).lower()) + 1), t)
     for pat, rep in _UNITS:
@@ -242,6 +262,7 @@ def run_checks(report: str, dictation: str, history: str, scan: str, al: Alignme
                study_title: Optional[str] = None) -> List[Candidate]:
     source = f"{dictation}\n{history}"
     src_text = _norm_numbers(_DATE.sub(" ", source), spelled=True)
+    src_grades = _grade_words(source)
     src_nums = numbers(src_text)                         # numbers() already drops level tokens
     src_vals = {_value(n) for n in src_nums}
     src_dates = {_date_key(d) for d in _DATE.findall(source)}
@@ -261,8 +282,11 @@ def run_checks(report: str, dictation: str, history: str, scan: str, al: Alignme
         # unsupported: numbers, dates, prior-study references with no match in dictation or history. A value that
         # matches with a different or missing unit on one side is supported ("6" / "6 mm", "45 cc" / "45 ml").
         dates = [d for d in _DATE.findall(text) if not _date_supported(_date_key(d), src_dates)]
-        nums = sorted(n for n in numbers(_norm_numbers(_DATE.sub(" ", text)))
-                      if n not in src_nums and _value(n) not in src_vals)
+        ntext = _norm_numbers(_DATE.sub(" ", text), grades=src_grades)
+        if _NEGATED.search(text) or _NORMAL_CLAUSE.search(text):
+            ntext = _THRESHOLD.sub(" ", ntext)
+        nums = [] if _SIGNATURE.search(text) else sorted(
+            n for n in numbers(ntext) if n not in src_nums and _value(n) not in src_vals)
         if nums:
             add(_cand(report, c, "unsupported", "code.numbers", {"numbers": nums}))
         if dates:
