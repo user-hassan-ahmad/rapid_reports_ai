@@ -174,8 +174,14 @@ D_STATED_MIN = 0.80     # D1: an atom with P(stated) below this is dropped from 
 A_ADDED_MIN = 0.30      # A1: a sentence with P(added) at or above this states something outside its atoms
 
 
+def _no_articles(s: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"\bthe\b", " ", s, flags=re.I)).strip()
+
+
 def term_in(term: str, sentence: str) -> bool:
-    return bool(re.search(r"(?<![A-Za-z])" + re.escape(term) + r"(?![A-Za-z])", sentence, re.I))
+    """The term, word for word, in the sentence; "the" is ignored ("hook of hamate" = "hook of the hamate")."""
+    t, s = _no_articles(term), _no_articles(sentence)
+    return bool(t) and bool(re.search(r"(?<![A-Za-z])" + re.escape(t) + r"(?![A-Za-z])", s, re.I))
 
 
 _VERB = re.compile(r"\b(?:is|are|appears?|remains?|shows?|demonstrates?|measures?|has|have)\b", re.I)

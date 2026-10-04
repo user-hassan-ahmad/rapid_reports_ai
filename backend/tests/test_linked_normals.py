@@ -104,6 +104,12 @@ def test_multi_predicate(s, multi):
     assert ln.multi_predicate(s) is multi
 
 
+def test_term_in_ignores_articles_only():
+    assert ln.term_in("Hook of hamate", "The hook of the hamate is unremarkable.")
+    assert not ln.term_in("Lymph nodes", "No lymphadenopathy.")
+    assert not ln.term_in("ulna", "The ulnar nerve is unremarkable.")
+
+
 def test_code_check_flags_multi_predicate_prose():
     u = ln.Unit("The A is intact, the B is normal.", "P1", [ln.Atom("N1", "A", "The A is intact."),
                                                          ln.Atom("N2", "B", "The B is normal.")])
