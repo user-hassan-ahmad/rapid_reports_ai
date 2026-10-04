@@ -60,7 +60,7 @@ _PART_NOUNS = {"head", "neck", "body", "tail", "base", "shaft", "root", "wall", 
 
 
 def is_plural(structure: str) -> bool:
-    w = re.findall(r"[a-z]+", structure.lower().split(" of ")[0])[-1:] or [""]
+    w = re.findall(r"[a-z]+", re.split(r" (?:of|at|in|on|to|within|around) ", structure.lower())[0])[-1:] or [""]
     w = w[0]
     if w in _PLURAL_WORDS:
         return True

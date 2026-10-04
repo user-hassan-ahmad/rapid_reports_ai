@@ -431,3 +431,9 @@ async def test_reconcile_qwen_linked_none_is_the_production_request(monkeypatch)
     assert off["model_settings"]["max_tokens"] == 4000 and "BLOCK" not in off["user_prompt"]
     assert on["output_type"] is rc.QwenDecisionsLinked and on["system_prompt"] == rc.QWEN_SYS + "\nX"
     assert on["user_prompt"] == off["user_prompt"] + "\n\nBLOCK"
+
+
+def test_plural_head_noun_before_a_locative_phrase():
+    from rapid_reports_ai import normal_groups as ng
+    assert ng.is_plural("extensor tendons at the wrist") and not ng.is_plural("ulnar nerve at Guyon's canal")
+    assert ng.is_plural("lymph nodes in the pelvis") and not ng.is_plural("head of the femurs")
