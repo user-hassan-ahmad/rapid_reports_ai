@@ -3789,6 +3789,61 @@ rcommit "feat(review-engine): live evaluation harness and Gate F shadow-read pag
 
 ---
 
+### Task 14: the negatives classifier (generated normals → assumed normal / check / removed)
+
+**Why:** this is the policy agreed 2026-10-03/04 (memories `default-negatives`, `generation-proposes-review-disposes`):
+- generation states undictated normals by design;
+- the review layer makes them visible and controllable.
+
+This task ports the lab version, which was validated on 119 gold-labelled statements and an end-to-end prototype, into the engine. Run it in wave 6 alongside Task 10, after Tasks 1, 5 and 9.
+
+**Port from the lab** (tested code and prompt; adapt types only):
+- `scripts/review_labs/negatives_lab.py`: `candidates()`, which skips recommendation sentences; `code_number_flag()`; `parse_labels()`; the `Labels` flat schema.
+- `scripts/review_labs/prompts/negatives_v5.txt`, as `review_engine/prompts/negatives.txt`.
+- `scripts/review_labs/negatives_bundle.py`: span location, code removal with anchors, `_undictated_numbers()`, and the check reasons `uncertain` / `conflict` / `number`.
+
+**Files:**
+- Create `review_engine/negatives.py` and `tests/test_review_engine_negatives.py`.
+- Modify `review_engine/engine.py` to call it after generation, concurrently with the other lanes.
+
+**Behaviour:**
+1. **One Qwen reasoning call per report.** The input is the dictation, history and report plus the numbered candidates. The output is one label per candidate: `dictated | default | implicated | contradicted`, with a pointer.
+   - Flat schema, no output retries, and a validation failure leaves every candidate `default`, logged. This is fail-soft: it shows as assumed normal, never as removed.
+2. **Code checks:**
+   - `number`: the candidate has a measurement not in the dictation or history;
+   - recommendation sentences are excluded from the candidates.
+3. **Routing to `ReviewItem`s.** Use `lane="coverage"`, `detectors=["negatives.v5"]`, and set `kind` and `status` as follows:
+
+   | Label | `kind` | `status` | Rail row? |
+   |---|---|---|---|
+   | `default` | `assumed_normal` | `open` | No (editor-only, Quiet styling) |
+   | `implicated` | `check` | `open` | Yes, with `evidence.check_reason` (`uncertain`, `conflict` or `number`) and the pointer |
+   | `contradicted` (or `number` on a non-dictated clause) that code can remove | `removed` | `pre_applied` | Yes, with an `edit` of mode `remove` and the removed text kept for restore |
+   | `contradicted` that code cannot remove | `check` | `open` | Yes, with reason `conflict` |
+   | `dictated` | none | | No item |
+
+4. **Hard rules:**
+   - Never auto-remove a statement the classifier calls `dictated`. A number inside a dictated sentence becomes a `check` (reason `number`).
+   - Auto-removal applies only to generated negatives. This is the f85aa670 lesson and PR #6.
+5. **The copy and export invariant for the frontend** (Slices B/C, recorded here so the contract carries it): the CM6 document is the report. `removed` and `option` items are widgets, never document text. The prototype's `lib/review/negatives-proto/state.ts` is the reference implementation, with 15 vitest tests.
+
+**Acceptance:**
+- **Unit tests:**
+  - routing per label;
+  - a number in a dictated sentence becomes `check`, never removed;
+  - a validation failure is fail-soft;
+  - recommendations are excluded;
+  - removal anchors stay valid after several removals;
+  - number detection handles glued units ("4cm") and ignores level and sequence names (T1, C7, L4/5).
+- **Live evaluation** (Task 13 harness):
+  - the lab's 119-statement gold set (`gold_final.json`, in the scratchpad; synthetic seeds only in the repo): no false contradictions, which is the bar for auto-removal;
+  - a fresh 10-report end-to-end set, hand-read by Hassan through `/dev/negatives-proto`.
+- **Latency:** 3–9 s per report in the lab, running concurrently with the other lanes, so it adds nothing to the critical path in shadow mode.
+
+**Out of scope here:** a separate certainty output for the "firmer than you dictated" check reason (a hedge dropped). That needs its own classifier field and is deferred.
+
+---
+
 ## Self-review notes
 
 - **Spec coverage:**
