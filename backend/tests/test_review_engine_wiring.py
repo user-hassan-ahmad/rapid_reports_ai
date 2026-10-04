@@ -170,7 +170,15 @@ async def test_shadow_engine_failure_never_reaches_the_request(monkeypatch):
     assert results == [None]
 
 
-async def test_shadow_scheduling_failure_is_logged_not_raised(monkeypatch, caplog):
+def _capture_warnings(monkeypatch):
+    """Count logger.warning calls directly: the full suite reconfigures logging, so caplog is order-dependent."""
+    import rapid_reports_ai.quick_report_api as qra
+    warned = []
+    monkeypatch.setattr(qra.logger, "warning", lambda msg, *a, **k: warned.append(msg % a if a else msg))
+    return warned
+
+
+async def test_shadow_scheduling_failure_is_logged_not_raised(monkeypatch):
     monkeypatch.delenv("RR_REVIEW_ENGINE", raising=False)
     off_events, off_saved = await _stream(monkeypatch)
     monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
@@ -178,17 +186,17 @@ async def test_shadow_scheduling_failure_is_logged_not_raised(monkeypatch, caplo
     def broken(report_id, text=None):
         raise RuntimeError("cannot schedule")
     monkeypatch.setattr(engine, "schedule_review", broken)
-    with caplog.at_level("WARNING"):
-        events, saved = await _stream(monkeypatch)
+    warned = _capture_warnings(monkeypatch)
+    events, saved = await _stream(monkeypatch)
     assert events == off_events and saved == off_saved
-    assert "review engine not scheduled" in caplog.text
+    assert any("review engine not scheduled" in m for m in warned)
 
 
-async def test_shadow_engine_import_failure_is_logged_not_raised(monkeypatch, caplog):
+async def test_shadow_engine_import_failure_is_logged_not_raised(monkeypatch):
     monkeypatch.delenv("RR_REVIEW_ENGINE", raising=False)
     off_events, off_saved = await _stream(monkeypatch)
     monkeypatch.setitem(sys.modules, "rapid_reports_ai.review_engine.engine", None)   # import raises ImportError
-    with caplog.at_level("WARNING"):
-        events, saved = await _stream(monkeypatch)
+    warned = _capture_warnings(monkeypatch)
+    events, saved = await _stream(monkeypatch)
     assert events == off_events and saved == off_saved
-    assert "review engine not scheduled" in caplog.text
+    assert any("review engine not scheduled" in m for m in warned)

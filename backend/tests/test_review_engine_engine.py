@@ -391,9 +391,10 @@ def _uuid(x):
 def test_live_behaves_as_shadow_and_warns_once(monkeypatch, caplog):
     monkeypatch.setenv("RR_REVIEW_ENGINE", "live")
     monkeypatch.setattr(engine, "_LIVE_WARNED", False)
-    with caplog.at_level("WARNING"):
-        assert engine.mode() == "shadow" and engine.mode() == "shadow"
-    assert sum("live" in r.getMessage() for r in caplog.records) == 1
+    warned = []   # count calls directly: the full suite reconfigures logging (main import), so caplog is unreliable
+    monkeypatch.setattr(engine.logger, "warning", lambda msg, *a, **k: warned.append(msg % a if a else msg))
+    assert engine.mode() == "shadow" and engine.mode() == "shadow"
+    assert sum("live" in m for m in warned) == 1
     assert not engine.rail_enabled()
 
 
