@@ -86,3 +86,22 @@ def test_update_item(db_session, test_user):
     it.label, it.cls = "new label", "action"
     store.update_item(db_session, it)
     assert store.get_item(db_session, rid, it.id).label == "new label"
+
+
+def test_latest_run_prefers_finished(db_session, test_user):
+    rid = _report(db_session, test_user)
+    done = store.create_run(db_session, rid, "shadow", "0.1.0", "quick")
+    store.save_items(db_session, [_item(rid, done)])
+    store.finish_run(db_session, done, lanes={"coverage": "done"}, timings_ms={"total": 5}, cost={}, errors={})
+    store.create_run(db_session, rid, "shadow", "0.1.0", "quick")        # newer, still running
+    assert store.latest_run(db_session, rid)["id"] == done
+    assert [i.kind for i in store.list_items(db_session, rid)] == ["partial"]
+    failed = store.create_run(db_session, rid, "shadow", "0.1.0", "quick")
+    store.finish_run(db_session, failed, {}, {}, {}, {"engine": "RuntimeError: x"})   # a failed run is finished too
+    assert store.latest_run(db_session, rid)["id"] == failed
+
+
+def test_latest_run_falls_back_to_unfinished(db_session, test_user):
+    rid = _report(db_session, test_user)
+    run = store.create_run(db_session, rid, "shadow", "0.1.0", "quick")
+    assert store.latest_run(db_session, rid)["id"] == run

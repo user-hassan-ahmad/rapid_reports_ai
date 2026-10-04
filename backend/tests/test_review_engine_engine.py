@@ -8,6 +8,7 @@ from rapid_reports_ai import report_reconcile as rc
 from rapid_reports_ai.database.models import Report
 from rapid_reports_ai.review_engine import adjudicator as adj
 from rapid_reports_ai.review_engine import engine, negatives, store
+from rapid_reports_ai.review_engine.items import text_hash
 
 from tests.review_engine_fakes import inp, jev, model
 
@@ -165,7 +166,8 @@ async def test_adjudicator_minor_is_not_pre_applied(monkeypatch):
 
 
 async def test_negatives_removal_first_then_stale_insert_falls_back_to_open(monkeypatch):
-    """Negatives removes "No ascites." first; the coverage insert anchored after it no longer applies → open."""
+    """Negatives removes "No ascites." first; the coverage insert anchored after it no longer applies → stays open
+    (the finding is still absent) but loses its edit: never a one-click action that cannot apply."""
     _absent_jev(monkeypatch)
     monkeypatch.setattr(adj, "_run_agent_with_model", model(ABSENT))
 
@@ -178,9 +180,9 @@ async def test_negatives_removal_first_then_stale_insert_falls_back_to_open(monk
     removed = next(i for i in res.items if i.kind == "removed")
     assert removed.status == "pre_applied"
     cov = next(i for i in res.items if i.lane == "coverage" and i.kind == "absent")
-    assert cov.status == "open" and cov.edit is not None
+    assert cov.status == "open" and cov.edit is None and cov.history[-1]["event"] == "overtaken"
     entry = next(e for e in res.run["pre_apply"] if e["item_id"] == cov.id)
-    assert entry["applied"] is False and entry["failed"]
+    assert entry["applied"] is False and entry["failed"] and entry["overtaken"] and entry["edit"]
     assert "No ascites" not in res.report and "renal cyst" not in res.report
     assert res.run["pre_apply"][0]["source"] == "negatives"
 
@@ -229,3 +231,229 @@ def test_input_from_parts():
     assert i.pathway == "templated" and i.scan_type == "MRI knee" and i.clinical_history == "h"
     assert i.synthesis == {"guidelines": [{"finding": "x"}]} and i.pre_edit_report == "FINDINGS:\nB."
     assert engine.input_from_parts("x", "quick", {}, {"content": "", "error": "boom"}, None) is None
+
+
+# ── integration review fixes (I1, I2, I5, I6, I7, M3) ───────────────────────
+
+DUP_REPORT = "FINDINGS:\nThe liver is normal. No ascites. A 14 mm left renal cyst.\nIMPRESSION:\nLeft renal cyst."
+DUP_DICT = "- 14 mm left renal cyst\n- Small volume ascites"
+
+
+def _ascites_contradicted(kw):
+    lines = kw["user_prompt"].split("STATEMENTS TO CLASSIFY:\n", 1)[1].splitlines()
+    return [f"{i} | {'contradicted | ascites' if 'ascites' in l.lower() else 'default | -'} | no"
+            for i, l in enumerate(lines, 1)]
+
+
+def _dup_stubs(monkeypatch, negatives_ok=True):
+    """The accuracy lane (jev.contradiction, negative) and the negatives classifier both flag "No ascites."."""
+    from rapid_reports_ai.report_review import checked_clauses_in_context
+    cls = list(checked_clauses_in_context(DUP_REPORT, None))
+    k = cls.index(next(c for c in cls if "ascites" in c.lower()))
+    monkeypatch.setattr(rc, "_jev", jev({f"c{k}": {"noul": 0.95}, f"r{k}": {"noul": 0.95}, f"d{k}": {"noul": 0.05},
+                                         "addressed": {"noul": 0.95}}))
+    monkeypatch.setattr(adj, "_run_agent_with_model", model(adj.Judgement(
+        cls="action", kind="contradicted", label="Ascites negative contradicts", reason="r", edit_mode="none",
+        probe="The FINDINGS section does not deny ascites.")))
+    if negatives_ok:
+        monkeypatch.setattr(negatives, "_run_agent_with_model", labels(_ascites_contradicted))
+    else:
+        async def boom(**kw):
+            raise RuntimeError("qwen down")
+        monkeypatch.setattr(negatives, "_run_agent_with_model", boom)
+
+
+def _ascites_items(items):
+    return [i for i in items if "ascites" in ((i.anchor.text if i.anchor else "") + str(i.evidence)).lower()]
+
+
+async def test_negative_flagged_by_both_yields_one_item(monkeypatch):
+    _dup_stubs(monkeypatch)
+    res = await engine.run_review(inp(DUP_REPORT, DUP_DICT), run_id="00000000-0000-0000-0000-0000000000c1")
+    asc = _ascites_items(res.items)
+    assert [(i.detectors, i.kind, i.status) for i in asc] == [([negatives.DETECTOR], "removed", "pre_applied")]
+    assert not any(e["source"] == "lanes" for e in res.run["pre_apply"])
+    assert "No ascites" not in res.report
+
+
+async def test_lane_negative_kept_when_negatives_failed(monkeypatch):
+    _dup_stubs(monkeypatch, negatives_ok=False)
+    res = await engine.run_review(inp(DUP_REPORT, DUP_DICT), run_id="00000000-0000-0000-0000-0000000000c2")
+    asc = [i for i in _ascites_items(res.items) if "jev.contradiction" in i.detectors]
+    assert len(asc) == 1 and asc[0].kind == "contradicted" and "negatives" in res.run["errors"]
+
+
+def test_lane_edit_lost_to_earlier_removal_is_stale():
+    i_ = inp(DUP_REPORT, DUP_DICT)
+    from rapid_reports_ai.review_engine.items import Edit, ReviewItem
+    it = ReviewItem(key="k", report_id=i_.report_id, run_id="00000000-0000-0000-0000-0000000000c3", lane="accuracy",
+                    kind="contradicted", cls="action", edit=Edit(mode="remove", find="No ascites."),
+                    verified={"code": True, "failed": [], "unconfirmed": False})
+    plan = engine._Plan(item_id=it.id, kind="contradicted", code_built=True)
+    after = DUP_REPORT.replace(" No ascites.", "")
+    doc, log = engine.finalise(i_, [it], {it.id: plan}, {"report": after}, [])
+    assert doc == after and it.status == "stale" and it.edit is None
+    assert log[0]["applied"] is False and log[0]["failed"]
+
+
+async def test_negatives_items_anchor_on_original_report(monkeypatch):
+    _dup_stubs(monkeypatch)
+    res = await engine.run_review(inp(DUP_REPORT, DUP_DICT), run_id="00000000-0000-0000-0000-0000000000c4")
+    h = text_hash(DUP_REPORT)
+    for i in res.items:
+        if i.anchor is not None:
+            assert i.anchor.text_hash == h and DUP_REPORT[i.anchor.start:i.anchor.end] == i.anchor.text
+    rem = next(i for i in res.items if i.kind == "removed")
+    assert rem.anchor.text == "No ascites." and rem.evidence["removed_text"] == "No ascites."
+
+
+async def test_negatives_items_carry_history_version_and_verified_shape(monkeypatch):
+    _dup_stubs(monkeypatch)
+    res = await engine.run_review(inp(DUP_REPORT, DUP_DICT), run_id="00000000-0000-0000-0000-0000000000c5")
+    neg = [i for i in res.items if i.detectors == [negatives.DETECTOR]]
+    assert neg
+    for i in neg:
+        assert i.engine_version == engine.ENGINE_VERSION
+        assert i.history[0]["event"] == "created" and i.history[0]["text_hash"] == text_hash(DUP_REPORT)
+    rem = next(i for i in neg if i.kind == "removed")
+    assert [e["event"] for e in rem.history] == ["created", "pre_applied"] and rem.history[1]["text_hash"]
+    assert set(rem.verified) >= {"code", "failed", "addressed", "contra", "unconfirmed", "preapply_failures"}
+
+
+def _stored_report(db_session, test_user, monkeypatch, report=REPORT, dictation=DICT, qc=None):
+    r = Report(report_type="quick", model_used="m", report_content=report, user_id=test_user.id,
+               input_data={"variables": {"FINDINGS": dictation, "SCAN_TYPE": "CT abdomen", "CLINICAL_HISTORY": ""}},
+               candidate_reports=[{"content": report, "sections": ["FINDINGS", "IMPRESSION"],
+                                   "quality_check": qc or {"flags": []}}])
+    db_session.add(r)
+    db_session.commit()
+
+    async def same_thread(fn, *a, **k):
+        return fn(*a, **k)
+    monkeypatch.setattr(engine, "_with_session", lambda fn, *a, **k: fn(db_session, *a, **k))
+    monkeypatch.setattr(engine.asyncio, "to_thread", same_thread)
+    return str(r.id)
+
+
+def _run_row(db_session, run_id):
+    from rapid_reports_ai.database.models import ReportReviewRun
+    import uuid as _uuid
+    return db_session.get(ReportReviewRun, _uuid.UUID(run_id))
+
+
+async def test_gate_d_failure_keeps_items(monkeypatch, db_session, test_user):
+    rid = _stored_report(db_session, test_user, monkeypatch)
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+
+    async def broken(inp_):
+        raise RuntimeError("gate d broke")
+    monkeypatch.setattr(engine, "gate_d_log", broken)
+    run_id = await engine.run_and_store(rid)
+    assert store.list_items(db_session, rid)
+    assert "gate d broke" in _run_row(db_session, run_id).shadow_log["gate_d"]["error"]
+
+
+async def test_gate_d_timeout_keeps_items(monkeypatch, db_session, test_user):
+    rid = _stored_report(db_session, test_user, monkeypatch)
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.setattr(engine, "GATE_D_TIMEOUT_S", 0.01)
+
+    async def slow(inp_):
+        await asyncio.sleep(1)
+    monkeypatch.setattr(engine, "gate_d_log", slow)
+    run_id = await engine.run_and_store(rid)
+    assert store.list_items(db_session, rid)
+    assert "Timeout" in _run_row(db_session, run_id).shadow_log["gate_d"]["error"]
+
+
+async def test_shadow_persists_no_pre_applied_and_logs_texts(monkeypatch, db_session, test_user):
+    _dup_stubs(monkeypatch)
+    rid = _stored_report(db_session, test_user, monkeypatch, DUP_REPORT, DUP_DICT)
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    run_id = await engine.run_and_store(rid)
+    items = store.list_items(db_session, rid, include_suppressed=True)
+    assert items and not any(i.status == "pre_applied" for i in items)
+    rem = next(i for i in items if i.kind == "removed")
+    assert rem.status == "open" and rem.evidence["would_pre_apply"] is True and rem.edit.find == "No ascites."
+    assert "pre_applied" not in [e["event"] for e in rem.history] and rem.history[-1]["event"] == "would_pre_apply"
+    assert all(i.anchor.text_hash == text_hash(DUP_REPORT) for i in items if i.anchor)
+    log = _run_row(db_session, run_id).shadow_log
+    assert "No ascites" not in log["final_report"] and "No ascites" not in log["negatives_report"]
+    assert log["negatives_post_removal_anchors"][rem.id] == [31, 31]
+    assert db_session.get(Report, _uuid(rid)).report_content == DUP_REPORT
+
+
+def _uuid(x):
+    import uuid as _u
+    return _u.UUID(x)
+
+
+def test_live_behaves_as_shadow_and_warns_once(monkeypatch, caplog):
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "live")
+    monkeypatch.setattr(engine, "_LIVE_WARNED", False)
+    with caplog.at_level("WARNING"):
+        assert engine.mode() == "shadow" and engine.mode() == "shadow"
+    assert sum("live" in r.getMessage() for r in caplog.records) == 1
+    assert not engine.rail_enabled()
+
+
+async def test_live_persists_as_shadow(monkeypatch, db_session, test_user):
+    _dup_stubs(monkeypatch)
+    rid = _stored_report(db_session, test_user, monkeypatch, DUP_REPORT, DUP_DICT)
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "live")
+    run_id = await engine.run_and_store(rid)
+    assert _run_row(db_session, run_id).mode == "shadow"
+    assert not any(i.status == "pre_applied" for i in store.list_items(db_session, rid, include_suppressed=True))
+
+
+async def test_runs_limited_by_concurrency(monkeypatch):
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.delenv("RR_REVIEW_CONCURRENCY", raising=False)
+    monkeypatch.setattr(engine, "_SEM", None)
+    active, peak = 0, 0
+
+    async def fake_load(report_id, text=None):
+        return inp(REPORT, DICT)
+
+    async def fake_run(inp_, run_id):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.02)
+        active -= 1
+        return engine.ReviewResult(run={"lanes": {}, "timings_ms": {}, "cost": {}, "errors": {}, "pre_apply": [],
+                                        "negatives": None}, items=[], report=REPORT)
+
+    async def noop(*a, **k):
+        return None
+    monkeypatch.setattr(engine, "load_input", fake_load)
+    monkeypatch.setattr(engine, "run_review", fake_run)
+    monkeypatch.setattr(engine, "gate_d_log", noop)
+
+    async def same_thread(fn, *a, **k):
+        return "00000000-0000-0000-0000-0000000000d1" if fn is engine._with_session and a[0] is store.create_run else None
+    monkeypatch.setattr(engine.asyncio, "to_thread", same_thread)
+    await asyncio.gather(*(engine.run_and_store(f"00000000-0000-0000-0000-00000000000{k}") for k in range(3)))
+    assert peak == 1
+    monkeypatch.setenv("RR_REVIEW_CONCURRENCY", "3")
+    monkeypatch.setattr(engine, "_SEM", None)
+    peak = 0
+    await asyncio.gather(*(engine.run_and_store(f"00000000-0000-0000-0000-00000000000{k}") for k in range(3)))
+    assert peak == 3
+
+
+async def test_schedule_review_sampling(monkeypatch):
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    seen = []
+
+    async def fake(report_id, text=None):
+        seen.append(report_id)
+    monkeypatch.setattr(engine, "run_and_store", fake)
+    monkeypatch.setenv("RR_REVIEW_SAMPLE", "0")
+    assert engine.schedule_review("00000000-0000-0000-0000-000000000001") is None
+    monkeypatch.setenv("RR_REVIEW_SAMPLE", "1.0")
+    t = engine.schedule_review("00000000-0000-0000-0000-000000000002")
+    await t
+    monkeypatch.setenv("RR_REVIEW_SAMPLE", "bogus")          # unreadable → default 1.0
+    await engine.schedule_review("00000000-0000-0000-0000-000000000003")
+    assert seen == ["00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003"]

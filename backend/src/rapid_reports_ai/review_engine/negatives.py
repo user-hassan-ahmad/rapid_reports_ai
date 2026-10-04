@@ -15,22 +15,28 @@ Items bypass the adjudicator (binding correction 10) and are never merged with l
     label                                   kind            status        cls
     default                                 assumed_normal  open          info    (editor-only, no rail row)
     implicated                              check           open          minor   evidence.check_reason "uncertain"
-    dictated + undictated number            check           open          minor   check_reason "number"
-    contradicted / number, code-removable   removed         pre_applied   action  edit mode remove (correction 12)
+    contradicted, code-removable            removed         pre_applied   action  edit mode remove (correction 12)
     contradicted, not removable             check           open          action  check_reason "conflict"
-    number, not removable                   check           open          minor   check_reason "number"
+    default / implicated / dictated, number check           open          minor   check_reason "number"
     dictated                                (no item)
 
-`removed` requires a code-built removal (production's `remove_negative_clause`) for which
-`verifier.preapply_failures(..., "removed", ..., code_built=True)` returns []. Nothing classed `dictated` is ever
-removed. Keys use the fixed original kind `negative` plus the statement text, so a label that flips between runs
-keeps its key.
+A number-flagged clause is never removed: the verifier's removal rule refuses any clause holding a number
+(`_negative_only`), so only a contradicted plain negative is removed. It is a check item with `check_reason`
+"number" (or "conflict" when the classifier also labelled it contradicted). On a model failure every candidate is
+unlabelled: number-flagged clauses still become check/number, the rest are assumed normal; nothing is removed.
 
-Positions: removals are applied in item order; each removed item's `edit` is relative to the report just before
-it, and `log["report"]` is the report after all of them. Every anchor is on `log["report"]` (`text_hash` set):
-a removed item's anchor is zero-width at the removal point (restore = insert `evidence["removed_text"]` there,
-latest removal first). Fail-soft: a model failure (validation or transport) leaves every candidate `default`
-(assumed normal, never removed), recorded in `log["error"]` / `log["error_kind"]`."""
+`removed` requires a code-built removal (production's `remove_negative_clause`) for which
+`verifier.preapply_failures(..., "removed", ..., code_built=True)` returns [] and whose text occurs once in the
+original report. Nothing classed `dictated` is ever removed. Keys use the fixed original kind `negative` plus the
+statement text, so a label that flips between runs keeps its key.
+
+Positions: every anchor is on the ORIGINAL report (`text_hash` = its hash), the text the user sees in shadow; a
+removed item's anchor is the removed clause's original span (`evidence["removed_text"]` kept). Removals are applied
+in item order; each removed item's `edit` is relative to the report just before it, and `log["report"]` is the
+report after all of them. Post-removal positions are kept only in `log["post_removal_anchors"]` ({item id: [start,
+end]} on `log["report"]`; a removal is zero-width at its removal point). Items carry a `created` history event
+(original hash) and, when removed, a `pre_applied` event (hash of the text it was applied to). Fail-soft: a model
+failure (validation or transport) is recorded in `log["error"]` / `log["error_kind"]`."""
 from __future__ import annotations
 
 import asyncio
@@ -38,6 +44,7 @@ import json
 import logging
 import re
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -68,6 +75,10 @@ _RECOMMENDATION = re.compile(r"\b(recommend\w*|advis\w*|suggest\w*|referr\w*|ref
                              r"for (?:surgical|further|treatment)|correlat\w*)\b", re.I)
 _NUM = re.compile(r"(?<![A-Za-z/\d.])\d+(?:\.\d+)?")  # skips T1, C7, L4/5; keeps 4cm
 _NUMBER_UNIT = re.compile(r"(?<![A-Za-z/\d.])(\d+(?:\.\d+)?)(\s*(?:mm|cm|ml|mL|%|HU|degrees?))?")
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def prompt() -> str:
@@ -216,66 +227,104 @@ def _locate(report: str, clause: str, taken: List[Tuple[int, int]]) -> Optional[
 
 # ── routing ──────────────────────────────────────────────────────────────────
 
-def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, dict]) -> Tuple[List[ReviewItem], str]:
-    """Labelled candidates → items, plus the report after pre-applied removals. Pure code."""
+def _to_original(p: int, gaps: List[Tuple[int, int]], end: bool = False) -> int:
+    """A position on the post-removal text → the original report (`gaps`: removed original intervals, sorted and
+    disjoint). An `end` position stays before a gap that starts exactly there."""
+    o = p
+    for s, e in gaps:
+        if s < o or (s == o and not end):
+            o += e - s
+        else:
+            break
+    return o
+
+
+def _add_gap(gaps: List[Tuple[int, int]], s: int, e: int) -> List[Tuple[int, int]]:
+    out: List[Tuple[int, int]] = []
+    for a, b in sorted(gaps + [(s, e)]):
+        if out and a <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return out
+
+
+def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, dict]
+          ) -> Tuple[List[ReviewItem], str, Dict[str, List[int]]]:
+    """Labelled candidates → (items anchored on the original report, the report after pre-applied removals,
+    post-removal anchor positions by item id). Pure code."""
     names = list(inp.artifacts.sections or [])
     dictation, history = inp.artifacts.dictated_findings or "", inp.clinical_history or ""
-    doc = inp.artifacts.report
+    report = inp.artifacts.report
+    doc = report
     removed: List[dict] = []
     gone_idx = set()
+    gaps: List[Tuple[int, int]] = []
     for i, c in enumerate(cands, 1):
-        cls = (labels.get(i) or {}).get("cls")
-        reason = ("contradicted" if cls == "contradicted"
-                  else "number" if c["number"] and cls != "dictated" else None)
-        if not reason:
-            continue
+        if (labels.get(i) or {}).get("cls") != "contradicted":
+            continue                                  # numbers are never removable (see the module docstring)
         edit = removal_edit(doc, c["clause"])
-        if edit is None or verifier.preapply_failures(doc, edit, "removed", dictation, code_built=True,
-                                                      sections=names):
+        if edit is None or report.count(edit.find) != 1 or verifier.preapply_failures(
+                doc, edit, "removed", dictation, code_built=True, sections=names):
             continue                                  # not removable by code: a check item below
         new = verifier.apply_edit(doc, edit, names)
         if new is None:
             continue
-        p, delta = _diff(doc, new)[0], len(doc) - len(new)
-        for r in removed:                             # earlier anchors after p shift left
-            if r["anchor"] > p:
-                r["anchor"] = max(p, r["anchor"] - delta)
-        removed.append({"i": i, "reason": reason, "anchor": p, "edit": edit})
+        p, gone = _diff(doc, new)
+        k = gone.find(edit.find)
+        o_start = _to_original(p + k, gaps)
+        o_end = _to_original(p + k + len(edit.find), gaps, end=True)
+        for r in removed:                             # earlier post-removal points after p shift left
+            if r["post"] > p:
+                r["post"] = max(p, r["post"] - len(gone))
+        removed.append({"i": i, "post": p, "orig": (o_start, o_end), "edit": edit, "before_hash": text_hash(doc)})
+        gaps = _add_gap(gaps, _to_original(p, gaps), _to_original(p + len(gone), gaps, end=True))
         gone_idx.add(i)
         doc = new
-    h = text_hash(doc)
+    h = text_hash(report)
     items: Dict[int, ReviewItem] = {}
+    post: Dict[int, List[int]] = {}
 
     def item(c: dict, kind: str, status: str, cls_key: str, anchor: Optional[Span], evidence: dict,
-             label: str, edit: Optional[Edit] = None) -> ReviewItem:
-        sec = verifier._section_of(doc, anchor.start, names) if anchor else None
+             label: str, edit: Optional[Edit] = None, applied_hash: Optional[str] = None) -> ReviewItem:
+        sec = verifier._section_of(report, anchor.start, names) if anchor else None
+        history = [{"at": _now(), "event": "created", "actor": "engine", "text_hash": h,
+                    "detail": {"detectors": [DETECTOR]}}]
+        if status == "pre_applied":
+            history.append({"at": _now(), "event": "pre_applied", "actor": "engine", "text_hash": applied_hash,
+                            "detail": {"kind": kind}})
         return ReviewItem(key=item_key(LANE, ORIGINAL_KIND, c["clause"]), report_id=inp.report_id, run_id=run_id,
                           lane=LANE, detectors=[DETECTOR], kind=kind, cls=CLS[cls_key],
                           section=sec.upper() if sec else None, anchor=anchor, label=label, edit=edit,
-                          evidence=evidence, status=status,
-                          verified={"code": True, "preapply_failures": []} if status == "pre_applied" else None)
+                          evidence=evidence, status=status, history=history,
+                          verified={"code": True, "failed": [], "addressed": None, "contra": None,
+                                    "unconfirmed": False, "preapply_failures": []} if status == "pre_applied" else None)
 
     for r in removed:
         i = r["i"]
         c, lab = cands[i - 1], labels.get(i) or {}
-        pointer = lab.get("pointer", "") if r["reason"] == "contradicted" else \
-            undictated_numbers(c["clause"], dictation, history)
-        items[i] = item(c, "removed", "pre_applied", "removed", Span(start=r["anchor"], end=r["anchor"], text="",
-                                                                       text_hash=h),
-                        {"removal_reason": r["reason"], "pointer": pointer, "removed_text": r["edit"].find,
-                         "clause": c["clause"], "label": lab.get("cls") or "default"},
-                        "Removed: contradicts your dictation" if r["reason"] == "contradicted"
-                        else "Removed: number not in your dictation", r["edit"])
-    taken: List[Tuple[int, int]] = []
+        s0, e0 = r["orig"]
+        items[i] = item(c, "removed", "pre_applied", "removed",
+                        Span(start=s0, end=e0, text=report[s0:e0], text_hash=h),
+                        {"removal_reason": "contradicted", "pointer": lab.get("pointer", ""),
+                         "removed_text": r["edit"].find, "clause": c["clause"], "label": lab.get("cls") or "default"},
+                        "Removed: contradicts your dictation", r["edit"], r["before_hash"])
+        post[i] = [r["post"], r["post"]]
+    taken: List[Tuple[int, int]] = [r["orig"] for r in removed]
+    taken_post: List[Tuple[int, int]] = []
     for i, c in enumerate(cands, 1):
         lab = labels.get(i) or {}
         cls = lab.get("cls") or "default"
         if i in gone_idx or (cls == "dictated" and not c["number"]):
             continue
-        span = _locate(doc, c["clause"], taken)
+        span = _locate(report, c["clause"], taken)
         if span:
             taken.append(span)
-        anchor = Span(start=span[0], end=span[1], text=doc[span[0]:span[1]], text_hash=h) if span else None
+        pspan = _locate(doc, c["clause"], taken_post)
+        if pspan:
+            taken_post.append(pspan)
+            post[i] = list(pspan)
+        anchor = Span(start=span[0], end=span[1], text=report[span[0]:span[1]], text_hash=h) if span else None
         base = {"clause": c["clause"], "label": cls}
         if cls == "contradicted":
             items[i] = item(c, "check", "open", "conflict", anchor,
@@ -292,7 +341,8 @@ def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, di
                             "Check: a dictated finding points here")
         else:
             items[i] = item(c, "assumed_normal", "open", "assumed_normal", anchor, base, "Assumed normal")
-    return [items[i] for i in sorted(items)], doc
+    return ([items[i] for i in sorted(items)], doc,
+            {items[i].id: post[i] for i in sorted(items) if i in post})
 
 
 async def classify_negatives(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], dict]:
@@ -303,18 +353,19 @@ async def classify_negatives(inp: ReviewInput, run_id: str) -> Tuple[List[Review
     dictation, history = inp.artifacts.dictated_findings or "", inp.clinical_history or ""
     cands = [{**c, "number": code_number_flag(c["clause"], dictation, history)} for c in candidates(report)]
     log: dict = {"detector": DETECTOR, "candidates": len(cands), "labelled": 0, "error": None, "error_kind": None,
-                 "report": report, "text_hash": text_hash(report), "ms": 0}
+                 "report": report, "text_hash": text_hash(report), "post_removal_anchors": {}, "ms": 0}
     if not cands:
         return [], log
     labels, err, kind = await classify(inp, cands)
     try:
-        items, doc = route(inp, run_id, cands, labels)
+        items, doc, post = route(inp, run_id, cands, labels)
     except Exception as e:  # noqa: BLE001 - routing never fails the run: no items, report untouched
         logger.warning("review engine: negatives routing failed (%s: %s)", type(e).__name__, str(e)[:200])
-        items, doc = [], report
+        items, doc, post = [], report, {}
         err, kind = err or f"{type(e).__name__}: {str(e)[:200]}", kind or "routing"
     log.update(labelled=len(labels), error=err, error_kind=kind, report=doc, text_hash=text_hash(doc),
-               labels={str(k): v for k, v in labels.items()}, ms=int((time.monotonic() - t0) * 1000))
+               labels={str(k): v for k, v in labels.items()}, post_removal_anchors=post,
+               ms=int((time.monotonic() - t0) * 1000))
     return items, log
 
 

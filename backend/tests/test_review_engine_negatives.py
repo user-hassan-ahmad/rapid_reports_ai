@@ -224,31 +224,39 @@ def test_removal_edit_is_pure_code_deletion():
 
 
 # ── anchors after several removals ───────────────────────────────────────────
+# Every anchor is on the ORIGINAL report (what the user sees in shadow); post-removal positions live in the log.
 
-async def test_anchors_valid_after_several_removals(monkeypatch):
+async def test_anchors_on_original_after_several_removals(monkeypatch):
     monkeypatch.setattr(neg, "_run_agent_with_model", model(LABELS))
     items, log = await neg.classify_negatives(inp(), "r")
     doc = log["report"]
     removed = [it for it in items if it.kind == "removed"]
     assert len(removed) == 2
     for it in items:
-        assert it.anchor is not None and it.anchor.text_hash == text_hash(doc)
-        if it.kind != "removed":
-            assert doc[it.anchor.start:it.anchor.end] == it.anchor.text
-    # replaying the edits in item order on the original reproduces the final report
+        assert it.anchor is not None and it.anchor.text_hash == text_hash(REPORT)
+        assert REPORT[it.anchor.start:it.anchor.end] == it.anchor.text
+    for it in removed:                       # the removed clause's own original span
+        assert it.anchor.text == it.evidence["removed_text"]
+        assert REPORT.count(it.edit.find) == 1          # the edit applies on the text the user sees
+    # replaying the edits in item order on the original reproduces the post-removal report
     cur = REPORT
     for it in removed:
         cur = verifier.apply_edit(cur, it.edit, quick_section_names(REPORT))
     assert cur == doc
-    # each removed anchor sits where its text was: the same words precede it in the final report
-    for it in removed:
-        before = REPORT[:REPORT.index(it.evidence["removed_text"])].rstrip()
-        assert doc[:it.anchor.start].rstrip().endswith(before[-25:])
+    # post-removal positions (log only): checks span their text in doc; a removal is zero-width where it was
+    post = log["post_removal_anchors"]
+    assert set(post) == {it.id for it in items}
+    for it in items:
+        a, b = post[it.id]
+        if it.kind == "removed":
+            before = REPORT[:it.anchor.start].rstrip()
+            assert a == b and doc[:a].rstrip().endswith(before[-25:])
+        else:
+            assert doc[a:b] == it.anchor.text
 
 
-async def test_earlier_anchor_shifts_after_later_removal(monkeypatch):
-    # Removal order is candidate order; an earlier-made anchor that lies after a later removal shifts left.
-    # Simulate by listing the IMPRESSION negative before the FINDINGS one.
+async def test_removed_anchor_is_original_span_whatever_the_order(monkeypatch):
+    # Removal order is candidate order; the IMPRESSION-side-first listing must still give original spans.
     report = "FINDINGS:\nMass in the liver. No pneumoperitoneum. No splenic lesion.\n\nIMPRESSION:\nLiver mass.\n"
     monkeypatch.setattr(neg, "candidates", lambda r: [{"clause": "No splenic lesion.", "before": ""},
                                                       {"clause": "No pneumoperitoneum.", "before": ""}])
@@ -258,5 +266,29 @@ async def test_earlier_anchor_shifts_after_later_removal(monkeypatch):
     doc = log["report"]
     assert doc == "FINDINGS:\nMass in the liver.\n\nIMPRESSION:\nLiver mass.\n"
     for it in items:
-        assert it.kind == "removed"
-        assert doc[:it.anchor.start].rstrip().endswith("Mass in the liver.")
+        assert it.kind == "removed" and report[it.anchor.start:it.anchor.end] == it.evidence["removed_text"]
+        a, b = log["post_removal_anchors"][it.id]
+        assert a == b and doc[:a].rstrip().endswith("Mass in the liver.")
+
+
+async def test_model_failure_number_clause_is_check_number(monkeypatch):
+    """A number is never negative-only for the verifier, so a number-flagged clause is always a check item."""
+    report = "FINDINGS:\nA 14 mm left renal cyst. No lymph nodes larger than 10 mm.\nIMPRESSION:\nLeft renal cyst."
+
+    async def down(**kw):
+        raise ConnectionError("down")
+    monkeypatch.setattr(neg, "_run_agent_with_model", down)
+    items, log = await neg.classify_negatives(inp(report, "- 14 mm left renal cyst"), "r")
+    assert [(i.kind, i.status, i.evidence["check_reason"]) for i in items] == [("check", "open", "number")]
+    assert log["report"] == report
+
+
+async def test_items_carry_history(monkeypatch):
+    monkeypatch.setattr(neg, "_run_agent_with_model", model(LABELS))
+    items, _ = await neg.classify_negatives(inp(), "r")
+    for it in items:
+        assert it.history[0]["event"] == "created" and it.history[0]["text_hash"] == text_hash(REPORT)
+        if it.kind == "removed":
+            assert it.history[-1]["event"] == "pre_applied" and it.history[-1]["text_hash"]
+            assert it.verified == {"code": True, "failed": [], "addressed": None, "contra": None,
+                                   "unconfirmed": False, "preapply_failures": []}

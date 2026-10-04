@@ -67,11 +67,18 @@ def save_items(db: Session, items: List[ReviewItem]) -> None:
     db.commit()
 
 
-def latest_run(db: Session, report_id: str) -> Optional[dict]:
-    run = (db.query(ReportReviewRun).filter(ReportReviewRun.report_id == _u(report_id))
-           .order_by(ReportReviewRun.created_at.desc()).first())
-    if run is None:
+def _finished(run: ReportReviewRun) -> bool:
+    """`finish_run` always writes lane states, or an error on an engine failure; `create_run` leaves both empty."""
+    return bool(run.lanes) or bool(run.errors)
+
+
+def latest_run(db: Session, report_id: str, scan: int = 20) -> Optional[dict]:
+    """The newest FINISHED run (a still-running newer run must not hide the last complete one), else the newest."""
+    runs = (db.query(ReportReviewRun).filter(ReportReviewRun.report_id == _u(report_id))
+            .order_by(ReportReviewRun.created_at.desc()).limit(scan).all())
+    if not runs:
         return None
+    run = next((r for r in runs if _finished(r)), runs[0])
     return {"id": str(run.id), "mode": run.mode, "engine_version": run.engine_version, "pathway": run.pathway,
             "lanes": run.lanes or {}, "timings_ms": run.timings_ms or {}, "cost": run.cost or {},
             "errors": run.errors or {}, "created_at": run.created_at.isoformat() if run.created_at else None}
