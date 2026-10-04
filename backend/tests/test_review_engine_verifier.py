@@ -429,16 +429,6 @@ async def test_probe(monkeypatch):
     assert cand.proposed.find.strip() == "No free fluid."
 
 
-async def test_probe_jev_failure_is_quiet(monkeypatch):
-    async def down(state, qs):
-        raise ConnectionError("down")
-    monkeypatch.setattr(rc, "_jev", down)
-    a = item(None, probe="p")
-    a.anchor = Span(start=0, end=6, text="a cyst")
-    res = await V.probe(inp(REPORT, "- x"), [a], REPORT, [])
-    assert res == {"addressed": [], "reprepare": [], "contradictions": []}
-
-
 def _drops_item(old, new, kind="differs", mode="replace"):
     rep = f"FINDINGS:\n{old} The heart is normal."
     e = R(old, new)
@@ -467,3 +457,225 @@ def test_drops_negative_item_insert_unaffected():
     rep = "FINDINGS:\nNo pneumothorax or effusion. The heart is normal."
     e = Edit(mode="insert", after="The heart is normal.", replace="Mild cardiomegaly.")
     assert "drops_negative_item" not in G(rep, e, "missing", "mild cardiomegaly")
+
+
+# ── review fixes (T9 probes) ────────────────────────────────────────────────
+from types import SimpleNamespace  # noqa: E402
+
+LIST = "No pleural effusion, pneumothorax or consolidation."
+RL = f"FINDINGS:\n{LIST}\nIMPRESSION:\nNormal."
+RS = "FINDINGS:\nThe spleen is not enlarged. The liver is normal.\nIMPRESSION:\nNormal."
+RP = "FINDINGS:\nThere is no free fluid in the pelvis. The liver is normal.\nIMPRESSION:\nNormal."
+R3 = ("FINDINGS:\nThe liver is normal.\n\nThere is no free fluid. The spleen is normal.\n\n"
+      "IMPRESSION:\n1. Normal liver.\n2. No free fluid.")
+R3R = ("FINDINGS:\n\nHEAD:\nNo intracranial haemorrhage.\n\nCHEST:\nNo pneumothorax. Small left effusion.\n\n"
+       "ABDOMEN:\nThe liver is normal.\n\nIMPRESSION:\nSmall left effusion.")
+
+
+def test_remove_of_negator_flips_polarity_fails():
+    assert "drops_negation" in G(RS, Edit(mode="remove", find="not "), "contradicted", "- liver lesion")
+
+
+def test_remove_of_first_list_item_unnegates_the_rest_fails():
+    assert "drops_negative_item" in G(RL, Edit(mode="remove", find="No pleural effusion,"), "contradicted",
+                                      "- pleural effusion")
+
+
+def test_remove_must_be_whole_sentence_or_list_item():
+    assert "partial_remove" in G(RP, Edit(mode="remove", find="no "), "contradicted", "- free fluid in pelvis")
+    assert "partial_remove" in G(RP, Edit(mode="remove", find="in the pelvis."), "contradicted", "- x")
+    assert "partial_remove" not in G(RP, Edit(mode="remove", find="The liver is normal."), "contradicted", "- x")
+    assert "partial_remove" not in G(RL, Edit(mode="remove", find=", pneumothorax"), "contradicted", "- x")
+    assert "partial_remove" not in G(R3, Edit(mode="remove", find="No free fluid."), "contradicted", "- x",
+                                     sections=SECTIONS)
+    assert G(RL, Edit(mode="remove", find=", pneumothorax"), "contradicted", "- Small pneumothorax",
+             target="No pneumothorax") == []
+
+
+def test_remove_dictated_when_dictation_is_contained_in_removed_text():
+    e = Edit(mode="remove", find="There is no free fluid in the pelvis.")
+    assert "remove_dictated" in G(RP, e, "contradicted", "- No free fluid")
+    assert "remove_dictated" in G(RP, e, "contradicted", "- Pelvis: no fluid")
+
+
+def test_dropped_list_item_dictated_as_none_or_shorter_is_protected():
+    e = R(LIST, "No pleural effusion or consolidation.")
+    assert "remove_dictated" in G(RL, e, "contradicted", "- Pneumothorax: none", target="No pneumothorax")
+    assert "remove_dictated" in G(RL, e, "contradicted", "- Lungs clear, no pneumothorax.", target="No pneumothorax")
+    e = R(LIST, "No pneumothorax or consolidation.")
+    assert "remove_dictated" in G(RL, e, "contradicted", "- No effusion", target="No pleural effusion")
+
+
+def test_contradicted_replace_that_drops_a_dictated_positive_fails():
+    rep = "FINDINGS:\nThere is a 12 mm nodule in the right upper lobe.\nIMPRESSION:\nNodule."
+    e = R("There is a 12 mm nodule in the right upper lobe.", "There is a nodule.")
+    assert "remove_dictated" in G(rep, e, "contradicted", "- 12 mm nodule right upper lobe")
+
+
+def test_removal_exemption_is_scoped_to_one_matching_item():
+    assert "drops_negative_item" in G(RL, R(LIST, "No pleural effusion."), "contradicted", "- Small pneumothorax",
+                                      target="No pneumothorax")
+    assert "drops_negative_item" in G(RL, R(LIST, "No pleural effusion or consolidation."), "contradicted",
+                                      "- Small pneumothorax", target="No consolidation")
+    assert G(RL, R(LIST, "No pleural effusion or consolidation."), "contradicted", "- Small pneumothorax",
+             target="No pneumothorax") == []
+    f = G(RS, R("The spleen is not enlarged. The liver is normal.", "The spleen is enlarged."), "contradicted",
+          "- splenomegaly", target="The spleen is not enlarged.")
+    assert "drops_sentence" in f
+
+
+def test_region_subheadings_are_not_section_boundaries():
+    secs = quick_section_names(R3R)
+    e = R("No pneumothorax. Small left", "No pneumothorax. Small 2 cm left", section="FINDINGS")
+    assert "outside_section" not in G(R3R, e, d="- 2 cm left effusion", sections=secs)
+    e = Edit(mode="insert", after="No pneumothorax.", replace="Left rib fracture.")
+    assert "outside_section" not in G(R3R, e, "absent", "- left rib fracture", sections=secs, item_section="FINDINGS")
+    out = V.apply_edit(R3R, Edit(mode="insert", replace="Rib fracture on the left.", section="FINDINGS"), secs)
+    assert out.index("ABDOMEN:") < out.index("Rib fracture") < out.index("IMPRESSION:")
+    out = V.apply_edit(R3R, Edit(mode="insert", after="CHEST:", replace="Left rib fracture."), secs)
+    assert "CHEST:\nLeft rib fracture.\nNo pneumothorax." in out
+    # without known sections the ALL-CAPS heading fallback still bounds sections
+    assert "outside_section" in G(R3R, e, "absent", "- left rib fracture", item_section="FINDINGS")
+
+
+def test_remove_numbered_item_removes_line_and_renumbers():
+    assert V.apply_edit(R3, Edit(mode="remove", find="No free fluid."), SECTIONS) == \
+        "FINDINGS:\nThe liver is normal.\n\nThere is no free fluid. The spleen is normal.\n\nIMPRESSION:\n1. Normal liver."
+    rep = "IMPRESSION:\n1. A is here.\n2. B is here.\n3. C is here."
+    assert V.apply_edit(rep, Edit(mode="remove", find="B is here."), ["IMPRESSION"]) == \
+        "IMPRESSION:\n1. A is here.\n2. C is here."
+
+
+def test_remove_seam_tidy():
+    assert V.apply_edit(R3, Edit(mode="remove", find="There is no free fluid. The spleen is normal."), SECTIONS) == \
+        "FINDINGS:\nThe liver is normal.\n\nIMPRESSION:\n1. Normal liver.\n2. No free fluid."
+    assert V.apply_edit("FINDINGS:\nLiver normal. No fluid . Spleen normal.", Edit(mode="remove", find="No fluid"),
+                        []) == "FINDINGS:\nLiver normal. Spleen normal."
+    assert V.apply_edit("FINDINGS:\nNo effusion, no pneumothorax.\n", Edit(mode="remove", find="No effusion,"),
+                        []) == "FINDINGS:\nNo pneumothorax.\n"
+    assert V.apply_edit("FINDINGS:\nNo effusion; no pneumothorax.\n", Edit(mode="remove", find="no pneumothorax."),
+                        []) == "FINDINGS:\nNo effusion.\n"
+    assert V.apply_edit("FINDINGS:\r\nA. B.\r\nC.\r\nIMPRESSION:\r\nD.", Edit(mode="remove", find="C."), []) == \
+        "FINDINGS:\r\nA. B.\r\nIMPRESSION:\r\nD."
+
+
+def test_insert_at_end_of_numbered_impression_starts_new_item():
+    out = V.apply_edit(R3, Edit(mode="insert", replace="Follow-up advised.", section="IMPRESSION"), SECTIONS)
+    assert out.endswith("1. Normal liver.\n2. No free fluid.\n3. Follow-up advised.")
+
+
+def test_guard_failures_options_are_keyword_only():
+    with pytest.raises(TypeError):
+        V.guard_failures(REPORT, R("a cyst", "a 12 mm cyst"), "partial", "", "", "12 mm")
+
+
+@pytest.mark.parametrize("sent,clause,expect", [
+    ("No free fluid, pneumothorax or effusion.", "No free fluid", "No pneumothorax or effusion."),
+    ("No free fluid, pneumothorax or effusion.", "No pneumothorax", "No free fluid or effusion."),
+    ("No free fluid, pneumothorax or effusion.", "No effusion", "No free fluid or pneumothorax."),
+    ("No free fluid, pneumothorax, or effusion.", "No free fluid", "No pneumothorax or effusion."),
+    ("No free fluid, pneumothorax, or effusion.", "No pneumothorax", "No free fluid or effusion."),
+    ("No free fluid, pneumothorax, or effusion.", "No effusion", "No free fluid or pneumothorax."),
+    ("No free fluid or effusion.", "No effusion", "No free fluid."),
+])
+def test_negative_fix_drops_any_list_item_through_production(sent, clause, expect):
+    text = f"FINDINGS:\nThe liver is normal. {sent} The spleen is normal.\nIMPRESSION:\nNormal."
+    s = text.index(sent)
+    for start, end in ((s, s + len(sent)), (s, s + len(clause))):   # a clause's own span, or its sentence
+        e = V._negative_fix(text, start, end, clause)
+        assert e is not None and e.mode == "replace" and e.find == sent and e.replace == expect
+        out = V.apply_edit(text, e, SECTIONS)
+        assert f"The liver is normal. {expect} The spleen is normal." in out
+        assert G(text, e, "contradicted", "- x", target=clause, sections=SECTIONS) == []
+
+
+def test_negative_fix_whole_sentence_and_unclean():
+    text = "FINDINGS:\nThe liver is normal. No free fluid. The spleen is normal.\nIMPRESSION:\nNormal."
+    s = text.index("No free fluid.")
+    e = V._negative_fix(text, s, s + len("No free fluid"), "No free fluid")
+    assert e.mode == "remove" and e.find == "No free fluid."
+    assert V.apply_edit(text, e, SECTIONS) == "FINDINGS:\nThe liver is normal. The spleen is normal.\nIMPRESSION:\nNormal."
+    text = "FINDINGS:\nThere is no free fluid but a small collection is seen.\nIMPRESSION:\nNormal."
+    assert V._negative_fix(text, 10, len(text) - 20, "No free fluid") is None
+
+
+def _fake_align(clauses):
+    return lambda *a, **k: SimpleNamespace(clauses=[SimpleNamespace(negative=True, section="FINDINGS", **c)
+                                                    for c in clauses])
+
+
+async def test_probe_unclean_negative_goes_to_adjudicator(monkeypatch):
+    text = "FINDINGS:\nThere is no free fluid but a small collection is seen.\nIMPRESSION:\nNormal."
+    s = text.index("There")
+    monkeypatch.setattr(V, "align", _fake_align([dict(text="No free fluid", start=s, end=text.index("\nIMP"))]))
+    monkeypatch.setattr(rc, "_jev", jev_stub(contra=0.9))
+    res = await V.probe(inp(text, "- free fluid"), [], text, [[s, s + 5]])
+    (c,) = res["contradictions"]
+    assert c.proposed is None and c.code_fix is False
+
+
+async def test_probe_negative_list_candidate_is_clean(monkeypatch):
+    sent = "No free fluid, pneumothorax or effusion."
+    text = f"FINDINGS:\nThe liver is normal. {sent}\nIMPRESSION:\nNormal."
+    s = text.index(sent)
+    monkeypatch.setattr(V, "align", _fake_align([dict(text="No pneumothorax", start=s, end=s + len(sent))]))
+    monkeypatch.setattr(rc, "_jev", jev_stub(contra=0.9))
+    res = await V.probe(inp(text, "- pneumothorax"), [], text, [[s, s + len(sent)]])
+    (c,) = res["contradictions"]
+    assert c.code_fix and c.proposed.replace == "No free fluid or effusion."
+
+
+async def test_probe_paragraph_touched_and_anchor_offsets(monkeypatch):
+    text = "FINDINGS:\nThe liver is normal.\n\nThere is a cyst in the left kidney.\nIMPRESSION:\nA cyst. A cyst."
+    monkeypatch.setattr(V, "align", _fake_align([]))
+    monkeypatch.setattr(rc, "_jev", jev_stub(contra=0.0))
+    touched = item(None, probe="p")
+    touched.anchor = Span(start=text.index("a cyst"), end=text.index("a cyst") + 6, text="a cyst")
+    calm = item(None, probe="p")
+    calm.anchor = Span(start=text.index("The liver"), end=text.index("The liver") + 20, text="The liver is normal.")
+    moved = item(None, probe="p")          # text unique, offsets stale: mapped, so kept
+    moved.anchor = Span(start=0, end=20, text="The liver is normal.")
+    ambiguous = item(None, probe="p")      # text present twice, offsets stale: anchor lost
+    ambiguous.anchor = Span(start=0, end=6, text="A cyst")
+    k = text.index("left")
+    res = await V.probe(inp(text, "- x"), [touched, calm, moved, ambiguous], text, [[k, k + 4]])
+    assert set(res["reprepare"]) == {touched.id, ambiguous.id} and res["addressed"] == []
+    # a pure deletion is a zero-width range: it still touches its paragraph
+    res = await V.probe(inp(text, "- x"), [touched, calm], text, [[k, k]])
+    assert res["reprepare"] == [touched.id]
+
+
+async def test_probe_jev_failure_reports_error(monkeypatch):
+    async def down(state, qs):
+        raise ConnectionError("down")
+    monkeypatch.setattr(rc, "_jev", down)
+    a = item(None, probe="p")
+    a.anchor = Span(start=REPORT.index("a cyst"), end=REPORT.index("a cyst") + 6, text="a cyst")
+    res = await V.probe(inp(REPORT, "- x"), [a], REPORT, [])
+    assert res["addressed"] == [] and res["contradictions"] == [] and "ConnectionError" in res["error"]
+
+
+async def test_verify_rejects_nan_and_dedupes_errors(monkeypatch):
+    it = item(Edit(**FIX), probe="p")
+    monkeypatch.setattr(rc, "_jev", jev({"x0": {"noul": 0.1}, "addressed": {"noul": float("nan")}}))
+    await V.verify(I, [it])
+    assert it.verified["code"] is False and "jev_error" in it.verified["failed"]
+    it = item(Edit(**FIX), probe="p")
+    monkeypatch.setattr(rc, "_jev", jev({"x0": {"noul": float("inf")}, "addressed": {"noul": 0.9}}))
+    await V.verify(I, [it])
+    assert "jev_error" in it.verified["failed"]
+    it = item(Edit(**FIX), probe="p")
+    monkeypatch.setattr(rc, "_jev", jev_stub(raise_exc=RuntimeError("boom")))
+    await V.verify(I, [it])
+    assert it.verified["error"] == "RuntimeError: boom"
+
+
+async def test_verify_passes_item_clause_as_removal_target(monkeypatch):
+    monkeypatch.setattr(rc, "_jev", jev_stub())
+    wrong = item(R(LIST, "No pleural effusion or consolidation."), kind="contradicted",
+                 evidence={"clause": "No consolidation"})
+    right = item(R(LIST, "No pleural effusion or consolidation."), kind="contradicted",
+                 evidence={"clause": "No pneumothorax"})
+    await V.verify(inp(RL, "- Small pneumothorax"), [wrong, right])
+    assert "drops_negative_item" in wrong.verified["failed"]
+    assert right.verified["code"] is True
