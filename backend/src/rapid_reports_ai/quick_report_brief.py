@@ -42,6 +42,7 @@ from .report_reconcile import (  # noqa: F401 — re-exported; tests patch these
     _sentences, _split_bundled, _unstring, _words, dictated_negatives, duplicates_negative, finding_presence,
     q_finding, q_present, route_finding, split_findings,
 )
+from . import normal_groups as _ng
 from . import report_reconcile as _rc
 
 logger = logging.getLogger(__name__)
@@ -222,9 +223,25 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     variants = _impression_variants(imp)
     measurements = meas.bullets if meas else []
 
+    # Grouped normals (opt-in): a sentence listing structures is decided structure by structure
+    # (and tail negative by tail negative), then rendered by subtraction; anything else is one line.
+    grouped = [(_ng.parse_grouped(t) if _ng.enabled() else None) for t in normals]
+    grouped = [g if g and len(g.structures) + len(g.tail) > 1 else None for g in grouped]
+    normal_texts: List[str] = []      # what Qwen numbers: a line, or each atom of a grouped line
+    normal_qidx: dict = {}            # (k, j) -> index in normal_texts; j None for a whole line
+
     state = f"SCAN TYPE: {scan_type}\nDICTATED FINDINGS:\n{findings}"
     qs = {}
-    qs.update({f"n{k}": {"type": "noul", "instructions": Q_AFFECTED + t} for k, t in enumerate(normals)})
+    for k, t in enumerate(normals):
+        if grouped[k] is None:
+            normal_qidx[(k, None)] = len(normal_texts)
+            normal_texts.append(t)
+            qs[f"n{k}"] = {"type": "noul", "instructions": Q_AFFECTED + t}
+            continue
+        for j, (_, line) in enumerate(grouped[k].atoms()):
+            normal_qidx[(k, j)] = len(normal_texts)
+            normal_texts.append(line)
+            qs[f"n{k}a{j}"] = {"type": "noul", "instructions": Q_AFFECTED + line}
     qs.update({f"d{k}": present_question(t) for k, t in enumerate(diffs)})
     qs.update({f"r{k}": {"type": "noul", "instructions": Q_REC_MET + t} for k, t in enumerate(recs)})
     qs.update({f"f{i}": q_finding(k) for i, k in enumerate(keys)})
@@ -250,7 +267,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             return None
     jev, qw, plan, fb_out = await asyncio.gather(
         _jev(state, qs) if qs else asyncio.sleep(0, {}),
-        _qwen_complete(state, [n for n, _ in negs] + [c.text for c in cands], normals, [" ".join(b.lines) for b in measurements]),
+        _qwen_complete(state, [n for n, _ in negs] + [c.text for c in cands], normal_texts, [" ".join(b.lines) for b in measurements]),
         plan_or_none(), fallback_or_none())
     score = lambda k: float(jev[k]["noul"])
 
@@ -324,14 +341,45 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         decisions["normals"].extend({"text": t, "action": "removed_measurement"} for t in measured)
         keep, flagged = [], []
         qaff = set(qw.affected_normals)
+        affected = lambda k, j=None: score(f"n{k}" if j is None else f"n{k}a{j}") >= 0.5 or normal_qidx[(k, j)] in qaff
+        said_items = dictated_negatives(items) + items
+        offset = 0
         for k, t in enumerate(normals):
-            if score(f"n{k}") >= 0.5 or k in qaff:
-                flagged.append(t); decisions["normals"].append({"text": t, "action": "do_not_assert"})
-            else:
-                keep.append(t); decisions["normals"].append({"text": t, "action": "keep"})
+            g = grouped[k]
+            if g is None:
+                if affected(k):
+                    flagged.append(t); decisions["normals"].append({"text": t, "action": "do_not_assert"})
+                else:
+                    keep.append(t); decisions["normals"].append({"text": t, "action": "keep"})
+                    offset += len(t) + 1
+                continue
+            atoms = g.atoms()
+            keep_flags = [not affected(k, j) for j in range(len(atoms))]
+            flagged.extend(line for (_, line), kf in zip(atoms, keep_flags) if not kf)
+            names = g.structures + g.tail
+            # A kept structure or tail negative the dictation also speaks to: one line per atom, so a
+            # grouped sentence never reads as covering what the radiologist dictated.
+            overlap = _ng.dictated_overlap([n for n, kf in zip(names, keep_flags) if kf], said_items)
+            r = _ng.per_structure(g, keep_flags) if overlap else _ng.subtract(g, keep_flags)
+            if overlap and r.mode == "per_structure":
+                r.mode = "per_structure_dictated"
+            decisions["normals"].append({
+                "text": t, "action": "keep" if r.text else "do_not_assert", "grouped": True, "mode": r.mode,
+                "rendered": r.text, "offset": offset if r.text else None, "dictated_overlap": overlap,
+                "atoms": [{"name": n, "kind": kind, "line": line, "action": "keep" if kf else "do_not_assert",
+                           "span": list(sp) if sp else None}
+                          for n, (kind, line), kf, sp in zip(names, atoms, keep_flags, r.spans)]})
+            if r.text:
+                keep.append(r.text)
+                offset += len(r.text) + 1
         lines = [f'- **Normal-study path:** "{" ".join(keep)}"' if keep else "- **Normal-study path:** (every line is affected by this dictation)"]
         if flagged:
             lines.append("- **Do not assert as normal (a dictated finding acts on these):** " + " ".join(f'"{t}"' for t in flagged))
+        dneg = dictated_negatives(items) if any(grouped) else []
+        if dneg:
+            # Guard: a grouped normal sentence must never stand in for a negative the radiologist dictated.
+            lines.append("- **Dictated negatives (state each as dictated):** " + " ".join(f'"{t}"' for t in dneg))
+            decisions["dictated_negatives"] = dneg
         normal_bullet.lines = lines
 
     # Differentials, policy 1: silence closes a branch only when this study would show it.

@@ -858,6 +858,36 @@ is expected to cause.
 This bullet is an addition: the Sections line and every other part of the sheet stay exactly as they would without it.
 """
 
+# Opt-in (RR_GROUPED_NORMALS): the Normal-study path as consultant group sentences, so the brief
+# can verify each structure and render the sentence minus the affected ones (normal_groups).
+# Structural placeholders only (feedback_case_agnostic_prompts).
+GROUPED_NORMALS = """
+
+---
+
+## Normal-study path as grouped sentences — OVERRIDES conflicting guidance above
+
+This governs the Normal-study path wherever it is described above (the Structural Pattern
+guidance and the output template field). Where it conflicts with "one canonical line per
+system" for that field, this section governs. The sweep, its order and its coverage are
+unchanged: every in-scope structure the sweep visits still appears exactly once.
+
+- Write one sentence per sweep paragraph, in sweep order. The sentence names that paragraph's
+  structures as a list and gives one bare descriptor for all of them:
+  "The A, B and C are unremarkable."
+- A structure that carries a structure-specific negative gets its own sentence, with the
+  negative as a short tail clause: "The D is unremarkable with no X." / "The E and F are
+  unremarkable with no Y or Z." Never pool negatives from different structures into one tail.
+- A negative that belongs to no single structure stays its own short sentence: "No X."
+- Structure names only in the list: no qualifiers, sizes, measurements, comparisons or
+  descriptions of appearance. The descriptor is bare: "unremarkable", "normal", "clear",
+  "intact", "patent".
+- Every structure is named once, at its own sweep position; a structure that leads the
+  clinical question keeps its own sentence.
+- Where a Canonical default-normal lines list is emitted, it keeps one line per system; only
+  the Normal-study path is grouped.
+"""
+
 # Directives every production analyser call carries. Harnesses that pass an
 # explicit tuple override this; None means "as production".
 PRODUCTION_DIRECTIVES: tuple[str, ...] = ("prune_v1", "finding_negatives")
@@ -870,7 +900,14 @@ DIRECTIVES = {
     "rescope": lambda: NEGATIVES_RESCOPE,
     "prune_v1": lambda: PRUNE_V1,
     "finding_negatives": lambda: FINDING_NEGATIVES,
+    "grouped_normals": lambda: GROUPED_NORMALS,
 }
+
+
+def production_directives() -> tuple[str, ...]:
+    """PRODUCTION_DIRECTIVES, plus grouped_normals when RR_GROUPED_NORMALS is on (default off)."""
+    from .normal_groups import enabled
+    return PRODUCTION_DIRECTIVES + (("grouped_normals",) if enabled() else ())
 
 
 def get_analyser_prompt(
@@ -917,7 +954,7 @@ def get_analyser_prompt(
 # correlate prompt changes with downstream output quality retrospectively.
 
 def analyser_prompt_version(model_name: str) -> str:
-    prompt = get_analyser_prompt(model_name, directives=PRODUCTION_DIRECTIVES)
+    prompt = get_analyser_prompt(model_name, directives=production_directives())
     return hashlib.sha256(
         (prompt + "||" + ANALYSER_USER_TEMPLATE).encode("utf-8")
     ).hexdigest()[:12]
@@ -974,7 +1011,7 @@ async def generate_ephemeral_skill_sheet(
         .replace("{{CLINICAL_HISTORY}}", clinical_history or "")
     )
     if directives is None:
-        directives = PRODUCTION_DIRECTIVES
+        directives = production_directives()
 
     # One settings dict for every provider; normalise_model_settings fits it (Cerebras
     # Qwen: medium, 64k - reasoning counts toward the cap and 16k truncated sheets, L-33;
