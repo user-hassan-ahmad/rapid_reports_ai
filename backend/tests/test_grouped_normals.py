@@ -114,9 +114,21 @@ def test_dictated_overlap_on_structure_and_tail_words():
     assert ng.dictated_overlap(["small bowel"], ["small left pleural effusion"]) == []
 
 
-def test_shared_modifier_subject_is_left_alone():
-    assert ng.parse_grouped("The remaining metacarpal bases and dorsal and volar soft tissues are unremarkable.") is None
-    assert ng.parse_grouped("The left and right kidneys are unremarkable.") is None
+def test_shared_modifier_items_join_their_head_noun():
+    g = ng.parse_grouped("The remaining metacarpal bases and dorsal and volar soft tissues are unremarkable.")
+    assert g.structures == ["remaining metacarpal bases", "dorsal and volar soft tissues"]
+    assert ng.subtract(g, [True, False]).text == "The remaining metacarpal bases are unremarkable."
+    assert ng.parse_grouped("The left and right kidneys are unremarkable.").structures == ["left and right kidneys"]
+    g = ng.parse_grouped("The carpal bones, radiocarpal, midcarpal and distal radioulnar joints, flexor and extensor "
+                         "tendons, and median and ulnar nerves are unremarkable.")
+    assert g.structures == ["carpal bones", "radiocarpal, midcarpal and distal radioulnar joints",
+                            "flexor and extensor tendons", "median and ulnar nerves"]
+    r = ng.subtract(g, [False, True, True, True])
+    assert r.mode == "subtracted" and r.text == ("The radiocarpal, midcarpal and distal radioulnar joints, flexor and "
+                                                 "extensor tendons, and median and ulnar nerves are unremarkable.")
+    assert ng.parse_grouped("The spinal canal and conus are unremarkable.").structures == ["spinal canal", "conus"]
+    assert ng.parse_grouped("The gluteal, adductor, iliopsoas and hamstring musculature are unremarkable.") is None
+    assert ng.is_plural("thalami") and ng.is_plural("basal ganglia")
     assert ng.parse_grouped("The distal radius, ulna and distal radioulnar joint are unremarkable.").structures == [
         "distal radius", "ulna", "distal radioulnar joint"]
 
@@ -134,7 +146,8 @@ def test_tail_covered_by_a_dictated_negative():
 
 def test_part_nouns_and_trailing_adjectives_and_of_phrases():
     assert ng.parse_grouped("The femoral head, neck and acetabulum are unremarkable.") is None
-    assert ng.parse_grouped("The lower thoracic and lumbar spine are unremarkable.") is None
+    assert ng.parse_grouped("The lower thoracic and lumbar spine are unremarkable.").structures == [
+        "lower thoracic and lumbar spine"]
     assert ng.parse_grouped("The aorta and its major branches are patent.") is None
     g = ng.parse_grouped("The bones and soft tissues of the imaged volume are unremarkable.")
     assert ng.subtract(g, [False, True]).text == "The soft tissues of the imaged volume are unremarkable."

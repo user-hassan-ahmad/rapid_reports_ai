@@ -36,19 +36,22 @@ _SUBJ_SEP = re.compile(r"\s*,\s*(?:and\s+)?|\s+and\s+")
 _TAIL_SEP = re.compile(r"\s*,\s*(?:(?:or|and|nor)\s+)?(?:no\s+)?|\s+(?:or|nor)\s+|\s+and\s+no\s+")
 _BAD_ITEM = re.compile(r"\d|[():;\"]|\b(?:no|not|with|without|which|that|is|are|but|apart|except|otherwise|its|their|including)\b", re.I)
 _BAD_DESC = re.compile(r"\d|[,;:()\"]|\b(?:no|with|without|but|apart|except|otherwise|which)\b", re.I)
-_PLURAL_WORDS = {"viscera", "adnexa", "adnexae", "vertebrae", "bronchi", "data"}
+_PLURAL_WORDS = {"viscera", "adnexa", "adnexae", "vertebrae", "bronchi", "data", "ganglia", "thalami", "sulci",
+                 "gyri", "foramina", "cornua", "labia", "meninges"}
 _SINGULAR_WORDS = {"pons", "lens", "series", "mons"}
 
 
 _MODIFIERS = {"left", "right", "upper", "lower", "deep", "superficial", "internal", "external", "central",
-              "peripheral", "small", "large", "intra", "extra", "both"}
+              "peripheral", "small", "large", "intra", "extra", "both", "median", "flexor", "extensor", "common",
+              "main", "greater", "lesser", "major", "minor"}
+_NOT_MODIFIERS = {"canal", "signal", "interval", "pillar", "collar"}
 
 
 def _is_modifier(item: str) -> bool:
     """A list item ending in an adjective, sharing the next item's head noun ("dorsal and volar soft
     tissues", "lower thoracic and lumbar spine")."""
     w = item.lower().split()[-1]
-    return w in _MODIFIERS or bool(re.search(r"(?:al|ar|ic|ior|ous)$", w))
+    return w not in _NOT_MODIFIERS and (w in _MODIFIERS or bool(re.search(r"(?:al|ar|ic|ior|ous)$", w)))
 
 
 # A bare part noun after a named structure borrows its owner ("femoral head, neck and ...").
@@ -102,11 +105,23 @@ def parse_grouped(sentence: str) -> Optional[Grouped]:
     if not m:
         return None
     subj, desc = m.group("subj"), m.group("desc")
-    structures = [p.strip() for p in _SUBJ_SEP.split(subj)]
+    raw_items = _SUBJ_SEP.split(subj)
+    raw_seps = [x.group() for x in _SUBJ_SEP.finditer(subj)]
+    # An item ending in an adjective shares the next item's head noun ("dorsal and volar soft tissues",
+    # "lower thoracic and lumbar spine"): it joins that item, as written, to make one structure.
+    structures, seps, cur = [], [], raw_items[0]
+    for sep, nxt in zip(raw_seps, raw_items[1:]):
+        if cur.strip() and _is_modifier(cur):
+            if len(nxt.split()) < 2 and not _is_modifier(nxt):
+                return None   # "gluteal, adductor, ...": no head noun closes the chain
+            cur = cur + sep + nxt
+        else:
+            structures.append(cur.strip()); seps.append(sep); cur = nxt
+    structures.append(cur.strip())
     if not all(structures) or any(_BAD_ITEM.search(p) for p in structures) or _BAD_DESC.search(desc):
         return None
-    if len(structures) > 1 and any(_is_modifier(p) for p in structures[:-1]):
-        return None   # "dorsal and volar soft tissues": a shared head noun, not two structures
+    if _is_modifier(structures[-1]):
+        return None
     if any(p.lower() in _PART_NOUNS for p in structures[1:]):
         return None   # "femoral head, neck and ...": the bare part borrows the previous item's owner
     if subj[:1].isupper() and not m.group("lead") and len(structures) > 1:
@@ -120,7 +135,6 @@ def parse_grouped(sentence: str) -> Optional[Grouped]:
         seps = " ".join(x.group() for x in _TAIL_SEP.finditer(raw))
         conj = "and no" if re.search(r"\band\s+no\b", seps) else ("or" if re.search(r"\b(?:or|nor)\b", seps) or not seps
                                                                   else "and")
-    seps = [x.group() for x in _SUBJ_SEP.finditer(subj)]
     oxford = bool(seps) and bool(re.match(r"\s*,\s*and\s", seps[-1]))
     return Grouped(s, m.group("lead") or "", structures, m.group("verb"), desc, m.group("intro") or "", tail,
                    conj, oxford)
