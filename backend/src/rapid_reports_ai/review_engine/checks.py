@@ -8,7 +8,7 @@ decision 2026-10-04, certainty lab: Jev 12/14 real upgrades at 2% false alarms a
 from __future__ import annotations
 
 import re
-from typing import List, Literal, Optional, Set
+from typing import List, Literal, Optional, Set, Tuple
 
 from .alignment import ANATOMY, Alignment, Pair, ReportClause, numbers, side_of, words
 from .items import Candidate, Span
@@ -275,13 +275,36 @@ _OWNER_GENERIC = frozenset({"normal", "normally", "unremarkable", "small", "mild
                             "seen", "noted", "identified", "evidence", "present", "large", "measuring"})  # provisional: Gate B1
 
 
+def _source_numbers(source: str) -> Tuple[Set[str], Set[str], Set[str]]:
+    """(numbers, values, grade words) of the dictation-plus-history text."""
+    src_nums = numbers(_norm_numbers(_DATE.sub(" ", source), spelled=True))   # numbers() already drops level tokens
+    return src_nums, {_value(n) for n in src_nums}, _grade_words(source)
+
+
+def _unsupported_numbers(text: str, src_nums: Set[str], src_vals: Set[str], src_grades: Set[str]) -> List[str]:
+    """`text` is a clause with its list marker already removed."""
+    ntext = _norm_numbers(_DATE.sub(" ", text), grades=src_grades)
+    if _NEGATED.search(text) or _NORMAL_CLAUSE.search(text):
+        ntext = _THRESHOLD.sub(" ", ntext)
+    return [] if _SIGNATURE.search(text) else sorted(
+        n for n in numbers(ntext) if n not in src_nums and _value(n) not in src_vals)
+
+
+def undictated_numbers(text: str, dictation: str, history: str) -> List[str]:
+    """The numbers (with unit, normalised) in a report clause that the dictation and history lack: the
+    `code.numbers` rule. A value that matches with a different or missing unit on one side is supported."""
+    return _unsupported_numbers(_LIST_MARK.sub("", text), *_source_numbers(f"{dictation}\n{history}"))
+
+
+def is_measurement(n: str) -> bool:
+    """A normalised number that carries a unit ("6mm", "45ml", "55%"), not a bare count or list number."""
+    return bool(re.search(r"[A-Za-z%]", n))
+
+
 def run_checks(report: str, dictation: str, history: str, scan: str, al: Alignment,
                study_title: Optional[str] = None) -> List[Candidate]:
     source = f"{dictation}\n{history}"
-    src_text = _norm_numbers(_DATE.sub(" ", source), spelled=True)
-    src_grades = _grade_words(source)
-    src_nums = numbers(src_text)                         # numbers() already drops level tokens
-    src_vals = {_value(n) for n in src_nums}
+    src_nums, src_vals, src_grades = _source_numbers(source)
     src_dates = {_date_key(d) for d in _DATE.findall(source)}
     src_prior = bool(_SRC_PRIOR.search(source))
     mod = modality(scan)
@@ -299,11 +322,7 @@ def run_checks(report: str, dictation: str, history: str, scan: str, al: Alignme
         # unsupported: numbers, dates, prior-study references with no match in dictation or history. A value that
         # matches with a different or missing unit on one side is supported ("6" / "6 mm", "45 cc" / "45 ml").
         dates = [d for d in _DATE.findall(text) if not _date_supported(_date_key(d), src_dates)]
-        ntext = _norm_numbers(_DATE.sub(" ", text), grades=src_grades)
-        if _NEGATED.search(text) or _NORMAL_CLAUSE.search(text):
-            ntext = _THRESHOLD.sub(" ", ntext)
-        nums = [] if _SIGNATURE.search(text) else sorted(
-            n for n in numbers(ntext) if n not in src_nums and _value(n) not in src_vals)
+        nums = _unsupported_numbers(text, src_nums, src_vals, src_grades)
         if nums:
             add(_cand(report, c, "unsupported", "code.numbers", {"numbers": nums}))
         if dates:

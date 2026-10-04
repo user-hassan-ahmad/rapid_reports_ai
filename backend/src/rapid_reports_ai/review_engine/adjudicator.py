@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from .. import report_reconcile as rc
 from ..enhancement_utils import _run_agent_with_model
+from .checks import is_measurement, undictated_numbers
 from .items import Candidate, Edit, ReviewInput, ReviewItem
 
 logger = logging.getLogger(__name__)
@@ -144,6 +145,27 @@ def cap_brief(j: Judgement, group: List[Candidate]) -> Judgement:
     return j.model_copy(update={"cls": "minor"}) if _capped(group) and j.cls == "action" else j
 
 
+def invented_measurements(group: List[Candidate], dictation: str, history: str) -> List[str]:
+    """Measurements the group's report text carries that the dictation and history lack: a `code.numbers` flag's
+    own numbers, or the undictated numbers of a W1n `unsupported` clause (the same rule, `checks.undictated_numbers`).
+    Bare numbers (counts, list markers) are not measurements."""
+    out = set()
+    for c in group:
+        ev = c.evidence or {}
+        if c.detector == "code.numbers":
+            out |= {n for n in ev.get("numbers") or [] if is_measurement(n)}
+        elif c.detector == "jev.supported" and c.kind == "unsupported":
+            text = ev.get("clause") or (c.anchor.text if c.anchor else "")
+            out |= {n for n in undictated_numbers(text, dictation, history) if is_measurement(n)}
+    return sorted(out)
+
+
+def floor_numbers(cls: str, group: List[Candidate], dictation: str, history: str) -> str:
+    """No invented numbers: a measurement absent from the dictation and history is never `minor` or `info`; it is
+    at least `action`. An explicit `suppress` (the adjudicator found the number is supported) stands."""
+    return "action" if cls in ("minor", "info") and invented_measurements(group, dictation, history) else cls
+
+
 def to_edit(j: Judgement) -> Optional[Edit]:
     if j.edit_mode == "none":
         return None
@@ -207,4 +229,5 @@ async def reprepare(inp: ReviewInput, item: ReviewItem, report: Optional[str] = 
 
 
 __all__ = ["Judgement", "Outcome", "prompt", "system_prompt_for", "render_candidate", "user_message",
-           "needs_judgement", "cap_brief", "to_edit", "fallback", "judge", "adjudicate", "reprepare"]
+           "needs_judgement", "cap_brief", "invented_measurements", "floor_numbers", "to_edit", "fallback", "judge",
+           "adjudicate", "reprepare"]

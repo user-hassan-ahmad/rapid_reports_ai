@@ -23,7 +23,10 @@ entries (by item id) carry the sequenced detail. `ReviewResult` itself keeps `pr
 Duplicates (I2): a negative clause flagged both by the negatives classifier and by the accuracy lane
 (`evidence.negative`) is owned by the negatives classifier when it succeeded: lane items whose original-report span
 overlaps a negatives item's span are dropped (listed in `run["deduped"]`). When the classifier failed, the lane path
-is the fallback.
+is the fallback. Before that safety net, `prefilter` holds back from grouping and adjudication every accuracy-lane
+Jev candidate on a negative or plain normal statement whose span overlaps one of the classifier's CANDIDATE clauses
+(code, known before its model call, so lanes and classifier stay concurrent; waiting for its labels would serialise
+~5 s p50). Held candidates are adjudicated after the classifier only when it failed (`run["cost"]["prefiltered"]`).
 
 Pre-apply (binding corrections 9, 10, 12; spec §9). An item is `pre_applied` only when ALL hold:
 - it is pre-apply eligible: a code-built removal from the accuracy lane (`Candidate.pre_apply` + `code_fix`), or a
@@ -167,6 +170,12 @@ def build_item(inp: ReviewInput, run_id: str, o: adjudicator.Outcome) -> ReviewI
     evidence: Dict = {}
     for c in g:
         evidence.update({k: v for k, v in (c.evidence or {}).items() if k not in evidence})
+    floored = adjudicator.floor_numbers(cls, g, inp.artifacts.dictated_findings or "", inp.clinical_history or "")
+    if floored != cls:                   # no invented numbers: never minor / info
+        evidence["invented_numbers"] = adjudicator.invented_measurements(g, inp.artifacts.dictated_findings or "",
+                                                                          inp.clinical_history or "")
+        evidence["cls_floor"] = {"from": cls, "to": floored}
+        cls = floored
     detectors = sorted({c.detector for c in g})
     return ReviewItem(key=_key(first, anchor, line_text), report_id=inp.report_id, run_id=run_id, lane=first.lane,
                       detectors=detectors, kind=kind, cls=cls, section=section, anchor=anchor,
@@ -314,6 +323,26 @@ def _overlaps(a: Span, spans: List[Tuple[int, int]]) -> bool:
     return any(a.start < e and s < a.end for s, e in spans)
 
 
+def _owned_by_negatives(c: Candidate) -> bool:
+    """An accuracy-lane Jev candidate on a negative or a plain normal statement: the negatives classifier's clause."""
+    if c.lane != "accuracy" or not c.detector.startswith("jev.") or c.anchor is None:
+        return False
+    ev = c.evidence or {}
+    text = ev.get("clause") or c.anchor.text
+    return bool(ev.get("negative")) or is_negative(text) or jev_pass.normal_statement(text)
+
+
+def prefilter(cands: List[Candidate], spans: List[Tuple[int, int]]) -> Tuple[List[Candidate], List[Candidate]]:
+    """(kept, held): candidates the negatives classifier owns (`_owned_by_negatives`) whose span overlaps one of its
+    candidate clauses are held back from grouping and adjudication. The spans come from the classifier's CANDIDATE
+    list (code, before its model call), so the lanes and the classifier stay concurrent; the held candidates are
+    adjudicated afterwards only when the classifier fails (the lane fallback)."""
+    kept, held = [], []
+    for c in cands:
+        (held if _owned_by_negatives(c) and _overlaps(c.anchor, spans) else kept).append(c)
+    return kept, held
+
+
 def _dedupe(items: List[ReviewItem], group_of: Dict[str, List[Candidate]], neg_items: List[ReviewItem]
             ) -> Tuple[List[ReviewItem], List[ReviewItem]]:
     """(kept, dropped): lane items on a negative (`evidence.negative`) whose original-report span overlaps a
@@ -327,6 +356,26 @@ def _dedupe(items: List[ReviewItem], group_of: Dict[str, List[Candidate]], neg_i
         dup = a is not None and any((c.evidence or {}).get("negative") for c in g) and _overlaps(a, spans)
         (dropped if dup else kept).append(it)
     return kept, dropped
+
+
+async def _judge_and_verify(inp: ReviewInput, run_id: str, cands: List[Candidate], al: Optional[Alignment],
+                            items: List[ReviewItem], plans: Dict[str, "_Plan"],
+                            group_of: Dict[str, List[Candidate]], timings: Dict[str, int]) -> List[adjudicator.Outcome]:
+    """merge → adjudicate → items (+ pre-apply plans) → verify; appends to `items` / `plans` / `group_of`."""
+    outcomes = await adjudicator.adjudicate(inp, merge(cands))
+    new: List[ReviewItem] = []
+    for o in outcomes:
+        it = build_item(inp, run_id, o)
+        p = plan_preapply(inp, o, it, al)
+        if p is not None:
+            plans[it.id] = p
+        group_of[it.id] = o.group
+        new.append(it)
+    t = time.monotonic()
+    await verifier.verify(inp, [i for i in new if i.cls != "suppress"], groups=group_of)
+    timings["verifier_ms"] = int((time.monotonic() - t) * 1000)
+    items += new
+    return outcomes
 
 
 async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
@@ -367,23 +416,15 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
             else:
                 lanes[n] = "done"
                 cands += r
-        t = time.monotonic()
-        groups = merge(cands)
-        outcomes = await adjudicator.adjudicate(inp, groups)
-        timings["adjudicator_ms"] = int((time.monotonic() - t) * 1000)
+        held: List[Candidate] = []
+        if neg_task is not None:
+            cands, held = prefilter(cands, negatives.candidate_spans(a.report))
         items: List[ReviewItem] = []
         plans: Dict[str, _Plan] = {}
         group_of: Dict[str, List[Candidate]] = {}
-        for o in outcomes:
-            it = build_item(inp, run_id, o)
-            p = plan_preapply(inp, o, it, al)
-            if p is not None:
-                plans[it.id] = p
-            group_of[it.id] = o.group
-            items.append(it)
         t = time.monotonic()
-        await verifier.verify(inp, [i for i in items if i.cls != "suppress"], groups=group_of)
-        timings["verifier_ms"] = int((time.monotonic() - t) * 1000)
+        outcomes = await _judge_and_verify(inp, run_id, cands, al, items, plans, group_of, timings)
+        timings["adjudicator_ms"] = int((time.monotonic() - t) * 1000) - timings.get("verifier_ms", 0)
     except BaseException:
         if neg_task is not None:
             neg_task.cancel()
@@ -398,6 +439,12 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
             errors["negatives"] = neg_err or neg_log["error"]
         for it in neg_items:
             it.engine_version = ENGINE_VERSION
+    if held and "negatives" in errors:   # the classifier failed: the held lane candidates are the fallback
+        t = time.monotonic()
+        outcomes += await _judge_and_verify(inp, run_id, held, al, items, plans, group_of, {})
+        timings["fallback_ms"] = int((time.monotonic() - t) * 1000)
+        cands += held
+        held = []
     deduped: List[dict] = []
     if neg_task is not None and "negatives" not in errors:      # the classifier owns negatives; else lane fallback
         items, dropped = _dedupe(items, group_of, neg_items)
@@ -410,7 +457,8 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
     errors.update({f"adjudicator_{k}": o.error for k, o in enumerate(outcomes) if o.error})
     run = {"lanes": lanes, "timings_ms": timings, "errors": errors,
            "cost": {"groups": len(outcomes), "adjudicated": sum(1 for o in outcomes if o.judgement or o.error),
-                    "candidates": len(cands), "negatives_calls": 1 if neg_log and neg_log.get("candidates") else 0},
+                    "candidates": len(cands), "prefiltered": len(held),
+                    "negatives_calls": 1 if neg_log and neg_log.get("candidates") else 0},
            "pre_apply": pre_log, "negatives": _neg_summary(neg_log), "deduped": deduped,
            "negatives_report": (neg_log or {}).get("report"),
            "negatives_post_removal_anchors": (neg_log or {}).get("post_removal_anchors") or {}}

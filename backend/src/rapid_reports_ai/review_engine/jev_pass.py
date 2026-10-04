@@ -26,6 +26,28 @@ Q_CERTAINTY = ('Read only this one report statement: "{c}". It states a finding 
                'dictated findings do, for example a possibility stated as a fact, or a milder grade stated as a worse one.')
 _NORMAL = re.compile(r"\b(?:normal|unremarkable|within normal limits|wnl)\b", re.I)
 _DIGIT = re.compile(r"\d")
+# Normal statements worded without "normal" (structural form, any anatomy): a normal predicate that ends the clause
+# ("The ligament is intact.", "Disc heights are preserved.", "The liver surface is smooth.", "Cruciate ligaments
+# intact.") or a "maintains continuity"-style verb phrase. The predicate must close the clause (a short qualifier or a
+# trailing "with no ..." aside), so "is smooth and thickened" or "with preserved fat plane" mid-clause stay positive.
+_PRED = r"(?:intact|preserved|maintained|smooth|patent|clear)"
+_QUAL = r"(?:\s+(?:throughout|bilaterally|in (?:size|calibre|caliber|configuration|appearance|position|morphology)" \
+        r"(?: and (?:size|calibre|caliber|configuration|appearance|position|morphology))?))?"
+_TAIL = _QUAL + r"(?:\s*,?\s*(?:and|with)\s+(?:no|without)\b[^0-9]*)?\s*[.;]?\s*$"
+_NORMAL_STATEMENT = re.compile(
+    r"\b(?:(?:is|are|was|were|appears?|remains?|seems?)\s+(?:(?:otherwise|grossly|entirely|completely|well|also|"
+    r"again|still|both)\s+)?)?" + _PRED + r"(?![-\w])" + _TAIL +
+    r"|\bmaintains?\s+(?:(?:its|their|normal)\s+)?(?:continuity|integrity|alignment|calibre|caliber|configuration)"
+    r"(?![-\w])" + _TAIL +
+    r"|\bno\s+(?:\w+\s+){0,2}abnormalit(?:y|ies)\b", re.I)
+
+
+def normal_statement(clause: str) -> bool:
+    """A plain normal statement with no number: generated normals are owned by the negatives classifier (default-
+    negatives policy), so the Accuracy lane never asks W1n / C1n of them."""
+    if _DIGIT.search(clause):
+        return False
+    return bool(_NORMAL.search(clause) or _NORMAL_STATEMENT.search(clause.strip()))
 
 
 def q_supported(clause: str) -> dict:
@@ -43,7 +65,7 @@ def positive(clause: str) -> bool:
     stated by design, so asking whether the dictation reports them would flag every one)."""
     if restate(clause) is not None or hedge_tag(clause) == "negated":
         return False
-    return not (_NORMAL.search(clause) and not _DIGIT.search(clause))
+    return not normal_statement(clause)
 
 
 class JevPass(BaseModel):

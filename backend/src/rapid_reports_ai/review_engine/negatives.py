@@ -17,8 +17,15 @@ Items bypass the adjudicator (binding correction 10) and are never merged with l
     implicated                              check           open          minor   evidence.check_reason "uncertain"
     contradicted, code-removable            removed         pre_applied   action  edit mode remove (correction 12)
     contradicted, not removable             check           open          action  check_reason "conflict"
+                                                                                  (+ code's one-click removal when
+                                                                                  the guards pass; never pre-applied)
     default / implicated / dictated, number check           open          minor   check_reason "number"
+      ... the number is a measurement       check           open          action  (no invented numbers)
     dictated                                (no item)
+
+Candidates are negatives and plain normal statements in any wording (`jev_pass.normal_statement`, shared with the
+Accuracy lane's W1n exclusion). Every check item's label states its reason, naming the classifier's pointer (or the
+number) when there is one, and `reason` says what to do.
 
 A number-flagged clause is never removed: the verifier's removal rule refuses any clause holding a number
 (`_negative_only`), so only a contradicted plain negative is removed. It is a check item with `check_reason`
@@ -53,7 +60,8 @@ from pydantic import BaseModel, field_validator
 from .. import report_reconcile as rc
 from ..enhancement_utils import _run_agent_with_model
 from ..report_review import checked_clauses_in_context, remove_negative_clause
-from . import verifier
+from . import checks, verifier
+from .jev_pass import normal_statement
 from .items import Edit, ReviewInput, ReviewItem, Span, item_key, text_hash
 
 logger = logging.getLogger(__name__)
@@ -67,7 +75,32 @@ DETECTOR = "negatives.v5"
 LANE = "accuracy"           # the normal/negative half of Accuracy
 ORIGINAL_KIND = "negative"  # key kind: stable whatever label the classifier gives
 CLASSES = ("dictated", "default", "implicated", "contradicted")
-CLS = {"assumed_normal": "info", "uncertain": "minor", "number": "minor", "conflict": "action", "removed": "action"}
+CLS = {"assumed_normal": "info", "uncertain": "minor", "number": "minor", "conflict": "action", "removed": "action",
+       "measurement": "action"}   # no invented numbers: an undictated measurement is never minor
+CHECK_REASONS = ("uncertain", "conflict", "number")
+_POINTER_MAX = 60
+
+
+def _quote(pointer: str) -> str:
+    p = " ".join((pointer or "").split())
+    return f"“{p[:_POINTER_MAX - 1]}…”" if len(p) > _POINTER_MAX else f"“{p}”"
+
+
+def check_text(reason: str, pointer: str) -> Tuple[str, str]:
+    """(label, reason) for a check item: the label states why it is a check, naming the dictated finding (or the
+    number) when there is one; the reason says what to do."""
+    q = _quote(pointer) if pointer else ""
+    if reason == "conflict":
+        return ((f"Check: conflicts with {q}" if q else "Check: conflicts with your dictation"),
+                (f"Your dictation reports {q}, which this generated statement contradicts. Remove or correct it."
+                 if q else "Your dictation contradicts this generated statement. Remove or correct it."))
+    if reason == "number":
+        return ((f"Check: {q} is not in your dictation" if q else "Check: number not in your dictation"),
+                (f"The measurement {q} is in neither your dictation nor the history. Confirm or remove it."
+                 if q else "This number is in neither your dictation nor the history. Confirm or remove it."))
+    return ((f"Check: may not hold given {q}" if q else "Check: a dictated finding may affect this"),
+            (f"Your dictation reports {q}; this generated normal may not hold. Confirm or remove it."
+             if q else "A dictated finding may bear on this generated normal. Confirm or remove it."))
 
 _NEG = re.compile(r"\b(no|not|nil|without|normal(ly)?|unremarkable|patent|intact|clear|preserved|maintained|"
                   r"within normal limits|non-?dilated|undilated|no evidence)\b", re.I)
@@ -88,7 +121,9 @@ def prompt() -> str:
 # ── candidates and code checks ───────────────────────────────────────────────
 
 def is_normal_or_negative(clause: str) -> bool:
-    return bool(_NEG.search(clause))
+    """A negative, or a normal statement in any wording the Accuracy lane leaves to this classifier
+    (`jev_pass.normal_statement`: "maintains continuity", "is smooth", ...)."""
+    return bool(_NEG.search(clause)) or normal_statement(clause)
 
 
 def candidates(report: str) -> List[dict]:
@@ -96,6 +131,16 @@ def candidates(report: str) -> List[dict]:
     Recommendation sentences are never candidates ("CT spine without contrast" is not a negative)."""
     return [{"clause": c, "before": b} for c, b in checked_clauses_in_context(report, None).items()
             if is_normal_or_negative(c) and not _RECOMMENDATION.search(c)]
+
+
+def candidate_spans(report: str) -> List[Tuple[int, int]]:
+    """Original-report spans of every clause the classifier will read: pure code, known before its model call."""
+    taken: List[Tuple[int, int]] = []
+    for c in candidates(report):
+        span = _locate(report, c["clause"], taken)
+        if span:
+            taken.append(span)
+    return taken
 
 
 def code_number_flag(clause: str, dictation: str, history: str) -> bool:
@@ -227,6 +272,22 @@ def _locate(report: str, clause: str, taken: List[Tuple[int, int]]) -> Optional[
 
 # ── routing ──────────────────────────────────────────────────────────────────
 
+def _conflict_fix(inp: ReviewInput, report: str, anchor: Optional[Span], clause: str, names: List[str]
+                  ) -> Tuple[Optional[Edit], Optional[dict]]:
+    """A contradicted statement code could not pre-apply: code's removal of it (verifier `_negative_fix`, never an
+    LLM rewrite, L-47) as a one-click edit when the code guards pass. Never pre-applied: no probe confirms it."""
+    if anchor is None:
+        return None, None
+    fix = verifier._negative_fix(report, anchor.start, anchor.end, clause, names)
+    if fix is None:
+        return None, None
+    fails = verifier.guard_failures(report, fix, "contradicted", inp.artifacts.dictated_findings or "",
+                                    inp.clinical_history or "", sections=names, target=clause)
+    if fails:
+        return None, None
+    return fix, {"code": True, "failed": [], "addressed": None, "contra": None, "unconfirmed": True}
+
+
 def _to_original(p: int, gaps: List[Tuple[int, int]], end: bool = False) -> int:
     """A position on the post-removal text → the original report (`gaps`: removed original intervals, sorted and
     disjoint). An `end` position stays before a gap that starts exactly there."""
@@ -286,7 +347,8 @@ def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, di
     post: Dict[int, List[int]] = {}
 
     def item(c: dict, kind: str, status: str, cls_key: str, anchor: Optional[Span], evidence: dict,
-             label: str, edit: Optional[Edit] = None, applied_hash: Optional[str] = None) -> ReviewItem:
+             label: str, edit: Optional[Edit] = None, applied_hash: Optional[str] = None, reason: str = "",
+             verified: Optional[dict] = None) -> ReviewItem:
         sec = verifier._section_of(report, anchor.start, names) if anchor else None
         history = [{"at": _now(), "event": "created", "actor": "engine", "text_hash": h,
                     "detail": {"detectors": [DETECTOR]}}]
@@ -295,10 +357,11 @@ def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, di
                             "detail": {"kind": kind}})
         return ReviewItem(key=item_key(LANE, ORIGINAL_KIND, c["clause"]), report_id=inp.report_id, run_id=run_id,
                           lane=LANE, detectors=[DETECTOR], kind=kind, cls=CLS[cls_key],
-                          section=sec.upper() if sec else None, anchor=anchor, label=label, edit=edit,
-                          evidence=evidence, status=status, history=history,
+                          section=sec.upper() if sec else None, anchor=anchor, label=label, reason=reason,
+                          edit=edit, evidence=evidence, status=status, history=history,
                           verified={"code": True, "failed": [], "addressed": None, "contra": None,
-                                    "unconfirmed": False, "preapply_failures": []} if status == "pre_applied" else None)
+                                    "unconfirmed": False, "preapply_failures": []} if status == "pre_applied"
+                          else verified)
 
     for r in removed:
         i = r["i"]
@@ -308,7 +371,9 @@ def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, di
                         Span(start=s0, end=e0, text=report[s0:e0], text_hash=h),
                         {"removal_reason": "contradicted", "pointer": lab.get("pointer", ""),
                          "removed_text": r["edit"].find, "clause": c["clause"], "label": lab.get("cls") or "default"},
-                        "Removed: contradicts your dictation", r["edit"], r["before_hash"])
+                        "Removed: contradicts your dictation", r["edit"], r["before_hash"],
+                        reason=check_text("conflict", lab.get("pointer", ""))[1].replace(
+                            "Remove or correct it.", "It was removed; restore it if it is right."))
         post[i] = [r["post"], r["post"]]
     taken: List[Tuple[int, int]] = [r["orig"] for r in removed]
     taken_post: List[Tuple[int, int]] = []
@@ -326,19 +391,25 @@ def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, di
             post[i] = list(pspan)
         anchor = Span(start=span[0], end=span[1], text=report[span[0]:span[1]], text_hash=h) if span else None
         base = {"clause": c["clause"], "label": cls}
+        given = lab.get("pointer", "")                # the classifier's pointer to the dictated finding, if any
         if cls == "contradicted":
+            label, why = check_text("conflict", given)
+            fix, verified = _conflict_fix(inp, report, anchor, c["clause"], names)
             items[i] = item(c, "check", "open", "conflict", anchor,
-                            {**base, "check_reason": "conflict", "pointer": lab.get("pointer", "")},
-                            "Check: conflicts with your dictation")
+                            {**base, "check_reason": "conflict", "pointer": given}, label, edit=fix, reason=why,
+                            verified=verified)
         elif c["number"]:
-            items[i] = item(c, "check", "open", "number", anchor,
-                            {**base, "check_reason": "number",
-                             "pointer": undictated_numbers(c["clause"], dictation, history)},
-                            "Check: number not in your dictation")
+            nums = undictated_numbers(c["clause"], dictation, history)
+            label, why = check_text("number", nums)
+            measured = [n for n in checks.undictated_numbers(c["clause"], dictation, history)
+                        if checks.is_measurement(n)]
+            items[i] = item(c, "check", "open", "measurement" if measured else "number", anchor,
+                            {**base, "check_reason": "number", "pointer": nums,
+                             **({"dictated_pointer": given} if given else {})}, label, reason=why)
         elif cls == "implicated":
+            label, why = check_text("uncertain", given)
             items[i] = item(c, "check", "open", "uncertain", anchor,
-                            {**base, "check_reason": "uncertain", "pointer": lab.get("pointer", "")},
-                            "Check: a dictated finding points here")
+                            {**base, "check_reason": "uncertain", "pointer": given}, label, reason=why)
         else:
             items[i] = item(c, "assumed_normal", "open", "assumed_normal", anchor, base, "Assumed normal")
     return ([items[i] for i in sorted(items)], doc,
@@ -369,5 +440,5 @@ async def classify_negatives(inp: ReviewInput, run_id: str) -> Tuple[List[Review
     return items, log
 
 
-__all__ = ["Labels", "candidates", "code_number_flag", "undictated_numbers", "parse_labels", "user_message",
+__all__ = ["Labels", "candidates", "candidate_spans", "code_number_flag", "undictated_numbers", "parse_labels", "user_message",
            "classify", "removal_edit", "route", "classify_negatives"]

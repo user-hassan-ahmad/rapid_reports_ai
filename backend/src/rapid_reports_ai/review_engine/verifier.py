@@ -426,11 +426,12 @@ _ADD_STOP = {"with", "this", "that", "these", "those", "there", "which", "from",
              "category", "classification", "appearances", "appearance", "finding", "findings"}
 
 
-def _additions_failures(old: str, new: str, source: str) -> List[str]:
+def _additions_failures(old: str, new: str, source: str, option_sentence: str = "") -> List[str]:
     """Additions lane (guideline-derived): a fix may only upgrade the recommendation or add the grade. It never adds
-    a negative, a descriptor or a finding (content words grounded nowhere), or management."""
+    a negative, a descriptor or a finding (content words grounded nowhere), or management. A brief option's own
+    sentence (`option_sentence`) grounds the negatives it states, so its insert keeps its one-click edit."""
     fails = []
-    old_neg = {tuple(p) for p in _negated_phrases(old)}
+    old_neg = {tuple(p) for p in _negated_phrases(old)} | {tuple(p) for p in _negated_phrases(option_sentence)}
     grounded = set(_words(f"{old}\n{source}"))
     if any(tuple(p) not in old_neg for p in _negated_phrases(new)) or any(
             len(w) >= 4 and w not in _ADD_STOP and w not in grounded for w in _words(new)):
@@ -747,14 +748,16 @@ def _replace_removes_dictated(old: str, new: str, loses: bool, lost: List[List[s
 
 def guard_failures(report: str, edit: Optional[Edit], kind: str, dictation: str, history: str, *,
                    extra_source: str = "", additions: bool = False, sections: Optional[List[str]] = None,
-                   item_section: Optional[str] = None, target: Optional[str] = None) -> List[str]:
+                   item_section: Optional[str] = None, target: Optional[str] = None,
+                   option_sentence: str = "") -> List[str]:
     """Spec §8 code guards. An empty list means the fix may be shown with Apply.
     `extra_source` (additions lane: the candidate's guideline evidence) also grounds numbers and sides.
     `additions`: the item comes from the additions lane, so new content and management are refused.
     `sections`: the report's top-level section names; only they bound sections (else the ALL-CAPS fallback).
     `item_section` is used for the section check when the edit names none.
     `target`: what a removal kind removes (the item's evidence clause or anchor text); its exemption covers that
-    one negative only."""
+    one negative only.
+    `option_sentence`: a brief option's own sentence; it grounds the negatives that sentence states (additions)."""
     if edit is None:
         return []
     names = sections or []
@@ -796,7 +799,7 @@ def guard_failures(report: str, edit: Optional[Edit], kind: str, dictation: str,
     if _structure(report, edit, names):
         fails.append("structure")
     if additions and edit.mode in ("insert", "replace", "upgrade"):
-        fails += _additions_failures(old, new, source)
+        fails += _additions_failures(old, new, source, option_sentence)
     pos = _edit_pos(report, edit, names)
     want = edit.section or item_section
     if pos is not None and want:
@@ -1193,6 +1196,15 @@ def _extra_source(item: ReviewItem, group: Optional[List[Candidate]] = None) -> 
     return "\n".join(str(ev[k]) for ev in evs for k in _EVIDENCE_KEYS if ev.get(k) not in (None, ""))
 
 
+def _option_sentence(item: ReviewItem, group: Optional[List[Candidate]] = None) -> str:
+    """A brief option's own sentence (its evidence `sentence`): one-click grounding for the option's edit only."""
+    if group:
+        return "\n".join(c.evidence["sentence"] for c in group
+                         if c.detector == "brief.option" and (c.evidence or {}).get("sentence"))
+    ev = item.evidence or {}
+    return ev.get("sentence") or "" if "brief.option" in (item.detectors or []) else ""
+
+
 # ── Jev ─────────────────────────────────────────────────────────────────────
 async def _ask(state: str, qs: dict) -> dict:
     return await asyncio.wait_for(rc._jev(state, qs), JEV_TIMEOUT_S) if qs else {}
@@ -1241,7 +1253,8 @@ async def verify(inp: ReviewInput, items: List[ReviewItem], report: Optional[str
         group = (groups or {}).get(it.id)
         fails = guard_failures(report, it.edit, it.kind, inp.artifacts.dictated_findings, inp.clinical_history,
                                extra_source=_extra_source(it, group), additions=_is_additions(it, group),
-                               sections=names, item_section=it.section, target=_target(it))
+                               sections=names, item_section=it.section, target=_target(it),
+                               option_sentence=_option_sentence(it, group))
         it.verified = {"code": not fails, "failed": fails, "addressed": None, "contra": None, "unconfirmed": False}
         if fails:
             it.edit = None
