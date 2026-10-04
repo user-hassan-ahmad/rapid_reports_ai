@@ -331,6 +331,7 @@ def render_unit(u: Unit, labels: Dict[str, dict], link_ok: bool, dneg: List[str]
         if action == "keep" and not a.negative and _ng.dictated_overlap([a.term], positives):
             own, why = True, "named by a dictated finding"
         recs.append({"id": a.id, "term": a.term, "text": a.text, "label": cls, "label_source": lab.get("source", ""),
+                     "jev_affected": lab.get("jev_affected"),
                      "pointer": lab.get("pointer", ""), "action": action, "own_line": own, "why": why, "span": None})
     grouped = [r["action"] == "keep" and not r["own_line"] for r in recs]
     parts: List[str] = []

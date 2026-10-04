@@ -339,6 +339,15 @@ async def test_brief_missing_labels_fall_back_to_jev_affected(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_brief_classifier_default_upgraded_to_implicated_by_jev_affected(monkeypatch):
+    _stub(monkeypatch, labels=[f"{i} | default | -" for i in range(1, 7)], jev_affected={"na2"})
+    b = await qb.compile_brief(SHEET, "CT", "CBD 12 mm")
+    sp = b.decisions["normals"][0]["atoms"][2]
+    assert (sp["label"], sp["label_source"], sp["action"], sp["jev_affected"]) == ("implicated", "fold+jev", "implicated", 0.9)
+    assert _path(b).startswith('"The liver and intrahepatic biliary tree are unremarkable. The spleen is unremarkable.')
+
+
+@pytest.mark.asyncio
 async def test_brief_separate_labeller(monkeypatch):
     monkeypatch.setenv("RR_LINKED_LABELLER", "separate")
     seen = _stub(monkeypatch, sep=LABELS)

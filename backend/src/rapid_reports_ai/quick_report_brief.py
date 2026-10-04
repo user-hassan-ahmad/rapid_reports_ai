@@ -70,20 +70,28 @@ LABEL_TIMEOUT_S = 15.0
 
 
 def _atom_labels(atoms: list, qw, sep_labels: Optional[List[str]], mode: Optional[str], jev: dict) -> dict:
-    """atom id -> {cls, pointer, source}. The classifier's label where it gave one; otherwise Jev "affected"
-    (the production per-line question): affected -> contradicted (not asserted), else default."""
+    """atom id -> {cls, pointer, source, jev_affected}. The classifier's label where it gave one, a default
+    upgraded to implicated when Jev "affected" >= 0.5 (both judges must clear an atom for it to be grouped
+    as plain normal); no label -> Jev "affected" alone (the production per-line question): affected ->
+    contradicted (not asserted), else default."""
     lines = sep_labels if mode == "separate" else getattr(qw, "normal_labels", None)
     got = _ln.parse_labels(lines or [], len(atoms))
     out = {}
     for i, a in enumerate(atoms):
-        if i + 1 in got:
-            out[a.id] = {**got[i + 1], "source": mode}
-            continue
         try:
-            aff = float(jev[f"na{i}"]["noul"]) >= 0.5
+            p = round(float(jev[f"na{i}"]["noul"]), 3)
         except (KeyError, TypeError, ValueError):
-            aff = False
-        out[a.id] = {"cls": "contradicted" if aff else "default", "pointer": "", "source": "jev_affected"}
+            p = None
+        if i + 1 in got:
+            out[a.id] = {**got[i + 1], "source": mode, "jev_affected": p}
+            # Plausible doubt is implicated: a default the Jev "affected" question flags is upgraded
+            # (kept in the report, its own sentence, highlighted), never asserted as plain normal.
+            if out[a.id]["cls"] == "default" and p is not None and p >= 0.5:
+                out[a.id].update(cls="implicated", source=f"{mode}+jev", pointer=f"Jev affected {p}")
+            continue
+        aff = p is not None and p >= 0.5
+        out[a.id] = {"cls": "contradicted" if aff else "default", "pointer": "", "source": "jev_affected",
+                     "jev_affected": p}
     return out
 
 
@@ -444,6 +452,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
                 offset += len(r.text) + 1
         if linked:
             decisions["linked"] = {"labeller": mode, "timing_ms": timing, "n_atoms": len(atoms_all),
+                                   "notes": getattr(qw, "normal_notes", "") if mode == "fold" else "",
                                    "n_units": len(linked.units), "n_loose": len(normals),
                                    "link_failed": sum(1 for x in link_log if not x["ok"])}
         lines = [f'- **Normal-study path:** "{" ".join(keep)}"' if keep else "- **Normal-study path:** (every line is affected by this dictation)"]
