@@ -2,12 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import type { ReviewItem, ReviewResponse, ReviewRun } from './types';
 
-vi.mock('./api', () => ({ getReview: vi.fn(), postEvent: vi.fn() }));
+vi.mock('./api', () => ({ getReview: vi.fn(), postEvent: vi.fn(), rerun: vi.fn() }));
 import * as api from './api';
 import { createReviewStore, UNANCHORED } from './store';
 
 const getReview = vi.mocked(api.getReview);
 const postEvent = vi.mocked(api.postEvent);
+const rerunApi = vi.mocked(api.rerun);
 
 let n = 0;
 function item(over: Partial<ReviewItem> = {}): ReviewItem {
@@ -57,6 +58,7 @@ beforeEach(() => {
 	n = 0;
 	getReview.mockReset();
 	postEvent.mockReset();
+	rerunApi.mockReset();
 });
 afterEach(() => vi.useRealTimers());
 
@@ -163,7 +165,8 @@ describe('counts and openActions', () => {
 		getReview.mockResolvedValue(response(items, DONE));
 		const s = createReviewStore('r1');
 		await s.load();
-		expect(get(s.counts)).toEqual({ action: 2, minor: 1, info: 1, suppress: 0 });
+		// open: open action + minor rows (what still needs the radiologist)
+		expect(get(s.counts)).toEqual({ action: 2, minor: 1, info: 1, suppress: 0, open: 2 });
 		expect(get(s.openActions).map((i) => i.id)).toEqual([open.id]);
 	});
 });
@@ -191,6 +194,15 @@ describe('upsert and markStale', () => {
 		s.markStale([b.id]);
 		expect(get(s).items.map((i) => i.status)).toEqual(['open', 'stale']);
 	});
+
+	it('marks only open items stale (never an applied, pre-applied or dismissed one)', async () => {
+		const items = [item(), item({ status: 'applied' }), item({ status: 'pre_applied' }), item({ status: 'dismissed' })];
+		getReview.mockResolvedValue(response(items, DONE));
+		const s = createReviewStore('r1');
+		await s.load();
+		s.markStale(items.map((i) => i.id));
+		expect(get(s).items.map((i) => i.status)).toEqual(['stale', 'applied', 'pre_applied', 'dismissed']);
+	});
 });
 
 describe('setStatus', () => {
@@ -211,16 +223,54 @@ describe('setStatus', () => {
 		expect(get(s).items[0]).toEqual(server);
 	});
 
-	it('rolls back on a server error and records it', async () => {
+	it('never rolls back: a failed post keeps the local status, flags syncError and retries (max 3)', async () => {
 		const a = item();
 		getReview.mockResolvedValue(response([a], DONE));
-		const s = createReviewStore('r1');
+		const s = createReviewStore('r1', { retryDelayMs: 1 });
 		await s.load();
 		postEvent.mockRejectedValue(new Error('bad transition'));
 		const out = await s.setStatus(a.id, 'dismissed', { command: 'dismiss' });
 		expect(out).toBeNull();
-		expect(get(s).items[0]).toEqual(a);
+		expect(postEvent).toHaveBeenCalledTimes(4); // the post + 3 retries
+		expect(get(s).items[0]).toMatchObject({ status: 'dismissed', syncError: 'bad transition' });
 		expect(get(s).error).toBe('bad transition');
+		// a reload does not undo the local status either
+		await s.load();
+		expect(get(s).items[0]).toMatchObject({ status: 'dismissed', syncError: 'bad transition' });
+	});
+
+	it('a retry that succeeds takes the server item and clears syncError', async () => {
+		const a = item();
+		getReview.mockResolvedValue(response([a], DONE));
+		const s = createReviewStore('r1', { retryDelayMs: 1 });
+		await s.load();
+		const server = { ...a, status: 'applied' as const };
+		postEvent.mockRejectedValueOnce(new Error('network')).mockResolvedValueOnce(server);
+		expect(await s.setStatus(a.id, 'applied', { command: 'apply' })).toEqual(server);
+		expect(postEvent).toHaveBeenCalledTimes(2);
+		expect(get(s).items[0]).toEqual(server);
+	});
+
+	it("posts one item's events in order, one at a time; the last local status stands until all are answered", async () => {
+		const a = item();
+		getReview.mockResolvedValue(response([a], DONE));
+		const s = createReviewStore('r1');
+		await s.load();
+		const answers: ((v: ReviewItem) => void)[] = [];
+		postEvent.mockImplementation(() => new Promise((r) => answers.push(r)));
+		const p1 = s.setStatus(a.id, 'applied', { command: 'apply' });
+		const p2 = s.setStatus(a.id, 'open', { command: 'undo' });
+		await Promise.resolve();
+		expect(postEvent).toHaveBeenCalledTimes(1);
+		expect(get(s).items[0].status).toBe('open');
+		answers[0]({ ...a, status: 'applied' });
+		await p1;
+		expect(get(s).items[0].status).toBe('open'); // the undo is still in flight
+		await vi.waitFor(() => expect(postEvent).toHaveBeenCalledTimes(2));
+		expect(postEvent.mock.calls[1][2]).toBe('undo');
+		answers[1]({ ...a, status: 'open', history: [{ event: 'apply' }, { event: 'undo' }] });
+		await p2;
+		expect(get(s).items[0].history).toHaveLength(2);
 	});
 
 	it('keeps an in-flight optimistic status across a poll reload', async () => {
@@ -295,6 +345,32 @@ describe('pollUntilDone', () => {
 		await expect(p).resolves.toBe('stopped');
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(getReview).toHaveBeenCalledTimes(2);
+	});
+
+	it('treats a run with errors as finished', async () => {
+		getReview.mockResolvedValue(response([], { coverage: '', accuracy: '' }, { errors: { engine: 'boom' } }));
+		const s = createReviewStore('r1');
+		await s.load();
+		await expect(s.pollUntilDone()).resolves.toBe('done');
+		expect(getReview).toHaveBeenCalledTimes(1);
+	});
+
+	it('rerun posts, then polls until a NEW run has finished', async () => {
+		vi.useFakeTimers();
+		getReview
+			.mockResolvedValueOnce(response([], DONE)) // initial load: run1, finished
+			.mockResolvedValueOnce(response([], DONE)) // the old run is still the latest
+			.mockResolvedValueOnce(response([], { coverage: '' }, { id: 'run2' }))
+			.mockResolvedValueOnce(response([item()], DONE, { id: 'run2' }));
+		rerunApi.mockResolvedValue({ success: true, status: 'running' });
+		const s = createReviewStore('r1');
+		await s.load();
+		const p = s.rerun('report text', { intervalMs: 1000, maxMs: 60000 });
+		await vi.advanceTimersByTimeAsync(3000);
+		await expect(p).resolves.toBe('done');
+		expect(rerunApi).toHaveBeenCalledWith('r1', 'report text');
+		expect(getReview).toHaveBeenCalledTimes(4);
+		expect(get(s).run?.id).toBe('run2');
 	});
 
 	it('does not poll when the engine is off', async () => {
