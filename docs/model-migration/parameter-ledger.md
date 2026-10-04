@@ -1867,3 +1867,37 @@ Data: stored S4 synthesis for 33 of the 41 reports, the "already in report" Jev 
 - Additions ships as **minor/option only**, behind the code guards (no new findings, negatives or management). Guideline items render as "suggested · not included" ghost text.
 - Next calibration step: an Additions-specific class rule so that the adjudicator's own "nothing to add" reasoning becomes suppress.
 - The clinical pass is the strongest Additions producer and is kept.
+
+### L-53 · Gate B2: the "is this positive statement supported?" Jev wording lab, 2026-10-04
+
+Data: 100 balanced items, all positive report clauses.
+- **50 not stated:** 30 production spans, confirmed unsupported by peer read and filtered to positive statements (14 certainty upgrades, 11 other, 2 invented findings, 2 invented priors, 1 misattribution), plus 20 synthetic fabrications seeded into real reports (7 invented findings, 7 invented measurements, 6 invented priors).
+- **50 stated:** a peer reader picked 10 each of verbatim, paraphrased, hedged, merged and abbreviated, across 39 reports.
+
+Five arms (W1, W2 noul and Choice; W3 Choice), 2 runs each, Jev 1.13. Production text stays in the scratchpad. Baseline: the L-46 naive question, 5/32 with 49 false alarms.
+
+| | W1n | W2c | Others |
+|---|---|---|---|
+| AUC | 0.972 | 0.967 | 0.965–0.976 |
+| False alarms on stated clauses | **0/50** | 0/50 | 0/50 |
+| Lowest stated score | **0.90** | 0.63 | |
+| Invented finding / measurement / prior / misattributed caught | **25/25** | 25/25 | 25/25 |
+| "Other" production caught | 9/11 | 9/11 | |
+| **Certainty upgrades caught** | **3/14** | 4/14 | 2–4/14 |
+| Max drift across runs | **0.04** | 0.13 | up to 0.21 |
+
+**Finding:** the wording counts a finding as stated "including as a possibility", so a dropped hedge correctly scores as stated. Certainty is a separate question. Excluding certainty upgrades, **W1n catches 34/36 (94%) with 0/50 false alarms**, which clears the bar (≥ 90% recall, ≤ 5% false alarms, drift ≤ 0.2).
+
+**Decision:**
+- Adopt **W1n** ("The dictated findings report this finding, including as a possibility, in any wording. Report statement: …") as the Accuracy lane's unsupported-positive detector. Flag at < 0.5 (the measured gap: stated ≥ 0.90, while invented content clusters low). An item in the unsure band 0.5–0.85 goes to the adjudicator (§6.5).
+- **Certainty upgrades get their own detector:** the code `hedge_tag` comparison of dictated against report certainty on aligned pairs (Plan 2 Task 3), measured on these 14 production upgrades as the gold set. A Jev certainty question is wording-lab material only if code misses them.
+
+### L-54 · Gate D: automatic edits, closed by decision, 2026-10-04
+
+Live data was too thin: one report since L-47 carried an automatic edit. Hassan decided the policy directly (spec §9, 2026-10-04):
+- **Auto-insert** a missed dictated finding only when it is `absent` and verified, shown as "restored from your dictation · undo". The old live insertions were 11/148 correct; v4 handles fully dropped findings well (L-51).
+- **Auto-remove contradicted *generated* negatives**, visibly and restorably (Plan 2 Task 14).
+- **Never auto-remove dictated text** (f85aa670, PR #6).
+- **Auto-correct a positive contradiction** only as a verbatim restoration of dictated wording, verified.
+
+The replay of earlier reports (`gate_d replay`) is built and tested, and stays available for the Gate F shadow read.
