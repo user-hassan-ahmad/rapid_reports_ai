@@ -61,7 +61,7 @@ from .. import report_reconcile as rc
 from ..enhancement_utils import _run_agent_with_model
 from ..report_review import checked_clauses_in_context, remove_negative_clause
 from . import checks, verifier
-from .jev_pass import normal_statement
+from .jev_pass import normal_statement, recommendation
 from .items import Edit, ReviewInput, ReviewItem, Span, item_key, text_hash
 
 logger = logging.getLogger(__name__)
@@ -104,8 +104,6 @@ def check_text(reason: str, pointer: str) -> Tuple[str, str]:
 
 _NEG = re.compile(r"\b(no|not|nil|without|normal(ly)?|unremarkable|patent|intact|clear|preserved|maintained|"
                   r"within normal limits|non-?dilated|undilated|no evidence)\b", re.I)
-_RECOMMENDATION = re.compile(r"\b(recommend\w*|advis\w*|suggest\w*|referr\w*|refer|follow-?up|"
-                             r"for (?:surgical|further|treatment)|correlat\w*)\b", re.I)
 _NUM = re.compile(r"(?<![A-Za-z/\d.])\d+(?:\.\d+)?")  # skips T1, C7, L4/5; keeps 4cm
 _NUMBER_UNIT = re.compile(r"(?<![A-Za-z/\d.])(\d+(?:\.\d+)?)(\s*(?:mm|cm|ml|mL|%|HU|degrees?))?")
 
@@ -130,7 +128,7 @@ def candidates(report: str) -> List[dict]:
     """Every normal/negative clause the check reads (FINDINGS + IMPRESSION), with the sentence before it.
     Recommendation sentences are never candidates ("CT spine without contrast" is not a negative)."""
     return [{"clause": c, "before": b} for c, b in checked_clauses_in_context(report, None).items()
-            if is_normal_or_negative(c) and not _RECOMMENDATION.search(c)]
+            if is_normal_or_negative(c) and not recommendation(c)]
 
 
 def candidate_spans(report: str) -> List[Tuple[int, int]]:

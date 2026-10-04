@@ -358,6 +358,45 @@ def _dedupe(items: List[ReviewItem], group_of: Dict[str, List[Candidate]], neg_i
     return kept, dropped
 
 
+_CLS_RANK = {"suppress": 0, "info": 1, "minor": 2, "action": 3}
+
+
+def _same_clause(a: Span, b: Span) -> bool:
+    """Overlapping spans of one clause: the overlap covers at least half of the shorter span (two splitters may
+    draw a clause's edges differently, but a span that only bleeds into the next clause is not that clause)."""
+    ov = min(a.end, b.end) - max(a.start, b.start)
+    return ov > 0 and 2 * ov >= min(a.end - a.start, b.end - b.start)
+
+
+def one_card_per_clause(items: List[ReviewItem], neg_items: List[ReviewItem]
+                        ) -> Tuple[List[ReviewItem], List[ReviewItem], List[dict]]:
+    """(items, neg_items, log): a negatives number check and a visible accuracy-lane item on the same clause of the
+    original report become one card. The higher cls wins; on a tie the lane item stays and takes the check's
+    `check_reason` / `pointer` and detector. Each lane item pairs with at most one check."""
+    drop_lane, drop_neg, used, log = set(), set(), set(), []
+    for n in neg_items:
+        if n.kind != "check" or (n.evidence or {}).get("check_reason") != "number" or n.anchor is None:
+            continue
+        lane = next((it for it in items if it.id not in used and it.lane == "accuracy" and it.cls != "suppress"
+                     and it.anchor is not None and _same_clause(it.anchor, n.anchor)), None)
+        if lane is None:
+            continue
+        if _CLS_RANK[n.cls] > _CLS_RANK[lane.cls]:
+            keep, drop, merged = n, lane, False
+            drop_lane.add(lane.id)
+        else:
+            keep, drop, merged = lane, n, _CLS_RANK[n.cls] == _CLS_RANK[lane.cls]
+            drop_neg.add(n.id)
+            if merged:
+                ev = n.evidence or {}
+                lane.evidence = {**(lane.evidence or {}), "check_reason": "number", "pointer": ev.get("pointer", "")}
+                lane.detectors = sorted(set(lane.detectors) | set(n.detectors))
+        used.add(lane.id)
+        log.append({"kept": keep.id, "dropped": drop.id, "key": drop.key, "kind": drop.kind,
+                    "anchor": drop.anchor.model_dump() if drop.anchor else None, "merged": merged})
+    return ([it for it in items if it.id not in drop_lane], [n for n in neg_items if n.id not in drop_neg], log)
+
+
 async def _judge_and_verify(inp: ReviewInput, run_id: str, cands: List[Candidate], al: Optional[Alignment],
                             items: List[ReviewItem], plans: Dict[str, "_Plan"],
                             group_of: Dict[str, List[Candidate]], timings: Dict[str, int]) -> List[adjudicator.Outcome]:
@@ -451,8 +490,12 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         for it in dropped:
             plans.pop(it.id, None)
             deduped.append({"key": it.key, "kind": it.kind, "anchor": it.anchor.model_dump() if it.anchor else None})
+        items, neg_items, one_card = one_card_per_clause(items, neg_items)   # one card per clause
+        for d in one_card:
+            plans.pop(d["dropped"], None)
+        deduped += one_card
     report, pre_log = finalise(inp, items, plans, neg_log, neg_items)
-    items += neg_items                   # correction 10: never merged or adjudicated
+    items += neg_items                   # correction 10: never adjudicated (only one_card_per_clause pairs them)
     timings["total"] = int((time.monotonic() - t0) * 1000)
     errors.update({f"adjudicator_{k}": o.error for k, o in enumerate(outcomes) if o.error})
     run = {"lanes": lanes, "timings_ms": timings, "errors": errors,

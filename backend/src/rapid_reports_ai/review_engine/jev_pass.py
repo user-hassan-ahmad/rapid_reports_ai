@@ -50,6 +50,16 @@ _NORMAL_STATEMENT = re.compile(
     r"|^" + _NOT + r"(?:\s*(?:,|;|\band\b)\s*" + _NOT + r")*\s*[.;]?\s*$", re.I)
 
 
+# Recommendation sentences ("MRI is recommended", "CT spine without contrast"): never a finding to check. Shared by the
+# negatives classifier's candidates and the W1n / C1n positives (undictated recommendations are a feature).
+_RECOMMENDATION = re.compile(r"\b(recommend\w*|advis\w*|suggest\w*|referr\w*|refer|follow-?up|"
+                             r"for (?:surgical|further|treatment)|correlat\w*)\b", re.I)
+
+
+def recommendation(clause: str) -> bool:
+    return bool(_RECOMMENDATION.search(clause))
+
+
 def normal_statement(clause: str) -> bool:
     """A plain normal statement with no number: generated normals are owned by the negatives classifier (default-
     negatives policy), so the Accuracy lane never asks W1n / C1n of them."""
@@ -69,9 +79,9 @@ def q_certainty(clause: str) -> dict:
 
 
 def positive(clause: str) -> bool:
-    """A clause that asserts a finding: not a negative, and not a plain normal statement (undictated normals are
-    stated by design, so asking whether the dictation reports them would flag every one)."""
-    if restate(clause) is not None or hedge_tag(clause) == "negated":
+    """A clause that asserts a finding: not a negative, not a plain normal statement (undictated normals are stated
+    by design, so asking whether the dictation reports them would flag every one), and not a recommendation."""
+    if recommendation(clause) or restate(clause) is not None or hedge_tag(clause) == "negated":
         return False
     return not normal_statement(clause)
 
