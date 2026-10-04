@@ -106,8 +106,37 @@ def test_multi_predicate(s, multi):
 
 def test_term_in_ignores_articles_only():
     assert ln.term_in("Hook of hamate", "The hook of the hamate is unremarkable.")
-    assert not ln.term_in("Lymph nodes", "No lymphadenopathy.")
     assert not ln.term_in("ulna", "The ulnar nerve is unremarkable.")
+    assert not ln.term_in("Lymph nodes", "No free fluid.")
+
+
+@pytest.mark.parametrize("term,sentence", [
+    ("Lymph nodes", "No lymphadenopathy."),                                   # Iteration 2: all 4 failures
+    ("Mediastinal lymph nodes", "No mediastinal lymphadenopathy."),
+    ("lymphadenopathy", "No enlarged lymph nodes."),
+    ("Pelvic lymph nodes", "No enlarged pelvic nodes."),
+    ("lymph node", "No lymphadenopathy."),
+])
+def test_term_in_equivalent_names(term, sentence):
+    assert ln.term_in(term, sentence)
+
+
+def test_term_equivalents_stay_narrow():
+    assert not ln.term_in("Mediastinal lymph nodes", "No axillary lymphadenopathy.")   # modifier must still match
+    assert not ln.term_in("nodes", "No lymphadenopathy.")                              # a bare "nodes" is not expanded
+    assert ln.term_span("No mediastinal lymphadenopathy.", "Mediastinal lymph nodes") == (3, 30)
+    assert ln.term_span("The A is unremarkable.", "B") is None
+
+
+def test_code_check_passes_lymph_nodes_written_as_lymphadenopathy():
+    u = ln.Unit("No lymphadenopathy.", "P1", [ln.Atom("N1", "lymph nodes", "No enlarged lymph nodes.")])
+    assert ln.code_check(u) == []
+    r = ln.render_unit(u, L(N1="default"), True, [], [])
+    assert r.text[slice(*r.atoms[0]["span"])] == "lymphadenopathy"
+    u = ln.Unit("The A is unremarkable with no lymphadenopathy.", "P1",
+                [ln.Atom("N1", "A", "The A is unremarkable."), ln.Atom("N2", "lymph nodes", "No enlarged lymph nodes.")])
+    r = ln.render_unit(u, L(N1="contradicted", N2="default"), True, [], [])
+    assert (r.mode, r.text) == ("tail_only", "No lymphadenopathy.")
 
 
 def test_code_check_flags_multi_predicate_prose():

@@ -178,10 +178,43 @@ def _no_articles(s: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"\bthe\b", " ", s, flags=re.I)).strip()
 
 
+# Obvious morphological equivalents of a structure name (linked normals Iteration 2: every remaining term-missing
+# failure was atom "lymph nodes" written as "lymphadenopathy" in the prose). Keyed by the phrase inside the atom term;
+# the rest of the term (its modifiers) must still match. Keep this narrow: names, never synonyms of findings.
+TERM_EQUIVALENTS = {
+    "lymph nodes": ("lymphadenopathy", "lymph node", "nodes"),
+    "lymph node": ("lymphadenopathy", "lymph nodes", "nodes", "node"),
+    "lymphadenopathy": ("lymph nodes", "lymph node", "nodes", "adenopathy"),
+}
+
+
+def _term_variants(term: str) -> List[str]:
+    t = _no_articles(term)
+    out = [t] if t else []
+    for key in sorted(TERM_EQUIVALENTS, key=len, reverse=True):
+        m = re.search(r"(?<![A-Za-z])" + re.escape(key) + r"(?![A-Za-z])", t, re.I)
+        if m:
+            out += [t[:m.start()] + alt + t[m.end():] for alt in TERM_EQUIVALENTS[key]]
+            break
+    return out
+
+
+def term_span(text: str, term: str, pos: int = 0) -> Optional[Tuple[int, int]]:
+    """(start, end) of the term (or a TERM_EQUIVALENTS variant) in the text from pos, whole words, case-insensitive;
+    "the" is ignored between words ("hook of hamate" = "hook of the hamate"). The earliest match wins; None if absent."""
+    best = None
+    for v in _term_variants(term):
+        pat = r"\s+(?:the\s+)?".join(re.escape(w) for w in v.split())
+        m = re.compile(r"(?<![A-Za-z])" + pat + r"(?![A-Za-z])", re.I).search(text or "", pos)
+        if m and (best is None or m.start() < best[0]):
+            best = (m.start(), m.end())
+    return best
+
+
 def term_in(term: str, sentence: str) -> bool:
-    """The term, word for word, in the sentence; "the" is ignored ("hook of hamate" = "hook of the hamate")."""
-    t, s = _no_articles(term), _no_articles(sentence)
-    return bool(t) and bool(re.search(r"(?<![A-Za-z])" + re.escape(t) + r"(?![A-Za-z])", s, re.I))
+    """The term, word for word, in the sentence; "the" is ignored ("hook of hamate" = "hook of the hamate"), and
+    an obvious morphological equivalent counts (TERM_EQUIVALENTS: "lymph nodes" = "lymphadenopathy")."""
+    return term_span(sentence, term) is not None
 
 
 _VERB = re.compile(r"\b(?:is|are|appears?|remains?|shows?|demonstrates?|measures?|has|have)\b", re.I)
@@ -362,6 +395,9 @@ def render_unit(u: Unit, labels: Dict[str, dict], link_ok: bool, dneg: List[str]
             g = _ng.parse_grouped(u.prose)
             names = (g.structures + g.tail) if g else []
             terms = {a.term.lower(): k for k, a in enumerate(u.atoms)}
+            for k, a in enumerate(u.atoms):                  # the prose may use an equivalent name (TERM_EQUIVALENTS)
+                for v in _term_variants(a.term)[1:]:
+                    terms.setdefault(v.lower(), k)
             idx = [terms.get(n.lower()) for n in names]
             if g and None not in idx and sorted(idx) == list(range(len(u.atoms))):
                 r = _ng.subtract(g, [grouped[k] for k in idx])
@@ -376,7 +412,8 @@ def render_unit(u: Unit, labels: Dict[str, dict], link_ok: bool, dneg: List[str]
     pos = 0
     for a, r, k in zip(u.atoms, recs, grouped):
         if k and text:
-            sp = _span(head, a.term if mode in ("verbatim", "subtracted", "tail_only") else a.text, pos)
+            sp = (term_span(head, a.term, pos) if mode in ("verbatim", "subtracted", "tail_only")
+                  else _span(head, a.text, pos))
             if sp:
                 r["span"] = list(sp)
                 pos = sp[1]
