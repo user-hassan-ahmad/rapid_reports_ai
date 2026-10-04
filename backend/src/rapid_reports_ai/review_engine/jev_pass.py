@@ -1,13 +1,20 @@
 """The one shared Jev pass (spec §6.2–§6.3): today's check() questions, two batched requests in parallel, raw answers
 kept so the lanes can route unsure answers (§6.5) instead of dropping them. A third request in parallel asks the
 Accuracy lane's W1n (supported) and C1n (certainty) questions of every positive report clause, in the
-dictation-plus-history state the wording lab measured (binding correction 11; ledger L-53, L-55)."""
+dictation-plus-history state the wording lab measured (binding correction 11; ledger L-53, L-55).
+
+Statement type (type_tier lab, wording TB): the report-only request also asks `typ{i}` of every checked clause. The
+requests run in parallel, so W1n / C1n are asked of every clause the loose code pre-filter keeps (`asked`), on the
+split head of a finding with a negative / normal tail (`split_tails`); `JevPass.keeps` then counts the answers only
+for abnormal / mixed clauses. Normal clauses and mixed clauses' tails are the negatives classifier's
+(`negatives.candidates(report, types)`); not_a_finding gives nothing. Without a type answer (request failure or an
+unparseable answer) the clause falls back to today's lexicon (`positive`)."""
 from __future__ import annotations
 
 import asyncio
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel
 
@@ -86,16 +93,111 @@ def positive(clause: str) -> bool:
     return not normal_statement(clause)
 
 
+# ── statement type (type_tier lab, wording TB: 4-class 99.4%, positive gate 100%, 0 drift over 2 runs) ──────────
+TYPES = ("abnormal", "normal", "mixed", "not_a_finding")
+Q_TYPE = 'Read only this one report statement: "{c}". Classify what it says about the patient.'
+TYPE_CRITERIA = {
+    "abnormal": "It reports at least one abnormality or finding (a possible or likely one counts), and nothing in it "
+                "is stated as normal or absent.",
+    "normal": "It only says that structures are normal, intact, preserved or patent, or that findings are absent "
+              "(no ..., free of ..., without ...).",
+    "mixed": "It reports an abnormality or finding AND, in the same statement, says something is normal or absent.",
+    "not_a_finding": "It is not about the patient's anatomy: the scan technique, a comparison, a recommendation or "
+                     "follow-up, or a communication.",
+}
+
+
+def q_type(clause: str) -> dict:
+    return {"type": "choice", "instructions": Q_TYPE.format(c=clause), "criteria": dict(TYPE_CRITERIA)}
+
+
+def clause_type_of(ans: Any) -> Optional[str]:
+    """The argmax type of a Jev choice answer; None when the answer is missing or not a type choice."""
+    if not isinstance(ans, dict):
+        return None
+    probs = {k: v for k, v in (ans.get("probabilities") or {}).items() if k in TYPES}
+    if probs:
+        try:
+            return max(probs, key=lambda k: float(probs[k]))
+        except (TypeError, ValueError):
+            return None
+    return ans.get("choice") if ans.get("choice") in TYPES else None
+
+
+def asked(clause: str) -> bool:
+    """The loose code pre-filter for W1n / C1n: everything but a recommendation or a plain negative. The type
+    answer (same round, report request) decides afterwards which answers count (`JevPass.keeps`)."""
+    return not recommendation(clause) and restate(clause) is None and hedge_tag(clause) != "negated"
+
+
+# A mixed clause's tail: "<finding>[,] [with|and] no|without <negated>" or "; <negative or normal statement>". The
+# negated part must not turn positive again ("no enhancement but invades ..."), and the head must itself be a
+# finding (not a normal statement), so "The liver is normal, with no focal lesion" is not split.
+_NEG_TAIL = re.compile(r"^(?P<head>.+?)(?:\s*,\s*|\s+)(?:(?:and|with)\s+)?(?:no|without)\b\s*(?P<rest>.+)$", re.I)
+_TURN = re.compile(r"\b(?:but|however|although|though|while|whereas|which|except|and\s+(?:is|are|was|were|has|have|"
+                   r"shows?))\b", re.I)
+_LEAD_NEG = re.compile(r"^(?:no|without)\b\s*(?P<rest>.+)$", re.I)
+
+
+def _neg_text(rest: str) -> Optional[str]:
+    rest = rest.strip().rstrip(".").strip()
+    return f"No {rest}" if rest and not _TURN.search(rest) else None
+
+
+def split_tails(clause: str) -> Optional[Tuple[str, List[str]]]:
+    """(head, tails) for a finding followed by negative / normal tails, else None. Tails are negatives-classifier
+    clauses: "No <negated>" (located by its own words) or the normal part verbatim."""
+    text = (clause or "").strip().rstrip(".").strip()
+    if not text or restate(text) is not None or hedge_tag(text) == "negated":
+        return None
+    parts = [p.strip() for p in text.split(";")]
+    head, tails = parts[0], []
+    m = _NEG_TAIL.match(head)
+    if m:
+        neg = _neg_text(m.group("rest"))
+        if neg is None:
+            return None
+        head = m.group("head").strip().rstrip(",").strip()
+        tails.append(neg)
+    for p in parts[1:]:
+        lead = _LEAD_NEG.match(p)
+        if lead:
+            neg = _neg_text(lead.group("rest"))
+            if neg is None:
+                return None
+            tails.append(neg)
+        elif p and normal_statement(p):
+            tails.append(p.rstrip("."))
+        else:
+            return None                         # a second finding, not a normal tail
+    if not tails or not head or normal_statement(head) or _NORMAL.search(head):
+        return None
+    return head, tails
+
+
 class JevPass(BaseModel):
     clauses: List[str] = []
     before: Dict[str, str] = {}
     items: List[str] = []
     contra: Dict[str, Any] = {}
-    omit: Dict[str, Any] = {}
+    omit: Dict[str, Any] = {}              # i{i} (omission) and typ{i} (statement type), i indexes `clauses`
     support: Dict[str, Any] = {}           # sup{i} (W1n) and cer{i} (C1n), i indexes `clauses`
+    types: Dict[str, str] = {}             # clause text → Jev statement type (parsed answers only)
+    heads: Dict[int, str] = {}             # clause index → the split head W1n / C1n were asked of
     contra_error: Optional[str] = None
     omit_error: Optional[str] = None
     support_error: Optional[str] = None
+
+    def clause_type(self, i: int) -> Optional[str]:
+        return self.types.get(self.clauses[i])
+
+    def keeps(self, i: int) -> bool:
+        """Do this clause's W1n / C1n answers count? Jev type abnormal or mixed; today's lexicon without a type."""
+        t = self.clause_type(i)
+        return positive(self.clauses[i]) if t is None else t in ("abnormal", "mixed")
+
+    def head(self, i: int) -> str:
+        return self.heads.get(i, self.clauses[i])
 
 
 def sections_for(inp: ReviewInput):
@@ -120,9 +222,11 @@ async def run(inp: ReviewInput, report: str) -> JevPass:
     contra_qs.update({f"sel{i}": q_select_choice(t) for i, t in enumerate(items)})
     contra_qs.update({f"lt{i}": q_select_noul(t) for i, t in enumerate(items)})
     omit_qs = {f"i{i}": q_omission(t) for i, t in enumerate(items)}
-    pos = [i for i, t in enumerate(cls) if positive(t)]
-    support_qs = {f"sup{i}": q_supported(cls[i]) for i in pos}
-    support_qs.update({f"cer{i}": q_certainty(cls[i]) for i in pos})
+    omit_qs.update({f"typ{i}": q_type(t) for i, t in enumerate(cls)})      # same report-only request
+    pos = [i for i, t in enumerate(cls) if asked(t)]
+    heads = {i: sp[0] for i in pos if (sp := split_tails(cls[i]))}
+    support_qs = {f"sup{i}": q_supported(heads.get(i, cls[i])) for i in pos}
+    support_qs.update({f"cer{i}": q_certainty(heads.get(i, cls[i])) for i in pos})
     hidden = ([inp.clinical_history] if inp.clinical_history else []) if sections is not None else []
 
     async def ask(state: str, qs: dict):
@@ -132,13 +236,17 @@ async def run(inp: ReviewInput, report: str) -> JevPass:
         ask(f"SCAN TYPE: {inp.scan_type}\nDICTATED FINDINGS:\n{findings}", contra_qs),
         ask(f"REPORT:\n{without(report, hidden, sections)}", omit_qs),
         ask(support_state(inp), support_qs), return_exceptions=True)
-    out = JevPass(clauses=cls, before=before, items=items)
+    out = JevPass(clauses=cls, before=before, items=items, heads=heads)
     for name, res in (("contra", contra), ("omit", omit), ("support", support)):
         if isinstance(res, BaseException):
             setattr(out, f"{name}_error", f"{type(res).__name__}: {str(res)[:200]}")
             logger.warning("review engine: Jev %s request failed (%s)", name, type(res).__name__)
         else:
             setattr(out, name, res or {})
+    for i, t in enumerate(cls):
+        ct = clause_type_of(out.omit.get(f"typ{i}"))
+        if ct is not None:
+            out.types[t] = ct
     return out
 
 

@@ -311,9 +311,10 @@ def finalise(inp: ReviewInput, items: List[ReviewItem], plans: Dict[str, _Plan],
 
 # ── run ─────────────────────────────────────────────────────────────────────
 
-async def _negatives(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], Optional[dict], Optional[str]]:
+async def _negatives(inp: ReviewInput, run_id: str, types: Optional[Dict[str, str]] = None
+                     ) -> Tuple[List[ReviewItem], Optional[dict], Optional[str]]:
     try:
-        items, log = await asyncio.wait_for(negatives.classify_negatives(inp, run_id), NEGATIVES_TIMEOUT_S)
+        items, log = await asyncio.wait_for(negatives.classify_negatives(inp, run_id, types), NEGATIVES_TIMEOUT_S)
         return items, log, None
     except Exception as e:  # noqa: BLE001 - negatives never fail the run (timeouts included)
         logger.warning("review engine: negatives failed (%s)", type(e).__name__)
@@ -475,7 +476,8 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
     errors: Dict[str, str] = {}
     a = inp.artifacts
     names = lanes_enabled()
-    neg_task = asyncio.create_task(_negatives(inp, run_id)) if "accuracy" in names else None
+    neg_task = None
+    types: Dict[str, str] = {}
     try:
         al = align(a.report, a.dictated_findings, inp.clinical_history, a.sections)
         checks = run_checks(a.report, a.dictated_findings, inp.clinical_history, inp.scan_type, al, inp.study_title)
@@ -490,6 +492,11 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
             for k in ("contra_error", "omit_error", "support_error"):
                 if jp is not None and getattr(jp, k, None):
                     errors[f"jev_{k}"] = getattr(jp, k)
+        # The classifier reads the Jev statement types (normal clauses, mixed clauses' tails), so it starts after the
+        # ~0.5 s Jev pass; it still runs concurrently with the lanes and the adjudicator.
+        types = dict(jp.types) if jp is not None else {}
+        if "accuracy" in names:
+            neg_task = asyncio.create_task(_negatives(inp, run_id, types))
         ctx = LaneContext(alignment=al, jev=jp, checks=checks)
 
         async def one(name: str):
@@ -509,7 +516,7 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
                 cands += r
         held: List[Candidate] = []
         if neg_task is not None:
-            cands, held = prefilter(cands, negatives.candidate_spans(a.report))
+            cands, held = prefilter(cands, negatives.candidate_spans(a.report, types))
         items: List[ReviewItem] = []
         plans: Dict[str, _Plan] = {}
         group_of: Dict[str, List[Candidate]] = {}

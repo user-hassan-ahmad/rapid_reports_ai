@@ -49,15 +49,28 @@ def _support(jp: JevPass, ctx: LaneContext, report: str) -> List[Candidate]:
     if jp.support_error is not None:
         return out
     for i, t in enumerate(jp.clauses):
+        if not jp.keeps(i):                  # Jev type normal / not_a_finding (or, untyped, today's lexicon)
+            continue
+        h = jp.head(i)                       # the questions were asked of the split head, if any
         w = noul(jp.support, f"sup{i}")
         if w is not None and (w < SUPPORTED_FLAG or _band(w)):
-            ev = {"jev_unsure": {"question": "supported"}} if _band(w) else {"score": w, "clause": t}
-            out.append(Candidate(evidence=ev, **_common(ctx, report, t, "unsupported", "jev.supported")))
+            ev = {"jev_unsure": {"question": "supported"}} if _band(w) else {"score": w, "clause": h}
+            out.append(Candidate(evidence=ev, **_headed(_common(ctx, report, t, "unsupported", "jev.supported"),
+                                                        report, h)))
         k = noul(jp.support, f"cer{i}")
         if k is not None and (k >= CERTAINTY_FLAG or _band(k)):
-            ev = {"jev_unsure": {"question": "certainty"}} if _band(k) else {"score": k, "clause": t}
-            out.append(Candidate(evidence=ev, **_common(ctx, report, t, "overstated", "jev.certainty")))
+            ev = {"jev_unsure": {"question": "certainty"}} if _band(k) else {"score": k, "clause": h}
+            out.append(Candidate(evidence=ev, **_headed(_common(ctx, report, t, "overstated", "jev.certainty"),
+                                                        report, h)))
     return out
+
+
+def _headed(common: dict, report: str, head: str) -> dict:
+    """Trim the anchor to the split head when the clause's report text starts with it."""
+    an = common.get("anchor")
+    if an is not None and head and head != an.text and report.startswith(head, an.start):
+        common = {**common, "anchor": Span(start=an.start, end=an.start + len(head), text=head)}
+    return common
 
 
 class AccuracyLane:

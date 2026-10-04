@@ -8,7 +8,7 @@ call per report labels every generated normal/negative statement `dictated | def
 
 Entry point (Task 10's engine calls it concurrently with the lanes)::
 
-    async def classify_negatives(inp: ReviewInput, run_id: str) -> tuple[list[ReviewItem], dict]
+    async def classify_negatives(inp: ReviewInput, run_id: str, types=None) -> tuple[list[ReviewItem], dict]
 
 Items bypass the adjudicator (binding correction 10) and are never merged with lane candidates. Routing:
 
@@ -63,9 +63,9 @@ from pydantic import BaseModel, field_validator
 
 from .. import report_reconcile as rc
 from ..enhancement_utils import _run_agent_with_model
-from ..report_review import checked_clauses_in_context, remove_negative_clause
+from ..report_review import checked_clauses_in_context, remove_negative_clause, restate
 from . import checks, claims, verifier
-from .jev_pass import normal_statement, recommendation
+from .jev_pass import normal_statement, recommendation, split_tails
 from .items import Edit, ReviewInput, ReviewItem, Span, item_key, text_hash
 
 logger = logging.getLogger(__name__)
@@ -128,17 +128,36 @@ def is_normal_or_negative(clause: str) -> bool:
     return bool(_NEG.search(clause)) or normal_statement(clause)
 
 
-def candidates(report: str) -> List[dict]:
+def candidates(report: str, types: Optional[Dict[str, str]] = None) -> List[dict]:
     """Every normal/negative clause the check reads (FINDINGS + IMPRESSION), with the sentence before it.
-    Recommendation sentences are never candidates ("CT spine without contrast" is not a negative)."""
-    return [{"clause": c, "before": b} for c, b in checked_clauses_in_context(report, None).items()
-            if is_normal_or_negative(c) and not recommendation(c)]
+    Recommendation sentences are never candidates ("CT spine without contrast" is not a negative).
+
+    `types` (clause text → the Jev statement type, `jev_pass`): a normal clause is a candidate whole; an abnormal or
+    mixed clause contributes only the negative / normal tails code can split off and locate (`split_tails`), else
+    nothing (it is routed as abnormal); not_a_finding contributes nothing. A plain negative ("No X") and an untyped
+    clause follow today's lexicon."""
+    out: List[dict] = []
+    for c, b in checked_clauses_in_context(report, None).items():
+        if recommendation(c):
+            continue
+        t = (types or {}).get(c)
+        if t is None or restate(c) is not None:
+            if is_normal_or_negative(c):
+                out.append({"clause": c, "before": b})
+        elif t == "normal":
+            out.append({"clause": c, "before": b})
+        elif t in ("abnormal", "mixed"):
+            sp = split_tails(c)
+            for tail in (sp[1] if sp else []):
+                if not recommendation(tail) and _locate(report, tail, []) is not None:
+                    out.append({"clause": tail, "before": b})
+    return out
 
 
-def candidate_spans(report: str) -> List[Tuple[int, int]]:
+def candidate_spans(report: str, types: Optional[Dict[str, str]] = None) -> List[Tuple[int, int]]:
     """Original-report spans of every clause the classifier will read: pure code, known before its model call."""
     taken: List[Tuple[int, int]] = []
-    for c in candidates(report):
+    for c in candidates(report, types):
         span = _locate(report, c["clause"], taken)
         if span:
             taken.append(span)
@@ -459,13 +478,15 @@ def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, di
             {items[i].id: post[i] for i in sorted(items) if i in post})
 
 
-async def classify_negatives(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], dict]:
+async def classify_negatives(inp: ReviewInput, run_id: str, types: Optional[Dict[str, str]] = None
+                             ) -> Tuple[List[ReviewItem], dict]:
     """The Task 14 entry point: (items, log). Never raises. `log` holds the report after pre-applied removals,
     its hash, candidate/label counts, latency and any model error (fail-soft)."""
     t0 = time.monotonic()
     report = inp.artifacts.report or ""
     dictation, history = inp.artifacts.dictated_findings or "", inp.clinical_history or ""
-    cands = [{**c, "number": code_number_flag(c["clause"], dictation, history)} for c in candidates(report)]
+    listed = candidates(report, types) if types else candidates(report)
+    cands = [{**c, "number": code_number_flag(c["clause"], dictation, history)} for c in listed]
     log: dict = {"detector": DETECTOR, "candidates": len(cands), "labelled": 0, "error": None, "error_kind": None,
                  "report": report, "text_hash": text_hash(report), "post_removal_anchors": {}, "ms": 0}
     if not cands:

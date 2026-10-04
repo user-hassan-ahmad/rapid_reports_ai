@@ -55,8 +55,9 @@ async def test_jev_pass_asks_w1n_c1n_of_positive_clauses_with_history(monkeypatc
     await jev_pass.run(inp(REPORT, DICT, history="Flank pain."), REPORT)
     state, qs = next((s, q) for s, q in calls if _state_key(s) == "HISTORY")
     assert "CLINICAL HISTORY: Flank pain." in state and "DICTATED FINDINGS:\n- 14 mm" in state
-    # clauses: 0 "The liver is normal." (normal), 1 cyst (positive), 2 "No free fluid." (negative), 3 impression
-    assert set(qs) == {"sup1", "cer1", "sup3", "cer3"}
+    # clauses: 0 "The liver is normal." (normal), 1 cyst (positive), 2 "No free fluid." (negative), 3 impression.
+    # Asked of every non-negative clause; the type gate (JevPass.keeps) decides which answers count.
+    assert set(qs) == {"sup0", "cer0", "sup1", "cer1", "sup3", "cer3"}
     assert qs["sup1"]["instructions"].startswith("The dictated findings report this finding, including as a possibility")
     assert qs["cer1"]["instructions"].startswith('Read only this one report statement: "A 14 mm left renal cyst."')
 
