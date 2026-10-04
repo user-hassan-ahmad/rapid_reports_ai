@@ -65,7 +65,7 @@ _PRIOR = re.compile(rf"\b(?:{'|'.join(PRIOR_PHRASES)})\b", re.I)
 _PRIOR_HISTORY = re.compile(rf"\b(?:prior|previous)\s+(?:\w+\s+)?(?:{_alt(PRIOR_HISTORY_NOUNS)})\b", re.I)
 _SRC_PRIOR = re.compile(rf"\b(?:{_alt(SOURCE_PRIOR_WORDS)})\b(?:\W+\w+){{0,{PRIOR_WINDOW_TOKENS}}}?\W+"
                         rf"(?:{_alt(SOURCE_STUDY_NOUNS)}|(?:19|20)\d\d|{DATE_PATTERN})\b", re.I)
-# Signature / registration lines are not findings: "GMC 7662932", "Reported by Dr X", "tel 0123", "ext 4567".
+# Signature / registration lines are not findings: "GMC 7654321", "Reported by Dr X", "tel 0123", "ext 4567".
 _SIGNATURE = re.compile(r"\b(?:GMC|NMC|HCPC|registration|reg\.?\s*(?:no|number)|ext(?:ension)?|tel(?:ephone)?|"
                         r"phone|bleep|pager)\b\.?\s*(?:no\.?|number|#|:)?\s*\d|"
                         r"\b(?:reported|dictated|verified|authori[sz]ed|signed)\s+by\b", re.I)

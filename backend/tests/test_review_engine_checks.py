@@ -211,7 +211,7 @@ def test_number_regressions(report, dictation, history, flag):
 
 @pytest.mark.parametrize("report,dictation,flag", [
     ("Reported by Dr Smith, GMC 1234567.", "- liver normal", False),
-    ("Dr Jones GMC 7662932", "- liver normal", False),
+    ("Dr Jones GMC 7654321", "- liver normal", False),
     ("NMC 12345678.", "- liver normal", False),
     ("Contact ext 4567 for queries.", "- liver normal", False),
     ("Bosniak IIF cyst.", "- renal cyst", False),
