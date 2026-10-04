@@ -134,12 +134,15 @@ def _absent_jev(monkeypatch):
                                          "addressed": {"noul": 0.9}}))
 
 
-async def test_absent_is_pre_applied_with_code_built_insert(monkeypatch):
+async def test_absent_would_pre_apply_with_code_built_insert(monkeypatch):
+    """The engine applies nothing (spec §10.4): an eligible insert stays an open one-click action with code's edit,
+    marked would_pre_apply; the sequence is recorded only."""
     _absent_jev(monkeypatch)
     monkeypatch.setattr(adj, "_run_agent_with_model", model(ABSENT))
     res = await engine.run_review(inp(ABS_REPORT, ABS_DICT), run_id="00000000-0000-0000-0000-0000000000b1")
     cov = next(i for i in res.items if i.lane == "coverage" and i.kind == "absent")
-    assert cov.status == "pre_applied" and cov.cls == "action"
+    assert cov.status == "open" and cov.cls == "action" and cov.evidence["would_pre_apply"] is True
+    assert cov.history[-1]["event"] == "would_pre_apply"
     # the adjudicator's own wording is never pre-applied: code tidies the dictated line only
     assert cov.edit.replace == "14 mm left renal cyst." and cov.edit.after == "No ascites."
     assert cov.verified["preapply_failures"] == []
@@ -165,9 +168,9 @@ async def test_adjudicator_minor_is_not_pre_applied(monkeypatch):
     assert cov.edit.replace == ABSENT.edit_replace       # one-click: the adjudicator's fix, not code's
 
 
-async def test_negatives_removal_first_then_stale_insert_falls_back_to_open(monkeypatch):
-    """Negatives removes "No ascites." first; the coverage insert anchored after it no longer applies → stays open
-    (the finding is still absent) but loses its edit: never a one-click action that cannot apply."""
+async def test_negatives_removal_first_then_overtaken_insert_keeps_its_edit(monkeypatch):
+    """The would-be sequence removes "No ascites." first, so the coverage insert anchored after it is overtaken in the
+    log; nothing was applied, so the item keeps its one-click edit on the report the user sees."""
     _absent_jev(monkeypatch)
     monkeypatch.setattr(adj, "_run_agent_with_model", model(ABSENT))
 
@@ -178,9 +181,9 @@ async def test_negatives_removal_first_then_stale_insert_falls_back_to_open(monk
     monkeypatch.setattr(negatives, "_run_agent_with_model", labels(lab))
     res = await engine.run_review(inp(ABS_REPORT, ABS_DICT), run_id="00000000-0000-0000-0000-0000000000b4")
     removed = next(i for i in res.items if i.kind == "removed")
-    assert removed.status == "pre_applied"
+    assert removed.status == "open" and removed.evidence["would_pre_apply"] is True
     cov = next(i for i in res.items if i.lane == "coverage" and i.kind == "absent")
-    assert cov.status == "open" and cov.edit is None and cov.history[-1]["event"] == "overtaken"
+    assert cov.status == "open" and cov.edit is not None and "would_pre_apply" not in (cov.evidence or {})
     entry = next(e for e in res.run["pre_apply"] if e["item_id"] == cov.id)
     assert entry["applied"] is False and entry["failed"] and entry["overtaken"] and entry["edit"]
     assert "No ascites" not in res.report and "renal cyst" not in res.report
@@ -271,7 +274,7 @@ async def test_negative_flagged_by_both_yields_one_item(monkeypatch):
     _dup_stubs(monkeypatch)
     res = await engine.run_review(inp(DUP_REPORT, DUP_DICT), run_id="00000000-0000-0000-0000-0000000000c1")
     asc = _ascites_items(res.items)
-    assert [(i.detectors, i.kind, i.status) for i in asc] == [([negatives.DETECTOR], "removed", "pre_applied")]
+    assert [(i.detectors, i.kind, i.status) for i in asc] == [([negatives.DETECTOR], "removed", "open")]
     assert not any(e["source"] == "lanes" for e in res.run["pre_apply"])
     assert "No ascites" not in res.report
 
@@ -316,7 +319,7 @@ async def test_negatives_items_carry_history_version_and_verified_shape(monkeypa
         assert i.engine_version == engine.ENGINE_VERSION
         assert i.history[0]["event"] == "created" and i.history[0]["text_hash"] == text_hash(DUP_REPORT)
     rem = next(i for i in neg if i.kind == "removed")
-    assert [e["event"] for e in rem.history] == ["created", "pre_applied"] and rem.history[1]["text_hash"]
+    assert [e["event"] for e in rem.history] == ["created", "would_pre_apply"] and rem.history[1]["text_hash"]
     assert set(rem.verified) >= {"code", "failed", "addressed", "contra", "unconfirmed", "preapply_failures"}
 
 
