@@ -84,6 +84,10 @@ The lab copy of the adjudicator and verifier (`scripts/review_labs/judgement.py`
     - **Insert** (`kind == "absent"`): code builds the text from the dictated line (`insert_from_line`: tidy only: strip a list marker, capitalise, end with a full stop; no rewording). The anchor ends at a sentence end or is a label line inside FINDINGS; no newline or section name in the text; every number and side is in the dictated line.
     - **Positive correction** (`kind == "contradicted"` on a positive statement, mode `replace`): the changed tokens equal a contiguous run of the dictated line's tokens (side, number or hedge), token for token; nothing else in the sentence changes.
     - Every other edit, including anything Qwen wrote, is never pre-applied.
+13. **Task 12 endpoint rules (wave review, 2026-10-04).**
+    - The events route accepts only user commands `{apply, edit, undo, dismiss, restore, view, ask_chat}`. `pre_applied`, `addressed` and `stale` are engine-only statuses and are rejected with 422, so no client can mark an item pre-applied without the verifier.
+    - `reprepare` never rewrites a negatives item (`detectors == ["negatives.v5"]`) or an accuracy item with `evidence.negative`; it returns them unchanged (L-47: never LLM-repair a flagged negative), or rebuilds the edit with `verifier._negative_fix`.
+    - The GET filters `assumed_normal` rows out of the rail list unless `?include=normals` (editor decorations use them).
 10. **Task 14 items bypass the adjudicator.** The negatives classifier is the one reasoning call that owns that judgement, so its `ReviewItem`s are built directly. They are not merged with coverage candidates, so a negative's `pre_applied` removal can't be swallowed by a group adjudication.
 
 ## File structure
