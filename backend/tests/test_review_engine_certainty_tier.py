@@ -105,3 +105,13 @@ async def test_support_failure_falls_back_to_code_tiers_never_c1n(monkeypatch):
 async def test_unparseable_dt_answer_uses_the_code_comparison(monkeypatch):
     got = await _over(monkeypatch, R_SAME, {"cer*": {"noul": 0.99}, "dt*": {"noul": 0.5}})
     assert got == []
+
+
+def test_decided_tier_defaults():
+    """Decided 2026-10-04: "suspicious for" / "suspicion of" sit at the probable tier; FACT_C1N_FLAG stays 0.5."""
+    from rapid_reports_ai.review_engine.lanes import accuracy
+    assert jev_pass.report_tier("Mass, suspicious for malignancy.") == "probable"
+    assert jev_pass.report_tier("Appearances raise suspicion of malignancy.") == "probable"
+    assert jev_pass.report_tier("High suspicion for a neoplasm.") == "probable"
+    assert jev_pass.report_tier("No suspicion of malignancy.") == "excluded"
+    assert accuracy.FACT_C1N_FLAG == 0.5

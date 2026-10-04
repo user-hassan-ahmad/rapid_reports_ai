@@ -24,7 +24,7 @@ from . import LaneContext, confident
 CONTRA_UNSURE_LO = 0.4   # provisional: the unsure band below CONTRA_FLAG (§6.5), set in a wording read
 SUPPORTED_FLAG = 0.5     # provisional: Gate F (W1n < this → unsupported; L-53)
 FACT_C1N_FLAG = 0.5      # provisional: Gate F (hybrid rule's fact/fact arm; 0.75 gave 0 false alarms in hybrid_lab
-                         # but lost 2/14 real upgrades)
+                         # but lost 2/14 real upgrades). Decided 2026-10-04: stays 0.5 until Gate F re-reads it.
 CODE_TIER_OVERLAP = 0.8  # provisional: share of a dictated line's content words the clause must carry (code fallback)
 JEV_UNSURE_LO = 0.4      # provisional: Gate F (W1n unsure band, binding correction 11)
 JEV_UNSURE_HI = 0.6      # provisional: Gate F

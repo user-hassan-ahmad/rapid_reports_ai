@@ -26,7 +26,9 @@ HEDGE_POSSIBLE = ("may", "might", "possible", "possibly", "could", "query", "que
 HEDGE_PROBABLE = ("likely", "probable", "probably", "suggestive of", "suggest", "suggests", "suspicious for",
                   "favoured", "favored", "in keeping with", "consistent with", "compatible with",
                   "presumed", "worrisome for", "concerning for", "suspicious", "suspected", "suggesting",
-                  r"appears? to represent")                                            # provisional: Gate B1
+                  r"suspicion (?:of|for)", r"appears? to represent")                   # provisional: Gate B1
+# Decided 2026-10-04 (Hassan): "suspicious for" / "suspicion of" stay at the PROBABLE tier (not possible), so the
+# certainty-tier overstated rule treats them like "likely".
 # Definite is the fallback (a bare finding, "is", "are", "diagnostic of"); listed for the record, never matched.
 HEDGE_DEFINITE = ("is", "are", "diagnostic of")                                        # provisional: Gate B1
 
