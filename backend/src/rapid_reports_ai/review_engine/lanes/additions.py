@@ -3,15 +3,23 @@ with their sentence (not judged again, Principle 2); a finding_negative on a str
 normal goes to the adjudicator for an `upgrade`. S4 synthesis cards map in code; the clinical pass joins after Gate C."""
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
 from typing import List, Optional
 
 from ... import report_reconcile as rc
+from ...report_review import JEV_TIMEOUT_S
 from ..alignment import ANATOMY, Alignment, ReportClause, words
 from ..items import Candidate, Edit, ReviewInput, Span
 from . import LaneContext
 
+logger = logging.getLogger(__name__)
+
 _NORMAL = re.compile(r"\b(normal|unremarkable)\b", re.I)
+
+IN_REPORT_DROP = 0.5        # provisional: Gate C ("already in report" wording read)
+IN_REPORT_UNSURE_LO = 0.25  # provisional: Gate C
 
 
 def _normal_clause_for(sentence: str, al: Alignment) -> Optional[ReportClause]:
@@ -76,8 +84,49 @@ def s4_candidates(synthesis: Optional[dict], with_criteria: bool = False) -> Lis
     return out
 
 
+def candidate_text(c: Candidate) -> str:
+    ev = c.evidence
+    if ev.get("sentence"):
+        return ev["sentence"]
+    if c.kind == "grade":
+        return f"a {ev.get('system')} category for the {c.line_text}"
+    if c.kind == "threshold":
+        return f"the {ev.get('parameter')} threshold {ev.get('threshold')} for the {c.line_text}"
+    if ev.get("modality"):
+        return f"{ev.get('modality')} follow-up {ev.get('timing') or ''} for the {c.line_text}".replace("  ", " ")
+    return f"{ev.get('text')} (for the {c.line_text})"
+
+
+async def in_report_gate(report: str, cands: List[Candidate]) -> List[Candidate]:
+    """One report-state Jev call (L-49 uniqueness wording: *states*, not merely implies). Stated -> dropped; unsure ->
+    kept with evidence.jev_unsure and no pre-class, so the adjudicator reads it (§6.5); Jev failure -> all kept."""
+    qs = {f"g{k}": {"type": "noul", "instructions": rc.Q_CONVEYS + candidate_text(c)} for k, c in enumerate(cands)}
+    if not qs:
+        return []
+    try:
+        ans = await asyncio.wait_for(rc._jev(f"REPORT:\n{report}", qs), JEV_TIMEOUT_S)
+    except Exception as e:  # noqa: BLE001 - fail open: the adjudicator and verifier still run
+        logger.warning("review engine: in-report gate failed (%s)", type(e).__name__)
+        return list(cands)
+    out = []
+    for k, c in enumerate(cands):
+        try:
+            p = float(ans[f"g{k}"]["noul"])
+        except Exception:  # noqa: BLE001 - a missing answer keeps the candidate
+            out.append(c)
+            continue
+        if p >= IN_REPORT_DROP:
+            continue
+        if p >= IN_REPORT_UNSURE_LO:
+            c = c.model_copy(update={"preclassed": None,
+                                     "evidence": {**c.evidence, "jev_unsure": {"question": "already_in_report"}}})
+        out.append(c)
+    return out
+
+
 class AdditionsLane:
     name = "additions"
 
     async def candidates(self, inp: ReviewInput, ctx: LaneContext) -> List[Candidate]:
-        return brief_candidates(inp, ctx.alignment) + s4_candidates(inp.synthesis)
+        return await in_report_gate(inp.artifacts.report,
+                                    brief_candidates(inp, ctx.alignment) + s4_candidates(inp.synthesis))
