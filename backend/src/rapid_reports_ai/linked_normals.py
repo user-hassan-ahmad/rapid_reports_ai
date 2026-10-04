@@ -301,7 +301,7 @@ def parse_labels(lines: List[str], n: int) -> Dict[int, dict]:
 
 @dataclass
 class UnitRender:
-    mode: str                      # verbatim | subtracted | tail_only | atoms | none
+    mode: str                      # verbatim | subtracted | tail_only | atoms | own_lines | none
     text: Optional[str]
     atoms: List[dict]              # per atom: id, term, text, label, action, own_line, span (in text)
     flagged: List[str]             # atom sentences for "do not assert"
@@ -369,4 +369,6 @@ def render_unit(u: Unit, labels: Dict[str, dict], link_ok: bool, dneg: List[str]
                 r["span"] = [s, s + len(a.text)]
                 pos = s + len(a.text)
     flagged = [a.text for a, r in zip(u.atoms, recs) if r["action"] == "do_not_assert"]
+    if text and not head:
+        mode = "own_lines"         # only implicated / dictated-overlap atoms kept, each its own sentence
     return UnitRender(mode if text else "none", text, recs, flagged)

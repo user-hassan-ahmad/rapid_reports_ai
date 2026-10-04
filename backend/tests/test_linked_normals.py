@@ -194,6 +194,11 @@ def test_render_nothing_kept():
     assert (r.mode, r.text, r.flagged) == ("none", None, ["No Y."])
 
 
+def test_render_only_implicated_kept():
+    r = ln.render_unit(_unit(2), L(N6="implicated"), True, [], [])
+    assert (r.mode, r.text, r.atoms[0]["span"]) == ("own_lines", "No Y.", [0, 5])
+
+
 # ── brief wiring ────────────────────────────────────────────────────────────
 
 SHEET = '''# Skill Sheet: CT abdomen — test
