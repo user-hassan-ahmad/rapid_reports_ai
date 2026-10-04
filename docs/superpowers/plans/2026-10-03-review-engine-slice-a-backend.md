@@ -65,6 +65,16 @@ The lab copy of the adjudicator and verifier (`scripts/review_labs/judgement.py`
 6. **The candidate render names the kind explicitly:** `Flag kind "partial" (from the coverage check, detector …)`. The prompt says to copy the quoted kind, never a check name. With the bracketed `[coverage/partial]` form, Qwen returned the lane as `kind` in the Gate A smoke.
 7. **The `Q_CONVEYS` "conveys" veto must not be imported into the adjudicator or verifier** (spec §7 removed it). `Q_CONVEYS` remains correct for the Additions "already in report" gate (Task 7).
 8. **The fallback `Judgement` on failure** carries every field (`reason=""`, all `edit_*` None) plus `error_kind` (`validation` / `transport`) in the run's `errors` log.
+9. **Contract additions (Task 1 review, 2026-10-04; already in `items.py`):**
+   - `ReviewItem.evidence: Optional[dict]` holds `check_reason` and `pointer` for Task 14. **Task 4's migration adds an `evidence` JSON column** to `report_review_items`, and Task 5's store round-trips it.
+   - `Candidate.pre_apply: bool`. **`build_item` (Task 10) maps `pre_apply=True` to `status="pre_applied"`.** Spec §9, decided 2026-10-04:
+     - auto-insert verified `absent` coverage items;
+     - auto-remove contradicted *generated* negatives;
+     - auto-correct a positive contradiction only when the fix restores dictated wording verbatim and is verified.
+     
+     Nothing the radiologist dictated is ever pre-applied as a removal.
+   - **Keys use the candidate's ORIGINAL kind,** never the adjudicator's refined kind, so they stay stable across runs. Task 10's `build_item` passes `first.kind` to `item_key`. When an item has neither anchor nor line text, key on `first.kind` plus the candidate evidence, never on the LLM-written label.
+10. **Task 14 items bypass the adjudicator.** The negatives classifier is the one reasoning call that owns that judgement, so its `ReviewItem`s are built directly. They are not merged with coverage candidates, so a negative's `pre_applied` removal can't be swallowed by a group adjudication.
 
 ## File structure
 
