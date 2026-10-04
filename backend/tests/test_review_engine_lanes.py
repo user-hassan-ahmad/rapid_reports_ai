@@ -57,7 +57,7 @@ async def test_jev_pass_asks_w1n_c1n_of_positive_clauses_with_history(monkeypatc
     assert "CLINICAL HISTORY: Flank pain." in state and "DICTATED FINDINGS:\n- 14 mm" in state
     # clauses: 0 "The liver is normal." (normal), 1 cyst (positive), 2 "No free fluid." (negative), 3 impression.
     # Asked of every non-negative clause; the type gate (JevPass.keeps) decides which answers count.
-    assert set(qs) == {"sup0", "cer0", "sup1", "cer1", "sup3", "cer3"}
+    assert set(qs) == {f"{k}{n}" for k in ("sup", "cer", "dt") for n in (0, 1, 3)}
     assert qs["sup1"]["instructions"].startswith("The dictated findings report this finding, including as a possibility")
     assert qs["cer1"]["instructions"].startswith('Read only this one report statement: "A 14 mm left renal cyst."')
 
@@ -140,12 +140,19 @@ async def test_accuracy_w1n_unsupported_and_unsure(monkeypatch):
     assert all(c.proposed is None and not c.pre_apply for c in cs)
 
 
-async def test_accuracy_c1n_overstated_and_unsure(monkeypatch):
+def _tier(choice):
+    return {"type": "choice", "choice": choice,
+            "probabilities": {c: (1.0 if c == choice else 0.0) for c in jev_pass.DICT_TIERS}}
+
+
+async def test_accuracy_overstated_by_tier_or_fact_c1n_never_c1n_alone(monkeypatch):
     i = inp(REPORT, DICT)
-    ctx = await ctx_for(monkeypatch, i, {"cer1": {"noul": 0.8}, "cer3": {"noul": 0.42}})
+    ctx = await ctx_for(monkeypatch, i, {"cer1": {"noul": 0.1}, "dt1": _tier("probable"),     # fact > probable
+                                        "cer3": {"noul": 0.8}, "dt3": _tier("fact")})         # fact = fact, C1n
     cs = [c for c in await AccuracyLane().candidates(i, ctx) if c.detector == "jev.certainty"]
-    assert [c.kind for c in cs] == ["overstated", "overstated"]
-    assert cs[0].evidence["score"] == 0.8 and cs[1].evidence == {"jev_unsure": {"question": "certainty"}}
+    assert [(c.kind, c.evidence["rule"]) for c in cs] == [("overstated", "tier"), ("overstated", "fact_c1n")]
+    ctx = await ctx_for(monkeypatch, i, {"cer*": {"noul": 0.95}, "dt*": _tier("not_stated")})
+    assert not [c for c in await AccuracyLane().candidates(i, ctx) if c.kind == "overstated"]
 
 
 async def test_accuracy_quiet_when_supported_and_not_overstated(monkeypatch):

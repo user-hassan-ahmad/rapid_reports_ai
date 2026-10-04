@@ -124,6 +124,45 @@ def clause_type_of(ans: Any) -> Optional[str]:
     return ans.get("choice") if ans.get("choice") in TYPES else None
 
 
+# ── certainty tiers (type_tier lab + hybrid_lab validation on real wording, 2026-10-04) ──────────────────────────
+# The overstated trigger compares tiers: the report statement's tier from code (`report_tier`, checks.hedge_tag) and
+# the dictation's tier for the same finding from Jev (`dt{i}`, wording D2 with a not_stated option, D2n).
+TIERS = ("excluded", "possible", "probable", "fact")          # ascending certainty of presence
+TIER_RANK = {t: i for i, t in enumerate(TIERS)}
+DICT_TIERS = TIERS + ("not_stated",)
+Q_DICT_TIER = ('This report statement describes a finding: "{c}". How certain do the dictated findings state that same '
+               'finding?')
+DICT_TIER_CRITERIA = {
+    "fact": 'definite: stated as a fact with no hedge (for example "represents", "diagnostic of", or stated plainly)',
+    "probable": "probable: likely, probable, consistent with, in keeping with, compatible with, or suggestive of",
+    "possible": "possible: possible, may represent, cannot be excluded, query, or a question mark",
+    "excluded": "excluded: stated as absent, negated or ruled out",
+    "not_stated": "not stated: the dictated findings do not mention this finding",
+}
+CODE_TIER = {"definite": "fact", "probable": "probable", "possible": "possible", "negated": "excluded"}
+
+
+def q_dictation_tier(clause: str) -> dict:
+    return {"type": "choice", "instructions": Q_DICT_TIER.format(c=clause), "criteria": dict(DICT_TIER_CRITERIA)}
+
+
+def dictation_tier_of(ans: Any) -> Optional[str]:
+    """The argmax dictation tier (or not_stated) of a Jev choice answer; None when missing or unparseable."""
+    if not isinstance(ans, dict):
+        return None
+    probs = {k: v for k, v in (ans.get("probabilities") or {}).items() if k in DICT_TIERS}
+    if probs:
+        try:
+            return max(probs, key=lambda k: float(probs[k]))
+        except (TypeError, ValueError):
+            return None
+    return ans.get("choice") if ans.get("choice") in DICT_TIERS else None
+
+
+def report_tier(clause: str) -> str:
+    return CODE_TIER[hedge_tag(clause)]
+
+
 def asked(clause: str) -> bool:
     """The loose code pre-filter for W1n / C1n: everything but a recommendation or a plain negative. The type
     answer (same round, report request) decides afterwards which answers count (`JevPass.keeps`)."""
@@ -181,7 +220,7 @@ class JevPass(BaseModel):
     items: List[str] = []
     contra: Dict[str, Any] = {}
     omit: Dict[str, Any] = {}              # i{i} (omission) and typ{i} (statement type), i indexes `clauses`
-    support: Dict[str, Any] = {}           # sup{i} (W1n) and cer{i} (C1n), i indexes `clauses`
+    support: Dict[str, Any] = {}           # sup{i} (W1n), cer{i} (C1n), dt{i} (dictation tier), i indexes `clauses`
     types: Dict[str, str] = {}             # clause text → Jev statement type (parsed answers only)
     heads: Dict[int, str] = {}             # clause index → the split head W1n / C1n were asked of
     contra_error: Optional[str] = None
@@ -227,6 +266,7 @@ async def run(inp: ReviewInput, report: str) -> JevPass:
     heads = {i: sp[0] for i in pos if (sp := split_tails(cls[i]))}
     support_qs = {f"sup{i}": q_supported(heads.get(i, cls[i])) for i in pos}
     support_qs.update({f"cer{i}": q_certainty(heads.get(i, cls[i])) for i in pos})
+    support_qs.update({f"dt{i}": q_dictation_tier(heads.get(i, cls[i])) for i in pos})
     hidden = ([inp.clinical_history] if inp.clinical_history else []) if sections is not None else []
 
     async def ask(state: str, qs: dict):

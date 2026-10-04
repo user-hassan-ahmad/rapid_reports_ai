@@ -101,13 +101,13 @@ async def test_unparseable_type_answer_falls_back_per_clause(monkeypatch):
 # ── the accuracy lane ────────────────────────────────────────────────────────
 
 async def _lane(monkeypatch, over):
-    monkeypatch.setattr(rc, "_jev", jev({**TYPES, "cer*": {"noul": 0.9}, **over}))
+    monkeypatch.setattr(rc, "_jev", jev({**TYPES, "sup*": {"noul": 0.1}, **over}))
     i = inp(REPORT, DICT)
     a = i.artifacts
     al = align(a.report, a.dictated_findings, "", a.sections)
     jp = await jev_pass.run(i, a.report)
     ctx = LaneContext(alignment=al, jev=jp, checks=run_checks(a.report, a.dictated_findings, "", i.scan_type, al))
-    return [c for c in await AccuracyLane().candidates(i, ctx) if c.detector == "jev.certainty"]
+    return [c for c in await AccuracyLane().candidates(i, ctx) if c.detector == "jev.supported"]
 
 
 async def test_lane_keeps_answers_only_for_abnormal_and_mixed(monkeypatch):
