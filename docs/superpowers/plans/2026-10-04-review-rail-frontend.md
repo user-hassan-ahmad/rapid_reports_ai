@@ -315,9 +315,7 @@ Command flow:
 - `applied_option_ids` keeps working: options applied through the rail call the same `appliedOptionIds`;
 - the finalise call also sends `review_applied_item_ids`. The backend stores them on the run (a small backend change: add the field to the finalise body and save it in `report_review_runs.lanes` meta or a JSON column; covered by a backend test).
 
-**Live write (backend 5fd2e0a).** The engine writes pre-applied edits in the background after the client already has the report, guarded by a hash of the reviewed text.
-- When a poll returns `run.live_write.applied`, the viewer re-fetches the report and its versions **before** enabling save. If the user has unsaved edits by then, show a non-blocking notice ("Review restored N items from your dictation, reload to see them"), and never overwrite the user's text.
-- Pre-applied items carry `evidence.undo = {final_span, original_text}` for Undo.
+**Pre-applied edits (decided 2026-10-04, memory `preapply-before-render`).** Automatic edits happen only before render, in the post-gen check. They reach the rail as `pre_applied` items, computed on the text the user is shown. The background engine never rewrites the report, so the viewer needs no re-fetch-before-save logic.
 
 **Regeneration and new versions:** when the `response` prop changes (a new candidate, or a version restore), reload the store and re-locate items. Items that can't be located become `stale`.
 
