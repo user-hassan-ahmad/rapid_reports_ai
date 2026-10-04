@@ -233,6 +233,15 @@ def _loses_negation(old: str, new: str) -> bool:
     return False
 
 
+def _drops_negative_item(old: str, new: str) -> bool:
+    """A negated item of `old` is absent from `new`, reworded or negated. Kept when its 2 content words or its
+    head noun (last content word) still appear negated in `new`."""
+    def negated(words: List[str]) -> bool:
+        pat = r"\b" + r"\W+".join(map(re.escape, words)) + r"\b"
+        return any(_is_negated(new, m.start(), m.end()) for m in re.finditer(pat, new, re.I))
+    return any(not (negated(words) or negated(words[-1:])) for words in _negated_phrases(old))
+
+
 def _sides(text: str) -> set:
     return {s.lower() for s in _SIDE.findall(text)}
 
@@ -324,6 +333,8 @@ def guard_failures(report: str, edit: Optional[Edit], kind: str, dictation: str,
     # negative-list item dropped from its line arrives as a line-level replace).
     if loses and kind not in REMOVAL_KINDS:
         fails.append("drops_negation")
+    if edit.mode in ("replace", "upgrade") and kind not in REMOVAL_KINDS and _drops_negative_item(old, new):
+        fails.append("drops_negative_item")
     if edit.mode == "remove" and kind not in REMOVAL_KINDS:
         fails.append("remove_not_allowed")
     if kind in REMOVAL_KINDS and _removes_dictated(edit, old, new, loses, dictation):

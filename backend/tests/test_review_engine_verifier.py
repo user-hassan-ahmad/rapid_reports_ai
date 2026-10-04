@@ -437,3 +437,33 @@ async def test_probe_jev_failure_is_quiet(monkeypatch):
     a.anchor = Span(start=0, end=6, text="a cyst")
     res = await V.probe(inp(REPORT, "- x"), [a], REPORT, [])
     assert res == {"addressed": [], "reprepare": [], "contradictions": []}
+
+
+def _drops_item(old, new, kind="differs", mode="replace"):
+    rep = f"FINDINGS:\n{old} The heart is normal."
+    e = R(old, new)
+    if mode != "replace":
+        e = Edit(mode=mode, find=old, replace=new)
+    return "drops_negative_item" in G(rep, e, kind, "left pneumothorax")
+
+
+def test_drops_negative_item_fires_when_item_dropped():
+    assert _drops_item("No pneumothorax or effusion.", "No effusion.")
+    assert _drops_item("No pneumothorax or effusion.", "No effusion.", mode="upgrade")
+    assert _drops_item("No pneumothorax or effusion.", "Small pneumothorax. No effusion.")
+
+
+def test_drops_negative_item_kept_on_reword():
+    assert not _drops_item("No pneumothorax or pleural effusion.", "No pneumothorax or effusion.")
+    assert not _drops_item("No pneumothorax or effusion.", "No pneumothorax. No pleural effusion.")
+
+
+def test_drops_negative_item_exempt_for_removal_kinds():
+    assert not _drops_item("No pneumothorax or effusion.", "No effusion.", kind="contradicted")
+    assert not _drops_item("No pneumothorax or effusion.", "No effusion.", kind="removed")
+
+
+def test_drops_negative_item_insert_unaffected():
+    rep = "FINDINGS:\nNo pneumothorax or effusion. The heart is normal."
+    e = Edit(mode="insert", after="The heart is normal.", replace="Mild cardiomegaly.")
+    assert "drops_negative_item" not in G(rep, e, "missing", "mild cardiomegaly")
