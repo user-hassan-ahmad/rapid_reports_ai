@@ -5905,6 +5905,10 @@ app.include_router(agentic_router)
 from .quick_report_api import router as quick_report_router
 app.include_router(quick_report_router)
 
+# Review engine endpoints (/api/reports/{id}/review…), spec 2026-10-02 §10.3.
+from .review_engine.api import router as review_router
+app.include_router(review_router)
+
 # Admin approve/reject endpoints — HMAC-authenticated, no session required.
 from .admin_routes import router as admin_router
 app.include_router(admin_router)
