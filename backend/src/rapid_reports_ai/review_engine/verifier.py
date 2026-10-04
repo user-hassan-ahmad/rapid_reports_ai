@@ -13,16 +13,19 @@ Ported from the lab (`scripts/review_labs/judgement.py`: `apply_edit`, `_remove_
 - a remove takes out a whole sentence or a whole list item, never flips a polarity, and drops at most the one
   negative it targets (the removal kinds' exemption is scoped to that item, `target`);
 - the live loop's negative fix is built through production's `remove_negative_clause`.
+- only code-built edits are ever pre-applied (binding correction 12): `preapply_failures` / `insert_from_line`;
+  model-written edits stay one-click with a diff.
 The "conveys" veto (`Q_CONVEYS`) is deliberately absent (spec §7)."""
 from __future__ import annotations
 
 import asyncio
 import math
 import re
+from difflib import SequenceMatcher
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from .. import report_reconcile as rc
-from ..report_review import (_EMPTY_ITEM, CONTRA_FLAG, JEV_TIMEOUT_S, Q_CONTRA, _restates, is_negative,
+from ..report_review import (_EMPTY_ITEM, _FILLER, CONTRA_FLAG, JEV_TIMEOUT_S, Q_CONTRA, _restates, is_negative,
                              remove_negative_clause)
 from .alignment import align
 from .items import Candidate, Edit, ReviewInput, ReviewItem, Span
@@ -33,7 +36,10 @@ REMOVAL_KINDS = frozenset({"contradicted", "removed"})   # spec §9: removal onl
 
 # ── headings, sentences, paragraphs ─────────────────────────────────────────
 _HEADING = re.compile(r"^([A-Z][A-Z /&()-]{2,}):\s*$")   # lab common._HEADING (per line)
-_SENT_END = re.compile(r"(?<=[.;])\s+(?=[A-Z])|\n+")       # lab common.SENT_END
+# Sentence breaks (re-review of 431c96c): after . ; ! ? … before a capital, digit or "("; after . ! ? … before a
+# lowercase word unless the full stop ends an abbreviation; a spaced em/en dash; newlines.
+_SENT_END = re.compile(r"(?<=[.;!?…])\s+(?=[A-Z0-9(])|(?<=[.!?…])\s+(?=[a-z])|\s+[—–]\s+|\n+")
+_ABBR_END = re.compile(r"\b(?:vs|e\.g|i\.e|eg|ie|approx|etc|cf|incl|al|fig|ca|cm|mm)\.$", re.I)
 
 
 def _norm_name(s: str) -> str:
@@ -86,6 +92,9 @@ def _section_body(report: str, name: Optional[str], names: Iterable[str] = ()) -
 def _sentences(text: str, names: Iterable[str] = ()) -> List[Tuple[int, int]]:
     out, s = [], 0
     for m in _SENT_END.finditer(text):
+        if "\n" not in m.group() and text[m.end():m.end() + 1].islower() \
+                and _ABBR_END.search(text[s:m.start()]):
+            continue                            # "e.g. small": an abbreviation, not a sentence end
         out.append((s, m.start()))
         s = m.end()
     out.append((s, len(text)))
@@ -103,7 +112,7 @@ def _sentence_spans(text: str, names: Iterable[str] = ()) -> List[Tuple[int, int
         m = _MARKER.match(s)
         lead = m.end() if m else len(s) - len(s.lstrip())
         a2, b2 = a + lead, a + len(s.rstrip())
-        if a2 < b2:
+        if a2 < b2 and not _EMPTY_ITEM.match(text[a2:b2]):   # "1." split off its item is not a sentence
             out.append((a2, b2))
     return out
 
@@ -265,14 +274,33 @@ def _edit_pos(report: str, edit: Edit, names: Iterable[str] = ()) -> Optional[in
 # ── guards ──────────────────────────────────────────────────────────────────
 _NUM = re.compile(r"\d+(?:\.\d+)?")
 _SIDE = re.compile(r"\b(left|right|bilateral)\b", re.I)
-_NEG = re.compile(r"\b(no|not|without|absent|negative for|none)\b", re.I)
-_NEGATOR = re.compile(r"\b(no|not|without)\b", re.I)
-_NEG_SKIP = {"a", "an", "the", "any", "evidence", "of", "is", "are", "was", "were", "seen", "identified"}
+# Negation lexicon (re-review of 431c96c): nil, free of, neither / nor, no evidence of, not seen. "Unremarkable" is
+# not a negator. Longest alternatives first so each negation counts once.
+_NEG = re.compile(r"\b(no evidence of|not seen|negative for|free of|without|neither|absent|none|nil|nor|not|no)\b",
+                  re.I)
+_NEGATOR = re.compile(r"\b(free of|without|neither|nil|nor|not|no)\b", re.I)
+# A negator that negates no finding ("no doubt", "no interval change in the left effusion", "not only").
+_NEG_IDIOM = re.compile(r"\b(?:no|not)(?=\s+(?:doubt|(?:significant\s+)?(?:interval\s+)?change|only)\b)", re.I)
+_NEG_SKIP = {"a", "an", "the", "any", "evidence", "of", "is", "are", "was", "were", "seen", "identified",
+             "no", "not", "nil", "nor", "neither", "without"}
 _VERB = {"is", "are", "was", "were", "seen", "identified", "noted", "demonstrated"}
 _LIST_SEP = re.compile(r",|\b(?:or|and|nor)\b", re.I)
-_SENT_STOP = re.compile(r"[.;!?\n]")
+_SENT_STOP = re.compile(r"[.;!?\n…—–]")
 _CLAUSE_BREAK = {"but", "however", "although", "though", "with", "which", "while", "whereas", "except"}
 _POST_NEG = {"not", "absent", "negative"}
+
+
+def _mask(text: str) -> str:
+    """`text` with idiomatic negators ("no doubt", "no interval change") blanked, positions kept."""
+    return _NEG_IDIOM.sub(lambda m: "x" * len(m.group()), text)
+
+
+def _has_neg(text: str) -> bool:
+    return bool(_NEG.search(_mask(text or "")))
+
+
+def _neg_count(text: str) -> int:
+    return len(_NEG.findall(_mask(text or "")))
 
 
 def _words(text: str) -> List[str]:
@@ -280,11 +308,14 @@ def _words(text: str) -> List[str]:
 
 
 def _negated_phrases(text: str) -> List[List[str]]:
-    """Each listed item after a negator (no / not / without), up to the sentence end: its first 2 content words.
-    Items split on ',', 'or', 'and', 'nor'; the list ends after an item carrying a verb ("... is seen")."""
+    """Each listed item after a negator (no / nil / not / without / neither / nor / free of), up to the sentence end
+    or the next negator: its first 2 content words. Items split on ',', 'or', 'and', 'nor'; the list ends after an
+    item carrying a verb ("... is seen")."""
     out = []
-    for m in _NEGATOR.finditer(text):
-        rest = text[m.end():]
+    text = _mask(text)
+    negs = list(_NEGATOR.finditer(text))
+    for k, m in enumerate(negs):
+        rest = text[m.end():negs[k + 1].start() if k + 1 < len(negs) else len(text)]
         stop = _SENT_STOP.search(rest)
         for item in _LIST_SEP.split(rest[:stop.start()] if stop else rest):
             ws = _words(item)
@@ -299,6 +330,7 @@ def _negated_phrases(text: str) -> List[List[str]]:
 def _is_negated(new: str, a: int, b: int) -> bool:
     """The phrase at [a, b) of `new` is negated within its own sentence: a negator governs the list it sits in,
     or not / absent / negative follows within 4 words."""
+    new = _mask(new)
     starts = [m.end() for m in _SENT_STOP.finditer(new, 0, a)]
     before = new[starts[-1] if starts else 0:a]
     negs = list(_NEGATOR.finditer(before))
@@ -317,13 +349,34 @@ def _loses_negation(old: str, new: str) -> bool:
     return False
 
 
+def _stem(w: str) -> str:
+    """Light plural strip: masses → mass, collections → collection; -ss / -us / -is words kept."""
+    if w.endswith("sses"):
+        return w[:-2]
+    if len(w) > 3 and w.endswith("s") and not w.endswith(("ss", "us", "is")):
+        return w[:-1]
+    return w
+
+
+def _item_match(a: List[str], b: List[str]) -> bool:
+    """Two negative-list items name the same thing: equal (singular or plural), or one is the other with a
+    qualifier ("significant lymphadenopathy" / "lymphadenopathy"). "pleural effusion" ≠ "pericardial effusion"."""
+    sa, sb = [_stem(w) for w in a], [_stem(w) for w in b]
+    return sa == sb or (sa[-1] == sb[-1] and (set(sa) <= set(sb) or set(sb) <= set(sa)))
+
+
 def _lost_negatives(old: str, new: str) -> List[List[str]]:
-    """The negated items of `old` that `new` no longer negates (absent, or present un-negated). An item is kept
-    when its 2 content words or its head noun (last content word), singular or plural, still appear negated."""
-    def negated(words: List[str]) -> bool:
-        pat = r"\b" + r"\W+".join(map(re.escape, words)) + r"(?:e?s)?\b"
-        return any(_is_negated(new, m.start(), m.end()) for m in re.finditer(pat, new, re.I))
-    return [words for words in _negated_phrases(old) if not (negated(words) or negated(words[-1:]))]
+    """The negated items of `old` that `new` no longer negates, by item count (re-review #6): each negated item of
+    `new` keeps at most one matching item of `old`, so two items sharing a head noun are two items."""
+    left = _negated_phrases(new)
+    lost = []
+    for words in _negated_phrases(old):
+        k = next((i for i, n in enumerate(left) if _item_match(words, n)), None)
+        if k is None:
+            lost.append(words)
+        else:
+            left.pop(k)
+    return lost
 
 
 def _matches(words: List[str], target: Optional[str]) -> bool:
@@ -385,25 +438,87 @@ def _additions_failures(old: str, new: str, source: str) -> List[str]:
     return fails
 
 
+# Dictation shorthand expanded before comparison, so a dictated "No PTX." protects "No pneumothorax." (over-
+# protection is the safe side; the abbreviation stays alongside its expansion).
+_ABBREV = {"ptx": "pneumothorax", "pe": "pulmonary embolism", "dvt": "deep vein thrombosis",
+           "cbd": "common bile duct", "aaa": "abdominal aortic aneurysm", "sol": "space occupying lesion",
+           "lad": "lymphadenopathy", "ln": "lymph node", "lns": "lymph nodes", "ich": "intracranial haemorrhage",
+           "sah": "subarachnoid haemorrhage", "sdh": "subdural haematoma", "edh": "extradural haematoma",
+           "ff": "free fluid", "gb": "gallbladder", "ihd": "intrahepatic duct dilatation"}
+_ABBREV_RE = re.compile(r"\b(" + "|".join(sorted(_ABBREV, key=len, reverse=True)) + r")\b", re.I)
+_SHORT_STOP = {"no", "or", "and", "the", "of", "is", "are", "in", "at", "to", "an", "as", "by", "on", "be", "it",
+               "was", "has", "nor", "not", "nil", "but", "for", "any", "all", "may", "can", "mm", "cm", "ml", "yes",
+               "see", "had", "per", "via", "its", "few", "new", "old", "x", "s", "a"}
+
+
+def _acronyms(text: str) -> set:
+    """Short upper-case tokens (2–3 letters: PE, DVT, CBD) that are words in their own right."""
+    return {t.lower() for t in re.findall(r"\b[A-Z]{2,3}\b", text or "")} - _SHORT_STOP
+
+
+def _content(text: str, acr: Iterable[str] = ()) -> set:
+    """Content words: 4+ letters (light plural strip) less filler, plus short acronyms (upper case here, or known as
+    acronyms from the other side of the comparison)."""
+    acr = set(acr)
+    long = {_stem(w) for w in re.findall(r"[a-z]{4,}", text.lower())} - _FILLER
+    short = {t.lower() for t in re.findall(r"\b[A-Za-z]{2,3}\b", text)
+             if (t.isupper() or t.lower() in acr) and t.lower() not in _SHORT_STOP}
+    return long | short
+
+
+def _says(new: str, existing: str, acr: Iterable[str] = ()) -> bool:
+    """`new` says nothing `existing` does not (production's `_restates`, with short acronyms counted as content
+    words and plurals folded)."""
+    w = _content(new, acr)
+    nums = set(_NUM.findall(new))
+    return bool(w) and len(w & _content(existing, acr)) >= 0.8 * len(w) and nums <= set(_NUM.findall(existing))
+
+
+_POLARITY_SPLIT = re.compile(
+    r"\s*(?:[,;:]|\b(?:but|however|whereas|while|although|though|and|with)\b)\s*"
+    r"(?=(?:there (?:is|are) )?(?:no|nil|not|without|neither|free of)\b)"
+    r"|\s*\b(?:but|however|whereas|although|though)\b\s*|\s*[;:]\s*|\s+[—–]\s+", re.I)
+
+
+def _clauses(text: str) -> List[str]:
+    """A sentence split where its polarity can change ("Small left effusion, no pneumothorax.")."""
+    return [p for p in _POLARITY_SPLIT.split(text) if p and p.strip(" .")]
+
+
 def _dictated_sentences(dictation: str) -> List[str]:
     out = []
-    for raw in (dictation or "").split("\n"):
+    for raw in (dictation or "").replace("\r", "").split("\n"):
         line = _MARKER.sub("", raw).strip()
         out += [line[a:b] for a, b in (_sentences(line) or [(0, len(line))]) if line[a:b].strip()]
     return out
 
 
+def _dictated_pieces(dictation: str) -> List[str]:
+    """Each dictated sentence (shorthand expanded), its polarity clauses and its comma pieces: what the radiologist
+    said, at every grain."""
+    out = []
+    for raw in _dictated_sentences(dictation):
+        for s in dict.fromkeys((raw, _expand(raw))):
+            out += [s] + _clauses(s) + [p for p in s.split(",") if p.strip(" .")]
+    return list(dict.fromkeys(out))
+
+
+def _expand(s: str) -> str:
+    return _ABBREV_RE.sub(lambda m: f"{m.group()} {_ABBREV[m.group().lower()]}", s)
+
+
 def _dictated_text(text: str, dictation: str) -> bool:
-    """`text` and a dictated line say the same thing (either restates the other: a short dictated line inside a
-    longer removed sentence counts) with the same polarity: the radiologist said it, so it is never removed (spec
-    §9; PR #6). Over-protection is the safe side. Polarity matters: a generated "No X." beside a dictated "X" is
-    not dictated text."""
+    """`text` (or one of its polarity clauses) and a dictated line (or clause) say the same thing (either restates
+    the other: a short dictated line inside a longer removed sentence counts) with the same polarity: the
+    radiologist said it, so it is never removed (spec §9; PR #6). Over-protection is the safe side. Polarity
+    matters: a generated "No X." beside a dictated "X" is not dictated text."""
     t = (text or "").strip()
     if not t:
         return False
-    neg = bool(_NEG.search(t))
-    return any(bool(_NEG.search(s)) == neg and (_restates(t, s) or _restates(s, t))
-               for s in _dictated_sentences(dictation))
+    acr = _acronyms(dictation) | _acronyms(t)
+    pieces = [t] + _clauses(t)
+    return any(_has_neg(p) == _has_neg(s) and (_says(p, s, acr) or _says(s, p, acr))
+               for p in pieces for s in _dictated_pieces(dictation))
 
 
 _ITEM_SEP = re.compile(r",\s*(?:(?:or|and|nor)\s+)?|\s+(?:or|and|nor)\s+", re.I)
@@ -439,6 +554,130 @@ def _whole_item(report: str, i: int, j: int, names: Iterable[str]) -> bool:
     return False
 
 
+_NEG_FORM = re.compile(r"^(?:there (?:is|are|was|were) )?(?:no evidence of|no|nil|without|neither|free of)\b", re.I)
+_NOT_FORM = re.compile(r"^[^,;:]*\b(?:is|are|was|were) not(?: [a-z]+){1,2}$", re.I)
+_POS_MARK = re.compile(r"\d|[:()?!…—–.]|\b(?:but|however|although|though|whereas|while|which|with|except|small|large|"
+                       r"mild|moderate|severe|marked|tiny|trace|minimal|extensive|measur\w*|shows?|has|have|"
+                       r"contains?|normal|unremarkable)\b", re.I)
+_COPULA_TAIL = re.compile(r"\b(?:is|are|was|were)\b(.*)$", re.I)
+_SEEN_TAIL = re.compile(r"^\s*(?:(?:seen|identified|demonstrated|noted|evident|present)\s*)?$", re.I)
+
+
+def _negative_only(text: str, names: Iterable[str] = ()) -> bool:
+    """Every clause of `text` is a plain negative ("No a, b or c (is seen).", "There is no X.", "Nil X.", "Neither
+    X nor Y.", "The X is not dilated."): no number, size or severity word, clause break, colon, dash or second
+    sentence. Strict by design: anything else is not negative-only."""
+    sents = [text[a:b] for a, b in _sentence_spans(text, names)]
+    if not sents:
+        return False
+    for s in sents:
+        for c in _mask(s.strip().rstrip(".;").strip()).split(";"):
+            c = c.strip()
+            if not c or _POS_MARK.search(c):
+                return False
+            m = _NEG_FORM.match(c)
+            if m:
+                tail = _COPULA_TAIL.search(c[m.end():])
+                if tail and not _SEEN_TAIL.match(tail.group(1)):
+                    return False
+            elif not _NOT_FORM.match(c):
+                return False
+    return True
+
+
+def _tokens(s: str) -> List[str]:
+    return re.findall(r"\d+(?:\.\d+)?|[a-z]+", (s or "").lower())
+
+
+_CONJ = {"or", "and", "nor"}
+
+
+def _only_deletes(old: str, new: str) -> bool:
+    """`new` is `old` with words deleted: its tokens are a subsequence of `old`'s, list conjunctions aside (a list
+    re-joined after dropping an item moves its "or"), and it brings in no conjunction `old` lacks."""
+    a, b = _tokens(old), _tokens(new)
+    it = iter([t for t in a if t not in _CONJ])
+    return all(t in it for t in b if t not in _CONJ) and {t for t in b if t in _CONJ} <= set(a)
+
+
+_DEFAULT_SECTIONS = ("findings", "impression", "conclusion", "comparison", "technique", "clinical history",
+                     "history", "indication", "report", "summary")
+_CAPS_LABEL = re.compile(r"\b[A-Z][A-Z /&()-]{2,}:")
+
+
+def _structure(report: str, edit: Edit, names: Iterable[str]) -> bool:
+    """The edit changes the report's structure: new text carries a line break or a section heading (a known
+    section name as a label, or an ALL-CAPS "NAME:" label, not already in the replaced text), or the replaced /
+    removed text takes in a heading or sub-heading line."""
+    names = list(names or [])
+    secs = [_norm_name(n) for n in names if n] or list(_DEFAULT_SECTIONS)
+    new, old = edit.replace or "", edit.find or ""
+
+    def labels(t: str) -> int:
+        return len(_CAPS_LABEL.findall(t)) + sum(
+            len(re.findall(r"(?<![A-Za-z])" + re.escape(n) + r"\s*:", t, re.I)) +
+            len(re.findall(r"\b" + re.escape(n.upper()) + r"\b", t)) for n in secs)
+    if edit.mode in ("insert", "replace", "upgrade") and new.strip():
+        if "\n" in new.strip() or "\r" in new.strip() or labels(new) > labels(old if edit.mode != "insert" else ""):
+            return True
+    if edit.mode in ("replace", "upgrade", "remove") and _once(report, old):
+        i = report.index(old)
+        j = i + len(old)
+        if any(a < j and i < b for _, a, b in _headings(report, names, _is_label)):
+            return True
+    return False
+
+
+def _anchor_mid_sentence(anchor: str, names: Iterable[str]) -> bool:
+    """An insert anchor must end a sentence (or be a label line): text placed mid-sentence splits it."""
+    a = (anchor or "").strip()
+    return bool(a) and not _is_label(a, names) and not re.search(r"[.!?…][\"')\]]*$", a)
+
+
+def _contexts(report: str, edit: Edit, names: Iterable[str]) -> Tuple[str, str]:
+    """(old, new) text of the sentence(s) a replace touches; the bare find / replace when the find is not unique."""
+    old, new = edit.find or "", edit.replace or ""
+    if not _once(report, old):
+        return old, new
+    i = report.index(old)
+    j = i + len(old)
+    cover = [(s, e) for s, e in _sentence_spans(report, names) if s < j and i < e] or [(i, j)]
+    lo, hi = min(cover[0][0], i), max(cover[-1][1], j)
+    return report[lo:hi], report[lo:i] + new + report[j:hi]
+
+
+def _alters_dictated(report: str, edit: Edit, dictation: str, names: Iterable[str]) -> bool:
+    """A replace touching a sentence that says a dictated line (same polarity) keeps that line's sides and numbers
+    exactly: it may not drop one the sentence shares with the line, nor bring in one the line lacks. A correction
+    towards the dictated line (report "right", dictated "left") is not an alteration."""
+    old, new = edit.find or "", edit.replace or ""
+    if not _once(report, old) or not (dictation or "").strip():
+        return False
+    i = report.index(old)
+    j = i + len(old)
+    cover = [(s, e) for s, e in _sentence_spans(report, names) if s < j and i < e] or [(i, j)]
+    lo, hi = min(cover[0][0], i), max(cover[-1][1], j)
+    old_ctx, new_ctx = report[lo:hi], report[lo:i] + new + report[j:hi]
+    so, sn = _sides(old_ctx), _sides(new_ctx)
+    no, nn = set(_NUM.findall(old_ctx)), set(_NUM.findall(new_ctx))
+    if so == sn and no == nn:
+        return False
+    acr = _acronyms(dictation) | _acronyms(old_ctx)
+    lines = []
+    for raw in _dictated_sentences(dictation):
+        for s in dict.fromkeys((raw, _expand(raw))):
+            lines += [s] + _clauses(s)
+    for a, b in cover:
+        p = report[a:b]
+        for s in dict.fromkeys(lines):
+            if _has_neg(s) != _has_neg(p) or not (_says(p, s, acr) or _says(s, p, acr)):
+                continue
+            ss, sm = _sides(s), set(_NUM.findall(s))
+            if (_sides(p) & ss) - sn or (set(_NUM.findall(p)) & sm) - nn or (sn - so) - ss or (nn - no) - sm:
+                return True
+    return False
+
+
 def _remove_failures(report: str, edit: Edit, kind: str, dictation: str, names: Iterable[str],
                      target: Optional[str]) -> List[str]:
     """A remove takes out a whole sentence or a whole list item (`partial_remove`), never leaves a negated phrase
@@ -464,6 +703,10 @@ def _remove_failures(report: str, edit: Edit, kind: str, dictation: str, names: 
     if kind in REMOVAL_KINDS:
         if whole and len(whole) > 1:
             fails.append("drops_sentence")
+        # a negative's removal takes nothing positive with it ("No effusion: small 4 mm nodule.")
+        negative_target = kind == "removed" or (target is not None and _has_neg(target))
+        if negative_target and _has_neg(old_s) and not _negative_only(old_s):
+            fails.append("removes_positive")
         texts = [report[s:e] for s, e in whole] if whole else []
         if not whole:
             a, b = _trim(report, i, j)
@@ -482,9 +725,11 @@ def _replace_removes_dictated(old: str, new: str, loses: bool, lost: List[List[s
         return True
     if any(_dictated_text("No " + " ".join(p), dictation) for p in lost):
         return True
-    neg = bool(_NEG.search(old))
-    return any(bool(_NEG.search(s)) == neg and _restates(s, old) and not _restates(s, new)
-               for s in _dictated_sentences(dictation))
+    acr = _acronyms(dictation) | _acronyms(old)
+    olds = [old[a:b] for a, b in _sentences(old)] or [old]
+    olds += [c for o in olds for c in _clauses(o)]
+    return any(_has_neg(s) == _has_neg(o) and _says(s, o, acr) and not _says(s, new, acr)
+               for o in olds for s in _dictated_pieces(dictation))
 
 
 def guard_failures(report: str, edit: Optional[Edit], kind: str, dictation: str, history: str, *,
@@ -513,19 +758,30 @@ def guard_failures(report: str, edit: Optional[Edit], kind: str, dictation: str,
     if edit.mode == "remove":
         fails += _remove_failures(report, edit, kind, dictation, names, target)
     elif edit.mode in ("replace", "upgrade"):
-        lost = _lost_negatives(old, new)
-        loses = len(_NEG.findall(old)) > len(_NEG.findall(new)) or _loses_negation(old, new)
+        old_ctx, new_ctx = _contexts(report, edit, names)   # negation is read in the whole sentence(s) touched
+        lost = _lost_negatives(old_ctx, new_ctx)
+        flips = _loses_negation(old_ctx, new_ctx)
+        loses = _neg_count(old_ctx) > _neg_count(new_ctx) or flips
         # L-47: an edit never drops a negation, except the sanctioned removal of one contradicted negative (a
-        # negative-list item dropped from its line arrives as a line-level replace).
+        # negative-list item dropped from its line arrives as a line-level replace). Outside the removal kinds a
+        # negated phrase left standing un-negated ("No X." → "X.") always fails (re-review #9; `flips`).
         ok = removal and _sanctioned(lost, target)
-        if loses and not ok:
+        if (loses or flips) and not ok:
             fails.append("drops_negation")
         if lost and not ok:
             fails.append("drops_negative_item")
+        if removal and _has_neg(old_ctx) and not _only_deletes(old, new):
+            fails.append("removal_adds_content")     # a negative's removal only deletes words (re-review #1)
         if removal and _drops_sentence(old, new, lost, target):
             fails.append("drops_sentence")
         if removal and _replace_removes_dictated(old, new, loses, lost, dictation):
             fails.append("remove_dictated")
+        if _alters_dictated(report, edit, dictation, names):
+            fails.append("alters_dictated")
+    if edit.mode == "insert" and _anchor_mid_sentence(edit.after or "", names):
+        fails.append("anchor_mid_sentence")
+    if _structure(report, edit, names):
+        fails.append("structure")
     if additions and edit.mode in ("insert", "replace", "upgrade"):
         fails += _additions_failures(old, new, source)
     pos = _edit_pos(report, edit, names)
@@ -544,6 +800,205 @@ def guard_failures(report: str, edit: Optional[Edit], kind: str, dictation: str,
         if any(_restates(new, s) for s in neighbours):
             fails.append("duplicate")
     return fails
+
+
+# ── pre-apply (binding correction 12) ───────────────────────────────────────
+_LINE_MARKER = re.compile(r"^(?:\d{1,2}[.)](?=\s)|[-*•–—])\s*")
+
+
+def _tidy_line(line: str) -> str:
+    """A dictated line tidied only: list marker / dash / bullet stripped, whitespace collapsed, first letter
+    capitalised, a full stop added when it has no terminal punctuation. No rewording."""
+    s = re.sub(r"\s+", " ", line or "").strip()
+    s = _LINE_MARKER.sub("", s).strip()
+    if not s:
+        return ""
+    s = s[:1].upper() + s[1:]
+    if s[-1] not in ".!?":
+        s = s.rstrip(",;: ") + "."
+    return s if s.strip(" .!?") else ""
+
+
+_SENT_CLOSE = re.compile(r"[.!?…][\"')\]]*$")
+
+
+def insert_from_line(report: str, line_text: str, section: str = "FINDINGS",
+                     sections: Optional[List[str]] = None) -> Optional[Edit]:
+    """Code's insert of a dictated line (correction 12): the line tidied only (`_tidy_line`), placed after the last
+    complete sentence of `section`'s body (a closing label line is the anchor instead), or appended when the body is
+    empty. None when it cannot be placed safely: no such section, an empty line, a body ending mid-sentence or on a
+    list item, or an anchor that is not unique."""
+    names = sections or []
+    text = _tidy_line(line_text)
+    body = _section_body(report, section, names) if text else None
+    if body is None:
+        return None
+    a, e = body
+    chunk = report[a:e]
+    if not chunk.strip():
+        return Edit(mode="insert", after=None, replace=text, section=section)
+    last = chunk.rstrip().split("\n")[-1].strip()
+    if _is_label(last, names):
+        anchor = last
+    elif _MARKER.match(last):
+        return None
+    else:
+        spans = _sentence_spans(chunk, names)
+        if not spans or chunk[spans[-1][1]:].strip():
+            return None
+        anchor = chunk[spans[-1][0]:spans[-1][1]]
+        if not _SENT_CLOSE.search(anchor):
+            return None
+    if not _once(report, anchor):
+        return None
+    return Edit(mode="insert", after=anchor, replace=text, section=section)
+
+
+_HEDGE = {"possible", "possibly", "probable", "probably", "likely", "unlikely", "definite", "definitely",
+          "suspected", "suspicious", "equivocal", "indeterminate", "presumed", "presumably", "query", "questionable",
+          "certain", "uncertain", "?"}
+_SIDE_WORDS = {"left", "right", "bilateral"}
+
+
+def _ptokens(s: str) -> List[str]:
+    return re.findall(r"\d+(?:\.\d+)?|[a-z]+|[^\sa-z\d]", (s or "").lower())
+
+
+def _swappable(t: str) -> bool:
+    return t in _SIDE_WORDS or t in _HEDGE or bool(re.fullmatch(r"\d+(?:\.\d+)?", t))
+
+
+def _contains_run(run: List[str], seq: List[str]) -> bool:
+    return any(seq[k:k + len(run)] == run for k in range(len(seq) - len(run) + 1))
+
+
+def _norm_ws(s: str) -> str:
+    return re.sub(r"\s+", " ", s or "").strip().lower()
+
+
+def _empties_section(report: str, i: int, j: int, names: Iterable[str]) -> bool:
+    """Removing [i, j) leaves its section or sub-section (between label lines) with no sentence."""
+    labels = _headings(report, names, _is_label)
+    lo = max([b for _, _, b in labels if b <= i], default=0)
+    hi = min([a for _, a, _ in labels if a >= j], default=len(report))
+    a, b = _trim(report, i, j)
+    return all(a <= s and e <= b for s, e in _sentence_spans(report[lo:hi], names) for s, e in [(s + lo, e + lo)])
+
+
+def _preapply_removal(report: str, edit: Edit, dictation: str, code_built: bool, names: List[str]) -> List[str]:
+    fails = [] if code_built else ["not_code_built"]
+    if edit.mode != "remove":
+        return fails + ["not_remove"]
+    if not _once(report, edit.find):
+        return fails + ["anchor_not_unique"]
+    i = report.index(edit.find)
+    j = i + len(edit.find)
+    whole = _whole_sentences(report, i, j, names)
+    cover = [(s, e) for s, e in _sentence_spans(report, names) if s < j and i < e] or [(i, j)]
+    sent = report[cover[0][0]:cover[-1][1]]
+    if whole is None and not _whole_item(report, i, j, names):
+        fails.append("partial_remove")
+    a, b = _trim(report, i, j)
+    piece = re.sub(r"^(?:,|\s|or\b|and\b|nor\b)+|(?:[,.;]|\s|\bor|\band|\bnor)+$", "", report[a:b], flags=re.I)
+    # negative-only: the whole sentence(s) touched are plain negatives, and so is the removed text itself
+    if not _negative_only(sent, names) or (whole is None and _POS_MARK.search(piece.replace(".", ""))):
+        fails.append("not_negative_only")
+    texts = [report[s:e] for s, e in whole] if whole else ["No " + piece]
+    texts += ["No " + " ".join(p) for p in _lost_negatives(sent, report[cover[0][0]:i] + report[j:cover[-1][1]])]
+    if any(_dictated_text(t, dictation) for t in texts):
+        fails.append("remove_dictated")
+    if _empties_section(report, i, j, names):
+        fails.append("empties_section")
+    return fails
+
+
+def _preapply_insert(report: str, edit: Edit, dictation: str, line_text: Optional[str], names: List[str]) -> List[str]:
+    if not (line_text or "").strip():
+        return ["no_line"]
+    if edit.mode != "insert":
+        return ["not_insert"]
+    fails = []
+    if _norm_name(edit.section or "") != "findings":
+        fails.append("outside_findings")
+    built = insert_from_line(report, line_text, edit.section or "FINDINGS", names)
+    if built is None or (edit.replace, edit.after) != (built.replace, built.after):
+        fails.append("not_code_built")
+    anchor = (edit.after or "").strip()
+    if anchor:
+        if _anchor_mid_sentence(anchor, names):
+            fails.append("anchor_mid_sentence")
+        pos = report.index(anchor) if _once(report, anchor) else None
+        if pos is None or _section_of(report, pos, names) != "findings":
+            fails.append("outside_findings")
+    text = edit.replace or ""
+    if _structure(report, edit, names):
+        fails.append("structure")
+    if set(_NUM.findall(text)) - set(_NUM.findall(line_text)):
+        fails.append("ungrounded_number")
+    if _sides(text) - _sides(line_text):
+        fails.append("ungrounded_side")
+    if {n.lower() for n in _NEG.findall(text)} - {n.lower() for n in _NEG.findall(line_text)}:
+        fails.append("adds_negation")
+    core = _norm_ws(_LINE_MARKER.sub("", re.sub(r"\s+", " ", line_text).strip())).rstrip(".!?")
+    if not core or core not in _norm_ws(dictation):
+        fails.append("line_not_dictated")
+    return fails
+
+
+def _preapply_correction(report: str, edit: Edit, line_text: Optional[str], names: List[str]) -> List[str]:
+    if not (line_text or "").strip():
+        return ["no_line"]
+    old, new = edit.find or "", edit.replace or ""
+    if not _once(report, old):
+        return ["anchor_not_unique"]
+    a, b = _ptokens(old), _ptokens(new)
+    ops = [op for op in SequenceMatcher(None, a, b, autojunk=False).get_opcodes() if op[0] != "equal"]
+    if len(ops) != 1 or ops[0][0] not in ("replace", "insert"):
+        return ["not_single_change"]
+    _, i1, i2, j1, j2 = ops[0]
+    fails = []
+    if not all(_swappable(t) for t in a[i1:i2] + b[j1:j2]):
+        fails.append("changes_more_than_side_number_hedge")
+    if not _contains_run(b[j1:j2], _ptokens(line_text)):
+        fails.append("change_not_in_line")
+    # the line is about this sentence: half the sentence's content words are in it
+    i = report.index(old)
+    cover = [(s, e) for s, e in _sentence_spans(report, names) if s < i + len(old) and i < e] or [(i, i + len(old))]
+    after = report[cover[0][0]:i] + new + report[i + len(old):cover[-1][1]]
+    acr = _acronyms(line_text) | _acronyms(after)
+    w = _content(after, acr) - _SIDE_WORDS - _HEDGE
+    if not w or len(w & _content(line_text, acr)) < 0.5 * len(w):
+        fails.append("line_not_about_sentence")
+    return fails
+
+
+def preapply_failures(report: str, edit: Optional[Edit], kind: str, dictation: str, *, code_built: bool,
+                      line_text: Optional[str] = None, sections: Optional[List[str]] = None) -> List[str]:
+    """Binding correction 12 (spec §9): [] only when `edit` may be applied before the radiologist sees the report.
+    Only code-built edits qualify:
+    - removal (`kind` in REMOVAL_KINDS): `code_built`, mode `remove`, whole sentence(s) or list item(s) of plain
+      negatives only, nothing dictated removed, and the section is not left empty;
+    - insert (`kind == "absent"`): exactly `insert_from_line(report, line_text)` (the dictated line tidied), after a
+      sentence end or label line inside FINDINGS, no line break or heading, every number, side and negator from
+      `line_text`, and `line_text` is in the dictation;
+    - positive correction (`kind == "contradicted"`, mode `replace`, a positive `find`): one contiguous change of
+      sides / numbers / hedge words, whose new tokens occur verbatim in `line_text`, the sentence otherwise
+      identical and about that line.
+    The §8 code guards must also pass. Anything else: ["not_preapply_eligible"]. Pure code, no model calls."""
+    if edit is None:
+        return ["no_edit"]
+    names = list(sections or [])
+    positive = edit.mode == "replace" and not _has_neg(edit.find or "") and not is_negative(edit.find or "")
+    if kind == "absent":
+        fails = _preapply_insert(report, edit, dictation, line_text, names)
+    elif kind == "contradicted" and positive:
+        fails = _preapply_correction(report, edit, line_text, names)
+    elif kind in REMOVAL_KINDS:
+        fails = _preapply_removal(report, edit, dictation, code_built, names)
+    else:
+        return ["not_preapply_eligible"]
+    fails += guard_failures(report, edit, kind, dictation, "", sections=names, item_section=edit.section)
+    return list(dict.fromkeys(fails))
 
 
 def changed_sentence(report: str, after: str, edit: Edit, sections: Optional[List[str]] = None) -> str:
@@ -772,5 +1227,5 @@ async def probe(inp: ReviewInput, items: List[ReviewItem], text: str, changed_ra
             "error": "; ".join(dict.fromkeys(errors)) or None}
 
 
-__all__ = ["ADDRESSED_OK", "UNSURE_LO", "REMOVAL_KINDS", "apply_edit", "guard_failures", "changed_sentence",
-           "verify", "probe"]
+__all__ = ["ADDRESSED_OK", "UNSURE_LO", "REMOVAL_KINDS", "apply_edit", "guard_failures", "preapply_failures",
+           "insert_from_line", "changed_sentence", "verify", "probe"]
