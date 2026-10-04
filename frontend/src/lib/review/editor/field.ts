@@ -6,13 +6,18 @@
  * excluded items are widgets (display only, never document text), so copy, select-all and export only ever see
  * what the radiologist will sign (the copy invariant).
  *
- * All items live in one StateField and map through every change. Toggles (exclude, restore, include) are
- * ordinary transactions carrying a `setItems` snapshot in POST-change coordinates; `invertedEffects` records the
- * pre-transaction snapshot, so history() undo/redo restores both the text and the items. Editing inside a mark
- * drops it (the text became the radiologist's own) and reports the item stale: a `staleEffect` on the
- * transaction, delivered to `onReviewStale` callbacks by the view's update listener.
+ * All items live in one StateField and map through every change. Review commands (lib/review/commands.ts) are
+ * the single path for rail and overlay actions: `commandTransaction` turns a command's result into ONE transaction
+ * (the text change, a `setItems` snapshot in POST-change coordinates for the items' new statuses, and the
+ * `reviewCommand` annotation). `invertedEffects` records the pre-transaction snapshot, so history() undo/redo
+ * restores both the text and the items, and turns Cmd-Z / redo of a command transaction into that item's undo /
+ * re-apply, reported to `onReviewHistory` callbacks so the viewer posts the event (rail Undo and Cmd-Z converge).
+ * Editing inside a mark drops it (the text became the radiologist's own) and reports the item stale: a
+ * `staleEffect` on the transaction, delivered to `onReviewStale` callbacks by the view's update listener. Command
+ * and reload (`replaceDoc`) transactions are never reported stale.
  */
 import {
+	Annotation,
 	EditorState,
 	Facet,
 	StateEffect,
@@ -23,10 +28,11 @@ import {
 	type TransactionSpec
 } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { invertedEffects } from '@codemirror/commands';
-import { locate } from '../anchors';
+import { invertedEffects, isolateHistory } from '@codemirror/commands';
+import { locate, locateUndo } from '../anchors';
+import type { CommandResult } from '../commands';
 import { toChanges } from '../edits';
-import type { Cls, ItemEvidence, ItemLane, ReviewItem } from '../types';
+import type { Cls, ItemEvidence, ItemLane, ItemStatus, ReviewItem } from '../types';
 
 /** How a mark is presented. */
 export type MarkClass = 'rv-normal' | 'rv-check' | 'rv-preapplied' | 'rv-action' | 'rv-minor' | 'rv-info';
@@ -103,15 +109,23 @@ export interface FromItemsOptions {
 	widgetPos?: Record<string, number>;
 	/** Ids to leave out entirely (neither placed nor stale), e.g. items the user has excluded locally. */
 	skip?: ReadonlySet<string>;
+	/** The report's section names (edits.toChanges): options in sections that are not ALL-CAPS need them. */
+	sections?: readonly string[] | null;
+	/** textHash(doc), when the caller has it: live pre-applied spans are trusted as stored only on a hash match
+	 * (anchors.locateUndo); otherwise they are re-found by context. */
+	textHash?: string | null;
 }
 
 function isShown(it: ReviewItem): boolean {
 	return it.cls !== 'suppress' && (it.status === 'open' || it.status === 'pre_applied');
 }
 
+/** A removed (red) widget: text the engine took out, still out. Once restored or undone (open) the text is back
+ * in the document and the item is an ordinary mark on it. */
 function isRemovalWidget(it: ReviewItem): boolean {
+	if (it.status !== 'pre_applied') return false;
 	if (!it.anchor || it.anchor.text) return false; // a removal still in the text is an ordinary mark
-	return it.kind === 'removed' || (it.status === 'pre_applied' && it.edit?.mode === 'remove');
+	return it.kind === 'removed' || it.edit?.mode === 'remove';
 }
 
 function markClassOf(it: ReviewItem): MarkClass {
@@ -133,15 +147,10 @@ function metaOf(it: ReviewItem): MarkMeta {
 	return meta;
 }
 
-/** A pre-applied edit whose anchor is lost: live mode's undo span still marks the written text. */
-function undoSpan(doc: string, it: ReviewItem): { from: number; to: number } | null {
-	const fs = it.evidence?.undo?.final_span;
-	if (!fs) return null;
-	const [from, to] = fs;
-	if (!(from >= 0 && to <= doc.length && from < to)) return null;
-	const got = doc.slice(from, to);
-	const want = [it.edit?.replace?.trim(), it.anchor?.text].filter(Boolean);
-	return want.includes(got) ? { from, to } : null;
+/** A pre-applied edit whose anchor is lost: live mode's undo span (re-found, never guessed) still marks it. */
+function undoSpan(doc: string, it: ReviewItem, textHash?: string | null): { from: number; to: number } | null {
+	const at = locateUndo(doc, it, textHash);
+	return at && at.to > at.from ? at : null;
 }
 
 /** Place store items in `doc`. Items that should be shown but cannot be located come back in `stale`. Items
@@ -158,7 +167,7 @@ export function fromItems(
 		if (!isShown(it) || opts.skip?.has(it.id)) continue;
 
 		if (it.kind === 'option') {
-			const c = toChanges(doc, it.edit);
+			const c = toChanges(doc, it.edit, opts.sections);
 			const text = it.edit?.replace?.trim();
 			if (c && text && c.from === c.to) {
 				widgets.push({ kind: 'option', id: it.id, lane: it.lane, pos: c.from, text, reason: it.reason || undefined });
@@ -169,8 +178,10 @@ export function fromItems(
 		if (isRemovalWidget(it)) {
 			const ev = it.evidence ?? {};
 			const text = str(ev.removed_text) ?? str(ev.undo?.original_text) ?? str(it.edit?.find);
-			const widgetPos = opts.widgetPos?.[it.id] ?? ev.undo?.final_span?.[0] ?? it.anchor!.start;
-			const at = text ? locate(doc, it, { widgetPos }) : null;
+			// live (evidence.undo): seeded only by hash match or context; otherwise the stored removal point
+			let widgetPos: number | null | undefined = opts.widgetPos?.[it.id];
+			if (widgetPos == null) widgetPos = ev.undo ? (locateUndo(doc, it, opts.textHash)?.from ?? null) : it.anchor!.start;
+			const at = text && widgetPos != null ? locate(doc, it, { widgetPos }) : null;
 			if (!at || !text) {
 				stale.push(it.id);
 				continue;
@@ -190,8 +201,16 @@ export function fromItems(
 			continue;
 		}
 
-		if (!it.anchor) continue; // rail-only
-		const at = locate(doc, it) ?? (it.status === 'pre_applied' ? undoSpan(doc, it) : null);
+		const undone = it.status !== 'pre_applied' && !!it.evidence?.undo;
+		if (!it.anchor && !undone) continue; // rail-only
+		let at = it.anchor ? locate(doc, it) : null;
+		if (!at && it.status === 'pre_applied') at = undoSpan(doc, it, opts.textHash);
+		if ((!at || at.to <= at.from) && undone) {
+			// a live edit taken back: the item sits on its original text if that is in the report, else rail-only
+			const oa = it.evidence?.original_anchor;
+			at = oa?.text ? locate(doc, { ...it, anchor: oa }) : null;
+			if (!at || at.to <= at.from) continue;
+		}
 		if (!at || at.to <= at.from) {
 			stale.push(it.id);
 			continue;
@@ -239,6 +258,30 @@ export const staleEffect = StateEffect.define<string[]>();
 /** Called with the ids of items that became stale. The store marks them `stale`. */
 export const onReviewStale = Facet.define<(ids: string[]) => void>();
 
+/** What a review command transaction did: the command posted and each item's status before and after. */
+export interface ReviewCommandInfo {
+	command: string;
+	items: { id: string; before: ItemStatus; after: ItemStatus }[];
+}
+
+/** Marks a transaction made by a review command (or a reload): it is never reported stale, and Cmd-Z / redo of
+ * it is reported to `onReviewHistory`. */
+export const reviewCommand = Annotation.define<ReviewCommandInfo>();
+
+/** Carried by history()'s undo / redo transactions of a review command (via invertedEffects). */
+const reviewHistoryEffect = StateEffect.define<ReviewCommandInfo & { kind: 'undo' | 'redo' }>();
+
+/** Cmd-Z (`undo`) or redo (`redo`) of a review command: `status` is the status the item now has (its status
+ * before the command on undo, after it on redo). The viewer posts the matching event (undo, or the command again). */
+export interface ReviewHistoryEvent {
+	itemId: string;
+	kind: 'undo' | 'redo';
+	command: string;
+	status: ItemStatus;
+}
+
+export const onReviewHistory = Facet.define<(ev: ReviewHistoryEvent) => void>();
+
 export const reviewField = StateField.define<ReviewFieldState>({
 	create: () => EMPTY,
 	update(items, tr) {
@@ -249,19 +292,42 @@ export const reviewField = StateField.define<ReviewFieldState>({
 });
 
 /** Undo/redo support: whenever a transaction set the items or dropped a mark, the inverse transaction restores
- * the snapshot from before it. */
+ * the snapshot from before it. A review command's inverse also carries a `reviewHistoryEffect` (undo), whose own
+ * inverse is the redo, and so on. */
 const reviewHistory = invertedEffects.of((tr) => {
 	const before = tr.startState.field(reviewField, false);
 	if (!before) return [];
+	const out: StateEffect<unknown>[] = [];
 	const explicit = tr.effects.some((e) => e.is(setItems));
 	const after = tr.state.field(reviewField);
 	const dropped = after.marks.length < before.marks.length;
-	return explicit || dropped ? [setItems.of(before)] : [];
+	if (explicit || dropped) out.push(setItems.of(before));
+	const cmd = tr.annotation(reviewCommand);
+	if (cmd && cmd.items.length) out.push(reviewHistoryEffect.of({ ...cmd, kind: 'undo' }));
+	for (const e of tr.effects)
+		if (e.is(reviewHistoryEffect))
+			out.push(reviewHistoryEffect.of({ ...e.value, kind: e.value.kind === 'undo' ? 'redo' : 'undo' }));
+	return out;
 });
 
-/** A user edit (no `setItems`) that touches a mark's interior: tag the transaction with the dropped ids. */
+const historyListener = EditorView.updateListener.of((update) => {
+	const callbacks = update.state.facet(onReviewHistory);
+	if (!callbacks.length) return;
+	for (const tr of update.transactions)
+		for (const e of tr.effects) {
+			if (!e.is(reviewHistoryEffect)) continue;
+			const { kind, command, items } = e.value;
+			for (const it of items) {
+				const ev: ReviewHistoryEvent = { itemId: it.id, kind, command, status: kind === 'undo' ? it.before : it.after };
+				for (const cb of callbacks) cb(ev);
+			}
+		}
+});
+
+/** A user edit (no `setItems`, no review command) that touches a mark's interior: tag the transaction with the
+ * dropped ids. */
 const staleExtender = EditorState.transactionExtender.of((tr) => {
-	if (!tr.docChanged || tr.effects.some((e) => e.is(setItems))) return null;
+	if (!tr.docChanged || tr.annotation(reviewCommand) || tr.effects.some((e) => e.is(setItems))) return null;
 	const items = tr.startState.field(reviewField, false);
 	if (!items) return null;
 	const ids = items.marks.filter((m) => touchesInterior(tr.changes, m.from, m.to)).map((m) => m.id);
@@ -290,22 +356,50 @@ export function reviewItems(state: EditorState): ReviewFieldState {
 
 /** The field, its undo support and stale reporting, initialised with `initial`. */
 export function reviewFieldExtension(initial: ReviewFieldState = EMPTY): Extension {
-	return [reviewField.init(() => initial), reviewHistory, staleExtender, staleListener];
+	return [reviewField.init(() => initial), reviewHistory, staleExtender, staleListener, historyListener];
 }
 
-export function createReviewState(doc: string, items: readonly ReviewItem[], extra: Extension[] = []): EditorState {
-	return EditorState.create({ doc, extensions: [reviewFieldExtension(fromItems(doc, items).items), ...extra] });
+/** Options for loading items onto a text: sections and the text's hash (FromItemsOptions). */
+export type LoadOptions = Pick<FromItemsOptions, 'sections' | 'textHash'>;
+
+/** A load onto a text whose hash is not the hash the anchors were made on: a warning, not an error (anchors
+ * re-locate by text and context). */
+function warnHash(items: readonly ReviewItem[], textHash: string | null | undefined): void {
+	if (!textHash) return;
+	const other = items.find((i) => i.anchor?.text_hash && i.anchor.text_hash !== textHash);
+	if (other)
+		console.warn(
+			`[review] report text hash ${textHash} differs from the anchors' (${other.anchor!.text_hash}); items re-locate by text`
+		);
+}
+
+export function createReviewState(
+	doc: string,
+	items: readonly ReviewItem[],
+	extra: Extension[] = [],
+	opts: LoadOptions = {}
+): EditorState {
+	warnHash(items, opts.textHash);
+	return EditorState.create({ doc, extensions: [reviewFieldExtension(fromItems(doc, items, opts).items), ...extra] });
+}
+
+/** Where the field holds each removed widget now (for CommandCtx.widgetPos); null when it holds none. */
+export function widgetPosOf(state: EditorState): (item: { id: string }) => number | null {
+	const pos = new Map<string, number>();
+	for (const w of reviewItems(state).widgets) if (w.kind === 'removed') pos.set(w.id, w.pos);
+	return (item) => pos.get(item.id) ?? null;
 }
 
 /** Replace the field from fresh store items (a server update). Not undoable; keeps current widget positions and
  * locally excluded items; items that can no longer be located are reported stale. */
-export function syncItems(state: EditorState, items: readonly ReviewItem[]): TransactionSpec {
+export function syncItems(state: EditorState, items: readonly ReviewItem[], opts: LoadOptions = {}): TransactionSpec {
 	const cur = reviewItems(state);
 	const widgetPos: Record<string, number> = {};
 	const excluded = cur.widgets.filter((w) => w.kind === 'excluded');
 	for (const w of cur.widgets) if (w.kind === 'removed') widgetPos[w.id] = w.pos;
 	const keep = new Set(items.filter(isShown).map((i) => i.id));
 	const { items: next, stale } = fromItems(state.doc.toString(), items, {
+		...opts,
 		widgetPos,
 		skip: new Set(excluded.map((w) => w.id))
 	});
@@ -316,7 +410,75 @@ export function syncItems(state: EditorState, items: readonly ReviewItem[]): Tra
 	return { effects, annotations: Transaction.addToHistory.of(false) };
 }
 
-// ---- toggles: each returns a TransactionSpec (or null if the item is gone) ----
+/** A whole new report text (a reload, a version switch, the background live write): one full-document change
+ * whose items are placed afresh on `text` (no widget positions carried over: the old ones were on another text).
+ * Not undoable, never reported stale by the edit itself; items that cannot be placed on `text` are. */
+export function replaceDoc(
+	state: EditorState,
+	text: string,
+	items: readonly ReviewItem[],
+	opts: LoadOptions = {}
+): TransactionSpec {
+	warnHash(items, opts.textHash);
+	const { items: next, stale } = fromItems(text, items, opts);
+	const effects: StateEffect<unknown>[] = [setItems.of(next)];
+	if (stale.length) effects.push(staleEffect.of(stale));
+	return {
+		changes: { from: 0, to: state.doc.length, insert: text },
+		effects,
+		annotations: [Transaction.addToHistory.of(false), reviewCommand.of({ command: 'replace_doc', items: [] })]
+	};
+}
+
+/** A review command's result as ONE transaction: its text change, the items re-placed for their new statuses
+ * (`setItems`, so the item's own edit is never reported stale), and the `reviewCommand` annotation (its own undo
+ * step; Cmd-Z of it is the item's undo). `items` are the store items before the command. */
+export function commandTransaction(
+	state: EditorState,
+	result: CommandResult,
+	items: readonly ReviewItem[],
+	opts: LoadOptions = {}
+): TransactionSpec {
+	const changes = result.changes ? state.changes(result.changes) : null;
+	const doc = changes ? changes.apply(state.doc).toString() : state.doc.toString();
+	const statuses = result.statuses ?? {};
+	const next = items.map((i) => (statuses[i.id] ? { ...i, status: statuses[i.id] } : i));
+	const cur = reviewItems(state);
+	const at = (p: number) => (changes ? changes.mapPos(p, -1) : p);
+	const widgetPos: Record<string, number> = {};
+	for (const w of cur.widgets) if (w.kind === 'removed' && !statuses[w.id]) widgetPos[w.id] = at(w.pos);
+	const keep = new Set(next.filter(isShown).map((i) => i.id));
+	const excluded = cur.widgets
+		.filter((w) => w.kind === 'excluded' && keep.has(w.id))
+		.map((w) => ({ ...w, pos: at(w.pos) }));
+	const { items: placed, stale } = fromItems(doc, next, {
+		...opts,
+		widgetPos,
+		skip: new Set(excluded.map((w) => w.id))
+	});
+	const effects: StateEffect<unknown>[] = [setItems.of({ marks: placed.marks, widgets: [...placed.widgets, ...excluded] })];
+	const lost = stale.filter((id) => !statuses[id]);
+	if (lost.length) effects.push(staleEffect.of(lost));
+	const command = result.event?.command ?? result.events?.[0]?.command ?? 'command';
+	const info: ReviewCommandInfo = {
+		command,
+		items: Object.entries(statuses).map(([id, after]) => ({
+			id,
+			before: items.find((i) => i.id === id)?.status ?? 'open',
+			after
+		}))
+	};
+	return {
+		...(changes ? { changes } : {}),
+		effects,
+		annotations: [reviewCommand.of(info), Transaction.userEvent.of(`review.${command}`), isolateHistory.of('full')]
+	};
+}
+
+// ---- toggles: prototype compatibility only ----
+// The negatives prototype's local toggles (exclude, restore, include). They change the text and the field but post
+// no events and change no item status; the rail and overlays use review commands + `commandTransaction` instead.
+// Kept for the prototype and its tests. Each returns a TransactionSpec (or null if the item is gone).
 
 function isWs(ch: string): boolean {
 	return ch === '' || /\s/.test(ch);

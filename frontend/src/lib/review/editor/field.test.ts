@@ -3,9 +3,15 @@ import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { history, undo, redo } from '@codemirror/commands';
 import type { ReviewItem } from '../types';
+import { runCommand } from '../commands';
 import {
 	checkReason,
+	commandTransaction,
 	createReviewState,
+	onReviewHistory,
+	replaceDoc,
+	reviewCommand,
+	widgetPosOf,
 	excludeMark,
 	fromItems,
 	includeOption,
@@ -62,6 +68,7 @@ const ITEMS: ReviewItem[] = [
 		id: 'r1',
 		kind: 'removed',
 		cls: 'action',
+		status: 'pre_applied',
 		anchor: { start: DICTATED.length, end: DICTATED.length, text: '' },
 		evidence: { removed_text: REMOVED }
 	}),
@@ -73,6 +80,22 @@ const ITEMS: ReviewItem[] = [
 		edit: { mode: 'insert', after: AMBER, replace: OPTION }
 	})
 ];
+
+/** live.rebase_items' evidence.undo for the span [j1, j2) of the written text. */
+function undoOf(written: string, j1: number, j2: number, original_text: string) {
+	return {
+		final_span: [j1, j2] as [number, number],
+		original_text,
+		final_text: written.slice(j1, j2),
+		left: written.slice(Math.max(0, j1 - 16), j1),
+		right: written.slice(j2, j2 + 16)
+	};
+}
+
+/** Run the view's update listeners for `tr` (no DOM). */
+function notify(tr: import('@codemirror/state').Transaction) {
+	for (const l of tr.state.facet(EditorView.updateListener)) l({ transactions: [tr], state: tr.state } as never);
+}
 
 function load(items: ReviewItem[] = ITEMS) {
 	return createReviewState(report, items, [history()]);
@@ -282,7 +305,7 @@ describe('review field (generalised to review items)', () => {
 				status: 'pre_applied',
 				anchor: { start: 0, end: 3, text: 'old' },
 				edit: { mode: 'insert', after: DICTATED, replace: ADDED },
-				evidence: { undo: { final_span: [start, start + ADDED.length], original_text: '' } }
+				evidence: { undo: undoOf(DOC, start, start + ADDED.length, '') }
 			})
 		]);
 		expect(stale).toEqual([]);
@@ -298,7 +321,7 @@ describe('review field (generalised to review items)', () => {
 				status: 'pre_applied',
 				anchor: { start: DICTATED.length, end: DICTATED.length, text: '' },
 				edit: { mode: 'remove', find: REMOVED },
-				evidence: { undo: { final_span: [DICTATED.length, DICTATED.length], original_text: REMOVED } }
+				evidence: { undo: undoOf(report, DICTATED.length, DICTATED.length, REMOVED) }
 			})
 		]);
 		expect(items.widgets).toEqual([
@@ -369,5 +392,204 @@ describe('review field (generalised to review items)', () => {
 			options: 1,
 			excluded: 0
 		});
+	});
+});
+
+describe('removal widgets and undone live edits (C-1, I-5, I-6)', () => {
+	const LIVE = 'FINDINGS:\nLiver normal. Spleen normal. Kidneys fine.';
+	const p = LIVE.indexOf('Spleen');
+	const ORIG = 'FINDINGS:\nLiver normal. No ascites. Spleen normal. Kidneys fine.';
+	const rm = (over: Partial<ReviewItem> = {}) =>
+		item({
+			id: 'w',
+			kind: 'removed',
+			cls: 'action',
+			lane: 'accuracy',
+			status: 'pre_applied',
+			anchor: { start: p, end: p, text: '', text_hash: 'h1' },
+			edit: { mode: 'remove', find: 'No ascites.' },
+			evidence: {
+				removed_text: 'No ascites.',
+				undo: undoOf(LIVE, p, p, 'No ascites. '),
+				original_anchor: { start: ORIG.indexOf('No ascites.'), end: ORIG.indexOf('No ascites.') + 11, text: 'No ascites.' }
+			},
+			...over
+		});
+
+	it('a live removal widget is seeded by context, not by a stale final_span', () => {
+		const edited = 'Comparison: none.\n' + LIVE;
+		const { items, stale } = fromItems(edited, [rm()]);
+		expect(stale).toEqual([]);
+		expect(items.widgets[0]).toMatchObject({ id: 'w', pos: edited.indexOf('Spleen'), preApplied: true });
+	});
+
+	it('a live removal with no context is placed only on the written text (hash match), else stale', () => {
+		const bare = rm({ evidence: { removed_text: 'No ascites.', undo: { final_span: [p, p], original_text: 'No ascites. ' } } });
+		expect(fromItems(LIVE, [bare]).stale).toEqual(['w']);
+		expect(fromItems(LIVE, [bare], { textHash: 'h1' }).items.widgets[0]).toMatchObject({ pos: p });
+	});
+
+	it('only a pre_applied removal is a widget: once restored (open) it is a mark on its original text', () => {
+		const { items, stale } = fromItems(ORIG, [rm({ status: 'open' })]);
+		expect(stale).toEqual([]);
+		expect(items.widgets).toEqual([]);
+		expect(items.marks).toEqual([expect.objectContaining({ id: 'w', from: ORIG.indexOf('No ascites.'), text: 'No ascites.' })]);
+	});
+
+	it('an undone pre-applied insert (open, anchor text gone, no original anchor) is rail-only, not stale', () => {
+		const DOC = 'FINDINGS:\nLiver normal. Spleen normal.';
+		const ins = item({
+			id: 'c',
+			kind: 'missing',
+			cls: 'minor',
+			status: 'open',
+			anchor: { start: 24, end: 35, text: 'No ascites.' },
+			edit: { mode: 'insert', after: 'Liver normal.', replace: 'No ascites.' },
+			evidence: { undo: { final_span: [23, 35], original_text: '', final_text: ' No ascites.', left: '', right: '' } }
+		});
+		const { items, stale } = fromItems(DOC, [ins]);
+		expect(stale).toEqual([]);
+		expect(items.marks).toEqual([]);
+	});
+});
+
+describe('sections (I-7)', () => {
+	const DOC = 'Findings:\nLiver normal.\nImpression:\nNormal.';
+	const opt = item({ id: 'f', kind: 'option', cls: 'minor', edit: { mode: 'insert', replace: 'No ascites.', section: 'Findings' } });
+	it('options in mixed-case sections place when the report sections are passed through', () => {
+		expect(fromItems(DOC, [opt]).stale).toEqual(['f']);
+		const sections = ['Findings', 'Impression'];
+		expect(fromItems(DOC, [opt], { sections }).items.widgets).toEqual([expect.objectContaining({ id: 'f', pos: DOC.indexOf('\nImpression') })]);
+		const s0 = createReviewState(DOC, [opt], [], { sections });
+		expect(reviewItems(s0).widgets).toHaveLength(1);
+		expect(reviewItems(s0.update(syncItems(s0, [opt], { sections })).state).widgets).toHaveLength(1);
+		expect(reviewItems(s0.update(replaceDoc(s0, DOC, [opt], { sections })).state).widgets).toHaveLength(1);
+	});
+});
+
+describe('command transactions (I-1, I-2)', () => {
+	const DOC = 'FINDINGS:\nThe liver measures 15 cm. Spleen normal.\n';
+	const s0 = DOC.indexOf('15 cm');
+	const it_ = item({ id: 'a', kind: 'wrong_number', cls: 'action', lane: 'accuracy', anchor: { start: s0, end: s0 + 5, text: '15 cm' }, edit: { mode: 'replace', find: '15 cm', replace: '13 cm' } });
+	const APPLIED = DOC.replace('15 cm', '13 cm');
+
+	function setup() {
+		const cb = vi.fn();
+		const st = createReviewState(DOC, [it_], [history(), onReviewHistory.of(cb)]);
+		return { st, cb };
+	}
+	function step(st: EditorState, fn: typeof undo) {
+		let tr: import('@codemirror/state').Transaction | null = null;
+		fn({ state: st, dispatch: (t) => (tr = t) });
+		return tr!;
+	}
+
+	it("an applied item's own edit is not reported stale; its mark goes in the same transaction", () => {
+		const { st } = setup();
+		const r = runCommand('apply', { doc: DOC, items: [it_], item: it_ });
+		const tr = st.update(commandTransaction(st, r, [it_]));
+		expect(staleItems(tr)).toEqual([]);
+		expect(tr.state.doc.toString()).toBe(APPLIED);
+		expect(reviewItems(tr.state).marks).toEqual([]);
+		expect(tr.annotation(reviewCommand)).toMatchObject({ command: 'apply', items: [{ id: 'a', before: 'open', after: 'applied' }] });
+	});
+
+	it('a plain transaction with the reviewCommand annotation is never reported stale', () => {
+		const { st } = setup();
+		const tr = st.update({ changes: { from: s0 + 1, insert: 'X' }, annotations: reviewCommand.of({ command: 'edit', items: [] }) });
+		expect(staleItems(tr)).toEqual([]);
+	});
+
+	it('Apply → Cmd-Z reverts the text, brings the item back open and reports undo to the viewer', () => {
+		const { st, cb } = setup();
+		const r = runCommand('apply', { doc: DOC, items: [it_], item: it_ });
+		const s1 = st.update(commandTransaction(st, r, [it_])).state;
+		const u = step(s1, undo);
+		notify(u);
+		expect(u.state.doc.toString()).toBe(DOC);
+		expect(reviewItems(u.state).marks.map((m) => m.id)).toEqual(['a']);
+		expect(cb).toHaveBeenCalledTimes(1);
+		expect(cb).toHaveBeenCalledWith({ itemId: 'a', kind: 'undo', command: 'apply', status: 'open' });
+		expect(staleItems(u)).toEqual([]);
+	});
+
+	it('Apply → rail Undo converges with Apply → Cmd-Z', () => {
+		const { st } = setup();
+		const r = runCommand('apply', { doc: DOC, items: [it_], item: it_ });
+		const s1 = st.update(commandTransaction(st, r, [it_])).state;
+		const applied = { ...it_, status: 'applied' as const, history: [{ event: 'apply', detail: r.event!.detail }] };
+		const ru = runCommand('undo', { doc: s1.doc.toString(), items: [applied], item: applied });
+		const viaRail = s1.update(commandTransaction(s1, ru, [applied])).state;
+		const viaKey = step(s1, undo).state;
+		expect(viaRail.doc.toString()).toBe(viaKey.doc.toString());
+		expect(reviewItems(viaRail).marks).toEqual(reviewItems(viaKey).marks);
+	});
+
+	it('Apply → Cmd-Z → redo re-applies and reports redo (applied)', () => {
+		const { st, cb } = setup();
+		const r = runCommand('apply', { doc: DOC, items: [it_], item: it_ });
+		const s1 = st.update(commandTransaction(st, r, [it_])).state;
+		const s2 = step(s1, undo).state;
+		const rd = step(s2, redo);
+		notify(rd);
+		expect(rd.state.doc.toString()).toBe(APPLIED);
+		expect(reviewItems(rd.state).marks).toEqual([]);
+		expect(cb).toHaveBeenLastCalledWith({ itemId: 'a', kind: 'redo', command: 'apply', status: 'applied' });
+		// and undo again after the redo
+		const u2 = step(rd.state, undo);
+		notify(u2);
+		expect(u2.state.doc.toString()).toBe(DOC);
+		expect(cb).toHaveBeenLastCalledWith({ itemId: 'a', kind: 'undo', command: 'apply', status: 'open' });
+	});
+
+	it('other items keep their places through a command transaction', () => {
+		const other = item({ id: 'n', kind: 'assumed_normal', cls: 'info', anchor: { start: DOC.indexOf('Spleen normal.'), end: DOC.indexOf('Spleen normal.') + 14, text: 'Spleen normal.' } });
+		const st = createReviewState(DOC, [it_, other], [history()]);
+		const r = runCommand('apply', { doc: DOC, items: [it_, other], item: it_ });
+		const s1 = st.update(commandTransaction(st, r, [it_, other])).state;
+		const m = reviewItems(s1).marks;
+		expect(m.map((x) => x.id)).toEqual(['n']);
+		expect(s1.sliceDoc(m[0].from, m[0].to)).toBe('Spleen normal.');
+	});
+});
+
+describe('replaceDoc (I-3) and helpers', () => {
+	const DOC = 'FINDINGS:\nLiver normal. Spleen normal. Kidneys fine.';
+	const p = DOC.indexOf('Kidneys');
+	const m = item({ id: 'm', kind: 'assumed_normal', cls: 'info', anchor: { start: DOC.indexOf('Liver'), end: DOC.indexOf('Liver') + 13, text: 'Liver normal.' } });
+	const rm = item({
+		id: 'w',
+		kind: 'removed',
+		cls: 'action',
+		status: 'pre_applied',
+		anchor: { start: p, end: p, text: '' },
+		edit: { mode: 'remove', find: 'No ascites.' },
+		evidence: { removed_text: 'No ascites.', undo: undoOf(DOC, p, p, 'No ascites. ') }
+	});
+
+	it('a full-document reload reseeds items from the new text: no stale, widgets not collapsed, not undoable', () => {
+		const st = createReviewState(DOC, [m, rm], [history()]);
+		const tr = st.update(replaceDoc(st, DOC, [m, rm]));
+		expect(staleItems(tr)).toEqual([]);
+		expect(reviewItems(tr.state).marks.map((x) => x.id)).toEqual(['m']);
+		expect(reviewItems(tr.state).widgets).toEqual([expect.objectContaining({ id: 'w', pos: p })]);
+		expect(undo({ state: tr.state, dispatch: () => {} })).toBe(false);
+
+		const doc2 = DOC.replace('FINDINGS:\n', 'FINDINGS:\nComparison none. ');
+		const tr2 = tr.state.update(replaceDoc(tr.state, doc2, [m, rm]));
+		expect(tr2.state.doc.toString()).toBe(doc2);
+		expect(reviewItems(tr2.state).widgets[0].pos).toBe(doc2.indexOf('Kidneys'));
+		expect(widgetPosOf(tr2.state)(rm)).toBe(doc2.indexOf('Kidneys'));
+		expect(widgetPosOf(tr2.state)(m)).toBeNull();
+	});
+
+	it('warns once when the loaded text is not the text the anchors were made on', () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const hashed = { ...m, anchor: { ...m.anchor!, text_hash: 'h1' } };
+		createReviewState(DOC, [hashed], [], { textHash: 'h1' });
+		expect(warn).not.toHaveBeenCalled();
+		createReviewState(DOC, [hashed], [], { textHash: 'h2' });
+		expect(warn).toHaveBeenCalledTimes(1);
+		warn.mockRestore();
 	});
 });
