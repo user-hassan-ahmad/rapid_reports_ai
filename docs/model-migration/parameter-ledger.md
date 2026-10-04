@@ -1928,3 +1928,21 @@ Certainty wording lab (`scripts/review_labs/certainty_lab.py`): 85 items, made u
 - **The code `overstated` detector is removed**, so one judgement has one owner; `hedge_tag` stays only as an evidence helper.
 - **Code keeps the mechanical checks:** numbers, dates, prior studies, modality words and size words.
 - Before adoption, re-run C1n at ≥ 100 balanced items, using the Gate F shadow sample.
+
+### L-56 · Gate B1: code checks and alignment, accepted; only code-built edits are pre-applied, 2026-10-04
+
+**Code checks** (`review_engine/checks.py`, after fixes 8b2892b; peer gold, 41 reports):
+- **0.12 non-gold flags per report**, against a bar of ≤ 1;
+- code-owned gold caught: 3/6 (numbers, dates, priors, modality and size words);
+- certainty is not in code (L-55).
+
+**Alignment** (`review_engine/alignment.py`, pure code, report clauses ↔ dictated lines). The B1 peer read scored it at 63%; the fixes in d825e63 (level canonicalisation, block sides, best-match pruning, en-dash levels) raised it to **86.8% correct**. Its only consumers are `misattributed`, `level_conflict`, `laterality` and the popover.
+
+**Decision (Hassan):** accept alignment as a confidence-gated supporting tool. Its consumers fire only on high-confidence pairs, and there is no AI aligner for now. Revisit if the Gate F shadow read shows alignment-driven false flags.
+
+**Automatic edits.** The adversarial re-review of the verifier (431c96c) found 40 breaks, 18 of them on auto-apply paths; for example, a "removal" replace turned "No PE." into "Large PE.". **Decision (Hassan): only code-built edits are pre-applied:**
+- removals built by `remove_negative_clause`, negative-only and never dictated;
+- inserts that are the dictated line tidied, not reworded;
+- positive corrections that swap in the dictated tokens verbatim.
+
+Model-written edits are always one click. See Plan 2 correction 12 and spec §9.
