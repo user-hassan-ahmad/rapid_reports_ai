@@ -94,7 +94,7 @@ def render_candidate(c: Candidate) -> str:
     copies it rather than the lane. An unsure Jev answer is named, never its leaning (§6.5)."""
     lines = [f'- Flag kind "{c.kind}" (from the {c.lane} check, detector {c.detector}). {KIND_TEXT.get(c.kind, "")}']
     if c.line_text:
-        lines.append(f'  Dictated line: "{c.line_text}"')
+        lines.append(f'  {"Source line" if c.lane == "additions" else "Dictated line"}: "{c.line_text}"')
     if c.anchor:
         lines.append(f'  Report statement: "{c.anchor.text}"')
     ev = c.evidence or {}
@@ -116,6 +116,8 @@ def render_candidate(c: Candidate) -> str:
     for k in _CHECK_EVIDENCE_KEYS:
         if _present(ev.get(k)):
             lines.append(f"  {k}: {ev[k]}")
+    if ev.get("previous_label"):
+        lines.append(f"  Previous label: {ev['previous_label']}")
     return "\n".join(lines)
 
 
@@ -130,13 +132,16 @@ def needs_judgement(group: List[Candidate]) -> bool:
     return not all(c.preclassed and not (c.evidence or {}).get("jev_unsure") for c in group)
 
 
-def _is_brief(group: List[Candidate]) -> bool:
-    return any(c.detector == "brief.option" for c in group)
+def _capped(group: List[Candidate]) -> bool:
+    """Only a group made wholly of brief options or wholly of additions-lane candidates is capped; a mixed group
+    (e.g. a brief option beside a contradicted accuracy candidate) keeps its action."""
+    return bool(group) and (all(c.detector == "brief.option" for c in group) or all(c.lane == "additions" for c in group))
 
 
 def cap_brief(j: Judgement, group: List[Candidate]) -> Judgement:
-    """A brief option may be lowered (to suppress) but never raised to action (spec §6.4, confirmed 2026-10-03)."""
-    return j.model_copy(update={"cls": "minor"}) if _is_brief(group) and j.cls == "action" else j
+    """Brief options and the additions lane ship minor/option at most (spec §6.4 point 3, L-52): lowered freely,
+    never raised to action."""
+    return j.model_copy(update={"cls": "minor"}) if _capped(group) and j.cls == "action" else j
 
 
 def to_edit(j: Judgement) -> Optional[Edit]:
@@ -196,7 +201,8 @@ async def reprepare(inp: ReviewInput, item: ReviewItem, report: Optional[str] = 
     """One call for one item against the current text (spec §10.3, §12.4)."""
     lane = item.lane if item.lane != "chat" else "accuracy"
     cand = Candidate(lane=lane, kind=item.kind, section=item.section, anchor=item.anchor, line_text=item.source_line,
-                     evidence={"previous_label": item.label}, detector=(item.detectors or ["reprepare"])[0])
+                     evidence={**(item.evidence or {}), **({"previous_label": item.label} if item.label else {})},
+                     probe=item.probe, citation=item.citation, detector=(item.detectors or ["reprepare"])[0])
     return await judge(inp, [cand], report)
 
 

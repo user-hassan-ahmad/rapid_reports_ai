@@ -197,3 +197,27 @@ async def test_run_agent_forwards_retries(monkeypatch):
     await eu._run_agent_with_model(model_name="qwen-3.8-27b", output_type=str, system_prompt="s", user_prompt="u",
                                    api_key="", model_settings={"temperature": 0}, retries=0)
     assert seen["retries"] == 0
+
+
+def test_cap_brief_only_when_every_candidate_is_a_brief_option():
+    mixed = [C(detector="brief.option"), C(kind="contradicted", lane="accuracy", detector="jev.contradiction")]
+    assert adj.cap_brief(adj.Judgement(**J), mixed).cls == "action"
+
+
+def test_cap_additions_lane_at_minor():
+    assert adj.cap_brief(adj.Judgement(**J), [C(lane="additions", detector="jev.addition")]).cls == "minor"
+    mixed = [C(lane="additions"), C(lane="accuracy", kind="contradicted")]
+    assert adj.cap_brief(adj.Judgement(**J), mixed).cls == "action"
+
+
+async def test_reprepare_carries_evidence_and_renders_labels(monkeypatch):
+    calls = []
+    monkeypatch.setattr(adj, "_run_agent_with_model", model(adj.Judgement(**J), calls))
+    it = ReviewItem(key="k", report_id="r", run_id="u", lane="additions", detectors=["jev.addition"], kind="added",
+                    cls="minor", label="Old label", source_line="Sentence.", probe="p",
+                    evidence={"sentence": "Proposed X.", "numbers": ["5 mm"]})
+    await adj.reprepare(inp("FINDINGS:\nA cyst.", "- a"), it)
+    msg = calls[0]["user_prompt"]
+    assert "Proposed sentence: \"Proposed X.\"" in msg and "numbers: ['5 mm']" in msg
+    assert "Previous label: Old label" in msg
+    assert "Dictated line" not in msg and "previous_label" not in msg
