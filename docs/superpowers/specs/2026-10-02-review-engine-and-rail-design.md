@@ -363,7 +363,17 @@ The verifier checks the **fix**, never the reading. A failed check removes the e
 
 **Results** are stored as `verified = {code: bool, addressed: float, contra: float, unconfirmed: bool}`.
 
-## 9. Automatic edits: open, decided by Gate D
+## 9. Automatic edits
+
+**Decided 2026-10-04 (Hassan):**
+- **Missed dictated findings are auto-inserted,** visibly and undoably ("restored from your dictation · undo"). Only `absent` items (a whole finding missing) that pass the verifier qualify. Partial and differs items stay one-click (amber), because v4 over-calls those (Gate A peer read) and the old live insertions were 11/148 correct.
+- **Contradicted *generated* negatives are auto-removed,** visibly and restorably ("removed · contradicts your dictation", negatives classifier, Plan 2 Task 14). A statement the radiologist dictated is never auto-removed (f85aa670, PR #6).
+- **Positive statements the dictation contradicts:** proposed, pending Hassan: auto-correct only when the fix restores dictated wording verbatim (side, number or hedge) and is verified; everything else is one-click. Measure it in the Gate F shadow read before going live.
+- **Gate labels:** Hassan delegated labelling to Claude's peer reads plus the agreed principles (2026-10-04). Hassan spot-checks on request instead of labelling every item.
+
+The original framing below is kept for the record.
+
+### Original framing (2026-10-02)
 
 Today two edits are applied before render:
 - code removal of a contradicted negative (never one the dictation itself states, PR #6);
