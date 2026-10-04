@@ -9,11 +9,12 @@ negatives item or an accuracy item on a negative (L-47); the GET hides `assumed_
 from __future__ import annotations
 
 import asyncio
-from typing import List, Optional
+import json
+from typing import Annotated, List, Literal, Optional
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
@@ -51,6 +52,19 @@ class ReprepareBody(BaseModel):
 
 class RerunBody(BaseModel):
     text: Optional[str] = None
+
+
+WORKSPACE_MAX_BYTES = 16_384    # the serialised state; the field limits below already keep it well under this
+
+
+class WorkspaceBody(BaseModel):
+    """The rail's per-report workspace (spec §10.2, plan Task E1). Strict: unknown keys are rejected."""
+    model_config = ConfigDict(extra="forbid")
+    tab: str = Field(pattern=r"^[a-z_]{1,32}$")
+    expanded_ids: List[Annotated[str, StringConstraints(min_length=1, max_length=64)]] = \
+        Field(default_factory=list, max_length=200)
+    density: Literal["full", "quiet", "hidden"] = "quiet"
+    last_text_hash: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{16}$")
 
 
 def _owned(db: Session, report_id: str, user: User):
@@ -165,6 +179,28 @@ async def post_rerun(report_id: str, body: RerunBody, current_user: User = Depen
         return NOT_FOUND
     engine.schedule_review(report_id, body.text)
     return {"success": True, "status": "running"}
+
+
+@router.get("/{report_id}/workspace")
+def get_workspace(report_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    report = _owned(db, report_id, current_user)
+    if not report:
+        return NOT_FOUND
+    return {"success": True, "workspace": report.workspace_state}
+
+
+@router.put("/{report_id}/workspace")
+def put_workspace(report_id: str, body: WorkspaceBody, current_user: User = Depends(get_current_user),
+                  db: Session = Depends(get_db)):
+    report = _owned(db, report_id, current_user)
+    if not report:
+        return NOT_FOUND
+    state = body.model_dump()
+    if len(json.dumps(state)) > WORKSPACE_MAX_BYTES:
+        return JSONResponse(status_code=413, content={"success": False, "error": "workspace too large"})
+    report.workspace_state = state
+    db.commit()
+    return {"success": True, "workspace": state}
 
 
 __all__ = ["router", "USER_COMMANDS"]

@@ -408,9 +408,10 @@ class Report(Base):
     final_report_content = Column(Text, nullable=True)  # After radiologist editing
     final_edit_diff = Column(Text, nullable=True)  # Patch between selected candidate and final — feedback signal
 
-    # Review rail workspace (spec §10.2): the migration adds reports.workspace_state (JSONB, nullable), but it is
-    # deliberately NOT mapped here yet: even deferred(), the column is INSERTed, so a deploy landing before the
-    # migration would break report creation. Slice D maps it, with the rail's read/write.
+    # Review rail workspace (spec §10.2, plan Task E1): rail tab, expanded items, density, last text_hash. Added by
+    # migration 20261003120000, which production has applied (L-58); left unmapped until then (0f1a8a3) because
+    # even a deferred() column is INSERTed. Deferred so ordinary report queries never select it.
+    workspace_state = deferred(Column(JSONBType(), nullable=True))
 
     # Foreign keys
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)

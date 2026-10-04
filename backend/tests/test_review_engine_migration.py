@@ -54,14 +54,13 @@ def test_orm_models_round_trip(db_session, test_user):
     assert got.kind == "partial" and got.evidence == {"check_reason": "uncertain", "pointer": "p"}
 
 
-def test_report_orm_does_not_map_workspace_state(db_session, test_user):
-    """The column is added by the migration but unmapped until Slice D: a deferred() column is still INSERTed,
-    which would break report creation on an unmigrated DB."""
+def test_report_orm_maps_workspace_state(db_session, test_user):
+    """Mapped since plan Task E1, once production had applied the migration (L-58). Deferred, nullable: a plain
+    report insert still works and leaves it NULL."""
     from rapid_reports_ai.database.models import Report
-    assert "workspace_state" not in Report.__table__.columns
-    assert not hasattr(Report, "workspace_state")
+    assert "workspace_state" in Report.__table__.columns
     r = Report(report_type="quick", model_used="m", report_content="FINDINGS:\nx", user_id=test_user.id)
     db_session.add(r)
     db_session.commit()
-    cols = {c["name"] for c in sa.inspect(db_session.get_bind()).get_columns("reports")}
-    assert "workspace_state" not in cols      # the test schema has no such column and the insert worked
+    db_session.expire_all()
+    assert db_session.get(Report, r.id).workspace_state is None
