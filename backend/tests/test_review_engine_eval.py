@@ -52,3 +52,13 @@ def test_edit_preview_insert_and_remove():
     assert "Liver normal." in ins["before"] and "Small cyst." in ins["after"]
     rem = E.edit_preview(rep, {"mode": "remove", "find": "No ascites."})
     assert "No ascites." in rem["before"] and "No ascites." not in rem["after"]
+
+
+def test_questionable_picks_actions_and_suppressed_contradictions():
+    row = {"report_id": "r1", "items": [
+        {"lane": "accuracy", "kind": "check", "cls": "action", "edit": None, "label": "a"},
+        {"lane": "accuracy", "kind": "contradicted", "cls": "suppress", "edit": None, "label": "b"},
+        {"lane": "accuracy", "kind": "assumed_normal", "cls": "info", "edit": None, "label": "c"}]}
+    q = E.questionable(row)
+    assert [x["item"]["label"] for x in q] == ["a", "b"]
+    assert q[0]["why"] == ["action, no fix"] and q[1]["why"] == ["contradiction suppressed by the adjudicator"]

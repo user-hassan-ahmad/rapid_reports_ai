@@ -60,7 +60,8 @@ def done_ids(files: Iterable[Path], run: int) -> Set[str]:
 
 SQL_RECENT = """select id::text as id, report_type, input_data, candidate_reports->0 as cand, enhancement_json
 from reports where candidate_reports is not null and created_at >= now() - interval '{days} days'
-and coalesce(candidate_reports->0->>'error', '') = '' order by created_at desc limit {limit}"""
+and coalesce(candidate_reports->0->>'error', '') = '' and coalesce(candidate_reports->0->>'content', '') <> ''
+order by created_at desc limit {limit}"""
 
 SQL_SHADOW = """select i.id::text as id, i.report_id::text as report_id, i.lane, i.kind, i.cls, i.label, i.reason,
        i.edit, i.verified, i.source_line, i.anchor, r.report_type,
@@ -188,16 +189,18 @@ def _fmt_counts(d: dict) -> str:
 
 
 def questionable(row: dict) -> List[dict]:
-    """Items worth a radiologist's hand read: would-pre-apply edits, open actions with a fix, unconfirmed or
-    failed verification, accuracy flags on positive statements, and adjudicator fallbacks."""
+    """Items worth a radiologist's hand read: would-pre-apply edits, open actions, contradictions the adjudicator
+    suppressed, unconfirmed or failed verification, accuracy flags on positive statements, adjudicator fallbacks."""
     out = []
     for i in row.get("items") or []:
         ev, v = i.get("evidence") or {}, i.get("verified") or {}
         why = []
         if ev.get("would_pre_apply"):
             why.append("would pre-apply")
-        if i.get("cls") == "action" and i.get("edit") and not ev.get("would_pre_apply"):
-            why.append("action with a one-click fix")
+        if i.get("cls") == "action" and not ev.get("would_pre_apply"):
+            why.append("action with a one-click fix" if i.get("edit") else "action, no fix")
+        if i.get("kind") == "contradicted" and i.get("cls") == "suppress":
+            why.append("contradiction suppressed by the adjudicator")
         if v.get("unconfirmed") or v.get("failed"):
             why.append(f"verification {'unconfirmed' if v.get('unconfirmed') else ''} {v.get('failed') or ''}".strip())
         if i.get("lane") == "accuracy" and i.get("kind") in ("unsupported", "overstated") and i.get("cls") != "suppress":
