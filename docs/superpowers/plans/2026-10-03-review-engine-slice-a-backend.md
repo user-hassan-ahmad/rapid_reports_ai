@@ -3812,7 +3812,7 @@ This task ports the lab version, which was validated on 119 gold-labelled statem
 2. **Code checks:**
    - `number`: the candidate has a measurement not in the dictation or history;
    - recommendation sentences are excluded from the candidates.
-3. **Routing to `ReviewItem`s.** Use `lane="coverage"`, `detectors=["negatives.v5"]`, and set `kind` and `status` as follows:
+3. **Routing to `ReviewItem`s.** Use `lane="accuracy"` (the normal/negative half of Accuracy: report statements judged against the dictation), `detectors=["negatives.v5"]`, and set `kind` and `status` as follows:
 
    | Label | `kind` | `status` | Rail row? |
    |---|---|---|---|
