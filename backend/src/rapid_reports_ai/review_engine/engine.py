@@ -40,6 +40,11 @@ Pre-apply (binding corrections 9, 10, 12; spec §9). An item is `pre_applied` on
   One that no longer applies falls back to an open one-click item.
 Negatives items (Task 14) bypass merge and the adjudicator and are appended as built.
 
+Brief normals (`brief_normals`): the brief's linked-normal atoms (labelled before generation) become items of their
+own (default → assumed_normal, implicated → check / uncertain), anchored on the atom's term in the final report or
+unanchored. They own their span: the classifier's default / implicated item on the same span is dropped, a classifier
+conflict / number / removal outranks them; lane negatives overlapping them are deduped like the classifier's.
+
 One card per claim (`claims`): a lane claim flagged in FINDINGS and repeated in IMPRESSION (same lane and kind, a
 conservative content match) is grouped before adjudication (`group_claims`), so one verdict covers both; the item's
 anchor is the FINDINGS copy and `evidence.also_anchors` lists the IMPRESSION copy. The negatives classifier does the
@@ -58,7 +63,7 @@ from typing import Dict, List, Optional, Tuple
 from pydantic import BaseModel
 
 from ..report_review import is_negative
-from . import adjudicator, claims, jev_pass, negatives, store, verifier
+from . import adjudicator, brief_normals, claims, jev_pass, negatives, store, verifier
 from .alignment import Alignment, align
 from .checks import run_checks
 from .items import Candidate, Edit, ReviewInput, ReviewItem, Span, item_key, merge, text_hash
@@ -544,8 +549,18 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         cands += held
         held = []
     deduped: List[dict] = []
+    brief_items: List[ReviewItem] = []
+    try:                                 # the brief's linked-normal labels own their atoms (brief_normals)
+        brief_items = brief_normals.build_items(inp, run_id)
+    except Exception as e:  # noqa: BLE001 - never fails the run: the classifier's own items stand
+        errors["brief_normals"] = f"{type(e).__name__}: {str(e)[:200]}"
+    if brief_items:
+        for it in brief_items:
+            it.engine_version = ENGINE_VERSION
+        neg_items, brief_items, brief_log = brief_normals.dedupe(neg_items, brief_items)
+        deduped += brief_log
     if neg_task is not None and "negatives" not in errors:      # the classifier owns negatives; else lane fallback
-        items, dropped = _dedupe(items, group_of, neg_items)
+        items, dropped = _dedupe(items, group_of, neg_items + brief_items)
         for it in dropped:
             plans.pop(it.id, None)
             deduped.append({"key": it.key, "kind": it.kind, "anchor": it.anchor.model_dump() if it.anchor else None})
@@ -555,6 +570,7 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         deduped += one_card
     report, pre_log = finalise(inp, items, plans, neg_log, neg_items)
     items += neg_items                   # correction 10: never adjudicated (only one_card_per_clause pairs them)
+    items += brief_items                 # never adjudicated, never pre-applied
     timings["total"] = int((time.monotonic() - t0) * 1000)
     errors.update({f"adjudicator_{k}": o.error for k, o in enumerate(outcomes) if o.error})
     run = {"lanes": lanes, "timings_ms": timings, "errors": errors,
