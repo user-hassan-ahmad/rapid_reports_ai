@@ -362,7 +362,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             flagged.extend(line for (_, line), kf in zip(atoms, keep_flags) if not kf)
             # Guard 1: a kept tail negative the dictation already states is left to the dictation
             # (listed below as must-appear), so the grouped sentence never stands in for it.
-            told = [(_ng.covered_by_dictation(n, dneg) if kind == "tail" and kf else None)
+            told = [(_ng.covered_by_dictation(n, dneg, g.structures) if kind == "tail" and kf else None)
                     for n, (kind, _), kf in zip(names, atoms, keep_flags)]
             shown = [kf and s is None for kf, s in zip(keep_flags, told)]
             # Guard 2: a kept structure a dictated positive finding names (both models missed it):

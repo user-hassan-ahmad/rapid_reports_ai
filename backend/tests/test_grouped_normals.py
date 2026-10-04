@@ -142,6 +142,10 @@ def test_tail_covered_by_a_dictated_negative():
     negs = ["No bone marrow oedema or fractures", "No free fluid"]
     assert ng.covered_by_dictation("bone marrow oedema", negs) == "No bone marrow oedema or fractures"
     assert ng.covered_by_dictation("fluid collection", negs) is None
+    # A one-word tail needs the negative to be about this sentence's structures.
+    assert ng.covered_by_dictation("oedema", negs, ["labrum"]) is None
+    assert ng.covered_by_dictation("effusion", ["No effusion"], ["right hip joint"]) == "No effusion"
+    assert ng.covered_by_dictation("fracture", ["No fracture of the hook of hamate"], ["hamate"]) is None
 
 
 def test_part_nouns_and_trailing_adjectives_and_of_phrases():

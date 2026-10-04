@@ -245,12 +245,21 @@ def positive_findings(items: List[str]) -> List[str]:
     return [i for i in items if not _NEGATED.search(i) and not _DICTATED_NORMAL.search(i)]
 
 
-def covered_by_dictation(tail_item: str, negatives: List[str]) -> Optional[str]:
-    """The dictated negative that already says this tail negative (every content word of the tail
-    item is in it), or None. Such a tail is left to the dictation: kept in the grouped sentence it
-    reads as covering the dictated negative, and the generator drops the dictated one (8215140f)."""
+def covered_by_dictation(tail_item: str, negatives: List[str], structures: List[str] = ()) -> Optional[str]:
+    """The dictated negative that already says this tail negative, or None. Such a tail is left to the
+    dictation: kept in the grouped sentence it reads as covering the dictated negative, and the
+    generator drops the dictated one (8215140f). Every content word of the tail must be in the
+    negative; a one-word tail ("oedema") also needs the negative's other words to name this
+    sentence's structures, so "no bone marrow oedema" never covers a labrum's "no oedema"."""
     st = _stems(tail_item)
-    return next((n for n in negatives if st and st <= _stems(n)), None)
+    if not st:
+        return None
+    where = set().union(*(_stems(s) for s in structures)) if structures else set()
+    for n in negatives:
+        ns = _stems(n)
+        if st <= ns and (len(st) > 1 or ns - st <= where):
+            return n
+    return None
 
 
 def dictated_overlap(atom_texts: List[str], dictated: List[str]) -> List[str]:
