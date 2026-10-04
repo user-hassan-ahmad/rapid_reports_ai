@@ -1987,3 +1987,20 @@ All 20 are quick reports. The plumbing and latency numbers hold. Item rates part
 - **Auto-removal is NOT extended** to positively worded normals. They stay one-click until the Gate F read and an adversarial probe of a narrow positive-normal gate.
 
 **Convention (Hassan).** An organ with a finding leads with the finding. "Normal … apart from X" is a generation defect; it was seen in one GLM report and in none of the 10 Qwen 3.8 reports. Measure it in Gate F before touching generation.
+
+### L-58 · Review engine shadow on in production, 2026-10-04
+
+- **Setup:** PR #11 merged (bcb43aa). The deploy applied migration `20261003120000`, so the review tables exist. Railway: `RR_REVIEW_ENGINE=shadow`, `RR_REVIEW_SAMPLE=1.0`, concurrency at the default of 1.
+- **First production run:** a synthetic pancreatic-head case.
+  - `mode=shadow`, engine 0.1.0, all three lanes done, `errors={}`.
+  - Total 7.0 s: adjudicator 5.3 s, Jev 0.2 s, negatives wait 1.2 s.
+- **Items:**
+  - 5 implicated checks:
+    - main pancreatic duct, nodes and peritoneum: correct, local to the mass;
+    - kidneys/adrenals and bowel: arguably an over-call under process-of-exclusion; watch in Gate F.
+  - 4 assumed normals.
+  - 1 overstated: "likely" → "consistent with", minor, with a hedge-restoring fix.
+  - 2 brief options.
+  - Numbers, segment, side and the dictated "No ascites" were left untouched, as intended.
+  - 0 would-pre-apply edits.
+- **Next:** the Gate F shadow read after about a day of real traffic, current pipeline only.
