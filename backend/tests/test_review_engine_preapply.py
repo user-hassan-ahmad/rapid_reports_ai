@@ -73,9 +73,13 @@ def test_preapply_removal_requires_code_built():
     assert PA(rpt, rem("No pneumothorax."), "contradicted", d="Small pneumothorax.", code_built=False)
 
 
-def test_preapply_removal_requires_remove_mode():
+def test_preapply_removal_requires_remove_mode_or_pure_list_item_drop():
+    # t11 3d: _negative_fix's pure-deletion replace (one list item dropped) is now eligible like a remove;
+    # any other replace is not
     rpt = R("No effusion, pneumothorax, or consolidation. Liver normal.")
     e = rep("No effusion, pneumothorax, or consolidation.", "No effusion or consolidation.")
+    assert PA(rpt, e, "contradicted", d="Small pneumothorax.") == []
+    e = rep("No effusion, pneumothorax, or consolidation.", "No effusion or consolidation is seen.")
     assert PA(rpt, e, "contradicted", d="Small pneumothorax.")
 
 
@@ -167,14 +171,15 @@ def test_preapply_positive_correction_side_ok():
     rpt = R("There is a 4 mm nodule in the right lower lobe. Liver normal.")
     line = "4 mm nodule in the left lower lobe"
     e = rep("There is a 4 mm nodule in the right lower lobe.", "There is a 4 mm nodule in the left lower lobe.")
-    assert PA(rpt, e, "contradicted", d=line, code_built=False, line_text=line) == []
+    # t11: positive corrections are deferred to Gate F (spec §9), never pre-applied
+    assert PA(rpt, e, "contradicted", d=line, code_built=False, line_text=line) == ["correction_one_click"]
 
 
 def test_preapply_positive_correction_number_ok():
     rpt = R("Liver normal. There is a 4 mm nodule in the right lower lobe.")
     line = "6 mm nodule right lower lobe"
     e = rep("4 mm nodule", "6 mm nodule")
-    assert PA(rpt, e, "contradicted", d=line, line_text=line) == []
+    assert PA(rpt, e, "contradicted", d=line, line_text=line) == ["correction_one_click"]     # t11: deferred
 
 
 @pytest.mark.parametrize("find,replace,line", [
@@ -369,3 +374,212 @@ def test_insert_from_line_after_closing_label():
     rpt = "FINDINGS:\nLungs clear.\n\nABDOMEN:\n\nIMPRESSION:\nNormal."
     e = V.insert_from_line(rpt, "small ascites", "FINDINGS", sections=quick_section_names(rpt))
     assert e is not None and e.after == "ABDOMEN:"
+
+
+# ── t11 adversarial re-review of ddcb88a: regression tests ──────────────────
+def PAI(report, line, d, line_context=None):
+    """Pre-apply of code's own insert of `line` (the worst case: the edit is exactly insert_from_line's)."""
+    names = quick_section_names(report)
+    e = V.insert_from_line(report, line, "FINDINGS", sections=names)
+    assert e is not None, "insert_from_line refused: test would not exercise preapply_failures"
+    return V.preapply_failures(report, e, "absent", d, code_built=True, line_text=line, sections=names,
+                               line_context=line_context)
+
+
+def R2(body, imp="1. Normal."):
+    return f"FINDINGS:\n{body}\n\nIMPRESSION:\n{imp}"
+
+
+# 1. positive corrections are deferred (spec §9: measured in Gate F first): never pre-applied
+@pytest.mark.parametrize("body,find,replace,d", [
+    ("Hepatic lesion segment 6. Malignancy is unlikely.", "is unlikely", "is likely",
+     "Malignancy unlikely, likely benign haemangioma."),                                                  # C1
+    ("Fracture of the left distal radius.", "radius.", "radius unlikely.",
+     "Fracture left distal radius, scaphoid fracture unlikely"),                                          # C2
+    ("Nodule in segment 7 measures 8 mm.", "7 measures", "12 measures", "Segment 7 nodule now 12 mm."),   # C3
+    ("Lesion measures 12 x 8 mm.", "12 x", "9 x", "Lesion 12 x 9 mm."),                                   # C4
+    ("Disc protrusion at L4/5 with left foraminal narrowing.", "L4/5", "L5/5",
+     "L5/S1 disc protrusion with left foraminal narrowing."),                                             # C6
+    ("Right kidney normal; left renal calculus.", "Right kidney", "Left kidney", "Left renal calculus."),  # C8
+    ("Left renal cyst and a 6 mm right renal calculus.", "Left renal cyst", "Right renal cyst",
+     "Right renal calculus 6 mm."),                                                                        # C9
+    ("Definite left adrenal metastasis 15 mm.", "Definite", "Probable", "Probable left adrenal adenoma 15 mm."),  # C14
+    ("Malignancy is likely.", "likely", "unlikely", "Malignancy unlikely."),                              # C17
+    ("Bilateral pleural effusions, larger on the left.", "Bilateral", "Left",
+     "Left pleural effusion larger than right."),                                                          # C24
+    ("Bilateral L5 pars defects with grade 1 anterolisthesis.", "Bilateral", "Right", "Right L5 pars defect."),  # C25
+])
+def test_t11_positive_correction_never_preapplied(body, find, replace, d):
+    assert PA(R2(body), rep(find, replace), "contradicted", d=d, line_text=d) == ["correction_one_click"]
+
+
+def test_t11_numbered_list_marker_correction_never_preapplied():                                     # C11
+    rpt = R2("Lungs otherwise clear.", imp="1. Right lower lobe nodule 6 mm.\n2. No effusion.")
+    d = "Right lower lobe nodule 8 mm."
+    assert PA(rpt, rep("1. Right", "8. Right"), "contradicted", d=d, line_text=d)
+
+
+# 2a. the line is one whole dictated line, never a fragment or a span across lines
+@pytest.mark.parametrize("line,d", [
+    ("left renal mass", "No evidence of left renal mass. Liver normal."),                                # I1
+    ("left adrenal nodule", "Previously seen left adrenal nodule has resolved."),                          # I2
+    ("effusion. Right rib", "Small effusion. Right rib fracture."),                                       # I3
+])
+def test_t11_insert_line_must_be_whole_dictated_line(line, d):
+    assert PAI(R2("Liver normal. Spleen normal."), line, d)
+
+
+# 2b. one sentence only
+def test_t11_insert_refuses_multi_sentence_line():                                                    # I14
+    d = "Small effusion. No pneumothorax."
+    assert PAI(R2("Liver normal."), d, d)
+
+
+# 2c. block context and sub-headed FINDINGS
+def test_t11_insert_refuses_line_under_dictated_level_block():                                        # I24
+    d = "At L4/5 broad disc bulge.\nRight foraminal narrowing.\nL5/S1 normal."
+    rpt = R2("L4/5: broad disc bulge. L5/S1: normal disc.")
+    assert PAI(rpt, "Right foraminal narrowing.", d)
+    rpt = R2("Broad disc bulge at L4/5. Normal disc at L5/S1.")                    # no inline labels in the report
+    assert PAI(rpt, "Right foraminal narrowing.", d)
+    assert PAI(rpt, "Right foraminal narrowing.", "Right foraminal narrowing.", line_context={"block_levels": ["L4/5"]})
+
+
+def test_t11_insert_refuses_line_under_dictated_side_header():                                        # I25
+    d = "LEFT KIDNEY:\nSimple cyst 2 cm.\nRIGHT KIDNEY:\nNormal."
+    rpt = R2("The left kidney is normal in size. The right kidney is normal.")
+    assert PAI(rpt, "Simple cyst 2 cm.", d)
+    assert PAI(rpt, "Simple cyst 2 cm.", "Simple cyst 2 cm.", line_context={"block_side": "left"})
+
+
+def test_t11_insert_line_context_stated_by_line_ok():
+    rpt = R2("Liver normal. Spleen normal.")
+    line = "Left simple renal cyst 2 cm."
+    assert PAI(rpt, line, line, line_context={"block_side": "left", "block_levels": []}) == []
+
+
+def test_t11_insert_refuses_sub_headed_findings():                                                    # I6
+    d = "Small left pleural effusion."
+    rpt = "FINDINGS:\nCHEST:\nLungs clear.\nABDOMEN:\nLiver normal. Spleen normal.\n\nIMPRESSION:\n1. Normal."
+    assert PAI(rpt, d, d)
+
+
+# 2d. duplicate / contradiction anywhere in FINDINGS
+def test_t11_insert_refuses_conflict_with_findings():                                                 # I7
+    d = "Small left pleural effusion."
+    assert PAI(R2("Small right pleural effusion. Liver normal."), d, d)
+
+
+def test_t11_insert_refuses_duplicate_in_other_paragraph():                                           # I13b
+    d = "Left renal cyst."
+    rpt = "FINDINGS:\nLeft renal cyst.\n\nLiver normal.\n\nIMPRESSION:\n1. Normal."
+    assert PAI(rpt, d, d)
+
+
+# 2e. non-finding lines
+@pytest.mark.parametrize("line", [
+    "History: fall, ?hip fracture.",                                                                      # I4
+    "Recommend follow-up CT in 3 months.",                                                                # I5
+    "Comparison: CT 12/03/2025.",                                                                         # I11
+    "Discussed with Dr Smith at 14:30.",                                                                  # I12
+    "Liver: 2 cm cyst.",                                                                                  # I17
+    "liver: 2 cm cyst.",
+    "Correlate clinically.",
+    "Unchanged from the previous study.",
+])
+def test_t11_insert_refuses_non_finding_lines(line):
+    assert PAI(R2("Spleen normal."), line, line)
+
+
+# 2f. tidy only capitalises an all-lower-case first word
+def test_t11_tidy_keeps_mixed_case_first_word():                                                      # I10
+    rpt = R2("Liver normal.")
+    assert V.insert_from_line(rpt, "eGFR 45, pT2 tumour.", "FINDINGS").replace == "eGFR 45, pT2 tumour."
+    assert V.insert_from_line(rpt, "small left effusion", "FINDINGS").replace == "Small left effusion."
+
+
+def test_t11_insert_legit_still_preapplied():                                                         # I18
+    d = "Small left effusion"
+    assert PAI(R2("Liver normal. Spleen normal."), d, d) == []
+    assert PAI(R2("Liver normal. Spleen normal."), d, f"Liver normal.\n- {d}.") == []
+
+
+# 3a. removals only inside FINDINGS / IMPRESSION (TECHNIQUE etc. never); a side-specific negative beside a
+# dictated positive on the other side is not contradicted by it
+@pytest.mark.parametrize("report,find,d", [
+    ("TECHNIQUE:\nAxial CT. Without contrast.\n\nFINDINGS:\nRight pleural effusion. Heart normal.\n\nIMPRESSION:\n"
+     "1. Effusion.", "Without contrast.", "Right pleural effusion."),                                      # X16b
+    (R2("Large right effusion. Liver normal.", imp="1. Large right effusion.\n2. No effusion on the left."),
+     "No effusion on the left.", "Large right effusion."),                                                # X17
+    (R2("Large right effusion. No effusion on the left. Liver normal."), "No effusion on the left.",
+     "Large right effusion."),
+])
+def test_t11_removal_section_and_side(report, find, d):
+    assert PA(report, rem(find), "contradicted", d=d)
+
+
+# 3b. dictated negatives (and normal statements about the same organ) protect, shorthand on both sides
+@pytest.mark.parametrize("body,find,d,kind", [
+    ("Multiple liver lesions, possibly metastases. No bony metastases.", "No bony metastases.",
+     "Multiple liver lesions ?mets. No bone mets.", "contradicted"),                                       # X1
+    ("Left kidney normal. No hydronephrosis.", "No hydronephrosis.", "Left kidney normal. No hydro.", "removed"),  # X3
+    ("Soft tissue swelling. No fracture.", "No fracture.", "No fx.", "contradicted"),                     # X4
+    ("Heart normal. No consolidation.", "No consolidation.", "Lungs clear.", "contradicted"),             # X10
+    ("Small effusion. No ICH.", "No ICH.", "No acute intracranial haemorrhage.", "contradicted"),         # X15b
+    ("Liver normal. No significant lymphadenopathy.", "No significant lymphadenopathy.", "No nodes.",
+     "contradicted"),                                                                                      # X25
+])
+def test_t11_removal_dictated_negative_protected(body, find, d, kind):
+    assert PA(R2(body), rem(find), kind, d=d)
+
+
+# 3c. abnormal findings phrased as negatives
+@pytest.mark.parametrize("body,find,d", [
+    ("Right testis normal. No flow in the left testis.", "No flow in the left testis.", "Left testicular torsion."),  # X8
+    ("Right kidney normal. The left kidney is not seen.", "The left kidney is not seen.", "Left nephrectomy."),  # X9
+    ("Liver normal. No enhancement of the left kidney.", "No enhancement of the left kidney.", "Left renal infarct."),
+    ("Liver normal. No excretion from the left kidney.", "No excretion from the left kidney.", "Left obstruction."),
+])
+def test_t11_removal_abnormal_negative_refused(body, find, d):
+    assert PA(R2(body), rem(find), "removed", d=d)
+
+
+# 3d. false-refusal fixes
+def test_t11_semantic_contradiction_without_normal_statement_ok():
+    rpt = R2("Free gas present. No pneumoperitoneum. Liver normal.")
+    assert PA(rpt, rem("No pneumoperitoneum."), "removed", d="Free gas under the diaphragm.") == []
+    assert PA(rpt, rem("No pneumoperitoneum."), "removed", d="Free gas under the diaphragm. Liver normal.")
+
+
+def test_t11_small_bowel_is_not_a_size_word():                                                        # X20
+    rpt = R2("Dilated loops. No small bowel obstruction. Liver normal.")
+    assert PA(rpt, rem("No small bowel obstruction."), "contradicted",
+              d="Dilated small bowel loops with transition point.") == []
+
+
+def test_t11_negative_fix_list_item_drop_preapplied():
+    rpt = R2("No effusion, pneumothorax, or consolidation. Liver normal.")
+    sent = "No effusion, pneumothorax, or consolidation."
+    s = rpt.index(sent) + sent.index("pneumothorax")
+    e = V._negative_fix(rpt, s, s + len("pneumothorax"), "No pneumothorax", quick_section_names(rpt))
+    assert e is not None and e.mode == "replace"
+    assert PA(rpt, e, "contradicted", d="Small left pneumothorax.") == []
+    assert PA(rpt, e, "contradicted", d="Small left pneumothorax.", code_built=False)
+    # two items lost, or words added: never
+    assert PA(rpt, rep(sent, "No effusion."), "contradicted", d="Small pneumothorax. Consolidation.")
+    assert PA(rpt, rep(sent, "No effusion or collapse."), "contradicted", d="Small pneumothorax.")
+
+
+# ── controller addition: brief-option sentence grounds its own additions insert (one-click only) ─────────────
+def test_additions_option_sentence_grounds_its_insert_one_click_only():
+    from rapid_reports_ai.review_engine.items import ReviewItem, Span
+    rpt = R2("Liver normal. Left renal cyst.")
+    sent = "Ultrasound follow-up is suggested."
+    e = Edit(mode="insert", after="Left renal cyst.", replace=sent, section="FINDINGS")
+    it = ReviewItem(key="k", report_id="r", run_id="u", lane="additions", kind="option", cls="action", edit=e,
+                    section="FINDINGS", anchor=Span(start=0, end=1, text="x"), evidence={"sentence": sent})
+    src = V._extra_source(it)
+    assert sent in src.split("\n")
+    assert G(rpt, e, "option", "left renal cyst", extra_source=src, additions=True) == []
+    assert "additions_new_content" in G(rpt, e, "option", "left renal cyst", additions=True)
+    assert PA(rpt, e, "option", d="left renal cyst", line_text=sent)                    # never pre-applied

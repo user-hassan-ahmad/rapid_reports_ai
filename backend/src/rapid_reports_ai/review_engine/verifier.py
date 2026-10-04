@@ -20,14 +20,16 @@ from __future__ import annotations
 
 import asyncio
 import math
+import os
 import re
-from difflib import SequenceMatcher
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from .. import report_reconcile as rc
 from ..report_review import (_EMPTY_ITEM, _FILLER, CONTRA_FLAG, JEV_TIMEOUT_S, Q_CONTRA, _restates, is_negative,
                              remove_negative_clause)
-from .alignment import align
+from .alignment import ANATOMY, _ANATOMY_STEMS, align, levels_of, side_of
+from .alignment import _lines as _dict_lines
+from .alignment import stem as _al_stem
 from .items import Candidate, Edit, ReviewInput, ReviewItem, Span
 
 ADDRESSED_OK = 0.8           # provisional: Gate E (spec §8)
@@ -444,7 +446,12 @@ _ABBREV = {"ptx": "pneumothorax", "pe": "pulmonary embolism", "dvt": "deep vein 
            "cbd": "common bile duct", "aaa": "abdominal aortic aneurysm", "sol": "space occupying lesion",
            "lad": "lymphadenopathy", "ln": "lymph node", "lns": "lymph nodes", "ich": "intracranial haemorrhage",
            "sah": "subarachnoid haemorrhage", "sdh": "subdural haematoma", "edh": "extradural haematoma",
-           "ff": "free fluid", "gb": "gallbladder", "ihd": "intrahepatic duct dilatation"}
+           "ff": "free fluid", "gb": "gallbladder", "ihd": "intrahepatic duct dilatation",
+           # common dictation shorthand (t11): "No bone mets", "No hydro", "No fx", "No nodes", "No SBO"
+           "mets": "metastases", "hydro": "hydronephrosis", "fx": "fracture", "fxs": "fractures",
+           "nodes": "lymph nodes lymphadenopathy", "sbo": "small bowel obstruction",
+           "lbo": "large bowel obstruction", "consol": "consolidation", "ptxs": "pneumothoraces",
+           "ivh": "intraventricular haemorrhage", "hcc": "hepatocellular carcinoma"}
 _ABBREV_RE = re.compile(r"\b(" + "|".join(sorted(_ABBREV, key=len, reverse=True)) + r")\b", re.I)
 _SHORT_STOP = {"no", "or", "and", "the", "of", "is", "are", "in", "at", "to", "an", "as", "by", "on", "be", "it",
                "was", "has", "nor", "not", "nil", "but", "for", "any", "all", "may", "can", "mm", "cm", "ml", "yes",
@@ -561,6 +568,12 @@ _POS_MARK = re.compile(r"\d|[:()?!…—–.]|\b(?:but|however|although|though|w
                        r"contains?|normal|unremarkable)\b", re.I)
 _COPULA_TAIL = re.compile(r"\b(?:is|are|was|were)\b(.*)$", re.I)
 _SEEN_TAIL = re.compile(r"^\s*(?:(?:seen|identified|demonstrated|noted|evident|present)\s*)?$", re.I)
+_FIXED_TERM = re.compile(r"\b(?:small|large)(?=\s+(?:bowel|intestine)s?\b)", re.I)   # anatomy, not a size word
+
+
+def _pos_mark(text: str) -> bool:
+    """`text` carries a positive marker (`_POS_MARK`), "small bowel" / "large bowel" aside."""
+    return bool(_POS_MARK.search(_FIXED_TERM.sub("x", text)))
 
 
 def _negative_only(text: str, names: Iterable[str] = ()) -> bool:
@@ -573,7 +586,7 @@ def _negative_only(text: str, names: Iterable[str] = ()) -> bool:
     for s in sents:
         for c in _mask(s.strip().rstrip(".;").strip()).split(";"):
             c = c.strip()
-            if not c or _POS_MARK.search(c):
+            if not c or _pos_mark(c):
                 return False
             m = _NEG_FORM.match(c)
             if m:
@@ -808,12 +821,15 @@ _LINE_MARKER = re.compile(r"^(?:\d{1,2}[.)](?=\s)|[-*•–—])\s*")
 
 def _tidy_line(line: str) -> str:
     """A dictated line tidied only: list marker / dash / bullet stripped, whitespace collapsed, first letter
-    capitalised, a full stop added when it has no terminal punctuation. No rewording."""
+    capitalised when the first word is all lower case ("eGFR", "pT2", "CT" are kept), a full stop added when it has
+    no terminal punctuation. No rewording."""
     s = re.sub(r"\s+", " ", line or "").strip()
     s = _LINE_MARKER.sub("", s).strip()
     if not s:
         return ""
-    s = s[:1].upper() + s[1:]
+    first = s.split(" ", 1)[0]
+    if first == first.lower():
+        s = s[:1].upper() + s[1:]
     if s[-1] not in ".!?":
         s = s.rstrip(",;: ") + "."
     return s if s.strip(" .!?") else ""
@@ -854,26 +870,100 @@ def insert_from_line(report: str, line_text: str, section: str = "FINDINGS",
     return Edit(mode="insert", after=anchor, replace=text, section=section)
 
 
-_HEDGE = {"possible", "possibly", "probable", "probably", "likely", "unlikely", "definite", "definitely",
-          "suspected", "suspicious", "equivocal", "indeterminate", "presumed", "presumably", "query", "questionable",
-          "certain", "uncertain", "?"}
-_SIDE_WORDS = {"left", "right", "bilateral"}
+# ── pre-apply helpers (t11 re-review of ddcb88a): prefer refusing (one-click) over clever guards ──────────────
+_GENERIC = {"small", "large", "tiny", "mild", "moderate", "severe", "marked", "normal", "clear", "unremarkable",
+            "evidence", "significant", "acute", "seen", "there", "identified", "noted", "present", "within", "both",
+            "size", "focal", "definite", "obvious", "further", "other", "also", "appearance", "limit", "left", "right",
+            "bilateral", "measure", "measuring", "possible", "probable", "likely", "unlikely", "none", "without",
+            "free", "demonstrated", "visible", "simple", "minor", "slight", "some", "multiple", "single", "is", "are"}
+_NORMALISH = re.compile(r"\b(?:clear|normal|unremarkable|nad|satisfactory|preserved)\b", re.I)
 
 
-def _ptokens(s: str) -> List[str]:
-    return re.findall(r"\d+(?:\.\d+)?|[a-z]+|[^\sa-z\d]", (s or "").lower())
+def _wkeys(text: str) -> Tuple[set, set]:
+    """(content-word stems, acronyms) of `text` with shorthand expanded, generic words dropped."""
+    t = _expand(text or "")
+    words = {_stem(w) for w in re.findall(r"[a-z]{4,}", t.lower())} - _FILLER - _GENERIC
+    acr = _acronyms(t) | {m.group().lower() for m in _ABBREV_RE.finditer(text or "")}
+    return words, acr
 
 
-def _swappable(t: str) -> bool:
-    return t in _SIDE_WORDS or t in _HEDGE or bool(re.fullmatch(r"\d+(?:\.\d+)?", t))
+def _wmatch(a: str, b: str) -> bool:
+    """Prefix match of two content words: the shorter (4+ letters) begins the longer, or they share 6 letters."""
+    s, lng = sorted((a, b), key=len)
+    return len(s) >= 4 and (lng.startswith(s) or len(os.path.commonprefix([a, b])) >= 6)
 
 
-def _contains_run(run: List[str], seq: List[str]) -> bool:
-    return any(seq[k:k + len(run)] == run for k in range(len(seq) - len(run) + 1))
+def _shares(a: str, b: str) -> bool:
+    (wa, ca), (wb, cb) = _wkeys(a), _wkeys(b)
+    return bool(ca & cb) or any(_wmatch(x, y) for x in wa for y in wb)
 
 
-def _norm_ws(s: str) -> str:
-    return re.sub(r"\s+", " ", s or "").strip().lower()
+def _dictated_statements(dictation: str) -> List[str]:
+    """Each dictated sentence split at polarity changes: the finest piece that has one polarity."""
+    out = []
+    for s in _dictated_sentences(dictation):
+        out += _clauses(s) or [s]
+    return list(dict.fromkeys(out))
+
+
+def _near_dictated_negative(text: str, dictation: str) -> bool:
+    """A dictated negative or normal statement ("No bone mets.", "Lungs clear.") shares a content word (prefix
+    match, shorthand expanded on both sides) or an acronym with `text`: removing `text` may remove what the
+    radiologist said, so it is never pre-applied."""
+    return any((_has_neg(s) or _NORMALISH.search(s)) and _shares(text, s) for s in _dictated_statements(dictation))
+
+
+def _ungrounded_contradiction(text: str, dictation: str) -> Optional[str]:
+    """Why the removed negative's contradiction is not plainly in the dictation, or None. No dictated positive
+    shares a content word or acronym with it while the dictation states something normal or clear ("Lungs clear."
+    beside a removed "No consolidation.": the normal statement may be about the same organ) → "ungrounded_normal".
+    The removed negative names a side that no sharing dictated positive has ("No effusion on the left." beside a
+    dictated right effusion) → "side_mismatch". A semantic contradiction with no shared word ("No pneumoperitoneum."
+    vs "Free gas under the diaphragm.") stays eligible when nothing normal is dictated."""
+    stmts = _dictated_statements(dictation)
+    pos = [s for s in stmts if not (_has_neg(s) or _NORMALISH.search(s)) and _shares(text, s)]
+    if not pos and any(_NORMALISH.search(s) and not _has_neg(s) for s in stmts):
+        return "ungrounded_normal"
+    sides = _sides(text)
+    if pos and sides and not any(sides <= _sides(s) for s in pos):
+        return "side_mismatch"
+    return None
+
+
+_ABNORMAL_NEG = re.compile(r"\b(?:flow|enhanc\w*|excret\w*|perfus\w*|filling|opacif\w*|visuali[sz]\w*)\b", re.I)
+_NOT_SEEN = re.compile(r"^(?:the\s+)?(.*?[a-z])\s+(?:is|are|was|were)\s+(?:not\s+(?:seen|identified|demonstrated|"
+                       r"visuali[sz]ed|present)|absent)\b", re.I)
+
+
+def _abnormal_negative(text: str, names: Iterable[str] = ()) -> bool:
+    """An abnormal finding phrased as a negative: no flow / enhancement / excretion / perfusion / filling /
+    opacification / visualisation, or an organ or structure that "is not seen" (an absent kidney, not a finding)."""
+    if _ABNORMAL_NEG.search(text or ""):
+        return True
+    for a, b in _sentence_spans(text or "", names):
+        m = _NOT_SEEN.match(text[a:b].strip())
+        if m:
+            head = re.findall(r"[a-z]+", m.group(1).lower())[-1]
+            if head in ANATOMY or _al_stem(head) in _ANATOMY_STEMS:
+                return True
+    return False
+
+
+def _list_item_drop(report: str, edit: Edit, names: Iterable[str]) -> Optional[List[List[str]]]:
+    """A `_negative_fix` replace that is a pure deletion: one whole plain-negative sentence whose replacement is
+    its own tokens less exactly one negative list item (the list connective re-joined), itself a plain negative.
+    The lost item; None for anything else."""
+    old, new = edit.find or "", edit.replace or ""
+    if not (new.strip() and _once(report, old)):
+        return None
+    i = report.index(old)
+    whole = _whole_sentences(report, i, i + len(old), names)
+    if not whole or len(whole) != 1 or len(_sentence_spans(new, names)) != 1:
+        return None
+    if not (_only_deletes(old, new) and _negative_only(old, names) and _negative_only(new, names)):
+        return None
+    lost = _lost_negatives(old, new)
+    return lost if len(lost) == 1 else None
 
 
 def _empties_section(report: str, i: int, j: int, names: Iterable[str]) -> bool:
@@ -887,32 +977,108 @@ def _empties_section(report: str, i: int, j: int, names: Iterable[str]) -> bool:
 
 def _preapply_removal(report: str, edit: Edit, dictation: str, code_built: bool, names: List[str]) -> List[str]:
     fails = [] if code_built else ["not_code_built"]
-    if edit.mode != "remove":
+    drop = _list_item_drop(report, edit, names) if edit.mode == "replace" else None
+    if edit.mode != "remove" and drop is None:
         return fails + ["not_remove"]
     if not _once(report, edit.find):
         return fails + ["anchor_not_unique"]
     i = report.index(edit.find)
     j = i + len(edit.find)
+    if _section_of(report, i, names) not in ("findings", "impression"):
+        fails.append("outside_findings")         # never TECHNIQUE, HISTORY, COMPARISON or an unheaded report
     whole = _whole_sentences(report, i, j, names)
     cover = [(s, e) for s, e in _sentence_spans(report, names) if s < j and i < e] or [(i, j)]
     sent = report[cover[0][0]:cover[-1][1]]
-    if whole is None and not _whole_item(report, i, j, names):
-        fails.append("partial_remove")
-    a, b = _trim(report, i, j)
-    piece = re.sub(r"^(?:,|\s|or\b|and\b|nor\b)+|(?:[,.;]|\s|\bor|\band|\bnor)+$", "", report[a:b], flags=re.I)
-    # negative-only: the whole sentence(s) touched are plain negatives, and so is the removed text itself
-    if not _negative_only(sent, names) or (whole is None and _POS_MARK.search(piece.replace(".", ""))):
+    if drop is not None:
+        texts = ["No " + " ".join(drop[0])]
+    else:
+        if whole is None and not _whole_item(report, i, j, names):
+            fails.append("partial_remove")
+        a, b = _trim(report, i, j)
+        piece = re.sub(r"^(?:,|\s|or\b|and\b|nor\b)+|(?:[,.;]|\s|\bor|\band|\bnor)+$", "", report[a:b], flags=re.I)
+        # negative-only: the whole sentence(s) touched are plain negatives, and so is the removed text itself
+        if not _negative_only(sent, names) or (whole is None and _pos_mark(piece.replace(".", ""))):
+            fails.append("not_negative_only")
+        texts = [report[s:e] for s, e in whole] if whole else ["No " + piece]
+        texts += ["No " + " ".join(p) for p in _lost_negatives(sent, report[cover[0][0]:i] + report[j:cover[-1][1]])]
+        if _empties_section(report, i, j, names):
+            fails.append("empties_section")
+    if _abnormal_negative(sent, names):
         fails.append("not_negative_only")
-    texts = [report[s:e] for s, e in whole] if whole else ["No " + piece]
-    texts += ["No " + " ".join(p) for p in _lost_negatives(sent, report[cover[0][0]:i] + report[j:cover[-1][1]])]
     if any(_dictated_text(t, dictation) for t in texts):
         fails.append("remove_dictated")
-    if _empties_section(report, i, j, names):
-        fails.append("empties_section")
+    if any(_near_dictated_negative(t, dictation) for t in texts):
+        fails.append("near_dictated_negative")
+    fails += [w for w in dict.fromkeys(_ungrounded_contradiction(t, dictation) for t in texts) if w]
     return fails
 
 
-def _preapply_insert(report: str, edit: Edit, dictation: str, line_text: Optional[str], names: List[str]) -> List[str]:
+_LABEL_PREFIX = re.compile(r"^\s*[A-Za-z][A-Za-z0-9 /&()'-]{0,40}:")
+_NON_FINDING = re.compile(r"\b(?:histor\w*|clinical\w*|indications?|recommend\w*|suggest(?!ive)\w*|advis\w*|"
+                          r"follow[\s-]?up|correlat\w*|discuss\w*|communicat\w*|inform\w*|phoned|telephon\w*|dr|"
+                          r"compar\w*|previous\w*|prior)\b", re.I)
+
+
+def _line_key(s: str) -> str:
+    s = _LINE_MARKER.sub("", re.sub(r"\s+", " ", s or "").strip()).strip().lower()
+    return s.rstrip(" .;,:!?…").strip()
+
+
+def _dictated_line_context(dictation: str, line_text: str) -> Optional[dict]:
+    """The block context (block_side / block_levels, as `alignment` reads it) of the dictated line equal to
+    `line_text`; None when no whole dictated line equals it."""
+    texts = [t.strip() for t in (dictation or "").replace("\r", "").split("\n") if t.strip()]
+    key = _line_key(line_text)
+    if not key:
+        return None
+    for dl in _dict_lines(texts, "d", set()):
+        if _line_key(dl.text) == key:
+            return {"block_side": dl.block_side, "block_levels": list(dl.block_levels)}
+    return None
+
+
+def _block_unstated(line_text: str, ctx: Optional[dict]) -> bool:
+    """The line sits under a dictated side or level block it does not itself state."""
+    if not ctx:
+        return False
+    side, levels = ctx.get("block_side"), ctx.get("block_levels") or []
+    if isinstance(levels, str):
+        levels = [levels]
+    if side and side not in (_sides(line_text) | {side_of(line_text)}):
+        return True
+    own = set(levels_of(line_text))
+    return any(lv not in own for lv in levels)
+
+
+def _findings_sub_headed(report: str, names: Iterable[str]) -> bool:
+    """FINDINGS has region sub-headings or label lines ("LEFT KIDNEY:", "Liver: normal."): placement is ambiguous."""
+    body = _section_body(report, "FINDINGS", names)
+    if body is None:
+        return False
+    return any(_is_label(ln.strip(), names) or _LABEL_PREFIX.match(ln)
+               for ln in report[body[0]:body[1]].split("\n") if ln.strip())
+
+
+def _findings_conflict(report: str, text: str, names: Iterable[str]) -> Optional[str]:
+    """A FINDINGS sentence restates `text` ("duplicate"), or names its head finding (a content word or acronym)
+    with a different side, number or polarity ("conflicts_findings")."""
+    body = _section_body(report, "FINDINGS", names)
+    if body is None:
+        return None
+    chunk = report[body[0]:body[1]]
+    acr = _acronyms(text) | _acronyms(chunk)
+    for a, b in _sentence_spans(chunk, names):
+        s = chunk[a:b]
+        if _says(text, s, acr) or _restates(text, s):
+            return "duplicate"
+        if _shares(text, s) and (_sides(s) != _sides(text) or set(_NUM.findall(s)) != set(_NUM.findall(text))
+                                 or _has_neg(s) != _has_neg(text)):
+            return "conflicts_findings"
+    return None
+
+
+def _preapply_insert(report: str, edit: Edit, dictation: str, line_text: Optional[str], names: List[str],
+                     line_context: Optional[dict] = None) -> List[str]:
     if not (line_text or "").strip():
         return ["no_line"]
     if edit.mode != "insert":
@@ -939,60 +1105,51 @@ def _preapply_insert(report: str, edit: Edit, dictation: str, line_text: Optiona
         fails.append("ungrounded_side")
     if {n.lower() for n in _NEG.findall(text)} - {n.lower() for n in _NEG.findall(line_text)}:
         fails.append("adds_negation")
-    core = _norm_ws(_LINE_MARKER.sub("", re.sub(r"\s+", " ", line_text).strip())).rstrip(".!?")
-    if not core or core not in _norm_ws(dictation):
+    # the line is one whole dictated line (never a fragment, nor a span across lines), one sentence long
+    ctx = _dictated_line_context(dictation, line_text)
+    if ctx is None:
         fails.append("line_not_dictated")
-    return fails
-
-
-def _preapply_correction(report: str, edit: Edit, line_text: Optional[str], names: List[str]) -> List[str]:
-    if not (line_text or "").strip():
-        return ["no_line"]
-    old, new = edit.find or "", edit.replace or ""
-    if not _once(report, old):
-        return ["anchor_not_unique"]
-    a, b = _ptokens(old), _ptokens(new)
-    ops = [op for op in SequenceMatcher(None, a, b, autojunk=False).get_opcodes() if op[0] != "equal"]
-    if len(ops) != 1 or ops[0][0] not in ("replace", "insert"):
-        return ["not_single_change"]
-    _, i1, i2, j1, j2 = ops[0]
-    fails = []
-    if not all(_swappable(t) for t in a[i1:i2] + b[j1:j2]):
-        fails.append("changes_more_than_side_number_hedge")
-    if not _contains_run(b[j1:j2], _ptokens(line_text)):
-        fails.append("change_not_in_line")
-    # the line is about this sentence: half the sentence's content words are in it
-    i = report.index(old)
-    cover = [(s, e) for s, e in _sentence_spans(report, names) if s < i + len(old) and i < e] or [(i, i + len(old))]
-    after = report[cover[0][0]:i] + new + report[i + len(old):cover[-1][1]]
-    acr = _acronyms(line_text) | _acronyms(after)
-    w = _content(after, acr) - _SIDE_WORDS - _HEDGE
-    if not w or len(w & _content(line_text, acr)) < 0.5 * len(w):
-        fails.append("line_not_about_sentence")
+    if len(_sentences(text, names)) > 1:
+        fails.append("multi_sentence")
+    if _block_unstated(line_text, line_context) or _block_unstated(line_text, ctx):
+        fails.append("block_context")
+    if _findings_sub_headed(report, names):
+        fails.append("findings_sub_headed")
+    clash = _findings_conflict(report, text, names)
+    if clash:
+        fails.append(clash)
+    if _LABEL_PREFIX.match(_LINE_MARKER.sub("", line_text.strip())) or _NON_FINDING.search(line_text):
+        fails.append("not_a_finding")
     return fails
 
 
 def preapply_failures(report: str, edit: Optional[Edit], kind: str, dictation: str, *, code_built: bool,
-                      line_text: Optional[str] = None, sections: Optional[List[str]] = None) -> List[str]:
+                      line_text: Optional[str] = None, sections: Optional[List[str]] = None,
+                      line_context: Optional[dict] = None) -> List[str]:
     """Binding correction 12 (spec §9): [] only when `edit` may be applied before the radiologist sees the report.
     Only code-built edits qualify:
-    - removal (`kind` in REMOVAL_KINDS): `code_built`, mode `remove`, whole sentence(s) or list item(s) of plain
-      negatives only, nothing dictated removed, and the section is not left empty;
-    - insert (`kind == "absent"`): exactly `insert_from_line(report, line_text)` (the dictated line tidied), after a
-      sentence end or label line inside FINDINGS, no line break or heading, every number, side and negator from
-      `line_text`, and `line_text` is in the dictation;
-    - positive correction (`kind == "contradicted"`, mode `replace`, a positive `find`): one contiguous change of
-      sides / numbers / hedge words, whose new tokens occur verbatim in `line_text`, the sentence otherwise
-      identical and about that line.
+    - removal (`kind` in REMOVAL_KINDS): `code_built`, inside FINDINGS or IMPRESSION, mode `remove` of whole sentence(s) or list
+      item(s) of plain negatives (or `_negative_fix`'s pure-deletion replace dropping exactly one list item);
+      nothing dictated removed, no dictated negative or normal statement sharing a content word / acronym with the
+      removed text, no ungrounded contradiction beside a dictated normal statement and no side mismatch with the
+      dictated positive (`_ungrounded_contradiction`), no abnormal finding phrased as a negative
+      ("no flow", "the kidney is not seen"), and the section is not left empty;
+    - insert (`kind == "absent"`): exactly `insert_from_line(report, line_text)`, where `line_text` equals one whole
+      dictated line of one sentence, states its dictated block's side / level (`line_context`: block_side,
+      block_levels; else read from the dictation), is a finding (no "Label:" prefix, history, recommendation,
+      communication or comparison), and FINDINGS has no sub-headings and no sentence restating it or naming its
+      finding with another side, number or polarity;
+    - positive correction (`kind == "contradicted"`, mode `replace`, a positive `find`): never (deferred to Gate F:
+      ["correction_one_click"]).
     The §8 code guards must also pass. Anything else: ["not_preapply_eligible"]. Pure code, no model calls."""
     if edit is None:
         return ["no_edit"]
     names = list(sections or [])
     positive = edit.mode == "replace" and not _has_neg(edit.find or "") and not is_negative(edit.find or "")
     if kind == "absent":
-        fails = _preapply_insert(report, edit, dictation, line_text, names)
+        fails = _preapply_insert(report, edit, dictation, line_text, names, line_context)
     elif kind == "contradicted" and positive:
-        fails = _preapply_correction(report, edit, line_text, names)
+        return ["correction_one_click"]          # spec §9: measured in Gate F before any correction goes live
     elif kind in REMOVAL_KINDS:
         fails = _preapply_removal(report, edit, dictation, code_built, names)
     else:
@@ -1018,7 +1175,8 @@ def changed_sentence(report: str, after: str, edit: Edit, sections: Optional[Lis
     return " ".join(hit) if hit else (edit.replace or "").strip()
 
 
-_EVIDENCE_KEYS = ("threshold", "timing", "grade", "criteria", "parameter", "system", "modality", "text")
+_EVIDENCE_KEYS = ("threshold", "timing", "grade", "criteria", "parameter", "system", "modality", "text",
+                  "sentence")   # the brief option's own sentence grounds its insert (one-click only)
 
 
 def _is_additions(item: ReviewItem, group: Optional[List[Candidate]] = None) -> bool:
