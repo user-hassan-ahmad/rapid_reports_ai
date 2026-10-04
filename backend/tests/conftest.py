@@ -114,7 +114,7 @@ def client(db_session: Session, monkeypatch) -> Iterator[TestClient]:
 
 
 _QUALITY_MODULES = ("test_quick_report_quality", "test_report_review", "test_template_pipeline",
-                    "test_golden_quick_pipeline")
+                    "test_golden_quick_pipeline", "test_review_engine_shadow")
 
 
 @pytest.fixture(autouse=True)
