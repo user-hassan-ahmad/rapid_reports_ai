@@ -3,7 +3,7 @@
 	import { EditorView, ViewPlugin, Decoration, WidgetType, keymap } from '@codemirror/view';
 	import type { DecorationSet, ViewUpdate } from '@codemirror/view';
 	import { EditorState, StateField, StateEffect, Compartment } from '@codemirror/state';
-	import type { Range } from '@codemirror/state';
+	import type { Range, Extension, TransactionSpec } from '@codemirror/state';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
 	import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
@@ -17,6 +17,11 @@
 	export let showHighlighting: boolean = true;
 	export let generationLoading: boolean = false;
 	export let auditDecorations: Array<{text: string, criterion: string, status: 'flag' | 'warning', stale?: boolean}> = [];
+	/** Extra CM6 extensions (e.g. the review layer), held in their own compartment and reconfigured on change. */
+	export let extraExtensions: Extension[] = [];
+	/** Builds the full-document replace for a `content` prop change (e.g. the review field's `replaceDoc`, so its
+	 * items re-locate). Absent: a plain replace of the whole document. */
+	export let replaceDocHook: ((state: EditorState, text: string) => TransactionSpec) | undefined = undefined;
 
 	let editorContainer: HTMLDivElement;
 	let editor: EditorView | null = null;
@@ -74,6 +79,11 @@
 	// ─── Compartment for editable toggle ────────────────────────────────────────
 
 	const editableCompartment = new Compartment();
+
+	// ─── Compartment for caller-supplied extensions ─────────────────────────────
+
+	const extrasCompartment = new Compartment();
+	let mountedExtras: Extension[] = [];
 
 	// ─── ViewPlugin: build decorations from raw text detection ──────────────────
 
@@ -280,6 +290,7 @@
 
 	onMount(() => {
 		lastPropContent = content;
+		mountedExtras = extraExtensions;
 
 		editor = new EditorView({
 			state: EditorState.create({
@@ -305,6 +316,7 @@
 					auditDecorationsField,
 					editableCompartment.of(EditorView.editable.of(!generationLoading)),
 					darkTheme,
+					extrasCompartment.of(extraExtensions),
 					EditorView.updateListener.of((update) => {
 						if (update.docChanged) {
 							if (skipNextChange) {
@@ -346,6 +358,14 @@
 		}
 	});
 
+	// ─── Reactive: reconfigure caller-supplied extensions ───────────────────────
+	// Before the content sync, so a replaceDocHook that needs a newly mounted extension finds it.
+
+	$: if (editor && extraExtensions !== mountedExtras) {
+		mountedExtras = extraExtensions;
+		editor.dispatch({ effects: extrasCompartment.reconfigure(extraExtensions) });
+	}
+
 	// ─── Reactive: sync external content prop changes into CM6 ──────────────────
 	// Compares against lastPropContent (not the live doc), so user edits never
 	// trigger this and reset the editor mid-typing.
@@ -353,9 +373,11 @@
 	$: if (editor && content !== lastPropContent) {
 		lastPropContent = content;
 		skipNextChange = true;
-		editor.dispatch({
-			changes: { from: 0, to: editor.state.doc.length, insert: content }
-		});
+		editor.dispatch(
+			replaceDocHook
+				? replaceDocHook(editor.state, content)
+				: { changes: { from: 0, to: editor.state.doc.length, insert: content } }
+		);
 	}
 
 	// ─── Reactive: toggle highlighting ──────────────────────────────────────────
@@ -531,6 +553,12 @@
 
 	export function getCurrentContent(): string {
 		return editor ? editor.state.doc.toString() : content;
+	}
+
+	// ─── Public: the live editor view (null before mount / after destroy) ────────
+
+	export function getView(): EditorView | null {
+		return editor;
 	}
 
 	// ─── Public: apply one edit as a user change (undoable; fires 'change') ──────
