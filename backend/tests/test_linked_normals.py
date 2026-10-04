@@ -91,6 +91,25 @@ def test_code_check_term_missing_and_measurement():
     assert ln.code_check(_unit()) == []
 
 
+@pytest.mark.parametrize("s,multi", [
+    ("The A, B and C are unremarkable.", False),
+    ("The kidneys are unremarkable with no hydronephrosis.", False),
+    ("No free fluid.", False),
+    ("The carpal ligaments are intact, the TFCC is normal.", True),
+    ("The pelvic bones are unremarkable and the lung bases are clear.", True),
+    ("The bones and soft tissues are unremarkable, no consolidation in the lung bases.", True),
+    ("The portal vein is patent; the aorta is unremarkable.", True),
+])
+def test_multi_predicate(s, multi):
+    assert ln.multi_predicate(s) is multi
+
+
+def test_code_check_flags_multi_predicate_prose():
+    u = ln.Unit("The A is intact, the B is normal.", "P1", [ln.Atom("N1", "A", "The A is intact."),
+                                                         ln.Atom("N2", "B", "The B is normal.")])
+    assert ln.code_check(u) == ["multi-predicate"]
+
+
 def test_link_questions_d1_per_atom_and_a1():
     qs = ln.link_questions(_unit(1))
     assert qs["d0"]["instructions"] == "Read only this sentence. It states that the D is unremarkable."
@@ -144,12 +163,16 @@ def test_render_all_default_is_verbatim_with_term_spans():
     assert r.text[slice(*r.atoms[1]["span"])] == "B" and r.flagged == []
 
 
-def test_render_implicated_is_kept_as_its_own_sentence_after_the_group():
+def test_render_implicated_is_grouped_with_its_label_and_term_span():
     r = ln.render_unit(_unit(0), L(N1="default", N2="implicated", N3="default"), True, [], [])
-    assert (r.mode, r.text) == ("subtracted", "The A and C are unremarkable. The B is unremarkable.")
+    assert (r.mode, r.text) == ("verbatim", "The A, B and C are unremarkable.")
     b = r.atoms[1]
-    assert (b["label"], b["action"], b["own_line"]) == ("implicated", "implicated", True)
-    assert r.text[slice(*b["span"])] == "The B is unremarkable."
+    assert (b["label"], b["action"], b["own_line"]) == ("implicated", "implicated", False)
+    assert r.text[slice(*b["span"])] == "B"
+    # Subtraction removes only the atoms that cannot be asserted; implicated stays in the group.
+    r = ln.render_unit(_unit(0), L(N1="contradicted", N2="implicated", N3="default"), True, [], [])
+    assert (r.mode, r.text) == ("subtracted", "The B and C are unremarkable.")
+    assert r.text[slice(*r.atoms[1]["span"])] == "B"
 
 
 def test_render_contradicted_is_do_not_assert_and_dictated_is_left_out():
@@ -196,7 +219,7 @@ def test_render_nothing_kept():
 
 def test_render_only_implicated_kept():
     r = ln.render_unit(_unit(2), L(N6="implicated"), True, [], [])
-    assert (r.mode, r.text, r.atoms[0]["span"]) == ("own_lines", "No Y.", [0, 5])
+    assert (r.mode, r.text, r.atoms[0]["span"]) == ("verbatim", "No Y.", [3, 4])
 
 
 # ── brief wiring ────────────────────────────────────────────────────────────
@@ -294,16 +317,16 @@ async def test_brief_fold_labels_route_and_render(monkeypatch):
     # One link request per prose sentence, the sentence as state.
     assert sorted(seen["states"]) == sorted(["The liver, intrahepatic biliary tree and spleen are unremarkable.",
                                              "The kidneys are unremarkable with no hydronephrosis.", "No free fluid."])
-    assert _path(b) == ('"The liver and spleen are unremarkable. The intrahepatic biliary tree is unremarkable. '
+    assert _path(b) == ('"The liver, intrahepatic biliary tree and spleen are unremarkable. '
                         'The kidneys are unremarkable with no hydronephrosis. The visualised bones are unremarkable."')
     assert "Do not assert as normal" not in b.text
     assert '**Dictated negatives (state each as dictated):** "No ascites"' in b.text
     d0 = b.decisions["normals"][0]
-    assert d0["linked"] and d0["mode"] == "subtracted" and d0["link"]["ok"]
+    assert d0["linked"] and d0["mode"] == "verbatim" and d0["link"]["ok"]
     ihd = d0["atoms"][1]
     assert (ihd["label"], ihd["action"], ihd["pointer"]) == ("implicated", "implicated", "CBD 12 mm")
     path = _path(b).strip('"')
-    assert path[slice(*ihd["path_span"])] == "The intrahepatic biliary tree is unremarkable."
+    assert path[slice(*ihd["path_span"])] == "intrahepatic biliary tree" and not ihd["own_line"]
     ff = b.decisions["normals"][2]
     assert ff["action"] == "do_not_assert" and ff["rendered"] is None and ff["atoms"][0]["action"] == "dictated"
     assert b.decisions["normals"][3] == {"text": "The visualised bones are unremarkable.", "action": "keep"}
@@ -349,7 +372,8 @@ async def test_brief_classifier_default_upgraded_to_implicated_by_jev_affected(m
     b = await qb.compile_brief(SHEET, "CT", "CBD 12 mm")
     sp = b.decisions["normals"][0]["atoms"][2]
     assert (sp["label"], sp["label_source"], sp["action"], sp["jev_affected"]) == ("implicated", "fold+jev", "implicated", 0.9)
-    assert _path(b).startswith('"The liver and intrahepatic biliary tree are unremarkable. The spleen is unremarkable.')
+    assert _path(b).startswith('"The liver, intrahepatic biliary tree and spleen are unremarkable.')
+    assert b.decisions["linked"]["upgrades"] == ["N3 spleen (0.9)"]
 
 
 @pytest.mark.asyncio
@@ -358,7 +382,6 @@ async def test_brief_separate_labeller(monkeypatch):
     seen = _stub(monkeypatch, sep=LABELS)
     b = await qb.compile_brief(SHEET, "CT", DOUBLE_DUCT, "Jaundice")
     assert seen["qwen_linked"] == [None] and seen["sep_atoms"][1] == "The intrahepatic biliary tree is unremarkable."
-    assert "The intrahepatic biliary tree is unremarkable. The kidneys" in _path(b)
     assert b.decisions["normals"][0]["atoms"][1]["label_source"] == "separate"
     # Labeller down: every atom falls back to Jev "affected".
     seen = _stub(monkeypatch, sep=None, jev_affected={"na1"})

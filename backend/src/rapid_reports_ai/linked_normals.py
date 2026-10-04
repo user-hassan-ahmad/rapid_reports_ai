@@ -178,6 +178,16 @@ def term_in(term: str, sentence: str) -> bool:
     return bool(re.search(r"(?<![A-Za-z])" + re.escape(term) + r"(?![A-Za-z])", sentence, re.I))
 
 
+_VERB = re.compile(r"\b(?:is|are|appears?|remains?|shows?|demonstrates?|measures?|has|have)\b", re.I)
+_SPLICE = re.compile(r"[,;]\s+(?:and\s+|but\s+|while\s+)?(?:the|both|no)\b", re.I)
+
+
+def multi_predicate(sentence: str) -> bool:
+    """More than one predicate in one prose sentence: two verbs ("the A is intact and the B is normal"),
+    or a comma / semicolon splice opening a new clause (", the B ...", ", no X")."""
+    return len(_VERB.findall(sentence)) > 1 or bool(_SPLICE.search(sentence))
+
+
 def code_check(u: Unit) -> List[str]:
     """Reasons the prose cannot stand for its atoms, by code: no prose, a parse problem, a measurement, or
     an atom whose exact term the sentence does not contain (broadened, shortened or merged names)."""
@@ -186,6 +196,8 @@ def code_check(u: Unit) -> List[str]:
     out = [u.problem] if u.problem else []
     if _MEASUREMENT.search(u.prose):
         out.append("measurement")
+    if multi_predicate(u.prose):
+        out.append("multi-predicate")
     out += [f"term missing: {a.id} {a.term}" for a in u.atoms if not term_in(a.term, u.prose)]
     return out
 
@@ -313,8 +325,9 @@ def _span(text: str, needle: str, pos: int = 0) -> Optional[Tuple[int, int]]:
 
 
 def render_unit(u: Unit, labels: Dict[str, dict], link_ok: bool, dneg: List[str], positives: List[str]) -> UnitRender:
-    """labels: atom id -> {"cls", "pointer", "source"}. default -> grouped by subtraction from the prose;
-    implicated -> kept as its own sentence; contradicted -> do not assert; dictated -> left to the dictation.
+    """labels: atom id -> {"cls", "pointer", "source"}. default and implicated -> grouped by subtraction from
+    the prose (implicated keeps its label and term span; the review layer marks it); contradicted -> do not
+    assert; dictated -> left to the dictation.
     Guards (attempt 4): a default negative a dictated negative already says is left to the dictation; a
     default structure a dictated positive finding names gets its own sentence."""
     structures = [a.term for a in u.atoms if not a.negative]
@@ -323,17 +336,17 @@ def render_unit(u: Unit, labels: Dict[str, dict], link_ok: bool, dneg: List[str]
         lab = labels.get(a.id) or {"cls": "default", "pointer": "", "source": "none"}
         cls = lab["cls"]
         action, own, why = {"default": "keep", "implicated": "implicated", "contradicted": "do_not_assert",
-                            "dictated": "dictated"}[cls], cls == "implicated", ""
+                            "dictated": "dictated"}[cls], False, ""
         if cls == "default" and a.negative:
             told = _ng.covered_by_dictation(a.term, dneg, structures)
             if told:
                 action, why = "dictated", f"dictated negative: {told}"
-        if action == "keep" and not a.negative and _ng.dictated_overlap([a.term], positives):
+        if action in ("keep", "implicated") and not a.negative and _ng.dictated_overlap([a.term], positives):
             own, why = True, "named by a dictated finding"
         recs.append({"id": a.id, "term": a.term, "text": a.text, "label": cls, "label_source": lab.get("source", ""),
                      "jev_affected": lab.get("jev_affected"),
                      "pointer": lab.get("pointer", ""), "action": action, "own_line": own, "why": why, "span": None})
-    grouped = [r["action"] == "keep" and not r["own_line"] for r in recs]
+    grouped = [r["action"] in ("keep", "implicated") and not r["own_line"] for r in recs]
     parts: List[str] = []
     mode = "none"
     if any(grouped):

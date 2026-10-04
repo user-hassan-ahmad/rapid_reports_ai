@@ -884,9 +884,12 @@ headers, no commentary). Every line has three parts separated by " | ":
   - N4 | D | The D is unremarkable.
   - N5 | X | No X in the D.
   - N6 | Y | No Y.
+  - N7 | E | The E is intact.
   - P1 | N1 N2 N3 | The A, B and C are unremarkable.
-  - P2 | N4 N5 | The D is unremarkable with no X.
-  - P3 | N6 | No Y.
+  - P2 | N4 | The D is unremarkable.
+  - P3 | N5 | No X in the D.
+  - P4 | N6 | No Y.
+  - P5 | N7 | The E is intact.
 
 Atoms (N lines) come first, in sweep order, numbered N1, N2, ... :
 - One N line per structure the sweep visits: the structure's exact term, then one short
@@ -895,14 +898,18 @@ Atoms (N lines) come first, in sweep order, numbered N1, N2, ... :
   in the <structure>." A negative that belongs to no single structure: "No <finding>."
 - One structure or one finding per atom; never a list, "or", or "and" inside an atom.
 
-Prose (P lines) follows, in sweep order, numbered P1, P2, ... : one sentence per sweep
-paragraph, written as a consultant would, preceded by the ids of the atoms it states.
+Prose (P lines) follows, in sweep order, numbered P1, P2, ... , each preceded by the ids of
+the atoms it states. Prose groups each sweep paragraph's structures that share one predicate.
+- One predicate per sentence. Every prose sentence has exactly one of two forms: "The A, B and
+  C <shared predicate>." ("are unremarkable", "are clear", "are intact", "are patent"), or a
+  single negative "No X in the D." / "No Y.".
+- A structure-specific negative, or a structure with a different predicate, is its own atom
+  with its own short prose sentence. Never a tail clause ("with no X"), never a comma-spliced
+  or multi-clause sentence ("the A is intact, the B is normal"), never two verbs in one sentence.
 - Every N id appears in exactly one P line, and a P line states only its own atoms.
 - The sentence reuses each atom's term exactly, word for word: never a broader, narrower,
   shortened or merged name. Items that share a word are written in full ("the A tendons and
   B tendons"), never contracted.
-- A structure-specific negative is a short tail on its own structure's sentence: "The D is
-  unremarkable with no X." Never pool negatives from different structures into one tail.
 - Ducts, vessels and hollow organs are not grouped in one sentence with solid organs unless the
   sweep visits them in the same step.
 - No measurements, sizes, qualifiers, comparisons or descriptions of appearance anywhere in the

@@ -440,6 +440,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             v = _ln.link_verdict(e, verdicts.get(id(e)))
             link_log.append({"pid": e.pid, **v})
             r = _ln.render_unit(e, labels, v["ok"], dneg, positives)
+            link_log[-1]["mode"] = r.mode
             flagged.extend(r.flagged)
             decisions["normals"].append({
                 "text": e.prose, "pid": e.pid, "linked": True, "link": v, "mode": r.mode,
@@ -454,7 +455,11 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             decisions["linked"] = {"labeller": mode, "timing_ms": timing, "n_atoms": len(atoms_all),
                                    "notes": getattr(qw, "normal_notes", "") if mode == "fold" else "",
                                    "n_units": len(linked.units), "n_loose": len(normals),
-                                   "link_failed": sum(1 for x in link_log if not x["ok"])}
+                                   "link_failed": sum(1 for x in link_log if not x["ok"]),
+                                   "multi_predicate": sum(1 for x in link_log if "multi-predicate" in x["code"]),
+                                   "subtract_fallback": sum(1 for x in link_log if x["ok"] and x["mode"] == "atoms"),
+                                   "upgrades": [f"{a.id} {a.term} ({labels[a.id]['jev_affected']})" for a in atoms_all
+                                                if labels[a.id]["source"].endswith("+jev")]}
         lines = [f'- **Normal-study path:** "{" ".join(keep)}"' if keep else "- **Normal-study path:** (every line is affected by this dictation)"]
         if flagged:
             lines.append("- **Do not assert as normal (a dictated finding acts on these):** " + " ".join(f'"{t}"' for t in flagged))
