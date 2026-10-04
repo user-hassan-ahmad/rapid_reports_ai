@@ -2102,6 +2102,14 @@ Apply each fix while preserving grammatical completeness and report structure.""
         # (GET /api/reports/{report_id}/options); the response below never waits for them.
         if options_job is not None:
             tp.schedule_options(report_id, options_job, extra=lambda: {"phase1_source": _p1["source"]})
+        # Review engine (spec §10.4): background review of the saved candidate (it waits for the options job itself);
+        # the response and the saved report are untouched. A no-op unless RR_REVIEW_ENGINE is set.
+        if report_id and mirror_candidate is not None:
+            try:
+                from .review_engine.engine import schedule_review as review_engine_schedule
+                review_engine_schedule(report_id)
+            except Exception as e:  # never affects the report
+                logger.warning("review engine not scheduled (%s: %s)", type(e).__name__, e)
 
         # Increment template usage count
         try:
@@ -5896,6 +5904,10 @@ app.include_router(agentic_router)
 # project_quick_report_analyser.md for architecture and phasing.
 from .quick_report_api import router as quick_report_router
 app.include_router(quick_report_router)
+
+# Review engine endpoints (/api/reports/{id}/review…), spec 2026-10-02 §10.3.
+from .review_engine.api import router as review_router
+app.include_router(review_router)
 
 # Admin approve/reject endpoints — HMAC-authenticated, no session required.
 from .admin_routes import router as admin_router

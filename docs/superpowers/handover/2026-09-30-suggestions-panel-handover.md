@@ -289,3 +289,16 @@ Decided while tuning the option uniqueness gate on `feat/template-pipeline-mirro
   - "The adrenal glands are unremarkable, with no evidence of metastatic disease."
   - Use the existing focal-edit / revert-guard machinery (report_review protected spans, edit_allowed). The rail needs the anchor sentence, so the option payload should carry the matched report sentence, found by the conveys question or a section-scoped lookup.
 - **Grey zone:** pairs that are near-definitions, such as "ventricles normal in size" vs "No hydrocephalus". Jev scores these 0.57–0.97, so at the 0.85 drop line some still appear as options. Accepted as the safe direction; revisit only if it proves noisy.
+
+## Addendum (2026-10-01, later): editor overlays, both views
+
+Hassan decided: **both views, in sync.**
+- Every review item anchored to report text appears as an **overlay in the CM6 ReportEditor**: an underline coloured by type (contradiction, partial, differs), plus a gutter marker.
+- Clicking the overlay opens a popover showing the prepared edit as a diff, with **Apply / Edit / Dismiss**.
+- The **rail** lists every item, including options and unanchored items.
+- Dismissing or applying in either view updates the other.
+- Anchors map through edits (CM6 `mapPos`). If an anchor is lost, the item goes `stale`.
+
+Existing CM6 decoration code to reuse: `lib/dictation-lab/pendingMarks.ts`, `ghostText.ts`, `IntelliPromptsMargin.svelte`.
+
+Context: the post-generation check's positive-contradiction rewrite is now flag-only (PR #7). A proposed fix that the radiologist applies by click restores one-click correction safely, with a human confirming every edit. Review-item precision is being tuned first: 20 items are labelled by Hassan, then a labelling study and filters, so overlays show only items worth attention.

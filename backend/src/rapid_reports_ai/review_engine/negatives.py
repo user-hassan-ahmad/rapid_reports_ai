@@ -1,0 +1,442 @@
+"""Negatives classifier (Plan 2 Task 14; memories default-negatives, generation-proposes-review-disposes).
+
+Generation states undictated normals by design; this pass makes them visible and controllable. One Qwen reasoning
+call per report labels every generated normal/negative statement `dictated | default | implicated | contradicted`
+(prompt: `prompts/negatives.txt`, a verbatim copy of the lab's `negatives_v5.txt`). Code adds the `number` check
+(a measurement the dictation and history lack) and removes what it can remove cleanly. Ported from
+`scripts/review_labs/negatives_lab.py` and `negatives_bundle.py`.
+
+Entry point (Task 10's engine calls it concurrently with the lanes)::
+
+    async def classify_negatives(inp: ReviewInput, run_id: str) -> tuple[list[ReviewItem], dict]
+
+Items bypass the adjudicator (binding correction 10) and are never merged with lane candidates. Routing:
+
+    label                                   kind            status        cls
+    default                                 assumed_normal  open          info    (editor-only, no rail row)
+    implicated                              check           open          minor   evidence.check_reason "uncertain"
+    contradicted, code-removable            removed         pre_applied   action  edit mode remove (correction 12)
+    contradicted, not removable             check           open          action  check_reason "conflict"
+                                                                                  (+ code's one-click removal when
+                                                                                  the guards pass; never pre-applied)
+    default / implicated / dictated, number check           open          minor   check_reason "number"
+      ... the number is a measurement       check           open          action  (no invented numbers)
+    dictated                                (no item)
+
+Candidates are negatives and plain normal statements in any wording (`jev_pass.normal_statement`, shared with the
+Accuracy lane's W1n exclusion). Every check item's label states its reason, naming the classifier's pointer (or the
+number) when there is one, and `reason` says what to do.
+
+A number-flagged clause is never removed: the verifier's removal rule refuses any clause holding a number
+(`_negative_only`), so only a contradicted plain negative is removed. It is a check item with `check_reason`
+"number" (or "conflict" when the classifier also labelled it contradicted). On a model failure every candidate is
+unlabelled: number-flagged clauses still become check/number, the rest are assumed normal; nothing is removed.
+
+`removed` requires a code-built removal (production's `remove_negative_clause`) for which
+`verifier.preapply_failures(..., "removed", ..., code_built=True)` returns [] and whose text occurs once in the
+original report. Nothing classed `dictated` is ever removed. Keys use the fixed original kind `negative` plus the
+statement text, so a label that flips between runs keeps its key.
+
+Positions: every anchor is on the ORIGINAL report (`text_hash` = its hash), the text the user sees in shadow; a
+removed item's anchor is the removed clause's original span (`evidence["removed_text"]` kept). Removals are applied
+in item order; each removed item's `edit` is relative to the report just before it, and `log["report"]` is the
+report after all of them. Post-removal positions are kept only in `log["post_removal_anchors"]` ({item id: [start,
+end]} on `log["report"]`; a removal is zero-width at its removal point). Items carry a `created` history event
+(original hash) and, when removed, a `pre_applied` event (hash of the text it was applied to). Fail-soft: a model
+failure (validation or transport) is recorded in `log["error"]` / `log["error_kind"]`."""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import re
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+from pydantic import BaseModel, field_validator
+
+from .. import report_reconcile as rc
+from ..enhancement_utils import _run_agent_with_model
+from ..report_review import checked_clauses_in_context, remove_negative_clause
+from . import checks, verifier
+from .jev_pass import normal_statement, recommendation
+from .items import Edit, ReviewInput, ReviewItem, Span, item_key, text_hash
+
+logger = logging.getLogger(__name__)
+
+PROMPT_PATH = Path(__file__).parent / "prompts" / "negatives.txt"
+MODEL = rc.QWEN
+SETTINGS = {"temperature": 0, "max_tokens": 16384, "reasoning_effort": "medium"}
+RETRIES = 0                 # retries at T=0 repeat the same output (binding correction 1)
+TIMEOUT_S = 90.0
+DETECTOR = "negatives.v5"
+LANE = "accuracy"           # the normal/negative half of Accuracy
+ORIGINAL_KIND = "negative"  # key kind: stable whatever label the classifier gives
+CLASSES = ("dictated", "default", "implicated", "contradicted")
+CLS = {"assumed_normal": "info", "uncertain": "minor", "number": "minor", "conflict": "action", "removed": "action",
+       "measurement": "action"}   # no invented numbers: an undictated measurement is never minor
+CHECK_REASONS = ("uncertain", "conflict", "number")
+_POINTER_MAX = 60
+
+
+def _quote(pointer: str) -> str:
+    p = " ".join((pointer or "").split())
+    return f"“{p[:_POINTER_MAX - 1]}…”" if len(p) > _POINTER_MAX else f"“{p}”"
+
+
+def check_text(reason: str, pointer: str) -> Tuple[str, str]:
+    """(label, reason) for a check item: the label states why it is a check, naming the dictated finding (or the
+    number) when there is one; the reason says what to do."""
+    q = _quote(pointer) if pointer else ""
+    if reason == "conflict":
+        return ((f"Check: conflicts with {q}" if q else "Check: conflicts with your dictation"),
+                (f"Your dictation reports {q}, which this generated statement contradicts. Remove or correct it."
+                 if q else "Your dictation contradicts this generated statement. Remove or correct it."))
+    if reason == "number":
+        return ((f"Check: {q} is not in your dictation" if q else "Check: number not in your dictation"),
+                (f"The measurement {q} is in neither your dictation nor the history. Confirm or remove it."
+                 if q else "This number is in neither your dictation nor the history. Confirm or remove it."))
+    return ((f"Check: may not hold given {q}" if q else "Check: a dictated finding may affect this"),
+            (f"Your dictation reports {q}; this generated normal may not hold. Confirm or remove it."
+             if q else "A dictated finding may bear on this generated normal. Confirm or remove it."))
+
+_NEG = re.compile(r"\b(no|not|nil|without|normal(ly)?|unremarkable|patent|intact|clear|preserved|maintained|"
+                  r"within normal limits|non-?dilated|undilated|no evidence)\b", re.I)
+_NUM = re.compile(r"(?<![A-Za-z/\d.])\d+(?:\.\d+)?")  # skips T1, C7, L4/5; keeps 4cm
+_NUMBER_UNIT = re.compile(r"(?<![A-Za-z/\d.])(\d+(?:\.\d+)?)(\s*(?:mm|cm|ml|mL|%|HU|degrees?))?")
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def prompt() -> str:
+    return PROMPT_PATH.read_text().strip()
+
+
+# ── candidates and code checks ───────────────────────────────────────────────
+
+def is_normal_or_negative(clause: str) -> bool:
+    """A negative, or a normal statement in any wording the Accuracy lane leaves to this classifier
+    (`jev_pass.normal_statement`: "maintains continuity", "is smooth", ...)."""
+    return bool(_NEG.search(clause)) or normal_statement(clause)
+
+
+def candidates(report: str) -> List[dict]:
+    """Every normal/negative clause the check reads (FINDINGS + IMPRESSION), with the sentence before it.
+    Recommendation sentences are never candidates ("CT spine without contrast" is not a negative)."""
+    return [{"clause": c, "before": b} for c, b in checked_clauses_in_context(report, None).items()
+            if is_normal_or_negative(c) and not recommendation(c)]
+
+
+def candidate_spans(report: str) -> List[Tuple[int, int]]:
+    """Original-report spans of every clause the classifier will read: pure code, known before its model call."""
+    taken: List[Tuple[int, int]] = []
+    for c in candidates(report):
+        span = _locate(report, c["clause"], taken)
+        if span:
+            taken.append(span)
+    return taken
+
+
+def code_number_flag(clause: str, dictation: str, history: str) -> bool:
+    return bool(set(_NUM.findall(clause)) - set(_NUM.findall(f"{dictation}\n{history}")))
+
+
+def undictated_numbers(clause: str, dictation: str, history: str) -> str:
+    """The measurement(s) in a clause that the dictation and history do not contain, e.g. "12 mm"."""
+    have = {m.group(1) for m in _NUMBER_UNIT.finditer(f"{dictation}\n{history}")}
+    return ", ".join(m.group(0).strip() for m in _NUMBER_UNIT.finditer(clause) if m.group(1) not in have)
+
+
+# ── model output ─────────────────────────────────────────────────────────────
+
+def decode_json_list(v: Any) -> List[Any]:
+    """Qwen string-encodes list fields (L-50): accept a list, a JSON-encoded list, or one plain string."""
+    if v is None:
+        return []
+    if isinstance(v, list):
+        return v
+    s = str(v).strip()
+    if not s:
+        return []
+    if s.startswith('"') or s.startswith("["):
+        try:
+            out = json.loads(s)
+            if isinstance(out, str):
+                return [out]
+            if isinstance(out, list):
+                return out
+        except json.JSONDecodeError:
+            pass
+    return [s]
+
+
+class Labels(BaseModel):     # FLAT on purpose (L-50)
+    labels: List[str]
+
+    @field_validator("labels", mode="before")
+    @classmethod
+    def _decode(cls, v):
+        return [str(x) for x in decode_json_list(v)]
+
+
+def parse_labels(lines: List[str], n: int) -> Dict[int, dict]:
+    """'<n> | <class> | <pointer or -> | <number yes/no>' → {n: {...}}; unknown classes and out-of-range n dropped."""
+    out = {}
+    for line in lines:
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) < 2 or not parts[0].isdigit():
+            continue
+        i, cls = int(parts[0]), parts[1].lower()
+        if 1 <= i <= n and cls in CLASSES:
+            out[i] = {"cls": cls, "pointer": parts[2] if len(parts) > 2 and parts[2] != "-" else "",
+                      "number": len(parts) > 3 and parts[3].lower().startswith("y")}
+    return out
+
+
+def user_message(inp: ReviewInput, cands: List[dict]) -> str:
+    listing = "\n".join(f"{i}. {c['clause']}" for i, c in enumerate(cands, 1))
+    return (f"STUDY TITLE: {inp.study_title or inp.scan_type}\n\nCLINICAL HISTORY:\n{inp.clinical_history or '(none)'}"
+            f"\n\nDICTATION:\n{inp.artifacts.dictated_findings}\n\nREPORT:\n{inp.artifacts.report}"
+            f"\n\nSTATEMENTS TO CLASSIFY:\n{listing}")
+
+
+def _error_kind(e: BaseException) -> str:
+    name = type(e).__name__
+    return "validation" if any(t in name for t in ("Validation", "UnexpectedModelBehavior")) else "transport"
+
+
+async def classify(inp: ReviewInput, cands: List[dict]) -> Tuple[Dict[int, dict], Optional[str], Optional[str]]:
+    """(labels by 1-based index, error, error_kind). Never raises: a failure returns no labels (all default)."""
+    try:
+        r = await asyncio.wait_for(_run_agent_with_model(
+            model_name=MODEL, output_type=Labels, system_prompt=prompt(), user_prompt=user_message(inp, cands),
+            api_key="", model_settings=dict(SETTINGS), retries=RETRIES), TIMEOUT_S)
+        return parse_labels(r.output.labels, len(cands)), None, None
+    except Exception as e:  # noqa: BLE001 - fail-soft: every candidate stays assumed normal
+        logger.warning("review engine: negatives classifier failed (%s: %s)", type(e).__name__, str(e)[:200])
+        return {}, f"{type(e).__name__}: {str(e)[:200]}", _error_kind(e)
+
+
+# ── code removal ─────────────────────────────────────────────────────────────
+
+def _diff(before: str, after: str) -> Tuple[int, str]:
+    """(position, removed text) when `after` is `before` with one contiguous run deleted."""
+    p = 0
+    while p < len(after) and before[p] == after[p]:
+        p += 1
+    s = 0
+    while s < len(after) - p and before[-1 - s] == after[-1 - s]:
+        s += 1
+    return p, before[p:len(before) - s]
+
+
+def removal_edit(doc: str, clause: str) -> Optional[Edit]:
+    """Code's removal of one negative clause from `doc`, built by production's `remove_negative_clause`: a
+    `remove` Edit of exactly the deleted text, or None when the removal is not a single clean deletion of text
+    that occurs once."""
+    new = remove_negative_clause(doc, clause)
+    if new == doc:
+        return None
+    p, gone = _diff(doc, new)
+    if doc[:p] + doc[p + len(gone):] != new:
+        return None                                   # not a pure deletion (e.g. a list re-joined)
+    find = gone.strip()
+    if not find or doc.count(find) != 1:
+        return None
+    return Edit(mode="remove", find=find)
+
+
+def _locate(report: str, clause: str, taken: List[Tuple[int, int]]) -> Optional[Tuple[int, int]]:
+    """Span of a classified clause in the report: the clause itself, or, for an item split out of a negative list
+    ("No X" from "No A, X or B"), the item's own words."""
+    c = clause.strip().rstrip(".")
+    needles = [c]
+    m = re.match(r"^(?:No|There is no|There are no|Without)\s+(.+)$", c, re.I)
+    if m:
+        needles.append(m.group(1))
+    for needle in needles:
+        start = 0
+        while (i := report.find(needle, start)) >= 0:
+            span = (i, i + len(needle))
+            if not any(a < span[1] and span[0] < b for a, b in taken):
+                return span
+            start = i + 1
+    return None
+
+
+# ── routing ──────────────────────────────────────────────────────────────────
+
+def _conflict_fix(inp: ReviewInput, report: str, anchor: Optional[Span], clause: str, names: List[str]
+                  ) -> Tuple[Optional[Edit], Optional[dict]]:
+    """A contradicted statement code could not pre-apply: code's removal of it (verifier `_negative_fix`, never an
+    LLM rewrite, L-47) as a one-click edit when the code guards pass. Never pre-applied: no probe confirms it."""
+    if anchor is None:
+        return None, None
+    fix = verifier._negative_fix(report, anchor.start, anchor.end, clause, names)
+    if fix is None:
+        return None, None
+    fails = verifier.guard_failures(report, fix, "contradicted", inp.artifacts.dictated_findings or "",
+                                    inp.clinical_history or "", sections=names, target=clause)
+    if fails:
+        return None, None
+    return fix, {"code": True, "failed": [], "addressed": None, "contra": None, "unconfirmed": True}
+
+
+def _to_original(p: int, gaps: List[Tuple[int, int]], end: bool = False) -> int:
+    """A position on the post-removal text → the original report (`gaps`: removed original intervals, sorted and
+    disjoint). An `end` position stays before a gap that starts exactly there."""
+    o = p
+    for s, e in gaps:
+        if s < o or (s == o and not end):
+            o += e - s
+        else:
+            break
+    return o
+
+
+def _add_gap(gaps: List[Tuple[int, int]], s: int, e: int) -> List[Tuple[int, int]]:
+    out: List[Tuple[int, int]] = []
+    for a, b in sorted(gaps + [(s, e)]):
+        if out and a <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return out
+
+
+def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, dict]
+          ) -> Tuple[List[ReviewItem], str, Dict[str, List[int]]]:
+    """Labelled candidates → (items anchored on the original report, the report after pre-applied removals,
+    post-removal anchor positions by item id). Pure code."""
+    names = list(inp.artifacts.sections or [])
+    dictation, history = inp.artifacts.dictated_findings or "", inp.clinical_history or ""
+    report = inp.artifacts.report
+    doc = report
+    removed: List[dict] = []
+    gone_idx = set()
+    gaps: List[Tuple[int, int]] = []
+    for i, c in enumerate(cands, 1):
+        if (labels.get(i) or {}).get("cls") != "contradicted":
+            continue                                  # numbers are never removable (see the module docstring)
+        edit = removal_edit(doc, c["clause"])
+        if edit is None or report.count(edit.find) != 1 or verifier.preapply_failures(
+                doc, edit, "removed", dictation, code_built=True, sections=names):
+            continue                                  # not removable by code: a check item below
+        new = verifier.apply_edit(doc, edit, names)
+        if new is None:
+            continue
+        p, gone = _diff(doc, new)
+        k = gone.find(edit.find)
+        o_start = _to_original(p + k, gaps)
+        o_end = _to_original(p + k + len(edit.find), gaps, end=True)
+        for r in removed:                             # earlier post-removal points after p shift left
+            if r["post"] > p:
+                r["post"] = max(p, r["post"] - len(gone))
+        removed.append({"i": i, "post": p, "orig": (o_start, o_end), "edit": edit, "before_hash": text_hash(doc)})
+        gaps = _add_gap(gaps, _to_original(p, gaps), _to_original(p + len(gone), gaps, end=True))
+        gone_idx.add(i)
+        doc = new
+    h = text_hash(report)
+    items: Dict[int, ReviewItem] = {}
+    post: Dict[int, List[int]] = {}
+
+    def item(c: dict, kind: str, status: str, cls_key: str, anchor: Optional[Span], evidence: dict,
+             label: str, edit: Optional[Edit] = None, applied_hash: Optional[str] = None, reason: str = "",
+             verified: Optional[dict] = None) -> ReviewItem:
+        sec = verifier._section_of(report, anchor.start, names) if anchor else None
+        history = [{"at": _now(), "event": "created", "actor": "engine", "text_hash": h,
+                    "detail": {"detectors": [DETECTOR]}}]
+        if status == "pre_applied":
+            history.append({"at": _now(), "event": "pre_applied", "actor": "engine", "text_hash": applied_hash,
+                            "detail": {"kind": kind}})
+        return ReviewItem(key=item_key(LANE, ORIGINAL_KIND, c["clause"]), report_id=inp.report_id, run_id=run_id,
+                          lane=LANE, detectors=[DETECTOR], kind=kind, cls=CLS[cls_key],
+                          section=sec.upper() if sec else None, anchor=anchor, label=label, reason=reason,
+                          edit=edit, evidence=evidence, status=status, history=history,
+                          verified={"code": True, "failed": [], "addressed": None, "contra": None,
+                                    "unconfirmed": False, "preapply_failures": []} if status == "pre_applied"
+                          else verified)
+
+    for r in removed:
+        i = r["i"]
+        c, lab = cands[i - 1], labels.get(i) or {}
+        s0, e0 = r["orig"]
+        items[i] = item(c, "removed", "pre_applied", "removed",
+                        Span(start=s0, end=e0, text=report[s0:e0], text_hash=h),
+                        {"removal_reason": "contradicted", "pointer": lab.get("pointer", ""),
+                         "removed_text": r["edit"].find, "clause": c["clause"], "label": lab.get("cls") or "default"},
+                        "Removed: contradicts your dictation", r["edit"], r["before_hash"],
+                        reason=check_text("conflict", lab.get("pointer", ""))[1].replace(
+                            "Remove or correct it.", "It was removed; restore it if it is right."))
+        post[i] = [r["post"], r["post"]]
+    taken: List[Tuple[int, int]] = [r["orig"] for r in removed]
+    taken_post: List[Tuple[int, int]] = []
+    for i, c in enumerate(cands, 1):
+        lab = labels.get(i) or {}
+        cls = lab.get("cls") or "default"
+        if i in gone_idx or (cls == "dictated" and not c["number"]):
+            continue
+        span = _locate(report, c["clause"], taken)
+        if span:
+            taken.append(span)
+        pspan = _locate(doc, c["clause"], taken_post)
+        if pspan:
+            taken_post.append(pspan)
+            post[i] = list(pspan)
+        anchor = Span(start=span[0], end=span[1], text=report[span[0]:span[1]], text_hash=h) if span else None
+        base = {"clause": c["clause"], "label": cls}
+        given = lab.get("pointer", "")                # the classifier's pointer to the dictated finding, if any
+        if cls == "contradicted":
+            label, why = check_text("conflict", given)
+            fix, verified = _conflict_fix(inp, report, anchor, c["clause"], names)
+            items[i] = item(c, "check", "open", "conflict", anchor,
+                            {**base, "check_reason": "conflict", "pointer": given}, label, edit=fix, reason=why,
+                            verified=verified)
+        elif c["number"]:
+            nums = undictated_numbers(c["clause"], dictation, history)
+            label, why = check_text("number", nums)
+            measured = [n for n in checks.undictated_numbers(c["clause"], dictation, history)
+                        if checks.is_measurement(n)]
+            items[i] = item(c, "check", "open", "measurement" if measured else "number", anchor,
+                            {**base, "check_reason": "number", "pointer": nums,
+                             **({"dictated_pointer": given} if given else {})}, label, reason=why)
+        elif cls == "implicated":
+            label, why = check_text("uncertain", given)
+            items[i] = item(c, "check", "open", "uncertain", anchor,
+                            {**base, "check_reason": "uncertain", "pointer": given}, label, reason=why)
+        else:
+            items[i] = item(c, "assumed_normal", "open", "assumed_normal", anchor, base, "Assumed normal")
+    return ([items[i] for i in sorted(items)], doc,
+            {items[i].id: post[i] for i in sorted(items) if i in post})
+
+
+async def classify_negatives(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], dict]:
+    """The Task 14 entry point: (items, log). Never raises. `log` holds the report after pre-applied removals,
+    its hash, candidate/label counts, latency and any model error (fail-soft)."""
+    t0 = time.monotonic()
+    report = inp.artifacts.report or ""
+    dictation, history = inp.artifacts.dictated_findings or "", inp.clinical_history or ""
+    cands = [{**c, "number": code_number_flag(c["clause"], dictation, history)} for c in candidates(report)]
+    log: dict = {"detector": DETECTOR, "candidates": len(cands), "labelled": 0, "error": None, "error_kind": None,
+                 "report": report, "text_hash": text_hash(report), "post_removal_anchors": {}, "ms": 0}
+    if not cands:
+        return [], log
+    labels, err, kind = await classify(inp, cands)
+    try:
+        items, doc, post = route(inp, run_id, cands, labels)
+    except Exception as e:  # noqa: BLE001 - routing never fails the run: no items, report untouched
+        logger.warning("review engine: negatives routing failed (%s: %s)", type(e).__name__, str(e)[:200])
+        items, doc, post = [], report, {}
+        err, kind = err or f"{type(e).__name__}: {str(e)[:200]}", kind or "routing"
+    log.update(labelled=len(labels), error=err, error_kind=kind, report=doc, text_hash=text_hash(doc),
+               labels={str(k): v for k, v in labels.items()}, post_removal_anchors=post,
+               ms=int((time.monotonic() - t0) * 1000))
+    return items, log
+
+
+__all__ = ["Labels", "candidates", "candidate_spans", "code_number_flag", "undictated_numbers", "parse_labels", "user_message",
+           "classify", "removal_edit", "route", "classify_negatives"]

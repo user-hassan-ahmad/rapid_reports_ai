@@ -494,6 +494,14 @@ async def generate(
                 description=description,
             )
 
+            # Review engine (spec §10.4): shadow runs in a background task on the saved candidate; the stream, the
+            # saved report and the client are untouched. A no-op unless RR_REVIEW_ENGINE is set.
+            try:
+                from .review_engine.engine import schedule_review
+                schedule_review(str(report_row.id))
+            except Exception as e:  # the review engine never touches the report path
+                logger.warning("review engine not scheduled (%s: %s)", type(e).__name__, e)
+
             logger.info(
                 "[SSE] yielding done event report_id=%s sheet_id=%s succeeded=%s",
                 report_row.id,

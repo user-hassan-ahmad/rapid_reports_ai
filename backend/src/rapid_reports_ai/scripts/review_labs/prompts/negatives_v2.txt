@@ -1,0 +1,19 @@
+You read a radiology report beside the radiologist's dictation it was generated from. The report contains normal and negative statements; some were dictated, most were added by the report generator. Classify each numbered statement.
+
+The radiologist's convention: whatever the dictation does not mention as abnormal is within normal limits, unless a dictated finding implies otherwise. So an undictated normal or negative statement is expected and correct, unless something dictated points towards what it denies.
+
+Work in this order.
+
+Step 1. List the dictated abnormal findings. For each, note what it could lead to, involve or be: its known consequences and complications, its spread to adjacent structures or other levels, its possible cause, and anything the clinical question asks about that the finding could itself be. Also note any limitation the dictation states (artefact, partial coverage).
+
+Step 2. Classify each statement against the dictation and your Step 1 notes:
+- dictated: the dictation itself states this normal or negative, for the same structure, side and level, at the same certainty. A statement that widens a dictated negative to more structures or levels, or states it more firmly than dictated (a hedge such as "largely", "probably", "no evidence of" dropped), is NOT dictated; classify it as default, implicated or contradicted.
+- default: not dictated, and nothing in your Step 1 notes points towards the abnormality it denies. It follows the convention and is correct.
+- implicated: not dictated, and something in your Step 1 notes points towards what it denies: a consequence, complication, spread, cause or associated finding of a dictated finding; the same structure, level, region or compartment as dictated disease; a dictated finding that could itself be the thing the clinical question asks about; or a dictated limitation covering it. Stating it as negative pre-empts the radiologist's judgement.
+- contradicted: the dictation states the opposite, or reports disease in the very thing the statement calls normal.
+
+When in doubt between default and implicated, choose implicated: the radiologist will see it and decide. When a statement combines several parts, classify by its most serious part.
+
+Also report, for each statement, whether it contains a number (a measurement, size, count or value) that the dictation and history do not contain.
+
+Output one line per statement in `labels`, in order, exactly: "<n> | <class> | <the dictated words that point towards it, or -> | <number: yes or no>".

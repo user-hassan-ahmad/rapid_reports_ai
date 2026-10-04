@@ -2,7 +2,7 @@
 
 from sqlalchemy import Column, String, Text, Boolean, DateTime, JSON, ForeignKey, Integer, Float, UniqueConstraint, Index, ARRAY
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, deferred
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TSVECTOR
 from sqlalchemy import TypeDecorator
 from datetime import datetime, timezone
@@ -408,6 +408,10 @@ class Report(Base):
     final_report_content = Column(Text, nullable=True)  # After radiologist editing
     final_edit_diff = Column(Text, nullable=True)  # Patch between selected candidate and final — feedback signal
 
+    # Review rail workspace (spec §10.2): the migration adds reports.workspace_state (JSONB, nullable), but it is
+    # deliberately NOT mapped here yet: even deferred(), the column is INSERTed, so a deploy landing before the
+    # migration would break report creation. Slice D maps it, with the rail's read/write.
+
     # Foreign keys
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -451,6 +455,66 @@ class Report(Base):
             "selection_ms_since_ready": self.selection_ms_since_ready,
             "final_report_content": self.final_report_content,
         }
+
+
+def _now():
+    return datetime.now(timezone.utc)
+
+
+class ReportReviewRun(Base):
+    """One review-engine run over a report (spec §10.2)."""
+    __tablename__ = "report_review_runs"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    report_id = Column(UUID(as_uuid=True), ForeignKey("reports.id", ondelete="CASCADE"), nullable=False, index=True)
+    mode = Column(String(16), nullable=False)               # shadow | live
+    engine_version = Column(String(32), nullable=False)
+    pathway = Column(String(16), nullable=False)            # quick | templated
+    lanes = Column(JSONBType(), nullable=True)              # {lane: done | failed | skipped}
+    timings_ms = Column(JSONBType(), nullable=True)
+    cost = Column(JSONBType(), nullable=True)
+    errors = Column(JSONBType(), nullable=True)
+    shadow_log = Column(JSONBType(), nullable=True)         # Gate D: what options A / B would have done
+    created_at = Column(DateTime, default=_now, nullable=False)
+
+
+class ReportReviewItem(Base):
+    """One review item (the ReviewItem contract, spec §10.1)."""
+    __tablename__ = "report_review_items"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    report_id = Column(UUID(as_uuid=True), ForeignKey("reports.id", ondelete="CASCADE"), nullable=False, index=True)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("report_review_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    key = Column(String(32), nullable=False)
+    lane = Column(String(16), nullable=False)
+    detectors = Column(JSONBType(), nullable=True)
+    kind = Column(String(32), nullable=False)
+    cls = Column(String(16), nullable=False)
+    section = Column(String(200), nullable=True)
+    anchor = Column(JSONBType(), nullable=True)
+    label = Column(Text, nullable=True)
+    reason = Column(Text, nullable=True)
+    edit = Column(JSONBType(), nullable=True)
+    verified = Column(JSONBType(), nullable=True)
+    probe = Column(Text, nullable=True)
+    citation = Column(JSONBType(), nullable=True)
+    source_line = Column(Text, nullable=True)
+    evidence = Column(JSONBType(), nullable=True)           # {check_reason, pointer} (Task 14)
+    status = Column(String(16), nullable=False, default="open")
+    history = Column(JSONBType(), nullable=True)
+    engine_version = Column(String(32), nullable=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+
+class ReportChatMessage(Base):
+    """A rail chat message (spec §10.2; used from Slice D)."""
+    __tablename__ = "report_chat_messages"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    report_id = Column(UUID(as_uuid=True), ForeignKey("reports.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(String(16), nullable=False)
+    content = Column(Text, nullable=False)
+    edits = Column(JSONBType(), nullable=True)
+    applied_item_ids = Column(JSONBType(), nullable=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
 
 
 class ReportVersion(Base):

@@ -32,6 +32,9 @@ from rapid_reports_ai.database.models import (  # noqa: E402
     Template,
     ReportQualityScore,
     TemplateCaseSheet,
+    ReportReviewRun,
+    ReportReviewItem,
+    ReportChatMessage,
 )
 from rapid_reports_ai.main import app  # noqa: E402
 
@@ -47,6 +50,9 @@ _TEST_TABLES = [
     Report.__table__,
     ReportQualityScore.__table__,
     TemplateCaseSheet.__table__,
+    ReportReviewRun.__table__,
+    ReportReviewItem.__table__,
+    ReportChatMessage.__table__,
 ]
 
 
@@ -108,7 +114,7 @@ def client(db_session: Session, monkeypatch) -> Iterator[TestClient]:
 
 
 _QUALITY_MODULES = ("test_quick_report_quality", "test_report_review", "test_template_pipeline",
-                    "test_golden_quick_pipeline")
+                    "test_golden_quick_pipeline", "test_review_engine_shadow")
 
 
 @pytest.fixture(autouse=True)

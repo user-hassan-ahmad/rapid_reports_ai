@@ -877,6 +877,10 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
     if protected and not _protected_intact(original, report, protected):
         report = pre_repair if _protected_intact(original, pre_repair, protected) else original
         tel["error"] = "protected text changed; repair reverted"
+    # Gate D shadow log (review engine spec §9): the report before today's automatic edits, kept only while the
+    # review engine runs (shadow or live) and only when an edit was applied.
+    if os.environ.get("RR_REVIEW_ENGINE", "off").strip().lower() in ("shadow", "live") and report != original:
+        tel["pre_edit_report"] = original
     return report, options, tel
 
 

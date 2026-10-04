@@ -1787,3 +1787,203 @@ stated / unclear → nothing. A failed report call or an unreadable answer inser
   `repair_report` copy, not touched here). Validation: coronary B/C/D x2 and polytrauma C x3, quick-shaped stored
   reports through the fixed check: the same clauses flagged (0.64-0.76), all in `review`, report unchanged, no
   "LMP" or "No gallbladder" written.
+
+### L-50 · Qwen-authored Jev questions and "list the inputs, then decide": lab result (negative), 2026-10-02/03
+
+**References:**
+- Spec: `docs/superpowers/specs/2026-10-02-qwen-authored-jev-questions-lab-design.md`, which has the full results sections.
+- Code and fixtures: `backend/src/rapid_reports_ai/scripts/jev_tool_lab/`, `backend/test_cases/jev_tool_lab/`. Branch `feat/review-rail`.
+- Raw results: session scratchpad, `jev_tool_lab/{pilot,phase3}/`.
+
+**Question:** does Qwen do better at a gradability judgement ("is this finding gradable with system X from what was dictated?") when it hands narrow stated-text questions to Jev, or when it lists the system's inputs before deciding?
+
+**Results:**
+
+| Phase | Items | Result |
+|---|---|---|
+| Jev wording check | 48 synthetic | New wordings pass (AUC 1.0, margins ≥ 0.71, including finding-scoped topics). Chosen: T2-dictation w1, T6 w2. |
+| Pilot | 20 | Jev-as-tool **no-go**. B (Qwen plans, Jev answers, code decides) cost more than A (1.3× tokens). C's lift over A was matched by its no-Jev control (C vs Cb 1/1, 1/0). |
+| Phase 3 | 100 (50/50, 8 categories), run 2 on a 40-item subset | **No arm beats single-pass A.** Run-1 balanced accuracy: A 0.82, E1on 0.80, E2 0.78, E1off 0.765. Gains/losses vs A: E1off 7/13, E1on 3/5, E2 5/10. Stability 1.0 for every arm. |
+
+**What we learned:**
+1. **Over-demanding is the dominant failure.** All arms label gradable items "not gradable" because they require inputs the system doesn't need: false alarms 0.16 for A, 0.25–0.27 for the listing arms. Listing every input makes this worse. It helps with overcalls from silence and with neighbouring findings, but loses more on knowledge traps and complete items.
+2. **The limiting factor is Qwen's knowledge of each system's inputs, not its reading.** Jev answered stated-text questions correctly, and E1's checklists were self-consistent (1.0) and grounded (quotes found in the dictation 0.98–0.99).
+3. **Prompt wording sets the trade-off.** The "standard meaning / ordinarily dictated features" rule (Hassan's rulings) fixed A's over-demands, but invited overcalls from silence on multi-segment systems such as CAD-RADS.
+4. **Qwen structured output string-encodes nested values** (an object or a list) in some calls. Fix it with a flat schema and decode string-encoded JSON at the boundary. Retries at temperature 0 repeat the same output, so they never help.
+
+**Decision:** keep the single-call adjudicator. Jev stays a detector and verifier, not a reasoning tool.
+
+**Open lead, untested:** give the judge the system's criteria (the guideline synthesis already carries `criteria` text per classification) instead of relying on Qwen's recall. That targets failure 1 directly.
+
+### L-51 · Gate A: coverage recall with adjudicator v4 / v4.1, 2026-10-04
+
+Plan `docs/superpowers/plans/2026-10-03-review-engine-gate-labs.md` Part A; code `backend/src/rapid_reports_ai/scripts/review_labs/` (gate_a, judgement). Data: the 50 v3 cards plus the 22 unsampled Jev flags from the same 41 reports (72 items). **Labels are Claude peer reads, blind and radiologist-cap**, following the policy in memory `review-item-policy` (Hassan delegated labelling on 2026-10-04: memory `peer-read-as-gate`). Production text stays in the scratchpad.
+
+| Measure (bar) | v4 (2 runs) | v4.1 (1 run) |
+|---|---|---|
+| Action recall (≥ 90%) | **14/14** | 13/14 |
+| Material losses shown (all) | **all** | missed c42 |
+| Everything worth showing (action + minor) actually shown | **47/53** | 44/53 |
+| Action precision (≥ 85%) | 48% | 57% |
+| Minor per report, median (≤ 2) | 1 | 0 |
+| Class change across runs (≤ 10%) | **0/72** | n/a |
+| Fixes right (peer, items 1–36) | 14/23 | 16/20 |
+
+- **v4 fixes v3's recall loss.** v3 suppressed 23 likely-real items; v4 hides none of the material losses.
+- **v4.1** adds a sharper action definition, a blanket-normal rule and gradability rules. It improved precision a little and fixed more of the fixes, but lost one material item (c42), so a recall regression.
+- **Both fail the action-precision bar.** v4 promotes low-impact descriptor drops to action. Because action and minor are both shown, this is a ranking issue, not a safety one.
+- **Recurrent misses:**
+  - c6: the duct calibre written as the pancreatic body/tail size, a misattribution neither version catches;
+  - c2: a dropped right effusion;
+  - c21/c23: false actions from not separating a collection from free fluid, or a focal from a global finding.
+
+**Decision:** keep **v4** for Coverage, since it has full recall with zero material loss, and leave the action/minor boundary alone until the Gate F shadow read. v4.1's gradability rules stay with the Additions adjudicator (L-52); they are lane-specific.
+
+### L-52 · Gate C: additions, 2026-10-04
+
+Data: stored S4 synthesis for 33 of the 41 reports, the "already in report" Jev gate, the adjudicator with and without supplied criteria, the 100-item `s1_phase3.json` grade set, and the clinical pass on all 41. Labels: Claude peer reads.
+
+- **Safety:**
+  - v4: 12 hard violations, with only 2 caught by the verifier (invented negatives, grades from undictated or misread features, clinical-only scales, management, a slip-based grade).
+  - **v4.1 plus additions code guards:** hard violations with a working Apply fix fell from 10/12 to **1/12**, and none in the 8 newly shown rows; action rows fell from 16 to 1.
+  - Soft risk remaining: a follow-up interval that is wrong but passes the verifier.
+- **Value:** about a third of the shown items are correct and useful (v4 14/49; v4.1's new rows 1/8). The lane still promotes "nothing to add" points to minor, a calibration issue.
+- **s1 gradability:**
+
+  | | False "can't grade" | Overcall | Balanced accuracy |
+  |---|---|---|---|
+  | v4 | 0.04 | 0.58 | 0.69 |
+  | v4.1 | 0.30 | 0.16 | 0.77 |
+
+  L-50's single call reached 0.82. Over-demanding is the safer error, since `characterise` is capped at minor.
+- **Criteria arm:** only 22 of 100 items had production criteria (per-grade text only), so it is directional only and not adopted.
+- **"Already in report" Jev gate:** 5% false "stated" in the peer sample, with no exit-option use.
+- **Clinical pass v1.1:**
+  - characterise 17/20 useful, inconsistencies 9/11, safety 3/4;
+  - urgency agreement 32/41, and critical-tier recall rose from 1/4 to 3/4;
+  - catches history-contradicted normals.
+
+**Decision:**
+- Additions ships as **minor/option only**, behind the code guards (no new findings, negatives or management). Guideline items render as "suggested · not included" ghost text.
+- Next calibration step: an Additions-specific class rule so that the adjudicator's own "nothing to add" reasoning becomes suppress.
+- The clinical pass is the strongest Additions producer and is kept.
+
+### L-53 · Gate B2: the "is this positive statement supported?" Jev wording lab, 2026-10-04
+
+Data: 100 balanced items, all positive report clauses.
+- **50 not stated:** 30 production spans, confirmed unsupported by peer read and filtered to positive statements (14 certainty upgrades, 11 other, 2 invented findings, 2 invented priors, 1 misattribution), plus 20 synthetic fabrications seeded into real reports (7 invented findings, 7 invented measurements, 6 invented priors).
+- **50 stated:** a peer reader picked 10 each of verbatim, paraphrased, hedged, merged and abbreviated, across 39 reports.
+
+Five arms (W1, W2 noul and Choice; W3 Choice), 2 runs each, Jev 1.13. Production text stays in the scratchpad. Baseline: the L-46 naive question, 5/32 with 49 false alarms.
+
+| | W1n | W2c | Others |
+|---|---|---|---|
+| AUC | 0.972 | 0.967 | 0.965–0.976 |
+| False alarms on stated clauses | **0/50** | 0/50 | 0/50 |
+| Lowest stated score | **0.90** | 0.63 | |
+| Invented finding / measurement / prior / misattributed caught | **25/25** | 25/25 | 25/25 |
+| "Other" production caught | 9/11 | 9/11 | |
+| **Certainty upgrades caught** | **3/14** | 4/14 | 2–4/14 |
+| Max drift across runs | **0.04** | 0.13 | up to 0.21 |
+
+**Finding:** the wording counts a finding as stated "including as a possibility", so a dropped hedge correctly scores as stated. Certainty is a separate question. Excluding certainty upgrades, **W1n catches 34/36 (94%) with 0/50 false alarms**, which clears the bar (≥ 90% recall, ≤ 5% false alarms, drift ≤ 0.2).
+
+**Decision:**
+- Adopt **W1n** ("The dictated findings report this finding, including as a possibility, in any wording. Report statement: …") as the Accuracy lane's unsupported-positive detector. Flag at < 0.5 (the measured gap: stated ≥ 0.90, while invented content clusters low). An item in the unsure band 0.5–0.85 goes to the adjudicator (§6.5).
+- **Certainty upgrades get their own detector:** the code `hedge_tag` comparison of dictated against report certainty on aligned pairs (Plan 2 Task 3), measured on these 14 production upgrades as the gold set. A Jev certainty question is wording-lab material only if code misses them.
+
+### L-54 · Gate D: automatic edits, closed by decision, 2026-10-04
+
+Live data was too thin: one report since L-47 carried an automatic edit. Hassan decided the policy directly (spec §9, 2026-10-04):
+- **Auto-insert** a missed dictated finding only when it is `absent` and verified, shown as "restored from your dictation · undo". The old live insertions were 11/148 correct; v4 handles fully dropped findings well (L-51).
+- **Auto-remove contradicted *generated* negatives**, visibly and restorably (Plan 2 Task 14).
+- **Never auto-remove dictated text** (f85aa670, PR #6).
+- **Auto-correct a positive contradiction** only as a verbatim restoration of dictated wording, verified.
+
+The replay of earlier reports (`gate_d replay`) is built and tested, and stays available for the Gate F shadow read.
+
+### L-55 · Certainty and severity: Jev beats code; Jev owns it, 2026-10-04
+
+Code checks (Gate B1, peer gold, 41 reports):
+- invented numbers, priors and modality words: 3/5 caught;
+- dropped hedges: **6/14** via `hedge_tag`;
+- 0.68 flags per report that match no gold span;
+- invented findings without a number: 0/16, by design (W1n's job, L-53).
+
+The `hedge_tag` misses split three ways:
+- lexicon gaps ("suspicion of", "cannot exclude");
+- comparing against the wrong paired line;
+- **meaning upgrades with no hedge word** ("near-occlusion" → "occlusion", "sclerosis" → "MRONJ extension", "subtle erosion" → "metastasis"). Code can never see these.
+
+Certainty wording lab (`scripts/review_labs/certainty_lab.py`): 85 items, made up of 35 overstated (14 real upgrades, 14 synthetic hedge-hardenings, 7 synthetic severity bumps) and 50 faithful (the B2 stated set, including 10 that keep their hedge). 2 runs. **Directional: below the 100 items needed for adoption, and 35/50 rather than balanced.**
+
+| Wording | Real caught | Synth hedge | Synth severity | False alarms | Drift | AUC |
+|---|---|---|---|---|---|---|
+| **C1n** "states a finding as more certain or more severe than the dictated findings do…" | **12/14** | 11/14 | **7/7** | **1/50** | 0.08 | 0.955 |
+| C2n (positive polarity) | 12/14 | 8/14 | 7/7 | 1/50 | 0.09 | 0.963 |
+| C3c Choice same / more / less / can't tell | 13/14 | 11/14 | 7/7 | 3/50 | 0.12 | 0.959 |
+
+**Decision (Hassan: "code isn't best for this; keep code where it's good"):**
+- **C1n owns certainty and severity** in the Accuracy lane, asked of every positive report clause, at < 0.5 in the measured gap. Its unsure band goes to the adjudicator.
+- **The code `overstated` detector is removed**, so one judgement has one owner; `hedge_tag` stays only as an evidence helper.
+- **Code keeps the mechanical checks:** numbers, dates, prior studies, modality words and size words.
+- Before adoption, re-run C1n at ≥ 100 balanced items, using the Gate F shadow sample.
+
+### L-56 · Gate B1: code checks and alignment, accepted; only code-built edits are pre-applied, 2026-10-04
+
+**Code checks** (`review_engine/checks.py`, after fixes 8b2892b; peer gold, 41 reports):
+- **0.12 non-gold flags per report**, against a bar of ≤ 1;
+- code-owned gold caught: 3/6 (numbers, dates, priors, modality and size words);
+- certainty is not in code (L-55).
+
+**Alignment** (`review_engine/alignment.py`, pure code, report clauses ↔ dictated lines). The B1 peer read scored it at 63%; the fixes in d825e63 (level canonicalisation, block sides, best-match pruning, en-dash levels) raised it to **86.8% correct**. Its only consumers are `misattributed`, `level_conflict`, `laterality` and the popover.
+
+**Decision (Hassan):** accept alignment as a confidence-gated supporting tool. Its consumers fire only on high-confidence pairs, and there is no AI aligner for now. Revisit if the Gate F shadow read shows alignment-driven false flags.
+
+**Automatic edits.** The adversarial re-review of the verifier (431c96c) found 40 breaks, 18 of them on auto-apply paths; for example, a "removal" replace turned "No PE." into "Large PE.". **Decision (Hassan): only code-built edits are pre-applied:**
+- removals built by `remove_negative_clause`, negative-only and never dictated;
+- inserts that are the dictated line tidied, not reworded;
+- positive corrections that swap in the dictated tokens verbatim.
+
+Model-written edits are always one click. See Plan 2 correction 12 and spec §9.
+
+### L-57 · Review engine live evaluation (Task 13), 20 production reports, 2026-10-04
+
+The harness is `scripts/review_engine_eval.py`. It runs the real shadow path with live Jev and Qwen, one report at a time, with no database write. Production text stays in the scratchpad.
+
+**The set.** 18 of the 20 reports are matched to their generator in the scratchpad case file. Because recent eligible reports were scarce, the window was widened to 365 days, so the matched set spans several generators:
+
+| Generator | Reports |
+|---|---|
+| Qwen 3.8 (current) | 10 |
+| Qwen 3.6 | 5 |
+| GLM-4.7 (Aug) | 3 |
+
+All 20 are quick reports. The plumbing and latency numbers hold. Item rates partly reflect generators that are retired, so the Gate F shadow read measures the current pipeline.
+
+**Run 1:**
+- 0/20 errors or timeouts;
+- latency p50 6.3 s, p90 9.3 s; the adjudicator is about 80% of that, Jev p50 0.42 s;
+- 4.75 rail-visible items per report;
+- 0 would-pre-apply edits:
+  - no `absent` coverage items, since today's omission repair already catches them;
+  - 2 real contradictions of positively worded generated normals, blocked by `not_negative_only`.
+
+**Fixes from the hand read** (0000fde, 9c1a59d):
+- invented measurements are at least `action`;
+- normal-statement recognition is shared, and positively worded normals are now negatives-classifier candidates;
+- check reasons are in the labels;
+- brief options keep their one-click edit;
+- clauses the classifier owns are held back before adjudication.
+
+**Run 2** (the last allowed run):
+- rail-visible items 4.55 per report;
+- adjudicated groups 192 → 140; adjudicator p50 5.0 → 3.4 s;
+- brief options with an edit 2/8 → 6/8.
+
+**Policy (Hassan).** A positively worded normal gets the same four labels as a "No X" negative.
+- Inference from the disease process is **implicated**. Example: "lateral and third ventricles normal in size" beside dictated aqueduct and 4th-ventricle effacement. Live classifier: implicated.
+- A direct denial of a dictated finding is **contradicted**. Example: "liver surface is smooth" beside dictated capsule invasion. Live classifier: contradicted.
+- **Auto-removal is NOT extended** to positively worded normals. They stay one-click until the Gate F read and an adversarial probe of a narrow positive-normal gate.
+
+**Convention (Hassan).** An organ with a finding leads with the finding. "Normal … apart from X" is a generation defect; it was seen in one GLM report and in none of the 10 Qwen 3.8 reports. Measure it in Gate F before touching generation.

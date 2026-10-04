@@ -3785,6 +3785,7 @@ async def _run_agent_with_model(
     use_thinking: bool = False,
     model_settings: dict = None,
     tools: list = None,
+    retries: int = 2,
 ):
     """
     Run an agent with unified model creation and execution.
@@ -3798,6 +3799,7 @@ async def _run_agent_with_model(
         use_thinking: Whether to enable thinking mode (only for Groq)
         model_settings: Additional model settings dict
         tools: Optional list of async callable tools to register on the agent
+        retries: pydantic-ai output/tool retries (0 = one call, no re-ask on a validation failure)
     
     Returns:
         Agent result object
@@ -3827,7 +3829,7 @@ async def _run_agent_with_model(
         system_prompt=system_prompt,
         model_settings=agent_model_settings,
         tools=tools or [],
-        retries=2,
+        retries=retries,
     )
     
     # Build final model settings dict
