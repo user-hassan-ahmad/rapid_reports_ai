@@ -11,7 +11,7 @@ from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, File, Uplo
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Dict, Optional, List, Any, Literal
+from typing import Dict, Optional, List, Any, Literal, Union
 import copy
 import hashlib
 import os
@@ -85,6 +85,7 @@ from .encryption import encrypt_api_key, decrypt_api_key, get_system_api_key
 from .canvas_routes import canvas_router
 from .agentic_routes import agentic_router
 from .chat_prompt import build_chat_system_prompt
+from . import chat_edits as _chat_edits
 from .enhancement_utils import (
     MODEL_CONFIG,
     MODEL_PROVIDERS,
@@ -3875,6 +3876,10 @@ class ChatRequest(BaseModel):
     message: str
     history: Optional[List[Dict[str, Any]]] = None
     audit_fix_context: Optional[AuditFixContext] = None
+    # Review rail (spec §12.5): the editor's current text (edits are checked against it; defaults to the stored
+    # report) and the open review items (ids, or compact {id, section, kind, label}) so chat doesn't duplicate them.
+    text: Optional[str] = None
+    open_items: Optional[List[Union[str, Dict[str, Any]]]] = None
 
 class ComparisonRequest(BaseModel):
     prior_reports: List[dict]  # [{text: str, date?: str}]
@@ -3939,6 +3944,7 @@ class ChatStructuredActionsRequest(BaseModel):
             "message is self-contained."
         ),
     )
+    edits_json: Optional[str] = Field(None, description=_chat_edits.EDITS_JSON_DESCRIPTION)
 
 
 class SearchExternalGuidelinesRequest(BaseModel):
@@ -4162,6 +4168,32 @@ def _merge_chat_source_lists(
     return out
 
 
+def _chat_open_items_block(db: Session, report_id: str, open_items: Optional[list]) -> str:
+    """Spec §12.5: the open review items go into the chat context. Ids are resolved from the stored items."""
+    if not open_items:
+        return ""
+    stored: list = []
+    if any(isinstance(o, str) or (isinstance(o, dict) and not o.get("label")) for o in open_items):
+        try:
+            from .review_engine import store as _review_store
+            stored = _review_store.list_items(db, report_id)
+        except Exception as e:  # fail open: chat still answers without the items
+            print(f"⚠️ chat open_items lookup failed: {type(e).__name__}: {str(e)[:200]}")
+    return _chat_edits.format_open_items_block(_chat_edits.resolve_open_items(open_items, stored))
+
+
+def _chat_verified_edits(report: Any, text: str, raw_edits: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Each chat edit through the one-click code guards against the current text; fails closed per edit."""
+    if not raw_edits:
+        return []
+    dictation, history, sections = _chat_edits.report_sources(report)
+    try:
+        return _chat_edits.verify_chat_edits(text, raw_edits, dictation, history, sections)
+    except Exception as e:
+        print(f"⚠️ chat edit verification failed: {type(e).__name__}: {str(e)[:200]}")
+        return [{**e_, "verified": False, "failed": ["verify_error"]} for e_ in raw_edits]
+
+
 @app.post("/api/reports/{report_id}/chat")
 async def chat_about_report(
     report_id: str,
@@ -4230,13 +4262,18 @@ async def chat_about_report(
 
         print(f"📚 Chat context: {len(guidelines)} guideline(s), {len(guideline_sources)} source(s) | report={report_id[:8]}…")
 
+        current_text = request.text if request.text is not None else (report.report_content or "")
         system_prompt = build_chat_system_prompt(
-            report_content=report.report_content,
+            report_content=current_text,
             enhancement_context=enhancement_context,
             audit_memory_block=audit_memory_block,
             audit_holistic_block=audit_holistic_block,
             audit_fix_block=audit_fix_block,
         )
+        open_items_block = _chat_open_items_block(db, report_id, request.open_items)
+        if open_items_block:
+            system_prompt = f"{system_prompt}\n\n{open_items_block}"
+        raw_edits: List[Dict[str, Any]] = []
         
         messages = [
             {"role": "system", "content": system_prompt}
@@ -4392,6 +4429,7 @@ async def chat_about_report(
                             print(f"  Conversation summary: {args['conversation_summary'][:100] if args['conversation_summary'] else 'None'}...")
                         
                         structured_actions_data = ChatStructuredActionsRequest(**args)
+                        raw_edits += _chat_edits.parse_edits_json(structured_actions_data.edits_json)
                         
                         print(f"\n📋 Extracted {len(structured_actions_data.actions)} structured actions:")
                         for i, action in enumerate(structured_actions_data.actions, 1):
@@ -4540,6 +4578,7 @@ async def chat_about_report(
                         try:
                             sargs = json.loads(stc.function.arguments)
                             salvage_actions_data = ChatStructuredActionsRequest(**sargs)
+                            raw_edits += _chat_edits.parse_edits_json(salvage_actions_data.edits_json)
                             print(f"🛟 SALVAGE: Parsed {len(salvage_actions_data.actions)} action(s):")
                             for i, a in enumerate(salvage_actions_data.actions, 1):
                                 print(f"   {i}. {a.title}")
@@ -4712,7 +4751,8 @@ async def chat_about_report(
         return {
             "success": True,
             "response": response_text,
-            "edit_proposal": edit_proposal,
+            "edit_proposal": edit_proposal,  # old sidebar; kept for one release (spec §12.5)
+            "edits": _chat_verified_edits(report, current_text, raw_edits),
             "actions_applied": actions_for_frontend,
             "sources": sources,
         }
