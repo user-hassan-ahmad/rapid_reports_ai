@@ -388,25 +388,6 @@ def _uuid(x):
     return _u.UUID(x)
 
 
-def test_live_behaves_as_shadow_and_warns_once(monkeypatch, caplog):
-    monkeypatch.setenv("RR_REVIEW_ENGINE", "live")
-    monkeypatch.setattr(engine, "_LIVE_WARNED", False)
-    warned = []   # count calls directly: the full suite reconfigures logging (main import), so caplog is unreliable
-    monkeypatch.setattr(engine.logger, "warning", lambda msg, *a, **k: warned.append(msg % a if a else msg))
-    assert engine.mode() == "shadow" and engine.mode() == "shadow"
-    assert sum("live" in m for m in warned) == 1
-    assert not engine.rail_enabled()
-
-
-async def test_live_persists_as_shadow(monkeypatch, db_session, test_user):
-    _dup_stubs(monkeypatch)
-    rid = _stored_report(db_session, test_user, monkeypatch, DUP_REPORT, DUP_DICT)
-    monkeypatch.setenv("RR_REVIEW_ENGINE", "live")
-    run_id = await engine.run_and_store(rid)
-    assert _run_row(db_session, run_id).mode == "shadow"
-    assert not any(i.status == "pre_applied" for i in store.list_items(db_session, rid, include_suppressed=True))
-
-
 async def test_runs_limited_by_concurrency(monkeypatch):
     monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
     monkeypatch.delenv("RR_REVIEW_CONCURRENCY", raising=False)

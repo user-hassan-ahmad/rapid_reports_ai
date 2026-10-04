@@ -6,12 +6,19 @@ adjudicate → items → verify → sequenced pre-apply → store.
 Flags: RR_REVIEW_ENGINE=off (default) | shadow | live; RR_REVIEW_LANES an optional subset of the lanes;
 RR_REVIEW_CONCURRENCY (default 1) caps concurrent runs process-wide so shadow never competes with generation for
 model quota; RR_REVIEW_SAMPLE (0–1, default 1.0) is the share of saved reports reviewed. No per-user gating.
-`live` behaves as `shadow` (warned once) until a live report write exists. In shadow the engine runs in a background
-task after the candidate is saved; it writes rows only and NOTHING is applied to the user-visible report: the
-pre-apply sequence is computed and recorded in the run's shadow log (Gate D) and in `ReviewResult.report`, never
-written back.
+In shadow the engine runs in a background task after the candidate is saved; it writes rows only and NOTHING is
+applied to the user-visible report: the pre-apply sequence is computed and recorded in the run's shadow log (Gate D)
+and in `ReviewResult.report`, never written back.
 
-One text (I5): every persisted anchor is on the ORIGINAL report (the text the user sees; `text_hash` = its hash).
+Live (`write_mode() == "live"`: RR_REVIEW_ENGINE=live and the rail on; RR_REVIEW_RAIL=0 is the kill switch and makes
+a live engine behave exactly as shadow): the pre-applied text is written ONCE to the report as a new current
+ReportVersion (`store.write_live`), only while the report still holds exactly the reviewed text (else nothing is
+written and the run persists as shadow). The pre-edit text stays in the previous version and in the run log
+(`shadow_log.live_write.pre_edit_report`); items keep `pre_applied`, every anchor moves onto the written text and each
+pre-applied item carries `evidence.undo` (`live.rebase_items`). No Gate D log in live.
+
+One text (I5): in shadow every persisted anchor is on the ORIGINAL report (the text the user sees; `text_hash` = its
+hash); in live, on the written report.
 The would-be final report, the negatives' post-removal report and the negatives' post-removal anchor positions are
 kept in the shadow log only, so offsets can be reconstructed for the Gate D / F reads.
 
@@ -63,7 +70,7 @@ from typing import Dict, List, Optional, Tuple
 from pydantic import BaseModel
 
 from ..report_review import is_negative
-from . import adjudicator, brief_normals, claims, jev_pass, negatives, store, verifier
+from . import adjudicator, brief_normals, claims, jev_pass, live, negatives, store, verifier
 from .alignment import Alignment, align
 from .checks import run_checks
 from .items import Candidate, Edit, ReviewInput, ReviewItem, Span, item_key, merge, text_hash
@@ -82,20 +89,10 @@ _DEFAULT_LANES = "coverage,accuracy,additions"
 
 # ── flags ───────────────────────────────────────────────────────────────────
 
-_LIVE_WARNED = False
-
-
 def mode() -> str:
-    """off | shadow. `live` is accepted but behaves as `shadow` until a live report write exists (I6): nothing may be
-    persisted as pre-applied while the user-visible report does not contain the edit."""
-    global _LIVE_WARNED
+    """off | shadow | live (anything else is off)."""
     v = os.environ.get("RR_REVIEW_ENGINE", "off").strip().lower()
-    if v == "live":
-        if not _LIVE_WARNED:
-            _LIVE_WARNED = True
-            logger.warning("review engine: RR_REVIEW_ENGINE=live behaves as shadow (no live report write yet)")
-        return "shadow"
-    return v if v == "shadow" else "off"
+    return v if v in ("shadow", "live") else "off"
 
 
 def concurrency() -> int:
@@ -123,6 +120,13 @@ def lanes_enabled() -> List[str]:
 
 def rail_enabled() -> bool:
     return mode() == "live" and os.environ.get("RR_REVIEW_RAIL", "1").strip() != "0"
+
+
+def write_mode() -> str:
+    """What a run does with the report: `live` writes its pre-applied edits (only while the rail is on: RR_REVIEW_RAIL=0
+    is the kill switch, and a live engine with the rail off behaves exactly as shadow), `shadow` records them only."""
+    m = mode()
+    return "off" if m == "off" else ("live" if rail_enabled() else "shadow")
 
 
 class ReviewResult(BaseModel):
@@ -725,8 +729,9 @@ async def _gate_d(inp: ReviewInput) -> Optional[dict]:
 
 
 async def run_and_store(report_id: str, text: Optional[str] = None) -> Optional[str]:
-    """Run the engine over a saved report and store the run and its items. Never raises, never writes the report
-    (in shadow the pre-apply sequence is only recorded in the shadow log). At most `concurrency()` runs at once."""
+    """Run the engine over a saved report and store the run and its items. Never raises. In shadow the pre-apply
+    sequence is only recorded in the shadow log; in live it is written once (`store.write_live`). At most
+    `concurrency()` runs at once."""
     try:
         inp = await load_input(report_id, text)
         if inp is None:
@@ -738,8 +743,14 @@ async def run_and_store(report_id: str, text: Optional[str] = None) -> Optional[
         return None
 
 
+def live_actions(items: List[ReviewItem]) -> List[dict]:
+    """The pre-applied edits, as the new report version's `actions_applied`."""
+    return [{"source": "review_engine", "item_id": it.id, "kind": it.kind, "lane": it.lane,
+             "edit": it.edit.model_dump() if it.edit else None} for it in items if it.status == "pre_applied"]
+
+
 async def _run_and_store(inp: ReviewInput, report_id: str) -> str:
-    m = mode()
+    m = write_mode()
     run_id = await asyncio.to_thread(_with_session, store.create_run, report_id, m, ENGINE_VERSION, inp.pathway)
     try:
         res = await run_review(inp, run_id)
@@ -757,7 +768,21 @@ async def _run_and_store(inp: ReviewInput, report_id: str) -> str:
               "pre_applied_hash": text_hash(res.report), "final_report": res.report,
               "negatives_report": res.run["negatives_report"],
               "negatives_post_removal_anchors": res.run["negatives_post_removal_anchors"]}
-    await asyncio.to_thread(_with_session, store.save_items, shadow_items(res.items))
+    items = res.items
+    if m == "live" and res.report != inp.artifacts.report:
+        try:
+            live_write = await asyncio.to_thread(_with_session, store.write_live, report_id, inp.artifacts.report,
+                                                 res.report, live_actions(items))
+        except Exception as e:  # noqa: BLE001 - a failed write leaves the report as it was: persist as shadow
+            live_write = {"applied": False, "reason": f"error: {type(e).__name__}: {str(e)[:200]}"}
+        shadow["live_write"] = live_write
+        if live_write.get("applied"):
+            live.rebase_items(items, inp.artifacts.report, res.report)   # anchors on the text the user now sees
+        else:
+            items = shadow_items(items)                                  # I6: nothing pre-applied that is not shown
+    else:
+        items = shadow_items(items)
+    await asyncio.to_thread(_with_session, store.save_items, items)
     await asyncio.to_thread(_with_session, store.finish_run, run_id, res.run["lanes"], res.run["timings_ms"],
                             res.run["cost"], errors, shadow)
     return run_id
@@ -781,6 +806,6 @@ def schedule_review(report_id: Optional[str], text: Optional[str] = None) -> Opt
 
 
 __all__ = ["ENGINE_VERSION", "LANES", "mode", "concurrency", "sample_rate", "lanes_enabled", "rail_enabled",
-           "ReviewResult", "build_item", "shadow_items",
+           "write_mode", "live_actions", "ReviewResult", "build_item", "shadow_items",
            "plan_preapply", "preapply_failures", "finalise", "run_review", "gate_d_log", "input_from_parts",
            "load_input", "run_and_store", "schedule_review"]

@@ -81,7 +81,9 @@ def latest_run(db: Session, report_id: str, scan: int = 20) -> Optional[dict]:
     run = next((r for r in runs if _finished(r)), runs[0])
     return {"id": str(run.id), "mode": run.mode, "engine_version": run.engine_version, "pathway": run.pathway,
             "lanes": run.lanes or {}, "timings_ms": run.timings_ms or {}, "cost": run.cost or {},
-            "errors": run.errors or {}, "created_at": run.created_at.isoformat() if run.created_at else None}
+            "errors": run.errors or {}, "created_at": run.created_at.isoformat() if run.created_at else None,
+            "live_write": {k: v for k, v in ((run.shadow_log or {}).get("live_write") or {}).items()
+                           if k != "pre_edit_report"} or None}
 
 
 def list_items(db: Session, report_id: str, run_id: Optional[str] = None,
@@ -117,6 +119,37 @@ def append_event(db: Session, report_id: str, item_id: str, command: str, text_h
         row.status = COMMAND_STATUS[command]
     db.commit()
     return _model(row)
+
+
+LIVE_NOTES = "Review engine: pre-applied edits"
+
+
+def write_live(db: Session, report_id: str, reviewed: str, final: str, actions: List[dict]) -> dict:
+    """Live mode's one report write: the pre-applied text becomes the report's content and a new current
+    ReportVersion (the existing version-history pattern: content, then `create_report_version`). The pre-edit text
+    stays in the previous version and is returned for the run's log (undo). Written only when the report still
+    holds exactly the text the engine reviewed (the user may have edited it meanwhile, or an earlier run already
+    wrote): otherwise nothing is written. Returns {applied, reason?, version_id?, previous_version_id?, before_hash,
+    after_hash, pre_edit_report?}."""
+    from ..database.crud import create_report_version
+    from ..database.models import Report, ReportVersion
+    from .items import text_hash
+    out = {"applied": False, "before_hash": text_hash(reviewed), "after_hash": text_hash(final)}
+    if final == reviewed:
+        return {**out, "reason": "no_edits"}
+    row = db.query(Report).filter(Report.id == _u(report_id)).with_for_update().first()
+    if row is None:
+        return {**out, "reason": "not_found"}
+    if (row.report_content or "") != reviewed:
+        db.rollback()
+        return {**out, "reason": "report_changed"}
+    prev = (db.query(ReportVersion).filter(ReportVersion.report_id == row.id, ReportVersion.is_current.is_(True))
+            .first())
+    prev_id = str(prev.id) if prev is not None else None
+    row.report_content = final
+    version = create_report_version(db, report=row, actions_applied=actions, notes=LIVE_NOTES)   # commits both
+    return {**out, "applied": True, "version_id": str(version.id), "version_number": version.version_number,
+            "previous_version_id": prev_id, "pre_edit_report": reviewed}
 
 
 def update_item(db: Session, item: ReviewItem) -> None:
