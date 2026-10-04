@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import List, Literal, Optional, Set
 
-from .alignment import ANATOMY, Alignment, ReportClause, numbers, side_of, words
+from .alignment import ANATOMY, Alignment, Pair, ReportClause, numbers, side_of, words
 from .items import Candidate, Span
 
 # ── hedges (evidence rendering only) ─────────────────────────────────────────
@@ -253,6 +253,23 @@ def _cand(report: str, c: ReportClause, kind: str, detector: str, evidence: dict
                      line_text=line_text, evidence=evidence, detector=detector)
 
 
+# Alignment is a confidence-gated supporting tool (ledger L-56): misattributed, laterality and level_conflict fire
+# only on confident pairs. Same rule and constant as lanes.confident() (lanes/__init__.py, used by lanes/coverage.py);
+# duplicated here because lanes imports jev_pass, which imports this module (a circular import). Keep them in step.
+PAIR_CONFIDENT = 0.5   # provisional: Gate F (same value as lanes.PAIR_CONFIDENT)
+
+
+def _confident(p: Pair) -> bool:
+    return p.how in ("exact", "number") or (p.how != "level_conflict" and p.score >= PAIR_CONFIDENT)
+
+
+def _conflict_confident(p: Pair) -> bool:
+    """A level_conflict pair is never confident for anchoring, but the conflict itself is worth raising when the
+    pair is otherwise confident: align() scores it with the ordinary lexical/number/anatomy score (levels add
+    nothing to the score; a disjoint level only relabels `how`), so that score is the pair's non-level confidence."""
+    return p.how == "level_conflict" and p.score >= PAIR_CONFIDENT
+
+
 # Owner-line fallback words (no ANATOMY word): drop the generic ones before comparing.
 _OWNER_GENERIC = frozenset({"normal", "normally", "unremarkable", "small", "mild", "moderate", "size", "appearance",
                             "seen", "noted", "identified", "evidence", "present", "large", "measuring"})  # provisional: Gate B1
@@ -294,11 +311,13 @@ def run_checks(report: str, dictation: str, history: str, scan: str, al: Alignme
         refs = _prior_refs(text)
         if refs and not src_prior:
             add(_cand(report, c, "unsupported", "code.prior", {"phrase": refs[0]}))
-        # misattributed: a dictated measurement attached to a different structure (paired clauses only)
-        lines = al.paired_lines(c.id)
-        paired_ids = {l.id for l in lines}
+        # misattributed: a dictated measurement attached to a different structure (confidently paired clauses
+        # only, L-56). Any pair, weak or not, still exempts its line as the number's owner: a weak pair never
+        # creates a flag.
+        paired_ids = {l.id for l in al.paired_lines(c.id)}
+        sure = any(_confident(p) for p in al.pairs if p.clause_id == c.id)
         cwords = words(text)
-        for n in sorted(x for x in numbers(text) if x.endswith("mm")) if lines else ():
+        for n in sorted(x for x in numbers(text) if x.endswith("mm")) if sure else ():
             owners = [l for l in al.lines if n in numbers(l.text)]
             if not owners or any(o.id in paired_ids for o in owners):
                 continue
@@ -321,23 +340,26 @@ def run_checks(report: str, dictation: str, history: str, scan: str, al: Alignme
     # level conflict (coverage lane): the report put a dictated finding at another level. Dictation is truth;
     # align() keeps these pairs only when the line has no pair at its own level. One item per pair.
     for p in al.pairs:
-        if p.how != "level_conflict":
+        if not _conflict_confident(p):
             continue
         l, c = al.line(p.line_id), al.clause(p.clause_id)
         add(_cand(report, c, "differs", "code.level_conflict",
                   {"dictated_level": ", ".join(l.levels), "report_levels": list(c.levels)},
                   lane="coverage", line_id=l.id, line_text=l.text))
 
-    # laterality (coverage lane): a dictated side missing from every paired clause, nothing bounding it
+    # laterality (coverage lane): a dictated side missing from every paired clause, nothing bounding it. The line
+    # needs a confident pair (L-56); every pair, weak or not, can still bound it. Anchored on the best confident one.
     if side_of(study_title) not in ("left", "right"):
         for l in al.lines:
             if l.side not in ("left", "right") or l.negative or l.background:
                 continue
             cs = al.paired_clauses(l.id)
-            if not cs or any(c.side in (l.side, "bilateral") or c.subheading_side == l.side for c in cs):
+            sure = [al.clause(p.clause_id) for p in sorted(al.pairs, key=lambda p: -p.score)
+                    if p.line_id == l.id and _confident(p)]
+            if not sure or any(c.side in (l.side, "bilateral") or c.subheading_side == l.side for c in cs):
                 continue
             if any(c.side and c.side != l.side for c in cs):
                 continue                         # the other side is stated: classify-first's `differs`
-            add(_cand(report, cs[0], "laterality", "code.laterality", {"side": l.side}, lane="coverage",
+            add(_cand(report, sure[0], "laterality", "code.laterality", {"side": l.side}, lane="coverage",
                       line_id=l.id, line_text=l.text))
     return out

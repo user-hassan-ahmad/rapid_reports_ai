@@ -254,3 +254,38 @@ def test_level_conflict_one_item_per_pair():
     rep = "FINDINGS:\nDisc protrusion at L5/S1. Disc protrusion at L3/4.\n"
     cs = [c for c in run(rep, "- L4/5 disc protrusion", scan="MRI lumbar spine") if c.detector == "code.level_conflict"]
     assert sorted(tuple(c.evidence["report_levels"]) for c in cs) == [("L3/4",), ("L5/S1",)]
+
+
+# ── L-56: alignment is a confidence-gated supporting tool; these checks fire only on confident pairs ──────────
+
+def _weaken(al, score=0.3):
+    """The same alignment with every pair demoted to a weak (non-exact, non-number) score."""
+    return al.model_copy(update={"pairs": [p.model_copy(update={"score": score}) for p in al.pairs]})
+
+
+def _gated(report, dictation, scan="CT abdomen", weak=False):
+    al = align(report, dictation, "", ["FINDINGS", "IMPRESSION"])
+    return run_checks(report, dictation, "", scan, _weaken(al) if weak else al)
+
+
+@pytest.mark.parametrize("report,dictation,scan,detector", [
+    ("FINDINGS:\nThe liver contains a lesion. The spleen measures 12 mm.\n", "- Liver lesion 12 mm\n- Spleen normal",
+     "CT abdomen", "code.measurement"),
+    ("FINDINGS:\nA 14 mm renal cyst.\n", "- Left renal cyst 14 mm", "CT abdomen", "code.laterality"),
+    ("FINDINGS:\nDisc protrusion at L5/S1.\n", "- L4/5 disc protrusion", "MRI lumbar spine", "code.level_conflict"),
+])
+def test_alignment_consumers_fire_only_on_confident_pairs(report, dictation, scan, detector):
+    assert [c for c in _gated(report, dictation, scan) if c.detector == detector]
+    assert not [c for c in _gated(report, dictation, scan, weak=True) if c.detector == detector]
+
+
+def test_misattributed_weak_owner_pair_still_exempts():
+    # the owner line weakly paired to the clause is still "paired": a weak pair never creates a flag
+    rep, d = "FINDINGS:\nThe spleen measures 12 mm.\n", "- Spleen 12 mm"
+    al = align(rep, d, "", ["FINDINGS"])
+    assert not [c for c in run_checks(rep, d, "", "CT abdomen", _weaken(al)) if c.kind == "misattributed"]
+
+
+def test_pair_confident_matches_lanes():
+    from rapid_reports_ai.review_engine import checks, lanes
+    assert checks.PAIR_CONFIDENT == lanes.PAIR_CONFIDENT
