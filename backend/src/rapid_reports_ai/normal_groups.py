@@ -34,7 +34,7 @@ _SENT = re.compile(
     r"(?:(?P<intro>,?\s+with\s+no\s+|,?\s+without\s+|;\s*no\s+|,\s*no\s+|,?\s+and\s+no\s+)(?P<tail>.+?))?\.?$")
 _SUBJ_SEP = re.compile(r"\s*,\s*(?:and\s+)?|\s+and\s+")
 _TAIL_SEP = re.compile(r"\s*,\s*(?:(?:or|and|nor)\s+)?(?:no\s+)?|\s+(?:or|nor)\s+|\s+and\s+no\s+")
-_BAD_ITEM = re.compile(r"\d|[():;\"]|\b(?:no|not|with|without|which|that|is|are|but|apart|except|otherwise)\b", re.I)
+_BAD_ITEM = re.compile(r"\d|[():;\"]|\b(?:no|not|with|without|which|that|is|are|but|apart|except|otherwise|its|their|including)\b", re.I)
 _BAD_DESC = re.compile(r"\d|[,;:()\"]|\b(?:no|with|without|but|apart|except|otherwise|which)\b", re.I)
 _PLURAL_WORDS = {"viscera", "adnexa", "adnexae", "vertebrae", "bronchi", "data"}
 _SINGULAR_WORDS = {"pons", "lens", "series", "mons"}
@@ -45,13 +45,19 @@ _MODIFIERS = {"left", "right", "upper", "lower", "deep", "superficial", "interna
 
 
 def _is_modifier(item: str) -> bool:
-    """A one-word list item that is an adjective sharing the next item's head noun."""
-    w = item.lower()
-    return " " not in w and (w in _MODIFIERS or bool(re.search(r"(?:al|ar|ic|ior|ous)$", w)))
+    """A list item ending in an adjective, sharing the next item's head noun ("dorsal and volar soft
+    tissues", "lower thoracic and lumbar spine")."""
+    w = item.lower().split()[-1]
+    return w in _MODIFIERS or bool(re.search(r"(?:al|ar|ic|ior|ous)$", w))
+
+
+# A bare part noun after a named structure borrows its owner ("femoral head, neck and ...").
+_PART_NOUNS = {"head", "neck", "body", "tail", "base", "shaft", "root", "wall", "apex", "dome", "fundus", "hook",
+               "waist", "tip", "roof", "floor"}
 
 
 def is_plural(structure: str) -> bool:
-    w = re.findall(r"[a-z]+", structure.lower())[-1:] or [""]
+    w = re.findall(r"[a-z]+", structure.lower().split(" of ")[0])[-1:] or [""]
     w = w[0]
     if w in _PLURAL_WORDS:
         return True
@@ -101,6 +107,8 @@ def parse_grouped(sentence: str) -> Optional[Grouped]:
         return None
     if len(structures) > 1 and any(_is_modifier(p) for p in structures[:-1]):
         return None   # "dorsal and volar soft tissues": a shared head noun, not two structures
+    if any(p.lower() in _PART_NOUNS for p in structures[1:]):
+        return None   # "femoral head, neck and ...": the bare part borrows the previous item's owner
     if subj[:1].isupper() and not m.group("lead") and len(structures) > 1:
         return None   # "Visualised A and B": an unled subject is left alone
     tail, conj = [], "or"
@@ -213,15 +221,22 @@ def _stems(text: str) -> set:
     return out
 
 
-_DICTATED_NORMAL = re.compile(r"\b(?:normal|unremarkable|intact|preserved|clear|patent)\b", re.I)
+_DICTATED_NORMAL = re.compile(r"\b(?:normal|unremarkable|intact|preserved|clear|patent|fine|satisfactory)\b", re.I)
 _NEGATED = re.compile(r"^\s*(?:no|not|nil|without)\b", re.I)
 
 
-def guard_items(items: List[str], negatives: List[str]) -> List[str]:
-    """What the guard compares against: every dictated negative and every dictated positive finding.
-    A dictated normal statement ("tendons normal") is left out: the grouped sentence saying the same
-    structure is unremarkable cannot displace it, and including it fired on nearly every sentence."""
-    return list(negatives) + [i for i in items if not _NEGATED.search(i) and not _DICTATED_NORMAL.search(i)]
+def positive_findings(items: List[str]) -> List[str]:
+    """Dictated items that report something: not a negative, not a normal statement ("tendons normal",
+    "bones look fine"). A dictated normal cannot be displaced by a grouped sentence saying the same."""
+    return [i for i in items if not _NEGATED.search(i) and not _DICTATED_NORMAL.search(i)]
+
+
+def covered_by_dictation(tail_item: str, negatives: List[str]) -> Optional[str]:
+    """The dictated negative that already says this tail negative (every content word of the tail
+    item is in it), or None. Such a tail is left to the dictation: kept in the grouped sentence it
+    reads as covering the dictated negative, and the generator drops the dictated one (8215140f)."""
+    st = _stems(tail_item)
+    return next((n for n in negatives if st and st <= _stems(n)), None)
 
 
 def dictated_overlap(atom_texts: List[str], dictated: List[str]) -> List[str]:

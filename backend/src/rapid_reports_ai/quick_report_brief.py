@@ -140,6 +140,8 @@ def _normal_sentences(bullet: Optional[Bullet]) -> List[str]:
     if not bullet:
         return []
     text = " ".join(_quoted(" ".join(bullet.lines))) or re.sub(r"^- \*\*[^*]+\*\*:?\s*", "", " ".join(bullet.lines))
+    if _ng.enabled():   # the path written as sub-bullets, one sentence each
+        text = re.sub(r"(?:^|\s)-\s+(?=[A-Z])", " ", text).strip()
     return [s.strip() for s in re.split(r"(?<=\.)\s+(?=[A-Z])", text) if len(s.strip()) > 3]
 
 
@@ -342,7 +344,8 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         keep, flagged = [], []
         qaff = set(qw.affected_normals)
         affected = lambda k, j=None: score(f"n{k}" if j is None else f"n{k}a{j}") >= 0.5 or normal_qidx[(k, j)] in qaff
-        said_items = _ng.guard_items(items, dictated_negatives(items))
+        dneg = dictated_negatives(items)
+        positives = _ng.positive_findings(items)
         offset = 0
         for k, t in enumerate(normals):
             g = grouped[k]
@@ -354,29 +357,35 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
                     offset += len(t) + 1
                 continue
             atoms = g.atoms()
+            names = g.structures + g.tail
             keep_flags = [not affected(k, j) for j in range(len(atoms))]
             flagged.extend(line for (_, line), kf in zip(atoms, keep_flags) if not kf)
-            names = g.structures + g.tail
-            # A kept structure or tail negative the dictation also speaks to: one line per atom, so a
-            # grouped sentence never reads as covering what the radiologist dictated.
-            overlap = _ng.dictated_overlap([n for n, kf in zip(names, keep_flags) if kf], said_items)
-            r = _ng.per_structure(g, keep_flags) if overlap else _ng.subtract(g, keep_flags)
+            # Guard 1: a kept tail negative the dictation already states is left to the dictation
+            # (listed below as must-appear), so the grouped sentence never stands in for it.
+            told = [(_ng.covered_by_dictation(n, dneg) if kind == "tail" and kf else None)
+                    for n, (kind, _), kf in zip(names, atoms, keep_flags)]
+            shown = [kf and s is None for kf, s in zip(keep_flags, told)]
+            # Guard 2: a kept structure a dictated positive finding names (both models missed it):
+            # one line per atom, so the grouped sentence does not read as covering the finding.
+            overlap = _ng.dictated_overlap([n for n, (kind, _), kf in zip(names, atoms, shown) if kf and kind == "structure"],
+                                           positives)
+            r = _ng.per_structure(g, shown) if overlap else _ng.subtract(g, shown)
             if overlap and r.mode == "per_structure":
                 r.mode = "per_structure_dictated"
             decisions["normals"].append({
                 "text": t, "action": "keep" if r.text else "do_not_assert", "grouped": True, "mode": r.mode,
                 "rendered": r.text, "offset": offset if r.text else None, "dictated_overlap": overlap,
-                "atoms": [{"name": n, "kind": kind, "line": line, "action": "keep" if kf else "do_not_assert",
-                           "span": list(sp) if sp else None}
-                          for n, (kind, line), kf, sp in zip(names, atoms, keep_flags, r.spans)]})
+                "atoms": [{"name": n, "kind": kind, "line": line,
+                           "action": "keep" if rf else ("dictated" if s else "do_not_assert"),
+                           "dictated": s, "span": list(sp) if sp else None}
+                          for n, (kind, line), rf, s, sp in zip(names, atoms, shown, told, r.spans)]})
             if r.text:
                 keep.append(r.text)
                 offset += len(r.text) + 1
         lines = [f'- **Normal-study path:** "{" ".join(keep)}"' if keep else "- **Normal-study path:** (every line is affected by this dictation)"]
         if flagged:
             lines.append("- **Do not assert as normal (a dictated finding acts on these):** " + " ".join(f'"{t}"' for t in flagged))
-        dneg = dictated_negatives(items) if any(grouped) else []
-        if dneg:
+        if any(grouped) and dneg:
             # Guard: a grouped normal sentence must never stand in for a negative the radiologist dictated.
             lines.append("- **Dictated negatives (state each as dictated):** " + " ".join(f'"{t}"' for t in dneg))
             decisions["dictated_negatives"] = dneg

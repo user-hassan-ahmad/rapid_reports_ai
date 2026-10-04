@@ -121,11 +121,23 @@ def test_shared_modifier_subject_is_left_alone():
         "distal radius", "ulna", "distal radioulnar joint"]
 
 
-def test_guard_compares_against_negatives_and_positive_findings_not_dictated_normals():
-    items = ["Normal tendons", "No oedema of the ligaments", "3 mm effusion in the joint"]
-    g = ng.guard_items(items, ["No oedema of the ligaments"])
-    assert g == ["No oedema of the ligaments", "3 mm effusion in the joint"]
-    assert ng.dictated_overlap(["extensor tendons"], g) == []
+def test_positive_findings_leave_out_negatives_and_dictated_normals():
+    items = ["Normal tendons", "No oedema of the ligaments", "3 mm effusion in the joint", "The bones look fine"]
+    assert ng.positive_findings(items) == ["3 mm effusion in the joint"]
+
+
+def test_tail_covered_by_a_dictated_negative():
+    negs = ["No bone marrow oedema or fractures", "No free fluid"]
+    assert ng.covered_by_dictation("bone marrow oedema", negs) == "No bone marrow oedema or fractures"
+    assert ng.covered_by_dictation("fluid collection", negs) is None
+
+
+def test_part_nouns_and_trailing_adjectives_and_of_phrases():
+    assert ng.parse_grouped("The femoral head, neck and acetabulum are unremarkable.") is None
+    assert ng.parse_grouped("The lower thoracic and lumbar spine are unremarkable.") is None
+    assert ng.parse_grouped("The aorta and its major branches are patent.") is None
+    g = ng.parse_grouped("The bones and soft tissues of the imaged volume are unremarkable.")
+    assert ng.subtract(g, [False, True]).text == "The soft tissues of the imaged volume are unremarkable."
 
 
 # ── brief wiring ────────────────────────────────────────────────────────────
@@ -215,9 +227,26 @@ async def test_brief_on_dictated_overlap_renders_per_structure_and_lists_dictate
     _stub(monkeypatch, set())
     b = await qb.compile_brief(SHEET, "CT", "- Small simple cyst in the liver, no follow-up\n- No hydronephrosis")
     path = b.text.split("**Normal-study path:** ")[1].split("\n")[0]
+    # Liver named by a dictated finding -> one line per structure; the dictated "No hydronephrosis"
+    # leaves the kidney sentence (the dictation states it) and is a must-appear bullet.
     assert path.startswith('"The liver is unremarkable. The spleen is unremarkable. The pancreas is unremarkable. '
-                           'The kidneys are unremarkable. No hydronephrosis. The bladder and pelvic viscera')
+                           'The kidneys are unremarkable. The bladder and pelvic viscera')
     assert '**Dictated negatives (state each as dictated):** "no follow-up" "No hydronephrosis"' in b.text
+    assert '"No hydronephrosis."' not in b.text            # neither rendered nor do-not-assert
     modes = [n.get("mode") for n in b.decisions["normals"]]
-    assert modes == ["per_structure_dictated", "per_structure_dictated", "verbatim", None]
+    assert modes == ["per_structure_dictated", "subtracted", "verbatim", None]
+    tail = b.decisions["normals"][1]["atoms"][1]
+    assert (tail["action"], tail["dictated"]) == ("dictated", "No hydronephrosis")
     assert b.decisions["dictated_negatives"] == ["no follow-up", "No hydronephrosis"]
+
+
+@pytest.mark.asyncio
+async def test_brief_on_reads_a_sub_bulleted_path(monkeypatch):
+    monkeypatch.setenv("RR_GROUPED_NORMALS", "1")
+    _stub(monkeypatch, set())
+    sheet = SHEET.replace('- **Normal-study path:** "The liver, spleen and pancreas are unremarkable. The kidneys are '
+                          'unremarkable with no hydronephrosis. The bladder and pelvic viscera are unremarkable. The '
+                          'visualised osseous structures show no aggressive lesion."',
+                          "- **Normal-study path:**\n  - The liver and spleen are unremarkable.\n  - The bladder is unremarkable.")
+    b = await qb.compile_brief(sheet, "CT", "Appendicitis")
+    assert '**Normal-study path:** "The liver and spleen are unremarkable. The bladder is unremarkable."' in b.text

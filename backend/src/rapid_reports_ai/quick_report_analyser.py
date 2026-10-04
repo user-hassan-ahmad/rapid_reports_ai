@@ -870,7 +870,8 @@ GROUPED_NORMALS = """
 This governs the Normal-study path wherever it is described above (the Structural Pattern
 guidance and the output template field). Where it conflicts with "one canonical line per
 system" for that field, this section governs. The sweep, its order and its coverage are
-unchanged: every in-scope structure the sweep visits still appears exactly once.
+unchanged: every in-scope structure the sweep visits still appears exactly once. The field stays
+one quoted string on the bullet line, as the template shows, never sub-bullets.
 
 - Write one sentence per sweep paragraph, in sweep order. The sentence names that paragraph's
   structures as a list and gives one bare descriptor for all of them:
