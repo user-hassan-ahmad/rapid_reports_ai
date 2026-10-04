@@ -29,17 +29,25 @@ _DIGIT = re.compile(r"\d")
 # Normal statements worded without "normal" (structural form, any anatomy): a normal predicate that ends the clause
 # ("The ligament is intact.", "Disc heights are preserved.", "The liver surface is smooth.", "Cruciate ligaments
 # intact.") or a "maintains continuity"-style verb phrase. The predicate must close the clause (a short qualifier or a
-# trailing "with no ..." aside), so "is smooth and thickened" or "with preserved fat plane" mid-clause stay positive.
+# trailing "with no ..." / "without ..." aside), so "is smooth and thickened" or "with preserved fat plane" mid-clause
+# stay positive. Also a subject that "shows no ..." or "is not <predicate>" with no positive turn after it.
 _PRED = r"(?:intact|preserved|maintained|smooth|patent|clear)"
 _QUAL = r"(?:\s+(?:throughout|bilaterally|in (?:size|calibre|caliber|configuration|appearance|position|morphology)" \
         r"(?: and (?:size|calibre|caliber|configuration|appearance|position|morphology))?))?"
-_TAIL = _QUAL + r"(?:\s*,?\s*(?:and|with)\s+(?:no|without)\b[^0-9]*)?\s*[.;]?\s*$"
+_TAIL = _QUAL + r"(?:\s*,?\s*(?:(?:and|with)\s+(?:no|without)|without)\b[^0-9]*)?\s*[.;]?\s*$"
+_NOT = r"[^,;:]*?\b(?:is|are|was|were)\s+not\s+\w+"
+# one character of a clause with no positive turn ("but", "which", "and is ...")
+_PLAIN = r"(?:(?!\b(?:but|however|although|though|while|whereas|which|except|and\s+(?:is|are|was|were|has|have|" \
+         r"shows?))\b)[^;:])"
 _NORMAL_STATEMENT = re.compile(
     r"\b(?:(?:is|are|was|were|appears?|remains?|seems?)\s+(?:(?:otherwise|grossly|entirely|completely|well|also|"
     r"again|still|both)\s+)?)?" + _PRED + r"(?![-\w])" + _TAIL +
     r"|\bmaintains?\s+(?:(?:its|their|normal)\s+)?(?:continuity|integrity|alignment|calibre|caliber|configuration)"
     r"(?![-\w])" + _TAIL +
-    r"|\bno\s+(?:\w+\s+){0,2}abnormalit(?:y|ies)\b", re.I)
+    r"|\bno\s+(?:\w+\s+){0,2}abnormalit(?:y|ies)\b"
+    # a subject that "shows no ..." / "is not dilated" (and a second such part), nothing positive after it
+    r"|^" + _PLAIN + r"*?\b(?:shows?|demonstrates?|has|have|contains?)\s+no\b" + _PLAIN + r"*$"
+    r"|^" + _NOT + r"(?:\s*(?:,|;|\band\b)\s*" + _NOT + r")*\s*[.;]?\s*$", re.I)
 
 
 def normal_statement(clause: str) -> bool:

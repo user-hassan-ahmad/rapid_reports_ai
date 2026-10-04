@@ -105,6 +105,12 @@ async def test_negatives_number_check_without_unit_stays_minor(monkeypatch):
     "The aorta is normal in calibre.",                          # normal in calibre
     "The cortex appears intact throughout.",                    # appears + qualifier
     "No focal abnormality is seen.",                            # no abnormality
+    "The retroperitoneum shows no lymphadenopathy.",            # subject shows no ...
+    "The hemispheres, basal ganglia and brainstem show no acute change or haemorrhage.",   # listed subject
+    "The aorta and its branches are patent without aneurysm or dissection.",              # patent without ...
+    "The fibrocartilage complex maintains continuity without detachment.",                # continuity without ...
+    "The intrahepatic bile ducts are not dilated.",             # is not <predicate>
+    "The gallbladder is not distended and the biliary tree is not dilated.",              # two such parts
 ])
 def test_normal_statement_is_not_positive_and_is_a_negatives_candidate(clause):
     assert jev_pass.normal_statement(clause) and not jev_pass.positive(clause)
@@ -118,6 +124,11 @@ def test_normal_statement_is_not_positive_and_is_a_negatives_candidate(clause):
     "A smooth-walled cyst arises from the kidney.",             # compound adjective
     "The mass abuts the vein with preserved fat plane.",        # mid-clause descriptor
     "The ligament is intact but thickened.",
+    "The mass shows no enhancement but invades the duodenum.",  # a positive turn after "no"
+    "The cyst has no septation and is enlarging.",
+    "Oedema, which shows no enhancement.",
+    "The biliary tree is not dilated; jaundice is likely due to hepatic infiltration.",
+    "Soft tissue oedema at the base of the thumb without fluid collection.",
 ])
 def test_positive_findings_stay_positive(clause):
     assert jev_pass.positive(clause)
