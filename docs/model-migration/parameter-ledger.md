@@ -1946,3 +1946,44 @@ Certainty wording lab (`scripts/review_labs/certainty_lab.py`): 85 items, made u
 - positive corrections that swap in the dictated tokens verbatim.
 
 Model-written edits are always one click. See Plan 2 correction 12 and spec §9.
+
+### L-57 · Review engine live evaluation (Task 13), 20 production reports, 2026-10-04
+
+The harness is `scripts/review_engine_eval.py`. It runs the real shadow path with live Jev and Qwen, one report at a time, with no database write. Production text stays in the scratchpad.
+
+**The set.** 18 of the 20 reports are matched to their generator in the scratchpad case file. Because recent eligible reports were scarce, the window was widened to 365 days, so the matched set spans several generators:
+
+| Generator | Reports |
+|---|---|
+| Qwen 3.8 (current) | 10 |
+| Qwen 3.6 | 5 |
+| GLM-4.7 (Aug) | 3 |
+
+All 20 are quick reports. The plumbing and latency numbers hold. Item rates partly reflect generators that are retired, so the Gate F shadow read measures the current pipeline.
+
+**Run 1:**
+- 0/20 errors or timeouts;
+- latency p50 6.3 s, p90 9.3 s; the adjudicator is about 80% of that, Jev p50 0.42 s;
+- 4.75 rail-visible items per report;
+- 0 would-pre-apply edits:
+  - no `absent` coverage items, since today's omission repair already catches them;
+  - 2 real contradictions of positively worded generated normals, blocked by `not_negative_only`.
+
+**Fixes from the hand read** (0000fde, 9c1a59d):
+- invented measurements are at least `action`;
+- normal-statement recognition is shared, and positively worded normals are now negatives-classifier candidates;
+- check reasons are in the labels;
+- brief options keep their one-click edit;
+- clauses the classifier owns are held back before adjudication.
+
+**Run 2** (the last allowed run):
+- rail-visible items 4.55 per report;
+- adjudicated groups 192 → 140; adjudicator p50 5.0 → 3.4 s;
+- brief options with an edit 2/8 → 6/8.
+
+**Policy (Hassan).** A positively worded normal gets the same four labels as a "No X" negative.
+- Inference from the disease process is **implicated**. Example: "lateral and third ventricles normal in size" beside dictated aqueduct and 4th-ventricle effacement. Live classifier: implicated.
+- A direct denial of a dictated finding is **contradicted**. Example: "liver surface is smooth" beside dictated capsule invasion. Live classifier: contradicted.
+- **Auto-removal is NOT extended** to positively worded normals. They stay one-click until the Gate F read and an adversarial probe of a narrow positive-normal gate.
+
+**Convention (Hassan).** An organ with a finding leads with the finding. "Normal … apart from X" is a generation defect; it was seen in one GLM report and in none of the 10 Qwen 3.8 reports. Measure it in Gate F before touching generation.
