@@ -7,7 +7,7 @@
 // view, ask_chat), and `statuses` only the statuses those commands produce (store.COMMAND_STATUS): applied, open,
 // dismissed. Engine-only statuses (pre_applied, addressed, stale) are never set from here.
 import { ChangeSet, Text, type ChangeSpec, type StateEffect } from '@codemirror/state';
-import { locate } from './anchors';
+import { locate, locateUndo } from './anchors';
 import { toChanges, type EditLike, type TextChange } from './edits';
 import type { ReviewItem, UserCommand } from './types';
 
@@ -29,7 +29,8 @@ export interface CommandCtx {
 	sections?: readonly string[] | null;
 	/** Where the editor field holds an item's widget (zero-width removal anchors), mapped through edits. */
 	widgetPos?: (item: ReviewItem) => number | null | undefined;
-	/** textHash(doc), when the caller has it: lets a zero-width anchor be used as stored if the text is unchanged. */
+	/** textHash(doc), when the caller has it. Live pre-applied edits use their stored offsets only when this equals
+	 * the anchor's text_hash (the written text); otherwise they are re-found by context (anchors.locateUndo). */
 	textHash?: string | null;
 }
 
@@ -160,25 +161,26 @@ function findApplied(doc: string, d: Record<string, unknown>): number | null {
 	return null;
 }
 
-/** How far the item's anchor has moved since the engine wrote it: located position minus stored start. */
-function anchorShift(ctx: CommandCtx, item: ReviewItem): number | null {
-	const a = item.anchor;
-	if (!a) return null;
-	if (a.text) {
-		const loc = locate(ctx.doc, item);
-		return loc ? loc.from - a.start : null;
-	}
+/** Where a zero-width removal without live undo info sits: the widget position the field tracks, else the stored
+ * anchor when the document is the text it was made on. */
+function removalPoint(ctx: CommandCtx, item: ReviewItem): number | null {
 	const pos = ctx.widgetPos?.(item);
 	const loc = locate(ctx.doc, item, { widgetPos: pos ?? null });
-	if (loc) return loc.from - a.start;
-	if (ctx.textHash && a.text_hash && ctx.textHash === a.text_hash) return 0;
+	if (loc) return loc.from;
+	const a = item.anchor;
+	if (a && ctx.textHash && a.text_hash && ctx.textHash === a.text_hash) return a.start;
 	return null;
 }
 
-/** Re-insert removed text at `p` with one space on the side that touches other text. */
-function placeRemoved(doc: string, p: number, text: string): TextChange {
+const WORD = /[\p{L}\p{N}_]/u;
+
+/** Re-insert removed text at `p` with one space on the side that touches other text; null in the middle of a
+ * word (a position that cannot be where the text came from). */
+function placeRemoved(doc: string, p: number, text: string): TextChange | null {
+	if (p < 0 || p > doc.length) return null;
 	const prev = doc[p - 1];
 	const next = doc[p];
+	if (prev !== undefined && next !== undefined && WORD.test(prev) && WORD.test(next)) return null;
 	const lead = prev !== undefined && !/\s/.test(prev) ? ' ' : '';
 	const trail = next !== undefined && !/\s/.test(next) ? ' ' : '';
 	return { from: p, to: p, insert: lead + text + trail };
@@ -196,24 +198,17 @@ function revert(ctx: CommandCtx, item: ReviewItem): TextChange | CommandError {
 	}
 	if (item.status !== 'pre_applied') return 'not_applied';
 	const undo = item.evidence?.undo;
-	const shift = anchorShift(ctx, item);
-	if (shift == null) return 'changed';
 	if (undo && Array.isArray(undo.final_span)) {
-		const [j1, j2] = undo.final_span;
-		const from = j1 + shift;
-		const to = j2 + shift;
-		if (from < 0 || to > doc.length || from > to) return 'changed';
-		const a = item.anchor!;
-		if (a.text) {
-			// the anchor (the inserted text) must still lie inside the span being reverted
-			const s = a.start + shift;
-			if (s < from || s + a.text.length > to) return 'changed';
-		}
-		return { from, to, insert: undo.original_text ?? '' };
+		// live mode: never a guessed position (hash match, else unique context)
+		const at = locateUndo(doc, item, ctx.textHash);
+		if (!at) return 'changed';
+		return { from: at.from, to: at.to, insert: undo.original_text ?? '' };
 	}
 	const removed = item.evidence?.removed_text;
 	if (typeof removed === 'string' && removed && !item.anchor?.text) {
-		return placeRemoved(doc, item.anchor!.start + shift, removed);
+		const p = removalPoint(ctx, item);
+		if (p == null) return 'changed';
+		return placeRemoved(doc, p, removed) ?? 'changed';
 	}
 	return 'not_applied';
 }
@@ -240,6 +235,28 @@ const dismiss: Command = (ctx) => {
 	if (!ACTIONABLE.has(item.status)) return fail('not_open');
 	return {
 		event: { itemId: item.id, command: 'dismiss', detail: {} },
+		statuses: { [item.id]: 'dismissed' }
+	};
+};
+
+/** Take the item's anchored text out of the report (e.g. an assumed normal the radiologist does not want). Posted
+ * as `edit` with an empty replacement, so undo finds the seam by its context like any applied edit. */
+const remove: Command = (ctx) => {
+	const item = ctx.item;
+	if (!item) return fail('no_item');
+	if (!ACTIONABLE.has(item.status)) return fail('not_open');
+	const find = item.anchor?.text;
+	if (!find) return fail('no_edit');
+	return placeEdit(ctx, item, { mode: 'remove', find }, 'edit', { action: 'remove', replacement: '' });
+};
+
+/** Keep the text as written: the item is answered with no change (posted as `dismiss`, detail action "keep"). */
+const keep: Command = (ctx) => {
+	const item = ctx.item;
+	if (!item) return fail('no_item');
+	if (!ACTIONABLE.has(item.status)) return fail('not_open');
+	return {
+		event: { itemId: item.id, command: 'dismiss', detail: { action: 'keep' } },
 		statuses: { [item.id]: 'dismissed' }
 	};
 };
@@ -373,6 +390,8 @@ export const COMMANDS = {
 	undo: reverting('undo'),
 	restore: reverting('restore'),
 	dismiss,
+	remove,
+	keep,
 	apply_all: applyAll,
 	ask_chat: askChat,
 	open_item: openItem,

@@ -64,6 +64,17 @@ function run(name: keyof typeof COMMANDS, ctx: CommandCtx): CommandResult {
 	return r;
 }
 
+/** live.rebase_items' evidence.undo for the span [j1, j2) of the written text. */
+function undoOf(written: string, j1: number, j2: number, original_text: string) {
+	return {
+		final_span: [j1, j2] as [number, number],
+		original_text,
+		final_text: written.slice(j1, j2),
+		left: written.slice(Math.max(0, j1 - 16), j1),
+		right: written.slice(j2, j2 + 16)
+	};
+}
+
 const DOC =
 	'FINDINGS:\nThe liver is normal. There is a cyst in the left kidney.\nIMPRESSION:\nLeft renal cyst.';
 const SECTIONS = ['FINDINGS', 'IMPRESSION'];
@@ -189,17 +200,34 @@ describe('undo', () => {
 			status: 'pre_applied',
 			edit: { mode: 'insert', after: null, section: 'FINDINGS', replace: 'No ascites.' },
 			anchor: span(written, 'No ascites.'),
-			evidence: { undo: { final_span: [j1, j1 + ' No ascites.'.length], original_text: '' } }
+			evidence: { undo: undoOf(written, j1, j1 + ' No ascites.'.length, '') }
 		});
 		const u = run('undo', { doc: written, items: [it_], item: it_ });
 		expect(after(written, u)).toBe(original);
 		expect(u.event?.command).toBe('undo');
 		expect(u.statuses).toEqual({ [it_.id]: 'open' });
 
-		// the same after the user typed above it: the span moves with the anchor
+		// the same after the user typed above it: the span is re-found by its context
 		const moved = 'Clinical: pain.\n' + written;
 		const u2 = run('undo', { doc: moved, items: [it_], item: it_ });
 		expect(after(moved, u2)).toBe('Clinical: pain.\n' + original);
+	});
+
+	it('never guesses where a live pre-applied edit sits: no context and no hash match is "changed"', () => {
+		const original = 'FINDINGS:\nThe liver is normal.\nIMPRESSION:\nNormal.';
+		const written = 'FINDINGS:\nThe liver is normal. No ascites.\nIMPRESSION:\nNormal.';
+		const j1 = original.indexOf('\nIMPRESSION');
+		const it_ = item({
+			status: 'pre_applied',
+			edit: { mode: 'insert', after: null, section: 'FINDINGS', replace: 'No ascites.' },
+			anchor: { ...span(written, 'No ascites.'), text_hash: 'h1' },
+			evidence: { undo: { final_span: [j1, j1 + 12], original_text: '' } }
+		});
+		const moved = 'Clinical: pain.\n' + written;
+		expect(run('undo', { doc: moved, items: [it_], item: it_ }).error).toBe('changed');
+		expect(run('undo', { doc: moved, items: [it_], item: it_, textHash: 'h2' }).error).toBe('changed');
+		// the written text itself (hash match): the stored span is exact
+		expect(after(written, run('undo', { doc: written, items: [it_], item: it_, textHash: 'h1' }))).toBe(original);
 	});
 
 	it('refuses a pre-applied insert whose text is gone', () => {
@@ -209,7 +237,7 @@ describe('undo', () => {
 			status: 'pre_applied',
 			edit: { mode: 'insert', after: null, section: 'FINDINGS', replace: 'No ascites.' },
 			anchor: span(written, 'No ascites.'),
-			evidence: { undo: { final_span: [j1, j1 + 12], original_text: '' } }
+			evidence: { undo: undoOf(written, j1, j1 + 12, '') }
 		});
 		const edited = written.replace('No ascites.', 'Trace ascites.');
 		expect(run('undo', { doc: edited, items: [it_], item: it_ }).error).toBe('changed');
@@ -245,21 +273,44 @@ describe('restore', () => {
 		expect(after(written, r2)).toBe(original);
 	});
 
-	it('prefers evidence.undo (live mode) and maps it through the widget position', () => {
+	it('live mode: restores evidence.undo at the span re-found by its context, never at the widget position', () => {
 		const i1 = original.indexOf('No ascites. ');
 		const it_ = item({
 			kind: 'removed',
 			status: 'pre_applied',
 			edit: { mode: 'remove', find: 'No ascites.' },
-			anchor: { start: pos, end: pos, text: '' },
-			evidence: {
-				removed_text: 'No ascites.',
-				undo: { final_span: [i1, i1], original_text: 'No ascites. ' }
-			}
+			anchor: { start: pos, end: pos, text: '', text_hash: 'h1' },
+			evidence: { removed_text: 'No ascites.', undo: undoOf(written, i1, i1, 'No ascites. ') }
 		});
 		const moved = 'X\n' + written;
-		const r = run('restore', { doc: moved, items: [it_], item: it_, widgetPos: () => pos + 2 });
+		const r = run('restore', { doc: moved, items: [it_], item: it_, widgetPos: () => 0 });
 		expect(after(moved, r)).toBe('X\n' + original);
+		expect(r.statuses).toEqual({ [it_.id]: 'open' });
+
+		// the user edited earlier text and the report reloaded: a stale offset would land mid-word
+		const edited = written.replace('The liver', 'On review the liver');
+		const r2 = run('restore', { doc: edited, items: [it_], item: it_, widgetPos: () => pos });
+		expect(after(edited, r2)).toBe(original.replace('The liver', 'On review the liver'));
+
+		// the context itself was edited: refuse rather than guess
+		const gone = written.replace('normal. The spleen', 'normal. A spleen');
+		expect(run('restore', { doc: gone, items: [it_], item: it_, widgetPos: () => pos }).error).toBe('changed');
+		// an evidence.undo without context is placed only on the written text itself
+		const bare = { ...it_, evidence: { removed_text: 'No ascites.', undo: { final_span: [i1, i1] as [number, number], original_text: 'No ascites. ' } } };
+		expect(run('restore', { doc: moved, items: [bare], item: bare, widgetPos: () => pos + 2 }).error).toBe('changed');
+		expect(after(written, run('restore', { doc: written, items: [bare], item: bare, textHash: 'h1' }))).toBe(original);
+	});
+
+	it('refuses to re-insert removed text in the middle of a word', () => {
+		const it_ = item({
+			kind: 'removed',
+			status: 'pre_applied',
+			edit: { mode: 'remove', find: 'No ascites.' },
+			anchor: { start: pos, end: pos, text: '' },
+			evidence: { removed_text: 'No ascites.' }
+		});
+		const mid = written.indexOf('spleen') + 3;
+		expect(run('restore', { doc: written, items: [it_], item: it_, widgetPos: () => mid }).error).toBe('changed');
 	});
 
 	it('needs a widget position (or a matching text hash) to place the text', () => {
@@ -278,6 +329,37 @@ describe('restore', () => {
 	it('only restores removals', () => {
 		const it_ = item({ status: 'applied', edit: { mode: 'replace', find: 'a', replace: 'b' } });
 		expect(run('restore', { doc: DOC, items: [it_], item: it_ }).error).toBe('not_removal');
+	});
+});
+
+describe('remove / keep', () => {
+	it('remove takes the anchored text out, posts edit and sets applied; undo puts it back', () => {
+		const doc = 'FINDINGS:\nThe liver is normal. No ascites. The spleen is normal.';
+		const it_ = item({ kind: 'assumed_normal', cls: 'info', anchor: span(doc, 'No ascites.') });
+		const r = run('remove', { doc, items: [it_], item: it_ });
+		expect(after(doc, r)).toBe('FINDINGS:\nThe liver is normal. The spleen is normal.');
+		expect(r.event?.command).toBe('edit');
+		expect(r.event?.detail).toMatchObject({ action: 'remove', replacement: '' });
+		expect(r.statuses).toEqual({ [it_.id]: 'applied' });
+		const applied = { ...it_, status: 'applied' as const, history: [hist(r.event!)] };
+		const doc2 = after(doc, r);
+		expect(after(doc2, run('undo', { doc: doc2, items: [applied], item: applied }))).toBe(doc);
+	});
+
+	it('remove needs anchored text that occurs once', () => {
+		const doc = 'A. No ascites. B. No ascites.';
+		const it_ = item({ anchor: span(doc, 'No ascites.') });
+		expect(run('remove', { doc, items: [it_], item: it_ }).error).toBe('not_found');
+		const bare = item({ anchor: null });
+		expect(run('remove', { doc, items: [bare], item: bare }).error).toBe('no_edit');
+	});
+
+	it('keep changes nothing and posts dismiss with action keep', () => {
+		const it_ = item({ kind: 'check', cls: 'minor', anchor: span(DOC, 'The liver is normal.') });
+		const r = run('keep', { doc: DOC, items: [it_], item: it_ });
+		expect(r.changes).toBeUndefined();
+		expect(r.event).toEqual({ itemId: it_.id, command: 'dismiss', detail: { action: 'keep' } });
+		expect(r.statuses).toEqual({ [it_.id]: 'dismissed' });
 	});
 });
 
@@ -398,8 +480,10 @@ describe('registry', () => {
 				'dismiss',
 				'edit',
 				'finalise',
+				'keep',
 				'next_item',
 				'open_item',
+				'remove',
 				'rerun',
 				'restore',
 				'undo'
@@ -425,7 +509,9 @@ describe('registry', () => {
 			'dismiss',
 			'restore',
 			'ask_chat',
-			'open_item'
+			'open_item',
+			'remove',
+			'keep'
 		] as const) {
 			expect(run(name, { doc: DOC, items: [] }).error).toBe('no_item');
 		}

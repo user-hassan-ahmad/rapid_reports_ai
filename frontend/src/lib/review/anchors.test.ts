@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { locate } from './anchors';
+import { locate, locateUndo } from './anchors';
 import type { ReviewItem, Span, ItemEvidence, Edit } from './types';
 
 function item(anchor: Span | null, evidence: ItemEvidence | null = null, edit: Edit | null = null): ReviewItem {
@@ -101,5 +101,62 @@ describe('locate', () => {
 			const r = locate(DOC, item({ start: 0, end: 5, text: 'Gone text.' }), { widgetPos: 3 });
 			expect(r).toBeNull();
 		});
+	});
+});
+
+/** live.rebase_items' evidence.undo for the span [j1, j2) of the written text. */
+function undoOf(written: string, j1: number, j2: number, original_text: string) {
+	return {
+		final_span: [j1, j2] as [number, number],
+		original_text,
+		final_text: written.slice(j1, j2),
+		left: written.slice(Math.max(0, j1 - 16), j1),
+		right: written.slice(j2, j2 + 16)
+	};
+}
+
+describe('locateUndo (live pre-applied edits: never a guessed position)', () => {
+	const written = 'FINDINGS:\nThe liver is normal. The spleen is normal. Kidneys fine.';
+	const p = written.indexOf('The spleen');
+	const removal = (u: object, hash: string | null = 'h1') =>
+		item({ start: p, end: p, text: '', text_hash: hash }, { removed_text: 'No ascites.', undo: u as never }, { mode: 'remove', find: 'No ascites.' });
+
+	it('trusts the stored span when the document hash is the anchor hash', () => {
+		const it_ = removal(undoOf(written, p, p, 'No ascites. '));
+		expect(locateUndo(written, it_, 'h1')).toEqual({ from: p, to: p });
+	});
+
+	it('re-finds the span by its unique context once the text changed', () => {
+		const it_ = removal(undoOf(written, p, p, 'No ascites. '));
+		const edited = written.replace('The liver', 'Clinical note. The liver');
+		const q = edited.indexOf('The spleen');
+		expect(locateUndo(edited, it_, 'other')).toEqual({ from: q, to: q });
+		expect(locateUndo(edited, it_)).toEqual({ from: q, to: q });
+	});
+
+	it('re-finds a non-empty span (an insert) by left + final_text + right', () => {
+		const doc = 'FINDINGS:\nThe liver is normal. No ascites.\nIMPRESSION:\nNormal.';
+		const j1 = doc.indexOf(' No ascites.');
+		const it_ = item({ start: j1 + 1, end: j1 + 12, text: 'No ascites.' }, { undo: undoOf(doc, j1, j1 + 12, '') });
+		const moved = 'Clinical: pain.\n' + doc;
+		expect(locateUndo(moved, it_)).toEqual({ from: j1 + 16, to: j1 + 28 });
+	});
+
+	it('is null when the context is gone or ambiguous, or there is no context and no hash match', () => {
+		const it_ = removal(undoOf(written, p, p, 'No ascites. '));
+		expect(locateUndo(written.replace('normal. The spleen', 'normal. A spleen'), it_)).toBeNull();
+		expect(locateUndo(written + ' ' + written, it_)).toBeNull();
+		const bare = removal({ final_span: [p, p], original_text: 'No ascites. ' });
+		expect(locateUndo(written, bare)).toBeNull();
+		expect(locateUndo(written, bare, 'other')).toBeNull();
+		expect(locateUndo(written, bare, 'h1')).toEqual({ from: p, to: p });
+	});
+
+	it('refuses a hash match whose span no longer holds final_text', () => {
+		const doc = 'FINDINGS:\nThe liver is normal. No ascites.';
+		const j1 = doc.indexOf(' No ascites.');
+		const u = { ...undoOf(doc, j1, j1 + 12, ''), final_text: ' Trace ascites.' };
+		const it_ = item({ start: j1 + 1, end: j1 + 12, text: 'No ascites.', text_hash: 'h1' }, { undo: u });
+		expect(locateUndo(doc, it_, 'h1')).toBeNull();
 	});
 });

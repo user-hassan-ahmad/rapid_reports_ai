@@ -28,6 +28,11 @@ export interface Edit {
 export interface UndoInfo {
 	final_span: [number, number];
 	original_text: string;
+	/** The written text of `final_span`, and up to 16 characters of written text either side of it: the client
+	 * re-finds the span by this context once the report has changed (anchors.locateUndo). */
+	final_text?: string;
+	left?: string;
+	right?: string;
 }
 
 /** Lane evidence. Open-ended on the backend; the keys the frontend reads are typed. */
@@ -36,7 +41,15 @@ export interface ItemEvidence {
 	pointer?: string;
 	negative?: boolean;
 	undo?: UndoInfo;
+	/** The anchor before live.rebase_items moved or dropped it (a pre-applied insert undone is found by it). */
 	original_anchor?: Span;
+	/** Removed (red) items: the text taken out, and why ("number" = an undictated measurement). */
+	removed_text?: string;
+	removal_reason?: 'contradicted' | 'number' | string;
+	/** Shadow / kill switch: the engine would have pre-applied this edit in live mode. */
+	would_pre_apply?: boolean;
+	/** Number checks: the clause the card is about. */
+	clause?: string;
 	also_anchors?: Span[];
 	[key: string]: unknown;
 }
@@ -72,6 +85,9 @@ export interface ReviewItem {
 	status: ItemStatus;
 	history: HistoryEntry[];
 	engine_version: string;
+	/** Client only (never sent by the backend): the last event for this item failed to post after retries. The
+	 * local status is kept; the store keeps retrying on the next event. */
+	syncError?: string | null;
 }
 
 /** store.write_live's result, minus pre_edit_report (latest_run strips it). */
