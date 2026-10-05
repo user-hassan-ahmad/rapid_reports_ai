@@ -5,7 +5,9 @@ items only.
 
 Correction 13: the events route takes user commands only (engine statuses → 422); reprepare never LLM-rewrites a
 negatives item or an accuracy item on a negative (L-47); the GET hides `assumed_normal` rows unless
-`?include=normals` (editor decorations use them)."""
+`?include=normals` (editor decorations use them).
+
+Gate G: engine pre-applied items are never re-judged by the probe or reprepare and never hidden by the GET."""
 from __future__ import annotations
 
 import asyncio
@@ -84,13 +86,47 @@ def _negative(it: ReviewItem) -> bool:
         (it.lane == "accuracy" and bool((it.evidence or {}).get("negative")))
 
 
+def _engine_pre_applied(it: ReviewItem) -> bool:
+    """Gate G decision: an item the engine or the post-gen check pre-applied (a non-user `pre_applied` event, or a
+    post_check.* detector) is the record of an automatic edit. The probe and reprepare never re-judge it and the GET
+    never hides it, whatever the user has since done with it (undo, restore, Discard)."""
+    return any(str(d).startswith("post_check.") for d in (it.detectors or [])) or \
+        any(isinstance(h, dict) and h.get("event") == "pre_applied" and h.get("actor") != "user"
+            for h in (it.history or []))
+
+
+def _norm_clause(s: Optional[str]) -> str:
+    return " ".join((s or "").lower().split()).rstrip(" .;,")
+
+
+def _restored_texts(items: List[ReviewItem]) -> List[str]:
+    """The clauses of items the user restored and has not since put away (status open): the restored item is the one
+    row for that text, so the probe adds no second "contradicted" card for it (Gate G note E)."""
+    out = []
+    for it in items:
+        if it.status != "open" or not any(isinstance(h, dict) and h.get("event") == "restore" for h in it.history or []):
+            continue
+        ev = it.evidence or {}
+        for t in (ev.get("removed_text"), ev.get("clause"), it.anchor.text if it.anchor else None,
+                  it.edit.find if it.edit else None):
+            if _norm_clause(t):
+                out.append(_norm_clause(t))
+    return out
+
+
+def _covered(clause: str, texts: List[str]) -> bool:
+    c = _norm_clause(clause)
+    return bool(c) and any(c == t or c in t or t in c for t in texts)
+
+
 @router.get("/{report_id}/review")
 def get_review(report_id: str, include: Optional[str] = None, current_user: User = Depends(get_current_user),
                db: Session = Depends(get_db)):
     if not _owned(db, report_id, current_user):
         return NOT_FOUND
     run = store.latest_run(db, report_id)
-    items = store.list_items(db, report_id, run["id"]) if run else []
+    items = store.list_items(db, report_id, run["id"], include_suppressed=True) if run else []
+    items = [i for i in items if i.cls != "suppress" or _engine_pre_applied(i)]
     if include != "normals":
         items = [i for i in items if i.kind != NORMAL_KIND]
     return {"success": True, "mode": engine.mode(), "rail": engine.rail_enabled(), "run": run,
@@ -123,13 +159,17 @@ async def post_probe(report_id: str, body: ProbeBody, current_user: User = Depen
     inp = _input(report, body.text)
     if inp is None:
         return {"success": False, "error": "no candidate"}
-    open_items = [i for i in store.list_items(db, report_id) if i.status == "open"]
+    all_items = store.list_items(db, report_id)
+    open_items = [i for i in all_items if i.status == "open" and not _engine_pre_applied(i)]
     res = await verifier.probe(inp, open_items, body.text, body.changed_ranges)
+    restored = _restored_texts(all_items)
     for iid in res["addressed"]:
         store.append_event(db, report_id, iid, "addressed", body.text_hash, actor="loop")
     run = store.latest_run(db, report_id)
     new_items: List[ReviewItem] = []
     for c in (res["contradictions"] if run else []):
+        if _covered((c.evidence or {}).get("clause") or (c.anchor.text if c.anchor else ""), restored):
+            continue
         it = engine.build_item(inp, run["id"], adjudicator.Outcome(group=[c]))
         it.cls = "action" if c.code_fix else "minor"
         new_items.append(it)
@@ -152,8 +192,9 @@ async def post_reprepare(report_id: str, body: ReprepareBody, current_user: User
     if inp is None:
         return {"success": False, "error": "no candidate"}
     items = [i for i in (store.get_item(db, report_id, x) for x in body.item_ids) if i is not None]
-    kept = [i for i in items if _negative(i)]            # returned unchanged (correction 13)
-    todo = [i for i in items if not _negative(i)]
+    frozen = lambda i: _negative(i) or _engine_pre_applied(i)    # noqa: E731
+    kept = [i for i in items if frozen(i)]               # returned unchanged (correction 13; Gate G pre-applied)
+    todo = [i for i in items if not frozen(i)]
     outcomes = await asyncio.gather(*(adjudicator.reprepare(inp, it, body.text) for it in todo))
     for it, o in zip(todo, outcomes):
         if o.judgement is not None and o.error is None:

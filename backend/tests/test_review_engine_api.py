@@ -236,3 +236,96 @@ def test_reprepare_never_rewrites_brief_linked_normals(client, auth_headers, see
     for orig in (green, amber):
         got = store.get_item(db_session, rid, orig.id)
         assert got.cls == orig.cls and got.label == orig.label and got.kind == orig.kind
+
+
+def _pre_applied_insert(rid, run_id, cls="action"):
+    """A post-gen check insert the engine pre-applied (live.bridge_items shape)."""
+    return ReviewItem(key="pa1", report_id=rid, run_id=run_id, lane="coverage", detectors=["post_check.insert"],
+                      kind="absent", cls=cls, section="FINDINGS", label="Added from your dictation",
+                      anchor=Span(start=10, end=30, text="The liver is normal."), probe="The liver is described.",
+                      edit=Edit(mode="insert", find=None, replace="The liver is normal.", section="FINDINGS"),
+                      status="pre_applied",
+                      history=[{"event": "created", "actor": "engine"},
+                               {"event": "pre_applied", "actor": "post_check", "detail": {"kind": "absent"}}])
+
+
+def test_pre_applied_item_survives_undo_probe_reprepare_discard(client, auth_headers, seeded, monkeypatch,
+                                                               db_session):
+    """Gate G (F1 note B), decided: engine pre-applied items are never re-judged by the probe or reprepare and never
+    hidden. Undo the pre-applied insert → probe (would address it / send it to reprepare) → reprepare (adjudicator
+    says suppress) → Discard: the item is back to pre_applied, its cls untouched, and GET still returns it."""
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.setattr(rc, "_jev", jev({"p*": {"noul": 0.9}, "a": {"noul": 0.9}}))
+    calls = []
+    monkeypatch.setattr(adj, "_run_agent_with_model", model(adj.Judgement(
+        cls="suppress", kind="absent", label="Redundant", reason="r", edit_mode="none"), calls))
+    rid, it = seeded
+    pa = _pre_applied_insert(rid, it.run_id)
+    store.save_items(db_session, [pa])
+    url = f"/api/reports/{rid}/review"
+    assert client.post(f"{url}/items/{pa.id}/events", headers=auth_headers,
+                       json={"command": "undo", "text_hash": "h1"}).json()["item"]["status"] == "open"
+    r = client.post(f"{url}/probe", headers=auth_headers,
+                    json={"text": REPORT, "text_hash": "h2", "changed_ranges": [[10, 30]]}).json()
+    assert r["success"] and pa.id not in r["addressed"] and pa.id not in r["reprepare"]
+    assert it.id in r["addressed"]                               # ordinary items are still probed
+    assert store.get_item(db_session, rid, pa.id).status == "open"
+    r = client.post(f"{url}/reprepare", headers=auth_headers,
+                    json={"item_ids": [pa.id], "text": REPORT, "text_hash": "h3"}).json()
+    assert r["success"] and calls == [] and [i["id"] for i in r["items"]] == [pa.id]
+    got = store.get_item(db_session, rid, pa.id)
+    assert got.cls == "action" and got.label == pa.label and got.history[-1]["event"] == "undo"
+    client.post(f"{url}/items/{pa.id}/events", headers=auth_headers,
+                json={"command": "apply", "text_hash": "h4", "detail": {"via": "discard", "reinstate": "pre_applied"}})
+    items = {i["id"]: i for i in client.get(url, headers=auth_headers).json()["items"]}
+    assert items[pa.id]["status"] == "pre_applied" and items[pa.id]["cls"] == "action"
+
+
+@pytest.mark.parametrize("status", ["pre_applied", "open"])
+def test_get_review_never_hides_pre_applied_items(client, auth_headers, seeded, db_session, status):
+    """An engine pre-applied item already relabelled cls=suppress (before this fix) is still returned, cls as
+    stored, whether it still holds the engine's write or the user undid it; other suppress items stay hidden."""
+    rid, it = seeded
+    pa = _pre_applied_insert(rid, it.run_id, cls="suppress")
+    pa.status = status
+    plain = ReviewItem(key="s1", report_id=rid, run_id=it.run_id, lane="coverage", detectors=["jev.classify_first"],
+                       kind="partial", cls="suppress", section="FINDINGS", label="Hidden")
+    store.save_items(db_session, [pa, plain])
+    items = {i["id"]: i for i in client.get(f"/api/reports/{rid}/review", headers=auth_headers).json()["items"]}
+    assert items[pa.id]["cls"] == "suppress" and items[pa.id]["status"] == status
+    assert plain.id not in items
+
+
+def test_probe_skips_contradiction_on_a_restored_removal(client, auth_headers, seeded, monkeypatch, db_session):
+    """Gate G (F1 note E): restoring a contradicted removal puts the clause back; the probe must not add a second
+    "contradicted" card for it. The restored item is the one row for that span."""
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.setattr(rc, "_jev", jev({"x*": {"noul": 0.95}}))
+    rid, it = seeded
+    removal = ReviewItem(key="rm1", report_id=rid, run_id=it.run_id, lane="accuracy", detectors=["negatives.v5"],
+                         kind="removed", cls="action", section="FINDINGS", label="Negative contradicted",
+                         anchor=Span(start=10, end=10, text=""),
+                         evidence={"removed_text": "The liver is normal.", "clause": "The liver is normal."},
+                         edit=Edit(mode="remove", find="The liver is normal."), status="pre_applied",
+                         history=[{"event": "pre_applied", "actor": "engine"}])
+    store.save_items(db_session, [removal])
+    client.post(f"/api/reports/{rid}/review/items/{removal.id}/events", headers=auth_headers,
+                json={"command": "restore", "text_hash": "h1"})
+    start = REPORT.index("The liver is normal.")
+    r = client.post(f"/api/reports/{rid}/review/probe", headers=auth_headers,
+                    json={"text": REPORT, "text_hash": "h2",
+                          "changed_ranges": [[start, start + len("The liver is normal.")]]}).json()
+    assert r["success"]
+    assert not [i for i in r["new_items"] if "liver" in (i["anchor"] or {}).get("text", "")]
+
+
+def test_probe_still_adds_contradictions_elsewhere(client, auth_headers, seeded, monkeypatch, db_session):
+    """Control for the restored-removal dedupe: without a restored item on the clause, the contradiction is added."""
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.setattr(rc, "_jev", jev({"x*": {"noul": 0.95}}))
+    rid, _ = seeded
+    start = REPORT.index("The liver is normal.")
+    r = client.post(f"/api/reports/{rid}/review/probe", headers=auth_headers,
+                    json={"text": REPORT, "text_hash": "h2",
+                          "changed_ranges": [[start, start + len("The liver is normal.")]]}).json()
+    assert [i for i in r["new_items"] if "liver" in (i["anchor"] or {}).get("text", "")]
