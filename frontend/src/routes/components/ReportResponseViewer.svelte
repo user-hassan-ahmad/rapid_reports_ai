@@ -727,6 +727,10 @@
 	let reviewExtras: Extension[] = [];
 	let reviewReplaceDoc: ((state: EditorState, text: string) => TransactionSpec) | undefined = undefined;
 	let railOn = false;
+	// Gate G: the unsaved-changes bar sits under the report view, so the view gives back the bar's height; otherwise
+	// the view (and the rail's chat composer at its foot) runs on beneath the bar.
+	let saveBarHeight = 0;
+	$: saveBarShown = activeView === 'report' && hasUnsavedChanges && saveBarHeight > 0;
 	let reviewDensity: Density = 'quiet';
 	let reviewReportId: string | null = null;
 	let lastReviewResponse: string | null = null;
@@ -1343,7 +1347,13 @@
 				{/if}
 				<div class="relative px-3 sm:px-4 pt-0 pb-3 sm:pb-4 flex-1 min-h-0 overflow-y-auto">
 					<!-- View container with absolute positioning for smooth crossfade transitions -->
-					<div class="relative" style="min-height: calc(100vh - 330px);">
+					<div
+						class="relative"
+						data-rv-viewport
+						style="min-height: {saveBarShown
+							? `calc(100vh - 330px - ${saveBarHeight}px)`
+							: 'calc(100vh - 330px)'};"
+					>
 						<!-- History View -->
 						{#if activeView === 'history' && reportId}
 							<div 
@@ -1514,6 +1524,7 @@
 			{#if activeView === 'report' && hasUnsavedChanges}
 				<div
 					class="sticky-save-bar"
+					bind:offsetHeight={saveBarHeight}
 					transition:fly={{ y: 48, duration: 220, easing: (t) => 1 - Math.pow(1 - t, 3) }}
 				>
 					<div class="sticky-save-inner">

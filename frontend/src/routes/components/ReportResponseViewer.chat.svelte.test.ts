@@ -476,6 +476,24 @@ describe('Discard after Apply', () => {
 	});
 });
 
+describe('unsaved-changes bar beside the rail (Gate G)', () => {
+	it('gives back its own height: the report view (rail and composer) shrinks so the bar never covers the composer', async () => {
+		const { container } = await mount();
+		const css = (v: string) => {
+			const el = document.createElement('div'); // the browser's own spelling of a calc()
+			el.style.minHeight = v;
+			return el.style.minHeight;
+		};
+		const viewport = container.querySelector<HTMLElement>('[data-rv-viewport]')!;
+		expect(viewport.style.minHeight).toBe(css('calc(100vh - 330px)'));
+		await page.getByRole('button', { name: 'Apply: Measurement differs' }).click();
+		await pause(400);
+		const bar = container.querySelector<HTMLElement>('.sticky-save-bar')!;
+		expect(bar.offsetHeight).toBeGreaterThan(0);
+		expect(viewport.style.minHeight).toBe(css(`calc(100vh - 330px - ${bar.offsetHeight}px)`));
+	});
+});
+
 describe('rail section order', () => {
 	it('follows the report headings when no section list is passed (case-insensitive)', async () => {
 		const imp = REPORT.indexOf('Normal study.');
