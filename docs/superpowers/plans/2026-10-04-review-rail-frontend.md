@@ -459,7 +459,10 @@ Chat history uses `report_chat_messages` if the backend persists it (check). Oth
 - **Railway settings** (Hassan approves each):
   - `RR_GROUPED_NORMALS=1`;
   - `RR_REVIEW_ENGINE=live`;
-  - `RR_REVIEW_RAIL` unset.
+  - `RR_REVIEW_RAIL` unset;
+  - `RR_REVIEW_CONCURRENCY`: set it from the shadow run timings (`report_review_runs.timings_ms`, runs per hour)
+    before live. The default stays 1; with the rail on, a queued run shows "reviewing" until its turn
+    (one in-flight run per report, F2 I3), so a too-low cap reads as a slow rail. PR notes must say so.
 - **Verify by data:**
   - `report_review_runs.mode='live'` on new reports;
   - the UI in the Chrome session.
@@ -467,7 +470,8 @@ Chat history uses `report_chat_messages` if the backend persists it (check). Oth
 - **Kill switches:**
   - `RR_REVIEW_RAIL=0` hides the rail;
   - `RR_REVIEW_ENGINE=shadow` returns to today's UI;
-  - `RR_GROUPED_NORMALS=0` restores today's normals.
+  - `RR_GROUPED_NORMALS=0` restores today's normals for new sheets (the analyser stops writing the linked
+    format); a sheet already written in it is still read as linked (detected by format, F2 M1).
 
 ---
 
