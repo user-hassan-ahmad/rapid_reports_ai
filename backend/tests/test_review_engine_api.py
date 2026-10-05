@@ -485,3 +485,22 @@ def test_an_event_detail_within_limits_is_accepted(client, auth_headers, seeded)
     r = client.post(f"/api/reports/{rid}/review/items/{it.id}/events", headers=auth_headers,
                     json={"command": "view", "text_hash": "h" * 64, "detail": detail})
     assert r.status_code == 200 and r.json()["success"]
+
+
+@pytest.mark.parametrize("kind", ["contradicted", "removed"])
+def test_probe_adds_no_card_for_a_dismissed_contradiction(client, auth_headers, seeded, monkeypatch, db_session,
+                                                          kind):
+    """F2 M4: the radiologist dismissed (Keep) a contradiction card on a clause; the next probe that touches the
+    clause must not bring a new card for it back."""
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.setattr(rc, "_jev", jev({"x*": {"noul": 0.95}}))
+    rid, it = seeded
+    start = REPORT.index("The liver is normal.")
+    card = ReviewItem(key="dc1", report_id=rid, run_id=it.run_id, lane="accuracy", detectors=["loop.contradiction"],
+                      kind=kind, cls="minor", section="FINDINGS", label="Contradicted",
+                      anchor=Span(start=start, end=start + 20, text="The liver is normal."),
+                      evidence={"clause": "The liver is normal."}, status="dismissed")
+    store.save_items(db_session, [card])
+    body = {"text": REPORT, "text_hash": text_hash(REPORT), "changed_ranges": [[start, start + 20]]}
+    r = client.post(f"/api/reports/{rid}/review/probe", headers=auth_headers, json=body).json()
+    assert r["success"] and r["new_items"] == []

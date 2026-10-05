@@ -102,15 +102,17 @@ def _norm_clause(s: Optional[str]) -> str:
 
 
 def _claimed_texts(items: List[ReviewItem]) -> List[str]:
-    """Clauses a live item already speaks for: a removal or contradiction item (pre_applied, open or stale) and any
-    item the user restored. The probe adds no second "contradicted" card for them (Gate G note E). Restore and the
-    probe are posted together, so the removal may still read pre_applied here: its kind alone claims the clause."""
+    """Clauses an item already speaks for: a removal or contradiction item (pre_applied, open or stale, or dismissed:
+    the radiologist kept the clause, F2 M4) and any live item the user restored. The probe adds no second
+    "contradicted" card for them (Gate G note E). Restore and the probe are posted together, so the removal may
+    still read pre_applied here: its kind alone claims the clause."""
     out = []
     for it in items:
-        if it.status not in ("open", "pre_applied", "stale"):
+        removal = it.kind in verifier.REMOVAL_KINDS
+        if it.status not in ("open", "pre_applied", "stale") and not (removal and it.status == "dismissed"):
             continue
         restored = any(isinstance(h, dict) and h.get("event") == "restore" for h in it.history or [])
-        if it.kind not in verifier.REMOVAL_KINDS and not restored:
+        if not removal and not restored:
             continue
         ev = it.evidence or {}
         for t in (ev.get("removed_text"), ev.get("clause"), it.anchor.text if it.anchor else None,
