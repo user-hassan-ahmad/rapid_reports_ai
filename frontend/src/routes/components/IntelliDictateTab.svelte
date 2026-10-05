@@ -618,6 +618,39 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 		dismissIntelliDraft();
 	}
 
+	/** History "Open" (Plan 3 E2, spec §12.6): show a saved report in the viewer. The viewer loads its stored review
+	 * run, items and workspace state from `reportId`; nothing is generated, re-run or probed. The dictation workspace
+	 * is closed and the case details show the saved report's scan type and history. */
+	export async function openExisting(report: {
+		id: string;
+		report_content?: string | null;
+		model_used?: string | null;
+		input_data?: { variables?: Record<string, string>; extracted_scan_type?: string } | null;
+	}): Promise<void> {
+		const vars = report.input_data?.variables ?? {};
+		++analyseVersion; // drop any in-flight analyser events for the old case
+		fastSheetId = '';
+		bestSheetId = '';
+		analyseLoading = false;
+		prePoppedSections = [];
+		sectionsGeneratedFromScanType = '';
+		sectionsGeneratedFromHistory = '';
+		activePrompts = [];
+		coveredSections = new Set();
+		scanType = vars.SCAN_TYPE ?? report.input_data?.extracted_scan_type ?? '';
+		clinicalHistory = vars.CLINICAL_HISTORY ?? '';
+		applicableGuidelines = [];
+		reportOptions = [];
+		error = null;
+		loading = false;
+		response = report.report_content ?? '';
+		responseModel = report.model_used ?? null;
+		reportId = report.id;
+		hasResponseEver = true;
+		findingsAtReportGeneration = scratchpadToFindings(scratchpadContent);
+		await tick();
+	}
+
 	let reportViewerRef: any = null;
 
 	export function handleExternalAuditAcknowledge(detail: { criterion: string; resolutionMethod: string }) {

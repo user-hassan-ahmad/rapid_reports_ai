@@ -53,6 +53,8 @@ import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 		id?: string | null;
 		report_content?: string;
 		report_type?: string;
+		template_id?: string | null;
+		model_used?: string | null;
 		input_data?: HistoryModalInput;
 	};
 	type ReportHistoryDetail = { count: number };
@@ -393,6 +395,8 @@ let templatedModel = 'claude'; // Track model for template editor
 		handleExternalAuditApplyFix?: (detail: unknown) => void;
 		handleExternalAuditInsertBanner?: (bannerText: string) => void;
 		handleExternalAuditReaudit?: () => void;
+		/** History "Open" (Plan 3 E2); the templated tab answers false when it cannot show the report. */
+		openExisting?: (report: HistoryModal & { id: string }) => Promise<boolean | void>;
 	};
 
 	// Tab refs for draft restore (called from page-level banners)
@@ -512,6 +516,34 @@ let templatedModel = 'claude'; // Track model for template editor
 				reportId = restored.id;
 			}
 		}
+	}
+
+	/** History "Open" (Plan 3 E2, spec §12.6): load a saved report into its tab's viewer. The viewer loads the stored
+	 *  review run, items and workspace state from the report id; nothing is re-run. Falls back to the read-only
+	 *  preview when the tab cannot show it (a templated report whose template is gone, or the tab still loading). */
+	async function handleOpenReport(report: HistoryModal): Promise<void> {
+		if (!report?.id) return;
+		const saved = { ...report, id: report.id };
+		historyModalReport = null;
+		if (report.report_type === 'templated') {
+			showSkillSheetCreator = false;
+			activeTab = 'templated';
+			await tick();
+			const opened = templateTabRef?.openExisting ? await templateTabRef.openExisting(saved) : false;
+			if (opened) {
+				templatedReportId = saved.id;
+				return;
+			}
+		} else {
+			activeTab = 'auto';
+			await tick();
+			if (intelliTabRef?.openExisting) {
+				await intelliTabRef.openExisting(saved);
+				return;
+			}
+		}
+		activeTab = 'history';
+		historyModalReport = report;
 	}
 
 	function handleHistoryUpdate(detail: ReportHistoryDetail): void {
@@ -1131,6 +1163,7 @@ $: if (
 					<HistoryTab
 						refreshKey={historyRefreshKey}
 						on:viewReport={(e) => historyModalReport = e.detail as HistoryModal}
+						on:openReport={(e) => handleOpenReport(e.detail as HistoryModal)}
 					/>
 				</div>
 				

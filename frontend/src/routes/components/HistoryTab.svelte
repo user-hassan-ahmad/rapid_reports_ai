@@ -107,6 +107,16 @@
 		dispatch('viewReport', report);
 	}
 
+	/** Open the saved report in the main viewer and rail (Plan 3 E2): nothing is re-run. */
+	function handleOpenReport(report) {
+		selectedReport = report;
+		dispatch('openReport', report);
+	}
+
+	function reportTitle(report) {
+		return report.description || (report.report_type === 'auto' ? 'Auto Report' : 'Templated Report');
+	}
+
 	// Modal handling is now in parent component (+page.svelte)
 
 	function formatDate(dateString) {
@@ -385,7 +395,7 @@
 							<div class="flex-1">
 								<!-- First line: Template/Scan Type + Description -->
 								<h3 class="text-white font-medium mb-1">
-									{report.description || (report.report_type === 'auto' ? 'Auto Report' : 'Templated Report')}
+									{reportTitle(report)}
 								</h3>
 								<!-- Second line: Date/Time -->
 								<p class="text-gray-400 text-sm">
@@ -394,10 +404,20 @@
 							</div>
 							<div class="flex gap-2">
 								<button
+									onclick={() => handleOpenReport(report)}
+									class="btn-ghost text-sm"
+									aria-label={`Open ${reportTitle(report)}`}
+									title="Open in the report viewer"
+								>
+									Open
+								</button>
+								<button
 									onclick={() => handleViewReport(report)}
 									class="btn-ghost text-sm"
+									aria-label={`Preview ${reportTitle(report)}`}
+									title="Read-only preview"
 								>
-									View
+									Preview
 								</button>
 								<button
 									onclick={() => deleteReport(report.id)}

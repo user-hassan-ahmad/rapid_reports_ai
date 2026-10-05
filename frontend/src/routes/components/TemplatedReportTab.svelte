@@ -1185,6 +1185,30 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 		draftStore.clearTemplateTab();
 	}
 
+	/** History "Open" (Plan 3 E2, spec §12.6): select the report's template, restore its saved inputs and show the
+	 * saved report in the viewer, which loads its stored review run, items and workspace state from `reportId`.
+	 * Nothing is generated, re-run or probed. Returns false when the template is not available (the caller falls
+	 * back to the read-only preview). */
+	export async function openExisting(report) {
+		const templateId = report?.template_id;
+		if (!templateId) return false;
+		if (!$templatesStore.templates || $templatesStore.templates.length === 0) {
+			await templatesStore.loadTemplates();
+		}
+		if (!($templatesStore.templates || []).some((t) => t.id === templateId)) return false;
+		variableValuesByTemplate[templateId] = { ...(report.input_data?.variables ?? {}) };
+		lastTemplateId = null; // re-sync the inputs from the saved values, even when this template is already open
+		selectedTemplateId.set(templateId);
+		await tick(); // the form resets on a template change before the report lands
+		error = null;
+		loading = false;
+		response = report.report_content ?? '';
+		responseModel = report.model_used ?? null;
+		reportId = report.id;
+		await tick();
+		return true;
+	}
+
 	onMount(async () => {
 		if (browser) {
 			// Load stores if empty
