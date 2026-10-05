@@ -104,6 +104,19 @@ const apply: Command = (ctx) => {
 	const item = ctx.item;
 	if (!item) return fail('no_item');
 	if (!ACTIONABLE.has(item.status)) return fail('not_open');
+	// A pre-applied (post-check) edit the user undid or restored: apply re-does exactly that change, found by the
+	// context the undo / restore recorded, never by re-placing item.edit (its clause may now occur twice).
+	const d = item.history.some((h) => h.event === 'pre_applied') ? lastReverted(item) : null;
+	if (d) {
+		const at = findApplied(ctx.doc, d, true); // context required: the bare text may sit elsewhere too
+		if (at == null) return fail('changed');
+		const c: TextChange = { from: at, to: at + String(d.insert).length, insert: String(d.removed) };
+		return {
+			changes: c,
+			event: { itemId: item.id, command: 'apply', detail: appliedDetail(ctx.doc, c) },
+			statuses: { [item.id]: 'applied' }
+		};
+	}
 	if (!item.edit) return fail('no_edit');
 	return placeEdit(ctx, item, item.edit, 'apply');
 };
@@ -145,10 +158,24 @@ function lastApplied(item: ReviewItem): Record<string, unknown> | null {
 	return null;
 }
 
+/** The item's latest text event when it is an undo / restore that recorded what it replaced (its detail), else
+ * null (the latest is an apply / edit, or there is none). */
+function lastReverted(item: ReviewItem): Record<string, unknown> | null {
+	for (let k = item.history.length - 1; k >= 0; k--) {
+		const h = item.history[k];
+		if (h.event === 'apply' || h.event === 'edit') return null;
+		if (h.event === 'undo' || h.event === 'restore') {
+			const d = h.detail;
+			return d && typeof d.insert === 'string' && typeof d.removed === 'string' ? d : null;
+		}
+	}
+	return null;
+}
+
 /** Where the applied text sits now: the recorded position with its context, else a unique search for the text
- * with its context, else (non-empty text only) a unique search for the text itself. Null: it is not there
- * verbatim any more. */
-function findApplied(doc: string, d: Record<string, unknown>): number | null {
+ * with its context, else (non-empty text only, unless `withContext`) a unique search for the text itself. Null: it
+ * is not there verbatim any more. */
+function findApplied(doc: string, d: Record<string, unknown>, withContext = false): number | null {
 	const insert = String(d.insert ?? '');
 	const left = String(d.left ?? '');
 	const right = String(d.right ?? '');
@@ -157,7 +184,7 @@ function findApplied(doc: string, d: Record<string, unknown>): number | null {
 	if (Number.isInteger(at) && at - left.length >= 0 && doc.startsWith(whole, at - left.length))
 		return at;
 	if (whole && count(doc, whole) === 1) return doc.indexOf(whole) + left.length;
-	if (insert && count(doc, insert) === 1) return doc.indexOf(insert);
+	if (!withContext && insert && count(doc, insert) === 1) return doc.indexOf(insert);
 	return null;
 }
 
@@ -220,9 +247,21 @@ function reverting(command: 'undo' | 'restore'): Command {
 		if (command === 'restore' && !isRemoval(item)) return fail('not_removal');
 		const c = revert(ctx, item);
 		if (typeof c === 'string') return fail(c);
+		const doc = ctx.doc;
 		return {
 			changes: c,
-			event: { itemId: item.id, command, detail: { from: c.from, to: c.to, insert: c.insert } },
+			event: {
+				itemId: item.id,
+				command,
+				detail: {
+					from: c.from,
+					to: c.to,
+					insert: c.insert,
+					removed: doc.slice(c.from, c.to),
+					left: doc.slice(Math.max(0, c.from - CONTEXT), c.from),
+					right: doc.slice(c.to, c.to + CONTEXT)
+				}
+			},
 			statuses: { [item.id]: 'open' }
 		};
 	};

@@ -525,3 +525,82 @@ describe('registry', () => {
 		expect(JSON.stringify(it_)).toBe(snap);
 	});
 });
+
+describe('re-apply after undo / restore of a pre-applied item', () => {
+	const PRE = { event: 'pre_applied', actor: 'post_check', detail: {} } as HistoryEntry;
+
+	it('apply after undoing a post-check insertion puts back exactly what the check wrote; undo works again', () => {
+		const original = 'FINDINGS:\nThe liver is normal.\nIMPRESSION:\nNormal.';
+		const written = 'FINDINGS:\nThe liver is normal. No ascites.\nIMPRESSION:\nNormal.';
+		const j1 = original.indexOf('\nIMPRESSION');
+		let it_ = item({
+			status: 'pre_applied',
+			// an edit that could not place itself here (no such anchor): the inverse must not depend on it
+			edit: { mode: 'insert', after: 'Not in the report.', section: 'FINDINGS', replace: 'No ascites.' },
+			anchor: span(written, 'No ascites.'),
+			evidence: { undo: undoOf(written, j1, j1 + ' No ascites.'.length, '') },
+			history: [PRE]
+		});
+		const u = run('undo', { doc: written, items: [it_], item: it_ });
+		const undone = after(written, u);
+		expect(undone).toBe(original);
+		it_ = { ...it_, status: 'open', history: [...it_.history, hist(u.event!)] };
+
+		const a = run('apply', { doc: undone, items: [it_], item: it_, sections: SECTIONS });
+		expect(a.error).toBeUndefined();
+		const reapplied = after(undone, a);
+		expect(reapplied).toBe(written);
+		expect(a.event?.command).toBe('apply');
+		expect(a.statuses).toEqual({ [it_.id]: 'applied' });
+
+		it_ = { ...it_, status: 'applied', history: [...it_.history, hist(a.event!)] };
+		expect(after(reapplied, run('undo', { doc: reapplied, items: [it_], item: it_ }))).toBe(original);
+	});
+
+	it('apply after restoring a removal whose clause occurs twice removes the restored occurrence', () => {
+		const original = 'FINDINGS:\nNo ascites. The liver is normal.\nIMPRESSION:\nNo ascites. Normal study.';
+		const written = 'FINDINGS:\nNo ascites. The liver is normal.\nIMPRESSION:\nNormal study.';
+		const i1 = written.indexOf('Normal study.');
+		let it_ = item({
+			kind: 'removed',
+			status: 'pre_applied',
+			edit: { mode: 'remove', find: 'No ascites.', section: 'IMPRESSION' },
+			anchor: { start: i1, end: i1, text: '', text_hash: 'h1' },
+			evidence: { removed_text: 'No ascites.', undo: undoOf(written, i1, i1, 'No ascites. ') },
+			history: [PRE]
+		});
+		const r = run('restore', { doc: written, items: [it_], item: it_ });
+		const restored = after(written, r);
+		expect(restored).toBe(original);
+		it_ = { ...it_, status: 'open', history: [...it_.history, hist(r.event!)] };
+
+		const a = run('apply', { doc: restored, items: [it_], item: it_, sections: SECTIONS });
+		expect(after(restored, a)).toBe(written);
+
+		// the restored text was changed since: refuse rather than guess
+		const edited = restored.replace('No ascites. Normal', 'No free fluid. Normal');
+		expect(run('apply', { doc: edited, items: [it_], item: it_ }).error).toBe('changed');
+	});
+
+	it('records where the reverted text now sits in the undo / restore event', () => {
+		const written = 'FINDINGS:\nNo ascites. The liver is normal.\nIMPRESSION:\nNormal study.';
+		const i1 = written.indexOf('Normal study.');
+		const it_ = item({
+			kind: 'removed',
+			status: 'pre_applied',
+			edit: { mode: 'remove', find: 'No ascites.' },
+			anchor: { start: i1, end: i1, text: '', text_hash: 'h1' },
+			evidence: { removed_text: 'No ascites.', undo: undoOf(written, i1, i1, 'No ascites. ') },
+			history: [PRE]
+		});
+		const r = run('restore', { doc: written, items: [it_], item: it_ });
+		expect(r.event?.detail).toEqual({
+			from: i1,
+			to: i1,
+			insert: 'No ascites. ',
+			removed: '',
+			left: written.slice(i1 - 16, i1),
+			right: written.slice(i1, i1 + 16)
+		});
+	});
+});
