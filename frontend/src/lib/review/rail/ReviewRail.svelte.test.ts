@@ -215,6 +215,20 @@ describe('ReviewRail', () => {
 		expect(r1.textContent).toContain('The kidneys are normal.');
 	});
 
+	it('a removed row in a narrow rail keeps a readable label column; its actions wrap instead (Gate G)', async () => {
+		await mount();
+		await expect.element(page.getByText('Kidneys normal')).toBeInTheDocument();
+		rail()!.style.width = '330px';
+		const r1 = rail()!.querySelector<HTMLElement>('[data-rv-item="r1"]')!;
+		const main = r1.querySelector<HTMLElement>('.rv-row-main')!;
+		const actions = r1.querySelector<HTMLElement>('.rv-row-actions')!;
+		await new Promise((r) => requestAnimationFrame(() => r(null)));
+		const row = r1.getBoundingClientRect().width;
+		expect(main.getBoundingClientRect().width).toBeGreaterThanOrEqual(row * 0.4);
+		expect(actions.getBoundingClientRect().width).toBeLessThanOrEqual(row * 0.6);
+		expect(r1.scrollWidth).toBeLessThanOrEqual(r1.clientWidth + 1);
+	});
+
 	it('pre-applied undo and restore call the commands', async () => {
 		const { onCommand } = await mount();
 		await page.getByRole('button', { name: /undo/i }).first().click();

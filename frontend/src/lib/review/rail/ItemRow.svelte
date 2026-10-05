@@ -181,9 +181,10 @@
 	.rv-row:hover {
 		background: var(--rv-surface-hover);
 	}
+	/* Gate G: the label column keeps at least half the row and wraps; the actions shrink and wrap beside it. */
 	.rv-row-main {
-		flex: 1;
-		min-width: 0;
+		flex: 1 1 50%;
+		min-width: 50%;
 		display: flex;
 		align-items: baseline;
 		gap: 6px;
@@ -201,8 +202,7 @@
 		min-width: 0;
 	}
 	.rv-row-label {
-		overflow: hidden;
-		text-overflow: ellipsis;
+		overflow-wrap: anywhere;
 	}
 	.rv-row-sub {
 		color: var(--rv-muted);
@@ -225,9 +225,13 @@
 	}
 	.rv-row-actions {
 		display: flex;
+		flex-wrap: wrap;
+		justify-content: flex-end;
 		align-items: center;
 		gap: 4px;
-		flex: none;
+		flex: 0 1 auto;
+		min-width: 0;
+		text-align: right;
 		color: var(--rv-muted);
 		font-size: 0.75rem;
 	}
