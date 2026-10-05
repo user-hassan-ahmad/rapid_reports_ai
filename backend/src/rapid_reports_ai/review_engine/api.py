@@ -99,12 +99,16 @@ def _norm_clause(s: Optional[str]) -> str:
     return " ".join((s or "").lower().split()).rstrip(" .;,")
 
 
-def _restored_texts(items: List[ReviewItem]) -> List[str]:
-    """The clauses of items the user restored and has not since put away (status open): the restored item is the one
-    row for that text, so the probe adds no second "contradicted" card for it (Gate G note E)."""
+def _claimed_texts(items: List[ReviewItem]) -> List[str]:
+    """Clauses a live item already speaks for: a removal or contradiction item (pre_applied, open or stale) and any
+    item the user restored. The probe adds no second "contradicted" card for them (Gate G note E). Restore and the
+    probe are posted together, so the removal may still read pre_applied here: its kind alone claims the clause."""
     out = []
     for it in items:
-        if it.status != "open" or not any(isinstance(h, dict) and h.get("event") == "restore" for h in it.history or []):
+        if it.status not in ("open", "pre_applied", "stale"):
+            continue
+        restored = any(isinstance(h, dict) and h.get("event") == "restore" for h in it.history or [])
+        if it.kind not in verifier.REMOVAL_KINDS and not restored:
             continue
         ev = it.evidence or {}
         for t in (ev.get("removed_text"), ev.get("clause"), it.anchor.text if it.anchor else None,
@@ -116,7 +120,10 @@ def _restored_texts(items: List[ReviewItem]) -> List[str]:
 
 def _covered(clause: str, texts: List[str]) -> bool:
     c = _norm_clause(clause)
-    return bool(c) and any(c == t or c in t or t in c for t in texts)
+    def near(a: str, b: str) -> bool:             # one inside the other and most of it: never a bare word
+        short, long_ = sorted((a, b), key=len)
+        return short in long_ and len(short) >= 0.6 * len(long_)
+    return bool(c) and any(near(c, t) for t in texts)
 
 
 @router.get("/{report_id}/review")
@@ -162,13 +169,13 @@ async def post_probe(report_id: str, body: ProbeBody, current_user: User = Depen
     all_items = store.list_items(db, report_id)
     open_items = [i for i in all_items if i.status == "open" and not _engine_pre_applied(i)]
     res = await verifier.probe(inp, open_items, body.text, body.changed_ranges)
-    restored = _restored_texts(all_items)
+    claimed = _claimed_texts(all_items)
     for iid in res["addressed"]:
         store.append_event(db, report_id, iid, "addressed", body.text_hash, actor="loop")
     run = store.latest_run(db, report_id)
     new_items: List[ReviewItem] = []
     for c in (res["contradictions"] if run else []):
-        if _covered((c.evidence or {}).get("clause") or (c.anchor.text if c.anchor else ""), restored):
+        if _covered((c.evidence or {}).get("clause") or (c.anchor.text if c.anchor else ""), claimed):
             continue
         it = engine.build_item(inp, run["id"], adjudicator.Outcome(group=[c]))
         it.cls = "action" if c.code_fix else "minor"

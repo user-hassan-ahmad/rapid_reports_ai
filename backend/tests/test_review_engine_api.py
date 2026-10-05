@@ -329,3 +329,35 @@ def test_probe_still_adds_contradictions_elsewhere(client, auth_headers, seeded,
                     json={"text": REPORT, "text_hash": "h2",
                           "changed_ranges": [[start, start + len("The liver is normal.")]]}).json()
     assert [i for i in r["new_items"] if "liver" in (i["anchor"] or {}).get("text", "")]
+
+
+@pytest.mark.parametrize("restored", [False, True])
+def test_probe_skips_contradiction_racing_a_restore(client, auth_headers, seeded, monkeypatch, db_session, restored):
+    """Gate G re-check: the client posts Restore and the probe together, so the probe can read the removal still
+    pre_applied. A removal item (pre_applied, or open after restore) already covers its clause either way; so does
+    an open contradiction card from an earlier probe."""
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.setattr(rc, "_jev", jev({"x*": {"noul": 0.95}}))
+    rid, it = seeded
+    removal = ReviewItem(key="rm2", report_id=rid, run_id=it.run_id, lane="accuracy", detectors=["synthetic"],
+                         kind="removed", cls="action", section="FINDINGS", label="Negative contradicted",
+                         anchor=Span(start=10, end=10, text=""), evidence={"removed_text": "The liver is normal."},
+                         status="open" if restored else "pre_applied",
+                         history=[{"event": "pre_applied", "actor": "post_check"}])
+    store.save_items(db_session, [removal])
+    start = REPORT.index("The liver is normal.")
+    body = {"text": REPORT, "text_hash": "h2", "changed_ranges": [[start, start + len("The liver is normal.")]]}
+    r = client.post(f"/api/reports/{rid}/review/probe", headers=auth_headers, json=body).json()
+    assert r["success"] and r["new_items"] == []
+
+
+def test_probe_adds_one_contradiction_card_per_clause(client, auth_headers, seeded, monkeypatch, db_session):
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.setattr(rc, "_jev", jev({"x*": {"noul": 0.95}}))
+    rid, _ = seeded
+    start = REPORT.index("The liver is normal.")
+    body = {"text": REPORT, "text_hash": "h2", "changed_ranges": [[start, start + len("The liver is normal.")]]}
+    first = client.post(f"/api/reports/{rid}/review/probe", headers=auth_headers, json=body).json()
+    again = client.post(f"/api/reports/{rid}/review/probe", headers=auth_headers, json=body).json()
+    assert len([i for i in first["new_items"] if "liver" in i["anchor"]["text"]]) == 1
+    assert again["new_items"] == []
