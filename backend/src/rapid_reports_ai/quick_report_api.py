@@ -154,6 +154,9 @@ class FinaliseRequest(BaseModel):
     # Ids of the reporter-choice options ticked into the report (feedback on the
     # include / optional / exclude routing).
     applied_option_ids: Optional[List[str]] = None
+    # Review rail (live mode): ids of the review items kept in the final report (applied, plus pre-applied not
+    # undone). Stored on the latest review run (review_engine.store.record_finalise).
+    review_applied_item_ids: Optional[List[str]] = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -577,6 +580,14 @@ async def finalise_report(
         candidates[0]["options_applied"] = request.applied_option_ids
         updated.candidate_reports = candidates
         db.commit()
+
+    if request.review_applied_item_ids is not None:
+        try:
+            from .review_engine import store as review_store
+            review_store.record_finalise(db, report_id, request.review_applied_item_ids)
+        except Exception:
+            logger.exception("[finalise] could not record review_applied_item_ids for %s", report_id)
+            db.rollback()
 
     return {
         "success": True,

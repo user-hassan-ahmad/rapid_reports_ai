@@ -84,6 +84,21 @@ def latest_run(db: Session, report_id: str, scan: int = 20) -> Optional[dict]:
             "errors": run.errors or {}, "created_at": run.created_at.isoformat() if run.created_at else None}
 
 
+def record_finalise(db: Session, report_id: str, applied_item_ids: List[str]) -> Optional[str]:
+    """Store the review items the radiologist kept at finalise (applied, plus pre-applied not undone) on the latest
+    run, under `shadow_log["finalise"] = {"review_applied_item_ids": [...], "at": iso}` (a keyed run log; no
+    migration). Other shadow_log keys are kept. Returns the run id, or None when the report has no run."""
+    run = latest_run(db, report_id)
+    if run is None:
+        return None
+    row = db.get(ReportReviewRun, _u(run["id"]))
+    row.shadow_log = {**(row.shadow_log or {}),
+                      "finalise": {"review_applied_item_ids": list(applied_item_ids), "at": _now().isoformat()}}
+    flag_modified(row, "shadow_log")
+    db.commit()
+    return run["id"]
+
+
 def list_items(db: Session, report_id: str, run_id: Optional[str] = None,
                include_suppressed: bool = False) -> List[ReviewItem]:
     if run_id is None:

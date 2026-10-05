@@ -474,7 +474,9 @@ class ReportReviewRun(Base):
     timings_ms = Column(JSONBType(), nullable=True)
     cost = Column(JSONBType(), nullable=True)
     errors = Column(JSONBType(), nullable=True)
-    shadow_log = Column(JSONBType(), nullable=True)         # Gate D: what options A / B would have done
+    # Keyed run log: "gate_d" (what options A / B would have done); "finalise" (store.record_finalise:
+    # {"review_applied_item_ids": [...], "at": iso}, the items the radiologist kept at finalise).
+    shadow_log = Column(JSONBType(), nullable=True)
     created_at = Column(DateTime, default=_now, nullable=False)
 
 
