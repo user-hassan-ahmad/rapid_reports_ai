@@ -381,6 +381,34 @@ describe('Discard after Apply', () => {
 		await expect.element(page.getByRole('button', { name: 'Restore: Trace fluid removed' })).toBeInTheDocument();
 	});
 
+	it('a removal without evidence.undo, stale after its restore, is still removed again on Discard', async () => {
+		const i = REPORT.indexOf('No ascites.');
+		const removal = action({
+			id: 'r2',
+			kind: 'removed',
+			cls: 'action',
+			status: 'pre_applied',
+			label: 'Trace fluid removed',
+			anchor: { start: i, end: i, text: '' },
+			evidence: { removed_text: 'Trace fluid.' },
+			history: engineHistory
+		});
+		serve(removal);
+		const { container } = await mount([removal]);
+		const view = viewOf(container);
+		await page.getByRole('button', { name: 'Restore: Trace fluid removed' }).click();
+		await pause(200);
+		expect(view.state.doc.toString()).toContain('Trace fluid.');
+		await page.getByRole('button', { name: 'Discard' }).click();
+		await pause(300);
+		expect(view.state.doc.toString()).toBe(REPORT);
+		expect(postEvent.mock.calls.map((c) => [c[1], c[2]])).toEqual([
+			['r2', 'restore'],
+			['r2', 'apply']
+		]);
+		expect(postEvent.mock.calls[1][4]).toEqual({ via: 'discard', reinstate: 'pre_applied' });
+	});
+
 	it('an apply saved, then undone, is applied again on Discard', async () => {
 		const { rerender, container } = await mount();
 		await page.getByRole('button', { name: 'Apply: Measurement differs' }).click();

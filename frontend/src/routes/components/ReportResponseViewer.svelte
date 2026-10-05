@@ -688,7 +688,8 @@
 				if (now === 'applied' && (saved === 'open' || saved === 'stale')) {
 					back.push({ itemId: id, command: 'undo', detail: { via: 'discard' } });
 					statuses[id] = 'open';
-				} else if (now === 'open' && (saved === 'applied' || saved === 'pre_applied')) {
+				} else if ((now === 'open' || now === 'stale') && (saved === 'applied' || saved === 'pre_applied')) {
+					// stale is the editor's local mark for an open item it cannot place (e.g. a restored removal)
 					const detail = saved === 'pre_applied' ? { via: 'discard', reinstate: 'pre_applied' } : { via: 'discard' };
 					back.push({ itemId: id, command: 'apply', detail });
 					statuses[id] = saved;
