@@ -455,3 +455,33 @@ def test_get_review_says_a_newer_run_is_running(client, auth_headers, seeded, db
     row.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=2)
     db_session.commit()
     assert client.get(url, headers=auth_headers).json()["running"] is False
+
+
+BIG = "x" * 100_001
+
+
+@pytest.mark.parametrize("path,body", [
+    ("items/{iid}/events", {"command": "view", "detail": {f"k{i}": 1 for i in range(21)}}),
+    ("items/{iid}/events", {"command": "view", "detail": {"k": "x" * 4100}}),
+    ("items/{iid}/events", {"command": "view", "text_hash": "h" * 65}),
+    ("probe", {"text": BIG, "text_hash": "h"}),
+    ("probe", {"text": "t", "text_hash": "h" * 65}),
+    ("reprepare", {"item_ids": ["a"], "text": BIG, "text_hash": "h"}),
+    ("reprepare", {"item_ids": [str(i) for i in range(201)], "text": "t", "text_hash": "h"}),
+    ("reprepare", {"item_ids": ["a"], "text": "t", "text_hash": "h" * 65}),
+    ("rerun", {"text": BIG}),
+])
+def test_review_bodies_are_size_limited(client, auth_headers, seeded, monkeypatch, path, body):
+    """F2 M2: oversized client input is a 422, before any work."""
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    rid, it = seeded
+    r = client.post(f"/api/reports/{rid}/review/{path.format(iid=it.id)}", headers=auth_headers, json=body)
+    assert r.status_code == 422
+
+
+def test_an_event_detail_within_limits_is_accepted(client, auth_headers, seeded):
+    rid, it = seeded
+    detail = {f"k{i}": "x" * 100 for i in range(20)}
+    r = client.post(f"/api/reports/{rid}/review/items/{it.id}/events", headers=auth_headers,
+                    json={"command": "view", "text_hash": "h" * 64, "detail": detail})
+    assert r.status_code == 200 and r.json()["success"]

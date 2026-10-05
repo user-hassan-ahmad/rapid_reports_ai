@@ -62,6 +62,7 @@ from .quick_report_analyser import (
 )
 from .quick_report_generator import generate_quick_report
 from .report_review import quick_section_names
+from .review_engine.limits import ItemIds
 
 
 logger = logging.getLogger(__name__)
@@ -156,7 +157,7 @@ class FinaliseRequest(BaseModel):
     applied_option_ids: Optional[List[str]] = None
     # Review rail (live mode): ids of the review items kept in the final report (applied, plus pre-applied not
     # undone). Stored on the latest review run (review_engine.store.record_finalise).
-    review_applied_item_ids: Optional[List[str]] = None
+    review_applied_item_ids: Optional[ItemIds] = None    # ≤ 200 ids (F2 M2)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

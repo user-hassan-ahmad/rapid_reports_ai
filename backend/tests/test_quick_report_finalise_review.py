@@ -70,3 +70,11 @@ def test_finalise_with_ids_but_no_run_still_succeeds(client, auth_headers, db_se
     res = client.patch(f"/api/quick-report/reports/{rid}/finalise", headers=auth_headers,
                        json={"final_report_content": REPORT, "review_applied_item_ids": ["i1"]})
     assert res.json()["success"] is True
+
+
+def test_finalise_caps_review_applied_item_ids(client, auth_headers, db_session, test_user):
+    """F2 M2: at most 200 review item ids."""
+    rid, _ = _seed(db_session, test_user)
+    res = client.patch(f"/api/quick-report/reports/{rid}/finalise", headers=auth_headers,
+                       json={"final_report_content": REPORT, "review_applied_item_ids": [str(i) for i in range(201)]})
+    assert res.status_code == 422

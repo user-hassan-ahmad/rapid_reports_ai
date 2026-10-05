@@ -88,6 +88,7 @@ from .agentic_routes import agentic_router
 from .chat_prompt import build_chat_system_prompt
 from . import chat_edits as _chat_edits
 from . import chat_thread as _chat_thread
+from .review_engine import limits as _review_limits
 from .enhancement_utils import (
     MODEL_CONFIG,
     MODEL_PROVIDERS,
@@ -4781,7 +4782,7 @@ class ChatAppliedRequest(BaseModel):
     edit_index: int
     item_id: str = Field(min_length=1, max_length=128)
     applied: bool
-    detail: Optional[Dict[str, Any]] = None   # the apply event detail (from/insert/removed/left/right): Undo after reload
+    detail: Optional[_review_limits.Detail] = None   # the apply event detail (from/insert/removed/left/right): Undo after reload
 
 
 @app.get("/api/reports/{report_id}/chat")

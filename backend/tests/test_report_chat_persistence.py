@@ -108,3 +108,27 @@ def test_applied_without_position_detail_keeps_no_empty_detail(client, auth_head
                 headers=auth_headers)
     msg = client.get(f"/api/reports/{chat_env}/chat", headers=auth_headers).json()["messages"][1]
     assert msg["applied_item_ids"] == [f"chat:{mid}:0"] and "applied_detail" not in msg["edits"][0]
+
+
+def test_applied_body_is_size_limited(client, auth_headers, chat_env):
+    """F2 M2: the apply detail is bounded (≤ 20 keys, ≤ 4 KB serialised)."""
+    turn = _turn(client, auth_headers, chat_env)
+    url = f"/api/reports/{chat_env}/chat/{turn['message_id']}/applied"
+    ok = {"edit_index": 0, "item_id": "chat:x:0", "applied": True}
+    assert client.post(url, json={**ok, "detail": {f"k{i}": 1 for i in range(21)}},
+                       headers=auth_headers).status_code == 422
+    assert client.post(url, json={**ok, "detail": {"insert": "x" * 4100}}, headers=auth_headers).status_code == 422
+
+
+def test_applied_item_ids_are_capped(client, auth_headers, chat_env, db_session, monkeypatch):
+    from rapid_reports_ai import chat_thread
+    turn = _turn(client, auth_headers, chat_env)
+    row = db_session.get(ReportChatMessage, uuid.UUID(turn["message_id"]))
+    row.applied_item_ids = [f"chat:x:{i}" for i in range(chat_thread.APPLIED_IDS_MAX)]
+    db_session.commit()
+    url = f"/api/reports/{chat_env}/chat/{turn['message_id']}/applied"
+    r = client.post(url, json={"edit_index": 0, "item_id": "chat:new", "applied": True}, headers=auth_headers)
+    assert r.status_code == 422
+    # re-applying an id already there, and undo, still work at the cap
+    r = client.post(url, json={"edit_index": 0, "item_id": "chat:x:0", "applied": True}, headers=auth_headers)
+    assert r.status_code == 200

@@ -52,6 +52,9 @@ def list_thread(db: Session, report_id: str) -> List[dict]:
     return [_dump(r) for r in rows]
 
 
+APPLIED_IDS_MAX = 200     # applied_item_ids per reply (F2 M2)
+
+
 class ChatTargetError(ValueError):
     """The applied update names a message or edit that cannot take it (→ 422)."""
 
@@ -70,6 +73,8 @@ def set_applied(db: Session, report_id: str, message_id: str, edit_index: int, i
         raise ChatTargetError("edit_index out of range")
     ids = [i for i in (row.applied_item_ids or []) if i != item_id]
     if applied:
+        if len(ids) >= APPLIED_IDS_MAX:
+            raise ChatTargetError(f"more than {APPLIED_IDS_MAX} applied edits")
         ids.append(item_id)
         kept = {k: detail[k] for k in APPLIED_DETAIL_KEYS if k in detail} if detail else {}
         if kept:

@@ -25,6 +25,7 @@ from ..database.crud import get_report
 from ..database.models import User
 from . import adjudicator, brief_normals, engine, negatives, store, verifier
 from .items import ReviewItem, text_hash
+from .limits import Detail, ItemIds, ReportText, TextHash
 
 router = APIRouter(prefix="/api/reports", tags=["review"])
 NOT_FOUND = {"success": False, "error": "Report not found"}
@@ -35,25 +36,26 @@ NORMAL_KIND = "assumed_normal"
 
 
 class EventBody(BaseModel):
-    command: str
-    text_hash: Optional[str] = None
-    detail: dict = Field(default_factory=dict)
+    """Bounded (F2 M2, `limits`): detail ≤ 20 keys and ≤ 4 KB serialised, text_hash ≤ 64 characters."""
+    command: str = Field(max_length=32)
+    text_hash: Optional[TextHash] = None
+    detail: Detail = Field(default_factory=dict)
 
 
 class ProbeBody(BaseModel):
-    text: str
-    text_hash: str
-    changed_ranges: List[List[int]] = Field(default_factory=list)
+    text: ReportText
+    text_hash: TextHash
+    changed_ranges: List[List[int]] = Field(default_factory=list, max_length=1000)
 
 
 class ReprepareBody(BaseModel):
-    item_ids: List[str]
-    text: str
-    text_hash: str
+    item_ids: ItemIds
+    text: ReportText
+    text_hash: TextHash
 
 
 class RerunBody(BaseModel):
-    text: Optional[str] = None
+    text: Optional[ReportText] = None
 
 
 WORKSPACE_MAX_BYTES = 16_384    # the serialised state; the field limits below already keep it well under this
