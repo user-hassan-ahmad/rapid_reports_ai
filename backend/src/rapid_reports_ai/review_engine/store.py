@@ -84,6 +84,19 @@ def latest_run(db: Session, report_id: str, scan: int = 20) -> Optional[dict]:
             "errors": run.errors or {}, "created_at": run.created_at.isoformat() if run.created_at else None}
 
 
+RUNNING_MAX_S = 900     # an unfinished run older than this is a crashed worker, not a running one
+
+
+def run_in_progress(db: Session, report_id: str) -> bool:
+    """The report's newest run is unfinished and recent: a run is queued or running (the rail keeps polling)."""
+    run = (db.query(ReportReviewRun).filter(ReportReviewRun.report_id == _u(report_id))
+           .order_by(ReportReviewRun.created_at.desc()).first())
+    if run is None or _finished(run) or run.created_at is None:
+        return False
+    at = run.created_at if run.created_at.tzinfo else run.created_at.replace(tzinfo=timezone.utc)
+    return (_now() - at).total_seconds() < RUNNING_MAX_S
+
+
 def record_finalise(db: Session, report_id: str, applied_item_ids: List[str]) -> Optional[str]:
     """Store the review items the radiologist kept at finalise (applied, plus pre-applied not undone) on the latest
     run, under `shadow_log["finalise"] = {"review_applied_item_ids": [...], "at": iso}` (a keyed run log; no

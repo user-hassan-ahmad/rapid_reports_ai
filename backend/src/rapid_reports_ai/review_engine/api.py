@@ -142,7 +142,7 @@ def get_review(report_id: str, include: Optional[str] = None, current_user: User
     if include != "normals":
         items = [i for i in items if i.kind != NORMAL_KIND]
     return {"success": True, "mode": engine.mode(), "rail": engine.rail_enabled(), "run": run,
-            "lanes": (run or {}).get("lanes") or {}, "items": [i.model_dump() for i in items]}
+            "running": store.run_in_progress(db, report_id), "lanes": (run or {}).get("lanes") or {}, "items": [i.model_dump() for i in items]}
 
 
 @router.post("/{report_id}/review/items/{item_id}/events")

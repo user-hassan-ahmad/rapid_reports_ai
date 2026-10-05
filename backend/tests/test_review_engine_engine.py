@@ -442,3 +442,88 @@ async def test_schedule_review_sampling(monkeypatch):
     monkeypatch.setenv("RR_REVIEW_SAMPLE", "bogus")          # unreadable → default 1.0
     await engine.schedule_review("00000000-0000-0000-0000-000000000003")
     assert seen == ["00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003"]
+
+
+async def test_schedule_review_dedupes_in_flight_runs_per_report(monkeypatch):
+    """F2 I3: a second Re-review (or a save) while a run is in flight for the report returns that run's task."""
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.setenv("RR_REVIEW_SAMPLE", "1.0")
+    gate = asyncio.Event()
+    seen = []
+
+    async def fake(report_id, text=None):
+        seen.append(report_id)
+        await gate.wait()
+    monkeypatch.setattr(engine, "run_and_store", fake)
+    a = "00000000-0000-0000-0000-0000000000e1"
+    t1 = engine.schedule_review(a)
+    assert engine.schedule_review(a, "other text") is t1
+    t2 = engine.schedule_review("00000000-0000-0000-0000-0000000000e2")
+    assert t2 is not t1
+    gate.set()
+    await asyncio.gather(t1, t2)
+    t3 = engine.schedule_review(a)
+    assert t3 is not t1
+    await t3
+    assert seen == [a, "00000000-0000-0000-0000-0000000000e2", a]
+
+
+async def test_run_row_is_created_before_waiting_for_the_semaphore(monkeypatch):
+    """F2 I3: a queued run is visible (a run row with empty lanes) while it waits for RR_REVIEW_CONCURRENCY."""
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.delenv("RR_REVIEW_CONCURRENCY", raising=False)
+    monkeypatch.setattr(engine, "_SEM", None)
+    gate = asyncio.Event()
+    created = []
+
+    async def fake_load(report_id, text=None):
+        return inp(REPORT, DICT)
+
+    async def fake_run(inp_, run_id):
+        await gate.wait()
+        return engine.ReviewResult(run={"lanes": {}, "timings_ms": {}, "cost": {}, "errors": {}, "pre_apply": [],
+                                        "negatives": None}, items=[], report=REPORT)
+
+    async def noop(*a, **k):
+        return None
+    monkeypatch.setattr(engine, "load_input", fake_load)
+    monkeypatch.setattr(engine, "run_review", fake_run)
+    monkeypatch.setattr(engine, "gate_d_log", noop)
+
+    async def same_thread(fn, *a, **k):
+        if fn is engine._with_session and a[0] is store.create_run:
+            created.append(a[1])
+            return f"00000000-0000-0000-0000-0000000000f{len(created)}"
+        return None
+    monkeypatch.setattr(engine.asyncio, "to_thread", same_thread)
+    ids = [f"00000000-0000-0000-0000-00000000000{k}" for k in range(2)]
+    tasks = [asyncio.create_task(engine.run_and_store(r)) for r in ids]
+    for _ in range(10):
+        await asyncio.sleep(0)
+    assert created == ids                                  # both rows exist; only one run holds the semaphore
+    gate.set()
+    await asyncio.gather(*tasks)
+
+
+async def test_run_failure_after_the_row_finishes_it_with_an_error(monkeypatch):
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.setattr(engine, "_SEM", None)
+    finished = []
+
+    async def fake_load(report_id, text=None):
+        return inp(REPORT, DICT)
+
+    async def boom(*a, **k):
+        raise RuntimeError("boom")
+
+    async def same_thread(fn, *a, **k):
+        if fn is engine._with_session and a[0] is store.create_run:
+            return "00000000-0000-0000-0000-0000000000f9"
+        if fn is engine._with_session and a[0] is store.finish_run:
+            finished.append(a[1:])
+        return None
+    monkeypatch.setattr(engine, "load_input", fake_load)
+    monkeypatch.setattr(engine, "_run_and_store", boom)
+    monkeypatch.setattr(engine.asyncio, "to_thread", same_thread)
+    assert await engine.run_and_store("00000000-0000-0000-0000-000000000001") is None
+    assert finished and finished[0][0] == "00000000-0000-0000-0000-0000000000f9" and "engine" in finished[0][4]

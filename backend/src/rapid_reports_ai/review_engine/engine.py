@@ -757,21 +757,30 @@ async def _gate_d(inp: ReviewInput) -> Optional[dict]:
 async def run_and_store(report_id: str, text: Optional[str] = None) -> Optional[str]:
     """Run the engine over a saved report and store the run and its items. Never raises, never writes the report (in
     any mode): the would-be pre-apply sequence is only recorded in the run's log. At most `concurrency()` runs at
-    once."""
+    once. The run row is created BEFORE waiting for the semaphore, so a queued run reads as running (empty lanes, no
+    errors); a failure after that finishes the row with an `engine` error, so it never reads as running for ever."""
+    run_id: Optional[str] = None
     try:
         inp = await load_input(report_id, text)
         if inp is None:
             return None
+        run_id = await asyncio.to_thread(_with_session, store.create_run, report_id, mode(), ENGINE_VERSION,
+                                         inp.pathway)
         async with _semaphore():
-            return await _run_and_store(inp, report_id)
+            return await _run_and_store(inp, report_id, run_id)
     except Exception as e:  # noqa: BLE001 - the engine never affects the report path
         logger.warning("review engine failed for %s (%s: %s)", report_id, type(e).__name__, str(e)[:200])
+        if run_id is not None:
+            try:
+                await asyncio.to_thread(_with_session, store.finish_run, run_id, {}, {}, {},
+                                        {"engine": f"{type(e).__name__}: {str(e)[:200]}"})
+            except Exception:  # noqa: BLE001
+                pass
         return None
 
 
-async def _run_and_store(inp: ReviewInput, report_id: str) -> str:
+async def _run_and_store(inp: ReviewInput, report_id: str, run_id: str) -> str:
     m = mode()
-    run_id = await asyncio.to_thread(_with_session, store.create_run, report_id, m, ENGINE_VERSION, inp.pathway)
     try:
         res = await run_review(inp, run_id)
     except Exception as e:  # noqa: BLE001
@@ -796,19 +805,31 @@ async def _run_and_store(inp: ReviewInput, report_id: str) -> str:
 
 
 _REVIEW_TASKS: "set[asyncio.Task]" = set()
+_IN_FLIGHT: "dict[str, asyncio.Task]" = {}
 
 
 def schedule_review(report_id: Optional[str], text: Optional[str] = None) -> Optional["asyncio.Task"]:
     """Fire-and-forget review of a saved report (held so it is not garbage-collected mid-flight). No-op when off or
-    when the report falls outside the RR_REVIEW_SAMPLE share."""
+    when the report falls outside the RR_REVIEW_SAMPLE share. At most one run per report is in flight: a second
+    request while one runs gets that run's task (repeated Re-review clicks never queue runs)."""
     if mode() == "off" or not report_id:
         return None
+    rid = str(report_id)
+    cur = _IN_FLIGHT.get(rid)
+    if cur is not None and not cur.done():
+        return cur
     rate = sample_rate()
     if rate < 1.0 and random.random() >= rate:
         return None
-    task = asyncio.create_task(run_and_store(str(report_id), text))
+    task = asyncio.create_task(run_and_store(rid, text))
     _REVIEW_TASKS.add(task)
-    task.add_done_callback(_REVIEW_TASKS.discard)
+    _IN_FLIGHT[rid] = task
+
+    def _done(t: "asyncio.Task") -> None:
+        _REVIEW_TASKS.discard(t)
+        if _IN_FLIGHT.get(rid) is t:
+            del _IN_FLIGHT[rid]
+    task.add_done_callback(_done)
     return task
 
 

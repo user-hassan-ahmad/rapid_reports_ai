@@ -436,3 +436,22 @@ def test_probe_adds_one_contradiction_card_per_clause(client, auth_headers, seed
     again = client.post(f"/api/reports/{rid}/review/probe", headers=auth_headers, json=body).json()
     assert len([i for i in first["new_items"] if "liver" in i["anchor"]["text"]]) == 1
     assert again["new_items"] == []
+
+
+def test_get_review_says_a_newer_run_is_running(client, auth_headers, seeded, db_session):
+    """F2 I3: the GET keeps showing the last finished run but says a newer one is in progress (the rail keeps
+    polling); a run left unfinished long ago (a crashed worker) is not running."""
+    from datetime import datetime, timedelta, timezone
+
+    from rapid_reports_ai.database.models import ReportReviewRun
+    rid, it = seeded
+    store.finish_run(db_session, it.run_id, {"coverage": "done"}, {}, {}, {})
+    url = f"/api/reports/{rid}/review"
+    assert client.get(url, headers=auth_headers).json()["running"] is False
+    new = store.create_run(db_session, rid, "live", "0.1.0", "quick")
+    body = client.get(url, headers=auth_headers).json()
+    assert body["run"]["id"] == it.run_id and body["running"] is True
+    row = db_session.get(ReportReviewRun, uuid.UUID(new))
+    row.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=2)
+    db_session.commit()
+    assert client.get(url, headers=auth_headers).json()["running"] is False
