@@ -71,8 +71,9 @@ def set_applied(db: Session, report_id: str, message_id: str, edit_index: int, i
     ids = [i for i in (row.applied_item_ids or []) if i != item_id]
     if applied:
         ids.append(item_id)
-        if detail:
-            edits[edit_index]["applied_detail"] = {k: detail[k] for k in APPLIED_DETAIL_KEYS if k in detail}
+        kept = {k: detail[k] for k in APPLIED_DETAIL_KEYS if k in detail} if detail else {}
+        if kept:
+            edits[edit_index]["applied_detail"] = kept
     else:
         edits[edit_index].pop("applied_detail", None)
     row.applied_item_ids, row.edits = ids, edits

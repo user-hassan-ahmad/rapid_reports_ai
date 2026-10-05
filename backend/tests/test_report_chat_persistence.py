@@ -98,3 +98,13 @@ def test_owner_scoped(client, auth_headers, chat_env, db_session):
     assert r["success"] is False
     msg = client.get(f"/api/reports/{chat_env}/chat", headers=auth_headers).json()["messages"][1]
     assert msg["applied_item_ids"] == []
+
+
+def test_applied_without_position_detail_keeps_no_empty_detail(client, auth_headers, chat_env):
+    """A Discard re-apply posts {via: discard} only: no apply detail is stored (the rebuild falls back to the edit)."""
+    mid = _turn(client, auth_headers, chat_env)["message_id"]
+    client.post(f"/api/reports/{chat_env}/chat/{mid}/applied",
+                json={"edit_index": 0, "item_id": f"chat:{mid}:0", "applied": True, "detail": {"via": "discard"}},
+                headers=auth_headers)
+    msg = client.get(f"/api/reports/{chat_env}/chat", headers=auth_headers).json()["messages"][1]
+    assert msg["applied_item_ids"] == [f"chat:{mid}:0"] and "applied_detail" not in msg["edits"][0]

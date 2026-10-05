@@ -109,11 +109,14 @@ beforeEach(async () => {
 		'fetch',
 		vi.fn(async () => new Response(JSON.stringify({ success: false }), { status: 404 }))
 	);
-	postEvent.mockImplementation(async (_r: string, id: string, command: string) => ({
-		...action(),
-		id,
-		status: STATUS[command] ?? 'open'
-	}));
+	postEvent.mockImplementation(
+		async (_r: string, id: string, command: string, _h: unknown, detail?: Record<string, unknown>) => ({
+			...action(),
+			id,
+			// the backend reinstates an engine pre-apply on Discard (store._reinstates_pre_apply)
+			status: (detail?.reinstate as ReviewItem['status']) ?? STATUS[command] ?? 'open'
+		})
+	);
 	loadThread.mockResolvedValue([]);
 	markApplied.mockResolvedValue([]);
 });
@@ -293,6 +296,116 @@ describe('Discard after Apply', () => {
 			['a1', 'undo']
 		]);
 		expect(postEvent.mock.calls[1][4]).toMatchObject({ via: 'discard' });
+	});
+
+	/** live.rebase_items' evidence.undo for the span [j1, j2) of the written text. */
+	function undoOf(written: string, j1: number, j2: number, original_text: string) {
+		return {
+			final_span: [j1, j2] as [number, number],
+			original_text,
+			final_text: written.slice(j1, j2),
+			left: written.slice(Math.max(0, j1 - 16), j1),
+			right: written.slice(j2, j2 + 16)
+		};
+	}
+	const engineHistory = [{ event: 'pre_applied', actor: 'post_check', text_hash: null, detail: {} }];
+	/** The backend answers with the item itself at its new status. */
+	function serve(it: ReviewItem) {
+		postEvent.mockImplementation(
+			async (_r: string, _id: string, command: string, _h: unknown, detail?: Record<string, unknown>) => ({
+				...it,
+				status: (detail?.reinstate as ReviewItem['status']) ?? STATUS[command] ?? 'open'
+			})
+		);
+	}
+
+	it('an engine pre-applied insert undone since the save returns to pre_applied (apply, via discard)', async () => {
+		const j1 = REPORT.indexOf(' No ascites.');
+		const pre = action({
+			id: 'p1',
+			lane: 'coverage',
+			kind: 'omission',
+			cls: 'minor',
+			status: 'pre_applied',
+			label: 'Ascites statement',
+			edit: { mode: 'insert', after: null, section: 'FINDINGS', replace: 'No ascites.' },
+			anchor: { start: j1 + 1, end: j1 + 12, text: 'No ascites.' },
+			evidence: { undo: undoOf(REPORT, j1, j1 + 12, '') },
+			history: engineHistory
+		});
+		serve(pre);
+		const { container } = await mount([pre]);
+		const view = viewOf(container);
+		await page.getByRole('button', { name: 'Undo: Ascites statement' }).click();
+		await pause(200);
+		expect(view.state.doc.toString()).not.toContain('No ascites.');
+		await page.getByRole('button', { name: 'Discard' }).click();
+		await pause(300);
+		expect(view.state.doc.toString()).toBe(REPORT);
+		expect(postEvent.mock.calls.map((c) => [c[1], c[2]])).toEqual([
+			['p1', 'undo'],
+			['p1', 'apply']
+		]);
+		expect(postEvent.mock.calls[1][4]).toEqual({ via: 'discard', reinstate: 'pre_applied' });
+		await expect.element(page.getByText('added from your dictation')).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Undo: Ascites statement' })).toBeInTheDocument();
+	});
+
+	it('an engine removal restored since the save is removed again (apply, via discard)', async () => {
+		const i = REPORT.indexOf('No ascites.');
+		const removal = action({
+			id: 'r1',
+			kind: 'removed',
+			cls: 'action',
+			status: 'pre_applied',
+			label: 'Trace fluid removed',
+			edit: { mode: 'remove', find: 'Trace fluid.' },
+			anchor: { start: i, end: i, text: '' },
+			evidence: { removed_text: 'Trace fluid.', undo: undoOf(REPORT, i, i, 'Trace fluid. ') },
+			history: engineHistory
+		});
+		serve(removal);
+		const { container } = await mount([removal]);
+		const view = viewOf(container);
+		await page.getByRole('button', { name: 'Restore: Trace fluid removed' }).click();
+		await pause(200);
+		expect(view.state.doc.toString()).toContain('9 cm. Trace fluid. No ascites.');
+		await page.getByRole('button', { name: 'Discard' }).click();
+		await pause(300);
+		expect(view.state.doc.toString()).toBe(REPORT);
+		expect(postEvent.mock.calls.map((c) => [c[1], c[2]])).toEqual([
+			['r1', 'restore'],
+			['r1', 'apply']
+		]);
+		expect(postEvent.mock.calls[1][4]).toEqual({ via: 'discard', reinstate: 'pre_applied' });
+		await expect.element(page.getByRole('button', { name: 'Restore: Trace fluid removed' })).toBeInTheDocument();
+	});
+
+	it('an apply saved, then undone, is applied again on Discard', async () => {
+		const { rerender, container } = await mount();
+		await page.getByRole('button', { name: 'Apply: Measurement differs' }).click();
+		await pause(100);
+		await page.getByRole('button', { name: 'Save Changes' }).click();
+		const saved = REPORT.replace('9 cm', '11 cm');
+		const at = REPORT.indexOf('9 cm');
+		const detail = { from: at, insert: '11 cm', removed: '9 cm', left: REPORT.slice(at - 16, at), right: REPORT.slice(at + 4, at + 20) };
+		// the reload after the save serves the item as applied (the backend recorded the apply)
+		getReview.mockResolvedValue(
+			review([action({ status: 'applied', history: [{ event: 'apply', actor: 'user', text_hash: null, detail }] })])
+		);
+		await rerender({ response: saved });
+		await pause(300);
+		await page.getByRole('button', { name: 'Undo: Measurement differs' }).click();
+		await pause(200);
+		await page.getByRole('button', { name: 'Discard' }).click();
+		await pause(300);
+		expect(viewOf(container).state.doc.toString()).toBe(saved);
+		expect(postEvent.mock.calls.map((c) => [c[2], c[4]?.via])).toEqual([
+			['apply', undefined],
+			['undo', undefined],
+			['apply', 'discard']
+		]);
+		expect(postEvent.mock.calls[2][4]).toEqual({ via: 'discard' });
 	});
 
 	it('posts nothing for an apply already saved', async () => {

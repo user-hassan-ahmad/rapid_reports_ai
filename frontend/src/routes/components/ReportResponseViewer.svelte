@@ -567,7 +567,7 @@
 
 	// Reset unsaved state whenever the parent updates the response (generate / restore / save)
 	$: if (response !== lastSavedResponse) {
-		appliedSinceSave.clear();
+		savedStatus.clear();
 		hasUnsavedChanges = false;
 		currentEditorContent = response;
 		lastSavedResponse = response;
@@ -664,26 +664,44 @@
 	function saveEditing() {
 		const ids = reviewAppliedItemIds();
 		dispatch('save', { content: currentEditorContent, ...(ids ? { reviewAppliedItemIds: ids } : {}) });
-		appliedSinceSave.clear();
+		savedStatus.clear();
 		hasUnsavedChanges = false;
 	}
 
-	/** Discard unsaved changes. Items applied since the last save go back to open: `undo` is posted for each one
-	 * still applied, so the statuses match the restored text. */
+	/** Discard unsaved changes: the saved text comes back, and each item whose text a command changed since the last
+	 * save returns to its saved status by one command (detail `via: discard`):
+	 *  - applied since the save (saved open/stale) → `undo` → open;
+	 *  - saved applied, undone since → `apply` → applied;
+	 *  - saved pre_applied (the engine's write), undone or restored since → `apply` with `reinstate: pre_applied`:
+	 *    the backend sets pre_applied again only for an item the engine pre-applied (store._reinstates_pre_apply).
+	 * The backend has no client command for an engine status, so this is the one narrow, checked way back. Nothing
+	 * is posted for an item already back at its saved status. A pre_applied item re-applied by hand stays applied
+	 * (both count as kept at finalise). */
 	function discardEditing() {
 		const store = reviewStore;
-		const undone = store
-			? [...appliedSinceSave].filter((id) => get(store).items.find((i) => i.id === id)?.status === 'applied')
-			: [];
-		appliedSinceSave.clear();
+		const back: ItemEvent[] = [];
+		const statuses: Record<string, ItemStatus> = {};
+		if (store) {
+			for (const [id, saved] of savedStatus) {
+				const now = get(store).items.find((i) => i.id === id)?.status;
+				if (!now || now === saved) continue;
+				if (now === 'applied' && (saved === 'open' || saved === 'stale')) {
+					back.push({ itemId: id, command: 'undo', detail: { via: 'discard' } });
+					statuses[id] = 'open';
+				} else if (now === 'open' && (saved === 'applied' || saved === 'pre_applied')) {
+					const detail = saved === 'pre_applied' ? { via: 'discard', reinstate: 'pre_applied' } : { via: 'discard' };
+					back.push({ itemId: id, command: 'apply', detail });
+					statuses[id] = saved;
+				}
+			}
+		}
+		savedStatus.clear();
 		reportEditorRef?.resetContent(response);
 		currentEditorContent = response;
 		hasUnsavedChanges = false;
-		if (undone.length) {
-			postEvents(
-				undone.map((id) => ({ itemId: id, command: 'undo' as const, detail: { via: 'discard' } })),
-				Object.fromEntries(undone.map((id) => [id, 'open' as const]))
-			);
+		if (back.length) {
+			postEvents(back, statuses);
+			savedStatus.clear(); // the discard's own commands are not edits since the save
 			probeLoop?.trigger();
 		}
 	}
@@ -718,8 +736,10 @@
 	let currentHash: string | null = null;
 	let hashedText: string | null = null;
 	let hashSeq = 0;
-	/** Items applied (apply / edit) since the last save: Discard posts `undo` for those still applied. */
-	const appliedSinceSave = new Set<string>();
+	/** Each item a text-changing command (apply / edit / undo / restore) touched since the last save, with its status
+	 * at the save: Discard posts the command that returns it there (discardEditing). */
+	const savedStatus = new Map<string, ItemStatus>();
+	const TEXT_COMMANDS = new Set<string>(['apply', 'edit', 'undo', 'restore']);
 	/** The rail's chat (spec §12.5), set while the rail is on. */
 	let railChat: RailChat | undefined = undefined;
 	/** "Ask in chat": the rail composer takes the text whenever `seq` changes. */
@@ -899,7 +919,12 @@
 				void store.setStatus(ev.itemId, status, { command: ev.command, textHash: h, detail: ev.detail });
 			}
 		});
-		for (const ev of events) if (ev.command === 'apply' || ev.command === 'edit') appliedSinceSave.add(ev.itemId);
+		// the status at the save is the one before the first text command since (the store has not changed it yet)
+		for (const ev of events) {
+			if (!TEXT_COMMANDS.has(ev.command) || savedStatus.has(ev.itemId)) continue;
+			const before = get(store).items.find((i) => i.id === ev.itemId)?.status;
+			if (before) savedStatus.set(ev.itemId, before);
+		}
 	}
 
 	/** Record Apply / Undo of a chat edit on its saved message (spec §12.6); fails quietly (the edit stays done). */
@@ -909,7 +934,9 @@
 		const mid = item.evidence?.message_id;
 		const idx = item.evidence?.edit_index;
 		if (was === now || !reportId || typeof mid !== 'string' || typeof idx !== 'number' || isLocalMessage(mid)) return;
-		markApplied(reportId, mid, idx, item.id, now, now ? detail : undefined).catch((e) =>
+		// the apply detail (where the text went) only when this command placed text (not a Discard re-apply)
+		const placed = now && typeof detail.insert === 'string' ? detail : undefined;
+		markApplied(reportId, mid, idx, item.id, now, placed).catch((e) =>
 			console.warn(`[review] chat applied ${item.id}: ${e instanceof Error ? e.message : e}`)
 		);
 	}
