@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, File, UploadFile, HTTPException
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Dict, Optional, List, Any, Literal, Union
 import copy
@@ -86,6 +87,7 @@ from .canvas_routes import canvas_router
 from .agentic_routes import agentic_router
 from .chat_prompt import build_chat_system_prompt
 from . import chat_edits as _chat_edits
+from . import chat_thread as _chat_thread
 from .enhancement_utils import (
     MODEL_CONFIG,
     MODEL_PROVIDERS,
@@ -4748,19 +4750,62 @@ async def chat_about_report(
             if actions_applied else actions_applied
         )
 
+        verified_edits = _chat_verified_edits(report, current_text, raw_edits)
+        # Spec §10.2/§12.6: the turn persists so History restores the thread; fails open (the reply still returns).
+        user_message_id = message_id = None
+        try:
+            user_message_id, message_id = _chat_thread.save_turn(
+                db, report_id, request.message, response_text, verified_edits)
+        except Exception as e:
+            db.rollback()
+            print(f"⚠️ chat thread save failed: {type(e).__name__}: {str(e)[:200]}")
+
         return {
             "success": True,
             "response": response_text,
             "edit_proposal": edit_proposal,  # old sidebar; kept for one release (spec §12.5)
-            "edits": _chat_verified_edits(report, current_text, raw_edits),
+            "edits": verified_edits,
             "actions_applied": actions_for_frontend,
             "sources": sources,
+            "user_message_id": user_message_id,
+            "message_id": message_id,
         }
         
     except Exception as e:
         import traceback
         traceback.print_exc()
         return {"success": False, "error": str(e)}
+
+
+class ChatAppliedRequest(BaseModel):
+    edit_index: int
+    item_id: str = Field(min_length=1, max_length=128)
+    applied: bool
+    detail: Optional[Dict[str, Any]] = None   # the apply event detail (from/insert/removed/left/right): Undo after reload
+
+
+@app.get("/api/reports/{report_id}/chat")
+def get_report_chat(report_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """The rail chat thread in order (spec §12.6: History restores it; nothing re-runs)."""
+    if not get_report(db, report_id, user_id=str(current_user.id)):
+        return {"success": False, "error": "Report not found"}
+    return {"success": True, "messages": _chat_thread.list_thread(db, report_id)}
+
+
+@app.post("/api/reports/{report_id}/chat/{message_id}/applied")
+def set_report_chat_applied(report_id: str, message_id: str, body: ChatAppliedRequest,
+                            db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Apply (applied=true) or Undo of one chat edit: updates the reply's applied_item_ids."""
+    if not get_report(db, report_id, user_id=str(current_user.id)):
+        return {"success": False, "error": "Report not found"}
+    try:
+        ids = _chat_thread.set_applied(db, report_id, message_id, body.edit_index, body.item_id, body.applied,
+                                       body.detail)
+    except _chat_thread.ChatTargetError as e:
+        return JSONResponse(status_code=422, content={"success": False, "error": str(e)})
+    if ids is None:
+        return {"success": False, "error": "Message not found"}
+    return {"success": True, "applied_item_ids": ids}
 
 
 @app.post("/api/reports/{report_id}/apply-actions")
