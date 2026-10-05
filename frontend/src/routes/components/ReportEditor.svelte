@@ -574,9 +574,11 @@
 		if (!editor) return;
 		lastPropContent = c;
 		skipNextChange = true;
-		editor.dispatch({
-			changes: { from: 0, to: editor.state.doc.length, insert: c }
-		});
+		editor.dispatch(
+			replaceDocHook
+				? replaceDocHook(editor.state, c)
+				: { changes: { from: 0, to: editor.state.doc.length, insert: c } }
+		);
 	}
 </script>
 
