@@ -462,7 +462,7 @@ BIG = "x" * 100_001
 
 @pytest.mark.parametrize("path,body", [
     ("items/{iid}/events", {"command": "view", "detail": {f"k{i}": 1 for i in range(21)}}),
-    ("items/{iid}/events", {"command": "view", "detail": {"k": "x" * 4100}}),
+    ("items/{iid}/events", {"command": "view", "detail": {"k": "x" * 66000}}),
     ("items/{iid}/events", {"command": "view", "text_hash": "h" * 65}),
     ("probe", {"text": BIG, "text_hash": "h"}),
     ("probe", {"text": "t", "text_hash": "h" * 65}),

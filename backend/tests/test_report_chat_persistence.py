@@ -111,13 +111,13 @@ def test_applied_without_position_detail_keeps_no_empty_detail(client, auth_head
 
 
 def test_applied_body_is_size_limited(client, auth_headers, chat_env):
-    """F2 M2: the apply detail is bounded (≤ 20 keys, ≤ 4 KB serialised)."""
+    """F2 M2: the apply detail is bounded (≤ 20 keys, ≤ 64 KB serialised)."""
     turn = _turn(client, auth_headers, chat_env)
     url = f"/api/reports/{chat_env}/chat/{turn['message_id']}/applied"
     ok = {"edit_index": 0, "item_id": "chat:x:0", "applied": True}
     assert client.post(url, json={**ok, "detail": {f"k{i}": 1 for i in range(21)}},
                        headers=auth_headers).status_code == 422
-    assert client.post(url, json={**ok, "detail": {"insert": "x" * 4100}}, headers=auth_headers).status_code == 422
+    assert client.post(url, json={**ok, "detail": {"insert": "x" * 66000}}, headers=auth_headers).status_code == 422
 
 
 def test_applied_item_ids_are_capped(client, auth_headers, chat_env, db_session, monkeypatch):
@@ -145,3 +145,9 @@ def test_created_at_is_naive_utc_and_served_with_its_offset(db_session, chat_env
     msgs = chat_thread.list_thread(db_session, chat_env)
     at = datetime.fromisoformat(msgs[-1]["created_at"])
     assert at.utcoffset() is not None and abs((at.replace(tzinfo=None) - before).total_seconds()) < 60
+
+
+def test_report_sized_edit_detail_fits_limit():
+    """A long edit's apply detail (inserted + removed text) must not be rejected."""
+    from rapid_reports_ai.review_engine.limits import _bounded_detail
+    assert _bounded_detail({"insert": "x" * 20000, "removed": "y" * 20000, "left": "a" * 16, "right": "b" * 16})

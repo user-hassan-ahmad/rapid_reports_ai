@@ -8,7 +8,7 @@ from typing import Annotated, Any, Dict, List, Optional
 from pydantic import AfterValidator, Field, StringConstraints
 
 DETAIL_MAX_KEYS = 20
-DETAIL_MAX_BYTES = 4096
+DETAIL_MAX_BYTES = 65536  # apply/undo details carry the inserted and removed text; a report-sized edit must fit
 TEXT_HASH_MAX = 64
 TEXT_MAX = 100_000
 IDS_MAX = 200
