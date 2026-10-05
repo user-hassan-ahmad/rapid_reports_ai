@@ -24,7 +24,7 @@ from ..database import get_db
 from ..database.crud import get_report
 from ..database.models import User
 from . import adjudicator, brief_normals, engine, negatives, store, verifier
-from .items import ReviewItem
+from .items import ReviewItem, text_hash
 
 router = APIRouter(prefix="/api/reports", tags=["review"])
 NOT_FOUND = {"success": False, "error": "Report not found"}
@@ -118,6 +118,11 @@ def _claimed_texts(items: List[ReviewItem]) -> List[str]:
     return out
 
 
+def _text_back(it: ReviewItem, text: str) -> bool:
+    """The item's anchored or find text is in `text` (again): the loop's fix for it may have been undone."""
+    return any(t and t in text for t in ((it.anchor.text if it.anchor else None), (it.edit.find if it.edit else None)))
+
+
 def _covered(clause: str, texts: List[str]) -> bool:
     c = _norm_clause(clause)
     def near(a: str, b: str) -> bool:             # one inside the other and most of it: never a bare word
@@ -168,10 +173,21 @@ async def post_probe(report_id: str, body: ProbeBody, current_user: User = Depen
         return {"success": False, "error": "no candidate"}
     all_items = store.list_items(db, report_id)
     open_items = [i for i in all_items if i.status == "open" and not _engine_pre_applied(i)]
-    res = await verifier.probe(inp, open_items, body.text, body.changed_ranges)
+    back = [i for i in all_items if i.status == "addressed" and not _engine_pre_applied(i) and _text_back(i, body.text)]
+    res = await verifier.probe(inp, open_items + back, body.text, body.changed_ranges)
+    back_ids = {i.id for i in back}
+    scores = res.get("scores") or {}
+    # an addressed item whose text is back (the fix was undone) re-opens only on an answered, failing probe
+    reopened = [i.id for i in back if scores.get(i.id) is not None and scores[i.id] < verifier.ADDRESSED_OK]
+    addressed = [x for x in res["addressed"] if x not in back_ids]
+    reprepare = [x for x in res["reprepare"] if x not in back_ids or x in reopened]
     claimed = _claimed_texts(all_items)
-    for iid in res["addressed"]:
+    if body.text_hash != text_hash(body.text):      # record only for the text that was judged
+        addressed, reopened = [], []
+    for iid in addressed:
         store.append_event(db, report_id, iid, "addressed", body.text_hash, actor="loop")
+    for iid in reopened:
+        store.append_event(db, report_id, iid, "reopened", body.text_hash, actor="loop")
     run = store.latest_run(db, report_id)
     new_items: List[ReviewItem] = []
     for c in (res["contradictions"] if run else []):
@@ -182,8 +198,8 @@ async def post_probe(report_id: str, body: ProbeBody, current_user: User = Depen
         new_items.append(it)
     if new_items:
         store.save_items(db, new_items)
-    return {"success": True, "text_hash": body.text_hash, "addressed": res["addressed"],
-            "reprepare": res["reprepare"], "new_items": [i.model_dump() for i in new_items],
+    return {"success": True, "text_hash": body.text_hash, "addressed": addressed, "reopened": reopened,
+            "reprepare": reprepare, "new_items": [i.model_dump() for i in new_items],
             "error": res.get("error")}
 
 

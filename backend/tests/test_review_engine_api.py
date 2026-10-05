@@ -10,7 +10,7 @@ from rapid_reports_ai import report_reconcile as rc
 from rapid_reports_ai.database.models import Report, User
 from rapid_reports_ai.review_engine import adjudicator as adj
 from rapid_reports_ai.review_engine import engine, store
-from rapid_reports_ai.review_engine.items import Edit, ReviewItem, Span
+from rapid_reports_ai.review_engine.items import Edit, ReviewItem, Span, text_hash
 
 from tests.review_engine_fakes import jev, model
 
@@ -145,10 +145,85 @@ def test_probe_marks_addressed(client, auth_headers, seeded, monkeypatch, db_ses
     monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
     monkeypatch.setattr(rc, "_jev", jev({"p0": {"noul": 0.9}}))
     rid, it = seeded
+    h = text_hash(REPORT)
+    r = client.post(f"/api/reports/{rid}/review/probe", headers=auth_headers,
+                    json={"text": REPORT, "text_hash": h, "changed_ranges": []}).json()
+    assert r["success"] and r["addressed"] == [it.id] and r["text_hash"] == h
+    got = store.get_item(db_session, rid, it.id)
+    assert got.status == "addressed" and got.history[-1]["text_hash"] == h
+
+
+def test_probe_records_nothing_for_a_hash_that_is_not_the_texts(client, auth_headers, seeded, monkeypatch,
+                                                                 db_session):
+    """F2 I2: `addressed` is recorded only for the text that was judged (body.text_hash must be its hash)."""
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.setattr(rc, "_jev", jev({"p0": {"noul": 0.9}}))
+    rid, it = seeded
     r = client.post(f"/api/reports/{rid}/review/probe", headers=auth_headers,
                     json={"text": REPORT, "text_hash": "h2", "changed_ranges": []}).json()
-    assert r["success"] and r["addressed"] == [it.id] and r["text_hash"] == "h2"
+    assert r["success"] and r["addressed"] == []
+    assert store.get_item(db_session, rid, it.id).status == "open"
+
+
+FIXED = REPORT.replace("A 14 mm left renal cyst.", "A 14 mm left renal cyst with a thin septation.")
+
+
+def _probe(client, auth_headers, rid, text):
+    return client.post(f"/api/reports/{rid}/review/probe", headers=auth_headers,
+                       json={"text": text, "text_hash": text_hash(text), "changed_ranges": []}).json()
+
+
+def test_probe_reopens_an_addressed_item_when_its_text_comes_back(client, auth_headers, seeded, monkeypatch,
+                                                                   db_session):
+    """F2 I2: manual fix → addressed → Cmd-Z (the anchored text is back) → the next probe re-judges the item and
+    re-opens it (engine-side `reopened`, actor loop)."""
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    rid, it = seeded
+    monkeypatch.setattr(rc, "_jev", jev({"p0": {"noul": 0.9}}))
+    assert _probe(client, auth_headers, rid, FIXED)["addressed"] == [it.id]
+    monkeypatch.setattr(rc, "_jev", jev({"p0": {"noul": 0.1}}))
+    r = _probe(client, auth_headers, rid, REPORT)
+    assert r["reopened"] == [it.id] and r["addressed"] == []
+    got = store.get_item(db_session, rid, it.id)
+    assert got.status == "open" and got.history[-1]["event"] == "reopened" and got.history[-1]["actor"] == "loop"
+
+
+def test_probe_keeps_an_addressed_item_the_probe_still_passes(client, auth_headers, seeded, monkeypatch,
+                                                              db_session):
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    rid, it = seeded
+    monkeypatch.setattr(rc, "_jev", jev({"p0": {"noul": 0.9}}))
+    _probe(client, auth_headers, rid, FIXED)
+    r = _probe(client, auth_headers, rid, REPORT)              # text back, but the probe still says addressed
+    assert r["reopened"] == [] and r["addressed"] == []
+    got = store.get_item(db_session, rid, it.id)
+    assert got.status == "addressed" and [h["event"] for h in got.history].count("addressed") == 1
+
+
+def test_probe_leaves_an_addressed_item_whose_text_is_gone(client, auth_headers, seeded, monkeypatch, db_session):
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    rid, it = seeded
+    monkeypatch.setattr(rc, "_jev", jev({"p0": {"noul": 0.9}}))
+    _probe(client, auth_headers, rid, FIXED)
+    calls = []
+    monkeypatch.setattr(rc, "_jev", jev({"p0": {"noul": 0.1}}, calls=calls))
+    assert _probe(client, auth_headers, rid, FIXED)["reopened"] == []
     assert store.get_item(db_session, rid, it.id).status == "addressed"
+
+
+def test_reopened_only_moves_addressed_to_open(db_session, seeded):
+    rid, it = seeded
+    store.append_event(db_session, rid, it.id, "dismiss", "h")
+    assert store.append_event(db_session, rid, it.id, "reopened", "h", actor="loop").status == "dismissed"
+    store.append_event(db_session, rid, it.id, "addressed", "h", actor="loop")
+    assert store.append_event(db_session, rid, it.id, "reopened", "h", actor="loop").status == "open"
+
+
+def test_item_event_rejects_reopened(client, auth_headers, seeded):
+    rid, it = seeded
+    r = client.post(f"/api/reports/{rid}/review/items/{it.id}/events", headers=auth_headers,
+                    json={"command": "reopened"})
+    assert r.status_code == 422
 
 
 def test_probe_never_writes_report(client, auth_headers, seeded, monkeypatch, db_session):
@@ -266,7 +341,7 @@ def test_pre_applied_item_survives_undo_probe_reprepare_discard(client, auth_hea
     assert client.post(f"{url}/items/{pa.id}/events", headers=auth_headers,
                        json={"command": "undo", "text_hash": "h1"}).json()["item"]["status"] == "open"
     r = client.post(f"{url}/probe", headers=auth_headers,
-                    json={"text": REPORT, "text_hash": "h2", "changed_ranges": [[10, 30]]}).json()
+                    json={"text": REPORT, "text_hash": text_hash(REPORT), "changed_ranges": [[10, 30]]}).json()
     assert r["success"] and pa.id not in r["addressed"] and pa.id not in r["reprepare"]
     assert it.id in r["addressed"]                               # ordinary items are still probed
     assert store.get_item(db_session, rid, pa.id).status == "open"

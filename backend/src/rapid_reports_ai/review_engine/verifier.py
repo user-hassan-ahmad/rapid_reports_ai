@@ -1359,7 +1359,7 @@ def _anchor_at(it: ReviewItem, text: str) -> Optional[int]:
 
 async def probe(inp: ReviewInput, items: List[ReviewItem], text: str, changed_ranges: List[List[int]]) -> Dict:
     """One check of the current text (spec §12.4): each open item's probe, plus contradiction on the changed clauses.
-    Returns item ids addressed (≥ 0.8) and to re-prepare (probe 0.5–0.8, anchor lost, or its paragraph touched by
+    Returns item ids addressed (≥ 0.8), each item's probe score (`scores`, None when unanswered), and to re-prepare (probe 0.5–0.8, anchor lost, or its paragraph touched by
     a changed range), new contradiction candidates (a negative carries code's removal when it can be made
     cleanly), and `error` (None, or what failed when Jev did; the code checks still run)."""
     names = inp.artifacts.sections
@@ -1383,9 +1383,10 @@ async def probe(inp: ReviewInput, items: List[ReviewItem], text: str, changed_ra
     if isinstance(ca, BaseException):
         errors.append(f"contradiction: {_err(ca)}")
         ca = {}
-    addressed, reprepare = [], []
+    addressed, reprepare, scores = [], [], {}
     for k, it in enumerate(items):
         p = _f(pa, f"p{k}")
+        scores[it.id] = p
         at = _anchor_at(it, text)
         if p is not None and p >= ADDRESSED_OK:
             addressed.append(it.id)
@@ -1405,7 +1406,7 @@ async def probe(inp: ReviewInput, items: List[ReviewItem], text: str, changed_ra
                 anchor=Span(start=c.start, end=c.end, text=text[c.start:c.end]),
                 evidence={"negative": neg, "score": s, "clause": c.text}, code_fix=fix is not None,
                 proposed=fix, detector="loop.contradiction"))
-    return {"addressed": addressed, "reprepare": reprepare, "contradictions": contradictions,
+    return {"addressed": addressed, "reprepare": reprepare, "contradictions": contradictions, "scores": scores,
             "error": "; ".join(dict.fromkeys(errors)) or None}
 
 

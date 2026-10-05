@@ -15,7 +15,7 @@ from .items import ReviewItem
 # command → new status (None: history only). Spec §12.3 commands plus the engine's and the loop's own events.
 COMMAND_STATUS = {
     "apply": "applied", "edit": "applied", "undo": "open", "dismiss": "dismissed", "restore": "open",
-    "addressed": "addressed", "stale": "stale", "pre_applied": "pre_applied",
+    "addressed": "addressed", "stale": "stale", "pre_applied": "pre_applied", "reopened": "open",
     "prepared": None, "view": None, "ask_chat": None,
 }
 _ITEM_FIELDS = ("key", "lane", "detectors", "kind", "cls", "section", "label", "reason", "probe", "citation",
@@ -129,6 +129,8 @@ def append_event(db: Session, report_id: str, item_id: str, command: str, text_h
                                               "text_hash": text_hash, "detail": detail or {}}]
     flag_modified(row, "history")
     status = COMMAND_STATUS[command]
+    if command == "reopened" and row.status != "addressed":     # the loop re-opens only what it addressed
+        status = None
     if _reinstates_pre_apply(command, detail, row.history):
         status = "pre_applied"
     if status:
