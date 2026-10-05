@@ -132,3 +132,16 @@ def test_applied_item_ids_are_capped(client, auth_headers, chat_env, db_session,
     # re-applying an id already there, and undo, still work at the cap
     r = client.post(url, json={"edit_index": 0, "item_id": "chat:x:0", "applied": True}, headers=auth_headers)
     assert r.status_code == 200
+
+
+def test_created_at_is_naive_utc_and_served_with_its_offset(db_session, chat_env):
+    """F2 M7: the column is a naive DateTime: rows are written in naive UTC, and served as UTC with an offset."""
+    from datetime import datetime, timezone
+
+    from rapid_reports_ai import chat_thread
+    assert chat_thread._now().tzinfo is None
+    before = datetime.now(timezone.utc).replace(tzinfo=None)
+    chat_thread.save_turn(db_session, chat_env, "q", "a", [])
+    msgs = chat_thread.list_thread(db_session, chat_env)
+    at = datetime.fromisoformat(msgs[-1]["created_at"])
+    assert at.utcoffset() is not None and abs((at.replace(tzinfo=None) - before).total_seconds()) < 60

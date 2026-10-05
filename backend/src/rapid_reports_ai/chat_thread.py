@@ -25,7 +25,15 @@ def _uuid(x: Any) -> Optional[uuid.UUID]:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    """Naive UTC: `created_at` is a naive DateTime column (F2 M7)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _iso(at: Optional[datetime]) -> Optional[str]:
+    """Served as UTC with its offset (a naive value is UTC)."""
+    if at is None:
+        return None
+    return (at if at.tzinfo else at.replace(tzinfo=timezone.utc)).isoformat()
 
 
 def save_turn(db: Session, report_id: str, user_text: str, reply_text: str, edits: List[dict]) -> Tuple[str, str]:
@@ -43,7 +51,7 @@ def save_turn(db: Session, report_id: str, user_text: str, reply_text: str, edit
 def _dump(row: ReportChatMessage) -> dict:
     return {"id": str(row.id), "role": row.role, "content": row.content, "edits": row.edits or [],
             "applied_item_ids": row.applied_item_ids or [],
-            "created_at": row.created_at.isoformat() if row.created_at else None}
+            "created_at": _iso(row.created_at)}
 
 
 def list_thread(db: Session, report_id: str) -> List[dict]:
