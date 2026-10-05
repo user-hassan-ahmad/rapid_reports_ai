@@ -34,6 +34,7 @@
 	import { createWorkspaceSaver, loadWorkspace, type WorkspaceSaver, type WorkspaceState } from '$lib/review/workspace';
 	import { setReviewRailActive } from '$lib/review/railActive';
 	import type { ItemStatus, ReviewItem, UserCommand } from '$lib/review/types';
+	import { chatItem, chatItemId, type ChatEdit, type RailChat } from '$lib/review/chat';
 	const dispatch = createEventDispatcher();
 
 	export let visible = false;
@@ -551,6 +552,7 @@
 
 	// Reset unsaved state whenever the parent updates the response (generate / restore / save)
 	$: if (response !== lastSavedResponse) {
+		appliedSinceSave.clear();
 		hasUnsavedChanges = false;
 		currentEditorContent = response;
 		lastSavedResponse = response;
@@ -601,7 +603,8 @@
 	}
 
 	function handlePopupAskAI(event: CustomEvent<{ message: string }>) {
-		dispatch('openSidebar', { tab: 'chat', initialMessage: event.detail.message });
+		if (railOn) askInRailChat(event.detail.message);
+		else dispatch('openSidebar', { tab: 'chat', initialMessage: event.detail.message });
 		dispatch('hideHoverPopup');
 	}
 
@@ -646,7 +649,28 @@
 	function saveEditing() {
 		const ids = reviewAppliedItemIds();
 		dispatch('save', { content: currentEditorContent, ...(ids ? { reviewAppliedItemIds: ids } : {}) });
+		appliedSinceSave.clear();
 		hasUnsavedChanges = false;
+	}
+
+	/** Discard unsaved changes. Items applied since the last save go back to open: `undo` is posted for each one
+	 * still applied, so the statuses match the restored text. */
+	function discardEditing() {
+		const store = reviewStore;
+		const undone = store
+			? [...appliedSinceSave].filter((id) => get(store).items.find((i) => i.id === id)?.status === 'applied')
+			: [];
+		appliedSinceSave.clear();
+		reportEditorRef?.resetContent(response);
+		currentEditorContent = response;
+		hasUnsavedChanges = false;
+		if (undone.length) {
+			postEvents(
+				undone.map((id) => ({ itemId: id, command: 'undo' as const, detail: { via: 'discard' } })),
+				Object.fromEntries(undone.map((id) => [id, 'open' as const]))
+			);
+			probeLoop?.trigger();
+		}
 	}
 
 	// ─── Review rail (Plan 3 C5, spec §12) ───────────────────────────────────
@@ -679,6 +703,21 @@
 	let currentHash: string | null = null;
 	let hashedText: string | null = null;
 	let hashSeq = 0;
+	/** Items applied (apply / edit) since the last save: Discard posts `undo` for those still applied. */
+	const appliedSinceSave = new Set<string>();
+	/** The rail's chat (spec §12.5), set while the rail is on. */
+	let railChat: RailChat | undefined = undefined;
+	/** "Ask in chat": the rail composer takes the text whenever `seq` changes. */
+	let chatPrefill: { text: string; seq: number } | null = null;
+
+	const HEADING_LINE = /^([A-Z][A-Z /&()-]{2,}):\s*$/;
+	/** The report's ALL-CAPS "NAME:" headings, in order (the rail's section order when no list is passed). */
+	function headingsOf(text: string): string[] {
+		return text
+			.split('\n')
+			.map((l) => HEADING_LINE.exec(l.trim())?.[1])
+			.filter((h): h is string => !!h);
+	}
 
 	$: probeState = probeLoop;
 	$: updatingIds = $probeState?.updating ?? new Set<string>();
@@ -691,6 +730,11 @@
 	$: if (railOn && reviewStore && response !== lastReviewResponse) {
 		lastReviewResponse = response;
 		void reviewStore.load();
+	}
+
+	// The rail groups follow the report's sections: the passed list, else the headings of the report text.
+	$: if (railOn && reviewStore) {
+		reviewStore.setSectionOrder(reviewSections?.length ? reviewSections : headingsOf(response || ''));
 	}
 
 	onDestroy(() => {
@@ -780,6 +824,7 @@
 		reviewReplaceDoc = (state, text) =>
 			replaceDoc(state, text, get(store).items, { sections: reviewSections, textHash: null });
 		lastReviewResponse = response;
+		railChat = { reportId: id, getText: liveDoc, applyEdit: applyChatEdit };
 		railOn = true;
 		let lastItems: ReviewItem[] | null = null;
 		unsubscribeReview = store.subscribe((st) => {
@@ -803,6 +848,8 @@
 		unsubscribeReview = null;
 		reviewExtras = [];
 		reviewReplaceDoc = undefined;
+		railChat = undefined;
+		chatPrefill = null;
 		railOn = false;
 		currentHash = null;
 		hashedText = null;
@@ -817,11 +864,18 @@
 		postChain = postChain.then(async () => {
 			const h = await textHash(text);
 			for (const ev of events) {
-				const status =
-					statuses[ev.itemId] ?? get(store).items.find((i) => i.id === ev.itemId)?.status ?? 'open';
+				const cur = get(store).items.find((i) => i.id === ev.itemId);
+				const status = statuses[ev.itemId] ?? cur?.status ?? 'open';
+				if (cur?.lane === 'chat') {
+					// chat items are local (the chat endpoint does not persist them): never posted
+					const entry = { event: ev.command, actor: 'user', text_hash: h, detail: ev.detail };
+					store.upsert([{ ...cur, status, history: [...cur.history, entry] }]);
+					continue;
+				}
 				void store.setStatus(ev.itemId, status, { command: ev.command, textHash: h, detail: ev.detail });
 			}
 		});
+		for (const ev of events) if (ev.command === 'apply' || ev.command === 'edit') appliedSinceSave.add(ev.itemId);
 	}
 
 	function handleReviewCommand(name: CommandName, itemId?: string, args?: Record<string, unknown>): void {
@@ -835,6 +889,20 @@
 		if (name === 'finalise') return; // a save-time query (reviewAppliedItemIds), not a rail action
 		const items = get(store).items;
 		const item = itemId ? (items.find((i) => i.id === itemId) ?? null) : null;
+		executeCommand(name, item, items, args);
+	}
+
+	/** Run a command on the live document, dispatch its transaction and post its events; the error, or null. */
+	function executeCommand(
+		name: CommandName,
+		item: ReviewItem | null,
+		items: ReviewItem[],
+		args?: Record<string, unknown>,
+		before?: () => void
+	): string | null {
+		const view = reportEditorRef?.getView();
+		if (!view) return 'no_editor';
+		const itemId = item?.id;
 		const textHashNow = hashNow();
 		const result = runCommand(name, {
 			doc: view.state.doc.toString(),
@@ -847,8 +915,9 @@
 		});
 		if (result.error) {
 			console.warn(`[review] ${name} ${itemId ?? ''}: ${result.error}`);
-			return;
+			return result.error;
 		}
+		before?.();
 		if (result.focus) {
 			const { from, itemId: focusId } = result.focus;
 			view.dispatch({
@@ -856,12 +925,30 @@
 				effects: [EditorView.scrollIntoView(from, { y: 'center' }), openPopover.of(focusId)]
 			});
 		}
-		if (result.openChat) dispatch('openSidebar', { tab: 'chat', initialMessage: result.openChat });
+		if (result.openChat) askInRailChat(result.openChat);
 		if (result.changes || (result.statuses && Object.keys(result.statuses).length)) {
 			view.dispatch(commandTransaction(view.state, result, items, { sections: reviewSections, textHash: textHashNow }));
 		}
 		postEvents([...(result.event ? [result.event] : []), ...(result.events ?? [])], result.statuses ?? {});
 		if (result.changes) probeLoop?.trigger();
+		return null;
+	}
+
+	function askInRailChat(text: string): void {
+		chatPrefill = { text, seq: (chatPrefill?.seq ?? 0) + 1 };
+	}
+
+	/** A verified chat edit: a local `lane: chat` item linked to its message, applied through the apply command. */
+	function applyChatEdit(messageId: string, index: number, edit: ChatEdit): string | null {
+		const store = reviewStore;
+		if (!store || !reportId) return 'no_review';
+		const items = get(store).items;
+		const existing = items.find((i) => i.id === chatItemId(messageId, index));
+		const item = existing ?? chatItem(reportId, messageId, index, edit);
+		const all = existing ? items : [...items, item];
+		return executeCommand('apply', item, all, undefined, () => {
+			if (!existing) store.upsert([item]);
+		});
 	}
 
 	/** Cmd-Z / redo of a review command: undo posts `undo`; redo posts the original command again. */
@@ -884,7 +971,9 @@
 	/** Finalise: the review items kept in the report (applied, plus pre-applied not undone); undefined with the rail off. */
 	function reviewAppliedItemIds(): string[] | undefined {
 		if (!railOn || !reviewStore) return undefined;
-		const r = runCommand('finalise', { doc: liveDoc(), items: get(reviewStore).items });
+		// chat items are local: the backend knows engine items only
+		const items = get(reviewStore).items.filter((i) => i.lane !== 'chat');
+		const r = runCommand('finalise', { doc: liveDoc(), items });
 		return r.request?.type === 'finalise' ? r.request.applied : undefined;
 	}
 
@@ -1346,6 +1435,8 @@
 										onDensity={handleDensity}
 										updating={updatingIds}
 										guidelines={railGuidelines}
+										chat={railChat}
+										{chatPrefill}
 									/>
 								</div>
 							{/if}
@@ -1372,11 +1463,7 @@
 						<div class="flex items-center gap-2 ml-auto">
 							<button
 								type="button"
-								onclick={() => {
-									reportEditorRef?.resetContent(response);
-									currentEditorContent = response;
-									hasUnsavedChanges = false;
-								}}
+								onclick={discardEditing}
 								class="px-3 py-1.5 text-xs font-medium rounded-lg text-gray-400 hover:text-white hover:bg-white/[0.08] transition-colors"
 							>
 								Discard
