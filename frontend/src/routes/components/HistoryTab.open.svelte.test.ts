@@ -26,6 +26,9 @@ vi.mock('$lib/review/workspace', () => ({
 }));
 
 const { default: HistoryTab } = await import('./HistoryTab.svelte');
+const { default: ConfirmDialog } = await import('$lib/components/ConfirmDialog.svelte');
+const { createConfirmGate, confirmIfUnsaved } = await import('$lib/utils/confirmGate');
+const { EditorView } = await import('@codemirror/view');
 const { default: IntelliDictateTab } = await import('./IntelliDictateTab.svelte');
 const { default: TemplatedReportTab } = await import('./TemplatedReportTab.svelte');
 const { reportsStore } = await import('$lib/stores/reports');
@@ -184,5 +187,74 @@ describe('templated tab: openExisting', () => {
 		).openExisting({ ...TEMPLATED, template_id: 'missing' });
 		expect(opened).toBe(false);
 		expect(getReview).not.toHaveBeenCalled();
+	});
+});
+
+type Tab = { openExisting: (r: unknown) => Promise<unknown>; hasUnsavedWork: () => boolean };
+
+/** The page's History "Open" guard (routes/+page.svelte handleOpenReport): the gate with its in-app dialog. */
+async function openOver(tab: Tab) {
+	const gate = createConfirmGate();
+	const decision = confirmIfUnsaved(tab, gate.ask);
+	const dialog = get(gate.pending)
+		? render(ConfirmDialog, {
+				open: true,
+				title: 'Replace the open report?',
+				message: 'x',
+				confirmLabel: 'Open anyway',
+				onConfirm: () => gate.answer(true),
+				onCancel: () => gate.answer(false)
+			})
+		: null;
+	return { decision, dialog };
+}
+
+describe('History Open over unsaved work (in-app confirm)', () => {
+	it('quick tab: unsaved editor changes ask first; Cancel keeps everything', async () => {
+		const { component, container } = render(IntelliDictateTab, {});
+		const tab = component as unknown as Tab;
+		await tab.openExisting(QUICK);
+		await pause(400);
+		expect(tab.hasUnsavedWork()).toBe(false);
+		// nothing unsaved: Open goes straight through, no dialog
+		const clean = await openOver(tab);
+		expect(clean.dialog).toBeNull();
+		await expect(clean.decision).resolves.toBe(true);
+
+		const viewer = [...container.querySelectorAll('.cm-editor')]
+			.map((el) => EditorView.findFromDOM(el as HTMLElement)!)
+			.find((v) => v.state.doc.toString().includes('The spleen measures 9 cm.'))!;
+		viewer.dispatch({ changes: { from: viewer.state.doc.length, insert: ' Edited.' } });
+		await pause(100);
+		expect(tab.hasUnsavedWork()).toBe(true);
+
+		const dirty = await openOver(tab);
+		expect(dirty.dialog).not.toBeNull();
+		await expect.element(page.getByRole('alertdialog', { name: 'Replace the open report?' })).toBeInTheDocument();
+		await page.getByRole('button', { name: 'Cancel' }).click();
+		await expect(dirty.decision).resolves.toBe(false);
+		expect(viewer.state.doc.toString()).toBe(REPORT + ' Edited.');
+		dirty.dialog!.unmount();
+
+		const again = await openOver(tab);
+		await page.getByRole('button', { name: 'Open anyway' }).click();
+		await expect(again.decision).resolves.toBe(true);
+	});
+
+	it('templated tab: unsaved editor changes count as unsaved work', async () => {
+		if (!get(templatesStore).templates?.some((t: { id: string }) => t.id === TEMPLATE.id))
+			templatesStore.addTemplate(TEMPLATE);
+		const { component, container } = render(TemplatedReportTab, {});
+		await tick();
+		const tab = component as unknown as Tab;
+		await tab.openExisting(TEMPLATED);
+		await pause(400);
+		expect(tab.hasUnsavedWork()).toBe(false);
+		const viewer = [...container.querySelectorAll('.cm-editor')]
+			.map((el) => EditorView.findFromDOM(el as HTMLElement)!)
+			.find((v) => v.state.doc.toString().includes('The spleen measures 9 cm.'))!;
+		viewer.dispatch({ changes: { from: viewer.state.doc.length, insert: ' Edited.' } });
+		await pause(100);
+		expect(tab.hasUnsavedWork()).toBe(true);
 	});
 });

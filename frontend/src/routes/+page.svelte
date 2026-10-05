@@ -32,6 +32,8 @@ import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 	import { marked } from 'marked';
 	import { API_URL } from '$lib/config';
 	import { logger } from '$lib/utils/logger';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import { confirmIfUnsaved, createConfirmGate } from '$lib/utils/confirmGate';
 	
 	type UseCaseOption = { name: string; description?: string };
 	type ApiKeyStatus = {
@@ -397,6 +399,8 @@ let templatedModel = 'claude'; // Track model for template editor
 		handleExternalAuditReaudit?: () => void;
 		/** History "Open" (Plan 3 E2); the templated tab answers false when it cannot show the report. */
 		openExisting?: (report: HistoryModal & { id: string }) => Promise<boolean | void>;
+		/** Unsaved editor changes or a dictation in progress: History "Open" asks before replacing them. */
+		hasUnsavedWork?: () => boolean;
 	};
 
 	// Tab refs for draft restore (called from page-level banners)
@@ -521,8 +525,14 @@ let templatedModel = 'claude'; // Track model for template editor
 	/** History "Open" (Plan 3 E2, spec §12.6): load a saved report into its tab's viewer. The viewer loads the stored
 	 *  review run, items and workspace state from the report id; nothing is re-run. Falls back to the read-only
 	 *  preview when the tab cannot show it (a templated report whose template is gone, or the tab still loading). */
+	/** History "Open" over a tab with unsaved work asks in-app first; Cancel keeps everything as it is. */
+	const openGate = createConfirmGate();
+	const openPending = openGate.pending;
+
 	async function handleOpenReport(report: HistoryModal): Promise<void> {
 		if (!report?.id) return;
+		const target = report.report_type === 'templated' ? templateTabRef : intelliTabRef;
+		if (!(await confirmIfUnsaved(target, openGate.ask))) return;
 		const saved = { ...report, id: report.id };
 		historyModalReport = null;
 		if (report.report_type === 'templated') {
@@ -1493,6 +1503,15 @@ $: if (
 		on:templateCreated={handleTemplateWizardCreated}
 	/>
 {/if}
+
+	<ConfirmDialog
+		open={$openPending}
+		title="Replace the open report?"
+		message="The report tab has unsaved changes or a dictation in progress. Opening this report replaces them."
+		confirmLabel="Open anyway"
+		onConfirm={() => openGate.answer(true)}
+		onCancel={() => openGate.answer(false)}
+	/>
 
 	<!-- History Modal - Rendered at root level to avoid stacking context issues -->
 	{#if historyModalReport}

@@ -14,6 +14,7 @@ import type { CoverageTrace, LabConfig, PillThresholds } from '$lib/dictation-la
 import type { DecisionRecord, OutcomeEvent } from '$lib/dictation-lab/decisionFirst';
 import { pillState } from '$lib/dictation-lab/coverage';
 import { effectiveConfig } from '$lib/dictation-lab/package';
+import { hasUnsavedWork as unsavedWork } from '$lib/utils/confirmGate';
 
 	let toast: { show: (msg: string) => void } | undefined;
 
@@ -652,6 +653,17 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 	}
 
 	let reportViewerRef: any = null;
+
+	/** History "Open" asks before replacing this tab when it holds unsaved work: a dictation in progress (recording,
+	 * or scratchpad findings no report was generated from) or unsaved editor changes. */
+	export function hasUnsavedWork(): boolean {
+		return unsavedWork({
+			recording: isRecording,
+			findings: scratchpadToFindings(scratchpadContent),
+			findingsAtReport: findingsAtReportGeneration,
+			editorDirty: !!reportViewerRef?.hasUnsavedEdits?.()
+		});
+	}
 
 	export function handleExternalAuditAcknowledge(detail: { criterion: string; resolutionMethod: string }) {
 		reportViewerRef?.acknowledgeFromExternal?.(detail);

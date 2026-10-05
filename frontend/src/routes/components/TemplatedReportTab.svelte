@@ -1185,6 +1185,11 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 		draftStore.clearTemplateTab();
 	}
 
+	/** Unsaved work in the open form (History "Open" asks before replacing it). */
+	export function hasUnsavedWork() {
+		return !!formRef?.hasUnsavedWork?.();
+	}
+
 	/** History "Open" (Plan 3 E2, spec §12.6): select the report's template, restore its saved inputs and show the
 	 * saved report in the viewer, which loads its stored review run, items and workspace state from `reportId`.
 	 * Nothing is generated, re-run or probed. Returns false when the template is not available (the caller falls

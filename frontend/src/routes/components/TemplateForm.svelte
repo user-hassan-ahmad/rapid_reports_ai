@@ -7,6 +7,7 @@
 	import Toast from '$lib/components/Toast.svelte';
 	import ReportResponseViewer from './ReportResponseViewer.svelte';
 	import { API_URL } from '$lib/config';
+	import { hasUnsavedWork as unsavedWork } from '$lib/utils/confirmGate';
 
 	// ── Feedback capture ──────────────────────────────────────────────
 	let feedbackId: string | null = null;
@@ -345,6 +346,17 @@
 
 	function scratchpadToFindings(raw: string): string {
 		return raw.replace(/\n{3,}/g, '\n\n').trim();
+	}
+
+	/** History "Open" asks before replacing the form when it holds unsaved work: a dictation in progress (recording,
+	 * or scratchpad findings no report was generated from) or unsaved editor changes. */
+	export function hasUnsavedWork(): boolean {
+		return unsavedWork({
+			recording: isRecording,
+			findings: scratchpadToFindings(scratchpadContent),
+			findingsAtReport: findingsAtReportGeneration,
+			editorDirty: !!reportViewerRef?.hasUnsavedEdits?.()
+		});
 	}
 
 	async function handleGenerateReport() {

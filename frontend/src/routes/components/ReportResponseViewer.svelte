@@ -517,6 +517,11 @@
 		saveInFlight
 	});
 
+	/** Editor changes not yet saved (History "Open" asks before replacing them). */
+	export function hasUnsavedEdits(): boolean {
+		return hasUnsavedChanges;
+	}
+
 	export function acknowledgeFromExternal(detail: { criterion: string; resolutionMethod: string }) {
 		void handleAcknowledge(new CustomEvent('ack', { detail }));
 	}
