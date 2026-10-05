@@ -433,13 +433,57 @@ async def test_brief_without_atoms_takes_todays_per_line_path(monkeypatch):
     assert _path(b) == '"The liver is unremarkable. No free fluid."' and "linked" not in b.decisions
 
 
+ORDINARY = SHEET.split("- **Normal-study path:**")[0] + \
+    '- **Normal-study path:** "The liver is unremarkable. No free fluid."\n'
+
+
 @pytest.mark.asyncio
-async def test_flag_off_sends_the_unchanged_qwen_request(monkeypatch):
+@pytest.mark.parametrize("flag", ["0", "1"])
+async def test_an_ordinary_sheet_sends_the_unchanged_qwen_request(monkeypatch, flag):
+    """F2 M1: linked normals are detected by the field's format, so an ordinary sheet takes today's path whatever
+    RR_GROUPED_NORMALS says."""
     seen = _stub(monkeypatch, labels=[])
-    monkeypatch.delenv("RR_GROUPED_NORMALS")
-    b = await qb.compile_brief(SHEET, "CT", "Appendicitis")
+    monkeypatch.setenv("RR_GROUPED_NORMALS", flag)
+    b = await qb.compile_brief(ORDINARY, "CT", "Appendicitis")
     assert seen["qwen_linked"] == [None] and seen["states"] == [] and not any(k.startswith("na") for k in seen["q"])
     assert "linked" not in b.decisions and "Dictated negatives" not in b.text
+
+
+@pytest.mark.asyncio
+async def test_a_linked_sheet_is_linked_with_the_flag_off(monkeypatch):
+    """F2 M1: a sheet the analyser wrote in the linked format (flag on at analysis) is still read as linked when
+    the flag is off at generation; its N / P lines never reach the brief as raw normal lines."""
+    seen = _stub(monkeypatch, labels=LABELS)
+    monkeypatch.delenv("RR_GROUPED_NORMALS")
+    b = await qb.compile_brief(SHEET, "CT", "Appendicitis")
+    assert seen["qwen_linked"] != [None]
+    assert not any("|" in n for n in seen["normals"]) and "| N1" not in b.text and "N1 |" not in b.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("linked", [False, True])
+async def test_generator_raw_sheet_fallback_strips_links_by_format(monkeypatch, linked):
+    from rapid_reports_ai import quick_report_generator as qrg
+    seen = []
+
+    def capture(sheet, *a, **k):
+        seen.append(sheet)
+        raise RuntimeError("stop")
+
+    async def down(**kw):
+        raise RuntimeError("down")
+    monkeypatch.delenv("RR_GROUPED_NORMALS", raising=False)
+    monkeypatch.setattr(qrg, "build_prompts", capture)
+    monkeypatch.setattr(qrg, "_run_agent_with_model", down)
+    monkeypatch.setattr(qrg, "_get_api_key_for_provider", lambda provider, fallback_api_key=None: "k")
+    sheet = SHEET if linked else ORDINARY
+    with pytest.raises(Exception):
+        await qrg.generate_quick_report(skill_sheet=sheet, scan_type="CT", findings="f", clinical_history="h",
+                                        model_override=qrg.MODEL_CONFIG["QUICK_REPORT_GENERATOR_FALLBACK"],
+                                        use_brief=False)
+    assert seen[0] == (ln.strip_links(SHEET) if linked else ORDINARY)
+    if linked:
+        assert seen[0] != SHEET
 
 
 @pytest.mark.asyncio

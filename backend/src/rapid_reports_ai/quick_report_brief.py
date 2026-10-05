@@ -258,9 +258,10 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     normal_bullet = _bullet(struct, "Normal-study path")
     # A normal line that states a measurement asserts a value nobody dictated whenever the
     # dictation is silent about it, so it never reaches the generator.
-    # Linked normals (opt-in): atoms + prose naming them. Lines in neither form, or a field with no
-    # atom at all, take today's per-line path below.
-    linked = _ln.parse_linked(normal_bullet.lines) if (_ng.enabled() and normal_bullet) else None
+    # Linked normals: atoms + prose naming them, detected by the field's format (a sheet written with
+    # RR_GROUPED_NORMALS on stays linked if the flag is off now). Lines in neither form, or a field with
+    # no atom at all (every ordinary sheet), take today's per-line path below.
+    linked = _ln.parse_linked(normal_bullet.lines) if normal_bullet else None
     lines_in = [e for e in linked.entries if isinstance(e, str)] if linked else _normal_sentences(normal_bullet)
     measured = [t for t in lines_in if _MEASUREMENT.search(t)]
     normals = [t for t in lines_in if not _MEASUREMENT.search(t)]

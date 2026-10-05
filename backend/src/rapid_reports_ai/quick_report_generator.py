@@ -22,7 +22,6 @@ from .enhancement_utils import (
 )
 from .quick_report_brief import compile_brief
 from .linked_normals import strip_links
-from .normal_groups import enabled as _linked_normals_on
 from .quick_report_quality import run_quality_check
 from .report_reconcile import write_options
 from .quick_report_hardening import QUICK_REPORT_HARDENING_PREAMBLE, QUICK_REPORT_HARDENING_PREAMBLE_BRIEF
@@ -118,8 +117,9 @@ async def generate_quick_report(
             brief = await compile_brief(skill_sheet, scan_type, findings, clinical_history)
         except Exception as e:
             logger.warning("quick-report brief failed (%s: %s); generating from the raw sheet", type(e).__name__, str(e)[:200])
-    # A linked Normal-study path (RR_GROUPED_NORMALS) is reduced to its prose when the raw sheet is used.
-    sheet_for_generator = brief.text if brief else (strip_links(skill_sheet) if _linked_normals_on() else skill_sheet)
+    # A linked Normal-study path (by format) is reduced to its prose when the raw sheet is used; strip_links
+    # returns any other sheet unchanged.
+    sheet_for_generator = brief.text if brief else strip_links(skill_sheet)
     primary = MODEL_CONFIG["QUICK_REPORT_GENERATOR"]
     model_name = model_override or primary
     fallback = MODEL_CONFIG.get("QUICK_REPORT_GENERATOR_FALLBACK") if model_name == primary else None
