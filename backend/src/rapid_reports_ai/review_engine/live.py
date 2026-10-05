@@ -123,6 +123,22 @@ def _locate_insert(pre: str, final: str, ops: List[Op], sentence: str) -> Option
     return k, (i1, i2, j1, j2)
 
 
+_SENT_END = re.compile(r"[.!?:](?=\s)|\n")
+
+
+def _sentence_before(final: str, j: int) -> Optional[str]:
+    """The sentence (or heading line) ending at `j` in the final text, when it occurs there exactly once: the anchor
+    an insert edit re-applies after."""
+    tail = final[:j].rstrip()
+    if not tail:
+        return None
+    start = 0
+    for m in _SENT_END.finditer(tail, 0, len(tail) - 1):
+        start = m.end()
+    s = tail[start:].strip()
+    return s if s and final.count(s) == 1 else None
+
+
 def _item(inp: ReviewInput, run_id: str, h: str, lane: str, kind: str, det: str, text: str, anchor: Span,
           section: Optional[str], label: str, reason: str, edit: Edit, evidence: dict) -> ReviewItem:
     return ReviewItem(
@@ -159,11 +175,12 @@ def bridge_items(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], List[
             if r is None:
                 continue
             u = undo(pre, final, r)
+            sec = (_section_of(final, r[2], names) or "").upper() or None
             items.append(_item(inp, run_id, h, "accuracy", "removed", REMOVAL, clause,
-                               Span(start=r[2], end=r[2], text="", text_hash=h), _section_of(final, r[2], names),
+                               Span(start=r[2], end=r[2], text="", text_hash=h), sec,
                                f"Removed: {clause}",
                                "Contradicted by the dictation; removed before the report was shown.",
-                               Edit(mode="remove", find=clause),
+                               Edit(mode="remove", find=clause, section=sec),
                                {"source": "post_check", "removed_text": clause, "negative": True, "undo": u}))
         elif typ == "insertion":
             sent = (e.get("sentence") or "").strip()
@@ -173,11 +190,12 @@ def bridge_items(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], List[
                 continue
             k, r = loc
             u = undo(pre, final, r)
+            sec = (_section_of(final, k, names) or "").upper() or None
             items.append(_item(inp, run_id, h, "coverage", "absent", INSERT, sent,
-                               Span(start=k, end=k + len(sent), text=sent, text_hash=h), _section_of(final, k, names),
+                               Span(start=k, end=k + len(sent), text=sent, text_hash=h), sec,
                                f"Added: {sent}",
                                "A dictated finding was missing from the report; added before the report was shown.",
-                               Edit(mode="insert", replace=sent),
+                               Edit(mode="insert", replace=sent, after=_sentence_before(final, r[2]), section=sec),
                                {"source": "post_check", "inserted_text": sent, "undo": u}))
         else:
             continue

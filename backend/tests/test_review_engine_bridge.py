@@ -179,3 +179,26 @@ def test_bridge_locates_an_item_dropped_from_a_negative_list():
     u = rem.evidence["undo"]
     assert _undo(final, u) == pre and u["original_text"].strip(" ,") == "pneumothorax"
     assert rem.anchor.start == rem.anchor.end == u["final_span"][0] and final[:rem.anchor.start].endswith("ascites")
+
+
+def test_bridge_edits_carry_section_and_insert_anchor():
+    """Re-apply after undo (F2 I1): the bridge edits name their section, and the insertion names the sentence it
+    followed (when that sentence occurs once), so the edit lands back where the check put it."""
+    pre = "FINDINGS:\nThe liver is normal. No ascites. A 14 mm left renal cyst.\nIMPRESSION:\nLeft renal cyst."
+    final = "FINDINGS:\nThe liver is normal. A 14 mm left renal cyst. Small left pleural effusion.\n" \
+            "IMPRESSION:\nLeft renal cyst."
+    qc = {"applied_edits": [{"type": "removal", "clause": "No ascites."},
+                            {"type": "insertion", "sentence": INSERTED}]}
+    items, _ = live.bridge_items(inp(final, DICT, quality_check=qc, pre_edit=pre), "r1")
+    rem = next(i for i in items if i.kind == "removed")
+    ins = next(i for i in items if i.kind == "absent")
+    assert rem.edit.section == "FINDINGS" and ins.edit.section == "FINDINGS"
+    assert ins.edit.after == "A 14 mm left renal cyst."
+
+
+def test_bridge_insert_has_no_anchor_when_the_preceding_sentence_repeats():
+    pre = "FINDINGS:\nNormal.\nIMPRESSION:\nNormal."
+    final = "FINDINGS:\nNormal. Small effusion.\nIMPRESSION:\nNormal."
+    qc = {"applied_edits": [{"type": "insertion", "sentence": "Small effusion."}]}
+    (ins,) = live.bridge_items(inp(final, "- x", quality_check=qc, pre_edit=pre), "r1")[0]
+    assert ins.edit.after is None and ins.edit.section == "FINDINGS"
