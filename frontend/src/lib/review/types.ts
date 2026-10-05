@@ -124,6 +124,8 @@ export interface ReviewResponse {
 	mode: EngineMode;
 	rail: boolean;
 	run: ReviewRun | null;
+	/** A newer run than `run` is queued or running (the rail keeps polling). */
+	running?: boolean;
 	lanes: Record<string, LaneState>;
 	items: ReviewItem[];
 }

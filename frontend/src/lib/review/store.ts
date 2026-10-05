@@ -26,6 +26,8 @@ export interface ReviewState {
 	mode: EngineMode;
 	rail: boolean;
 	run: ReviewRun | null;
+	/** The backend says a run is queued or running (newer than `run`, or `run` itself): not finished yet. */
+	running: boolean;
 	lanes: Record<string, LaneState>;
 	items: ReviewItem[];
 	/** run.live_write: the background write of pre-applied edits (C5 re-fetches the report when applied). */
@@ -64,7 +66,8 @@ export type ReviewCounts = Record<Cls, number> & { open: number };
 
 export interface ReviewStore extends Readable<ReviewState> {
 	load(): Promise<void>;
-	/** Reload until every lane has finished (or the run recorded errors). */
+	/** Reload until every lane has finished (or the run recorded errors) and no run is in progress. Never polls
+	 * while the rail is off. */
 	pollUntilDone(opts?: PollOptions): Promise<PollOutcome>;
 	/** Ask for a fresh run on `text`, then poll until a run other than the current one has finished. */
 	rerun(text?: string, opts?: PollOptions): Promise<PollOutcome>;
@@ -92,6 +95,7 @@ const initial = (): ReviewState => ({
 	mode: 'off',
 	rail: false,
 	run: null,
+	running: false,
 	lanes: {},
 	items: [],
 	liveWrite: null,
@@ -108,7 +112,7 @@ const startOf = (i: ReviewItem) => i.anchor?.start ?? Number.POSITIVE_INFINITY;
 
 function lanesFinished(s: ReviewState): boolean {
 	if (s.mode === 'off') return true;
-	if (!s.run) return false;
+	if (!s.run || s.running) return false;
 	if (Object.keys(s.run.errors ?? {}).length) return true; // the run failed: nothing more is coming
 	const states = Object.values(s.lanes);
 	return states.length > 0 && states.every((v) => FINISHED_LANES.has(v));
@@ -145,6 +149,7 @@ export function createReviewStore(reportId: string, opts: StoreOptions = {}): Re
 				mode: data.mode,
 				rail: data.rail,
 				run: data.run,
+				running: data.running === true,
 				lanes: data.lanes ?? {},
 				items,
 				liveWrite: data.run?.live_write ?? null,
@@ -161,7 +166,10 @@ export function createReviewStore(reportId: string, opts: StoreOptions = {}): Re
 	}
 
 	/** Poll until the lanes are finished; with `oldRunId`, also until the latest run is a different one. */
-	function poll({ intervalMs = 1500, maxMs = 90000 }: PollOptions, oldRunId: string | null): Promise<PollOutcome> {
+	function poll(
+		{ intervalMs = 1500, maxMs = 90000 }: PollOptions,
+		oldRunId: string | null
+	): Promise<PollOutcome> {
 		stopPolling();
 		return new Promise<PollOutcome>((resolve) => {
 			const started = Date.now();
@@ -179,6 +187,7 @@ export function createReviewStore(reportId: string, opts: StoreOptions = {}): Re
 			const tick = () => {
 				if (stopped) return;
 				const s = get(state);
+				if (!s.rail) return finish('done'); // rail off: never poll /review beyond the first GET
 				const fresh = oldRunId == null || s.mode === 'off' || (!!s.run && s.run.id !== oldRunId);
 				if (fresh && lanesFinished(s)) return finish('done');
 				if (Date.now() - started + intervalMs > maxMs) return finish('timeout');
@@ -231,7 +240,13 @@ export function createReviewStore(reportId: string, opts: StoreOptions = {}): Re
 		for (let attempt = 0; attempt <= maxRetries; attempt++) {
 			if (attempt) await sleep(retryDelayMs * 2 ** (attempt - 1));
 			try {
-				return await postEvent(reportId, id, event.command, event.textHash ?? null, event.detail ?? {});
+				return await postEvent(
+					reportId,
+					id,
+					event.command,
+					event.textHash ?? null,
+					event.detail ?? {}
+				);
 			} catch (e) {
 				last = e;
 			}
@@ -239,7 +254,11 @@ export function createReviewStore(reportId: string, opts: StoreOptions = {}): Re
 		throw last;
 	}
 
-	function setStatus(id: string, status: ItemStatus, event: StatusEvent): Promise<ReviewItem | null> {
+	function setStatus(
+		id: string,
+		status: ItemStatus,
+		event: StatusEvent
+	): Promise<ReviewItem | null> {
 		const before = get(state).items.find((i) => i.id === id);
 		if (!before) return Promise.resolve(null);
 		const entry: HistoryEntry = {
@@ -292,7 +311,9 @@ export function createReviewStore(reportId: string, opts: StoreOptions = {}): Re
 		const set = new Set(ids);
 		state.update((s) => ({
 			...s,
-			items: s.items.map((i) => (set.has(i.id) && i.status === 'open' ? { ...i, status: 'stale' as const } : i))
+			items: s.items.map((i) =>
+				set.has(i.id) && i.status === 'open' ? { ...i, status: 'stale' as const } : i
+			)
 		}));
 	}
 

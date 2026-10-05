@@ -48,7 +48,11 @@ function run(lanes: Record<string, string>, over: Partial<ReviewRun> = {}): Revi
 	};
 }
 
-function response(items: ReviewItem[], lanes: Record<string, string>, over: Partial<ReviewRun> = {}): ReviewResponse {
+function response(
+	items: ReviewItem[],
+	lanes: Record<string, string>,
+	over: Partial<ReviewRun> = {}
+): ReviewResponse {
 	return { success: true, mode: 'live', rail: true, run: run(lanes, over), lanes, items };
 }
 
@@ -72,7 +76,13 @@ describe('load', () => {
 		await p;
 		const st = get(s);
 		expect(getReview).toHaveBeenCalledWith('r1');
-		expect(st).toMatchObject({ mode: 'live', rail: true, lanes: DONE, loading: false, error: null });
+		expect(st).toMatchObject({
+			mode: 'live',
+			rail: true,
+			lanes: DONE,
+			loading: false,
+			error: null
+		});
 		expect(st.run?.id).toBe('run1');
 		expect(st.items).toEqual(items);
 	});
@@ -96,14 +106,18 @@ describe('load', () => {
 	});
 
 	it('exposes run.live_write and a derived liveWriteApplied flag', async () => {
-		getReview.mockResolvedValue(response([], DONE, { live_write: { applied: true, version_id: 'v9' } }));
+		getReview.mockResolvedValue(
+			response([], DONE, { live_write: { applied: true, version_id: 'v9' } })
+		);
 		const s = createReviewStore('r1');
 		expect(get(s.liveWriteApplied)).toBe(false);
 		await s.load();
 		expect(get(s).liveWrite).toEqual({ applied: true, version_id: 'v9' });
 		expect(get(s.liveWriteApplied)).toBe(true);
 
-		getReview.mockResolvedValue(response([], DONE, { live_write: { applied: false, reason: 'report_changed' } }));
+		getReview.mockResolvedValue(
+			response([], DONE, { live_write: { applied: false, reason: 'report_changed' } })
+		);
 		await s.load();
 		expect(get(s.liveWriteApplied)).toBe(false);
 	});
@@ -121,10 +135,20 @@ describe('groups', () => {
 		const s = createReviewStore('r1');
 		await s.load();
 		// no explicit order: sections follow their first anchor in the report
-		expect(get(s.groups).map((g) => g.section)).toEqual(['COMPARISON', 'FINDINGS', 'IMPRESSION', UNANCHORED]);
+		expect(get(s.groups).map((g) => g.section)).toEqual([
+			'COMPARISON',
+			'FINDINGS',
+			'IMPRESSION',
+			UNANCHORED
+		]);
 		// an explicit order (artifacts.sections) wins; unknown sections follow it
 		s.setSectionOrder(['FINDINGS', 'IMPRESSION']);
-		expect(get(s.groups).map((g) => g.section)).toEqual(['FINDINGS', 'IMPRESSION', 'COMPARISON', UNANCHORED]);
+		expect(get(s.groups).map((g) => g.section)).toEqual([
+			'FINDINGS',
+			'IMPRESSION',
+			'COMPARISON',
+			UNANCHORED
+		]);
 	});
 
 	it('matches the section order ignoring case and a trailing colon', async () => {
@@ -169,9 +193,17 @@ describe('groups', () => {
 	it('never folds an engine pre-applied item into "passed", even one relabelled suppress (Gate G)', async () => {
 		const engineHist = [{ event: 'pre_applied', actor: 'post_check' }];
 		const applied = item({ cls: 'suppress', status: 'pre_applied', history: engineHist });
-		const undone = item({ cls: 'suppress', status: 'open', history: [...engineHist, { event: 'undo', actor: 'user' }] });
+		const undone = item({
+			cls: 'suppress',
+			status: 'open',
+			history: [...engineHist, { event: 'undo', actor: 'user' }]
+		});
 		const bridged = item({ cls: 'suppress', status: 'open', detectors: ['post_check.removal'] });
-		const userMinted = item({ cls: 'suppress', status: 'open', history: [{ event: 'pre_applied', actor: 'user' }] });
+		const userMinted = item({
+			cls: 'suppress',
+			status: 'open',
+			history: [{ event: 'pre_applied', actor: 'user' }]
+		});
 		getReview.mockResolvedValue(response([applied, undone, bridged, userMinted], DONE));
 		const s = createReviewStore('r1');
 		await s.load();
@@ -181,7 +213,9 @@ describe('groups', () => {
 	});
 
 	it('drops empty groups', async () => {
-		getReview.mockResolvedValue(response([item({ section: 'IMPRESSION', status: 'dismissed' })], DONE));
+		getReview.mockResolvedValue(
+			response([item({ section: 'IMPRESSION', status: 'dismissed' })], DONE)
+		);
 		const s = createReviewStore('r1');
 		await s.load();
 		expect(get(s.groups)).toEqual([]);
@@ -233,12 +267,22 @@ describe('upsert and markStale', () => {
 	});
 
 	it('marks only open items stale (never an applied, pre-applied or dismissed one)', async () => {
-		const items = [item(), item({ status: 'applied' }), item({ status: 'pre_applied' }), item({ status: 'dismissed' })];
+		const items = [
+			item(),
+			item({ status: 'applied' }),
+			item({ status: 'pre_applied' }),
+			item({ status: 'dismissed' })
+		];
 		getReview.mockResolvedValue(response(items, DONE));
 		const s = createReviewStore('r1');
 		await s.load();
 		s.markStale(items.map((i) => i.id));
-		expect(get(s).items.map((i) => i.status)).toEqual(['stale', 'applied', 'pre_applied', 'dismissed']);
+		expect(get(s).items.map((i) => i.status)).toEqual([
+			'stale',
+			'applied',
+			'pre_applied',
+			'dismissed'
+		]);
 	});
 });
 
@@ -250,9 +294,17 @@ describe('setStatus', () => {
 		await s.load();
 		let resolve!: (v: ReviewItem) => void;
 		postEvent.mockReturnValue(new Promise((r) => (resolve = r)));
-		const p = s.setStatus(a.id, 'applied', { command: 'apply', textHash: 'h1', detail: { via: 'rail' } });
+		const p = s.setStatus(a.id, 'applied', {
+			command: 'apply',
+			textHash: 'h1',
+			detail: { via: 'rail' }
+		});
 		expect(get(s).items[0].status).toBe('applied');
-		expect(get(s).items[0].history.at(-1)).toMatchObject({ event: 'apply', actor: 'user', text_hash: 'h1' });
+		expect(get(s).items[0].history.at(-1)).toMatchObject({
+			event: 'apply',
+			actor: 'user',
+			text_hash: 'h1'
+		});
 		expect(postEvent).toHaveBeenCalledWith('r1', a.id, 'apply', 'h1', { via: 'rail' });
 		const server = { ...a, status: 'applied' as const, history: [{ event: 'apply', at: 'now' }] };
 		resolve(server);
@@ -339,7 +391,9 @@ describe('pollUntilDone', () => {
 		getReview
 			.mockResolvedValueOnce(response([], { coverage: 'done', accuracy: '', additions: '' }))
 			.mockResolvedValueOnce(response([], { coverage: 'done', accuracy: 'done', additions: '' }))
-			.mockResolvedValueOnce(response([item()], { coverage: 'done', accuracy: 'failed', additions: 'done' }));
+			.mockResolvedValueOnce(
+				response([item()], { coverage: 'done', accuracy: 'failed', additions: 'done' })
+			);
 		const s = createReviewStore('r1');
 		await s.load();
 		const p = s.pollUntilDone({ intervalMs: 1000, maxMs: 60000 });
@@ -353,7 +407,9 @@ describe('pollUntilDone', () => {
 	});
 
 	it('returns at once when the lanes are already finished', async () => {
-		getReview.mockResolvedValue(response([], { coverage: 'done', accuracy: 'skipped', additions: 'failed' }));
+		getReview.mockResolvedValue(
+			response([], { coverage: 'done', accuracy: 'skipped', additions: 'failed' })
+		);
 		const s = createReviewStore('r1');
 		await s.load();
 		await expect(s.pollUntilDone()).resolves.toBe('done');
@@ -385,7 +441,9 @@ describe('pollUntilDone', () => {
 	});
 
 	it('treats a run with errors as finished', async () => {
-		getReview.mockResolvedValue(response([], { coverage: '', accuracy: '' }, { errors: { engine: 'boom' } }));
+		getReview.mockResolvedValue(
+			response([], { coverage: '', accuracy: '' }, { errors: { engine: 'boom' } })
+		);
 		const s = createReviewStore('r1');
 		await s.load();
 		await expect(s.pollUntilDone()).resolves.toBe('done');
@@ -410,8 +468,58 @@ describe('pollUntilDone', () => {
 		expect(get(s).run?.id).toBe('run2');
 	});
 
+	it('keeps polling while a newer run is running, even though the shown run is finished', async () => {
+		vi.useFakeTimers();
+		getReview
+			.mockResolvedValueOnce({ ...response([], DONE), running: true })
+			.mockResolvedValueOnce({ ...response([], DONE), running: true })
+			.mockResolvedValueOnce({ ...response([item()], DONE, { id: 'run2' }), running: false });
+		const s = createReviewStore('r1');
+		await s.load();
+		const p = s.pollUntilDone({ intervalMs: 1000, maxMs: 60000 });
+		await vi.advanceTimersByTimeAsync(2000);
+		await expect(p).resolves.toBe('done');
+		expect(getReview).toHaveBeenCalledTimes(3);
+		expect(get(s).run?.id).toBe('run2');
+	});
+
+	it('never polls when the rail is off (one GET only), even with a run in progress', async () => {
+		vi.useFakeTimers();
+		getReview.mockResolvedValue({
+			...response([], { coverage: '' }),
+			mode: 'shadow',
+			rail: false,
+			running: true
+		});
+		const s = createReviewStore('r1');
+		await s.load();
+		await expect(s.pollUntilDone({ intervalMs: 1000, maxMs: 60000 })).resolves.toBe('done');
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(getReview).toHaveBeenCalledTimes(1);
+	});
+
+	it('stops polling when a reload turns the rail off', async () => {
+		vi.useFakeTimers();
+		getReview
+			.mockResolvedValueOnce(response([], { coverage: '' }))
+			.mockResolvedValue({ ...response([], { coverage: '' }), rail: false });
+		const s = createReviewStore('r1');
+		await s.load();
+		const p = s.pollUntilDone({ intervalMs: 1000, maxMs: 60000 });
+		await vi.advanceTimersByTimeAsync(5000);
+		await expect(p).resolves.toBe('done');
+		expect(getReview).toHaveBeenCalledTimes(2);
+	});
+
 	it('does not poll when the engine is off', async () => {
-		getReview.mockResolvedValue({ success: true, mode: 'off', rail: false, run: null, lanes: {}, items: [] });
+		getReview.mockResolvedValue({
+			success: true,
+			mode: 'off',
+			rail: false,
+			run: null,
+			lanes: {},
+			items: []
+		});
 		const s = createReviewStore('r1');
 		await s.load();
 		await expect(s.pollUntilDone()).resolves.toBe('done');
