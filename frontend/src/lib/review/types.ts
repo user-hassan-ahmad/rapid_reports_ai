@@ -150,3 +150,13 @@ export interface RerunResponse {
 	success: true;
 	status: 'running';
 }
+
+/** Gate G decision: an item the engine or the post-gen check pre-applied (a non-user `pre_applied` event, or a
+ * `post_check.*` detector) records an automatic edit. It is never folded into "passed" or hidden from the editor,
+ * whatever its cls, so its undo / restore stays reachable (mirror of review_engine/api._engine_pre_applied). */
+export function isEnginePreApplied(it: Pick<ReviewItem, 'detectors' | 'history'>): boolean {
+	return (
+		(it.detectors ?? []).some((d) => d.startsWith('post_check.')) ||
+		(it.history ?? []).some((h) => h?.event === 'pre_applied' && h.actor !== 'user')
+	);
+}

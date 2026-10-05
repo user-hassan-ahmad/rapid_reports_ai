@@ -14,6 +14,7 @@ import type {
 	ReviewRun,
 	UserCommand
 } from './types';
+import { isEnginePreApplied } from './types';
 
 export const UNANCHORED = 'Unanchored';
 /** Editor-only rows (?include=normals): decorations use them, the rail never shows them. */
@@ -99,7 +100,8 @@ const initial = (): ReviewState => ({
 });
 
 const isRailItem = (i: ReviewItem) => i.kind !== NORMAL_KIND;
-const isFolded = (i: ReviewItem) => i.cls === 'suppress' || FOLDED_STATUSES.has(i.status);
+const isFolded = (i: ReviewItem) =>
+	(i.cls === 'suppress' && !isEnginePreApplied(i)) || FOLDED_STATUSES.has(i.status);
 /** Section names compare like the backend's verifier._norm_name: trimmed, no trailing colon, lower case. */
 const normSection = (s: string) => s.trim().replace(/:$/, '').trim().toLowerCase();
 const startOf = (i: ReviewItem) => i.anchor?.start ?? Number.POSITIVE_INFINITY;

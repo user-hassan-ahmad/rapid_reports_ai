@@ -166,6 +166,20 @@ describe('groups', () => {
 		expect(get(s.folded).map((i) => i.id)).toEqual([items[1].id, items[2].id, items[3].id]);
 	});
 
+	it('never folds an engine pre-applied item into "passed", even one relabelled suppress (Gate G)', async () => {
+		const engineHist = [{ event: 'pre_applied', actor: 'post_check' }];
+		const applied = item({ cls: 'suppress', status: 'pre_applied', history: engineHist });
+		const undone = item({ cls: 'suppress', status: 'open', history: [...engineHist, { event: 'undo', actor: 'user' }] });
+		const bridged = item({ cls: 'suppress', status: 'open', detectors: ['post_check.removal'] });
+		const userMinted = item({ cls: 'suppress', status: 'open', history: [{ event: 'pre_applied', actor: 'user' }] });
+		getReview.mockResolvedValue(response([applied, undone, bridged, userMinted], DONE));
+		const s = createReviewStore('r1');
+		await s.load();
+		const shown = get(s.groups).flatMap((g) => g.items.map((i) => i.id));
+		expect(shown).toEqual(expect.arrayContaining([applied.id, undone.id, bridged.id]));
+		expect(get(s.folded).map((i) => i.id)).toEqual([userMinted.id]);
+	});
+
 	it('drops empty groups', async () => {
 		getReview.mockResolvedValue(response([item({ section: 'IMPRESSION', status: 'dismissed' })], DONE));
 		const s = createReviewStore('r1');

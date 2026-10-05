@@ -33,6 +33,7 @@ import { locate, locateUndo } from '../anchors';
 import type { CommandResult } from '../commands';
 import { toChanges } from '../edits';
 import type { Cls, ItemEvidence, ItemLane, ItemStatus, ReviewItem } from '../types';
+import { isEnginePreApplied } from '../types';
 
 /** How a mark is presented. */
 export type MarkClass = 'rv-normal' | 'rv-check' | 'rv-preapplied' | 'rv-action' | 'rv-minor' | 'rv-info';
@@ -117,7 +118,9 @@ export interface FromItemsOptions {
 }
 
 function isShown(it: ReviewItem): boolean {
-	return it.cls !== 'suppress' && (it.status === 'open' || it.status === 'pre_applied');
+	return (
+		(it.cls !== 'suppress' || isEnginePreApplied(it)) && (it.status === 'open' || it.status === 'pre_applied')
+	);
 }
 
 /** A removed (red) widget: text the engine took out, still out. Once restored or undone (open) the text is back

@@ -351,6 +351,34 @@ describe('Discard after Apply', () => {
 		await expect.element(page.getByRole('button', { name: 'Undo: Ascites statement' })).toBeInTheDocument();
 	});
 
+	it('Gate G sequence: undo a pre-applied insert, the probe runs, Discard; the item stays visible with Undo even if relabelled suppress', async () => {
+		const j1 = REPORT.indexOf(' No ascites.');
+		const pre = action({
+			id: 'p2',
+			lane: 'coverage',
+			kind: 'omission',
+			cls: 'minor',
+			status: 'pre_applied',
+			label: 'Ascites statement',
+			edit: { mode: 'insert', after: null, section: 'FINDINGS', replace: 'No ascites.' },
+			anchor: { start: j1 + 1, end: j1 + 12, text: 'No ascites.' },
+			evidence: { undo: undoOf(REPORT, j1, j1 + 12, '') },
+			history: engineHistory
+		});
+		// a server that relabelled it (legacy data, before reprepare skipped pre-applied items)
+		serve({ ...pre, cls: 'suppress' });
+		const { container } = await mount([pre]);
+		const view = viewOf(container);
+		await page.getByRole('button', { name: 'Undo: Ascites statement' }).click();
+		await pause(1800); // the probe debounce
+		expect(probe).toHaveBeenCalled();
+		await page.getByRole('button', { name: 'Discard' }).click();
+		await pause(300);
+		expect(view.state.doc.toString()).toBe(REPORT);
+		await expect.element(page.getByText('added from your dictation')).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Undo: Ascites statement' })).toBeInTheDocument();
+	});
+
 	it('an engine removal restored since the save is removed again (apply, via discard)', async () => {
 		const i = REPORT.indexOf('No ascites.');
 		const removal = action({

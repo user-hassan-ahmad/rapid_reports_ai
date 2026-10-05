@@ -345,6 +345,20 @@ describe('review field (generalised to review items)', () => {
 		expect(stale).toEqual([]);
 	});
 
+	it('fromItems keeps an engine pre-applied item marked even when relabelled suppress (Gate G)', () => {
+		const { items } = fromItems(report, [
+			item({
+				id: 'pa',
+				kind: 'absent',
+				cls: 'suppress',
+				status: 'open',
+				anchor: span(AMBER),
+				history: [{ event: 'pre_applied', actor: 'post_check' }, { event: 'undo', actor: 'user' }]
+			})
+		]);
+		expect(items.marks.map((m) => m.id)).toEqual(['pa']);
+	});
+
 	it('items with no anchor and no widget stay out of the editor and are not stale', () => {
 		const { items, stale } = fromItems(report, [item({ id: 'n', kind: 'note', cls: 'info' })]);
 		expect(items.marks).toEqual([]);
