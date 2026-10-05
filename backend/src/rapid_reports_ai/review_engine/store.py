@@ -128,10 +128,25 @@ def append_event(db: Session, report_id: str, item_id: str, command: str, text_h
     row.history = list(row.history or []) + [{"at": _now().isoformat(), "event": command, "actor": actor,
                                               "text_hash": text_hash, "detail": detail or {}}]
     flag_modified(row, "history")
-    if COMMAND_STATUS[command]:
-        row.status = COMMAND_STATUS[command]
+    status = COMMAND_STATUS[command]
+    if _reinstates_pre_apply(command, detail, row.history):
+        status = "pre_applied"
+    if status:
+        row.status = status
     db.commit()
     return _model(row)
+
+
+def _reinstates_pre_apply(command: str, detail: Optional[dict], history: Optional[list]) -> bool:
+    """Discard (Plan 3 fix batch): after the user undid or restored a pre-applied item, Discard puts the saved text
+    back, which holds the engine's write. The client posts `apply` with {via: discard, reinstate: pre_applied}; the
+    item goes back to `pre_applied` only when the engine itself pre-applied it (a non-user `pre_applied` event), so a
+    client can never mint an engine status (correction 13). Otherwise it is a plain apply."""
+    d = detail or {}
+    if command != "apply" or d.get("via") != "discard" or d.get("reinstate") != "pre_applied":
+        return False
+    return any(isinstance(h, dict) and h.get("event") == "pre_applied" and h.get("actor") != "user"
+               for h in (history or []))
 
 
 def update_item(db: Session, item: ReviewItem) -> None:
