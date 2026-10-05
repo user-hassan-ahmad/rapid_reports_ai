@@ -660,10 +660,18 @@ def _contexts(report: str, edit: Edit, names: Iterable[str]) -> Tuple[str, str]:
     return report[lo:hi], report[lo:i] + new + report[j:hi]
 
 
+def _contiguous(needle: List[str], hay: List[str]) -> bool:
+    """`needle` occurs in `hay` as one unbroken run of tokens."""
+    n = len(needle)
+    return n > 0 and any(hay[k:k + n] == needle for k in range(len(hay) - n + 1))
+
+
 def _alters_dictated(report: str, edit: Edit, dictation: str, names: Iterable[str]) -> bool:
     """A replace touching a sentence that says a dictated line (same polarity) keeps that line's sides and numbers
     exactly: it may not drop one the sentence shares with the line, nor bring in one the line lacks. A correction
-    towards the dictated line (report "right", dictated "left") is not an alteration."""
+    towards the dictated line (report "right", dictated "left") is not an alteration. Text only appended or inserted
+    AROUND such a sentence, which stays verbatim (its words in order and unbroken), alters nothing dictated (Gate G:
+    grounding guards still check what was added)."""
     old, new = edit.find or "", edit.replace or ""
     if not _once(report, old) or not (dictation or "").strip():
         return False
@@ -681,8 +689,11 @@ def _alters_dictated(report: str, edit: Edit, dictation: str, names: Iterable[st
     for raw in _dictated_sentences(dictation):
         for s in dict.fromkeys((raw, _expand(raw))):
             lines += [s] + _clauses(s)
+    new_toks = _tokens(new_ctx)
     for a, b in cover:
         p = report[a:b]
+        if _contiguous(_tokens(p), new_toks):
+            continue                                    # the sentence survives verbatim: only text around it changed
         for s in dict.fromkeys(lines):
             if _has_neg(s) != _has_neg(p) or not (_says(p, s, acr) or _says(s, p, acr)):
                 continue
