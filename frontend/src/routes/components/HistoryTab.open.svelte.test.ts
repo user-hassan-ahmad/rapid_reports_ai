@@ -20,7 +20,12 @@ vi.mock('$lib/review/api', () => ({
 	reprepare: (...a: unknown[]) => reprepare(...a)
 }));
 vi.mock('$lib/review/workspace', () => ({
-	loadWorkspace: vi.fn(async () => ({ tab: 'review', expanded_ids: [], density: 'full', last_text_hash: null })),
+	loadWorkspace: vi.fn(async () => ({
+		tab: 'review',
+		expanded_ids: [],
+		density: 'full',
+		last_text_hash: null
+	})),
 	saveWorkspace: vi.fn(async (_r: string, s: unknown) => s),
 	createWorkspaceSaver: () => ({ schedule: vi.fn(), flush: vi.fn(async () => {}), cancel: vi.fn() })
 }));
@@ -48,7 +53,9 @@ const QUICK = {
 	report_content: REPORT,
 	description: 'Synthetic quick report',
 	created_at: '2026-10-05T10:00:00Z',
-	input_data: { variables: { SCAN_TYPE: 'CT abdomen', CLINICAL_HISTORY: 'Pain.', FINDINGS: 'spleen 9 cm' } }
+	input_data: {
+		variables: { SCAN_TYPE: 'CT abdomen', CLINICAL_HISTORY: 'Pain.', FINDINGS: 'spleen 9 cm' }
+	}
 };
 
 const TEMPLATE = {
@@ -149,12 +156,16 @@ describe('History: Open and Preview', () => {
 describe('quick tab: openExisting', () => {
 	it('renders the viewer and rail from the stored run, without rerun or probe', async () => {
 		const { component, container } = render(IntelliDictateTab, {});
-		await (component as unknown as { openExisting: (r: typeof QUICK) => Promise<void> }).openExisting(QUICK);
+		await (
+			component as unknown as { openExisting: (r: typeof QUICK) => Promise<void> }
+		).openExisting(QUICK);
 		await pause(400);
 		expect(getReview).toHaveBeenCalledWith('rep-quick');
 		await expect.element(page.getByTestId('review-rail')).toBeInTheDocument();
 		await expect.element(page.getByText('Measurement differs').first()).toBeInTheDocument();
-		expect(container.querySelector('.cm-content')?.textContent).toContain('The spleen measures 9 cm.');
+		expect(container.querySelector('.cm-content')?.textContent).toContain(
+			'The spleen measures 9 cm.'
+		);
 		expect(rerun).not.toHaveBeenCalled();
 		expect(probe).not.toHaveBeenCalled();
 		expect(reprepare).not.toHaveBeenCalled();
@@ -174,7 +185,9 @@ describe('templated tab: openExisting', () => {
 		await pause(400);
 		expect(getReview).toHaveBeenCalledWith('rep-tpl');
 		await expect.element(page.getByTestId('review-rail')).toBeInTheDocument();
-		expect(container.querySelector('.cm-content')?.textContent).toContain('The spleen measures 9 cm.');
+		expect(container.querySelector('.cm-content')?.textContent).toContain(
+			'The spleen measures 9 cm.'
+		);
 		expect(rerun).not.toHaveBeenCalled();
 		expect(probe).not.toHaveBeenCalled();
 	});
@@ -230,7 +243,9 @@ describe('History Open over unsaved work (in-app confirm)', () => {
 
 		const dirty = await openOver(tab);
 		expect(dirty.dialog).not.toBeNull();
-		await expect.element(page.getByRole('alertdialog', { name: 'Replace the open report?' })).toBeInTheDocument();
+		await expect
+			.element(page.getByRole('alertdialog', { name: 'Replace the open report?' }))
+			.toBeInTheDocument();
 		await page.getByRole('button', { name: 'Cancel' }).click();
 		await expect(dirty.decision).resolves.toBe(false);
 		expect(viewer.state.doc.toString()).toBe(REPORT + ' Edited.');
@@ -277,10 +292,15 @@ function sseStream() {
 
 const notFound = () => new Response(JSON.stringify({ success: false }), { status: 404 });
 
-function stubFetch(route: (url: string, init?: RequestInit) => Response | Promise<Response> | null) {
+function stubFetch(
+	route: (url: string, init?: RequestInit) => Response | Promise<Response> | null
+) {
 	vi.stubGlobal(
 		'fetch',
-		vi.fn(async (u: RequestInfo | URL, init?: RequestInit) => (await route(String(u), init)) ?? notFound())
+		vi.fn(
+			async (u: RequestInfo | URL, init?: RequestInit) =>
+				(await route(String(u), init)) ?? notFound()
+		)
 	);
 }
 
@@ -311,7 +331,9 @@ function twoSections(reportId: string, doc: string): ReviewResponse {
 }
 
 const railSections = (container: HTMLElement) =>
-	[...container.querySelectorAll('[data-rv-section]')].map((h) => h.getAttribute('data-rv-section'));
+	[...container.querySelectorAll('[data-rv-section]')].map((h) =>
+		h.getAttribute('data-rv-section')
+	);
 
 const CANDIDATE = {
 	model: 'synthetic-model',
@@ -367,13 +389,25 @@ describe('History Open while a report is generating (F2 I4)', () => {
 		const late = new Promise<Response>((r) => (answer = r));
 		const answers = [
 			Promise.resolve(
-				new Response(JSON.stringify({ success: true, response: 'FINDINGS:\nFirst report.', model: 'm', report_id: 'rep-first' }))
+				new Response(
+					JSON.stringify({
+						success: true,
+						response: 'FINDINGS:\nFirst report.',
+						model: 'm',
+						report_id: 'rep-first'
+					})
+				)
 			),
 			late
 		];
 		let k = 0;
 		stubFetch((url) => (url.includes('/api/templates/tpl-1/generate') ? answers[k++] : null));
-		draftStore.saveTemplateTab('tpl-1', { CLINICAL_HISTORY: 'Pain.' }, ['Liver'], 'Liver: spleen 9 cm');
+		draftStore.saveTemplateTab(
+			'tpl-1',
+			{ CLINICAL_HISTORY: 'Pain.' },
+			['Liver'],
+			'Liver: spleen 9 cm'
+		);
 		const { component, container } = render(TemplatedReportTab, {});
 		await tick();
 		const tab = component as unknown as Tab & { restoreFromParent: () => Promise<void> };
@@ -389,7 +423,12 @@ describe('History Open while a report is generating (F2 I4)', () => {
 		expect(await tab.openExisting(TEMPLATED)).toBe(true);
 		answer(
 			new Response(
-				JSON.stringify({ success: true, response: 'FINDINGS:\nGenerated late.', model: 'm', report_id: 'rep-late' })
+				JSON.stringify({
+					success: true,
+					response: 'FINDINGS:\nGenerated late.',
+					model: 'm',
+					report_id: 'rep-late'
+				})
 			)
 		);
 		await pause(400);
@@ -409,7 +448,11 @@ describe('Open reads the saved report fresh, and the rail gets its section names
 				? new Response(
 						JSON.stringify({
 							success: true,
-							report: { ...QUICK, report_content: FRESH, candidate_reports: [{ sections: ['IMPRESSION', 'FINDINGS'] }] }
+							report: {
+								...QUICK,
+								report_content: FRESH,
+								candidate_reports: [{ sections: ['IMPRESSION', 'FINDINGS'] }]
+							}
 						})
 					)
 				: null
@@ -448,7 +491,11 @@ describe('Open reads the saved report fresh, and the rail gets its section names
 				? new Response(
 						JSON.stringify({
 							success: true,
-							report: { ...TEMPLATED, report_content: FRESH, candidate_reports: [{ sections: ['IMPRESSION', 'FINDINGS'] }] }
+							report: {
+								...TEMPLATED,
+								report_content: FRESH,
+								candidate_reports: [{ sections: ['IMPRESSION', 'FINDINGS'] }]
+							}
 						})
 					)
 				: null

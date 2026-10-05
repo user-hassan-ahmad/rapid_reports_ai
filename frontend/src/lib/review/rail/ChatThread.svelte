@@ -66,6 +66,15 @@
 	);
 	let draft = $state('');
 	let sending = $state(false);
+
+	/** Source links come from the model: only http(s) URLs become links (never javascript:, data:, …). */
+	function isWebUrl(url: string): boolean {
+		try {
+			return ['http:', 'https:'].includes(new URL(url).protocol);
+		} catch {
+			return false;
+		}
+	}
 	let seq = 0;
 	let applyErrors = $state<Record<string, string>>({});
 	let composer = $state<HTMLTextAreaElement | null>(null);
@@ -190,8 +199,10 @@
 				{#if m.sources.length}
 					<ul class="rv-sources">
 						{#each m.sources as s, k (k)}
-							{#if s.url}
+							{#if s.url && isWebUrl(s.url)}
 								<li><a href={s.url} target="_blank" rel="noopener noreferrer">{s.title || s.url}</a></li>
+							{:else if s.title || s.url}
+								<li>{s.title || s.url}</li>
 							{/if}
 						{/each}
 					</ul>

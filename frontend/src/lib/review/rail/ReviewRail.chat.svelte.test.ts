@@ -40,7 +40,10 @@ function item(over: Partial<ReviewItem> & Pick<ReviewItem, 'id'>): ReviewItem {
 	};
 }
 
-const ITEMS = [item({ id: 'a1', label: 'Spleen size missing' }), item({ id: 'a2', label: 'Ascites' })];
+const ITEMS = [
+	item({ id: 'a1', label: 'Spleen size missing' }),
+	item({ id: 'a2', label: 'Ascites' })
+];
 
 function response(): ReviewResponse {
 	const lanes = { coverage: 'done', accuracy: 'done', additions: 'done' };
@@ -67,8 +70,20 @@ function response(): ReviewResponse {
 const REPLY: ChatReply = {
 	response: 'Here are two edits.',
 	edits: [
-		{ section: 'FINDINGS', find: 'No ascites.', replace: 'Small ascites.', verified: true, failed: [] },
-		{ section: 'FINDINGS', find: 'spleen', replace: 'spleen 14 cm', verified: false, failed: ['ungrounded_number'] }
+		{
+			section: 'FINDINGS',
+			find: 'No ascites.',
+			replace: 'Small ascites.',
+			verified: true,
+			failed: []
+		},
+		{
+			section: 'FINDINGS',
+			find: 'spleen',
+			replace: 'spleen 14 cm',
+			verified: false,
+			failed: ['ungrounded_number']
+		}
 	],
 	sources: []
 };
@@ -77,11 +92,13 @@ async function mount(props: Record<string, unknown> = {}) {
 	const store = createReviewStore('rep1');
 	getReview.mockResolvedValueOnce(response());
 	await store.load();
-	const applyEdit = vi.fn((messageId: string, index: number, e: { section: string; find: string; replace: string }) => {
-		const it = chatItem('rep1', messageId, index, e);
-		store.upsert([{ ...it, status: 'applied' }]);
-		return null;
-	});
+	const applyEdit = vi.fn(
+		(messageId: string, index: number, e: { section: string; find: string; replace: string }) => {
+			const it = chatItem('rep1', messageId, index, e);
+			store.upsert([{ ...it, status: 'applied' }]);
+			return null;
+		}
+	);
 	const onCommand = vi.fn();
 	const screen = render(ReviewRail, {
 		store,
@@ -140,7 +157,10 @@ describe('ReviewRail chat', () => {
 
 		await page.getByRole('button', { name: 'Apply chat edit: Small ascites.' }).click();
 		expect(applyEdit).toHaveBeenCalledTimes(1);
-		expect(applyEdit.mock.calls[0][2]).toMatchObject({ find: 'No ascites.', replace: 'Small ascites.' });
+		expect(applyEdit.mock.calls[0][2]).toMatchObject({
+			find: 'No ascites.',
+			replace: 'Small ascites.'
+		});
 		await expect.element(page.getByText('Applied')).toBeInTheDocument();
 		expect(page.getByRole('button', { name: /^Apply chat edit/ }).elements()).toHaveLength(0);
 	});
@@ -154,13 +174,17 @@ describe('ReviewRail chat', () => {
 		await page.getByRole('button', { name: 'Send' }).click();
 		await page.getByRole('button', { name: 'Apply chat edit: Small ascites.' }).click();
 		await expect.element(page.getByRole('alert')).toHaveTextContent('Could not apply');
-		await expect.element(page.getByRole('button', { name: 'Apply chat edit: Small ascites.' })).toBeInTheDocument();
+		await expect
+			.element(page.getByRole('button', { name: 'Apply chat edit: Small ascites.' }))
+			.toBeInTheDocument();
 	});
 
 	it('"Ask in chat" pre-fill: the composer takes the text', async () => {
 		const { screen } = await mount();
 		await screen.rerender({ chatPrefill: { text: 'Ascites: why', seq: 1 } });
-		await expect.element(page.getByRole('textbox', { name: 'Chat message' })).toHaveValue('Ascites: why');
+		await expect
+			.element(page.getByRole('textbox', { name: 'Chat message' }))
+			.toHaveValue('Ascites: why');
 	});
 
 	it('⤢ Expand widens the rail', async () => {
@@ -177,5 +201,28 @@ describe('ReviewRail chat', () => {
 		await mount({ chat: undefined });
 		await expect.element(page.getByText('Spleen size missing')).toBeInTheDocument();
 		expect(document.querySelector('textarea')).toBeNull();
+	});
+});
+
+describe('ReviewRail chat sources (F2 M8)', () => {
+	it('links only http(s) sources; any other scheme shows as plain text', async () => {
+		sendChat.mockResolvedValue({
+			...REPLY,
+			sources: [
+				{ title: 'Safe source', url: 'https://example.org/guide' },
+				{ title: 'Script source', url: 'javascript:alert(1)' },
+				{ title: 'Data source', url: 'data:text/html,<b>x</b>' }
+			]
+		});
+		await mount();
+		await page.getByRole('textbox', { name: 'Chat message' }).fill('Sources?');
+		await page.getByRole('button', { name: 'Send' }).click();
+		await expect
+			.element(page.getByRole('link', { name: 'Safe source' }))
+			.toHaveAttribute('href', 'https://example.org/guide');
+		await expect.element(page.getByText('Script source')).toBeInTheDocument();
+		await expect.element(page.getByText('Data source')).toBeInTheDocument();
+		const hrefs = [...rail().querySelectorAll('.rv-sources a')].map((a) => a.getAttribute('href'));
+		expect(hrefs).toEqual(['https://example.org/guide']);
 	});
 });
