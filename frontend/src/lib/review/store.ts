@@ -134,7 +134,11 @@ export function createReviewStore(reportId: string, opts: StoreOptions = {}): Re
 		state.update((s) => ({ ...s, loading: true }));
 		try {
 			const data = await getReview(reportId);
-			const items = data.items.map((i) => pending.get(i.id) ?? i);
+			const served = data.items.map((i) => pending.get(i.id) ?? i);
+			// chat items are local (the chat endpoint does not persist them): a reload keeps them
+			const ids = new Set(served.map((i) => i.id));
+			const local = get(state).items.filter((i) => i.lane === 'chat' && !ids.has(i.id));
+			const items = [...served, ...local];
 			state.set({
 				mode: data.mode,
 				rail: data.rail,

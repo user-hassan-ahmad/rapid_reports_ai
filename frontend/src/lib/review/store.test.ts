@@ -77,6 +77,17 @@ describe('load', () => {
 		expect(st.items).toEqual(items);
 	});
 
+	it('keeps local chat items (lane chat) the server does not return across a reload', async () => {
+		const server = item();
+		getReview.mockResolvedValue(response([server], DONE));
+		const s = createReviewStore('r1');
+		await s.load();
+		const chat = item({ id: 'chat:m2:0', lane: 'chat', status: 'applied' });
+		s.upsert([chat]);
+		await s.load();
+		expect(get(s).items.map((i) => i.id)).toEqual([server.id, 'chat:m2:0']);
+	});
+
 	it('records the error and keeps the rail off on failure', async () => {
 		getReview.mockRejectedValue(new Error('boom'));
 		const s = createReviewStore('r1');
