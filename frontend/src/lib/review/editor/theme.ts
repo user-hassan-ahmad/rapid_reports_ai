@@ -148,6 +148,13 @@ export const reviewTheme = EditorView.baseTheme({
 		borderRadius: '6px',
 		boxShadow: '0 4px 14px rgba(0,0,0,0.18)'
 	},
+	// The popover dom IS the tooltip element, and the report editor's theme hides `.cm-tooltip`; this
+	// selector outranks that rule so the popover shows.
+	'.cm-tooltip.rv-popover': {
+		display: 'block',
+		border: '1px solid var(--rv-border)',
+		boxShadow: '0 4px 14px rgba(0,0,0,0.18)'
+	},
 	'.rv-popover': {
 		padding: '8px 10px',
 		maxWidth: '360px',

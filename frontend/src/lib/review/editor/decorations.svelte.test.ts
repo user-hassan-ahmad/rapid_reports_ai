@@ -268,3 +268,27 @@ describe('review decorations', () => {
 		expect(popover(view)).toBeNull();
 	});
 });
+
+describe('popover inside the report editor', () => {
+	it('stays visible when the host theme hides .cm-tooltip (ReportEditor does)', async () => {
+		const byId = new Map(ITEMS.map((i) => [i.id, i]));
+		const hostTheme = EditorView.theme({ '.cm-tooltip': { display: 'none' } }, { dark: true });
+		const state = EditorState.create({
+			doc: report,
+			extensions: [
+				hostTheme,
+				reviewExtensions({
+					onCommand: vi.fn(),
+					getItem: (id) => byId.get(id),
+					initial: fromItems(report, ITEMS).items
+				})
+			]
+		});
+		const parent = document.createElement('div');
+		document.body.append(parent);
+		const view = new EditorView({ state, parent });
+		views.push(view);
+		const p = await openOn(view, 'c1');
+		expect(getComputedStyle(p).display).not.toBe('none');
+	});
+});
