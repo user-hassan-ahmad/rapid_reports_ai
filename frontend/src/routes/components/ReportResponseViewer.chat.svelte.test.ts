@@ -30,9 +30,13 @@ vi.mock('$lib/review/workspace', () => ({
 	createWorkspaceSaver: () => ({ schedule: vi.fn(), flush: vi.fn(async () => {}), cancel: vi.fn() })
 }));
 const sendChat = vi.fn();
+const loadThread = vi.fn();
+const markApplied = vi.fn();
 vi.mock('$lib/review/chat', async (orig) => ({
 	...(await orig<typeof import('$lib/review/chat')>()),
-	sendChat: (...a: unknown[]) => sendChat(...a)
+	sendChat: (...a: unknown[]) => sendChat(...a),
+	loadThread: (...a: unknown[]) => loadThread(...a),
+	markApplied: (...a: unknown[]) => markApplied(...a)
 }));
 
 const { default: ReportResponseViewer } = await import('./ReportResponseViewer.svelte');
@@ -110,6 +114,8 @@ beforeEach(async () => {
 		id,
 		status: STATUS[command] ?? 'open'
 	}));
+	loadThread.mockResolvedValue([]);
+	markApplied.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -117,6 +123,8 @@ afterEach(() => {
 	getReview.mockReset();
 	postEvent.mockReset();
 	sendChat.mockReset();
+	loadThread.mockReset();
+	markApplied.mockReset();
 	probe.mockClear();
 });
 
@@ -194,6 +202,79 @@ describe('rail chat in the report viewer', () => {
 			.toHaveValue('Measurement differs: The dictation gives 11 cm.\n\nOn: "9 cm"');
 		expect(openSidebar).not.toHaveBeenCalled();
 		await expect.poll(() => postEvent.mock.calls.map((c) => c[2])).toEqual(['ask_chat']);
+	});
+});
+
+describe('chat persistence (spec §10.2, §12.6)', () => {
+	const EDIT = { section: 'FINDINGS', find: 'No ascites.', replace: 'Small volume ascites.', verified: true, failed: [] };
+	const UID = '00000000-0000-4000-8000-0000000000a1';
+	const AID = '00000000-0000-4000-8000-0000000000a2';
+
+	it('a sent turn keeps its saved ids: Apply and Undo record applied state on the message', async () => {
+		sendChat.mockResolvedValue({ response: 'One edit.', edits: [EDIT], sources: [], userMessageId: UID, messageId: AID });
+		const { container } = await mount();
+		await ask('Mention the ascites');
+		await page.getByRole('button', { name: 'Apply chat edit: Small volume ascites.' }).click();
+		await expect.poll(() => markApplied.mock.calls.length).toBe(1);
+		const [rid, mid, idx, itemId, applied, detail] = markApplied.mock.calls[0];
+		expect([rid, mid, idx, itemId, applied]).toEqual(['rep1', AID, 0, `chat:${AID}:0`, true]);
+		expect(detail).toMatchObject({ insert: 'Small volume ascites.', removed: 'No ascites.' });
+		await page.getByRole('button', { name: 'Undo' }).click();
+		await expect.poll(() => markApplied.mock.calls.length).toBe(2);
+		expect(markApplied.mock.calls[1].slice(0, 5)).toEqual(['rep1', AID, 0, `chat:${AID}:0`, false]);
+		expect(viewOf(container).state.doc.toString()).toBe(REPORT);
+	});
+
+	it('the saved thread survives a reload: the viewer loads it on open and the rail shows it', async () => {
+		loadThread.mockResolvedValue([
+			{ id: UID, role: 'user', content: 'Mention the ascites', edits: [], appliedItemIds: [], sources: [] },
+			{ id: AID, role: 'assistant', content: 'One edit.', edits: [EDIT], appliedItemIds: [], sources: [] }
+		]);
+		await mount();
+		expect(loadThread).toHaveBeenCalledWith('rep1');
+		await page.getByRole('button', { name: 'Chat', exact: true }).click();
+		await expect.element(page.getByText('Mention the ascites')).toBeInTheDocument();
+		await expect.element(page.getByText('One edit.')).toBeInTheDocument();
+		await expect
+			.element(page.getByRole('button', { name: 'Apply chat edit: Small volume ascites.' }))
+			.toBeInTheDocument();
+		// the next turn carries the saved thread as history
+		sendChat.mockResolvedValue({ response: 'Ok.', edits: [], sources: [], userMessageId: null, messageId: null });
+		await ask('Thanks');
+		expect((sendChat.mock.calls[0][1] as { history: unknown }).history).toEqual([
+			{ role: 'user', content: 'Mention the ascites' },
+			{ role: 'assistant', content: 'One edit.' }
+		]);
+	});
+
+	it('reopen restores applied state: "✓ Applied · Undo", and Undo reverts the text and records it', async () => {
+		const saved = REPORT.replace('No ascites.', 'Small volume ascites.');
+		const at = REPORT.indexOf('No ascites.');
+		loadThread.mockResolvedValue([
+			{ id: UID, role: 'user', content: 'Mention the ascites', edits: [], appliedItemIds: [], sources: [] },
+			{
+				id: AID,
+				role: 'assistant',
+				content: 'One edit.',
+				edits: [{ ...EDIT, appliedDetail: { from: at, insert: 'Small volume ascites.', removed: 'No ascites.', left: REPORT.slice(at - 16, at), right: REPORT.slice(at + 11, at + 27) } }],
+				appliedItemIds: [`chat:${AID}:0`],
+				sources: []
+			}
+		]);
+		getReview.mockResolvedValue(review([action()]));
+		const screen = render(ReportResponseViewer, {
+			props: { visible: true, response: saved, reportId: 'rep1' }
+		} as Parameters<typeof render<typeof ReportResponseViewer>>[1]);
+		await pause(400);
+		await page.getByRole('button', { name: 'Chat', exact: true }).click();
+		await expect.element(page.getByText('Applied')).toBeInTheDocument();
+		expect(page.getByRole('button', { name: /^Apply chat edit/ }).elements()).toHaveLength(0);
+		await page.getByRole('button', { name: 'Undo' }).click();
+		await pause(200);
+		expect(viewOf(screen.container).state.doc.toString()).toBe(REPORT);
+		await expect.poll(() => markApplied.mock.calls.length).toBe(1);
+		expect(markApplied.mock.calls[0].slice(0, 5)).toEqual(['rep1', AID, 0, `chat:${AID}:0`, false]);
+		expect(postEvent).not.toHaveBeenCalled();
 	});
 });
 

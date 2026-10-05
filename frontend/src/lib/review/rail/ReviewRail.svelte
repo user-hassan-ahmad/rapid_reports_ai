@@ -12,9 +12,10 @@
 	 * Chat (plan Task D2, spec §12.5): with `chat`, a composer sits at the foot of the rail. Sending switches the rail
 	 * to the thread, headed by a strip "← Review · N open" and "⤢ Expand" (widens the rail). `chatPrefill` ("Ask in
 	 * chat") puts text in the composer. Applying a chat edit goes out through `chat.applyEdit`; Undo through
-	 * `onCommand('undo')`.
+	 * `onCommand('undo')`. A saved thread (`chat.thread`, spec §12.6) opens with the rail; while one exists the head
+	 * has "Chat" to return to it.
 	 */
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import type { Density } from '../editor/theme';
 	import type { ReviewStore } from '../store';
 	import type { ReviewItem } from '../types';
@@ -95,6 +96,8 @@
 	let view = $state<'review' | 'chat'>('review');
 	let expanded = $state(false);
 	const inChat = $derived(!!chat && view === 'chat');
+	/** A thread exists (saved, or sent this session): the head offers "Chat" to go back to it. */
+	let hasThread = $state(untrack(() => !!chat?.thread?.length));
 	const statusOf = (id: string) => $stateStore.items.find((i) => i.id === id)?.status;
 
 	// Below ~1100 px the rail is a strip; `layout` pins it either way.
@@ -172,6 +175,9 @@
 				>
 			{/if}
 			<span class="rv-spacer"></span>
+			{#if chat && hasThread}
+				<button type="button" class="rv-btn" onclick={() => (view = 'chat')}>Chat</button>
+			{/if}
 			<button
 				type="button"
 				class="rv-btn"
@@ -282,8 +288,12 @@
 			undoEdit={(id) => onCommand('undo', id)}
 			{statusOf}
 			showThread={inChat}
-			onSent={() => (view = 'chat')}
+			onSent={() => {
+				view = 'chat';
+				hasThread = true;
+			}}
 			prefill={chatPrefill}
+			thread={chat.thread}
 		/>
 	{/if}
 {/snippet}

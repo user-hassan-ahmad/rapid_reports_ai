@@ -34,7 +34,17 @@
 	import { createWorkspaceSaver, loadWorkspace, type WorkspaceSaver, type WorkspaceState } from '$lib/review/workspace';
 	import { setReviewRailActive } from '$lib/review/railActive';
 	import type { ItemStatus, ReviewItem, UserCommand } from '$lib/review/types';
-	import { chatItem, chatItemId, type ChatEdit, type RailChat } from '$lib/review/chat';
+	import {
+		appliedChatItems,
+		chatItem,
+		chatItemId,
+		isLocalMessage,
+		loadThread,
+		markApplied,
+		type ChatEdit,
+		type ChatThreadMessage,
+		type RailChat
+	} from '$lib/review/chat';
 	const dispatch = createEventDispatcher();
 
 	export let visible = false;
@@ -791,16 +801,24 @@
 		if (!id) return;
 		const store = createReviewStore(id);
 		reviewStore = store;
-		const [, ws] = await Promise.all([store.load(), loadWorkspace(id).catch(() => null)]);
+		// spec §12.6: the saved chat thread comes back with the items and the workspace; nothing re-runs
+		const [, ws, thread] = await Promise.all([
+			store.load(),
+			loadWorkspace(id).catch(() => null),
+			loadThread(id).catch((): ChatThreadMessage[] => [])
+		]);
 		if (reviewStore !== store) return;
 		const s = get(store);
 		if (s.mode !== 'live' || !s.rail) return;
 		workspace = ws;
 		if (ws?.density) reviewDensity = ws.density;
-		activateRail(id, store);
+		activateRail(id, store, thread);
 	}
 
-	function activateRail(id: string, store: ReviewStore): void {
+	function activateRail(id: string, store: ReviewStore, thread: ChatThreadMessage[] = []): void {
+		// applied chat edits come back as applied `lane: chat` items (local: the store keeps them across reloads)
+		const chatItems = appliedChatItems(id, thread);
+		if (chatItems.length) store.upsert(chatItems);
 		const loop = createProbeLoop({ reportId: id, store, getDoc: liveDoc });
 		probeLoop = loop;
 		workspaceSaver = createWorkspaceSaver(id);
@@ -824,7 +842,7 @@
 		reviewReplaceDoc = (state, text) =>
 			replaceDoc(state, text, get(store).items, { sections: reviewSections, textHash: null });
 		lastReviewResponse = response;
-		railChat = { reportId: id, getText: liveDoc, applyEdit: applyChatEdit };
+		railChat = { reportId: id, getText: liveDoc, applyEdit: applyChatEdit, thread };
 		railOn = true;
 		let lastItems: ReviewItem[] | null = null;
 		unsubscribeReview = store.subscribe((st) => {
@@ -867,15 +885,28 @@
 				const cur = get(store).items.find((i) => i.id === ev.itemId);
 				const status = statuses[ev.itemId] ?? cur?.status ?? 'open';
 				if (cur?.lane === 'chat') {
-					// chat items are local (the chat endpoint does not persist them): never posted
+					// chat items stay out of the review events route; applied state is saved on the chat message
 					const entry = { event: ev.command, actor: 'user', text_hash: h, detail: ev.detail };
 					store.upsert([{ ...cur, status, history: [...cur.history, entry] }]);
+					saveChatApplied(cur, status, ev.detail);
 					continue;
 				}
 				void store.setStatus(ev.itemId, status, { command: ev.command, textHash: h, detail: ev.detail });
 			}
 		});
 		for (const ev of events) if (ev.command === 'apply' || ev.command === 'edit') appliedSinceSave.add(ev.itemId);
+	}
+
+	/** Record Apply / Undo of a chat edit on its saved message (spec §12.6); fails quietly (the edit stays done). */
+	function saveChatApplied(item: ReviewItem, status: ItemStatus, detail: Record<string, unknown>): void {
+		const was = item.status === 'applied';
+		const now = status === 'applied';
+		const mid = item.evidence?.message_id;
+		const idx = item.evidence?.edit_index;
+		if (was === now || !reportId || typeof mid !== 'string' || typeof idx !== 'number' || isLocalMessage(mid)) return;
+		markApplied(reportId, mid, idx, item.id, now, now ? detail : undefined).catch((e) =>
+			console.warn(`[review] chat applied ${item.id}: ${e instanceof Error ? e.message : e}`)
+		);
 	}
 
 	function handleReviewCommand(name: CommandName, itemId?: string, args?: Record<string, unknown>): void {

@@ -3,9 +3,11 @@
 	 * The chat thread in the rail (plan Task D2, spec §12.5). The composer is always there; the thread shows when the
 	 * rail is in chat view (`showThread`). A reply's verified edits each have Apply (the host turns it into a local
 	 * `lane: chat` item through the same apply command); unverified edits show why they failed and no Apply.
-	 * Unapplied edits stay in the thread. The endpoint does not persist chat, so the thread lives for the session.
+	 * Unapplied edits stay in the thread. The backend saves each turn: the thread opens with the saved messages
+	 * (`thread`, spec §12.6) and keeps the saved ids, so chat items stay linked to their message across reloads.
+	 * Messages with no saved id (errors, unsaved turns) get `local-` ids.
 	 */
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import {
 		chatItemId,
 		failureText,
@@ -13,7 +15,8 @@
 		type ChatEdit,
 		type ChatHistoryEntry,
 		type ChatOpenItem,
-		type ChatSource
+		type ChatSource,
+		type ChatThreadMessage
 	} from '../chat';
 	import type { ItemStatus } from '../types';
 
@@ -35,7 +38,8 @@
 		statusOf,
 		showThread = false,
 		onSent,
-		prefill = null
+		prefill = null,
+		thread = []
 	}: {
 		reportId: string;
 		/** The live editor document (sent as `text`). */
@@ -51,9 +55,15 @@
 		onSent?: () => void;
 		/** "Ask in chat": the composer takes `text` whenever `seq` changes. */
 		prefill?: { text: string; seq: number } | null;
+		/** The saved thread the composer continues (read once, at mount). */
+		thread?: ChatThreadMessage[];
 	} = $props();
 
-	let messages = $state<Message[]>([]);
+	let messages = $state<Message[]>(
+		untrack(() =>
+			thread.map((m) => ({ id: m.id, role: m.role, content: m.content, edits: m.edits, sources: m.sources }))
+		)
+	);
 	let draft = $state('');
 	let sending = $state(false);
 	let seq = 0;
@@ -81,7 +91,8 @@
 		const history: ChatHistoryEntry[] = messages
 			.filter((m) => !m.error)
 			.map((m) => ({ role: m.role, content: m.content }));
-		messages.push({ id: `m${++seq}`, role: 'user', content: text, edits: [], sources: [] });
+		const userId = `local-${++seq}`;
+		messages.push({ id: userId, role: 'user', content: text, edits: [], sources: [] });
 		draft = '';
 		sending = true;
 		onSent?.();
@@ -93,8 +104,10 @@
 				text: getText(),
 				openItems: openItems()
 			});
+			const sent = messages.find((m) => m.id === userId);
+			if (sent && reply.userMessageId) sent.id = reply.userMessageId;
 			messages.push({
-				id: `m${++seq}`,
+				id: reply.messageId ?? `local-${++seq}`,
 				role: 'assistant',
 				content: reply.response,
 				edits: reply.edits,
@@ -102,7 +115,7 @@
 			});
 		} catch (e) {
 			messages.push({
-				id: `m${++seq}`,
+				id: `local-${++seq}`,
 				role: 'assistant',
 				content: e instanceof Error ? e.message : String(e),
 				edits: [],
