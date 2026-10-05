@@ -44,7 +44,14 @@ function item(over: Partial<ReviewItem> = {}): ReviewItem {
 }
 
 function probeRes(text: string, over: Partial<ProbeResponse> = {}): ProbeResponse {
-	return { success: true, text_hash: `h:${text}`, addressed: [], reprepare: [], new_items: [], ...over };
+	return {
+		success: true,
+		text_hash: `h:${text}`,
+		addressed: [],
+		reprepare: [],
+		new_items: [],
+		...over
+	};
 }
 
 function deferred<T>() {
@@ -203,7 +210,9 @@ describe('stale answers', () => {
 		await flush();
 		const sent = doc;
 		doc = doc + ' more'; // changed without notifying yet
-		d.resolve(probeRes(sent, { addressed: [a.id], new_items: [item({ id: 'new1' })], reprepare: [a.id] }));
+		d.resolve(
+			probeRes(sent, { addressed: [a.id], new_items: [item({ id: 'new1' })], reprepare: [a.id] })
+		);
 		await flush();
 		expect(get(store).items.map((i) => [i.id, i.status])).toEqual([[a.id, 'open']]);
 		expect(reprepareApi).not.toHaveBeenCalled();
@@ -242,17 +251,55 @@ describe('addressed and new items', () => {
 		const items = get(store).items;
 		const byId = Object.fromEntries(items.map((i) => [i.id, i]));
 		expect(byId[a.id].status).toBe('addressed');
-		expect(byId[a.id].history.at(-1)).toMatchObject({ event: 'addressed', actor: 'loop', text_hash: `h:${doc}` });
+		expect(byId[a.id].history.at(-1)).toMatchObject({
+			event: 'addressed',
+			actor: 'loop',
+			text_hash: `h:${doc}`
+		});
 		expect(byId[b.id].status).toBe('open');
 		expect(byId[done.id].status).toBe('applied');
 		expect(byId.c1).toEqual(contra);
 		expect(postEvent).not.toHaveBeenCalled(); // engine statuses are never posted as user commands
 	});
 
+	it('manual fix → addressed → Cmd-Z → the next probe re-opens the item (backend `reopened`)', async () => {
+		const a = item({ anchor: { start: 14, end: 25, text: 'No ascites.', text_hash: null } });
+		store.upsert([a]);
+		probeApi.mockImplementation(async (_r, text) =>
+			probeRes(text, text.includes('No ascites.') ? { reopened: [a.id] } : { addressed: [a.id] })
+		);
+		edit(14, 25, 'Small ascites.'); // the manual fix
+		await vi.advanceTimersByTimeAsync(1500);
+		await flush();
+		expect(get(store).items[0].status).toBe('addressed');
+		edit(14, 28, 'No ascites.'); // Cmd-Z
+		await vi.advanceTimersByTimeAsync(1500);
+		await flush();
+		const got = get(store).items[0];
+		expect(got.status).toBe('open');
+		expect(got.history.at(-1)).toMatchObject({
+			event: 'reopened',
+			actor: 'loop',
+			text_hash: `h:${doc}`
+		});
+		expect(postEvent).not.toHaveBeenCalled();
+	});
+
+	it('re-opens only items that are addressed locally', async () => {
+		const done = item({ status: 'applied' });
+		store.upsert([done]);
+		probeApi.mockImplementation(async (_r, text) => probeRes(text, { reopened: [done.id] }));
+		loop.trigger();
+		await flush();
+		expect(get(store).items[0].status).toBe('applied');
+	});
+
 	it('records a partial probe error without dropping the answer', async () => {
 		const a = item();
 		store.upsert([a]);
-		probeApi.mockImplementation(async (_r, text) => probeRes(text, { addressed: [a.id], error: 'jev timeout' }));
+		probeApi.mockImplementation(async (_r, text) =>
+			probeRes(text, { addressed: [a.id], error: 'jev timeout' })
+		);
 		loop.trigger();
 		await flush();
 		expect(get(store).items[0].status).toBe('addressed');

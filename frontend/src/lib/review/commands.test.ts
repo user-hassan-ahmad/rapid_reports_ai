@@ -225,9 +225,13 @@ describe('undo', () => {
 		});
 		const moved = 'Clinical: pain.\n' + written;
 		expect(run('undo', { doc: moved, items: [it_], item: it_ }).error).toBe('changed');
-		expect(run('undo', { doc: moved, items: [it_], item: it_, textHash: 'h2' }).error).toBe('changed');
+		expect(run('undo', { doc: moved, items: [it_], item: it_, textHash: 'h2' }).error).toBe(
+			'changed'
+		);
 		// the written text itself (hash match): the stored span is exact
-		expect(after(written, run('undo', { doc: written, items: [it_], item: it_, textHash: 'h1' }))).toBe(original);
+		expect(
+			after(written, run('undo', { doc: written, items: [it_], item: it_, textHash: 'h1' }))
+		).toBe(original);
 	});
 
 	it('refuses a pre-applied insert whose text is gone', () => {
@@ -294,11 +298,23 @@ describe('restore', () => {
 
 		// the context itself was edited: refuse rather than guess
 		const gone = written.replace('normal. The spleen', 'normal. A spleen');
-		expect(run('restore', { doc: gone, items: [it_], item: it_, widgetPos: () => pos }).error).toBe('changed');
+		expect(run('restore', { doc: gone, items: [it_], item: it_, widgetPos: () => pos }).error).toBe(
+			'changed'
+		);
 		// an evidence.undo without context is placed only on the written text itself
-		const bare = { ...it_, evidence: { removed_text: 'No ascites.', undo: { final_span: [i1, i1] as [number, number], original_text: 'No ascites. ' } } };
-		expect(run('restore', { doc: moved, items: [bare], item: bare, widgetPos: () => pos + 2 }).error).toBe('changed');
-		expect(after(written, run('restore', { doc: written, items: [bare], item: bare, textHash: 'h1' }))).toBe(original);
+		const bare = {
+			...it_,
+			evidence: {
+				removed_text: 'No ascites.',
+				undo: { final_span: [i1, i1] as [number, number], original_text: 'No ascites. ' }
+			}
+		};
+		expect(
+			run('restore', { doc: moved, items: [bare], item: bare, widgetPos: () => pos + 2 }).error
+		).toBe('changed');
+		expect(
+			after(written, run('restore', { doc: written, items: [bare], item: bare, textHash: 'h1' }))
+		).toBe(original);
 	});
 
 	it('refuses to re-insert removed text in the middle of a word', () => {
@@ -310,7 +326,9 @@ describe('restore', () => {
 			evidence: { removed_text: 'No ascites.' }
 		});
 		const mid = written.indexOf('spleen') + 3;
-		expect(run('restore', { doc: written, items: [it_], item: it_, widgetPos: () => mid }).error).toBe('changed');
+		expect(
+			run('restore', { doc: written, items: [it_], item: it_, widgetPos: () => mid }).error
+		).toBe('changed');
 	});
 
 	it('needs a widget position (or a matching text hash) to place the text', () => {
@@ -536,7 +554,12 @@ describe('re-apply after undo / restore of a pre-applied item', () => {
 		let it_ = item({
 			status: 'pre_applied',
 			// an edit that could not place itself here (no such anchor): the inverse must not depend on it
-			edit: { mode: 'insert', after: 'Not in the report.', section: 'FINDINGS', replace: 'No ascites.' },
+			edit: {
+				mode: 'insert',
+				after: 'Not in the report.',
+				section: 'FINDINGS',
+				replace: 'No ascites.'
+			},
 			anchor: span(written, 'No ascites.'),
 			evidence: { undo: undoOf(written, j1, j1 + ' No ascites.'.length, '') },
 			history: [PRE]
@@ -554,11 +577,14 @@ describe('re-apply after undo / restore of a pre-applied item', () => {
 		expect(a.statuses).toEqual({ [it_.id]: 'applied' });
 
 		it_ = { ...it_, status: 'applied', history: [...it_.history, hist(a.event!)] };
-		expect(after(reapplied, run('undo', { doc: reapplied, items: [it_], item: it_ }))).toBe(original);
+		expect(after(reapplied, run('undo', { doc: reapplied, items: [it_], item: it_ }))).toBe(
+			original
+		);
 	});
 
 	it('apply after restoring a removal whose clause occurs twice removes the restored occurrence', () => {
-		const original = 'FINDINGS:\nNo ascites. The liver is normal.\nIMPRESSION:\nNo ascites. Normal study.';
+		const original =
+			'FINDINGS:\nNo ascites. The liver is normal.\nIMPRESSION:\nNo ascites. Normal study.';
 		const written = 'FINDINGS:\nNo ascites. The liver is normal.\nIMPRESSION:\nNormal study.';
 		const i1 = written.indexOf('Normal study.');
 		let it_ = item({

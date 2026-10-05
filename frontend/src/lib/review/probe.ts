@@ -125,7 +125,7 @@ export function createProbeLoop(opts: ProbeLoopOptions): ProbeLoop {
 				return;
 			}
 			sent = null;
-			apply(res.addressed, res.new_items, hash);
+			apply(res.addressed, res.reopened ?? [], res.new_items, hash);
 			patch({ error: res.error ?? null });
 			startReprepare(res.reprepare, text, hash);
 		} catch (e) {
@@ -140,16 +140,24 @@ export function createProbeLoop(opts: ProbeLoopOptions): ProbeLoop {
 		}
 	}
 
-	function apply(addressed: string[], newItems: ReviewItem[], hash: string) {
-		// the backend already recorded `addressed` (actor loop); mirror it locally, never post it as a command
+	function apply(addressed: string[], reopened: string[], newItems: ReviewItem[], hash: string) {
+		// the backend already recorded `addressed` / `reopened` (actor loop); mirror them locally, never post them
 		const ids = new Set(addressed);
-		const marked = get(store)
-			.items.filter((i) => ids.has(i.id) && ADDRESSABLE.has(i.status))
-			.map((i) => ({
-				...i,
-				status: 'addressed' as const,
-				history: [...i.history, { event: 'addressed', actor: 'loop', text_hash: hash, detail: {} }]
-			}));
+		const back = new Set(reopened);
+		const mark = (i: ReviewItem, status: ItemStatus, event: string): ReviewItem => ({
+			...i,
+			status,
+			history: [...i.history, { event, actor: 'loop', text_hash: hash, detail: {} }]
+		});
+		const items = get(store).items;
+		const marked = [
+			...items
+				.filter((i) => ids.has(i.id) && ADDRESSABLE.has(i.status))
+				.map((i) => mark(i, 'addressed', 'addressed')),
+			...items
+				.filter((i) => back.has(i.id) && i.status === 'addressed')
+				.map((i) => mark(i, 'open', 'reopened'))
+		];
 		const upserts = [...marked, ...newItems];
 		if (upserts.length) store.upsert(upserts);
 	}

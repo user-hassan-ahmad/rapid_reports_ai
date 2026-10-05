@@ -133,6 +133,8 @@ export interface ProbeResponse {
 	success: true;
 	text_hash: string;
 	addressed: string[];
+	/** Loop-addressed items whose text came back and no longer pass their probe (backend `reopened`, actor loop). */
+	reopened?: string[];
 	reprepare: string[];
 	new_items: ReviewItem[];
 	error?: string | null;

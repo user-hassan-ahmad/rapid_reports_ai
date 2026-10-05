@@ -286,7 +286,10 @@ const remove: Command = (ctx) => {
 	if (!ACTIONABLE.has(item.status)) return fail('not_open');
 	const find = item.anchor?.text;
 	if (!find) return fail('no_edit');
-	return placeEdit(ctx, item, { mode: 'remove', find }, 'edit', { action: 'remove', replacement: '' });
+	return placeEdit(ctx, item, { mode: 'remove', find }, 'edit', {
+		action: 'remove',
+		replacement: ''
+	});
 };
 
 /** Keep the text as written: the item is answered with no change (posted as `dismiss`, detail action "keep"). */
