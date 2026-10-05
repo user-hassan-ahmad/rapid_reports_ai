@@ -116,6 +116,18 @@ describe('groups', () => {
 		expect(get(s.groups).map((g) => g.section)).toEqual(['FINDINGS', 'IMPRESSION', 'COMPARISON', UNANCHORED]);
 	});
 
+	it('matches the section order ignoring case and a trailing colon', async () => {
+		const items = [
+			item({ section: 'impression', anchor: { start: 1, end: 2, text: 'x' } }),
+			item({ section: 'Findings', anchor: { start: 50, end: 52, text: 'y' } })
+		];
+		getReview.mockResolvedValue(response(items, DONE));
+		const s = createReviewStore('r1');
+		await s.load();
+		s.setSectionOrder(['FINDINGS:', 'IMPRESSION']);
+		expect(get(s.groups).map((g) => g.section)).toEqual(['Findings', 'impression']);
+	});
+
 	it('orders items within a group by anchor position', async () => {
 		const a = item({ anchor: { start: 90, end: 95, text: 'a' } });
 		const b = item({ anchor: { start: 5, end: 9, text: 'b' } });

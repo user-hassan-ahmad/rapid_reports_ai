@@ -100,6 +100,8 @@ const initial = (): ReviewState => ({
 
 const isRailItem = (i: ReviewItem) => i.kind !== NORMAL_KIND;
 const isFolded = (i: ReviewItem) => i.cls === 'suppress' || FOLDED_STATUSES.has(i.status);
+/** Section names compare like the backend's verifier._norm_name: trimmed, no trailing colon, lower case. */
+const normSection = (s: string) => s.trim().replace(/:$/, '').trim().toLowerCase();
 const startOf = (i: ReviewItem) => i.anchor?.start ?? Number.POSITIVE_INFINITY;
 
 function lanesFinished(s: ReviewState): boolean {
@@ -301,7 +303,7 @@ export function createReviewStore(reportId: string, opts: StoreOptions = {}): Re
 		}
 		const rank = (section: string): [number, number] => {
 			if (section === UNANCHORED) return [2, 0];
-			const at = order.indexOf(section);
+			const at = order.indexOf(normSection(section));
 			if (at >= 0) return [0, at];
 			return [1, Math.min(...bySection.get(section)!.map(startOf))];
 		};
@@ -344,7 +346,7 @@ export function createReviewStore(reportId: string, opts: StoreOptions = {}): Re
 		upsert,
 		setStatus,
 		markStale,
-		setSectionOrder: (order) => sectionOrder.set([...order]),
+		setSectionOrder: (order) => sectionOrder.set(order.map(normSection)),
 		groups,
 		folded,
 		counts,
