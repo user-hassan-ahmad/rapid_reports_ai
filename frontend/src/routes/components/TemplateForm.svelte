@@ -451,9 +451,11 @@
 		}
 	}
 
-	function copyToClipboard() {
-		if (!response) return;
-		navigator.clipboard.writeText(response).then(() => {
+	/** The viewer sends the live editor document (unsaved edits and review fixes included). */
+	function copyToClipboard(e?: CustomEvent<{ content?: string }>) {
+		const text = e?.detail?.content ?? response;
+		if (!text) return;
+		navigator.clipboard.writeText(text).then(() => {
 			if (toast) toast.show('Copied to clipboard!');
 		});
 	}

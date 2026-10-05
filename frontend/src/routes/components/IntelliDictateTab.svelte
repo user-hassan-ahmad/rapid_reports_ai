@@ -510,9 +510,11 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 		activePrompts = prompts;
 	}
 
-	function copyToClipboard() {
-		if (!response) return;
-		navigator.clipboard.writeText(response).then(() => {
+	/** The viewer sends the live editor document (unsaved edits and review fixes included). */
+	function copyToClipboard(e?: CustomEvent<{ content?: string }>) {
+		const text = e?.detail?.content ?? response;
+		if (!text) return;
+		navigator.clipboard.writeText(text).then(() => {
 			if (toast) toast.show('Copied to clipboard!');
 		});
 	}
@@ -527,8 +529,9 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 		dispatch('historyRestored', detail);
 	}
 
-	async function handleReportSave(event: CustomEvent<{ content: string }>) {
+	async function handleReportSave(event: CustomEvent<{ content: string; reviewAppliedItemIds?: string[] }>) {
 		const newContent = event.detail.content;
+		const reviewIds = event.detail.reviewAppliedItemIds;
 		if (!reportId) return;
 
 		try {
@@ -557,7 +560,8 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 						headers,
 						body: JSON.stringify({
 							final_report_content: newContent,
-							...(reportOptions.length ? { applied_option_ids: appliedOptionIds(newContent, reportOptions) } : {})
+							...(reportOptions.length ? { applied_option_ids: appliedOptionIds(newContent, reportOptions) } : {}),
+							...(reviewIds ? { review_applied_item_ids: reviewIds } : {})
 						})
 					});
 				} catch {

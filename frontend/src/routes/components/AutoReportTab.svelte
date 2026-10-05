@@ -170,11 +170,13 @@ $: responseVisible = hasResponseEver || Boolean(response) || Boolean(error);
 		dispatch('historyUpdate', { count: 0 });
 	}
 
-	function copyToClipboard() {
-		if (!response) return;
+	// The viewer sends the live editor document (unsaved edits and review fixes included).
+	function copyToClipboard(e) {
+		const text = e?.detail?.content ?? response;
+		if (!text) return;
 		
 		// Copy the plain text version (not markdown)
-		navigator.clipboard.writeText(response)
+		navigator.clipboard.writeText(text)
 			.then(() => {
 				// Show toast notification
 				if (toast) {
