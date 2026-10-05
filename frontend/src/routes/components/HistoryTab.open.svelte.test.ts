@@ -258,3 +258,207 @@ describe('History Open over unsaved work (in-app confirm)', () => {
 		expect(tab.hasUnsavedWork()).toBe(true);
 	});
 });
+
+// ── F2 I4 / M5 / M6 ─────────────────────────────────────────────────────────
+const { draftStore } = await import('$lib/stores/draft.js');
+
+/** A controllable SSE response for POST /api/quick-report/generate. */
+function sseStream() {
+	let ctrl!: ReadableStreamDefaultController<Uint8Array>;
+	const body = new ReadableStream<Uint8Array>({ start: (c) => (ctrl = c) });
+	const enc = new TextEncoder();
+	return {
+		response: new Response(body, { headers: { 'Content-Type': 'text/event-stream' } }),
+		send: (event: string, data: unknown) =>
+			ctrl.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)),
+		close: () => ctrl.close()
+	};
+}
+
+const notFound = () => new Response(JSON.stringify({ success: false }), { status: 404 });
+
+function stubFetch(route: (url: string, init?: RequestInit) => Response | Promise<Response> | null) {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (u: RequestInfo | URL, init?: RequestInit) => (await route(String(u), init)) ?? notFound())
+	);
+}
+
+function viewerOf(container: HTMLElement) {
+	return [...container.querySelectorAll('.cm-editor')]
+		.map((el) => EditorView.findFromDOM(el as HTMLElement)!)
+		.find((v) => /FINDINGS:/.test(v.state.doc.toString()));
+}
+
+function twoSections(reportId: string, doc: string): ReviewResponse {
+	const base = stored(reportId);
+	const imp = doc.indexOf('Normal study.');
+	return {
+		...base,
+		items: [
+			item(reportId),
+			{
+				...item(reportId),
+				id: 'a2',
+				key: 'a2',
+				section: 'IMPRESSION',
+				label: 'Impression check',
+				anchor: { start: imp, end: imp + 13, text: 'Normal study.' },
+				edit: { mode: 'replace', find: 'Normal study.', replace: 'Normal.' }
+			}
+		]
+	};
+}
+
+const railSections = (container: HTMLElement) =>
+	[...container.querySelectorAll('[data-rv-section]')].map((h) => h.getAttribute('data-rv-section'));
+
+const CANDIDATE = {
+	model: 'synthetic-model',
+	latency_ms: 1,
+	run_id: 'x',
+	generated_at: '',
+	error: null,
+	options: []
+};
+
+describe('History Open while a report is generating (F2 I4)', () => {
+	afterEach(() => {
+		draftStore.clearIntelliTab();
+		draftStore.clearTemplateTab?.();
+	});
+
+	it('quick tab: generating counts as unsaved work; the stream never overwrites the opened report', async () => {
+		const streams = [sseStream(), sseStream()];
+		let k = 0;
+		stubFetch((url) => (url.includes('/api/quick-report/generate') ? streams[k++].response : null));
+		draftStore.saveIntelliTab('Pain.', 'CT abdomen', ['Liver'], 'Liver: spleen 9 cm', 'clean');
+		const { component, container } = render(IntelliDictateTab, {});
+		const tab = component as unknown as Tab & { restoreFromParent: () => Promise<void> };
+		await tab.restoreFromParent();
+		await pause(300);
+		// a first report from these findings: nothing unsaved
+		await page.getByRole('button', { name: 'Generate Report' }).click();
+		streams[0].send('candidate', { ...CANDIDATE, content: 'FINDINGS:\nFirst report.' });
+		streams[0].send('done', { report_id: 'rep-first' });
+		streams[0].close();
+		await pause(300);
+		expect(tab.hasUnsavedWork()).toBe(false);
+		// regenerating: the only unsaved work is the report on its way
+		await page.getByRole('button', { name: 'Generate Report' }).click();
+		await pause(50);
+		expect(tab.hasUnsavedWork()).toBe(true);
+
+		await tab.openExisting(QUICK);
+		streams[1].send('candidate', { ...CANDIDATE, content: 'FINDINGS:\nGenerated late.' });
+		streams[1].send('done', { report_id: 'rep-late' });
+		streams[1].close();
+		await pause(400);
+		expect(viewerOf(container)?.state.doc.toString()).toContain('The spleen measures 9 cm.');
+		expect(container.textContent).not.toContain('Generated late.');
+		expect(getReview).not.toHaveBeenCalledWith('rep-late');
+		expect(tab.hasUnsavedWork()).toBe(false);
+	});
+
+	it('templated tab: generating counts as unsaved work; a late answer never overwrites the opened report', async () => {
+		if (!get(templatesStore).templates?.some((t: { id: string }) => t.id === TEMPLATE.id))
+			templatesStore.addTemplate(TEMPLATE);
+		let answer!: (r: Response) => void;
+		const late = new Promise<Response>((r) => (answer = r));
+		const answers = [
+			Promise.resolve(
+				new Response(JSON.stringify({ success: true, response: 'FINDINGS:\nFirst report.', model: 'm', report_id: 'rep-first' }))
+			),
+			late
+		];
+		let k = 0;
+		stubFetch((url) => (url.includes('/api/templates/tpl-1/generate') ? answers[k++] : null));
+		draftStore.saveTemplateTab('tpl-1', { CLINICAL_HISTORY: 'Pain.' }, ['Liver'], 'Liver: spleen 9 cm');
+		const { component, container } = render(TemplatedReportTab, {});
+		await tick();
+		const tab = component as unknown as Tab & { restoreFromParent: () => Promise<void> };
+		await tab.restoreFromParent();
+		await pause(300);
+		await page.getByRole('button', { name: 'Generate Report' }).click();
+		await pause(300);
+		expect(tab.hasUnsavedWork()).toBe(false);
+		await page.getByRole('button', { name: 'Generate Report' }).click();
+		await pause(50);
+		expect(tab.hasUnsavedWork()).toBe(true);
+
+		expect(await tab.openExisting(TEMPLATED)).toBe(true);
+		answer(
+			new Response(
+				JSON.stringify({ success: true, response: 'FINDINGS:\nGenerated late.', model: 'm', report_id: 'rep-late' })
+			)
+		);
+		await pause(400);
+		expect(viewerOf(container)?.state.doc.toString()).toContain('The spleen measures 9 cm.');
+		expect(container.textContent).not.toContain('Generated late.');
+		expect(getReview).not.toHaveBeenCalledWith('rep-late');
+		expect(tab.hasUnsavedWork()).toBe(false);
+	});
+});
+
+describe('Open reads the saved report fresh, and the rail gets its section names (F2 M5 / M6)', () => {
+	const FRESH = REPORT.replace('9 cm', '10 cm');
+
+	it('quick tab: openExisting shows GET /api/reports/{id}, not the cached row, with its sections', async () => {
+		stubFetch((url, init) =>
+			url.endsWith('/api/reports/rep-quick') && (!init?.method || init.method === 'GET')
+				? new Response(
+						JSON.stringify({
+							success: true,
+							report: { ...QUICK, report_content: FRESH, candidate_reports: [{ sections: ['IMPRESSION', 'FINDINGS'] }] }
+						})
+					)
+				: null
+		);
+		getReview.mockImplementation(async (id: string) => twoSections(id, FRESH));
+		const { component, container } = render(IntelliDictateTab, {});
+		await (component as unknown as Tab).openExisting(QUICK);
+		await pause(400);
+		expect(viewerOf(container)?.state.doc.toString()).toContain('The spleen measures 10 cm.');
+		expect(railSections(container)).toEqual(['IMPRESSION', 'FINDINGS']);
+	});
+
+	it('quick tab: a generated candidate passes its sections to the rail', async () => {
+		const s = sseStream();
+		stubFetch((url) => (url.includes('/api/quick-report/generate') ? s.response : null));
+		getReview.mockImplementation(async (id: string) => twoSections(id, REPORT));
+		draftStore.saveIntelliTab('Pain.', 'CT abdomen', ['Liver'], 'Liver: spleen 9 cm', 'clean');
+		const { component, container } = render(IntelliDictateTab, {});
+		await (component as unknown as { restoreFromParent: () => Promise<void> }).restoreFromParent();
+		await pause(300);
+		await page.getByRole('button', { name: 'Generate Report' }).click();
+		s.send('candidate', { ...CANDIDATE, content: REPORT, sections: ['IMPRESSION', 'FINDINGS'] });
+		s.send('done', { report_id: 'rep-gen' });
+		s.close();
+		await pause(500);
+		expect(getReview).toHaveBeenCalledWith('rep-gen');
+		expect(railSections(container)).toEqual(['IMPRESSION', 'FINDINGS']);
+		draftStore.clearIntelliTab();
+	});
+
+	it('templated tab: openExisting shows the fresh report and its sections', async () => {
+		if (!get(templatesStore).templates?.some((t: { id: string }) => t.id === TEMPLATE.id))
+			templatesStore.addTemplate(TEMPLATE);
+		stubFetch((url, init) =>
+			url.endsWith('/api/reports/rep-tpl') && (!init?.method || init.method === 'GET')
+				? new Response(
+						JSON.stringify({
+							success: true,
+							report: { ...TEMPLATED, report_content: FRESH, candidate_reports: [{ sections: ['IMPRESSION', 'FINDINGS'] }] }
+						})
+					)
+				: null
+		);
+		getReview.mockImplementation(async (id: string) => twoSections(id, FRESH));
+		const { component, container } = render(TemplatedReportTab, {});
+		await tick();
+		expect(await (component as unknown as Tab).openExisting(TEMPLATED)).toBe(true);
+		await pause(400);
+		expect(viewerOf(container)?.state.doc.toString()).toContain('The spleen measures 10 cm.');
+		expect(railSections(container)).toEqual(['IMPRESSION', 'FINDINGS']);
+	});
+});

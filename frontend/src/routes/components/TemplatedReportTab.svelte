@@ -10,6 +10,7 @@ import { tagsStore } from '$lib/stores/tags';
 import { getTagColor, getTagColorWithOpacity } from '$lib/utils/tagColors.js';
 import { draftStore } from '$lib/stores/draft.js';
 import { API_URL } from '$lib/config';
+import { fetchSavedReport, savedSections } from '$lib/review/savedReport';
 
 	const dispatch = createEventDispatcher();
 
@@ -50,6 +51,7 @@ export let enhancementGuidelinesCount = 0;
 	let variableValues; // No default - prevents Svelte from resetting on re-render
 	let response = null;
 	let responseModel = null;
+	let reviewSections = null;
 	let loading = false;
 	let error = null;
 	let reportId = null;  // For enhancement sidebar
@@ -1195,6 +1197,9 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	 * Nothing is generated, re-run or probed. Returns false when the template is not available (the caller falls
 	 * back to the read-only preview). */
 	export async function openExisting(report) {
+		if (!report?.template_id) return false;
+		formRef?.abandonGeneration?.(); // a report still generating never lands over the opened one
+		report = await fetchSavedReport(report); // the report as saved now, not the cached history row
 		const templateId = report?.template_id;
 		if (!templateId) return false;
 		if (!$templatesStore.templates || $templatesStore.templates.length === 0) {
@@ -1209,6 +1214,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 		loading = false;
 		response = report.report_content ?? '';
 		responseModel = report.model_used ?? null;
+		reviewSections = savedSections(report);
 		reportId = report.id;
 		await tick();
 		return true;
@@ -2916,6 +2922,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			bind:error
 			bind:scratchpadContent
 			bind:prePoppedSections
+			bind:reviewSections
 			{apiKeyStatus}
 			{reportUpdateLoading}
 			reportId={reportId}
