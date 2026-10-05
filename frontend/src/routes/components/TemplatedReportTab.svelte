@@ -51,6 +51,7 @@ export let enhancementGuidelinesCount = 0;
 	let variableValues; // No default - prevents Svelte from resetting on re-render
 	let response = null;
 	let responseModel = null;
+	/** @type {string[] | null} */
 	let reviewSections = null;
 	let loading = false;
 	let error = null;
@@ -79,6 +80,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	let lastTemplateId = null;
 
 	// Form ref and workspace state for draft restore (bound from TemplateForm)
+	/** @type {any} */
 	let formRef = null;
 	let scratchpadContent = '';
 	let prePoppedSections = [];
