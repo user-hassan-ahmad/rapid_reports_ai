@@ -4175,14 +4175,15 @@ def _chat_open_items_block(db: Session, report_id: str, open_items: Optional[lis
     """Spec §12.5: the open review items go into the chat context. Ids are resolved from the stored items."""
     if not open_items:
         return ""
-    stored: list = []
-    if any(isinstance(o, str) or (isinstance(o, dict) and not o.get("label")) for o in open_items):
-        try:
+    try:   # fail open: chat still answers without the items (a lookup failure or a malformed entry)
+        stored: list = []
+        if any(isinstance(o, str) or (isinstance(o, dict) and not o.get("label")) for o in open_items):
             from .review_engine import store as _review_store
             stored = _review_store.list_items(db, report_id)
-        except Exception as e:  # fail open: chat still answers without the items
-            print(f"⚠️ chat open_items lookup failed: {type(e).__name__}: {str(e)[:200]}")
-    return _chat_edits.format_open_items_block(_chat_edits.resolve_open_items(open_items, stored))
+        return _chat_edits.format_open_items_block(_chat_edits.resolve_open_items(open_items, stored))
+    except Exception as e:
+        print(f"⚠️ chat open_items failed: {type(e).__name__}: {str(e)[:200]}")
+        return ""
 
 
 def _chat_verified_edits(report: Any, text: str, raw_edits: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

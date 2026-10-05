@@ -166,3 +166,13 @@ def test_open_items_reach_the_model_context(client, auth_headers, chat_env, db_s
                 headers=auth_headers)
     system = _FakeGroq.calls[0]["messages"][0]["content"]
     assert "Septation missing" in system and "Adrenal not mentioned" in system
+
+
+def test_a_malformed_open_item_never_fails_the_chat(client, auth_headers, chat_env):
+    """F2 M3: resolving open_items is inside the fail-open block: a malformed entry (an unhashable id) drops the
+    open-items context, the chat still answers."""
+    _FakeGroq.reply = _reply("ok")
+    r = client.post(f"/api/reports/{chat_env}/chat",
+                    json={"message": "m", "open_items": [{"id": ["not", "hashable"]}]}, headers=auth_headers)
+    assert r.status_code == 200 and r.json()["success"] is True
+    assert "Open review items" not in _FakeGroq.calls[-1]["messages"][0]["content"]
