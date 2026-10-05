@@ -8,6 +8,11 @@
 	 *
 	 * Renders nothing unless the backend reports mode `live` with the rail on, or `force` is set (dev page).
 	 * Assumed normals never appear here; they live only in the editor.
+	 *
+	 * Chat (plan Task D2, spec §12.5): with `chat`, a composer sits at the foot of the rail. Sending switches the rail
+	 * to the thread, headed by a strip "← Review · N open" and "⤢ Expand" (widens the rail). `chatPrefill` ("Ask in
+	 * chat") puts text in the composer. Applying a chat edit goes out through `chat.applyEdit`; Undo through
+	 * `onCommand('undo')`.
 	 */
 	import type { Snippet } from 'svelte';
 	import type { Density } from '../editor/theme';
@@ -17,6 +22,8 @@
 	import ItemRow, { type RailCommand } from './ItemRow.svelte';
 	import ItemTag from './ItemTag.svelte';
 	import Legend from './Legend.svelte';
+	import ChatThread from './ChatThread.svelte';
+	import { compactOpenItems, type RailChat } from '../chat';
 
 	let {
 		store,
@@ -28,7 +35,9 @@
 		guidelines,
 		urgency = null,
 		layout = 'auto',
-		theme = 'dark'
+		theme = 'dark',
+		chat,
+		chatPrefill = null
 	}: {
 		store: ReviewStore;
 		onCommand: RailCommand;
@@ -44,6 +53,10 @@
 		/** `auto` follows the viewport (strip below 1100 px); tests and hosts can pin it. */
 		layout?: 'auto' | 'wide' | 'narrow';
 		theme?: 'dark' | 'light';
+		/** Hosts the chat thread; absent → no composer. */
+		chat?: RailChat;
+		/** "Ask in chat": the composer takes `text` whenever `seq` changes. */
+		chatPrefill?: { text: string; seq: number } | null;
 	} = $props();
 
 	const FINISHED = new Set(['done', 'failed', 'skipped']);
@@ -79,6 +92,10 @@
 	let checksOpen = $state(true);
 	let foldOpen = $state(false);
 	let overlayOpen = $state(false);
+	let view = $state<'review' | 'chat'>('review');
+	let expanded = $state(false);
+	const inChat = $derived(!!chat && view === 'chat');
+	const statusOf = (id: string) => $stateStore.items.find((i) => i.id === id)?.status;
 
 	// Below ~1100 px the rail is a strip; `layout` pins it either way.
 	let narrowViewport = $state(false);
@@ -122,6 +139,22 @@
 {/snippet}
 
 {#snippet panel()}
+	{#if inChat}
+		<div class="rv-head rv-chat-head">
+			<button type="button" class="rv-btn rv-back" onclick={() => (view = 'review')}
+				>← Review · {$countsStore.open} open</button
+			>
+			<span class="rv-spacer"></span>
+			{#if !narrow}
+				<button
+					type="button"
+					class="rv-btn"
+					aria-pressed={expanded}
+					onclick={() => (expanded = !expanded)}>⤢ Expand</button
+				>
+			{/if}
+		</div>
+	{:else}
 	<div class="rv-head">
 		<div class="rv-tabs" role="tablist" aria-label="Rail">
 			<button
@@ -162,7 +195,11 @@
 		{/if}
 	</div>
 
-	{#if tab === 'guidelines' && guidelines}
+	{/if}
+
+	{#if inChat}
+		<!-- the thread renders inside ChatThread below -->
+	{:else if tab === 'guidelines' && guidelines}
 		<div class="rv-body" role="tabpanel" aria-label="Guidelines">{@render guidelines()}</div>
 	{:else}
 		<div class="rv-body" role="tabpanel" aria-label="Review">
@@ -236,12 +273,26 @@
 			{/if}
 		</div>
 	{/if}
+	{#if chat}
+		<ChatThread
+			reportId={chat.reportId}
+			getText={chat.getText}
+			openItems={() => compactOpenItems($stateStore.items)}
+			applyEdit={chat.applyEdit}
+			undoEdit={(id) => onCommand('undo', id)}
+			{statusOf}
+			showThread={inChat}
+			onSent={() => (view = 'chat')}
+			prefill={chatPrefill}
+		/>
+	{/if}
 {/snippet}
 
 {#if visible}
 	<aside
 		class="rv-rail"
 		class:rv-narrow={narrow}
+		class:rv-expanded={inChat && expanded && !narrow}
 		data-theme={theme}
 		data-testid="review-rail"
 		aria-label="Review"
@@ -314,6 +365,13 @@
 		--rv-blue-line: #3b6fcf;
 		--rv-del: #b42318;
 		--rv-ins: #1f7a3f;
+	}
+	.rv-rail.rv-expanded {
+		width: 560px;
+	}
+	.rv-chat-head {
+		flex-direction: row;
+		align-items: center;
 	}
 	.rv-rail.rv-narrow {
 		width: auto;

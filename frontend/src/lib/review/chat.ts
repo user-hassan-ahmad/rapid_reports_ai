@@ -150,3 +150,12 @@ const FAILURES: Record<string, string> = {
 export function failureText(code: string): string {
 	return FAILURES[code] ?? code.replace(/_/g, ' ');
 }
+
+/** What the rail needs to host the chat (absent: no composer, e.g. the dev page). */
+export interface RailChat {
+	reportId: string;
+	/** The live editor document. */
+	getText: () => string;
+	/** Apply a verified edit as a local chat item through the apply command; null on success, else why not. */
+	applyEdit: (messageId: string, index: number, edit: ChatEdit) => string | null;
+}
