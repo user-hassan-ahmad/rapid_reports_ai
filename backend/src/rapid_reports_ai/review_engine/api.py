@@ -21,7 +21,7 @@ from ..auth import get_current_user
 from ..database import get_db
 from ..database.crud import get_report
 from ..database.models import User
-from . import adjudicator, engine, negatives, store, verifier
+from . import adjudicator, brief_normals, engine, negatives, store, verifier
 from .items import ReviewItem
 
 router = APIRouter(prefix="/api/reports", tags=["review"])
@@ -78,8 +78,9 @@ def _input(report, text: str):
 
 
 def _negative(it: ReviewItem) -> bool:
-    """L-47: never LLM-repair a flagged negative: the classifier's items and accuracy items on a negative."""
-    return negatives.DETECTOR in (it.detectors or []) or \
+    """L-47: never LLM-repair a flagged negative: the classifier's items, the brief's linked normals and accuracy
+    items on a negative."""
+    return bool({negatives.DETECTOR, brief_normals.DETECTOR} & set(it.detectors or [])) or \
         (it.lane == "accuracy" and bool((it.evidence or {}).get("negative")))
 
 

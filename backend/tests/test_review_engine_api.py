@@ -209,3 +209,30 @@ def test_rerun_schedules(client, auth_headers, seeded, monkeypatch):
     rid, _ = seeded
     r = client.post(f"/api/reports/{rid}/review/rerun", headers=auth_headers, json={"text": "X"}).json()
     assert r == {"success": True, "status": "running"} and seen == [(rid, "X")]
+
+
+def test_reprepare_never_rewrites_brief_linked_normals(client, auth_headers, seeded, monkeypatch, db_session):
+    """Gate G: the brief's linked-normal items (green assumed normals, amber implicated checks) are negatives too;
+    an edit elsewhere must not let the adjudicator relabel them (it suppressed amber checks as "passed")."""
+    from rapid_reports_ai.review_engine import brief_normals
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.setattr(rc, "_jev", jev({"a": {"noul": 0.9}}))
+    calls = []
+    monkeypatch.setattr(adj, "_run_agent_with_model", model(adj.Judgement(
+        cls="suppress", kind="assumed_normal", label="Listed as unremarkable", reason="r",
+        edit_mode="none"), calls))
+    rid, it = seeded
+    green = ReviewItem(key="b1", report_id=rid, run_id=it.run_id, lane="accuracy",
+                       detectors=[brief_normals.DETECTOR], kind="assumed_normal", cls="info", section="FINDINGS",
+                       label="Assumed normal", anchor=Span(start=10, end=30, text="The liver is normal."))
+    amber = ReviewItem(key="b2", report_id=rid, run_id=it.run_id, lane="accuracy",
+                       detectors=[brief_normals.DETECTOR], kind="check", cls="minor", section="FINDINGS",
+                       label="Check: may not hold given “cyst”", evidence={"check_reason": "uncertain"},
+                       anchor=Span(start=10, end=30, text="The liver is normal."))
+    store.save_items(db_session, [green, amber])
+    r = client.post(f"/api/reports/{rid}/review/reprepare", headers=auth_headers,
+                    json={"item_ids": [green.id, amber.id], "text": REPORT, "text_hash": "h5"}).json()
+    assert r["success"] and calls == []
+    for orig in (green, amber):
+        got = store.get_item(db_session, rid, orig.id)
+        assert got.cls == orig.cls and got.label == orig.label and got.kind == orig.kind
