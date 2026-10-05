@@ -14,6 +14,26 @@
 	import type { UnfilledEdit } from '$lib/stores/unfilledEditor';
 	import type { UnfilledItem, UnfilledItems } from '$lib/utils/placeholderDetection';
 	import type { AuditFixContext } from '$lib/types/auditFixContext';
+	import { tick } from 'svelte';
+	import { EditorView } from '@codemirror/view';
+	import type { EditorState, Extension, TransactionSpec } from '@codemirror/state';
+	import ReviewRail from '$lib/review/rail/ReviewRail.svelte';
+	import { createReviewStore, type ReviewStore } from '$lib/review/store';
+	import { runCommand, type CommandName, type ItemEvent } from '$lib/review/commands';
+	import { openPopover, reviewExtensions, setDensity, type Density } from '$lib/review/editor';
+	import {
+		commandTransaction,
+		replaceDoc,
+		reviewCommand,
+		syncItems,
+		widgetPosOf,
+		type ReviewHistoryEvent
+	} from '$lib/review/editor/field';
+	import { textHash } from '$lib/review/hash';
+	import { createProbeLoop, type ProbeLoop } from '$lib/review/probe';
+	import { createWorkspaceSaver, loadWorkspace, type WorkspaceSaver, type WorkspaceState } from '$lib/review/workspace';
+	import { setReviewRailActive } from '$lib/review/railActive';
+	import type { ItemStatus, ReviewItem, UserCommand } from '$lib/review/types';
 	const dispatch = createEventDispatcher();
 
 	export let visible = false;
@@ -22,7 +42,7 @@
 	export let model = null;
 	export let generationLoading = false;
 	export let updateLoading = false;
-	export let reportId = null;
+	export let reportId: string | null = null;
 	export let versionHistoryRefreshKey = 0;
 	
 	// Enhancement state for preview cards
@@ -89,6 +109,8 @@
 	let reportEditorRef: {
 		resetContent: (c: string) => void;
 		replaceRange: (from: number, to: number, insert: string) => void;
+		getView: () => EditorView | null;
+		getCurrentContent: () => string;
 	} | null = null;
 	let saveInFlight = false;
 
@@ -240,7 +262,8 @@
 		!generationLoading &&
 		response !== lastAuditedContent &&
 		$auditStore.status === 'idle' &&
-		!activeCandidateModel
+		!activeCandidateModel &&
+		!railOn
 	) {
 		triggerAudit(response);
 	}
@@ -621,8 +644,248 @@
 	}
 
 	function saveEditing() {
-		dispatch('save', { content: currentEditorContent });
+		const ids = reviewAppliedItemIds();
+		dispatch('save', { content: currentEditorContent, ...(ids ? { reviewAppliedItemIds: ids } : {}) });
 		hasUnsavedChanges = false;
+	}
+
+	// ─── Review rail (Plan 3 C5, spec §12) ───────────────────────────────────
+	// For a report id the viewer loads the review store. When the backend reports `mode: live` with the rail on, it
+	// mounts the review extensions into the editor and the rail beside it, polls the lanes, runs the probe loop and
+	// hides the old panels (OptionalAdditions here; the Copilot aside via `reviewRailActive`). Every rail and popover
+	// action is a command (lib/review/commands.ts) dispatched as ONE editor transaction, then posted through the store.
+	// The engine never rewrites the report, so nothing here re-fetches it.
+
+	/** The report's section names for edit placement (artifacts.sections); null → ALL-CAPS "NAME:" headings. */
+	export let reviewSections: string[] | null = null;
+
+	const USER_COMMANDS = new Set<string>(['apply', 'edit', 'undo', 'dismiss', 'restore', 'view', 'ask_chat']);
+	const railOwner = {};
+	let reviewStore: ReviewStore | null = null;
+	let probeLoop: ProbeLoop | null = null;
+	let workspaceSaver: WorkspaceSaver | null = null;
+	let workspace: WorkspaceState | null = null;
+	/** Created once per report (a stable array: ReportEditor reconfigures its compartment on identity change). */
+	let reviewExtras: Extension[] = [];
+	let reviewReplaceDoc: ((state: EditorState, text: string) => TransactionSpec) | undefined = undefined;
+	let railOn = false;
+	let reviewDensity: Density = 'quiet';
+	let reviewReportId: string | null = null;
+	let lastReviewResponse: string | null = null;
+	let unsubscribeReview: (() => void) | null = null;
+	let syncQueued = false;
+	let postChain: Promise<unknown> = Promise.resolve();
+	// The hash of the live document, and the text it was computed on (it lags a change by one microtask or so).
+	let currentHash: string | null = null;
+	let hashedText: string | null = null;
+	let hashSeq = 0;
+
+	$: probeState = probeLoop;
+	$: updatingIds = $probeState?.updating ?? new Set<string>();
+
+	$: if (reportId !== reviewReportId) void setupReview(reportId);
+	$: setReviewRailActive(railOwner, railOn && visible);
+
+	// A new response (regeneration, version restore, a save): ReportEditor re-places the items through
+	// reviewReplaceDoc; the store reloads, and items that cannot be placed on the new text go stale.
+	$: if (railOn && reviewStore && response !== lastReviewResponse) {
+		lastReviewResponse = response;
+		void reviewStore.load();
+	}
+
+	onDestroy(() => {
+		teardownReview();
+		setReviewRailActive(railOwner, false);
+	});
+
+	function liveDoc(): string {
+		return reportEditorRef?.getView()?.state.doc.toString() ?? (currentEditorContent || response || '');
+	}
+
+	/** The live document's hash when it is current, else null (callers then re-find spans by context). */
+	function hashNow(): string | null {
+		return hashedText !== null && hashedText === liveDoc() ? currentHash : null;
+	}
+
+	function refreshHash(): void {
+		const seq = ++hashSeq;
+		const text = liveDoc();
+		void textHash(text).then((h) => {
+			if (seq !== hashSeq) return;
+			currentHash = h;
+			hashedText = text;
+			scheduleWorkspace();
+		});
+	}
+
+	function scheduleWorkspace(): void {
+		if (!workspaceSaver || !railOn) return;
+		workspaceSaver.schedule({
+			tab: workspace?.tab ?? 'review',
+			expanded_ids: workspace?.expanded_ids ?? [],
+			density: reviewDensity,
+			last_text_hash: currentHash
+		});
+	}
+
+	/** Put the store's items into the editor field: after Svelte has flushed (the extensions are mounted) and never
+	 * inside a CM update (store changes can come from an update listener: stale marks, Cmd-Z). */
+	function scheduleSync(): void {
+		if (syncQueued) return;
+		syncQueued = true;
+		void tick().then(() => {
+			syncQueued = false;
+			const view = reportEditorRef?.getView();
+			if (!view || !reviewStore || !railOn) return;
+			view.dispatch(syncItems(view.state, get(reviewStore).items, { sections: reviewSections, textHash: hashNow() }));
+		});
+	}
+
+	async function setupReview(id: string | null): Promise<void> {
+		teardownReview();
+		reviewReportId = id;
+		if (!id) return;
+		const store = createReviewStore(id);
+		reviewStore = store;
+		const [, ws] = await Promise.all([store.load(), loadWorkspace(id).catch(() => null)]);
+		if (reviewStore !== store) return;
+		const s = get(store);
+		if (s.mode !== 'live' || !s.rail) return;
+		workspace = ws;
+		if (ws?.density) reviewDensity = ws.density;
+		activateRail(id, store);
+	}
+
+	function activateRail(id: string, store: ReviewStore): void {
+		const loop = createProbeLoop({ reportId: id, store, getDoc: liveDoc });
+		probeLoop = loop;
+		workspaceSaver = createWorkspaceSaver(id);
+		reviewExtras = [
+			...reviewExtensions({
+				onCommand: (name, itemId, args) => handleReviewCommand(name, itemId, args),
+				onStale: (ids) => store.markStale(ids),
+				onHistory: handleReviewHistory,
+				density: reviewDensity,
+				getItem: (itemId) => get(store).items.find((i) => i.id === itemId)
+			}),
+			EditorView.updateListener.of((u) => {
+				if (!u.docChanged) return;
+				refreshHash();
+				// a reload onto the same text (a save) is not an edit for the probe loop
+				const reload = u.transactions.some((tr) => tr.annotation(reviewCommand)?.command === 'replace_doc');
+				if (reload && u.startState.doc.eq(u.state.doc)) return;
+				loop.onDocChange(u.changes);
+			})
+		];
+		reviewReplaceDoc = (state, text) =>
+			replaceDoc(state, text, get(store).items, { sections: reviewSections, textHash: null });
+		lastReviewResponse = response;
+		railOn = true;
+		let lastItems: ReviewItem[] | null = null;
+		unsubscribeReview = store.subscribe((st) => {
+			if (st.items === lastItems) return;
+			lastItems = st.items;
+			scheduleSync();
+		});
+		void store.pollUntilDone();
+		refreshHash();
+	}
+
+	function teardownReview(): void {
+		reviewStore?.stopPolling();
+		probeLoop?.dispose();
+		void workspaceSaver?.flush();
+		unsubscribeReview?.();
+		reviewStore = null;
+		probeLoop = null;
+		workspaceSaver = null;
+		workspace = null;
+		unsubscribeReview = null;
+		reviewExtras = [];
+		reviewReplaceDoc = undefined;
+		railOn = false;
+		currentHash = null;
+		hashedText = null;
+	}
+
+	/** Post item events in order (one chain, so Cmd-Z after Apply posts after it), each with the hash of the
+	 * document the command left. The store applies the status at once and never rolls back. */
+	function postEvents(events: ItemEvent[], statuses: Record<string, ItemStatus>): void {
+		const store = reviewStore;
+		if (!store || !events.length) return;
+		const text = liveDoc();
+		postChain = postChain.then(async () => {
+			const h = await textHash(text);
+			for (const ev of events) {
+				const status =
+					statuses[ev.itemId] ?? get(store).items.find((i) => i.id === ev.itemId)?.status ?? 'open';
+				void store.setStatus(ev.itemId, status, { command: ev.command, textHash: h, detail: ev.detail });
+			}
+		});
+	}
+
+	function handleReviewCommand(name: CommandName, itemId?: string, args?: Record<string, unknown>): void {
+		const store = reviewStore;
+		const view = reportEditorRef?.getView();
+		if (!store || !view) return;
+		if (name === 'rerun') {
+			void store.rerun(view.state.doc.toString());
+			return;
+		}
+		if (name === 'finalise') return; // a save-time query (reviewAppliedItemIds), not a rail action
+		const items = get(store).items;
+		const item = itemId ? (items.find((i) => i.id === itemId) ?? null) : null;
+		const textHashNow = hashNow();
+		const result = runCommand(name, {
+			doc: view.state.doc.toString(),
+			items,
+			item,
+			args,
+			sections: reviewSections,
+			widgetPos: widgetPosOf(view.state),
+			textHash: textHashNow
+		});
+		if (result.error) {
+			console.warn(`[review] ${name} ${itemId ?? ''}: ${result.error}`);
+			return;
+		}
+		if (result.focus) {
+			const { from, itemId: focusId } = result.focus;
+			view.dispatch({
+				selection: { anchor: from },
+				effects: [EditorView.scrollIntoView(from, { y: 'center' }), openPopover.of(focusId)]
+			});
+		}
+		if (result.openChat) dispatch('openSidebar', { tab: 'chat', initialMessage: result.openChat });
+		if (result.changes || (result.statuses && Object.keys(result.statuses).length)) {
+			view.dispatch(commandTransaction(view.state, result, items, { sections: reviewSections, textHash: textHashNow }));
+		}
+		postEvents([...(result.event ? [result.event] : []), ...(result.events ?? [])], result.statuses ?? {});
+		if (result.changes) probeLoop?.trigger();
+	}
+
+	/** Cmd-Z / redo of a review command: undo posts `undo`; redo posts the original command again. */
+	function handleReviewHistory(ev: ReviewHistoryEvent): void {
+		const command = ev.kind === 'undo' ? 'undo' : ev.command;
+		if (!USER_COMMANDS.has(command)) return;
+		postEvents(
+			[{ itemId: ev.itemId, command: command as UserCommand, detail: { via: ev.kind === 'undo' ? 'cmd_z' : 'redo' } }],
+			{ [ev.itemId]: ev.status }
+		);
+		probeLoop?.trigger();
+	}
+
+	function handleDensity(d: Density): void {
+		reviewDensity = d;
+		reportEditorRef?.getView()?.dispatch({ effects: setDensity.of(d) });
+		scheduleWorkspace();
+	}
+
+	/** Finalise: the review items kept in the report (applied, plus pre-applied not undone); undefined with the rail off. */
+	function reviewAppliedItemIds(): string[] | undefined {
+		if (!railOn || !reviewStore) return undefined;
+		const r = runCommand('finalise', { doc: liveDoc(), items: get(reviewStore).items });
+		return r.request?.type === 'finalise' ? r.request.applied : undefined;
 	}
 
 	onMount(() => {
@@ -803,6 +1066,17 @@
 	}
 </script>
 
+{#snippet railGuidelines()}
+	<!-- Interim (C5): the guidelines panel lives inside ReportEnhancementSidebar with its own /enhance loading, so it is
+	     not cheap to render standalone. This tab opens today's sidebar on its Guidelines tab instead. -->
+	<div class="rv-guidelines-placeholder">
+		<p>Guidelines for this report open in the guidelines panel.</p>
+		<button type="button" class="self-start px-2.5 py-1 text-xs font-medium rounded-md bg-purple-600/80 hover:bg-purple-500 text-white" onclick={() => dispatch('openSidebar', { tab: 'guidelines' })}>
+			Open guidelines
+		</button>
+	</div>
+{/snippet}
+
 {#if visible}
 	<div class="card-dark relative flex flex-col max-h-[calc(100vh-200px)]">
 		<!-- Header: Mobile-first responsive layout -->
@@ -875,7 +1149,7 @@
 			{#if activeView === 'report'}
 					<button
 						type="button"
-						onclick={() => dispatch('copy')}
+						onclick={() => dispatch('copy', { content: liveDoc() })}
 						class="p-1.5 sm:p-2 text-gray-400 hover:text-purple-400 transition-colors rounded-lg hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
 						title="Copy to clipboard"
 						aria-label="Copy report"
@@ -939,8 +1213,9 @@
 							class="absolute inset-0 overflow-hidden"
 							transition:fade={{ duration: 200, easing: (t) => t * (2 - t) }}
 						>
+							<div class="flex h-full min-h-0 gap-3">
 							<!-- Editor content (full-width, scrollable). @container for enhancement cards to switch layout based on available width -->
-							<div class="@container h-full overflow-y-auto">
+							<div class="@container h-full flex-1 min-w-0 overflow-y-auto">
 					<!-- Summary Panel for Unfilled Items -->
 					{#if showSummaryPanel && unfilledItems.total > 0}
 				<div class="relative mb-3 sm:mb-4" style="z-index: 10;">
@@ -1039,7 +1314,9 @@
 						content={response}
 						showHighlighting={showHighlighting}
 						generationLoading={generationLoading || updateLoading}
-						auditDecorations={auditDecorations}
+						auditDecorations={railOn ? [] : auditDecorations}
+						extraExtensions={reviewExtras}
+						replaceDocHook={reviewReplaceDoc}
 						on:change={handleEditorChange}
 						on:save={() => { if (hasUnsavedChanges) saveEditing(); }}
 						on:unfilledItems={(e) => handleUnfilledItems(e.detail.items)}
@@ -1048,7 +1325,7 @@
 						on:auditSpanHover={handleAuditSpanHover}
 					on:auditSpanClick={handleAuditSpanClick}
 					/>
-					{#if options.length}
+					{#if options.length && !railOn}
 						<OptionalAdditions
 							{options}
 							content={currentEditorContent || response}
@@ -1059,6 +1336,19 @@
 					{:else}
 						<p class="text-sm text-gray-400">Response will appear here once generated.</p>
 					{/if}
+							</div>
+							{#if railOn && reviewStore && response && !error}
+								<div class="h-full shrink-0 overflow-y-auto">
+									<ReviewRail
+										store={reviewStore}
+										onCommand={handleReviewCommand}
+										bind:density={reviewDensity}
+										onDensity={handleDensity}
+										updating={updatingIds}
+										guidelines={railGuidelines}
+									/>
+								</div>
+							{/if}
 							</div>
 						</div>
 					{/if}
@@ -1155,6 +1445,15 @@
 		opacity: 0.6;
 		line-height: 1.2;
 		white-space: nowrap;
+	}
+
+	.rv-guidelines-placeholder {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 0.75rem;
+		font-size: 0.8rem;
+		color: #a0a7b1;
 	}
 
 	/* ── Floating save bar ─────────────────────────────────────────────────── */

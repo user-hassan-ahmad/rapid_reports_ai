@@ -8,6 +8,7 @@ import TemplatedReportTab from './components/TemplatedReportTab.svelte';
 import HistoryTab from './components/HistoryTab.svelte';
 import SettingsTab from './components/SettingsTab.svelte';
 import ReportEnhancementSidebar from './components/ReportEnhancementSidebar.svelte';
+import { reviewRailActive } from '$lib/review/railActive';
 import IntervalAnalysisDrawer from './components/IntervalAnalysisDrawer.svelte';
 import TemplateRefinePanel from './components/TemplateRefinePanel.svelte';
 import ReportVersionHistory from './components/ReportVersionHistory.svelte';
@@ -177,6 +178,9 @@ let navStateBeforeCopilot = false;
 let copilotAutoOpened = false;
 let copilotPanelWide = false;
 let copilotLayoutMode: 'narrow' | 'dual' | 'tri' = 'narrow';
+/** The report viewer shows the review rail (Plan 3 C5): the Copilot aside, its peek rail, padding and auto-open are
+ *  left out. The aside still renders when opened explicitly (the rail's interim Guidelines tab and Ask in chat). */
+$: railActive = $reviewRailActive;
 
 /** Viewport tracking for Copilot width cap and layout tiers (md+ inline reserve). */
 let viewportWidth = 1200;
@@ -202,7 +206,7 @@ $: copilotMainPaddingRightPx =
 	browser && viewportWidth >= 768
 		? sidebarVisible && isEnhancementContext
 			? copilotAsideWidthPx
-			: viewingReport && !sidebarVisible
+			: viewingReport && !sidebarVisible && !railActive
 				? 40
 				: 0
 		: 0;
@@ -810,7 +814,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 // Auto-open Copilot once per report when guideline enhancement finishes loading (QA tab first).
 // Gate on viewingReport (not just isEnhancementContext) so it does not pop open over the
 // templates list view, where currentReportId is preserved but no report is being viewed.
-$: if (enhancementsLoaded && !copilotAutoOpened && !sidebarVisible && viewingReport) {
+$: if (enhancementsLoaded && !copilotAutoOpened && !sidebarVisible && viewingReport && !railActive) {
 	const autoOpenEnabled = (() => {
 		try {
 			return localStorage.getItem('copilotAutoOpen') !== 'false';
@@ -829,7 +833,8 @@ $: if (
 	enhancementError &&
 	!copilotAutoOpened &&
 	!sidebarVisible &&
-	viewingReport
+	viewingReport &&
+	!railActive
 ) {
 	copilotAutoOpened = true;
 	openCopilot({ tab: 'qa' });
@@ -1150,7 +1155,7 @@ $: if (
 	<!-- Mount when a report is being viewed so /enhance + prefetch can run before Copilot is
 	     opened. Uses viewingReport (not just currentReportId) so the panel unmounts on the
 	     templates list view, where the report id is preserved for fast re-entry. -->
-	{#if viewingReport}
+	{#if viewingReport && (!railActive || sidebarVisible)}
 		<aside
 			class="fixed inset-0 z-[10000] flex min-h-0 w-full flex-col border-l border-white/10 bg-black/70 backdrop-blur-2xl overflow-hidden shadow-2xl shadow-purple-500/10 transition-[width] duration-300 ease-in-out md:inset-y-0 md:left-auto md:right-0 md:z-[35] {!sidebarVisible ? 'hidden' : ''}"
 			style={browser && viewportWidth >= 768
@@ -1252,7 +1257,7 @@ $: if (
 	</div>
 
 	<!-- Mobile Copilot FAB: visible only on < md when the copilot rail is hidden -->
-	{#if viewingReport && !sidebarVisible}
+	{#if viewingReport && !sidebarVisible && !railActive}
 		<button
 			type="button"
 			class="md:hidden fixed bottom-5 right-5 z-[45] w-12 h-12 rounded-full bg-purple-600/90 backdrop-blur-lg text-white shadow-lg shadow-purple-500/30 flex items-center justify-center hover:bg-purple-500 active:scale-95 transition-all"
@@ -1269,7 +1274,7 @@ $: if (
 	{/if}
 
 	<!-- Viewport-locked rail: sticky fails when ancestors use overflow-hidden (page root). -->
-	{#if viewingReport && !sidebarVisible}
+	{#if viewingReport && !sidebarVisible && !railActive}
 		{@const _railLoading = enhancementLoading || auditState?.status === 'loading'}
 		{@const _railLoaded = !enhancementLoading && (enhancementGuidelinesCount > 0 || auditState?.status === 'complete' || auditState?.status === 'stale')}
 		{@const _qaFlagCount = Array.isArray((auditState?.result as any)?.criteria)
