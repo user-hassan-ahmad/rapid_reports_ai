@@ -87,7 +87,7 @@ def _atom_labels(atoms: list, qw, sep_labels: Optional[List[str]], mode: Optiona
             # Plausible doubt is implicated: a default the Jev "affected" question flags is upgraded
             # (kept in the report, its own sentence, highlighted), never asserted as plain normal.
             if out[a.id]["cls"] == "default" and p is not None and p >= 0.5:
-                out[a.id].update(cls="implicated", source=f"{mode}+jev", pointer=f"Jev affected {p}")
+                out[a.id].update(cls="implicated", source=f"{mode}+jev")  # score lives in jev_affected; pointer is UI text
             continue
         aff = p is not None and p >= 0.5
         out[a.id] = {"cls": "contradicted" if aff else "default", "pointer": "", "source": "jev_affected",
