@@ -597,6 +597,32 @@ describe('replaceDoc (I-3) and helpers', () => {
 		expect(widgetPosOf(tr2.state)(m)).toBeNull();
 	});
 
+	it('Discard after a removal: reloading the saved text never throws on the undo history (and Cmd-Z stays safe)', () => {
+		// a command that shortened the report, then a full reload (Discard / a save) onto the longer saved text
+		const REC = ' Suggest MRI of the liver for characterisation.';
+		const saved = DOC + REC;
+		const at = saved.indexOf(REC) + 1;
+		const rec = item({
+			id: 'r',
+			kind: 'recommendation',
+			cls: 'minor',
+			lane: 'additions',
+			anchor: { start: at, end: saved.length, text: REC.trim() },
+			edit: { mode: 'remove', find: REC.trim() }
+		});
+		const st = createReviewState(saved, [m, rec], [history()]);
+		const res = runCommand('remove', { doc: saved, items: [m, rec], item: rec });
+		const s1 = st.update(commandTransaction(st, res, [m, rec])).state;
+		expect(s1.doc.toString()).toBe(DOC);
+		const removed = [m, { ...rec, status: 'applied' as const }];
+		let s2!: EditorState;
+		expect(() => (s2 = s1.update(replaceDoc(s1, saved, removed)).state)).not.toThrow();
+		expect(s2.doc.toString()).toBe(saved);
+		// a later reload onto a shorter text, then Cmd-Z, does not throw either
+		const s3 = s2.update(replaceDoc(s2, 'FINDINGS:\nShort.', removed)).state;
+		expect(() => undo({ state: s3, dispatch: () => {} })).not.toThrow();
+	});
+
 	it('warns once when the loaded text is not the text the anchors were made on', () => {
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		const hashed = { ...m, anchor: { ...m.anchor!, text_hash: 'h1' } };

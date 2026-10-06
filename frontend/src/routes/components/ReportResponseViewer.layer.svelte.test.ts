@@ -148,4 +148,26 @@ describe('recommendation checkbox in the viewer', () => {
 		const cmds = postEvent.mock.calls.map((c) => c[2]);
 		expect(cmds).toEqual(Array(4).fill(['edit', 'undo']).flat());
 	});
+
+	it('Discard after unticking puts the recommendation back (the reload does not throw) and the box keeps working', async () => {
+		const { container } = render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });
+		await pause(400);
+		const view = viewOf(container);
+		const errors: unknown[] = [];
+		const onErr = (e: ErrorEvent) => errors.push(e.error);
+		window.addEventListener('error', onErr);
+		await press(container);
+		await pause(150);
+		expect(view.state.doc.toString()).not.toContain(REC);
+		await page.getByRole('button', { name: 'Discard', exact: true }).click();
+		await pause(300);
+		window.removeEventListener('error', onErr);
+		expect(errors).toEqual([]);
+		expect(view.state.doc.toString()).toBe(REPORT);
+		expect(container.querySelector('[data-testid="unsaved-status"]')).toBeNull();
+		expect(box(container).checked).toBe(true);
+		await press(container);
+		await pause(150);
+		expect(view.state.doc.toString()).not.toContain(REC);
+	});
 });

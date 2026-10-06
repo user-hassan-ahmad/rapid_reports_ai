@@ -363,7 +363,29 @@ function touchesInterior(changes: ChangeDesc, from: number, to: number): boolean
 	return hit;
 }
 
-export const setItems = StateEffect.define<ReviewFieldState>({ map: (v, mapping) => mapItems(v, mapping) });
+/** Keep every position within a document of `len` characters. */
+function clampItems(v: ReviewFieldState, len: number): ReviewFieldState {
+	const c = (p: number) => Math.max(0, Math.min(p, len));
+	if (
+		v.marks.every((m) => m.to <= len) &&
+		v.widgets.every((w) => w.pos <= len) &&
+		(v.suggestions ?? []).every((g) => g.pos == null || g.pos <= len)
+	)
+		return v;
+	return {
+		marks: v.marks.map((m) => ({ ...m, from: c(m.from), to: c(m.to) })),
+		widgets: v.widgets.map((w) => ({ ...w, pos: c(w.pos) })),
+		...(v.suggestions ? { suggestions: v.suggestions.map((g) => (g.pos == null ? g : { ...g, pos: c(g.pos) })) } : {})
+	};
+}
+
+/** History keeps a command's inverse snapshot (the items BEFORE it, in that text's coordinates) and maps it through
+ * later changes made outside history (a reload, Discard, the live write), which start from the text AFTER the command:
+ * a shortening command leaves positions past that text's end. They are clamped first, so the mapping never throws
+ * (a RangeError here aborted the reload: Discard did nothing). The reload re-places every item afresh anyway. */
+export const setItems = StateEffect.define<ReviewFieldState>({
+	map: (v, mapping) => mapItems(clampItems(v, mapping.length), mapping)
+});
 
 /** Item ids that became stale in this transaction (a mark dropped by an interior edit, or an item a sync could
  * not locate). */
