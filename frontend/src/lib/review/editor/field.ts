@@ -30,7 +30,7 @@ import {
 import { EditorView } from '@codemirror/view';
 import { invertedEffects, isolateHistory } from '@codemirror/commands';
 import { locate, locateUndo } from '../anchors';
-import type { CommandResult } from '../commands';
+import { findRecText, type CommandResult } from '../commands';
 import { toChanges } from '../edits';
 import type { Cls, ItemEvidence, ItemLane, ItemStatus, ReviewItem } from '../types';
 import { isEnginePreApplied } from '../types';
@@ -229,11 +229,14 @@ export function fromItems(
 	const recs: SuggestionEntry[] = [];
 	for (const it of items) {
 		if (it.kind !== 'recommendation' || it.cls === 'suppress') continue;
-		if (it.status !== 'open' && it.status !== 'applied' && it.status !== 'dismissed') continue;
+		// stale: the editor could not place it once (e.g. before a neighbour's re-casing was recognised); still a
+		// checkbox while its text is in the report
+		if (!['open', 'stale', 'applied', 'dismissed'].includes(it.status)) continue;
 		const text = (it.edit?.find || it.anchor?.text || '').trim();
 		if (!text) continue;
 		const section = it.section ?? it.edit?.section ?? null;
-		const at = doc.indexOf(text);
+		// re-cased / re-punctuated by a neighbour's removal is still the same recommendation (commands.findRecText)
+		const at = findRecText(doc, text)?.from ?? -1;
 		const inReport = it.status !== 'applied';
 		if (inReport && at < 0) continue; // edited away: the text is the radiologist's now
 		recs.push({
@@ -288,6 +291,7 @@ export function fromItems(
 		const undone = it.status !== 'pre_applied' && !!it.evidence?.undo;
 		if (!it.anchor && !undone) continue; // rail-only
 		let at = it.anchor ? locate(doc, it) : null;
+		if (!at && it.kind === 'recommendation' && it.anchor?.text) at = findRecText(doc, it.anchor.text);
 		if (!at && it.status === 'pre_applied') at = undoSpan(doc, it, opts.textHash);
 		if ((!at || at.to <= at.from) && undone) {
 			// a live edit taken back: the item sits on its original text if that is in the report, else rail-only

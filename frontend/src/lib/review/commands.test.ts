@@ -2,6 +2,7 @@ import { ChangeSet, Text } from '@codemirror/state';
 import { describe, expect, it } from 'vitest';
 import {
 	COMMANDS,
+	findRecText,
 	runCommand,
 	type CommandCtx,
 	type CommandResult,
@@ -636,5 +637,65 @@ describe('re-apply after undo / restore of a pre-applied item', () => {
 			left: written.slice(i1 - 16, i1),
 			right: written.slice(i1, i1 + 16)
 		});
+	});
+});
+
+describe('adjacent recommendations (remove / undo in any order)', () => {
+	// SYNTHETIC: two recommendation clauses on one line, as the provenance pass emits them.
+	const A = 'CT thorax is recommended for staging;';
+	const B = 'EUS sampling is advised.';
+	const D = `IMPRESSION:\nPancreatic mass. ${A} ${B}`;
+	const recOf = (text: string, doc = D) =>
+		item({
+			kind: 'recommendation',
+			cls: 'minor',
+			lane: 'additions',
+			anchor: span(doc, text),
+			edit: { mode: 'remove', find: text }
+		});
+
+	/** Toggle one recommendation's checkbox (remove when in the report, undo when removed) against `doc`, with
+	 * every item in context, the item updated as the store would. */
+	function toggle(doc: string, all: ReviewItem[], id: string): [string, ReviewItem[]] {
+		const it = all.find((i) => i.id === id)!;
+		const name = it.status === 'applied' ? 'undo' : 'remove';
+		const r = run(name, { doc, items: all, item: it });
+		expect(r.error, `${name} ${it.anchor?.text} on ${JSON.stringify(doc)}`).toBeUndefined();
+		const next = { ...it, status: r.statuses![it.id], history: [...it.history, hist(r.event!)] };
+		return [after(doc, r), all.map((i) => (i.id === id ? next : i))];
+	}
+
+	function walk(d0: string, texts: string[], seq: number[]): void {
+		let items = texts.map((t) => recOf(t, d0));
+		let doc = d0;
+		for (const k of seq) {
+			[doc, items] = toggle(doc, items, items[k].id);
+			items.forEach((i, j) => {
+				const there = findRecText(doc, texts[j]);
+				expect(!!there, `${texts[j]} in ${JSON.stringify(doc)}`).toBe(i.status !== 'applied');
+			});
+			if (items.every((i) => i.status !== 'applied')) expect(doc).toBe(d0);
+		}
+	}
+
+	it('the stuck sequence: re-ticking one after its neighbour was removed puts it back, in order', () => {
+		walk(D, [A, B], [0, 1, 0, 1]); // remove A, remove B, restore A, restore B
+		walk(D, [A, B], [1, 0, 1, 0]);
+		walk(D, [A, B], [0, 1, 1, 0]);
+		walk(D, [A, B], [1, 0, 0, 1]);
+	});
+
+	it('any toggle order, many cycles, keeps every checkbox working (seeded walk, three neighbours)', () => {
+		const C = 'urgent MDT referral for treatment planning.';
+		const d3 = `IMPRESSION:\nPancreatic mass. ${A} EUS sampling for diagnosis; ${C}\n\nDr A Person`;
+		let seed = 7;
+		const rnd = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) % 3;
+		walk(d3, [A, 'EUS sampling for diagnosis;', C], Array.from({ length: 60 }, rnd));
+	});
+
+	it('removes a neighbour the first removal re-cased; restoring both brings back the text as written', () => {
+		const b2 = 'tissue sampling is advised.';
+		const d2 = `IMPRESSION:\nPancreatic mass. ${A} ${b2}`;
+		walk(d2, [A, b2], [0, 1, 1, 0, 0, 1, 0, 1]);
 	});
 });

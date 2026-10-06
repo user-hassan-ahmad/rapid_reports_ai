@@ -350,6 +350,10 @@ class SuggestionsWidget extends WidgetType {
 				const name =
 					e.kind === 'recommendation' ? (cb.checked ? 'undo' : 'remove') : cb.checked ? 'apply' : 'undo';
 				for (const fn of view.state.facet(onReviewCommand)) fn(name, e.id);
+				// the box shows the field, never its own click: a command that could not run (or has not run yet)
+				// leaves it as it was, so the next click sends the right command again
+				const now = reviewItems(view.state).suggestions?.find((x) => x.id === e.id);
+				cb.checked = now ? now.checked : e.checked;
 			});
 			row.append(cb, el('span', 'rv-suggestion-text', e.text));
 			box.append(row);
