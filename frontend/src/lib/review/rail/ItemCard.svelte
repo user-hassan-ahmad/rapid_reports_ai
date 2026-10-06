@@ -1,5 +1,6 @@
 <script lang="ts">
-	// An `action` item: a card with its lane badge, label, reason, what was dictated, and the fix.
+	// An `action` item: a card with its lane badge, label, reason, what was dictated, and the fix. Edit (write your
+	// own replacement) and Ask in chat live here only; the editor's hover chip carries the quick actions.
 	import { ICONS, LABELS } from '../editor/decorations';
 	import type { ReviewItem } from '../types';
 	import { statusNote, type RailCommand } from './ItemRow.svelte';
@@ -13,6 +14,17 @@
 	const label = $derived(item.label || item.kind);
 	const open = $derived(item.status === 'open' || item.status === 'stale');
 	const note = $derived(statusNote(item));
+
+	let editing = $state(false);
+	let draft = $state('');
+	function startEdit() {
+		draft = item.edit?.replace ?? item.anchor?.text ?? '';
+		editing = true;
+	}
+	function saveEdit() {
+		editing = false;
+		onCommand('edit', item.id, { replacement: draft });
+	}
 </script>
 
 <article
@@ -45,6 +57,32 @@
 		{/if}
 	</button>
 
+	{#if editing}
+		<form
+			class="rv-card-edit"
+			onsubmit={(e) => {
+				e.preventDefault();
+				saveEdit();
+			}}
+		>
+			<!-- svelte-ignore a11y_autofocus -->
+			<input
+				type="text"
+				bind:value={draft}
+				aria-label={`Replacement for: ${label}`}
+				autofocus
+				onkeydown={(e) => {
+					if (e.key === 'Escape') {
+						e.preventDefault();
+						editing = false;
+					}
+				}}
+			/>
+			<button type="submit" class="rv-btn rv-primary">Save</button>
+			<button type="button" class="rv-btn rv-quiet" onclick={() => (editing = false)}>Cancel</button>
+		</form>
+	{/if}
+
 	<div class="rv-card-actions">
 		{#if updating}<span class="rv-note" role="status">updating…</span>{/if}
 		{#if note}<span class="rv-note">{note}</span>{/if}
@@ -65,6 +103,14 @@
 					aria-label={`Apply: ${label}`}
 					onclick={() => onCommand('apply', item.id)}>Apply</button
 				>
+				{#if item.anchor && !editing}
+					<button
+						type="button"
+						class="rv-btn"
+						aria-label={`Edit: ${label}`}
+						onclick={startEdit}>Edit</button
+					>
+				{/if}
 			{:else}
 				<button
 					type="button"
@@ -147,6 +193,27 @@
 		color: var(--rv-ins);
 		text-decoration: none;
 		font-weight: 600;
+	}
+	.rv-card-edit {
+		display: flex;
+		gap: 6px;
+		margin-top: 8px;
+	}
+	.rv-card-edit input {
+		flex: 1;
+		min-width: 0;
+		font: inherit;
+		font-size: 0.8125rem;
+		padding: 3px 8px;
+		border-radius: 0.375rem;
+		border: 1px solid var(--rv-border);
+		background: rgba(0, 0, 0, 0.4);
+		color: var(--rv-text);
+	}
+	.rv-card-edit input:focus {
+		outline: none;
+		border-color: var(--rv-focus, #a855f7);
+		box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.3);
 	}
 	.rv-card-actions {
 		display: flex;

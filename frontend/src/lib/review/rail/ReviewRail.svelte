@@ -18,7 +18,7 @@
 	 * `onCommand('undo')`. A saved thread (`chat.thread`, spec §12.6) opens with the rail; while one exists the head
 	 * has "Chat" to return to it.
 	 */
-	import { untrack, type Snippet } from 'svelte';
+	import { tick, untrack, type Snippet } from 'svelte';
 	import type { Density } from '../editor/theme';
 	import type { ReviewStore } from '../store';
 	import type { ReviewItem } from '../types';
@@ -43,7 +43,8 @@
 		chat,
 		chatPrefill = null,
 		pending = false,
-		devControls = false
+		devControls = false,
+		reveal = null
 	}: {
 		store: ReviewStore;
 		onCommand: RailCommand;
@@ -67,6 +68,8 @@
 		pending?: boolean;
 		/** Dev page only: the legend and the density toggle in the rail head. */
 		devControls?: boolean;
+		/** The editor chip's "›": scroll to the item's card and highlight it whenever `seq` changes. */
+		reveal?: { id: string; seq: number } | null;
 	} = $props();
 
 	const FINISHED = new Set(['done', 'failed', 'skipped']);
@@ -119,6 +122,33 @@
 		if (chat?.thread?.length) untrack(() => (hasThread = true));
 	});
 	const statusOf = (id: string) => $stateStore.items.find((i) => i.id === id)?.status;
+	let railEl = $state<HTMLElement | null>(null);
+	let lastReveal = -1;
+	$effect(() => {
+		const r = reveal;
+		if (!r || r.seq === lastReveal) return;
+		lastReveal = r.seq;
+		untrack(() => void showItem(r.id));
+	});
+
+	/** Bring the item's card into view: the right tab and group open, scrolled to, highlighted and focused. */
+	async function showItem(id: string): Promise<void> {
+		tab = 'review';
+		view = 'review';
+		if (narrow) overlayOpen = true;
+		if (checks.some((i) => i.id === id)) checksOpen = true;
+		if ($foldedStore.some((i) => i.id === id)) foldOpen = true;
+		await tick();
+		const card = railEl?.querySelector<HTMLElement>(`[data-rv-item="${id}"], [data-rv-folded="${id}"]`);
+		if (!card) return;
+		card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+		card.classList.remove('rv-revealed');
+		void card.offsetWidth; // restart the highlight
+		card.classList.add('rv-revealed');
+		card.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
+		setTimeout(() => card.classList.remove('rv-revealed'), 1600);
+	}
+
 	const nothingYet = $derived(!sections.length && !checks.length && !options.length);
 	const skeleton = $derived(firstLoad || (reviewing && nothingYet));
 
@@ -341,6 +371,7 @@
 		class:rv-narrow={narrow}
 		class:rv-expanded={inChat && expanded && !narrow}
 		data-theme={theme}
+		bind:this={railEl}
 		data-testid="review-rail"
 		aria-label="Review"
 	>
@@ -675,6 +706,21 @@
 	.rv-close {
 		align-self: flex-end;
 		margin: 6px 8px 0;
+	}
+	/* the chip's "›": the card it points at glows purple, then settles */
+	@keyframes rv-reveal {
+		0%,
+		60% {
+			box-shadow: 0 0 0 2px var(--rv-accent-hover);
+			background-color: var(--rv-accent-soft);
+		}
+		100% {
+			box-shadow: 0 0 0 0 transparent;
+		}
+	}
+	.rv-rail :global(.rv-revealed) {
+		animation: rv-reveal 1.5s ease-out;
+		border-radius: 0.5rem;
 	}
 	button:focus-visible {
 		outline: 2px solid var(--rv-focus);

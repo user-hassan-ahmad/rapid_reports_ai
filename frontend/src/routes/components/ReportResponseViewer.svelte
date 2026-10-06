@@ -765,6 +765,8 @@
 	let railChat: RailChat | undefined = undefined;
 	/** "Ask in chat": the rail composer takes the text whenever `seq` changes. */
 	let chatPrefill: { text: string; seq: number } | null = null;
+	/** The editor chip's "›": the rail scrolls to the item's card whenever `seq` changes. */
+	let railReveal: { id: string; seq: number } | null = null;
 
 	const HEADING_LINE = /^([A-Z][A-Z /&()-]{2,}):\s*$/;
 	/** The report's ALL-CAPS "NAME:" headings, in order (the rail's section order when no list is passed). */
@@ -885,6 +887,7 @@
 				onCommand: (name, itemId, args) => handleReviewCommand(name, itemId, args),
 				onStale: (ids) => store.markStale(ids),
 				onHistory: handleReviewHistory,
+				onReveal: (itemId) => (railReveal = { id: itemId, seq: (railReveal?.seq ?? 0) + 1 }),
 				density: reviewDensity,
 				getItem: (itemId) => get(store).items.find((i) => i.id === itemId)
 			}),
@@ -1530,6 +1533,7 @@
 										guidelines={railGuidelines}
 										chat={railChat}
 										{chatPrefill}
+										reveal={railReveal}
 										pending={!railOn}
 									/>
 								</div>

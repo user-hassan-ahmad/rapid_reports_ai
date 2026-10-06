@@ -412,6 +412,26 @@ describe('ReviewRail', () => {
 		expect(rail()!.querySelector('[data-rv-item="a1"]')).toBeNull();
 	});
 
+	it('Edit on an action card (moved from the old popover) sends edit with the replacement', async () => {
+		const { onCommand } = await mount();
+		await page.getByRole('button', { name: 'Edit: Measurement differs' }).click();
+		const input = page.getByRole('textbox', { name: 'Replacement for: Measurement differs' });
+		await expect.element(input).toHaveValue('11 cm');
+		await input.fill('12 cm');
+		await page.getByRole('button', { name: 'Save' }).click();
+		expect(onCommand).toHaveBeenCalledWith('edit', 'a1', { replacement: '12 cm' });
+	});
+
+	it('reveal (the chip ›) opens the collapsed checks group, scrolls to the card, highlights and focuses it', async () => {
+		const { screen, store, onCommand } = await mount();
+		expect(rail()!.querySelector('[data-rv-item="c2"]')).toBeNull(); // collapsed
+		await screen.rerender({ store, onCommand, layout: 'wide', reveal: { id: 'c2', seq: 1 } });
+		await expect.element(page.getByText('Spleen 12 cm')).toBeInTheDocument();
+		const card = rail()!.querySelector<HTMLElement>('[data-rv-item="c2"]')!;
+		await expect.poll(() => card.classList.contains('rv-revealed')).toBe(true);
+		expect(card.contains(document.activeElement)).toBe(true);
+	});
+
 	it('shows an urgency banner at the top', async () => {
 		await mount(response(), { urgency: 'Cord compression: contact the referrer today.' });
 		await expect.element(page.getByRole('alert')).toHaveTextContent('Cord compression');
