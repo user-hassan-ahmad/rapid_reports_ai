@@ -124,22 +124,40 @@ function click(el: Element) {
 	el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 }
 
-function popover(view: EditorView): HTMLElement | null {
-	return view.dom.querySelector<HTMLElement>('.rv-popover');
+function chip(view: EditorView): HTMLElement | null {
+	return view.dom.querySelector<HTMLElement>('.rv-chip');
 }
 
-function buttonIn(root: Element, name: string): HTMLButtonElement {
-	const b = [...root.querySelectorAll('button')].find((x) => x.textContent?.trim() === name);
-	if (!b) throw new Error(`no button ${name} in ${root.textContent}`);
-	return b as HTMLButtonElement;
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function hoverOn(el: Element) {
+	el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
 }
 
+function actionsOf(c: Element): string[] {
+	return [...c.querySelectorAll('button')].map((b) => b.getAttribute('data-rv-chip-action') ?? '');
+}
+
+function actionBtn(c: Element, action: string): HTMLButtonElement {
+	const b = c.querySelector<HTMLButtonElement>(`button[data-rv-chip-action="${action}"]`);
+	if (!b) throw new Error(`no ${action} in chip ${c.textContent}`);
+	return b;
+}
+
+function targetEl(view: EditorView, id: string): HTMLElement {
+	return (
+		view.dom.querySelector<HTMLElement>(`[data-rv-id="${id}"]`) ??
+		view.dom.querySelector<HTMLElement>(`[data-rv-widget="${id}"]`)!
+	);
+}
+
+/** Click / tap opens the chip at once. */
 async function openOn(view: EditorView, id: string): Promise<HTMLElement> {
-	click(markEl(view, id));
+	click(targetEl(view, id));
 	await tick();
-	const p = popover(view);
-	if (!p) throw new Error('popover did not open');
-	return p;
+	const c = chip(view);
+	if (!c || c.getAttribute('data-rv-chip') !== id) throw new Error('chip did not open');
+	return c;
 }
 
 describe('review decorations', () => {
@@ -165,87 +183,161 @@ describe('review decorations', () => {
 		expect(v2.dom.dataset.density).toBe('hidden');
 	});
 
-	it('clicking a mark opens the popover with label, reason, dictation and the edit as a diff', async () => {
+	it('hovering a mark opens its chip after ~200 ms: one line, icon + rationale + icon buttons', async () => {
 		const { view } = mount();
-		const p = await openOn(view, 'a1');
-		expect(p.textContent).toContain('Measurement differs');
-		expect(p.textContent).toContain('The dictation gives 11 cm.');
-		expect(p.textContent).toContain('You dictated: “spleen eleven centimetres”');
-		expect(p.querySelector('del')?.textContent).toBe('9 cm');
-		expect(p.querySelector('ins')?.textContent).toBe('11 cm');
-		for (const name of ['Apply', 'Edit', 'Dismiss']) expect(buttonIn(p, name)).toBeTruthy();
+		hoverOn(markEl(view, 'a1'));
+		await pause(60);
+		expect(chip(view)).toBeNull(); // not instant
+		await pause(250);
+		const c = chip(view)!;
+		expect(c).not.toBeNull();
+		expect(c.getAttribute('data-rv-chip')).toBe('a1');
+		expect(c.querySelector('.rv-chip-icon')!.textContent).toBe('✕');
+		expect(c.querySelector('.rv-chip-text')!.textContent).toBe('Measurement differs');
+		expect(actionsOf(c)).toEqual(['apply', 'dismiss', 'reveal']);
+		for (const b of c.querySelectorAll('button')) {
+			expect(b.getAttribute('aria-label')).toBeTruthy();
+			expect(b.title).toBeTruthy();
+		}
+		// one line, no diff box, no Edit
+		expect(c.querySelector('del, ins, input')).toBeNull();
+		expect(c.getBoundingClientRect().height).toBeLessThan(34);
 	});
 
-	it('Apply dispatches the command callback and closes the popover', async () => {
+	it('chips by type: check, normal, pre-applied, removed and option widgets', async () => {
+		const { view } = mount();
+		const cases: [string, string, string, string[]][] = [
+			['c1', '?', 'given “simple cyst left kidney”', ['keep', 'remove', 'reveal']],
+			['g1', '✓', 'assumed normal', ['remove', 'reveal']],
+			['p1', '↶', 'added from your dictation', ['undo', 'reveal']],
+			['r1', '↺', 'contradicts your dictation', ['restore', 'reveal']],
+			['o1', '+', 'suggested', ['apply', 'reveal']]
+		];
+		for (const [id, icon, text, actions] of cases) {
+			const c = await openOn(view, id);
+			expect(c.getAttribute('data-rv-chip')).toBe(id);
+			expect(c.querySelector('.rv-chip-icon')!.textContent).toBe(icon);
+			expect(c.querySelector('.rv-chip-text')!.textContent).toBe(text);
+			expect(actionsOf(c)).toEqual(actions);
+		}
+	});
+
+	it('chip buttons run the commands through the command callback and close the chip', async () => {
 		const { view, onCommand } = mount();
-		const p = await openOn(view, 'a1');
-		click(buttonIn(p, 'Apply'));
+		click(actionBtn(await openOn(view, 'c1'), 'keep'));
+		expect(onCommand).toHaveBeenCalledWith('keep', 'c1', undefined);
+		click(actionBtn(await openOn(view, 'r1'), 'restore'));
+		expect(onCommand).toHaveBeenCalledWith('restore', 'r1', undefined);
+		click(actionBtn(await openOn(view, 'o1'), 'apply'));
+		expect(onCommand).toHaveBeenCalledWith('apply', 'o1', undefined);
+		click(actionBtn(await openOn(view, 'a1'), 'apply'));
 		expect(onCommand).toHaveBeenCalledWith('apply', 'a1', undefined);
 		await tick();
-		expect(popover(view)).toBeNull();
+		expect(chip(view)).toBeNull();
 	});
 
-	it('Escape closes the popover', async () => {
+	it('after an action the range ticks and fades (no toast)', async () => {
+		const { view } = mount();
+		click(actionBtn(await openOn(view, 'c1'), 'keep'));
+		await tick();
+		expect(view.dom.querySelector('.rv-flash')?.textContent).toBe(AMBER);
+		expect(view.dom.querySelector('.rv-flash-tick')).not.toBeNull();
+		await pause(800);
+		expect(view.dom.querySelector('.rv-flash')).toBeNull();
+	});
+
+	it('the chip stays open while the pointer is on it and closes when it leaves', async () => {
+		const { view } = mount();
+		const mark = markEl(view, 'a1');
+		const c = await openOn(view, 'a1');
+		mark.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: c }));
+		c.dispatchEvent(new MouseEvent('mouseenter'));
+		await pause(400);
+		expect(chip(view)).not.toBeNull();
+		c.dispatchEvent(new MouseEvent('mouseleave'));
+		await pause(400);
+		expect(chip(view)).toBeNull();
+	});
+
+	it('Escape closes the chip', async () => {
 		const { view } = mount();
 		await openOn(view, 'a1');
 		view.contentDOM.dispatchEvent(
 			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
 		);
 		await tick();
-		expect(popover(view)).toBeNull();
+		expect(chip(view)).toBeNull();
 	});
 
-	it('Edit opens an inline input; confirming sends the edit command with the replacement', async () => {
-		const { view, onCommand } = mount();
-		const p = await openOn(view, 'a1');
-		click(buttonIn(p, 'Edit'));
-		const input = p.querySelector('input') as HTMLInputElement;
-		expect(input.value).toBe('11 cm');
-		input.value = '12 cm';
-		input.dispatchEvent(
-			new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+	it('keyboard: the caret moving into a mark opens its chip; Tab moves focus onto its buttons', async () => {
+		const { view } = mount();
+		const at = report.indexOf(AMBER) + 2;
+		view.focus();
+		view.dispatch({ selection: { anchor: at }, userEvent: 'select' });
+		await tick();
+		expect(chip(view)?.getAttribute('data-rv-chip')).toBe('c1');
+		view.contentDOM.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
 		);
-		expect(onCommand).toHaveBeenCalledWith('edit', 'a1', { replacement: '12 cm' });
+		expect(document.activeElement?.getAttribute('data-rv-chip-action')).toBe('keep');
+		view.dispatch({ selection: { anchor: 0 }, userEvent: 'select' });
+		await tick();
+		expect(chip(view)).toBeNull();
 	});
 
-	it('a check offers Keep / Remove', async () => {
-		const { view, onCommand } = mount();
-		const p = await openOn(view, 'c1');
-		expect(p.textContent).toContain('one of your findings makes it uncertain');
-		expect(p.textContent).toContain('simple cyst left kidney');
-		click(buttonIn(p, 'Keep'));
-		expect(onCommand).toHaveBeenCalledWith('keep', 'c1', undefined);
-		const p2 = await openOn(view, 'c1');
-		click(buttonIn(p2, 'Remove'));
-		expect(onCommand).toHaveBeenCalledWith('remove', 'c1', undefined);
+	it('› asks the host to show the item in the rail', async () => {
+		const onReveal = vi.fn();
+		const { view, onCommand } = mount({ onReveal });
+		click(actionBtn(await openOn(view, 'c1'), 'reveal'));
+		expect(onReveal).toHaveBeenCalledWith('c1');
+		expect(onCommand).not.toHaveBeenCalled();
 	});
 
-	it('a pre-applied insert offers Undo', async () => {
-		const { view, onCommand } = mount();
-		const p = await openOn(view, 'p1');
-		expect(() => buttonIn(p, 'Apply')).toThrow();
-		click(buttonIn(p, 'Undo'));
-		expect(onCommand).toHaveBeenCalledWith('undo', 'p1', undefined);
+	it('hovering ⏎ previews the fix inline: old struck, new as ghost text; leaving clears it', async () => {
+		const { view } = mount();
+		const c = await openOn(view, 'a1');
+		const apply = actionBtn(c, 'apply');
+		apply.dispatchEvent(new MouseEvent('mouseenter'));
+		await tick();
+		expect(view.dom.querySelector('.rv-preview-del')?.textContent).toBe('9 cm');
+		expect(view.dom.querySelector('.rv-preview-ins')?.textContent).toBe('11 cm');
+		expect(view.state.doc.toString()).toBe(report); // a preview, not an edit
+		expect(view.dom.querySelector('.rv-chip del, .rv-chip ins')).toBeNull(); // no diff box
+		apply.dispatchEvent(new MouseEvent('mouseleave'));
+		await tick();
+		expect(view.dom.querySelector('.rv-preview-del, .rv-preview-ins')).toBeNull();
 	});
 
-	it("a removed widget's text is shown but is not in the document; Restore dispatches restore", () => {
-		const { view, onCommand } = mount();
-		const w = view.dom.querySelector<HTMLElement>('[data-rv-widget="r1"]')!;
-		expect(w.textContent).toContain(REMOVED);
-		expect(w.getAttribute('aria-label')).toContain(LABELS.removed);
+	it("widgets show their text but are not in the document (removed, option)", () => {
+		const { view } = mount();
+		const r = view.dom.querySelector<HTMLElement>('[data-rv-widget="r1"]')!;
+		expect(r.textContent).toContain(REMOVED);
+		expect(r.getAttribute('aria-label')).toContain(LABELS.removed);
+		const o = view.dom.querySelector<HTMLElement>('[data-rv-widget="o1"]')!;
+		expect(o.textContent).toContain(OPTION);
+		expect(o.getAttribute('aria-label')).toContain(LABELS.option);
 		expect(view.state.doc.toString()).not.toContain(REMOVED);
-		click(buttonIn(w, 'Restore'));
-		expect(onCommand).toHaveBeenCalledWith('restore', 'r1', undefined);
+		expect(view.state.doc.toString()).not.toContain(OPTION);
+		expect(r.querySelector('button')).toBeNull(); // actions live on the chip
 	});
 
-	it('an option widget is not in the document; Include dispatches apply', () => {
-		const { view, onCommand } = mount();
-		const w = view.dom.querySelector<HTMLElement>('[data-rv-widget="o1"]')!;
-		expect(w.textContent).toContain(OPTION);
-		expect(w.getAttribute('aria-label')).toContain(LABELS.option);
-		expect(view.state.doc.toString()).not.toContain(OPTION);
-		click(buttonIn(w, 'Include'));
-		expect(onCommand).toHaveBeenCalledWith('apply', 'o1', undefined);
+	it('quiet at rest: every mark is a thin underline with no fill', () => {
+		const { view } = mount();
+		for (const id of ['g1', 'c1', 'a1', 'p1']) {
+			const cs = getComputedStyle(markEl(view, id));
+			expect(cs.backgroundColor, id).toBe('rgba(0, 0, 0, 0)');
+			expect(cs.textDecorationLine, id).toContain('underline');
+			expect(cs.textDecorationThickness, id).toBe('1px');
+		}
+	});
+
+	it('the open chip lights its mark (full colour + tint)', async () => {
+		const { view } = mount();
+		await openOn(view, 'a1');
+		const lit = view.dom.querySelector<HTMLElement>('.rv-active')!;
+		expect(lit.textContent).toBe('9 cm');
+		const bg = getComputedStyle(lit.querySelector('.rv-action') ?? lit).backgroundColor;
+		expect(bg).not.toBe('rgba(0, 0, 0, 0)');
 	});
 
 	it('draws a gutter marker per item line, keyed by cls, with an accessible name', () => {
@@ -265,11 +357,11 @@ describe('review decorations', () => {
 		const { view } = mount();
 		view.dispatch({ effects: openPopover.of('nope') });
 		await tick();
-		expect(popover(view)).toBeNull();
+		expect(chip(view)).toBeNull();
 	});
 });
 
-describe('popover inside the report editor', () => {
+describe('chip inside the report editor', () => {
 	it('stays visible when the host theme hides .cm-tooltip (ReportEditor does)', async () => {
 		const byId = new Map(ITEMS.map((i) => [i.id, i]));
 		const hostTheme = EditorView.theme({ '.cm-tooltip': { display: 'none' } }, { dark: true });

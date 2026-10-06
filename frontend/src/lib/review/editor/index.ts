@@ -1,5 +1,5 @@
 /**
- * The review layer for a CM6 editor (plan Task C2): the review field, its drawing (marks, widgets, popover,
+ * The review layer for a CM6 editor (plan Task C2): the review field, its drawing (marks, widgets, hover chip,
  * gutter), density and theme, wired to the host's callbacks. ReportEditor mounts `reviewExtensions(...)` through
  * a Compartment (C3); the viewer loads items with field.replaceDoc / syncItems and applies commands with
  * field.commandTransaction.
@@ -8,6 +8,7 @@ import type { Extension } from '@codemirror/state';
 import type { ReviewItem } from '../types';
 import {
 	onReviewCommand,
+	onRevealItem,
 	reviewDisplay,
 	reviewItemLookup,
 	type ReviewCommandCallback
@@ -32,6 +33,8 @@ export interface ReviewExtensionOptions {
 	density?: Density;
 	/** The store item for an id: the popover's label, reason, source line and edit come from it. */
 	getItem?: (id: string) => ReviewItem | undefined;
+	/** The chip's "›": show the item's card in the rail. */
+	onReveal?: (id: string) => void;
 	/** The field's initial items (field.fromItems); empty by default, loaded later with replaceDoc / syncItems. */
 	initial?: ReviewFieldState;
 }
@@ -47,6 +50,7 @@ export function reviewExtensions(opts: ReviewExtensionOptions): Extension[] {
 	if (opts.onStale) ext.push(onReviewStale.of(opts.onStale));
 	if (opts.onHistory) ext.push(onReviewHistory.of(opts.onHistory));
 	if (opts.getItem) ext.push(reviewItemLookup.of(opts.getItem));
+	if (opts.onReveal) ext.push(onRevealItem.of(opts.onReveal));
 	return ext;
 }
 
@@ -56,10 +60,12 @@ export {
 	LABELS,
 	LEGEND,
 	onReviewCommand,
+	onRevealItem,
 	openPopover,
 	popoverField,
 	reviewDisplay,
 	reviewItemLookup,
+	setPreview,
 	type Meaning,
 	type ReviewCommandCallback
 } from './decorations';

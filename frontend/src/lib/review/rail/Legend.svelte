@@ -1,12 +1,15 @@
 <script lang="ts">
-	// The rail header's legend (label set "E · meaning", shared with the editor) and the density toggle.
+	// The review legend (label set "icon · meaning", shared with the editor marks). In the app it is a slim bar
+	// directly under the "Report Editor" title (ReportResponseViewer); it is not part of the rail. The density
+	// toggle is a dev-page capability only (`showDensity`): the app's density is fixed to Quiet.
 	import { LEGEND } from '../editor/decorations';
 	import type { Density } from '../editor/theme';
 
 	let {
 		density = $bindable('quiet'),
-		onDensity
-	}: { density?: Density; onDensity?: (d: Density) => void } = $props();
+		onDensity,
+		showDensity = false
+	}: { density?: Density; onDensity?: (d: Density) => void; showDensity?: boolean } = $props();
 
 	const CHOICES: { value: Density; label: string }[] = [
 		{ value: 'full', label: 'Full' },
@@ -20,88 +23,113 @@
 	}
 </script>
 
-<div class="rv-legend-bar">
+<div class="rv-legend-bar" data-testid="review-legend">
 	<ul class="rv-legend" data-rv-legend aria-label="Legend">
 		{#each LEGEND as entry (entry.key)}
 			<li class="rv-legend-{entry.key}">
-				<span class="rv-icon" aria-hidden="true">{entry.icon}</span>{entry.label}
+				<span class="rv-legend-icon" aria-hidden="true">{entry.icon}</span><span>{entry.label}</span>
 			</li>
 		{/each}
 	</ul>
-	<div class="rv-density" role="group" aria-label="Density">
-		{#each CHOICES as c (c.value)}
-			<button type="button" aria-pressed={density === c.value} onclick={() => choose(c.value)}
-				>{c.label}</button
-			>
-		{/each}
-	</div>
+	{#if showDensity}
+		<div class="rv-density" role="group" aria-label="Density">
+			{#each CHOICES as c (c.value)}
+				<button type="button" aria-pressed={density === c.value} onclick={() => choose(c.value)}
+					>{c.label}</button
+				>
+			{/each}
+		</div>
+	{/if}
 </div>
 
 <style>
 	.rv-legend-bar {
+		/* the editor marks' dark colours (editor/theme.ts), so the key reads the same as the text */
+		--lg-text: #e5e7eb;
+		--lg-muted: #9ca3af;
+		--lg-green: #5cc285;
+		--lg-amber: #e3a94a;
+		--lg-red: #ff7a7a;
+		--lg-blue: #7ea6f0;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
-		gap: 6px;
-		font-size: 0.7rem;
-		color: var(--rv-muted);
+		gap: 4px 12px;
+		font-size: 11px;
+		line-height: 1.4;
+		color: var(--lg-muted);
 	}
 	.rv-legend {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 2px 10px;
+		gap: 4px 6px;
 		list-style: none;
 		margin: 0;
 		padding: 0;
 	}
 	.rv-legend li {
 		display: inline-flex;
-		gap: 3px;
-		align-items: baseline;
+		gap: 5px;
+		align-items: center;
+		padding: 1px 8px 1px 3px;
+		border-radius: 9999px;
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		white-space: nowrap;
 	}
-	.rv-icon {
+	.rv-legend-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 15px;
+		height: 15px;
+		border-radius: 9999px;
+		font-size: 10px;
 		font-weight: 700;
+		background: rgba(255, 255, 255, 0.06);
+		color: var(--lg-text);
 	}
-	.rv-legend-dictated .rv-icon {
-		color: var(--rv-text);
+	.rv-legend-normal .rv-legend-icon {
+		color: var(--lg-green);
+		background: rgba(92, 194, 133, 0.12);
 	}
-	.rv-legend-normal .rv-icon {
-		color: var(--rv-green-line);
+	.rv-legend-check .rv-legend-icon {
+		color: var(--lg-amber);
+		background: rgba(227, 169, 74, 0.12);
 	}
-	.rv-legend-check .rv-icon {
-		color: var(--rv-amber-line);
+	.rv-legend-removed .rv-legend-icon,
+	.rv-legend-excluded .rv-legend-icon {
+		color: var(--lg-red);
+		background: rgba(255, 122, 122, 0.12);
 	}
-	.rv-legend-removed .rv-icon,
-	.rv-legend-excluded .rv-icon {
-		color: var(--rv-red-line);
-	}
-	.rv-legend-option .rv-icon {
-		color: var(--rv-blue-line);
+	.rv-legend-option .rv-legend-icon {
+		color: var(--lg-blue);
+		background: rgba(126, 166, 240, 0.12);
 	}
 	.rv-density {
 		display: inline-flex;
-		border: 1px solid var(--rv-border);
-		border-radius: 9px;
-		overflow: hidden;
+		align-items: center;
+		background: rgba(31, 41, 55, 0.6);
+		border-radius: 0.5rem;
+		padding: 2px;
 	}
 	.rv-density button {
 		font: inherit;
 		background: none;
 		border: 0;
-		padding: 0 7px;
-		line-height: 1.7;
-		color: var(--rv-muted);
+		border-radius: 0.375rem;
+		padding: 2px 8px;
+		color: #d1d5db;
 		cursor: pointer;
 	}
 	.rv-density button[aria-pressed='true'] {
-		background: var(--rv-surface-hover);
-		color: var(--rv-text);
-		font-weight: 600;
-		text-decoration: underline;
+		background: #9333ea;
+		color: #fff;
+		font-weight: 500;
 	}
 	.rv-density button:focus-visible {
-		outline: 2px solid var(--rv-blue-line);
-		outline-offset: -2px;
+		outline: 2px solid #a855f7;
+		outline-offset: 1px;
 	}
 </style>

@@ -33,6 +33,8 @@ export interface ReviewState {
 	/** run.live_write: the background write of pre-applied edits (C5 re-fetches the report when applied). */
 	liveWrite: LiveWrite | null;
 	loading: boolean;
+	/** The first load has finished (success or error); polls never drop back to the first-load state. */
+	loaded: boolean;
 	error: string | null;
 }
 
@@ -100,6 +102,7 @@ const initial = (): ReviewState => ({
 	items: [],
 	liveWrite: null,
 	loading: false,
+	loaded: false,
 	error: null
 });
 
@@ -120,6 +123,20 @@ function lanesFinished(s: ReviewState): boolean {
 
 function message(e: unknown): string {
 	return e instanceof Error ? e.message : String(e);
+}
+
+/** Keep each served item that equals the current one as the same object, and the array itself when nothing
+ * changed: a poll then re-renders only the rows that changed (no flicker). */
+function reuseUnchanged(prev: ReviewItem[], next: ReviewItem[]): ReviewItem[] {
+	const byId = new Map(prev.map((i) => [i.id, i]));
+	let same = prev.length === next.length;
+	const out = next.map((it, k) => {
+		const old = byId.get(it.id);
+		const kept = old && (old === it || JSON.stringify(old) === JSON.stringify(it)) ? old : it;
+		if (kept !== prev[k]) same = false;
+		return kept;
+	});
+	return same ? prev : out;
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -144,7 +161,7 @@ export function createReviewStore(reportId: string, opts: StoreOptions = {}): Re
 			// chat items are local (the chat endpoint does not persist them): a reload keeps them
 			const ids = new Set(served.map((i) => i.id));
 			const local = get(state).items.filter((i) => i.lane === 'chat' && !ids.has(i.id));
-			const items = [...served, ...local];
+			const items = reuseUnchanged(get(state).items, [...served, ...local]);
 			state.set({
 				mode: data.mode,
 				rail: data.rail,
@@ -154,10 +171,11 @@ export function createReviewStore(reportId: string, opts: StoreOptions = {}): Re
 				items,
 				liveWrite: data.run?.live_write ?? null,
 				loading: false,
+				loaded: true,
 				error: null
 			});
 		} catch (e) {
-			state.update((s) => ({ ...s, loading: false, error: message(e) }));
+			state.update((s) => ({ ...s, loading: false, loaded: true, error: message(e) }));
 		}
 	}
 

@@ -302,7 +302,8 @@ const reviewHistory = invertedEffects.of((tr) => {
 	if (!before) return [];
 	const out: StateEffect<unknown>[] = [];
 	const explicit = tr.effects.some((e) => e.is(setItems));
-	const after = tr.state.field(reviewField);
+	const after = tr.state.field(reviewField, false);
+	if (!after) return []; // the review layer was just removed (the viewer switched reports)
 	const dropped = after.marks.length < before.marks.length;
 	if (explicit || dropped) out.push(setItems.of(before));
 	const cmd = tr.annotation(reviewCommand);

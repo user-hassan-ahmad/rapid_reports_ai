@@ -8,7 +8,7 @@ import TemplatedReportTab from './components/TemplatedReportTab.svelte';
 import HistoryTab from './components/HistoryTab.svelte';
 import SettingsTab from './components/SettingsTab.svelte';
 import ReportEnhancementSidebar from './components/ReportEnhancementSidebar.svelte';
-import { reviewRailActive } from '$lib/review/railActive';
+import { reviewRailHoldsAside } from '$lib/review/railActive';
 import IntervalAnalysisDrawer from './components/IntervalAnalysisDrawer.svelte';
 import TemplateRefinePanel from './components/TemplateRefinePanel.svelte';
 import ReportVersionHistory from './components/ReportVersionHistory.svelte';
@@ -182,9 +182,11 @@ let navStateBeforeCopilot = false;
 let copilotAutoOpened = false;
 let copilotPanelWide = false;
 let copilotLayoutMode: 'narrow' | 'dual' | 'tri' = 'narrow';
-/** The report viewer shows the review rail (Plan 3 C5): the Copilot aside, its peek rail, padding and auto-open are
- *  left out. The aside still renders when opened explicitly (the rail's interim Guidelines tab and Ask in chat). */
-$: railActive = $reviewRailActive;
+/** The report viewer shows the review rail (Plan 3 C5), or one is expected and this report's first review GET has
+ *  not answered (railActive.ts): the Copilot aside, its peek rail, padding and auto-open are left out, so the aside
+ *  never mounts (nor flashes) while a rail is coming. It still renders when opened explicitly. */
+$: railHoldsStore = reviewRailHoldsAside(currentReportId);
+$: railActive = $railHoldsStore;
 
 /** Viewport tracking for Copilot width cap and layout tiers (md+ inline reserve). */
 let viewportWidth = 1200;

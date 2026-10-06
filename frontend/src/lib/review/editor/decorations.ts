@@ -2,13 +2,16 @@
  * How the review field is drawn (plan Task C2), generalised from the negatives prototype
  * (`lib/review/negatives-proto/decorations.ts`, which stays for /dev/negatives-proto).
  *
- * - Marks: their class plus `data-rv-id` and an accessible name; clicking one opens the popover.
- * - Widgets (removed / option / excluded): display only at their anchor, never document text (the copy invariant).
- * - The popover (`showTooltip`, opened on click, closed with Escape): label, reason, `source_line`, the edit as a
- *   diff, and the item's actions.
+ * - Marks: their class plus `data-rv-id` and an accessible name; hovering (or the keyboard caret, or a tap) opens
+ *   the item's hover chip.
+ * - Widgets (removed / option / excluded): display only at their anchor, never document text (the copy invariant);
+ *   their actions are on the chip too.
+ * - The hover chip (`showTooltip`, closed with Escape or on leave): one line, icon + a rationale built by code
+ *   (editor/chip.ts) + icon buttons; ⏎ previews its fix inline. The old click popover is gone; Edit and Ask in chat
+ *   live on the rail card.
  * - Gutter markers: one per line with items, keyed by the highest cls on the line.
  *
- * Every button (popover and widgets) goes through review commands: it calls the `onReviewCommand` callbacks with
+ * Every chip button goes through review commands: it calls the `onReviewCommand` callbacks with
  * (command name, item id, args) and nothing else. The host runs the command (lib/review/commands.ts), dispatches
  * `commandTransaction` and posts the event. The prototype's local toggles are never used here.
  */
@@ -17,6 +20,7 @@ import {
 	RangeSet,
 	StateEffect,
 	StateField,
+	type EditorState,
 	type Extension,
 	type Range
 } from '@codemirror/state';
@@ -33,6 +37,7 @@ import {
 } from '@codemirror/view';
 import type { CommandName } from '../commands';
 import type { Cls, ReviewItem } from '../types';
+import { CHIP_ICONS, chipActions, chipRationale, chipType, type ChipAction, type ChipTarget } from './chip';
 import {
 	checkReason,
 	reviewField,
@@ -182,14 +187,13 @@ class ItemWidget extends WidgetType {
 			a.id === b.id && a.kind === b.kind && a.text === b.text && widgetLabel(a) === widgetLabel(b)
 		);
 	}
-	toDOM(view: EditorView): HTMLElement {
+	toDOM(): HTMLElement {
 		const it = this.item;
 		const wrap = el('span', `rv-widget rv-${it.kind}`);
 		wrap.setAttribute('data-rv-widget', it.id);
 		wrap.setAttribute('role', 'group');
 		const label = widgetLabel(it);
 		wrap.setAttribute('aria-label', `${label}: ${it.text}`);
-		wrap.title = label;
 		const icon = el(
 			'span',
 			'rv-icon',
@@ -197,20 +201,11 @@ class ItemWidget extends WidgetType {
 		);
 		icon.setAttribute('aria-hidden', 'true');
 		wrap.append(' ', icon, el('span', 'rv-wtext', it.text));
-		if (it.kind === 'removed')
-			wrap.append(
-				button('Restore', 'Put this statement back into the report', () =>
-					send(view, 'restore', it.id)
-				)
-			);
-		else if (it.kind === 'option')
-			wrap.append(
-				button('Include', 'Add this statement to the report', () => send(view, 'apply', it.id))
-			);
 		return wrap;
 	}
-	ignoreEvent(): boolean {
-		return true;
+	ignoreEvent(e: Event): boolean {
+		// let hover / click reach the editor's handlers (the chip), but keep the widget out of selection
+		return !(e.type === 'mouseover' || e.type === 'mouseout' || e.type === 'click');
 	}
 }
 
@@ -220,7 +215,7 @@ function markLabel(m: LiveMark): string {
 	const meaning = MARK_MEANING[m.mark];
 	let t: string = LABELS[meaning];
 	if (m.mark === 'rv-check') t += ` · ${checkReason({ check_reason: m.reason }).line}`;
-	return `${t} · click for details`;
+	return `${t} · hover for actions`;
 }
 
 const reviewDecorations = EditorView.decorations.compute([reviewField], (state): DecorationSet => {
@@ -231,7 +226,7 @@ const reviewDecorations = EditorView.decorations.compute([reviewField], (state):
 		ranges.push(
 			Decoration.mark({
 				class: `rv-mark ${m.mark}`,
-				attributes: { 'data-rv-id': m.id, 'aria-label': label, title: label }
+				attributes: { 'data-rv-id': m.id, 'aria-label': label }
 			}).range(m.from, m.to)
 		);
 	}
@@ -240,164 +235,327 @@ const reviewDecorations = EditorView.decorations.compute([reviewField], (state):
 	return Decoration.set(ranges, true);
 });
 
-// ---- popover ----
+// ---- hover chip (replaces the click popover) ----
+//
+// Trigger: hovering a mark or widget (~200 ms), the caret moving into a mark by keyboard, or a click / tap. The chip
+// is a one-line tooltip anchored at the end of the mark, above the line (never over the next one), with a fade and
+// slight rise. It stays open while the pointer is on it and closes on leave or Escape. Tab from the editor while a
+// chip is open moves focus onto its buttons. Hovering ⏎ previews the fix inline (old struck, new as ghost text);
+// after an action the mark's range flashes once (a tick and fade), no toast.
 
-function isRemoval(it: ReviewItem | undefined, m: LiveMark): boolean {
-	return m.kind === 'removed' || it?.kind === 'removed' || it?.edit?.mode === 'remove';
+/** The chip's anchor, wherever it is: a mark (report text) or a widget (removed / option). */
+type ChipAnchor = { id: string; pos: number; target: ChipTarget; from: number; to: number };
+
+function anchorOf(state: EditorState, id: string): ChipAnchor | null {
+	const items = reviewItems(state);
+	const m = items.marks.find((x) => x.id === id);
+	if (m)
+		return {
+			id,
+			pos: m.to,
+			from: m.from,
+			to: m.to,
+			target: { on: 'mark', mark: m.mark, kind: m.kind, pointer: m.pointer, reason: m.reason }
+		};
+	const w = items.widgets.find((x) => x.id === id);
+	if (w && w.kind !== 'excluded')
+		return {
+			id,
+			pos: w.pos,
+			from: w.pos,
+			to: w.pos,
+			target: {
+				on: 'widget',
+				kind: w.kind,
+				pointer: w.kind === 'removed' ? w.pointer : undefined,
+				reason: w.reason
+			}
+		};
+	return null;
 }
 
-function diffOf(it: ReviewItem): HTMLElement | null {
-	const e = it.edit;
-	if (!e || it.status === 'pre_applied') return null;
-	const find = e.mode === 'insert' ? '' : (e.find ?? '');
-	const repl = e.mode === 'remove' ? '' : (e.replace ?? '');
-	if (!find && !repl) return null;
-	const d = el('div', 'rv-popover-diff');
-	d.setAttribute('aria-label', 'Proposed change');
-	if (find) d.append(el('del', '', find));
-	if (find && repl) d.append(' → ');
-	if (repl) d.append(el('ins', '', repl));
-	return d;
-}
+/** The host's "show this item in the rail" (the chip's ›). */
+export const onRevealItem = Facet.define<(id: string) => void>();
 
-function popoverDom(view: EditorView, m: LiveMark): HTMLElement {
-	const it = view.state.facet(reviewItemLookup)(m.id);
-	const meaning = MARK_MEANING[m.mark];
-	const dom = el('div', `rv-popover rv-popover-${meaning}`);
-	dom.setAttribute('role', 'dialog');
-
-	const check =
-		m.mark === 'rv-check' ? checkReason(it?.evidence ?? { check_reason: m.reason }) : null;
-	const head = el('div', 'rv-popover-label');
-	const icon = el('span', 'rv-icon', ICONS[meaning]);
-	icon.setAttribute('aria-hidden', 'true');
-	const title = it?.label || LABELS[meaning];
-	head.append(icon, title);
-	dom.append(head);
-	dom.setAttribute('aria-label', title);
-
-	const reason =
-		it?.reason ||
-		check?.line ||
-		(meaning === 'normal'
-			? DESCRIPTIONS.normal
-			: meaning === 'preapplied'
-				? DESCRIPTIONS.preapplied
-				: '');
-	if (reason) dom.append(el('div', 'rv-popover-reason', reason));
-	if (check && it?.reason && check.line !== it.reason)
-		dom.append(el('div', 'rv-popover-reason', check.line));
-
-	const pointer = (typeof it?.evidence?.pointer === 'string' && it.evidence.pointer) || m.pointer;
-	if (pointer)
-		dom.append(
-			el(
-				'div',
-				'rv-popover-pointer',
-				`${check ? check.evidenceLabel : 'Dictated finding'}: “${pointer}”`
-			)
-		);
-	if (it?.source_line)
-		dom.append(el('div', 'rv-popover-source', `You dictated: “${it.source_line}”`));
-
-	const diff = it ? diffOf(it) : null;
-	if (diff) dom.append(diff);
-
-	const row = el('div', 'rv-popover-actions');
-	const id = m.id;
-	if (m.mark === 'rv-preapplied') {
-		if (isRemoval(it, m))
-			row.append(button('Restore', 'Put the original text back', () => send(view, 'restore', id)));
-		else row.append(button('Undo', 'Take this change back out', () => send(view, 'undo', id)));
-	} else if (m.mark === 'rv-check') {
-		row.append(
-			button('Keep', 'Keep this statement as written', () => send(view, 'keep', id)),
-			button('Remove', 'Remove this statement from the report', () => send(view, 'remove', id))
-		);
-	} else if (m.mark === 'rv-normal') {
-		row.append(
-			button('Remove', 'Remove this statement from the report', () => send(view, 'remove', id))
-		);
-	} else {
-		if (it?.edit)
-			row.append(button('Apply', 'Apply the suggested change', () => send(view, 'apply', id)));
-		row.append(
-			button('Edit', 'Write your own replacement', () =>
-				startEdit(view, dom, row, id, it?.edit?.replace ?? m.text)
-			),
-			button('Dismiss', 'Dismiss this item', () => send(view, 'dismiss', id))
-		);
+/** Inline apply preview: the item whose fix is drawn into the text (old struck, new as ghost), or null. */
+export const setPreview = StateEffect.define<string | null>();
+const previewField = StateField.define<string | null>({
+	create: () => null,
+	update(id, tr) {
+		for (const e of tr.effects) if (e.is(setPreview)) id = e.value;
+		if (tr.docChanged) id = null;
+		return id;
 	}
-	const close = button('×', 'Close', () => {
-		view.dispatch({ effects: openPopover.of(null) });
-		view.focus();
+});
+
+class GhostWidget extends WidgetType {
+	constructor(readonly text: string) {
+		super();
+	}
+	eq(o: GhostWidget): boolean {
+		return o.text === this.text;
+	}
+	toDOM(): HTMLElement {
+		const e = el('span', 'rv-preview-ins', this.text);
+		e.setAttribute('aria-label', `Will read: ${this.text}`);
+		return e;
+	}
+}
+
+/** Where the fix of `it` lands: the edit's `find` near the mark, else the mark itself. */
+function previewDecorations(state: EditorState, id: string, it: ReviewItem): Range<Decoration>[] {
+	const a = anchorOf(state, id);
+	const e = it.edit;
+	if (!a || !e) return [];
+	const out: Range<Decoration>[] = [];
+	const strike = Decoration.mark({ class: 'rv-preview-del' });
+	if (e.mode === 'insert') {
+		if (e.replace) out.push(Decoration.widget({ widget: new GhostWidget(` ${e.replace}`), side: 1 }).range(a.to));
+		return out;
+	}
+	let from = a.from;
+	let to = a.to;
+	if (e.find) {
+		const lo = Math.max(0, a.from - 200);
+		const hay = state.doc.sliceString(lo, Math.min(state.doc.length, a.to + 200));
+		let best = -1;
+		for (let at = hay.indexOf(e.find); at >= 0; at = hay.indexOf(e.find, at + 1))
+			if (best < 0 || Math.abs(lo + at - a.from) < Math.abs(lo + best - a.from)) best = at;
+		if (best >= 0) {
+			from = lo + best;
+			to = from + e.find.length;
+		}
+	}
+	if (to > from) out.push(strike.range(from, to));
+	if (e.mode !== 'remove' && e.replace)
+		out.push(Decoration.widget({ widget: new GhostWidget(e.replace), side: 1 }).range(to));
+	return out;
+}
+
+const previewDecos = EditorView.decorations.compute([previewField, reviewField], (state) => {
+	const id = state.field(previewField);
+	const it = id ? state.facet(reviewItemLookup)(id) : undefined;
+	return id && it ? Decoration.set(previewDecorations(state, id, it), true) : Decoration.none;
+});
+
+/** After an action: the range flashes once (tick + fade), mapped through the action's own change. */
+const flash = StateEffect.define<{ from: number; to: number } | null>();
+const flashMark = Decoration.mark({ class: 'rv-flash' });
+const flashWidget = Decoration.widget({
+	widget: new (class extends WidgetType {
+		toDOM() {
+			const e = el('span', 'rv-flash-tick', '✓');
+			e.setAttribute('aria-hidden', 'true');
+			return e;
+		}
+	})(),
+	side: 1
+});
+const flashField = StateField.define<DecorationSet>({
+	create: () => Decoration.none,
+	update(set, tr) {
+		set = set.map(tr.changes);
+		for (const e of tr.effects)
+			if (e.is(flash)) {
+				if (!e.value) set = Decoration.none;
+				else {
+					const { from, to } = e.value;
+					const r: Range<Decoration>[] = [];
+					if (to > from) r.push(flashMark.range(from, to));
+					r.push(flashWidget.range(to));
+					set = Decoration.set(r, true);
+				}
+			}
+		return set;
+	},
+	provide: (f) => EditorView.decorations.from(f)
+});
+
+function act(view: EditorView, a: ChipAnchor, action: ChipAction): void {
+	if (action.command === 'reveal') {
+		for (const cb of view.state.facet(onRevealItem)) cb(a.id);
+		return;
+	}
+	view.dispatch({ effects: [flash.of({ from: a.from, to: a.to }), setPreview.of(null)] });
+	send(view, action.command, a.id);
+	setTimeout(() => {
+		if (!view.dom.isConnected) return;
+		view.dispatch({ effects: flash.of(null) });
+	}, 700);
+}
+
+// hover timing, per view
+interface HoverState {
+	openTimer: ReturnType<typeof setTimeout> | null;
+	closeTimer: ReturnType<typeof setTimeout> | null;
+	overChip: boolean;
+}
+const hover = new WeakMap<EditorView, HoverState>();
+const hoverOf = (view: EditorView): HoverState => {
+	let h = hover.get(view);
+	if (!h) hover.set(view, (h = { openTimer: null, closeTimer: null, overChip: false }));
+	return h;
+};
+export const CHIP_OPEN_DELAY = 200;
+const CHIP_CLOSE_DELAY = 220;
+
+function clearTimers(h: HoverState): void {
+	if (h.openTimer) clearTimeout(h.openTimer);
+	if (h.closeTimer) clearTimeout(h.closeTimer);
+	h.openTimer = h.closeTimer = null;
+}
+
+function scheduleClose(view: EditorView): void {
+	const h = hoverOf(view);
+	if (h.openTimer) clearTimeout(h.openTimer);
+	h.openTimer = null;
+	if (h.closeTimer) clearTimeout(h.closeTimer);
+	h.closeTimer = setTimeout(() => {
+		h.closeTimer = null;
+		if (h.overChip || !view.dom.isConnected) return;
+		if (view.state.field(popoverField, false) || view.state.field(previewField, false))
+			view.dispatch({ effects: [openPopover.of(null), setPreview.of(null)] });
+	}, CHIP_CLOSE_DELAY);
+}
+
+function chipDom(view: EditorView, a: ChipAnchor): HTMLElement {
+	const it = view.state.facet(reviewItemLookup)(a.id);
+	const type = chipType(a.target, it) ?? 'info';
+	const dom = el('div', `rv-chip rv-chip-${type}`);
+	dom.setAttribute('role', 'toolbar');
+	dom.setAttribute('data-rv-chip', a.id);
+	const rationale = chipRationale(a.target, it);
+	dom.setAttribute('aria-label', `${it?.label || LABELS[type]}: ${rationale}`);
+	const icon = el('span', 'rv-chip-icon', CHIP_ICONS[type]);
+	icon.setAttribute('aria-hidden', 'true');
+	dom.append(icon, el('span', 'rv-chip-text', rationale));
+	const actions = el('span', 'rv-chip-actions');
+	for (const action of chipActions(a.target, it)) {
+		const b = button(action.icon, action.label, () => act(view, a, action));
+		b.className = `rv-chip-btn${action.command === 'reveal' ? ' rv-chip-reveal' : ''}`;
+		b.setAttribute('data-rv-chip-action', action.command);
+		if (action.preview) {
+			const on = () => view.dispatch({ effects: setPreview.of(a.id) });
+			const off = () => {
+				if (view.state.field(previewField, false)) view.dispatch({ effects: setPreview.of(null) });
+			};
+			b.addEventListener('mouseenter', on);
+			b.addEventListener('focus', on);
+			b.addEventListener('mouseleave', off);
+			b.addEventListener('blur', off);
+		}
+		actions.append(b);
+	}
+	dom.append(actions);
+	const h = hoverOf(view);
+	dom.addEventListener('mouseenter', () => {
+		h.overChip = true;
+		clearTimers(h);
 	});
-	row.append(close);
-	dom.append(row);
+	dom.addEventListener('mouseleave', () => {
+		h.overChip = false;
+		scheduleClose(view);
+	});
+	dom.addEventListener('keydown', (e) => {
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			view.dispatch({ effects: [openPopover.of(null), setPreview.of(null)] });
+			view.focus();
+		} else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+			const bs = [...dom.querySelectorAll<HTMLButtonElement>('button')];
+			const at = bs.indexOf(document.activeElement as HTMLButtonElement);
+			if (at < 0) return;
+			e.preventDefault();
+			bs[(at + (e.key === 'ArrowRight' ? 1 : bs.length - 1)) % bs.length].focus();
+		}
+	});
 	return dom;
 }
 
-/** Edit: swap the actions for an inline input; Enter (or Save) sends `edit` with the replacement. The verifier
- * guards are server-side; the probe loop checks the result. */
-function startEdit(
-	view: EditorView,
-	dom: HTMLElement,
-	row: HTMLElement,
-	id: string,
-	initial: string
-): void {
-	const input = document.createElement('input');
-	input.type = 'text';
-	input.className = 'rv-popover-input';
-	input.value = initial;
-	input.setAttribute('aria-label', 'Replacement text');
-	const save = () => send(view, 'edit', id, { replacement: input.value });
-	const cancel = () => {
-		view.dispatch({ effects: openPopover.of(null) });
-		view.focus();
-	};
-	input.addEventListener('keydown', (e) => {
-		if (e.key === 'Enter') {
-			e.preventDefault();
-			save();
-		} else if (e.key === 'Escape') {
-			e.preventDefault();
-			cancel();
-		}
-	});
-	const actions = el('div', 'rv-popover-actions');
-	actions.append(button('Save', 'Use this text', save), button('Cancel', 'Cancel editing', cancel));
-	row.replaceWith(input, actions);
-	input.focus();
-}
-
+/** The open chip's item id (null: closed). `openPopover` keeps its name for the host (focus after a command). */
 export const popoverField = StateField.define<string | null>({
 	create: () => null,
 	update(id, tr) {
 		for (const e of tr.effects) if (e.is(openPopover)) id = e.value;
-		if (id && !reviewItems(tr.state).marks.some((m) => m.id === id)) id = null; // answered, or typed over
+		// keyboard caret into a mark opens its chip; out of every mark closes it
+		if (tr.selection && tr.isUserEvent('select') && !tr.isUserEvent('select.pointer')) {
+			const head = tr.state.selection.main.head;
+			const m = reviewItems(tr.state).marks.find((x) => head >= x.from && head <= x.to);
+			id = m ? m.id : null;
+		}
+		if (id && !anchorOf(tr.state, id)) id = null; // answered, or typed over
 		return id;
 	},
 	provide: (f) =>
 		showTooltip.compute([f, reviewField], (state): Tooltip | null => {
 			const id = state.field(f);
-			const m = id ? reviewItems(state).marks.find((x) => x.id === id) : null;
-			if (!m) return null;
+			const a = id ? anchorOf(state, id) : null;
+			if (!a) return null;
 			return {
-				pos: m.from,
-				end: m.to,
-				above: false,
-				create: (view) => ({ dom: popoverDom(view, m) })
+				pos: a.pos,
+				above: true,
+				strictSide: false,
+				arrow: false,
+				create: (view) => ({
+					dom: chipDom(view, a),
+					// at the mark's end horizontally, but above its FIRST line: a wrapped mark is never covered,
+					// and the chip never sits over the next line
+					getCoords: () => {
+						const end = view.coordsAtPos(a.to, -1) ?? view.coordsAtPos(a.pos, 1);
+						const start = view.coordsAtPos(a.from, 1) ?? end;
+						if (!end || !start) return { left: 0, right: 0, top: 0, bottom: 0 };
+						const top = Math.min(start.top, end.top);
+						const x = start.top < end.top - 2 ? Math.max(start.left, end.left) : end.left;
+						return { left: x, right: x, top, bottom: top };
+					}
+				})
 			};
 		})
 });
 
+/** The mark whose chip is open stays lit (full colour + tint) while the pointer is on the chip. */
+const activeDecos = EditorView.decorations.compute([popoverField, reviewField], (state) => {
+	const id = state.field(popoverField);
+	const a = id ? anchorOf(state, id) : null;
+	if (!a || a.to <= a.from) return Decoration.none;
+	return Decoration.set([Decoration.mark({ class: 'rv-active' }).range(a.from, a.to)]);
+});
+
+const targetId = (t: EventTarget | null): string | null => {
+	const e = (t as HTMLElement | null)?.closest?.('[data-rv-id], [data-rv-widget]');
+	return e?.getAttribute('data-rv-id') ?? e?.getAttribute('data-rv-widget') ?? null;
+};
+
 const popoverHandlers = EditorView.domEventHandlers({
+	mouseover(event, view) {
+		const id = targetId(event.target);
+		if (!id) return false;
+		const h = hoverOf(view);
+		if (h.closeTimer) clearTimeout(h.closeTimer);
+		h.closeTimer = null;
+		if (view.state.field(popoverField, false) === id) return false;
+		if (h.openTimer) clearTimeout(h.openTimer);
+		h.openTimer = setTimeout(() => {
+			h.openTimer = null;
+			if (view.dom.isConnected) view.dispatch({ effects: openPopover.of(id) });
+		}, CHIP_OPEN_DELAY);
+		return false;
+	},
+	mouseout(event, view) {
+		const from = targetId(event.target);
+		if (!from) return false;
+		const to = event.relatedTarget as HTMLElement | null;
+		if (to && (targetId(to) === from || to.closest?.('.rv-chip'))) return false;
+		scheduleClose(view);
+		return false;
+	},
 	click(event, view) {
-		const target = (event.target as HTMLElement | null)?.closest?.('[data-rv-id]');
-		const id = target?.getAttribute('data-rv-id') ?? null;
-		const current = view.state.field(popoverField, false) ?? null;
-		if (id !== current) view.dispatch({ effects: openPopover.of(id) });
+		// touch (tap) and click open at once
+		const id = targetId(event.target);
+		if (!id) return false;
+		const h = hoverOf(view);
+		clearTimers(h);
+		if (view.state.field(popoverField, false) !== id) view.dispatch({ effects: openPopover.of(id) });
 		return false;
 	}
 });
@@ -407,7 +565,17 @@ const popoverKeys = keymap.of([
 		key: 'Escape',
 		run: (view) => {
 			if (!view.state.field(popoverField, false)) return false;
-			view.dispatch({ effects: openPopover.of(null) });
+			view.dispatch({ effects: [openPopover.of(null), setPreview.of(null)] });
+			return true;
+		}
+	},
+	{
+		key: 'Tab',
+		run: (view) => {
+			if (!view.state.field(popoverField, false)) return false;
+			const b = view.dom.querySelector<HTMLButtonElement>('.rv-chip button');
+			if (!b) return false;
+			b.focus();
 			return true;
 		}
 	}
@@ -492,7 +660,18 @@ const reviewGutter = gutter({
 	}
 });
 
-/** The drawing layer: marks, widgets, popover, gutter. The field itself comes from field.reviewFieldExtension. */
+/** The drawing layer: marks, widgets, hover chip (+ apply preview, action flash), gutter. The field itself comes from
+ * field.reviewFieldExtension. */
 export function reviewDisplay(): Extension[] {
-	return [reviewDecorations, popoverField, popoverHandlers, popoverKeys, reviewGutter];
+	return [
+		reviewDecorations,
+		previewField,
+		previewDecos,
+		flashField,
+		popoverField,
+		activeDecos,
+		popoverHandlers,
+		popoverKeys,
+		reviewGutter
+	];
 }
