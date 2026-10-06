@@ -504,3 +504,45 @@ def test_probe_adds_no_card_for_a_dismissed_contradiction(client, auth_headers, 
     body = {"text": REPORT, "text_hash": text_hash(REPORT), "changed_ranges": [[start, start + 20]]}
     r = client.post(f"/api/reports/{rid}/review/probe", headers=auth_headers, json=body).json()
     assert r["success"] and r["new_items"] == []
+
+
+def _prov_items(rid, run_id):
+    ai = ReviewItem(key="p1", report_id=rid, run_id=run_id, lane="accuracy", detectors=["provenance"],
+                    kind="ai_generated", cls="info", section="IMPRESSION", label="AI-generated",
+                    anchor=Span(start=0, end=16, text="Left renal cyst."))
+    rec = ReviewItem(key="p2", report_id=rid, run_id=run_id, lane="additions", detectors=["code.recommendation"],
+                     kind="recommendation", cls="minor", section="IMPRESSION", label="Recommendation not dictated",
+                     edit=Edit(mode="remove", find="Left renal cyst.", section="IMPRESSION"),
+                     verified={"code": True})
+    return ai, rec
+
+
+def test_provenance_items_are_returned_but_never_probed_or_reprepared(client, auth_headers, seeded, monkeypatch,
+                                                                       db_session):
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    rid, it = seeded
+    ai, rec = _prov_items(rid, it.run_id)
+    store.save_items(db_session, [ai, rec])
+    ids = {i["id"] for i in client.get(f"/api/reports/{rid}/review", headers=auth_headers).json()["items"]}
+    assert {ai.id, rec.id} <= ids
+    probed = []
+    real_probe = engine.verifier.probe
+
+    async def spy(inp_, items, text, ranges):
+        probed.extend(i.id for i in items)
+        return await real_probe(inp_, items, text, ranges)
+    monkeypatch.setattr(rc, "_jev", jev({"p*": {"noul": 0.9}}))
+    monkeypatch.setattr(engine.verifier, "probe", spy)
+    r = client.post(f"/api/reports/{rid}/review/probe", headers=auth_headers,
+                    json={"text": REPORT, "text_hash": text_hash(REPORT), "changed_ranges": []}).json()
+    assert r["success"] and ai.id not in probed and rec.id not in probed and it.id in probed
+    assert store.get_item(db_session, rid, rec.id).status == "open"
+    seen = []
+
+    async def rep(inp_, item, text):
+        seen.append(item.id)
+        return adj.Outcome(group=[])
+    monkeypatch.setattr(adj, "reprepare", rep)
+    r = client.post(f"/api/reports/{rid}/review/reprepare", headers=auth_headers,
+                    json={"item_ids": [ai.id, rec.id], "text": REPORT, "text_hash": "h"}).json()
+    assert r["success"] and seen == [] and {i["id"] for i in r["items"]} == {ai.id, rec.id}

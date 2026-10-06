@@ -53,7 +53,12 @@ conflict / number / removal outranks them; lane negatives overlapping them are d
 One card per claim (`claims`): a lane claim flagged in FINDINGS and repeated in IMPRESSION (same lane and kind, a
 conservative content match) is grouped before adjudication (`group_claims`), so one verdict covers both; the item's
 anchor is the FINDINGS copy and `evidence.also_anchors` lists the IMPRESSION copy. The negatives classifier does the
-same in its routing (`negatives.route`)."""
+same in its routing (`negatives.route`).
+
+Provenance (`provenance`, approved 2026-10-06): `ai_generated` marks undictated substantive clauses and
+`recommendation` undictated recommendation sentences (a code-built whole-sentence removal). Pure code over the
+alignment and the shared Jev pass, built after the negatives / brief items (whose spans they never mark); never
+adjudicated, never pre-applied, never probed or reprepared (`run["provenance"]` logs the counts)."""
 from __future__ import annotations
 
 import asyncio
@@ -69,7 +74,7 @@ from pydantic import BaseModel
 
 from ..report_reconcile import strip_p_values
 from ..report_review import is_negative
-from . import adjudicator, brief_normals, claims, jev_pass, live, negatives, store, verifier
+from . import adjudicator, brief_normals, claims, jev_pass, live, negatives, provenance, store, verifier
 from .alignment import Alignment, align
 from .checks import run_checks
 from .items import Candidate, Edit, ReviewInput, ReviewItem, Span, item_key, merge, text_hash
@@ -658,19 +663,30 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
             plans.pop(it.id, None)
             deduped.append({"key": it.key, "kind": it.kind, "anchor": it.anchor.model_dump() if it.anchor else None,
                             "by": "post_check"})
-    for it in surface_gate(inp, items + neg_items + brief_items):
+    prov: List[ReviewItem] = []
+    prov_log: Optional[dict] = None
+    try:                                 # provenance: undictated clauses and recommendations (pure code)
+        prov, prov_log = provenance.build_items(inp, run_id, al, jp, neg_items + brief_items)
+        for it in prov:
+            it.engine_version = ENGINE_VERSION
+        if bridge:
+            prov, _ = live.dedupe(prov, bridge)
+    except Exception as e:  # noqa: BLE001 - never fails the run
+        errors["provenance"] = f"{type(e).__name__}: {str(e)[:200]}"
+    for it in surface_gate(inp, items + neg_items + brief_items + prov):
         plans.pop(it.id, None)
     report, pre_log = _would_preapply(inp, items, plans, neg_log, neg_items)
     items += neg_items                   # correction 10: never adjudicated (only one_card_per_clause pairs them)
     items += brief_items                 # never adjudicated, never pre-applied
     items += bridge
+    items += prov                        # never adjudicated, never pre-applied
     timings["total"] = int((time.monotonic() - t0) * 1000)
     errors.update({f"adjudicator_{k}": o.error for k, o in enumerate(outcomes) if o.error})
     run = {"lanes": lanes, "timings_ms": timings, "errors": errors,
            "cost": {"groups": len(outcomes), "adjudicated": sum(1 for o in outcomes if o.judgement or o.error),
                     "candidates": len(cands), "prefiltered": len(held),
                     "negatives_calls": 1 if neg_log and neg_log.get("candidates") else 0},
-           "pre_apply": pre_log, "negatives": _neg_summary(neg_log), "deduped": deduped, "post_check": bridge_log,
+           "pre_apply": pre_log, "negatives": _neg_summary(neg_log), "deduped": deduped, "post_check": bridge_log, "provenance": prov_log,
            "negatives_report": (neg_log or {}).get("report"),
            "negatives_post_removal_anchors": (neg_log or {}).get("post_removal_anchors") or {}}
     return ReviewResult(run=run, items=items, report=report)
