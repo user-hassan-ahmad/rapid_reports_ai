@@ -25,7 +25,22 @@ def test_directive_on_appends_the_grouped_block_once(monkeypatch):
     p = qa.get_analyser_prompt("qwen-3.8-27b", directives=qa.production_directives())
     assert p.endswith(qa.GROUPED_NORMALS) and p.count("Normal-study path as linked atoms and prose") == 1
     # Case-agnostic: structural placeholders only.
-    assert "P1 | N1 N2 N3 | The A, B and C are unremarkable." in qa.GROUPED_NORMALS
+    assert "P1 | N1 N2 N4 N5 N6 | The A, B, C, D and E are unremarkable." in qa.GROUPED_NORMALS
+
+
+def test_directive_groups_across_sweep_steps_and_keeps_ducts_vessels_apart():
+    d = qa.GROUPED_NORMALS
+    assert "across sweep steps" in d and "about six" in d
+    assert "Ducts and vessels" in d and "sweep paragraph" not in d
+
+
+def test_directive_example_parses_and_passes_the_link_code_check():
+    from rapid_reports_ai import linked_normals as ln
+    lines = [ln_ for ln_ in qa.GROUPED_NORMALS.split("\n") if ln_.startswith("  - ")]
+    lk = ln.parse_linked(["- **Normal-study path:**"] + lines)
+    units = [e for e in lk.entries if isinstance(e, ln.Unit)]
+    assert all(u.prose and not u.problem and not ln.code_check(u) for u in units)
+    assert max(len(u.atoms) for u in units) == 5 and len(units) < len(lk.atoms)
 
 
 def test_prompt_version_unchanged_when_off(monkeypatch):

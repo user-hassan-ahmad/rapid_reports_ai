@@ -222,3 +222,56 @@ def test_s4_mapping():
     cs = s4_candidates({"guidelines": [card]})
     assert [c.kind for c in cs] == ["grade", "follow_up"] and cs[0].citation == {"card": 1, "source": "u", "label": "t"}
     assert "criteria" not in cs[0].evidence
+
+
+# ── finding-negative options placed in context (after the sentence of their finding) ──
+PANC = ("FINDINGS:\nThe liver is normal. There is a 32 mm hypoattenuating mass in the pancreatic head abutting the SMV. "
+        "The pancreatic duct is dilated. The spleen is normal.\n\nThe kidneys are normal.\nIMPRESSION:\n"
+        "Pancreatic head mass.")
+
+
+def _fn(text, finding):
+    return {"id": "fn0", "kind": "finding_negative", "section": "FINDINGS", "sentence": text, "finding": finding}
+
+
+def test_finding_negative_lands_after_its_finding_sentence():
+    i = inp(PANC, "- pancreatic head mass abutting SMV",
+            options=[_fn("No splenic vein thrombosis.", "pancreatic head mass/SMV")])
+    c = brief_candidates(i, align(PANC, "", "", i.artifacts.sections))[0]
+    want = "There is a 32 mm hypoattenuating mass in the pancreatic head abutting the SMV."
+    assert c.proposed.after == want and c.preclassed == "minor"
+    out = apply_edit(PANC, c.proposed, i.artifacts.sections)
+    assert want + " No splenic vein thrombosis. The pancreatic duct is dilated." in out
+    from rapid_reports_ai.review_engine.verifier import guard_failures
+    assert guard_failures(PANC, c.proposed, "option", "", "", additions=True, sections=i.artifacts.sections,
+                          item_section="FINDINGS", extra_source="No splenic vein thrombosis.",
+                          option_sentence="No splenic vein thrombosis.") == []
+
+
+def test_finding_negative_without_confident_match_goes_to_section_end():
+    i = inp(PANC, "", options=[_fn("No ascites.", "Peritoneal deposit")])
+    c = brief_candidates(i, align(PANC, "", "", i.artifacts.sections))[0]
+    assert c.proposed.after is None and c.proposed.section == "FINDINGS"
+
+
+def test_finding_negative_with_ambiguous_match_goes_to_section_end():
+    rep = ("FINDINGS:\nA pancreatic head mass measures 30 mm. A second pancreatic head mass measures 12 mm.\n"
+           "IMPRESSION:\nPancreatic masses.")
+    i = inp(rep, "", options=[_fn("No splenic vein thrombosis.", "Pancreatic head mass")])
+    c = brief_candidates(i, align(rep, "", "", i.artifacts.sections))[0]
+    assert c.proposed.after is None
+
+
+def test_finding_negative_never_anchors_outside_its_section():
+    i = inp(PANC, "", options=[_fn("No splenic vein thrombosis.", "Pancreatic head mass")])
+    i.artifacts.report = PANC.replace("There is a 32 mm hypoattenuating mass in the pancreatic head abutting the SMV. ",
+                                      "")
+    c = brief_candidates(i, align(i.artifacts.report, "", "", i.artifacts.sections))[0]
+    assert c.proposed.after is None             # the IMPRESSION "Pancreatic head mass." is not a FINDINGS anchor
+
+
+def test_recommendation_option_keeps_section_end_even_with_finding():
+    i = inp(PANC, "", options=[{"id": "o1", "kind": "recommendation", "section": "IMPRESSION",
+                                "sentence": "MDT discussion is suggested.", "finding": "pancreatic head mass"}])
+    c = brief_candidates(i, align(PANC, "", "", i.artifacts.sections))[0]
+    assert c.proposed.after is None and c.proposed.section == "IMPRESSION"
