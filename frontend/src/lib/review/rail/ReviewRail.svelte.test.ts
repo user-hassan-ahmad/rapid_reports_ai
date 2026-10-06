@@ -180,33 +180,26 @@ afterEach(() => {
 });
 
 describe('ReviewRail', () => {
-	it('groups rows by section in report order, Unanchored last; checks, options and normals are not in sections', async () => {
+	it('groups the flagged issues by section in report order, Unanchored last; no checks, suggestions, minor rows, normals or info', async () => {
 		await mount();
-		await expect.element(page.getByRole('heading', { name: 'Liver' })).toBeInTheDocument();
+		await expect.element(page.getByRole('heading', { name: 'Spleen' })).toBeInTheDocument();
 		const headings = [...rail()!.querySelectorAll('[data-rv-section]')].map((h) =>
 			h.getAttribute('data-rv-section')
 		);
-		expect(headings).toEqual(['Liver', 'Spleen', 'Kidneys', 'Unanchored']);
-		const liver = rail()!.querySelector('[data-rv-section="Liver"]')!.closest('section')!;
-		const ids = [...liver.querySelectorAll('[data-rv-item]')].map((e) =>
-			e.getAttribute('data-rv-item')
+		expect(headings).toEqual(['Spleen', 'Kidneys', 'Unanchored']);
+		const sectioned = [...rail()!.querySelectorAll('[data-rv-section]')].flatMap((h) =>
+			[...h.closest('section')!.querySelectorAll('[data-rv-item]')].map((e) => e.getAttribute('data-rv-item'))
 		);
-		expect(ids).toEqual(['i1', 'm1']); // by anchor start; c1 (check) and n1 (normal) excluded
-		expect(rail()!.querySelector('[data-rv-item="n1"]')).toBeNull();
+		expect(sectioned).toEqual(['a1', 'p1', 'r1', 'u1']);
+		for (const id of ['n1', 'i1', 'c1', 'c2', 'm1', 'o1']) expect(rail()!.querySelector(`[data-rv-item="${id}"]`)).toBeNull();
 		expect(rail()!.textContent).not.toContain('Liver normal');
 	});
 
-	it('renders by class: action card, minor row, info tag, and the pre-applied variants', async () => {
+	it('renders the action card and the pre-applied variants', async () => {
 		await mount();
 		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
 		expect(rail()!.querySelector('[data-rv-item="a1"]')!.getAttribute('data-rv-variant')).toBe(
 			'card'
-		);
-		expect(rail()!.querySelector('[data-rv-item="m1"]')!.getAttribute('data-rv-variant')).toBe(
-			'row'
-		);
-		expect(rail()!.querySelector('[data-rv-item="i1"]')!.getAttribute('data-rv-variant')).toBe(
-			'tag'
 		);
 		const p1 = rail()!.querySelector<HTMLElement>('[data-rv-item="p1"]')!;
 		expect(p1.textContent).toContain('added from your dictation');
@@ -240,49 +233,49 @@ describe('ReviewRail', () => {
 		expect(onCommand).toHaveBeenCalledWith('restore', 'r1');
 	});
 
-	it('shows checks as one "N to check" group, collapsed by default, with Keep and Remove', async () => {
-		const { onCommand } = await mount();
-		const toggle = page.getByRole('button', { name: /2 to check/ });
-		await expect.element(toggle).toBeInTheDocument();
-		await expect.element(toggle).toHaveAttribute('aria-expanded', 'false');
-		expect(rail()!.querySelector('[data-rv-item="c1"]')).toBeNull();
-		await toggle.click();
-		await expect.element(toggle).toHaveAttribute('aria-expanded', 'true');
-		const c1 = rail()!.querySelector<HTMLElement>('[data-rv-item="c1"]')!;
-		expect(c1.closest('[data-rv-group="checks"]')).not.toBeNull();
-		await page.getByRole('button', { name: 'Keep: No hydronephrosis' }).click();
-		expect(onCommand).toHaveBeenCalledWith('keep', 'c1');
-		await page.getByRole('button', { name: 'Remove: Spleen 12 cm' }).click();
-		expect(onCommand).toHaveBeenCalledWith('remove', 'c2');
-		await toggle.click();
-		await expect.element(toggle).toHaveAttribute('aria-expanded', 'false');
-		expect(rail()!.querySelector('[data-rv-item="c1"]')).toBeNull();
-	});
-
-	it('shows options in an Options group with Add', async () => {
-		const { onCommand } = await mount();
-		const group = rail()!.querySelector('[data-rv-group="options"]');
-		expect(group).not.toBeNull();
-		expect(group!.textContent).toContain('No free fluid');
-		await page.getByRole('button', { name: 'Add: No free fluid' }).click();
-		expect(onCommand).toHaveBeenCalledWith('apply', 'o1');
-	});
-
-	it('folds suppressed and dismissed items into "N other checks passed"', async () => {
+	it('no checks in the rail: no "to check" group, no check rows (checks live only in the editor)', async () => {
 		await mount();
-		const fold = page.getByRole('button', { name: /2 other checks passed/ });
-		await expect.element(fold).toBeInTheDocument();
+		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
+		expect(rail()!.querySelector('[data-rv-group="checks"]')).toBeNull();
+		expect(rail()!.textContent).not.toMatch(/to check/);
+		expect(rail()!.querySelector('[data-rv-variant="check"]')).toBeNull();
+		expect(rail()!.textContent).not.toContain('No hydronephrosis');
+		expect(rail()!.textContent).not.toContain('Spleen 12 cm');
+	});
+
+	it('no suggestions, recommendations or AI synthesis in the rail (they live in the editor)', async () => {
+		const extra = [
+			item({ id: 'rec1', kind: 'recommendation', cls: 'minor', section: 'Spleen', label: 'Follow-up advised', anchor: at(50), edit: { mode: 'remove', find: 'x' } }),
+			item({ id: 's1', kind: 'ai_generated', cls: 'info', lane: 'accuracy', section: 'Spleen', label: 'Synthesis clause', anchor: at(55) }),
+			item({ id: 'g1', kind: 'classification', cls: 'minor', lane: 'additions', label: 'Borderline resectable', edit: { mode: 'insert', after: 'x', replace: 'Borderline resectable.' } })
+		];
+		await mount(response({ items: [...ITEMS, ...extra] }));
+		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
+		for (const id of ['o1', 'm1', 'rec1', 's1', 'g1']) expect(rail()!.querySelector(`[data-rv-item="${id}"]`), id).toBeNull();
+		expect(rail()!.querySelector('[data-rv-group="suggestions"]')).toBeNull();
+		expect(rail()!.textContent).not.toMatch(/Suggestions|Options/);
+	});
+
+	it('no "other checks passed" fold: answered and suppressed items are not in the rail', async () => {
+		await mount();
+		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
+		expect(rail()!.querySelector('[data-rv-group="folded"]')).toBeNull();
+		expect(rail()!.textContent).not.toMatch(/checks passed/);
 		expect(rail()!.textContent).not.toContain('dismissed one');
-		await fold.click();
-		await expect.element(page.getByText('dismissed one')).toBeInTheDocument();
+	});
+
+	it('the status line counts only what the rail shows', async () => {
+		await mount();
+		// open: a1, u1 (flagged issues); checks, minor rows and options are not counted
+		await expect.element(page.getByRole('status')).toHaveTextContent('2 to review');
 	});
 
 	it('Apply on a card calls the command callback; clicking a row opens the item', async () => {
 		const { onCommand } = await mount();
 		await page.getByRole('button', { name: 'Apply: Measurement differs' }).click();
 		expect(onCommand).toHaveBeenCalledWith('apply', 'a1');
-		await page.getByRole('button', { name: 'Open: Tidy wording' }).click();
-		expect(onCommand).toHaveBeenCalledWith('open_item', 'm1');
+		await page.getByRole('button', { name: 'Open: Renal calculi' }).click();
+		expect(onCommand).toHaveBeenCalledWith('open_item', 'p1');
 		await page.getByRole('button', { name: 'Dismiss: Measurement differs' }).click();
 		expect(onCommand).toHaveBeenCalledWith('dismiss', 'a1');
 	});
@@ -297,20 +290,15 @@ describe('ReviewRail', () => {
 	});
 
 	it('open action cards lead their section, the rest keep report order', async () => {
-		const extra = item({
-			id: 'a2',
-			kind: 'measurement',
-			cls: 'action',
-			section: 'Liver',
-			label: 'Late action',
-			anchor: at(90),
-			edit: { mode: 'replace', find: 'x', replace: 'z' }
-		});
-		await mount(response({ items: [...ITEMS, extra] }));
+		const extra = [
+			item({ id: 'a0', kind: 'measurement', cls: 'action', status: 'applied', section: 'Spleen', label: 'Early applied', anchor: at(5), edit: { mode: 'replace', find: 'x', replace: 'z' } }),
+			item({ id: 'a2', kind: 'measurement', cls: 'action', section: 'Spleen', label: 'Late action', anchor: at(90), edit: { mode: 'replace', find: 'x', replace: 'z' } })
+		];
+		await mount(response({ items: [...ITEMS, ...extra] }));
 		await expect.element(page.getByText('Late action')).toBeInTheDocument();
-		const liver = rail()!.querySelector('[data-rv-section="Liver"]')!.closest('section')!;
-		const ids = [...liver.querySelectorAll('[data-rv-item]')].map((e) => e.getAttribute('data-rv-item'));
-		expect(ids).toEqual(['a2', 'i1', 'm1']);
+		const spleen = rail()!.querySelector('[data-rv-section="Spleen"]')!.closest('section')!;
+		const ids = [...spleen.querySelectorAll('[data-rv-item]')].map((e) => e.getAttribute('data-rv-item'));
+		expect(ids).toEqual(['a1', 'a2', 'a0']);
 	});
 
 	it('dev controls: the legend and density toggle (Quiet default)', async () => {
@@ -323,7 +311,7 @@ describe('ReviewRail', () => {
 		await expect
 			.element(page.getByRole('button', { name: 'Full' }))
 			.toHaveAttribute('aria-pressed', 'true');
-		expect(rail()!.querySelector('[data-rv-legend]')!.textContent).toContain('Assumed normal');
+		expect(rail()!.querySelector('[data-rv-legend]')!.textContent).toContain('AI-generated');
 	});
 
 	it('pending: a fixed-width skeleton before the store answers, the same width once items arrive (no shift)', async () => {
@@ -341,6 +329,18 @@ describe('ReviewRail', () => {
 		await screen.rerender({ store, onCommand: vi.fn(), pending: false, layout: 'wide' });
 		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
 		expect(rail()!.getBoundingClientRect().width).toBe(before);
+		// the items fade in, never pop
+		expect(getComputedStyle(rail()!.querySelector('.rv-items')!).animationName).toContain('rv-fade-in');
+	});
+
+	it('a queued run with no lanes yet keeps the skeleton (no "Nothing to review" flash before the items)', async () => {
+		const { store } = await mount(response({ items: [], lanes: {}, run: null, running: true } as Partial<ReviewResponse>));
+		await expect.element(page.getByTestId('rv-skeleton')).toBeInTheDocument();
+		expect(rail()!.textContent).not.toContain('Nothing to review');
+		getReview.mockResolvedValueOnce(response());
+		await store.load();
+		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
+		expect(rail()!.querySelector('[data-testid="rv-skeleton"]')).toBeNull();
 	});
 
 	it('polls keep a steady body: the skeleton stays while lanes run with nothing yet; unchanged rows keep their DOM', async () => {
@@ -389,15 +389,16 @@ describe('ReviewRail', () => {
 	});
 
 	it('shows "updating…" on items being re-prepared', async () => {
-		await mount(response(), { updating: new Set(['m1']) });
-		const m1 = rail()!.querySelector<HTMLElement>('[data-rv-item="m1"]')!;
-		expect(m1.textContent).toContain('updating…');
+		await mount(response(), { updating: new Set(['p1']) });
+		await expect.poll(() => rail()?.querySelector('[data-rv-item="p1"]')).toBeTruthy();
+		const p1 = rail()!.querySelector<HTMLElement>('[data-rv-item="p1"]')!;
+		expect(p1.textContent).toContain('updating…');
 	});
 
 	it('collapses to a strip with the open count when narrow, opening as an overlay', async () => {
 		await mount(response(), { layout: 'narrow' });
-		// open = open action + minor rows: a1, m1, u1, c1, c2, o1
-		const strip = page.getByRole('button', { name: /6 open/ });
+		// open = what the rail shows: a1, u1
+		const strip = page.getByRole('button', { name: /2 open/ });
 		await expect.element(strip).toBeInTheDocument();
 		expect(rail()!.querySelector('[data-rv-item="a1"]')).toBeNull();
 		await strip.click();
@@ -422,12 +423,11 @@ describe('ReviewRail', () => {
 		expect(onCommand).toHaveBeenCalledWith('edit', 'a1', { replacement: '12 cm' });
 	});
 
-	it('reveal (the chip ›) opens the collapsed checks group, scrolls to the card, highlights and focuses it', async () => {
+	it('reveal (the inline control’s › on a flagged issue) scrolls to the card, highlights and focuses it', async () => {
 		const { screen, store, onCommand } = await mount();
-		expect(rail()!.querySelector('[data-rv-item="c2"]')).toBeNull(); // collapsed
-		await screen.rerender({ store, onCommand, layout: 'wide', reveal: { id: 'c2', seq: 1 } });
-		await expect.element(page.getByText('Spleen 12 cm')).toBeInTheDocument();
-		const card = rail()!.querySelector<HTMLElement>('[data-rv-item="c2"]')!;
+		await expect.element(page.getByText('Unplaced finding')).toBeInTheDocument();
+		await screen.rerender({ store, onCommand, layout: 'wide', reveal: { id: 'u1', seq: 1 } });
+		const card = rail()!.querySelector<HTMLElement>('[data-rv-item="u1"]')!;
 		await expect.poll(() => card.classList.contains('rv-revealed')).toBe(true);
 		expect(card.contains(document.activeElement)).toBe(true);
 	});

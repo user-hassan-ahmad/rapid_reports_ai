@@ -29,21 +29,39 @@ describe('chip type', () => {
 		expect(chipType({ on: 'mark', mark: 'rv-normal', kind: 'assumed_normal' })).toBe('normal');
 		expect(chipType(action, item({ kind: 'contradicted' }))).toBe('action');
 		expect(chipType({ on: 'widget', kind: 'option' })).toBe('option');
-		expect(chipType({ on: 'widget', kind: 'excluded' })).toBeNull();
+		expect(chipType({ on: 'widget', kind: 'excluded' })).toBe('excluded');
 	});
 });
 
-describe('chip actions by type', () => {
-	it('action: apply only with an edit; reveal always last', () => {
+const commands = (t: ChipTarget, it?: ReviewItem) => chipActions(t, it).map((a) => a.command);
+const icons = (t: ChipTarget, it?: ReviewItem) => chipActions(t, it).map((a) => a.icon);
+
+describe('inline control actions by type', () => {
+	it('the AI-generated layer (normal, check, synthesis) and info items are colour only: no control', () => {
+		for (const mark of ['rv-check', 'rv-normal', 'rv-synth', 'rv-info'] as const)
+			expect(commands({ on: 'mark', mark, kind: 'x' }), mark).toEqual([]);
+	});
+
+	it('a recommendation has no inline control (kept / removed from its section block)', () => {
+		const rec: ChipTarget = { on: 'mark', mark: 'rv-rec', kind: 'recommendation' };
+		const it_ = item({ kind: 'recommendation', cls: 'minor', edit: { mode: 'remove', find: 'Follow up.' } });
+		expect(commands(rec, it_)).toEqual([]);
+	});
+
+	it('simple icons: ↺ restore, ↶ undo; options ✓ / ✕; never a "?"', () => {
+		expect(commands({ on: 'widget', kind: 'option' })).toEqual(['apply', 'dismiss']);
+		expect(icons({ on: 'widget', kind: 'removed' })).toEqual(['↺']);
+		expect(commands({ on: 'mark', mark: 'rv-preapplied', kind: 'omission' })).toEqual(['undo']);
+		expect(icons({ on: 'mark', mark: 'rv-preapplied', kind: 'omission' })).toEqual(['↶']);
+		expect(commands({ on: 'widget', kind: 'excluded' })).toEqual(['undo']);
+		expect(icons(action, item({ edit: { mode: 'replace', find: 'a', replace: 'b' } }))).not.toContain('?');
+	});
+
+	it('an action item: ✓ apply only with an edit (previewed), ✕ dismiss, and › to its rail card', () => {
 		const withEdit = item({ edit: { mode: 'replace', find: 'a', replace: 'b' } });
-		expect(chipActions(action, withEdit).map((a) => a.command)).toEqual(['apply', 'dismiss', 'reveal']);
+		expect(commands(action, withEdit)).toEqual(['apply', 'dismiss', 'reveal']);
 		expect(chipActions(action, withEdit)[0].preview).toBe(true);
-		expect(chipActions(action, item({})).map((a) => a.command)).toEqual(['dismiss', 'reveal']);
-	});
-
-	it('a pre-applied removal restores; excluded has no chip', () => {
-		const t: ChipTarget = { on: 'mark', mark: 'rv-preapplied', kind: 'removed' };
-		expect(chipActions(t).map((a) => a.command)).toEqual(['restore', 'reveal']);
-		expect(chipType({ on: 'widget', kind: 'excluded' })).toBeNull();
+		expect(commands(action, item({}))).toEqual(['dismiss', 'reveal']);
 	});
 });
+

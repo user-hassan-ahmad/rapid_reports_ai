@@ -1,23 +1,26 @@
-// What a hover chip offers (pure; no DOM). The chip replaces the old click popover: one line with a type icon and
-// icon buttons by type (the rationale lives only on the rail card). Every button is a
-// review command (lib/review/commands.ts) except `reveal`, which scrolls the rail to the item's card.
+// What a highlight's inline control offers (pure; no DOM). Hovering (or the keyboard caret on) a highlight expands a
+// small control at the END of that highlight, inside the text flow: simple icons only. Only flagged action items
+// (✓ apply / ✕ dismiss / › to their rail card) have one, plus ↺ restore and ↶ undo on removed or pre-applied text.
+// Recommendations are kept or removed from their section's checkbox block (editor/decorations.ts). The AI-generated layer (assumed normals, checks, synthesis) and info items are
+// colour only: no control (the text is directly editable). Every button is a review command
+// (lib/review/commands.ts) except `reveal`.
 import type { CommandName } from '../commands';
 import type { ReviewItem } from '../types';
 import type { MarkClass } from './field';
 
-export type ChipType = 'check' | 'action' | 'normal' | 'removed' | 'option' | 'preapplied' | 'info';
+export type ChipType =
+	| 'check'
+	| 'synth'
+	| 'rec'
+	| 'action'
+	| 'normal'
+	| 'removed'
+	| 'option'
+	| 'preapplied'
+	| 'excluded'
+	| 'info';
 
-export const CHIP_ICONS: Record<ChipType, string> = {
-	check: '?',
-	action: '✕',
-	normal: '✓',
-	removed: '↺',
-	option: '+',
-	preapplied: '↶',
-	info: 'i'
-};
-
-/** What a chip is anchored to: a mark (text in the report) or a display widget (removed / option). */
+/** What a control is anchored to: a mark (text in the report) or a display widget (removed / option / excluded). */
 export type ChipTarget =
 	| { on: 'mark'; mark: MarkClass; kind: string; pointer?: string; reason?: string }
 	| { on: 'widget'; kind: 'removed' | 'option' | 'excluded'; pointer?: string; reason?: string };
@@ -26,7 +29,7 @@ export interface ChipAction {
 	command: CommandName | 'reveal';
 	icon: string;
 	label: string;
-	/** ⏎ apply: hovering previews the change inline. */
+	/** apply: hovering previews the change inline. */
 	preview?: boolean;
 }
 
@@ -34,13 +37,17 @@ function isRemoval(item: ReviewItem | undefined, kind: string): boolean {
 	return kind === 'removed' || item?.kind === 'removed' || item?.edit?.mode === 'remove';
 }
 
-export function chipType(t: ChipTarget, item?: ReviewItem): ChipType | null {
-	if (t.on === 'widget') return t.kind === 'excluded' ? null : t.kind;
+export function chipType(t: ChipTarget, item?: ReviewItem): ChipType {
+	if (t.on === 'widget') return t.kind;
 	switch (t.mark) {
 		case 'rv-check':
 			return 'check';
 		case 'rv-normal':
 			return 'normal';
+		case 'rv-synth':
+			return 'synth';
+		case 'rv-rec':
+			return 'rec';
 		case 'rv-preapplied':
 			return isRemoval(item, t.kind) ? 'removed' : 'preapplied';
 		case 'rv-info':
@@ -50,36 +57,34 @@ export function chipType(t: ChipTarget, item?: ReviewItem): ChipType | null {
 	}
 }
 
+const DISMISS: ChipAction = { command: 'dismiss', icon: '✕', label: 'Dismiss' };
 const REVEAL: ChipAction = { command: 'reveal', icon: '›', label: 'Show in the review rail' };
 
-/** The chip's buttons, by type; `›` (reveal) always last. */
+/** The control's buttons, by type (none: no control). `›` only on a flagged issue (an action item, which has a rail
+ * card). */
 export function chipActions(t: ChipTarget, item?: ReviewItem): ChipAction[] {
-	const type = chipType(t, item);
-	const out: ChipAction[] = [];
-	switch (type) {
+	switch (chipType(t, item)) {
 		case 'check':
-			out.push(
-				{ command: 'keep', icon: '✓', label: 'Keep as written' },
-				{ command: 'remove', icon: '✕', label: 'Remove from the report' }
-			);
-			break;
 		case 'normal':
-			out.push({ command: 'remove', icon: '✕', label: 'Remove from the report' });
-			break;
-		case 'action':
-			if (item?.edit) out.push({ command: 'apply', icon: '⏎', label: 'Apply the fix', preview: true });
-			out.push({ command: 'dismiss', icon: '⊘', label: 'Dismiss' });
-			break;
+		case 'synth':
+		case 'info':
+			return []; // the AI-generated layer: colour only
+		case 'rec':
+			return []; // kept / removed from the section's checkbox block
+		case 'action': {
+			const out: ChipAction[] = [];
+			if (item?.edit) out.push({ command: 'apply', icon: '✓', label: 'Apply the fix', preview: true });
+			out.push(DISMISS);
+			if (item?.cls === 'action') out.push(REVEAL);
+			return out;
+		}
 		case 'removed':
-			out.push({ command: 'restore', icon: '↺', label: 'Restore the original text' });
-			break;
+			return [{ command: 'restore', icon: '↺', label: 'Restore the original text' }];
 		case 'option':
-			out.push({ command: 'apply', icon: '+', label: 'Include in the report' });
-			break;
+			return [{ command: 'apply', icon: '✓', label: 'Include in the report' }, DISMISS];
 		case 'preapplied':
-			out.push({ command: 'undo', icon: '↶', label: 'Undo this change' });
-			break;
+			return [{ command: 'undo', icon: '↶', label: 'Undo this change' }];
+		case 'excluded':
+			return [{ command: 'undo', icon: '↶', label: 'Undo the removal' }];
 	}
-	out.push(REVEAL);
-	return out;
 }

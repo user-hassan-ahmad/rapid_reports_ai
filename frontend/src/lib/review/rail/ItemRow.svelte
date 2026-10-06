@@ -93,9 +93,9 @@
 				<span class="rv-row-sub">{removal ? removedText(item) : (item.edit?.replace ?? '')}</span>
 			{:else if variant === 'check'}
 				<span class="rv-row-sub">{checkReason(item.evidence).line}</span>
-			{:else if variant === 'option' && item.reason}
-				<span class="rv-row-sub">{item.reason}</span>
 			{/if}
+			<!-- suggestions are one line: no model reasoning (it lives nowhere in the rail) -->
+
 		</span>
 	</button>
 

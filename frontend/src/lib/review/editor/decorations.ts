@@ -2,16 +2,16 @@
  * How the review field is drawn (plan Task C2), generalised from the negatives prototype
  * (`lib/review/negatives-proto/decorations.ts`, which stays for /dev/negatives-proto).
  *
- * - Marks: their class plus `data-rv-id` and an accessible name; hovering (or the keyboard caret, or a tap) opens
- *   the item's hover chip.
+ * - Marks: their class plus `data-rv-id` and an accessible name; hovering (or the keyboard caret, or a tap) expands
+ *   the item's inline control.
  * - Widgets (removed / option / excluded): display only at their anchor, never document text (the copy invariant);
- *   their actions are on the chip too.
- * - The hover chip (`showTooltip`, closed with Escape or on leave): one line, a type icon
- *   (editor/chip.ts) + icon buttons, no rationale (that is on the rail card); ⏎ previews its fix inline. The old click popover is gone; Edit and Ask in chat
- *   live on the rail card.
+ *   their actions are on the inline control too.
+ * - The inline control (a widget decoration at the END of the highlight, inside the text flow; collapsed with Escape
+ *   or on leave): simple icon buttons (editor/chip.ts), no rationale; hovering an apply ✓ previews its fix inline. Edit
+ *   and Ask in chat live on the rail card.
  * - Gutter markers: one per line with items, keyed by the highest cls on the line.
  *
- * Every chip button goes through review commands: it calls the `onReviewCommand` callbacks with
+ * Every control button goes through review commands: it calls the `onReviewCommand` callbacks with
  * (command name, item id, args) and nothing else. The host runs the command (lib/review/commands.ts), dispatches
  * `commandTransaction` and posts the event. The prototype's local toggles are never used here.
  */
@@ -31,20 +31,20 @@ import {
 	WidgetType,
 	gutter,
 	keymap,
-	showTooltip,
-	type DecorationSet,
-	type Tooltip
+	type DecorationSet
 } from '@codemirror/view';
 import type { CommandName } from '../commands';
 import type { Cls, ReviewItem } from '../types';
-import { CHIP_ICONS, chipActions, chipType, type ChipAction, type ChipTarget } from './chip';
+import { chipActions, chipType, type ChipAction, type ChipTarget } from './chip';
 import {
+	AI_LAYER_MARKS,
 	checkReason,
 	reviewField,
 	reviewItems,
 	type LiveMark,
 	type MarkClass,
 	type ReviewFieldState,
+	type SuggestionEntry,
 	type WidgetItem
 } from './field';
 
@@ -54,6 +54,9 @@ export const LABELS = {
 	dictated: 'Your dictation',
 	normal: 'Assumed normal',
 	check: 'Check',
+	synth: 'AI synthesis',
+	ai: 'AI-generated',
+	rec: 'Recommendation',
 	removed: 'Removed · contradicts your dictation',
 	removedNumber: 'Removed · a measurement you did not dictate',
 	excluded: 'Removed by you',
@@ -79,6 +82,9 @@ export const ICONS = {
 	dictated: '✎',
 	normal: '+',
 	check: '?',
+	synth: '◆',
+	ai: '✦',
+	rec: '→',
 	removed: '✕',
 	excluded: '⊘',
 	option: '◌',
@@ -90,35 +96,47 @@ export const ICONS = {
 
 export type Meaning = keyof typeof ICONS;
 
-/** The legend's compact labels (one row under the editor title): they say which highlights the AI inferred (to be
- * checked) and which are the radiologist's own; the full meaning is the entry's `title`. */
+/** The legend (under the editor title): the radiologist's own first, then the AI's. Every entry is a toggle
+ * (editor/theme.ts `setEmphasis`): "AI-generated" shows the AI-generated layer (assumed normals, checks, synthesis:
+ * off by default, plain text), "Recommendations" their underline (on by default), the others bring their class
+ * forward. The full meaning is the entry's `title`. */
 const LEGEND_SHORT = {
 	dictated: 'Dictated',
-	normal: 'Assumed normal (AI)',
-	check: 'Check (AI-inferred)',
-	removed: 'Removed (contradicts)',
 	excluded: 'Removed by you',
-	option: 'Suggested (AI)'
+	ai: 'AI-generated',
+	rec: 'Recommendations',
+	removed: 'Removed (contradicts dictation)'
 } as const;
 
-const AI_NOTE = ' (added by AI, not dictated: check it)';
-const LEGEND_TITLE: Record<keyof typeof LEGEND_SHORT, string> = {
+export type LegendKey = keyof typeof LEGEND_SHORT;
+
+const LEGEND_TITLE: Record<LegendKey, string> = {
 	dictated: 'Your dictation',
-	normal: LABELS.normal + AI_NOTE,
-	check: 'Check: inferred by AI, may not match your findings',
-	removed: 'Removed by AI: contradicts your dictation',
 	excluded: LABELS.excluded,
-	option: LABELS.option + AI_NOTE
+	ai: 'Text not from your dictation: assumed normal (green), check (amber), AI synthesis (violet). Show or hide',
+	rec: 'Recommendations the AI added: keep or remove each one. Show or hide their underline',
+	removed: 'Removed by AI: contradicts your dictation'
 };
 
-/** The legend, in order: "E · meaning". */
-export const LEGEND: { key: Meaning; icon: string; label: string; title: string }[] = (
-	['dictated', 'normal', 'check', 'removed', 'excluded', 'option'] as const
-).map((key) => ({ key, icon: ICONS[key], label: LEGEND_SHORT[key], title: LEGEND_TITLE[key] }));
+/** The legend filters on by default (recommendations shown; the AI-generated layer off). */
+export const DEFAULT_LEGEND: readonly LegendKey[] = ['rec'];
+
+/** The legend, in order: the radiologist's own, then the AI's. */
+export const LEGEND: { key: LegendKey; icon: string; label: string; title: string; ai: boolean }[] = (
+	['dictated', 'excluded', 'ai', 'rec', 'removed'] as const
+).map((key) => ({
+	key,
+	icon: ICONS[key],
+	label: LEGEND_SHORT[key],
+	title: LEGEND_TITLE[key],
+	ai: key !== 'dictated' && key !== 'excluded'
+}));
 
 const MARK_MEANING: Record<MarkClass, Meaning> = {
 	'rv-normal': 'normal',
 	'rv-check': 'check',
+	'rv-synth': 'synth',
+	'rv-rec': 'rec',
 	'rv-preapplied': 'preapplied',
 	'rv-action': 'action',
 	'rv-minor': 'minor',
@@ -236,7 +254,7 @@ function markLabel(m: LiveMark): string {
 	const meaning = MARK_MEANING[m.mark];
 	let t: string = LABELS[meaning];
 	if (m.mark === 'rv-check') t += ` · ${checkReason({ check_reason: m.reason }).line}`;
-	return `${t} · hover for actions`;
+	return AI_LAYER_MARKS.has(m.mark) ? `${t} (AI-generated)` : `${t} · hover for actions`;
 }
 
 const reviewDecorations = EditorView.decorations.compute([reviewField], (state): DecorationSet => {
@@ -252,22 +270,134 @@ const reviewDecorations = EditorView.decorations.compute([reviewField], (state):
 		);
 	}
 	for (const w of items.widgets)
-		ranges.push(Decoration.widget({ widget: new ItemWidget(w), side: 1 }).range(w.pos));
+		if (w.kind !== 'option') ranges.push(Decoration.widget({ widget: new ItemWidget(w), side: 1 }).range(w.pos));
 	return Decoration.set(ranges, true);
 });
 
-// ---- hover chip (replaces the click popover) ----
-//
-// Trigger: hovering a mark or widget (~200 ms), the caret moving into a mark by keyboard, or a click / tap. The chip
-// is a one-line tooltip anchored at the end of the mark, above the line (never over the next one), with a fade and
-// slight rise. It stays open while the pointer is on it and closes on leave or Escape. Tab from the editor while a
-// chip is open moves focus onto its buttons. Hovering ⏎ previews the fix inline (old struck, new as ghost text);
-// after an action the mark's range flashes once (a tick and fade), no toast.
+// ---- suggestions: a checkbox subsection under each section's body (never ghost text in the report) ----
 
-/** The chip's anchor, wherever it is: a mark (report text) or a widget (removed / option). */
+const HEADING = /^\s*([A-Z][A-Z0-9 /&()-]{2,}):\s*$/;
+const normName = (s: string) => s.trim().replace(/:$/, '').trim().toLowerCase();
+
+/** Where a section's suggestions go: the end of the last non-blank line of the section body holding `pos` (or the
+ * section named `section`); the end of the document when the report has no headings. */
+function sectionBodyEnd(state: EditorState, pos: number | null, section: string | null): number {
+	const doc = state.doc;
+	let lineNo: number | null = null;
+	if (pos != null) lineNo = doc.lineAt(Math.min(pos, doc.length)).number;
+	else if (section)
+		for (let n = 1; n <= doc.lines; n++) {
+			const m = HEADING.exec(doc.line(n).text);
+			if (m && normName(m[1]) === normName(section)) {
+				lineNo = n;
+				break;
+			}
+		}
+	if (lineNo == null) return doc.length;
+	let last = lineNo;
+	for (let n = lineNo + 1; n <= doc.lines; n++) {
+		const text = doc.line(n).text;
+		if (HEADING.test(text)) break;
+		if (text.trim()) last = n;
+	}
+	return doc.line(last).to;
+}
+
+class SuggestionsWidget extends WidgetType {
+	constructor(readonly entries: readonly SuggestionEntry[]) {
+		super();
+	}
+	eq(o: SuggestionsWidget): boolean {
+		return (
+			o.entries.length === this.entries.length &&
+			o.entries.every(
+				(e, i) =>
+					e.id === this.entries[i].id &&
+					e.checked === this.entries[i].checked &&
+					e.disabled === this.entries[i].disabled &&
+					e.text === this.entries[i].text
+			)
+		);
+	}
+	toDOM(view: EditorView): HTMLElement {
+		const box = el('div', 'rv-suggestions');
+		box.contentEditable = 'false';
+		box.setAttribute('role', 'group');
+		box.setAttribute('aria-label', 'Suggestions');
+		box.setAttribute('data-rv-suggestions', '');
+		const hasRec = this.entries.some((e) => e.kind === 'recommendation');
+		box.setAttribute('aria-label', hasRec ? 'Recommendations and suggestions' : 'Suggestions');
+		box.append(el('div', 'rv-suggestions-title', hasRec ? 'Recommendations & suggestions' : 'Suggestions'));
+		for (const e of this.entries) {
+			const row = el('label', 'rv-suggestion');
+			row.setAttribute('data-rv-suggestion', e.id);
+			const cb = document.createElement('input');
+			cb.type = 'checkbox';
+			cb.checked = e.checked;
+			cb.disabled = !!e.disabled;
+			row.setAttribute('data-rv-kind', e.kind);
+			if (e.disabled) row.title = 'Edit in text';
+			cb.setAttribute(
+				'aria-label',
+				e.kind === 'recommendation'
+					? `${e.checked ? 'Keep' : 'Restore'} recommendation: ${e.text}`
+					: `${e.checked ? 'Included' : 'Include'}: ${e.text}`
+			);
+			cb.addEventListener('mousedown', (ev) => ev.stopPropagation());
+			cb.addEventListener('change', () => {
+				// ticked: insert it at its place (apply); unticked: take it out again (undo)
+				// a recommendation: unticked → remove it (its remove edit), re-ticked → undo (restores it)
+				const name =
+					e.kind === 'recommendation' ? (cb.checked ? 'undo' : 'remove') : cb.checked ? 'apply' : 'undo';
+				for (const fn of view.state.facet(onReviewCommand)) fn(name, e.id);
+			});
+			row.append(cb, el('span', 'rv-suggestion-text', e.text));
+			box.append(row);
+		}
+		return box;
+	}
+	ignoreEvent(): boolean {
+		return true;
+	}
+}
+
+const suggestionDecos = EditorView.decorations.compute([reviewField], (state): DecorationSet => {
+	const list = reviewItems(state).suggestions ?? [];
+	if (!list.length) return Decoration.none;
+	const groups = new Map<number, SuggestionEntry[]>();
+	for (const g of list) {
+		const at = sectionBodyEnd(state, g.pos, g.section);
+		const cur = groups.get(at) ?? [];
+		cur.push(g);
+		groups.set(at, cur);
+	}
+	return Decoration.set(
+		[...groups.entries()].map(([at, entries]) =>
+			Decoration.widget({ widget: new SuggestionsWidget(entries), block: true, side: 1 }).range(at)
+		),
+		true
+	);
+});
+
+// ---- inline control (replaces the floating hover chip) ----
+//
+// Trigger: hovering a mark or widget (~180 ms), the caret moving into a mark by keyboard, or a click / tap. A small
+// control expands right at the END of that highlight, inside the text flow (a widget decoration, never a floating
+// tooltip): simple icon buttons (editor/chip.ts), width and opacity animating in over ~120 ms. It stays open while the
+// pointer is on the highlight or the control and collapses when it leaves both, or on Escape. Tab from the editor
+// while it is open moves focus onto its buttons. Hovering an apply ✓ previews the fix inline (old struck, new as ghost
+// text); after an action the highlight's range flashes once (a tick and fade), no toast.
+
+/** The control's anchor, wherever it is: a mark (report text) or a widget (removed / option / excluded). */
 type ChipAnchor = { id: string; pos: number; target: ChipTarget; from: number; to: number };
 
+/** The item's control anchor, or null when it has no control (the AI-generated layer, info items). */
 function anchorOf(state: EditorState, id: string): ChipAnchor | null {
+	const a = rawAnchor(state, id);
+	return a && chipActions(a.target, state.facet(reviewItemLookup)(id)).length ? a : null;
+}
+
+function rawAnchor(state: EditorState, id: string): ChipAnchor | null {
 	const items = reviewItems(state);
 	const m = items.marks.find((x) => x.id === id);
 	if (m)
@@ -279,7 +409,7 @@ function anchorOf(state: EditorState, id: string): ChipAnchor | null {
 			target: { on: 'mark', mark: m.mark, kind: m.kind, pointer: m.pointer, reason: m.reason }
 		};
 	const w = items.widgets.find((x) => x.id === id);
-	if (w && w.kind !== 'excluded')
+	if (w)
 		return {
 			id,
 			pos: w.pos,
@@ -289,13 +419,13 @@ function anchorOf(state: EditorState, id: string): ChipAnchor | null {
 				on: 'widget',
 				kind: w.kind,
 				pointer: w.kind === 'removed' ? w.pointer : undefined,
-				reason: w.reason
+				reason: w.kind === 'excluded' ? undefined : w.reason
 			}
 		};
 	return null;
 }
 
-/** The host's "show this item in the rail" (the chip's ›). */
+/** The host's "show this item in the rail" (the control's `›`, flagged issues only). */
 export const onRevealItem = Facet.define<(id: string) => void>();
 
 /** Inline apply preview: the item whose fix is drawn into the text (old struck, new as ghost), or null. */
@@ -325,7 +455,7 @@ class GhostWidget extends WidgetType {
 
 /** Where the fix of `it` lands: the edit's `find` near the mark, else the mark itself. */
 function previewDecorations(state: EditorState, id: string, it: ReviewItem): Range<Decoration>[] {
-	const a = anchorOf(state, id);
+	const a = rawAnchor(state, id);
 	const e = it.edit;
 	if (!a || !e) return [];
 	const out: Range<Decoration>[] = [];
@@ -417,13 +547,18 @@ const hoverOf = (view: EditorView): HoverState => {
 	if (!h) hover.set(view, (h = { openTimer: null, closeTimer: null, overChip: false }));
 	return h;
 };
-export const CHIP_OPEN_DELAY = 200;
+export const CHIP_OPEN_DELAY = 180;
 const CHIP_CLOSE_DELAY = 220;
 
 function clearTimers(h: HoverState): void {
 	if (h.openTimer) clearTimeout(h.openTimer);
 	if (h.closeTimer) clearTimeout(h.closeTimer);
 	h.openTimer = h.closeTimer = null;
+}
+
+function close(view: EditorView): void {
+	if (view.state.field(popoverField, false) || view.state.field(previewField, false))
+		view.dispatch({ effects: [openPopover.of(null), setPreview.of(null)] });
 }
 
 function scheduleClose(view: EditorView): void {
@@ -434,26 +569,29 @@ function scheduleClose(view: EditorView): void {
 	h.closeTimer = setTimeout(() => {
 		h.closeTimer = null;
 		if (h.overChip || !view.dom.isConnected) return;
-		if (view.state.field(popoverField, false) || view.state.field(previewField, false))
-			view.dispatch({ effects: [openPopover.of(null), setPreview.of(null)] });
+		// keyboard focus on one of the control's buttons keeps it open
+		if (view.dom.querySelector('.rv-inline')?.contains(document.activeElement)) return;
+		close(view);
 	}, CHIP_CLOSE_DELAY);
 }
 
-function chipDom(view: EditorView, a: ChipAnchor): HTMLElement {
+const targetId = (t: EventTarget | null): string | null => {
+	const e = (t as HTMLElement | null)?.closest?.('[data-rv-id], [data-rv-widget]');
+	return e?.getAttribute('data-rv-id') ?? e?.getAttribute('data-rv-widget') ?? null;
+};
+
+function controlDom(view: EditorView, a: ChipAnchor): HTMLElement {
 	const it = view.state.facet(reviewItemLookup)(a.id);
-	const type = chipType(a.target, it) ?? 'info';
-	const dom = el('div', `rv-chip rv-chip-${type}`);
+	const type = chipType(a.target, it);
+	const dom = el('span', `rv-inline rv-inline-${type}`);
+	dom.contentEditable = 'false';
 	dom.setAttribute('role', 'toolbar');
-	dom.setAttribute('data-rv-chip', a.id);
-	dom.setAttribute('aria-label', it?.label || LABELS[type]);
-	const icon = el('span', 'rv-chip-icon', CHIP_ICONS[type]);
-	icon.setAttribute('aria-hidden', 'true');
-	dom.append(icon);
-	const actions = el('span', 'rv-chip-actions');
+	dom.setAttribute('data-rv-inline', a.id);
+	dom.setAttribute('aria-label', `Actions: ${it?.label || LABELS[type]}`);
 	for (const action of chipActions(a.target, it)) {
 		const b = button(action.icon, action.label, () => act(view, a, action));
-		b.className = `rv-chip-btn${action.command === 'reveal' ? ' rv-chip-reveal' : ''}`;
-		b.setAttribute('data-rv-chip-action', action.command);
+		b.className = `rv-inline-btn${action.command === 'reveal' ? ' rv-inline-reveal' : ''}`;
+		b.setAttribute('data-rv-action', action.command);
 		if (action.preview) {
 			const on = () => view.dispatch({ effects: setPreview.of(a.id) });
 			const off = () => {
@@ -464,22 +602,23 @@ function chipDom(view: EditorView, a: ChipAnchor): HTMLElement {
 			b.addEventListener('mouseleave', off);
 			b.addEventListener('blur', off);
 		}
-		actions.append(b);
+		dom.append(b);
 	}
-	dom.append(actions);
 	const h = hoverOf(view);
 	dom.addEventListener('mouseenter', () => {
 		h.overChip = true;
 		clearTimers(h);
 	});
-	dom.addEventListener('mouseleave', () => {
+	dom.addEventListener('mouseleave', (e) => {
 		h.overChip = false;
+		if (targetId(e.relatedTarget) === a.id) return; // back onto its own highlight
 		scheduleClose(view);
 	});
 	dom.addEventListener('keydown', (e) => {
 		if (e.key === 'Escape') {
 			e.preventDefault();
-			view.dispatch({ effects: [openPopover.of(null), setPreview.of(null)] });
+			e.stopPropagation();
+			close(view);
 			view.focus();
 		} else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
 			const bs = [...dom.querySelectorAll<HTMLButtonElement>('button')];
@@ -492,130 +631,62 @@ function chipDom(view: EditorView, a: ChipAnchor): HTMLElement {
 	return dom;
 }
 
-const CHIP_GAP = 4; // px between the chip and the mark's line
-
-type Box = { left: number; right: number; top: number; bottom: number };
-
-/** The viewport rects of the rendered text (one per visual-line fragment of each text node, widgets included). */
-function textBoxes(view: EditorView): Box[] {
-	const out: Box[] = [];
-	const walk = document.createTreeWalker(view.contentDOM, NodeFilter.SHOW_TEXT);
-	const range = document.createRange();
-	for (let n = walk.nextNode(); n; n = walk.nextNode()) {
-		if (!n.textContent?.trim()) continue;
-		range.selectNodeContents(n);
-		for (const r of range.getClientRects()) if (r.width > 0 && r.height > 0) out.push(r);
+class InlineControl extends WidgetType {
+	constructor(
+		readonly a: ChipAnchor,
+		readonly sig: string
+	) {
+		super();
 	}
-	return out;
+	eq(o: InlineControl): boolean {
+		return o.a.id === this.a.id && o.sig === this.sig;
+	}
+	toDOM(view: EditorView): HTMLElement {
+		return controlDom(view, this.a);
+	}
+	ignoreEvent(): boolean {
+		return true; // its buttons handle their own events; the editor never selects into it
+	}
 }
 
-/** Does the viewport box [left, left+w] × [top, top+h] cover any of `boxes`? */
-function coversText(boxes: readonly Box[], left: number, top: number, w: number, h: number): boolean {
-	return boxes.some((b) => left < b.right - 0.5 && b.left < left + w - 0.5 && top < b.bottom - 0.5 && b.top < top + h - 0.5);
-}
-
-/** Where the open chip goes (viewport coords of its top-left): clear above the mark's FIRST line (a small gap, at
- * the mark's end horizontally), else clear below its LAST line, whichever has room and covers no text; failing
- * that, the nearest text-free spot within CHIP_REACH px; with none, the first side with room (above first). Never
- * over the mark's own lines. */
-export function chipPlacement(
-	view: EditorView,
-	a: Pick<ChipAnchor, 'from' | 'to' | 'pos'>,
-	width: number,
-	height: number
-): { left: number; top: number; height: number } | null {
-	const end = view.coordsAtPos(a.to, -1) ?? view.coordsAtPos(a.pos, 1);
-	const start = view.coordsAtPos(a.from, 1) ?? end;
-	if (!end || !start) return null;
-	const w = width || 240;
-	const h = height || 28;
-	const x = start.top < end.top - 2 ? Math.max(start.left, end.left) : end.left;
-	const vw = window.innerWidth || document.documentElement.clientWidth;
-	const sc = view.scrollDOM.getBoundingClientRect();
-	// inside the editor's width when it fits (never out over the rail), else inside the window
-	const lo = Math.max(4, sc.left);
-	const hi = Math.min(vw, sc.right) - w - 4;
-	const clampX = (v: number) => (hi >= lo ? Math.max(lo, Math.min(v, hi)) : Math.max(4, Math.min(v, vw - w - 4)));
-	const left = clampX(x);
-	const minTop = Math.max(0, sc.top);
-	const maxBottom = Math.min(window.innerHeight || document.documentElement.clientHeight, sc.bottom);
-	const above = Math.min(start.top, end.top) - CHIP_GAP - h; // clear above the first line
-	const below = Math.max(start.bottom, end.bottom) + CHIP_GAP; // clear below the last line
-	const fits = (t: number) => t >= minTop && t + h <= maxBottom;
-	// Nearest text-free spot: right above / below the mark first, then a little further out (dense wrapped prose
-	// leaves no gap between lines, but a short neighbouring line or a paragraph break usually lies within reach), at
-	// the mark's end or its start.
-	const xs = [...new Set([left, clampX(start.left)])];
-	const boxes = textBoxes(view);
-	for (let d = 0; d <= CHIP_REACH; d += 4)
-		for (const t of [above - d, below + d])
-			if (fits(t))
-				for (const l of xs) if (!coversText(boxes, l, t, w, h)) return { left: l, top: t, height: h };
-	const top = [above, below].find(fits) ?? above;
-	return { left, top, height: h };
-}
-
-/** How far (px) beyond the mark's own lines the chip may move to find a spot that covers no text. */
-const CHIP_REACH = 72;
-
-/** The open chip's item id (null: closed). `openPopover` keeps its name for the host (focus after a command). */
+/** The open control's item id (null: closed). `openPopover` keeps its name for the host (focus after a command). */
 export const popoverField = StateField.define<string | null>({
 	create: () => null,
 	update(id, tr) {
 		for (const e of tr.effects) if (e.is(openPopover)) id = e.value;
-		// keyboard caret into a mark opens its chip; out of every mark closes it
+		// keyboard caret into a mark opens its control; out of every mark closes it
 		if (tr.selection && tr.isUserEvent('select') && !tr.isUserEvent('select.pointer')) {
 			const head = tr.state.selection.main.head;
-			const m = reviewItems(tr.state).marks.find((x) => head >= x.from && head <= x.to);
+			const m = reviewItems(tr.state).marks.find(
+				(x) => head >= x.from && head <= x.to && !!anchorOf(tr.state, x.id)
+			);
 			id = m ? m.id : null;
 		}
 		if (id && !anchorOf(tr.state, id)) id = null; // answered, or typed over
 		return id;
-	},
-	provide: (f) =>
-		showTooltip.compute([f, reviewField], (state): Tooltip | null => {
-			const id = state.field(f);
-			const a = id ? anchorOf(state, id) : null;
-			if (!a) return null;
-			return {
-				pos: a.pos,
-				// `getCoords` returns the point the chip's bottom-left sits on (chipPlacement decides above or
-				// below); strictSide keeps CodeMirror from flipping it again
-				above: true,
-				strictSide: true,
-				arrow: false,
-				create: (view) => {
-					const dom = chipDom(view, a);
-					return {
-						dom,
-						getCoords: () => {
-							const p = chipPlacement(view, a, dom.offsetWidth, dom.offsetHeight);
-							return p ? { left: p.left, right: p.left, top: p.top + p.height, bottom: p.top + p.height }
-								: { left: 0, right: 0, top: 0, bottom: 0 };
-						}
-					};
-				}
-			};
-		})
+	}
 });
 
-/** The mark whose chip is open stays lit (full colour + tint) while the pointer is on the chip. */
-const activeDecos = EditorView.decorations.compute([popoverField, reviewField], (state) => {
+/** The control itself (at the highlight's end, after any widget there) and the lit highlight. */
+const controlDecos = EditorView.decorations.compute([popoverField, reviewField], (state) => {
 	const id = state.field(popoverField);
 	const a = id ? anchorOf(state, id) : null;
-	if (!a || a.to <= a.from) return Decoration.none;
-	return Decoration.set([Decoration.mark({ class: 'rv-active' }).range(a.from, a.to)]);
+	if (!a) return Decoration.none;
+	const it = state.facet(reviewItemLookup)(a.id);
+	const sig = chipActions(a.target, it)
+		.map((x) => x.command)
+		.join(',');
+	const r: Range<Decoration>[] = [];
+	if (a.to > a.from) r.push(Decoration.mark({ class: 'rv-active' }).range(a.from, a.to));
+	// a mark's control comes straight after its text (before any widget there); a widget's comes after the widget
+	r.push(Decoration.widget({ widget: new InlineControl(a, sig), side: a.target.on === 'mark' ? 0 : 2 }).range(a.pos));
+	return Decoration.set(r, true);
 });
-
-const targetId = (t: EventTarget | null): string | null => {
-	const e = (t as HTMLElement | null)?.closest?.('[data-rv-id], [data-rv-widget]');
-	return e?.getAttribute('data-rv-id') ?? e?.getAttribute('data-rv-widget') ?? null;
-};
 
 const popoverHandlers = EditorView.domEventHandlers({
 	mouseover(event, view) {
 		const id = targetId(event.target);
-		if (!id) return false;
+		if (!id || !anchorOf(view.state, id)) return false;
 		const h = hoverOf(view);
 		if (h.closeTimer) clearTimeout(h.closeTimer);
 		h.closeTimer = null;
@@ -631,14 +702,14 @@ const popoverHandlers = EditorView.domEventHandlers({
 		const from = targetId(event.target);
 		if (!from) return false;
 		const to = event.relatedTarget as HTMLElement | null;
-		if (to && (targetId(to) === from || to.closest?.('.rv-chip'))) return false;
+		if (to && (targetId(to) === from || to.closest?.('.rv-inline'))) return false;
 		scheduleClose(view);
 		return false;
 	},
 	click(event, view) {
 		// touch (tap) and click open at once
 		const id = targetId(event.target);
-		if (!id) return false;
+		if (!id || !anchorOf(view.state, id)) return false;
 		const h = hoverOf(view);
 		clearTimers(h);
 		if (view.state.field(popoverField, false) !== id) view.dispatch({ effects: openPopover.of(id) });
@@ -651,7 +722,7 @@ const popoverKeys = keymap.of([
 		key: 'Escape',
 		run: (view) => {
 			if (!view.state.field(popoverField, false)) return false;
-			view.dispatch({ effects: [openPopover.of(null), setPreview.of(null)] });
+			close(view);
 			return true;
 		}
 	},
@@ -659,7 +730,7 @@ const popoverKeys = keymap.of([
 		key: 'Tab',
 		run: (view) => {
 			if (!view.state.field(popoverField, false)) return false;
-			const b = view.dom.querySelector<HTMLButtonElement>('.rv-chip button');
+			const b = view.dom.querySelector<HTMLButtonElement>('.rv-inline button');
 			if (!b) return false;
 			b.focus();
 			return true;
@@ -720,11 +791,8 @@ function gutterMarkers(view: EditorView): RangeSet<GutterMarker> {
 			if (at < cur.firstAt) Object.assign(cur, { firstId: id, firstAt: at });
 		}
 	};
-	for (const m of items.marks) add(m.from, m.cls, m.id, m.from);
-	for (const w of items.widgets) {
-		if (w.kind === 'removed') add(w.pos, 'action', w.id, w.pos);
-		else if (w.kind === 'option') add(w.pos, 'minor', w.id, w.pos);
-	}
+	for (const m of items.marks) if (!AI_LAYER_MARKS.has(m.mark)) add(m.from, m.cls, m.id, m.from);
+	for (const w of items.widgets) if (w.kind === 'removed') add(w.pos, 'action', w.id, w.pos);
 	const set = RangeSet.of(
 		[...lines.entries()]
 			.sort((a, b) => a[0] - b[0])
@@ -739,7 +807,9 @@ const reviewGutter = gutter({
 	markers: gutterMarkers,
 	domEventHandlers: {
 		click(view, line) {
-			const m = reviewItems(view.state).marks.find((x) => x.from >= line.from && x.from <= line.to);
+			const m = reviewItems(view.state).marks.find(
+				(x) => x.from >= line.from && x.from <= line.to && !!anchorOf(view.state, x.id)
+			);
 			if (m) view.dispatch({ effects: openPopover.of(m.id) });
 			return !!m;
 		}
@@ -751,11 +821,12 @@ const reviewGutter = gutter({
 export function reviewDisplay(): Extension[] {
 	return [
 		reviewDecorations,
+		suggestionDecos,
 		previewField,
 		previewDecos,
 		flashField,
 		popoverField,
-		activeDecos,
+		controlDecos,
 		popoverHandlers,
 		popoverKeys,
 		reviewGutter
