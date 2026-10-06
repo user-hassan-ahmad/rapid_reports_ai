@@ -36,7 +36,19 @@ import type { Cls, ItemEvidence, ItemLane, ItemStatus, ReviewItem } from '../typ
 import { isEnginePreApplied } from '../types';
 
 /** How a mark is presented. */
-export type MarkClass = 'rv-normal' | 'rv-check' | 'rv-preapplied' | 'rv-action' | 'rv-minor' | 'rv-info';
+export type MarkClass =
+	| 'rv-normal'
+	| 'rv-check'
+	| 'rv-synth'
+	| 'rv-rec'
+	| 'rv-preapplied'
+	| 'rv-action'
+	| 'rv-minor'
+	| 'rv-info';
+
+/** The "AI-generated" layer: text not from the dictation (assumed normals, checks, AI synthesis). Colour only, no
+ * actions; shown when the legend's AI-generated toggle is on. */
+export const AI_LAYER_MARKS: ReadonlySet<MarkClass> = new Set(['rv-normal', 'rv-check', 'rv-synth']);
 
 /** Why an amber (check) item needs a check (evidence.check_reason; absent = uncertain). */
 export type CheckReasonCode = 'uncertain' | 'conflict' | 'number';
@@ -80,9 +92,21 @@ export type WidgetItem =
 			trail: string; // whitespace trimmed after it
 	  };
 
+/** A suggestion (an option, or an additions insert): a checkbox in the "Suggestions" subsection under its section's
+ * body, never ghost text in the report. Ticked = applied. `pos` is where it lands (open) or sits (applied). */
+export interface SuggestionEntry {
+	id: string;
+	text: string;
+	checked: boolean;
+	pos: number | null;
+	section: string | null;
+}
+
 export interface ReviewFieldState {
 	marks: LiveMark[];
 	widgets: WidgetItem[];
+	/** Absent on a snapshot that does not touch them (the field keeps the previous list). */
+	suggestions?: SuggestionEntry[];
 }
 
 const EMPTY: ReviewFieldState = { marks: [], widgets: [] };
@@ -138,10 +162,18 @@ export function isGhostOption(it: ReviewItem): boolean {
 	return it.lane === 'additions' && it.status === 'open' && it.cls === 'minor' && it.edit?.mode === 'insert';
 }
 
+/** A suggestion item: a brief option, or a minor additions insert (whatever its status). */
+export function isSuggestion(it: ReviewItem): boolean {
+	if (it.kind === 'recommendation') return false;
+	return it.kind === 'option' || (it.lane === 'additions' && it.cls === 'minor' && it.edit?.mode === 'insert');
+}
+
 function markClassOf(it: ReviewItem): MarkClass {
 	if (it.status === 'pre_applied') return 'rv-preapplied';
 	if (it.kind === 'assumed_normal') return 'rv-normal';
 	if (it.kind === 'check') return 'rv-check';
+	if (it.kind === 'ai_generated') return 'rv-synth';
+	if (it.kind === 'recommendation') return 'rv-rec';
 	return it.cls === 'action' ? 'rv-action' : it.cls === 'minor' ? 'rv-minor' : 'rv-info';
 }
 
@@ -173,6 +205,21 @@ export function fromItems(
 	const marks: LiveMark[] = [];
 	const widgets: WidgetItem[] = [];
 	const stale: string[] = [];
+	const suggestions: SuggestionEntry[] = [];
+	for (const it of items) {
+		// suggestions: open ones with a placeable insert, and applied ones (ticked); never stale or answered
+		if (!isSuggestion(it) || (it.status !== 'open' && it.status !== 'applied')) continue;
+		const text = it.edit?.replace?.trim();
+		if (!text) continue;
+		const section = it.section ?? it.edit?.section ?? null;
+		if (it.status === 'open') {
+			const c = toChanges(doc, it.edit, opts.sections);
+			if (c && c.from === c.to) suggestions.push({ id: it.id, text, checked: false, pos: c.from, section });
+		} else {
+			const at = doc.indexOf(text);
+			suggestions.push({ id: it.id, text, checked: true, pos: at >= 0 ? at : null, section });
+		}
+	}
 	for (const it of items) {
 		if (!isShown(it) || opts.skip?.has(it.id)) continue;
 
@@ -227,8 +274,14 @@ export function fromItems(
 		}
 		marks.push({ ...metaOf(it), from: at.from, to: at.to, text: doc.slice(at.from, at.to) });
 	}
-	marks.sort((a, b) => a.from - b.from);
-	return { items: { marks, widgets }, stale };
+	// an AI-generated clause overlapping an actionable mark (e.g. an accuracy item on the same clause) is not drawn:
+	// the actionable item's styling and control win
+	const actionable = marks.filter((m) => !AI_LAYER_MARKS.has(m.mark));
+	const drawn = marks.filter(
+		(m) => !AI_LAYER_MARKS.has(m.mark) || !actionable.some((a) => a.from < m.to && m.from < a.to)
+	);
+	drawn.sort((a, b) => a.from - b.from);
+	return { items: { marks: drawn, widgets, suggestions }, stale };
 }
 
 // ---- the field ----
@@ -246,7 +299,8 @@ export function mapItems(items: ReviewFieldState, changes: ChangeDesc, dropTouch
 		marks.push({ ...m, from, to });
 	}
 	const widgets = items.widgets.map((w) => ({ ...w, pos: changes.mapPos(w.pos, -1) }));
-	return { marks, widgets };
+	const suggestions = items.suggestions?.map((g) => (g.pos == null ? g : { ...g, pos: changes.mapPos(g.pos, -1) }));
+	return suggestions ? { marks, widgets, suggestions } : { marks, widgets };
 }
 
 function touchesInterior(changes: ChangeDesc, from: number, to: number): boolean {
@@ -296,7 +350,8 @@ export const reviewField = StateField.define<ReviewFieldState>({
 	create: () => EMPTY,
 	update(items, tr) {
 		let next = tr.docChanged ? mapItems(items, tr.changes, true) : items;
-		for (const e of tr.effects) if (e.is(setItems)) next = e.value;
+		for (const e of tr.effects)
+			if (e.is(setItems)) next = e.value.suggestions || !next.suggestions ? e.value : { ...e.value, suggestions: next.suggestions };
 		return next;
 	}
 });
@@ -415,7 +470,11 @@ export function syncItems(state: EditorState, items: readonly ReviewItem[], opts
 		skip: new Set(excluded.map((w) => w.id))
 	});
 	const effects: StateEffect<unknown>[] = [
-		setItems.of({ marks: next.marks, widgets: [...next.widgets, ...excluded.filter((w) => keep.has(w.id))] })
+		setItems.of({
+			marks: next.marks,
+			widgets: [...next.widgets, ...excluded.filter((w) => keep.has(w.id))],
+			suggestions: next.suggestions
+		})
 	];
 	if (stale.length) effects.push(staleEffect.of(stale));
 	return { effects, annotations: Transaction.addToHistory.of(false) };
@@ -467,7 +526,9 @@ export function commandTransaction(
 		widgetPos,
 		skip: new Set(excluded.map((w) => w.id))
 	});
-	const effects: StateEffect<unknown>[] = [setItems.of({ marks: placed.marks, widgets: [...placed.widgets, ...excluded] })];
+	const effects: StateEffect<unknown>[] = [
+		setItems.of({ marks: placed.marks, widgets: [...placed.widgets, ...excluded], suggestions: placed.suggestions })
+	];
 	const lost = stale.filter((id) => !statuses[id]);
 	if (lost.length) effects.push(staleEffect.of(lost));
 	const command = result.event?.command ?? result.events?.[0]?.command ?? 'command';

@@ -1,16 +1,19 @@
 <script lang="ts">
 	/**
-	 * The review rail (plan Task C4, spec §12.1): tabs Review / Guidelines, an urgency banner, rows grouped by
-	 * section ("Unanchored" last; within a section the open action cards come first), one "N to check" group
-	 * (collapsed by default), an "Options" group and the "▸ N other checks passed" fold. The legend lives under the
-	 * "Report Editor" title, not here; density is fixed to Quiet (the toggle shows only with `devControls`). Below 1100 px it collapses to a strip with the open count that opens as
-	 * an overlay. It reads the one item store (lib/review/store.ts) and never changes anything itself: every action
+	 * The review rail (plan Task C4, spec §12.1): tabs Review / Guidelines, an urgency banner, chat, and ONLY the key
+	 * flagged issues: action items (contradictions, number / side errors) by section, "Unanchored" last, open cards
+	 * first, and pre-applied rows with their undo / restore. Checks, assumed normals, AI synthesis, recommendations and
+	 * suggestions never appear here: they live in the editor (the AI-generated layer, the recommendations' inline
+	 * ✓ / ✕, the suggestions checkbox subsections). The status line and the strip count only what the rail shows. The legend lives
+	 * under the "Report Editor" title, not here; density is fixed to Quiet (the toggle shows only with `devControls`).
+	 * Below 1100 px it collapses to a strip with the open count that opens as an overlay. It reads the one item store (lib/review/store.ts) and never changes anything itself: every action
 	 * goes out through `onCommand(name, itemId?, args?)`, the same commands the editor popover uses.
 	 *
 	 * Renders nothing unless the backend reports mode `live` with the rail on, `force` is set (dev page), or `pending`
 	 * (the session knows a rail is coming and this report's first GET has not answered): then a fixed-width skeleton,
-	 * so nothing shifts when the items arrive. Theme: the app's (dark card, white/10 borders, purple accent).
-	 * Assumed normals never appear here; they live only in the editor.
+	 * so nothing shifts when the items arrive; the skeleton stays while a run is queued or lanes are running with
+	 * nothing to show (never an empty → populated jump), and items fade in. Theme: the app's (dark card, white/10
+	 * borders, purple accent).
 	 *
 	 * Chat (plan Task D2, spec §12.5): with `chat`, a composer sits at the foot of the rail. Sending switches the rail
 	 * to the thread, headed by a strip "← Review · N open" and "⤢ Expand" (widens the rail). `chatPrefill` ("Ask in
@@ -24,10 +27,11 @@
 	import type { ReviewItem } from '../types';
 	import ItemCard from './ItemCard.svelte';
 	import ItemRow, { type RailCommand } from './ItemRow.svelte';
-	import ItemTag from './ItemTag.svelte';
-	import Legend from './Legend.svelte';
+		import Legend from './Legend.svelte';
 	import ChatThread from './ChatThread.svelte';
 	import { compactOpenItems, type RailChat } from '../chat';
+	import { isSuggestion } from '../editor/field';
+	import { isEnginePreApplied } from '../types';
 
 	let {
 		store,
@@ -76,21 +80,27 @@
 
 	const stateStore = $derived(store);
 	const groupsStore = $derived(store.groups);
-	const foldedStore = $derived(store.folded);
-	const countsStore = $derived(store.counts);
 
 	const visible = $derived(pending || force || ($stateStore.mode === 'live' && $stateStore.rail));
 	const laneStates = $derived(Object.values($stateStore.lanes ?? {}));
 	const failed = $derived(
 		laneStates.includes('failed') || Object.keys($stateStore.run?.errors ?? {}).length > 0
 	);
-	const reviewing = $derived(!failed && laneStates.some((v) => !FINISHED.has(v)));
+	// a queued run (no lanes yet) counts as reviewing: the skeleton holds instead of flashing "Nothing to review"
+	const reviewing = $derived(
+		!failed && ($stateStore.running || laneStates.some((v) => !FINISHED.has(v)))
+	);
 	// Until the first load answers (or while a rail is only expected) the body is a skeleton; while lanes run with
 	// nothing to show yet it stays a skeleton too, so a poll never flips it between blank and placeholder.
 	const firstLoad = $derived(pending || !$stateStore.loaded);
 
-	const isCheck = (i: ReviewItem) => i.kind === 'check';
-	const isOption = (i: ReviewItem) => i.kind === 'option';
+	/** Editor-only kinds: never a rail row, whatever their class. */
+	const EDITOR_ONLY = new Set(['check', 'assumed_normal', 'ai_generated', 'recommendation', 'option']);
+	/** A key flagged issue: an action item, or an engine pre-applied change (with its undo / restore). */
+	const isFlagged = (i: ReviewItem) =>
+		i.status === 'pre_applied' ||
+		isEnginePreApplied(i) ||
+		(i.cls === 'action' && !EDITOR_ONLY.has(i.kind) && !isSuggestion(i));
 
 	/** Open action cards lead their section; everything else keeps report order (the store's anchor order). */
 	const urgentFirst = (items: ReviewItem[]) => {
@@ -99,18 +109,15 @@
 	};
 	const sections = $derived(
 		$groupsStore
-			.map((g) => ({
-				section: g.section,
-				items: urgentFirst(g.items.filter((i) => !isCheck(i) && !isOption(i)))
-			}))
+			.map((g) => ({ section: g.section, items: urgentFirst(g.items.filter(isFlagged)) }))
 			.filter((g) => g.items.length > 0)
 	);
-	const checks = $derived($groupsStore.flatMap((g) => g.items.filter(isCheck)));
-	const options = $derived($groupsStore.flatMap((g) => g.items.filter(isOption)));
+	/** What still needs the radiologist, among what the rail shows. */
+	const openCount = $derived(
+		sections.reduce((n, g) => n + g.items.filter((i) => i.status === 'open' || i.status === 'stale').length, 0)
+	);
 
 	let tab = $state<'review' | 'guidelines'>('review');
-	let checksOpen = $state(false);
-	let foldOpen = $state(false);
 	let overlayOpen = $state(false);
 	let view = $state<'review' | 'chat'>('review');
 	let expanded = $state(false);
@@ -136,10 +143,8 @@
 		tab = 'review';
 		view = 'review';
 		if (narrow) overlayOpen = true;
-		if (checks.some((i) => i.id === id)) checksOpen = true;
-		if ($foldedStore.some((i) => i.id === id)) foldOpen = true;
 		await tick();
-		const card = railEl?.querySelector<HTMLElement>(`[data-rv-item="${id}"], [data-rv-folded="${id}"]`);
+		const card = railEl?.querySelector<HTMLElement>(`[data-rv-item="${id}"]`);
 		if (!card) return;
 		// scroll the rail body only (scrollIntoView would also scroll the page and the editor's container)
 		const body = card.closest<HTMLElement>('.rv-body');
@@ -155,7 +160,7 @@
 		setTimeout(() => card.classList.remove('rv-revealed'), 1600);
 	}
 
-	const nothingYet = $derived(!sections.length && !checks.length && !options.length);
+	const nothingYet = $derived(!sections.length);
 	const skeleton = $derived(firstLoad || (reviewing && nothingYet));
 
 	// Below ~1100 px the rail is a strip; `layout` pins it either way.
@@ -171,24 +176,13 @@
 	const narrow = $derived(layout === 'narrow' || (layout === 'auto' && narrowViewport));
 
 	const variantOf = (i: ReviewItem) =>
-		i.status === 'pre_applied'
-			? 'preapplied'
-			: i.cls === 'action'
-				? 'card'
-				: i.cls === 'info'
-					? 'tag'
-					: 'row';
-
-	const foldStatus = (i: ReviewItem) =>
-		i.status === 'addressed' ? 'addressed' : i.status === 'dismissed' ? 'dismissed' : 'passed';
+		i.status === 'pre_applied' ? 'preapplied' : i.cls === 'action' ? 'card' : 'row';
 </script>
 
 {#snippet itemView(it: ReviewItem)}
 	{@const v = variantOf(it)}
 	{#if v === 'card'}
 		<ItemCard item={it} {onCommand} updating={updating.has(it.id)} />
-	{:else if v === 'tag'}
-		<ItemTag item={it} {onCommand} updating={updating.has(it.id)} />
 	{:else}
 		<ItemRow
 			item={it}
@@ -203,7 +197,7 @@
 	{#if inChat}
 		<div class="rv-head rv-chat-head">
 			<button type="button" class="rv-btn rv-back" onclick={() => (view = 'review')}
-				>← Review · {$countsStore.open} open</button
+				>← Review · {openCount} open</button
 			>
 			<span class="rv-spacer"></span>
 			{#if !narrow}
@@ -259,8 +253,8 @@
 					<span class="rv-incomplete"><span aria-hidden="true">⚠</span> Review incomplete</span>
 				{:else if firstLoad || reviewing}
 					<span class="rv-pulse" aria-hidden="true"></span><span>Reviewing…</span>
-				{:else if $countsStore.open}
-					<span>{$countsStore.open} to review</span>
+				{:else if openCount}
+					<span>{openCount} to review</span>
 				{:else}
 					<span>All reviewed</span>
 				{/if}
@@ -287,65 +281,15 @@
 					{/each}
 				</div>
 			{:else}
-				{#each sections as g (g.section)}
-					<section class="rv-group">
-						<h3 class="rv-group-title" data-rv-section={g.section}>{g.section}</h3>
-						{#each g.items as it (it.id)}{@render itemView(it)}{/each}
-					</section>
-				{/each}
+				<div class="rv-items">
+					{#each sections as g (g.section)}
+						<section class="rv-group">
+							<h3 class="rv-group-title" data-rv-section={g.section}>{g.section}</h3>
+							{#each g.items as it (it.id)}{@render itemView(it)}{/each}
+						</section>
+					{/each}
 
-				{#if checks.length}
-					<section class="rv-group rv-checks" data-rv-group="checks">
-						<button
-							type="button"
-							class="rv-group-toggle"
-							aria-expanded={checksOpen}
-							onclick={() => (checksOpen = !checksOpen)}
-						>
-							<span aria-hidden="true">{checksOpen ? '▾' : '▸'}</span>
-							{checks.length} to check
-						</button>
-						{#if checksOpen}
-							{#each checks as it (it.id)}
-								<ItemRow item={it} {onCommand} variant="check" updating={updating.has(it.id)} />
-							{/each}
-						{/if}
-					</section>
-				{/if}
-
-				{#if options.length}
-					<section class="rv-group" data-rv-group="options">
-						<h3 class="rv-group-title">Options</h3>
-						{#each options as it (it.id)}
-							<ItemRow item={it} {onCommand} variant="option" updating={updating.has(it.id)} />
-						{/each}
-					</section>
-				{/if}
-
-				{#if $foldedStore.length}
-					<section class="rv-group rv-fold" data-rv-group="folded">
-						<button
-							type="button"
-							class="rv-group-toggle"
-							aria-expanded={foldOpen}
-							onclick={() => (foldOpen = !foldOpen)}
-						>
-							<span aria-hidden="true">{foldOpen ? '▾' : '▸'}</span>
-							{$foldedStore.length} other checks passed
-						</button>
-						{#if foldOpen}
-							<ul class="rv-fold-list">
-								{#each $foldedStore as it (it.id)}
-									<li data-rv-folded={it.id}>
-										<span aria-hidden="true">✓</span>
-										{it.label || it.kind} <span class="rv-muted">· {foldStatus(it)}</span>
-									</li>
-								{/each}
-							</ul>
-						{/if}
-					</section>
-				{/if}
-
+				</div>
 				{#if nothingYet && !reviewing && !failed}
 					<p class="rv-muted rv-empty">Nothing to review.</p>
 				{/if}
@@ -386,10 +330,10 @@
 				type="button"
 				class="rv-strip"
 				aria-expanded={overlayOpen}
-				aria-label={`Review: ${$countsStore.open} open`}
+				aria-label={`Review: ${openCount} open`}
 				onclick={() => (overlayOpen = !overlayOpen)}
 			>
-				<span class="rv-strip-count">{$countsStore.open}</span>
+				<span class="rv-strip-count">{openCount}</span>
 				<span>open</span>
 				{#if reviewing}<span class="rv-muted">…</span>{/if}
 				{#if failed}<span aria-hidden="true">⚠</span>{/if}
@@ -597,33 +541,20 @@
 		margin: 8px 0 4px;
 		font-weight: 600;
 	}
-	.rv-group-toggle {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		font: inherit;
-		font-size: 0.75rem;
-		font-weight: 600;
-		background: none;
-		border: 0;
-		border-radius: 0.375rem;
-		padding: 3px 6px 3px 2px;
-		color: var(--rv-text);
-		cursor: pointer;
+	/* items fade in (after the skeleton, and each new row as it arrives): never a jump */
+	@keyframes rv-fade-in {
+		from {
+			opacity: 0;
+			transform: translateY(2px);
+		}
+		to {
+			opacity: 1;
+			transform: none;
+		}
 	}
-	.rv-group-toggle:hover {
-		background: var(--rv-surface-hover);
-	}
-	.rv-checks {
-		border-left: 2px dashed var(--rv-amber-line);
-		padding-left: 8px;
-	}
-	.rv-fold-list {
-		list-style: none;
-		margin: 2px 0 0;
-		padding: 0 0 0 16px;
-		font-size: 0.75rem;
-		color: var(--rv-muted);
+	.rv-items,
+	.rv-items :global([data-rv-item]) {
+		animation: rv-fade-in 200ms ease-out;
 	}
 	.rv-muted {
 		color: var(--rv-muted);

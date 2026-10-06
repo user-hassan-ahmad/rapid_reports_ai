@@ -6,15 +6,17 @@ import { fromItems } from './field';
 import { reviewExtensions, setDensity, setEmphasis, openPopover, LABELS } from './index';
 
 // Tiny SYNTHETIC report: a dictated finding, a green normal, an amber check, an action item with an edit, a
-// pre-applied insert, a removed (red) widget and an option.
+// pre-applied insert, an AI synthesis clause, a recommendation, a removed (red) widget and an option.
 const DICTATED = 'Simple cyst in the left kidney.';
 const GREEN = 'The liver is normal.';
 const AMBER = 'No hydronephrosis.';
 const ACTION = 'The spleen measures 9 cm.';
 const ADDED = 'No renal calculi.';
+const SYNTH = 'Overall appearances are benign.';
+const REC = 'Suggest follow-up ultrasound in 6 months.';
 const REMOVED = 'The kidneys are normal.';
 const OPTION = 'No free fluid.';
-const report = `${DICTATED} ${GREEN} ${AMBER} ${ACTION} ${ADDED}`;
+const report = `${DICTATED} ${GREEN} ${AMBER} ${ACTION} ${ADDED} ${SYNTH} ${REC}`;
 
 function item(over: Partial<ReviewItem> & Pick<ReviewItem, 'id' | 'kind' | 'cls'>): ReviewItem {
 	return {
@@ -32,8 +34,8 @@ function item(over: Partial<ReviewItem> & Pick<ReviewItem, 'id' | 'kind' | 'cls'
 	};
 }
 
-function span(text: string) {
-	const start = report.indexOf(text);
+function span(text: string, doc = report) {
+	const start = doc.indexOf(text);
 	return { start, end: start + text.length, text };
 }
 
@@ -68,6 +70,22 @@ const ITEMS: ReviewItem[] = [
 		edit: { mode: 'insert', after: ACTION, replace: ADDED }
 	}),
 	item({
+		id: 's1',
+		kind: 'ai_generated',
+		cls: 'info',
+		lane: 'accuracy',
+		detectors: ['provenance'],
+		anchor: span(SYNTH)
+	}),
+	item({
+		id: 'rec1',
+		kind: 'recommendation',
+		cls: 'minor',
+		label: 'Follow-up recommendation',
+		anchor: span(REC),
+		edit: { mode: 'remove', find: REC }
+	}),
+	item({
 		id: 'r1',
 		kind: 'removed',
 		cls: 'action',
@@ -93,15 +111,15 @@ afterEach(() => {
 	}
 });
 
-function mount(opts: Partial<Parameters<typeof reviewExtensions>[0]> = {}) {
+function mount(opts: Partial<Parameters<typeof reviewExtensions>[0]> = {}, items = ITEMS, doc = report) {
 	const onCommand = vi.fn();
-	const byId = new Map(ITEMS.map((i) => [i.id, i]));
+	const byId = new Map(items.map((i) => [i.id, i]));
 	const state = EditorState.create({
-		doc: report,
+		doc,
 		extensions: reviewExtensions({
 			onCommand,
 			getItem: (id) => byId.get(id),
-			initial: fromItems(report, ITEMS).items,
+			initial: fromItems(doc, items).items,
 			...opts
 		})
 	});
@@ -165,19 +183,21 @@ async function openOn(view: EditorView, id: string): Promise<HTMLElement> {
 }
 
 /** Colour reads must not land mid-transition. */
+const styles: HTMLStyleElement[] = [];
+afterEach(() => styles.splice(0).forEach((s) => s.remove()));
 function noTransitions() {
 	const st = document.createElement('style');
 	st.textContent = '.cm-editor * { transition: none !important; }';
 	document.head.append(st);
 	styles.push(st);
 }
-const styles: HTMLStyleElement[] = [];
-afterEach(() => styles.splice(0).forEach((s) => s.remove()));
 
 const lastRect = (e: Element) => {
 	const rs = [...e.getClientRects()];
 	return rs[rs.length - 1];
 };
+
+const NONE = 'rgba(0, 0, 0, 0)';
 
 describe('review decorations', () => {
 	it('renders marks with their class, id and accessible name', () => {
@@ -186,9 +206,9 @@ describe('review decorations', () => {
 		expect(g.classList.contains('rv-normal')).toBe(true);
 		expect(g.textContent).toBe(GREEN);
 		expect(g.getAttribute('aria-label')).toContain(LABELS.normal);
-		const c = markEl(view, 'c1');
-		expect(c.classList.contains('rv-check')).toBe(true);
-		expect(c.getAttribute('aria-label')).toContain(LABELS.check);
+		expect(markEl(view, 'c1').classList.contains('rv-check')).toBe(true);
+		expect(markEl(view, 's1').classList.contains('rv-synth')).toBe(true);
+		expect(markEl(view, 'rec1').classList.contains('rv-rec')).toBe(true);
 		expect(markEl(view, 'a1').classList.contains('rv-action')).toBe(true);
 		expect(markEl(view, 'p1').classList.contains('rv-preapplied')).toBe(true);
 	});
@@ -198,55 +218,109 @@ describe('review decorations', () => {
 		expect(view.dom.dataset.density).toBe('quiet');
 		view.dispatch({ effects: setDensity.of('full') });
 		expect(view.dom.dataset.density).toBe('full');
-		const { view: v2 } = mount({ density: 'hidden' });
-		expect(v2.dom.dataset.density).toBe('hidden');
 	});
 
-	it('hovering a mark expands an inline control at the END of that mark, inside the text flow (no floating tooltip)', async () => {
+	it('the AI-generated layer (normal, check, synthesis) is plain text by default; the "ai" toggle shows dotted colours', () => {
 		const { view } = mount();
-		const mark = markEl(view, 'c1');
+		noTransitions();
+		const cs = (id: string) => getComputedStyle(markEl(view, id));
+		for (const id of ['g1', 'c1', 's1']) {
+			expect(cs(id).textDecorationLine, id).toBe('none');
+			expect(cs(id).backgroundColor, id).toBe(NONE);
+		}
+		view.dispatch({ effects: setEmphasis.of(['ai', 'rec']) });
+		const colours = new Set<string>();
+		for (const id of ['g1', 'c1', 's1']) {
+			expect(cs(id).textDecorationLine, id).toContain('underline');
+			expect(cs(id).textDecorationStyle, id).toBe('dotted');
+			expect(cs(id).backgroundColor, id).toBe(NONE);
+			colours.add(cs(id).textDecorationColor);
+		}
+		expect(colours.size).toBe(3); // green, amber, violet
+		view.dispatch({ effects: setEmphasis.of(['rec']) });
+		expect(cs('s1').textDecorationLine).toBe('none');
+	});
+
+	it('the AI-generated layer has no actions: no inline control on hover, click or caret, no gutter marker', async () => {
+		const { view } = mount({ emphasis: ['ai', 'rec'] });
+		for (const id of ['g1', 'c1', 's1']) {
+			hoverOn(markEl(view, id));
+			click(markEl(view, id));
+		}
+		await pause(300);
+		expect(control(view)).toBeNull();
+		view.focus();
+		view.dispatch({ selection: { anchor: report.indexOf(AMBER) + 2 }, userEvent: 'select' });
+		await tick();
+		expect(control(view)).toBeNull();
+		view.dispatch({ effects: openPopover.of('s1') });
+		await tick();
+		expect(control(view)).toBeNull();
+	});
+
+	it('a recommendation is underlined by default (the "rec" toggle) and hides its underline when toggled off', () => {
+		const { view } = mount();
+		noTransitions();
+		const cs = () => getComputedStyle(markEl(view, 'rec1'));
+		expect(cs().textDecorationLine).toContain('underline');
+		expect(cs().textDecorationStyle).toBe('dotted');
+		view.dispatch({ effects: setEmphasis.of([]) });
+		expect(cs().textDecorationLine).toBe('none');
+	});
+
+	it('hovering a recommendation expands ✓ keep / ✕ remove at the END of the sentence, inside the text flow', async () => {
+		const { view, onCommand } = mount();
+		const mark = markEl(view, 'rec1');
 		hoverOn(mark);
 		await pause(60);
 		expect(control(view)).toBeNull(); // not instant
 		await pause(250);
 		const c = control(view)!;
-		expect(c).not.toBeNull();
-		expect(c.getAttribute('data-rv-inline')).toBe('c1');
-		// in the text flow: inside the content, never a tooltip
+		expect(c.getAttribute('data-rv-inline')).toBe('rec1');
 		expect(view.contentDOM.contains(c)).toBe(true);
 		expect(view.dom.querySelector('.cm-tooltip')).toBeNull();
-		expect(c.closest('.rv-mark')).toBeNull(); // after the highlight, not part of it
-		// right at the mark's end, on its line
+		expect(c.closest('.rv-mark')).toBeNull();
 		const end = lastRect(mark);
 		const r = c.getBoundingClientRect();
 		expect(Math.abs(r.left - end.right)).toBeLessThan(8);
 		expect(r.top).toBeLessThan(end.bottom);
 		expect(r.bottom).toBeGreaterThan(end.top);
-		// simple icons: ✓ keep, ✕ remove; no "?" and no rail link on a check
+		expect(r.height).toBeLessThanOrEqual(end.height + 1);
 		expect(actionsOf(c)).toEqual(['keep', 'remove']);
 		expect(iconsOf(c)).toEqual(['✓', '✕']);
-		expect(c.textContent).not.toContain('?');
-		for (const b of c.querySelectorAll('button')) {
-			expect(b.getAttribute('aria-label')).toBeTruthy();
-			expect(b.title).toBeTruthy();
-		}
-		expect(c.getAttribute('aria-label')).toBeTruthy();
-		// width / opacity animate in (~120 ms)
+		for (const b of c.querySelectorAll('button')) expect(b.getAttribute('aria-label')).toBeTruthy();
 		expect(getComputedStyle(c).animationName).toContain('rv-inline-in');
 		expect(getComputedStyle(c).animationDuration).toBe('0.12s');
-		// compact: no taller than the line
-		expect(r.height).toBeLessThanOrEqual(end.height + 1);
+		click(actionBtn(c, 'remove'));
+		expect(onCommand).toHaveBeenCalledWith('remove', 'rec1', undefined);
+		click(actionBtn(await openOn(view, 'rec1'), 'keep'));
+		expect(onCommand).toHaveBeenCalledWith('keep', 'rec1', undefined);
 	});
 
-	it('controls by type: check, normal, action, pre-applied, removed and option widgets', async () => {
+	it('an AI-generated clause overlapping an action item is not drawn: the action item wins', async () => {
+		const clause = 'The spleen measures 9 cm.';
+		const items = [
+			ITEMS.find((i) => i.id === 'a1')!,
+			item({ id: 'sx', kind: 'ai_generated', cls: 'info', lane: 'accuracy', anchor: span(clause) })
+		];
+		const { view } = mount({ emphasis: ['ai', 'rec'] }, items);
+		expect(view.dom.querySelector('[data-rv-id="sx"]')).toBeNull();
+		expect(actionsOf(await openOn(view, 'a1'))).toEqual(['apply', 'dismiss', 'reveal']);
+	});
+
+	it('a recommendation without a placeable edit shows ✓ only', async () => {
+		const rec = { ...ITEMS.find((i) => i.id === 'rec1')!, edit: null };
+		const { view } = mount({}, [rec]);
+		expect(actionsOf(await openOn(view, 'rec1'))).toEqual(['keep']);
+	});
+
+	it('controls by type: flagged action, pre-applied, removed widget', async () => {
 		const { view } = mount();
 		const cases: [string, string[], string[]][] = [
-			['c1', ['keep', 'remove'], ['✓', '✕']],
-			['g1', ['keep', 'remove'], ['✓', '✕']],
 			['a1', ['apply', 'dismiss', 'reveal'], ['✓', '✕', '›']],
 			['p1', ['undo'], ['↶']],
 			['r1', ['restore'], ['↺']],
-			['o1', ['apply', 'dismiss'], ['✓', '✕']]
+			['rec1', ['keep', 'remove'], ['✓', '✕']]
 		];
 		for (const [id, actions, icons] of cases) {
 			const c = await openOn(view, id);
@@ -255,25 +329,10 @@ describe('review decorations', () => {
 		}
 	});
 
-	it('a widget’s control sits right after the widget', async () => {
-		const { view } = mount();
-		const w = view.dom.querySelector<HTMLElement>('[data-rv-widget="o1"]')!;
-		const c = await openOn(view, 'o1');
-		expect(Math.abs(c.getBoundingClientRect().left - lastRect(w).right)).toBeLessThan(8);
-	});
-
 	it('control buttons run the commands through the command callback and collapse the control', async () => {
 		const { view, onCommand } = mount();
-		click(actionBtn(await openOn(view, 'c1'), 'keep'));
-		expect(onCommand).toHaveBeenCalledWith('keep', 'c1', undefined);
-		click(actionBtn(await openOn(view, 'g1'), 'remove'));
-		expect(onCommand).toHaveBeenCalledWith('remove', 'g1', undefined);
 		click(actionBtn(await openOn(view, 'r1'), 'restore'));
 		expect(onCommand).toHaveBeenCalledWith('restore', 'r1', undefined);
-		click(actionBtn(await openOn(view, 'o1'), 'apply'));
-		expect(onCommand).toHaveBeenCalledWith('apply', 'o1', undefined);
-		click(actionBtn(await openOn(view, 'o1'), 'dismiss'));
-		expect(onCommand).toHaveBeenCalledWith('dismiss', 'o1', undefined);
 		click(actionBtn(await openOn(view, 'p1'), 'undo'));
 		expect(onCommand).toHaveBeenCalledWith('undo', 'p1', undefined);
 		click(actionBtn(await openOn(view, 'a1'), 'apply'));
@@ -284,9 +343,9 @@ describe('review decorations', () => {
 
 	it('after an action the range ticks and fades (no toast)', async () => {
 		const { view } = mount();
-		click(actionBtn(await openOn(view, 'c1'), 'keep'));
+		click(actionBtn(await openOn(view, 'rec1'), 'keep'));
 		await tick();
-		expect(view.dom.querySelector('.rv-flash')?.textContent).toBe(AMBER);
+		expect(view.dom.querySelector('.rv-flash')?.textContent).toBe(REC);
 		expect(view.dom.querySelector('.rv-flash-tick')).not.toBeNull();
 		await pause(800);
 		expect(view.dom.querySelector('.rv-flash')).toBeNull();
@@ -300,11 +359,9 @@ describe('review decorations', () => {
 		c.dispatchEvent(new MouseEvent('mouseenter'));
 		await pause(400);
 		expect(control(view)).not.toBeNull();
-		// back onto its own mark: still open
 		c.dispatchEvent(new MouseEvent('mouseleave', { relatedTarget: mark }));
 		await pause(400);
 		expect(control(view)).not.toBeNull();
-		// off both
 		mark.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
 		await pause(400);
 		expect(control(view)).toBeNull();
@@ -318,7 +375,7 @@ describe('review decorations', () => {
 		);
 		await tick();
 		expect(control(view)).toBeNull();
-		const c = await openOn(view, 'c1');
+		const c = await openOn(view, 'rec1');
 		const keep = actionBtn(c, 'keep');
 		keep.focus();
 		keep.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
@@ -326,13 +383,12 @@ describe('review decorations', () => {
 		expect(control(view)).toBeNull();
 	});
 
-	it('keyboard: the caret moving into a mark opens its control; Tab focuses its buttons; arrows move between them', async () => {
+	it('keyboard: the caret moving into a recommendation opens its control; Tab focuses its buttons; arrows move', async () => {
 		const { view } = mount();
-		const at = report.indexOf(AMBER) + 2;
 		view.focus();
-		view.dispatch({ selection: { anchor: at }, userEvent: 'select' });
+		view.dispatch({ selection: { anchor: report.indexOf(REC) + 2 }, userEvent: 'select' });
 		await tick();
-		expect(control(view)?.getAttribute('data-rv-inline')).toBe('c1');
+		expect(control(view)?.getAttribute('data-rv-inline')).toBe('rec1');
 		view.contentDOM.dispatchEvent(
 			new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
 		);
@@ -342,131 +398,85 @@ describe('review decorations', () => {
 		);
 		expect(document.activeElement?.getAttribute('data-rv-action')).toBe('remove');
 		await pause(300);
-		expect(control(view)).not.toBeNull(); // focus on the control keeps it open
+		expect(control(view)).not.toBeNull();
 		view.focus();
 		view.dispatch({ selection: { anchor: 0 }, userEvent: 'select' });
 		await tick();
 		expect(control(view)).toBeNull();
 	});
 
-	it('› on a flagged issue asks the host to show its rail card; checks and normals have no link', async () => {
+	it('› on a flagged issue asks the host to show its rail card; recommendations have no link', async () => {
 		const onReveal = vi.fn();
 		const { view, onCommand } = mount({ onReveal });
 		click(actionBtn(await openOn(view, 'a1'), 'reveal'));
 		expect(onReveal).toHaveBeenCalledWith('a1');
 		expect(onCommand).not.toHaveBeenCalled();
-		for (const id of ['c1', 'g1']) expect(actionsOf(await openOn(view, id))).not.toContain('reveal');
+		expect(actionsOf(await openOn(view, 'rec1'))).not.toContain('reveal');
 	});
 
 	it('hovering an apply ✓ previews the fix inline: old struck, new as ghost text; leaving clears it', async () => {
 		const { view } = mount();
-		const c = await openOn(view, 'a1');
-		const apply = actionBtn(c, 'apply');
+		const apply = actionBtn(await openOn(view, 'a1'), 'apply');
 		apply.dispatchEvent(new MouseEvent('mouseenter'));
 		await tick();
 		expect(view.dom.querySelector('.rv-preview-del')?.textContent).toBe('9 cm');
 		expect(view.dom.querySelector('.rv-preview-ins')?.textContent).toBe('11 cm');
-		expect(view.state.doc.toString()).toBe(report); // a preview, not an edit
+		expect(view.state.doc.toString()).toBe(report);
 		apply.dispatchEvent(new MouseEvent('mouseleave'));
 		await tick();
 		expect(view.dom.querySelector('.rv-preview-del, .rv-preview-ins')).toBeNull();
 	});
 
-	it('the control never enters the document text', async () => {
-		const { view } = mount();
-		await openOn(view, 'a1');
-		expect(view.state.doc.toString()).toBe(report);
-	});
-
-	it("widgets show their text but are not in the document (removed, option)", () => {
+	it('removed widgets show their text but are not in the document; options are never ghost text in the report', () => {
 		const { view } = mount();
 		const r = view.dom.querySelector<HTMLElement>('[data-rv-widget="r1"]')!;
 		expect(r.textContent).toContain(REMOVED);
 		expect(r.getAttribute('aria-label')).toContain(LABELS.removed);
-		const o = view.dom.querySelector<HTMLElement>('[data-rv-widget="o1"]')!;
-		expect(o.textContent).toContain(OPTION);
-		expect(o.getAttribute('aria-label')).toContain(LABELS.option);
 		expect(view.state.doc.toString()).not.toContain(REMOVED);
-		expect(view.state.doc.toString()).not.toContain(OPTION);
-		expect(r.querySelector('button')).toBeNull(); // actions live on the inline control
+		expect(view.dom.querySelector('[data-rv-widget="o1"]')).toBeNull();
+		expect(view.dom.querySelector('.cm-line')!.textContent).not.toContain(OPTION);
 	});
 
-	it('one consistent underline for every AI highlight: soft dotted, no fill, discreet at rest', () => {
-		const { view } = mount();
+	it('one consistent underline: soft dotted, no fill, discreet at rest (lit is stronger)', () => {
+		const { view } = mount({ emphasis: ['ai', 'rec'] });
 		noTransitions();
-		const styles = ['g1', 'p1', 'c1', 'a1'].map((id) => getComputedStyle(markEl(view, id)));
-		for (const [i, cs] of styles.entries()) {
-			expect(cs.backgroundColor, String(i)).toBe('rgba(0, 0, 0, 0)');
-			expect(cs.textDecorationLine).toContain('underline');
-			expect(cs.textDecorationStyle).toBe('dotted');
-			expect(cs.textDecorationThickness).toBe(styles[0].textDecorationThickness);
+		const ids = ['g1', 'c1', 's1', 'rec1', 'p1', 'a1'];
+		const first = getComputedStyle(markEl(view, 'g1'));
+		for (const id of ids) {
+			const cs = getComputedStyle(markEl(view, id));
+			expect(cs.backgroundColor, id).toBe(NONE);
+			expect(cs.textDecorationStyle, id).toBe('dotted');
+			expect(cs.textDecorationThickness, id).toBe(first.textDecorationThickness);
 		}
-		// no dashed (or solid / double) variant anywhere
-		expect(new Set(styles.map((s) => s.textDecorationStyle))).toEqual(new Set(['dotted']));
-		// discreet: at rest each line is softer than when lit
-		for (const id of ['g1', 'c1', 'a1']) {
+		for (const id of ['rec1', 'a1']) {
 			const rest = getComputedStyle(markEl(view, id)).textDecorationColor;
 			markEl(view, id).classList.add('rv-active');
 			expect(getComputedStyle(markEl(view, id)).textDecorationColor, id).not.toBe(rest);
 			markEl(view, id).classList.remove('rv-active');
 		}
-		// amber / red a little stronger than green at rest
-		const alpha = (id: string) => {
-			const c = getComputedStyle(markEl(view, id)).textDecorationColor;
-			const m = /\/\s*([\d.]+)\)$/.exec(c) ?? /rgba\([^)]*,\s*([\d.]+)\)$/.exec(c);
-			return m ? Number(m[1]) : 1;
-		};
-		expect(alpha('c1')).toBeGreaterThan(alpha('g1'));
-		expect(alpha('a1')).toBeGreaterThan(alpha('g1'));
-		expect(alpha('a1')).toBeLessThan(1);
 	});
 
-	it('the open control lights its mark (full colour + tint)', async () => {
-		const { view } = mount();
-		await openOn(view, 'a1');
-		const lit = view.dom.querySelector<HTMLElement>('.rv-active')!;
-		expect(lit.textContent).toBe('9 cm');
-		const bg = getComputedStyle(lit.querySelector('.rv-action') ?? lit).backgroundColor;
-		expect(bg).not.toBe('rgba(0, 0, 0, 0)');
-	});
-
-	it('legend filters: setEmphasis brings the chosen class forward; others stay discreet; reset clears it', () => {
+	it('legend filters: "dictated" fades AI highlights, "removed" tints removed widgets; empty resets', () => {
 		const { view } = mount();
 		noTransitions();
-		const bg = (id: string) => getComputedStyle(markEl(view, id)).backgroundColor;
-		const line = (id: string) => getComputedStyle(markEl(view, id)).textDecorationColor;
-		const rest = { c1: line('c1'), g1: line('g1') };
-		view.dispatch({ effects: setEmphasis.of(['check']) });
-		expect(view.dom.getAttribute('data-rv-emph')).toBe('check');
-		expect(bg('c1')).not.toBe('rgba(0, 0, 0, 0)');
-		expect(line('c1')).not.toBe(rest.c1);
-		expect(bg('g1')).toBe('rgba(0, 0, 0, 0)');
-		expect(line('g1')).toBe(rest.g1);
-		// several at once
-		view.dispatch({ effects: setEmphasis.of(['check', 'normal']) });
-		expect(bg('g1')).not.toBe('rgba(0, 0, 0, 0)');
-		const o = view.dom.querySelector<HTMLElement>('[data-rv-widget="o1"]')!;
-		expect(getComputedStyle(o).backgroundColor).toBe('rgba(0, 0, 0, 0)');
-		view.dispatch({ effects: setEmphasis.of(['option']) });
-		expect(getComputedStyle(o).backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
-		// "dictated" fades the AI highlights so the dictation stands out
 		view.dispatch({ effects: setEmphasis.of(['dictated']) });
-		expect(Number(getComputedStyle(markEl(view, 'c1')).opacity)).toBeLessThan(1);
+		expect(Number(getComputedStyle(markEl(view, 'a1')).opacity)).toBeLessThan(1);
+		const r = view.dom.querySelector<HTMLElement>('[data-rv-widget="r1"]')!;
+		view.dispatch({ effects: setEmphasis.of(['removed']) });
+		expect(getComputedStyle(r).backgroundColor).not.toBe(NONE);
 		view.dispatch({ effects: setEmphasis.of([]) });
 		expect(view.dom.hasAttribute('data-rv-emph')).toBe(false);
-		expect(bg('c1')).toBe('rgba(0, 0, 0, 0)');
-		expect(line('c1')).toBe(rest.c1);
-		// the host can mount with filters on
-		const { view: v2 } = mount({ emphasis: ['check'] });
-		expect(v2.dom.getAttribute('data-rv-emph')).toBe('check');
+		expect(getComputedStyle(r).backgroundColor).toBe(NONE);
 	});
 
-	it('draws a gutter marker per item line, keyed by cls, with an accessible name', () => {
+	it('draws gutter markers only for actionable items (not the AI-generated layer)', () => {
 		const { view } = mount();
 		const markers = [...view.dom.querySelectorAll<HTMLElement>('.rv-gutter-marker')];
 		expect(markers.length).toBe(1); // one line: the highest cls wins
 		expect(markers[0].classList.contains('rv-gutter-action')).toBe(true);
-		expect(markers[0].getAttribute('aria-label')).toBeTruthy();
+		const ai = [item({ id: 'x', kind: 'check', cls: 'minor', anchor: span(AMBER) })];
+		const { view: v2 } = mount({}, ai);
+		expect(v2.dom.querySelectorAll('.rv-gutter-marker').length).toBe(0);
 	});
 
 	it('defines --rv-* tokens on the editor (light by default)', () => {
@@ -482,15 +492,99 @@ describe('review decorations', () => {
 	});
 });
 
+describe('suggestions subsection', () => {
+	// SYNTHETIC two-section report.
+	const DOC = `FINDINGS:\nThe pancreas has a mass. No ascites.\n\nIMPRESSION:\nPancreatic mass.`;
+	const sugg = (over: Partial<ReviewItem> & Pick<ReviewItem, 'id'>) =>
+		item({
+			kind: 'option',
+			cls: 'minor',
+			lane: 'additions',
+			section: 'FINDINGS',
+			edit: { mode: 'insert', after: 'The pancreas has a mass.', replace: 'No portal vein thrombosis.' },
+			...over
+		});
+
+	it('renders a checkbox list directly under the section body, not in the document', async () => {
+		const { view } = mount({}, [sugg({ id: 'o1' })], DOC);
+		const box = view.dom.querySelector<HTMLElement>('[data-rv-suggestions]')!;
+		expect(box).not.toBeNull();
+		expect(box.textContent).toContain('Suggestions');
+		const cb = box.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+		expect(cb.checked).toBe(false);
+		expect(box.textContent).toContain('No portal vein thrombosis.');
+		expect(view.state.doc.toString()).toBe(DOC); // copy / export unaffected
+		// between the FINDINGS body and the IMPRESSION heading
+		const lines = [...view.contentDOM.querySelectorAll<HTMLElement>('.cm-line')];
+		const body = lines.find((l) => l.textContent?.includes('No ascites.'))!;
+		const impression = lines.find((l) => l.textContent === 'IMPRESSION:')!;
+		const b = box.getBoundingClientRect();
+		expect(b.top).toBeGreaterThanOrEqual(body.getBoundingClientRect().bottom - 1);
+		expect(b.bottom).toBeLessThanOrEqual(impression.getBoundingClientRect().top + 1);
+		expect(view.dom.querySelector('.cm-line')!.parentElement!.textContent).not.toContain('◌');
+	});
+
+	it('ticking applies the insert (apply); unticking an applied one undoes it (undo)', async () => {
+		const applied = DOC.replace('The pancreas has a mass.', 'The pancreas has a mass. No splenic vein thrombosis.');
+		const items = [
+			sugg({ id: 'o1' }),
+			sugg({
+				id: 'o2',
+				status: 'applied',
+				edit: { mode: 'insert', after: 'The pancreas has a mass.', replace: 'No splenic vein thrombosis.' }
+			})
+		];
+		const { view, onCommand } = mount({}, items, applied);
+		const boxes = view.dom.querySelectorAll<HTMLElement>('[data-rv-suggestions]');
+		expect(boxes.length).toBe(1);
+		const cb = (id: string) =>
+			view.dom.querySelector<HTMLInputElement>(`[data-rv-suggestion="${id}"] input`)!;
+		expect(cb('o1').checked).toBe(false);
+		expect(cb('o2').checked).toBe(true);
+		cb('o1').click();
+		expect(onCommand).toHaveBeenCalledWith('apply', 'o1');
+		cb('o2').click();
+		expect(onCommand).toHaveBeenCalledWith('undo', 'o2');
+	});
+
+	it('hides suggestions that are stale, answered or have no placeable edit', () => {
+		const items = [
+			sugg({ id: 'stale', status: 'stale' }),
+			sugg({ id: 'gone', status: 'dismissed' }),
+			sugg({ id: 'noedit', edit: null }),
+			sugg({ id: 'nowhere', edit: { mode: 'insert', after: 'Not in this report.', replace: 'Text.' } })
+		];
+		const { view } = mount({}, items, DOC);
+		expect(view.dom.querySelector('[data-rv-suggestions]')).toBeNull();
+	});
+
+	it('an additions insert is a suggestion too; each section gets its own list', () => {
+		const items = [
+			sugg({ id: 'o1' }),
+			item({
+				id: 'g1',
+				kind: 'classification',
+				cls: 'minor',
+				lane: 'additions',
+				section: 'IMPRESSION',
+				edit: { mode: 'insert', after: 'Pancreatic mass.', replace: 'Borderline resectable.' }
+			})
+		];
+		const { view } = mount({}, items, DOC);
+		const boxes = [...view.dom.querySelectorAll<HTMLElement>('[data-rv-suggestions]')];
+		expect(boxes.length).toBe(2);
+		expect(boxes[1].textContent).toContain('Borderline resectable.');
+	});
+});
+
 describe('inline control in wrapped prose', () => {
-	// SYNTHETIC prose in a narrow wrapped editor.
 	const FILL = 'The structure is unremarkable and the adjacent tissues are preserved without change. ';
 	const DOC = `FINDINGS:\n${FILL}Target mark sits here. ${FILL.repeat(3)}`;
 
-	function mountWrapped() {
+	it('keeps the line height (compact) and collapses back to the same layout', async () => {
 		const text = 'Target mark';
 		const start = DOC.indexOf(text);
-		const it_ = item({ id: 'k', kind: 'check', cls: 'minor', anchor: { start, end: start + text.length, text }, evidence: { check_reason: 'uncertain' } });
+		const it_ = item({ id: 'k', kind: 'recommendation', cls: 'minor', anchor: { start, end: start + text.length, text }, edit: { mode: 'remove', find: text } });
 		const state = EditorState.create({
 			doc: DOC,
 			extensions: [
@@ -504,20 +598,13 @@ describe('inline control in wrapped prose', () => {
 		document.body.append(parent);
 		const view = new EditorView({ state, parent });
 		views.push(view);
-		return view;
-	}
-
-	it('keeps the line height (compact) and collapses back to the same layout', async () => {
-		const view = mountWrapped();
-		const lineH = () => [...view.contentDOM.querySelectorAll<HTMLElement>('.cm-line')].map((l) => l.getBoundingClientRect().height);
+		const lineH = () =>
+			[...view.contentDOM.querySelectorAll<HTMLElement>('.cm-line')].map((l) => l.getBoundingClientRect().height);
 		const before = lineH();
 		const c = await openOn(view, 'k');
-		await pause(200); // past the width / opacity animation
-		const mark = markEl(view, 'k');
-		const end = lastRect(mark);
-		expect(Math.abs(c.getBoundingClientRect().left - end.right)).toBeLessThan(8);
+		await pause(200);
+		expect(Math.abs(c.getBoundingClientRect().left - lastRect(markEl(view, 'k')).right)).toBeLessThan(8);
 		expect(c.getBoundingClientRect().width).toBeLessThan(60);
-		// the control may push the rest of the line on, but never makes a line taller
 		const lineHeight = Number.parseFloat(getComputedStyle(view.contentDOM.querySelector('.cm-line')!).lineHeight);
 		expect(c.getBoundingClientRect().height).toBeLessThanOrEqual(lineHeight);
 		view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));

@@ -1,15 +1,31 @@
 <script lang="ts">
-	// The review legend (label set "icon · meaning", shared with the editor marks). In the app it is a slim bar
-	// directly under the "Report Editor" title (ReportResponseViewer); it is not part of the rail. The density
-	// toggle is a dev-page capability only (`showDensity`): the app's density is fixed to Quiet.
-	import { LEGEND } from '../editor/decorations';
+	// The review legend, which doubles as the highlight toggles. In the app it sits directly under the "Report Editor"
+	// title (ReportResponseViewer); it is not part of the rail. "Dictated · Removed by you | AI-generated ·
+	// Recommendations · Removed (contradicts dictation)". Each pill is a toggle (editor/theme.ts `setEmphasis`):
+	// "AI-generated" shows the AI-generated layer in its colours (assumed normal green, check amber, synthesis violet;
+	// off by default), "Recommendations" their underline (on by default), the others bring their class forward; several
+	// may be on. It wraps onto new lines when narrow (never scrolls sideways). The density toggle is a dev-page capability only
+	// (`showDensity`): the app's density is fixed to Quiet.
+	import { DEFAULT_LEGEND, LEGEND, type LegendKey } from '../editor/decorations';
 	import type { Density } from '../editor/theme';
 
 	let {
 		density = $bindable('quiet'),
 		onDensity,
-		showDensity = false
-	}: { density?: Density; onDensity?: (d: Density) => void; showDensity?: boolean } = $props();
+		showDensity = false,
+		active = $bindable<LegendKey[]>([...DEFAULT_LEGEND]),
+		onFilter
+	}: {
+		density?: Density;
+		onDensity?: (d: Density) => void;
+		showDensity?: boolean;
+		/** The pressed filters, in legend order. */
+		active?: LegendKey[];
+		onFilter?: (keys: LegendKey[]) => void;
+	} = $props();
+
+	const OWN = LEGEND.filter((e) => !e.ai);
+	const AI = LEGEND.filter((e) => e.ai);
 
 	const CHOICES: { value: Density; label: string }[] = [
 		{ value: 'full', label: 'Full' },
@@ -21,16 +37,38 @@
 		density = d;
 		onDensity?.(d);
 	}
+
+	function toggle(key: LegendKey) {
+		const on = new Set(active);
+		if (on.has(key)) on.delete(key);
+		else on.add(key);
+		active = LEGEND.map((e) => e.key).filter((k) => on.has(k));
+		onFilter?.(active);
+	}
 </script>
 
+{#snippet pill(entry: (typeof LEGEND)[number])}
+	<button
+		type="button"
+		class="rv-pill rv-legend-{entry.key}"
+		data-rv-filter={entry.key}
+		aria-pressed={active.includes(entry.key)}
+		title={entry.title}
+		onclick={() => toggle(entry.key)}
+		>{#if entry.key === 'ai'}<span class="rv-swatches" aria-hidden="true"
+				><i class="rv-sw-green"></i><i class="rv-sw-amber"></i><i class="rv-sw-violet"></i></span
+			>{:else}<span class="rv-legend-icon" aria-hidden="true">{entry.icon}</span>{/if}<span
+			class="rv-legend-label">{entry.label}</span
+		></button
+	>
+{/snippet}
+
 <div class="rv-legend-bar" data-testid="review-legend">
-	<ul class="rv-legend" data-rv-legend aria-label="Legend">
-		{#each LEGEND as entry (entry.key)}
-			<li class="rv-legend-{entry.key}" title={entry.title}>
-				<span class="rv-legend-icon" aria-hidden="true">{entry.icon}</span><span>{entry.label}</span>
-			</li>
-		{/each}
-	</ul>
+	<div class="rv-legend" data-rv-legend role="group" aria-label="Legend and highlight filters">
+		{#each OWN as entry (entry.key)}{@render pill(entry)}{/each}
+		<span class="rv-legend-sep" aria-hidden="true"></span>
+		{#each AI as entry (entry.key)}{@render pill(entry)}{/each}
+	</div>
 	{#if showDensity}
 		<div class="rv-density" role="group" aria-label="Density">
 			{#each CHOICES as c (c.value)}
@@ -51,70 +89,107 @@
 		--lg-amber: #e3a94a;
 		--lg-red: #ff7a7a;
 		--lg-blue: #7ea6f0;
-		/* one compact row: never two rows at desktop widths; scrolls sideways when the column is very narrow */
+		--lg-grey: #8f969f;
+		--lg-violet: #b3a1f5;
+		--lg-teal: #5fd3c6;
 		display: flex;
-		flex-wrap: nowrap;
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
 		gap: 4px 12px;
 		min-width: 0;
 		max-width: 100%;
-		overflow-x: auto;
-		scrollbar-width: thin;
 		font-size: 11px;
 		line-height: 1.4;
 		color: var(--lg-muted);
 	}
-	.rv-legend-bar::-webkit-scrollbar {
-		height: 3px;
-	}
+	/* wraps onto new lines when narrow; never scrolls sideways */
 	.rv-legend {
 		display: flex;
-		flex-wrap: nowrap;
-		flex: none;
-		gap: 4px 5px;
-		list-style: none;
-		margin: 0;
-		padding: 0;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px;
+		min-width: 0;
+		max-width: 100%;
 	}
-	.rv-legend li {
+	.rv-pill {
+		font: inherit;
 		display: inline-flex;
-		gap: 5px;
+		gap: 4px;
 		align-items: center;
 		padding: 1px 7px 1px 3px;
 		border-radius: 9999px;
 		background: rgba(255, 255, 255, 0.03);
 		border: 1px solid rgba(255, 255, 255, 0.08);
+		color: var(--lg-muted);
 		white-space: nowrap;
+		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			border-color 120ms ease,
+			color 120ms ease;
+	}
+	.rv-pill:hover {
+		color: var(--lg-text);
+		border-color: rgba(255, 255, 255, 0.18);
+	}
+	.rv-pill[aria-pressed='true'] {
+		color: var(--lg-text);
+		background: rgba(147, 51, 234, 0.18);
+		border-color: rgba(168, 85, 247, 0.55);
+	}
+	.rv-pill:focus-visible {
+		outline: 2px solid #a855f7;
+		outline-offset: 1px;
+	}
+	.rv-legend-sep {
+		width: 1px;
+		height: 12px;
+		margin: 0 3px;
+		background: rgba(255, 255, 255, 0.15);
+	}
+	.rv-swatches {
+		display: inline-flex;
+		gap: 2px;
+		padding-left: 3px;
+	}
+	.rv-swatches i {
+		width: 7px;
+		height: 7px;
+		border-radius: 9999px;
+	}
+	.rv-sw-green {
+		background: var(--lg-green);
+	}
+	.rv-sw-amber {
+		background: var(--lg-amber);
+	}
+	.rv-sw-violet {
+		background: var(--lg-violet);
 	}
 	.rv-legend-icon {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 15px;
-		height: 15px;
+		width: 14px;
+		height: 14px;
 		border-radius: 9999px;
-		font-size: 10px;
+		font-size: 9px;
 		font-weight: 700;
 		background: rgba(255, 255, 255, 0.06);
 		color: var(--lg-text);
 	}
-	.rv-legend-normal .rv-legend-icon {
-		color: var(--lg-green);
-		background: rgba(92, 194, 133, 0.12);
+	.rv-legend-rec .rv-legend-icon {
+		color: var(--lg-teal);
+		background: rgba(95, 211, 198, 0.12);
 	}
-	.rv-legend-check .rv-legend-icon {
-		color: var(--lg-amber);
-		background: rgba(227, 169, 74, 0.12);
-	}
-	.rv-legend-removed .rv-legend-icon,
-	.rv-legend-excluded .rv-legend-icon {
+	.rv-legend-removed .rv-legend-icon {
 		color: var(--lg-red);
 		background: rgba(255, 122, 122, 0.12);
 	}
-	.rv-legend-option .rv-legend-icon {
-		color: var(--lg-blue);
-		background: rgba(126, 166, 240, 0.12);
+	.rv-legend-excluded .rv-legend-icon {
+		color: var(--lg-grey);
+		background: rgba(143, 150, 159, 0.14);
 	}
 	.rv-density {
 		display: inline-flex;

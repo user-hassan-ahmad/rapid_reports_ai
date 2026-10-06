@@ -2,15 +2,16 @@
  * The review layer's look (plan Task C2): `--rv-*` colour tokens for light and dark, density and legend emphasis.
  *
  * Tokens live on the editor element (`&light` / `&dark` follow the editor's own dark-theme flag, which
- * ReportEditor sets). Every AI highlight has ONE underline style: a soft dotted line in its colour, no fill,
- * discreet at rest (amber and red a little stronger than green and blue). Meaning is never carried by colour alone:
- * each mark has an accessible name, and widgets and gutter markers carry an icon. The hovered highlight (or the one
- * whose inline control is open) brightens to full colour with a light tint.
+ * ReportEditor sets). Every highlight has ONE underline style: a soft dotted line in its colour, no fill, discreet
+ * at rest. Meaning is never carried by colour alone: each mark has an accessible name, and widgets and gutter
+ * markers carry an icon.
  *
- * Density (`data-density`, Quiet by default, the app's fixed setting) only changes the assumed normals: `full` tints
- * them (dev page), `hidden` leaves plain text and drops their gutter markers. Emphasis (`data-rv-emph`, the legend's
- * filters, `setEmphasis`) brings the chosen classes forward (full colour + light tint) while the rest stay discreet;
- * "dictated" fades the AI highlights instead, so the radiologist's own text stands out.
+ * The AI-generated layer (assumed normals green, checks amber, AI synthesis violet) is colour only and OFF by
+ * default: plain text until the legend's "AI-generated" toggle (`data-rv-emph~="ai"`) shows its underlines.
+ * Recommendations (teal) are underlined while "rec" is on (the default). Flagged issues (red), minor items (amber)
+ * and pre-applied changes (blue) are always underlined; hovering one (or its open inline control, `rv-active`) lights
+ * it. "dictated" fades every AI highlight so the radiologist's own text stands out; "removed" / "excluded" tint
+ * those widgets. Density (`data-density`, Quiet by default) only tints normals under `full` (dev page).
  */
 import { StateEffect, StateField, type Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
@@ -38,8 +39,11 @@ export function densityExtension(density: Density = DEFAULT_DENSITY): Extension 
  * option). Empty: everything at rest. */
 export const setEmphasis = StateEffect.define<readonly string[]>();
 
+/** Recommendations underlined, the AI-generated layer off (editor/decorations.ts DEFAULT_LEGEND). */
+export const DEFAULT_EMPHASIS: readonly string[] = ['rec'];
+
 export const emphasisField = StateField.define<readonly string[]>({
-	create: () => [],
+	create: () => DEFAULT_EMPHASIS,
 	update(keys, tr) {
 		for (const e of tr.effects) if (e.is(setEmphasis)) keys = [...e.value];
 		return keys;
@@ -51,7 +55,7 @@ export const emphasisField = StateField.define<readonly string[]>({
 });
 
 /** Emphasis state, initialised to `keys`, written to the editor element's `data-rv-emph`. */
-export function emphasisExtension(keys: readonly string[] = []): Extension {
+export function emphasisExtension(keys: readonly string[] = DEFAULT_EMPHASIS): Extension {
 	return emphasisField.init(() => [...keys]);
 }
 
@@ -69,6 +73,10 @@ const LIGHT = {
 	'--rv-red-line': '#cf3b3b',
 	'--rv-blue-bg': '#dfeafc',
 	'--rv-blue-line': '#3b6fcf',
+	'--rv-violet-bg': '#ede7fb',
+	'--rv-violet-line': '#7c5cd6',
+	'--rv-teal-bg': '#d8f3f0',
+	'--rv-teal-line': '#14857a',
 	'--rv-grey-line': '#8a9099',
 	'--rv-ghost': '#6b727c',
 	'--rv-del': '#b42318',
@@ -94,6 +102,10 @@ const DARK = {
 	'--rv-red-line': '#ff7a7a',
 	'--rv-blue-bg': '#1f2d47',
 	'--rv-blue-line': '#7ea6f0',
+	'--rv-violet-bg': '#2e2648',
+	'--rv-violet-line': '#b3a1f5',
+	'--rv-teal-bg': '#163a37',
+	'--rv-teal-line': '#5fd3c6',
 	'--rv-grey-line': '#8f969f',
 	'--rv-ghost': '#9aa1ab',
 	'--rv-del': '#ff8c80',
@@ -121,7 +133,7 @@ export const reviewTheme = EditorView.baseTheme({
 	'&light': LIGHT,
 	'&dark': DARK,
 
-	// ---- marks: one soft dotted underline for every AI highlight, discreet at rest ----
+	// ---- marks: one soft dotted underline, discreet at rest ----
 	'.rv-mark': {
 		cursor: 'pointer',
 		borderRadius: '2px',
@@ -131,44 +143,51 @@ export const reviewTheme = EditorView.baseTheme({
 		textUnderlineOffset: '3px',
 		transition: 'background-color 120ms ease, text-decoration-color 120ms ease, opacity 120ms ease'
 	},
-	'.rv-normal': { textDecorationColor: 'color-mix(in srgb, var(--rv-green-line) 45%, transparent)' },
-	'&[data-density="full"] .rv-normal': { backgroundColor: 'var(--rv-green-bg)' },
-	'&[data-density="hidden"] .rv-normal': { textDecorationLine: 'none' },
-	'.rv-check, .rv-minor': { textDecorationColor: 'color-mix(in srgb, var(--rv-amber-line) 65%, transparent)' },
 	'.rv-action': { textDecorationColor: 'color-mix(in srgb, var(--rv-red-line) 70%, transparent)' },
+	'.rv-minor': { textDecorationColor: 'color-mix(in srgb, var(--rv-amber-line) 65%, transparent)' },
 	'.rv-info': { textDecorationLine: 'none' }, // gutter only
 	'.rv-preapplied': { textDecorationColor: 'color-mix(in srgb, var(--rv-blue-line) 50%, transparent)' },
-	// lit: hovered, or its inline control open (`rv-active`)
-	'.rv-normal:hover, .rv-active.rv-normal, .rv-active .rv-normal': {
-		textDecorationColor: 'var(--rv-green-line)',
-		backgroundColor: 'var(--rv-green-bg)'
+	// the AI-generated layer: plain editable text until the legend's "AI-generated" toggle is on; colour only
+	'.rv-normal, .rv-check, .rv-synth': { cursor: 'text', textDecorationLine: 'none' },
+	'&[data-rv-emph~="ai"] .rv-normal, &[data-rv-emph~="ai"] .rv-check, &[data-rv-emph~="ai"] .rv-synth': {
+		textDecorationLine: 'underline'
 	},
-	'.rv-check:hover, .rv-active.rv-check, .rv-active .rv-check, .rv-minor:hover, .rv-active.rv-minor, .rv-active .rv-minor':
-		{ textDecorationColor: 'var(--rv-amber-line)', backgroundColor: 'var(--rv-amber-bg)' },
+	'&[data-rv-emph~="ai"] .rv-normal': {
+		textDecorationColor: 'color-mix(in srgb, var(--rv-green-line) 60%, transparent)'
+	},
+	'&[data-rv-emph~="ai"] .rv-check': {
+		textDecorationColor: 'color-mix(in srgb, var(--rv-amber-line) 70%, transparent)'
+	},
+	'&[data-rv-emph~="ai"] .rv-synth': {
+		textDecorationColor: 'color-mix(in srgb, var(--rv-violet-line) 65%, transparent)'
+	},
+	'&[data-density="full"][data-rv-emph~="ai"] .rv-normal': { backgroundColor: 'var(--rv-green-bg)' },
+	// recommendations: underlined while "rec" is on (the default)
+	'.rv-rec': { textDecorationLine: 'none' },
+	'&[data-rv-emph~="rec"] .rv-rec': {
+		textDecorationLine: 'underline',
+		textDecorationColor: 'color-mix(in srgb, var(--rv-teal-line) 70%, transparent)'
+	},
+	// lit: hovered, or its inline control open (`rv-active`)
 	'.rv-action:hover, .rv-active.rv-action, .rv-active .rv-action': {
 		textDecorationColor: 'var(--rv-red-line)',
 		backgroundColor: 'var(--rv-red-bg)'
 	},
-	'.rv-info:hover, .rv-active.rv-info, .rv-active .rv-info': { backgroundColor: 'var(--rv-blue-bg)' },
+	'.rv-minor:hover, .rv-active.rv-minor, .rv-active .rv-minor': {
+		textDecorationColor: 'var(--rv-amber-line)',
+		backgroundColor: 'var(--rv-amber-bg)'
+	},
+	'.rv-rec:hover, .rv-active.rv-rec, .rv-active .rv-rec': {
+		textDecorationColor: 'var(--rv-teal-line)',
+		backgroundColor: 'var(--rv-teal-bg)'
+	},
 	'.rv-preapplied:hover, .rv-active.rv-preapplied, .rv-active .rv-preapplied': {
 		textDecorationColor: 'var(--rv-blue-line)',
 		backgroundColor: 'var(--rv-blue-bg)'
 	},
 
-	// ---- legend filters (`data-rv-emph`): the chosen classes forward, the rest discreet ----
-	// "dictated" first, so an emphasised class (later, same specificity) stays at full opacity
+	// ---- legend filters (`data-rv-emph`) ----
 	'&[data-rv-emph~="dictated"] .rv-mark, &[data-rv-emph~="dictated"] .rv-widget': { opacity: '0.4' },
-	'&[data-rv-emph~="normal"] .rv-normal': {
-		opacity: '1',
-		textDecorationLine: 'underline',
-		textDecorationColor: 'var(--rv-green-line)',
-		backgroundColor: 'color-mix(in srgb, var(--rv-green-bg) 70%, transparent)'
-	},
-	'&[data-rv-emph~="check"] .rv-check': {
-		opacity: '1',
-		textDecorationColor: 'var(--rv-amber-line)',
-		backgroundColor: 'color-mix(in srgb, var(--rv-amber-bg) 70%, transparent)'
-	},
 	'&[data-rv-emph~="removed"] .rv-removed': {
 		opacity: '1',
 		borderRadius: '2px',
@@ -179,11 +198,39 @@ export const reviewTheme = EditorView.baseTheme({
 		borderRadius: '2px',
 		backgroundColor: 'var(--rv-surface-hover)'
 	},
-	'&[data-rv-emph~="option"] .rv-option': {
-		opacity: '1',
-		borderRadius: '2px',
-		backgroundColor: 'color-mix(in srgb, var(--rv-blue-bg) 70%, transparent)'
+
+	// ---- suggestions: a checkbox subsection under a section's body (not document text) ----
+	'.rv-suggestions': {
+		margin: '2px 0 8px',
+		padding: '3px 8px 4px',
+		borderLeft: '2px solid color-mix(in srgb, var(--rv-blue-line) 45%, transparent)',
+		fontFamily: "'DM Sans', 'IBM Plex Sans', system-ui, sans-serif",
+		fontSize: '0.85em',
+		lineHeight: '1.5',
+		color: 'var(--rv-muted)',
+		userSelect: 'none'
 	},
+	'.rv-suggestions-title': {
+		fontSize: '0.8em',
+		fontWeight: '600',
+		letterSpacing: '0.06em',
+		textTransform: 'uppercase',
+		marginBottom: '1px'
+	},
+	'.rv-suggestion': {
+		display: 'flex',
+		alignItems: 'baseline',
+		gap: '6px',
+		cursor: 'pointer',
+		color: 'var(--rv-text)'
+	},
+	'.rv-suggestion input': {
+		margin: '0',
+		accentColor: 'var(--rv-blue-line)',
+		cursor: 'pointer',
+		transform: 'translateY(1px)'
+	},
+	'.rv-suggestion:has(input:not(:checked)) .rv-suggestion-text': { color: 'var(--rv-muted)' },
 
 	// ---- apply preview (hovering ⏎): old struck, new as ghost text ----
 	'.rv-preview-del': {

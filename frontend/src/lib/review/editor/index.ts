@@ -61,6 +61,7 @@ export {
 	DESCRIPTIONS,
 	ICONS,
 	LABELS,
+	DEFAULT_LEGEND,
 	LEGEND,
 	type LegendKey,
 	onReviewCommand,
@@ -75,6 +76,7 @@ export {
 } from './decorations';
 export {
 	DEFAULT_DENSITY,
+	DEFAULT_EMPHASIS,
 	densityField,
 	emphasisField,
 	reviewTheme,

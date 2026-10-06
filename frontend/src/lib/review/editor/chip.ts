@@ -1,14 +1,17 @@
 // What a highlight's inline control offers (pure; no DOM). Hovering (or the keyboard caret on) a highlight expands a
-// small control at the END of that highlight, inside the text flow: simple icons only, ✓ (keep / include / apply)
-// and ✕ (remove / dismiss), ↺ restore and ↶ undo on removed or pre-applied text. No type icon and no "?". Only a
-// flagged issue (an action item, which has a rail card) keeps a tiny `›` to its card; checks, normals and
-// suggestions have no rail link. Every button is a review command (lib/review/commands.ts) except `reveal`.
+// small control at the END of that highlight, inside the text flow: simple icons only. Only recommendations (✓ keep /
+// ✕ remove) and flagged action items (✓ apply / ✕ dismiss / › to their rail card) have one, plus ↺ restore and ↶ undo
+// on removed or pre-applied text. The AI-generated layer (assumed normals, checks, synthesis) and info items are
+// colour only: no control (the text is directly editable). Every button is a review command
+// (lib/review/commands.ts) except `reveal`.
 import type { CommandName } from '../commands';
 import type { ReviewItem } from '../types';
 import type { MarkClass } from './field';
 
 export type ChipType =
 	| 'check'
+	| 'synth'
+	| 'rec'
 	| 'action'
 	| 'normal'
 	| 'removed'
@@ -41,6 +44,10 @@ export function chipType(t: ChipTarget, item?: ReviewItem): ChipType {
 			return 'check';
 		case 'rv-normal':
 			return 'normal';
+		case 'rv-synth':
+			return 'synth';
+		case 'rv-rec':
+			return 'rec';
 		case 'rv-preapplied':
 			return isRemoval(item, t.kind) ? 'removed' : 'preapplied';
 		case 'rv-info':
@@ -55,13 +62,20 @@ const REMOVE: ChipAction = { command: 'remove', icon: '✕', label: 'Remove from
 const DISMISS: ChipAction = { command: 'dismiss', icon: '✕', label: 'Dismiss' };
 const REVEAL: ChipAction = { command: 'reveal', icon: '›', label: 'Show in the review rail' };
 
-/** The control's buttons, by type. `›` only on a flagged issue (an action item, which has a rail card). */
+/** The control's buttons, by type (none: no control). `›` only on a flagged issue (an action item, which has a rail
+ * card). */
 export function chipActions(t: ChipTarget, item?: ReviewItem): ChipAction[] {
 	switch (chipType(t, item)) {
 		case 'check':
-			return [KEEP('Keep as written'), REMOVE];
 		case 'normal':
-			return [KEEP('Keep'), REMOVE];
+		case 'synth':
+		case 'info':
+			return []; // the AI-generated layer: colour only
+		case 'rec':
+			// unplaceable (no edit; verified.failed not_placeable): keep only, no ✕
+			return item && !item.edit
+				? [KEEP('Keep the recommendation')]
+				: [KEEP('Keep the recommendation'), { ...REMOVE, label: 'Remove the recommendation' }];
 		case 'action': {
 			const out: ChipAction[] = [];
 			if (item?.edit) out.push({ command: 'apply', icon: '✓', label: 'Apply the fix', preview: true });
@@ -77,7 +91,5 @@ export function chipActions(t: ChipTarget, item?: ReviewItem): ChipAction[] {
 			return [{ command: 'undo', icon: '↶', label: 'Undo this change' }];
 		case 'excluded':
 			return [{ command: 'undo', icon: '↶', label: 'Undo the removal' }];
-		case 'info':
-			return [DISMISS];
 	}
 }

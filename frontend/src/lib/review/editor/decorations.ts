@@ -37,12 +37,14 @@ import type { CommandName } from '../commands';
 import type { Cls, ReviewItem } from '../types';
 import { chipActions, chipType, type ChipAction, type ChipTarget } from './chip';
 import {
+	AI_LAYER_MARKS,
 	checkReason,
 	reviewField,
 	reviewItems,
 	type LiveMark,
 	type MarkClass,
 	type ReviewFieldState,
+	type SuggestionEntry,
 	type WidgetItem
 } from './field';
 
@@ -52,6 +54,9 @@ export const LABELS = {
 	dictated: 'Your dictation',
 	normal: 'Assumed normal',
 	check: 'Check',
+	synth: 'AI synthesis',
+	ai: 'AI-generated',
+	rec: 'Recommendation',
 	removed: 'Removed · contradicts your dictation',
 	removedNumber: 'Removed · a measurement you did not dictate',
 	excluded: 'Removed by you',
@@ -77,6 +82,9 @@ export const ICONS = {
 	dictated: '✎',
 	normal: '+',
 	check: '?',
+	synth: '◆',
+	ai: '✦',
+	rec: '→',
 	removed: '✕',
 	excluded: '⊘',
 	option: '◌',
@@ -88,45 +96,47 @@ export const ICONS = {
 
 export type Meaning = keyof typeof ICONS;
 
-/** The legend's compact labels (under the editor title): the radiologist's own first, then one "AI-added:" group;
- * the full meaning is the entry's `title`. Each entry is also a filter (editor/theme.ts `setEmphasis`). */
+/** The legend (under the editor title): the radiologist's own first, then the AI's. Every entry is a toggle
+ * (editor/theme.ts `setEmphasis`): "AI-generated" shows the AI-generated layer (assumed normals, checks, synthesis:
+ * off by default, plain text), "Recommendations" their underline (on by default), the others bring their class
+ * forward. The full meaning is the entry's `title`. */
 const LEGEND_SHORT = {
 	dictated: 'Dictated',
 	excluded: 'Removed by you',
-	normal: 'Assumed normal',
-	check: 'Check',
-	removed: 'Removed (contradicts dictation)',
-	option: 'Suggested'
+	ai: 'AI-generated',
+	rec: 'Recommendations',
+	removed: 'Removed (contradicts dictation)'
 } as const;
 
 export type LegendKey = keyof typeof LEGEND_SHORT;
 
-const AI_NOTE = ' (added by AI, not dictated: check it)';
 const LEGEND_TITLE: Record<LegendKey, string> = {
 	dictated: 'Your dictation',
 	excluded: LABELS.excluded,
-	normal: LABELS.normal + AI_NOTE,
-	check: 'Check: inferred by AI, may not match your findings',
-	removed: 'Removed by AI: contradicts your dictation',
-	option: LABELS.option + AI_NOTE
+	ai: 'Text not from your dictation: assumed normal (green), check (amber), AI synthesis (violet). Show or hide',
+	rec: 'Recommendations the AI added: keep or remove each one. Show or hide their underline',
+	removed: 'Removed by AI: contradicts your dictation'
 };
 
-const AI_ADDED = new Set<LegendKey>(['normal', 'check', 'removed', 'option']);
+/** The legend filters on by default (recommendations shown; the AI-generated layer off). */
+export const DEFAULT_LEGEND: readonly LegendKey[] = ['rec'];
 
-/** The legend, in order: the radiologist's own, then the AI-added group. */
+/** The legend, in order: the radiologist's own, then the AI's. */
 export const LEGEND: { key: LegendKey; icon: string; label: string; title: string; ai: boolean }[] = (
-	['dictated', 'excluded', 'normal', 'check', 'removed', 'option'] as const
+	['dictated', 'excluded', 'ai', 'rec', 'removed'] as const
 ).map((key) => ({
 	key,
 	icon: ICONS[key],
 	label: LEGEND_SHORT[key],
 	title: LEGEND_TITLE[key],
-	ai: AI_ADDED.has(key)
+	ai: key !== 'dictated' && key !== 'excluded'
 }));
 
 const MARK_MEANING: Record<MarkClass, Meaning> = {
 	'rv-normal': 'normal',
 	'rv-check': 'check',
+	'rv-synth': 'synth',
+	'rv-rec': 'rec',
 	'rv-preapplied': 'preapplied',
 	'rv-action': 'action',
 	'rv-minor': 'minor',
@@ -244,7 +254,7 @@ function markLabel(m: LiveMark): string {
 	const meaning = MARK_MEANING[m.mark];
 	let t: string = LABELS[meaning];
 	if (m.mark === 'rv-check') t += ` · ${checkReason({ check_reason: m.reason }).line}`;
-	return `${t} · hover for actions`;
+	return AI_LAYER_MARKS.has(m.mark) ? `${t} (AI-generated)` : `${t} · hover for actions`;
 }
 
 const reviewDecorations = EditorView.decorations.compute([reviewField], (state): DecorationSet => {
@@ -260,8 +270,94 @@ const reviewDecorations = EditorView.decorations.compute([reviewField], (state):
 		);
 	}
 	for (const w of items.widgets)
-		ranges.push(Decoration.widget({ widget: new ItemWidget(w), side: 1 }).range(w.pos));
+		if (w.kind !== 'option') ranges.push(Decoration.widget({ widget: new ItemWidget(w), side: 1 }).range(w.pos));
 	return Decoration.set(ranges, true);
+});
+
+// ---- suggestions: a checkbox subsection under each section's body (never ghost text in the report) ----
+
+const HEADING = /^\s*([A-Z][A-Z0-9 /&()-]{2,}):\s*$/;
+const normName = (s: string) => s.trim().replace(/:$/, '').trim().toLowerCase();
+
+/** Where a section's suggestions go: the end of the last non-blank line of the section body holding `pos` (or the
+ * section named `section`); the end of the document when the report has no headings. */
+function sectionBodyEnd(state: EditorState, pos: number | null, section: string | null): number {
+	const doc = state.doc;
+	let lineNo: number | null = null;
+	if (pos != null) lineNo = doc.lineAt(Math.min(pos, doc.length)).number;
+	else if (section)
+		for (let n = 1; n <= doc.lines; n++) {
+			const m = HEADING.exec(doc.line(n).text);
+			if (m && normName(m[1]) === normName(section)) {
+				lineNo = n;
+				break;
+			}
+		}
+	if (lineNo == null) return doc.length;
+	let last = lineNo;
+	for (let n = lineNo + 1; n <= doc.lines; n++) {
+		const text = doc.line(n).text;
+		if (HEADING.test(text)) break;
+		if (text.trim()) last = n;
+	}
+	return doc.line(last).to;
+}
+
+class SuggestionsWidget extends WidgetType {
+	constructor(readonly entries: readonly SuggestionEntry[]) {
+		super();
+	}
+	eq(o: SuggestionsWidget): boolean {
+		return (
+			o.entries.length === this.entries.length &&
+			o.entries.every((e, i) => e.id === this.entries[i].id && e.checked === this.entries[i].checked && e.text === this.entries[i].text)
+		);
+	}
+	toDOM(view: EditorView): HTMLElement {
+		const box = el('div', 'rv-suggestions');
+		box.contentEditable = 'false';
+		box.setAttribute('role', 'group');
+		box.setAttribute('aria-label', 'Suggestions');
+		box.setAttribute('data-rv-suggestions', '');
+		box.append(el('div', 'rv-suggestions-title', 'Suggestions'));
+		for (const e of this.entries) {
+			const row = el('label', 'rv-suggestion');
+			row.setAttribute('data-rv-suggestion', e.id);
+			const cb = document.createElement('input');
+			cb.type = 'checkbox';
+			cb.checked = e.checked;
+			cb.setAttribute('aria-label', `${e.checked ? 'Included' : 'Include'}: ${e.text}`);
+			cb.addEventListener('mousedown', (ev) => ev.stopPropagation());
+			cb.addEventListener('change', () => {
+				// ticked: insert it at its place (apply); unticked: take it out again (undo)
+				for (const fn of view.state.facet(onReviewCommand)) fn(cb.checked ? 'apply' : 'undo', e.id);
+			});
+			row.append(cb, el('span', 'rv-suggestion-text', e.text));
+			box.append(row);
+		}
+		return box;
+	}
+	ignoreEvent(): boolean {
+		return true;
+	}
+}
+
+const suggestionDecos = EditorView.decorations.compute([reviewField], (state): DecorationSet => {
+	const list = reviewItems(state).suggestions ?? [];
+	if (!list.length) return Decoration.none;
+	const groups = new Map<number, SuggestionEntry[]>();
+	for (const g of list) {
+		const at = sectionBodyEnd(state, g.pos, g.section);
+		const cur = groups.get(at) ?? [];
+		cur.push(g);
+		groups.set(at, cur);
+	}
+	return Decoration.set(
+		[...groups.entries()].map(([at, entries]) =>
+			Decoration.widget({ widget: new SuggestionsWidget(entries), block: true, side: 1 }).range(at)
+		),
+		true
+	);
 });
 
 // ---- inline control (replaces the floating hover chip) ----
@@ -276,7 +372,13 @@ const reviewDecorations = EditorView.decorations.compute([reviewField], (state):
 /** The control's anchor, wherever it is: a mark (report text) or a widget (removed / option / excluded). */
 type ChipAnchor = { id: string; pos: number; target: ChipTarget; from: number; to: number };
 
+/** The item's control anchor, or null when it has no control (the AI-generated layer, info items). */
 function anchorOf(state: EditorState, id: string): ChipAnchor | null {
+	const a = rawAnchor(state, id);
+	return a && chipActions(a.target, state.facet(reviewItemLookup)(id)).length ? a : null;
+}
+
+function rawAnchor(state: EditorState, id: string): ChipAnchor | null {
 	const items = reviewItems(state);
 	const m = items.marks.find((x) => x.id === id);
 	if (m)
@@ -334,7 +436,7 @@ class GhostWidget extends WidgetType {
 
 /** Where the fix of `it` lands: the edit's `find` near the mark, else the mark itself. */
 function previewDecorations(state: EditorState, id: string, it: ReviewItem): Range<Decoration>[] {
-	const a = anchorOf(state, id);
+	const a = rawAnchor(state, id);
 	const e = it.edit;
 	if (!a || !e) return [];
 	const out: Range<Decoration>[] = [];
@@ -536,7 +638,9 @@ export const popoverField = StateField.define<string | null>({
 		// keyboard caret into a mark opens its control; out of every mark closes it
 		if (tr.selection && tr.isUserEvent('select') && !tr.isUserEvent('select.pointer')) {
 			const head = tr.state.selection.main.head;
-			const m = reviewItems(tr.state).marks.find((x) => head >= x.from && head <= x.to);
+			const m = reviewItems(tr.state).marks.find(
+				(x) => head >= x.from && head <= x.to && !!anchorOf(tr.state, x.id)
+			);
 			id = m ? m.id : null;
 		}
 		if (id && !anchorOf(tr.state, id)) id = null; // answered, or typed over
@@ -563,7 +667,7 @@ const controlDecos = EditorView.decorations.compute([popoverField, reviewField],
 const popoverHandlers = EditorView.domEventHandlers({
 	mouseover(event, view) {
 		const id = targetId(event.target);
-		if (!id) return false;
+		if (!id || !anchorOf(view.state, id)) return false;
 		const h = hoverOf(view);
 		if (h.closeTimer) clearTimeout(h.closeTimer);
 		h.closeTimer = null;
@@ -586,7 +690,7 @@ const popoverHandlers = EditorView.domEventHandlers({
 	click(event, view) {
 		// touch (tap) and click open at once
 		const id = targetId(event.target);
-		if (!id) return false;
+		if (!id || !anchorOf(view.state, id)) return false;
 		const h = hoverOf(view);
 		clearTimers(h);
 		if (view.state.field(popoverField, false) !== id) view.dispatch({ effects: openPopover.of(id) });
@@ -668,11 +772,8 @@ function gutterMarkers(view: EditorView): RangeSet<GutterMarker> {
 			if (at < cur.firstAt) Object.assign(cur, { firstId: id, firstAt: at });
 		}
 	};
-	for (const m of items.marks) add(m.from, m.cls, m.id, m.from);
-	for (const w of items.widgets) {
-		if (w.kind === 'removed') add(w.pos, 'action', w.id, w.pos);
-		else if (w.kind === 'option') add(w.pos, 'minor', w.id, w.pos);
-	}
+	for (const m of items.marks) if (!AI_LAYER_MARKS.has(m.mark)) add(m.from, m.cls, m.id, m.from);
+	for (const w of items.widgets) if (w.kind === 'removed') add(w.pos, 'action', w.id, w.pos);
 	const set = RangeSet.of(
 		[...lines.entries()]
 			.sort((a, b) => a[0] - b[0])
@@ -687,7 +788,9 @@ const reviewGutter = gutter({
 	markers: gutterMarkers,
 	domEventHandlers: {
 		click(view, line) {
-			const m = reviewItems(view.state).marks.find((x) => x.from >= line.from && x.from <= line.to);
+			const m = reviewItems(view.state).marks.find(
+				(x) => x.from >= line.from && x.from <= line.to && !!anchorOf(view.state, x.id)
+			);
 			if (m) view.dispatch({ effects: openPopover.of(m.id) });
 			return !!m;
 		}
@@ -699,6 +802,7 @@ const reviewGutter = gutter({
 export function reviewDisplay(): Extension[] {
 	return [
 		reviewDecorations,
+		suggestionDecos,
 		previewField,
 		previewDecos,
 		flashField,
