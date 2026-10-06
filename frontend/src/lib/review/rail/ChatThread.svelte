@@ -18,6 +18,7 @@
 		type ChatSource,
 		type ChatThreadMessage
 	} from '../chat';
+	import { dedupeSources, renderChatMarkdown } from '../markdown';
 	import type { ItemStatus } from '../types';
 
 	interface Message {
@@ -158,7 +159,12 @@
 	<div class="rv-chat-thread" bind:this={threadEl} aria-label="Chat" role="log">
 		{#each messages as m (m.id)}
 			<div class="rv-msg rv-msg-{m.role}" class:rv-msg-error={m.error} data-rv-msg={m.id}>
-				<p class="rv-msg-text">{m.content}</p>
+				{#if m.role === 'assistant' && !m.error}
+					<!-- model Markdown, sanitised to a strict allowlist (lib/review/markdown.ts) -->
+					<div class="rv-msg-text rv-md">{@html renderChatMarkdown(m.content)}</div>
+				{:else}
+					<p class="rv-msg-text rv-plain">{m.content}</p>
+				{/if}
 				{#each m.edits as e, k (k)}
 					{@const id = chatItemId(m.id, k)}
 					{@const st = statusOf(id)}
@@ -196,16 +202,20 @@
 						{/if}
 					</div>
 				{/each}
-				{#if m.sources.length}
-					<ul class="rv-sources">
-						{#each m.sources as s, k (k)}
-							{#if s.url && isWebUrl(s.url)}
-								<li><a href={s.url} target="_blank" rel="noopener noreferrer">{s.title || s.url}</a></li>
-							{:else if s.title || s.url}
-								<li>{s.title || s.url}</li>
-							{/if}
-						{/each}
-					</ul>
+				{#if dedupeSources(m.sources).length}
+					{@const sources = dedupeSources(m.sources)}
+					<div class="rv-sources" data-rv-sources>
+						<div class="rv-sources-title">Sources</div>
+						<ul>
+							{#each sources as s, k (k)}
+								{#if s.url && isWebUrl(s.url)}
+									<li><a href={s.url} target="_blank" rel="noopener noreferrer" title={s.url}>{s.title || s.url}</a></li>
+								{:else}
+									<li>{s.title || s.url}</li>
+								{/if}
+							{/each}
+						</ul>
+					</div>
 				{/if}
 			</div>
 		{/each}
@@ -255,7 +265,58 @@
 	}
 	.rv-msg-text {
 		margin: 0;
+	}
+	.rv-plain {
 		white-space: pre-wrap;
+	}
+	/* rendered Markdown: compact, theme-coloured, no stray blank lines */
+	.rv-md :global(:first-child) {
+		margin-top: 0;
+	}
+	.rv-md :global(:last-child) {
+		margin-bottom: 0;
+	}
+	.rv-md :global(p) {
+		margin: 0 0 0.5em;
+	}
+	.rv-md :global(ul),
+	.rv-md :global(ol) {
+		margin: 0.25em 0 0.5em;
+		padding-left: 1.2em;
+	}
+	.rv-md :global(ul) {
+		list-style: disc;
+	}
+	.rv-md :global(ol) {
+		list-style: decimal;
+	}
+	.rv-md :global(li) {
+		margin: 0.15em 0;
+		padding-left: 0.1em;
+	}
+	.rv-md :global(li > p) {
+		margin: 0;
+	}
+	.rv-md :global(strong),
+	.rv-md :global(b) {
+		font-weight: 600;
+		color: var(--rv-text);
+	}
+	.rv-md :global(h4),
+	.rv-md :global(h5),
+	.rv-md :global(h6) {
+		margin: 0.4em 0 0.3em;
+		font-size: 1em;
+		font-weight: 600;
+	}
+	.rv-md :global(code) {
+		font-size: 0.9em;
+		padding: 0 3px;
+		border-radius: 3px;
+		background: var(--rv-surface-hover);
+	}
+	.rv-md :global(a) {
+		color: var(--rv-blue-line);
 	}
 	.rv-edit {
 		margin-top: 6px;
@@ -303,12 +364,37 @@
 		color: var(--rv-red-line);
 	}
 	.rv-sources {
-		margin: 4px 0 0;
-		padding-left: 14px;
-		font-size: 0.72rem;
+		margin: 6px 0 0;
+		padding-top: 5px;
+		border-top: 1px solid var(--rv-border);
+		font-size: 0.7rem;
+		line-height: 1.4;
+		color: var(--rv-muted);
+	}
+	.rv-sources-title {
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		margin-bottom: 2px;
+	}
+	.rv-sources ul {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.rv-sources li {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.rv-sources a {
+		color: var(--rv-muted);
+		text-decoration: none;
+	}
+	.rv-sources a:hover {
 		color: var(--rv-blue-line);
+		text-decoration: underline;
 	}
 	.rv-thinking {
 		font-size: 0.75rem;

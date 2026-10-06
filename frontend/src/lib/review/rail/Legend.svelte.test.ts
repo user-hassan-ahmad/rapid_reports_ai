@@ -4,48 +4,69 @@ import { page } from '@vitest/browser/context';
 import Legend from './Legend.svelte';
 
 const legend = () => document.querySelector<HTMLElement>('[data-testid="review-legend"]')!;
-const pills = () => [...legend().querySelectorAll<HTMLButtonElement>('button[data-rv-filter]')];
+const toggles = () => [...legend().querySelectorAll<HTMLButtonElement>('button[data-rv-filter]')];
+const labels = () =>
+	[...legend().querySelectorAll<HTMLElement>('[data-rv-label], button[data-rv-filter]')].map(
+		(e) => e.querySelector('.rv-legend-label')!.textContent
+	);
 
 describe('Legend', () => {
-	it('labels: Dictated · Removed by you | AI-generated · Recommendations · Removed (contradicts dictation)', async () => {
+	it('labels: Dictated · Removed by you | AI-generated · Removed (contradicts dictation); no Recommendations pill', async () => {
 		render(Legend, {});
 		await expect.element(page.getByText('AI-generated')).toBeInTheDocument();
-		expect(pills().map((b) => b.querySelector('.rv-legend-label')!.textContent)).toEqual([
-			'Dictated',
-			'Removed by you',
-			'AI-generated',
-			'Recommendations',
-			'Removed (contradicts dictation)'
-		]);
-		expect(legend().textContent).not.toContain('(AI)');
-		// the separator sits between the radiologist's own and the AI's
+		expect(labels()).toEqual(['Dictated', 'Removed by you', 'AI-generated', 'Removed (contradicts dictation)']);
+		expect(legend().textContent).not.toContain('Recommendations');
 		const sep = legend().querySelector('.rv-legend-sep')!;
-		expect(pills()[1].compareDocumentPosition(sep) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-		expect(sep.compareDocumentPosition(pills()[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-		// the AI-generated pill carries the layer's three colours; its title names them
-		expect(pills()[2].querySelectorAll('.rv-swatches i').length).toBe(3);
-		expect(pills()[2].title).toMatch(/assumed normal.*check.*synthesis/i);
+		const removedByYou = legend().querySelector('[data-rv-label="excluded"]')!;
+		expect(removedByYou.compareDocumentPosition(sep) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(sep.compareDocumentPosition(toggles()[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 
-	it('defaults: AI-generated off, Recommendations on', async () => {
+	it('only AI-generated is a toggle; Dictated and the removed entries are static labels', async () => {
 		render(Legend, {});
-		await expect.element(page.getByRole('button', { name: /AI-generated/ })).toHaveAttribute('aria-pressed', 'false');
-		await expect
-			.element(page.getByRole('button', { name: /Recommendations/ }))
-			.toHaveAttribute('aria-pressed', 'true');
+		await expect.element(page.getByText('Dictated')).toBeInTheDocument();
+		expect(toggles().map((b) => b.dataset.rvFilter)).toEqual(['ai']);
+		for (const key of ['dictated', 'excluded', 'removed']) {
+			const el = legend().querySelector<HTMLElement>(`[data-rv-label="${key}"]`)!;
+			expect(el.tagName, key).toBe('SPAN');
+			expect(el.closest('button'), key).toBeNull();
+			expect(el.hasAttribute('aria-pressed'), key).toBe(false);
+			expect(el.tabIndex, key).toBe(-1);
+			expect(getComputedStyle(el).cursor, key).toBe('default');
+		}
 	});
 
-	it('pills are toggles: several may be on, a second click turns one off', async () => {
+	it('AI-generated is on by default and its breakdown is shown inline: Normals, Pertinent negatives, Synthesis', async () => {
+		render(Legend, {});
+		await expect.element(page.getByRole('button', { name: /^AI-generated$/ })).toHaveAttribute('aria-pressed', 'true');
+		const items = [...legend().querySelectorAll<HTMLElement>('[data-rv-breakdown] [data-rv-form]')];
+		expect(items.map((i) => i.textContent?.trim())).toEqual(['Normals', 'Pertinent negatives', 'Synthesis']);
+		expect(items.map((i) => i.dataset.rvForm)).toEqual(['normal', 'negative', 'synthesis']);
+		const sw = items.map((i) => getComputedStyle(i.querySelector('.rv-swatch')!).backgroundColor);
+		expect(new Set(sw).size).toBe(3); // green, amber, violet swatches
+		expect(legend().textContent).not.toContain('Needs checking');
+	});
+
+	it('the breakdown collapses and expands', async () => {
+		render(Legend, {});
+		const more = page.getByRole('button', { name: /AI-generated breakdown/ });
+		await expect.element(more).toHaveAttribute('aria-expanded', 'true');
+		await more.click();
+		await expect.element(more).toHaveAttribute('aria-expanded', 'false');
+		expect(legend().querySelector('[data-rv-breakdown]')).toBeNull();
+		await more.click();
+		expect(legend().querySelector('[data-rv-breakdown]')).not.toBeNull();
+	});
+
+	it('the AI-generated toggle turns the layer off and on', async () => {
 		const onFilter = vi.fn();
 		render(Legend, { onFilter });
-		const ai = page.getByRole('button', { name: /AI-generated/ });
+		const ai = page.getByRole('button', { name: /^AI-generated$/ });
 		await ai.click();
-		await expect.element(ai).toHaveAttribute('aria-pressed', 'true');
-		expect(onFilter).toHaveBeenLastCalledWith(['ai', 'rec']);
-		await page.getByRole('button', { name: /Recommendations/ }).click();
-		expect(onFilter).toHaveBeenLastCalledWith(['ai']);
-		await ai.click();
+		await expect.element(ai).toHaveAttribute('aria-pressed', 'false');
 		expect(onFilter).toHaveBeenLastCalledWith([]);
+		await ai.click();
+		expect(onFilter).toHaveBeenLastCalledWith(['ai']);
 	});
 
 	it('wraps onto new lines when narrow, never scrolling sideways', async () => {
@@ -54,10 +75,11 @@ describe('Legend', () => {
 		document.body.append(host);
 		render(Legend, { target: host });
 		await expect.element(page.getByText('AI-generated')).toBeInTheDocument();
-		const tops = new Set(pills().map((b) => Math.round(b.getBoundingClientRect().top)));
+		const parts = [...legend().querySelectorAll<HTMLElement>('[data-rv-label], button, [data-rv-form]')];
+		const tops = new Set(parts.map((b) => Math.round(b.getBoundingClientRect().top)));
 		expect(tops.size).toBeGreaterThan(1);
 		expect(legend().scrollWidth).toBeLessThanOrEqual(legend().clientWidth + 1);
-		for (const b of pills())
+		for (const b of parts)
 			expect(b.getBoundingClientRect().right).toBeLessThanOrEqual(host.getBoundingClientRect().right + 1);
 		host.remove();
 	});

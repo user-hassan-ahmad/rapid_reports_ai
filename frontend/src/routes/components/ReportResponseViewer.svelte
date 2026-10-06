@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
-	import { fade, fly } from 'svelte/transition';
+	import { fade } from 'svelte/transition';
 	import { writable, get } from 'svelte/store';
 	import { token } from '$lib/stores/auth';
 	import { getAuditState, auditActions as sharedAuditActions } from '$lib/stores/audit';
@@ -751,10 +751,6 @@
 		const view = reportEditorRef?.getView();
 		if (view && railOn) view.dispatch({ effects: setEmphasis.of(keys) });
 	}
-	// Gate G: the unsaved-changes bar sits under the report view, so the view gives back the bar's height; otherwise
-	// the view (and the rail's chat composer at its foot) runs on beneath the bar.
-	let saveBarHeight = 0;
-	$: saveBarShown = activeView === 'report' && hasUnsavedChanges && saveBarHeight > 0;
 	/** Fixed to Quiet in the app (the density toggle is a dev-page capability). */
 	const reviewDensity: Density = 'quiet';
 	let reviewReportId: string | null = null;
@@ -1279,6 +1275,17 @@
 			
 			<!-- Controls row: one line (never wraps the copy button under the others); the title column shrinks -->
 			<div class="editor-controls gap-1.5 sm:gap-2 relative z-15" data-testid="editor-controls">
+				{#if activeView === 'report' && hasUnsavedChanges}
+					<!-- unsaved edits: a quiet inline status in the header (never over the report text); Cmd-S saves too -->
+					<div class="unsaved-status" data-testid="unsaved-status" role="status" title="Unsaved changes (⌘S to save)">
+						<span class="unsaved-dot" aria-hidden="true"></span>
+						<span class="unsaved-label">Unsaved</span>
+						<span class="unsaved-sep" aria-hidden="true">·</span>
+						<button type="button" class="unsaved-action unsaved-save" onclick={saveEditing} title="Save (⌘S)">Save</button>
+						<span class="unsaved-sep" aria-hidden="true">·</span>
+						<button type="button" class="unsaved-action" onclick={discardEditing} title="Discard unsaved changes">Discard</button>
+					</div>
+				{/if}
 				{#if reportId}
 					<div class="flex shrink-0 whitespace-nowrap items-center bg-gray-800/60 rounded-lg p-0.5 sm:p-1">
 						<button
@@ -1384,9 +1391,7 @@
 					<div
 						class="relative"
 						data-rv-viewport
-						style="min-height: {saveBarShown
-							? `calc(100vh - 330px - ${saveBarHeight}px)`
-							: 'calc(100vh - 330px)'};"
+						style="min-height: calc(100vh - 330px);"
 					>
 						<!-- History View -->
 						{#if activeView === 'history' && reportId}
@@ -1554,43 +1559,6 @@
 					</div>
 				</div>
 				
-			<!-- Floating save bar -->
-			{#if activeView === 'report' && hasUnsavedChanges}
-				<div
-					class="sticky-save-bar"
-					bind:offsetHeight={saveBarHeight}
-					transition:fly={{ y: 48, duration: 220, easing: (t) => 1 - Math.pow(1 - t, 3) }}
-				>
-					<div class="sticky-save-inner">
-						<!-- Pulsing unsaved dot -->
-						<div class="relative w-2.5 h-2.5 shrink-0">
-							<span class="absolute inset-0 rounded-full bg-amber-400 animate-ping opacity-60"></span>
-							<span class="absolute inset-0 rounded-full bg-amber-400"></span>
-						</div>
-						<span class="text-xs text-gray-300 font-medium">Unsaved changes</span>
-						<kbd class="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-white/10 bg-white/5 text-[10px] text-gray-400 font-mono">⌘S</kbd>
-						<div class="flex items-center gap-2 ml-auto">
-							<button
-								type="button"
-								onclick={discardEditing}
-								class="px-3 py-1.5 text-xs font-medium rounded-lg text-gray-400 hover:text-white hover:bg-white/[0.08] transition-colors"
-							>
-								Discard
-							</button>
-							<button
-								type="button"
-								onclick={saveEditing}
-								class="save-btn-glow flex items-center gap-1.5 px-3 sm:px-4 py-1.5 text-xs font-semibold rounded-lg bg-purple-600 hover:bg-purple-500 text-white transition-colors"
-							>
-								<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-								</svg>
-								Save Changes
-							</button>
-						</div>
-					</div>
-				</div>
-			{/if}
 
 		</div>
 	</div>
@@ -1653,63 +1621,51 @@
 		white-space: nowrap;
 	}
 
-	/* ── Floating save bar ─────────────────────────────────────────────────── */
-
-	.sticky-save-bar {
-		padding: 0 0.75rem 0.75rem;
-	}
-
-	@media (min-width: 640px) {
-		.sticky-save-bar {
-			padding: 0 1rem 1rem;
-		}
-	}
-
-	.sticky-save-inner {
-		display: flex;
+	/* ── Unsaved changes: a quiet inline status in the header ─────────────── */
+	.unsaved-status {
+		display: inline-flex;
 		align-items: center;
-		gap: 0.625rem;
-		padding: 0.625rem 0.875rem;
-		background: rgba(15, 12, 25, 0.82);
-		backdrop-filter: blur(16px);
-		-webkit-backdrop-filter: blur(16px);
-		border: 1px solid rgba(168, 85, 247, 0.25);
-		border-radius: 0.75rem;
-		box-shadow:
-			0 0 0 1px rgba(168, 85, 247, 0.08),
-			0 8px 32px rgba(0, 0, 0, 0.5),
-			0 0 20px rgba(168, 85, 247, 0.08);
+		gap: 0.3rem;
+		font-size: 0.72rem;
+		line-height: 1;
+		color: #9ca3af;
+		white-space: nowrap;
 	}
-
-	@media (min-width: 640px) {
-		.sticky-save-inner {
-			padding: 0.75rem 1rem;
-			gap: 0.75rem;
-		}
+	.unsaved-dot {
+		width: 0.4rem;
+		height: 0.4rem;
+		border-radius: 9999px;
+		background: #fbbf24;
 	}
-
-	/* ── Pulsing glow on save button ──────────────────────────────────────── */
-
-	@keyframes save-glow-pulse {
-		0%, 100% {
-			box-shadow:
-				0 0 0 0 rgba(168, 85, 247, 0.5),
-				0 0 0 0 rgba(168, 85, 247, 0.2);
-		}
-		50% {
-			box-shadow:
-				0 0 10px 3px rgba(168, 85, 247, 0.55),
-				0 0 22px 7px rgba(168, 85, 247, 0.18);
-		}
+	.unsaved-label {
+		color: #d1d5db;
+		font-weight: 500;
 	}
-
-	.save-btn-glow {
-		animation: save-glow-pulse 2s ease-in-out infinite;
+	.unsaved-sep {
+		color: #4b5563;
 	}
-
-	.save-btn-glow:hover {
-		animation: none;
-		box-shadow: 0 0 14px 4px rgba(168, 85, 247, 0.6);
+	.unsaved-action {
+		font: inherit;
+		padding: 0.15rem 0.2rem;
+		border: 0;
+		border-radius: 0.25rem;
+		background: none;
+		color: #9ca3af;
+		cursor: pointer;
+	}
+	.unsaved-action:hover {
+		color: #fff;
+	}
+	.unsaved-save {
+		color: #c084fc;
+		font-weight: 600;
+	}
+	.unsaved-save:hover {
+		color: #e9d5ff;
+	}
+	.unsaved-action:focus-visible {
+		outline: 2px solid #a855f7;
+		outline-offset: 1px;
 	}
 </style>
 

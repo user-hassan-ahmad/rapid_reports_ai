@@ -205,7 +205,7 @@ describe('review decorations', () => {
 		const g = markEl(view, 'g1');
 		expect(g.classList.contains('rv-normal')).toBe(true);
 		expect(g.textContent).toBe(GREEN);
-		expect(g.getAttribute('aria-label')).toContain(LABELS.normal);
+		expect(g.getAttribute('aria-label')).toBe('Normals (AI-generated)');
 		expect(markEl(view, 'c1').classList.contains('rv-check')).toBe(true);
 		expect(markEl(view, 's1').classList.contains('rv-synth')).toBe(true);
 		expect(markEl(view, 'rec1').classList.contains('rv-rec')).toBe(true);
@@ -220,25 +220,67 @@ describe('review decorations', () => {
 		expect(view.dom.dataset.density).toBe('full');
 	});
 
-	it('the AI-generated layer (normal, check, synthesis) is plain text by default; the "ai" toggle shows dotted colours', () => {
+	it('the AI-generated layer is on by default: faint tints by category, no underline; toggled off it is plain text', () => {
 		const { view } = mount();
 		noTransitions();
 		const cs = (id: string) => getComputedStyle(markEl(view, id));
+		// g1 "The liver is normal." → normal; c1 "No hydronephrosis." → pertinent negative; s1 → synthesis
+		expect(markEl(view, 'g1').classList.contains('rv-form-normal')).toBe(true);
+		expect(markEl(view, 'c1').classList.contains('rv-form-negative')).toBe(true);
+		expect(markEl(view, 's1').classList.contains('rv-form-synthesis')).toBe(true);
+		const tints = new Set<string>();
 		for (const id of ['g1', 'c1', 's1']) {
 			expect(cs(id).textDecorationLine, id).toBe('none');
-			expect(cs(id).backgroundColor, id).toBe(NONE);
+			const bg = cs(id).backgroundColor;
+			expect(bg, id).not.toBe(NONE);
+			const alpha = Number(/rgba\([^)]*,\s*([\d.]+)\)/.exec(bg)?.[1] ?? 1);
+			expect(alpha, `${id} ${bg}`).toBeLessThanOrEqual(0.2); // very light
+			tints.add(bg);
 		}
-		view.dispatch({ effects: setEmphasis.of(['ai', 'rec']) });
-		const colours = new Set<string>();
+		expect(tints.size).toBe(3); // green, amber, violet
+		view.dispatch({ effects: setEmphasis.of([]) });
 		for (const id of ['g1', 'c1', 's1']) {
-			expect(cs(id).textDecorationLine, id).toContain('underline');
-			expect(cs(id).textDecorationStyle, id).toBe('dotted');
 			expect(cs(id).backgroundColor, id).toBe(NONE);
-			colours.add(cs(id).textDecorationColor);
+			expect(cs(id).textDecorationLine, id).toBe('none');
 		}
-		expect(colours.size).toBe(3); // green, amber, violet
-		view.dispatch({ effects: setEmphasis.of(['rec']) });
-		expect(cs('s1').textDecorationLine).toBe('none');
+	});
+
+	it('tints follow evidence.form when the backend sends it, else the text (No / Nil / Without / Absent → negative)', () => {
+		const D = 'Without free fluid. Nil collection. Absent flow voids. The bowel is unremarkable. Likely benign.';
+		const at = (t: string) => span(t, D);
+		const items = [
+			item({ id: 'n1', kind: 'assumed_normal', cls: 'info', anchor: at('Without free fluid.') }),
+			item({ id: 'n2', kind: 'assumed_normal', cls: 'info', anchor: at('Nil collection.') }),
+			item({ id: 'n3', kind: 'check', cls: 'minor', anchor: at('Absent flow voids.') }),
+			// the backend's form wins over the text
+			item({
+				id: 'n4',
+				kind: 'assumed_normal',
+				cls: 'info',
+				anchor: at('The bowel is unremarkable.'),
+				evidence: { form: 'negative' }
+			}),
+			item({ id: 'n5', kind: 'ai_generated', cls: 'info', lane: 'accuracy', anchor: at('Likely benign.') })
+		];
+		const { view } = mount({}, items, D);
+		const form = (id: string) => [...markEl(view, id).classList].find((c) => c.startsWith('rv-form-'));
+		expect(['n1', 'n2', 'n3', 'n4', 'n5'].map(form)).toEqual([
+			'rv-form-negative',
+			'rv-form-negative',
+			'rv-form-negative',
+			'rv-form-negative',
+			'rv-form-synthesis'
+		]);
+	});
+
+	it('check (implicated) items carry only their category tint: no underline of their own', () => {
+		const { view } = mount();
+		noTransitions();
+		const c = getComputedStyle(markEl(view, 'c1'));
+		const n = getComputedStyle(markEl(view, 'g1'));
+		expect(c.textDecorationLine).toBe('none');
+		expect(c.borderBottomStyle).toBe(n.borderBottomStyle);
+		expect(c.backgroundColor).not.toBe(NONE);
 	});
 
 	it('the AI-generated layer has no actions: no inline control on hover, click or caret, no gutter marker', async () => {
@@ -258,14 +300,14 @@ describe('review decorations', () => {
 		expect(control(view)).toBeNull();
 	});
 
-	it('a recommendation is underlined by default (the "rec" toggle) and hides its underline when toggled off', () => {
+	it('a recommendation keeps its own dotted underline, whatever the AI-generated toggle', () => {
 		const { view } = mount();
 		noTransitions();
 		const cs = () => getComputedStyle(markEl(view, 'rec1'));
 		expect(cs().textDecorationLine).toContain('underline');
 		expect(cs().textDecorationStyle).toBe('dotted');
 		view.dispatch({ effects: setEmphasis.of([]) });
-		expect(cs().textDecorationLine).toBe('none');
+		expect(cs().textDecorationLine).toContain('underline');
 	});
 
 	it('hovering a flagged action item expands ✓ / ✕ / › at the END of the highlight, inside the text flow', async () => {
@@ -439,11 +481,11 @@ describe('review decorations', () => {
 		expect(view.dom.querySelector('.cm-line')!.textContent).not.toContain(OPTION);
 	});
 
-	it('one consistent underline: soft dotted, no fill, discreet at rest (lit is stronger)', () => {
-		const { view } = mount({ emphasis: ['ai', 'rec'] });
+	it('flagged items keep one consistent underline: soft dotted, no fill, discreet at rest (lit is stronger)', () => {
+		const { view } = mount({ emphasis: ['ai'] });
 		noTransitions();
-		const ids = ['g1', 'c1', 's1', 'rec1', 'p1', 'a1'];
-		const first = getComputedStyle(markEl(view, 'g1'));
+		const ids = ['rec1', 'p1', 'a1'];
+		const first = getComputedStyle(markEl(view, 'rec1'));
 		for (const id of ids) {
 			const cs = getComputedStyle(markEl(view, id));
 			expect(cs.backgroundColor, id).toBe(NONE);
@@ -458,17 +500,11 @@ describe('review decorations', () => {
 		}
 	});
 
-	it('legend filters: "dictated" fades AI highlights, "removed" tints removed widgets; empty resets', () => {
+	it('the legend toggle sets data-rv-emph ("ai" by default); empty clears it', () => {
 		const { view } = mount();
-		noTransitions();
-		view.dispatch({ effects: setEmphasis.of(['dictated']) });
-		expect(Number(getComputedStyle(markEl(view, 'a1')).opacity)).toBeLessThan(1);
-		const r = view.dom.querySelector<HTMLElement>('[data-rv-widget="r1"]')!;
-		view.dispatch({ effects: setEmphasis.of(['removed']) });
-		expect(getComputedStyle(r).backgroundColor).not.toBe(NONE);
+		expect(view.dom.getAttribute('data-rv-emph')).toBe('ai');
 		view.dispatch({ effects: setEmphasis.of([]) });
 		expect(view.dom.hasAttribute('data-rv-emph')).toBe(false);
-		expect(getComputedStyle(r).backgroundColor).toBe(NONE);
 	});
 
 	it('draws gutter markers only for actionable items (not the AI-generated layer)', () => {
@@ -561,7 +597,7 @@ describe('suggestions subsection', () => {
 		expect(view.dom.querySelector('[data-rv-suggestions]')).toBeNull();
 	});
 
-	it('recommendations join the block ticked ("Recommendations & suggestions"): untick removes, re-tick restores', async () => {
+	it('recommendations join the impression block ticked ("Recommendations"): untick removes, re-tick restores', async () => {
 		const REC2 = 'Suggest surgical review.';
 		const doc = DOC.replace('Pancreatic mass.', `Pancreatic mass. ${REC2}`);
 		const rec = item({
@@ -576,7 +612,7 @@ describe('suggestions subsection', () => {
 		const sg = sugg({ id: 'o1', section: 'IMPRESSION', edit: { mode: 'insert', after: 'Pancreatic mass.', replace: 'No metastases.' } });
 		const { view, onCommand } = mount({}, [rec, sg], doc);
 		const box = view.dom.querySelector<HTMLElement>('[data-rv-suggestions]')!;
-		expect(box.querySelector('.rv-suggestions-title')!.textContent).toBe('Recommendations & suggestions');
+		expect(box.querySelector('.rv-suggestions-title')!.textContent).toBe('Recommendations');
 		const rows = [...box.querySelectorAll<HTMLElement>('[data-rv-suggestion]')];
 		expect(rows.map((r) => r.getAttribute('data-rv-kind'))).toEqual(['recommendation', 'suggestion']);
 		const cb = rows[0].querySelector('input')!;
@@ -603,7 +639,7 @@ describe('suggestions subsection', () => {
 		expect(row.querySelector('input')!.checked).toBe(true);
 		expect(row.querySelector('input')!.disabled).toBe(true);
 		expect(row.title).toBe('Edit in text');
-		expect(view.dom.querySelector('.rv-suggestions-title')!.textContent).toBe('Recommendations & suggestions');
+		expect(view.dom.querySelector('.rv-suggestions-title')!.textContent).toBe('Recommendations');
 	});
 
 	it('an additions insert is a suggestion too; each section gets its own list', () => {
@@ -622,6 +658,89 @@ describe('suggestions subsection', () => {
 		const boxes = [...view.dom.querySelectorAll<HTMLElement>('[data-rv-suggestions]')];
 		expect(boxes.length).toBe(2);
 		expect(boxes[1].textContent).toContain('Borderline resectable.');
+	});
+});
+
+describe('impression checklist block', () => {
+	// SYNTHETIC report with a sign-off after the impression.
+	const REC2 = 'Suggest surgical review.';
+	const DOC = `FINDINGS:\nThe pancreas has a mass.\n\nIMPRESSION:\nPancreatic mass. ${REC2}\n\nDr A Person\nConsultant Radiologist\nGMC 0000000 FRCR`;
+	const rec = item({
+		id: 'r1',
+		kind: 'recommendation',
+		cls: 'minor',
+		lane: 'additions',
+		section: 'IMPRESSION',
+		anchor: span(REC2, DOC),
+		edit: { mode: 'remove', find: REC2, section: 'IMPRESSION' }
+	});
+	const findingSugg = item({
+		id: 'o1',
+		kind: 'option',
+		cls: 'minor',
+		lane: 'additions',
+		section: 'FINDINGS',
+		edit: { mode: 'insert', after: 'The pancreas has a mass.', replace: 'No ascites.' }
+	});
+	const lineOf = (view: EditorView, text: string) =>
+		[...view.contentDOM.querySelectorAll<HTMLElement>('.cm-line')].find((l) => l.textContent === text)!;
+
+	it('is headed "Recommendations" (other sections keep "Suggestions")', () => {
+		const { view } = mount({}, [rec, findingSugg], DOC);
+		const titles = [...view.dom.querySelectorAll('.rv-suggestions-title')].map((t) => t.textContent);
+		expect(titles).toEqual(['Suggestions', 'Recommendations']);
+		expect(view.dom.querySelector('[data-rv-impression]')!.getAttribute('aria-label')).toBe('Recommendations');
+	});
+
+	it('sits directly after the impression body, before the signature, name, GMC and FRCR lines', () => {
+		const { view } = mount({}, [rec], DOC);
+		const box = view.dom.querySelector<HTMLElement>('[data-rv-impression]')!.getBoundingClientRect();
+		const body = lineOf(view, `Pancreatic mass. ${REC2}`).getBoundingClientRect();
+		const sig = lineOf(view, 'Dr A Person').getBoundingClientRect();
+		expect(box.top).toBeGreaterThanOrEqual(body.bottom - 1);
+		expect(box.bottom).toBeLessThanOrEqual(sig.top + 1);
+		for (const t of ['Consultant Radiologist', 'GMC 0000000 FRCR'])
+			expect(lineOf(view, t).getBoundingClientRect().top).toBeGreaterThan(box.bottom);
+		expect(view.state.doc.toString()).toBe(DOC); // never document text
+	});
+
+	it('a sign-off directly under the impression (no blank line) still stays below the block', () => {
+		const doc = DOC.replace(`${REC2}\n\nDr A Person`, `${REC2}\nDr A Person`);
+		const r = { ...rec, anchor: span(REC2, doc) };
+		const { view } = mount({}, [r], doc);
+		const box = view.dom.querySelector<HTMLElement>('[data-rv-impression]')!.getBoundingClientRect();
+		expect(box.bottom).toBeLessThanOrEqual(lineOf(view, 'Dr A Person').getBoundingClientRect().top + 1);
+	});
+
+	it('has a blank line’s gap above it', () => {
+		const { view } = mount({}, [rec], DOC);
+		const block = view.dom.querySelector<HTMLElement>('.rv-suggestions-block')!;
+		const box = block.querySelector<HTMLElement>('[data-rv-suggestions]')!.getBoundingClientRect();
+		const body = lineOf(view, `Pancreatic mass. ${REC2}`).getBoundingClientRect();
+		expect(box.top - body.bottom).toBeGreaterThanOrEqual(body.height * 0.8);
+	});
+
+	it('checkboxes in the app theme: a rounded custom box in the border colour; purple-600 with a white tick when checked; focus ring', async () => {
+		const unticked = { ...rec, status: 'applied' as const };
+		const { view } = mount({}, [unticked, findingSugg], DOC.replace(` ${REC2}`, ''));
+		noTransitions();
+		const [off] = [...view.dom.querySelectorAll<HTMLInputElement>('input.rv-check-box')];
+		const cs = getComputedStyle(off);
+		expect(cs.appearance).toBe('none');
+		expect(Number.parseFloat(cs.borderTopLeftRadius)).toBeGreaterThan(0);
+		expect(cs.borderTopColor).toBe('rgb(214, 216, 219)'); // --rv-border (light)
+		expect(cs.backgroundImage).toBe('none');
+		const { view: v2 } = mount({}, [rec], DOC);
+		const on = v2.dom.querySelector<HTMLInputElement>('input.rv-check-box')!;
+		expect(on.checked).toBe(true);
+		const con = getComputedStyle(on);
+		expect(con.backgroundColor).toBe('rgb(147, 51, 234)'); // purple-600
+		expect(con.backgroundImage).toContain('svg');
+		expect(con.backgroundImage).toContain('white');
+		// hover and keyboard focus states are styled (the theme's own rules)
+		const rules = [...document.styleSheets].flatMap((sh) => [...sh.cssRules].map((r) => r.cssText));
+		expect(rules.some((r) => /rv-check-box:hover/.test(r) && /border-color/.test(r))).toBe(true);
+		expect(rules.some((r) => /rv-check-box:focus-visible/.test(r) && /box-shadow/.test(r))).toBe(true);
 	});
 });
 

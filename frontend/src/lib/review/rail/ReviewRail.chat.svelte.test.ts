@@ -187,13 +187,13 @@ describe('ReviewRail chat', () => {
 			.toHaveValue('Ascites: why');
 	});
 
-	it('⤢ Expand widens the rail', async () => {
+	it('the Expand icon widens the rail', async () => {
 		sendChat.mockResolvedValue(REPLY);
 		await mount();
 		await page.getByRole('textbox', { name: 'Chat message' }).fill('q');
 		await page.getByRole('button', { name: 'Send' }).click();
 		const before = rail().getBoundingClientRect().width;
-		await page.getByRole('button', { name: '⤢ Expand' }).click();
+		await page.getByRole('button', { name: 'Expand chat' }).click();
 		await expect.poll(() => rail().getBoundingClientRect().width).toBeGreaterThan(before);
 	});
 
@@ -224,5 +224,93 @@ describe('ReviewRail chat sources (F2 M8)', () => {
 		await expect.element(page.getByText('Data source')).toBeInTheDocument();
 		const hrefs = [...rail().querySelectorAll('.rv-sources a')].map((a) => a.getAttribute('href'));
 		expect(hrefs).toEqual(['https://example.org/guide']);
+	});
+});
+
+describe('ReviewRail chat formatting', () => {
+	async function ask(reply: Partial<ChatReply>) {
+		sendChat.mockResolvedValue({ ...REPLY, edits: [], ...reply });
+		await mount();
+		await page.getByRole('textbox', { name: 'Chat message' }).fill('Staging?');
+		await page.getByRole('button', { name: 'Send' }).click();
+		await expect.poll(() => rail().querySelector('.rv-msg-assistant')).not.toBeNull();
+		return rail().querySelector<HTMLElement>('.rv-msg-assistant .rv-msg-text')!;
+	}
+
+	it('renders the reply’s Markdown: paragraphs, bold and bullet lists (no literal ** or "*   ")', async () => {
+		const md =
+			'The provisional staging is:\n\n*   **T1c:** mass 2.8 cm.\n*   **N1:** hilar node.\n\n**Provisional stage: T1c N1 Mx**\n\nMDT discussion advised.';
+		const body = await ask({ response: md });
+		expect(body.textContent).not.toContain('**');
+		expect(body.textContent).not.toMatch(/^\s*\*\s/m);
+		expect([...body.querySelectorAll('li')].map((l) => l.textContent)).toEqual([
+			'T1c: mass 2.8 cm.',
+			'N1: hilar node.'
+		]);
+		expect([...body.querySelectorAll('strong')].map((b) => b.textContent)).toContain(
+			'Provisional stage: T1c N1 Mx'
+		);
+		expect(body.querySelectorAll('p').length).toBe(3);
+		// bullets indented inside the bubble, compact (no stray blank lines between paragraphs)
+		const ul = body.querySelector('ul')!;
+		expect(Number.parseFloat(getComputedStyle(ul).paddingLeft)).toBeGreaterThan(8);
+		expect(getComputedStyle(ul).listStyleType).toBe('disc');
+		expect(getComputedStyle(body).whiteSpace).not.toBe('pre-wrap');
+	});
+
+	it('sanitises HTML and script injection in the reply', async () => {
+		const body = await ask({
+			response:
+				'Hi <script>window.__pwned = 1</script><img src=x onerror="window.__pwned=2"> <a href="javascript:alert(1)">x</a> <iframe src="https://evil.example"></iframe> [ok](https://example.org)'
+		});
+		await new Promise((r) => setTimeout(r, 50));
+		expect((window as unknown as { __pwned?: number }).__pwned).toBeUndefined();
+		expect(body.querySelector('script, img, iframe, [onerror]')).toBeNull();
+		const links = [...body.querySelectorAll('a')];
+		expect(links.map((a) => a.getAttribute('href'))).toEqual([null, 'https://example.org']);
+		expect(links[1].getAttribute('rel')).toContain('noopener');
+	});
+
+	it('the user’s own message stays plain text', async () => {
+		sendChat.mockResolvedValue({ ...REPLY, edits: [] });
+		await mount();
+		await page.getByRole('textbox', { name: 'Chat message' }).fill('**not bold** <b>x</b>');
+		await page.getByRole('button', { name: 'Send' }).click();
+		await expect.poll(() => rail().querySelector('.rv-msg-user .rv-msg-text')).not.toBeNull();
+		const el = rail().querySelector<HTMLElement>('.rv-msg-user .rv-msg-text')!;
+		expect(el.textContent).toBe('**not bold** <b>x</b>');
+		expect(el.querySelector('b, strong')).toBeNull();
+	});
+
+	it('sources are deduplicated by URL and listed compactly under "Sources"', async () => {
+		await ask({
+			sources: [
+				{ title: 'Lung cancer - NICE', url: 'https://cks.nice.org.uk/lung' },
+				{ title: 'Lung cancer - NICE', url: 'https://cks.nice.org.uk/lung' },
+				{ title: 'Lung cancer (dup, trailing slash)', url: 'https://cks.nice.org.uk/lung/' },
+				{ title: 'Fleischner', url: 'https://example.org/fleischner' }
+			]
+		});
+		const box = rail().querySelector<HTMLElement>('[data-rv-sources]')!;
+		expect(box.querySelector('.rv-sources-title')!.textContent).toBe('Sources');
+		expect([...box.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual([
+			'https://cks.nice.org.uk/lung',
+			'https://example.org/fleischner'
+		]);
+		for (const li of box.querySelectorAll('li')) expect(getComputedStyle(li).whiteSpace).toBe('nowrap');
+	});
+
+	it('the chat header is one compact row: "← Review · N open" left, the Expand icon right', async () => {
+		await ask({});
+		const head = rail().querySelector<HTMLElement>('[data-rv-chat-head]')!;
+		const back = page.getByRole('button', { name: /← Review · \d+ open/ }).element();
+		const expand = page.getByRole('button', { name: 'Expand chat' }).element();
+		const b = back.getBoundingClientRect();
+		const e = expand.getBoundingClientRect();
+		expect(Math.abs((b.top + b.bottom) / 2 - (e.top + e.bottom) / 2)).toBeLessThan(4); // one row
+		expect(b.left - head.getBoundingClientRect().left).toBeLessThan(16); // left
+		expect(head.getBoundingClientRect().right - e.right).toBeLessThan(16); // right
+		expect(expand.textContent?.trim()).toBe(''); // an icon button
+		expect(head.getBoundingClientRect().height).toBeLessThan(44);
 	});
 });

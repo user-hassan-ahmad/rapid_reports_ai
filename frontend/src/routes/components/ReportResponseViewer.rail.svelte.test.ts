@@ -171,7 +171,7 @@ describe('report viewer with the review rail on', () => {
 		await pause(200);
 		const view = viewOf(container);
 		expect(view.state.doc.toString()).toContain('The spleen measures 11 cm.');
-		await expect.element(page.getByText('Unsaved changes')).toBeInTheDocument();
+		await expect.element(page.getByTestId('unsaved-status')).toBeInTheDocument();
 		expect(postEvent.mock.calls.map((c) => c[2])).toEqual(['apply']);
 		expect(postEvent.mock.calls[0][3]).toMatch(/^[0-9a-f]{16}$/);
 
@@ -199,7 +199,7 @@ describe('report viewer with the review rail on', () => {
 		await pause(400);
 		await page.getByRole('button', { name: 'Apply: Measurement differs' }).click();
 		await pause(100);
-		await page.getByRole('button', { name: 'Save Changes' }).click();
+		await page.getByRole('button', { name: 'Save', exact: true }).click();
 		expect(save.mock.calls[0][0].detail.reviewAppliedItemIds).toEqual(['a1']);
 	});
 
