@@ -195,17 +195,25 @@
 
 {#snippet panel()}
 	{#if inChat}
-		<div class="rv-head rv-chat-head">
-			<button type="button" class="rv-btn rv-back" onclick={() => (view = 'review')}
+		<div class="rv-head rv-chat-head" data-rv-chat-head>
+			<button type="button" class="rv-chat-link rv-back" onclick={() => (view = 'review')}
 				>← Review · {openCount} open</button
 			>
 			<span class="rv-spacer"></span>
 			{#if !narrow}
 				<button
 					type="button"
-					class="rv-btn"
+					class="rv-icon-btn"
 					aria-pressed={expanded}
-					onclick={() => (expanded = !expanded)}>⤢ Expand</button
+					aria-label={expanded ? 'Collapse chat' : 'Expand chat'}
+					title={expanded ? 'Collapse' : 'Expand'}
+					onclick={() => (expanded = !expanded)}
+					><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+						stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+						>{#if expanded}<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" />{:else}<path
+								d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"
+							/>{/if}</svg
+					></button
 				>
 			{/if}
 		</div>
@@ -428,9 +436,49 @@
 		min-width: 560px;
 		max-width: 560px;
 	}
-	.rv-chat-head {
+	/* the chat's header: one compact row, "← Review · N open" left, the expand icon right */
+	.rv-head.rv-chat-head {
 		flex-direction: row;
 		align-items: center;
+		gap: 6px;
+		padding: 6px 8px 6px 10px;
+	}
+	.rv-chat-link {
+		font: inherit;
+		font-size: 0.75rem;
+		font-weight: 500;
+		padding: 2px 4px;
+		border: 0;
+		border-radius: 0.25rem;
+		background: none;
+		color: var(--rv-muted);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.rv-chat-link:hover {
+		color: var(--rv-text);
+	}
+	.rv-icon-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		padding: 0;
+		border: 0;
+		border-radius: 0.375rem;
+		background: none;
+		color: var(--rv-muted);
+		cursor: pointer;
+	}
+	.rv-icon-btn:hover,
+	.rv-icon-btn[aria-pressed='true'] {
+		color: var(--rv-text);
+		background: var(--rv-surface-hover);
+	}
+	.rv-head.rv-chat-head button:focus-visible {
+		outline: 1px solid color-mix(in srgb, var(--rv-focus) 70%, transparent);
+		outline-offset: 0;
 	}
 	.rv-rail.rv-narrow {
 		width: auto;
