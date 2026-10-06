@@ -1,15 +1,16 @@
 /**
- * The review layer's look (plan Task C2): `--rv-*` colour tokens for light and dark, and density.
+ * The review layer's look (plan Task C2): `--rv-*` colour tokens for light and dark, density and legend emphasis.
  *
  * Tokens live on the editor element (`&light` / `&dark` follow the editor's own dark-theme flag, which
- * ReportEditor sets). Meaning is never carried by colour alone: every mark has a distinct line style (normal
- * dotted, check dashed, action solid, minor dotted, pre-applied double) plus an accessible name, and widgets and
- * gutter markers carry an icon.
+ * ReportEditor sets). Every AI highlight has ONE underline style: a soft dotted line in its colour, no fill,
+ * discreet at rest (amber and red a little stronger than green and blue). Meaning is never carried by colour alone:
+ * each mark has an accessible name, and widgets and gutter markers carry an icon. The hovered highlight (or the one
+ * whose inline control is open) brightens to full colour with a light tint.
  *
- * Quiet at rest: no fills; normals and pre-applied are soft thin lines, checks and actions a bold full-colour line; the hovered mark (or the one whose
- * chip is open) brightens to full colour with a light tint. Density (`view.dom.dataset.density`, Quiet by default,
- * the app's fixed setting) only changes the assumed normals: `full` tints them (dev page), `hidden` leaves plain
- * text and drops their gutter markers. Checks, actions, removals and options are always shown.
+ * Density (`data-density`, Quiet by default, the app's fixed setting) only changes the assumed normals: `full` tints
+ * them (dev page), `hidden` leaves plain text and drops their gutter markers. Emphasis (`data-rv-emph`, the legend's
+ * filters, `setEmphasis`) brings the chosen classes forward (full colour + light tint) while the rest stay discreet;
+ * "dictated" fades the AI highlights instead, so the radiologist's own text stands out.
  */
 import { StateEffect, StateField, type Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
@@ -31,6 +32,27 @@ export const densityField = StateField.define<Density>({
 /** Density state, initialised to `density`, written to the editor element's `data-density`. */
 export function densityExtension(density: Density = DEFAULT_DENSITY): Extension {
 	return densityField.init(() => density);
+}
+
+/** The legend's filters: the classes brought forward (legend keys: dictated, excluded, normal, check, removed,
+ * option). Empty: everything at rest. */
+export const setEmphasis = StateEffect.define<readonly string[]>();
+
+export const emphasisField = StateField.define<readonly string[]>({
+	create: () => [],
+	update(keys, tr) {
+		for (const e of tr.effects) if (e.is(setEmphasis)) keys = [...e.value];
+		return keys;
+	},
+	provide: (f) =>
+		EditorView.editorAttributes.from(f, (keys) =>
+			keys.length ? { 'data-rv-emph': keys.join(' ') } : ({} as Record<string, string>)
+		)
+});
+
+/** Emphasis state, initialised to `keys`, written to the editor element's `data-rv-emph`. */
+export function emphasisExtension(keys: readonly string[] = []): Extension {
+	return emphasisField.init(() => [...keys]);
 }
 
 const LIGHT = {
@@ -99,67 +121,68 @@ export const reviewTheme = EditorView.baseTheme({
 	'&light': LIGHT,
 	'&dark': DARK,
 
-	// ---- marks: quiet at rest ----
-	// Every mark is an underline in its colour, no fill: a soft thin dotted green for normals, a soft blue double line
-	// for pre-applied, and a bold full-colour 2px line for amber checks and red actions so they pop at rest. Hovering (or the open chip, `rv-active`) brightens that one mark to full colour
-	// with a light tint. Density only varies the assumed normals (the dev page's Full tints them; Hidden drops them).
+	// ---- marks: one soft dotted underline for every AI highlight, discreet at rest ----
 	'.rv-mark': {
 		cursor: 'pointer',
 		borderRadius: '2px',
 		textDecorationLine: 'underline',
-		textDecorationThickness: '1px',
-		textUnderlineOffset: '3px',
-		transition: 'background-color 120ms ease, text-decoration-color 120ms ease'
-	},
-	'.rv-normal': {
 		textDecorationStyle: 'dotted',
-		textDecorationColor: 'color-mix(in srgb, var(--rv-green-line) 55%, transparent)'
+		textDecorationThickness: '2px',
+		textUnderlineOffset: '3px',
+		transition: 'background-color 120ms ease, text-decoration-color 120ms ease, opacity 120ms ease'
 	},
+	'.rv-normal': { textDecorationColor: 'color-mix(in srgb, var(--rv-green-line) 45%, transparent)' },
 	'&[data-density="full"] .rv-normal': { backgroundColor: 'var(--rv-green-bg)' },
 	'&[data-density="hidden"] .rv-normal': { textDecorationLine: 'none' },
-	'.rv-check': {
-		textDecorationStyle: 'dashed',
-		textDecorationThickness: '2px',
-		textDecorationColor: 'var(--rv-amber-line)'
-	},
-	'.rv-action': {
-		textDecorationStyle: 'solid',
-		textDecorationThickness: '2px',
-		textDecorationColor: 'var(--rv-red-line)'
-	},
-	'.rv-minor': {
-		textDecorationStyle: 'dotted',
-		textDecorationThickness: '2px',
-		textDecorationColor: 'var(--rv-amber-line)'
-	},
+	'.rv-check, .rv-minor': { textDecorationColor: 'color-mix(in srgb, var(--rv-amber-line) 65%, transparent)' },
+	'.rv-action': { textDecorationColor: 'color-mix(in srgb, var(--rv-red-line) 70%, transparent)' },
 	'.rv-info': { textDecorationLine: 'none' }, // gutter only
-	'.rv-preapplied': {
-		textDecorationStyle: 'double',
-		textDecorationColor: 'color-mix(in srgb, var(--rv-blue-line) 60%, transparent)'
-	},
-	'.rv-mark:hover, .rv-mark.rv-active, .rv-active .rv-mark': {
-		textDecorationThickness: '2px'
-	},
+	'.rv-preapplied': { textDecorationColor: 'color-mix(in srgb, var(--rv-blue-line) 50%, transparent)' },
+	// lit: hovered, or its inline control open (`rv-active`)
 	'.rv-normal:hover, .rv-active.rv-normal, .rv-active .rv-normal': {
 		textDecorationColor: 'var(--rv-green-line)',
 		backgroundColor: 'var(--rv-green-bg)'
 	},
-	'.rv-check:hover, .rv-active.rv-check, .rv-active .rv-check': {
-		textDecorationColor: 'var(--rv-amber-line)',
-		backgroundColor: 'var(--rv-amber-bg)'
-	},
+	'.rv-check:hover, .rv-active.rv-check, .rv-active .rv-check, .rv-minor:hover, .rv-active.rv-minor, .rv-active .rv-minor':
+		{ textDecorationColor: 'var(--rv-amber-line)', backgroundColor: 'var(--rv-amber-bg)' },
 	'.rv-action:hover, .rv-active.rv-action, .rv-active .rv-action': {
 		textDecorationColor: 'var(--rv-red-line)',
 		backgroundColor: 'var(--rv-red-bg)'
-	},
-	'.rv-minor:hover, .rv-active.rv-minor, .rv-active .rv-minor': {
-		textDecorationColor: 'var(--rv-amber-line)',
-		backgroundColor: 'var(--rv-amber-bg)'
 	},
 	'.rv-info:hover, .rv-active.rv-info, .rv-active .rv-info': { backgroundColor: 'var(--rv-blue-bg)' },
 	'.rv-preapplied:hover, .rv-active.rv-preapplied, .rv-active .rv-preapplied': {
 		textDecorationColor: 'var(--rv-blue-line)',
 		backgroundColor: 'var(--rv-blue-bg)'
+	},
+
+	// ---- legend filters (`data-rv-emph`): the chosen classes forward, the rest discreet ----
+	// "dictated" first, so an emphasised class (later, same specificity) stays at full opacity
+	'&[data-rv-emph~="dictated"] .rv-mark, &[data-rv-emph~="dictated"] .rv-widget': { opacity: '0.4' },
+	'&[data-rv-emph~="normal"] .rv-normal': {
+		opacity: '1',
+		textDecorationLine: 'underline',
+		textDecorationColor: 'var(--rv-green-line)',
+		backgroundColor: 'color-mix(in srgb, var(--rv-green-bg) 70%, transparent)'
+	},
+	'&[data-rv-emph~="check"] .rv-check': {
+		opacity: '1',
+		textDecorationColor: 'var(--rv-amber-line)',
+		backgroundColor: 'color-mix(in srgb, var(--rv-amber-bg) 70%, transparent)'
+	},
+	'&[data-rv-emph~="removed"] .rv-removed': {
+		opacity: '1',
+		borderRadius: '2px',
+		backgroundColor: 'color-mix(in srgb, var(--rv-red-bg) 70%, transparent)'
+	},
+	'&[data-rv-emph~="excluded"] .rv-excluded': {
+		opacity: '1',
+		borderRadius: '2px',
+		backgroundColor: 'var(--rv-surface-hover)'
+	},
+	'&[data-rv-emph~="option"] .rv-option': {
+		opacity: '1',
+		borderRadius: '2px',
+		backgroundColor: 'color-mix(in srgb, var(--rv-blue-bg) 70%, transparent)'
 	},
 
 	// ---- apply preview (hovering ⏎): old struck, new as ghost text ----
@@ -220,76 +243,60 @@ export const reviewTheme = EditorView.baseTheme({
 	'.rv-btn:hover': { background: 'var(--rv-surface-hover)' },
 	'.rv-btn:focus-visible': { outline: '2px solid var(--rv-blue-line)', outlineOffset: '1px' },
 
-	// ---- hover chip (one line; the app's dark glass + purple border) ----
-	'@keyframes rv-chip-in': {
-		'0%': { opacity: '0', transform: 'translateY(3px)' },
-		'100%': { opacity: '1', transform: 'translateY(0)' }
+	// ---- inline control: expands at the END of the highlight, inside the text flow ----
+	'@keyframes rv-inline-in': {
+		'0%': { maxWidth: '0', opacity: '0' },
+		'100%': { maxWidth: '6em', opacity: '1' }
 	},
-	// The chip dom IS the tooltip element, and the report editor's theme hides `.cm-tooltip`; this selector
-	// outranks that rule so the chip shows.
-	'.cm-tooltip.rv-chip': {
-		display: 'flex',
-		alignItems: 'center',
-		gap: '6px',
-		padding: '2px 3px 2px 8px',
-		whiteSpace: 'nowrap',
-		maxWidth: 'min(520px, 90vw)',
-		fontFamily: "'DM Sans', 'IBM Plex Sans', system-ui, sans-serif",
-		fontSize: '12px',
-		lineHeight: '1.5',
-		color: 'var(--rv-chip-text)',
-		background: 'var(--rv-chip-bg)',
-		border: '1px solid var(--rv-chip-border)',
-		borderRadius: '8px',
-		boxShadow: '0 6px 20px rgba(0,0,0,0.35)',
-		animation: 'rv-chip-in 120ms ease-out'
-	},
-	'.rv-chip-icon': {
-		fontWeight: '700',
-		width: '14px',
-		textAlign: 'center',
-		flex: 'none'
-	},
-	'.rv-chip-check .rv-chip-icon': { color: 'var(--rv-amber-line)' },
-	'.rv-chip-action .rv-chip-icon, .rv-chip-removed .rv-chip-icon': { color: 'var(--rv-red-line)' },
-	'.rv-chip-normal .rv-chip-icon': { color: 'var(--rv-green-line)' },
-	'.rv-chip-option .rv-chip-icon, .rv-chip-preapplied .rv-chip-icon, .rv-chip-info .rv-chip-icon': {
-		color: 'var(--rv-blue-line)'
-	},
-	'.rv-chip-actions': {
+	'.rv-inline': {
 		display: 'inline-flex',
 		alignItems: 'center',
 		gap: '1px',
-		paddingLeft: '4px',
-		borderLeft: '1px solid var(--rv-chip-border)',
-		flex: 'none'
-	},
-	'.rv-chip-btn': {
-		font: 'inherit',
-		fontSize: '13px',
+		boxSizing: 'border-box',
+		height: '1.2em',
+		margin: '0 1px 0 3px',
+		padding: '0 2px',
+		verticalAlign: '-0.2em',
+		overflow: 'hidden',
+		whiteSpace: 'nowrap',
+		fontFamily: "'DM Sans', 'IBM Plex Sans', system-ui, sans-serif",
+		fontSize: '0.8em',
 		lineHeight: '1',
-		width: '24px',
-		height: '22px',
+		color: 'var(--rv-chip-text)',
+		background: 'var(--rv-chip-bg)',
+		border: '1px solid var(--rv-chip-border)',
+		borderRadius: '6px',
+		userSelect: 'none',
+		animation: 'rv-inline-in 120ms ease-out'
+	},
+	'.rv-inline-btn': {
+		font: 'inherit',
+		fontSize: '1em',
+		lineHeight: '1',
+		width: '1.45em',
+		height: '100%',
+		padding: '0',
 		display: 'inline-flex',
 		alignItems: 'center',
 		justifyContent: 'center',
 		border: '0',
-		borderRadius: '6px',
+		borderRadius: '4px',
 		background: 'transparent',
-		color: 'var(--rv-chip-text)',
+		color: 'var(--rv-chip-muted)',
 		cursor: 'pointer'
 	},
-	'.rv-chip-btn:hover, .rv-chip-btn:focus-visible': {
-		background: 'var(--rv-chip-hover)',
-		color: '#fff'
+	'.rv-inline-btn[data-rv-action="keep"], .rv-inline-btn[data-rv-action="apply"]': {
+		color: 'var(--rv-green-line)'
 	},
-	'&light .rv-chip-btn:hover, &light .rv-chip-btn:focus-visible': { color: 'var(--rv-text)' },
-	'.rv-chip-btn[data-rv-chip-action="apply"]:hover, .rv-chip-btn[data-rv-chip-action="apply"]:focus-visible': {
-		background: '#9333ea',
-		color: '#fff'
+	'.rv-inline-btn[data-rv-action="remove"], .rv-inline-btn[data-rv-action="dismiss"]': {
+		color: 'var(--rv-red-line)'
 	},
-	'.rv-chip-btn:focus-visible': { outline: '2px solid #a855f7', outlineOffset: '0' },
-	'.rv-chip-reveal': { fontSize: '16px', color: 'var(--rv-chip-muted)' },
+	'.rv-inline-btn[data-rv-action="restore"], .rv-inline-btn[data-rv-action="undo"]': {
+		color: 'var(--rv-blue-line)'
+	},
+	'.rv-inline-btn:hover, .rv-inline-btn:focus-visible': { background: 'var(--rv-chip-hover)' },
+	'.rv-inline-btn:focus-visible': { outline: '2px solid #a855f7', outlineOffset: '-2px' },
+	'.rv-inline-reveal': { color: 'var(--rv-chip-muted)', fontSize: '1.15em' },
 
 	// ---- gutter ----
 	'.rv-gutter': { minWidth: '14px' },

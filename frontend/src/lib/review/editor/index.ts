@@ -20,7 +20,7 @@ import {
 	type ReviewFieldState,
 	type ReviewHistoryEvent
 } from './field';
-import { densityExtension, reviewTheme, type Density } from './theme';
+import { densityExtension, emphasisExtension, reviewTheme, type Density } from './theme';
 
 export interface ReviewExtensionOptions {
 	/** Every popover and widget button: run the named command for the item, dispatch its transaction, post it. */
@@ -33,7 +33,9 @@ export interface ReviewExtensionOptions {
 	density?: Density;
 	/** The store item for an id: the popover's label, reason, source line and edit come from it. */
 	getItem?: (id: string) => ReviewItem | undefined;
-	/** The chip's "›": show the item's card in the rail. */
+	/** The legend filters on at mount (legend keys); change them later with the `setEmphasis` effect. */
+	emphasis?: readonly string[];
+	/** The inline control's "›" (flagged issues): show the item's card in the rail. */
 	onReveal?: (id: string) => void;
 	/** The field's initial items (field.fromItems); empty by default, loaded later with replaceDoc / syncItems. */
 	initial?: ReviewFieldState;
@@ -44,6 +46,7 @@ export function reviewExtensions(opts: ReviewExtensionOptions): Extension[] {
 		reviewFieldExtension(opts.initial),
 		onReviewCommand.of(opts.onCommand),
 		densityExtension(opts.density),
+		emphasisExtension(opts.emphasis),
 		reviewDisplay(),
 		reviewTheme
 	];
@@ -59,6 +62,7 @@ export {
 	ICONS,
 	LABELS,
 	LEGEND,
+	type LegendKey,
 	onReviewCommand,
 	onRevealItem,
 	openPopover,
@@ -69,4 +73,12 @@ export {
 	type Meaning,
 	type ReviewCommandCallback
 } from './decorations';
-export { DEFAULT_DENSITY, densityField, reviewTheme, setDensity, type Density } from './theme';
+export {
+	DEFAULT_DENSITY,
+	densityField,
+	emphasisField,
+	reviewTheme,
+	setDensity,
+	setEmphasis,
+	type Density
+} from './theme';

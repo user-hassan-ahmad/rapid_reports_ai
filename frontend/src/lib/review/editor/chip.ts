@@ -1,23 +1,23 @@
-// What a hover chip offers (pure; no DOM). The chip replaces the old click popover: one line with a type icon and
-// icon buttons by type (the rationale lives only on the rail card). Every button is a
-// review command (lib/review/commands.ts) except `reveal`, which scrolls the rail to the item's card.
+// What a highlight's inline control offers (pure; no DOM). Hovering (or the keyboard caret on) a highlight expands a
+// small control at the END of that highlight, inside the text flow: simple icons only, ✓ (keep / include / apply)
+// and ✕ (remove / dismiss), ↺ restore and ↶ undo on removed or pre-applied text. No type icon and no "?". Only a
+// flagged issue (an action item, which has a rail card) keeps a tiny `›` to its card; checks, normals and
+// suggestions have no rail link. Every button is a review command (lib/review/commands.ts) except `reveal`.
 import type { CommandName } from '../commands';
 import type { ReviewItem } from '../types';
 import type { MarkClass } from './field';
 
-export type ChipType = 'check' | 'action' | 'normal' | 'removed' | 'option' | 'preapplied' | 'info';
+export type ChipType =
+	| 'check'
+	| 'action'
+	| 'normal'
+	| 'removed'
+	| 'option'
+	| 'preapplied'
+	| 'excluded'
+	| 'info';
 
-export const CHIP_ICONS: Record<ChipType, string> = {
-	check: '?',
-	action: '✕',
-	normal: '✓',
-	removed: '↺',
-	option: '+',
-	preapplied: '↶',
-	info: 'i'
-};
-
-/** What a chip is anchored to: a mark (text in the report) or a display widget (removed / option). */
+/** What a control is anchored to: a mark (text in the report) or a display widget (removed / option / excluded). */
 export type ChipTarget =
 	| { on: 'mark'; mark: MarkClass; kind: string; pointer?: string; reason?: string }
 	| { on: 'widget'; kind: 'removed' | 'option' | 'excluded'; pointer?: string; reason?: string };
@@ -26,7 +26,7 @@ export interface ChipAction {
 	command: CommandName | 'reveal';
 	icon: string;
 	label: string;
-	/** ⏎ apply: hovering previews the change inline. */
+	/** apply: hovering previews the change inline. */
 	preview?: boolean;
 }
 
@@ -34,8 +34,8 @@ function isRemoval(item: ReviewItem | undefined, kind: string): boolean {
 	return kind === 'removed' || item?.kind === 'removed' || item?.edit?.mode === 'remove';
 }
 
-export function chipType(t: ChipTarget, item?: ReviewItem): ChipType | null {
-	if (t.on === 'widget') return t.kind === 'excluded' ? null : t.kind;
+export function chipType(t: ChipTarget, item?: ReviewItem): ChipType {
+	if (t.on === 'widget') return t.kind;
 	switch (t.mark) {
 		case 'rv-check':
 			return 'check';
@@ -50,36 +50,34 @@ export function chipType(t: ChipTarget, item?: ReviewItem): ChipType | null {
 	}
 }
 
+const KEEP = (label: string): ChipAction => ({ command: 'keep', icon: '✓', label });
+const REMOVE: ChipAction = { command: 'remove', icon: '✕', label: 'Remove from the report' };
+const DISMISS: ChipAction = { command: 'dismiss', icon: '✕', label: 'Dismiss' };
 const REVEAL: ChipAction = { command: 'reveal', icon: '›', label: 'Show in the review rail' };
 
-/** The chip's buttons, by type; `›` (reveal) always last. */
+/** The control's buttons, by type. `›` only on a flagged issue (an action item, which has a rail card). */
 export function chipActions(t: ChipTarget, item?: ReviewItem): ChipAction[] {
-	const type = chipType(t, item);
-	const out: ChipAction[] = [];
-	switch (type) {
+	switch (chipType(t, item)) {
 		case 'check':
-			out.push(
-				{ command: 'keep', icon: '✓', label: 'Keep as written' },
-				{ command: 'remove', icon: '✕', label: 'Remove from the report' }
-			);
-			break;
+			return [KEEP('Keep as written'), REMOVE];
 		case 'normal':
-			out.push({ command: 'remove', icon: '✕', label: 'Remove from the report' });
-			break;
-		case 'action':
-			if (item?.edit) out.push({ command: 'apply', icon: '⏎', label: 'Apply the fix', preview: true });
-			out.push({ command: 'dismiss', icon: '⊘', label: 'Dismiss' });
-			break;
+			return [KEEP('Keep'), REMOVE];
+		case 'action': {
+			const out: ChipAction[] = [];
+			if (item?.edit) out.push({ command: 'apply', icon: '✓', label: 'Apply the fix', preview: true });
+			out.push(DISMISS);
+			if (item?.cls === 'action') out.push(REVEAL);
+			return out;
+		}
 		case 'removed':
-			out.push({ command: 'restore', icon: '↺', label: 'Restore the original text' });
-			break;
+			return [{ command: 'restore', icon: '↺', label: 'Restore the original text' }];
 		case 'option':
-			out.push({ command: 'apply', icon: '+', label: 'Include in the report' });
-			break;
+			return [{ command: 'apply', icon: '✓', label: 'Include in the report' }, DISMISS];
 		case 'preapplied':
-			out.push({ command: 'undo', icon: '↶', label: 'Undo this change' });
-			break;
+			return [{ command: 'undo', icon: '↶', label: 'Undo this change' }];
+		case 'excluded':
+			return [{ command: 'undo', icon: '↶', label: 'Undo the removal' }];
+		case 'info':
+			return [DISMISS];
 	}
-	out.push(REVEAL);
-	return out;
 }
