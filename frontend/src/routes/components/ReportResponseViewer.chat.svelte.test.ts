@@ -170,12 +170,12 @@ describe('rail chat in the report viewer', () => {
 		await pause(300);
 		expect(view.state.doc.toString()).toContain('9 cm. Small volume ascites.');
 		await expect.element(page.getByText('Applied')).toBeInTheDocument();
-		await expect.element(page.getByText('Unsaved changes')).toBeInTheDocument();
+		await expect.element(page.getByTestId('unsaved-status')).toBeInTheDocument();
 		expect(postEvent).not.toHaveBeenCalled();
 		await expect.poll(() => probe.mock.calls.length, { timeout: 3000 }).toBeGreaterThan(0);
 
 		// the chat item is local: finalise sends engine items only
-		await page.getByRole('button', { name: 'Save Changes' }).click();
+		await page.getByRole('button', { name: 'Save', exact: true }).click();
 		expect(save.mock.calls[0][0].detail.reviewAppliedItemIds).toEqual([]);
 	});
 
@@ -441,7 +441,7 @@ describe('Discard after Apply', () => {
 		const { rerender, container } = await mount();
 		await page.getByRole('button', { name: 'Apply: Measurement differs' }).click();
 		await pause(100);
-		await page.getByRole('button', { name: 'Save Changes' }).click();
+		await page.getByRole('button', { name: 'Save', exact: true }).click();
 		const saved = REPORT.replace('9 cm', '11 cm');
 		const at = REPORT.indexOf('9 cm');
 		const detail = { from: at, insert: '11 cm', removed: '9 cm', left: REPORT.slice(at - 16, at), right: REPORT.slice(at + 4, at + 20) };
@@ -468,7 +468,7 @@ describe('Discard after Apply', () => {
 		const { rerender } = await mount();
 		await page.getByRole('button', { name: 'Apply: Measurement differs' }).click();
 		await pause(100);
-		await page.getByRole('button', { name: 'Save Changes' }).click();
+		await page.getByRole('button', { name: 'Save', exact: true }).click();
 		await rerender({ response: REPORT.replace('9 cm', '11 cm') });
 		await pause(300);
 		expect(page.getByRole('button', { name: 'Discard' }).elements()).toHaveLength(0);
@@ -476,21 +476,25 @@ describe('Discard after Apply', () => {
 	});
 });
 
-describe('unsaved-changes bar beside the rail (Gate G)', () => {
-	it('gives back its own height: the report view (rail and composer) shrinks so the bar never covers the composer', async () => {
+describe('unsaved changes: a quiet inline status in the editor header (never over the report)', () => {
+	it('shows "Unsaved · Save · Discard" next to Report / Version History; the report view keeps its full height', async () => {
 		const { container } = await mount();
-		const css = (v: string) => {
-			const el = document.createElement('div'); // the browser's own spelling of a calc()
-			el.style.minHeight = v;
-			return el.style.minHeight;
-		};
 		const viewport = container.querySelector<HTMLElement>('[data-rv-viewport]')!;
-		expect(viewport.style.minHeight).toBe(css('calc(100vh - 330px)'));
+		const height = viewport.style.minHeight;
 		await page.getByRole('button', { name: 'Apply: Measurement differs' }).click();
 		await pause(400);
-		const bar = container.querySelector<HTMLElement>('.sticky-save-bar')!;
-		expect(bar.offsetHeight).toBeGreaterThan(0);
-		expect(viewport.style.minHeight).toBe(css(`calc(100vh - 330px - ${bar.offsetHeight}px)`));
+		const status = container.querySelector<HTMLElement>('[data-testid="unsaved-status"]')!;
+		expect(status.textContent!.replace(/\s+/g, ' ').trim()).toBe('Unsaved · Save · Discard');
+		// in the header's controls row, beside the Report / Version History switch
+		const controls = container.querySelector<HTMLElement>('[data-testid="editor-controls"]')!;
+		expect(controls.contains(status)).toBe(true);
+		const report = page.getByRole('button', { name: 'Report', exact: true }).element();
+		expect(Math.abs(status.getBoundingClientRect().top - report.getBoundingClientRect().top)).toBeLessThan(20);
+		// never over the report text: the editor sits entirely below it, and the view keeps its height
+		const editor = container.querySelector<HTMLElement>('.cm-editor')!;
+		expect(status.getBoundingClientRect().bottom).toBeLessThanOrEqual(editor.getBoundingClientRect().top + 1);
+		expect(viewport.style.minHeight).toBe(height);
+		expect(container.querySelector('.sticky-save-bar')).toBeNull();
 	});
 });
 

@@ -257,17 +257,16 @@ describe('legend', () => {
 		render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });
 		await expect.element(page.getByTestId('review-rail')).toBeInTheDocument();
 		const legend = document.querySelector<HTMLElement>('[data-testid="review-legend"]')!;
-		const items = [...legend.querySelectorAll<HTMLElement>('button[data-rv-filter]')];
-		expect(items.map((b) => b.lastElementChild?.textContent)).toEqual([
+		const items = [...legend.querySelectorAll<HTMLElement>('[data-rv-label], button[data-rv-filter]')];
+		expect(items.map((b) => b.querySelector('.rv-legend-label')?.textContent)).toEqual([
 			'Dictated',
 			'Removed by you',
 			'AI-generated',
-			'Recommendations',
 			'Removed (contradicts dictation)'
 		]);
 		expect(legend.textContent).not.toContain('(AI)');
-		expect(items[2].title).toMatch(/assumed normal/i);
-		expect(items[4].title).toContain('contradicts your dictation');
+		expect(items[2].title).toMatch(/normals.*pertinent negatives.*synthesis/i);
+		expect(items[3].title).toContain('contradicts your dictation');
 		expect(legend.scrollWidth).toBeLessThanOrEqual(legend.clientWidth + 1);
 		const controls = document.querySelector<HTMLElement>('[data-testid="editor-controls"]')!;
 		const copy = controls.querySelector<HTMLElement>('[aria-label="Copy report"]')!;
@@ -284,20 +283,20 @@ describe('legend', () => {
 		await page.viewport(414, 896);
 	});
 
-	it('pills are toggles: Recommendations on by default, AI-generated off; pressing one changes the editor', async () => {
+	it('AI-generated is on by default; pressing it turns the layer off in the editor (plain text) and on again', async () => {
 		getReview.mockResolvedValue(review('live', true, [action()]));
 		render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });
 		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
 		const editor = () => document.querySelector<HTMLElement>('.cm-editor')!;
-		expect(editor().getAttribute('data-rv-emph')).toBe('rec');
-		const ai = page.getByRole('button', { name: /AI-generated/ });
-		await expect.element(ai).toHaveAttribute('aria-pressed', 'false');
-		await ai.click();
+		expect(editor().getAttribute('data-rv-emph')).toBe('ai');
+		const ai = page.getByRole('button', { name: /^AI-generated$/ });
 		await expect.element(ai).toHaveAttribute('aria-pressed', 'true');
-		expect(editor().getAttribute('data-rv-emph')).toBe('ai rec');
-		await page.getByRole('button', { name: /Recommendations/ }).click();
 		await ai.click();
+		await expect.element(ai).toHaveAttribute('aria-pressed', 'false');
 		expect(editor().hasAttribute('data-rv-emph')).toBe(false);
+		await ai.click();
+		expect(editor().getAttribute('data-rv-emph')).toBe('ai');
+		expect(document.querySelector('[data-testid="review-legend"]')!.textContent).not.toContain('Recommendations');
 	});
 
 	it('is absent with the rail off', async () => {

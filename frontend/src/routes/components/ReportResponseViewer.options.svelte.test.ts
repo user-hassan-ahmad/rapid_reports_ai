@@ -26,9 +26,9 @@ describe('optional additions in the report viewer', () => {
 		const box = page.getByRole('checkbox').first();
 		await box.click();
 		await pause(300);
-		await expect.element(page.getByText('Unsaved changes')).toBeInTheDocument();
+		await expect.element(page.getByTestId('unsaved-status')).toBeInTheDocument();
 		await box.click();
 		await pause(600);
-		expect(document.body.textContent).not.toContain('Unsaved changes');
+		expect(document.querySelector('[data-testid="unsaved-status"]')).toBeNull();
 	});
 });

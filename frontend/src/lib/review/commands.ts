@@ -188,6 +188,120 @@ function findApplied(doc: string, d: Record<string, unknown>, withContext = fals
 	return null;
 }
 
+/** Where a recommendation's sentence sits now, or null. Besides the text verbatim (unique), the forms a neighbour's
+ * removal leaves (edits.removeSpan's seam tidy): the first letter capitalised (the sentence now starts there) and a
+ * trailing "," / ";" closed to "." (it now ends the line). */
+export function findRecText(doc: string, text: string): { from: number; to: number } | null {
+	if (!text) return null;
+	const capped = text[0].toUpperCase() + text.slice(1);
+	const closed = (t: string) => (/[;,]$/.test(t) ? `${t.slice(0, -1)}.` : t);
+	for (const t of new Set([text, capped, closed(text), closed(capped)]))
+		if (count(doc, t) === 1) {
+			const from = doc.indexOf(t);
+			return { from, to: from + t.length };
+		}
+	return null;
+}
+
+// ── recommendations: the checkbox toggles, order-independent ────────────────
+// Neighbouring recommendations often share a line ("CT thorax is recommended; EUS sampling for diagnosis; MDT
+// referral."). Removing one tidies the seam (edits.removeSpan: a dangling ";" closes to ".", the next clause is
+// capitalised), so the seam context another removal or undo recorded no longer matches once a neighbour was
+// toggled, and the checkbox stopped working. Instead every toggle rewrites the recommendation's paragraph to its
+// canonical form: the paragraph as written (`orig_para`, carried in each removal's event detail) with the unticked
+// recommendations removed in document order. Any order of toggles then gives the same text, and re-ticking all of
+// them gives the paragraph back exactly.
+
+/** The longest paragraph recorded in an event detail (the detail is bounded server side). */
+const MAX_PARA = 3000;
+
+const isRec = (i: ReviewItem) => i.kind === 'recommendation' && !!i.anchor?.text;
+
+/** The paragraph (lines between blank lines) holding `pos`. */
+function paragraphAt(doc: string, pos: number): { from: number; to: number } {
+	let from = pos;
+	while (from > 0 && !(doc[from - 1] === '\n' && (from < 2 || doc[from - 2] === '\n'))) from--;
+	let to = pos;
+	while (to < doc.length && !(doc[to] === '\n' && doc[to + 1] === '\n')) to++;
+	return { from, to };
+}
+
+/** `para` with each of `texts` removed (edits.toChanges seam tidy), in their order in `para`; null if one is not
+ * there. */
+function canonical(para: string, texts: readonly string[]): string | null {
+	let s = para;
+	const ordered = [...texts].sort((a, b) => para.indexOf(a) - para.indexOf(b));
+	for (const t of ordered) {
+		const at = findRecText(s, t);
+		if (!at) return null;
+		const c = toChanges(s, { mode: 'remove', find: s.slice(at.from, at.to) });
+		if (!c) return null;
+		s = s.slice(0, c.from) + c.insert + s.slice(c.to);
+	}
+	return s;
+}
+
+/** A recommendation removed by its checkbox (status applied by `remove`). */
+const recRemoved = (i: ReviewItem) => isRec(i) && i.status === 'applied' && lastApplied(i)?.action === 'remove';
+
+/** The written paragraph around `item` and where its current form sits in `doc`, or null. */
+function recParagraph(
+	ctx: CommandCtx,
+	item: ReviewItem
+): { orig: string; from: number; to: number; removed: string[] } | null {
+	const text = item.anchor!.text;
+	const recs = ctx.items.filter(isRec);
+	const removedIn = (orig: string) =>
+		recs.filter((i) => recRemoved(i) && i.id !== item.id && orig.includes(i.anchor!.text)).map((i) => i.anchor!.text);
+	const seen = new Set<string>();
+	for (const i of [item, ...recs])
+		for (let k = i.history.length - 1; k >= 0; k--) {
+			const orig = i.history[k].detail?.orig_para;
+			if (typeof orig !== 'string' || seen.has(orig) || !orig.includes(text)) continue;
+			seen.add(orig);
+			const removed = removedIn(orig);
+			const cur = canonical(orig, item.status === 'applied' ? [...removed, text] : removed);
+			if (cur != null && count(ctx.doc, cur) === 1) {
+				const from = ctx.doc.indexOf(cur);
+				return { orig, from, to: from + cur.length, removed };
+			}
+		}
+	if (item.status === 'applied') return null;
+	// no record yet: the paragraph is as written when none of its recommendations has been removed
+	const at = findRecText(ctx.doc, text);
+	if (!at) return null;
+	const p = paragraphAt(ctx.doc, at.from);
+	const orig = ctx.doc.slice(p.from, p.to);
+	if (orig.length > MAX_PARA || !orig.includes(text)) return null;
+	return { orig, ...p, removed: [] };
+}
+
+/** The smallest change turning doc[from, to) into `next`. */
+function narrow(doc: string, from: number, to: number, next: string): TextChange {
+	const cur = doc.slice(from, to);
+	let p = 0;
+	while (p < cur.length && p < next.length && cur[p] === next[p]) p++;
+	let s = 0;
+	while (s < cur.length - p && s < next.length - p && cur[cur.length - 1 - s] === next[next.length - 1 - s]) s++;
+	return { from: from + p, to: to - s, insert: next.slice(p, next.length - s) };
+}
+
+/** Untick: the paragraph without this recommendation (and the ones already removed). */
+function removeRecommendation(ctx: CommandCtx, item: ReviewItem): TextChange & { orig: string } | null {
+	const r = recParagraph(ctx, item);
+	if (!r) return null;
+	const next = canonical(r.orig, [...r.removed, item.anchor!.text]);
+	return next == null ? null : { ...narrow(ctx.doc, r.from, r.to, next), orig: r.orig };
+}
+
+/** Re-tick: the paragraph with this recommendation back (the others as they are). */
+function restoreRecommendation(ctx: CommandCtx, item: ReviewItem): TextChange | null {
+	const r = recParagraph(ctx, item);
+	if (!r) return null;
+	const next = canonical(r.orig, r.removed);
+	return next == null ? null : narrow(ctx.doc, r.from, r.to, next);
+}
+
 /** Where a zero-width removal without live undo info sits: the widget position the field tracks, else the stored
  * anchor when the document is the text it was made on. */
 function removalPoint(ctx: CommandCtx, item: ReviewItem): number | null {
@@ -219,6 +333,10 @@ function revert(ctx: CommandCtx, item: ReviewItem): TextChange | CommandError {
 	if (item.status === 'applied') {
 		const d = lastApplied(item);
 		if (!d) return 'not_applied';
+		if (d.action === 'remove' && isRec(item)) {
+			const c = restoreRecommendation(ctx, item);
+			if (c) return c;
+		}
 		const at = findApplied(doc, d);
 		if (at == null) return 'changed';
 		return { from: at, to: at + String(d.insert).length, insert: String(d.removed ?? '') };
@@ -284,8 +402,26 @@ const remove: Command = (ctx) => {
 	const item = ctx.item;
 	if (!item) return fail('no_item');
 	if (!ACTIONABLE.has(item.status)) return fail('not_open');
-	const find = item.anchor?.text;
+	let find = item.anchor?.text;
 	if (!find) return fail('no_edit');
+	if (isRec(item)) {
+		const c = removeRecommendation(ctx, item);
+		if (c) {
+			const { orig, ...change } = c;
+			return {
+				changes: change,
+				event: {
+					itemId: item.id,
+					command: 'edit',
+					detail: { ...appliedDetail(ctx.doc, change), action: 'remove', replacement: '', orig_para: orig }
+				},
+				statuses: { [item.id]: 'applied' }
+			};
+		}
+		// a neighbour's removal may have re-cased or re-punctuated it (findRecText)
+		const at = findRecText(ctx.doc, find);
+		if (at) find = ctx.doc.slice(at.from, at.to);
+	}
 	return placeEdit(ctx, item, { mode: 'remove', find }, 'edit', {
 		action: 'remove',
 		replacement: ''

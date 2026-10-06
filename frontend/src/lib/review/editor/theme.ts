@@ -6,12 +6,11 @@
  * at rest. Meaning is never carried by colour alone: each mark has an accessible name, and widgets and gutter
  * markers carry an icon.
  *
- * The AI-generated layer (assumed normals green, checks amber, AI synthesis violet) is colour only and OFF by
- * default: plain text until the legend's "AI-generated" toggle (`data-rv-emph~="ai"`) shows its underlines.
- * Recommendations (teal) are underlined while "rec" is on (the default). Flagged issues (red), minor items (amber)
- * and pre-applied changes (blue) are always underlined; hovering one (or its open inline control, `rv-active`) lights
- * it. "dictated" fades every AI highlight so the radiologist's own text stands out; "removed" / "excluded" tint
- * those widgets. Density (`data-density`, Quiet by default) only tints normals under `full` (dev page).
+ * The AI-generated layer is a very light background tint by category (`rv-form-*`, field.formOf): normals green,
+ * pertinent negatives amber, synthesis violet; no underline, no actions. It is ON by default (the legend's
+ * "AI-generated" toggle, `data-rv-emph~="ai"`); off, it is plain text. Recommendations (teal), flagged issues (red),
+ * minor items (amber) and pre-applied changes (blue) keep their dotted underline; hovering one (or its open inline
+ * control, `rv-active`) lights it. Density (`data-density`, Quiet by default) is a dev-page capability.
  */
 import { StateEffect, StateField, type Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
@@ -39,8 +38,8 @@ export function densityExtension(density: Density = DEFAULT_DENSITY): Extension 
  * option). Empty: everything at rest. */
 export const setEmphasis = StateEffect.define<readonly string[]>();
 
-/** Recommendations underlined, the AI-generated layer off (editor/decorations.ts DEFAULT_LEGEND). */
-export const DEFAULT_EMPHASIS: readonly string[] = ['rec'];
+/** The AI-generated layer on (editor/decorations.ts DEFAULT_LEGEND). */
+export const DEFAULT_EMPHASIS: readonly string[] = ['ai'];
 
 export const emphasisField = StateField.define<readonly string[]>({
 	create: () => DEFAULT_EMPHASIS,
@@ -77,6 +76,11 @@ const LIGHT = {
 	'--rv-violet-line': '#7c5cd6',
 	'--rv-teal-bg': '#d8f3f0',
 	'--rv-teal-line': '#14857a',
+	'--rv-tint-normal': 'rgba(63, 154, 93, 0.13)',
+	'--rv-tint-negative': 'rgba(196, 128, 22, 0.15)',
+	'--rv-tint-synthesis': 'rgba(124, 92, 214, 0.13)',
+	'--rv-accent': '#9333ea',
+	'--rv-accent-ring': 'rgba(168, 85, 247, 0.45)',
 	'--rv-grey-line': '#8a9099',
 	'--rv-ghost': '#6b727c',
 	'--rv-del': '#b42318',
@@ -106,6 +110,11 @@ const DARK = {
 	'--rv-violet-line': '#b3a1f5',
 	'--rv-teal-bg': '#163a37',
 	'--rv-teal-line': '#5fd3c6',
+	'--rv-tint-normal': 'rgba(92, 194, 133, 0.14)',
+	'--rv-tint-negative': 'rgba(227, 169, 74, 0.15)',
+	'--rv-tint-synthesis': 'rgba(179, 161, 245, 0.16)',
+	'--rv-accent': '#9333ea',
+	'--rv-accent-ring': 'rgba(168, 85, 247, 0.5)',
 	'--rv-grey-line': '#8f969f',
 	'--rv-ghost': '#9aa1ab',
 	'--rv-del': '#ff8c80',
@@ -147,25 +156,15 @@ export const reviewTheme = EditorView.baseTheme({
 	'.rv-minor': { textDecorationColor: 'color-mix(in srgb, var(--rv-amber-line) 65%, transparent)' },
 	'.rv-info': { textDecorationLine: 'none' }, // gutter only
 	'.rv-preapplied': { textDecorationColor: 'color-mix(in srgb, var(--rv-blue-line) 50%, transparent)' },
-	// the AI-generated layer: plain editable text until the legend's "AI-generated" toggle is on; colour only
-	'.rv-normal, .rv-check, .rv-synth': { cursor: 'text', textDecorationLine: 'none' },
-	'&[data-rv-emph~="ai"] .rv-normal, &[data-rv-emph~="ai"] .rv-check, &[data-rv-emph~="ai"] .rv-synth': {
-		textDecorationLine: 'underline'
-	},
-	'&[data-rv-emph~="ai"] .rv-normal': {
-		textDecorationColor: 'color-mix(in srgb, var(--rv-green-line) 60%, transparent)'
-	},
-	'&[data-rv-emph~="ai"] .rv-check': {
-		textDecorationColor: 'color-mix(in srgb, var(--rv-amber-line) 70%, transparent)'
-	},
-	'&[data-rv-emph~="ai"] .rv-synth': {
-		textDecorationColor: 'color-mix(in srgb, var(--rv-violet-line) 65%, transparent)'
-	},
-	'&[data-density="full"][data-rv-emph~="ai"] .rv-normal': { backgroundColor: 'var(--rv-green-bg)' },
-	// recommendations: underlined while "rec" is on (the default)
-	'.rv-rec': { cursor: 'text', textDecorationLine: 'none' },
-	'&[data-rv-emph~="rec"] .rv-rec': {
-		textDecorationLine: 'underline',
+	// the AI-generated layer: plain editable text when the legend's "AI-generated" toggle is off; on (the default),
+	// a very light tint by category (normals green, pertinent negatives amber, synthesis violet), no underline
+	'.rv-normal, .rv-check, .rv-synth': { cursor: 'text', textDecorationLine: 'none', borderRadius: '3px' },
+	'&[data-rv-emph~="ai"] .rv-form-normal': { backgroundColor: 'var(--rv-tint-normal)' },
+	'&[data-rv-emph~="ai"] .rv-form-negative': { backgroundColor: 'var(--rv-tint-negative)' },
+	'&[data-rv-emph~="ai"] .rv-form-synthesis': { backgroundColor: 'var(--rv-tint-synthesis)' },
+	// recommendations: their own dotted underline (their control is the impression's checklist)
+	'.rv-rec': {
+		cursor: 'text',
 		textDecorationColor: 'color-mix(in srgb, var(--rv-teal-line) 70%, transparent)'
 	},
 	// lit: hovered, or its inline control open (`rv-active`)
@@ -182,22 +181,11 @@ export const reviewTheme = EditorView.baseTheme({
 		backgroundColor: 'var(--rv-blue-bg)'
 	},
 
-	// ---- legend filters (`data-rv-emph`) ----
-	'&[data-rv-emph~="dictated"] .rv-mark, &[data-rv-emph~="dictated"] .rv-widget': { opacity: '0.4' },
-	'&[data-rv-emph~="removed"] .rv-removed': {
-		opacity: '1',
-		borderRadius: '2px',
-		backgroundColor: 'color-mix(in srgb, var(--rv-red-bg) 70%, transparent)'
-	},
-	'&[data-rv-emph~="excluded"] .rv-excluded': {
-		opacity: '1',
-		borderRadius: '2px',
-		backgroundColor: 'var(--rv-surface-hover)'
-	},
-
 	// ---- suggestions: a checkbox subsection under a section's body (not document text) ----
+	// a blank line's gap above each block (padding: CM measures block widgets by their box)
+	'.rv-suggestions-block': { paddingTop: '1.15em', paddingBottom: '4px' },
 	'.rv-suggestions': {
-		margin: '2px 0 8px',
+		margin: '0',
 		padding: '3px 8px 4px',
 		borderLeft: '2px solid color-mix(in srgb, var(--rv-blue-line) 45%, transparent)',
 		fontFamily: "'DM Sans', 'IBM Plex Sans', system-ui, sans-serif",
@@ -220,12 +208,38 @@ export const reviewTheme = EditorView.baseTheme({
 		cursor: 'pointer',
 		color: 'var(--rv-text)'
 	},
-	'.rv-suggestion input': {
+	// the app's checkbox: a rounded box in the border colour; purple-600 with a white tick when checked
+	'.rv-suggestion input.rv-check-box': {
+		appearance: 'none',
+		WebkitAppearance: 'none',
+		flex: '0 0 auto',
+		boxSizing: 'border-box',
+		width: '14px',
+		height: '14px',
 		margin: '0',
-		accentColor: 'var(--rv-blue-line)',
+		border: '1.5px solid var(--rv-border)',
+		borderRadius: '4px',
+		backgroundColor: 'var(--rv-surface)',
+		backgroundRepeat: 'no-repeat',
+		backgroundPosition: 'center',
+		backgroundSize: '10px 10px',
 		cursor: 'pointer',
-		transform: 'translateY(1px)'
+		transform: 'translateY(2px)',
+		transition: 'background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease'
 	},
+	'.rv-suggestion input.rv-check-box:hover:not(:disabled)': { borderColor: '#a855f7' },
+	'.rv-suggestion input.rv-check-box:checked': {
+		backgroundColor: 'var(--rv-accent)',
+		borderColor: 'var(--rv-accent)',
+		backgroundImage:
+			"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")"
+	},
+	'.rv-suggestion input.rv-check-box:checked:hover:not(:disabled)': { backgroundColor: '#7e22ce', borderColor: '#7e22ce' },
+	'.rv-suggestion input.rv-check-box:focus-visible': {
+		outline: 'none',
+		boxShadow: '0 0 0 2px var(--rv-accent-ring)'
+	},
+	'.rv-suggestion input.rv-check-box:disabled': { opacity: '0.5', cursor: 'default' },
 	'.rv-suggestion:has(input:not(:checked)) .rv-suggestion-text': { color: 'var(--rv-muted)' },
 
 	// ---- apply preview (hovering ⏎): old struck, new as ghost text ----

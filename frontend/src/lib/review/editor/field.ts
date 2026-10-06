@@ -30,7 +30,7 @@ import {
 import { EditorView } from '@codemirror/view';
 import { invertedEffects, isolateHistory } from '@codemirror/commands';
 import { locate, locateUndo } from '../anchors';
-import type { CommandResult } from '../commands';
+import { findRecText, type CommandResult } from '../commands';
 import { toChanges } from '../edits';
 import type { Cls, ItemEvidence, ItemLane, ItemStatus, ReviewItem } from '../types';
 import { isEnginePreApplied } from '../types';
@@ -53,6 +53,22 @@ export const AI_LAYER_MARKS: ReadonlySet<MarkClass> = new Set(['rv-normal', 'rv-
 /** Why an amber (check) item needs a check (evidence.check_reason; absent = uncertain). */
 export type CheckReasonCode = 'uncertain' | 'conflict' | 'number';
 
+/** The AI-generated layer's categories, drawn as faint tints: normals green, pertinent negatives amber, synthesis
+ * violet (backend evidence.form). */
+export type AiForm = 'normal' | 'negative' | 'synthesis';
+
+const FORMS: ReadonlySet<string> = new Set(['normal', 'negative', 'synthesis']);
+const NEGATIVE_LEAD = /^\s*(?:no|nil|without|absent)\b/i;
+
+/** An AI-layer item's category: evidence.form when the backend sent one, else ai_generated → synthesis, else a
+ * clause that opens with No / Nil / Without / Absent → negative, else normal. */
+export function formOf(it: Pick<ReviewItem, 'kind' | 'evidence' | 'anchor'>): AiForm {
+	const f = it.evidence?.form;
+	if (typeof f === 'string' && FORMS.has(f)) return f as AiForm;
+	if (it.kind === 'ai_generated') return 'synthesis';
+	return NEGATIVE_LEAD.test(it.anchor?.text ?? '') ? 'negative' : 'normal';
+}
+
 /** What a mark carries besides its range. */
 export interface MarkMeta {
 	id: string;
@@ -62,6 +78,8 @@ export interface MarkMeta {
 	mark: MarkClass;
 	pointer?: string;
 	reason?: string; // check items: evidence.check_reason
+	/** AI-layer marks (rv-normal / rv-check / rv-synth): the tint category. */
+	form?: AiForm;
 }
 
 export interface LiveMark extends MarkMeta {
@@ -190,6 +208,7 @@ function metaOf(it: ReviewItem): MarkMeta {
 	const pointer = str(it.evidence?.pointer);
 	if (pointer) meta.pointer = pointer;
 	if (it.kind === 'check') meta.reason = str(it.evidence?.check_reason) ?? 'uncertain';
+	if (AI_LAYER_MARKS.has(meta.mark)) meta.form = formOf(it);
 	return meta;
 }
 
@@ -229,11 +248,14 @@ export function fromItems(
 	const recs: SuggestionEntry[] = [];
 	for (const it of items) {
 		if (it.kind !== 'recommendation' || it.cls === 'suppress') continue;
-		if (it.status !== 'open' && it.status !== 'applied' && it.status !== 'dismissed') continue;
+		// stale: the editor could not place it once (e.g. before a neighbour's re-casing was recognised); still a
+		// checkbox while its text is in the report
+		if (!['open', 'stale', 'applied', 'dismissed'].includes(it.status)) continue;
 		const text = (it.edit?.find || it.anchor?.text || '').trim();
 		if (!text) continue;
 		const section = it.section ?? it.edit?.section ?? null;
-		const at = doc.indexOf(text);
+		// re-cased / re-punctuated by a neighbour's removal is still the same recommendation (commands.findRecText)
+		const at = findRecText(doc, text)?.from ?? -1;
 		const inReport = it.status !== 'applied';
 		if (inReport && at < 0) continue; // edited away: the text is the radiologist's now
 		recs.push({
@@ -288,6 +310,7 @@ export function fromItems(
 		const undone = it.status !== 'pre_applied' && !!it.evidence?.undo;
 		if (!it.anchor && !undone) continue; // rail-only
 		let at = it.anchor ? locate(doc, it) : null;
+		if (!at && it.kind === 'recommendation' && it.anchor?.text) at = findRecText(doc, it.anchor.text);
 		if (!at && it.status === 'pre_applied') at = undoSpan(doc, it, opts.textHash);
 		if ((!at || at.to <= at.from) && undone) {
 			// a live edit taken back: the item sits on its original text if that is in the report, else rail-only
@@ -340,7 +363,29 @@ function touchesInterior(changes: ChangeDesc, from: number, to: number): boolean
 	return hit;
 }
 
-export const setItems = StateEffect.define<ReviewFieldState>({ map: (v, mapping) => mapItems(v, mapping) });
+/** Keep every position within a document of `len` characters. */
+function clampItems(v: ReviewFieldState, len: number): ReviewFieldState {
+	const c = (p: number) => Math.max(0, Math.min(p, len));
+	if (
+		v.marks.every((m) => m.to <= len) &&
+		v.widgets.every((w) => w.pos <= len) &&
+		(v.suggestions ?? []).every((g) => g.pos == null || g.pos <= len)
+	)
+		return v;
+	return {
+		marks: v.marks.map((m) => ({ ...m, from: c(m.from), to: c(m.to) })),
+		widgets: v.widgets.map((w) => ({ ...w, pos: c(w.pos) })),
+		...(v.suggestions ? { suggestions: v.suggestions.map((g) => (g.pos == null ? g : { ...g, pos: c(g.pos) })) } : {})
+	};
+}
+
+/** History keeps a command's inverse snapshot (the items BEFORE it, in that text's coordinates) and maps it through
+ * later changes made outside history (a reload, Discard, the live write), which start from the text AFTER the command:
+ * a shortening command leaves positions past that text's end. They are clamped first, so the mapping never throws
+ * (a RangeError here aborted the reload: Discard did nothing). The reload re-places every item afresh anyway. */
+export const setItems = StateEffect.define<ReviewFieldState>({
+	map: (v, mapping) => mapItems(clampItems(v, mapping.length), mapping)
+});
 
 /** Item ids that became stale in this transaction (a mark dropped by an interior edit, or an item a sync could
  * not locate). */
