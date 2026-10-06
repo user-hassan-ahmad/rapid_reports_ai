@@ -292,3 +292,68 @@ async def test_items_carry_history(monkeypatch):
             assert it.history[-1]["event"] == "pre_applied" and it.history[-1]["text_hash"]
             assert it.verified == {"code": True, "failed": [], "addressed": None, "contra": None,
                                    "unconfirmed": False, "preapply_failures": []}
+
+
+# ── brief-owned statements are not re-classified (prod d3d1e0a5: 7 of 16 statements already labelled) ────────────
+
+def _term_span(report, sentence, term):
+    i = report.index(sentence) + sentence.index(term)
+    return (i, i + len(term))
+
+
+async def test_brief_owned_statements_skip_the_classifier(monkeypatch):
+    """A candidate whose span holds a brief linked-normal label is routed unlabelled (the brief's item owns it); only
+    the rest are listed for the model, numbered contiguously, and its labels map back to the right statements."""
+    owned = [_term_span(REPORT, "The liver is normal.", "liver"),
+             _term_span(REPORT, "The spleen measures 14 cm", "spleen")]
+    calls = []
+    monkeypatch.setattr(neg, "_run_agent_with_model", model(
+        ["1 | contradicted | Free gas under the diaphragm | no", "6 | implicated | pancreatic head mass | no"], calls))
+    items, log = await neg.classify_negatives(inp(), "r", owned=owned)
+    listing = calls[0]["user_prompt"].split("STATEMENTS TO CLASSIFY:\n", 1)[1]
+    assert "The liver is normal." not in listing and "The spleen measures" not in listing
+    assert listing.splitlines()[4] == "5. No focal lesion in the 4cm kidney."
+    assert (log["candidates"], log["owned_by_brief"], log["classified"]) == (9, 2, 7)
+    by = {it.evidence["clause"]: it for it in items}
+    assert by["No pneumoperitoneum."].kind == "removed"
+    assert by["The T1 vertebra is intact."].evidence["check_reason"] == "uncertain"   # classified 6 → candidate 8
+    assert by["The liver is normal."].kind == "assumed_normal"                        # deduped later by the brief
+    sp = by["The spleen measures 14 cm and is otherwise normal."]                      # the number check is code
+    assert (sp.kind, sp.evidence["check_reason"]) == ("check", "number")
+    assert set(log["labels"]) == {"1", "8"}
+
+
+async def test_all_candidates_owned_makes_no_model_call():
+    report = "FINDINGS:\nA 2 cm renal cyst. The liver is normal. No ascites.\n\nIMPRESSION:\nRenal cyst.\n"
+    owned = [_term_span(report, "The liver is normal.", "liver"), _term_span(report, "No ascites.", "ascites")]
+    items, log = await neg.classify_negatives(inp(report, "Liver normal."), "r", owned=owned)  # boom not hit
+    assert log["classified"] == 0 and log["owned_by_brief"] == 2 and log["error"] is None
+    assert items and all(it.kind == "assumed_normal" for it in items)
+
+
+# ── evidence.form: the statement's grammatical form for the rail's AI layer ──────────────────────────────────────
+
+@pytest.mark.parametrize("clause,form", [
+    ("No pleural effusion.", "negative"), ("There is no free fluid.", "negative"), ("Nil acute fracture.", "negative"),
+    ("Without hydronephrosis.", "negative"), ("Free fluid is absent.", "negative"),
+    ("The liver shows no focal lesion.", "negative"), ("No lymphadenopathy or bowel obstruction", "negative"),
+    ("The liver is unremarkable.", "normal"), ("The great vessels are patent.", "normal"),
+    ("The ribs are intact.", "normal"), ("The lungs are clear.", "normal"),
+    ("The heart and pericardium are unremarkable with no pericardial effusion.", "normal"),
+    ("The spleen measures 14 cm and is otherwise normal.", "normal"), ("The bowel is not dilated.", "normal"),
+])
+def test_statement_form(clause, form):
+    from rapid_reports_ai.review_engine.jev_pass import statement_form
+    assert statement_form(clause) == form
+
+
+async def test_negatives_items_carry_their_form(monkeypatch):
+    monkeypatch.setattr(neg, "_run_agent_with_model", model(LABELS))
+    items, _ = await neg.classify_negatives(inp(), "r")
+    by = {it.evidence["clause"]: it for it in items}
+    assert by["The liver is normal."].evidence["form"] == "normal"
+    assert by["No lymphadenopathy or bowel obstruction"].evidence["form"] == "negative"
+    assert by["No ascites"].evidence["form"] == "negative"                      # a conflict check
+    assert by["The spleen measures 14 cm and is otherwise normal."].evidence["form"] == "normal"
+    for it in items:
+        assert it.kind not in ("assumed_normal", "check") or it.evidence["form"] in ("negative", "normal")

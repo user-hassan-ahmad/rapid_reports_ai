@@ -21,7 +21,11 @@ term inside the FINDINGS normal statements:
 
 `dedupe`: brief labels win over the classifier's own default / implicated verdicts on the same span (the classifier
 item is dropped). A classifier finding the brief cannot know about (conflict, number, a code removal) outranks: it
-stays, and the brief items on that clause are dropped. Pure code, no model calls."""
+stays, and the brief items on that clause are dropped. Pure code, no model calls.
+
+The engine builds these items BEFORE the classifier starts and passes their anchors as `owned`, so the classifier
+does not re-read statements the brief already labelled (it still applies its code number check to them). Every item
+carries `evidence.form` ("negative" | "normal") from the atom's statement (`jev_pass.statement_form`)."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -30,6 +34,7 @@ from typing import Dict, List, Optional, Tuple
 from .. import linked_normals as ln
 from . import negatives, verifier
 from .items import ReviewInput, ReviewItem, Span, item_key, text_hash
+from .jev_pass import statement_form
 
 DETECTOR = "brief.linked_normals"
 LANE = "accuracy"
@@ -103,7 +108,8 @@ def build_items(inp: ReviewInput, run_id: str) -> List[ReviewItem]:
         sec = verifier._section_of(report, span[0], names) if span else None
         base = {"source": "brief", "atom_id": atom.get("id"), "term": atom["term"], "atom_text": atom.get("text"),
                 "pid": unit.get("pid"), "label": atom.get("label"), "label_source": atom.get("label_source"),
-                "unit_mode": unit.get("mode")}
+                "unit_mode": unit.get("mode"),
+                "form": statement_form(atom.get("text") or (report[span[0]:span[1]] if span else atom["term"]))}
         if atom["action"] == "implicated":
             pointer = negatives.pointer_text(atom.get("pointer"))   # a stored "->" is the labeller's "none"
             label, reason = negatives.check_text("uncertain", pointer)
