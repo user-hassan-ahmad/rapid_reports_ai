@@ -18,9 +18,12 @@
 	import { EditorView } from '@codemirror/view';
 	import type { EditorState, Extension, TransactionSpec } from '@codemirror/state';
 	import ReviewRail from '$lib/review/rail/ReviewRail.svelte';
+	import RailGuidelines from '$lib/review/rail/RailGuidelines.svelte';
+	import Legend from '$lib/review/rail/Legend.svelte';
+	import { loadEnhancement } from '$lib/guidelines/enhance';
 	import { createReviewStore, type ReviewStore } from '$lib/review/store';
 	import { runCommand, type CommandName, type ItemEvent } from '$lib/review/commands';
-	import { openPopover, reviewExtensions, setDensity, type Density } from '$lib/review/editor';
+	import { openPopover, reviewExtensions, type Density } from '$lib/review/editor';
 	import {
 		commandTransaction,
 		replaceDoc,
@@ -32,7 +35,12 @@
 	import { textHash } from '$lib/review/hash';
 	import { createProbeLoop, type ProbeLoop } from '$lib/review/probe';
 	import { createWorkspaceSaver, loadWorkspace, type WorkspaceSaver, type WorkspaceState } from '$lib/review/workspace';
-	import { setReviewRailActive } from '$lib/review/railActive';
+	import {
+		recordRailOutcome,
+		rememberRailMode,
+		reviewRailExpected,
+		setReviewRailActive
+	} from '$lib/review/railActive';
 	import type { ItemStatus, ReviewItem, UserCommand } from '$lib/review/types';
 	import {
 		appliedChatItems,
@@ -274,7 +282,8 @@
 		response !== lastAuditedContent &&
 		$auditStore.status === 'idle' &&
 		!activeCandidateModel &&
-		!railOn
+		!railOn &&
+		!railSlotPending
 	) {
 		triggerAudit(response);
 	}
@@ -727,11 +736,19 @@
 	let reviewExtras: Extension[] = [];
 	let reviewReplaceDoc: ((state: EditorState, text: string) => TransactionSpec) | undefined = undefined;
 	let railOn = false;
+	/** This report's first GET /review has not answered yet. */
+	let reviewPending = false;
+	/** The session knows a rail is coming (railActive.ts) and this report's first GET is still out: the rail slot
+	 * renders its fixed-width skeleton at once, so nothing shifts and the Copilot aside never flashes. (The template
+	 * also reads reviewPending directly: setupReview sets it from inside another reactive statement.) */
+	$: railSlotPending =
+		(reviewPending || (!!reportId && reportId !== reviewReportId)) && $reviewRailExpected === true && !railOn;
 	// Gate G: the unsaved-changes bar sits under the report view, so the view gives back the bar's height; otherwise
 	// the view (and the rail's chat composer at its foot) runs on beneath the bar.
 	let saveBarHeight = 0;
 	$: saveBarShown = activeView === 'report' && hasUnsavedChanges && saveBarHeight > 0;
-	let reviewDensity: Density = 'quiet';
+	/** Fixed to Quiet in the app (the density toggle is a dev-page capability). */
+	const reviewDensity: Density = 'quiet';
 	let reviewReportId: string | null = null;
 	let lastReviewResponse: string | null = null;
 	let unsubscribeReview: (() => void) | null = null;
@@ -749,6 +766,8 @@
 	let railChat: RailChat | undefined = undefined;
 	/** "Ask in chat": the rail composer takes the text whenever `seq` changes. */
 	let chatPrefill: { text: string; seq: number } | null = null;
+	/** The editor chip's "›": the rail scrolls to the item's card whenever `seq` changes. */
+	let railReveal: { id: string; seq: number } | null = null;
 
 	const HEADING_LINE = /^([A-Z][A-Z /&()-]{2,}):\s*$/;
 	/** The report's ALL-CAPS "NAME:" headings, in order (the rail's section order when no list is passed). */
@@ -831,6 +850,7 @@
 		if (!id) return;
 		const store = createReviewStore(id);
 		reviewStore = store;
+		reviewPending = true;
 		// spec §12.6: the saved chat thread comes back with the items and the workspace; nothing re-runs
 		const [, ws, thread] = await Promise.all([
 			store.load(),
@@ -838,11 +858,22 @@
 			loadThread(id).catch((): ChatThreadMessage[] => [])
 		]);
 		if (reviewStore !== store) return;
+		reviewPending = false;
 		const s = get(store);
-		if (s.mode !== 'live' || !s.rail) return;
+		const hasRail = s.mode === 'live' && s.rail;
+		if (!s.error) rememberRailMode(hasRail); // the session's mode: later opens place the rail before their GET
+		if (!hasRail) {
+			recordRailOutcome(id, 'none');
+			return;
+		}
 		workspace = ws;
-		if (ws?.density) reviewDensity = ws.density;
+		// density is fixed to Quiet in the app (the toggle is a dev-page capability)
 		activateRail(id, store, thread);
+		// claim the rail before recording the outcome, so the page never sees "settled, no rail" in between
+		setReviewRailActive(railOwner, visible);
+		recordRailOutcome(id, 'rail');
+		// the Guidelines tab's data (POST /enhance, cached and shared with the Copilot sidebar)
+		loadEnhancement(id).catch(() => undefined);
 	}
 
 	function activateRail(id: string, store: ReviewStore, thread: ChatThreadMessage[] = []): void {
@@ -857,6 +888,7 @@
 				onCommand: (name, itemId, args) => handleReviewCommand(name, itemId, args),
 				onStale: (ids) => store.markStale(ids),
 				onHistory: handleReviewHistory,
+				onReveal: (itemId) => (railReveal = { id: itemId, seq: (railReveal?.seq ?? 0) + 1 }),
 				density: reviewDensity,
 				getItem: (itemId) => get(store).items.find((i) => i.id === itemId)
 			}),
@@ -899,6 +931,7 @@
 		railChat = undefined;
 		chatPrefill = null;
 		railOn = false;
+		reviewPending = false;
 		currentHash = null;
 		hashedText = null;
 	}
@@ -1028,12 +1061,6 @@
 			{ [ev.itemId]: ev.status }
 		);
 		probeLoop?.trigger();
-	}
-
-	function handleDensity(d: Density): void {
-		reviewDensity = d;
-		reportEditorRef?.getView()?.dispatch({ effects: setDensity.of(d) });
-		scheduleWorkspace();
 	}
 
 	/** Finalise: the review items kept in the report (applied, plus pre-applied not undone); undefined with the rail off. */
@@ -1224,14 +1251,9 @@
 </script>
 
 {#snippet railGuidelines()}
-	<!-- Interim (C5): the guidelines panel lives inside ReportEnhancementSidebar with its own /enhance loading, so it is
-	     not cheap to render standalone. This tab opens today's sidebar on its Guidelines tab instead. -->
-	<div class="rv-guidelines-placeholder">
-		<p>Guidelines for this report open in the guidelines panel.</p>
-		<button type="button" class="self-start px-2.5 py-1 text-xs font-medium rounded-md bg-purple-600/80 hover:bg-purple-500 text-white" onclick={() => dispatch('openSidebar', { tab: 'guidelines' })}>
-			Open guidelines
-		</button>
-	</div>
+	{#if reportId}
+		<RailGuidelines {reportId} store={reviewStore} onCommand={handleReviewCommand} />
+	{/if}
 {/snippet}
 
 {#if visible}
@@ -1239,14 +1261,17 @@
 		<!-- Header: Mobile-first responsive layout -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 sm:px-4 py-2 sm:py-3">
 			<!-- Title row -->
-			<div class="flex items-center gap-2 shrink-0">
+			<div class="flex flex-col gap-1.5 min-w-0 sm:flex-1">
 				<h2 class="text-base sm:text-lg font-semibold text-white">Report Editor</h2>
+				{#if (railOn || railSlotPending || (reviewPending && $reviewRailExpected === true)) && response && !error}
+					<Legend />
+				{/if}
 			</div>
 			
-			<!-- Controls row: wraps on mobile -->
-			<div class="flex flex-wrap items-center gap-1.5 sm:gap-2 relative z-15">
+			<!-- Controls row: one line (never wraps the copy button under the others); the title column shrinks -->
+			<div class="editor-controls gap-1.5 sm:gap-2 relative z-15" data-testid="editor-controls">
 				{#if reportId}
-					<div class="flex items-center bg-gray-800/60 rounded-lg p-0.5 sm:p-1">
+					<div class="flex shrink-0 whitespace-nowrap items-center bg-gray-800/60 rounded-lg p-0.5 sm:p-1">
 						<button
 							type="button"
 							class="px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium rounded-md transition-colors {activeView === 'report' ? 'bg-purple-600 text-white' : 'text-gray-300 hover:text-white'}"
@@ -1261,7 +1286,7 @@
 							onclick={() => historyAvailable && (activeView = 'history')}
 							title="Version History"
 						>
-							<span class="hidden xs:inline">Version </span>History
+							<span class="hidden xs:inline">Version&nbsp;</span>History
 						</button>
 					</div>
 				{/if}
@@ -1307,7 +1332,7 @@
 					<button
 						type="button"
 						onclick={() => dispatch('copy', { content: liveDoc() })}
-						class="p-1.5 sm:p-2 text-gray-400 hover:text-purple-400 transition-colors rounded-lg hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+						class="shrink-0 p-1.5 sm:p-2 text-gray-400 hover:text-purple-400 transition-colors rounded-lg hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
 						title="Copy to clipboard"
 						aria-label="Copy report"
 						disabled={!response}
@@ -1500,17 +1525,17 @@
 						<p class="text-sm text-gray-400">Response will appear here once generated.</p>
 					{/if}
 							</div>
-							{#if railOn && reviewStore && response && !error}
-								<div class="h-full shrink-0 overflow-y-auto">
+							{#if (railOn || railSlotPending || (reviewPending && $reviewRailExpected === true)) && reviewStore && response && !error}
+								<div class="h-full shrink-0 overflow-hidden">
 									<ReviewRail
 										store={reviewStore}
 										onCommand={handleReviewCommand}
-										bind:density={reviewDensity}
-										onDensity={handleDensity}
 										updating={updatingIds}
 										guidelines={railGuidelines}
 										chat={railChat}
 										{chatPrefill}
+										reveal={railReveal}
+										pending={!railOn}
 									/>
 								</div>
 							{/if}
@@ -1569,6 +1594,16 @@
 	/* Highlight decoration styles are now in ReportEditor.svelte */
 
 	/* ── Compare to prior report button ─────────────────────────────────────── */
+	/* the editor header's controls: always one line, so the copy button never drops under the others */
+	.editor-controls {
+		display: flex;
+		flex-wrap: nowrap;
+		flex-shrink: 0;
+		align-items: center;
+	}
+	.editor-controls > :global(*) {
+		flex-shrink: 0;
+	}
 	.compare-rpt-btn {
 		display: flex;
 		align-items: center;
@@ -1607,15 +1642,6 @@
 		opacity: 0.6;
 		line-height: 1.2;
 		white-space: nowrap;
-	}
-
-	.rv-guidelines-placeholder {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		padding: 0.75rem;
-		font-size: 0.8rem;
-		color: #a0a7b1;
 	}
 
 	/* ── Floating save bar ─────────────────────────────────────────────────── */

@@ -98,6 +98,34 @@ describe('load', () => {
 		expect(get(s).items.map((i) => i.id)).toEqual([server.id, 'chat:m2:0']);
 	});
 
+	it('a poll keeps unchanged items (and the groups holding them) as the same objects; loaded stays set', async () => {
+		const a = item({ anchor: { start: 1, end: 2, text: 'x' } });
+		const b = item({ anchor: { start: 5, end: 6, text: 'y' } });
+		getReview.mockResolvedValue(response([a, b], { coverage: 'running' }));
+		const s = createReviewStore('r1');
+		expect(get(s).loaded).toBe(false);
+		await s.load();
+		const first = get(s).items;
+		const firstGroups = get(s.groups);
+		expect(get(s).loaded).toBe(true);
+		// the poll answers with fresh copies: same content for a, a changed label for b
+		getReview.mockResolvedValue(
+			response([structuredClone(a), { ...structuredClone(b), label: 'changed' }], DONE)
+		);
+		const p = s.load();
+		expect(get(s).loaded).toBe(true); // a poll never drops back to the first-load state
+		await p;
+		const next = get(s).items;
+		expect(next[0]).toBe(first[0]);
+		expect(next[1]).not.toBe(first[1]);
+		expect(next[1].label).toBe('changed');
+		// nothing changed at all: the items array itself is kept
+		getReview.mockResolvedValue(response(structuredClone(next), DONE));
+		await s.load();
+		expect(get(s).items).toBe(next);
+		expect(firstGroups[0].items[0]).toBe(first[0]);
+	});
+
 	it('records the error and keeps the rail off on failure', async () => {
 		getReview.mockRejectedValue(new Error('boom'));
 		const s = createReviewStore('r1');

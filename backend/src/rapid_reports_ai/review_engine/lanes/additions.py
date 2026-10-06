@@ -12,6 +12,7 @@ from ... import report_reconcile as rc
 from ...report_review import JEV_TIMEOUT_S
 from ..alignment import ANATOMY, Alignment, ReportClause, words
 from ..items import Candidate, Edit, ReviewInput, Span
+from ..verifier import finding_anchor
 from . import LaneContext
 
 logger = logging.getLogger(__name__)
@@ -47,8 +48,12 @@ def brief_candidates(inp: ReviewInput, al: Alignment) -> List[Candidate]:
                                  evidence={**ev, "upgrade_target": target.text}, probe=rc.Q_CONVEYS + s,
                                  detector="brief.option"))
         else:
+            # A finding-linked negative lands right after its finding's sentence; other kinds, and a finding with
+            # no confident unique sentence, keep the section-end placement.
+            after = (finding_anchor(inp.artifacts.report, o.get("finding") or "", section, inp.artifacts.sections)
+                     if sub == "finding_negative" else None)
             out.append(Candidate(lane="additions", kind="option", section=section, evidence=ev,
-                                 proposed=Edit(mode="insert", replace=s, after=None, section=section),
+                                 proposed=Edit(mode="insert", replace=s, after=after, section=section),
                                  preclassed="minor", probe=rc.Q_CONVEYS + s, detector="brief.option"))
     return out
 
@@ -82,6 +87,27 @@ def s4_candidates(synthesis: Optional[dict], with_criteria: bool = False) -> Lis
         for fl in card.get("imaging_flags") or []:
             out.append(_s4(card, "option", "s4.imaging_flag", {"text": fl if isinstance(fl, str) else str(fl)}))
     return out
+
+
+_END_SECTION = re.compile(r"impression|recommend|conclusion|summary|opinion", re.I)
+
+
+def s4_insert_anchor(edit: Optional[Edit], group: List[Candidate], report: str,
+                     sections: Optional[List[str]]) -> Optional[Edit]:
+    """An adjudicated S4 item's insert (classification, threshold, follow-up, option), placed like a finding
+    negative: right after its finding's sentence when `finding_anchor` finds a confident unique one in the edit's
+    section, else the section end. IMPRESSION / recommendation sections always take the section end. Other items,
+    and edits that are not inserts, pass through unchanged."""
+    if edit is None or edit.mode != "insert" or not any(c.detector.startswith("s4.") for c in group):
+        return edit
+    section = edit.section or next((c.section for c in group if c.section), None)
+    if not section:
+        return edit
+    finding = next((c.evidence.get("finding") for c in group if c.evidence.get("finding")), None)
+    after = None
+    if not _END_SECTION.search(section) and finding:
+        after = finding_anchor(report, finding, section, sections)
+    return edit.model_copy(update={"after": after, "section": section})
 
 
 def candidate_text(c: Candidate) -> str:

@@ -880,16 +880,20 @@ headers, no commentary). Every line has three parts separated by " | ":
 - **Normal-study path:**
   - N1 | A | The A is unremarkable.
   - N2 | B | The B is unremarkable.
-  - N3 | C | The C is unremarkable.
-  - N4 | D | The D is unremarkable.
-  - N5 | X | No X in the D.
-  - N6 | Y | No Y.
-  - N7 | E | The E is intact.
-  - P1 | N1 N2 N3 | The A, B and C are unremarkable.
-  - P2 | N4 | The D is unremarkable.
-  - P3 | N5 | No X in the D.
-  - P4 | N6 | No Y.
-  - P5 | N7 | The E is intact.
+  - N3 | K duct | The K duct is normal.
+  - N4 | C | The C is unremarkable.
+  - N5 | D | The D is unremarkable.
+  - N6 | E | The E is unremarkable.
+  - N7 | V vessels | The V vessels are patent.
+  - N8 | X | No X in the D.
+  - N9 | Y | No Y.
+  - N10 | F | The F is intact.
+  - P1 | N1 N2 N4 N5 N6 | The A, B, C, D and E are unremarkable.
+  - P2 | N3 | The K duct is normal.
+  - P3 | N7 | The V vessels are patent.
+  - P4 | N8 | No X in the D.
+  - P5 | N9 | No Y.
+  - P6 | N10 | The F is intact.
 
 Atoms (N lines) come first, in sweep order, numbered N1, N2, ... :
 - One N line per structure the sweep visits: the structure's exact term, then one short
@@ -899,19 +903,24 @@ Atoms (N lines) come first, in sweep order, numbered N1, N2, ... :
 - One structure or one finding per atom; never a list, "or", or "and" inside an atom.
 
 Prose (P lines) follows, in sweep order, numbered P1, P2, ... , each preceded by the ids of
-the atoms it states. Prose groups each sweep paragraph's structures that share one predicate.
+the atoms it states. Prose groups structures across sweep steps: a sweep with one step per
+structure still reads as a few grouped sentences, never one sentence per step.
+- Adjacent normal structures in the same body region that share one predicate go in one sentence
+  of up to about six structures; a region's normal structures take one or two sentences. Start a
+  new sentence when the region or the predicate changes, or the list passes about six.
+- Ducts and vessels are never listed with organs: ducts take their own sentence, vessels take
+  their own sentence. A duct, vessel or negative sentence between grouped structures does not
+  break the group; its sentence follows the group.
 - One predicate per sentence. Every prose sentence has exactly one of two forms: "The A, B and
   C <shared predicate>." ("are unremarkable", "are clear", "are intact", "are patent"), or a
   single negative "No X in the D." / "No Y.".
-- A structure-specific negative, or a structure with a different predicate, is its own atom
-  with its own short prose sentence. Never a tail clause ("with no X"), never a comma-spliced
+- A structure-specific negative is its own atom with its own short prose sentence; a structure
+  with a different predicate goes in a sentence with that predicate. Never a tail clause ("with no X"), never a comma-spliced
   or multi-clause sentence ("the A is intact, the B is normal"), never two verbs in one sentence.
 - Every N id appears in exactly one P line, and a P line states only its own atoms.
 - The sentence reuses each atom's term exactly, word for word: never a broader, narrower,
   shortened or merged name. Items that share a word are written in full ("the A tendons and
   B tendons"), never contracted.
-- Ducts, vessels and hollow organs are not grouped in one sentence with solid organs unless the
-  sweep visits them in the same step.
 - No measurements, sizes, qualifiers, comparisons or descriptions of appearance anywhere in the
   field. The descriptor is bare: "unremarkable", "normal", "clear", "intact", "patent".
 - A structure that leads the clinical question keeps its own sentence.

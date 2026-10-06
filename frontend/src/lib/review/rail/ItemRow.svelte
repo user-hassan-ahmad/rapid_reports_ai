@@ -174,9 +174,9 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		padding: 3px 4px;
-		border-radius: 6px;
-		font-size: 0.82rem;
+		padding: 4px 6px;
+		border-radius: 0.375rem;
+		font-size: 0.8125rem;
 	}
 	.rv-row:hover {
 		background: var(--rv-surface-hover);
@@ -244,16 +244,19 @@
 	.rv-btn {
 		font: inherit;
 		font-size: 0.75rem;
-		padding: 0 7px;
-		line-height: 1.6;
-		border-radius: 9px;
+		font-weight: 500;
+		padding: 2px 9px;
+		line-height: 1.45;
+		border-radius: 0.375rem;
 		border: 1px solid var(--rv-border);
 		background: var(--rv-surface);
 		color: var(--rv-text);
 		cursor: pointer;
+		transition: background-color 0.15s, border-color 0.15s;
 	}
-	.rv-btn:hover {
+	.rv-btn:hover:not(:disabled) {
 		background: var(--rv-surface-hover);
+		border-color: var(--rv-border-strong);
 	}
 	.rv-quiet {
 		color: var(--rv-muted);
@@ -268,7 +271,7 @@
 		cursor: pointer;
 	}
 	button:focus-visible {
-		outline: 2px solid var(--rv-blue-line);
+		outline: 2px solid var(--rv-focus, #a855f7);
 		outline-offset: 1px;
 	}
 </style>

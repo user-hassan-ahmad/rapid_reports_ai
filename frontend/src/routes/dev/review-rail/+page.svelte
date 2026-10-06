@@ -308,7 +308,7 @@
 						{/key}
 					</div>
 					<div class="shrink-0 overflow-y-auto">
-						<ReviewRail {store} onCommand={handleCommand} bind:density onDensity={handleDensity} force={true} />
+						<ReviewRail {store} onCommand={handleCommand} bind:density onDensity={handleDensity} force={true} devControls />
 					</div>
 				</div>
 			{/if}

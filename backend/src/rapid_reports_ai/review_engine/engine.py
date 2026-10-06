@@ -73,6 +73,7 @@ from .alignment import Alignment, align
 from .checks import run_checks
 from .items import Candidate, Edit, ReviewInput, ReviewItem, Span, item_key, merge, text_hash
 from .lanes import LaneContext, registry
+from .lanes.additions import s4_insert_anchor
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +168,7 @@ def build_item(inp: ReviewInput, run_id: str, o: adjudicator.Outcome) -> ReviewI
         j = o.judgement
         cls, kind, label, reason = j.cls, j.kind or first.kind, j.label or _default_label(first), j.reason
         edit = code_fix.proposed if code_fix else adjudicator.to_edit(j)
+        edit = s4_insert_anchor(edit, g, inp.artifacts.report, list(inp.artifacts.sections or []))
         probe = j.probe or probe
     else:                                # pre-classed brief option, not judged again
         cls, kind, label, edit = first.preclassed or "minor", first.kind, _default_label(first), first.proposed

@@ -131,6 +131,13 @@ function isRemovalWidget(it: ReviewItem): boolean {
 	return it.kind === 'removed' || it.edit?.mode === 'remove';
 }
 
+/** A ghost option at its insert point: a brief option, or an open minor additions insert (a classification,
+ * threshold or follow-up suggestion placed after its finding). Never applied without the radiologist (L-52). */
+export function isGhostOption(it: ReviewItem): boolean {
+	if (it.kind === 'option') return true;
+	return it.lane === 'additions' && it.status === 'open' && it.cls === 'minor' && it.edit?.mode === 'insert';
+}
+
 function markClassOf(it: ReviewItem): MarkClass {
 	if (it.status === 'pre_applied') return 'rv-preapplied';
 	if (it.kind === 'assumed_normal') return 'rv-normal';
@@ -169,7 +176,7 @@ export function fromItems(
 	for (const it of items) {
 		if (!isShown(it) || opts.skip?.has(it.id)) continue;
 
-		if (it.kind === 'option') {
+		if (isGhostOption(it)) {
 			const c = toChanges(doc, it.edit, opts.sections);
 			const text = it.edit?.replace?.trim();
 			if (c && text && c.from === c.to) {
@@ -302,7 +309,8 @@ const reviewHistory = invertedEffects.of((tr) => {
 	if (!before) return [];
 	const out: StateEffect<unknown>[] = [];
 	const explicit = tr.effects.some((e) => e.is(setItems));
-	const after = tr.state.field(reviewField);
+	const after = tr.state.field(reviewField, false);
+	if (!after) return []; // the review layer was just removed (the viewer switched reports)
 	const dropped = after.marks.length < before.marks.length;
 	if (explicit || dropped) out.push(setItems.of(before));
 	const cmd = tr.annotation(reviewCommand);
