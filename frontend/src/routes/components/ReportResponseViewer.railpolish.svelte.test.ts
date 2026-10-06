@@ -225,7 +225,7 @@ describe('legend', () => {
 		expect(document.querySelector('[aria-label="Density"]')).toBeNull();
 	});
 
-	it('is one compact row at desktop widths (short labels, full meaning on hover); the copy button stays on the controls line', async () => {
+	it('is one compact row at desktop widths (short labels saying what the AI inferred, full meaning on hover); the copy button stays on the controls line', async () => {
 		await page.viewport(1280, 800);
 		getReview.mockResolvedValue(review('live', true, [action()]));
 		render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });
@@ -234,13 +234,14 @@ describe('legend', () => {
 		const items = [...legend.querySelectorAll<HTMLElement>('li')];
 		expect(items.map((li) => li.lastElementChild?.textContent)).toEqual([
 			'Dictated',
-			'Assumed normal',
-			'Check',
-			'Removed',
+			'Assumed normal (AI)',
+			'Check (AI-inferred)',
+			'Removed (contradicts)',
 			'Removed by you',
-			'Suggested'
+			'Suggested (AI)'
 		]);
-		expect(items[3].title).toBe('Removed · contradicts your dictation');
+		expect(items[2].title).toContain('inferred by AI');
+		expect(items[3].title).toContain('contradicts your dictation');
 		expect(new Set(items.map((li) => Math.round(li.getBoundingClientRect().top))).size).toBe(1);
 		const controls = document.querySelector<HTMLElement>('[data-testid="editor-controls"]')!;
 		const copy = controls.querySelector<HTMLElement>('[aria-label="Copy report"]')!;

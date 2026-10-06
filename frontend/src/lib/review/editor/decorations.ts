@@ -6,8 +6,8 @@
  *   the item's hover chip.
  * - Widgets (removed / option / excluded): display only at their anchor, never document text (the copy invariant);
  *   their actions are on the chip too.
- * - The hover chip (`showTooltip`, closed with Escape or on leave): one line, icon + a rationale built by code
- *   (editor/chip.ts) + icon buttons; ⏎ previews its fix inline. The old click popover is gone; Edit and Ask in chat
+ * - The hover chip (`showTooltip`, closed with Escape or on leave): one line, a type icon
+ *   (editor/chip.ts) + icon buttons, no rationale (that is on the rail card); ⏎ previews its fix inline. The old click popover is gone; Edit and Ask in chat
  *   live on the rail card.
  * - Gutter markers: one per line with items, keyed by the highest cls on the line.
  *
@@ -37,7 +37,7 @@ import {
 } from '@codemirror/view';
 import type { CommandName } from '../commands';
 import type { Cls, ReviewItem } from '../types';
-import { CHIP_ICONS, chipActions, chipRationale, chipType, type ChipAction, type ChipTarget } from './chip';
+import { CHIP_ICONS, chipActions, chipType, type ChipAction, type ChipTarget } from './chip';
 import {
 	checkReason,
 	reviewField,
@@ -90,20 +90,31 @@ export const ICONS = {
 
 export type Meaning = keyof typeof ICONS;
 
-/** The legend's compact labels (one row under the editor title); the full meaning is the entry's `title`. */
+/** The legend's compact labels (one row under the editor title): they say which highlights the AI inferred (to be
+ * checked) and which are the radiologist's own; the full meaning is the entry's `title`. */
 const LEGEND_SHORT = {
 	dictated: 'Dictated',
-	normal: 'Assumed normal',
-	check: 'Check',
-	removed: 'Removed',
+	normal: 'Assumed normal (AI)',
+	check: 'Check (AI-inferred)',
+	removed: 'Removed (contradicts)',
 	excluded: 'Removed by you',
-	option: 'Suggested'
+	option: 'Suggested (AI)'
 } as const;
+
+const AI_NOTE = ' (added by AI, not dictated: check it)';
+const LEGEND_TITLE: Record<keyof typeof LEGEND_SHORT, string> = {
+	dictated: 'Your dictation',
+	normal: LABELS.normal + AI_NOTE,
+	check: 'Check: inferred by AI, may not match your findings',
+	removed: 'Removed by AI: contradicts your dictation',
+	excluded: LABELS.excluded,
+	option: LABELS.option + AI_NOTE
+};
 
 /** The legend, in order: "E · meaning". */
 export const LEGEND: { key: Meaning; icon: string; label: string; title: string }[] = (
 	['dictated', 'normal', 'check', 'removed', 'excluded', 'option'] as const
-).map((key) => ({ key, icon: ICONS[key], label: LEGEND_SHORT[key], title: LABELS[key] }));
+).map((key) => ({ key, icon: ICONS[key], label: LEGEND_SHORT[key], title: LEGEND_TITLE[key] }));
 
 const MARK_MEANING: Record<MarkClass, Meaning> = {
 	'rv-normal': 'normal',
@@ -434,11 +445,10 @@ function chipDom(view: EditorView, a: ChipAnchor): HTMLElement {
 	const dom = el('div', `rv-chip rv-chip-${type}`);
 	dom.setAttribute('role', 'toolbar');
 	dom.setAttribute('data-rv-chip', a.id);
-	const rationale = chipRationale(a.target, it);
-	dom.setAttribute('aria-label', `${it?.label || LABELS[type]}: ${rationale}`);
+	dom.setAttribute('aria-label', it?.label || LABELS[type]);
 	const icon = el('span', 'rv-chip-icon', CHIP_ICONS[type]);
 	icon.setAttribute('aria-hidden', 'true');
-	dom.append(icon, el('span', 'rv-chip-text', rationale));
+	dom.append(icon);
 	const actions = el('span', 'rv-chip-actions');
 	for (const action of chipActions(a.target, it)) {
 		const b = button(action.icon, action.label, () => act(view, a, action));

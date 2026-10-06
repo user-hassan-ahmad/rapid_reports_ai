@@ -6,7 +6,7 @@
  * dotted, check dashed, action solid, minor dotted, pre-applied double) plus an accessible name, and widgets and
  * gutter markers carry an icon.
  *
- * Quiet at rest: every mark is a soft thin underline in its colour with no fill; the hovered mark (or the one whose
+ * Quiet at rest: no fills; normals and pre-applied are soft thin lines, checks and actions a bold full-colour line; the hovered mark (or the one whose
  * chip is open) brightens to full colour with a light tint. Density (`view.dom.dataset.density`, Quiet by default,
  * the app's fixed setting) only changes the assumed normals: `full` tints them (dev page), `hidden` leaves plain
  * text and drops their gutter markers. Checks, actions, removals and options are always shown.
@@ -100,8 +100,8 @@ export const reviewTheme = EditorView.baseTheme({
 	'&dark': DARK,
 
 	// ---- marks: quiet at rest ----
-	// Every mark is a soft thin underline in its colour, no fill: green normal, amber check, red action, a soft blue
-	// double line for pre-applied. Hovering (or the open chip, `rv-active`) brightens that one mark to full colour
+	// Every mark is an underline in its colour, no fill: a soft thin dotted green for normals, a soft blue double line
+	// for pre-applied, and a bold full-colour 2px line for amber checks and red actions so they pop at rest. Hovering (or the open chip, `rv-active`) brightens that one mark to full colour
 	// with a light tint. Density only varies the assumed normals (the dev page's Full tints them; Hidden drops them).
 	'.rv-mark': {
 		cursor: 'pointer',
@@ -119,15 +119,18 @@ export const reviewTheme = EditorView.baseTheme({
 	'&[data-density="hidden"] .rv-normal': { textDecorationLine: 'none' },
 	'.rv-check': {
 		textDecorationStyle: 'dashed',
-		textDecorationColor: 'color-mix(in srgb, var(--rv-amber-line) 65%, transparent)'
+		textDecorationThickness: '2px',
+		textDecorationColor: 'var(--rv-amber-line)'
 	},
 	'.rv-action': {
 		textDecorationStyle: 'solid',
-		textDecorationColor: 'color-mix(in srgb, var(--rv-red-line) 70%, transparent)'
+		textDecorationThickness: '2px',
+		textDecorationColor: 'var(--rv-red-line)'
 	},
 	'.rv-minor': {
 		textDecorationStyle: 'dotted',
-		textDecorationColor: 'color-mix(in srgb, var(--rv-amber-line) 60%, transparent)'
+		textDecorationThickness: '2px',
+		textDecorationColor: 'var(--rv-amber-line)'
 	},
 	'.rv-info': { textDecorationLine: 'none' }, // gutter only
 	'.rv-preapplied': {
@@ -253,7 +256,6 @@ export const reviewTheme = EditorView.baseTheme({
 	'.rv-chip-option .rv-chip-icon, .rv-chip-preapplied .rv-chip-icon, .rv-chip-info .rv-chip-icon': {
 		color: 'var(--rv-blue-line)'
 	},
-	'.rv-chip-text': { overflow: 'hidden', textOverflow: 'ellipsis', minWidth: '0', color: 'var(--rv-chip-muted)' },
 	'.rv-chip-actions': {
 		display: 'inline-flex',
 		alignItems: 'center',

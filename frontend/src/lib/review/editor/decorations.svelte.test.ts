@@ -183,7 +183,7 @@ describe('review decorations', () => {
 		expect(v2.dom.dataset.density).toBe('hidden');
 	});
 
-	it('hovering a mark opens its chip after ~200 ms: one line, icon + rationale + icon buttons', async () => {
+	it('hovering a mark opens its chip after ~200 ms: one line, icon + icon buttons, no rationale', async () => {
 		const { view } = mount();
 		hoverOn(markEl(view, 'a1'));
 		await pause(60);
@@ -193,7 +193,8 @@ describe('review decorations', () => {
 		expect(c).not.toBeNull();
 		expect(c.getAttribute('data-rv-chip')).toBe('a1');
 		expect(c.querySelector('.rv-chip-icon')!.textContent).toBe('✕');
-		expect(c.querySelector('.rv-chip-text')!.textContent).toBe('Measurement differs');
+		expect(c.querySelector('.rv-chip-text')).toBeNull(); // the rationale lives on the rail card only
+		expect(c.textContent).not.toContain('Measurement differs');
 		expect(actionsOf(c)).toEqual(['apply', 'dismiss', 'reveal']);
 		for (const b of c.querySelectorAll('button')) {
 			expect(b.getAttribute('aria-label')).toBeTruthy();
@@ -206,18 +207,18 @@ describe('review decorations', () => {
 
 	it('chips by type: check, normal, pre-applied, removed and option widgets', async () => {
 		const { view } = mount();
-		const cases: [string, string, string, string[]][] = [
-			['c1', '?', 'given “simple cyst left kidney”', ['keep', 'remove', 'reveal']],
-			['g1', '✓', 'assumed normal', ['remove', 'reveal']],
-			['p1', '↶', 'added from your dictation', ['undo', 'reveal']],
-			['r1', '↺', 'contradicts your dictation', ['restore', 'reveal']],
-			['o1', '+', 'suggested', ['apply', 'reveal']]
+		const cases: [string, string, string[]][] = [
+			['c1', '?', ['keep', 'remove', 'reveal']],
+			['g1', '✓', ['remove', 'reveal']],
+			['p1', '↶', ['undo', 'reveal']],
+			['r1', '↺', ['restore', 'reveal']],
+			['o1', '+', ['apply', 'reveal']]
 		];
-		for (const [id, icon, text, actions] of cases) {
+		for (const [id, icon, actions] of cases) {
 			const c = await openOn(view, id);
 			expect(c.getAttribute('data-rv-chip')).toBe(id);
 			expect(c.querySelector('.rv-chip-icon')!.textContent).toBe(icon);
-			expect(c.querySelector('.rv-chip-text')!.textContent).toBe(text);
+			expect(c.querySelector('.rv-chip-text')).toBeNull();
 			expect(actionsOf(c)).toEqual(actions);
 		}
 	});
@@ -321,14 +322,21 @@ describe('review decorations', () => {
 		expect(r.querySelector('button')).toBeNull(); // actions live on the chip
 	});
 
-	it('quiet at rest: every mark is a thin underline with no fill', () => {
+	it('quiet at rest: no fill; greens and pre-applied thin, amber checks and red actions bold full colour', () => {
 		const { view } = mount();
-		for (const id of ['g1', 'c1', 'a1', 'p1']) {
+		for (const [id, thickness] of [['g1', '1px'], ['p1', '1px'], ['c1', '2px'], ['a1', '2px']]) {
 			const cs = getComputedStyle(markEl(view, id));
 			expect(cs.backgroundColor, id).toBe('rgba(0, 0, 0, 0)');
 			expect(cs.textDecorationLine, id).toContain('underline');
-			expect(cs.textDecorationThickness, id).toBe('1px');
+			expect(cs.textDecorationThickness, id).toBe(thickness);
 		}
+		// amber / red at rest are the full line colour, the same as when lit
+		const color = (id: string) => getComputedStyle(markEl(view, id)).textDecorationColor;
+		const rest = { c1: color('c1'), a1: color('a1') };
+		markEl(view, 'c1').classList.add('rv-active');
+		markEl(view, 'a1').classList.add('rv-active');
+		expect(color('c1')).toBe(rest.c1);
+		expect(color('a1')).toBe(rest.a1);
 	});
 
 	it('the open chip lights its mark (full colour + tint)', async () => {

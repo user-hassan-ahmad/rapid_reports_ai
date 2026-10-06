@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ReviewItem } from '../types';
-import { chipActions, chipRationale, chipType, condense, type ChipTarget } from './chip';
+import { chipActions, chipType, type ChipTarget } from './chip';
 
 // SYNTHETIC items only.
 function item(over: Partial<ReviewItem>): ReviewItem {
@@ -23,39 +23,13 @@ function item(over: Partial<ReviewItem>): ReviewItem {
 }
 const action: ChipTarget = { on: 'mark', mark: 'rv-action', kind: 'x' };
 
-describe('chip rationale (built by code from the item)', () => {
-	it('condenses to six words', () => {
-		expect(condense('one two three four five six seven.')).toBe('one two three four five six…');
-		expect(condense('  short   phrase. ')).toBe('short phrase');
-	});
-
-	it('check: given the dictated pointer, condensed', () => {
-		const t: ChipTarget = { on: 'mark', mark: 'rv-check', kind: 'check', pointer: 'a b c d e f g h' };
-		expect(chipRationale(t)).toBe('given “a b c d e f…”');
-		expect(chipRationale({ ...t, reason: 'number' })).toBe('measurement not dictated');
-		expect(chipType(t)).toBe('check');
-	});
-
-	it('action kinds: contradiction, unsupported, certainty, number', () => {
-		expect(chipRationale(action, item({ kind: 'contradicted', source_line: 'no free fluid seen' }))).toBe(
-			'contradicts “no free fluid seen”'
-		);
-		expect(chipRationale(action, item({ kind: 'unsupported' }))).toBe('not in your dictation');
-		expect(
-			chipRationale(action, item({ kind: 'overstated', evidence: { dictated: 'possible', report: 'definite' } }))
-		).toBe('“possible” → “definite”');
-		expect(chipRationale(action, item({ kind: 'measurement', evidence: { check_reason: 'number' } }))).toBe(
-			'measurement not dictated'
-		);
-		expect(chipRationale(action, item({ kind: 'other', label: 'Measurement differs' }))).toBe('Measurement differs');
-	});
-
-	it('normal, removed, option, pre-applied', () => {
-		expect(chipRationale({ on: 'mark', mark: 'rv-normal', kind: 'assumed_normal' })).toBe('assumed normal');
-		expect(chipRationale({ on: 'widget', kind: 'removed', reason: 'contradicted' })).toBe('contradicts your dictation');
-		expect(chipRationale({ on: 'widget', kind: 'removed', reason: 'number' })).toBe('measurement not dictated');
-		expect(chipRationale({ on: 'widget', kind: 'option' })).toBe('suggested');
-		expect(chipRationale({ on: 'mark', mark: 'rv-preapplied', kind: 'omission' })).toBe('added from your dictation');
+describe('chip type', () => {
+	it('by mark class or widget kind', () => {
+		expect(chipType({ on: 'mark', mark: 'rv-check', kind: 'check' })).toBe('check');
+		expect(chipType({ on: 'mark', mark: 'rv-normal', kind: 'assumed_normal' })).toBe('normal');
+		expect(chipType(action, item({ kind: 'contradicted' }))).toBe('action');
+		expect(chipType({ on: 'widget', kind: 'option' })).toBe('option');
+		expect(chipType({ on: 'widget', kind: 'excluded' })).toBeNull();
 	});
 });
 
