@@ -12,6 +12,7 @@ from ... import report_reconcile as rc
 from ...report_review import JEV_TIMEOUT_S
 from ..alignment import ANATOMY, Alignment, ReportClause, words
 from ..items import Candidate, Edit, ReviewInput, Span
+from ..verifier import finding_anchor
 from . import LaneContext
 
 logger = logging.getLogger(__name__)
@@ -47,8 +48,12 @@ def brief_candidates(inp: ReviewInput, al: Alignment) -> List[Candidate]:
                                  evidence={**ev, "upgrade_target": target.text}, probe=rc.Q_CONVEYS + s,
                                  detector="brief.option"))
         else:
+            # A finding-linked negative lands right after its finding's sentence; other kinds, and a finding with
+            # no confident unique sentence, keep the section-end placement.
+            after = (finding_anchor(inp.artifacts.report, o.get("finding") or "", section, inp.artifacts.sections)
+                     if sub == "finding_negative" else None)
             out.append(Candidate(lane="additions", kind="option", section=section, evidence=ev,
-                                 proposed=Edit(mode="insert", replace=s, after=None, section=section),
+                                 proposed=Edit(mode="insert", replace=s, after=after, section=section),
                                  preclassed="minor", probe=rc.Q_CONVEYS + s, detector="brief.option"))
     return out
 

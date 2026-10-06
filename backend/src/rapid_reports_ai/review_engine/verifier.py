@@ -27,7 +27,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from .. import report_reconcile as rc
 from ..report_review import (_EMPTY_ITEM, _FILLER, CONTRA_FLAG, JEV_TIMEOUT_S, Q_CONTRA, _restates, is_negative,
                              remove_negative_clause)
-from .alignment import ANATOMY, _ANATOMY_STEMS, align, levels_of, side_of
+from .alignment import ANATOMY, _ANATOMY_STEMS, align, core_stems, levels_of, side_of
 from .alignment import _lines as _dict_lines
 from .alignment import stem as _al_stem
 from .items import Candidate, Edit, ReviewInput, ReviewItem, Span
@@ -882,6 +882,34 @@ def insert_from_line(report: str, line_text: str, section: str = "FINDINGS",
     if not _once(report, anchor):
         return None
     return Edit(mode="insert", after=anchor, replace=text, section=section)
+
+
+OPTION_ANCHOR_MIN = 2   # shared core stems a finding needs with its sentence (all of them when it has fewer)
+
+
+def finding_anchor(report: str, finding: str, section: str, sections: Optional[List[str]] = None) -> Optional[str]:
+    """The sentence of `section` that best names `finding` (a finding-linked option's key), as an insert anchor, so
+    the option lands beside its finding. Term overlap on core stems; the best sentence must share at least
+    `OPTION_ANCHOR_MIN` of them (all, for a one-term key) and beat every other sentence. None (the caller appends
+    to the section end) when no sentence is a confident, unique match, or the match cannot anchor: it does not end
+    a sentence, or its text is not unique in the report."""
+    names = sections or []
+    key = core_stems(finding)
+    body = _section_body(report, section, names) if key else None
+    if body is None:
+        return None
+    a, e = body
+    chunk = report[a:e]
+    scored = sorted(((len(key & core_stems(chunk[s:t])), chunk[s:t]) for s, t in _sentence_spans(chunk, names)),
+                    key=lambda x: -x[0])
+    if not scored or scored[0][0] < min(OPTION_ANCHOR_MIN, len(key)):
+        return None
+    if len(scored) > 1 and scored[1][0] == scored[0][0]:
+        return None
+    anchor = scored[0][1]
+    if _MARKER.match(anchor) or not _SENT_CLOSE.search(anchor) or not _once(report, anchor):
+        return None
+    return anchor
 
 
 # ── pre-apply helpers (t11 re-review of ddcb88a): prefer refusing (one-click) over clever guards ──────────────
