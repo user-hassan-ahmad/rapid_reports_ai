@@ -739,7 +739,8 @@
 	/** This report's first GET /review has not answered yet. */
 	let reviewPending = false;
 	/** The session knows a rail is coming (railActive.ts) and this report's first GET is still out: the rail slot
-	 * renders its fixed-width skeleton at once, so nothing shifts and the Copilot aside never flashes. */
+	 * renders its fixed-width skeleton at once, so nothing shifts and the Copilot aside never flashes. (The template
+	 * also reads reviewPending directly: setupReview sets it from inside another reactive statement.) */
 	$: railSlotPending =
 		(reviewPending || (!!reportId && reportId !== reviewReportId)) && $reviewRailExpected === true && !railOn;
 	// Gate G: the unsaved-changes bar sits under the report view, so the view gives back the bar's height; otherwise
@@ -1262,7 +1263,7 @@
 			<!-- Title row -->
 			<div class="flex flex-col gap-1.5 min-w-0">
 				<h2 class="text-base sm:text-lg font-semibold text-white">Report Editor</h2>
-				{#if (railOn || railSlotPending) && response && !error}
+				{#if (railOn || railSlotPending || (reviewPending && $reviewRailExpected === true)) && response && !error}
 					<Legend />
 				{/if}
 			</div>
@@ -1524,7 +1525,7 @@
 						<p class="text-sm text-gray-400">Response will appear here once generated.</p>
 					{/if}
 							</div>
-							{#if (railOn || railSlotPending) && reviewStore && response && !error}
+							{#if (railOn || railSlotPending || (reviewPending && $reviewRailExpected === true)) && reviewStore && response && !error}
 								<div class="h-full shrink-0 overflow-hidden">
 									<ReviewRail
 										store={reviewStore}

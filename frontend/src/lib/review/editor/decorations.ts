@@ -496,7 +496,19 @@ export const popoverField = StateField.define<string | null>({
 				above: true,
 				strictSide: false,
 				arrow: false,
-				create: (view) => ({ dom: chipDom(view, a) })
+				create: (view) => ({
+					dom: chipDom(view, a),
+					// at the mark's end horizontally, but above its FIRST line: a wrapped mark is never covered,
+					// and the chip never sits over the next line
+					getCoords: () => {
+						const end = view.coordsAtPos(a.to, -1) ?? view.coordsAtPos(a.pos, 1);
+						const start = view.coordsAtPos(a.from, 1) ?? end;
+						if (!end || !start) return { left: 0, right: 0, top: 0, bottom: 0 };
+						const top = Math.min(start.top, end.top);
+						const x = start.top < end.top - 2 ? Math.max(start.left, end.left) : end.left;
+						return { left: x, right: x, top, bottom: top };
+					}
+				})
 			};
 		})
 });

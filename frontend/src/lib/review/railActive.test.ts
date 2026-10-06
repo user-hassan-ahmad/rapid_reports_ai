@@ -19,7 +19,7 @@ describe('holdsAside', () => {
 		expect(mod.holdsAside(false, true, undefined)).toBe(true); // rail expected
 		expect(mod.holdsAside(false, false, undefined)).toBe(false); // known: no rail
 		expect(mod.holdsAside(false, true, 'none')).toBe(false); // settled without a rail
-		expect(mod.holdsAside(false, true, 'rail')).toBe(false); // settled; the viewer is not showing it
+		expect(mod.holdsAside(false, true, 'rail')).toBe(true); // settled on a rail: held even while it is re-set up
 	});
 });
 

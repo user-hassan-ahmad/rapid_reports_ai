@@ -182,6 +182,25 @@ describe('rail placement before the review loads (no Copilot flash)', () => {
 		);
 	});
 
+	it('switching between two rail reports never releases the aside (old id or new)', async () => {
+		getReview.mockResolvedValueOnce(review('live', true, [action()]));
+		const { rerender } = render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });
+		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
+		const seen: boolean[] = [];
+		const stops = [
+			rail.reviewRailHoldsAside('rep1').subscribe((v) => seen.push(v)),
+			rail.reviewRailHoldsAside('rep2').subscribe((v) => seen.push(v))
+		];
+		const d = deferred();
+		getReview.mockReturnValueOnce(d.promise);
+		await rerender({ visible: true, response: REPORT, reportId: 'rep2' });
+		await expect.element(page.getByTestId('rv-skeleton')).toBeInTheDocument();
+		d.resolve(review('live', true, [{ ...action(), report_id: 'rep2' }]));
+		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
+		stops.forEach((f) => f());
+		expect(seen.every(Boolean)).toBe(true);
+	});
+
 	it('rail expected but this report has none: the skeleton goes and the aside is released', async () => {
 		rail.rememberRailMode(true);
 		getReview.mockResolvedValueOnce(review('shadow', false, []));

@@ -141,7 +141,13 @@
 		await tick();
 		const card = railEl?.querySelector<HTMLElement>(`[data-rv-item="${id}"], [data-rv-folded="${id}"]`);
 		if (!card) return;
-		card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+		// scroll the rail body only (scrollIntoView would also scroll the page and the editor's container)
+		const body = card.closest<HTMLElement>('.rv-body');
+		if (body) {
+			const b = body.getBoundingClientRect();
+			const c = card.getBoundingClientRect();
+			body.scrollTo({ top: body.scrollTop + c.top - b.top - (b.height - c.height) / 2, behavior: 'smooth' });
+		}
 		card.classList.remove('rv-revealed');
 		void card.offsetWidth; // restart the highlight
 		card.classList.add('rv-revealed');

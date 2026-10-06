@@ -55,15 +55,16 @@ export function recordRailOutcome(reportId: string, outcome: 'rail' | 'none'): v
 	outcomes.update((o) => (o[reportId] === outcome ? o : { ...o, [reportId]: outcome }));
 }
 
-/** Pure rule: the page keeps the Copilot aside out while a rail is showing, or (before this report's first review
- * GET settles) unless the session already knows there is no rail. */
+/** Pure rule: the page keeps the Copilot aside out while a rail is showing, for a report whose review settled on a
+ * rail (also in the moment a viewer switches reports and its rail is torn down and set up again), and, before this
+ * report's first review GET settles, unless the session already knows there is no rail. */
 export function holdsAside(
 	isActive: boolean,
 	expectedMode: boolean | null,
 	outcome: 'rail' | 'none' | undefined
 ): boolean {
-	if (isActive) return true;
-	if (outcome !== undefined) return false;
+	if (isActive || outcome === 'rail') return true;
+	if (outcome === 'none') return false;
 	return expectedMode !== false;
 }
 
