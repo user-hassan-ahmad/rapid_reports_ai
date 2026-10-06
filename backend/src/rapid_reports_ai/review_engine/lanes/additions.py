@@ -50,7 +50,8 @@ def brief_candidates(inp: ReviewInput, al: Alignment) -> List[Candidate]:
         else:
             # A finding-linked negative lands right after its finding's sentence; other kinds, and a finding with
             # no confident unique sentence, keep the section-end placement.
-            after = (finding_anchor(inp.artifacts.report, o.get("finding") or "", section, inp.artifacts.sections)
+            after = (finding_anchor(inp.artifacts.report, o.get("finding") or "", section, inp.artifacts.sections,
+                                    option=s)
                      if sub == "finding_negative" else None)
             out.append(Candidate(lane="additions", kind="option", section=section, evidence=ev,
                                  proposed=Edit(mode="insert", replace=s, after=after, section=section),

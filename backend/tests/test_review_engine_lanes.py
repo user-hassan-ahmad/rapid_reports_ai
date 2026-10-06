@@ -270,6 +270,38 @@ def test_finding_negative_never_anchors_outside_its_section():
     assert c.proposed.after is None             # the IMPRESSION "Pancreatic head mass." is not a FINDINGS anchor
 
 
+# The brief's finding key is the skill sheet's category label ("Vascular involvement"), often sharing < 2 stems with
+# any report sentence (prod 2026-10-06: every finding_negative option fell to the FINDINGS end). The option's own
+# words then place it, with the same threshold and uniqueness rules. Synthetic equivalent of that report:
+REN = ("FINDINGS:\nThe left kidney contains a 4.1 cm enhancing mass, likely renal cell carcinoma. The mass abuts the "
+       "left renal vein over a short segment. No encasement of the left renal vein or inferior vena cava, and no "
+       "involvement of the adrenal gland. No lymphadenopathy. The liver is unremarkable.\n\n"
+       "The spleen is unremarkable.\nIMPRESSION:\nLeft renal mass.")
+REN_VASC = ("No encasement of the left renal vein or inferior vena cava, and no involvement of the adrenal gland.")
+
+
+@pytest.mark.parametrize("sentence", ["No inferior vena cava thrombosis.", "No renal vein tumour thrombus."])
+def test_category_key_falls_back_to_the_options_own_words(sentence):
+    i = inp(REN, "- 4.1 cm renal mass abutting the renal vein", options=[_fn(sentence, "Vascular involvement")])
+    c = brief_candidates(i, align(REN, "", "", i.artifacts.sections))[0]
+    assert c.proposed.after == REN_VASC
+    out = apply_edit(REN, c.proposed, i.artifacts.sections)
+    assert f"{REN_VASC} {sentence} No lymphadenopathy." in out
+
+
+def test_option_words_fallback_keeps_the_uniqueness_rule():
+    # "renal vein" is in two sentences equally (2 stems each): no unique sentence → section end
+    i = inp(REN, "", options=[_fn("No left renal vein thrombosis.", "Tumour extent")])
+    c = brief_candidates(i, align(REN, "", "", i.artifacts.sections))[0]
+    assert c.proposed.after is None and c.proposed.section == "FINDINGS"
+
+
+def test_finding_key_match_wins_over_option_words():
+    i = inp(PANC, "", options=[_fn("No duct dilatation.", "pancreatic head mass/SMV")])
+    c = brief_candidates(i, align(PANC, "", "", i.artifacts.sections))[0]
+    assert c.proposed.after == "There is a 32 mm hypoattenuating mass in the pancreatic head abutting the SMV."
+
+
 def test_recommendation_option_keeps_section_end_even_with_finding():
     i = inp(PANC, "", options=[{"id": "o1", "kind": "recommendation", "section": "IMPRESSION",
                                 "sentence": "MDT discussion is suggested.", "finding": "pancreatic head mass"}])
