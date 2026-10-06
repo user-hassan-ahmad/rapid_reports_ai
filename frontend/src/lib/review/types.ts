@@ -48,6 +48,8 @@ export interface ItemEvidence {
 	removal_reason?: 'contradicted' | 'number' | string;
 	/** Shadow / kill switch: the engine would have pre-applied this edit in live mode. */
 	would_pre_apply?: boolean;
+	/** AI-generated layer (assumed_normal / check / ai_generated): what the clause is, for its tint. */
+	form?: 'negative' | 'normal' | 'synthesis' | string;
 	/** Number checks: the clause the card is about. */
 	clause?: string;
 	also_anchors?: Span[];

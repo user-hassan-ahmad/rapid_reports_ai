@@ -1,12 +1,11 @@
 <script lang="ts">
-	// The review legend, which doubles as the highlight toggles. In the app it sits directly under the "Report Editor"
-	// title (ReportResponseViewer); it is not part of the rail. "Dictated · Removed by you | AI-generated ·
-	// Recommendations · Removed (contradicts dictation)". Each pill is a toggle (editor/theme.ts `setEmphasis`):
-	// "AI-generated" shows the AI-generated layer in its colours (assumed normal green, check amber, synthesis violet;
-	// off by default), "Recommendations" their underline (on by default), the others bring their class forward; several
-	// may be on. It wraps onto new lines when narrow (never scrolls sideways). The density toggle is a dev-page capability only
-	// (`showDensity`): the app's density is fixed to Quiet.
-	import { DEFAULT_LEGEND, LEGEND, type LegendKey } from '../editor/decorations';
+	// The review legend, directly under the "Report Editor" title (ReportResponseViewer); not part of the rail.
+	// "Dictated · Removed by you | AI-generated ▾ · Removed (contradicts dictation)". Only "AI-generated" is a toggle
+	// (editor/theme.ts `setEmphasis`: the AI-generated layer's tints, ON by default; off = plain text); its breakdown
+	// (Normals green, Pertinent negatives amber, Synthesis violet) expands inline. The other entries are static labels
+	// for what the editor draws. It wraps onto new lines when narrow (never scrolls sideways). The density toggle is a
+	// dev-page capability only (`showDensity`): the app's density is fixed to Quiet.
+	import { AI_BREAKDOWN, DEFAULT_LEGEND, LEGEND, type LegendKey } from '../editor/decorations';
 	import type { Density } from '../editor/theme';
 
 	let {
@@ -14,7 +13,8 @@
 		onDensity,
 		showDensity = false,
 		active = $bindable<LegendKey[]>([...DEFAULT_LEGEND]),
-		onFilter
+		onFilter,
+		expanded = $bindable(true)
 	}: {
 		density?: Density;
 		onDensity?: (d: Density) => void;
@@ -22,6 +22,8 @@
 		/** The pressed filters, in legend order. */
 		active?: LegendKey[];
 		onFilter?: (keys: LegendKey[]) => void;
+		/** The AI-generated breakdown is shown. */
+		expanded?: boolean;
 	} = $props();
 
 	const OWN = LEGEND.filter((e) => !e.ai);
@@ -47,27 +49,59 @@
 	}
 </script>
 
-{#snippet pill(entry: (typeof LEGEND)[number])}
-	<button
-		type="button"
-		class="rv-pill rv-legend-{entry.key}"
-		data-rv-filter={entry.key}
-		aria-pressed={active.includes(entry.key)}
-		title={entry.title}
-		onclick={() => toggle(entry.key)}
-		>{#if entry.key === 'ai'}<span class="rv-swatches" aria-hidden="true"
-				><i class="rv-sw-green"></i><i class="rv-sw-amber"></i><i class="rv-sw-violet"></i></span
-			>{:else}<span class="rv-legend-icon" aria-hidden="true">{entry.icon}</span>{/if}<span
-			class="rv-legend-label">{entry.label}</span
-		></button
-	>
+{#snippet entry(e: (typeof LEGEND)[number])}
+	{#if e.toggle}
+		<span class="rv-ai-group">
+			<button
+				type="button"
+				class="rv-pill rv-legend-{e.key}"
+				data-rv-filter={e.key}
+				aria-pressed={active.includes(e.key)}
+				title={e.title}
+				onclick={() => toggle(e.key)}
+				><span class="rv-swatches" aria-hidden="true"
+					><i class="rv-sw-normal"></i><i class="rv-sw-negative"></i><i class="rv-sw-synthesis"></i></span
+				><span class="rv-legend-label">{e.label}</span></button
+			><button
+				type="button"
+				class="rv-disclose"
+				aria-expanded={expanded}
+				aria-controls="rv-ai-breakdown"
+				aria-label={expanded ? 'Hide AI-generated breakdown' : 'Show AI-generated breakdown'}
+				title={expanded ? 'Hide breakdown' : 'Show breakdown'}
+				onclick={() => (expanded = !expanded)}><span aria-hidden="true">{expanded ? '‹' : '›'}</span></button
+			>
+			{#if expanded}
+				<span
+					class="rv-breakdown"
+					id="rv-ai-breakdown"
+					data-rv-breakdown
+					data-off={!active.includes(e.key) || undefined}
+					role="list"
+					aria-label="AI-generated breakdown"
+				>
+					{#each AI_BREAKDOWN as b (b.form)}
+						<span class="rv-break" role="listitem" data-rv-form={b.form} title={b.title}
+							><i class="rv-swatch rv-sw-{b.form}" aria-hidden="true"></i>{b.label}</span
+						>
+					{/each}
+				</span>
+			{/if}
+		</span>
+	{:else}
+		<span class="rv-tag rv-legend-{e.key}" data-rv-label={e.key} title={e.title}
+			><span class="rv-legend-icon" aria-hidden="true">{e.icon}</span><span class="rv-legend-label"
+				>{e.label}</span
+			></span
+		>
+	{/if}
 {/snippet}
 
 <div class="rv-legend-bar" data-testid="review-legend">
-	<div class="rv-legend" data-rv-legend role="group" aria-label="Legend and highlight filters">
-		{#each OWN as entry (entry.key)}{@render pill(entry)}{/each}
+	<div class="rv-legend" data-rv-legend role="group" aria-label="Legend">
+		{#each OWN as e (e.key)}{@render entry(e)}{/each}
 		<span class="rv-legend-sep" aria-hidden="true"></span>
-		{#each AI as entry (entry.key)}{@render pill(entry)}{/each}
+		{#each AI as e (e.key)}{@render entry(e)}{/each}
 	</div>
 	{#if showDensity}
 		<div class="rv-density" role="group" aria-label="Density">
@@ -91,7 +125,6 @@
 		--lg-blue: #7ea6f0;
 		--lg-grey: #8f969f;
 		--lg-violet: #b3a1f5;
-		--lg-teal: #5fd3c6;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
@@ -158,14 +191,78 @@
 		height: 7px;
 		border-radius: 9999px;
 	}
-	.rv-sw-green {
+	/* the editor's tints, stronger so the key reads at 11px */
+	.rv-sw-normal {
 		background: var(--lg-green);
 	}
-	.rv-sw-amber {
+	.rv-sw-negative {
 		background: var(--lg-amber);
 	}
-	.rv-sw-violet {
+	.rv-sw-synthesis {
 		background: var(--lg-violet);
+	}
+	.rv-ai-group {
+		display: inline-flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 2px 4px;
+		min-width: 0;
+	}
+	.rv-disclose {
+		font: inherit;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 16px;
+		height: 16px;
+		padding: 0;
+		border: 0;
+		border-radius: 4px;
+		background: none;
+		color: var(--lg-muted);
+		cursor: pointer;
+	}
+	.rv-disclose:hover {
+		color: var(--lg-text);
+		background: rgba(255, 255, 255, 0.06);
+	}
+	.rv-disclose:focus-visible {
+		outline: 2px solid #a855f7;
+		outline-offset: 0;
+	}
+	.rv-breakdown {
+		display: inline-flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 2px 8px;
+		min-width: 0;
+		transition: opacity 120ms ease;
+	}
+	.rv-breakdown[data-off] {
+		opacity: 0.45;
+	}
+	.rv-break {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		white-space: nowrap;
+		color: var(--lg-text);
+	}
+	.rv-swatch {
+		display: inline-block;
+		width: 12px;
+		height: 10px;
+		border-radius: 2px;
+		opacity: 0.55;
+	}
+	.rv-tag {
+		display: inline-flex;
+		gap: 4px;
+		align-items: center;
+		padding: 1px 7px 1px 3px;
+		color: var(--lg-muted);
+		white-space: nowrap;
+		cursor: default;
 	}
 	.rv-legend-icon {
 		display: inline-flex;
@@ -178,10 +275,6 @@
 		font-weight: 700;
 		background: rgba(255, 255, 255, 0.06);
 		color: var(--lg-text);
-	}
-	.rv-legend-rec .rv-legend-icon {
-		color: var(--lg-teal);
-		background: rgba(95, 211, 198, 0.12);
 	}
 	.rv-legend-removed .rv-legend-icon {
 		color: var(--lg-red);

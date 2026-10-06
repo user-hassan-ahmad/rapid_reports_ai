@@ -39,6 +39,7 @@ import { chipActions, chipType, type ChipAction, type ChipTarget } from './chip'
 import {
 	AI_LAYER_MARKS,
 	checkReason,
+	type AiForm,
 	reviewField,
 	reviewItems,
 	type LiveMark,
@@ -96,41 +97,47 @@ export const ICONS = {
 
 export type Meaning = keyof typeof ICONS;
 
-/** The legend (under the editor title): the radiologist's own first, then the AI's. Every entry is a toggle
- * (editor/theme.ts `setEmphasis`): "AI-generated" shows the AI-generated layer (assumed normals, checks, synthesis:
- * off by default, plain text), "Recommendations" their underline (on by default), the others bring their class
- * forward. The full meaning is the entry's `title`. */
+/** The legend (under the editor title): the radiologist's own first, then the AI's. Only "AI-generated" is a toggle
+ * (editor/theme.ts `setEmphasis`: the AI-generated layer's tints, on by default; off = plain text), with its breakdown
+ * (AI_BREAKDOWN); the other entries are static labels for what the editor draws. The full meaning is the entry's
+ * `title`. */
 const LEGEND_SHORT = {
 	dictated: 'Dictated',
 	excluded: 'Removed by you',
 	ai: 'AI-generated',
-	rec: 'Recommendations',
 	removed: 'Removed (contradicts dictation)'
 } as const;
 
 export type LegendKey = keyof typeof LEGEND_SHORT;
 
 const LEGEND_TITLE: Record<LegendKey, string> = {
-	dictated: 'Your dictation',
-	excluded: LABELS.excluded,
-	ai: 'Text not from your dictation: assumed normal (green), check (amber), AI synthesis (violet). Show or hide',
-	rec: 'Recommendations the AI added: keep or remove each one. Show or hide their underline',
-	removed: 'Removed by AI: contradicts your dictation'
+	dictated: 'Plain text is your dictation',
+	excluded: 'Struck through in grey: text you removed',
+	ai: 'Text not from your dictation, tinted by kind: normals (green), pertinent negatives (amber), synthesis (violet). Show or hide',
+	removed: 'Struck through in red: removed by AI because it contradicts your dictation'
 };
 
-/** The legend filters on by default (recommendations shown; the AI-generated layer off). */
-export const DEFAULT_LEGEND: readonly LegendKey[] = ['rec'];
+/** The legend filters on by default: the AI-generated layer. */
+export const DEFAULT_LEGEND: readonly LegendKey[] = ['ai'];
 
-/** The legend, in order: the radiologist's own, then the AI's. */
-export const LEGEND: { key: LegendKey; icon: string; label: string; title: string; ai: boolean }[] = (
-	['dictated', 'excluded', 'ai', 'rec', 'removed'] as const
+/** The legend, in order: the radiologist's own, then the AI's. `toggle`: a filter button (else a static label). */
+export const LEGEND: { key: LegendKey; icon: string; label: string; title: string; ai: boolean; toggle: boolean }[] = (
+	['dictated', 'excluded', 'ai', 'removed'] as const
 ).map((key) => ({
 	key,
 	icon: ICONS[key],
 	label: LEGEND_SHORT[key],
 	title: LEGEND_TITLE[key],
-	ai: key !== 'dictated' && key !== 'excluded'
+	ai: key !== 'dictated' && key !== 'excluded',
+	toggle: key === 'ai'
 }));
+
+/** The AI-generated layer's categories, as the legend's breakdown shows them (swatch = the tint in the editor). */
+export const AI_BREAKDOWN: { form: AiForm; label: string; title: string }[] = [
+	{ form: 'normal', label: 'Normals', title: 'Normal findings you did not dictate, stated by the AI' },
+	{ form: 'negative', label: 'Pertinent negatives', title: 'Negatives the AI added that matter for your findings' },
+	{ form: 'synthesis', label: 'Synthesis', title: 'Conclusions the AI drew from your findings' }
+];
 
 const MARK_MEANING: Record<MarkClass, Meaning> = {
 	'rv-normal': 'normal',
@@ -252,7 +259,7 @@ class ItemWidget extends WidgetType {
 
 function markLabel(m: LiveMark): string {
 	const meaning = MARK_MEANING[m.mark];
-	let t: string = LABELS[meaning];
+	let t: string = m.form ? AI_BREAKDOWN.find((b) => b.form === m.form)!.label : LABELS[meaning];
 	if (m.mark === 'rv-check') t += ` · ${checkReason({ check_reason: m.reason }).line}`;
 	return AI_LAYER_MARKS.has(m.mark) ? `${t} (AI-generated)` : `${t} · hover for actions`;
 }
@@ -264,7 +271,7 @@ const reviewDecorations = EditorView.decorations.compute([reviewField], (state):
 		const label = markLabel(m);
 		ranges.push(
 			Decoration.mark({
-				class: `rv-mark ${m.mark}`,
+				class: `rv-mark ${m.mark}${m.form ? ` rv-form-${m.form}` : ''}`,
 				attributes: { 'data-rv-id': m.id, 'aria-label': label }
 			}).range(m.from, m.to)
 		);
@@ -279,9 +286,21 @@ const reviewDecorations = EditorView.decorations.compute([reviewField], (state):
 const HEADING = /^\s*([A-Z][A-Z0-9 /&()-]{2,}):\s*$/;
 const normName = (s: string) => s.trim().replace(/:$/, '').trim().toLowerCase();
 
-/** Where a section's suggestions go: the end of the last non-blank line of the section body holding `pos` (or the
- * section named `section`); the end of the document when the report has no headings. */
-function sectionBodyEnd(state: EditorState, pos: number | null, section: string | null): number {
+/** A sign-off line (signature, name, registration, qualifications): the report's tail, never section body. */
+const SIGN_OFF =
+	/^\s*(?:dr\.?\s|prof\.?\s|professor\s|reported by|verified by|signed|electronically signed|gmc\b|frcr\b|mb\s?bs\b|mbchb\b)|\b(?:gmc(?:\s*(?:no\.?|number))?\s*:?\s*\d{5,}|frcr)\b/i;
+/** Job titles open a sign-off only as their own paragraph ("Consultant review advised." is body text). */
+const SIGN_OFF_TITLE = /^\s*(?:consultant|specialty|registrar|radiologist)\b/i;
+
+/** Where a section's checklist goes and the section it belongs to: the end of the last non-blank line of the
+ * section body holding `pos` (or the section named `section`), stopping before a trailing paragraph of sign-off
+ * lines (signature, name, GMC, FRCR), which stay below the checklist; the end of the document when the report has no
+ * headings. */
+function sectionBodyEnd(
+	state: EditorState,
+	pos: number | null,
+	section: string | null
+): { at: number; section: string | null } {
 	const doc = state.doc;
 	let lineNo: number | null = null;
 	if (pos != null) lineNo = doc.lineAt(Math.min(pos, doc.length)).number;
@@ -293,22 +312,44 @@ function sectionBodyEnd(state: EditorState, pos: number | null, section: string 
 				break;
 			}
 		}
-	if (lineNo == null) return doc.length;
+	if (lineNo == null) return { at: doc.length, section };
+	// the heading this body belongs to
+	let name = section;
+	for (let n = lineNo; n >= 1; n--) {
+		const m = HEADING.exec(doc.line(n).text);
+		if (m) {
+			name = m[1];
+			break;
+		}
+	}
 	let last = lineNo;
+	let blank = false;
 	for (let n = lineNo + 1; n <= doc.lines; n++) {
 		const text = doc.line(n).text;
 		if (HEADING.test(text)) break;
-		if (text.trim()) last = n;
+		if (!text.trim()) {
+			blank = true;
+			continue;
+		}
+		if (SIGN_OFF.test(text) || (blank && SIGN_OFF_TITLE.test(text))) break; // the sign-off after the body
+		blank = false;
+		last = n;
 	}
-	return doc.line(last).to;
+	return { at: doc.line(last).to, section: name };
 }
 
+const isImpression = (section: string | null) => !!section && /impression|conclusion|summary|opinion/i.test(section);
+
 class SuggestionsWidget extends WidgetType {
-	constructor(readonly entries: readonly SuggestionEntry[]) {
+	constructor(
+		readonly entries: readonly SuggestionEntry[],
+		readonly impression = false
+	) {
 		super();
 	}
 	eq(o: SuggestionsWidget): boolean {
 		return (
+			o.impression === this.impression &&
 			o.entries.length === this.entries.length &&
 			o.entries.every(
 				(e, i) =>
@@ -323,16 +364,22 @@ class SuggestionsWidget extends WidgetType {
 		const box = el('div', 'rv-suggestions');
 		box.contentEditable = 'false';
 		box.setAttribute('role', 'group');
-		box.setAttribute('aria-label', 'Suggestions');
 		box.setAttribute('data-rv-suggestions', '');
-		const hasRec = this.entries.some((e) => e.kind === 'recommendation');
-		box.setAttribute('aria-label', hasRec ? 'Recommendations and suggestions' : 'Suggestions');
-		box.append(el('div', 'rv-suggestions-title', hasRec ? 'Recommendations & suggestions' : 'Suggestions'));
+		// the impression's block is its recommendations; every other section's block is its suggestions
+		const title = this.impression ? 'Recommendations' : 'Suggestions';
+		if (this.impression) box.setAttribute('data-rv-impression', '');
+		box.setAttribute('aria-label', title);
+		box.append(el('div', 'rv-suggestions-title', title));
+		// a blank line's gap above the block (padding on a wrapper: CM measures block widgets by their box)
+		const block = el('div', 'rv-suggestions-block');
+		block.contentEditable = 'false';
+		block.append(box);
 		for (const e of this.entries) {
 			const row = el('label', 'rv-suggestion');
 			row.setAttribute('data-rv-suggestion', e.id);
 			const cb = document.createElement('input');
 			cb.type = 'checkbox';
+			cb.className = 'rv-check-box';
 			cb.checked = e.checked;
 			cb.disabled = !!e.disabled;
 			row.setAttribute('data-rv-kind', e.kind);
@@ -358,7 +405,7 @@ class SuggestionsWidget extends WidgetType {
 			row.append(cb, el('span', 'rv-suggestion-text', e.text));
 			box.append(row);
 		}
-		return box;
+		return block;
 	}
 	ignoreEvent(): boolean {
 		return true;
@@ -368,16 +415,20 @@ class SuggestionsWidget extends WidgetType {
 const suggestionDecos = EditorView.decorations.compute([reviewField], (state): DecorationSet => {
 	const list = reviewItems(state).suggestions ?? [];
 	if (!list.length) return Decoration.none;
-	const groups = new Map<number, SuggestionEntry[]>();
+	const groups = new Map<number, { entries: SuggestionEntry[]; section: string | null }>();
 	for (const g of list) {
-		const at = sectionBodyEnd(state, g.pos, g.section);
-		const cur = groups.get(at) ?? [];
-		cur.push(g);
+		const { at, section } = sectionBodyEnd(state, g.pos, g.section);
+		const cur = groups.get(at) ?? { entries: [], section };
+		cur.entries.push(g);
 		groups.set(at, cur);
 	}
 	return Decoration.set(
-		[...groups.entries()].map(([at, entries]) =>
-			Decoration.widget({ widget: new SuggestionsWidget(entries), block: true, side: 1 }).range(at)
+		[...groups.entries()].map(([at, { entries, section }]) =>
+			Decoration.widget({
+				widget: new SuggestionsWidget(entries, isImpression(section)),
+				block: true,
+				side: 1
+			}).range(at)
 		),
 		true
 	);

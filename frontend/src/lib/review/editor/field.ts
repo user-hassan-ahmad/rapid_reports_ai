@@ -53,6 +53,22 @@ export const AI_LAYER_MARKS: ReadonlySet<MarkClass> = new Set(['rv-normal', 'rv-
 /** Why an amber (check) item needs a check (evidence.check_reason; absent = uncertain). */
 export type CheckReasonCode = 'uncertain' | 'conflict' | 'number';
 
+/** The AI-generated layer's categories, drawn as faint tints: normals green, pertinent negatives amber, synthesis
+ * violet (backend evidence.form). */
+export type AiForm = 'normal' | 'negative' | 'synthesis';
+
+const FORMS: ReadonlySet<string> = new Set(['normal', 'negative', 'synthesis']);
+const NEGATIVE_LEAD = /^\s*(?:no|nil|without|absent)\b/i;
+
+/** An AI-layer item's category: evidence.form when the backend sent one, else ai_generated → synthesis, else a
+ * clause that opens with No / Nil / Without / Absent → negative, else normal. */
+export function formOf(it: Pick<ReviewItem, 'kind' | 'evidence' | 'anchor'>): AiForm {
+	const f = it.evidence?.form;
+	if (typeof f === 'string' && FORMS.has(f)) return f as AiForm;
+	if (it.kind === 'ai_generated') return 'synthesis';
+	return NEGATIVE_LEAD.test(it.anchor?.text ?? '') ? 'negative' : 'normal';
+}
+
 /** What a mark carries besides its range. */
 export interface MarkMeta {
 	id: string;
@@ -62,6 +78,8 @@ export interface MarkMeta {
 	mark: MarkClass;
 	pointer?: string;
 	reason?: string; // check items: evidence.check_reason
+	/** AI-layer marks (rv-normal / rv-check / rv-synth): the tint category. */
+	form?: AiForm;
 }
 
 export interface LiveMark extends MarkMeta {
@@ -190,6 +208,7 @@ function metaOf(it: ReviewItem): MarkMeta {
 	const pointer = str(it.evidence?.pointer);
 	if (pointer) meta.pointer = pointer;
 	if (it.kind === 'check') meta.reason = str(it.evidence?.check_reason) ?? 'uncertain';
+	if (AI_LAYER_MARKS.has(meta.mark)) meta.form = formOf(it);
 	return meta;
 }
 
