@@ -39,7 +39,10 @@ def brief_candidates(inp: ReviewInput, al: Alignment) -> List[Candidate]:
             continue
         sub = o.get("kind") or "impression"
         section = o.get("section") or "IMPRESSION"
-        ev = {"sub_kind": sub, "option_id": o.get("id"), "sentence": s, "reason": o.get("reason") or ""}
+        # `reason` is the brief's internal routing note ("finding borderline (p=0.74)"): evidence only, never shown
+        # (engine.option_reason writes the user-facing one). The evidence shape is the item key: keep it stable.
+        ev = {"sub_kind": sub, "option_id": o.get("id"), "sentence": s,
+              "reason": o.get("note") or o.get("reason") or ""}
         target = _normal_clause_for(s, al) if sub == "finding_negative" else None
         if target is not None:
             out.append(Candidate(lane="additions", kind="option", section=target.section,

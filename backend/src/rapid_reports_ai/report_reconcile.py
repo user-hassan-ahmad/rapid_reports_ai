@@ -475,6 +475,28 @@ OPTION_SYS = ("Write one sentence for the IMPRESSION of a radiology report for e
               "findings. British English, consultant voice, no preamble. Return JSON {\"sentences\": [...]}.")
 
 
+_P_VALUE = re.compile(r"\s*\(\s*p\s*[=<>≤≥]\s*\d*\.?\d+\s*\)|\s*,?\s*\bp\s*[=<>≤≥]\s*\d*\.?\d+", re.I)
+_INTERNAL_REASONS = {"contextual", "finding borderline", "finding reported"}   # the brief's routing notes
+
+
+def strip_p_values(text: Optional[str]) -> str:
+    """User-facing text never carries a model score ("(p=0.74)", "p = 0.69")."""
+    return re.sub(r"\s+([;,.])", r"\1", _P_VALUE.sub("", text or "")).strip()
+
+
+def public_reason(reason: Optional[str]) -> str:
+    """An option's user-facing reason: never a model score ("(p=0.74)") and never a routing note ("contextual",
+    "finding borderline"); those stay in the option's `note` and the brief's decisions."""
+    r = strip_p_values(reason)
+    return "" if r.lower() in _INTERNAL_REASONS else r
+
+
+def _reasons(o: dict) -> dict:
+    raw = o.get("reason", "") or ""
+    pub = public_reason(raw)
+    return {"reason": pub, **({"note": raw} if raw != pub else {})}
+
+
 async def write_options(options: List[dict], findings: str, scan_type: str, *, model: str,
                         runner: Callable[..., Awaitable[Any]],
                         style: str = "", impression_section: str = "IMPRESSION",
@@ -487,7 +509,7 @@ async def write_options(options: List[dict], findings: str, scan_type: str, *, m
     direct = [o for o in options if o["kind"] == "finding_negative"]
     to_write = [o for o in options if o["kind"] != "finding_negative"]
     passed = [{"id": f"fn{i}", "kind": o["kind"], "section": o.get("section", "FINDINGS"),
-               "sentence": o["text"][:1].upper() + o["text"][1:].rstrip(".") + ".", "reason": o.get("reason", ""), "source": o["text"],
+               "sentence": o["text"][:1].upper() + o["text"][1:].rstrip(".") + ".", **_reasons(o), "source": o["text"],
                "finding": o.get("finding", "")}
               for i, o in enumerate(direct)]
     if not to_write:
@@ -505,7 +527,7 @@ async def write_options(options: List[dict], findings: str, scan_type: str, *, m
         logger.warning("option sentences failed (%s: %s); no written options offered", type(e).__name__, str(e)[:200])
         return passed
     written = [{"id": f"opt{i}", "kind": o["kind"], "section": impression_section, "sentence": s.strip(),
-                "reason": o.get("reason", ""), "source": o["text"]}
+                **_reasons(o), "source": o["text"]}
                for i, (o, s) in enumerate(zip(to_write, sentences)) if s and s.strip()]
     if require_service:  # templated pathway: a recommendation sentence must name what it recommends
         bad = [w for w in written if w["kind"] == "recommendation" and not names_service(w["sentence"], w["source"])]
