@@ -229,7 +229,6 @@ export const reviewTheme = EditorView.baseTheme({
 		alignItems: 'center',
 		gap: '6px',
 		padding: '2px 3px 2px 8px',
-		marginBottom: '4px',
 		whiteSpace: 'nowrap',
 		maxWidth: 'min(520px, 90vw)',
 		fontFamily: "'DM Sans', 'IBM Plex Sans', system-ui, sans-serif",

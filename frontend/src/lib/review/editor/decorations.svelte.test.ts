@@ -384,3 +384,72 @@ describe('chip inside the report editor', () => {
 		expect(getComputedStyle(p).display).not.toBe('none');
 	});
 });
+
+describe('chip placement never covers text', () => {
+	// SYNTHETIC prose in a narrow wrapped editor: two paragraphs separated by a blank line.
+	const FILL = 'The structure is unremarkable and the adjacent tissues are preserved without change. ';
+	const P1 = FILL.repeat(3) + 'Last words here.';
+	const P2 = 'Mark here starts the second paragraph. ' + FILL.repeat(2);
+	const DOC = `${P1}\n\n${P2}`;
+
+	function textRects(view: EditorView): DOMRect[] {
+		const out: DOMRect[] = [];
+		const walk = document.createTreeWalker(view.contentDOM, NodeFilter.SHOW_TEXT);
+		for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+			if (!n.textContent?.trim()) continue;
+			const r = document.createRange();
+			r.selectNodeContents(n);
+			out.push(...[...r.getClientRects()].filter((x) => x.width > 0 && x.height > 0));
+		}
+		return out;
+	}
+	const hits = (a: DOMRect, b: DOMRect) =>
+		a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+
+	function mountAt(text: string, top = 200) {
+		const start = DOC.indexOf(text);
+		const it_ = item({ id: 'k', kind: 'check', cls: 'minor', anchor: { start, end: start + text.length, text }, evidence: { check_reason: 'uncertain', pointer: 'a dictated finding' } });
+		const state = EditorState.create({
+			doc: DOC,
+			extensions: [
+				EditorView.lineWrapping,
+				EditorView.theme({ '.cm-content': { fontSize: '16px', lineHeight: '1.6', fontFamily: 'sans-serif' } }),
+				reviewExtensions({ onCommand: vi.fn(), getItem: () => it_, initial: fromItems(DOC, [it_]).items })
+			]
+		});
+		const parent = document.createElement('div');
+		parent.style.cssText = `position:absolute;left:20px;top:${top}px;width:440px`;
+		document.body.append(parent);
+		const view = new EditorView({ state, parent });
+		views.push(view);
+		return view;
+	}
+
+	async function placed(view: EditorView) {
+		const c = await openOn(view, 'k');
+		await pause(200); // past the chip's fade-and-rise
+		await tick();
+		const rects = [...view.dom.querySelectorAll<HTMLElement>('[data-rv-id="k"]')].flatMap((e) => [...e.getClientRects()]);
+		const markTop = Math.min(...rects.map((r) => r.top));
+		const markBottom = Math.max(...rects.map((r) => r.bottom));
+		return { chip: c.getBoundingClientRect(), markTop, markBottom, text: textRects(view) };
+	}
+
+	it('sits clear above the mark when the space above is free (blank line), over no text', async () => {
+		const { chip: r, markTop, text } = await placed(mountAt('Mark here'));
+		expect(r.bottom).toBeLessThanOrEqual(markTop);
+		expect(text.filter((t) => hits(r, t))).toEqual([]);
+	});
+
+	it('goes below when the line above is full text and the line below is free', async () => {
+		const { chip: r, markBottom, text } = await placed(mountAt('Last words here.'));
+		expect(r.top).toBeGreaterThanOrEqual(markBottom);
+		expect(text.filter((t) => hits(r, t))).toEqual([]);
+	});
+
+	it('goes below when there is no room above (top of the viewport)', async () => {
+		const view = mountAt('The structure', 0);
+		const { chip: r, markBottom } = await placed(view);
+		expect(r.top).toBeGreaterThanOrEqual(markBottom);
+	});
+});

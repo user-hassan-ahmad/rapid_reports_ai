@@ -225,6 +225,38 @@ describe('legend', () => {
 		expect(document.querySelector('[aria-label="Density"]')).toBeNull();
 	});
 
+	it('is one compact row at desktop widths (short labels, full meaning on hover); the copy button stays on the controls line', async () => {
+		await page.viewport(1280, 800);
+		getReview.mockResolvedValue(review('live', true, [action()]));
+		render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });
+		await expect.element(page.getByTestId('review-rail')).toBeInTheDocument();
+		const legend = document.querySelector<HTMLElement>('[data-testid="review-legend"]')!;
+		const items = [...legend.querySelectorAll<HTMLElement>('li')];
+		expect(items.map((li) => li.lastElementChild?.textContent)).toEqual([
+			'Dictated',
+			'Assumed normal',
+			'Check',
+			'Removed',
+			'Removed by you',
+			'Suggested'
+		]);
+		expect(items[3].title).toBe('Removed · contradicts your dictation');
+		expect(new Set(items.map((li) => Math.round(li.getBoundingClientRect().top))).size).toBe(1);
+		const controls = document.querySelector<HTMLElement>('[data-testid="editor-controls"]')!;
+		const copy = controls.querySelector<HTMLElement>('[aria-label="Copy report"]')!;
+		await page.viewport(700, 800);
+		await pause(50);
+		// one line: every control (the copy button included) shares the row's vertical band
+		const mid = (e: Element) => {
+			const r = e.getBoundingClientRect();
+			return (r.top + r.bottom) / 2;
+		};
+		const kids = [...controls.children].filter((c) => (c as HTMLElement).offsetWidth > 0);
+		expect(kids.length).toBeGreaterThan(1);
+		for (const k of kids) expect(Math.abs(mid(k) - mid(copy))).toBeLessThan(8);
+		await page.viewport(414, 896);
+	});
+
 	it('is absent with the rail off', async () => {
 		getReview.mockResolvedValue(review('shadow', false, []));
 		render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });

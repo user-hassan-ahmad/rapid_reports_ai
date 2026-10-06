@@ -1261,17 +1261,17 @@
 		<!-- Header: Mobile-first responsive layout -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 sm:px-4 py-2 sm:py-3">
 			<!-- Title row -->
-			<div class="flex flex-col gap-1.5 min-w-0">
+			<div class="flex flex-col gap-1.5 min-w-0 sm:flex-1">
 				<h2 class="text-base sm:text-lg font-semibold text-white">Report Editor</h2>
 				{#if (railOn || railSlotPending || (reviewPending && $reviewRailExpected === true)) && response && !error}
 					<Legend />
 				{/if}
 			</div>
 			
-			<!-- Controls row: wraps on mobile -->
-			<div class="flex flex-wrap items-center gap-1.5 sm:gap-2 relative z-15">
+			<!-- Controls row: one line (never wraps the copy button under the others); the title column shrinks -->
+			<div class="editor-controls gap-1.5 sm:gap-2 relative z-15" data-testid="editor-controls">
 				{#if reportId}
-					<div class="flex items-center bg-gray-800/60 rounded-lg p-0.5 sm:p-1">
+					<div class="flex shrink-0 whitespace-nowrap items-center bg-gray-800/60 rounded-lg p-0.5 sm:p-1">
 						<button
 							type="button"
 							class="px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium rounded-md transition-colors {activeView === 'report' ? 'bg-purple-600 text-white' : 'text-gray-300 hover:text-white'}"
@@ -1332,7 +1332,7 @@
 					<button
 						type="button"
 						onclick={() => dispatch('copy', { content: liveDoc() })}
-						class="p-1.5 sm:p-2 text-gray-400 hover:text-purple-400 transition-colors rounded-lg hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+						class="shrink-0 p-1.5 sm:p-2 text-gray-400 hover:text-purple-400 transition-colors rounded-lg hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
 						title="Copy to clipboard"
 						aria-label="Copy report"
 						disabled={!response}
@@ -1594,6 +1594,16 @@
 	/* Highlight decoration styles are now in ReportEditor.svelte */
 
 	/* ── Compare to prior report button ─────────────────────────────────────── */
+	/* the editor header's controls: always one line, so the copy button never drops under the others */
+	.editor-controls {
+		display: flex;
+		flex-wrap: nowrap;
+		flex-shrink: 0;
+		align-items: center;
+	}
+	.editor-controls > :global(*) {
+		flex-shrink: 0;
+	}
 	.compare-rpt-btn {
 		display: flex;
 		align-items: center;

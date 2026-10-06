@@ -26,7 +26,7 @@
 <div class="rv-legend-bar" data-testid="review-legend">
 	<ul class="rv-legend" data-rv-legend aria-label="Legend">
 		{#each LEGEND as entry (entry.key)}
-			<li class="rv-legend-{entry.key}">
+			<li class="rv-legend-{entry.key}" title={entry.title}>
 				<span class="rv-legend-icon" aria-hidden="true">{entry.icon}</span><span>{entry.label}</span>
 			</li>
 		{/each}
@@ -51,19 +51,28 @@
 		--lg-amber: #e3a94a;
 		--lg-red: #ff7a7a;
 		--lg-blue: #7ea6f0;
+		/* one compact row: never two rows at desktop widths; scrolls sideways when the column is very narrow */
 		display: flex;
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
 		align-items: center;
 		justify-content: space-between;
 		gap: 4px 12px;
+		min-width: 0;
+		max-width: 100%;
+		overflow-x: auto;
+		scrollbar-width: thin;
 		font-size: 11px;
 		line-height: 1.4;
 		color: var(--lg-muted);
 	}
+	.rv-legend-bar::-webkit-scrollbar {
+		height: 3px;
+	}
 	.rv-legend {
 		display: flex;
-		flex-wrap: wrap;
-		gap: 4px 6px;
+		flex-wrap: nowrap;
+		flex: none;
+		gap: 4px 5px;
 		list-style: none;
 		margin: 0;
 		padding: 0;
@@ -72,7 +81,7 @@
 		display: inline-flex;
 		gap: 5px;
 		align-items: center;
-		padding: 1px 8px 1px 3px;
+		padding: 1px 7px 1px 3px;
 		border-radius: 9999px;
 		background: rgba(255, 255, 255, 0.03);
 		border: 1px solid rgba(255, 255, 255, 0.08);

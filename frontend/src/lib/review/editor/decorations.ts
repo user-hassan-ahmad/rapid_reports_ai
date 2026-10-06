@@ -16,6 +16,7 @@
  * `commandTransaction` and posts the event. The prototype's local toggles are never used here.
  */
 import {
+	EditorSelection,
 	Facet,
 	RangeSet,
 	StateEffect,
@@ -90,10 +91,20 @@ export const ICONS = {
 
 export type Meaning = keyof typeof ICONS;
 
+/** The legend's compact labels (one row under the editor title); the full meaning is the entry's `title`. */
+const LEGEND_SHORT = {
+	dictated: 'Dictated',
+	normal: 'Assumed normal',
+	check: 'Check',
+	removed: 'Removed',
+	excluded: 'Removed by you',
+	option: 'Suggested'
+} as const;
+
 /** The legend, in order: "E · meaning". */
-export const LEGEND: { key: Meaning; icon: string; label: string }[] = (
+export const LEGEND: { key: Meaning; icon: string; label: string; title: string }[] = (
 	['dictated', 'normal', 'check', 'removed', 'excluded', 'option'] as const
-).map((key) => ({ key, icon: ICONS[key], label: LABELS[key] }));
+).map((key) => ({ key, icon: ICONS[key], label: LEGEND_SHORT[key], title: LABELS[key] }));
 
 const MARK_MEANING: Record<MarkClass, Meaning> = {
 	'rv-normal': 'normal',
@@ -472,6 +483,59 @@ function chipDom(view: EditorView, a: ChipAnchor): HTMLElement {
 	return dom;
 }
 
+const CHIP_GAP = 4; // px between the chip and the mark's line
+
+/** Does the viewport box [left, left+w] × [top, top+h] cover any rendered text? Samples the band every few px
+ * and compares it with the text extent of the visual line under each sample. */
+function coversText(view: EditorView, left: number, top: number, w: number, h: number): boolean {
+	const content = view.contentDOM.getBoundingClientRect();
+	for (let y = top + 1; y < top + h; y += 5) {
+		if (y < content.top || y > content.bottom) continue;
+		const pos = view.posAtCoords({ x: Math.max(content.left + 1, Math.min(left + w / 2, content.right - 1)), y }, false);
+		const cur = EditorSelection.cursor(pos);
+		const s = view.moveToLineBoundary(cur, false, true).head;
+		const e = view.moveToLineBoundary(cur, true, true).head;
+		if (e <= s) continue; // an empty (blank) line
+		const cs = view.coordsAtPos(s, 1);
+		const ce = view.coordsAtPos(e, -1);
+		if (!cs || !ce) continue;
+		const lineTop = Math.min(cs.top, ce.top);
+		const lineBottom = Math.max(cs.bottom, ce.bottom);
+		if (y < lineTop || y > lineBottom) continue; // between lines
+		if (left < ce.right && cs.left < left + w) return true;
+	}
+	return false;
+}
+
+/** Where the open chip goes (viewport coords of its top-left): clear above the mark's FIRST line (a small gap, at
+ * the mark's end horizontally), else clear below its LAST line, whichever has room and covers no text; with no
+ * text-free spot, the first side with room (above first). Never over the mark's own lines. */
+export function chipPlacement(
+	view: EditorView,
+	a: Pick<ChipAnchor, 'from' | 'to' | 'pos'>,
+	width: number,
+	height: number
+): { left: number; top: number; height: number } | null {
+	const end = view.coordsAtPos(a.to, -1) ?? view.coordsAtPos(a.pos, 1);
+	const start = view.coordsAtPos(a.from, 1) ?? end;
+	if (!end || !start) return null;
+	const w = width || 240;
+	const h = height || 28;
+	const x = start.top < end.top - 2 ? Math.max(start.left, end.left) : end.left;
+	const vw = window.innerWidth || document.documentElement.clientWidth;
+	const left = Math.max(4, Math.min(x, vw - w - 4));
+	const sc = view.scrollDOM.getBoundingClientRect();
+	const minTop = Math.max(0, sc.top);
+	const maxBottom = Math.min(window.innerHeight || document.documentElement.clientHeight, sc.bottom);
+	const sides = [
+		Math.min(start.top, end.top) - CHIP_GAP - h, // above the first line
+		Math.max(start.bottom, end.bottom) + CHIP_GAP // below the last line
+	];
+	const room = sides.filter((t) => t >= minTop && t + h <= maxBottom);
+	const top = room.find((t) => !coversText(view, left, t, w, h)) ?? room[0] ?? sides[0];
+	return { left, top, height: h };
+}
+
 /** The open chip's item id (null: closed). `openPopover` keeps its name for the host (focus after a command). */
 export const popoverField = StateField.define<string | null>({
 	create: () => null,
@@ -493,22 +557,22 @@ export const popoverField = StateField.define<string | null>({
 			if (!a) return null;
 			return {
 				pos: a.pos,
+				// `getCoords` returns the point the chip's bottom-left sits on (chipPlacement decides above or
+				// below); strictSide keeps CodeMirror from flipping it again
 				above: true,
-				strictSide: false,
+				strictSide: true,
 				arrow: false,
-				create: (view) => ({
-					dom: chipDom(view, a),
-					// at the mark's end horizontally, but above its FIRST line: a wrapped mark is never covered,
-					// and the chip never sits over the next line
-					getCoords: () => {
-						const end = view.coordsAtPos(a.to, -1) ?? view.coordsAtPos(a.pos, 1);
-						const start = view.coordsAtPos(a.from, 1) ?? end;
-						if (!end || !start) return { left: 0, right: 0, top: 0, bottom: 0 };
-						const top = Math.min(start.top, end.top);
-						const x = start.top < end.top - 2 ? Math.max(start.left, end.left) : end.left;
-						return { left: x, right: x, top, bottom: top };
-					}
-				})
+				create: (view) => {
+					const dom = chipDom(view, a);
+					return {
+						dom,
+						getCoords: () => {
+							const p = chipPlacement(view, a, dom.offsetWidth, dom.offsetHeight);
+							return p ? { left: p.left, right: p.left, top: p.top + p.height, bottom: p.top + p.height }
+								: { left: 0, right: 0, top: 0, bottom: 0 };
+						}
+					};
+				}
 			};
 		})
 });
