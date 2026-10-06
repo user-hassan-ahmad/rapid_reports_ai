@@ -222,7 +222,7 @@ class JevPass(BaseModel):
     omit: Dict[str, Any] = {}              # i{i} (omission) and typ{i} (statement type), i indexes `clauses`
     support: Dict[str, Any] = {}           # sup{i} (W1n), cer{i} (C1n), dt{i} (dictation tier), i indexes `clauses`
     types: Dict[str, str] = {}             # clause text → Jev statement type (parsed answers only)
-    heads: Dict[int, str] = {}             # clause index → the split head W1n / C1n were asked of
+    heads: Dict[int, str] = {}             # clause index → the split head contradiction / W1n / C1n were asked of
     contra_error: Optional[str] = None
     omit_error: Optional[str] = None
     support_error: Optional[str] = None
@@ -254,7 +254,11 @@ async def run(inp: ReviewInput, report: str) -> JevPass:
     before = checked_clauses_in_context(report, sections)
     cls = list(before)
     items = dictated_items(findings)
-    contra_qs = {f"c{i}": {"type": "noul", "instructions": Q_CONTRA + t} for i, t in enumerate(cls)}
+    pos = [i for i, t in enumerate(cls) if asked(t)]
+    heads = {i: sp[0] for i in pos if (sp := split_tails(cls[i]))}
+    # A mixed clause's negative / normal tail is the negatives classifier's: contradiction, like W1n / C1n, is asked
+    # of the split head only, so the lane never judges (or anchors on) the tail.
+    contra_qs = {f"c{i}": {"type": "noul", "instructions": Q_CONTRA + heads.get(i, t)} for i, t in enumerate(cls)}
     restated = {i: restate(t) for i, t in enumerate(cls)}
     contra_qs.update({f"r{i}": q_restated(r) for i, r in restated.items() if r})
     contra_qs.update({f"d{i}": q_dictated(cls[i], before[cls[i]]) for i, r in restated.items() if r})
@@ -262,8 +266,6 @@ async def run(inp: ReviewInput, report: str) -> JevPass:
     contra_qs.update({f"lt{i}": q_select_noul(t) for i, t in enumerate(items)})
     omit_qs = {f"i{i}": q_omission(t) for i, t in enumerate(items)}
     omit_qs.update({f"typ{i}": q_type(t) for i, t in enumerate(cls)})      # same report-only request
-    pos = [i for i, t in enumerate(cls) if asked(t)]
-    heads = {i: sp[0] for i in pos if (sp := split_tails(cls[i]))}
     support_qs = {f"sup{i}": q_supported(heads.get(i, cls[i])) for i in pos}
     support_qs.update({f"cer{i}": q_certainty(heads.get(i, cls[i])) for i in pos})
     support_qs.update({f"dt{i}": q_dictation_tier(heads.get(i, cls[i])) for i in pos})

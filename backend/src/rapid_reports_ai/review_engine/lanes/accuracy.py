@@ -132,10 +132,16 @@ def _code_only(ctx: LaneContext, inp: ReviewInput, report: str) -> List[Candidat
 
 
 def _headed(common: dict, report: str, head: str) -> dict:
-    """Trim the anchor to the split head when the clause's report text starts with it."""
+    """Trim the anchor to the split head: where the clause's report text starts with it, else its one occurrence
+    inside the anchored span (two splitters may draw the clause's start differently)."""
     an = common.get("anchor")
-    if an is not None and head and head != an.text and report.startswith(head, an.start):
-        common = {**common, "anchor": Span(start=an.start, end=an.start + len(head), text=head)}
+    if an is None or not head or head == an.text:
+        return common
+    at = an.start if report.startswith(head, an.start) else None
+    if at is None and an.text.count(head) == 1:
+        at = an.start + an.text.index(head)
+    if at is not None:
+        common = {**common, "anchor": Span(start=at, end=at + len(head), text=head)}
     return common
 
 
@@ -151,9 +157,11 @@ class AccuracyLane:
                 c = noul(jp.contra, f"c{i}")
                 if c is None or c < CONTRA_UNSURE_LO:
                     continue
-                common = _common(ctx, report, t, "contradicted", "jev.contradiction")
+                h = jp.head(i)               # asked of the split head: a mixed clause's tail is the classifier's
+                common = _headed(_common(ctx, report, t, "contradicted", "jev.contradiction"), report, h)
+                head_ev = {"clause": h} if h != t else {}
                 if c < CONTRA_FLAG:
-                    out.append(Candidate(evidence={"jev_unsure": {"question": "contradiction"}}, **common))
+                    out.append(Candidate(evidence={"jev_unsure": {"question": "contradiction"}, **head_ev}, **common))
                     continue
                 if restate(t):
                     if (noul(jp.contra, f"r{i}") or 0.0) < RESTATED_FLAG:
@@ -169,7 +177,7 @@ class AccuracyLane:
                     out.append(Candidate(evidence={"negative": True, "score": c, "clause": t}, proposed=fix,
                                          code_fix=fix is not None, pre_apply=fix is not None, **common))
                 else:
-                    out.append(Candidate(evidence={"negative": False, "score": c}, **common))
+                    out.append(Candidate(evidence={"negative": False, "score": c, **head_ev}, **common))
         out += _support(jp, ctx, report) if jp is not None else _code_only(ctx, inp, report)
         out += [c for c in ctx.checks if c.lane == "accuracy"]
         return out

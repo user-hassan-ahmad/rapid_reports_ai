@@ -344,7 +344,9 @@ def parse_labels(lines: List[str], n: int) -> Dict[int, dict]:
             continue
         i, cls = int(parts[0].strip(". ")), parts[1].lower()
         if 1 <= i <= n and cls in CLASSES and i not in out:
-            out[i] = {"cls": cls, "pointer": parts[2] if len(parts) > 2 and parts[2] != "-" else ""}
+            # "-" / "->" / "—" is the model's placeholder for no pointer, never a dictated finding
+            ptr = " ".join(parts[2].split()) if len(parts) > 2 else ""
+            out[i] = {"cls": cls, "pointer": ptr if re.search(r"[^\W_]", ptr) else ""}
     return out
 
 
