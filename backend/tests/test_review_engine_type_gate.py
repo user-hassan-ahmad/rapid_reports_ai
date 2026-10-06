@@ -165,3 +165,69 @@ async def test_engine_feeds_types_to_the_negatives_classifier(monkeypatch):
     listing = seen[0].split("STATEMENTS TO CLASSIFY:")[1]
     assert "The kidneys enhance symmetrically." in listing and "No focal lesion" in listing
     assert "The spleen is enlarged" not in listing
+
+
+# ── a mixed clause's tail is never judged by the lane (prod 2026-10-06: '"No <tail>" not stated in dictation' ──
+# anchored on the whole sentence, dictated finding included). Same sentence shape, synthetic content:
+# "<organ> contains a <size> <finding>, likely <diagnosis>, with no <undictated negative>."
+
+MIXED = "The renal upper pole contains a 2.4 cm enhancing mass, likely renal cell carcinoma, with no renal vein invasion."
+HEAD = "The renal upper pole contains a 2.4 cm enhancing mass, likely renal cell carcinoma"
+MREPORT = f"FINDINGS:\n{MIXED} The adrenal glands are unremarkable.\nIMPRESSION:\nLeft renal mass, likely carcinoma."
+MDICT = "- 2.4 cm enhancing mass in the upper pole of the left kidney, likely RCC"
+MTYPES = {"typ0": typ("mixed"), "typ1": typ("normal"), "typ2": typ("abnormal")}
+
+
+def test_the_prod_sentence_shape_splits():
+    assert jev_pass.split_tails(MIXED) == (HEAD, ["No renal vein invasion"])
+
+
+async def test_contradiction_is_asked_of_the_split_head(monkeypatch):
+    calls = []
+    monkeypatch.setattr(rc, "_jev", jev(MTYPES, calls))
+    jp = await jev_pass.run(inp(MREPORT, MDICT), MREPORT)
+    assert jp.clauses[0] == MIXED
+    contra = next(qs for s, qs in calls if s.startswith("SCAN TYPE:") and "CLINICAL HISTORY:" not in s)
+    assert contra["c0"]["instructions"].endswith(HEAD) and "renal vein" not in contra["c0"]["instructions"]
+    support = next(qs for s, qs in calls if "CLINICAL HISTORY:" in s)
+    assert "renal vein" not in support["sup0"]["instructions"]
+
+
+@pytest.mark.parametrize("over", [{"c0": {"noul": 0.5}},            # contradiction unsure → adjudicator
+                                  {"c0": {"noul": 0.9}},            # contradiction flagged
+                                  {"sup0": {"noul": 0.1}}])          # W1n unsupported
+async def test_lane_items_on_a_mixed_clause_anchor_on_the_head_only(monkeypatch, over):
+    monkeypatch.setattr(rc, "_jev", jev({**MTYPES, **over}))
+    i = inp(MREPORT, MDICT)
+    a = i.artifacts
+    al = align(a.report, a.dictated_findings, "", a.sections)
+    jp = await jev_pass.run(i, a.report)
+    ctx = LaneContext(alignment=al, jev=jp, checks=run_checks(a.report, a.dictated_findings, "", i.scan_type, al))
+    got = [c for c in await AccuracyLane().candidates(i, ctx) if c.detector.startswith("jev.")]
+    assert got
+    tail = MREPORT.index("renal vein invasion")
+    for c in got:
+        assert c.anchor.text == HEAD and MREPORT[c.anchor.start:c.anchor.end] == HEAD
+        assert c.anchor.end <= tail
+        assert "renal vein" not in (c.evidence.get("clause") or "")
+
+
+async def test_engine_the_tail_is_the_negatives_classifiers_alone(monkeypatch):
+    seen = []
+
+    def adjudicate(kw):
+        seen.append(kw["user_prompt"])
+        return adj.Judgement(cls="minor", kind="contradicted", label="x", reason="r", edit_mode="none")
+    monkeypatch.setattr(rc, "_jev", jev({**MTYPES, "c0": {"noul": 0.5}}))
+    monkeypatch.setattr(adj, "_run_agent_with_model", model(adjudicate))
+    monkeypatch.setattr(negatives, "_run_agent_with_model",
+                        labels(lambda kw: [f"{n} | implicated | mass | no" for n in range(1, 4)]))
+    monkeypatch.setenv("RR_REVIEW_LANES", "accuracy")
+    res = await engine.run_review(inp(MREPORT, MDICT), "run-mixed")
+    tail = (MREPORT.index("renal vein invasion"), MREPORT.index("renal vein invasion") + len("renal vein invasion"))
+    on_tail = [it for it in res.items if it.anchor and it.anchor.start < tail[1] and tail[0] < it.anchor.end]
+    assert on_tail and all(negatives.DETECTOR in it.detectors for it in on_tail)
+    lane = [it for it in res.items if "jev.contradiction" in it.detectors]
+    assert lane and all(it.anchor.text == HEAD for it in lane)
+    assert seen and all("renal vein" not in p.split("Report statement:")[1].split("\n")[0] for p in seen
+                        if "Report statement:" in p)
