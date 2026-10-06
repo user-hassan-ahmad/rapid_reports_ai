@@ -97,7 +97,7 @@ beforeEach(async () => {
 	server = new Map([['rec1', rec()]]);
 	vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ success: false }), { status: 404 })));
 	getReview.mockImplementation(async () => review());
-	postEvent.mockImplementation(async (_r: string, id: string, command: string, textHash: string, detail: object) => {
+	postEvent.mockImplementation(async (_r: string, id: string, command: string, textHash: string, detail: Record<string, unknown>) => {
 		const cur = server.get(id)!;
 		const next = {
 			...cur,
