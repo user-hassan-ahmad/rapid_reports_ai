@@ -92,12 +92,16 @@ export type WidgetItem =
 			trail: string; // whitespace trimmed after it
 	  };
 
-/** A suggestion (an option, or an additions insert): a checkbox in the "Suggestions" subsection under its section's
- * body, never ghost text in the report. Ticked = applied. `pos` is where it lands (open) or sits (applied). */
+/** A checkbox in the per-section "Recommendations & suggestions" block under its section's body (never ghost text,
+ * never document text). A suggestion (an option, or an additions insert) is ticked once applied; a recommendation is
+ * ticked while it is in the report (unticking removes it). `disabled`: a recommendation with no placeable edit (edit
+ * it in the text). `pos` is where the text lands or sits (null: unknown, the section is used). */
 export interface SuggestionEntry {
 	id: string;
+	kind: 'suggestion' | 'recommendation';
 	text: string;
 	checked: boolean;
+	disabled?: boolean;
 	pos: number | null;
 	section: string | null;
 }
@@ -214,12 +218,35 @@ export function fromItems(
 		const section = it.section ?? it.edit?.section ?? null;
 		if (it.status === 'open') {
 			const c = toChanges(doc, it.edit, opts.sections);
-			if (c && c.from === c.to) suggestions.push({ id: it.id, text, checked: false, pos: c.from, section });
+			if (c && c.from === c.to)
+				suggestions.push({ id: it.id, kind: 'suggestion', text, checked: false, pos: c.from, section });
 		} else {
 			const at = doc.indexOf(text);
-			suggestions.push({ id: it.id, text, checked: true, pos: at >= 0 ? at : null, section });
+			suggestions.push({ id: it.id, kind: 'suggestion', text, checked: true, pos: at >= 0 ? at : null, section });
 		}
 	}
+	// recommendations: ticked while in the report (open, or kept); unticked once removed (applied, its remove edit)
+	const recs: SuggestionEntry[] = [];
+	for (const it of items) {
+		if (it.kind !== 'recommendation' || it.cls === 'suppress') continue;
+		if (it.status !== 'open' && it.status !== 'applied' && it.status !== 'dismissed') continue;
+		const text = (it.edit?.find || it.anchor?.text || '').trim();
+		if (!text) continue;
+		const section = it.section ?? it.edit?.section ?? null;
+		const at = doc.indexOf(text);
+		const inReport = it.status !== 'applied';
+		if (inReport && at < 0) continue; // edited away: the text is the radiologist's now
+		recs.push({
+			id: it.id,
+			kind: 'recommendation',
+			text,
+			checked: inReport,
+			disabled: !it.edit || it.status === 'dismissed',
+			pos: at >= 0 ? at : null,
+			section
+		});
+	}
+	suggestions.unshift(...recs);
 	for (const it of items) {
 		if (!isShown(it) || opts.skip?.has(it.id)) continue;
 

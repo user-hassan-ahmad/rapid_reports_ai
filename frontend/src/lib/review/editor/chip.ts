@@ -1,7 +1,7 @@
 // What a highlight's inline control offers (pure; no DOM). Hovering (or the keyboard caret on) a highlight expands a
-// small control at the END of that highlight, inside the text flow: simple icons only. Only recommendations (✓ keep /
-// ✕ remove) and flagged action items (✓ apply / ✕ dismiss / › to their rail card) have one, plus ↺ restore and ↶ undo
-// on removed or pre-applied text. The AI-generated layer (assumed normals, checks, synthesis) and info items are
+// small control at the END of that highlight, inside the text flow: simple icons only. Only flagged action items
+// (✓ apply / ✕ dismiss / › to their rail card) have one, plus ↺ restore and ↶ undo on removed or pre-applied text.
+// Recommendations are kept or removed from their section's checkbox block (editor/decorations.ts). The AI-generated layer (assumed normals, checks, synthesis) and info items are
 // colour only: no control (the text is directly editable). Every button is a review command
 // (lib/review/commands.ts) except `reveal`.
 import type { CommandName } from '../commands';
@@ -57,8 +57,6 @@ export function chipType(t: ChipTarget, item?: ReviewItem): ChipType {
 	}
 }
 
-const KEEP = (label: string): ChipAction => ({ command: 'keep', icon: '✓', label });
-const REMOVE: ChipAction = { command: 'remove', icon: '✕', label: 'Remove from the report' };
 const DISMISS: ChipAction = { command: 'dismiss', icon: '✕', label: 'Dismiss' };
 const REVEAL: ChipAction = { command: 'reveal', icon: '›', label: 'Show in the review rail' };
 
@@ -72,10 +70,7 @@ export function chipActions(t: ChipTarget, item?: ReviewItem): ChipAction[] {
 		case 'info':
 			return []; // the AI-generated layer: colour only
 		case 'rec':
-			// unplaceable (no edit; verified.failed not_placeable): keep only, no ✕
-			return item && !item.edit
-				? [KEEP('Keep the recommendation')]
-				: [KEEP('Keep the recommendation'), { ...REMOVE, label: 'Remove the recommendation' }];
+			return []; // kept / removed from the section's checkbox block
 		case 'action': {
 			const out: ChipAction[] = [];
 			if (item?.edit) out.push({ command: 'apply', icon: '✓', label: 'Apply the fix', preview: true });

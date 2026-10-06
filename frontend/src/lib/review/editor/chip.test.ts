@@ -42,11 +42,10 @@ describe('inline control actions by type', () => {
 			expect(commands({ on: 'mark', mark, kind: 'x' }), mark).toEqual([]);
 	});
 
-	it('a recommendation: ✓ keep / ✕ remove, no rail link', () => {
+	it('a recommendation has no inline control (kept / removed from its section block)', () => {
 		const rec: ChipTarget = { on: 'mark', mark: 'rv-rec', kind: 'recommendation' };
 		const it_ = item({ kind: 'recommendation', cls: 'minor', edit: { mode: 'remove', find: 'Follow up.' } });
-		expect(commands(rec, it_)).toEqual(['keep', 'remove']);
-		expect(icons(rec, it_)).toEqual(['✓', '✕']);
+		expect(commands(rec, it_)).toEqual([]);
 	});
 
 	it('simple icons: ↺ restore, ↶ undo; options ✓ / ✕; never a "?"', () => {
@@ -66,9 +65,3 @@ describe('inline control actions by type', () => {
 	});
 });
 
-describe('recommendation without a placeable edit', () => {
-	it('keeps ✓ only (no ✕)', () => {
-		const rec: ChipTarget = { on: 'mark', mark: 'rv-rec', kind: 'recommendation' };
-		expect(commands(rec, item({ kind: 'recommendation', cls: 'minor', edit: null }))).toEqual(['keep']);
-	});
-});

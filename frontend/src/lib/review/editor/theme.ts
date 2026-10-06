@@ -163,7 +163,7 @@ export const reviewTheme = EditorView.baseTheme({
 	},
 	'&[data-density="full"][data-rv-emph~="ai"] .rv-normal': { backgroundColor: 'var(--rv-green-bg)' },
 	// recommendations: underlined while "rec" is on (the default)
-	'.rv-rec': { textDecorationLine: 'none' },
+	'.rv-rec': { cursor: 'text', textDecorationLine: 'none' },
 	'&[data-rv-emph~="rec"] .rv-rec': {
 		textDecorationLine: 'underline',
 		textDecorationColor: 'color-mix(in srgb, var(--rv-teal-line) 70%, transparent)'
@@ -176,10 +176,6 @@ export const reviewTheme = EditorView.baseTheme({
 	'.rv-minor:hover, .rv-active.rv-minor, .rv-active .rv-minor': {
 		textDecorationColor: 'var(--rv-amber-line)',
 		backgroundColor: 'var(--rv-amber-bg)'
-	},
-	'.rv-rec:hover, .rv-active.rv-rec, .rv-active .rv-rec': {
-		textDecorationColor: 'var(--rv-teal-line)',
-		backgroundColor: 'var(--rv-teal-bg)'
 	},
 	'.rv-preapplied:hover, .rv-active.rv-preapplied, .rv-active .rv-preapplied': {
 		textDecorationColor: 'var(--rv-blue-line)',

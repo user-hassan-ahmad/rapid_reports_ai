@@ -310,7 +310,13 @@ class SuggestionsWidget extends WidgetType {
 	eq(o: SuggestionsWidget): boolean {
 		return (
 			o.entries.length === this.entries.length &&
-			o.entries.every((e, i) => e.id === this.entries[i].id && e.checked === this.entries[i].checked && e.text === this.entries[i].text)
+			o.entries.every(
+				(e, i) =>
+					e.id === this.entries[i].id &&
+					e.checked === this.entries[i].checked &&
+					e.disabled === this.entries[i].disabled &&
+					e.text === this.entries[i].text
+			)
 		);
 	}
 	toDOM(view: EditorView): HTMLElement {
@@ -319,18 +325,31 @@ class SuggestionsWidget extends WidgetType {
 		box.setAttribute('role', 'group');
 		box.setAttribute('aria-label', 'Suggestions');
 		box.setAttribute('data-rv-suggestions', '');
-		box.append(el('div', 'rv-suggestions-title', 'Suggestions'));
+		const hasRec = this.entries.some((e) => e.kind === 'recommendation');
+		box.setAttribute('aria-label', hasRec ? 'Recommendations and suggestions' : 'Suggestions');
+		box.append(el('div', 'rv-suggestions-title', hasRec ? 'Recommendations & suggestions' : 'Suggestions'));
 		for (const e of this.entries) {
 			const row = el('label', 'rv-suggestion');
 			row.setAttribute('data-rv-suggestion', e.id);
 			const cb = document.createElement('input');
 			cb.type = 'checkbox';
 			cb.checked = e.checked;
-			cb.setAttribute('aria-label', `${e.checked ? 'Included' : 'Include'}: ${e.text}`);
+			cb.disabled = !!e.disabled;
+			row.setAttribute('data-rv-kind', e.kind);
+			if (e.disabled) row.title = 'Edit in text';
+			cb.setAttribute(
+				'aria-label',
+				e.kind === 'recommendation'
+					? `${e.checked ? 'Keep' : 'Restore'} recommendation: ${e.text}`
+					: `${e.checked ? 'Included' : 'Include'}: ${e.text}`
+			);
 			cb.addEventListener('mousedown', (ev) => ev.stopPropagation());
 			cb.addEventListener('change', () => {
 				// ticked: insert it at its place (apply); unticked: take it out again (undo)
-				for (const fn of view.state.facet(onReviewCommand)) fn(cb.checked ? 'apply' : 'undo', e.id);
+				// a recommendation: unticked → remove it (its remove edit), re-ticked → undo (restores it)
+				const name =
+					e.kind === 'recommendation' ? (cb.checked ? 'undo' : 'remove') : cb.checked ? 'apply' : 'undo';
+				for (const fn of view.state.facet(onReviewCommand)) fn(name, e.id);
 			});
 			row.append(cb, el('span', 'rv-suggestion-text', e.text));
 			box.append(row);
