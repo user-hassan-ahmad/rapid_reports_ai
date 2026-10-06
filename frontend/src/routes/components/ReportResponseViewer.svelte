@@ -18,9 +18,12 @@
 	import { EditorView } from '@codemirror/view';
 	import type { EditorState, Extension, TransactionSpec } from '@codemirror/state';
 	import ReviewRail from '$lib/review/rail/ReviewRail.svelte';
+	import RailGuidelines from '$lib/review/rail/RailGuidelines.svelte';
+	import Legend from '$lib/review/rail/Legend.svelte';
+	import { loadEnhancement } from '$lib/guidelines/enhance';
 	import { createReviewStore, type ReviewStore } from '$lib/review/store';
 	import { runCommand, type CommandName, type ItemEvent } from '$lib/review/commands';
-	import { openPopover, reviewExtensions, setDensity, type Density } from '$lib/review/editor';
+	import { openPopover, reviewExtensions, type Density } from '$lib/review/editor';
 	import {
 		commandTransaction,
 		replaceDoc,
@@ -32,7 +35,12 @@
 	import { textHash } from '$lib/review/hash';
 	import { createProbeLoop, type ProbeLoop } from '$lib/review/probe';
 	import { createWorkspaceSaver, loadWorkspace, type WorkspaceSaver, type WorkspaceState } from '$lib/review/workspace';
-	import { setReviewRailActive } from '$lib/review/railActive';
+	import {
+		recordRailOutcome,
+		rememberRailMode,
+		reviewRailExpected,
+		setReviewRailActive
+	} from '$lib/review/railActive';
 	import type { ItemStatus, ReviewItem, UserCommand } from '$lib/review/types';
 	import {
 		appliedChatItems,
@@ -274,7 +282,8 @@
 		response !== lastAuditedContent &&
 		$auditStore.status === 'idle' &&
 		!activeCandidateModel &&
-		!railOn
+		!railOn &&
+		!railSlotPending
 	) {
 		triggerAudit(response);
 	}
@@ -727,11 +736,18 @@
 	let reviewExtras: Extension[] = [];
 	let reviewReplaceDoc: ((state: EditorState, text: string) => TransactionSpec) | undefined = undefined;
 	let railOn = false;
+	/** This report's first GET /review has not answered yet. */
+	let reviewPending = false;
+	/** The session knows a rail is coming (railActive.ts) and this report's first GET is still out: the rail slot
+	 * renders its fixed-width skeleton at once, so nothing shifts and the Copilot aside never flashes. */
+	$: railSlotPending =
+		(reviewPending || (!!reportId && reportId !== reviewReportId)) && $reviewRailExpected === true && !railOn;
 	// Gate G: the unsaved-changes bar sits under the report view, so the view gives back the bar's height; otherwise
 	// the view (and the rail's chat composer at its foot) runs on beneath the bar.
 	let saveBarHeight = 0;
 	$: saveBarShown = activeView === 'report' && hasUnsavedChanges && saveBarHeight > 0;
-	let reviewDensity: Density = 'quiet';
+	/** Fixed to Quiet in the app (the density toggle is a dev-page capability). */
+	const reviewDensity: Density = 'quiet';
 	let reviewReportId: string | null = null;
 	let lastReviewResponse: string | null = null;
 	let unsubscribeReview: (() => void) | null = null;
@@ -831,6 +847,7 @@
 		if (!id) return;
 		const store = createReviewStore(id);
 		reviewStore = store;
+		reviewPending = true;
 		// spec §12.6: the saved chat thread comes back with the items and the workspace; nothing re-runs
 		const [, ws, thread] = await Promise.all([
 			store.load(),
@@ -838,11 +855,22 @@
 			loadThread(id).catch((): ChatThreadMessage[] => [])
 		]);
 		if (reviewStore !== store) return;
+		reviewPending = false;
 		const s = get(store);
-		if (s.mode !== 'live' || !s.rail) return;
+		const hasRail = s.mode === 'live' && s.rail;
+		if (!s.error) rememberRailMode(hasRail); // the session's mode: later opens place the rail before their GET
+		if (!hasRail) {
+			recordRailOutcome(id, 'none');
+			return;
+		}
 		workspace = ws;
-		if (ws?.density) reviewDensity = ws.density;
+		// density is fixed to Quiet in the app (the toggle is a dev-page capability)
 		activateRail(id, store, thread);
+		// claim the rail before recording the outcome, so the page never sees "settled, no rail" in between
+		setReviewRailActive(railOwner, visible);
+		recordRailOutcome(id, 'rail');
+		// the Guidelines tab's data (POST /enhance, cached and shared with the Copilot sidebar)
+		loadEnhancement(id).catch(() => undefined);
 	}
 
 	function activateRail(id: string, store: ReviewStore, thread: ChatThreadMessage[] = []): void {
@@ -899,6 +927,7 @@
 		railChat = undefined;
 		chatPrefill = null;
 		railOn = false;
+		reviewPending = false;
 		currentHash = null;
 		hashedText = null;
 	}
@@ -1028,12 +1057,6 @@
 			{ [ev.itemId]: ev.status }
 		);
 		probeLoop?.trigger();
-	}
-
-	function handleDensity(d: Density): void {
-		reviewDensity = d;
-		reportEditorRef?.getView()?.dispatch({ effects: setDensity.of(d) });
-		scheduleWorkspace();
 	}
 
 	/** Finalise: the review items kept in the report (applied, plus pre-applied not undone); undefined with the rail off. */
@@ -1224,14 +1247,9 @@
 </script>
 
 {#snippet railGuidelines()}
-	<!-- Interim (C5): the guidelines panel lives inside ReportEnhancementSidebar with its own /enhance loading, so it is
-	     not cheap to render standalone. This tab opens today's sidebar on its Guidelines tab instead. -->
-	<div class="rv-guidelines-placeholder">
-		<p>Guidelines for this report open in the guidelines panel.</p>
-		<button type="button" class="self-start px-2.5 py-1 text-xs font-medium rounded-md bg-purple-600/80 hover:bg-purple-500 text-white" onclick={() => dispatch('openSidebar', { tab: 'guidelines' })}>
-			Open guidelines
-		</button>
-	</div>
+	{#if reportId}
+		<RailGuidelines {reportId} onCommand={handleReviewCommand} />
+	{/if}
 {/snippet}
 
 {#if visible}
@@ -1239,8 +1257,11 @@
 		<!-- Header: Mobile-first responsive layout -->
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 sm:px-4 py-2 sm:py-3">
 			<!-- Title row -->
-			<div class="flex items-center gap-2 shrink-0">
+			<div class="flex flex-col gap-1.5 min-w-0">
 				<h2 class="text-base sm:text-lg font-semibold text-white">Report Editor</h2>
+				{#if (railOn || railSlotPending) && response && !error}
+					<Legend />
+				{/if}
 			</div>
 			
 			<!-- Controls row: wraps on mobile -->
@@ -1500,17 +1521,16 @@
 						<p class="text-sm text-gray-400">Response will appear here once generated.</p>
 					{/if}
 							</div>
-							{#if railOn && reviewStore && response && !error}
-								<div class="h-full shrink-0 overflow-y-auto">
+							{#if (railOn || railSlotPending) && reviewStore && response && !error}
+								<div class="h-full shrink-0 overflow-hidden">
 									<ReviewRail
 										store={reviewStore}
 										onCommand={handleReviewCommand}
-										bind:density={reviewDensity}
-										onDensity={handleDensity}
 										updating={updatingIds}
 										guidelines={railGuidelines}
 										chat={railChat}
 										{chatPrefill}
+										pending={!railOn}
 									/>
 								</div>
 							{/if}
@@ -1607,15 +1627,6 @@
 		opacity: 0.6;
 		line-height: 1.2;
 		white-space: nowrap;
-	}
-
-	.rv-guidelines-placeholder {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		padding: 0.75rem;
-		font-size: 0.8rem;
-		color: #a0a7b1;
 	}
 
 	/* ── Floating save bar ─────────────────────────────────────────────────── */

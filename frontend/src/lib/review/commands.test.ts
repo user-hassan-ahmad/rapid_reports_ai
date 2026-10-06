@@ -404,6 +404,14 @@ describe('dismiss / ask_chat / navigation', () => {
 		expect(r.statuses).toBeUndefined();
 	});
 
+	it('ask_chat with no item takes the text from args (guidelines "Ask"), posting no item event', () => {
+		const r = run('ask_chat', { doc: DOC, items: [], item: null, args: { text: 'Re: Bosniak IIF' } });
+		expect(r.error).toBeUndefined();
+		expect(r.openChat).toBe('Re: Bosniak IIF');
+		expect(r.event).toBeUndefined();
+		expect(run('ask_chat', { doc: DOC, items: [], item: null }).error).toBe('no_item');
+	});
+
 	it('open_item focuses the located anchor and posts view', () => {
 		const it_ = item({ anchor: span(DOC, 'a cyst') });
 		const r = run('open_item', { doc: DOC, items: [it_], item: it_ });

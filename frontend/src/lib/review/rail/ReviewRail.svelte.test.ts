@@ -240,10 +240,13 @@ describe('ReviewRail', () => {
 		expect(onCommand).toHaveBeenCalledWith('restore', 'r1');
 	});
 
-	it('shows checks as one collapsible "N to check" group with Keep and Remove', async () => {
+	it('shows checks as one "N to check" group, collapsed by default, with Keep and Remove', async () => {
 		const { onCommand } = await mount();
 		const toggle = page.getByRole('button', { name: /2 to check/ });
 		await expect.element(toggle).toBeInTheDocument();
+		await expect.element(toggle).toHaveAttribute('aria-expanded', 'false');
+		expect(rail()!.querySelector('[data-rv-item="c1"]')).toBeNull();
+		await toggle.click();
 		await expect.element(toggle).toHaveAttribute('aria-expanded', 'true');
 		const c1 = rail()!.querySelector<HTMLElement>('[data-rv-item="c1"]')!;
 		expect(c1.closest('[data-rv-group="checks"]')).not.toBeNull();
@@ -284,10 +287,34 @@ describe('ReviewRail', () => {
 		expect(onCommand).toHaveBeenCalledWith('dismiss', 'a1');
 	});
 
-	it('header: Re-review, legend and density toggle (Quiet default)', async () => {
-		const { onCommand, onDensity } = await mount();
+	it('header: Re-review; no legend and no density toggle in the rail', async () => {
+		const { onCommand } = await mount();
 		await page.getByRole('button', { name: 'Re-review' }).click();
 		expect(onCommand).toHaveBeenCalledWith('rerun');
+		expect(rail()!.querySelector('[data-rv-legend]')).toBeNull();
+		expect(rail()!.querySelector('[aria-label="Density"]')).toBeNull();
+		expect(rail()!.textContent).not.toMatch(/Quiet|Hidden/);
+	});
+
+	it('open action cards lead their section, the rest keep report order', async () => {
+		const extra = item({
+			id: 'a2',
+			kind: 'measurement',
+			cls: 'action',
+			section: 'Liver',
+			label: 'Late action',
+			anchor: at(90),
+			edit: { mode: 'replace', find: 'x', replace: 'z' }
+		});
+		await mount(response({ items: [...ITEMS, extra] }));
+		await expect.element(page.getByText('Late action')).toBeInTheDocument();
+		const liver = rail()!.querySelector('[data-rv-section="Liver"]')!.closest('section')!;
+		const ids = [...liver.querySelectorAll('[data-rv-item]')].map((e) => e.getAttribute('data-rv-item'));
+		expect(ids).toEqual(['a2', 'i1', 'm1']);
+	});
+
+	it('dev controls: the legend and density toggle (Quiet default)', async () => {
+		const { onDensity } = await mount(response(), { devControls: true });
 		await expect
 			.element(page.getByRole('button', { name: 'Quiet' }))
 			.toHaveAttribute('aria-pressed', 'true');
@@ -297,6 +324,42 @@ describe('ReviewRail', () => {
 			.element(page.getByRole('button', { name: 'Full' }))
 			.toHaveAttribute('aria-pressed', 'true');
 		expect(rail()!.querySelector('[data-rv-legend]')!.textContent).toContain('Assumed normal');
+	});
+
+	it('pending: a fixed-width skeleton before the store answers, the same width once items arrive (no shift)', async () => {
+		const store = createReviewStore('rep1');
+		let resolve!: (r: ReviewResponse) => void;
+		getReview.mockReturnValueOnce(new Promise<ReviewResponse>((r) => (resolve = r)));
+		const loading = store.load();
+		const screen = render(ReviewRail, { store, onCommand: vi.fn(), pending: true, layout: 'wide' });
+		await expect.element(page.getByTestId('rv-skeleton')).toBeInTheDocument();
+		await expect.element(page.getByText('Reviewing…')).toBeInTheDocument();
+		const before = rail()!.getBoundingClientRect().width;
+		expect(before).toBe(340);
+		resolve(response());
+		await loading;
+		await screen.rerender({ store, onCommand: vi.fn(), pending: false, layout: 'wide' });
+		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
+		expect(rail()!.getBoundingClientRect().width).toBe(before);
+	});
+
+	it('polls keep a steady body: the skeleton stays while lanes run with nothing yet; unchanged rows keep their DOM', async () => {
+		const running = { coverage: 'running', accuracy: '', additions: '' };
+		const { store } = await mount(response({ items: [], lanes: running }));
+		await expect.element(page.getByTestId('rv-skeleton')).toBeInTheDocument();
+		getReview.mockResolvedValueOnce(response({ items: [], lanes: running }));
+		const p = store.load(); // a poll: loading flips, the skeleton must not
+		expect(rail()!.querySelector('[data-testid="rv-skeleton"]')).not.toBeNull();
+		await p;
+		expect(rail()!.querySelector('[data-testid="rv-skeleton"]')).not.toBeNull();
+		getReview.mockResolvedValueOnce(response({ items: ITEMS.map((i) => structuredClone(i)), lanes: running }));
+		await store.load();
+		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
+		const card = rail()!.querySelector('[data-rv-item="a1"]');
+		getReview.mockResolvedValueOnce(response({ items: ITEMS.map((i) => structuredClone(i)) }));
+		await store.load();
+		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
+		expect(rail()!.querySelector('[data-rv-item="a1"]')).toBe(card);
 	});
 
 	it('renders nothing in shadow or off mode unless forced', async () => {

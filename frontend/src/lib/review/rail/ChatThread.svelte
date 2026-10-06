@@ -328,26 +328,38 @@
 		font: inherit;
 		resize: vertical;
 		min-height: 2.4em;
-		background: var(--rv-surface-hover);
+		background: rgba(0, 0, 0, 0.4);
 		color: var(--rv-text);
 		border: 1px solid var(--rv-border);
-		border-radius: 6px;
-		padding: 4px 6px;
+		border-radius: 0.5rem;
+		padding: 6px 8px;
 	}
 	.rv-btn {
 		font: inherit;
 		font-size: 0.75rem;
-		padding: 0 8px;
-		line-height: 1.7;
-		border-radius: 9px;
+		font-weight: 500;
+		padding: 2px 9px;
+		line-height: 1.45;
+		border-radius: 0.375rem;
 		border: 1px solid var(--rv-border);
 		background: var(--rv-surface);
 		color: var(--rv-text);
 		cursor: pointer;
+		transition: background-color 0.15s, border-color 0.15s;
+	}
+	.rv-btn:hover:not(:disabled) {
+		background: var(--rv-surface-hover);
+		border-color: var(--rv-border-strong);
 	}
 	.rv-btn-primary {
-		border-color: var(--rv-blue-line);
+		background: var(--rv-accent);
+		border-color: var(--rv-accent);
+		color: #fff;
 		font-weight: 600;
+	}
+	.rv-btn-primary:hover:not(:disabled) {
+		background: var(--rv-accent-hover);
+		border-color: var(--rv-accent-hover);
 	}
 	.rv-btn:disabled {
 		opacity: 0.5;
@@ -355,7 +367,7 @@
 	}
 	button:focus-visible,
 	textarea:focus-visible {
-		outline: 2px solid var(--rv-blue-line);
+		outline: 2px solid var(--rv-focus, #a855f7);
 		outline-offset: 1px;
 	}
 </style>

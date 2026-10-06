@@ -87,11 +87,11 @@
 	.rv-card {
 		border: 1px solid var(--rv-border);
 		border-left: 3px solid var(--rv-red-line);
-		border-radius: 8px;
-		padding: 8px 10px;
-		margin: 4px 0;
+		border-radius: 0.5rem;
+		padding: 10px 12px;
+		margin: 6px 0 8px;
 		background: var(--rv-surface);
-		font-size: 0.85rem;
+		font-size: 0.8125rem;
 	}
 	.rv-card.rv-done {
 		border-left-style: dotted;
@@ -129,8 +129,8 @@
 		letter-spacing: 0.04em;
 		color: var(--rv-muted);
 		border: 1px solid var(--rv-border);
-		border-radius: 4px;
-		padding: 0 4px;
+		border-radius: 9999px;
+		padding: 0 6px;
 	}
 	.rv-card-reason,
 	.rv-card-source {
@@ -163,20 +163,29 @@
 	.rv-btn {
 		font: inherit;
 		font-size: 0.75rem;
-		padding: 0 8px;
-		line-height: 1.7;
-		border-radius: 9px;
+		font-weight: 500;
+		padding: 2px 9px;
+		line-height: 1.45;
+		border-radius: 0.375rem;
 		border: 1px solid var(--rv-border);
 		background: var(--rv-surface);
 		color: var(--rv-text);
 		cursor: pointer;
+		transition: background-color 0.15s, border-color 0.15s;
 	}
-	.rv-btn:hover {
+	.rv-btn:hover:not(:disabled) {
 		background: var(--rv-surface-hover);
+		border-color: var(--rv-border-strong);
 	}
 	.rv-primary {
-		border-color: var(--rv-text);
+		background: var(--rv-accent);
+		border-color: var(--rv-accent);
+		color: #fff;
 		font-weight: 600;
+	}
+	.rv-primary:hover:not(:disabled) {
+		background: var(--rv-accent-hover);
+		border-color: var(--rv-accent-hover);
 	}
 	.rv-quiet {
 		color: var(--rv-muted);
@@ -191,7 +200,7 @@
 		cursor: pointer;
 	}
 	button:focus-visible {
-		outline: 2px solid var(--rv-blue-line);
+		outline: 2px solid var(--rv-focus, #a855f7);
 		outline-offset: 1px;
 	}
 </style>

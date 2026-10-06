@@ -305,6 +305,9 @@ const keep: Command = (ctx) => {
 
 const askChat: Command = (ctx) => {
 	const item = ctx.item;
+	// no item: a question from outside the item list (the rail's Guidelines tab), its text in args.text
+	const text = typeof ctx.args?.text === 'string' ? ctx.args.text : '';
+	if (!item && text.trim()) return { openChat: text };
 	if (!item) return fail('no_item');
 	const on = item.anchor?.text ? `\n\nOn: "${item.anchor.text}"` : '';
 	return {
