@@ -6,7 +6,7 @@
 	 * (`ask_chat`), so it lands in the rail chat like any item's "Ask in chat".
 	 */
 	import GuidelinePanel from '../../../routes/components/GuidelinePanel.svelte';
-	import type { GuidelineEntry, UrgencyTier } from '$lib/guidelines/types';
+	import type { GuidelineEntry, RichClassificationGrade, UrgencyTier } from '$lib/guidelines/types';
 
 	let {
 		guidelines = [],
@@ -18,7 +18,9 @@
 		auditGuidelineReferences = [],
 		auditCriteria = [],
 		onRetry,
-		onAsk
+		onAsk,
+		addFor,
+		onAdd
 	}: {
 		guidelines?: GuidelineEntry[];
 		urgencySignals?: string[];
@@ -32,6 +34,10 @@
 		onRetry?: () => void;
 		/** "Ask →" on a card or a classification reference. */
 		onAsk?: (text: string) => void;
+		/** The review item "Add to report" applies for a card (or one of its classifications), or null: no button. */
+		addFor?: (g: GuidelineEntry, cls?: RichClassificationGrade) => string | null;
+		/** "Add to report": the host runs its own apply on the item (the item owns the insert). */
+		onAdd?: (itemId: string) => void;
 	} = $props();
 
 	let guidelinesExpanded = $state<Record<string, boolean>>({});
@@ -217,6 +223,20 @@
 					</div>
 					<!-- Controls: ask + chevron (right-aligned, top-aligned) -->
 					<div class="gl-controls">
+						{#if addFor && onAdd}
+							{@const addId = addFor(guideline)}
+							{#if addId}
+								<button
+									type="button"
+									class="gl-add-btn"
+									title="Add the suggested sentence to the report"
+									onclick={(e) => {
+										e.stopPropagation();
+										onAdd(addId);
+									}}
+								>Add to report</button>
+							{/if}
+						{/if}
 						<button
 							type="button"
 							class="gl-ask-btn"
@@ -270,6 +290,17 @@
 										<span class="gl-class-sys">{cls.system}{#if cls.year}&nbsp;<span class="gl-class-year">({cls.year})</span>{/if}</span>
 										{#if cls.authority}<span class="gl-authority-chip">{cls.authority}</span>{/if}
 										{#if cls.grade}<span class="gl-class-grade">{cls.grade}</span>{/if}
+										{#if addFor && onAdd}
+											{@const clsAddId = addFor(guideline, cls)}
+											{#if clsAddId}
+												<button
+													type="button"
+													class="gl-add-btn gl-add-btn--row"
+													title="Add this classification to the report"
+													onclick={() => onAdd(clsAddId)}
+												>Add to report</button>
+											{/if}
+										{/if}
 									</div>
 									{#if cls.criteria}<p class="gl-class-note">{cls.criteria}</p>{/if}
 									{#if cls.management}
@@ -580,6 +611,21 @@
 		transition: all 0.15s;
 	}
 	.gl-ask-btn:hover { background: rgba(139,92,246,0.2); color: #ddd6fe; }
+	.gl-add-btn {
+		padding: 3px 8px;
+		border-radius: 6px;
+		border: 1px solid rgba(16,185,129,0.32);
+		background: rgba(16,185,129,0.09);
+		color: #34d399;
+		font-size: 9.5px;
+		font-weight: 600;
+		cursor: pointer;
+		white-space: nowrap;
+		font-family: inherit;
+		transition: all 0.15s;
+	}
+	.gl-add-btn:hover { background: rgba(16,185,129,0.2); color: #a7f3d0; }
+	.gl-add-btn--row { margin-left: auto; }
 	.gl-chevron { transition: transform 0.2s; color: #52525b; flex-shrink: 0; }
 	.gl-chevron.open { transform: rotate(180deg); color: #a1a1aa; }
 

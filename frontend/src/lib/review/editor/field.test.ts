@@ -607,3 +607,57 @@ describe('replaceDoc (I-3) and helpers', () => {
 		warn.mockRestore();
 	});
 });
+
+describe('inline classification / guideline suggestions (additions inserts as ghosts)', () => {
+	const DOC = 'FINDINGS:\nA 32 mm pancreatic head mass. The spleen is normal.\nIMPRESSION:\nPancreatic mass.';
+	const MASS = 'A 32 mm pancreatic head mass.';
+	const grade = (over: Partial<ReviewItem> = {}) =>
+		item({
+			id: 'g',
+			kind: 'grade',
+			cls: 'minor',
+			lane: 'additions',
+			reason: 'NCCN',
+			edit: { mode: 'insert', after: MASS, replace: 'Borderline resectable.', section: 'FINDINGS' },
+			...over
+		});
+
+	it('an open minor additions insert renders as a ghost option after its finding', () => {
+		const { items, stale } = fromItems(DOC, [grade()]);
+		expect(stale).toEqual([]);
+		expect(items.widgets).toEqual([
+			expect.objectContaining({ kind: 'option', id: 'g', pos: DOC.indexOf(MASS) + MASS.length, text: 'Borderline resectable.' })
+		]);
+	});
+
+	it('is never a ghost unless an open minor additions insert', () => {
+		for (const it_ of [
+			grade({ cls: 'action' }),
+			grade({ status: 'applied' }),
+			grade({ edit: null }),
+			grade({ lane: 'accuracy' }),
+			grade({ edit: { mode: 'replace', find: MASS, replace: 'x' } })
+		]) {
+			expect(fromItems(DOC, [it_]).items.widgets).toEqual([]);
+		}
+	});
+
+	it('including it inserts the text and drops the ghost', () => {
+		const s0 = createReviewState(DOC, [grade()]);
+		const s1 = s0.update(includeOption(s0, 'g')!).state;
+		expect(s1.doc.toString()).toContain(`${MASS} Borderline resectable. The spleen`);
+		expect(reviewItems(s1).widgets).toEqual([]);
+	});
+
+	it("the rail apply (Guidelines' Add to report) inserts it once after its finding and the ghost disappears", () => {
+		const g = grade();
+		const s0 = createReviewState(DOC, [g]);
+		expect(reviewItems(s0).widgets).toHaveLength(1);
+		const r = runCommand('apply', { doc: DOC, items: [g], item: g });
+		const s1 = s0.update(commandTransaction(s0, r, [g])).state;
+		const out = s1.doc.toString();
+		expect(out).toContain(`${MASS} Borderline resectable. The spleen`);
+		expect(out.split('Borderline resectable.')).toHaveLength(2);
+		expect(reviewItems(s1).widgets).toEqual([]);
+	});
+});

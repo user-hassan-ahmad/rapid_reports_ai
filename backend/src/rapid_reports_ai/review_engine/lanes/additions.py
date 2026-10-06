@@ -89,6 +89,27 @@ def s4_candidates(synthesis: Optional[dict], with_criteria: bool = False) -> Lis
     return out
 
 
+_END_SECTION = re.compile(r"impression|recommend|conclusion|summary|opinion", re.I)
+
+
+def s4_insert_anchor(edit: Optional[Edit], group: List[Candidate], report: str,
+                     sections: Optional[List[str]]) -> Optional[Edit]:
+    """An adjudicated S4 item's insert (classification, threshold, follow-up, option), placed like a finding
+    negative: right after its finding's sentence when `finding_anchor` finds a confident unique one in the edit's
+    section, else the section end. IMPRESSION / recommendation sections always take the section end. Other items,
+    and edits that are not inserts, pass through unchanged."""
+    if edit is None or edit.mode != "insert" or not any(c.detector.startswith("s4.") for c in group):
+        return edit
+    section = edit.section or next((c.section for c in group if c.section), None)
+    if not section:
+        return edit
+    finding = next((c.evidence.get("finding") for c in group if c.evidence.get("finding")), None)
+    after = None
+    if not _END_SECTION.search(section) and finding:
+        after = finding_anchor(report, finding, section, sections)
+    return edit.model_copy(update={"after": after, "section": section})
+
+
 def candidate_text(c: Candidate) -> str:
     ev = c.evidence
     if ev.get("sentence"):

@@ -1252,7 +1252,7 @@
 
 {#snippet railGuidelines()}
 	{#if reportId}
-		<RailGuidelines {reportId} onCommand={handleReviewCommand} />
+		<RailGuidelines {reportId} store={reviewStore} onCommand={handleReviewCommand} />
 	{/if}
 {/snippet}
 

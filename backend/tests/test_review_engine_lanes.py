@@ -275,3 +275,44 @@ def test_recommendation_option_keeps_section_end_even_with_finding():
                                 "sentence": "MDT discussion is suggested.", "finding": "pancreatic head mass"}])
     c = brief_candidates(i, align(PANC, "", "", i.artifacts.sections))[0]
     assert c.proposed.after is None and c.proposed.section == "IMPRESSION"
+
+
+# ── S4 classification / guideline items placed inline (after the finding's sentence) ──
+def _s4_item(edit_section, edit_after=None, finding="Pancreatic head mass"):
+    from rapid_reports_ai.review_engine import adjudicator as adj
+    from rapid_reports_ai.review_engine import engine
+    syn = {"guidelines": [{"finding": finding, "finding_number": 1,
+                           "classifications": [{"system": "NCCN", "grade": "borderline resectable"}]}]}
+    c = s4_candidates(syn)[0]
+    j = adj.Judgement(cls="minor", kind="grade", label="Resectability", reason="r", edit_mode="insert",
+                      edit_replace="NCCN: borderline resectable.", edit_after=edit_after, edit_section=edit_section)
+    i = inp(PANC, "", synthesis=syn)
+    return i, engine.build_item(i, "00000000-0000-0000-0000-0000000000a1", adj.Outcome(group=[c], judgement=j))
+
+
+def test_s4_grade_insert_lands_after_its_finding_sentence():
+    i, it = _s4_item("FINDINGS", edit_after="The kidneys are normal.")
+    want = "There is a 32 mm hypoattenuating mass in the pancreatic head abutting the SMV."
+    assert it.edit.after == want and it.edit.section == "FINDINGS"
+    out = apply_edit(PANC, it.edit, i.artifacts.sections)
+    assert want + " NCCN: borderline resectable. The pancreatic duct is dilated." in out
+
+
+def test_s4_grade_insert_without_confident_match_goes_to_section_end():
+    _, it = _s4_item("FINDINGS", edit_after="The kidneys are normal.", finding="Peritoneal deposit")
+    assert it.edit.after is None and it.edit.section == "FINDINGS"
+
+
+def test_s4_grade_insert_in_impression_keeps_section_end():
+    _, it = _s4_item("IMPRESSION", edit_after="Pancreatic head mass.")
+    assert it.edit.after is None and it.edit.section == "IMPRESSION"
+
+
+def test_brief_option_items_are_not_reanchored():
+    from rapid_reports_ai.review_engine import adjudicator as adj
+    from rapid_reports_ai.review_engine import engine
+    i = inp(PANC, "", options=[{"id": "o1", "kind": "impression", "section": "FINDINGS",
+                                "sentence": "No ascites.", "finding": "pancreatic head mass"}])
+    c = brief_candidates(i, align(PANC, "", "", i.artifacts.sections))[0]
+    it = engine.build_item(i, "00000000-0000-0000-0000-0000000000a2", adj.Outcome(group=[c]))
+    assert it.edit.after is None
