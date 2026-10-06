@@ -107,7 +107,7 @@ async def test_lane_failure_is_isolated(monkeypatch):
 
 
 async def test_negatives_failure_is_isolated(monkeypatch):
-    async def boom(inp_, run_id, types=None):
+    async def boom(inp_, run_id, types=None, owned=None):
         raise RuntimeError("down")
     monkeypatch.setattr(negatives, "classify_negatives", boom)
     res = await engine.run_review(inp(REPORT, DICT), run_id="00000000-0000-0000-0000-0000000000a2")

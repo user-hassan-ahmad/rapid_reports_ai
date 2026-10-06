@@ -75,6 +75,31 @@ def normal_statement(clause: str) -> bool:
     return bool(_NORMAL.search(clause) or _NORMAL_STATEMENT.search(clause.strip()))
 
 
+# The grammatical form of a normal / negative statement (the rail's AI layer): "No X" / "There is no X" / "Nil X" /
+# "Without X" / "X is absent" is a negative; "X is unremarkable / normal / patent / intact / clear" (a normal
+# predicate, also "is not dilated", "non-dilated") is a normal, whatever trails it ("... with no effusion"); a
+# subject that "shows no X" with no normal predicate is a negative. Structural, any anatomy; deterministic.
+_LEAD_NEGATIVE = re.compile(r"^\W*(?:no|nil|none|without|there\s+(?:is|are|was|were)\s+no)\b", re.I)
+_ABSENT = re.compile(r"\babsent\b", re.I)
+_NORMAL_PREDICATE = re.compile(
+    r"\b(?:is|are|was|were|appears?|remains?|seems?)\s+(?:\w+\s+)?" + _PRED + r"\b"   # "are patent", "is otherwise clear"
+    r"|\b" + _PRED + r"\s*[.;]?\s*$"                                                 # "Cruciate ligaments intact."
+    r"|\b(?:non-?dilated|undilated)\b"
+    r"|\b(?:is|are|was|were)\s+not\s+\w+", re.I)
+_NEGATION = re.compile(r"\b(?:no|nil|none|without|absent)\b", re.I)
+
+
+def statement_form(clause: str) -> str:
+    """"negative" or "normal" for a normal / negative statement (see above). A clause with neither cue is "normal"
+    (its normal wording is lexical: "within normal limits", "preserved")."""
+    t = (clause or "").strip()
+    if _LEAD_NEGATIVE.search(t) or _ABSENT.search(t):
+        return "negative"
+    if _NORMAL.search(t) or _NORMAL_PREDICATE.search(t):
+        return "normal"
+    return "negative" if _NEGATION.search(t) else "normal"
+
+
 def q_supported(clause: str) -> dict:
     return {"type": "noul", "instructions": Q_SUPPORTED.format(c=clause),
             "criteria": {"true": "stated", "false": "not stated"}}

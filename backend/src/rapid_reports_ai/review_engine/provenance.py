@@ -7,6 +7,7 @@
   says so. Connective words, reordering, rephrasing and style changes of a dictated line therefore give no item: a
   reworded restatement is dictated. Partial restatements count as dictated (a confidently paired clause gives no item).
   Clause level only, never sub-clause word spans; adjacent marked clauses of one sentence merge into one span.
+  `evidence.form` is "synthesis" (the rail's AI layer: negatives / normals carry "negative" / "normal").
 - `recommendation` (lane additions, cls minor, detector `code.recommendation`): a recommendation sentence
   (`jev_pass.recommendation`, minus interpretive "suggests" / "suggestive") that no dictated line states, with a
   code-built whole-sentence removal (`Edit(mode="remove")`) checked with `verifier.apply_edit`; never pre-applied.
@@ -159,7 +160,7 @@ def build_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPa
         if _overlaps((start, end), owned_spans):
             skipped["owned"] += 1
             continue
-        marked.append((c, start, end, {"clauses": [c.id], "jev_type": t, "supported": sup}))
+        marked.append((c, start, end, {"clauses": [c.id], "jev_type": t, "supported": sup, "form": "synthesis"}))
 
     merged: List[Tuple[ReportClause, int, int, dict]] = []      # adjacent marked clauses of one sentence → one span
     for c, s, e, ev in marked:

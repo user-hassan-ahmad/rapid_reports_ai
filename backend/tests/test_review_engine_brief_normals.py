@@ -147,6 +147,55 @@ async def test_engine_one_item_per_brief_span(monkeypatch):
     assert any(d.get("source") == "brief_normals" for d in res.run["deduped"])
 
 
+def _engine_stubs(monkeypatch, calls):
+    import tests.test_review_engine_engine as te
+    from rapid_reports_ai import report_reconcile as rc
+    from rapid_reports_ai.review_engine import adjudicator as adj
+    from tests.review_engine_fakes import jev, model
+    monkeypatch.setattr(rc, "_jev", jev())
+    monkeypatch.setattr(adj, "_run_agent_with_model", model(te.J))
+    fake = te.labels(te._all_default)
+
+    async def spy(**kw):
+        calls.append(kw)
+        return await fake(**kw)
+    monkeypatch.setattr(negatives, "_run_agent_with_model", spy)
+
+
+async def test_engine_classifier_never_sees_brief_owned_statements(monkeypatch):
+    """Latency (prod d3d1e0a5, negatives_wait 7.6 s): statements the brief already labelled are not re-classified;
+    the brief's items still own them."""
+    calls = []
+    _engine_stubs(monkeypatch, calls)
+    res = await engine.run_review(_inp(), run_id=RUN)
+    if calls:
+        listing = calls[0]["user_prompt"].split("STATEMENTS TO CLASSIFY:\n", 1)[1]
+        assert P1 not in listing and "No hydronephrosis" not in listing and "kidneys" not in listing
+    assert res.run["negatives"]["owned_by_brief"] >= 2
+    assert len([i for i in res.items if bn.DETECTOR in i.detectors]) == 5
+
+
+async def test_engine_brief_build_failure_classifies_everything(monkeypatch):
+    calls = []
+    _engine_stubs(monkeypatch, calls)
+
+    def broken(*a, **k):
+        raise RuntimeError("bad brief")
+    monkeypatch.setattr(bn, "build_items", broken)
+    res = await engine.run_review(_inp(), run_id=RUN)
+    assert "brief_normals" in res.run["errors"]
+    assert P1 in calls[0]["user_prompt"].split("STATEMENTS TO CLASSIFY:\n", 1)[1]
+    assert res.run["negatives"]["owned_by_brief"] == 0
+
+
+def test_brief_items_carry_their_form():
+    items = _by_term(bn.build_items(_inp(), RUN))
+    assert items["liver"].evidence["form"] == "normal"
+    assert items["intrahepatic biliary tree"].evidence["form"] == "normal"      # implicated: still a check
+    assert items["intrahepatic biliary tree"].evidence["check_reason"] == "uncertain"
+    assert items["hydronephrosis"].evidence["form"] == "negative"
+
+
 # ── a placeholder pointer ("->", "-", "—") is no pointer (prod 2026-10-06: 'Check: may not hold given “->”') ──
 
 def test_placeholder_pointer_gives_the_generic_check_label():

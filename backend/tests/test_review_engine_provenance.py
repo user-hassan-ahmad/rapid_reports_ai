@@ -50,6 +50,7 @@ def test_inference_sentence_in_impression_is_ai_generated():
     assert (it.lane, it.cls, it.detectors, it.section) == ("accuracy", "info", ["provenance"], "IMPRESSION")
     assert REPORT[it.anchor.start:it.anchor.end] == OBSTR and it.anchor.text_hash == text_hash(REPORT)
     assert it.edit is None and it.status == "open"
+    assert all(i.evidence["form"] == "synthesis" for i in items if i.kind == "ai_generated")
 
 
 def test_faithful_and_reworded_restatements_give_no_item():
@@ -153,7 +154,7 @@ def test_items_are_capped(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_run_review_returns_provenance_items_never_adjudicated(monkeypatch):
-    async def no_neg(inp_, run_id, types=None):
+    async def no_neg(inp_, run_id, types=None, owned=None):
         return [], {"candidates": []}
     monkeypatch.setattr(rc, "_jev", jev())
     monkeypatch.setattr(negatives, "classify_negatives", no_neg)

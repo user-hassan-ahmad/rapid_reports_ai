@@ -25,7 +25,9 @@ Items bypass the adjudicator (binding correction 10) and are never merged with l
 
 Candidates are negatives and plain normal statements in any wording (`jev_pass.normal_statement`, shared with the
 Accuracy lane's W1n exclusion). Every check item's label states its reason, naming the classifier's pointer (or the
-number) when there is one, and `reason` says what to do.
+number) when there is one, and `reason` says what to do. Candidates the brief's linked normals already label (`owned`
+spans) are not sent to the model; they are routed unlabelled (`classify_negatives`). Assumed-normal and check items
+carry `evidence.form` ("negative" | "normal", `jev_pass.statement_form`) for the rail's AI layer.
 
 A number-flagged clause is never removed: the verifier's removal rule refuses any clause holding a number
 (`_negative_only`), so only a contradicted plain negative is removed. It is a check item with `check_reason`
@@ -65,7 +67,7 @@ from .. import report_reconcile as rc
 from ..enhancement_utils import _run_agent_with_model
 from ..report_review import checked_clauses_in_context, remove_negative_clause, restate
 from . import checks, claims, verifier
-from .jev_pass import normal_statement, recommendation, split_tails
+from .jev_pass import normal_statement, recommendation, split_tails, statement_form
 from .items import Edit, ReviewInput, ReviewItem, Span, item_key, text_hash
 
 logger = logging.getLogger(__name__)
@@ -453,7 +455,7 @@ def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, di
             taken_post.append(pspan)
             post[i] = list(pspan)
         anchor = Span(start=span[0], end=span[1], text=report[span[0]:span[1]], text_hash=h) if span else None
-        base = {"clause": c["clause"], "label": cls}
+        base = {"clause": c["clause"], "label": cls, "form": statement_form(c["clause"])}
         if group:
             base["claim_labels"] = [(labels.get(k) or {}).get("cls") or "default" for k in group]
         given = lab.get("pointer", "")                # the classifier's pointer to the dictated finding, if any
@@ -487,20 +489,46 @@ def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, di
             {items[i].id: post[i] for i in sorted(items) if i in post})
 
 
-async def classify_negatives(inp: ReviewInput, run_id: str, types: Optional[Dict[str, str]] = None
-                             ) -> Tuple[List[ReviewItem], dict]:
+def owned_indices(report: str, cands: List[dict], owned: List[Tuple[int, int]]) -> List[int]:
+    """1-based indices of the candidates whose original-report span overlaps an `owned` span (the brief's
+    linked-normal labels, `brief_normals`): the brief already labelled them, so the model does not re-read them."""
+    taken: List[Tuple[int, int]] = []
+    out = []
+    for i, c in enumerate(cands, 1):
+        span = _locate(report, c["clause"], taken)
+        if span:
+            taken.append(span)
+            if any(a < span[1] and span[0] < b for a, b in owned):
+                out.append(i)
+    return out
+
+
+async def classify_negatives(inp: ReviewInput, run_id: str, types: Optional[Dict[str, str]] = None,
+                             owned: Optional[List[Tuple[int, int]]] = None) -> Tuple[List[ReviewItem], dict]:
     """The Task 14 entry point: (items, log). Never raises. `log` holds the report after pre-applied removals,
-    its hash, candidate/label counts, latency and any model error (fail-soft)."""
+    its hash, candidate/label counts, latency and any model error (fail-soft).
+
+    `owned`: original-report spans the brief's linked normals already label (`brief_normals.build_items` anchors).
+    Candidates on them are not sent to the model (latency: the call's reasoning grows with the statement list) and
+    are routed unlabelled: code's number check still applies, the rest become assumed-normal items the brief's own
+    items replace (`brief_normals.dedupe`)."""
     t0 = time.monotonic()
     report = inp.artifacts.report or ""
     dictation, history = inp.artifacts.dictated_findings or "", inp.clinical_history or ""
     listed = candidates(report, types) if types else candidates(report)
     cands = [{**c, "number": code_number_flag(c["clause"], dictation, history)} for c in listed]
-    log: dict = {"detector": DETECTOR, "candidates": len(cands), "labelled": 0, "error": None, "error_kind": None,
+    skip = set(owned_indices(report, cands, owned)) if owned else set()
+    asked = [i for i in range(1, len(cands) + 1) if i not in skip]
+    log: dict = {"detector": DETECTOR, "candidates": len(cands), "owned_by_brief": len(skip),
+                 "classified": len(asked), "labelled": 0, "error": None, "error_kind": None,
                  "report": report, "text_hash": text_hash(report), "post_removal_anchors": {}, "ms": 0}
     if not cands:
         return [], log
-    labels, err, kind = await classify(inp, cands)
+    if asked:
+        got, err, kind = await classify(inp, [cands[i - 1] for i in asked])
+        labels = {asked[k - 1]: v for k, v in got.items()}
+    else:
+        labels, err, kind = {}, None, None
     try:
         items, doc, post = route(inp, run_id, cands, labels)
     except Exception as e:  # noqa: BLE001 - routing never fails the run: no items, report untouched
@@ -514,4 +542,4 @@ async def classify_negatives(inp: ReviewInput, run_id: str, types: Optional[Dict
 
 
 __all__ = ["Labels", "candidates", "candidate_spans", "code_number_flag", "undictated_numbers", "parse_labels", "user_message",
-           "classify", "removal_edit", "route", "classify_negatives"]
+           "classify", "removal_edit", "route", "owned_indices", "classify_negatives"]

@@ -395,10 +395,12 @@ def surface_gate(inp: ReviewInput, items: List[ReviewItem]) -> List[ReviewItem]:
 
 # ── run ─────────────────────────────────────────────────────────────────────
 
-async def _negatives(inp: ReviewInput, run_id: str, types: Optional[Dict[str, str]] = None
+async def _negatives(inp: ReviewInput, run_id: str, types: Optional[Dict[str, str]] = None,
+                     owned: Optional[List[Tuple[int, int]]] = None
                      ) -> Tuple[List[ReviewItem], Optional[dict], Optional[str]]:
     try:
-        items, log = await asyncio.wait_for(negatives.classify_negatives(inp, run_id, types), NEGATIVES_TIMEOUT_S)
+        items, log = await asyncio.wait_for(negatives.classify_negatives(inp, run_id, types, owned),
+                                            NEGATIVES_TIMEOUT_S)
         return items, log, None
     except Exception as e:  # noqa: BLE001 - negatives never fail the run (timeouts included)
         logger.warning("review engine: negatives failed (%s)", type(e).__name__)
@@ -562,6 +564,7 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
     names = lanes_enabled()
     neg_task = None
     types: Dict[str, str] = {}
+    brief_items: List[ReviewItem] = []
     try:
         al = align(a.report, a.dictated_findings, inp.clinical_history, a.sections)
         checks = run_checks(a.report, a.dictated_findings, inp.clinical_history, inp.scan_type, al, inp.study_title)
@@ -579,8 +582,14 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         # The classifier reads the Jev statement types (normal clauses, mixed clauses' tails), so it starts after the
         # ~0.5 s Jev pass; it still runs concurrently with the lanes and the adjudicator.
         types = dict(jp.types) if jp is not None else {}
+        try:                             # the brief's linked-normal labels own their atoms (brief_normals): pure code,
+            brief_items = brief_normals.build_items(inp, run_id)   # built first so the classifier skips those spans
+        except Exception as e:  # noqa: BLE001 - never fails the run: the classifier then reads every statement
+            errors["brief_normals"] = f"{type(e).__name__}: {str(e)[:200]}"
         if "accuracy" in names:
-            neg_task = asyncio.create_task(_negatives(inp, run_id, types))
+            owned = [(b.anchor.start, b.anchor.end) for b in brief_items
+                     if b.anchor is not None and b.anchor.end > b.anchor.start]
+            neg_task = asyncio.create_task(_negatives(inp, run_id, types, owned))
         ctx = LaneContext(alignment=al, jev=jp, checks=checks)
 
         async def one(name: str):
@@ -628,11 +637,6 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         cands += held
         held = []
     deduped: List[dict] = []
-    brief_items: List[ReviewItem] = []
-    try:                                 # the brief's linked-normal labels own their atoms (brief_normals)
-        brief_items = brief_normals.build_items(inp, run_id)
-    except Exception as e:  # noqa: BLE001 - never fails the run: the classifier's own items stand
-        errors["brief_normals"] = f"{type(e).__name__}: {str(e)[:200]}"
     if brief_items:
         for it in brief_items:
             it.engine_version = ENGINE_VERSION
