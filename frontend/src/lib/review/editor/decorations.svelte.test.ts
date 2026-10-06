@@ -390,7 +390,7 @@ describe('chip placement never covers text', () => {
 	const FILL = 'The structure is unremarkable and the adjacent tissues are preserved without change. ';
 	const P1 = FILL.repeat(3) + 'Last words here.';
 	const P2 = 'Mark here starts the second paragraph. ' + FILL.repeat(2);
-	const DOC = `${P1}\n\n${P2}`;
+	const DEFAULT_DOC = `${P1}\n\n${P2}`;
 
 	function textRects(view: EditorView): DOMRect[] {
 		const out: DOMRect[] = [];
@@ -406,7 +406,7 @@ describe('chip placement never covers text', () => {
 	const hits = (a: DOMRect, b: DOMRect) =>
 		a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
 
-	function mountAt(text: string, top = 200) {
+	function mountAt(text: string, top = 200, DOC = DEFAULT_DOC) {
 		const start = DOC.indexOf(text);
 		const it_ = item({ id: 'k', kind: 'check', cls: 'minor', anchor: { start, end: start + text.length, text }, evidence: { check_reason: 'uncertain', pointer: 'a dictated finding' } });
 		const state = EditorState.create({
@@ -444,6 +444,14 @@ describe('chip placement never covers text', () => {
 	it('goes below when the line above is full text and the line below is free', async () => {
 		const { chip: r, markBottom, text } = await placed(mountAt('Last words here.'));
 		expect(r.top).toBeGreaterThanOrEqual(markBottom);
+		expect(text.filter((t) => hits(r, t))).toEqual([]);
+	});
+
+	it('mid-paragraph (full lines above and below): moves to the nearest text-free spot, never over text', async () => {
+		const doc = `FINDINGS:\n${'The structure is unremarkable and the adjacent tissues are preserved without change. '.repeat(1)}Target mark sits here. ${FILL.repeat(3)}`;
+		const view = mountAt('Target mark', 200, doc);
+		const { chip: r, markTop, markBottom, text } = await placed(view);
+		expect(r.bottom <= markTop || r.top >= markBottom).toBe(true);
 		expect(text.filter((t) => hits(r, t))).toEqual([]);
 	});
 

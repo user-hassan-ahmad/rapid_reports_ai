@@ -1286,7 +1286,7 @@
 							onclick={() => historyAvailable && (activeView = 'history')}
 							title="Version History"
 						>
-							<span class="hidden xs:inline">Version </span>History
+							<span class="hidden xs:inline">Version&nbsp;</span>History
 						</button>
 					</div>
 				{/if}

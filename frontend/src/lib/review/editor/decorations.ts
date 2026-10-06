@@ -16,7 +16,6 @@
  * `commandTransaction` and posts the event. The prototype's local toggles are never used here.
  */
 import {
-	EditorSelection,
 	Facet,
 	RangeSet,
 	StateEffect,
@@ -485,31 +484,30 @@ function chipDom(view: EditorView, a: ChipAnchor): HTMLElement {
 
 const CHIP_GAP = 4; // px between the chip and the mark's line
 
-/** Does the viewport box [left, left+w] × [top, top+h] cover any rendered text? Samples the band every few px
- * and compares it with the text extent of the visual line under each sample. */
-function coversText(view: EditorView, left: number, top: number, w: number, h: number): boolean {
-	const content = view.contentDOM.getBoundingClientRect();
-	for (let y = top + 1; y < top + h; y += 5) {
-		if (y < content.top || y > content.bottom) continue;
-		const pos = view.posAtCoords({ x: Math.max(content.left + 1, Math.min(left + w / 2, content.right - 1)), y }, false);
-		const cur = EditorSelection.cursor(pos);
-		const s = view.moveToLineBoundary(cur, false, true).head;
-		const e = view.moveToLineBoundary(cur, true, true).head;
-		if (e <= s) continue; // an empty (blank) line
-		const cs = view.coordsAtPos(s, 1);
-		const ce = view.coordsAtPos(e, -1);
-		if (!cs || !ce) continue;
-		const lineTop = Math.min(cs.top, ce.top);
-		const lineBottom = Math.max(cs.bottom, ce.bottom);
-		if (y < lineTop || y > lineBottom) continue; // between lines
-		if (left < ce.right && cs.left < left + w) return true;
+type Box = { left: number; right: number; top: number; bottom: number };
+
+/** The viewport rects of the rendered text (one per visual-line fragment of each text node, widgets included). */
+function textBoxes(view: EditorView): Box[] {
+	const out: Box[] = [];
+	const walk = document.createTreeWalker(view.contentDOM, NodeFilter.SHOW_TEXT);
+	const range = document.createRange();
+	for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+		if (!n.textContent?.trim()) continue;
+		range.selectNodeContents(n);
+		for (const r of range.getClientRects()) if (r.width > 0 && r.height > 0) out.push(r);
 	}
-	return false;
+	return out;
+}
+
+/** Does the viewport box [left, left+w] × [top, top+h] cover any of `boxes`? */
+function coversText(boxes: readonly Box[], left: number, top: number, w: number, h: number): boolean {
+	return boxes.some((b) => left < b.right - 0.5 && b.left < left + w - 0.5 && top < b.bottom - 0.5 && b.top < top + h - 0.5);
 }
 
 /** Where the open chip goes (viewport coords of its top-left): clear above the mark's FIRST line (a small gap, at
- * the mark's end horizontally), else clear below its LAST line, whichever has room and covers no text; with no
- * text-free spot, the first side with room (above first). Never over the mark's own lines. */
+ * the mark's end horizontally), else clear below its LAST line, whichever has room and covers no text; failing
+ * that, the nearest text-free spot within CHIP_REACH px; with none, the first side with room (above first). Never
+ * over the mark's own lines. */
 export function chipPlacement(
 	view: EditorView,
 	a: Pick<ChipAnchor, 'from' | 'to' | 'pos'>,
@@ -523,18 +521,32 @@ export function chipPlacement(
 	const h = height || 28;
 	const x = start.top < end.top - 2 ? Math.max(start.left, end.left) : end.left;
 	const vw = window.innerWidth || document.documentElement.clientWidth;
-	const left = Math.max(4, Math.min(x, vw - w - 4));
 	const sc = view.scrollDOM.getBoundingClientRect();
+	// inside the editor's width when it fits (never out over the rail), else inside the window
+	const lo = Math.max(4, sc.left);
+	const hi = Math.min(vw, sc.right) - w - 4;
+	const clampX = (v: number) => (hi >= lo ? Math.max(lo, Math.min(v, hi)) : Math.max(4, Math.min(v, vw - w - 4)));
+	const left = clampX(x);
 	const minTop = Math.max(0, sc.top);
 	const maxBottom = Math.min(window.innerHeight || document.documentElement.clientHeight, sc.bottom);
-	const sides = [
-		Math.min(start.top, end.top) - CHIP_GAP - h, // above the first line
-		Math.max(start.bottom, end.bottom) + CHIP_GAP // below the last line
-	];
-	const room = sides.filter((t) => t >= minTop && t + h <= maxBottom);
-	const top = room.find((t) => !coversText(view, left, t, w, h)) ?? room[0] ?? sides[0];
+	const above = Math.min(start.top, end.top) - CHIP_GAP - h; // clear above the first line
+	const below = Math.max(start.bottom, end.bottom) + CHIP_GAP; // clear below the last line
+	const fits = (t: number) => t >= minTop && t + h <= maxBottom;
+	// Nearest text-free spot: right above / below the mark first, then a little further out (dense wrapped prose
+	// leaves no gap between lines, but a short neighbouring line or a paragraph break usually lies within reach), at
+	// the mark's end or its start.
+	const xs = [...new Set([left, clampX(start.left)])];
+	const boxes = textBoxes(view);
+	for (let d = 0; d <= CHIP_REACH; d += 4)
+		for (const t of [above - d, below + d])
+			if (fits(t))
+				for (const l of xs) if (!coversText(boxes, l, t, w, h)) return { left: l, top: t, height: h };
+	const top = [above, below].find(fits) ?? above;
 	return { left, top, height: h };
 }
+
+/** How far (px) beyond the mark's own lines the chip may move to find a spot that covers no text. */
+const CHIP_REACH = 72;
 
 /** The open chip's item id (null: closed). `openPopover` keeps its name for the host (focus after a command). */
 export const popoverField = StateField.define<string | null>({
