@@ -208,7 +208,7 @@ export function fromItems(
 	const suggestions: SuggestionEntry[] = [];
 	for (const it of items) {
 		// suggestions: open ones with a placeable insert, and applied ones (ticked); never stale or answered
-		if (!isSuggestion(it) || (it.status !== 'open' && it.status !== 'applied')) continue;
+		if (!isSuggestion(it) || it.cls === 'suppress' || (it.status !== 'open' && it.status !== 'applied')) continue;
 		const text = it.edit?.replace?.trim();
 		if (!text) continue;
 		const section = it.section ?? it.edit?.section ?? null;

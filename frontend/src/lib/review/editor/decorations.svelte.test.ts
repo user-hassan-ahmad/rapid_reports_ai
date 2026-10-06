@@ -547,10 +547,11 @@ describe('suggestions subsection', () => {
 		expect(onCommand).toHaveBeenCalledWith('undo', 'o2');
 	});
 
-	it('hides suggestions that are stale, answered or have no placeable edit', () => {
+	it('hides suggestions that are stale, answered, suppressed or have no placeable edit', () => {
 		const items = [
 			sugg({ id: 'stale', status: 'stale' }),
 			sugg({ id: 'gone', status: 'dismissed' }),
+			sugg({ id: 'quiet', cls: 'suppress' }),
 			sugg({ id: 'noedit', edit: null }),
 			sugg({ id: 'nowhere', edit: { mode: 'insert', after: 'Not in this report.', replace: 'Text.' } })
 		];
