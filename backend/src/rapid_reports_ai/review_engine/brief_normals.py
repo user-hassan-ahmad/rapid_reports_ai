@@ -105,7 +105,7 @@ def build_items(inp: ReviewInput, run_id: str) -> List[ReviewItem]:
                 "pid": unit.get("pid"), "label": atom.get("label"), "label_source": atom.get("label_source"),
                 "unit_mode": unit.get("mode")}
         if atom["action"] == "implicated":
-            pointer = atom.get("pointer") or ""
+            pointer = negatives.pointer_text(atom.get("pointer"))   # a stored "->" is the labeller's "none"
             label, reason = negatives.check_text("uncertain", pointer)
             kind, cls = "check", negatives.CLS["uncertain"]
             evidence = {**base, "check_reason": "uncertain", "pointer": pointer, "included": True,

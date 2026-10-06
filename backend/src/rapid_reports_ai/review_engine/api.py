@@ -23,7 +23,7 @@ from ..auth import get_current_user
 from ..database import get_db
 from ..database.crud import get_report
 from ..database.models import User
-from . import adjudicator, brief_normals, engine, negatives, store, verifier
+from . import adjudicator, brief_normals, engine, negatives, provenance, store, verifier
 from .items import ReviewItem, text_hash
 from .limits import Detail, ItemIds, ReportText, TextHash
 
@@ -86,6 +86,11 @@ def _negative(it: ReviewItem) -> bool:
     items on a negative."""
     return bool({negatives.DETECTOR, brief_normals.DETECTOR} & set(it.detectors or [])) or \
         (it.lane == "accuracy" and bool((it.evidence or {}).get("negative")))
+
+
+def _provenance(it: ReviewItem) -> bool:
+    """Provenance marks (ai_generated / recommendation) are never probed or reprepared: they are not judgements."""
+    return it.kind in provenance.PROVENANCE_KINDS
 
 
 def _engine_pre_applied(it: ReviewItem) -> bool:
@@ -176,8 +181,9 @@ async def post_probe(report_id: str, body: ProbeBody, current_user: User = Depen
     if inp is None:
         return {"success": False, "error": "no candidate"}
     all_items = store.list_items(db, report_id)
-    open_items = [i for i in all_items if i.status == "open" and not _engine_pre_applied(i)]
-    back = [i for i in all_items if i.status == "addressed" and not _engine_pre_applied(i) and _text_back(i, body.text)]
+    open_items = [i for i in all_items if i.status == "open" and not _engine_pre_applied(i) and not _provenance(i)]
+    back = [i for i in all_items if i.status == "addressed" and not _engine_pre_applied(i) and not _provenance(i)
+            and _text_back(i, body.text)]
     res = await verifier.probe(inp, open_items + back, body.text, body.changed_ranges)
     back_ids = {i.id for i in back}
     scores = res.get("scores") or {}
@@ -219,7 +225,7 @@ async def post_reprepare(report_id: str, body: ReprepareBody, current_user: User
     if inp is None:
         return {"success": False, "error": "no candidate"}
     items = [i for i in (store.get_item(db, report_id, x) for x in body.item_ids) if i is not None]
-    frozen = lambda i: _negative(i) or _engine_pre_applied(i)    # noqa: E731
+    frozen = lambda i: _negative(i) or _engine_pre_applied(i) or _provenance(i)    # noqa: E731
     kept = [i for i in items if frozen(i)]               # returned unchanged (correction 13; Gate G pre-applied)
     todo = [i for i in items if not frozen(i)]
     outcomes = await asyncio.gather(*(adjudicator.reprepare(inp, it, body.text) for it in todo))

@@ -2,9 +2,10 @@
 // The page reads `reviewRailHoldsAside` to leave out the Copilot aside, its peek rail and padding.
 //
 // - Each viewer claims "active" under its own owner key, so one viewer turning its rail off never clears another's.
-// - The engine mode / rail flag of the first GET /review of the session is remembered (module-level, mirrored in
-//   sessionStorage), so later report opens know a rail is coming before their own GET returns: the viewer renders the
-//   rail slot (skeleton) at once and the page never mounts the Copilot aside meanwhile.
+// - The engine mode / rail flag of the last GET /review is remembered (module-level, mirrored in sessionStorage and
+//   localStorage), so later report opens, in this tab or a new one, know a rail is coming before their own GET
+//   returns: the viewer renders the rail slot (skeleton) at once and the page never mounts the Copilot aside meanwhile.
+//   With nothing remembered (a first-ever load) the viewer shows the skeleton too, and drops it if no rail comes.
 // - Per report, the outcome of its first GET is recorded. Until it is known, the page holds the aside back unless
 //   the session already knows there is no rail (first-ever load: no flash either way).
 import { derived, writable, type Readable } from 'svelte/store';
@@ -22,13 +23,18 @@ export function setReviewRailActive(owner: object, on: boolean): void {
 	active.set(owners.size > 0);
 }
 
-function readStored(): boolean | null {
+function readOne(storage: () => Storage): boolean | null {
 	try {
-		const v = sessionStorage.getItem(STORAGE_KEY);
+		const v = storage().getItem(STORAGE_KEY);
 		return v === '1' ? true : v === '0' ? false : null;
 	} catch {
 		return null;
 	}
+}
+
+/** This tab's memory first, else the browser's (a new tab knows the mode from the last one). */
+function readStored(): boolean | null {
+	return readOne(() => sessionStorage) ?? readOne(() => localStorage);
 }
 
 /** The session's known rail mode: true (rail), false (no rail) or null (not known yet). */
@@ -38,11 +44,12 @@ export const reviewRailExpected: Readable<boolean | null> = { subscribe: expecte
 /** Remember the mode a GET /review reported (live with the rail on → true). */
 export function rememberRailMode(on: boolean): void {
 	expected.set(on);
-	try {
-		sessionStorage.setItem(STORAGE_KEY, on ? '1' : '0');
-	} catch {
-		// storage blocked: the module-level value still serves this page
-	}
+	for (const storage of [() => sessionStorage, () => localStorage])
+		try {
+			storage().setItem(STORAGE_KEY, on ? '1' : '0');
+		} catch {
+			// storage blocked: the module-level value still serves this page
+		}
 }
 
 /** Per report id: did its first GET /review settle on a rail ('rail') or not ('none', also on an error)? */
@@ -81,9 +88,10 @@ export function resetRailMemory(): void {
 	active.set(false);
 	expected.set(null);
 	outcomes.set({});
-	try {
-		sessionStorage.removeItem(STORAGE_KEY);
-	} catch {
-		// ignore
-	}
+	for (const storage of [() => sessionStorage, () => localStorage])
+		try {
+			storage().removeItem(STORAGE_KEY);
+		} catch {
+			// ignore
+		}
 }

@@ -23,7 +23,7 @@
 	import { loadEnhancement } from '$lib/guidelines/enhance';
 	import { createReviewStore, type ReviewStore } from '$lib/review/store';
 	import { runCommand, type CommandName, type ItemEvent } from '$lib/review/commands';
-	import { openPopover, reviewExtensions, type Density } from '$lib/review/editor';
+	import { DEFAULT_LEGEND, openPopover, reviewExtensions, setEmphasis, type Density, type LegendKey } from '$lib/review/editor';
 	import {
 		commandTransaction,
 		replaceDoc,
@@ -738,11 +738,19 @@
 	let railOn = false;
 	/** This report's first GET /review has not answered yet. */
 	let reviewPending = false;
-	/** The session knows a rail is coming (railActive.ts) and this report's first GET is still out: the rail slot
-	 * renders its fixed-width skeleton at once, so nothing shifts and the Copilot aside never flashes. (The template
-	 * also reads reviewPending directly: setupReview sets it from inside another reactive statement.) */
+	/** This report's first GET is still out and the session does not know there is no rail (railActive.ts): the rail
+	 * slot renders its fixed-width skeleton at once (also on a first-ever load, and when switching reports), so
+	 * nothing shifts, the items fade in and the Copilot aside never flashes. (The template also reads reviewPending
+	 * directly: setupReview sets it from inside another reactive statement.) */
 	$: railSlotPending =
-		(reviewPending || (!!reportId && reportId !== reviewReportId)) && $reviewRailExpected === true && !railOn;
+		(reviewPending || (!!reportId && reportId !== reviewReportId)) && $reviewRailExpected !== false && !railOn;
+	/** The legend's pressed filters (editor/theme.ts setEmphasis), kept across report switches. */
+	let legendEmphasis: LegendKey[] = [...DEFAULT_LEGEND];
+	function applyEmphasis(keys: LegendKey[]): void {
+		legendEmphasis = keys;
+		const view = reportEditorRef?.getView();
+		if (view && railOn) view.dispatch({ effects: setEmphasis.of(keys) });
+	}
 	// Gate G: the unsaved-changes bar sits under the report view, so the view gives back the bar's height; otherwise
 	// the view (and the rail's chat composer at its foot) runs on beneath the bar.
 	let saveBarHeight = 0;
@@ -766,7 +774,7 @@
 	let railChat: RailChat | undefined = undefined;
 	/** "Ask in chat": the rail composer takes the text whenever `seq` changes. */
 	let chatPrefill: { text: string; seq: number } | null = null;
-	/** The editor chip's "›": the rail scrolls to the item's card whenever `seq` changes. */
+	/** The inline control's "›" (flagged issues): the rail scrolls to the item's card whenever `seq` changes. */
 	let railReveal: { id: string; seq: number } | null = null;
 
 	const HEADING_LINE = /^([A-Z][A-Z /&()-]{2,}):\s*$/;
@@ -890,6 +898,7 @@
 				onHistory: handleReviewHistory,
 				onReveal: (itemId) => (railReveal = { id: itemId, seq: (railReveal?.seq ?? 0) + 1 }),
 				density: reviewDensity,
+				emphasis: legendEmphasis,
 				getItem: (itemId) => get(store).items.find((i) => i.id === itemId)
 			}),
 			EditorView.updateListener.of((u) => {
@@ -1263,8 +1272,8 @@
 			<!-- Title row -->
 			<div class="flex flex-col gap-1.5 min-w-0 sm:flex-1">
 				<h2 class="text-base sm:text-lg font-semibold text-white">Report Editor</h2>
-				{#if (railOn || railSlotPending || (reviewPending && $reviewRailExpected === true)) && response && !error}
-					<Legend />
+				{#if (railOn || railSlotPending || (reviewPending && $reviewRailExpected !== false)) && response && !error}
+					<Legend active={legendEmphasis} onFilter={applyEmphasis} />
 				{/if}
 			</div>
 			
@@ -1525,7 +1534,7 @@
 						<p class="text-sm text-gray-400">Response will appear here once generated.</p>
 					{/if}
 							</div>
-							{#if (railOn || railSlotPending || (reviewPending && $reviewRailExpected === true)) && reviewStore && response && !error}
+							{#if (railOn || railSlotPending || (reviewPending && $reviewRailExpected !== false)) && reviewStore && response && !error}
 								<div class="h-full shrink-0 overflow-hidden">
 									<ReviewRail
 										store={reviewStore}

@@ -135,18 +135,44 @@ function deferred() {
 }
 
 describe('rail placement before the review loads (no Copilot flash)', () => {
-	it('first-ever load: the aside is held back while the GET is out, then released when there is no rail', async () => {
+	it('first-ever load: the skeleton shows at once while the GET is out (aside held), and goes when there is no rail', async () => {
 		const d = deferred();
 		getReview.mockReturnValueOnce(d.promise);
 		const holds = rail.reviewRailHoldsAside('rep1');
 		render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });
-		await pause(100);
+		await expect.element(page.getByTestId('rv-skeleton')).toBeInTheDocument(); // before any /review response
+		expect(document.querySelector<HTMLElement>('[data-testid="review-rail"]')!.getBoundingClientRect().width).toBe(340);
 		expect(get(holds)).toBe(true); // pending, mode unknown: no aside
-		expect(document.querySelector('[data-testid="review-rail"]')).toBeNull(); // nothing guessed either
 		d.resolve(review('shadow', false, []));
 		await pause(200);
+		expect(document.querySelector('[data-testid="review-rail"]')).toBeNull();
 		expect(get(holds)).toBe(false);
 		expect(get(rail.reviewRailExpected)).toBe(false);
+	});
+
+	it('first-ever load with a rail: skeleton first, then the items fade in at the same width (no empty → populated jump)', async () => {
+		const d = deferred();
+		getReview.mockReturnValueOnce(d.promise);
+		render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });
+		await expect.element(page.getByTestId('rv-skeleton')).toBeInTheDocument();
+		expect(document.body.textContent).not.toContain('Nothing to review');
+		d.resolve(review('live', true, [action()]));
+		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
+		const slot = document.querySelector<HTMLElement>('[data-testid="review-rail"]')!;
+		expect(slot.getBoundingClientRect().width).toBe(340);
+		expect(getComputedStyle(slot.querySelector('.rv-items')!).animationName).toContain('rv-fade-in');
+	});
+
+	it('the mode is remembered across tabs (localStorage): a new tab shows no skeleton when the last answer was "no rail"', async () => {
+		rail.rememberRailMode(false);
+		expect(localStorage.getItem('rr_review_rail')).toBe('0');
+		sessionStorage.removeItem('rr_review_rail');
+		const d = deferred();
+		getReview.mockReturnValueOnce(d.promise);
+		render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });
+		await pause(150);
+		expect(document.querySelector('[data-testid="rv-skeleton"]')).toBeNull();
+		d.resolve(review('shadow', false, []));
 	});
 
 	it('first-ever load with a rail: held throughout, and the session remembers the mode', async () => {
@@ -221,28 +247,28 @@ describe('legend', () => {
 		expect(legend.closest('[data-testid="review-rail"]')).toBeNull();
 		const title = page.getByRole('heading', { name: 'Report Editor' }).element();
 		expect(title.nextElementSibling).toBe(legend);
-		expect(legend.textContent).toContain('Assumed normal');
+		expect(legend.textContent).toContain('AI-generated');
 		expect(document.querySelector('[aria-label="Density"]')).toBeNull();
 	});
 
-	it('is one compact row at desktop widths (short labels saying what the AI inferred, full meaning on hover); the copy button stays on the controls line', async () => {
+	it('compact labels (full meaning on hover), wrapping instead of scrolling; the copy button stays on the controls line', async () => {
 		await page.viewport(1280, 800);
 		getReview.mockResolvedValue(review('live', true, [action()]));
 		render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });
 		await expect.element(page.getByTestId('review-rail')).toBeInTheDocument();
 		const legend = document.querySelector<HTMLElement>('[data-testid="review-legend"]')!;
-		const items = [...legend.querySelectorAll<HTMLElement>('li')];
-		expect(items.map((li) => li.lastElementChild?.textContent)).toEqual([
+		const items = [...legend.querySelectorAll<HTMLElement>('button[data-rv-filter]')];
+		expect(items.map((b) => b.lastElementChild?.textContent)).toEqual([
 			'Dictated',
-			'Assumed normal (AI)',
-			'Check (AI-inferred)',
-			'Removed (contradicts)',
 			'Removed by you',
-			'Suggested (AI)'
+			'AI-generated',
+			'Recommendations',
+			'Removed (contradicts dictation)'
 		]);
-		expect(items[2].title).toContain('inferred by AI');
-		expect(items[3].title).toContain('contradicts your dictation');
-		expect(new Set(items.map((li) => Math.round(li.getBoundingClientRect().top))).size).toBe(1);
+		expect(legend.textContent).not.toContain('(AI)');
+		expect(items[2].title).toMatch(/assumed normal/i);
+		expect(items[4].title).toContain('contradicts your dictation');
+		expect(legend.scrollWidth).toBeLessThanOrEqual(legend.clientWidth + 1);
 		const controls = document.querySelector<HTMLElement>('[data-testid="editor-controls"]')!;
 		const copy = controls.querySelector<HTMLElement>('[aria-label="Copy report"]')!;
 		await page.viewport(700, 800);
@@ -256,6 +282,22 @@ describe('legend', () => {
 		expect(kids.length).toBeGreaterThan(1);
 		for (const k of kids) expect(Math.abs(mid(k) - mid(copy))).toBeLessThan(8);
 		await page.viewport(414, 896);
+	});
+
+	it('pills are toggles: Recommendations on by default, AI-generated off; pressing one changes the editor', async () => {
+		getReview.mockResolvedValue(review('live', true, [action()]));
+		render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });
+		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
+		const editor = () => document.querySelector<HTMLElement>('.cm-editor')!;
+		expect(editor().getAttribute('data-rv-emph')).toBe('rec');
+		const ai = page.getByRole('button', { name: /AI-generated/ });
+		await expect.element(ai).toHaveAttribute('aria-pressed', 'false');
+		await ai.click();
+		await expect.element(ai).toHaveAttribute('aria-pressed', 'true');
+		expect(editor().getAttribute('data-rv-emph')).toBe('ai rec');
+		await page.getByRole('button', { name: /Recommendations/ }).click();
+		await ai.click();
+		expect(editor().hasAttribute('data-rv-emph')).toBe(false);
 	});
 
 	it('is absent with the rail off', async () => {

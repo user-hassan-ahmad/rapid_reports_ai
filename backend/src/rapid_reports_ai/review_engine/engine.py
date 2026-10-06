@@ -53,7 +53,12 @@ conflict / number / removal outranks them; lane negatives overlapping them are d
 One card per claim (`claims`): a lane claim flagged in FINDINGS and repeated in IMPRESSION (same lane and kind, a
 conservative content match) is grouped before adjudication (`group_claims`), so one verdict covers both; the item's
 anchor is the FINDINGS copy and `evidence.also_anchors` lists the IMPRESSION copy. The negatives classifier does the
-same in its routing (`negatives.route`)."""
+same in its routing (`negatives.route`).
+
+Provenance (`provenance`, approved 2026-10-06): `ai_generated` marks undictated substantive clauses and
+`recommendation` undictated recommendation sentences (a code-built whole-sentence removal). Pure code over the
+alignment and the shared Jev pass, built after the negatives / brief items (whose spans they never mark); never
+adjudicated, never pre-applied, never probed or reprepared (`run["provenance"]` logs the counts)."""
 from __future__ import annotations
 
 import asyncio
@@ -67,8 +72,9 @@ from typing import Dict, List, Optional, Tuple
 
 from pydantic import BaseModel
 
+from ..report_reconcile import strip_p_values
 from ..report_review import is_negative
-from . import adjudicator, brief_normals, claims, jev_pass, live, negatives, store, verifier
+from . import adjudicator, brief_normals, claims, jev_pass, live, negatives, provenance, store, verifier
 from .alignment import Alignment, align
 from .checks import run_checks
 from .items import Candidate, Edit, ReviewInput, ReviewItem, Span, item_key, merge, text_hash
@@ -140,6 +146,20 @@ def _default_label(c: Candidate) -> str:
     return f"{c.kind.replace('_', ' ')}: {text}"[:80]
 
 
+def option_reason(inp: ReviewInput, c: Candidate) -> str:
+    """The user-facing reason of a pre-classed brief option. The brief's own reason ("finding borderline (p=0.74)",
+    "contextual") is an internal routing note kept in evidence; a finding-linked negative names its finding in
+    plain words, anything else has none."""
+    ev = c.evidence or {}
+    if ev.get("sub_kind") != "finding_negative":
+        return ""
+    o = next((o for o in inp.artifacts.options or [] if o.get("id") == ev.get("option_id")), None) or {}
+    finding = " ".join(str(o.get("finding") or "").split())
+    if finding and not finding[:2].isupper():          # keep a leading acronym ("SMV invasion")
+        finding = finding[:1].lower() + finding[1:]
+    return f"Pertinent negative for {finding}" if finding else ""
+
+
 def _key(first: Candidate, anchor: Optional[Span], line_text: Optional[str]) -> str:
     """Correction 9: the candidate's ORIGINAL kind; anchor text, else the dictated line, else the evidence (never
     the model-written label)."""
@@ -172,7 +192,8 @@ def build_item(inp: ReviewInput, run_id: str, o: adjudicator.Outcome) -> ReviewI
         probe = j.probe or probe
     else:                                # pre-classed brief option, not judged again
         cls, kind, label, edit = first.preclassed or "minor", first.kind, _default_label(first), first.proposed
-        reason = first.evidence.get("reason") or ""
+        reason = option_reason(inp, first)
+    label, reason = strip_p_values(label), strip_p_values(reason)
     section = next((c.section for c in g if c.section), None)
     evidence: Dict = {}
     for c in g:
@@ -326,6 +347,50 @@ def _would_preapply(inp: ReviewInput, items: List[ReviewItem], plans: Dict[str, 
             it.history.append({**c.history[-1], "event": "would_pre_apply"})
     shadow_items(neg_items)
     return report, log
+
+
+# ── what the rail may surface ───────────────────────────────────────────────
+
+def _placeable(inp: ReviewInput, it: ReviewItem) -> bool:
+    """A verified edit (the verifier's code guards passed) that applies to the reviewed report."""
+    v = it.verified or {}
+    return (it.edit is not None and bool(v.get("code"))
+            and verifier.apply_edit(inp.artifacts.report, it.edit, list(inp.artifacts.sections or [])) is not None)
+
+
+def _suppress(it: ReviewItem, why: str, h: str) -> None:
+    it.evidence = {**(it.evidence or {}), "suppressed": why, "cls_before": it.cls}
+    it.cls = "suppress"
+    it.history.append({"at": _now(), "event": "suppressed", "actor": "engine", "text_hash": h,
+                       "detail": {"reason": why}})
+
+
+def surface_gate(inp: ReviewInput, items: List[ReviewItem]) -> List[ReviewItem]:
+    """Suppress (never delete: the row and its evidence stay for the reads) what the rail must not show. Returns the
+    items it suppressed.
+    - An item stale on creation: its anchor is not the reviewed report's text at that span (`stale_on_creation`).
+    - An additions suggestion without a verified, placeable edit (`no_placeable_edit`): a brief option, any
+      `option` kind, or an additions item that offers an edit. Shown with Add, it would have nothing to add
+      (the client renders it "out of date" at once). Additions rail cards without an edit (an S4 `characterise`)
+      are not suggestions and stay.
+    Pre-applied items are facts, never gated."""
+    report = inp.artifacts.report
+    h = text_hash(report)
+    out = []
+    for it in items:
+        if it.cls == "suppress" or it.status != "open":
+            continue
+        a = it.anchor
+        if a is not None and report[a.start:a.end] != a.text:
+            _suppress(it, "stale_on_creation", h)
+        elif it.lane == "additions" and (it.kind == "option" or (it.evidence or {}).get("sub_kind")
+                                         or it.edit is not None) and not _placeable(inp, it):
+            it.edit = None
+            _suppress(it, "no_placeable_edit", h)
+        else:
+            continue
+        out.append(it)
+    return out
 
 
 # ── run ─────────────────────────────────────────────────────────────────────
@@ -598,17 +663,30 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
             plans.pop(it.id, None)
             deduped.append({"key": it.key, "kind": it.kind, "anchor": it.anchor.model_dump() if it.anchor else None,
                             "by": "post_check"})
+    prov: List[ReviewItem] = []
+    prov_log: Optional[dict] = None
+    try:                                 # provenance: undictated clauses and recommendations (pure code)
+        prov, prov_log = provenance.build_items(inp, run_id, al, jp, neg_items + brief_items)
+        for it in prov:
+            it.engine_version = ENGINE_VERSION
+        if bridge:
+            prov, _ = live.dedupe(prov, bridge)
+    except Exception as e:  # noqa: BLE001 - never fails the run
+        errors["provenance"] = f"{type(e).__name__}: {str(e)[:200]}"
+    for it in surface_gate(inp, items + neg_items + brief_items + prov):
+        plans.pop(it.id, None)
     report, pre_log = _would_preapply(inp, items, plans, neg_log, neg_items)
     items += neg_items                   # correction 10: never adjudicated (only one_card_per_clause pairs them)
     items += brief_items                 # never adjudicated, never pre-applied
     items += bridge
+    items += prov                        # never adjudicated, never pre-applied
     timings["total"] = int((time.monotonic() - t0) * 1000)
     errors.update({f"adjudicator_{k}": o.error for k, o in enumerate(outcomes) if o.error})
     run = {"lanes": lanes, "timings_ms": timings, "errors": errors,
            "cost": {"groups": len(outcomes), "adjudicated": sum(1 for o in outcomes if o.judgement or o.error),
                     "candidates": len(cands), "prefiltered": len(held),
                     "negatives_calls": 1 if neg_log and neg_log.get("candidates") else 0},
-           "pre_apply": pre_log, "negatives": _neg_summary(neg_log), "deduped": deduped, "post_check": bridge_log,
+           "pre_apply": pre_log, "negatives": _neg_summary(neg_log), "deduped": deduped, "post_check": bridge_log, "provenance": prov_log,
            "negatives_report": (neg_log or {}).get("report"),
            "negatives_post_removal_anchors": (neg_log or {}).get("post_removal_anchors") or {}}
     return ReviewResult(run=run, items=items, report=report)

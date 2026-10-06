@@ -145,3 +145,30 @@ async def test_engine_one_item_per_brief_span(monkeypatch):
                and i.kind in ("assumed_normal", "check")]
         assert dup == [], (b.evidence["term"], [(d.detectors, d.kind) for d in dup])
     assert any(d.get("source") == "brief_normals" for d in res.run["deduped"])
+
+
+# ── a placeholder pointer ("->", "-", "—") is no pointer (prod 2026-10-06: 'Check: may not hold given “->”') ──
+
+def test_placeholder_pointer_gives_the_generic_check_label():
+    brief = {"decisions": {"normals": [
+        {"text": P2, "pid": "P2", "linked": True, "mode": "verbatim", "action": "keep", "rendered": P2, "atoms": [
+            _atom(4, "kidneys", "implicated", "implicated", "The kidneys are unremarkable.", _span(P2, "kidneys"),
+                  "->")]}]}}
+    it = _by_term(bn.build_items(_inp(brief=brief), RUN))["kidneys"]
+    assert it.evidence["pointer"] == ""
+    assert "->" not in it.label and "->" not in it.reason
+    assert (it.label, it.reason) == negatives.check_text("uncertain", "")
+
+
+def test_check_text_ignores_a_pointer_with_no_words():
+    for p in ("->", "-", "—", " -> ", "…"):
+        assert negatives.check_text("uncertain", p) == negatives.check_text("uncertain", "")
+        assert negatives.check_text("conflict", p) == negatives.check_text("conflict", "")
+
+
+def test_label_parsers_drop_placeholder_pointers():
+    from rapid_reports_ai import linked_normals as ln
+    got = ln.parse_labels(["1 | implicated | ->", "2 | default | —", "3 | implicated | CBD 12 mm"], 3)
+    assert [got[i]["pointer"] for i in (1, 2, 3)] == ["", "", "CBD 12 mm"]
+    got = negatives.parse_labels(["1 | implicated | -> | no", "2 | implicated | mass | yes"], 2)
+    assert [got[i]["pointer"] for i in (1, 2)] == ["", "mass"]

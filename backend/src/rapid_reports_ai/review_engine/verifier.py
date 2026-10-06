@@ -887,27 +887,40 @@ def insert_from_line(report: str, line_text: str, section: str = "FINDINGS",
 OPTION_ANCHOR_MIN = 2   # shared core stems a finding needs with its sentence (all of them when it has fewer)
 
 
-def finding_anchor(report: str, finding: str, section: str, sections: Optional[List[str]] = None) -> Optional[str]:
+def _best_sentence(chunk: str, key: set, need: int, names: List[str]) -> Optional[str]:
+    """The one sentence of `chunk` sharing the most of `key`'s stems, at least `need`, strictly more than any other."""
+    scored = sorted(((len(key & core_stems(chunk[s:t])), chunk[s:t]) for s, t in _sentence_spans(chunk, names)),
+                    key=lambda x: -x[0])
+    if not scored or not key or scored[0][0] < need:
+        return None
+    if len(scored) > 1 and scored[1][0] == scored[0][0]:
+        return None
+    return scored[0][1]
+
+
+def finding_anchor(report: str, finding: str, section: str, sections: Optional[List[str]] = None,
+                   option: str = "") -> Optional[str]:
     """The sentence of `section` that best names `finding` (a finding-linked option's key), as an insert anchor, so
     the option lands beside its finding. Term overlap on core stems; the best sentence must share at least
-    `OPTION_ANCHOR_MIN` of them (all, for a one-term key) and beat every other sentence. None (the caller appends
-    to the section end) when no sentence is a confident, unique match, or the match cannot anchor: it does not end
-    a sentence, or its text is not unique in the report."""
+    `OPTION_ANCHOR_MIN` of them (all, for a one-term key) and beat every other sentence.
+
+    The key is often the skill sheet's category label ("Vascular involvement"), which the report never words that
+    way; when it names no sentence, the key plus the option's own words (`option`, e.g. "No portal vein
+    thrombosis.") are scored the same way, needing `OPTION_ANCHOR_MIN` shared stems, so the option lands beside the
+    sentence about the same structures. None (the caller appends to the section end) when no sentence is a
+    confident, unique match, or the match cannot anchor: it does not end a sentence, or its text is not unique in
+    the report."""
     names = sections or []
     key = core_stems(finding)
-    body = _section_body(report, section, names) if key else None
+    body = _section_body(report, section, names) if key or option else None
     if body is None:
         return None
     a, e = body
     chunk = report[a:e]
-    scored = sorted(((len(key & core_stems(chunk[s:t])), chunk[s:t]) for s, t in _sentence_spans(chunk, names)),
-                    key=lambda x: -x[0])
-    if not scored or scored[0][0] < min(OPTION_ANCHOR_MIN, len(key)):
-        return None
-    if len(scored) > 1 and scored[1][0] == scored[0][0]:
-        return None
-    anchor = scored[0][1]
-    if _MARKER.match(anchor) or not _SENT_CLOSE.search(anchor) or not _once(report, anchor):
+    anchor = _best_sentence(chunk, key, min(OPTION_ANCHOR_MIN, len(key)), names) if key else None
+    if anchor is None and option:
+        anchor = _best_sentence(chunk, key | core_stems(option), OPTION_ANCHOR_MIN, names)
+    if anchor is None or _MARKER.match(anchor) or not _SENT_CLOSE.search(anchor) or not _once(report, anchor):
         return None
     return anchor
 

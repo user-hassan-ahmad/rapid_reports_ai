@@ -3,18 +3,20 @@ import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import type { ReviewItem } from '../types';
 import { fromItems } from './field';
-import { reviewExtensions, setDensity, openPopover, LABELS } from './index';
+import { reviewExtensions, setDensity, setEmphasis, openPopover, LABELS } from './index';
 
 // Tiny SYNTHETIC report: a dictated finding, a green normal, an amber check, an action item with an edit, a
-// pre-applied insert, a removed (red) widget and an option.
+// pre-applied insert, an AI synthesis clause, a recommendation, a removed (red) widget and an option.
 const DICTATED = 'Simple cyst in the left kidney.';
 const GREEN = 'The liver is normal.';
 const AMBER = 'No hydronephrosis.';
 const ACTION = 'The spleen measures 9 cm.';
 const ADDED = 'No renal calculi.';
+const SYNTH = 'Overall appearances are benign.';
+const REC = 'Suggest follow-up ultrasound in 6 months.';
 const REMOVED = 'The kidneys are normal.';
 const OPTION = 'No free fluid.';
-const report = `${DICTATED} ${GREEN} ${AMBER} ${ACTION} ${ADDED}`;
+const report = `${DICTATED} ${GREEN} ${AMBER} ${ACTION} ${ADDED} ${SYNTH} ${REC}`;
 
 function item(over: Partial<ReviewItem> & Pick<ReviewItem, 'id' | 'kind' | 'cls'>): ReviewItem {
 	return {
@@ -32,8 +34,8 @@ function item(over: Partial<ReviewItem> & Pick<ReviewItem, 'id' | 'kind' | 'cls'
 	};
 }
 
-function span(text: string) {
-	const start = report.indexOf(text);
+function span(text: string, doc = report) {
+	const start = doc.indexOf(text);
 	return { start, end: start + text.length, text };
 }
 
@@ -68,6 +70,22 @@ const ITEMS: ReviewItem[] = [
 		edit: { mode: 'insert', after: ACTION, replace: ADDED }
 	}),
 	item({
+		id: 's1',
+		kind: 'ai_generated',
+		cls: 'info',
+		lane: 'accuracy',
+		detectors: ['provenance'],
+		anchor: span(SYNTH)
+	}),
+	item({
+		id: 'rec1',
+		kind: 'recommendation',
+		cls: 'minor',
+		label: 'Follow-up recommendation',
+		anchor: span(REC),
+		edit: { mode: 'remove', find: REC }
+	}),
+	item({
 		id: 'r1',
 		kind: 'removed',
 		cls: 'action',
@@ -93,15 +111,15 @@ afterEach(() => {
 	}
 });
 
-function mount(opts: Partial<Parameters<typeof reviewExtensions>[0]> = {}) {
+function mount(opts: Partial<Parameters<typeof reviewExtensions>[0]> = {}, items = ITEMS, doc = report) {
 	const onCommand = vi.fn();
-	const byId = new Map(ITEMS.map((i) => [i.id, i]));
+	const byId = new Map(items.map((i) => [i.id, i]));
 	const state = EditorState.create({
-		doc: report,
+		doc,
 		extensions: reviewExtensions({
 			onCommand,
 			getItem: (id) => byId.get(id),
-			initial: fromItems(report, ITEMS).items,
+			initial: fromItems(doc, items).items,
 			...opts
 		})
 	});
@@ -124,8 +142,8 @@ function click(el: Element) {
 	el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 }
 
-function chip(view: EditorView): HTMLElement | null {
-	return view.dom.querySelector<HTMLElement>('.rv-chip');
+function control(view: EditorView): HTMLElement | null {
+	return view.dom.querySelector<HTMLElement>('.rv-inline');
 }
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -135,12 +153,16 @@ function hoverOn(el: Element) {
 }
 
 function actionsOf(c: Element): string[] {
-	return [...c.querySelectorAll('button')].map((b) => b.getAttribute('data-rv-chip-action') ?? '');
+	return [...c.querySelectorAll('button')].map((b) => b.getAttribute('data-rv-action') ?? '');
+}
+
+function iconsOf(c: Element): string[] {
+	return [...c.querySelectorAll('button')].map((b) => b.textContent ?? '');
 }
 
 function actionBtn(c: Element, action: string): HTMLButtonElement {
-	const b = c.querySelector<HTMLButtonElement>(`button[data-rv-chip-action="${action}"]`);
-	if (!b) throw new Error(`no ${action} in chip ${c.textContent}`);
+	const b = c.querySelector<HTMLButtonElement>(`button[data-rv-action="${action}"]`);
+	if (!b) throw new Error(`no ${action} in control ${c.textContent}`);
 	return b;
 }
 
@@ -151,14 +173,31 @@ function targetEl(view: EditorView, id: string): HTMLElement {
 	);
 }
 
-/** Click / tap opens the chip at once. */
+/** Click / tap opens the control at once. */
 async function openOn(view: EditorView, id: string): Promise<HTMLElement> {
 	click(targetEl(view, id));
 	await tick();
-	const c = chip(view);
-	if (!c || c.getAttribute('data-rv-chip') !== id) throw new Error('chip did not open');
+	const c = control(view);
+	if (!c || c.getAttribute('data-rv-inline') !== id) throw new Error('control did not open');
 	return c;
 }
+
+/** Colour reads must not land mid-transition. */
+const styles: HTMLStyleElement[] = [];
+afterEach(() => styles.splice(0).forEach((s) => s.remove()));
+function noTransitions() {
+	const st = document.createElement('style');
+	st.textContent = '.cm-editor * { transition: none !important; }';
+	document.head.append(st);
+	styles.push(st);
+}
+
+const lastRect = (e: Element) => {
+	const rs = [...e.getClientRects()];
+	return rs[rs.length - 1];
+};
+
+const NONE = 'rgba(0, 0, 0, 0)';
 
 describe('review decorations', () => {
 	it('renders marks with their class, id and accessible name', () => {
@@ -167,9 +206,9 @@ describe('review decorations', () => {
 		expect(g.classList.contains('rv-normal')).toBe(true);
 		expect(g.textContent).toBe(GREEN);
 		expect(g.getAttribute('aria-label')).toContain(LABELS.normal);
-		const c = markEl(view, 'c1');
-		expect(c.classList.contains('rv-check')).toBe(true);
-		expect(c.getAttribute('aria-label')).toContain(LABELS.check);
+		expect(markEl(view, 'c1').classList.contains('rv-check')).toBe(true);
+		expect(markEl(view, 's1').classList.contains('rv-synth')).toBe(true);
+		expect(markEl(view, 'rec1').classList.contains('rv-rec')).toBe(true);
 		expect(markEl(view, 'a1').classList.contains('rv-action')).toBe(true);
 		expect(markEl(view, 'p1').classList.contains('rv-preapplied')).toBe(true);
 	});
@@ -179,181 +218,267 @@ describe('review decorations', () => {
 		expect(view.dom.dataset.density).toBe('quiet');
 		view.dispatch({ effects: setDensity.of('full') });
 		expect(view.dom.dataset.density).toBe('full');
-		const { view: v2 } = mount({ density: 'hidden' });
-		expect(v2.dom.dataset.density).toBe('hidden');
 	});
 
-	it('hovering a mark opens its chip after ~200 ms: one line, icon + icon buttons, no rationale', async () => {
+	it('the AI-generated layer (normal, check, synthesis) is plain text by default; the "ai" toggle shows dotted colours', () => {
 		const { view } = mount();
-		hoverOn(markEl(view, 'a1'));
-		await pause(60);
-		expect(chip(view)).toBeNull(); // not instant
-		await pause(250);
-		const c = chip(view)!;
-		expect(c).not.toBeNull();
-		expect(c.getAttribute('data-rv-chip')).toBe('a1');
-		expect(c.querySelector('.rv-chip-icon')!.textContent).toBe('✕');
-		expect(c.querySelector('.rv-chip-text')).toBeNull(); // the rationale lives on the rail card only
-		expect(c.textContent).not.toContain('Measurement differs');
-		expect(actionsOf(c)).toEqual(['apply', 'dismiss', 'reveal']);
-		for (const b of c.querySelectorAll('button')) {
-			expect(b.getAttribute('aria-label')).toBeTruthy();
-			expect(b.title).toBeTruthy();
+		noTransitions();
+		const cs = (id: string) => getComputedStyle(markEl(view, id));
+		for (const id of ['g1', 'c1', 's1']) {
+			expect(cs(id).textDecorationLine, id).toBe('none');
+			expect(cs(id).backgroundColor, id).toBe(NONE);
 		}
-		// one line, no diff box, no Edit
-		expect(c.querySelector('del, ins, input')).toBeNull();
-		expect(c.getBoundingClientRect().height).toBeLessThan(34);
+		view.dispatch({ effects: setEmphasis.of(['ai', 'rec']) });
+		const colours = new Set<string>();
+		for (const id of ['g1', 'c1', 's1']) {
+			expect(cs(id).textDecorationLine, id).toContain('underline');
+			expect(cs(id).textDecorationStyle, id).toBe('dotted');
+			expect(cs(id).backgroundColor, id).toBe(NONE);
+			colours.add(cs(id).textDecorationColor);
+		}
+		expect(colours.size).toBe(3); // green, amber, violet
+		view.dispatch({ effects: setEmphasis.of(['rec']) });
+		expect(cs('s1').textDecorationLine).toBe('none');
 	});
 
-	it('chips by type: check, normal, pre-applied, removed and option widgets', async () => {
+	it('the AI-generated layer has no actions: no inline control on hover, click or caret, no gutter marker', async () => {
+		const { view } = mount({ emphasis: ['ai', 'rec'] });
+		for (const id of ['g1', 'c1', 's1']) {
+			hoverOn(markEl(view, id));
+			click(markEl(view, id));
+		}
+		await pause(300);
+		expect(control(view)).toBeNull();
+		view.focus();
+		view.dispatch({ selection: { anchor: report.indexOf(AMBER) + 2 }, userEvent: 'select' });
+		await tick();
+		expect(control(view)).toBeNull();
+		view.dispatch({ effects: openPopover.of('s1') });
+		await tick();
+		expect(control(view)).toBeNull();
+	});
+
+	it('a recommendation is underlined by default (the "rec" toggle) and hides its underline when toggled off', () => {
 		const { view } = mount();
-		const cases: [string, string, string[]][] = [
-			['c1', '?', ['keep', 'remove', 'reveal']],
-			['g1', '✓', ['remove', 'reveal']],
-			['p1', '↶', ['undo', 'reveal']],
-			['r1', '↺', ['restore', 'reveal']],
-			['o1', '+', ['apply', 'reveal']]
-		];
-		for (const [id, icon, actions] of cases) {
-			const c = await openOn(view, id);
-			expect(c.getAttribute('data-rv-chip')).toBe(id);
-			expect(c.querySelector('.rv-chip-icon')!.textContent).toBe(icon);
-			expect(c.querySelector('.rv-chip-text')).toBeNull();
-			expect(actionsOf(c)).toEqual(actions);
-		}
+		noTransitions();
+		const cs = () => getComputedStyle(markEl(view, 'rec1'));
+		expect(cs().textDecorationLine).toContain('underline');
+		expect(cs().textDecorationStyle).toBe('dotted');
+		view.dispatch({ effects: setEmphasis.of([]) });
+		expect(cs().textDecorationLine).toBe('none');
 	});
 
-	it('chip buttons run the commands through the command callback and close the chip', async () => {
+	it('hovering a flagged action item expands ✓ / ✕ / › at the END of the highlight, inside the text flow', async () => {
 		const { view, onCommand } = mount();
-		click(actionBtn(await openOn(view, 'c1'), 'keep'));
-		expect(onCommand).toHaveBeenCalledWith('keep', 'c1', undefined);
+		const mark = markEl(view, 'a1');
+		hoverOn(mark);
+		await pause(60);
+		expect(control(view)).toBeNull(); // not instant
+		await pause(250);
+		const c = control(view)!;
+		expect(c.getAttribute('data-rv-inline')).toBe('a1');
+		expect(view.contentDOM.contains(c)).toBe(true);
+		expect(view.dom.querySelector('.cm-tooltip')).toBeNull();
+		expect(c.closest('.rv-mark')).toBeNull();
+		const end = lastRect(mark);
+		const r = c.getBoundingClientRect();
+		expect(Math.abs(r.left - end.right)).toBeLessThan(8);
+		expect(r.top).toBeLessThan(end.bottom);
+		expect(r.bottom).toBeGreaterThan(end.top);
+		expect(r.height).toBeLessThanOrEqual(end.height + 1);
+		expect(iconsOf(c)).toEqual(['✓', '✕', '›']);
+		for (const b of c.querySelectorAll('button')) expect(b.getAttribute('aria-label')).toBeTruthy();
+		expect(getComputedStyle(c).animationName).toContain('rv-inline-in');
+		expect(getComputedStyle(c).animationDuration).toBe('0.12s');
+		click(actionBtn(c, 'dismiss'));
+		expect(onCommand).toHaveBeenCalledWith('dismiss', 'a1', undefined);
+	});
+
+	it('a recommendation has no inline control (hover, click or caret)', async () => {
+		const { view } = mount();
+		hoverOn(markEl(view, 'rec1'));
+		click(markEl(view, 'rec1'));
+		await pause(300);
+		expect(control(view)).toBeNull();
+		view.focus();
+		view.dispatch({ selection: { anchor: report.indexOf(REC) + 2 }, userEvent: 'select' });
+		await tick();
+		expect(control(view)).toBeNull();
+	});
+
+	it('an AI-generated clause overlapping an action item is not drawn: the action item wins', async () => {
+		const clause = 'The spleen measures 9 cm.';
+		const items = [
+			ITEMS.find((i) => i.id === 'a1')!,
+			item({ id: 'sx', kind: 'ai_generated', cls: 'info', lane: 'accuracy', anchor: span(clause) })
+		];
+		const { view } = mount({ emphasis: ['ai', 'rec'] }, items);
+		expect(view.dom.querySelector('[data-rv-id="sx"]')).toBeNull();
+		expect(actionsOf(await openOn(view, 'a1'))).toEqual(['apply', 'dismiss', 'reveal']);
+	});
+
+	it('controls by type: flagged action, pre-applied, removed widget', async () => {
+		const { view } = mount();
+		const cases: [string, string[], string[]][] = [
+			['a1', ['apply', 'dismiss', 'reveal'], ['✓', '✕', '›']],
+			['p1', ['undo'], ['↶']],
+			['r1', ['restore'], ['↺']]
+		];
+		for (const [id, actions, icons] of cases) {
+			const c = await openOn(view, id);
+			expect(actionsOf(c), id).toEqual(actions);
+			expect(iconsOf(c), id).toEqual(icons);
+		}
+	});
+
+	it('control buttons run the commands through the command callback and collapse the control', async () => {
+		const { view, onCommand } = mount();
 		click(actionBtn(await openOn(view, 'r1'), 'restore'));
 		expect(onCommand).toHaveBeenCalledWith('restore', 'r1', undefined);
-		click(actionBtn(await openOn(view, 'o1'), 'apply'));
-		expect(onCommand).toHaveBeenCalledWith('apply', 'o1', undefined);
+		click(actionBtn(await openOn(view, 'p1'), 'undo'));
+		expect(onCommand).toHaveBeenCalledWith('undo', 'p1', undefined);
 		click(actionBtn(await openOn(view, 'a1'), 'apply'));
 		expect(onCommand).toHaveBeenCalledWith('apply', 'a1', undefined);
 		await tick();
-		expect(chip(view)).toBeNull();
+		expect(control(view)).toBeNull();
 	});
 
 	it('after an action the range ticks and fades (no toast)', async () => {
 		const { view } = mount();
-		click(actionBtn(await openOn(view, 'c1'), 'keep'));
+		click(actionBtn(await openOn(view, 'a1'), 'dismiss'));
 		await tick();
-		expect(view.dom.querySelector('.rv-flash')?.textContent).toBe(AMBER);
+		expect(view.dom.querySelector('.rv-flash')?.textContent).toBe('9 cm');
 		expect(view.dom.querySelector('.rv-flash-tick')).not.toBeNull();
 		await pause(800);
 		expect(view.dom.querySelector('.rv-flash')).toBeNull();
 	});
 
-	it('the chip stays open while the pointer is on it and closes when it leaves', async () => {
+	it('stays open while the pointer is on the mark or the control; collapses when it leaves both', async () => {
 		const { view } = mount();
 		const mark = markEl(view, 'a1');
 		const c = await openOn(view, 'a1');
 		mark.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: c }));
 		c.dispatchEvent(new MouseEvent('mouseenter'));
 		await pause(400);
-		expect(chip(view)).not.toBeNull();
-		c.dispatchEvent(new MouseEvent('mouseleave'));
+		expect(control(view)).not.toBeNull();
+		c.dispatchEvent(new MouseEvent('mouseleave', { relatedTarget: mark }));
 		await pause(400);
-		expect(chip(view)).toBeNull();
+		expect(control(view)).not.toBeNull();
+		mark.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
+		await pause(400);
+		expect(control(view)).toBeNull();
 	});
 
-	it('Escape closes the chip', async () => {
+	it('Escape collapses the control, from the editor or from one of its buttons', async () => {
 		const { view } = mount();
 		await openOn(view, 'a1');
 		view.contentDOM.dispatchEvent(
 			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
 		);
 		await tick();
-		expect(chip(view)).toBeNull();
+		expect(control(view)).toBeNull();
+		const c = await openOn(view, 'p1');
+		const keep = actionBtn(c, 'undo');
+		keep.focus();
+		keep.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+		await tick();
+		expect(control(view)).toBeNull();
 	});
 
-	it('keyboard: the caret moving into a mark opens its chip; Tab moves focus onto its buttons', async () => {
+	it('keyboard: the caret moving into an action item opens its control; Tab focuses its buttons; arrows move', async () => {
 		const { view } = mount();
-		const at = report.indexOf(AMBER) + 2;
 		view.focus();
-		view.dispatch({ selection: { anchor: at }, userEvent: 'select' });
+		view.dispatch({ selection: { anchor: report.indexOf('9 cm') + 1 }, userEvent: 'select' });
 		await tick();
-		expect(chip(view)?.getAttribute('data-rv-chip')).toBe('c1');
+		expect(control(view)?.getAttribute('data-rv-inline')).toBe('a1');
 		view.contentDOM.dispatchEvent(
 			new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
 		);
-		expect(document.activeElement?.getAttribute('data-rv-chip-action')).toBe('keep');
+		expect(document.activeElement?.getAttribute('data-rv-action')).toBe('apply');
+		document.activeElement!.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
+		);
+		expect(document.activeElement?.getAttribute('data-rv-action')).toBe('dismiss');
+		await pause(300);
+		expect(control(view)).not.toBeNull();
+		view.focus();
 		view.dispatch({ selection: { anchor: 0 }, userEvent: 'select' });
 		await tick();
-		expect(chip(view)).toBeNull();
+		expect(control(view)).toBeNull();
 	});
 
-	it('› asks the host to show the item in the rail', async () => {
+	it('› on a flagged issue asks the host to show its rail card; pre-applied rows have no link', async () => {
 		const onReveal = vi.fn();
 		const { view, onCommand } = mount({ onReveal });
-		click(actionBtn(await openOn(view, 'c1'), 'reveal'));
-		expect(onReveal).toHaveBeenCalledWith('c1');
+		click(actionBtn(await openOn(view, 'a1'), 'reveal'));
+		expect(onReveal).toHaveBeenCalledWith('a1');
 		expect(onCommand).not.toHaveBeenCalled();
+		expect(actionsOf(await openOn(view, 'p1'))).not.toContain('reveal');
 	});
 
-	it('hovering ⏎ previews the fix inline: old struck, new as ghost text; leaving clears it', async () => {
+	it('hovering an apply ✓ previews the fix inline: old struck, new as ghost text; leaving clears it', async () => {
 		const { view } = mount();
-		const c = await openOn(view, 'a1');
-		const apply = actionBtn(c, 'apply');
+		const apply = actionBtn(await openOn(view, 'a1'), 'apply');
 		apply.dispatchEvent(new MouseEvent('mouseenter'));
 		await tick();
 		expect(view.dom.querySelector('.rv-preview-del')?.textContent).toBe('9 cm');
 		expect(view.dom.querySelector('.rv-preview-ins')?.textContent).toBe('11 cm');
-		expect(view.state.doc.toString()).toBe(report); // a preview, not an edit
-		expect(view.dom.querySelector('.rv-chip del, .rv-chip ins')).toBeNull(); // no diff box
+		expect(view.state.doc.toString()).toBe(report);
 		apply.dispatchEvent(new MouseEvent('mouseleave'));
 		await tick();
 		expect(view.dom.querySelector('.rv-preview-del, .rv-preview-ins')).toBeNull();
 	});
 
-	it("widgets show their text but are not in the document (removed, option)", () => {
+	it('removed widgets show their text but are not in the document; options are never ghost text in the report', () => {
 		const { view } = mount();
 		const r = view.dom.querySelector<HTMLElement>('[data-rv-widget="r1"]')!;
 		expect(r.textContent).toContain(REMOVED);
 		expect(r.getAttribute('aria-label')).toContain(LABELS.removed);
-		const o = view.dom.querySelector<HTMLElement>('[data-rv-widget="o1"]')!;
-		expect(o.textContent).toContain(OPTION);
-		expect(o.getAttribute('aria-label')).toContain(LABELS.option);
 		expect(view.state.doc.toString()).not.toContain(REMOVED);
-		expect(view.state.doc.toString()).not.toContain(OPTION);
-		expect(r.querySelector('button')).toBeNull(); // actions live on the chip
+		expect(view.dom.querySelector('[data-rv-widget="o1"]')).toBeNull();
+		expect(view.dom.querySelector('.cm-line')!.textContent).not.toContain(OPTION);
 	});
 
-	it('quiet at rest: no fill; greens and pre-applied thin, amber checks and red actions bold full colour', () => {
-		const { view } = mount();
-		for (const [id, thickness] of [['g1', '1px'], ['p1', '1px'], ['c1', '2px'], ['a1', '2px']]) {
+	it('one consistent underline: soft dotted, no fill, discreet at rest (lit is stronger)', () => {
+		const { view } = mount({ emphasis: ['ai', 'rec'] });
+		noTransitions();
+		const ids = ['g1', 'c1', 's1', 'rec1', 'p1', 'a1'];
+		const first = getComputedStyle(markEl(view, 'g1'));
+		for (const id of ids) {
 			const cs = getComputedStyle(markEl(view, id));
-			expect(cs.backgroundColor, id).toBe('rgba(0, 0, 0, 0)');
-			expect(cs.textDecorationLine, id).toContain('underline');
-			expect(cs.textDecorationThickness, id).toBe(thickness);
+			expect(cs.backgroundColor, id).toBe(NONE);
+			expect(cs.textDecorationStyle, id).toBe('dotted');
+			expect(cs.textDecorationThickness, id).toBe(first.textDecorationThickness);
 		}
-		// amber / red at rest are the full line colour, the same as when lit
-		const color = (id: string) => getComputedStyle(markEl(view, id)).textDecorationColor;
-		const rest = { c1: color('c1'), a1: color('a1') };
-		markEl(view, 'c1').classList.add('rv-active');
-		markEl(view, 'a1').classList.add('rv-active');
-		expect(color('c1')).toBe(rest.c1);
-		expect(color('a1')).toBe(rest.a1);
+		for (const id of ['p1', 'a1']) {
+			const rest = getComputedStyle(markEl(view, id)).textDecorationColor;
+			markEl(view, id).classList.add('rv-active');
+			expect(getComputedStyle(markEl(view, id)).textDecorationColor, id).not.toBe(rest);
+			markEl(view, id).classList.remove('rv-active');
+		}
 	});
 
-	it('the open chip lights its mark (full colour + tint)', async () => {
+	it('legend filters: "dictated" fades AI highlights, "removed" tints removed widgets; empty resets', () => {
 		const { view } = mount();
-		await openOn(view, 'a1');
-		const lit = view.dom.querySelector<HTMLElement>('.rv-active')!;
-		expect(lit.textContent).toBe('9 cm');
-		const bg = getComputedStyle(lit.querySelector('.rv-action') ?? lit).backgroundColor;
-		expect(bg).not.toBe('rgba(0, 0, 0, 0)');
+		noTransitions();
+		view.dispatch({ effects: setEmphasis.of(['dictated']) });
+		expect(Number(getComputedStyle(markEl(view, 'a1')).opacity)).toBeLessThan(1);
+		const r = view.dom.querySelector<HTMLElement>('[data-rv-widget="r1"]')!;
+		view.dispatch({ effects: setEmphasis.of(['removed']) });
+		expect(getComputedStyle(r).backgroundColor).not.toBe(NONE);
+		view.dispatch({ effects: setEmphasis.of([]) });
+		expect(view.dom.hasAttribute('data-rv-emph')).toBe(false);
+		expect(getComputedStyle(r).backgroundColor).toBe(NONE);
 	});
 
-	it('draws a gutter marker per item line, keyed by cls, with an accessible name', () => {
+	it('draws gutter markers only for actionable items (not the AI-generated layer)', () => {
 		const { view } = mount();
 		const markers = [...view.dom.querySelectorAll<HTMLElement>('.rv-gutter-marker')];
 		expect(markers.length).toBe(1); // one line: the highest cls wins
 		expect(markers[0].classList.contains('rv-gutter-action')).toBe(true);
-		expect(markers[0].getAttribute('aria-label')).toBeTruthy();
+		const ai = [item({ id: 'x', kind: 'check', cls: 'minor', anchor: span(AMBER) })];
+		const { view: v2 } = mount({}, ai);
+		expect(v2.dom.querySelectorAll('.rv-gutter-marker').length).toBe(0);
 	});
 
 	it('defines --rv-* tokens on the editor (light by default)', () => {
@@ -365,58 +490,149 @@ describe('review decorations', () => {
 		const { view } = mount();
 		view.dispatch({ effects: openPopover.of('nope') });
 		await tick();
-		expect(chip(view)).toBeNull();
+		expect(control(view)).toBeNull();
 	});
 });
 
-describe('chip inside the report editor', () => {
-	it('stays visible when the host theme hides .cm-tooltip (ReportEditor does)', async () => {
-		const byId = new Map(ITEMS.map((i) => [i.id, i]));
-		const hostTheme = EditorView.theme({ '.cm-tooltip': { display: 'none' } }, { dark: true });
-		const state = EditorState.create({
-			doc: report,
-			extensions: [
-				hostTheme,
-				reviewExtensions({
-					onCommand: vi.fn(),
-					getItem: (id) => byId.get(id),
-					initial: fromItems(report, ITEMS).items
-				})
-			]
+describe('suggestions subsection', () => {
+	// SYNTHETIC two-section report.
+	const DOC = `FINDINGS:\nThe pancreas has a mass. No ascites.\n\nIMPRESSION:\nPancreatic mass.`;
+	const sugg = (over: Partial<ReviewItem> & Pick<ReviewItem, 'id'>) =>
+		item({
+			kind: 'option',
+			cls: 'minor',
+			lane: 'additions',
+			section: 'FINDINGS',
+			edit: { mode: 'insert', after: 'The pancreas has a mass.', replace: 'No portal vein thrombosis.' },
+			...over
 		});
-		const parent = document.createElement('div');
-		document.body.append(parent);
-		const view = new EditorView({ state, parent });
-		views.push(view);
-		const p = await openOn(view, 'c1');
-		expect(getComputedStyle(p).display).not.toBe('none');
+
+	it('renders a checkbox list directly under the section body, not in the document', async () => {
+		const { view } = mount({}, [sugg({ id: 'o1' })], DOC);
+		const box = view.dom.querySelector<HTMLElement>('[data-rv-suggestions]')!;
+		expect(box).not.toBeNull();
+		expect(box.textContent).toContain('Suggestions');
+		const cb = box.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+		expect(cb.checked).toBe(false);
+		expect(box.textContent).toContain('No portal vein thrombosis.');
+		expect(view.state.doc.toString()).toBe(DOC); // copy / export unaffected
+		// between the FINDINGS body and the IMPRESSION heading
+		const lines = [...view.contentDOM.querySelectorAll<HTMLElement>('.cm-line')];
+		const body = lines.find((l) => l.textContent?.includes('No ascites.'))!;
+		const impression = lines.find((l) => l.textContent === 'IMPRESSION:')!;
+		const b = box.getBoundingClientRect();
+		expect(b.top).toBeGreaterThanOrEqual(body.getBoundingClientRect().bottom - 1);
+		expect(b.bottom).toBeLessThanOrEqual(impression.getBoundingClientRect().top + 1);
+		expect(view.dom.querySelector('.cm-line')!.parentElement!.textContent).not.toContain('◌');
+	});
+
+	it('ticking applies the insert (apply); unticking an applied one undoes it (undo)', async () => {
+		const applied = DOC.replace('The pancreas has a mass.', 'The pancreas has a mass. No splenic vein thrombosis.');
+		const items = [
+			sugg({ id: 'o1' }),
+			sugg({
+				id: 'o2',
+				status: 'applied',
+				edit: { mode: 'insert', after: 'The pancreas has a mass.', replace: 'No splenic vein thrombosis.' }
+			})
+		];
+		const { view, onCommand } = mount({}, items, applied);
+		const boxes = view.dom.querySelectorAll<HTMLElement>('[data-rv-suggestions]');
+		expect(boxes.length).toBe(1);
+		const cb = (id: string) =>
+			view.dom.querySelector<HTMLInputElement>(`[data-rv-suggestion="${id}"] input`)!;
+		expect(cb('o1').checked).toBe(false);
+		expect(cb('o2').checked).toBe(true);
+		cb('o1').click();
+		expect(onCommand).toHaveBeenCalledWith('apply', 'o1');
+		cb('o2').click();
+		expect(onCommand).toHaveBeenCalledWith('undo', 'o2');
+	});
+
+	it('hides suggestions that are stale, answered, suppressed or have no placeable edit', () => {
+		const items = [
+			sugg({ id: 'stale', status: 'stale' }),
+			sugg({ id: 'gone', status: 'dismissed' }),
+			sugg({ id: 'quiet', cls: 'suppress' }),
+			sugg({ id: 'noedit', edit: null }),
+			sugg({ id: 'nowhere', edit: { mode: 'insert', after: 'Not in this report.', replace: 'Text.' } })
+		];
+		const { view } = mount({}, items, DOC);
+		expect(view.dom.querySelector('[data-rv-suggestions]')).toBeNull();
+	});
+
+	it('recommendations join the block ticked ("Recommendations & suggestions"): untick removes, re-tick restores', async () => {
+		const REC2 = 'Suggest surgical review.';
+		const doc = DOC.replace('Pancreatic mass.', `Pancreatic mass. ${REC2}`);
+		const rec = item({
+			id: 'r1',
+			kind: 'recommendation',
+			cls: 'minor',
+			lane: 'additions',
+			section: 'IMPRESSION',
+			anchor: span(REC2, doc),
+			edit: { mode: 'remove', find: REC2, section: 'IMPRESSION' }
+		});
+		const sg = sugg({ id: 'o1', section: 'IMPRESSION', edit: { mode: 'insert', after: 'Pancreatic mass.', replace: 'No metastases.' } });
+		const { view, onCommand } = mount({}, [rec, sg], doc);
+		const box = view.dom.querySelector<HTMLElement>('[data-rv-suggestions]')!;
+		expect(box.querySelector('.rv-suggestions-title')!.textContent).toBe('Recommendations & suggestions');
+		const rows = [...box.querySelectorAll<HTMLElement>('[data-rv-suggestion]')];
+		expect(rows.map((r) => r.getAttribute('data-rv-kind'))).toEqual(['recommendation', 'suggestion']);
+		const cb = rows[0].querySelector('input')!;
+		expect(cb.checked).toBe(true);
+		expect(rows[0].textContent).toContain(REC2);
+		cb.click();
+		expect(onCommand).toHaveBeenCalledWith('remove', 'r1');
+		// once removed (applied) it is unticked; ticking restores it
+		const removed = { ...rec, status: 'applied' as const };
+		const after = doc.replace(` ${REC2}`, '');
+		const { view: v2, onCommand: cmd2 } = mount({}, [removed], after);
+		const cb2 = v2.dom.querySelector<HTMLInputElement>('[data-rv-suggestion="r1"] input')!;
+		expect(cb2.checked).toBe(false);
+		cb2.click();
+		expect(cmd2).toHaveBeenCalledWith('undo', 'r1');
+	});
+
+	it('a recommendation without a placeable edit is ticked and disabled ("Edit in text")', () => {
+		const REC2 = 'Suggest surgical review.';
+		const doc = DOC.replace('Pancreatic mass.', `Pancreatic mass. ${REC2}`);
+		const rec = item({ id: 'r1', kind: 'recommendation', cls: 'minor', lane: 'additions', section: 'IMPRESSION', anchor: span(REC2, doc), edit: null });
+		const { view } = mount({}, [rec], doc);
+		const row = view.dom.querySelector<HTMLElement>('[data-rv-suggestion="r1"]')!;
+		expect(row.querySelector('input')!.checked).toBe(true);
+		expect(row.querySelector('input')!.disabled).toBe(true);
+		expect(row.title).toBe('Edit in text');
+		expect(view.dom.querySelector('.rv-suggestions-title')!.textContent).toBe('Recommendations & suggestions');
+	});
+
+	it('an additions insert is a suggestion too; each section gets its own list', () => {
+		const items = [
+			sugg({ id: 'o1' }),
+			item({
+				id: 'g1',
+				kind: 'classification',
+				cls: 'minor',
+				lane: 'additions',
+				section: 'IMPRESSION',
+				edit: { mode: 'insert', after: 'Pancreatic mass.', replace: 'Borderline resectable.' }
+			})
+		];
+		const { view } = mount({}, items, DOC);
+		const boxes = [...view.dom.querySelectorAll<HTMLElement>('[data-rv-suggestions]')];
+		expect(boxes.length).toBe(2);
+		expect(boxes[1].textContent).toContain('Borderline resectable.');
 	});
 });
 
-describe('chip placement never covers text', () => {
-	// SYNTHETIC prose in a narrow wrapped editor: two paragraphs separated by a blank line.
+describe('inline control in wrapped prose', () => {
 	const FILL = 'The structure is unremarkable and the adjacent tissues are preserved without change. ';
-	const P1 = FILL.repeat(3) + 'Last words here.';
-	const P2 = 'Mark here starts the second paragraph. ' + FILL.repeat(2);
-	const DEFAULT_DOC = `${P1}\n\n${P2}`;
+	const DOC = `FINDINGS:\n${FILL}Target mark sits here. ${FILL.repeat(3)}`;
 
-	function textRects(view: EditorView): DOMRect[] {
-		const out: DOMRect[] = [];
-		const walk = document.createTreeWalker(view.contentDOM, NodeFilter.SHOW_TEXT);
-		for (let n = walk.nextNode(); n; n = walk.nextNode()) {
-			if (!n.textContent?.trim()) continue;
-			const r = document.createRange();
-			r.selectNodeContents(n);
-			out.push(...[...r.getClientRects()].filter((x) => x.width > 0 && x.height > 0));
-		}
-		return out;
-	}
-	const hits = (a: DOMRect, b: DOMRect) =>
-		a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
-
-	function mountAt(text: string, top = 200, DOC = DEFAULT_DOC) {
+	it('keeps the line height (compact) and collapses back to the same layout', async () => {
+		const text = 'Target mark';
 		const start = DOC.indexOf(text);
-		const it_ = item({ id: 'k', kind: 'check', cls: 'minor', anchor: { start, end: start + text.length, text }, evidence: { check_reason: 'uncertain', pointer: 'a dictated finding' } });
+		const it_ = item({ id: 'k', kind: 'measurement', cls: 'action', anchor: { start, end: start + text.length, text }, edit: { mode: 'replace', find: text, replace: 'Target' } });
 		const state = EditorState.create({
 			doc: DOC,
 			extensions: [
@@ -426,46 +642,22 @@ describe('chip placement never covers text', () => {
 			]
 		});
 		const parent = document.createElement('div');
-		parent.style.cssText = `position:absolute;left:20px;top:${top}px;width:440px`;
+		parent.style.cssText = 'position:absolute;left:20px;top:200px;width:440px';
 		document.body.append(parent);
 		const view = new EditorView({ state, parent });
 		views.push(view);
-		return view;
-	}
-
-	async function placed(view: EditorView) {
+		const lineH = () =>
+			[...view.contentDOM.querySelectorAll<HTMLElement>('.cm-line')].map((l) => l.getBoundingClientRect().height);
+		const before = lineH();
 		const c = await openOn(view, 'k');
-		await pause(200); // past the chip's fade-and-rise
+		await pause(200);
+		expect(Math.abs(c.getBoundingClientRect().left - lastRect(markEl(view, 'k')).right)).toBeLessThan(8);
+		expect(c.getBoundingClientRect().width).toBeLessThan(80); // three icons at most
+		const lineHeight = Number.parseFloat(getComputedStyle(view.contentDOM.querySelector('.cm-line')!).lineHeight);
+		expect(c.getBoundingClientRect().height).toBeLessThanOrEqual(lineHeight);
+		view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
 		await tick();
-		const rects = [...view.dom.querySelectorAll<HTMLElement>('[data-rv-id="k"]')].flatMap((e) => [...e.getClientRects()]);
-		const markTop = Math.min(...rects.map((r) => r.top));
-		const markBottom = Math.max(...rects.map((r) => r.bottom));
-		return { chip: c.getBoundingClientRect(), markTop, markBottom, text: textRects(view) };
-	}
-
-	it('sits clear above the mark when the space above is free (blank line), over no text', async () => {
-		const { chip: r, markTop, text } = await placed(mountAt('Mark here'));
-		expect(r.bottom).toBeLessThanOrEqual(markTop);
-		expect(text.filter((t) => hits(r, t))).toEqual([]);
-	});
-
-	it('goes below when the line above is full text and the line below is free', async () => {
-		const { chip: r, markBottom, text } = await placed(mountAt('Last words here.'));
-		expect(r.top).toBeGreaterThanOrEqual(markBottom);
-		expect(text.filter((t) => hits(r, t))).toEqual([]);
-	});
-
-	it('mid-paragraph (full lines above and below): moves to the nearest text-free spot, never over text', async () => {
-		const doc = `FINDINGS:\n${'The structure is unremarkable and the adjacent tissues are preserved without change. '.repeat(1)}Target mark sits here. ${FILL.repeat(3)}`;
-		const view = mountAt('Target mark', 200, doc);
-		const { chip: r, markTop, markBottom, text } = await placed(view);
-		expect(r.bottom <= markTop || r.top >= markBottom).toBe(true);
-		expect(text.filter((t) => hits(r, t))).toEqual([]);
-	});
-
-	it('goes below when there is no room above (top of the viewport)', async () => {
-		const view = mountAt('The structure', 0);
-		const { chip: r, markBottom } = await placed(view);
-		expect(r.top).toBeGreaterThanOrEqual(markBottom);
+		expect(control(view)).toBeNull();
+		expect(lineH()).toEqual(before);
 	});
 });

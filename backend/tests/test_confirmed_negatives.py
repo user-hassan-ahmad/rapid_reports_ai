@@ -167,8 +167,20 @@ async def test_options_carry_a_section_and_finding_negatives_skip_the_writer(mon
     assert out[0] == {"id": "opt0", "kind": "recommendation", "section": "IMPRESSION",
                       "sentence": "MRI brain is recommended.", "reason": "either way", "source": "IMAGING: MRI brain"}
     assert out[1] == {"id": "fn0", "kind": "finding_negative", "section": "FINDINGS",
-                      "sentence": "No uncal herniation.", "reason": "contextual",
+                      "sentence": "No uncal herniation.", "reason": "", "note": "contextual",
                       "source": "No uncal herniation", "finding": "subdural haematoma"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("raw, public", [("finding borderline (p=0.74)", ""), ("contextual", ""),
+                                         ("finding reported (p=0.62)", ""), ("unanticipated finding",
+                                                                             "unanticipated finding"),
+                                         ("either way", "either way"), ("", "")])
+async def test_option_reasons_never_show_a_p_value_or_a_routing_note(raw, public):
+    out = await qrg._write_options([{"kind": "finding_negative", "section": "FINDINGS", "text": "No ascites",
+                                     "finding": "x", "reason": raw}], "f", "CT")
+    assert out[0]["reason"] == public and "p=" not in out[0]["reason"]
+    assert out[0].get("note", "") == (raw if raw != public else "")      # the internal note is kept
 
 
 @pytest.mark.asyncio
