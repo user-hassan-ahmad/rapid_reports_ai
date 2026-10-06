@@ -10,6 +10,7 @@ import { tagsStore } from '$lib/stores/tags';
 import { getTagColor, getTagColorWithOpacity } from '$lib/utils/tagColors.js';
 import { draftStore } from '$lib/stores/draft.js';
 import { API_URL } from '$lib/config';
+import { fetchSavedReport, savedSections } from '$lib/review/savedReport';
 
 	const dispatch = createEventDispatcher();
 
@@ -50,6 +51,8 @@ export let enhancementGuidelinesCount = 0;
 	let variableValues; // No default - prevents Svelte from resetting on re-render
 	let response = null;
 	let responseModel = null;
+	/** @type {string[] | null} */
+	let reviewSections = null;
 	let loading = false;
 	let error = null;
 	let reportId = null;  // For enhancement sidebar
@@ -77,6 +80,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 	let lastTemplateId = null;
 
 	// Form ref and workspace state for draft restore (bound from TemplateForm)
+	/** @type {any} */
 	let formRef = null;
 	let scratchpadContent = '';
 	let prePoppedSections = [];
@@ -1183,6 +1187,39 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 
 	export function dismissFromParent() {
 		draftStore.clearTemplateTab();
+	}
+
+	/** Unsaved work in the open form (History "Open" asks before replacing it). */
+	export function hasUnsavedWork() {
+		return !!formRef?.hasUnsavedWork?.();
+	}
+
+	/** History "Open" (Plan 3 E2, spec §12.6): select the report's template, restore its saved inputs and show the
+	 * saved report in the viewer, which loads its stored review run, items and workspace state from `reportId`.
+	 * Nothing is generated, re-run or probed. Returns false when the template is not available (the caller falls
+	 * back to the read-only preview). */
+	export async function openExisting(report) {
+		if (!report?.template_id) return false;
+		formRef?.abandonGeneration?.(); // a report still generating never lands over the opened one
+		report = await fetchSavedReport(report); // the report as saved now, not the cached history row
+		const templateId = report?.template_id;
+		if (!templateId) return false;
+		if (!$templatesStore.templates || $templatesStore.templates.length === 0) {
+			await templatesStore.loadTemplates();
+		}
+		if (!($templatesStore.templates || []).some((t) => t.id === templateId)) return false;
+		variableValuesByTemplate[templateId] = { ...(report.input_data?.variables ?? {}) };
+		lastTemplateId = null; // re-sync the inputs from the saved values, even when this template is already open
+		selectedTemplateId.set(templateId);
+		await tick(); // the form resets on a template change before the report lands
+		error = null;
+		loading = false;
+		response = report.report_content ?? '';
+		responseModel = report.model_used ?? null;
+		reviewSections = savedSections(report);
+		reportId = report.id;
+		await tick();
+		return true;
 	}
 
 	onMount(async () => {
@@ -2887,6 +2924,7 @@ $: if (externalResponseVersion && externalResponseVersion !== lastExternalRespon
 			bind:error
 			bind:scratchpadContent
 			bind:prePoppedSections
+			bind:reviewSections
 			{apiKeyStatus}
 			{reportUpdateLoading}
 			reportId={reportId}

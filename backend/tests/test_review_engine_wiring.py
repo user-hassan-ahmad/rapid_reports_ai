@@ -20,6 +20,7 @@ from rapid_reports_ai.review_engine import engine
 @pytest.fixture(autouse=True)
 def _clear_tasks():
     engine._REVIEW_TASKS.clear()
+    engine._IN_FLIGHT.clear()
     yield
     for t in list(engine._REVIEW_TASKS):
         try:
@@ -27,6 +28,7 @@ def _clear_tasks():
         except RuntimeError:   # its loop already closed
             pass
     engine._REVIEW_TASKS.clear()
+    engine._IN_FLIGHT.clear()
 
 
 # ── schedule_review ─────────────────────────────────────────────────────────

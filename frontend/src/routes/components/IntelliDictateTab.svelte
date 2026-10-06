@@ -14,6 +14,8 @@ import type { CoverageTrace, LabConfig, PillThresholds } from '$lib/dictation-la
 import type { DecisionRecord, OutcomeEvent } from '$lib/dictation-lab/decisionFirst';
 import { pillState } from '$lib/dictation-lab/coverage';
 import { effectiveConfig } from '$lib/dictation-lab/package';
+import { hasUnsavedWork as unsavedWork } from '$lib/utils/confirmGate';
+import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedReport';
 
 	let toast: { show: (msg: string) => void } | undefined;
 
@@ -59,6 +61,7 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 		error: string | null;
 		description?: string | null;
 		options?: ReportOption[];
+		sections?: string[];
 	}
 
 	interface IntelliPrompt { question: string; source_text: string; rationale?: string; }
@@ -108,6 +111,10 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 	export let reportId: any = null;
 	// Reporter-choice options carried on the quick-report candidate.
 	let reportOptions: ReportOption[] = [];
+	// The report's section names (candidate.sections / artifacts.sections), for the review rail; null = headings.
+	let reviewSections: string[] | null = null;
+	// Bumped by every generation and by History "Open": a stream's events apply only while its token is current.
+	let generationToken = 0;
 	export let reportUpdateLoading = false;
 	export let versionHistoryRefreshKey = 0;
 	export let enhancementGuidelinesCount = 0;
@@ -409,11 +416,13 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 		if (!scratchpadRef) return;
 
 		const content = scratchpadToFindings(scratchpadRef.getContent());
+		const gen = ++generationToken;
 		loading = true;
 		error = null;
 		response = null;
 		responseModel = null;
 		reportOptions = [];
+		reviewSections = null;
 		applicableGuidelines = [];
 
 		try {
@@ -439,6 +448,7 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 				body: JSON.stringify(body)
 			});
 
+			if (gen !== generationToken) return; // History "Open" (or a newer generation) took over
 			if (!res.ok) {
 				error = `Failed to generate report (HTTP ${res.status}). Please try again.`;
 				loading = false;
@@ -451,6 +461,7 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 			//   event: error      (upstream failure before the generator fires)
 			let generatorErrored = false;
 			await readSSEStream(res, (eventName, data) => {
+				if (gen !== generationToken) return; // a stale stream never touches the open report
 				if (eventName === 'candidate') {
 					const cand: Candidate = data;
 					if (cand.error || !cand.content) {
@@ -461,6 +472,7 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 					response = cand.content;
 					responseModel = cand.model;
 					reportOptions = panelOptions(cand.options ?? []);
+					reviewSections = sectionList(cand.sections);
 					hasResponseEver = true;
 					findingsAtReportGeneration = content;
 					loading = false;
@@ -482,8 +494,10 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 				}
 			});
 
+			if (gen !== generationToken) return;
 			applicableGuidelines = [];
 		} catch (e) {
+			if (gen !== generationToken) return;
 			error = 'Failed to connect. Please try again.';
 			loading = false;
 		}
@@ -493,6 +507,7 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 		response = null;
 		responseModel = null;
 		reportOptions = [];
+		reviewSections = null;
 		error = null;
 		applicableGuidelines = [];
 		hasResponseEver = false;
@@ -510,9 +525,11 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 		activePrompts = prompts;
 	}
 
-	function copyToClipboard() {
-		if (!response) return;
-		navigator.clipboard.writeText(response).then(() => {
+	/** The viewer sends the live editor document (unsaved edits and review fixes included). */
+	function copyToClipboard(e?: CustomEvent<{ content?: string }>) {
+		const text = e?.detail?.content ?? response;
+		if (!text) return;
+		navigator.clipboard.writeText(text).then(() => {
 			if (toast) toast.show('Copied to clipboard!');
 		});
 	}
@@ -527,8 +544,9 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 		dispatch('historyRestored', detail);
 	}
 
-	async function handleReportSave(event: CustomEvent<{ content: string }>) {
+	async function handleReportSave(event: CustomEvent<{ content: string; reviewAppliedItemIds?: string[] }>) {
 		const newContent = event.detail.content;
+		const reviewIds = event.detail.reviewAppliedItemIds;
 		if (!reportId) return;
 
 		try {
@@ -557,7 +575,8 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 						headers,
 						body: JSON.stringify({
 							final_report_content: newContent,
-							...(reportOptions.length ? { applied_option_ids: appliedOptionIds(newContent, reportOptions) } : {})
+							...(reportOptions.length ? { applied_option_ids: appliedOptionIds(newContent, reportOptions) } : {}),
+							...(reviewIds ? { review_applied_item_ids: reviewIds } : {})
 						})
 					});
 				} catch {
@@ -614,7 +633,59 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 		dismissIntelliDraft();
 	}
 
+	/** History "Open" (Plan 3 E2, spec §12.6): show a saved report in the viewer. The viewer loads its stored review
+	 * run, items and workspace state from `reportId`; nothing is generated, re-run or probed. The dictation workspace
+	 * is closed and the case details show the saved report's scan type and history. */
+	export async function openExisting(report: {
+		id: string;
+		report_content?: string | null;
+		model_used?: string | null;
+		input_data?: { variables?: Record<string, string>; extracted_scan_type?: string } | null;
+		candidate_reports?: Array<{ sections?: unknown } | null> | null;
+	}): Promise<void> {
+		++generationToken; // a report still streaming in never lands over the opened one
+		++analyseVersion; // drop any in-flight analyser events for the old case
+		loading = false;
+		const opening = generationToken;
+		report = await fetchSavedReport(report); // the report as saved now, not the cached history row
+		if (opening !== generationToken) return; // a newer Open or generation took over meanwhile
+		const vars = report.input_data?.variables ?? {};
+		fastSheetId = '';
+		bestSheetId = '';
+		analyseLoading = false;
+		prePoppedSections = [];
+		sectionsGeneratedFromScanType = '';
+		sectionsGeneratedFromHistory = '';
+		activePrompts = [];
+		coveredSections = new Set();
+		scanType = vars.SCAN_TYPE ?? report.input_data?.extracted_scan_type ?? '';
+		clinicalHistory = vars.CLINICAL_HISTORY ?? '';
+		applicableGuidelines = [];
+		reportOptions = [];
+		error = null;
+		loading = false;
+		response = report.report_content ?? '';
+		responseModel = report.model_used ?? null;
+		reviewSections = savedSections(report);
+		reportId = report.id;
+		hasResponseEver = true;
+		findingsAtReportGeneration = scratchpadToFindings(scratchpadContent);
+		await tick();
+	}
+
 	let reportViewerRef: any = null;
+
+	/** History "Open" asks before replacing this tab when it holds unsaved work: a dictation in progress (recording,
+	 * or scratchpad findings no report was generated from), a report still generating, or unsaved editor changes. */
+	export function hasUnsavedWork(): boolean {
+		if (loading) return true; // a report is generating: Open would drop it
+		return unsavedWork({
+			recording: isRecording,
+			findings: scratchpadToFindings(scratchpadContent),
+			findingsAtReport: findingsAtReportGeneration,
+			editorDirty: !!reportViewerRef?.hasUnsavedEdits?.()
+		});
+	}
 
 	export function handleExternalAuditAcknowledge(detail: { criterion: string; resolutionMethod: string }) {
 		reportViewerRef?.acknowledgeFromExternal?.(detail);
@@ -1018,6 +1089,7 @@ import { effectiveConfig } from '$lib/dictation-lab/package';
 		{findingsStale}
 		activeCandidateModel={null}
 		options={reportOptions}
+		{reviewSections}
 		on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
 	on:auditStateChange={(e) => dispatch('auditStateChange', e.detail)}
 	on:openVersionHistory={() => dispatch('openVersionHistory')}

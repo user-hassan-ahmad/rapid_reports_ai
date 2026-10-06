@@ -10,8 +10,9 @@ logger = logging.getLogger(__name__)
 from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, File, UploadFile, HTTPException
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Dict, Optional, List, Any, Literal
+from typing import Dict, Optional, List, Any, Literal, Union
 import copy
 import hashlib
 import os
@@ -85,6 +86,9 @@ from .encryption import encrypt_api_key, decrypt_api_key, get_system_api_key
 from .canvas_routes import canvas_router
 from .agentic_routes import agentic_router
 from .chat_prompt import build_chat_system_prompt
+from . import chat_edits as _chat_edits
+from . import chat_thread as _chat_thread
+from .review_engine import limits as _review_limits
 from .enhancement_utils import (
     MODEL_CONFIG,
     MODEL_PROVIDERS,
@@ -3875,6 +3879,10 @@ class ChatRequest(BaseModel):
     message: str
     history: Optional[List[Dict[str, Any]]] = None
     audit_fix_context: Optional[AuditFixContext] = None
+    # Review rail (spec §12.5): the editor's current text (edits are checked against it; defaults to the stored
+    # report) and the open review items (ids, or compact {id, section, kind, label}) so chat doesn't duplicate them.
+    text: Optional[str] = None
+    open_items: Optional[List[Union[str, Dict[str, Any]]]] = None
 
 class ComparisonRequest(BaseModel):
     prior_reports: List[dict]  # [{text: str, date?: str}]
@@ -3939,6 +3947,7 @@ class ChatStructuredActionsRequest(BaseModel):
             "message is self-contained."
         ),
     )
+    edits_json: Optional[str] = Field(None, description=_chat_edits.EDITS_JSON_DESCRIPTION)
 
 
 class SearchExternalGuidelinesRequest(BaseModel):
@@ -4162,6 +4171,33 @@ def _merge_chat_source_lists(
     return out
 
 
+def _chat_open_items_block(db: Session, report_id: str, open_items: Optional[list]) -> str:
+    """Spec §12.5: the open review items go into the chat context. Ids are resolved from the stored items."""
+    if not open_items:
+        return ""
+    try:   # fail open: chat still answers without the items (a lookup failure or a malformed entry)
+        stored: list = []
+        if any(isinstance(o, str) or (isinstance(o, dict) and not o.get("label")) for o in open_items):
+            from .review_engine import store as _review_store
+            stored = _review_store.list_items(db, report_id)
+        return _chat_edits.format_open_items_block(_chat_edits.resolve_open_items(open_items, stored))
+    except Exception as e:
+        print(f"⚠️ chat open_items failed: {type(e).__name__}: {str(e)[:200]}")
+        return ""
+
+
+def _chat_verified_edits(report: Any, text: str, raw_edits: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Each chat edit through the one-click code guards against the current text; fails closed per edit."""
+    if not raw_edits:
+        return []
+    dictation, history, sections = _chat_edits.report_sources(report)
+    try:
+        return _chat_edits.verify_chat_edits(text, raw_edits, dictation, history, sections)
+    except Exception as e:
+        print(f"⚠️ chat edit verification failed: {type(e).__name__}: {str(e)[:200]}")
+        return [{**e_, "verified": False, "failed": ["verify_error"]} for e_ in raw_edits]
+
+
 @app.post("/api/reports/{report_id}/chat")
 async def chat_about_report(
     report_id: str,
@@ -4230,13 +4266,18 @@ async def chat_about_report(
 
         print(f"📚 Chat context: {len(guidelines)} guideline(s), {len(guideline_sources)} source(s) | report={report_id[:8]}…")
 
+        current_text = request.text if request.text is not None else (report.report_content or "")
         system_prompt = build_chat_system_prompt(
-            report_content=report.report_content,
+            report_content=current_text,
             enhancement_context=enhancement_context,
             audit_memory_block=audit_memory_block,
             audit_holistic_block=audit_holistic_block,
             audit_fix_block=audit_fix_block,
         )
+        open_items_block = _chat_open_items_block(db, report_id, request.open_items)
+        if open_items_block:
+            system_prompt = f"{system_prompt}\n\n{open_items_block}"
+        raw_edits: List[Dict[str, Any]] = []
         
         messages = [
             {"role": "system", "content": system_prompt}
@@ -4392,6 +4433,7 @@ async def chat_about_report(
                             print(f"  Conversation summary: {args['conversation_summary'][:100] if args['conversation_summary'] else 'None'}...")
                         
                         structured_actions_data = ChatStructuredActionsRequest(**args)
+                        raw_edits += _chat_edits.parse_edits_json(structured_actions_data.edits_json)
                         
                         print(f"\n📋 Extracted {len(structured_actions_data.actions)} structured actions:")
                         for i, action in enumerate(structured_actions_data.actions, 1):
@@ -4540,6 +4582,7 @@ async def chat_about_report(
                         try:
                             sargs = json.loads(stc.function.arguments)
                             salvage_actions_data = ChatStructuredActionsRequest(**sargs)
+                            raw_edits += _chat_edits.parse_edits_json(salvage_actions_data.edits_json)
                             print(f"🛟 SALVAGE: Parsed {len(salvage_actions_data.actions)} action(s):")
                             for i, a in enumerate(salvage_actions_data.actions, 1):
                                 print(f"   {i}. {a.title}")
@@ -4709,18 +4752,62 @@ async def chat_about_report(
             if actions_applied else actions_applied
         )
 
+        verified_edits = _chat_verified_edits(report, current_text, raw_edits)
+        # Spec §10.2/§12.6: the turn persists so History restores the thread; fails open (the reply still returns).
+        user_message_id = message_id = None
+        try:
+            user_message_id, message_id = _chat_thread.save_turn(
+                db, report_id, request.message, response_text, verified_edits)
+        except Exception as e:
+            db.rollback()
+            print(f"⚠️ chat thread save failed: {type(e).__name__}: {str(e)[:200]}")
+
         return {
             "success": True,
             "response": response_text,
-            "edit_proposal": edit_proposal,
+            "edit_proposal": edit_proposal,  # old sidebar; kept for one release (spec §12.5)
+            "edits": verified_edits,
             "actions_applied": actions_for_frontend,
             "sources": sources,
+            "user_message_id": user_message_id,
+            "message_id": message_id,
         }
         
     except Exception as e:
         import traceback
         traceback.print_exc()
         return {"success": False, "error": str(e)}
+
+
+class ChatAppliedRequest(BaseModel):
+    edit_index: int
+    item_id: str = Field(min_length=1, max_length=128)
+    applied: bool
+    detail: Optional[_review_limits.Detail] = None   # the apply event detail (from/insert/removed/left/right): Undo after reload
+
+
+@app.get("/api/reports/{report_id}/chat")
+def get_report_chat(report_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """The rail chat thread in order (spec §12.6: History restores it; nothing re-runs)."""
+    if not get_report(db, report_id, user_id=str(current_user.id)):
+        return {"success": False, "error": "Report not found"}
+    return {"success": True, "messages": _chat_thread.list_thread(db, report_id)}
+
+
+@app.post("/api/reports/{report_id}/chat/{message_id}/applied")
+def set_report_chat_applied(report_id: str, message_id: str, body: ChatAppliedRequest,
+                            db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Apply (applied=true) or Undo of one chat edit: updates the reply's applied_item_ids."""
+    if not get_report(db, report_id, user_id=str(current_user.id)):
+        return {"success": False, "error": "Report not found"}
+    try:
+        ids = _chat_thread.set_applied(db, report_id, message_id, body.edit_index, body.item_id, body.applied,
+                                       body.detail)
+    except _chat_thread.ChatTargetError as e:
+        return JSONResponse(status_code=422, content={"success": False, "error": str(e)})
+    if ids is None:
+        return {"success": False, "error": "Message not found"}
+    return {"success": True, "applied_item_ids": ids}
 
 
 @app.post("/api/reports/{report_id}/apply-actions")

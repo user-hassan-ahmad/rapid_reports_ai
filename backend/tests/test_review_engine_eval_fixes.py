@@ -134,14 +134,17 @@ def test_positive_findings_stay_positive(clause):
     assert jev_pass.positive(clause)
 
 
-async def test_w1n_not_asked_of_generated_normals(monkeypatch):
+async def test_w1n_answers_do_not_count_for_generated_normals(monkeypatch):
+    """W1n is asked of every non-negative clause (the Jev type answer arrives in the same round); a generated normal's
+    answer never counts: Jev type normal, or with no type answer, today's lexicon."""
     calls = []
     monkeypatch.setattr(rc, "_jev", jev({"addressed": {"noul": 0.9}}, calls))
     report = "FINDINGS:\nA 3 cm pancreatic head mass. The scapholunate ligament maintains continuity.\nIMPRESSION:\nMass."
     jp = await jev_pass.run(inp(report, NUM_DICT), report)
     asked = [q["instructions"] for _, qs in calls for k, q in qs.items() if k.startswith("sup")]
-    assert any("pancreatic head mass" in a for a in asked)
-    assert not any("maintains continuity" in a for a in asked) and jp.support_error is None
+    assert any("pancreatic head mass" in a for a in asked) and jp.support_error is None
+    i = jp.clauses.index("The scapholunate ligament maintains continuity.")
+    assert jp.clause_type(i) is None and not jp.keeps(i) and jp.keeps(0)
 
 
 # ── 3. every negatives check states its reason ──────────────────────────────

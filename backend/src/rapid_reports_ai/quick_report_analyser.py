@@ -858,6 +858,67 @@ is expected to cause.
 This bullet is an addition: the Sections line and every other part of the sheet stay exactly as they would without it.
 """
 
+# Opt-in (RR_GROUPED_NORMALS): the Normal-study path as two linked views — one atom per structure
+# or structure-specific negative, and consultant prose sentences naming their atoms — so the brief
+# can label each atom, check each sentence against its atoms, and render the sentence minus the
+# atoms that cannot be asserted (linked_normals). Structural placeholders only
+# (feedback_case_agnostic_prompts).
+GROUPED_NORMALS = """
+
+---
+
+## Normal-study path as linked atoms and prose — OVERRIDES conflicting guidance above
+
+This governs the Normal-study path wherever it is described above (the Structural Pattern
+guidance and the output template field). Where it conflicts with "one canonical line per
+system" or with the quoted-string form of that field, this section governs. The sweep, its
+order and its coverage are unchanged: every in-scope structure the sweep visits still appears.
+
+Write the field as indented sub-bullets of exactly two kinds, and nothing else (no quotes, no
+headers, no commentary). Every line has three parts separated by " | ":
+
+- **Normal-study path:**
+  - N1 | A | The A is unremarkable.
+  - N2 | B | The B is unremarkable.
+  - N3 | C | The C is unremarkable.
+  - N4 | D | The D is unremarkable.
+  - N5 | X | No X in the D.
+  - N6 | Y | No Y.
+  - N7 | E | The E is intact.
+  - P1 | N1 N2 N3 | The A, B and C are unremarkable.
+  - P2 | N4 | The D is unremarkable.
+  - P3 | N5 | No X in the D.
+  - P4 | N6 | No Y.
+  - P5 | N7 | The E is intact.
+
+Atoms (N lines) come first, in sweep order, numbered N1, N2, ... :
+- One N line per structure the sweep visits: the structure's exact term, then one short
+  sentence stating that structure alone is normal.
+- A structure-specific negative is its own N line: the finding's exact term, then "No <finding>
+  in the <structure>." A negative that belongs to no single structure: "No <finding>."
+- One structure or one finding per atom; never a list, "or", or "and" inside an atom.
+
+Prose (P lines) follows, in sweep order, numbered P1, P2, ... , each preceded by the ids of
+the atoms it states. Prose groups each sweep paragraph's structures that share one predicate.
+- One predicate per sentence. Every prose sentence has exactly one of two forms: "The A, B and
+  C <shared predicate>." ("are unremarkable", "are clear", "are intact", "are patent"), or a
+  single negative "No X in the D." / "No Y.".
+- A structure-specific negative, or a structure with a different predicate, is its own atom
+  with its own short prose sentence. Never a tail clause ("with no X"), never a comma-spliced
+  or multi-clause sentence ("the A is intact, the B is normal"), never two verbs in one sentence.
+- Every N id appears in exactly one P line, and a P line states only its own atoms.
+- The sentence reuses each atom's term exactly, word for word: never a broader, narrower,
+  shortened or merged name. Items that share a word are written in full ("the A tendons and
+  B tendons"), never contracted.
+- Ducts, vessels and hollow organs are not grouped in one sentence with solid organs unless the
+  sweep visits them in the same step.
+- No measurements, sizes, qualifiers, comparisons or descriptions of appearance anywhere in the
+  field. The descriptor is bare: "unremarkable", "normal", "clear", "intact", "patent".
+- A structure that leads the clinical question keeps its own sentence.
+- Where a Canonical default-normal lines list is emitted, it keeps one line per system; only
+  the Normal-study path is written this way.
+"""
+
 # Directives every production analyser call carries. Harnesses that pass an
 # explicit tuple override this; None means "as production".
 PRODUCTION_DIRECTIVES: tuple[str, ...] = ("prune_v1", "finding_negatives")
@@ -870,7 +931,14 @@ DIRECTIVES = {
     "rescope": lambda: NEGATIVES_RESCOPE,
     "prune_v1": lambda: PRUNE_V1,
     "finding_negatives": lambda: FINDING_NEGATIVES,
+    "grouped_normals": lambda: GROUPED_NORMALS,
 }
+
+
+def production_directives() -> tuple[str, ...]:
+    """PRODUCTION_DIRECTIVES, plus grouped_normals when RR_GROUPED_NORMALS is on (default off)."""
+    from .normal_groups import enabled
+    return PRODUCTION_DIRECTIVES + (("grouped_normals",) if enabled() else ())
 
 
 def get_analyser_prompt(
@@ -917,7 +985,7 @@ def get_analyser_prompt(
 # correlate prompt changes with downstream output quality retrospectively.
 
 def analyser_prompt_version(model_name: str) -> str:
-    prompt = get_analyser_prompt(model_name, directives=PRODUCTION_DIRECTIVES)
+    prompt = get_analyser_prompt(model_name, directives=production_directives())
     return hashlib.sha256(
         (prompt + "||" + ANALYSER_USER_TEMPLATE).encode("utf-8")
     ).hexdigest()[:12]
@@ -974,7 +1042,7 @@ async def generate_ephemeral_skill_sheet(
         .replace("{{CLINICAL_HISTORY}}", clinical_history or "")
     )
     if directives is None:
-        directives = PRODUCTION_DIRECTIVES
+        directives = production_directives()
 
     # One settings dict for every provider; normalise_model_settings fits it (Cerebras
     # Qwen: medium, 64k - reasoning counts toward the cap and 16k truncated sheets, L-33;

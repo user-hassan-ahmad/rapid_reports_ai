@@ -660,10 +660,18 @@ def _contexts(report: str, edit: Edit, names: Iterable[str]) -> Tuple[str, str]:
     return report[lo:hi], report[lo:i] + new + report[j:hi]
 
 
+def _contiguous(needle: List[str], hay: List[str]) -> bool:
+    """`needle` occurs in `hay` as one unbroken run of tokens."""
+    n = len(needle)
+    return n > 0 and any(hay[k:k + n] == needle for k in range(len(hay) - n + 1))
+
+
 def _alters_dictated(report: str, edit: Edit, dictation: str, names: Iterable[str]) -> bool:
     """A replace touching a sentence that says a dictated line (same polarity) keeps that line's sides and numbers
     exactly: it may not drop one the sentence shares with the line, nor bring in one the line lacks. A correction
-    towards the dictated line (report "right", dictated "left") is not an alteration."""
+    towards the dictated line (report "right", dictated "left") is not an alteration. Text only appended or inserted
+    AROUND such a sentence, which stays verbatim (its words in order and unbroken), alters nothing dictated (Gate G:
+    grounding guards still check what was added)."""
     old, new = edit.find or "", edit.replace or ""
     if not _once(report, old) or not (dictation or "").strip():
         return False
@@ -681,8 +689,11 @@ def _alters_dictated(report: str, edit: Edit, dictation: str, names: Iterable[st
     for raw in _dictated_sentences(dictation):
         for s in dict.fromkeys((raw, _expand(raw))):
             lines += [s] + _clauses(s)
+    new_toks = _tokens(new_ctx)
     for a, b in cover:
         p = report[a:b]
+        if _contiguous(_tokens(p), new_toks):
+            continue                                    # the sentence survives verbatim: only text around it changed
         for s in dict.fromkeys(lines):
             if _has_neg(s) != _has_neg(p) or not (_says(p, s, acr) or _says(s, p, acr)):
                 continue
@@ -1348,7 +1359,7 @@ def _anchor_at(it: ReviewItem, text: str) -> Optional[int]:
 
 async def probe(inp: ReviewInput, items: List[ReviewItem], text: str, changed_ranges: List[List[int]]) -> Dict:
     """One check of the current text (spec §12.4): each open item's probe, plus contradiction on the changed clauses.
-    Returns item ids addressed (≥ 0.8) and to re-prepare (probe 0.5–0.8, anchor lost, or its paragraph touched by
+    Returns item ids addressed (≥ 0.8), each item's probe score (`scores`, None when unanswered), and to re-prepare (probe 0.5–0.8, anchor lost, or its paragraph touched by
     a changed range), new contradiction candidates (a negative carries code's removal when it can be made
     cleanly), and `error` (None, or what failed when Jev did; the code checks still run)."""
     names = inp.artifacts.sections
@@ -1372,9 +1383,10 @@ async def probe(inp: ReviewInput, items: List[ReviewItem], text: str, changed_ra
     if isinstance(ca, BaseException):
         errors.append(f"contradiction: {_err(ca)}")
         ca = {}
-    addressed, reprepare = [], []
+    addressed, reprepare, scores = [], [], {}
     for k, it in enumerate(items):
         p = _f(pa, f"p{k}")
+        scores[it.id] = p
         at = _anchor_at(it, text)
         if p is not None and p >= ADDRESSED_OK:
             addressed.append(it.id)
@@ -1394,7 +1406,7 @@ async def probe(inp: ReviewInput, items: List[ReviewItem], text: str, changed_ra
                 anchor=Span(start=c.start, end=c.end, text=text[c.start:c.end]),
                 evidence={"negative": neg, "score": s, "clause": c.text}, code_fix=fix is not None,
                 proposed=fix, detector="loop.contradiction"))
-    return {"addressed": addressed, "reprepare": reprepare, "contradictions": contradictions,
+    return {"addressed": addressed, "reprepare": reprepare, "contradictions": contradictions, "scores": scores,
             "error": "; ".join(dict.fromkeys(errors)) or None}
 
 

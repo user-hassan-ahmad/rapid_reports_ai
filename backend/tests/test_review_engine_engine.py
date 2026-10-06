@@ -107,7 +107,7 @@ async def test_lane_failure_is_isolated(monkeypatch):
 
 
 async def test_negatives_failure_is_isolated(monkeypatch):
-    async def boom(inp_, run_id):
+    async def boom(inp_, run_id, types=None):
         raise RuntimeError("down")
     monkeypatch.setattr(negatives, "classify_negatives", boom)
     res = await engine.run_review(inp(REPORT, DICT), run_id="00000000-0000-0000-0000-0000000000a2")
@@ -134,12 +134,15 @@ def _absent_jev(monkeypatch):
                                          "addressed": {"noul": 0.9}}))
 
 
-async def test_absent_is_pre_applied_with_code_built_insert(monkeypatch):
+async def test_absent_would_pre_apply_with_code_built_insert(monkeypatch):
+    """The engine applies nothing (spec §10.4): an eligible insert stays an open one-click action with code's edit,
+    marked would_pre_apply; the sequence is recorded only."""
     _absent_jev(monkeypatch)
     monkeypatch.setattr(adj, "_run_agent_with_model", model(ABSENT))
     res = await engine.run_review(inp(ABS_REPORT, ABS_DICT), run_id="00000000-0000-0000-0000-0000000000b1")
     cov = next(i for i in res.items if i.lane == "coverage" and i.kind == "absent")
-    assert cov.status == "pre_applied" and cov.cls == "action"
+    assert cov.status == "open" and cov.cls == "action" and cov.evidence["would_pre_apply"] is True
+    assert cov.history[-1]["event"] == "would_pre_apply"
     # the adjudicator's own wording is never pre-applied: code tidies the dictated line only
     assert cov.edit.replace == "14 mm left renal cyst." and cov.edit.after == "No ascites."
     assert cov.verified["preapply_failures"] == []
@@ -165,9 +168,9 @@ async def test_adjudicator_minor_is_not_pre_applied(monkeypatch):
     assert cov.edit.replace == ABSENT.edit_replace       # one-click: the adjudicator's fix, not code's
 
 
-async def test_negatives_removal_first_then_stale_insert_falls_back_to_open(monkeypatch):
-    """Negatives removes "No ascites." first; the coverage insert anchored after it no longer applies → stays open
-    (the finding is still absent) but loses its edit: never a one-click action that cannot apply."""
+async def test_negatives_removal_first_then_overtaken_insert_keeps_its_edit(monkeypatch):
+    """The would-be sequence removes "No ascites." first, so the coverage insert anchored after it is overtaken in the
+    log; nothing was applied, so the item keeps its one-click edit on the report the user sees."""
     _absent_jev(monkeypatch)
     monkeypatch.setattr(adj, "_run_agent_with_model", model(ABSENT))
 
@@ -178,9 +181,9 @@ async def test_negatives_removal_first_then_stale_insert_falls_back_to_open(monk
     monkeypatch.setattr(negatives, "_run_agent_with_model", labels(lab))
     res = await engine.run_review(inp(ABS_REPORT, ABS_DICT), run_id="00000000-0000-0000-0000-0000000000b4")
     removed = next(i for i in res.items if i.kind == "removed")
-    assert removed.status == "pre_applied"
+    assert removed.status == "open" and removed.evidence["would_pre_apply"] is True
     cov = next(i for i in res.items if i.lane == "coverage" and i.kind == "absent")
-    assert cov.status == "open" and cov.edit is None and cov.history[-1]["event"] == "overtaken"
+    assert cov.status == "open" and cov.edit is not None and "would_pre_apply" not in (cov.evidence or {})
     entry = next(e for e in res.run["pre_apply"] if e["item_id"] == cov.id)
     assert entry["applied"] is False and entry["failed"] and entry["overtaken"] and entry["edit"]
     assert "No ascites" not in res.report and "renal cyst" not in res.report
@@ -271,7 +274,7 @@ async def test_negative_flagged_by_both_yields_one_item(monkeypatch):
     _dup_stubs(monkeypatch)
     res = await engine.run_review(inp(DUP_REPORT, DUP_DICT), run_id="00000000-0000-0000-0000-0000000000c1")
     asc = _ascites_items(res.items)
-    assert [(i.detectors, i.kind, i.status) for i in asc] == [([negatives.DETECTOR], "removed", "pre_applied")]
+    assert [(i.detectors, i.kind, i.status) for i in asc] == [([negatives.DETECTOR], "removed", "open")]
     assert not any(e["source"] == "lanes" for e in res.run["pre_apply"])
     assert "No ascites" not in res.report
 
@@ -316,7 +319,7 @@ async def test_negatives_items_carry_history_version_and_verified_shape(monkeypa
         assert i.engine_version == engine.ENGINE_VERSION
         assert i.history[0]["event"] == "created" and i.history[0]["text_hash"] == text_hash(DUP_REPORT)
     rem = next(i for i in neg if i.kind == "removed")
-    assert [e["event"] for e in rem.history] == ["created", "pre_applied"] and rem.history[1]["text_hash"]
+    assert [e["event"] for e in rem.history] == ["created", "would_pre_apply"] and rem.history[1]["text_hash"]
     assert set(rem.verified) >= {"code", "failed", "addressed", "contra", "unconfirmed", "preapply_failures"}
 
 
@@ -388,25 +391,6 @@ def _uuid(x):
     return _u.UUID(x)
 
 
-def test_live_behaves_as_shadow_and_warns_once(monkeypatch, caplog):
-    monkeypatch.setenv("RR_REVIEW_ENGINE", "live")
-    monkeypatch.setattr(engine, "_LIVE_WARNED", False)
-    warned = []   # count calls directly: the full suite reconfigures logging (main import), so caplog is unreliable
-    monkeypatch.setattr(engine.logger, "warning", lambda msg, *a, **k: warned.append(msg % a if a else msg))
-    assert engine.mode() == "shadow" and engine.mode() == "shadow"
-    assert sum("live" in m for m in warned) == 1
-    assert not engine.rail_enabled()
-
-
-async def test_live_persists_as_shadow(monkeypatch, db_session, test_user):
-    _dup_stubs(monkeypatch)
-    rid = _stored_report(db_session, test_user, monkeypatch, DUP_REPORT, DUP_DICT)
-    monkeypatch.setenv("RR_REVIEW_ENGINE", "live")
-    run_id = await engine.run_and_store(rid)
-    assert _run_row(db_session, run_id).mode == "shadow"
-    assert not any(i.status == "pre_applied" for i in store.list_items(db_session, rid, include_suppressed=True))
-
-
 async def test_runs_limited_by_concurrency(monkeypatch):
     monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
     monkeypatch.delenv("RR_REVIEW_CONCURRENCY", raising=False)
@@ -458,3 +442,88 @@ async def test_schedule_review_sampling(monkeypatch):
     monkeypatch.setenv("RR_REVIEW_SAMPLE", "bogus")          # unreadable → default 1.0
     await engine.schedule_review("00000000-0000-0000-0000-000000000003")
     assert seen == ["00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003"]
+
+
+async def test_schedule_review_dedupes_in_flight_runs_per_report(monkeypatch):
+    """F2 I3: a second Re-review (or a save) while a run is in flight for the report returns that run's task."""
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.setenv("RR_REVIEW_SAMPLE", "1.0")
+    gate = asyncio.Event()
+    seen = []
+
+    async def fake(report_id, text=None):
+        seen.append(report_id)
+        await gate.wait()
+    monkeypatch.setattr(engine, "run_and_store", fake)
+    a = "00000000-0000-0000-0000-0000000000e1"
+    t1 = engine.schedule_review(a)
+    assert engine.schedule_review(a, "other text") is t1
+    t2 = engine.schedule_review("00000000-0000-0000-0000-0000000000e2")
+    assert t2 is not t1
+    gate.set()
+    await asyncio.gather(t1, t2)
+    t3 = engine.schedule_review(a)
+    assert t3 is not t1
+    await t3
+    assert seen == [a, "00000000-0000-0000-0000-0000000000e2", a]
+
+
+async def test_run_row_is_created_before_waiting_for_the_semaphore(monkeypatch):
+    """F2 I3: a queued run is visible (a run row with empty lanes) while it waits for RR_REVIEW_CONCURRENCY."""
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.delenv("RR_REVIEW_CONCURRENCY", raising=False)
+    monkeypatch.setattr(engine, "_SEM", None)
+    gate = asyncio.Event()
+    created = []
+
+    async def fake_load(report_id, text=None):
+        return inp(REPORT, DICT)
+
+    async def fake_run(inp_, run_id):
+        await gate.wait()
+        return engine.ReviewResult(run={"lanes": {}, "timings_ms": {}, "cost": {}, "errors": {}, "pre_apply": [],
+                                        "negatives": None}, items=[], report=REPORT)
+
+    async def noop(*a, **k):
+        return None
+    monkeypatch.setattr(engine, "load_input", fake_load)
+    monkeypatch.setattr(engine, "run_review", fake_run)
+    monkeypatch.setattr(engine, "gate_d_log", noop)
+
+    async def same_thread(fn, *a, **k):
+        if fn is engine._with_session and a[0] is store.create_run:
+            created.append(a[1])
+            return f"00000000-0000-0000-0000-0000000000f{len(created)}"
+        return None
+    monkeypatch.setattr(engine.asyncio, "to_thread", same_thread)
+    ids = [f"00000000-0000-0000-0000-00000000000{k}" for k in range(2)]
+    tasks = [asyncio.create_task(engine.run_and_store(r)) for r in ids]
+    for _ in range(10):
+        await asyncio.sleep(0)
+    assert created == ids                                  # both rows exist; only one run holds the semaphore
+    gate.set()
+    await asyncio.gather(*tasks)
+
+
+async def test_run_failure_after_the_row_finishes_it_with_an_error(monkeypatch):
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.setattr(engine, "_SEM", None)
+    finished = []
+
+    async def fake_load(report_id, text=None):
+        return inp(REPORT, DICT)
+
+    async def boom(*a, **k):
+        raise RuntimeError("boom")
+
+    async def same_thread(fn, *a, **k):
+        if fn is engine._with_session and a[0] is store.create_run:
+            return "00000000-0000-0000-0000-0000000000f9"
+        if fn is engine._with_session and a[0] is store.finish_run:
+            finished.append(a[1:])
+        return None
+    monkeypatch.setattr(engine, "load_input", fake_load)
+    monkeypatch.setattr(engine, "_run_and_store", boom)
+    monkeypatch.setattr(engine.asyncio, "to_thread", same_thread)
+    assert await engine.run_and_store("00000000-0000-0000-0000-000000000001") is None
+    assert finished and finished[0][0] == "00000000-0000-0000-0000-0000000000f9" and "engine" in finished[0][4]

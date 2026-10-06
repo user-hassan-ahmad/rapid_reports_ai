@@ -56,6 +56,15 @@ def test_prior_is_fine_when_dictated():
     ("Features suggest cholecystitis.", "probable"), ("Appearances suggest a cyst.", "probable"),
     ("Nothing to suggest malignancy.", "negated"),
     ("Indeterminate 8 mm nodule.", "definite"), ("Equivocal enhancement.", "definite"),
+    # real-world hedges (hybrid certainty rule validation, 2026-10-04)
+    ("Thickening, worrisome for malignancy.", "probable"), ("Thickening, concerning for malignancy.", "probable"),
+    ("Suspicious primary gallbladder malignancy.", "probable"), ("Suspected appendicitis.", "probable"),
+    ("A lucency, which appears to represent a fracture.", "probable"),
+    ("Thickening, suggesting chronic inflammation.", "probable"),
+    ("A lucency, raising the possibility of a fracture.", "possible"),
+    ("Appearances raise the possibility of a fracture.", "possible"),
+    ("The gallbladder appears thick-walled.", "definite"),      # "appears" alone describes, it does not hedge
+    ("No suspicious lesion.", "negated"),
 ])
 def test_hedge_tag(clause, tag):
     assert hedge_tag(clause) == tag

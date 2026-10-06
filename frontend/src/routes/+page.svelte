@@ -8,6 +8,7 @@ import TemplatedReportTab from './components/TemplatedReportTab.svelte';
 import HistoryTab from './components/HistoryTab.svelte';
 import SettingsTab from './components/SettingsTab.svelte';
 import ReportEnhancementSidebar from './components/ReportEnhancementSidebar.svelte';
+import { reviewRailActive } from '$lib/review/railActive';
 import IntervalAnalysisDrawer from './components/IntervalAnalysisDrawer.svelte';
 import TemplateRefinePanel from './components/TemplateRefinePanel.svelte';
 import ReportVersionHistory from './components/ReportVersionHistory.svelte';
@@ -31,6 +32,8 @@ import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 	import { marked } from 'marked';
 	import { API_URL } from '$lib/config';
 	import { logger } from '$lib/utils/logger';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import { confirmIfUnsaved, createConfirmGate } from '$lib/utils/confirmGate';
 	
 	type UseCaseOption = { name: string; description?: string };
 	type ApiKeyStatus = {
@@ -52,6 +55,8 @@ import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 		id?: string | null;
 		report_content?: string;
 		report_type?: string;
+		template_id?: string | null;
+		model_used?: string | null;
 		input_data?: HistoryModalInput;
 	};
 	type ReportHistoryDetail = { count: number };
@@ -177,6 +182,9 @@ let navStateBeforeCopilot = false;
 let copilotAutoOpened = false;
 let copilotPanelWide = false;
 let copilotLayoutMode: 'narrow' | 'dual' | 'tri' = 'narrow';
+/** The report viewer shows the review rail (Plan 3 C5): the Copilot aside, its peek rail, padding and auto-open are
+ *  left out. The aside still renders when opened explicitly (the rail's interim Guidelines tab and Ask in chat). */
+$: railActive = $reviewRailActive;
 
 /** Viewport tracking for Copilot width cap and layout tiers (md+ inline reserve). */
 let viewportWidth = 1200;
@@ -202,7 +210,7 @@ $: copilotMainPaddingRightPx =
 	browser && viewportWidth >= 768
 		? sidebarVisible && isEnhancementContext
 			? copilotAsideWidthPx
-			: viewingReport && !sidebarVisible
+			: viewingReport && !sidebarVisible && !railActive
 				? 40
 				: 0
 		: 0;
@@ -389,6 +397,10 @@ let templatedModel = 'claude'; // Track model for template editor
 		handleExternalAuditApplyFix?: (detail: unknown) => void;
 		handleExternalAuditInsertBanner?: (bannerText: string) => void;
 		handleExternalAuditReaudit?: () => void;
+		/** History "Open" (Plan 3 E2); the templated tab answers false when it cannot show the report. */
+		openExisting?: (report: HistoryModal & { id: string }) => Promise<boolean | void>;
+		/** Unsaved editor changes or a dictation in progress: History "Open" asks before replacing them. */
+		hasUnsavedWork?: () => boolean;
 	};
 
 	// Tab refs for draft restore (called from page-level banners)
@@ -508,6 +520,40 @@ let templatedModel = 'claude'; // Track model for template editor
 				reportId = restored.id;
 			}
 		}
+	}
+
+	/** History "Open" (Plan 3 E2, spec §12.6): load a saved report into its tab's viewer. The viewer loads the stored
+	 *  review run, items and workspace state from the report id; nothing is re-run. Falls back to the read-only
+	 *  preview when the tab cannot show it (a templated report whose template is gone, or the tab still loading). */
+	/** History "Open" over a tab with unsaved work asks in-app first; Cancel keeps everything as it is. */
+	const openGate = createConfirmGate();
+	const openPending = openGate.pending;
+
+	async function handleOpenReport(report: HistoryModal): Promise<void> {
+		if (!report?.id) return;
+		const target = report.report_type === 'templated' ? templateTabRef : intelliTabRef;
+		if (!(await confirmIfUnsaved(target, openGate.ask))) return;
+		const saved = { ...report, id: report.id };
+		historyModalReport = null;
+		if (report.report_type === 'templated') {
+			showSkillSheetCreator = false;
+			activeTab = 'templated';
+			await tick();
+			const opened = templateTabRef?.openExisting ? await templateTabRef.openExisting(saved) : false;
+			if (opened) {
+				templatedReportId = saved.id;
+				return;
+			}
+		} else {
+			activeTab = 'auto';
+			await tick();
+			if (intelliTabRef?.openExisting) {
+				await intelliTabRef.openExisting(saved);
+				return;
+			}
+		}
+		activeTab = 'history';
+		historyModalReport = report;
 	}
 
 	function handleHistoryUpdate(detail: ReportHistoryDetail): void {
@@ -810,7 +856,7 @@ $: if (!isEnhancementContext && sidebarVisible) {
 // Auto-open Copilot once per report when guideline enhancement finishes loading (QA tab first).
 // Gate on viewingReport (not just isEnhancementContext) so it does not pop open over the
 // templates list view, where currentReportId is preserved but no report is being viewed.
-$: if (enhancementsLoaded && !copilotAutoOpened && !sidebarVisible && viewingReport) {
+$: if (enhancementsLoaded && !copilotAutoOpened && !sidebarVisible && viewingReport && !railActive) {
 	const autoOpenEnabled = (() => {
 		try {
 			return localStorage.getItem('copilotAutoOpen') !== 'false';
@@ -829,7 +875,8 @@ $: if (
 	enhancementError &&
 	!copilotAutoOpened &&
 	!sidebarVisible &&
-	viewingReport
+	viewingReport &&
+	!railActive
 ) {
 	copilotAutoOpened = true;
 	openCopilot({ tab: 'qa' });
@@ -1126,6 +1173,7 @@ $: if (
 					<HistoryTab
 						refreshKey={historyRefreshKey}
 						on:viewReport={(e) => historyModalReport = e.detail as HistoryModal}
+						on:openReport={(e) => handleOpenReport(e.detail as HistoryModal)}
 					/>
 				</div>
 				
@@ -1150,7 +1198,7 @@ $: if (
 	<!-- Mount when a report is being viewed so /enhance + prefetch can run before Copilot is
 	     opened. Uses viewingReport (not just currentReportId) so the panel unmounts on the
 	     templates list view, where the report id is preserved for fast re-entry. -->
-	{#if viewingReport}
+	{#if viewingReport && (!railActive || sidebarVisible)}
 		<aside
 			class="fixed inset-0 z-[10000] flex min-h-0 w-full flex-col border-l border-white/10 bg-black/70 backdrop-blur-2xl overflow-hidden shadow-2xl shadow-purple-500/10 transition-[width] duration-300 ease-in-out md:inset-y-0 md:left-auto md:right-0 md:z-[35] {!sidebarVisible ? 'hidden' : ''}"
 			style={browser && viewportWidth >= 768
@@ -1252,7 +1300,7 @@ $: if (
 	</div>
 
 	<!-- Mobile Copilot FAB: visible only on < md when the copilot rail is hidden -->
-	{#if viewingReport && !sidebarVisible}
+	{#if viewingReport && !sidebarVisible && !railActive}
 		<button
 			type="button"
 			class="md:hidden fixed bottom-5 right-5 z-[45] w-12 h-12 rounded-full bg-purple-600/90 backdrop-blur-lg text-white shadow-lg shadow-purple-500/30 flex items-center justify-center hover:bg-purple-500 active:scale-95 transition-all"
@@ -1269,7 +1317,7 @@ $: if (
 	{/if}
 
 	<!-- Viewport-locked rail: sticky fails when ancestors use overflow-hidden (page root). -->
-	{#if viewingReport && !sidebarVisible}
+	{#if viewingReport && !sidebarVisible && !railActive}
 		{@const _railLoading = enhancementLoading || auditState?.status === 'loading'}
 		{@const _railLoaded = !enhancementLoading && (enhancementGuidelinesCount > 0 || auditState?.status === 'complete' || auditState?.status === 'stale')}
 		{@const _qaFlagCount = Array.isArray((auditState?.result as any)?.criteria)
@@ -1455,6 +1503,15 @@ $: if (
 		on:templateCreated={handleTemplateWizardCreated}
 	/>
 {/if}
+
+	<ConfirmDialog
+		open={$openPending}
+		title="Replace the open report?"
+		message="The report tab has unsaved changes or a dictation in progress. Opening this report replaces them."
+		confirmLabel="Open anyway"
+		onConfirm={() => openGate.answer(true)}
+		onCancel={() => openGate.answer(false)}
+	/>
 
 	<!-- History Modal - Rendered at root level to avoid stacking context issues -->
 	{#if historyModalReport}

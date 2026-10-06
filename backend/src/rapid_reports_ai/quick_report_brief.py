@@ -42,6 +42,8 @@ from .report_reconcile import (  # noqa: F401 — re-exported; tests patch these
     _sentences, _split_bundled, _unstring, _words, dictated_negatives, duplicates_negative, finding_presence,
     q_finding, q_present, route_finding, split_findings,
 )
+from . import linked_normals as _ln
+from . import normal_groups as _ng
 from . import report_reconcile as _rc
 
 logger = logging.getLogger(__name__)
@@ -56,9 +58,50 @@ def present_question(line: str) -> dict:
     return q_present(name.strip(), disc.strip())
 
 
-async def _qwen_complete(state: str, negs: List[str], normals: List[str], measurements: List[str]) -> QwenDecisions:
-    """report_reconcile._qwen_complete through this module's _qwen and logger (tests patch both here)."""
-    return await _rc._qwen_complete(state, negs, normals, measurements, ask=_qwen, log=logger)
+async def _qwen_complete(state: str, negs: List[str], normals: List[str], measurements: List[str],
+                         linked: Optional[tuple] = None) -> QwenDecisions:
+    """report_reconcile._qwen_complete through this module's _qwen and logger (tests patch both here).
+    linked: the linked-normal atoms folded into the same call (RR_GROUPED_NORMALS, fold labeller)."""
+    ask = _qwen if linked is None else (lambda *a: _qwen(*a, linked=linked))
+    return await _rc._qwen_complete(state, negs, normals, measurements, ask=ask, log=logger)
+
+
+LABEL_TIMEOUT_S = 15.0
+
+
+def _atom_labels(atoms: list, qw, sep_labels: Optional[List[str]], mode: Optional[str], jev: dict) -> dict:
+    """atom id -> {cls, pointer, source, jev_affected}. The classifier's label where it gave one, a default
+    upgraded to implicated when Jev "affected" >= 0.5 (both judges must clear an atom for it to be grouped
+    as plain normal); no label -> Jev "affected" alone (the production per-line question): affected ->
+    contradicted (not asserted), else default."""
+    lines = sep_labels if mode == "separate" else getattr(qw, "normal_labels", None)
+    got = _ln.parse_labels(lines or [], len(atoms))
+    out = {}
+    for i, a in enumerate(atoms):
+        try:
+            p = round(float(jev[f"na{i}"]["noul"]), 3)
+        except (KeyError, TypeError, ValueError):
+            p = None
+        if i + 1 in got:
+            out[a.id] = {**got[i + 1], "source": mode, "jev_affected": p}
+            # Plausible doubt is implicated: a default the Jev "affected" question flags is upgraded
+            # (kept in the report, its own sentence, highlighted), never asserted as plain normal.
+            if out[a.id]["cls"] == "default" and p is not None and p >= 0.5:
+                out[a.id].update(cls="implicated", source=f"{mode}+jev")  # score lives in jev_affected; pointer is UI text
+            continue
+        aff = p is not None and p >= 0.5
+        out[a.id] = {"cls": "contradicted" if aff else "default", "pointer": "", "source": "jev_affected",
+                     "jev_affected": p}
+    return out
+
+
+async def _label_atoms(scan_type: str, clinical_history: str, findings: str, atoms: list) -> List[str]:
+    """The negatives classifier on the linked-normal atoms, as its own reasoning-low call (separate labeller)."""
+    r = await asyncio.wait_for(_rc._run_agent_with_model(
+        model_name=QWEN, output_type=_ln.AtomLabels, system_prompt=_ln.SEPARATE_SYS,
+        user_prompt=_ln.separate_user(scan_type, clinical_history, findings, atoms), api_key="",
+        model_settings={"temperature": 0, "max_tokens": 8000, "reasoning_effort": "low"}), LABEL_TIMEOUT_S)
+    return r.output.labels
 
 
 DROP_TOP_BULLETS = {"Out of scope", "Modality non-assessables", "In-scope companions", "Out-of-scope suppressed",
@@ -139,6 +182,8 @@ def _normal_sentences(bullet: Optional[Bullet]) -> List[str]:
     if not bullet:
         return []
     text = " ".join(_quoted(" ".join(bullet.lines))) or re.sub(r"^- \*\*[^*]+\*\*:?\s*", "", " ".join(bullet.lines))
+    if _ng.enabled():   # the path written as sub-bullets, one sentence each
+        text = re.sub(r"(?:^|\s)-\s+(?=[A-Z])", " ", text).strip()
     return [s.strip() for s in re.split(r"(?<=\.)\s+(?=[A-Z])", text) if len(s.strip()) > 3]
 
 
@@ -213,8 +258,20 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     normal_bullet = _bullet(struct, "Normal-study path")
     # A normal line that states a measurement asserts a value nobody dictated whenever the
     # dictation is silent about it, so it never reaches the generator.
-    measured = [t for t in _normal_sentences(normal_bullet) if _MEASUREMENT.search(t)]
-    normals = [t for t in _normal_sentences(normal_bullet) if not _MEASUREMENT.search(t)]
+    # Linked normals: atoms + prose naming them, detected by the field's format (a sheet written with
+    # RR_GROUPED_NORMALS on stays linked if the flag is off now). Lines in neither form, or a field with
+    # no atom at all (every ordinary sheet), take today's per-line path below.
+    linked = _ln.parse_linked(normal_bullet.lines) if normal_bullet else None
+    lines_in = [e for e in linked.entries if isinstance(e, str)] if linked else _normal_sentences(normal_bullet)
+    measured = [t for t in lines_in if _MEASUREMENT.search(t)]
+    normals = [t for t in lines_in if not _MEASUREMENT.search(t)]
+    atoms_all: list = []
+    if linked:
+        for u in linked.units:
+            measured += [a.text for a in u.atoms if _MEASUREMENT.search(a.text)]
+            u.atoms = [a for a in u.atoms if not _MEASUREMENT.search(a.text)]
+        linked.entries = [e for e in linked.entries if not (isinstance(e, _ln.Unit) and not e.atoms)]
+        atoms_all = linked.atoms
     diffs = differential_lines(secs)
     keys = distinct_keys(cands)
     recs = _recommendations(imp)
@@ -225,6 +282,8 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     state = f"SCAN TYPE: {scan_type}\nDICTATED FINDINGS:\n{findings}"
     qs = {}
     qs.update({f"n{k}": {"type": "noul", "instructions": Q_AFFECTED + t} for k, t in enumerate(normals)})
+    # Linked atoms: Jev "affected" is asked only as the fallback for an atom the classifier leaves unlabelled.
+    qs.update({f"na{i}": {"type": "noul", "instructions": Q_AFFECTED + a.text} for i, a in enumerate(atoms_all)})
     qs.update({f"d{k}": present_question(t) for k, t in enumerate(diffs)})
     qs.update({f"r{k}": {"type": "noul", "instructions": Q_REC_MET + t} for k, t in enumerate(recs)})
     qs.update({f"f{i}": q_finding(k) for i, k in enumerate(keys)})
@@ -248,10 +307,43 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         except Exception as e:  # the brief still compiles; unanticipated findings just get no options
             logger.warning("finding-negatives fallback failed (%s: %s)", type(e).__name__, str(e)[:200])
             return None
-    jev, qw, plan, fb_out = await asyncio.gather(
-        _jev(state, qs) if qs else asyncio.sleep(0, {}),
-        _qwen_complete(state, [n for n, _ in negs] + [c.text for c in cands], normals, [" ".join(b.lines) for b in measurements]),
-        plan_or_none(), fallback_or_none())
+    mode = _ln.labeller() if atoms_all else None
+    fold = (_ln.FOLD_SYS, _ln.statements_block(atoms_all, clinical_history)) if mode == "fold" else None
+    timing: dict = {}
+
+    async def timed(name, coro):
+        t = time.time()
+        try:
+            return await coro
+        finally:
+            timing[name] = int((time.time() - t) * 1000)
+
+    async def labels_or_none():
+        if mode != "separate":
+            return None
+        try:
+            return await _label_atoms(scan_type, clinical_history, findings, atoms_all)
+        except Exception as e:  # unlabelled atoms fall back to Jev "affected"
+            logger.warning("linked-normal labeller failed (%s: %s)", type(e).__name__, str(e)[:200])
+            return None
+
+    link_units = [u for u in (linked.units if linked else []) if not _ln.code_check(u)]
+
+    async def link_or_none(u):
+        try:
+            return await _jev(u.prose, _ln.link_questions(u))
+        except Exception as e:  # the code check decides alone
+            logger.warning("linked-normal link check failed (%s: %s)", type(e).__name__, str(e)[:200])
+            return None
+
+    async def links():
+        return await asyncio.gather(*(link_or_none(u) for u in link_units))
+
+    jev, qw, plan, fb_out, sep_labels, link_answers = await asyncio.gather(
+        timed("jev", _jev(state, qs)) if qs else asyncio.sleep(0, {}),
+        timed("qwen", _qwen_complete(state, [n for n, _ in negs] + [c.text for c in cands], normals,
+                                     [" ".join(b.lines) for b in measurements], linked=fold)),
+        plan_or_none(), fallback_or_none(), timed("labeller", labels_or_none()), timed("links", links()))
     score = lambda k: float(jev[k]["noul"])
 
     decisions: dict = {"negatives": [], "normals": [], "differentials": [], "recommendations": [], "style": [], "measurements": [],
@@ -324,14 +416,58 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         decisions["normals"].extend({"text": t, "action": "removed_measurement"} for t in measured)
         keep, flagged = [], []
         qaff = set(qw.affected_normals)
-        for k, t in enumerate(normals):
-            if score(f"n{k}") >= 0.5 or k in qaff:
-                flagged.append(t); decisions["normals"].append({"text": t, "action": "do_not_assert"})
-            else:
-                keep.append(t); decisions["normals"].append({"text": t, "action": "keep"})
+        dneg = dictated_negatives(items)
+        offset = 0
+        legacy = [{"text": t, "action": "do_not_assert" if (score(f"n{k}") >= 0.5 or k in qaff) else "keep"}
+                  for k, t in enumerate(normals)]
+        entries = linked.entries if linked else normals
+        if linked:
+            labels = _atom_labels(atoms_all, qw, sep_labels, mode, jev)
+            positives = _ng.positive_findings(items)
+            verdicts = dict(zip(map(id, link_units), link_answers))
+            link_log = []
+        li = iter(legacy)
+        for e in entries:
+            if isinstance(e, str):
+                if _MEASUREMENT.search(e):
+                    continue
+                d = next(li)
+                decisions["normals"].append(d)
+                if d["action"] == "keep":
+                    keep.append(e); offset += len(e) + 1
+                else:
+                    flagged.append(e)
+                continue
+            v = _ln.link_verdict(e, verdicts.get(id(e)))
+            link_log.append({"pid": e.pid, **v})
+            r = _ln.render_unit(e, labels, v["ok"], dneg, positives)
+            link_log[-1]["mode"] = r.mode
+            flagged.extend(r.flagged)
+            decisions["normals"].append({
+                "text": e.prose, "pid": e.pid, "linked": True, "link": v, "mode": r.mode,
+                "action": "keep" if r.text else "do_not_assert", "rendered": r.text,
+                "offset": offset if r.text else None,
+                "atoms": [{**a, "path_span": [offset + a["span"][0], offset + a["span"][1]] if a["span"] else None}
+                          for a in r.atoms]})
+            if r.text:
+                keep.append(r.text)
+                offset += len(r.text) + 1
+        if linked:
+            decisions["linked"] = {"labeller": mode, "timing_ms": timing, "n_atoms": len(atoms_all),
+                                   "notes": getattr(qw, "normal_notes", "") if mode == "fold" else "",
+                                   "n_units": len(linked.units), "n_loose": len(normals),
+                                   "link_failed": sum(1 for x in link_log if not x["ok"]),
+                                   "multi_predicate": sum(1 for x in link_log if "multi-predicate" in x["code"]),
+                                   "subtract_fallback": sum(1 for x in link_log if x["ok"] and x["mode"] == "atoms"),
+                                   "upgrades": [f"{a.id} {a.term} ({labels[a.id]['jev_affected']})" for a in atoms_all
+                                                if labels[a.id]["source"].endswith("+jev")]}
         lines = [f'- **Normal-study path:** "{" ".join(keep)}"' if keep else "- **Normal-study path:** (every line is affected by this dictation)"]
         if flagged:
             lines.append("- **Do not assert as normal (a dictated finding acts on these):** " + " ".join(f'"{t}"' for t in flagged))
+        if linked and dneg:
+            # Guard: a grouped normal sentence must never stand in for a negative the radiologist dictated.
+            lines.append("- **Dictated negatives (state each as dictated):** " + " ".join(f'"{t}"' for t in dneg))
+            decisions["dictated_negatives"] = dneg
         normal_bullet.lines = lines
 
     # Differentials, policy 1: silence closes a branch only when this study would show it.

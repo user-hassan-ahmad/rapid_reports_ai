@@ -409,3 +409,18 @@ async def test_recommendation_unmet_is_one_minus_met(monkeypatch, met, action):
     recs = {r["text"]: r["action"] for r in b.decisions["recommendations"]}
     assert recs["REFERRAL: Neurosurgery for haemorrhage with mass effect"] == action
     assert recs["IMAGING: CTA for large vessel occlusion"] == "keep"          # met 0.9 -> unmet 0.1
+
+
+def test_jev_upgrade_to_implicated_keeps_pointer_free_of_diagnostics():
+    """A default atom upgraded to implicated by Jev "affected" keeps the classifier's pointer (shown to the
+    radiologist as the dictated finding in the rail's "Check: may not hold given ..." label); the Jev score is
+    recorded in jev_affected and source only, never as pointer text."""
+    from types import SimpleNamespace
+    atoms = [SimpleNamespace(id="a1"), SimpleNamespace(id="a2")]
+    jev = {"na0": {"noul": 0.65}, "na1": {"noul": 0.7}}
+    out = qb._atom_labels(atoms, None, ["1 | default | -", "2 | default | small left pleural effusion"],
+                          "separate", jev)
+    assert out["a1"]["cls"] == "implicated" and out["a1"]["jev_affected"] == 0.65
+    assert out["a1"]["source"] == "separate+jev"
+    assert out["a1"]["pointer"] == ""
+    assert out["a2"]["cls"] == "implicated" and out["a2"]["pointer"] == "small left pleural effusion"

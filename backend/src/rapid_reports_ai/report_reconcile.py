@@ -267,13 +267,31 @@ async def _jev(state: str, questions: dict) -> dict:
     return r.json().get("answers") or r.json()
 
 
-async def _qwen(state: str, negs: List[str], normals: List[str], measurements: List[str]) -> QwenDecisions:
+class QwenDecisionsLinked(QwenDecisions):
+    """QwenDecisions plus the negatives classifier's labels on linked normal atoms (RR_GROUPED_NORMALS, fold)."""
+    normal_notes: str = ""
+    normal_labels: List[str] = []
+    @field_validator("normal_labels", mode="before")
+    @classmethod
+    def _parse_labels(cls, v):
+        from .linked_normals import _decode_list
+        return [str(x) for x in _decode_list(v)]
+
+
+async def _qwen(state: str, negs: List[str], normals: List[str], measurements: List[str],
+                linked: Optional[tuple] = None) -> QwenDecisions:
+    """linked: (system addition, statements block), the linked-normal atoms folded into this call. None
+    (always, unless RR_GROUPED_NORMALS is on) sends exactly the request it always has."""
     def block(title, items):
         return f"{title}:\n" + ("\n".join(f"{k}. {t}" for k, t in enumerate(items)) or "(none)")
+    user = f"{state}\n\n{block('NEGATIVES', negs)}\n\n{block('NORMAL LINES', normals)}\n\n{block('MEASUREMENTS', measurements)}"
+    out_type, sys_prompt, max_tokens = QwenDecisions, QWEN_SYS, 4000
+    if linked:
+        out_type, sys_prompt, max_tokens = QwenDecisionsLinked, QWEN_SYS + linked[0], 8000
+        user += "\n\n" + linked[1]
     r = await asyncio.wait_for(_run_agent_with_model(
-        model_name=QWEN, output_type=QwenDecisions, system_prompt=QWEN_SYS,
-        user_prompt=f"{state}\n\n{block('NEGATIVES', negs)}\n\n{block('NORMAL LINES', normals)}\n\n{block('MEASUREMENTS', measurements)}",
-        api_key="", model_settings={"temperature": 0, "max_tokens": 4000, "reasoning_effort": "none"}), QWEN_TIMEOUT_S)
+        model_name=QWEN, output_type=out_type, system_prompt=sys_prompt, user_prompt=user,
+        api_key="", model_settings={"temperature": 0, "max_tokens": max_tokens, "reasoning_effort": "none"}), QWEN_TIMEOUT_S)
     return r.output
 
 

@@ -6,19 +6,24 @@ adjudicate → items → verify → sequenced pre-apply → store.
 Flags: RR_REVIEW_ENGINE=off (default) | shadow | live; RR_REVIEW_LANES an optional subset of the lanes;
 RR_REVIEW_CONCURRENCY (default 1) caps concurrent runs process-wide so shadow never competes with generation for
 model quota; RR_REVIEW_SAMPLE (0–1, default 1.0) is the share of saved reports reviewed. No per-user gating.
-`live` behaves as `shadow` (warned once) until a live report write exists. In shadow the engine runs in a background
-task after the candidate is saved; it writes rows only and NOTHING is applied to the user-visible report: the
-pre-apply sequence is computed and recorded in the run's shadow log (Gate D) and in `ReviewResult.report`, never
-written back.
+The engine NEVER rewrites the report, in any mode (spec §10.4: automatic edits happen only before render, in the
+post-generation check `report_review.run_quality_check`). It runs in a background task after the candidate is saved
+and writes review rows only. `live` differs from `shadow` only in what the client shows: the rail
+(`rail_enabled()`; RR_REVIEW_RAIL=0 is the kill switch that hides it) and no Gate D log.
 
-One text (I5): every persisted anchor is on the ORIGINAL report (the text the user sees; `text_hash` = its hash).
+Post-gen bridge (`live.bridge_items`): each edit the post-gen check applied (a contradicted negative removed in code,
+an absent dictated finding inserted) is one `pre_applied` item on the final text, with `evidence.undo`. It is a fact,
+not a would-be, so it is `pre_applied` in shadow and live alike. The engine's own items on a bridged span are dropped
+(the bridge item wins; `run["deduped"]`), and `run["post_check"]` logs what was located.
+
+One text (I5): every persisted anchor is on the reviewed report (the text the user sees; `text_hash` = its hash).
 The would-be final report, the negatives' post-removal report and the negatives' post-removal anchor positions are
 kept in the shadow log only, so offsets can be reconstructed for the Gate D / F reads.
 
-Shadow persistence (I6): no item is persisted `pre_applied` while the user-visible report lacks its edit. An item the
-sequence would pre-apply is stored `open` (its one-click edit applies to the report the user sees) with
-`evidence["would_pre_apply"] = True` and its history event renamed `would_pre_apply`; the shadow log's `pre_apply`
-entries (by item id) carry the sequenced detail. `ReviewResult` itself keeps `pre_applied` (what live would do).
+The engine's own pre-apply applies nothing (I6): the sequence below is computed on copies for the shadow log
+(`run["pre_apply"]`, `ReviewResult.report`) only. An item the sequence would pre-apply stays `open`, a one-click
+action with its edit, with `evidence["would_pre_apply"] = True` and a `would_pre_apply` history event; an edit the
+sequence would overtake keeps its edit (nothing was applied before it).
 
 Duplicates (I2): a negative clause flagged both by the negatives classifier and by the accuracy lane
 (`evidence.negative`) is owned by the negatives classifier when it succeeded: lane items whose original-report span
@@ -28,7 +33,7 @@ Jev candidate on a negative or plain normal statement whose span overlaps one of
 (code, known before its model call, so lanes and classifier stay concurrent; waiting for its labels would serialise
 ~5 s p50). Held candidates are adjudicated after the classifier only when it failed (`run["cost"]["prefiltered"]`).
 
-Pre-apply (binding corrections 9, 10, 12; spec §9). An item is `pre_applied` only when ALL hold:
+Would-be pre-apply (binding corrections 9, 10, 12; spec §9; recorded only). An item would pre-apply only when ALL hold:
 - it is pre-apply eligible: a code-built removal from the accuracy lane (`Candidate.pre_apply` + `code_fix`), or a
   coverage `absent` line whose insert the engine builds itself with `verifier.insert_from_line` from the WHOLE
   dictated line (the adjudicator's own text is never pre-applied); the adjudicator agreed (`action`, no error) and,
@@ -38,7 +43,17 @@ Pre-apply (binding corrections 9, 10, 12; spec §9). An item is `pre_applied` on
 - it still applies cleanly in sequence: negatives' removals go first (already sequential, `log["report"]`), then the
   lane edits in item order, each re-checked with `preapply_failures` against the text it is actually applied to.
   One that no longer applies falls back to an open one-click item.
-Negatives items (Task 14) bypass merge and the adjudicator and are appended as built."""
+Negatives items (Task 14) bypass merge and the adjudicator and are appended as built.
+
+Brief normals (`brief_normals`): the brief's linked-normal atoms (labelled before generation) become items of their
+own (default → assumed_normal, implicated → check / uncertain), anchored on the atom's term in the final report or
+unanchored. They own their span: the classifier's default / implicated item on the same span is dropped, a classifier
+conflict / number / removal outranks them; lane negatives overlapping them are deduped like the classifier's.
+
+One card per claim (`claims`): a lane claim flagged in FINDINGS and repeated in IMPRESSION (same lane and kind, a
+conservative content match) is grouped before adjudication (`group_claims`), so one verdict covers both; the item's
+anchor is the FINDINGS copy and `evidence.also_anchors` lists the IMPRESSION copy. The negatives classifier does the
+same in its routing (`negatives.route`)."""
 from __future__ import annotations
 
 import asyncio
@@ -53,7 +68,7 @@ from typing import Dict, List, Optional, Tuple
 from pydantic import BaseModel
 
 from ..report_review import is_negative
-from . import adjudicator, jev_pass, negatives, store, verifier
+from . import adjudicator, brief_normals, claims, jev_pass, live, negatives, store, verifier
 from .alignment import Alignment, align
 from .checks import run_checks
 from .items import Candidate, Edit, ReviewInput, ReviewItem, Span, item_key, merge, text_hash
@@ -72,20 +87,10 @@ _DEFAULT_LANES = "coverage,accuracy,additions"
 
 # ── flags ───────────────────────────────────────────────────────────────────
 
-_LIVE_WARNED = False
-
-
 def mode() -> str:
-    """off | shadow. `live` is accepted but behaves as `shadow` until a live report write exists (I6): nothing may be
-    persisted as pre-applied while the user-visible report does not contain the edit."""
-    global _LIVE_WARNED
+    """off | shadow | live (anything else is off)."""
     v = os.environ.get("RR_REVIEW_ENGINE", "off").strip().lower()
-    if v == "live":
-        if not _LIVE_WARNED:
-            _LIVE_WARNED = True
-            logger.warning("review engine: RR_REVIEW_ENGINE=live behaves as shadow (no live report write yet)")
-        return "shadow"
-    return v if v == "shadow" else "off"
+    return v if v in ("shadow", "live") else "off"
 
 
 def concurrency() -> int:
@@ -118,7 +123,7 @@ def rail_enabled() -> bool:
 class ReviewResult(BaseModel):
     run: dict
     items: List[ReviewItem]
-    report: str                 # the report after the pre-apply sequence (shadow: recorded only, never shown)
+    report: str                 # the report after the would-be pre-apply sequence (recorded only, never shown)
 
 
 def _now() -> str:
@@ -304,11 +309,29 @@ def finalise(inp: ReviewInput, items: List[ReviewItem], plans: Dict[str, _Plan],
     return doc, log
 
 
+def _would_preapply(inp: ReviewInput, items: List[ReviewItem], plans: Dict[str, _Plan], neg_log: Optional[dict],
+                    neg_items: List[ReviewItem]) -> Tuple[str, List[dict]]:
+    """`finalise` on copies, for the shadow log only: nothing is applied. An item the sequence would pre-apply stays
+    open with `evidence.would_pre_apply`; its verification facts (`preapply_failures`) are kept; an overtaken item
+    keeps its edit (nothing was applied before it)."""
+    copies = [it.model_copy(deep=True) for it in items]
+    neg_copies = [it.model_copy(deep=True) for it in neg_items]
+    report, log = finalise(inp, copies, plans, neg_log, neg_copies)
+    for it, c in zip(items, copies):
+        it.verified = c.verified
+        if c.status == "pre_applied":
+            it.evidence = {**(it.evidence or {}), "would_pre_apply": True}
+            it.history.append({**c.history[-1], "event": "would_pre_apply"})
+    shadow_items(neg_items)
+    return report, log
+
+
 # ── run ─────────────────────────────────────────────────────────────────────
 
-async def _negatives(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], Optional[dict], Optional[str]]:
+async def _negatives(inp: ReviewInput, run_id: str, types: Optional[Dict[str, str]] = None
+                     ) -> Tuple[List[ReviewItem], Optional[dict], Optional[str]]:
     try:
-        items, log = await asyncio.wait_for(negatives.classify_negatives(inp, run_id), NEGATIVES_TIMEOUT_S)
+        items, log = await asyncio.wait_for(negatives.classify_negatives(inp, run_id, types), NEGATIVES_TIMEOUT_S)
         return items, log, None
     except Exception as e:  # noqa: BLE001 - negatives never fail the run (timeouts included)
         logger.warning("review engine: negatives failed (%s)", type(e).__name__)
@@ -397,14 +420,61 @@ def one_card_per_clause(items: List[ReviewItem], neg_items: List[ReviewItem]
     return ([it for it in items if it.id not in drop_lane], [n for n in neg_items if n.id not in drop_neg], log)
 
 
+def _cand_section(c: Candidate, report: str, names: List[str]) -> Optional[str]:
+    if c.section:
+        return c.section
+    return verifier._section_of(report, c.anchor.start, names) if c.anchor is not None else None
+
+
+def group_claims(cands: List[Candidate], report: str, names: List[str]
+                 ) -> Tuple[List[List[Candidate]], List[bool]]:
+    """(groups, linked): `merge` plus one claim flagged in FINDINGS and repeated in IMPRESSION (same lane and kind,
+    `claims.same_claim`), grouped BEFORE adjudication so one verdict covers both. A linked group lists its
+    findings-role members first, so the item's primary anchor is the FINDINGS copy."""
+    idx = [i for i, c in enumerate(cands) if c.anchor is not None and c.anchor.text]
+    entries = [(_cand_section(cands[i], report, names), cands[i].anchor.text, f"{cands[i].lane}|{cands[i].kind}")
+               for i in idx]
+    links = [(idx[f], idx[m]) for f, m in claims.link_pairs(entries)]
+    linked_ids = {id(cands[i]) for pair in links for i in pair}
+    groups, linked = [], []
+    for g in merge(cands, links):
+        is_linked = any(id(c) in linked_ids for c in g)
+        if is_linked:
+            sec = {id(c): claims.role_of(_cand_section(c, report, names)) for c in g}
+            g = [c for c in g if sec[id(c)] == "findings"] + [c for c in g if sec[id(c)] != "findings"]
+        groups.append(g)
+        linked.append(is_linked)
+    return groups, linked
+
+
+def also_anchors(primary: Optional[Span], group: List[Candidate], h: Optional[str] = None) -> List[dict]:
+    """The other copies of a linked claim: distinct anchors in the group that do not overlap the primary."""
+    out: List[Span] = []
+    for c in group:
+        a = c.anchor
+        if a is None or primary is None or a.end <= a.start:
+            continue
+        if a.start < primary.end and primary.start < a.end:
+            continue
+        if any(a.start < o.end and o.start < a.end for o in out):
+            continue
+        out.append(a)
+    return [a.model_copy(update={"text_hash": h}).model_dump() for a in sorted(out, key=lambda a: a.start)]
+
+
 async def _judge_and_verify(inp: ReviewInput, run_id: str, cands: List[Candidate], al: Optional[Alignment],
                             items: List[ReviewItem], plans: Dict[str, "_Plan"],
                             group_of: Dict[str, List[Candidate]], timings: Dict[str, int]) -> List[adjudicator.Outcome]:
-    """merge → adjudicate → items (+ pre-apply plans) → verify; appends to `items` / `plans` / `group_of`."""
-    outcomes = await adjudicator.adjudicate(inp, merge(cands))
+    """merge (+ one claim across FINDINGS / IMPRESSION) → adjudicate → items (+ pre-apply plans) → verify; appends to `items` / `plans` / `group_of`."""
+    groups, linked = group_claims(cands, inp.artifacts.report, list(inp.artifacts.sections or []))
+    outcomes = await adjudicator.adjudicate(inp, groups)
     new: List[ReviewItem] = []
-    for o in outcomes:
+    for o, is_linked in zip(outcomes, linked):     # adjudicate keeps group order
         it = build_item(inp, run_id, o)
+        if is_linked:
+            also = also_anchors(it.anchor, o.group, text_hash(inp.artifacts.report))
+            if also:
+                it.evidence = {**(it.evidence or {}), "also_anchors": also}
         p = plan_preapply(inp, o, it, al)
         if p is not None:
             plans[it.id] = p
@@ -423,7 +493,8 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
     errors: Dict[str, str] = {}
     a = inp.artifacts
     names = lanes_enabled()
-    neg_task = asyncio.create_task(_negatives(inp, run_id)) if "accuracy" in names else None
+    neg_task = None
+    types: Dict[str, str] = {}
     try:
         al = align(a.report, a.dictated_findings, inp.clinical_history, a.sections)
         checks = run_checks(a.report, a.dictated_findings, inp.clinical_history, inp.scan_type, al, inp.study_title)
@@ -438,6 +509,11 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
             for k in ("contra_error", "omit_error", "support_error"):
                 if jp is not None and getattr(jp, k, None):
                     errors[f"jev_{k}"] = getattr(jp, k)
+        # The classifier reads the Jev statement types (normal clauses, mixed clauses' tails), so it starts after the
+        # ~0.5 s Jev pass; it still runs concurrently with the lanes and the adjudicator.
+        types = dict(jp.types) if jp is not None else {}
+        if "accuracy" in names:
+            neg_task = asyncio.create_task(_negatives(inp, run_id, types))
         ctx = LaneContext(alignment=al, jev=jp, checks=checks)
 
         async def one(name: str):
@@ -457,7 +533,7 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
                 cands += r
         held: List[Candidate] = []
         if neg_task is not None:
-            cands, held = prefilter(cands, negatives.candidate_spans(a.report))
+            cands, held = prefilter(cands, negatives.candidate_spans(a.report, types))
         items: List[ReviewItem] = []
         plans: Dict[str, _Plan] = {}
         group_of: Dict[str, List[Candidate]] = {}
@@ -485,8 +561,18 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         cands += held
         held = []
     deduped: List[dict] = []
+    brief_items: List[ReviewItem] = []
+    try:                                 # the brief's linked-normal labels own their atoms (brief_normals)
+        brief_items = brief_normals.build_items(inp, run_id)
+    except Exception as e:  # noqa: BLE001 - never fails the run: the classifier's own items stand
+        errors["brief_normals"] = f"{type(e).__name__}: {str(e)[:200]}"
+    if brief_items:
+        for it in brief_items:
+            it.engine_version = ENGINE_VERSION
+        neg_items, brief_items, brief_log = brief_normals.dedupe(neg_items, brief_items)
+        deduped += brief_log
     if neg_task is not None and "negatives" not in errors:      # the classifier owns negatives; else lane fallback
-        items, dropped = _dedupe(items, group_of, neg_items)
+        items, dropped = _dedupe(items, group_of, neg_items + brief_items)
         for it in dropped:
             plans.pop(it.id, None)
             deduped.append({"key": it.key, "kind": it.kind, "anchor": it.anchor.model_dump() if it.anchor else None})
@@ -494,15 +580,33 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         for d in one_card:
             plans.pop(d["dropped"], None)
         deduped += one_card
-    report, pre_log = finalise(inp, items, plans, neg_log, neg_items)
+    bridge: List[ReviewItem] = []
+    bridge_log: List[dict] = []
+    try:                                 # the post-gen check's applied edits: pre_applied facts on the final text
+        bridge, bridge_log = live.bridge_items(inp, run_id)
+    except Exception as e:  # noqa: BLE001 - never fails the run
+        errors["post_check"] = f"{type(e).__name__}: {str(e)[:200]}"
+    if bridge:
+        for it in bridge:
+            it.engine_version = ENGINE_VERSION
+        items, d1 = live.dedupe(items, bridge)
+        neg_items, d2 = live.dedupe(neg_items, bridge)
+        brief_items, d3 = live.dedupe(brief_items, bridge)
+        for it in d1 + d2 + d3:
+            plans.pop(it.id, None)
+            deduped.append({"key": it.key, "kind": it.kind, "anchor": it.anchor.model_dump() if it.anchor else None,
+                            "by": "post_check"})
+    report, pre_log = _would_preapply(inp, items, plans, neg_log, neg_items)
     items += neg_items                   # correction 10: never adjudicated (only one_card_per_clause pairs them)
+    items += brief_items                 # never adjudicated, never pre-applied
+    items += bridge
     timings["total"] = int((time.monotonic() - t0) * 1000)
     errors.update({f"adjudicator_{k}": o.error for k, o in enumerate(outcomes) if o.error})
     run = {"lanes": lanes, "timings_ms": timings, "errors": errors,
            "cost": {"groups": len(outcomes), "adjudicated": sum(1 for o in outcomes if o.judgement or o.error),
                     "candidates": len(cands), "prefiltered": len(held),
                     "negatives_calls": 1 if neg_log and neg_log.get("candidates") else 0},
-           "pre_apply": pre_log, "negatives": _neg_summary(neg_log), "deduped": deduped,
+           "pre_apply": pre_log, "negatives": _neg_summary(neg_log), "deduped": deduped, "post_check": bridge_log,
            "negatives_report": (neg_log or {}).get("report"),
            "negatives_post_removal_anchors": (neg_log or {}).get("post_removal_anchors") or {}}
     return ReviewResult(run=run, items=items, report=report)
@@ -630,10 +734,11 @@ def _semaphore() -> asyncio.Semaphore:
 
 
 def shadow_items(items: List[ReviewItem]) -> List[ReviewItem]:
-    """I6: what may be persisted while nothing is written to the user-visible report. An item the sequence would
-    pre-apply is stored `open` with `evidence["would_pre_apply"]` and its `pre_applied` history event renamed."""
+    """I6: the engine never writes the report, so none of its own items is `pre_applied`: an item the sequence would
+    pre-apply is `open` with `evidence["would_pre_apply"]` and its `pre_applied` history event renamed. The post-gen
+    bridge items (`live.is_bridge`) keep `pre_applied`: their edit really was applied before render."""
     for it in items:
-        if it.status == "pre_applied":
+        if it.status == "pre_applied" and not live.is_bridge(it):
             it.status = "open"
             it.evidence = {**(it.evidence or {}), "would_pre_apply": True}
             it.history = [{**e, "event": "would_pre_apply"} if e.get("event") == "pre_applied" else e
@@ -650,22 +755,32 @@ async def _gate_d(inp: ReviewInput) -> Optional[dict]:
 
 
 async def run_and_store(report_id: str, text: Optional[str] = None) -> Optional[str]:
-    """Run the engine over a saved report and store the run and its items. Never raises, never writes the report
-    (in shadow the pre-apply sequence is only recorded in the shadow log). At most `concurrency()` runs at once."""
+    """Run the engine over a saved report and store the run and its items. Never raises, never writes the report (in
+    any mode): the would-be pre-apply sequence is only recorded in the run's log. At most `concurrency()` runs at
+    once. The run row is created BEFORE waiting for the semaphore, so a queued run reads as running (empty lanes, no
+    errors); a failure after that finishes the row with an `engine` error, so it never reads as running for ever."""
+    run_id: Optional[str] = None
     try:
         inp = await load_input(report_id, text)
         if inp is None:
             return None
+        run_id = await asyncio.to_thread(_with_session, store.create_run, report_id, mode(), ENGINE_VERSION,
+                                         inp.pathway)
         async with _semaphore():
-            return await _run_and_store(inp, report_id)
+            return await _run_and_store(inp, report_id, run_id)
     except Exception as e:  # noqa: BLE001 - the engine never affects the report path
         logger.warning("review engine failed for %s (%s: %s)", report_id, type(e).__name__, str(e)[:200])
+        if run_id is not None:
+            try:
+                await asyncio.to_thread(_with_session, store.finish_run, run_id, {}, {}, {},
+                                        {"engine": f"{type(e).__name__}: {str(e)[:200]}"})
+            except Exception:  # noqa: BLE001
+                pass
         return None
 
 
-async def _run_and_store(inp: ReviewInput, report_id: str) -> str:
+async def _run_and_store(inp: ReviewInput, report_id: str, run_id: str) -> str:
     m = mode()
-    run_id = await asyncio.to_thread(_with_session, store.create_run, report_id, m, ENGINE_VERSION, inp.pathway)
     try:
         res = await run_review(inp, run_id)
     except Exception as e:  # noqa: BLE001
@@ -678,7 +793,8 @@ async def _run_and_store(inp: ReviewInput, report_id: str) -> str:
     if gate_d and gate_d.get("error"):
         errors["gate_d"] = gate_d["error"]
     shadow = {"gate_d": gate_d, "pre_apply": res.run["pre_apply"], "negatives": res.run["negatives"],
-              "deduped": res.run["deduped"], "report_hash": text_hash(inp.artifacts.report),
+              "deduped": res.run["deduped"], "post_check": res.run.get("post_check"),
+              "report_hash": text_hash(inp.artifacts.report),
               "pre_applied_hash": text_hash(res.report), "final_report": res.report,
               "negatives_report": res.run["negatives_report"],
               "negatives_post_removal_anchors": res.run["negatives_post_removal_anchors"]}
@@ -689,19 +805,31 @@ async def _run_and_store(inp: ReviewInput, report_id: str) -> str:
 
 
 _REVIEW_TASKS: "set[asyncio.Task]" = set()
+_IN_FLIGHT: "dict[str, asyncio.Task]" = {}
 
 
 def schedule_review(report_id: Optional[str], text: Optional[str] = None) -> Optional["asyncio.Task"]:
     """Fire-and-forget review of a saved report (held so it is not garbage-collected mid-flight). No-op when off or
-    when the report falls outside the RR_REVIEW_SAMPLE share."""
+    when the report falls outside the RR_REVIEW_SAMPLE share. At most one run per report is in flight: a second
+    request while one runs gets that run's task (repeated Re-review clicks never queue runs)."""
     if mode() == "off" or not report_id:
         return None
+    rid = str(report_id)
+    cur = _IN_FLIGHT.get(rid)
+    if cur is not None and not cur.done():
+        return cur
     rate = sample_rate()
     if rate < 1.0 and random.random() >= rate:
         return None
-    task = asyncio.create_task(run_and_store(str(report_id), text))
+    task = asyncio.create_task(run_and_store(rid, text))
     _REVIEW_TASKS.add(task)
-    task.add_done_callback(_REVIEW_TASKS.discard)
+    _IN_FLIGHT[rid] = task
+
+    def _done(t: "asyncio.Task") -> None:
+        _REVIEW_TASKS.discard(t)
+        if _IN_FLIGHT.get(rid) is t:
+            del _IN_FLIGHT[rid]
+    task.add_done_callback(_done)
     return task
 
 

@@ -364,6 +364,28 @@ def test_correction_towards_dictation_not_alters_dictated():
                                       d="Small 4 mm nodule in the left lower lobe apex posteriorly.")
 
 
+GATE_G_D = ("3.2 cm pancreatic head mass abutting the SMV over less than 180 degrees without SMA involvement. "
+            "CBD dilated to 14 mm with intrahepatic duct dilatation.")
+GATE_G_IMP = ("A 3.2 cm pancreatic head mass abutting the SMV over less than 180 degrees without SMA involvement. "
+              "Urgent referral recommended.")
+
+
+def test_append_around_verbatim_dictated_sentence_not_alters_dictated():                               # Gate G
+    """Chat "add the biliary dilatation with CBD 14 mm to the impression": the dictated impression sentence is kept
+    verbatim and a grounded clause is appended to it. Nothing dictated is removed or changed."""
+    rpt = R("The common bile duct is dilated to 14 mm.", imp=GATE_G_IMP)
+    find = "abutting the SMV over less than 180 degrees without SMA involvement."
+    e = rep(find, find[:-1] + ", with common bile duct dilatation to 14 mm and intrahepatic ductal dilatation.")
+    assert "alters_dictated" not in G(rpt, e, "chat", d=GATE_G_D)
+
+
+def test_number_inserted_inside_dictated_sentence_still_alters_dictated():                             # Gate G
+    """Control: the same grounded number put INSIDE the dictated sentence changes what it says."""
+    rpt = R("The common bile duct is dilated to 14 mm.", imp=GATE_G_IMP)
+    e = rep("A 3.2 cm pancreatic head mass", "A 3.2 x 14 mm pancreatic head mass")
+    assert "alters_dictated" in G(rpt, e, "chat", d=GATE_G_D)
+
+
 def test_dictated_shorthand_positive_protected():                                                      # E9
     rpt = R("Left 2 cm SOL in liver. Spleen normal.")
     f = G(rpt, rep("Left 2 cm SOL in liver.", "Liver SOL."), "contradicted", d="L liver SOL 2 cm.")

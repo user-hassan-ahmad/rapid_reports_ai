@@ -105,3 +105,45 @@ def test_latest_run_falls_back_to_unfinished(db_session, test_user):
     rid = _report(db_session, test_user)
     run = store.create_run(db_session, rid, "shadow", "0.1.0", "quick")
     assert store.latest_run(db_session, rid)["id"] == run
+
+
+def _pre_applied(rid, run_id):
+    it = _item(rid, run_id, kind="omission")
+    it.status = "pre_applied"
+    it.history = [{"event": "pre_applied", "actor": "post_check", "detail": {}}]
+    return it
+
+
+def test_discard_reinstates_an_engine_pre_applied_item(db_session, test_user):
+    """Plan 3 fix batch: Discard after undo/restore of a pre-applied item posts `apply` with detail
+    {via: discard, reinstate: pre_applied}; the restored text holds the engine's write, so the status returns to
+    pre_applied (only when the engine itself pre-applied the item)."""
+    rid = _report(db_session, test_user)
+    run_id = store.create_run(db_session, rid, "live", "0.1.0", "quick")
+    it = _pre_applied(rid, run_id)
+    store.save_items(db_session, [it])
+    assert store.append_event(db_session, rid, it.id, "undo").status == "open"
+    out = store.append_event(db_session, rid, it.id, "apply", detail={"via": "discard", "reinstate": "pre_applied"})
+    assert out.status == "pre_applied" and out.history[-1]["event"] == "apply"
+
+
+def test_reinstate_needs_the_engine_pre_apply(db_session, test_user):
+    rid = _report(db_session, test_user)
+    run_id = store.create_run(db_session, rid, "live", "0.1.0", "quick")
+    it = _item(rid, run_id)                               # never pre-applied by the engine
+    store.save_items(db_session, [it])
+    out = store.append_event(db_session, rid, it.id, "apply", detail={"via": "discard", "reinstate": "pre_applied"})
+    assert out.status == "applied"
+    user_claim = _pre_applied(rid, run_id)
+    user_claim.key = "k2"
+    user_claim.history = [{"event": "pre_applied", "actor": "user", "detail": {}}]
+    store.save_items(db_session, [user_claim])
+    out = store.append_event(db_session, rid, user_claim.id, "apply",
+                             detail={"via": "discard", "reinstate": "pre_applied"})
+    assert out.status == "applied"
+    # without via: discard an apply is an apply
+    it2 = _pre_applied(rid, run_id)
+    it2.key = "k3"
+    store.save_items(db_session, [it2])
+    store.append_event(db_session, rid, it2.id, "undo")
+    assert store.append_event(db_session, rid, it2.id, "apply", detail={"reinstate": "pre_applied"}).status == "applied"

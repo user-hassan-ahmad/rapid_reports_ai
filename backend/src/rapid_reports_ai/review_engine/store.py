@@ -15,7 +15,7 @@ from .items import ReviewItem
 # command → new status (None: history only). Spec §12.3 commands plus the engine's and the loop's own events.
 COMMAND_STATUS = {
     "apply": "applied", "edit": "applied", "undo": "open", "dismiss": "dismissed", "restore": "open",
-    "addressed": "addressed", "stale": "stale", "pre_applied": "pre_applied",
+    "addressed": "addressed", "stale": "stale", "pre_applied": "pre_applied", "reopened": "open",
     "prepared": None, "view": None, "ask_chat": None,
 }
 _ITEM_FIELDS = ("key", "lane", "detectors", "kind", "cls", "section", "label", "reason", "probe", "citation",
@@ -84,6 +84,34 @@ def latest_run(db: Session, report_id: str, scan: int = 20) -> Optional[dict]:
             "errors": run.errors or {}, "created_at": run.created_at.isoformat() if run.created_at else None}
 
 
+RUNNING_MAX_S = 900     # an unfinished run older than this is a crashed worker, not a running one
+
+
+def run_in_progress(db: Session, report_id: str) -> bool:
+    """The report's newest run is unfinished and recent: a run is queued or running (the rail keeps polling)."""
+    run = (db.query(ReportReviewRun).filter(ReportReviewRun.report_id == _u(report_id))
+           .order_by(ReportReviewRun.created_at.desc()).first())
+    if run is None or _finished(run) or run.created_at is None:
+        return False
+    at = run.created_at if run.created_at.tzinfo else run.created_at.replace(tzinfo=timezone.utc)
+    return (_now() - at).total_seconds() < RUNNING_MAX_S
+
+
+def record_finalise(db: Session, report_id: str, applied_item_ids: List[str]) -> Optional[str]:
+    """Store the review items the radiologist kept at finalise (applied, plus pre-applied not undone) on the latest
+    run, under `shadow_log["finalise"] = {"review_applied_item_ids": [...], "at": iso}` (a keyed run log; no
+    migration). Other shadow_log keys are kept. Returns the run id, or None when the report has no run."""
+    run = latest_run(db, report_id)
+    if run is None:
+        return None
+    row = db.get(ReportReviewRun, _u(run["id"]))
+    row.shadow_log = {**(row.shadow_log or {}),
+                      "finalise": {"review_applied_item_ids": list(applied_item_ids), "at": _now().isoformat()}}
+    flag_modified(row, "shadow_log")
+    db.commit()
+    return run["id"]
+
+
 def list_items(db: Session, report_id: str, run_id: Optional[str] = None,
                include_suppressed: bool = False) -> List[ReviewItem]:
     if run_id is None:
@@ -113,10 +141,27 @@ def append_event(db: Session, report_id: str, item_id: str, command: str, text_h
     row.history = list(row.history or []) + [{"at": _now().isoformat(), "event": command, "actor": actor,
                                               "text_hash": text_hash, "detail": detail or {}}]
     flag_modified(row, "history")
-    if COMMAND_STATUS[command]:
-        row.status = COMMAND_STATUS[command]
+    status = COMMAND_STATUS[command]
+    if command == "reopened" and row.status != "addressed":     # the loop re-opens only what it addressed
+        status = None
+    if _reinstates_pre_apply(command, detail, row.history):
+        status = "pre_applied"
+    if status:
+        row.status = status
     db.commit()
     return _model(row)
+
+
+def _reinstates_pre_apply(command: str, detail: Optional[dict], history: Optional[list]) -> bool:
+    """Discard (Plan 3 fix batch): after the user undid or restored a pre-applied item, Discard puts the saved text
+    back, which holds the engine's write. The client posts `apply` with {via: discard, reinstate: pre_applied}; the
+    item goes back to `pre_applied` only when the engine itself pre-applied it (a non-user `pre_applied` event), so a
+    client can never mint an engine status (correction 13). Otherwise it is a plain apply."""
+    d = detail or {}
+    if command != "apply" or d.get("via") != "discard" or d.get("reinstate") != "pre_applied":
+        return False
+    return any(isinstance(h, dict) and h.get("event") == "pre_applied" and h.get("actor") != "user"
+               for h in (history or []))
 
 
 def update_item(db: Session, item: ReviewItem) -> None:

@@ -8,7 +8,7 @@ call per report labels every generated normal/negative statement `dictated | def
 
 Entry point (Task 10's engine calls it concurrently with the lanes)::
 
-    async def classify_negatives(inp: ReviewInput, run_id: str) -> tuple[list[ReviewItem], dict]
+    async def classify_negatives(inp: ReviewInput, run_id: str, types=None) -> tuple[list[ReviewItem], dict]
 
 Items bypass the adjudicator (binding correction 10) and are never merged with lane candidates. Routing:
 
@@ -37,6 +37,10 @@ unlabelled: number-flagged clauses still become check/number, the rest are assum
 original report. Nothing classed `dictated` is ever removed. Keys use the fixed original kind `negative` plus the
 statement text, so a label that flips between runs keeps its key.
 
+One card per claim: a normal/negative claim in FINDINGS repeated in IMPRESSION (`claim_links`) is one item anchored
+on the FINDINGS copy with the IMPRESSION copy in `evidence.also_anchors`; it carries the worse of the two labels
+(`evidence.claim_labels` keeps both) and is never removed by code (a removal of one copy would leave the other).
+
 Positions: every anchor is on the ORIGINAL report (`text_hash` = its hash), the text the user sees in shadow; a
 removed item's anchor is the removed clause's original span (`evidence["removed_text"]` kept). Removals are applied
 in item order; each removed item's `edit` is relative to the report just before it, and `log["report"]` is the
@@ -59,9 +63,9 @@ from pydantic import BaseModel, field_validator
 
 from .. import report_reconcile as rc
 from ..enhancement_utils import _run_agent_with_model
-from ..report_review import checked_clauses_in_context, remove_negative_clause
-from . import checks, verifier
-from .jev_pass import normal_statement, recommendation
+from ..report_review import checked_clauses_in_context, remove_negative_clause, restate
+from . import checks, claims, verifier
+from .jev_pass import normal_statement, recommendation, split_tails
 from .items import Edit, ReviewInput, ReviewItem, Span, item_key, text_hash
 
 logger = logging.getLogger(__name__)
@@ -124,17 +128,36 @@ def is_normal_or_negative(clause: str) -> bool:
     return bool(_NEG.search(clause)) or normal_statement(clause)
 
 
-def candidates(report: str) -> List[dict]:
+def candidates(report: str, types: Optional[Dict[str, str]] = None) -> List[dict]:
     """Every normal/negative clause the check reads (FINDINGS + IMPRESSION), with the sentence before it.
-    Recommendation sentences are never candidates ("CT spine without contrast" is not a negative)."""
-    return [{"clause": c, "before": b} for c, b in checked_clauses_in_context(report, None).items()
-            if is_normal_or_negative(c) and not recommendation(c)]
+    Recommendation sentences are never candidates ("CT spine without contrast" is not a negative).
+
+    `types` (clause text → the Jev statement type, `jev_pass`): a normal clause is a candidate whole; an abnormal or
+    mixed clause contributes only the negative / normal tails code can split off and locate (`split_tails`), else
+    nothing (it is routed as abnormal); not_a_finding contributes nothing. A plain negative ("No X") and an untyped
+    clause follow today's lexicon."""
+    out: List[dict] = []
+    for c, b in checked_clauses_in_context(report, None).items():
+        if recommendation(c):
+            continue
+        t = (types or {}).get(c)
+        if t is None or restate(c) is not None:
+            if is_normal_or_negative(c):
+                out.append({"clause": c, "before": b})
+        elif t == "normal":
+            out.append({"clause": c, "before": b})
+        elif t in ("abnormal", "mixed"):
+            sp = split_tails(c)
+            for tail in (sp[1] if sp else []):
+                if not recommendation(tail) and _locate(report, tail, []) is not None:
+                    out.append({"clause": tail, "before": b})
+    return out
 
 
-def candidate_spans(report: str) -> List[Tuple[int, int]]:
+def candidate_spans(report: str, types: Optional[Dict[str, str]] = None) -> List[Tuple[int, int]]:
     """Original-report spans of every clause the classifier will read: pure code, known before its model call."""
     taken: List[Tuple[int, int]] = []
-    for c in candidates(report):
+    for c in candidates(report, types):
         span = _locate(report, c["clause"], taken)
         if span:
             taken.append(span)
@@ -308,6 +331,26 @@ def _add_gap(gaps: List[Tuple[int, int]], s: int, e: int) -> List[Tuple[int, int
     return out
 
 
+_SEVERITY = {"dictated": 0, "default": 1, "implicated": 2, "contradicted": 3}
+
+
+def claim_links(report: str, cands: List[dict], names: List[str]) -> Dict[int, int]:
+    """{1-based candidate index: its partner}: a normal/negative claim stated in FINDINGS and repeated in
+    IMPRESSION (`claims.same_claim`, conservative, one-to-one). Pure code, on the original report."""
+    taken: List[Tuple[int, int]] = []
+    entries = []
+    for c in cands:
+        span = _locate(report, c["clause"], taken)
+        if span:
+            taken.append(span)
+        sec = verifier._section_of(report, span[0], names) if span else None
+        entries.append((sec, c["clause"], ORIGINAL_KIND))
+    out: Dict[int, int] = {}
+    for f, m in claims.link_pairs(entries, negative=True):
+        out[f + 1], out[m + 1] = m + 1, f + 1
+    return out
+
+
 def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, dict]
           ) -> Tuple[List[ReviewItem], str, Dict[str, List[int]]]:
     """Labelled candidates → (items anchored on the original report, the report after pre-applied removals,
@@ -319,8 +362,9 @@ def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, di
     removed: List[dict] = []
     gone_idx = set()
     gaps: List[Tuple[int, int]] = []
+    partner = claim_links(report, cands, names)       # one claim in FINDINGS and IMPRESSION: one verdict
     for i, c in enumerate(cands, 1):
-        if (labels.get(i) or {}).get("cls") != "contradicted":
+        if (labels.get(i) or {}).get("cls") != "contradicted" or i in partner:
             continue                                  # numbers are never removable (see the module docstring)
         edit = removal_edit(doc, c["clause"])
         if edit is None or report.count(edit.find) != 1 or verifier.preapply_failures(
@@ -375,29 +419,45 @@ def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, di
         post[i] = [r["post"], r["post"]]
     taken: List[Tuple[int, int]] = [r["orig"] for r in removed]
     taken_post: List[Tuple[int, int]] = []
+    secondary_span: Dict[int, Span] = {}
     for i, c in enumerate(cands, 1):
         lab = labels.get(i) or {}
         cls = lab.get("cls") or "default"
-        if i in gone_idx or (cls == "dictated" and not c["number"]):
+        group = [i, partner[i]] if partner.get(i, 0) > i else None
+        if group:                                     # the FINDINGS copy carries the group's worst verdict
+            lab = max((labels.get(k) or {} for k in group),
+                      key=lambda x: _SEVERITY.get(x.get("cls") or "default", 1))
+            cls = lab.get("cls") or "default"
+            c = {**c, "number": any(cands[k - 1]["number"] for k in group)}
+        is_secondary = 0 < partner.get(i, 0) < i
+        if i in gone_idx or (cls == "dictated" and not c["number"] and not is_secondary):
             continue
         span = _locate(report, c["clause"], taken)
         if span:
             taken.append(span)
+        if is_secondary:                              # the IMPRESSION copy: an also-anchor of the FINDINGS item
+            if span:
+                secondary_span[i] = Span(start=span[0], end=span[1], text=report[span[0]:span[1]], text_hash=h)
+            continue
         pspan = _locate(doc, c["clause"], taken_post)
         if pspan:
             taken_post.append(pspan)
             post[i] = list(pspan)
         anchor = Span(start=span[0], end=span[1], text=report[span[0]:span[1]], text_hash=h) if span else None
         base = {"clause": c["clause"], "label": cls}
+        if group:
+            base["claim_labels"] = [(labels.get(k) or {}).get("cls") or "default" for k in group]
         given = lab.get("pointer", "")                # the classifier's pointer to the dictated finding, if any
         if cls == "contradicted":
             label, why = check_text("conflict", given)
-            fix, verified = _conflict_fix(inp, report, anchor, c["clause"], names)
+            # a grouped claim has two copies: code's one-click removal of one would leave the other
+            fix, verified = (None, None) if group else _conflict_fix(inp, report, anchor, c["clause"], names)
             items[i] = item(c, "check", "open", "conflict", anchor,
                             {**base, "check_reason": "conflict", "pointer": given}, label, edit=fix, reason=why,
                             verified=verified)
         elif c["number"]:
-            nums = undictated_numbers(c["clause"], dictation, history)
+            nums = undictated_numbers(" ".join(cands[k - 1]["clause"] for k in group) if group else c["clause"],
+                                      dictation, history)
             label, why = check_text("number", nums)
             measured = [n for n in checks.undictated_numbers(c["clause"], dictation, history)
                         if checks.is_measurement(n)]
@@ -410,17 +470,23 @@ def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, di
                             {**base, "check_reason": "uncertain", "pointer": given}, label, reason=why)
         else:
             items[i] = item(c, "assumed_normal", "open", "assumed_normal", anchor, base, "Assumed normal")
+    for i, sp in secondary_span.items():
+        it = items.get(partner[i])
+        if it is not None:
+            it.evidence = {**(it.evidence or {}), "also_anchors": [sp.model_dump()]}
     return ([items[i] for i in sorted(items)], doc,
             {items[i].id: post[i] for i in sorted(items) if i in post})
 
 
-async def classify_negatives(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], dict]:
+async def classify_negatives(inp: ReviewInput, run_id: str, types: Optional[Dict[str, str]] = None
+                             ) -> Tuple[List[ReviewItem], dict]:
     """The Task 14 entry point: (items, log). Never raises. `log` holds the report after pre-applied removals,
     its hash, candidate/label counts, latency and any model error (fail-soft)."""
     t0 = time.monotonic()
     report = inp.artifacts.report or ""
     dictation, history = inp.artifacts.dictated_findings or "", inp.clinical_history or ""
-    cands = [{**c, "number": code_number_flag(c["clause"], dictation, history)} for c in candidates(report)]
+    listed = candidates(report, types) if types else candidates(report)
+    cands = [{**c, "number": code_number_flag(c["clause"], dictation, history)} for c in listed]
     log: dict = {"detector": DETECTOR, "candidates": len(cands), "labelled": 0, "error": None, "error_kind": None,
                  "report": report, "text_hash": text_hash(report), "post_removal_anchors": {}, "ms": 0}
     if not cands:

@@ -551,6 +551,9 @@ class RepairResult(BaseModel):
     skipped: int = 0
     error: Optional[str] = None
     dup_check: Optional[str] = None   # insert_findings: "jev" | "words" (Jev failed)
+    # insert_findings: the sentences inserted, verbatim as they stand in the report. Excluded from dumps so the
+    # serialised RepairResult (golden pipeline records) is unchanged.
+    added: List[str] = Field(default_factory=list, exclude=True)
 
 
 _NEGATION = re.compile(r"\b(no|not|without|nor|absent|negative for)\b", re.I)
@@ -724,7 +727,7 @@ async def insert_findings(report: str, findings: str, items: List[str],
             out = out.replace(first, f"{sent} {first}", 1)
         applied += 1
         added.append(sent)
-    return RepairResult(report=out, applied=applied, skipped=skipped, dup_check=dup_check)
+    return RepairResult(report=out, applied=applied, skipped=skipped, dup_check=dup_check, added=added)
 
 
 # ── deterministic removal of a flagged negative ─────────────────────────────
@@ -832,6 +835,8 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
         tel["sections_found"] = [s.name for s, _, _ in found]
         tel["sections_missing"] = [s.name for s in sections if s.header and not any(s is f for f, _, _ in found)]
     original = pre_repair = report
+    removals: List[dict] = []
+    insertions: List[dict] = []
     try:
         res = await check(report, findings, scan_type, options,
                           **_given(sections=sections, protected=protected, extra_report_qs=extra_report_qs,
@@ -859,7 +864,9 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
         for f in editable:
             if f.kind == "contradiction" and is_negative(f.text):
                 new = remove_negative_clause(report, f.text, **_given(sections=sections, protected=protected))
-                removed += new != report
+                if new != report:
+                    removed += 1
+                    removals.append({"type": "removal", "clause": f.text})
                 report = new
         tel["clauses_removed"] = removed
         pre_repair = report
@@ -869,6 +876,7 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
             rep = await insert_findings(report, findings, omitted,
                                         **_given(sections=sections, protected=protected, suppressed=suppressed))
             report = rep.report
+            insertions = [{"type": "insertion", "sentence": s} for s in rep.added]
             tel.update(edits_applied=rep.applied, edits_skipped=rep.skipped, dup_check=rep.dup_check,
                        repair_ms=int((time.time() - t1) * 1000), error=rep.error or tel["error"])
     except Exception as e:  # never blocks the report
@@ -876,11 +884,15 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
         tel["error"] = f"{type(e).__name__}: {str(e)[:200]}"
     if protected and not _protected_intact(original, report, protected):
         report = pre_repair if _protected_intact(original, pre_repair, protected) else original
+        insertions = []
+        removals = removals if report == pre_repair else []
         tel["error"] = "protected text changed; repair reverted"
     # Gate D shadow log (review engine spec §9): the report before today's automatic edits, kept only while the
-    # review engine runs (shadow or live) and only when an edit was applied.
+    # review engine runs (shadow or live) and only when an edit was applied. `applied_edits` (removals in order, then
+    # insertions) lets the engine show each edit as a pre-applied item on the final text (spec §10.4).
     if os.environ.get("RR_REVIEW_ENGINE", "off").strip().lower() in ("shadow", "live") and report != original:
         tel["pre_edit_report"] = original
+        tel["applied_edits"] = removals + insertions
     return report, options, tel
 
 

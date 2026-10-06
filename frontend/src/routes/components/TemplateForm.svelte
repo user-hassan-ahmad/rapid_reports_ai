@@ -7,6 +7,8 @@
 	import Toast from '$lib/components/Toast.svelte';
 	import ReportResponseViewer from './ReportResponseViewer.svelte';
 	import { API_URL } from '$lib/config';
+	import { hasUnsavedWork as unsavedWork } from '$lib/utils/confirmGate';
+	import { sectionList } from '$lib/review/savedReport';
 
 	// ── Feedback capture ──────────────────────────────────────────────
 	let feedbackId: string | null = null;
@@ -96,6 +98,16 @@
 	if (typeof variableValues === 'undefined') variableValues = {};
 
 	export let prePoppedSections: string[] = [];
+	/** The report's section names (artifacts.sections), for the review rail; null = the report's headings. */
+	export let reviewSections: string[] | null = null;
+	// Bumped by every generation and by History "Open" (abandonGeneration): an answer lands only while current.
+	let generationToken = 0;
+
+	/** History "Open": drop the generation in flight, so its answer never lands over the opened report. */
+	export function abandonGeneration(): void {
+		++generationToken;
+		loading = false;
+	}
 	let sectionsLoading = false;
 	let sectionsError = '';
 
@@ -347,6 +359,18 @@
 		return raw.replace(/\n{3,}/g, '\n\n').trim();
 	}
 
+	/** History "Open" asks before replacing the form when it holds unsaved work: a dictation in progress (recording,
+	 * or scratchpad findings no report was generated from) or unsaved editor changes. */
+	export function hasUnsavedWork(): boolean {
+		if (loading) return true; // a report is generating: Open would drop it
+		return unsavedWork({
+			recording: isRecording,
+			findings: scratchpadToFindings(scratchpadContent),
+			findingsAtReport: findingsAtReportGeneration,
+			editorDirty: !!reportViewerRef?.hasUnsavedEdits?.()
+		});
+	}
+
 	async function handleGenerateReport() {
 		if (!scratchpadRef || !selectedTemplate) return;
 
@@ -360,10 +384,12 @@
 			return;
 		}
 
+		const gen = ++generationToken;
 		loading = true;
 		error = null;
 		response = null;
 		responseModel = null;
+		reviewSections = null;
 
 		const _flowT0 = typeof performance !== 'undefined' ? performance.now() : 0;
 		try {
@@ -378,6 +404,7 @@
 				})
 			});
 			const data = await res.json();
+			if (gen !== generationToken) return; // History "Open" (or a newer generation) took over
 			const _flowT1 = typeof performance !== 'undefined' ? performance.now() : 0;
 			console.debug(
 				'[FLOW_TIMING] template POST /generate roundtrip_ms=',
@@ -389,6 +416,7 @@
 			if (data.success) {
 				response = data.response;
 				responseModel = data.model;
+				reviewSections = sectionList(data.artifacts?.sections);
 				reportId = data.report_id ?? null;
 			hasResponseEver = true;
 			findingsAtReportGeneration = findingsContent;
@@ -407,9 +435,9 @@
 				error = 'Failed to generate report. Please try again.';
 			}
 		} catch (e) {
-			error = 'Failed to connect. Please try again.';
+			if (gen === generationToken) error = 'Failed to connect. Please try again.';
 		} finally {
-			loading = false;
+			if (gen === generationToken) loading = false;
 		}
 	}
 
@@ -451,9 +479,11 @@
 		}
 	}
 
-	function copyToClipboard() {
-		if (!response) return;
-		navigator.clipboard.writeText(response).then(() => {
+	/** The viewer sends the live editor document (unsaved edits and review fixes included). */
+	function copyToClipboard(e?: CustomEvent<{ content?: string }>) {
+		const text = e?.detail?.content ?? response;
+		if (!text) return;
+		navigator.clipboard.writeText(text).then(() => {
 			if (toast) toast.show('Copied to clipboard!');
 		});
 	}
@@ -829,6 +859,7 @@
 				clinicalHistory={variableValues['CLINICAL_HISTORY'] ?? ''}
 				caseDetailsDirty={sectionsDirty}
 				{findingsStale}
+				{reviewSections}
 				canRefineTemplate={selectedTemplate?.template_config?.generation_mode === 'skill_sheet_guided'}
 		on:openSidebar={(e) => dispatch('openSidebar', e.detail)}
 			on:auditStateChange={(e) => dispatch('auditStateChange', e.detail)}
