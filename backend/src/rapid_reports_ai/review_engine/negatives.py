@@ -83,6 +83,14 @@ CLS = {"assumed_normal": "info", "uncertain": "minor", "number": "minor", "confl
        "measurement": "action"}   # no invented numbers: an undictated measurement is never minor
 CHECK_REASONS = ("uncertain", "conflict", "number")
 _POINTER_MAX = 60
+_WORDY = re.compile(r"[^\W_]")
+
+
+def pointer_text(pointer: Optional[str]) -> str:
+    """A model-written pointer to the dictated finding, or "" for a placeholder with no words ("-", "->", "—"):
+    the label prompts' "or -" is sometimes written "->"."""
+    p = " ".join((pointer or "").split())
+    return p if _WORDY.search(p) else ""
 
 
 def _quote(pointer: str) -> str:
@@ -93,6 +101,7 @@ def _quote(pointer: str) -> str:
 def check_text(reason: str, pointer: str) -> Tuple[str, str]:
     """(label, reason) for a check item: the label states why it is a check, naming the dictated finding (or the
     number) when there is one; the reason says what to do."""
+    pointer = pointer_text(pointer)
     q = _quote(pointer) if pointer else ""
     if reason == "conflict":
         return ((f"Check: conflicts with {q}" if q else "Check: conflicts with your dictation"),
@@ -215,7 +224,7 @@ def parse_labels(lines: List[str], n: int) -> Dict[int, dict]:
             continue
         i, cls = int(parts[0]), parts[1].lower()
         if 1 <= i <= n and cls in CLASSES:
-            out[i] = {"cls": cls, "pointer": parts[2] if len(parts) > 2 and parts[2] != "-" else "",
+            out[i] = {"cls": cls, "pointer": pointer_text(parts[2]) if len(parts) > 2 else "",
                       "number": len(parts) > 3 and parts[3].lower().startswith("y")}
     return out
 
