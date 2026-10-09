@@ -99,10 +99,18 @@ def _by_ref(anchors):
 def test_units_are_normal_sentences_and_negative_tails_never_positive_heads():
     texts = [u.text for u in ba.units(REPORT)]
     assert "A small right pleural effusion accompanies the mass." not in texts
-    assert any(t.startswith("contralateral hilar lymphadenopathy") for t in texts)     # tail of a finding sentence
+    assert any(t.startswith("no contralateral hilar lymphadenopathy") for t in texts)  # tail keeps its negator
     assert "No contralateral pleural effusion or pleural thickening." in texts
     for u in ba.units(REPORT):
         assert REPORT[u.start:u.end] == u.text
+
+
+def test_a_tail_unit_keeps_its_negator():
+    r = "FINDINGS:\nSuperior mesenteric vein abutment without SMA involvement. The mass abuts the vein; no SMA involvement."
+    texts = [u.text for u in ba.units(r)]
+    assert texts == ["without SMA involvement", "no SMA involvement"]
+    for u in ba.units(r):
+        assert r[u.start:u.end] == u.text
 
 
 def test_pass_one_longest_term_wins_and_the_shorter_omit_is_shadowed():
@@ -213,7 +221,7 @@ def test_relocate_picks_the_nearest_of_identical_units():
 def test_tail_is_located_after_the_head():
     rep = "FINDINGS:\nMild hydronephrosis; no hydronephrosis.\n"
     us = ba.units(rep)
-    assert [u.text for u in us] == ["hydronephrosis"]
+    assert [u.text for u in us] == ["no hydronephrosis"]          # the tail keeps its negator
     assert us[0].start > rep.index(";")
 
 

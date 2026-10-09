@@ -138,6 +138,9 @@ _HEDGED = re.compile(r"\b(?:not\s+excluded|cannot\s+be\s+excluded|not\s+ruled\s+
                      r"no\s+interval\s+change)\b", re.I)
 
 
+_TAIL_NEG = re.compile(r"\b(?:no|without)\s+$", re.I)    # the negator split_tails replaced with "No "
+
+
 def _is_normal(s: str) -> bool:
     return bool(_NORMAL.search(s)) and not _HEDGED.search(s)
 
@@ -164,7 +167,11 @@ def units(report: str) -> List[Unit]:
                     words = _LEAD.sub("", tail).rstrip(".")
                     k = s.find(words, cursor) if words else -1
                     if k >= 0 and not _HEDGED.search(words):
-                        out.append(Unit(words, i + k, i + k + len(words)))
+                        # the unit keeps its negator ("no SMA involvement", not "SMA involvement"): pass 2 shows Jev
+                        # the unit alone, and a tail without its "no" reads as a positive finding
+                        neg = _TAIL_NEG.search(s, cursor, k)
+                        k0 = neg.start() if neg else k
+                        out.append(Unit(s[k0:k + len(words)], i + k0, i + k + len(words)))
                         cursor = k + len(words)
             elif ";" in s:
                 pos = 0
@@ -220,7 +227,7 @@ def match_terms(report: str, labels: List[Label], us: List[Unit]) -> Tuple[Dict[
     return got, left
 
 
-LINK_MIN = 1.01        # pass 2 off: Task 4 wording lab failed the gate (best S1 80.7% at 0.9, 0 false links; recall 59%)
+LINK_MIN = 0.85        # lowest of {0.8,0.85,0.9,0.95} with 0 wrong links in the Task 4 lab (recall 30/45); t21 sat at 0.82
 LINK_TIMEOUT_S = 4.0
 LINK_WORDING = 'Read only this sentence. It says, in any wording: "{t}".'
 

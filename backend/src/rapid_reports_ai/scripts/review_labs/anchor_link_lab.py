@@ -1,7 +1,7 @@
 """Pass 2 wording lab (spec 2026-10-09 §5.1): does Jev tell whether one report sentence says a brief label?
 
     python -m rapid_reports_ai.scripts.review_labs.anchor_link_lab build      # adds stored-case pairs (scratchpad)
-    python -m rapid_reports_ai.scripts.review_labs.anchor_link_lab run --runs 2
+    python -m rapid_reports_ai.scripts.review_labs.anchor_link_lab run --runs 2 [--arms S1]
     python -m rapid_reports_ai.scripts.review_labs.anchor_link_lab score --results <jsonl> [--min 0.8]
 
 Gate: accuracy >= 95% at --min, and 0 trap pairs at or above --min. Production text stays under $RR_LAB_OUT/anchor_link/."""
@@ -60,13 +60,13 @@ async def _one(arm: str, p: dict) -> dict:
     return {"id": p["id"], "arm": arm, "p": float(ans["q"]["noul"])}
 
 
-async def run(runs: int) -> Path:
+async def run(runs: int, arms: list) -> Path:
     common.load_env()
     todo = [p for p in pairs() if p.get("gold") is not None]
     out = common.out_file("anchor_link", "results", "jsonl")
     with open(out, "w") as f:
         for k in range(runs):
-            for arm in ARMS:
+            for arm in arms:
                 for p in todo:                    # one at a time: Jev only, cheap
                     f.write(json.dumps({**await _one(arm, p), "run": k}) + "\n")
     print(out)
@@ -94,12 +94,13 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["build", "run", "score"])
     ap.add_argument("--runs", type=int, default=2)
+    ap.add_argument("--arms", default=",".join(ARMS))
     ap.add_argument("--results")
     ap.add_argument("--min", type=float, default=ba.LINK_MIN)
     a = ap.parse_args()
     if a.cmd == "build":
         build()
     elif a.cmd == "run":
-        asyncio.run(run(a.runs))
+        asyncio.run(run(a.runs, a.arms.split(",")))
     else:
         score(a.results, a.min)
