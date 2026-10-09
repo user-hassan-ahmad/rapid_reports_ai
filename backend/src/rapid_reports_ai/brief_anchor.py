@@ -4,14 +4,16 @@ written; this finds where each one landed so the post-gen check and the review e
 re-judging it.
 
     brief_labels(decisions)          every brief label (mandatory / finding-linked negatives, linked-normal atoms,
-                                     dictated negatives) with a stable ref, a key term, and whether a place phrase
-                                     was dropped from it (`stripped`: its pass 1 hit needs Jev confirmation)
-    units(report)                    the normal / negative statements of FINDINGS + IMPRESSION, with positions
-    match_terms(report, labels, us)  pass 1, code: a label's key term in exactly one unit, longest term first
-    link(labels, us, confirm)        pass 2, Jev: "does this sentence say X?" for the labels pass 1 left, and the
-                                     same question for place-stripped pass 1 hits (one request per unit)
-    anchored(a)                      how in ANCHORED ("term", "jev", "term+jev"): the one test of "anchored"
-    anchor(report, decisions)        both passes; never raises
+                                     dictated negatives) with a stable ref and a key term
+    units(report)                    the normal / negative statements of FINDINGS + IMPRESSION, with positions, the
+                                     sentence each sits in and the sentence before it (context for Jev)
+    match_terms(report, labels, us)  code PROPOSES: a label's key term in exactly one free unit (longest term first,
+                                     "proposed"), or shadowed when every hit is held by a higher-ranked label
+    candidates(...)                  every label's candidate units: its term-hit units, else units sharing a word
+    link(labels, us, cands)          Jev CONFIRMS: "does the last sentence say X?" with the previous sentence as
+                                     context, one request per sentence; a label anchors on the one sentence >= LINK_MIN
+    anchored(a)                      how in ANCHORED ("term+jev", "jev"): the one test of "anchored"
+    anchor(report, decisions)        both steps; never raises. Nothing anchors without Jev
     relocate(anchors, report)        anchors re-found on the report after the check's own edits
     brief_rules(...)                 spec Q2 / Q3: protect brief-kept clauses; OMIT clauses on two signals are
                                      shadow-logged and carded (the brief vetoes, never removes)
@@ -44,7 +46,6 @@ _PLACE_TAIL = re.compile(r"\s+(?:by|on|in|at|within|from|involving)\s+(?:the\s+)
 # A trailing place phrase is boilerplate ("in the visualised thoracic skeleton") unless it carries a side or a level
 # ("at T7", "in the left kidney"): then it is part of the claim and stays in the term. "by ..." names the cause
 # ("invasion by the right upper lobe mass"), never part of the claim, so it always goes.
-_PLACE_WORD = re.compile(r"\b(?:in|on|at|within|from|involving)\b", re.I)
 _QUALIFIER = re.compile(r"\b(?:left|right|bilateral|contralateral|ipsilateral|[CTLS]\d{1,2}(?:/\d)?|segment\s+\w+)\b",
                         re.I)
 
@@ -57,7 +58,6 @@ class Label:
     action: str
     source: str            # "sheet" | "finding:<key>" | "atom" | "dictated"
     pointer: str = ""
-    stripped: bool = False # key_term dropped a place phrase: a pass 1 hit is provisional until Jev confirms it
 
 
 def enabled() -> bool:
@@ -67,30 +67,22 @@ def enabled() -> bool:
 
 def key_term(text: str) -> str:
     """The denied phrase without its boilerplate: "No osseous lesion identified in the visualised thoracic skeleton"
-    → "osseous lesion"; "... with no definite chest wall involvement" → "chest wall involvement"."""
-    return key_term_info(text)[0]
-
-
-def key_term_info(text: str) -> Tuple[str, bool]:
-    """(key_term, stripped): stripped when a place phrase ("in the common bile duct") was dropped, so the bare term
-    ("calculus") can name the same words in another organ's sentence. "by ..." (the cause) is not a place."""
+    → "osseous lesion"; "... with no definite chest wall involvement" → "chest wall involvement". It only proposes
+    candidate units: a dropped place ("in the common bile duct") is Jev's to check, in context."""
     t = (text or "").strip().rstrip(".")
     if _LEAD.match(t):
         t = _LEAD.sub("", t)
     else:
         found = list(_INNER.finditer(t))
         if not found:
-            return "", False
+            return ""
         t = t[found[-1].end():]
     t = _HEDGE.sub("", t)
-    v = _VERB_TAIL.search(t)
-    stripped = bool(v and _PLACE_WORD.search(v.group(0)))
-    t = t[:v.start()] if v else t
+    t = _VERB_TAIL.sub("", t)
     m = _PLACE_TAIL.search(t)
     if m and (m.group(0).split()[0].lower() == "by" or not _QUALIFIER.search(m.group(0))):
-        stripped = stripped or m.group(0).split()[0].lower() != "by"
         t = t[:m.start()]
-    return t.strip(" ,;"), stripped
+    return t.strip(" ,;")
 
 
 def _pointer(p) -> str:
@@ -102,13 +94,13 @@ def brief_labels(decisions: Optional[dict]) -> List[Label]:
     d = decisions or {}
     out: List[Label] = []
     for i, n in enumerate(d.get("negatives") or []):
-        term, stripped = key_term_info(n.get("text") or "")
+        term = key_term(n.get("text") or "")
         if not term:
             continue
         src = n.get("source") or "sheet"
         finding = src.split(":", 1)[1] if src.startswith("finding:") else ""
         out.append(Label(f"neg:{i}", n["text"], term, n.get("action") or "keep", src,
-                         _pointer(n.get("dictated_finding")) or finding, stripped))
+                         _pointer(n.get("dictated_finding")) or finding))
     for u in d.get("normals") or []:
         if not isinstance(u, dict) or not u.get("linked"):
             continue
@@ -117,9 +109,9 @@ def brief_labels(decisions: Optional[dict]) -> List[Label]:
                 out.append(Label(f"atom:{u.get('pid')}:{a.get('id')}", a.get("text") or a["term"], a["term"],
                                  a.get("action") or "keep", "atom", _pointer(a.get("pointer"))))
     for i, t in enumerate(d.get("dictated_negatives") or []):
-        term, stripped = key_term_info(t)
+        term = key_term(t)
         if term:
-            out.append(Label(f"dict:{i}", t, term, "dictated", "dictated", "", stripped))
+            out.append(Label(f"dict:{i}", t, term, "dictated", "dictated"))
     return out
 
 
@@ -132,6 +124,9 @@ class Unit:
     text: str
     start: int
     end: int
+    sentence: str = ""     # the report sentence the unit sits in
+    prev: str = ""         # the sentence before it in the same section ("" for the first)
+    sstart: int = -1       # the sentence's start: units of one sentence share one Jev answer
 
 
 @dataclass
@@ -140,17 +135,18 @@ class Anchor:
     action: str
     source: str
     pointer: str = ""
-    how: str = "none"                 # "term" | "jev" | "term+jev" | "none" | "removed" (its clause was edited out)
-    span: Optional[List[int]] = None  # the label's words (term) or the whole unit (jev)
+    how: str = "none"                 # "term+jev" (a term hit Jev confirmed) | "jev" (a unit Jev picked) | "none" |
+    #                                   "removed" (its clause was edited out) | "proposed" (match_terms only)
+    span: Optional[List[int]] = None  # the label's words (term+jev) or the whole unit (jev)
     span_text: str = ""
     unit: str = ""                    # the statement the span sits in
     offset: int = 0                   # span start minus unit start (relocation)
-    p: Optional[float] = None         # pass 2 probability
+    p: Optional[float] = None         # Jev's probability that the sentence says the label
     shadowed_by: Optional[str] = None # its only hit is held by this (longer or dictated) label
     dupes: int = 0                    # units with this unit's text when anchored (0 = unknown); relocate() checks it
 
 
-ANCHORED = frozenset({"term", "jev", "term+jev"})   # "term+jev": a place-stripped pass 1 hit Jev confirmed
+ANCHORED = frozenset({"term+jev", "jev"})   # both confirmed by Jev: code only proposes
 
 
 def anchored(a) -> bool:
@@ -184,7 +180,10 @@ def units(report: str) -> List[Unit]:
         if a < 0:
             continue
         base = a + len(sec)
+        prev = ""
         for s, i, j in _sentence_positions(report, a, a + len(sec)):
+            ctx = {"sentence": s, "prev": prev, "sstart": i}
+            prev = s
             sp = split_tails(s)
             if sp:
                 k0 = s.find(sp[0])
@@ -206,7 +205,7 @@ def units(report: str) -> List[Unit]:
                             k1 = turn.start()
                             if not _is_normal(s[k0:k1]):
                                 continue
-                        out.append(Unit(s[k0:k1], i + k0, i + k1))
+                        out.append(Unit(s[k0:k1], i + k0, i + k1, **ctx))
             else:
                 # a whole sentence: split at ';' and at a turn to a finding, keep only the parts that are still
                 # negative / normal ("... no lymphadenopathy, but a 6 mm nodule ..." never anchors on the nodule)
@@ -226,7 +225,7 @@ def units(report: str) -> List[Unit]:
                     if m and m.start() > 0 and not _is_normal(t[:m.start()]) \
                             and not _THERE.match(t[:m.start()]):
                         k, t = k + m.start(), t[m.start():]
-                    out.append(Unit(t, i + k, i + k + len(t)))
+                    out.append(Unit(t, i + k, i + k + len(t), **ctx))
     return out
 
 
@@ -240,10 +239,10 @@ def _anchor(lab: Label, **kw) -> Anchor:
 
 
 def match_terms(report: str, labels: List[Label], us: List[Unit]) -> Tuple[Dict[str, Anchor], List[Label]]:
-    """Pass 1 → ({ref: Anchor}, labels for pass 2). A label anchors when its term occurs in exactly one unit at a
-    position no earlier-ranked label holds. A label whose every hit is held is shadowed (merged into the holder);
-    no hit, or several free hits, goes to pass 2. A `stripped` label's hit is returned as "term" but is provisional:
-    `anchor` confirms it with Jev (pass 1 alone is the raw code result)."""
+    """Code proposes → ({ref: Anchor}, the other labels). A label whose term occurs in exactly one unit at a position
+    no earlier-ranked label holds is "proposed" there (holding the position); one whose every hit is held is
+    shadowed (merged into the holder, never asked). No hit, or several free hits: the other labels. Nothing here is
+    anchored: `link` confirms every proposal with Jev."""
     taken: List[Tuple[int, int, str]] = []
     got: Dict[str, Anchor] = {}
     left: List[Label] = []
@@ -263,7 +262,7 @@ def match_terms(report: str, labels: List[Label], us: List[Unit]) -> Tuple[Dict[
         if len(free) == 1:
             s, e, u = free[0]
             taken.append((s, e, lab.ref))
-            got[lab.ref] = _anchor(lab, how="term", span=[s, e], span_text=report[s:e], unit=u.text,
+            got[lab.ref] = _anchor(lab, how="proposed", span=[s, e], span_text=report[s:e], unit=u.text,
                                    offset=s - u.start, dupes=sum(x.text == u.text for x in us))
         elif not free and held is not None:
             got[lab.ref] = _anchor(lab, how="none", shadowed_by=held)
@@ -272,100 +271,141 @@ def match_terms(report: str, labels: List[Label], us: List[Unit]) -> Tuple[Dict[
     return got, left
 
 
-# Pass 2 acceptance, Task 4 wording lab (S1): 0 wrong links at 0.90 in both runs; recall 53/90 (run 1, two passes,
-# before tails kept their negator) and 28/45 (run 2). The only wrong link (t21) scored 0.83 / 0.82 and Jev drifts
-# up to 0.06 between runs, so 0.85 had no margin.
+# Link acceptance, Task 4 wording lab (S1, the unit alone): 0 wrong links at 0.90 in both runs, recall 28/45 (run 2);
+# Jev drifts up to 0.06 between runs. The context wording (C*) and its threshold are chosen by anchor_link_lab.
 LINK_MIN = 0.90
 LINK_TIMEOUT_S = 4.0
-LINK_WORDING = 'Read only this sentence. It says, in any wording: "{t}".'
+LINK_WORDING_S1 = 'Read only this sentence. It says, in any wording: "{t}".'     # lab comparison only
+LINK_WORDING = ('Read the LAST sentence below; any earlier sentence only shows what it refers to. '
+                'It says, in any wording: "{t}".')
+_CRITERIA = {"true": "the sentence says it", "false": "the sentence does not say it"}
 
 
 def q_says(lab: Label) -> dict:
+    """The no-context question (S1): the lab's baseline, not used to anchor."""
+    return {"type": "noul", "instructions": LINK_WORDING_S1.format(t=lab.text.strip().rstrip(".")),
+            "criteria": _CRITERIA}
+
+
+def q_link(lab: Label) -> dict:
     return {"type": "noul", "instructions": LINK_WORDING.format(t=lab.text.strip().rstrip(".")),
-            "criteria": {"true": "the sentence says it", "false": "the sentence does not say it"}}
+            "criteria": _CRITERIA}
+
+
+def link_state(u: Unit) -> str:
+    """What Jev reads for a unit: the previous sentence (context) and the unit's own sentence, last."""
+    return f"{u.prev}\n{u.sentence}".strip() if u.sentence else u.text
 
 
 def _words(s: str) -> set:
     return set(re.findall(r"[a-z]{4,}", (s or "").lower()))
 
 
-async def link(labels: List[Label], us: List[Unit], jev=None,
-               confirm: Optional[List[Tuple[Label, Anchor]]] = None) -> Dict[str, Anchor]:
-    """Pass 2 → {ref: Anchor}: one Jev request per unit (the state is the sentence alone), asking each label that
-    shares a content word with it. A label anchors to the unit Jev scores at P >= LINK_MIN when no other unit does.
-    `confirm`: place-stripped pass 1 hits, asked the same question of their own unit in the same request; confirmed
-    → "term+jev" on the pass 1 span, otherwise (no, or no answer) unanchored, never moved to another unit."""
-    jev = jev or rc._jev
-    asks: Dict[int, Dict[str, dict]] = {}
-    for k, lab in enumerate(labels):
-        w = _words(lab.term)
-        for n, u in enumerate(us):
-            if w & _words(u.text):
-                asks.setdefault(n, {})[f"l{k}"] = q_says(lab)
-    confirm = list(confirm or [])
-    where: Dict[int, int] = {}
-    for c, (lab, a) in enumerate(confirm):
-        n = next((n for n, u in enumerate(us) if a.span and u.start <= a.span[0] and a.span[1] <= u.end), None)
-        if n is not None:
-            where[c] = n
-            asks.setdefault(n, {})[f"c{c}"] = q_says(lab)
-    out: Dict[str, Anchor] = {lab.ref: _anchor(lab) for lab, _ in confirm}   # unconfirmed: unanchored
-    if not asks:
-        return out
+Cand = Tuple[int, Optional[Tuple[int, int]]]    # (unit index, the term span in it, or None: the whole unit)
 
-    async def one(n: int):
-        return n, await asyncio.wait_for(jev(us[n].text, asks[n]), LINK_TIMEOUT_S)
-    units_asked = list(asks)
-    results = await asyncio.gather(*(one(n) for n in units_asked), return_exceptions=True)
-    scores: Dict[int, List[Tuple[float, int]]] = {}
-    unsure: set = set()        # labels with an unanswered question: "no other unit is a match" can't be trusted
-    for n, r in zip(units_asked, results):
+
+def candidates(report: str, labels: List[Label], us: List[Unit], got: Dict[str, Anchor]) -> Dict[str, List[Cand]]:
+    """Every label's candidate units for Jev: a proposal's own unit; else every unit its term hits (the span when it
+    hits once there); else every unit sharing a content word. Shadowed labels are never asked."""
+    out: Dict[str, List[Cand]] = {}
+    for lab in labels:
+        a = got.get(lab.ref)
+        if a is not None and a.how == "none":
+            continue                                   # shadowed
+        if a is not None and a.how == "proposed":
+            n = next((n for n, u in enumerate(us) if u.start <= a.span[0] and a.span[1] <= u.end), None)
+            out[lab.ref] = [] if n is None else [(n, (a.span[0], a.span[1]))]
+            continue
+        hits: List[Cand] = []
+        for n, u in enumerate(us):
+            spans, pos = [], 0
+            while (m := ln.term_span(u.text, lab.term, pos)) is not None:
+                spans.append((u.start + m[0], u.start + m[1]))
+                pos = m[1]
+            if spans:
+                hits.append((n, spans[0] if len(spans) == 1 else None))
+        if not hits:
+            w = _words(lab.term)
+            hits = [(n, None) for n, u in enumerate(us) if w & _words(u.text)]
+        out[lab.ref] = hits
+    return out
+
+
+async def link(labels: List[Label], us: List[Unit], cands: Dict[str, List[Cand]], jev=None) -> Dict[str, Anchor]:
+    """Jev confirms → {ref: Anchor} for the labels that anchor. One request per sentence (the state is the previous
+    sentence and the unit's sentence: `link_state`), asking each label that has a candidate unit in it. A label
+    anchors when Jev scores exactly one sentence at P >= LINK_MIN, on the one candidate unit there (its term span when
+    it has one: "term+jev", else the whole unit: "jev"); two candidate units of that sentence with no single term
+    hit are ambiguous. Any unanswered candidate (failure, timeout, unreadable) leaves the label unanchored."""
+    jev = jev or rc._jev
+    by_lab = {lab.ref: (k, lab) for k, lab in enumerate(labels)}
+    asks: Dict[str, Dict[str, dict]] = {}
+    for ref, cs in cands.items():
+        if ref not in by_lab:
+            continue
+        k, lab = by_lab[ref]
+        for n, _ in cs:
+            asks.setdefault(link_state(us[n]), {})[f"l{k}"] = q_link(lab)
+    if not asks:
+        return {}
+
+    async def one(state: str):
+        return await asyncio.wait_for(jev(state, asks[state]), LINK_TIMEOUT_S)
+    states = list(asks)
+    results = await asyncio.gather(*(one(st) for st in states), return_exceptions=True)
+    answers: Dict[Tuple[str, str], Optional[float]] = {}
+    for st, r in zip(states, results):
         if isinstance(r, BaseException):
             logger.warning("brief anchor: Jev link failed (%s: %s)", type(r).__name__, str(r)[:200])
-            unsure.update(int(qk[1:]) for qk in asks[n] if qk[0] == "l")
-            continue
-        ans = r[1]
-        for qk in asks[n]:
+            r = {}
+        for qk in asks[st]:
             try:
-                p = float(ans[qk]["noul"])
+                answers[(st, qk)] = float(r[qk]["noul"])
             except (KeyError, TypeError, ValueError):
-                if qk[0] == "l":
-                    unsure.add(int(qk[1:]))
-                continue
-            if qk[0] == "c":
-                if p >= LINK_MIN:
-                    lab, a = confirm[int(qk[1:])]
-                    out[lab.ref] = Anchor(**{**asdict(a), "how": "term+jev", "p": round(p, 3)})
-                continue
-            scores.setdefault(int(qk[1:]), []).append((p, n))
-    for k, ps in scores.items():
-        if k in unsure:
+                answers[(st, qk)] = None
+    out: Dict[str, Anchor] = {}
+    for ref, cs in cands.items():
+        if ref not in by_lab or not cs:
             continue
-        ps.sort(reverse=True)
-        if ps[0][0] >= LINK_MIN and (len(ps) == 1 or ps[1][0] < LINK_MIN):
-            lab, u = labels[k], us[ps[0][1]]
-            out[lab.ref] = _anchor(lab, how="jev", span=[u.start, u.end], span_text=u.text, unit=u.text, offset=0,
-                                   p=round(ps[0][0], 3), dupes=sum(x.text == u.text for x in us))
+        k, lab = by_lab[ref]
+        ps = [(answers.get((link_state(us[n]), f"l{k}")), n, sp) for n, sp in cs]
+        if any(p is None for p, _, _ in ps):
+            continue                                   # an unanswered candidate: "only this one" can't be trusted
+        win = [(p, n, sp) for p, n, sp in ps if p >= LINK_MIN]
+        if len({us[n].sstart for _, n, _ in win}) != 1:
+            continue                                   # none, or several sentences: ambiguous
+        termed = [w for w in win if w[2]]
+        pick = termed[0] if len(termed) == 1 else (win[0] if len(win) == 1 else None)
+        if pick is None:
+            continue
+        p, n, sp = pick
+        u = us[n]
+        s, e = sp if sp else (u.start, u.end)
+        out[ref] = _anchor(lab, how="term+jev" if sp else "jev", span=[s, e],
+                           span_text=u.text[s - u.start:e - u.start],
+                           unit=u.text, offset=s - u.start, p=round(p, 3), dupes=sum(x.text == u.text for x in us))
     return out
 
 
 async def anchor(report: str, decisions: Optional[dict], jev=None) -> List[Anchor]:
-    """Both passes, one Anchor per brief label in label order. Never raises."""
+    """Code proposes, Jev confirms: one Anchor per brief label in label order. Never raises."""
     try:
         labels = brief_labels(decisions)
         if not labels:
             return []
         us = units(report)
-        got, left = match_terms(report, labels, us)
-        prov = [(l, got[l.ref]) for l in labels if l.stripped and l.ref in got and got[l.ref].how == "term"]
-        if left or prov:
-            got.update(await link(left, us, jev, confirm=prov))
-        # a label shadowed by a place-stripped hit Jev did not confirm was never merged into anything: unanchored
-        lost = {l.ref for l, _ in prov if not anchored(got[l.ref])}
-        for ref, a in list(got.items()):
-            if a.shadowed_by in lost:
-                got[ref] = Anchor(**{**asdict(a), "shadowed_by": None})
-        return [got.get(l.ref) or _anchor(l) for l in labels]
+        got, _ = match_terms(report, labels, us)
+        cands = candidates(report, labels, us, got)
+        linked = await link(labels, us, cands, jev) if cands else {}
+        out: Dict[str, Anchor] = {}
+        for lab in labels:
+            a = linked.get(lab.ref) or got.get(lab.ref)
+            out[lab.ref] = a if a is not None and (anchored(a) or a.shadowed_by) else _anchor(lab)
+        # a label shadowed by a proposal Jev did not confirm was never merged into anything: unanchored
+        for ref, a in list(out.items()):
+            if a.shadowed_by and not anchored(out.get(a.shadowed_by)):
+                out[ref] = _anchor(next(l for l in labels if l.ref == ref))
+        return [out[l.ref] for l in labels]
     except Exception as e:  # noqa: BLE001 - anchoring never blocks the report
         logger.warning("brief anchor failed (%s: %s)", type(e).__name__, str(e)[:200])
         return []
@@ -494,9 +534,8 @@ def anchor_log(anchors: List[Anchor], rules: dict) -> dict:
     (an OMIT label whose words a dictated label holds, e.g. a dictated "No ascites" the brief called contradicted)."""
     dictated = {a.ref for a in anchors if a.action == "dictated"}
     return {"labels": len(anchors),
-            "by_term": sum(a.how == "term" for a in anchors),
-            "by_jev": sum(a.how == "jev" for a in anchors),
             "by_term_jev": sum(a.how == "term+jev" for a in anchors),
+            "by_jev": sum(a.how == "jev" for a in anchors),
             "removed": sum(a.how == "removed" for a in anchors),
             "unanchored": [{"ref": a.ref, "source": a.source, "action": a.action}
                            for a in anchors if a.how == "none" and not a.shadowed_by],

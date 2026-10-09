@@ -232,7 +232,7 @@ AREPORT = ("FINDINGS:\nA small right pleural effusion. No contralateral pleural 
            "IMPRESSION:\nSmall right effusion.\n")
 
 
-def _anc(ref, action, source, text, how="term", pointer="", unit=None, report=AREPORT):
+def _anc(ref, action, source, text, how="term+jev", pointer="", unit=None, report=AREPORT):
     i = report.index(text)
     unit = unit or next(u.text for u in brief_anchor.units(report) if text in u.text)
     u0 = report.index(unit)

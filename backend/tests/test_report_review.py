@@ -399,7 +399,7 @@ QDEC = {"negatives": [
 
 def _contra_jev(scores, types=None, restated=0.9):
     """Fake rc._jev: contradiction question c<i> scores by clause text; restated r<i> high (or `restated`); dictated
-    d<i> low; statement type t<j> by sentence text (`types`, default "normal")."""
+    d<i> low; statement type t<j> by sentence text (`types`, default "normal"); brief_anchor link l<k> confirmed."""
     async def fake(state, qs):
         out = {}
         for k, q in qs.items():
@@ -413,6 +413,8 @@ def _contra_jev(scores, types=None, restated=0.9):
                 out[k] = {"noul": restated}
             elif k.startswith("i"):
                 out[k] = {"choice": "stated", "probabilities": {"stated": 0.9}}
+            elif k.startswith("l") and "LAST sentence" in text:
+                out[k] = {"noul": 0.95}           # brief_anchor's link question: Jev confirms the proposal
             else:
                 out[k] = {"noul": 0.05}
         return out
@@ -531,11 +533,11 @@ def test_safe_to_remove_invariant():
     assert ok("No ascites.", "mixed", []) == "sentence_type"
     assert ok("No ascites.", None, []) == "sentence_type"
     i = rep.index("ascites")
-    keep = ba.Anchor("neg:0", "keep", "sheet", "", "term", [i, i + 7], "ascites", "No ascites.")
+    keep = ba.Anchor("neg:0", "keep", "sheet", "", "term+jev", [i, i + 7], "ascites", "No ascites.")
     assert ok("No ascites.", "normal", [keep]) == "brief_anchor"
-    dic = ba.Anchor("dict:0", "dictated", "dictated", "", "term", [i, i + 7], "ascites", "No ascites.")
+    dic = ba.Anchor("dict:0", "dictated", "dictated", "", "term+jev", [i, i + 7], "ascites", "No ascites.")
     assert ok("No ascites.", "normal", [dic]) == "brief_anchor"
-    omit = ba.Anchor("neg:1", "contradicted", "sheet", "", "term", [i, i + 7], "ascites", "No ascites.")
+    omit = ba.Anchor("neg:1", "contradicted", "sheet", "", "term+jev", [i, i + 7], "ascites", "No ascites.")
     assert ok("No ascites.", "normal", [omit]) is None
     shadow = ba.Anchor("neg:2", "keep", "sheet", "", "none", shadowed_by="neg:1")
     assert ok("No ascites.", "normal", [omit, shadow]) == "brief_anchor"
@@ -548,7 +550,7 @@ REPRO = "FINDINGS:\nRight hemithorax: No pleural effusion. Liver normal.\n\nIMPR
 
 def test_the_guard_approves_a_span_and_the_removal_deletes_exactly_that_span():
     i = REPRO.index("pleural effusion")
-    keep = ba.Anchor("neg:0", "keep", "sheet", "", "term", [i, i + 16], "pleural effusion", "No pleural effusion.")
+    keep = ba.Anchor("neg:0", "keep", "sheet", "", "term+jev", [i, i + 16], "pleural effusion", "No pleural effusion.")
     target, why = rr._safe_to_remove(REPRO, "No pleural effusion.", "normal", [keep])
     assert why is None and target[1] == REPRO.rindex("No pleural effusion.")      # the IMPRESSION copy only
     out = rr._remove_at(REPRO, "No pleural effusion.", target)
@@ -567,7 +569,7 @@ DUP = "FINDINGS:\nNo pleural effusion. Liver normal.\n\nIMPRESSION:\nNo pleural 
 
 
 def _keep_at(rep, k):
-    return ba.Anchor("neg:0", "keep", "sheet", "", "term", [k + 3, k + 19], "pleural effusion", "No pleural effusion.")
+    return ba.Anchor("neg:0", "keep", "sheet", "", "term+jev", [k + 3, k + 19], "pleural effusion", "No pleural effusion.")
 
 
 def test_duplicates_remove_only_an_approved_occurrence():
