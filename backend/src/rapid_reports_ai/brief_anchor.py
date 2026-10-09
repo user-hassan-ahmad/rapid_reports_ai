@@ -132,13 +132,14 @@ class Anchor:
     offset: int = 0                   # span start minus unit start (relocation)
     p: Optional[float] = None         # pass 2 probability
     shadowed_by: Optional[str] = None # its only hit is held by this (longer or dictated) label
+    dupes: int = 0                    # units with this unit's text when anchored (0 = unknown); relocate() checks it
 
 
 _HEDGED = re.compile(r"\b(?:not\s+excluded|cannot\s+be\s+excluded|not\s+ruled\s+out|no\s+(?:interval\s+)?change\s+in|"
-                     r"no\s+interval\s+change)\b", re.I)
+                     r"no\s+interval\s+change|not\s+entirely\s+excluded|cannot\s+be\s+ruled\s+out)\b", re.I)
 
 
-_TAIL_NEG = re.compile(r"\b(?:no|without)\s+$", re.I)    # the negator split_tails replaced with "No "
+_TAIL_NEG = re.compile(r"\b(?:no|nil|without)\s+$", re.I)    # the negator split_tails replaced with "No "
 _TURN_TO_FINDING = re.compile(r",\s*with\b|\s+with\s+an?\b|\s+and\s+an?\b|\s+but\b|,\s*while\b", re.I)
 
 
@@ -182,16 +183,23 @@ def units(report: str) -> List[Unit]:
                             if not _is_normal(s[k0:k1]):
                                 continue
                         out.append(Unit(s[k0:k1], i + k0, i + k1))
-            elif ";" in s:
-                pos = 0
-                for part in s.split(";"):
-                    t = part.strip()
+            else:
+                # a whole sentence: split at ';' and at a turn to a finding, keep only the parts that are still
+                # negative / normal ("... no lymphadenopathy, but a 6 mm nodule ..." never anchors on the nodule)
+                cuts = [0]
+                for m in re.finditer(r";|" + _TURN_TO_FINDING.pattern, s, re.I):
+                    cuts += [m.start(), m.end()]
+                cuts.append(len(s))
+                if len(cuts) == 2:
+                    if _is_normal(s):
+                        out.append(Unit(s, i, j))
+                    continue
+                for a0, b0 in zip(cuts[0::2], cuts[1::2]):
+                    part = s[a0:b0]
+                    t = part.strip(" ,;")
                     if t and _is_normal(t):
-                        k = s.find(t, pos)
+                        k = a0 + part.find(t)
                         out.append(Unit(t, i + k, i + k + len(t)))
-                    pos += len(part) + 1
-            elif _is_normal(s):
-                out.append(Unit(s, i, j))
     return out
 
 
@@ -228,7 +236,7 @@ def match_terms(report: str, labels: List[Label], us: List[Unit]) -> Tuple[Dict[
             s, e, u = free[0]
             taken.append((s, e, lab.ref))
             got[lab.ref] = _anchor(lab, how="term", span=[s, e], span_text=report[s:e], unit=u.text,
-                                   offset=s - u.start)
+                                   offset=s - u.start, dupes=sum(x.text == u.text for x in us))
         elif not free and held is not None:
             got[lab.ref] = _anchor(lab, how="none", shadowed_by=held)
         else:
@@ -293,7 +301,7 @@ async def link(labels: List[Label], us: List[Unit], jev=None) -> Dict[str, Ancho
         if ps[0][0] >= LINK_MIN and (len(ps) == 1 or ps[1][0] < LINK_MIN):
             lab, u = labels[k], us[ps[0][1]]
             out[lab.ref] = _anchor(lab, how="jev", span=[u.start, u.end], span_text=u.text, unit=u.text, offset=0,
-                                   p=round(ps[0][0], 3))
+                                   p=round(ps[0][0], 3), dupes=sum(x.text == u.text for x in us))
     return out
 
 
@@ -325,7 +333,8 @@ def relocate(anchors: List[Anchor], report: str) -> List[Anchor]:
             continue
         old = (a.span[0] - a.offset) if a.span else 0
         same = [u for u in us if u.text == a.unit]
-        u = min(same, key=lambda x: abs(x.start - old)) if same else None
+        # the number of identical units changed (one was edited out): which one is ours is unknowable
+        u = min(same, key=lambda x: abs(x.start - old)) if same and a.dupes in (0, len(same)) else None
         k = u.start + a.offset if u else -1
         if u is None or report[k:k + len(a.span_text)] != a.span_text:
             out.append(Anchor(**{**asdict(a), "how": "removed", "span": None}))
@@ -353,7 +362,10 @@ def brief_rules(report: str, anchors: List[Anchor], contra: Dict[str, float], fl
 
     def holders(clause: str) -> List[Anchor]:
         cs = _clause_span(report, clause)
-        return [a for a in live if cs and a.span[0] < cs[1] and cs[0] < a.span[1]]
+        held = [a for a in live if cs and a.span[0] < cs[1] and cs[0] < a.span[1]]
+        refs = {a.ref for a in held}
+        # a KEEP-type label shadowed by a holder inside the clause is a KEEP holder too (a longer OMIT term can shadow it)
+        return held + [a for a in anchors if a.shadowed_by in refs and a.action in KEEP and a not in held]
 
     protect: List[str] = []
     remove: List[str] = []

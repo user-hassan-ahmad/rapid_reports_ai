@@ -328,3 +328,66 @@ def test_anchor_log_counts_and_lists_unanchored():
     log = ba.anchor_log(anchors, {"protect": [], "remove": [], "conflicts": []})
     assert (log["labels"], log["by_term"], log["by_jev"]) == (3, 1, 1)
     assert log["unanchored"] == [{"ref": "neg:6", "source": "sheet", "action": "keep"}]
+
+
+# ---- review follow-ups ----
+def test_shadowed_keep_label_in_the_clause_blocks_removal():
+    i = R2.index("No pleural effusion.") + 3
+    omit = ba.Anchor("neg:0", "contradicted", "sheet", "", "term", [i, i + len("pleural effusion")],
+                     "pleural effusion", "No pleural effusion.")
+    shadowed = ba.Anchor("neg:9", "keep", "finding:Pleural effusion", how="none", shadowed_by="neg:0")
+    rules = ba.brief_rules(R2, [omit, shadowed], {"No pleural effusion.": 0.9}, flagged=[], review_contra=[])
+    assert rules["remove"] == [] and len(rules["conflicts"]) == 1
+    # and a flagged clause held that way is protected and carded as kept
+    r2 = ba.brief_rules(R2, [omit, shadowed], {"No pleural effusion.": 0.9},
+                        flagged=["No pleural effusion."], review_contra=[])
+    assert r2["protect"] == ["No pleural effusion."] and r2["remove"] == []
+    assert r2["conflicts"][0]["reason"] == "brief_kept" and r2["conflicts"][0]["refs"] == ["neg:9"]
+
+
+def test_whole_sentence_with_a_positive_turn_is_split():
+    rep = "FINDINGS:\nNodule in the left lobe with no lymphadenopathy, but a 6 mm nodule in the right lobe.\n"
+    us = ba.units(rep)
+    assert us and all("6 mm nodule" not in u.text for u in us)
+    assert all(rep[u.start:u.end] == u.text for u in us)
+    lab = ba.Label("neg:0", "No nodule in the right lobe", "nodule in the right lobe", "contradicted", "sheet")
+    got, left = ba.match_terms(rep, [lab], us)
+    assert "neg:0" not in got or got["neg:0"].how != "term"
+
+
+def test_semicolon_part_turns_are_split_too():
+    rep = "FINDINGS:\nNo ascites, but a 6 mm nodule in the right lobe; no effusion.\n"
+    us = ba.units(rep)
+    assert all("6 mm nodule" not in u.text for u in us)
+    assert all(rep[u.start:u.end] == u.text for u in us)
+    assert any(u.text == "no effusion." for u in us)
+
+
+def test_nil_is_a_tail_negator():
+    rep = "FINDINGS:\nThe nodes measure 14 mm; nil contralateral lymphadenopathy.\n"
+    us = ba.units(rep)
+    assert [u.text for u in us] == ["nil contralateral lymphadenopathy."]
+
+
+@pytest.mark.parametrize("s", ["Pneumothorax is not entirely excluded.", "Metastasis cannot be ruled out."])
+def test_more_hedges_are_not_normal(s):
+    assert ba.units("FINDINGS:\n" + s + "\n") == []
+
+
+def test_relocate_removes_when_the_duplicate_count_changed():
+    rep = "FINDINGS:\nNo ascites. No effusion. No ascites.\n"
+    us = ba.units(rep)
+    i = us[0].start
+    a = ba.Anchor("neg:0", "keep", "sheet", "", "term", [i + 3, i + 10], "ascites", us[0].text, 3, dupes=2)
+    after = "FINDINGS:\nNo effusion. No ascites.\n"
+    (r,) = ba.relocate([a], after)
+    assert r.how == "removed"
+    (same,) = ba.relocate([a], rep)
+    assert same.how == "term"
+
+
+def test_match_terms_records_the_duplicate_count():
+    rep = "FINDINGS:\nNo ascites. No effusion. No ascites.\n"
+    lab = ba.Label("neg:0", "No effusion", "effusion", "keep", "sheet")
+    got, _ = ba.match_terms(rep, [lab], ba.units(rep))
+    assert got["neg:0"].dupes == 1
