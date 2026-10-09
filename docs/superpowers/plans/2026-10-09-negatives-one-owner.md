@@ -1901,6 +1901,24 @@ git commit -m "feat(review-ui): amber AI-layer marks name the finding they bear 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
+
+- [ ] **Step 7 (added 2026-10-09, Hassan): conflict checks become rail cards; amber ignores the AI toggle**
+
+Two problems found during execution:
+- A `check` item is editor-only (`ReviewRail.svelte` `EDITOR_ONLY`) and renders as an `rv-check` AI-layer mark with no buttons. So *conflict* checks (cls `action`: classifier conflicts, brief conflicts, undictated measurements) never reach the rail and have no Remove.
+- Amber marks hide with the AI-generated toggle.
+
+Changes (TDD in the existing rail and editor test files):
+1. **Rail.** In `ReviewRail.svelte`, `isFlagged` admits a `check` item whose `cls === 'action'`. `EDITOR_ONLY` still excludes minor and info checks.
+2. **Editor.** In `field.ts` `markClassOf`, a `check` with `cls === 'action'` becomes `rv-action`, not `rv-check`. Its chip then offers Apply (the edit's Remove) and Dismiss, and it is never part of the AI layer.
+3. **Amber always visible.** Wherever the AI-generated toggle hides AI-layer marks, keep marks with `form === 'negative'` visible. Locate the toggle filter with `grep -rn "DEFAULT_LEGEND\|legend" frontend/src/lib/review/editor`. The legend breakdown notes "always shown" on the amber entry.
+4. **Tests:**
+   - a conflict check item is a rail card with Remove and Dismiss;
+   - a minor check is not;
+   - with the toggle off, an amber mark is still decorated and a green one is not.
+
+Commit: `feat(review-ui): conflict checks are rail cards; amber marks ignore the AI toggle`.
+
 ---
 
 ### Task 12: Cross-domain pass 1 tests and code-only stage on the stored cases
