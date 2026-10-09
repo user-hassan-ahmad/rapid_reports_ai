@@ -78,10 +78,11 @@ Runs once per report inside the post-gen check, before render.
 **Pass 1, code term match**
 - Derive each label's key term. For an atom, use `atom.term`. For a negative, use the denied phrase with "No"/"identified" boilerplate stripped, e.g. "mediastinal invasion".
 - A label anchors to a clause when the term occurs inside a negative or normal clause of the same section.
-- A match counts only if exactly one label claims that clause span. When two or more labels claim overlapping spans, all of them fall through to pass 2. Example: OMIT "No pleural effusion" and KEEP "No contralateral pleural effusion" both match "No contralateral pleural effusion or pleural thickening".
+- Labels are matched longest term first, so a more specific label takes its words before a shorter one can. Among equal terms, a dictated label goes first, then a kept one, then an OMIT one. A label whose every hit is already held by an earlier label is *shadowed*: it was merged into the holder, and it neither anchors nor goes to pass 2. Example: KEEP "No contralateral pleural effusion" takes "contralateral pleural effusion", so OMIT "No pleural effusion" is shadowed and can never cause a removal there.
+- A label with no hit, or with several free hits, goes to pass 2.
 
 **Pass 2, Jev link (misses and overlaps only)**
-- For each label still unanchored, ask Jev whether each remaining negative/normal clause in the section "expresses" the label (same shape as the lab-passed D1/A1 atom↔prose link). Accept the highest-probability clause at P ≥ threshold set by the wording lab (§5.1). Within one overlap group, more specific wording wins: a label whose qualifier ("contralateral", "right", "additional") appears in the clause beats one without it. If still ambiguous, every label in the group stays unanchored.
+- For each label still unanchored, ask Jev whether each remaining negative/normal clause in the section "expresses" the label (same shape as the lab-passed D1/A1 atom↔prose link). Accept the highest-probability clause at P ≥ a threshold set by the wording lab (§5.1), only when no other clause also reaches it. Otherwise the label stays unanchored.
 - All Jev calls run in parallel, alongside the existing contradiction batch.
 
 **Output**
@@ -93,7 +94,7 @@ Runs once per report inside the post-gen check, before render.
 
 `run_quality_check` gains an optional `brief_decisions` argument (passed from `quick_report_generator.py`). Jev still asks `Q_CONTRA` of every clause. After anchoring:
 
-- **Dictated beats OMIT.** When a dictated label (`dict:<i>`, or `action` dictated) anchors to a clause, any OMIT / DO NOT ASSERT label on the same clause is ignored: no removal, no card. It is logged in `run.lanes["anchor"].brief_errors` (example: 29882bd7's dictated "No ascites" labelled contradicted). A dictated negative is never removed (PR #6 / L-49).
+- **Dictated beats OMIT.** When a dictated label (`dict:<i>`, or `action` dictated) anchors to a clause, any OMIT / DO NOT ASSERT label on the same clause is ignored: no removal, no card. It is logged in `quality_check.anchor_log.brief_errors` (example: 29882bd7's dictated "No ascites" labelled contradicted). A dictated negative is never removed (PR #6 / L-49).
 - **Anchored KEEP clause flagged as a contradiction** (any label with `action` dictated / default / implicated, or atom keep / implicated): never auto-removed. Emit a review flag `{kind: "brief_conflict", clause, ref, score}`. The review engine turns it into a `check` item, cls "conflict", with a one-click code remove edit; dismiss means keep.
   - *Example:* "No contralateral pleural effusion" (brief KEEP) beside a dictated "small right pleural effusion". Today the removal gate (contradiction ≥0.6, restated ≥0.5, dictated <0.5) would remove it. Under this design it stays, and a conflict card appears.
 - **Anchored OMIT / DO NOT ASSERT clause** (`action` contradicted / expected, atom do_not_assert): auto-remove before render only when both hold:
@@ -119,7 +120,7 @@ Runs once per report inside the post-gen check, before render.
   Implicated no longer produces a `check` / "uncertain" card. The same mapping applies to the classifier's own implicated verdicts on unanchored clauses.
 - **Clauses nobody anchored:** the classifier's label decides the tint. Today's `statement_form` shape rule is only the fallback when no label exists.
 - **Classifier:** receives only clauses that no anchor covers. The undictated-number check still runs on every clause.
-- **Unanchored labels:** logged in `run.lanes["anchor"] = {anchored, by_term, by_jev, unanchored: [{ref, source, action}]}`. No rail item.
+- **Unanchored labels:** logged in `quality_check.anchor_log = {labels, by_term, by_jev, unanchored: [{ref, source, action}], shadowed, brief_errors, ...}`, which is persisted with the candidate. No rail item.
 - **Reports with no `anchors`** (generated before this ships): fall back to today's `brief_normals` path.
 
 ### 3.4 Frontend
@@ -141,7 +142,7 @@ One thing to check in the plan: an amber `assumed_normal` mark must show its rea
 ## 5. Evaluation (eval-economy protocol)
 
 ### 5.0 Brief labeller lab (gate before §3.0 ships)
-- About 30 cases: the cached sheets and dictations of the stored Oct 1–6 cases, plus synthetic cases across at least four domains (abdomen, thorax, neuro, MSK). Repo fixtures stay synthetic.
+- About 20 cases: the stored Oct 1–6 cases with brief decisions, plus 12 synthetic cases across at least four domains (abdomen, thorax, neuro, MSK). Repo fixtures stay synthetic.
 - The traps:
   - a dictated negative in sheet wording ("No ascites");
   - a dictated negative in other wording ("no SMA involvement" vs "No encasement of the SMA");
@@ -166,7 +167,7 @@ One thing to check in the plan: an amber `assumed_normal` mark must show its rea
 - **Gate:** ≥95% accuracy and 0 cross-claims in the trap set. On a miss, ship pass 1 only. Pass-2 labels then stay unanchored, which is safe (§4).
 
 ### 5.2 Code-only stage
-Run `brief_anchor` on the stored Oct 1–6 cases (8 with brief decisions) with no regeneration. Hand-read the anchor table: every anchor correct, overlap groups resolved or left unanchored.
+Seven of the eight stored cases are the same pancreatic head mass. So first, deterministic pass-1 tests on synthetic cases from other domains: neuro, renal sides, chest "additional", spine levels, MSK. Then run `brief_anchor` on the stored Oct 1–6 cases (8 with brief decisions) with no regeneration. Hand-read the anchor table: every anchor correct, overlap groups resolved or left unanchored.
 
 ### 5.3 One end-to-end run
 About 6 targeted cases, including d3d1e0a5 and a pancreas case, against the stored baseline.
