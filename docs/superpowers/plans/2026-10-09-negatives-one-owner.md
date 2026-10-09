@@ -976,7 +976,10 @@ async def test_a_kept_negative_is_never_removed_and_becomes_a_conflict(monkeypat
     report, _, tel = await rr.run_quality_check(QR, "Small right pleural effusion", "CT chest", [],
                                                 brief_decisions=QDEC)
     assert "No contralateral pleural effusion." in report
-    assert [c["reason"] for c in tel["brief_conflicts"]] == ["brief_kept"]
+    reasons = {c["clause"]: c["reason"] for c in tel["brief_conflicts"]}
+    assert reasons["No contralateral pleural effusion."] == "brief_kept"
+    # the OMIT label anchored on "No pleural effusion." with a low contradiction score: one signal, so a card too
+    assert reasons["No pleural effusion."] == "brief_omitted" and "No pleural effusion." in report
 
 
 async def test_an_omit_negative_with_jev_agreeing_is_removed_before_render(monkeypatch):
