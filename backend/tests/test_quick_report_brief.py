@@ -63,7 +63,7 @@ def _stub(monkeypatch, jev: dict, qwen: qb.QwenDecisions, plan: qb.ImpressionPla
         missing = set(questions) - set(jev)
         assert not missing, missing
         return jev
-    async def fake_qwen(state, negs, normals, measurements):
+    async def fake_qwen(state, negs, normals, measurements, **kw):
         return qwen
     async def no_split(negs):
         return [[n] for n in negs]
@@ -283,7 +283,7 @@ INCOMPLETE = {
 
 def _sequenced_qwen(monkeypatch, answers):
     calls = []
-    async def fake_qwen(state, negs, normals, measurements):
+    async def fake_qwen(state, negs, normals, measurements, **kw):
         calls.append(negs)
         return qb.QwenDecisions(negatives=answers[len(calls) - 1], affected_normals=[2], applicable_measurements=[0])
     monkeypatch.setattr(qb, "_qwen", fake_qwen)
@@ -426,7 +426,7 @@ def test_jev_upgrade_to_implicated_keeps_pointer_free_of_diagnostics():
     assert out["a2"]["cls"] == "implicated" and out["a2"]["pointer"] == "small left pleural effusion"
 
 
-# --- Task 9: four-label negatives scheme behind RR_BRIEF_FULL_LABELS (quick only, default off) ---
+# --- Task 9: four-label negatives scheme behind RR_BRIEF_FULL_LABELS (quick only, default on, narrowed gate) ---
 
 _OLD_QWEN_SYS = (
     "You check a radiology skill sheet against the radiologist's dictated findings for one case. Silence in the "
@@ -526,7 +526,7 @@ async def test_full_labels_compile_dictated_and_implicated_lines(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_flag_off_sends_the_old_request(monkeypatch):
-    monkeypatch.delenv("RR_BRIEF_FULL_LABELS", raising=False)
+    monkeypatch.setenv("RR_BRIEF_FULL_LABELS", "0")    # default on since lab b204edc: off is explicit
     _stub(monkeypatch, JEV, QWEN)   # fake_qwen has the old signature: passing full would raise TypeError
     b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, 3 mm midline shift")
     assert "DICTATED:" not in b.text and "implicated by" not in b.text
@@ -595,7 +595,7 @@ async def test_dictated_finding_negative_is_stated_as_dictated_never_offered(mon
 
 @pytest.mark.asyncio
 async def test_flag_off_stated_finding_negative_records_no_dictated_finding(monkeypatch):
-    monkeypatch.delenv("RR_BRIEF_FULL_LABELS", raising=False)
+    monkeypatch.setenv("RR_BRIEF_FULL_LABELS", "0")    # default on since lab b204edc: off is explicit
     _stub_f(monkeypatch, 0.95, [("keep", ""), ("keep", "10 mm subdural"), ("keep", "")])
     b = await qb.compile_brief(SHEET_F, "CT head", "10 mm right acute subdural.")
     rec = {n["text"]: n for n in b.decisions["negatives"]}
@@ -614,3 +614,10 @@ def test_full_sys_keeps_the_classifier_definitions():
     # about" clause stay out; the guard that the clinical question alone never implicates stays in
     assert "Step 1" not in s and "history" not in s.lower() and "asks about" not in s
     assert "The clinical question on its own" in s
+
+
+def test_full_labels_default_on_and_zero_turns_it_off(monkeypatch):
+    monkeypatch.delenv("RR_BRIEF_FULL_LABELS", raising=False)
+    assert qb.full_labels() is True
+    monkeypatch.setenv("RR_BRIEF_FULL_LABELS", "0")
+    assert qb.full_labels() is False

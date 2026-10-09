@@ -71,7 +71,7 @@ def _stub_c(monkeypatch, subdural_present: float, qwen_negs):
     async def no_fallback(*a):
         raise RuntimeError("no fallback in this test")
     monkeypatch.setattr(qb, "_fallback", no_fallback, raising=False)
-    async def fake_qwen(state, negs, normals, measurements):
+    async def fake_qwen(state, negs, normals, measurements, **kw):
         fake_qwen.negs = negs
         return QwenDecisions(negatives=qwen_negs, affected_normals=[], applicable_measurements=[])
     async def no_split(negs):

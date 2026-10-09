@@ -13,8 +13,11 @@ Implicated atoms are rendered by default (Hassan, default-negatives policy) and 
 (`negatives.ai_layer`): the item is the mark, the text stays, no rail card.
 
 With `quality_check.anchors` (brief_anchor, spec 2026-10-09) items come from the anchors instead: every anchored
-kept / implicated label (atoms AND brief negatives), conflict cards from `quality_check.brief_conflicts`, and
-`owned_spans` for the classifier. Reports without anchors use the legacy atom anchoring below.
+kept / implicated label the brief owns, conflict cards from `quality_check.brief_conflicts`, and `owned_spans` for
+the classifier. The brief owns selection and what it labels reliably (dictated, OMIT, finding-linked negatives,
+linked-normal atoms, carded clauses); the classifier owns default-vs-implicated salience for sheet negatives the brief
+merely kept (`owned`: no brief item, not owned, so the classifier reads them). Reports without anchors use the legacy
+atom anchoring below.
 
 Anchors are on the FINAL report text (the generator may re-merge the brief's sentences), on the atom's structure
 term inside the FINDINGS normal statements:
@@ -136,6 +139,15 @@ def _conflicts(inp: ReviewInput) -> List[Tuple[dict, Optional[Tuple[int, int]]]]
     return out
 
 
+def owned(a: dict) -> bool:
+    """Whether the brief owns this anchor. The brief owns selection and what it labels reliably (dictated, contradicted
+    / OMIT, finding-linked negatives, linked-normal atoms); the classifier owns default-vs-implicated salience for
+    sheet negatives the brief merely kept (lab b204edc: the brief's reasoning-off labeller called 7/58 implicated
+    negatives implicated). Those get no brief item and are not in `owned_spans`: the classifier reads them."""
+    return not (str(a.get("ref") or "").startswith("neg:") and a.get("source") == "sheet"
+                and a.get("action") in ("keep", "default", "implicated"))
+
+
 def owned_spans(inp: ReviewInput) -> Optional[List[Tuple[int, int]]]:
     """The spans the classifier never re-reads (spec §3.3): every anchored brief label on the final report (dictated,
     and low-score OMIT anchors too: deliberately, the brief owns them), and every clause the post-gen check carded
@@ -146,7 +158,7 @@ def owned_spans(inp: ReviewInput) -> Optional[List[Tuple[int, int]]]:
         return None
     report = inp.artifacts.report or ""
     us = brief_anchor.units(report)
-    spans = [sp for a in anchors if isinstance(a, dict) and a.get("how") in ("term", "jev")
+    spans = [sp for a in anchors if isinstance(a, dict) and a.get("how") in ("term", "jev") and owned(a)
              and (sp := brief_anchor.relocate_one(a, report, us))]
     return spans + [sp for _, sp in _conflicts(inp) if sp]
 
@@ -218,8 +230,9 @@ def _from_anchors(inp: ReviewInput, run_id: str, anchors: List[dict]) -> List[Re
     us = brief_anchor.units(report)
     for a in anchors:
         if not isinstance(a, dict) or a.get("how") not in ("term", "jev") \
-                or a.get("action") not in ("keep", "default", "implicated"):
-            continue      # dictated: your own words; OMIT: removed, or a conflict card above
+                or a.get("action") not in ("keep", "default", "implicated") or not owned(a):
+            continue      # dictated: your own words; OMIT: removed, or a conflict card above; a kept sheet
+            #               negative: the classifier's default-vs-implicated call (`owned`)
         span = brief_anchor.relocate_one(a, report, us)
         if span and not _free(span, taken):
             continue      # one card per clause: the conflict card stands
@@ -307,5 +320,5 @@ def dedupe(neg_items: List[ReviewItem], brief_items: List[ReviewItem]
     return ([n for n in neg_items if n.id not in drop_neg], [b for b in brief_items if b.id not in drop_brief], log)
 
 
-__all__ = ["DETECTOR", "linked_atoms", "locate", "build_items", "dedupe", "owned_spans", "anchors_of",
+__all__ = ["DETECTOR", "linked_atoms", "locate", "build_items", "dedupe", "owned_spans", "owned", "anchors_of",
            "conflict_cards"]

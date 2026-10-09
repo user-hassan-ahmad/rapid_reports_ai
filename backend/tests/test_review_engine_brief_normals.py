@@ -227,7 +227,8 @@ def test_label_parsers_drop_placeholder_pointers():
 # ── items, conflict cards and owned spans from quality_check.anchors (spec 2026-10-09) ──
 
 AREPORT = ("FINDINGS:\nA small right pleural effusion. No contralateral pleural effusion. "
-           "The liver is unremarkable. No paratracheal or subcarinal lymphadenopathy. No pulmonary emboli.\n\n"
+           "The liver is unremarkable. No paratracheal or subcarinal lymphadenopathy. No pulmonary emboli. "
+           "No pneumothorax. No pericardial effusion.\n\n"
            "IMPRESSION:\nSmall right effusion.\n")
 
 
@@ -245,6 +246,8 @@ ANCHORS = [
     _anc("atom:P1:N2", "implicated", "atom", "No paratracheal or subcarinal lymphadenopathy.", how="jev",
          pointer="right hilar nodes"),
     _anc("dict:0", "dictated", "dictated", "pulmonary emboli"),
+    _anc("neg:2", "keep", "sheet", "pneumothorax"),                 # kept sheet negative: the classifier's call
+    _anc("neg:3", "dictated", "sheet", "pericardial effusion"),     # dictated sheet negative: owned, no item
     {"ref": "neg:6", "action": "keep", "source": "sheet", "pointer": "", "how": "none", "span": None,
      "span_text": "", "unit": "", "offset": 0},
 ]
@@ -279,7 +282,7 @@ def test_a_brief_conflict_is_a_check_card_and_replaces_the_tint_on_its_clause():
 def test_owned_spans_cover_every_anchor_including_dictated():
     spans = bn.owned_spans(_ainp({"anchors": ANCHORS}))
     texts = {AREPORT[a:b] for a, b in spans}
-    assert "pulmonary emboli" in texts and "liver" in texts and len(spans) == 4
+    assert "pulmonary emboli" in texts and "liver" in texts and len(spans) == 5      # not neg:2 (kept sheet)
 
 
 def test_old_reports_without_anchors_use_the_legacy_path():
@@ -321,7 +324,7 @@ DUP = ("FINDINGS:\nA right lung mass, with No pulmonary emboli. seen. No pulmona
 
 def test_anchor_relocation_takes_only_whole_units_never_a_copy_inside_a_longer_sentence():
     real = DUP.rindex("No pulmonary emboli.")
-    a = {"ref": "neg:1", "action": "keep", "source": "sheet", "pointer": "", "how": "jev",
+    a = {"ref": "neg:1", "action": "keep", "source": "finding:Right lung mass", "pointer": "", "how": "jev",
          "span": [real + 9, real + 29], "span_text": "No pulmonary emboli.", "unit": "No pulmonary emboli.",
          "offset": 0, "dupes": 1}                       # stored position stale: relocation needed
     i = inp(DUP, "- Right lung mass", quality_check={"anchors": [a]})
@@ -332,7 +335,7 @@ def test_anchor_relocation_takes_only_whole_units_never_a_copy_inside_a_longer_s
 def test_a_changed_duplicate_count_leaves_the_anchor_unplaced():
     rep = ("FINDINGS:\nA right lung mass measuring 3 cm. No pulmonary emboli. The liver is unremarkable. "
            "No pulmonary emboli.\n\nIMPRESSION:\nMass.\n")
-    a = {"ref": "neg:1", "action": "keep", "source": "sheet", "pointer": "", "how": "jev",
+    a = {"ref": "neg:1", "action": "keep", "source": "finding:Right lung mass", "pointer": "", "how": "jev",
          "span": [44, 64], "span_text": "No pulmonary emboli.", "unit": "No pulmonary emboli.", "offset": 0,
          "dupes": 1}                                    # one copy when anchored, two now: which is ours is unknowable
     i = inp(rep, "- Right lung mass", quality_check={"anchors": [a]})
@@ -368,3 +371,23 @@ async def test_a_removal_blocked_clause_is_not_reclassified_and_its_brief_card_s
         assert clause not in c["user_prompt"].split("STATEMENTS TO CLASSIFY:\n", 1)[1]
     cards = [i for i in res.items if bn.DETECTOR in i.detectors and i.kind == "check"]
     assert [c.evidence["brief_reason"] for c in cards] == ["removal_blocked"]
+
+
+def test_a_kept_sheet_negative_is_not_owned_and_makes_no_brief_item():
+    """The brief owns selection and what it labels reliably; the classifier owns default-vs-implicated salience for
+    sheet negatives the brief merely kept (lab b204edc: brief implicated recall 7/58)."""
+    i = _ainp({"anchors": ANCHORS})
+    texts = {AREPORT[a:b] for a, b in bn.owned_spans(i)}
+    assert "pneumothorax" not in texts
+    assert "neg:2" not in {it.evidence.get("ref") for it in bn.build_items(i, RUN)}
+    for action in ("default", "implicated"):
+        a = {**ANCHORS[5], "action": action}
+        assert bn.owned_spans(_ainp({"anchors": [a]})) == [] and bn.build_items(_ainp({"anchors": [a]}), RUN) == []
+
+
+def test_finding_linked_and_dictated_sheet_negatives_stay_owned():
+    i = _ainp({"anchors": ANCHORS})
+    texts = {AREPORT[a:b] for a, b in bn.owned_spans(i)}
+    assert {"contralateral pleural effusion", "pericardial effusion"} <= texts
+    items = {it.evidence.get("ref"): it for it in bn.build_items(i, RUN)}
+    assert items["neg:1"].evidence["form"] == "negative" and "neg:3" not in items

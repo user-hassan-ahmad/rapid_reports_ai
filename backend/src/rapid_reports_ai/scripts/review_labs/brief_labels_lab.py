@@ -12,9 +12,13 @@ labelled contradicted; implicated vs default reported for the peer read. Product
 
 Result 2026-10-09 (12 synthetic + 8 stored cases, 142 negatives, 2 runs, identical at temperature 0): full beats today on
 contradicted recall (30/32 vs 29/32) and recognises every dictated negative (13/13, 0 → contradicted), but labels only
-7/58 implicated negatives implicated (47 → default, 3 → dictated incl. a hedge dropped, 1 → contradicted). The review
-engine shows the brief's default as green and implicated as amber, so the flag stays off until implicated recall is
-fixed."""
+7/58 implicated negatives implicated (47 → default, 3 → dictated incl. a hedge dropped, 1 → contradicted).
+
+Decision (Hassan, after lab b204edc): narrowed gate. The brief's Qwen call runs with reasoning off; "keep" is a
+selection judgement, not salience. Full labels are ON by default (RR_BRIEF_FULL_LABELS=0 turns them off) for what the
+brief labels reliably: dictated (13/13 vs 0/13), contradicted (30/32 vs 29/32), 0 dictated → contradicted. Its
+default / implicated split is not used: the review engine leaves kept sheet negatives to the classifier (reasoning on,
+background), which decides green vs amber (`review_engine.brief_normals.owned`)."""
 from __future__ import annotations
 
 import argparse

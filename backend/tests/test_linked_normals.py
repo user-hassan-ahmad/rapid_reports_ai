@@ -297,7 +297,7 @@ def _stub(monkeypatch, labels=None, jev_affected=frozenset(), link=None, link_fa
             ans[k] = {"noul": p}
         return ans
 
-    async def fake_qwen(state, negs, normals, measurements, linked=None):
+    async def fake_qwen(state, negs, normals, measurements, linked=None, **kw):
         seen["qwen_linked"].append(linked)
         seen["normals"] = normals
         kw = dict(negatives=[rc.NegativeDecision(index=i, action="keep") for i in range(len(negs))],

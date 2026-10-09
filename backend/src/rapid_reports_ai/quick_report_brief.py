@@ -72,9 +72,14 @@ LABEL_TIMEOUT_S = 15.0
 
 
 def full_labels() -> bool:
-    """RR_BRIEF_FULL_LABELS=1: the brief's negatives use the four-label scheme (spec 2026-10-09 §3.0). Off until the
-    brief labeller lab passes (plan Task 10)."""
-    return os.environ.get("RR_BRIEF_FULL_LABELS", "0").strip().lower() in ("1", "true", "on")
+    """The brief's negatives use the four-label scheme (spec 2026-10-09 §3.0). Default on; RR_BRIEF_FULL_LABELS=0
+    turns it off. Quick only: the template path never passes `full`.
+
+    Lab b204edc, narrowed gate (Hassan 2026-10-09): full vs today's labeller recognises every dictated negative
+    (13/13 vs 0/13), keeps contradicted recall (30/32 vs 29/32) and labels 0 dictated negatives contradicted. Its
+    default / implicated split (7/58 implicated recall, reasoning off) is NOT used for salience: the review engine
+    leaves kept sheet negatives to the classifier (`review_engine.brief_normals.owned`)."""
+    return os.environ.get("RR_BRIEF_FULL_LABELS", "1").strip().lower() in ("1", "true", "on")
 
 
 SAID = ("keep", "default", "implicated", "dictated")

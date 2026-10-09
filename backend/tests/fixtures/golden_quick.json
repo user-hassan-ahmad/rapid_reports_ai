@@ -71,7 +71,10 @@
       [
        "The orbits are clear."
       ],
-      []
+      [],
+      {
+       "full": true
+      }
      ]
     ],
     "_split_bundled": [
@@ -333,7 +336,10 @@
       [
        "- **Subdural thickness:** mm",
        "- **Infarct volume:** ml "
-      ]
+      ],
+      {
+       "full": true
+      }
      ]
     ],
     "_split_bundled": [
@@ -546,7 +552,10 @@
       [
        "- **Subdural thickness:** mm",
        "- **Infarct volume:** ml "
-      ]
+      ],
+      {
+       "full": true
+      }
      ]
     ],
     "_split_bundled": [

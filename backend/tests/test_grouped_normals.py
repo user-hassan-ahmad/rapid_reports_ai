@@ -193,7 +193,7 @@ def _stub(monkeypatch, affected: set, qaff: set = frozenset()):
         seen["q"] = questions
         return {k: {"noul": 0.9 if k in affected else 0.1} for k in questions}
 
-    async def fake_qwen(state, negs, normals, measurements):
+    async def fake_qwen(state, negs, normals, measurements, **kw):
         seen["normals"] = normals
         return qb.QwenDecisions(negatives=[qb.NegativeDecision(index=i, action="keep") for i in range(len(negs))],
                                 affected_normals=sorted(qaff), applicable_measurements=[])
