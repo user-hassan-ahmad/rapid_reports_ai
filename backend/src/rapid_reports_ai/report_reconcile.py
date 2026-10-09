@@ -148,7 +148,7 @@ Q_STYLE_MATCH = "This example report sentence describes the same kind of finding
 
 class NegativeDecision(BaseModel):
     index: int
-    action: Literal["keep", "contradicted", "expected"]
+    action: Literal["keep", "default", "implicated", "dictated", "contradicted", "expected"]
     dictated_finding: str = ""
 
 
@@ -213,15 +213,37 @@ MAX_OPTIONS = 3
 _BAR_KINDS = ("IMAGING:", "TISSUE:")
 
 
-QWEN_SYS = (
-    "You check a radiology skill sheet against the radiologist's dictated findings for one case. Silence in the "
-    "dictation never makes a finding present.\n"
-    "NEGATIVES: for each numbered negative return 'contradicted' if the dictation reports it as present or reports a "
-    "finding of the same kind in the same place; 'expected' if a dictated finding would normally and predictably "
-    "cause what it denies (not merely make it possible); otherwise 'keep'. For contradicted and expected, quote the "
-    "dictated finding responsible.\n"
-    "NORMAL LINES: list the numbers of normal-study statements that a dictated finding contradicts or acts on.\n"
-    "MEASUREMENTS: list the numbers of measurement conventions whose finding is present in the dictation.")
+_SYS_HEAD = ("You check a radiology skill sheet against the radiologist's dictated findings for one case. Silence in "
+             "the dictation never makes a finding present.\n")
+_SYS_NEG = ("NEGATIVES: for each numbered negative return 'contradicted' if the dictation reports it as present or "
+            "reports a finding of the same kind in the same place; 'expected' if a dictated finding would normally and "
+            "predictably cause what it denies (not merely make it possible); otherwise 'keep'. For contradicted and "
+            "expected, quote the dictated finding responsible.\n")
+_SYS_REST = ("NORMAL LINES: list the numbers of normal-study statements that a dictated finding contradicts or acts on.\n"
+             "MEASUREMENTS: list the numbers of measurement conventions whose finding is present in the dictation.")
+QWEN_SYS = _SYS_HEAD + _SYS_NEG + _SYS_REST
+
+# The negatives classifier's four labels (review_engine/prompts/negatives.txt, "your Step 1 notes" read as "the dictated
+# findings"), plus expected (spec 2026-10-09 §3.0). Quick only, behind RR_BRIEF_FULL_LABELS.
+_SYS_NEG_FULL = (
+    "NEGATIVES: classify each numbered negative against the dictation. Process of exclusion: the radiologist dictates "
+    "which structures are abnormal, and every structure, organ or site not named as abnormal is normal by default. This "
+    "holds for distant sites even in metastatic or spreading disease, and for the rest of an organ when only part of it "
+    "is diseased. Only local consequences of a dictated finding can make a negative implicated.\n"
+    "- dictated: the dictation itself states this normal or negative, for the same structure, side and level, at the "
+    "same certainty, in any wording. A dictated negative restated with a synonym or an equivalent term is still "
+    "dictated. A negative that widens a dictated negative to more structures or levels, or states it more firmly than "
+    "dictated, is NOT dictated.\n"
+    "- default: not dictated, and nothing in the dictated findings points towards the abnormality it denies.\n"
+    "- implicated: not dictated, and something in the dictated findings points towards what it denies: a local "
+    "consequence, complication, extension, cause or associated finding of a dictated finding; the same structure, level "
+    "or compartment as dictated disease; or a dictated limitation covering it. The clinical question on its own, or the "
+    "possibility of distant spread, never makes a negative implicated.\n"
+    "- contradicted: the dictation states the opposite, or reports disease in the very thing the negative denies.\n"
+    "- expected: a dictated finding would normally and predictably cause what it denies (not merely make it possible).\n"
+    "When in doubt between default and implicated, choose implicated. For implicated, contradicted and expected, quote "
+    "the dictated finding responsible.\n")
+QWEN_SYS_FULL = _SYS_HEAD + _SYS_NEG_FULL + _SYS_REST
 
 
 def _words(s: str) -> set:
@@ -279,15 +301,17 @@ class QwenDecisionsLinked(QwenDecisions):
 
 
 async def _qwen(state: str, negs: List[str], normals: List[str], measurements: List[str],
-                linked: Optional[tuple] = None) -> QwenDecisions:
+                linked: Optional[tuple] = None, full: bool = False) -> QwenDecisions:
     """linked: (system addition, statements block), the linked-normal atoms folded into this call. None
-    (always, unless RR_GROUPED_NORMALS is on) sends exactly the request it always has."""
+    (always, unless RR_GROUPED_NORMALS is on) sends exactly the request it always has. full: the four-label
+    negatives scheme (QWEN_SYS_FULL, quick behind RR_BRIEF_FULL_LABELS)."""
     def block(title, items):
         return f"{title}:\n" + ("\n".join(f"{k}. {t}" for k, t in enumerate(items)) or "(none)")
     user = f"{state}\n\n{block('NEGATIVES', negs)}\n\n{block('NORMAL LINES', normals)}\n\n{block('MEASUREMENTS', measurements)}"
-    out_type, sys_prompt, max_tokens = QwenDecisions, QWEN_SYS, 4000
+    base = QWEN_SYS_FULL if full else QWEN_SYS
+    out_type, sys_prompt, max_tokens = QwenDecisions, base, 4000
     if linked:
-        out_type, sys_prompt, max_tokens = QwenDecisionsLinked, QWEN_SYS + linked[0], 8000
+        out_type, sys_prompt, max_tokens = QwenDecisionsLinked, base + linked[0], 8000
         user += "\n\n" + linked[1]
     r = await asyncio.wait_for(_run_agent_with_model(
         model_name=QWEN, output_type=out_type, system_prompt=sys_prompt, user_prompt=user,

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -62,11 +63,21 @@ async def _qwen_complete(state: str, negs: List[str], normals: List[str], measur
                          linked: Optional[tuple] = None) -> QwenDecisions:
     """report_reconcile._qwen_complete through this module's _qwen and logger (tests patch both here).
     linked: the linked-normal atoms folded into the same call (RR_GROUPED_NORMALS, fold labeller)."""
-    ask = _qwen if linked is None else (lambda *a: _qwen(*a, linked=linked))
+    kw = {**({"linked": linked} if linked is not None else {}), **({"full": True} if full_labels() else {})}
+    ask = (lambda *a: _qwen(*a, **kw)) if kw else _qwen
     return await _rc._qwen_complete(state, negs, normals, measurements, ask=ask, log=logger)
 
 
 LABEL_TIMEOUT_S = 15.0
+
+
+def full_labels() -> bool:
+    """RR_BRIEF_FULL_LABELS=1: the brief's negatives use the four-label scheme (spec 2026-10-09 §3.0). Off until the
+    brief labeller lab passes (plan Task 10)."""
+    return os.environ.get("RR_BRIEF_FULL_LABELS", "0").strip().lower() in ("1", "true", "on")
+
+
+SAID = ("keep", "default", "implicated", "dictated")
 
 
 def _atom_labels(atoms: list, qw, sep_labels: Optional[List[str]], mode: Optional[str], jev: dict) -> dict:
@@ -361,6 +372,10 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             neg_lines.append(f'  - OMIT: "{text}" — the dictation reports: {d.dictated_finding}')
         elif action == "expected":
             neg_lines.append(f'  - DO NOT ASSERT: "{text}" — expected consequence of: {d.dictated_finding}')
+        elif action == "dictated":
+            neg_lines.append(f'  - DICTATED: "{text}" — state it as the dictation does')
+        elif action == "implicated" and d.dictated_finding:
+            neg_lines.append(f'  - KEEP: "{text}"{why} (implicated by: {d.dictated_finding})')
         else:
             neg_lines.append(f'  - KEEP: "{text}"{why}')
         decisions["negatives"].append({"text": text, "action": action, "dictated_finding": d.dictated_finding if d else "",
@@ -386,13 +401,14 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         if outcome == "stated":
             stated.append(c.text)
             neg_lines.append(f'  - KEEP: "{c.text}" (finding: {c.key})')
-            decisions["negatives"].append({"text": c.text, "action": "keep", "dictated_finding": "",
+            decisions["negatives"].append({"text": c.text, "action": label if label in SAID else "keep",
+                                           "dictated_finding": d.dictated_finding if d else "",
                                            "source": f"finding:{c.key}"})
         elif outcome == "do_not_assert":
             neg_lines.append(f'  - DO NOT ASSERT: "{c.text}" — expected consequence of: {d.dictated_finding}')
     # An offered negative the brief already states (KEEP) or the dictation already makes is a
     # duplicate, never an option.
-    said = [n["text"] for n in decisions["negatives"] if n["action"] == "keep"] + dictated_negatives(items)
+    said = [n["text"] for n in decisions["negatives"] if n["action"] in SAID] + dictated_negatives(items)
     for c, p, record in pending:
         if duplicates_negative(c.text, said):
             record["outcome"] = "duplicate"

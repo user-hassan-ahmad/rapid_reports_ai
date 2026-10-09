@@ -424,3 +424,59 @@ def test_jev_upgrade_to_implicated_keeps_pointer_free_of_diagnostics():
     assert out["a1"]["source"] == "separate+jev"
     assert out["a1"]["pointer"] == ""
     assert out["a2"]["cls"] == "implicated" and out["a2"]["pointer"] == "small left pleural effusion"
+
+
+# --- Task 9: four-label negatives scheme behind RR_BRIEF_FULL_LABELS (quick only, default off) ---
+
+_OLD_QWEN_SYS = (
+    "You check a radiology skill sheet against the radiologist's dictated findings for one case. Silence in the "
+    "dictation never makes a finding present.\n"
+    "NEGATIVES: for each numbered negative return 'contradicted' if the dictation reports it as present or reports a "
+    "finding of the same kind in the same place; 'expected' if a dictated finding would normally and predictably "
+    "cause what it denies (not merely make it possible); otherwise 'keep'. For contradicted and expected, quote the "
+    "dictated finding responsible.\n"
+    "NORMAL LINES: list the numbers of normal-study statements that a dictated finding contradicts or acts on.\n"
+    "MEASUREMENTS: list the numbers of measurement conventions whose finding is present in the dictation.")
+
+
+def test_quick_sys_is_unchanged_and_full_sys_carries_the_four_labels():
+    assert report_reconcile.QWEN_SYS == _OLD_QWEN_SYS   # the template pathway sends it; byte-identical
+    for word in ("dictated:", "default:", "implicated:", "contradicted:", "expected:"):
+        assert word in report_reconcile.QWEN_SYS_FULL
+    assert "Process of exclusion" in report_reconcile.QWEN_SYS_FULL and "NORMAL LINES" in report_reconcile.QWEN_SYS_FULL
+
+
+def test_negative_decision_accepts_the_full_labels():
+    for a in ("keep", "default", "implicated", "dictated", "contradicted", "expected"):
+        assert report_reconcile.NegativeDecision(index=0, action=a).action == a
+
+
+@pytest.mark.asyncio
+async def test_full_labels_compile_dictated_and_implicated_lines(monkeypatch):
+    monkeypatch.setenv("RR_BRIEF_FULL_LABELS", "1")
+    _stub(monkeypatch, JEV, QWEN)
+    seen = {}
+
+    async def fake_qwen(state, negs, normals, measurements, linked=None, full=False):
+        seen["full"] = full
+        acts = ["dictated", "implicated", "default"]
+        return qb.QwenDecisions(negatives=[qb.NegativeDecision(index=i, action=acts[i % 3],
+                                                               dictated_finding="8 mm right subdural" if i % 3 == 1 else "")
+                                           for i in range(len(negs))],
+                                affected_normals=[], applicable_measurements=[])
+    monkeypatch.setattr(qb, "_qwen", fake_qwen)
+    b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, no subdural collection on the left")
+    assert seen["full"] is True
+    assert '  - DICTATED: "No subdural collection"' in b.text
+    assert '"No ventricular compression" (mass effect) (implicated by: 8 mm right subdural)' in b.text
+    assert 'KEEP: "No skull fracture" (trauma)' in b.text
+    acts = [n["action"] for n in b.decisions["negatives"] if n["source"] == "sheet"]
+    assert acts == ["dictated", "implicated", "default"]
+
+
+@pytest.mark.asyncio
+async def test_flag_off_sends_the_old_request(monkeypatch):
+    monkeypatch.delenv("RR_BRIEF_FULL_LABELS", raising=False)
+    _stub(monkeypatch, JEV, QWEN)   # fake_qwen has the old signature: passing full would raise TypeError
+    b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, 3 mm midline shift")
+    assert "DICTATED:" not in b.text and "implicated by" not in b.text
