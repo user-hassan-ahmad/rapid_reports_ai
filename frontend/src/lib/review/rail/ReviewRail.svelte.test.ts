@@ -266,6 +266,26 @@ describe('ReviewRail', () => {
 		expect(onCommand).toHaveBeenCalledWith('dismiss', 'k1');
 	});
 
+	it('a conflict card with no edit offers Ask in chat and Dismiss, no Apply', async () => {
+		const conflict = item({
+			id: 'k2',
+			kind: 'check',
+			cls: 'action',
+			lane: 'accuracy',
+			section: 'Liver',
+			label: 'Conflict without a fix',
+			anchor: at(80, 'No focal lesion.'),
+			evidence: { check_reason: 'conflict', source: 'brief', brief_reason: 'removal_blocked' }
+		});
+		await mount(response({ items: [...ITEMS, conflict] }));
+		await expect.element(page.getByText('Conflict without a fix')).toBeInTheDocument();
+		const k2 = rail()!.querySelector<HTMLElement>('[data-rv-item="k2"]')!;
+		expect(k2.getAttribute('data-rv-variant')).toBe('card');
+		expect(k2.querySelector('[aria-label="Apply: Conflict without a fix"]')).toBeNull();
+		expect(k2.querySelector('[aria-label="Ask in chat: Conflict without a fix"]')).not.toBeNull();
+		expect(k2.querySelector('[aria-label="Dismiss: Conflict without a fix"]')).not.toBeNull();
+	});
+
 	it('no suggestions, recommendations or AI synthesis in the rail (they live in the editor)', async () => {
 		const extra = [
 			item({ id: 'rec1', kind: 'recommendation', cls: 'minor', section: 'Spleen', label: 'Follow-up advised', anchor: at(50), edit: { mode: 'remove', find: 'x' } }),

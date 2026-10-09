@@ -291,6 +291,9 @@ describe('review decorations', () => {
 		expect(k.classList.contains('rv-action')).toBe(true);
 		expect(k.classList.contains('rv-check')).toBe(false);
 		expect([...k.classList].some((c) => c.startsWith('rv-form-'))).toBe(false);
+		expect(k.getAttribute('aria-label')).toBe(
+			'Needs action · Likely conflicts with your dictation; could not be removed automatically. · hover for actions'
+		);
 		const c = await openOn(view, 'k1');
 		expect(actionsOf(c)).toEqual(['apply', 'dismiss', 'reveal']);
 	});

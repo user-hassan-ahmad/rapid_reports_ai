@@ -7,8 +7,8 @@
  * markers carry an icon.
  *
  * The AI-generated layer is a very light background tint by category (`rv-form-*`, field.formOf): normals green,
- * pertinent negatives amber, synthesis violet; no underline, no actions. It is ON by default (the legend's
- * "AI-generated" toggle, `data-rv-emph~="ai"`); off, it is plain text. Recommendations (teal), flagged issues (red),
+ * negatives bearing on a finding amber, synthesis violet; no underline, no actions. It is ON by default (the legend's
+ * "AI-generated" toggle, `data-rv-emph~="ai"`); off, it is plain text, except amber, which is always shown. Recommendations (teal), flagged issues (red),
  * minor items (amber) and pre-applied changes (blue) keep their dotted underline; hovering one (or its open inline
  * control, `rv-active`) lights it. Density (`data-density`, Quiet by default) is a dev-page capability.
  */
@@ -157,7 +157,8 @@ export const reviewTheme = EditorView.baseTheme({
 	'.rv-info': { textDecorationLine: 'none' }, // gutter only
 	'.rv-preapplied': { textDecorationColor: 'color-mix(in srgb, var(--rv-blue-line) 50%, transparent)' },
 	// the AI-generated layer: plain editable text when the legend's "AI-generated" toggle is off; on (the default),
-	// a very light tint by category (normals green, pertinent negatives amber, synthesis violet), no underline
+	// a very light tint by category (normals green, negatives bearing on a finding amber and always shown, synthesis
+	// violet), no underline
 	'.rv-normal, .rv-check, .rv-synth': { cursor: 'text', textDecorationLine: 'none', borderRadius: '3px' },
 	'&[data-rv-emph~="ai"] .rv-form-normal': { backgroundColor: 'var(--rv-tint-normal)' },
 	'.rv-form-negative': { backgroundColor: 'var(--rv-tint-negative)' }, // amber ignores the AI-generated toggle

@@ -53,8 +53,8 @@ export const AI_LAYER_MARKS: ReadonlySet<MarkClass> = new Set(['rv-normal', 'rv-
 /** Why an amber (check) item needs a check (evidence.check_reason; absent = uncertain). */
 export type CheckReasonCode = 'uncertain' | 'conflict' | 'number';
 
-/** The AI-generated layer's categories, drawn as faint tints: normals green, pertinent negatives amber, synthesis
- * violet (backend evidence.form). */
+/** The AI-generated layer's categories, drawn as faint tints: normals green, negatives bearing on a finding
+ * amber (always shown), synthesis violet (backend evidence.form). */
 export type AiForm = 'normal' | 'negative' | 'synthesis';
 
 const FORMS: ReadonlySet<string> = new Set(['normal', 'negative', 'synthesis']);

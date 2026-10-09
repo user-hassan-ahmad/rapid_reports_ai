@@ -113,7 +113,7 @@ export type LegendKey = keyof typeof LEGEND_SHORT;
 const LEGEND_TITLE: Record<LegendKey, string> = {
 	dictated: 'Plain text is your dictation',
 	excluded: 'Struck through in grey: text you removed',
-	ai: 'Text not from your dictation, tinted by kind: normals (green), pertinent negatives (amber), synthesis (violet). Show or hide',
+	ai: 'Text not from your dictation, tinted by kind: normals (green), negatives bearing on your finding (amber, always shown), synthesis (violet). Show or hide',
 	removed: 'Struck through in red: removed by AI because it contradicts your dictation'
 };
 
@@ -260,7 +260,7 @@ class ItemWidget extends WidgetType {
 export function markLabel(m: LiveMark): string {
 	const meaning = MARK_MEANING[m.mark];
 	let t: string = m.form ? AI_BREAKDOWN.find((b) => b.form === m.form)!.label : LABELS[meaning];
-	if (m.mark === 'rv-check') t += ` · ${checkReason({ check_reason: m.reason }).line}`;
+	if (m.kind === 'check') t += ` · ${checkReason({ check_reason: m.reason }).line}`; // a conflict card keeps its reason too
 	if (m.form === 'negative' && m.pointer) t += ` · “${m.pointer}”`;
 	return AI_LAYER_MARKS.has(m.mark) ? `${t} (AI-generated)` : `${t} · hover for actions`;
 }
