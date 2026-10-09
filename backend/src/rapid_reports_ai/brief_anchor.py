@@ -106,3 +106,94 @@ def brief_labels(decisions: Optional[dict]) -> List[Label]:
         if term:
             out.append(Label(f"dict:{i}", t, term, "dictated", "dictated"))
     return out
+
+
+_NORMAL = re.compile(r"\b(?:no|not|nil|without|normal(?:ly)?|unremarkable|patent|intact|clear|preserved|"
+                     r"maintained|non-?dilated|undilated)\b", re.I)
+
+
+@dataclass
+class Unit:
+    text: str
+    start: int
+    end: int
+
+
+@dataclass
+class Anchor:
+    ref: str
+    action: str
+    source: str
+    pointer: str = ""
+    how: str = "none"                 # "term" | "jev" | "none" | "removed" (its clause was edited out)
+    span: Optional[List[int]] = None  # the label's words (term) or the whole unit (jev)
+    span_text: str = ""
+    unit: str = ""                    # the statement the span sits in
+    offset: int = 0                   # span start minus unit start (relocation)
+    p: Optional[float] = None         # pass 2 probability
+    shadowed_by: Optional[str] = None # its only hit is held by this (longer or dictated) label
+
+
+def units(report: str) -> List[Unit]:
+    """Normal / negative statements of FINDINGS + IMPRESSION: a whole normal sentence, or the negative / normal tails
+    of a finding sentence ("The nodes measure 14 mm; no contralateral lymphadenopathy" → the tail). Positive heads are
+    never units."""
+    from .report_review import _sentence_positions, report_sections
+    from .review_engine.jev_pass import split_tails   # lazy: review_engine imports report_review
+    out: List[Unit] = []
+    for sec in report_sections(report):
+        a = report.find(sec) if sec else -1
+        if a < 0:
+            continue
+        for s, i, j in _sentence_positions(report, a, a + len(sec)):
+            sp = split_tails(s)
+            if sp:
+                for tail in sp[1]:
+                    words = _LEAD.sub("", tail).rstrip(".")
+                    k = s.find(words)
+                    if words and k >= 0:
+                        out.append(Unit(words, i + k, i + k + len(words)))
+            elif _NORMAL.search(s):
+                out.append(Unit(s, i, j))
+    return out
+
+
+def _rank(lab: Label) -> Tuple[int, int]:
+    """Longest term first; among equal terms a dictated label, then a kept one, then an OMIT one."""
+    return (-len(lab.term), 0 if lab.action == "dictated" else (1 if lab.action in KEEP else 2))
+
+
+def _anchor(lab: Label, **kw) -> Anchor:
+    return Anchor(lab.ref, lab.action, lab.source, lab.pointer, **kw)
+
+
+def match_terms(report: str, labels: List[Label], us: List[Unit]) -> Tuple[Dict[str, Anchor], List[Label]]:
+    """Pass 1 → ({ref: Anchor}, labels for pass 2). A label anchors when its term occurs in exactly one unit at a
+    position no earlier-ranked label holds. A label whose every hit is held is shadowed (merged into the holder);
+    no hit, or several free hits, goes to pass 2."""
+    taken: List[Tuple[int, int, str]] = []
+    got: Dict[str, Anchor] = {}
+    left: List[Label] = []
+    for lab in sorted(labels, key=_rank):
+        free: List[Tuple[int, int, Unit]] = []
+        held: Optional[str] = None
+        for u in us:
+            pos = 0
+            while (m := ln.term_span(u.text, lab.term, pos)) is not None:
+                s, e = u.start + m[0], u.start + m[1]
+                owner = next((r for a, b, r in taken if a < e and s < b), None)
+                if owner is None:
+                    free.append((s, e, u))
+                elif held is None:
+                    held = owner
+                pos = m[1]
+        if len(free) == 1:
+            s, e, u = free[0]
+            taken.append((s, e, lab.ref))
+            got[lab.ref] = _anchor(lab, how="term", span=[s, e], span_text=report[s:e], unit=u.text,
+                                   offset=s - u.start)
+        elif not free and held is not None:
+            got[lab.ref] = _anchor(lab, how="none", shadowed_by=held)
+        else:
+            left.append(lab)
+    return got, left
