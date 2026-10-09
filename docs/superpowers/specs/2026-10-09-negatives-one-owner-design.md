@@ -194,3 +194,23 @@ About 6 targeted cases, including d3d1e0a5 and a pancreas case, against the stor
 
 ## 7. Ledger
 Record under the next free L-number (L-59+ may first be taken by the PRs #12–#15 backfill) when the plan lands, with the lab result and the success-bar numbers.
+
+
+### Revision 2026-10-10: who owns what, after the labs
+
+**The brief owns selection, plus the labels it gives reliably.** The brief labeller runs with reasoning off, because it is on the pre-generation critical path. The lab (b204edc) found the four-label scheme recognises dictated negatives 13/13 and contradicted ones 30/32 (today's labeller: 29/32). But it calls only 7 of 58 implicated negatives implicated.
+
+Implicated vs default changes nothing in what gets written: both are included. Its only consumer is the background review. So:
+- **Brief owns:** dictated (no tint), contradicted and expected (OMIT, conflict cards), finding-linked negatives (amber by origin), linked-normal atoms (rendering depends on their label), and every conflict-card clause.
+- **Classifier owns:** default vs implicated for sheet negatives the brief merely kept. They are not in `owned_spans` and produce no brief item. A kept sheet negative still vetoes a removal and gets a brief_kept card, because that is selection.
+- `RR_BRIEF_FULL_LABELS` defaults on, for its dictated and contradicted strength only.
+- Rejected: turning reasoning on in the brief. It would add seconds to time-to-report for a label nothing before render uses.
+
+**Removals (revised in execution):**
+- The brief never causes a removal. It can only veto one (protect) or annotate it (cards).
+- Every removal, including today's L-47 path, requires Jev's statement type to be "normal" for the exact sentence deleted. Guard lab: real pure negatives allowed 122/122; real sentences stating a finding allowed 0/12.
+- Deletion is positional: it removes the occurrence the guard approved.
+- Would-be brief removals are logged as `anchor_log.would_remove_by_brief`. `RR_BRIEF_REMOVE` (default off) enables them later, once the log has been hand-read.
+- `brief_omitted` cards show only at Jev contradiction ≥ 0.3.
+
+**Frontend (revised):** conflict checks with cls `action` are rail cards with Remove. Amber marks ignore the AI-generated toggle.
