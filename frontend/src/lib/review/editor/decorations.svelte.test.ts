@@ -4,6 +4,7 @@ import { EditorView } from '@codemirror/view';
 import type { ReviewItem } from '../types';
 import { fromItems } from './field';
 import { reviewExtensions, setDensity, setEmphasis, openPopover, LABELS } from './index';
+import { markLabel } from './decorations';
 
 // Tiny SYNTHETIC report: a dictated finding, a green normal, an amber check, an action item with an edit, a
 // pre-applied insert, an AI synthesis clause, a recommendation, a removed (red) widget and an option.
@@ -778,5 +779,20 @@ describe('inline control in wrapped prose', () => {
 		await tick();
 		expect(control(view)).toBeNull();
 		expect(lineH()).toEqual(before);
+	});
+});
+
+describe('amber AI-layer label', () => {
+	it('names the dictated finding an amber statement bears on', () => {
+		const m = {
+			id: 'x', kind: 'assumed_normal', cls: 'info', lane: 'accuracy', mark: 'rv-normal',
+			form: 'negative', pointer: 'right hilar nodes 14 mm', from: 0, to: 5, text: 'No X.'
+		} as const;
+		expect(markLabel(m as never)).toBe('Bears on your finding · “right hilar nodes 14 mm” (AI-generated)');
+	});
+	it('leaves a green normal unchanged', () => {
+		const m = { id: 'y', kind: 'assumed_normal', cls: 'info', lane: 'accuracy', mark: 'rv-normal',
+			form: 'normal', from: 0, to: 5, text: 'Liver.' } as const;
+		expect(markLabel(m as never)).toBe('Normals (AI-generated)');
 	});
 });

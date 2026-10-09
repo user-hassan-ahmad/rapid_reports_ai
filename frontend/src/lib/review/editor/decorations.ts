@@ -135,7 +135,7 @@ export const LEGEND: { key: LegendKey; icon: string; label: string; title: strin
 /** The AI-generated layer's categories, as the legend's breakdown shows them (swatch = the tint in the editor). */
 export const AI_BREAKDOWN: { form: AiForm; label: string; title: string }[] = [
 	{ form: 'normal', label: 'Normals', title: 'Normal findings you did not dictate, stated by the AI' },
-	{ form: 'negative', label: 'Pertinent negatives', title: 'Negatives the AI added that matter for your findings' },
+	{ form: 'negative', label: 'Bears on your finding', title: 'Negatives the AI added that bear on a dictated finding: in the report, worth a glance' },
 	{ form: 'synthesis', label: 'Synthesis', title: 'Conclusions the AI drew from your findings' }
 ];
 
@@ -257,10 +257,11 @@ class ItemWidget extends WidgetType {
 
 // ---- marks + widgets ----
 
-function markLabel(m: LiveMark): string {
+export function markLabel(m: LiveMark): string {
 	const meaning = MARK_MEANING[m.mark];
 	let t: string = m.form ? AI_BREAKDOWN.find((b) => b.form === m.form)!.label : LABELS[meaning];
 	if (m.mark === 'rv-check') t += ` · ${checkReason({ check_reason: m.reason }).line}`;
+	if (m.form === 'negative' && m.pointer) t += ` · “${m.pointer}”`;
 	return AI_LAYER_MARKS.has(m.mark) ? `${t} (AI-generated)` : `${t} · hover for actions`;
 }
 
