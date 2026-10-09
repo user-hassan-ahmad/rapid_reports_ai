@@ -498,11 +498,10 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict],
     # ...and only when the whole sentence holding it is a normal statement (Jev's lab-validated statement type):
     # "No effusion with mild atelectasis." is mixed, and removing it would take the finding with it. Same call.
     from .review_engine.jev_pass import clause_type_of, q_type   # lazy: jev_pass imports this module
-    texts = _checked_texts(report, sections)
-    sent_of = {cls[i]: [_sentence_text(t[a:b]) for t in texts for a, b in _clause_sentences(t, cls[i])]
-               for i, r in restated.items() if r}
-    sents = list(dict.fromkeys(x for ss in sent_of.values() for x in ss))
-    contra_qs.update({f"t{j}": q_type(x) for j, x in enumerate(sents)})
+    # Every negative clause that could be removed; the sentence asked is exactly the one a removal would edit.
+    sent_of = {t: [x[0] for x in _removal_targets(report, t, sections, protected)] for t in cls if is_negative(t)}
+    sents = {x: j for j, x in enumerate(dict.fromkeys(x for ss in sent_of.values() for x in ss))}
+    contra_qs.update({f"t{j}": q_type(x) for x, j in sents.items()})
     # The omission selector rides the same dictation-state call (no added latency).
     contra_qs.update({f"sel{i}": q_select_choice(t) for i, t in enumerate(items)})
     contra_qs.update({f"lt{i}": q_select_noul(t) for i, t in enumerate(items)})
@@ -557,7 +556,7 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict],
     contra_scores = {} if isinstance(contra, BaseException) else {
         t: s for i, t in enumerate(cls) if (s := maybe(contra, f"c{i}")) is not None}
     type_ans = {} if isinstance(contra, BaseException) else contra
-    sentence_type = {c: _all_normal([clause_type_of(type_ans.get(f"t{sents.index(x)}")) for x in ss])
+    sentence_type = {c: _all_normal([clause_type_of(type_ans.get(f"t{sents[x]}")) for x in ss])
                      for c, ss in sent_of.items()}
     return CheckResult(flags=flags, kept_dictated=kept, bad_option_ids=bad, n_clauses=len(cls), n_items=len(items),
                        n_selected=sum(chosen), selector=selector, error=error,
@@ -757,34 +756,61 @@ async def insert_findings(report: str, findings: str, items: List[str],
 _NEG_LIST = re.compile(r"^(No|There is no|There are no|Without)\s+(.*?)\.?$", re.I)
 
 
-_SENT_END = re.compile(r"[.!?](?=\s|$)|\n")
-_BULLET = re.compile(r"^\s*(?:\d+[.)]|[-*\u2022])\s+")
-
-
-def _sentence_text(s: str) -> str:
-    return _BULLET.sub("", s.strip()).strip()
-
-
-def _sentence_around(text: str, i: int, j: int) -> Tuple[int, int]:
-    """The sentence of `text` holding text[i:j]: bounded by . ! ? or a line break, never by ';'."""
-    a = max((m.end() for m in _SENT_END.finditer(text, 0, i)), default=0)
-    m = _SENT_END.search(text, j)
-    return a, (m.end() if m else len(text))
-
-
-def _clause_sentences(text: str, clause: str) -> List[Tuple[int, int]]:
-    """Spans of every sentence of `text` holding the clause, as written or as an item of a negative list
-    ("No collection" in "No effusion, collection or air.")."""
-    c = clause.strip().rstrip(".")
+def _regions(report: str, sections: Optional[List[ReportSection]]) -> List[Tuple[int, int]]:
+    """Where automatic removals may happen, as positions: the checked sections (templates) or FINDINGS + IMPRESSION,
+    each located after its own header (an IMPRESSION identical to text in FINDINGS is still the IMPRESSION)."""
+    if sections is not None:
+        return _checked_spans(report, sections)
+    marks = {m.group(1): m.end() for m in _HEADER.finditer(report)}
     out: List[Tuple[int, int]] = []
-    for i, j in _occurrences(text, c):
-        out.append(_sentence_around(text, i, j))
-    if c[:3].lower() == "no ":
-        for i, j in _occurrences(text, c[3:]):
-            a, b = _sentence_around(text, i, j)
-            if _drop_item(_sentence_text(text[a:b]), c) is not None:
-                out.append((a, b))
-    return list(dict.fromkeys(out))
+    for name, t in zip(("FINDINGS", "IMPRESSION"), report_sections(report)):
+        if t and name in marks and (i := report.find(t, marks[name])) >= 0:
+            out.append((i, i + len(t)))
+    return out
+
+
+Target = Tuple[str, int, int, str]     # (sentence, start, end, "sentence" | "item")
+
+
+def _removal_targets(report: str, clause: str, sections: Optional[List[ReportSection]] = None,
+                     protected: Optional[List[str]] = None) -> List[Target]:
+    """Every place a removal of `clause` could edit, in report order: a sentence (the one splitter,
+    `_sentence_positions`) that IS the clause, or a negative list holding it as an item; only inside the removal
+    regions and never in a sentence overlapping protected text."""
+    target = clause.strip().rstrip(".")
+    pspans = protected_spans(report, protected)
+    out: List[Target] = []
+    for a, b in _regions(report, sections):
+        for s, i, j in _sentence_positions(report, a, b):
+            if _overlaps(i, j, pspans):
+                continue
+            if s.rstrip(".") == target:
+                out.append((s, i, j, "sentence"))
+            elif _drop_item(s, target) is not None:
+                out.append((s, i, j, "item"))
+    return out
+
+
+def _remove_at(report: str, clause: str, t: Target) -> str:
+    """Remove at exactly the target: delete the sentence at (i, j), or drop the item from exactly that sentence."""
+    s, i, j, mode = t
+    if mode == "item":
+        new = _drop_item(s, clause.strip().rstrip("."))
+        return report[:i] + new + report[j:] if new else report
+    lo, hi = i, j
+    while lo > 0 and report[lo - 1] in " \t":
+        lo -= 1
+    while hi < len(report) and report[hi] in " \t":
+        hi += 1
+    left, right = report[:lo], report[hi:]
+    sep = "" if not left or left.endswith("\n") or not right or right.startswith("\n") else " "
+    # A line left empty, or a numbered or bulleted item left holding only its marker, loses its line too.
+    start = left.rfind("\n") + 1
+    end = right.find("\n")
+    line = left[start:] + (right if end < 0 else right[:end])
+    if not line.strip() or _EMPTY_ITEM.match(line):
+        return left[:start] + ("" if end < 0 else right[end + 1:])
+    return left + sep + right
 
 
 def _all_normal(types: List[Optional[str]]) -> Optional[str]:
@@ -794,34 +820,42 @@ def _all_normal(types: List[Optional[str]]) -> Optional[str]:
     return next((t for t in types if t != "normal"), "normal")
 
 
-def _safe_to_remove(report: str, clause: str, sentence_type: Optional[str], anchors: list) -> Optional[str]:
-    """The last-step invariant before EVERY automatic removal; None when safe, else why not. The clause must be a whole
-    sentence, list item or negative-list item; its sentence must be a normal statement (Jev); the sentence must hold
-    no ';' (a backstop); and no brief KEEP or dictated anchor (or a KEEP shadowed by one in it) may overlap it.
-    No anchors (templates, no brief) makes the last condition vacuous."""
-    c = clause.strip().rstrip(".")
-    whole: List[Tuple[int, int, Tuple[int, int]]] = []    # (sentence a, b, the clause's own span)
-    for a, b in _clause_sentences(report, c):
-        s = _sentence_text(report[a:b])
-        if s.rstrip(".") == c:
-            k = report.find(c, a, b)
-            whole.append((a, b, (k, k + len(c))))
-        elif c[:3].lower() == "no " and _drop_item(s, c) is not None:
-            k = report.find(c[3:], a, b)
-            whole.append((a, b, (k, k + len(c) - 3)))
-    if not whole:
-        return "not_whole"
+def _item_span(report: str, t: Target, clause: str) -> Tuple[int, int]:
+    """The words of a negative-list item inside its sentence (the whole sentence if they cannot be found)."""
+    s, i, j, _ = t
+    m = re.search(r"\b" + re.escape(clause.strip().rstrip(".")[3:]) + r"\b", report[i:j])
+    return (i + m.start(), i + m.end()) if m else (i, j)
+
+
+def _safe_to_remove(report: str, clause: str, sentence_type: Optional[str], anchors: list,
+                    sections: Optional[List[ReportSection]] = None,
+                    protected: Optional[List[str]] = None) -> Tuple[Optional[Target], Optional[str]]:
+    """The last-step invariant before EVERY automatic removal -> (the exact target it approves, None) or (None, why).
+    A target is a whole sentence or negative-list item (`_removal_targets`, the same places `_remove_at` edits); the
+    clause's sentences must be a normal statement (Jev, asked of exactly those sentences); the approved sentence holds
+    no ';' (a backstop); and no brief KEEP or dictated anchor (or a KEEP shadowed by one) overlaps the approved span.
+    No anchors (templates, no brief) makes the last condition vacuous. The first target passing every check is
+    approved; one that fails is never edited."""
+    cands = _removal_targets(report, clause, sections, protected)
+    if not cands:
+        return None, "not_whole"
     if sentence_type != "normal":
-        return "sentence_type"
-    if any(";" in report[a:b] for a, b, _ in whole):
-        return "semicolon"
+        return None, "sentence_type"
     live = [x for x in anchors if getattr(x, "span", None) and x.how in ("term", "jev")]
-    held = [x for x in live if any(x.span[0] < e and s < x.span[1] for _, _, (s, e) in whole)]
-    refs = {x.ref for x in held}
-    shadow = [x for x in anchors if x.shadowed_by in refs and x.action in brief_anchor.KEEP]
-    if any(x.action in brief_anchor.KEEP for x in held + shadow):
-        return "brief_anchor"
-    return None
+    why: Optional[str] = None
+    for t in cands:
+        if ";" in t[0]:
+            why = why or "semicolon"
+            continue
+        a, b = (t[1], t[2]) if t[3] == "sentence" else _item_span(report, t, clause)
+        held = [x for x in live if x.span[0] < b and a < x.span[1]]
+        refs = {x.ref for x in held}
+        shadow = [x for x in anchors if x.shadowed_by in refs and x.action in brief_anchor.KEEP]
+        if any(x.action in brief_anchor.KEEP for x in held + shadow):
+            why = why or "brief_anchor"
+            continue
+        return t, None
+    return None, why
 
 
 def _brief_remove_enabled() -> bool:
@@ -860,42 +894,8 @@ def remove_negative_clause(report: str, clause: str, sections: Optional[List[Rep
     flag can only lose a negative, never create a finding. With `sections` or `protected`
     (templates) the edit is made by position, only inside a checked section and never in a sentence
     that overlaps protected text."""
-    target = clause.strip().rstrip(".")
-    if sections is None and not protected:
-        for s in [x for t in _checked_texts(report, None) for x in _sentences(t)]:
-            if s.rstrip(".") == target:
-                return re.sub(r"[ \t]*" + re.escape(s) + r"[ \t]*", " ", report, count=1).replace(" \n", "\n")
-            new = _drop_item(s, target)
-            if new:
-                return report.replace(s, new, 1)
-        return report
-    if sections is not None:
-        spans = _checked_spans(report, sections)
-    else:
-        spans = [(i, i + len(t)) for t in report_sections(report) if t and (i := report.find(t)) >= 0]
-    pspans = protected_spans(report, protected)
-    for a, b in spans:
-        for s, i, j in _sentence_positions(report, a, b):
-            if _overlaps(i, j, pspans):
-                continue
-            if s.rstrip(".") == target:
-                lo, hi = i, j
-                while lo > 0 and report[lo - 1] in " \t":
-                    lo -= 1
-                while hi < len(report) and report[hi] in " \t":
-                    hi += 1
-                left, right = report[:lo], report[hi:]
-                sep = "" if not left or left.endswith("\n") or not right or right.startswith("\n") else " "
-                # A numbered or bulleted item left holding only its marker loses its line too.
-                start = left.rfind("\n") + 1
-                end = right.find("\n")
-                if _EMPTY_ITEM.match(left[start:] + (right if end < 0 else right[:end])):
-                    return left[:start] + ("" if end < 0 else right[end + 1:])
-                return left + sep + right
-            new = _drop_item(s, target)
-            if new:
-                return report[:i] + new + report[j:]
-    return report
+    t = _removal_targets(report, clause, sections, protected)
+    return _remove_at(report, clause, t[0]) if t else report
 
 
 # ── orchestration ────────────────────────────────────────────────────────────
@@ -944,7 +944,13 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
                            **_given(sections=sections, protected=protected, extra_report_qs=extra_report_qs,
                                     history=history))
         if brief_decisions is not None and sections is None and brief_anchor.enabled():
-            res, anchors = await asyncio.gather(check_call, brief_anchor.anchor(report, brief_decisions))
+            res, anchors = await asyncio.gather(check_call, brief_anchor.anchor(report, brief_decisions),
+                                                return_exceptions=True)
+            if isinstance(res, BaseException):
+                raise res
+            if isinstance(anchors, BaseException):     # anchoring never blocks the check
+                logger.warning("brief anchor failed (%s: %s)", type(anchors).__name__, str(anchors)[:200])
+                anchors = []
         else:
             res = await check_call
         if extra_report_qs is not None:
@@ -969,15 +975,17 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
                 review_contra=[r["text"] for r in tel["review"] if r["kind"] == "contradiction"],
                 sentence_type=res.sentence_type)
             rules["removed"] = []
-        cards: List[dict] = rules["conflicts"] if rules else []
+        if rules:
+            cards = rules["conflicts"]
 
-        def safe(clause: str) -> bool:
+        def safe(clause: str) -> Optional[Target]:
             """`_safe_to_remove` on the current report (anchors moved with the edits so far); a block is logged
             and carded (one card per clause: an existing brief card becomes the removal_blocked card)."""
             here = brief_anchor.relocate(anchors, report) if anchors else []
-            why = _safe_to_remove(report, clause, res.sentence_type.get(clause), here)
-            if why is None:
-                return True
+            target, why = _safe_to_remove(report, clause, res.sentence_type.get(clause), here,
+                                          **_given(sections=sections, protected=protected))
+            if target is not None:
+                return target
             blocked.append({"clause": clause, "why": why})
             card = next((c for c in cards if c["clause"] == clause), None)
             if card is not None:
@@ -986,7 +994,7 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
                 sc = res.contra.get(clause)
                 cards.append({"clause": clause, "refs": [], "reason": "removal_blocked",
                               "score": None if sc is None else round(sc, 3), "source": "", "pointer": "", "why": why})
-            return False
+            return None
         # A flagged negative is removed in code (L-47); an omitted finding is inserted by construction.
         # A contradiction inside protected text stays in tel["flags"] for the rail but is never edited: a
         # clause found only inside protected text is not removed; one also written elsewhere still is.
@@ -994,8 +1002,8 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
         removed = 0
         for f in editable:
             if f.kind == "contradiction" and is_negative(f.text) and not (rules and f.text in rules["protect"]) \
-                    and safe(f.text):
-                new = remove_negative_clause(report, f.text, **_given(sections=sections, protected=protected))
+                    and (target := safe(f.text)) is not None:
+                new = _remove_at(report, f.text, target)      # exactly the span the guard approved
                 if new != report:
                     removed += 1
                     removals.append({"type": "removal", "clause": f.text})
@@ -1003,9 +1011,9 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
         if rules and _brief_remove_enabled():
             for w in rules["would_remove"]:
                 clause = w["clause"]
-                if any(r["clause"] == clause for r in removals) or not safe(clause):
+                if any(r["clause"] == clause for r in removals) or (target := safe(clause)) is None:
                     continue
-                new = remove_negative_clause(report, clause)
+                new = _remove_at(report, clause, target)
                 if new != report:      # removed: its brief_omitted card goes (the pre-applied item shows it)
                     removed += 1
                     removals.append({"type": "removal", "clause": clause})

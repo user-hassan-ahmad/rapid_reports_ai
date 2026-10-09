@@ -520,22 +520,103 @@ async def test_a_semicolon_sentence_is_never_removed(monkeypatch):
 
 
 def test_safe_to_remove_invariant():
-    rep = "FINDINGS:\nNo ascites. Mass with no ascites nearby.\n- No effusion\nNo effusion, collection, or air.\n"
-    assert rr._safe_to_remove(rep, "No ascites.", "normal", []) is None
-    assert rr._safe_to_remove(rep, "No effusion", "normal", []) is None                # a list item
-    assert rr._safe_to_remove(rep, "No collection", "normal", []) is None              # a negative-list item
-    assert rr._safe_to_remove(rep, "no ascites nearby", "normal", []) == "not_whole"
-    assert rr._safe_to_remove(rep, "No ascites.", "mixed", []) == "sentence_type"
-    assert rr._safe_to_remove(rep, "No ascites.", None, []) == "sentence_type"
+    rep = ("FINDINGS:\nNo ascites. Mass with no ascites nearby. No effusion, collection, or air.\n\n"
+           "IMPRESSION:\n- No pneumothorax\n- Mass\n")
+    ok = lambda *a, **k: rr._safe_to_remove(rep, *a, **k)[1]
+    assert ok("No ascites.", "normal", []) is None
+    assert ok("No collection", "normal", []) is None              # a negative-list item
+    assert ok("no ascites nearby", "normal", []) == "not_whole"
+    # one splitter: a bullet the sentence splitter does not separate is not a whole sentence, so never removed
+    assert ok("No pneumothorax", "normal", []) == "not_whole"
+    assert ok("No ascites.", "mixed", []) == "sentence_type"
+    assert ok("No ascites.", None, []) == "sentence_type"
     i = rep.index("ascites")
     keep = ba.Anchor("neg:0", "keep", "sheet", "", "term", [i, i + 7], "ascites", "No ascites.")
-    assert rr._safe_to_remove(rep, "No ascites.", "normal", [keep]) == "brief_anchor"
+    assert ok("No ascites.", "normal", [keep]) == "brief_anchor"
     dic = ba.Anchor("dict:0", "dictated", "dictated", "", "term", [i, i + 7], "ascites", "No ascites.")
-    assert rr._safe_to_remove(rep, "No ascites.", "normal", [dic]) == "brief_anchor"
+    assert ok("No ascites.", "normal", [dic]) == "brief_anchor"
     omit = ba.Anchor("neg:1", "contradicted", "sheet", "", "term", [i, i + 7], "ascites", "No ascites.")
-    assert rr._safe_to_remove(rep, "No ascites.", "normal", [omit]) is None
+    assert ok("No ascites.", "normal", [omit]) is None
     shadow = ba.Anchor("neg:2", "keep", "sheet", "", "none", shadowed_by="neg:1")
-    assert rr._safe_to_remove(rep, "No ascites.", "normal", [omit, shadow]) == "brief_anchor"
+    assert ok("No ascites.", "normal", [omit, shadow]) == "brief_anchor"
+    target, why = rr._safe_to_remove(rep, "No ascites.", "normal", [])
+    assert why is None and rep[target[1]:target[2]] == "No ascites."
+
+
+REPRO = "FINDINGS:\nRight hemithorax: No pleural effusion. Liver normal.\n\nIMPRESSION:\nNo pleural effusion.\n"
+
+
+def test_the_guard_approves_a_span_and_the_removal_deletes_exactly_that_span():
+    i = REPRO.index("pleural effusion")
+    keep = ba.Anchor("neg:0", "keep", "sheet", "", "term", [i, i + 16], "pleural effusion", "No pleural effusion.")
+    target, why = rr._safe_to_remove(REPRO, "No pleural effusion.", "normal", [keep])
+    assert why is None and target[1] == REPRO.rindex("No pleural effusion.")      # the IMPRESSION copy only
+    out = rr._remove_at(REPRO, "No pleural effusion.", target)
+    assert "Right hemithorax: No pleural effusion. Liver normal." in out
+    assert out.rstrip().endswith("IMPRESSION:")
+
+
+async def test_a_flagged_clause_is_never_deleted_inside_a_larger_sentence(monkeypatch):
+    monkeypatch.setattr(rr.rc, "_jev", _contra_jev({"No pleural effusion": 0.9}))
+    out, _, tel = await rr.run_quality_check(REPRO, "Pleural effusion", "CT chest", [])
+    assert "Right hemithorax: No pleural effusion. Liver normal." in out
+    assert tel["clauses_removed"] == 1 and out.count("No pleural effusion") == 1
+
+
+DUP = "FINDINGS:\nNo pleural effusion. Liver normal.\n\nIMPRESSION:\nNo pleural effusion.\n"
+
+
+def _keep_at(rep, k):
+    return ba.Anchor("neg:0", "keep", "sheet", "", "term", [k + 3, k + 19], "pleural effusion", "No pleural effusion.")
+
+
+def test_duplicates_remove_only_an_approved_occurrence():
+    f, imp = DUP.index("No pleural effusion."), DUP.rindex("No pleural effusion.")
+    t, _ = rr._safe_to_remove(DUP, "No pleural effusion.", "normal", [])
+    assert t[1] == f                                                    # unanchored: the first, as today
+    t, _ = rr._safe_to_remove(DUP, "No pleural effusion.", "normal", [_keep_at(DUP, f)])
+    out = rr._remove_at(DUP, "No pleural effusion.", t)
+    assert out == "FINDINGS:\nNo pleural effusion. Liver normal.\n\nIMPRESSION:\n"
+    t, _ = rr._safe_to_remove(DUP, "No pleural effusion.", "normal", [_keep_at(DUP, imp)])
+    out = rr._remove_at(DUP, "No pleural effusion.", t)
+    assert out == "FINDINGS:\nLiver normal.\n\nIMPRESSION:\nNo pleural effusion.\n"
+    t, why = rr._safe_to_remove(DUP, "No pleural effusion.", "normal", [_keep_at(DUP, f), _keep_at(DUP, imp)])
+    assert t is None and why == "brief_anchor"
+
+
+async def test_the_type_question_reads_exactly_the_sentence_deleted(monkeypatch):
+    from rapid_reports_ai.review_engine.jev_pass import Q_TYPE
+    seen = {}
+
+    async def fake(state, qs):
+        seen.update({k: q["instructions"] for k, q in qs.items() if k.startswith("t")})
+        return await _contra_jev({"No pleural effusion": 0.9})(state, qs)
+    monkeypatch.setattr(rr.rc, "_jev", fake)
+    semi = "FINDINGS:\nNo pleural effusion; Small nodule.\n\nIMPRESSION:\nNodule.\n"
+    out, _, tel = await rr.run_quality_check(semi, "Pleural effusion", "CT chest", [])
+    assert list(seen.values()) == [Q_TYPE.format(c="No pleural effusion;")]
+    assert out == semi and tel["removal_blocked"][0]["why"] == "semicolon"
+    seen.clear()
+    lines = "FINDINGS:\nNo effusion.\nNo pleural effusion.\nLiver normal.\n\nIMPRESSION:\nNormal.\n"
+    out, _, tel = await rr.run_quality_check(lines, "Pleural effusion", "CT chest", [])
+    assert Q_TYPE.format(c="No pleural effusion.") in seen.values()
+    assert out == "FINDINGS:\nNo effusion.\nLiver normal.\n\nIMPRESSION:\nNormal.\n"
+
+
+async def test_every_negative_clause_gets_a_type_question_restated_or_not(monkeypatch):
+    monkeypatch.setattr(rr, "restate", lambda c: None)
+    monkeypatch.setattr(rr.rc, "_jev", _contra_jev({}))
+    res = await rr.check(QR, "x", "CT", [])
+    assert set(res.sentence_type) == {"No contralateral pleural effusion.", "No pleural effusion."}
+
+
+async def test_an_anchor_failure_still_uses_the_check(monkeypatch):
+    async def boom(*a, **k):
+        raise RuntimeError("anchor down")
+    monkeypatch.setattr(rr.brief_anchor, "anchor", boom)
+    monkeypatch.setattr(rr.rc, "_jev", _contra_jev({"No pleural effusion": 0.9}))
+    out, _, tel = await rr.run_quality_check(QR, "Small right pleural effusion", "CT chest", [], brief_decisions=QDEC)
+    assert tel["error"] is None and tel["clauses"] > 0 and "anchors" not in tel
 
 
 async def test_check_asks_the_statement_type_of_each_negative_clause_sentence(monkeypatch):
