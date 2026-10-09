@@ -75,7 +75,10 @@ class FindingNegative:
 
 
 def route_finding(label: str, present: float, tag: str) -> str:
-    """Rule C: stated only when the finding is clearly reported and the negative is core."""
+    """Rule C: stated only when the finding is clearly reported and the negative is core. A negative the
+    dictation itself states (full labels only) is stated, never offered."""
+    if label == "dictated":
+        return "stated"
     if present < PRESENT_LOW or label == "contradicted":
         return "dropped"
     if label == "expected":
@@ -148,7 +151,7 @@ Q_STYLE_MATCH = "This example report sentence describes the same kind of finding
 
 class NegativeDecision(BaseModel):
     index: int
-    action: Literal["keep", "default", "implicated", "dictated", "contradicted", "expected"]
+    action: Literal["keep", "contradicted", "expected"]
     dictated_finding: str = ""
 
 
@@ -165,6 +168,16 @@ class QwenDecisions(BaseModel):
     @classmethod
     def _parse_stringified(cls, v):
         return _unstring(v)
+
+
+class NegativeDecisionFull(NegativeDecision):
+    """The four-label scheme plus expected (QWEN_SYS_FULL). A separate class so the schema every other request sends
+    keeps its three-value enum; used only by _qwen(full=True), quick behind RR_BRIEF_FULL_LABELS."""
+    action: Literal["keep", "default", "implicated", "dictated", "contradicted", "expected"]
+
+
+class QwenDecisionsFull(QwenDecisions):
+    negatives: List[NegativeDecisionFull]
 
 
 class Split(BaseModel):
@@ -231,17 +244,21 @@ _SYS_NEG_FULL = (
     "holds for distant sites even in metastatic or spreading disease, and for the rest of an organ when only part of it "
     "is diseased. Only local consequences of a dictated finding can make a negative implicated.\n"
     "- dictated: the dictation itself states this normal or negative, for the same structure, side and level, at the "
-    "same certainty, in any wording. A dictated negative restated with a synonym or an equivalent term is still "
-    "dictated. A negative that widens a dictated negative to more structures or levels, or states it more firmly than "
-    "dictated, is NOT dictated.\n"
+    "same certainty, in any wording. A dictated normal or negative statement about a region or organ covers each "
+    "structure within it, and a dictated negative restated with a synonym or an equivalent term (a broader or narrower "
+    "name for the same thing) is still dictated. A negative that widens a dictated negative to more structures or "
+    "levels, or states it more firmly than dictated (a hedge such as \"largely\", \"probably\", \"no evidence of\" "
+    "dropped), is NOT dictated; classify it as default, implicated, contradicted or expected.\n"
     "- default: not dictated, and nothing in the dictated findings points towards the abnormality it denies.\n"
     "- implicated: not dictated, and something in the dictated findings points towards what it denies: a local "
     "consequence, complication, extension, cause or associated finding of a dictated finding; the same structure, level "
     "or compartment as dictated disease; or a dictated limitation covering it. The clinical question on its own, or the "
     "possibility of distant spread, never makes a negative implicated.\n"
-    "- contradicted: the dictation states the opposite, or reports disease in the very thing the negative denies.\n"
+    "- contradicted: the dictation states the opposite, or reports disease in the very thing the negative denies, or "
+    "reports a finding of the same kind in the same place.\n"
     "- expected: a dictated finding would normally and predictably cause what it denies (not merely make it possible).\n"
-    "When in doubt between default and implicated, choose implicated. For implicated, contradicted and expected, quote "
+    "When in doubt between default and implicated, choose implicated. When a negative combines several parts, "
+    "classify by its most serious part. For implicated, contradicted and expected, quote "
     "the dictated finding responsible.\n")
 QWEN_SYS_FULL = _SYS_HEAD + _SYS_NEG_FULL + _SYS_REST
 
@@ -300,6 +317,10 @@ class QwenDecisionsLinked(QwenDecisions):
         return [str(x) for x in _decode_list(v)]
 
 
+class QwenDecisionsFullLinked(QwenDecisionsLinked):
+    negatives: List[NegativeDecisionFull]
+
+
 async def _qwen(state: str, negs: List[str], normals: List[str], measurements: List[str],
                 linked: Optional[tuple] = None, full: bool = False) -> QwenDecisions:
     """linked: (system addition, statements block), the linked-normal atoms folded into this call. None
@@ -309,9 +330,9 @@ async def _qwen(state: str, negs: List[str], normals: List[str], measurements: L
         return f"{title}:\n" + ("\n".join(f"{k}. {t}" for k, t in enumerate(items)) or "(none)")
     user = f"{state}\n\n{block('NEGATIVES', negs)}\n\n{block('NORMAL LINES', normals)}\n\n{block('MEASUREMENTS', measurements)}"
     base = QWEN_SYS_FULL if full else QWEN_SYS
-    out_type, sys_prompt, max_tokens = QwenDecisions, base, 4000
+    out_type, sys_prompt, max_tokens = (QwenDecisionsFull if full else QwenDecisions), base, 4000
     if linked:
-        out_type, sys_prompt, max_tokens = QwenDecisionsLinked, base + linked[0], 8000
+        out_type, sys_prompt, max_tokens = (QwenDecisionsFullLinked if full else QwenDecisionsLinked), base + linked[0], 8000
         user += "\n\n" + linked[1]
     r = await asyncio.wait_for(_run_agent_with_model(
         model_name=QWEN, output_type=out_type, system_prompt=sys_prompt, user_prompt=user,

@@ -400,9 +400,12 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             pending.append((c, p, record))
         if outcome == "stated":
             stated.append(c.text)
-            neg_lines.append(f'  - KEEP: "{c.text}" (finding: {c.key})')
+            if label == "dictated":
+                neg_lines.append(f'  - DICTATED: "{c.text}" — state it as the dictation does')
+            else:
+                neg_lines.append(f'  - KEEP: "{c.text}" (finding: {c.key})')
             decisions["negatives"].append({"text": c.text, "action": label if label in SAID else "keep",
-                                           "dictated_finding": d.dictated_finding if d else "",
+                                           "dictated_finding": d.dictated_finding if d and full_labels() else "",
                                            "source": f"finding:{c.key}"})
         elif outcome == "do_not_assert":
             neg_lines.append(f'  - DO NOT ASSERT: "{c.text}" — expected consequence of: {d.dictated_finding}')
