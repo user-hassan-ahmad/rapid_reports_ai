@@ -197,3 +197,88 @@ def match_terms(report: str, labels: List[Label], us: List[Unit]) -> Tuple[Dict[
         else:
             left.append(lab)
     return got, left
+
+
+LINK_MIN = 0.80        # pass 2 acceptance; Task 4's wording lab confirms or moves it
+LINK_TIMEOUT_S = 4.0
+LINK_WORDING = 'Read only this sentence. It says, in any wording: "{t}".'
+
+
+def q_says(lab: Label) -> dict:
+    return {"type": "noul", "instructions": LINK_WORDING.format(t=lab.text.strip().rstrip(".")),
+            "criteria": {"true": "the sentence says it", "false": "the sentence does not say it"}}
+
+
+def _words(s: str) -> set:
+    return set(re.findall(r"[a-z]{4,}", (s or "").lower()))
+
+
+async def link(labels: List[Label], us: List[Unit], jev=None) -> Dict[str, Anchor]:
+    """Pass 2 → {ref: Anchor}: one Jev request per unit (the state is the sentence alone), asking each label that
+    shares a content word with it. A label anchors to the unit Jev scores at P >= LINK_MIN when no other unit does."""
+    jev = jev or rc._jev
+    asks: Dict[int, Dict[str, dict]] = {}
+    for k, lab in enumerate(labels):
+        w = _words(lab.term)
+        for n, u in enumerate(us):
+            if w & _words(u.text):
+                asks.setdefault(n, {})[f"l{k}"] = q_says(lab)
+    if not asks:
+        return {}
+
+    async def one(n: int):
+        return n, await asyncio.wait_for(jev(us[n].text, asks[n]), LINK_TIMEOUT_S)
+    results = await asyncio.gather(*(one(n) for n in asks), return_exceptions=True)
+    scores: Dict[int, List[Tuple[float, int]]] = {}
+    for r in results:
+        if isinstance(r, BaseException):
+            logger.warning("brief anchor: Jev link failed (%s: %s)", type(r).__name__, str(r)[:200])
+            continue
+        n, ans = r
+        for qk in asks[n]:
+            try:
+                p = float(ans[qk]["noul"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            scores.setdefault(int(qk[1:]), []).append((p, n))
+    out: Dict[str, Anchor] = {}
+    for k, ps in scores.items():
+        ps.sort(reverse=True)
+        if ps[0][0] >= LINK_MIN and (len(ps) == 1 or ps[1][0] < LINK_MIN):
+            lab, u = labels[k], us[ps[0][1]]
+            out[lab.ref] = _anchor(lab, how="jev", span=[u.start, u.end], span_text=u.text, unit=u.text, offset=0,
+                                   p=round(ps[0][0], 3))
+    return out
+
+
+async def anchor(report: str, decisions: Optional[dict], jev=None) -> List[Anchor]:
+    """Both passes, one Anchor per brief label in label order. Never raises."""
+    try:
+        labels = brief_labels(decisions)
+        if not labels:
+            return []
+        us = units(report)
+        got, left = match_terms(report, labels, us)
+        if left:
+            got.update(await link(left, us, jev))
+        return [got.get(l.ref) or _anchor(l) for l in labels]
+    except Exception as e:  # noqa: BLE001 - anchoring never blocks the report
+        logger.warning("brief anchor failed (%s: %s)", type(e).__name__, str(e)[:200])
+        return []
+
+
+def relocate(anchors: List[Anchor], report: str) -> List[Anchor]:
+    """The anchors re-found on `report` (the check's edits shift positions): the unit text, then the span inside it.
+    A unit no longer in the report is "removed"."""
+    out: List[Anchor] = []
+    for a in anchors:
+        if a.how not in ("term", "jev"):
+            out.append(a)
+            continue
+        i = report.find(a.unit)
+        k = i + a.offset
+        if i < 0 or report[k:k + len(a.span_text)] != a.span_text:
+            out.append(Anchor(**{**asdict(a), "how": "removed", "span": None}))
+        else:
+            out.append(Anchor(**{**asdict(a), "span": [k, k + len(a.span_text)]}))
+    return out

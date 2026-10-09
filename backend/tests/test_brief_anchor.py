@@ -121,3 +121,51 @@ def test_pass_one_longest_term_wins_and_the_shorter_omit_is_shadowed():
 def test_two_labels_with_disjoint_terms_share_one_sentence():
     got, _ = ba.match_terms(REPORT, ba.brief_labels(DEC), ba.units(REPORT))
     assert got["neg:5"].unit == got["atom:P2:N3"].unit == "The liver is unremarkable with no hepatic lesion."
+
+
+def _jev_says(yes):
+    """Fake rc._jev: P=0.95 when (sentence contains key, label text contains value) for any pair in `yes`."""
+    calls = []
+
+    async def fake(state, qs):
+        calls.append((state, qs))
+        out = {}
+        for k, q in qs.items():
+            hit = any(s in state and t in q["instructions"] for s, t in yes)
+            out[k] = {"noul": 0.95 if hit else 0.05}
+        return out
+    fake.calls = calls
+    return fake
+
+
+async def test_pass_two_links_a_reworded_atom_to_its_sentence():
+    fake = _jev_says([("paratracheal", "mediastinal lymphadenopathy")])
+    anchors = _by_ref(await ba.anchor(REPORT, DEC, jev=fake))
+    a = anchors["atom:P1:N2"]
+    assert a.how == "jev" and a.unit.startswith("No paratracheal") and a.p == 0.95
+    assert anchors["neg:6"].how == "none"                      # "ascites" shares no word with any unit: not asked
+    asked = {q["instructions"] for _, qs in fake.calls for q in qs.values()}
+    assert not any("ascites" in q for q in asked)
+
+
+async def test_pass_two_needs_one_clear_winner():
+    fake = _jev_says([("paratracheal", "mediastinal"), ("contralateral hilar", "mediastinal")])
+    anchors = _by_ref(await ba.anchor(REPORT, DEC, jev=fake))
+    assert anchors["atom:P1:N2"].how == "none"                 # two sentences at P >= LINK_MIN: ambiguous
+
+
+async def test_a_jev_failure_leaves_pass_two_labels_unanchored():
+    async def boom(state, qs):
+        raise RuntimeError("jev down")
+    anchors = _by_ref(await ba.anchor(REPORT, DEC, jev=boom))
+    assert anchors["atom:P1:N2"].how == "none" and anchors["neg:1"].how == "term"
+
+
+def test_relocate_follows_an_earlier_removal_and_marks_a_removed_clause():
+    got, _ = ba.match_terms(REPORT, ba.brief_labels(DEC), ba.units(REPORT))
+    anchors = list(got.values())
+    edited = REPORT.replace("The great vessels are patent with no pulmonary emboli.", "")
+    moved = _by_ref(ba.relocate(anchors, edited))
+    a = moved["neg:5"]
+    assert edited[a.span[0]:a.span[1]] == a.span_text == "hepatic lesion"
+    assert moved["dict:0"].how == "removed" and moved["dict:0"].span is None
