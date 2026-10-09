@@ -220,7 +220,7 @@ def match_terms(report: str, labels: List[Label], us: List[Unit]) -> Tuple[Dict[
     return got, left
 
 
-LINK_MIN = 0.80        # pass 2 acceptance; Task 4's wording lab confirms or moves it
+LINK_MIN = 1.01        # pass 2 off: Task 4 wording lab failed the gate (best S1 80.7% at 0.9, 0 false links; recall 59%)
 LINK_TIMEOUT_S = 4.0
 LINK_WORDING = 'Read only this sentence. It says, in any wording: "{t}".'
 

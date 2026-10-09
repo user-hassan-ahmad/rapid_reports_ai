@@ -138,6 +138,20 @@ def _jev_says(yes):
     return fake
 
 
+@pytest.fixture(autouse=True)
+def _pass_two_on(monkeypatch):
+    """The pass 2 tests exercise the linking logic at a working threshold; the shipped LINK_MIN may switch pass 2
+    off (Task 4 gate), which test_shipped_link_min_can_switch_pass_two_off covers."""
+    monkeypatch.setattr(ba, "LINK_MIN", 0.80)
+
+
+async def test_shipped_link_min_can_switch_pass_two_off(monkeypatch):
+    monkeypatch.setattr(ba, "LINK_MIN", 1.01)
+    fake = _jev_says([("paratracheal", "mediastinal lymphadenopathy")])
+    anchors = _by_ref(await ba.anchor(REPORT, DEC, jev=fake))
+    assert anchors["atom:P1:N2"].how == "none"                 # P <= 1 never reaches 1.01
+
+
 async def test_pass_two_links_a_reworded_atom_to_its_sentence():
     fake = _jev_says([("paratracheal", "mediastinal lymphadenopathy")])
     anchors = _by_ref(await ba.anchor(REPORT, DEC, jev=fake))
