@@ -377,3 +377,17 @@ def test_an_implicated_statement_is_an_amber_assumed_normal_not_a_check_card():
     (it,) = items
     assert it.kind == "assumed_normal" and it.evidence["form"] == "negative"
     assert it.evidence["pointer"] == "Pancreatic head mass" and it.label == "Bears on your finding"
+
+
+def test_an_unlabelled_candidate_takes_its_form_from_the_wording_not_normal():
+    """A brief-owned skip (or a failed classifier) reaches route() with no label: ai_layer(None) → statement_form."""
+    report = "FINDINGS:\nPancreatic head mass. No pancreatic duct dilatation. The liver is unremarkable.\n\nIMPRESSION:\nMass.\n"
+    i = inp(report, "- Pancreatic head mass")
+    cands = [{"clause": "No pancreatic duct dilatation.", "before": "Pancreatic head mass.", "number": False},
+             {"clause": "The liver is unremarkable.", "before": "No pancreatic duct dilatation.", "number": False}]
+    items, _, _ = neg.route(i, "r1", cands, {})
+    by = {it.evidence["clause"]: it for it in items}
+    assert by["No pancreatic duct dilatation."].kind == "assumed_normal"
+    assert by["No pancreatic duct dilatation."].evidence["form"] == "negative"
+    assert by["The liver is unremarkable."].evidence["form"] == "normal"
+    assert all(it.label == "Assumed normal" and "pointer" not in it.evidence for it in items)

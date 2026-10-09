@@ -1,5 +1,5 @@
-"""Brief linked normals → review items (one owner): default → assumed_normal (info), implicated → check / uncertain
-(minor); anchors on the atom's term in the FINAL report, unanchored when not found or ambiguous; dedupe against the
+"""Brief linked normals → review items (one owner): default → assumed_normal (info, green), implicated →
+assumed_normal (info, amber: evidence.form "negative"); anchors on the atom's term in the FINAL report, unanchored when not found or ambiguous; dedupe against the
 negatives classifier (brief wins on default / implicated; a classifier conflict / number / removal outranks).
 Synthetic cases only, no live model calls."""
 from rapid_reports_ai.review_engine import brief_normals as bn
@@ -60,9 +60,9 @@ def test_default_and_implicated_atoms_become_items_anchored_on_their_terms():
     liver = items["liver"]
     assert (liver.kind, liver.cls, liver.label) == ("assumed_normal", "info", "Assumed normal")
     ihd = items["intrahepatic biliary tree"]
-    assert (ihd.kind, ihd.cls) == ("check", "minor")
-    assert ihd.evidence["check_reason"] == "uncertain" and ihd.evidence["pointer"] == "CBD 12 mm"
-    assert ihd.evidence["included"] is True and "CBD 12 mm" in ihd.label
+    assert (ihd.kind, ihd.cls, ihd.label) == ("assumed_normal", "info", negatives.AMBER)
+    assert ihd.evidence["form"] == "negative" and ihd.evidence["pointer"] == "CBD 12 mm"
+    assert ihd.evidence["included"] is True and "CBD 12 mm" in ihd.reason
 
 
 def test_dictated_and_do_not_assert_atoms_and_loose_lines_make_no_item():
@@ -191,8 +191,8 @@ async def test_engine_brief_build_failure_classifies_everything(monkeypatch):
 def test_brief_items_carry_their_form():
     items = _by_term(bn.build_items(_inp(), RUN))
     assert items["liver"].evidence["form"] == "normal"
-    assert items["intrahepatic biliary tree"].evidence["form"] == "normal"      # implicated: still a check
-    assert items["intrahepatic biliary tree"].evidence["check_reason"] == "uncertain"
+    assert items["intrahepatic biliary tree"].evidence["form"] == "negative"    # implicated: the amber tint
+    assert "check_reason" not in items["intrahepatic biliary tree"].evidence
     assert items["hydronephrosis"].evidence["form"] == "negative"
 
 
@@ -206,7 +206,7 @@ def test_placeholder_pointer_gives_the_generic_check_label():
     it = _by_term(bn.build_items(_inp(brief=brief), RUN))["kidneys"]
     assert it.evidence["pointer"] == ""
     assert "->" not in it.label and "->" not in it.reason
-    assert (it.label, it.reason) == negatives.check_text("uncertain", "")
+    assert (it.label, it.reason, it.evidence["form"]) == negatives.ai_layer("implicated", "")
 
 
 def test_check_text_ignores_a_pointer_with_no_words():
@@ -221,3 +221,92 @@ def test_label_parsers_drop_placeholder_pointers():
     assert [got[i]["pointer"] for i in (1, 2, 3)] == ["", "", "CBD 12 mm"]
     got = negatives.parse_labels(["1 | implicated | -> | no", "2 | implicated | mass | yes"], 2)
     assert [got[i]["pointer"] for i in (1, 2)] == ["", "mass"]
+
+
+# ── items, conflict cards and owned spans from quality_check.anchors (spec 2026-10-09) ──
+
+AREPORT = ("FINDINGS:\nA small right pleural effusion. No contralateral pleural effusion. "
+           "The liver is unremarkable. No paratracheal or subcarinal lymphadenopathy. No pulmonary emboli.\n\n"
+           "IMPRESSION:\nSmall right effusion.\n")
+
+
+def _anc(ref, action, source, text, how="term", pointer="", unit=None):
+    i = AREPORT.index(text)
+    return {"ref": ref, "action": action, "source": source, "pointer": pointer, "how": how,
+            "span": [i, i + len(text)], "span_text": text, "unit": unit or text, "offset": 0}
+
+
+ANCHORS = [
+    _anc("neg:1", "keep", "finding:Pleural effusion", "contralateral pleural effusion", pointer="Pleural effusion"),
+    _anc("atom:P2:N3", "keep", "atom", "liver"),
+    _anc("atom:P1:N2", "implicated", "atom", "No paratracheal or subcarinal lymphadenopathy.", how="jev",
+         pointer="right hilar nodes"),
+    _anc("dict:0", "dictated", "dictated", "pulmonary emboli"),
+    {"ref": "neg:6", "action": "keep", "source": "sheet", "pointer": "", "how": "none", "span": None,
+     "span_text": "", "unit": "", "offset": 0},
+]
+
+
+def _ainp(qc):
+    i = inp(AREPORT, "- Small right pleural effusion\n- No pulmonary emboli", quality_check=qc)
+    return i.model_copy(update={"artifacts": i.artifacts.model_copy(update={"brief": {"decisions": {}}})})
+
+
+def test_items_come_from_anchors_with_tint_by_origin():
+    items = {i.evidence["ref"]: i for i in bn.build_items(_ainp({"anchors": ANCHORS}), RUN)}
+    assert set(items) == {"neg:1", "atom:P2:N3", "atom:P1:N2"}         # dictated: no item; unanchored: none
+    assert items["neg:1"].evidence["form"] == "negative" and items["neg:1"].evidence["pointer"] == "Pleural effusion"
+    assert items["atom:P2:N3"].evidence["form"] == "normal" and items["atom:P2:N3"].kind == "assumed_normal"
+    assert items["atom:P1:N2"].evidence["form"] == "negative" and items["atom:P1:N2"].kind == "assumed_normal"
+    for it in items.values():
+        assert AREPORT[it.anchor.start:it.anchor.end] == it.anchor.text
+
+
+def test_a_brief_conflict_is_a_check_card_and_replaces_the_tint_on_its_clause():
+    qc = {"anchors": ANCHORS, "brief_conflicts": [
+        {"clause": "No contralateral pleural effusion.", "refs": ["neg:1"], "reason": "brief_kept", "score": 0.8,
+         "source": "finding:Pleural effusion", "pointer": "Pleural effusion"}]}
+    items = bn.build_items(_ainp(qc), RUN)
+    cards = [i for i in items if i.kind == "check"]
+    assert len(cards) == 1 and cards[0].evidence["check_reason"] == "conflict"
+    assert cards[0].evidence["brief_reason"] == "brief_kept"
+    assert not any(i.kind == "assumed_normal" and i.evidence.get("ref") == "neg:1" for i in items)
+
+
+def test_owned_spans_cover_every_anchor_including_dictated():
+    spans = bn.owned_spans(_ainp({"anchors": ANCHORS}))
+    texts = {AREPORT[a:b] for a, b in spans}
+    assert "pulmonary emboli" in texts and "liver" in texts and len(spans) == 4
+
+
+def test_old_reports_without_anchors_use_the_legacy_path():
+    assert bn.owned_spans(_inp()) is None
+    assert {i.evidence["term"] for i in bn.build_items(_inp(), RUN)}     # legacy items still built
+
+
+def test_split_and_removal_blocked_cards_have_their_own_wording():
+    qc = {"anchors": ANCHORS, "brief_conflicts": [
+        {"clause": "No paratracheal or subcarinal lymphadenopathy.", "refs": ["atom:P1:N2"], "reason": "brief_split",
+         "score": 0.6, "source": "atom", "pointer": "", "action": "omit"},
+        {"clause": "The liver is unremarkable.", "refs": [], "reason": "removal_blocked", "score": 0.9,
+         "source": "", "pointer": "", "why": "carries"}]}
+    cards = {c.evidence["brief_reason"]: c for c in bn.build_items(_ainp(qc), RUN) if c.kind == "check"}
+    assert set(cards) == {"brief_split", "removal_blocked"}
+    assert "kept part of this and advised against part" in cards["brief_split"].reason
+    assert "not removed automatically" in cards["removal_blocked"].reason
+    for c in cards.values():
+        assert c.cls == negatives.CLS["conflict"] and AREPORT[c.anchor.start:c.anchor.end] == c.anchor.text
+
+
+async def test_owned_spans_drive_the_engine_classifier(monkeypatch):
+    """With anchors, `owned` is the anchors' spans (incl. dictated), not the legacy atom anchors."""
+    _engine_stubs(monkeypatch, [])
+    seen = {}
+    real = engine._negatives
+
+    async def spy(inp_, run_id, types=None, owned=None):
+        seen["owned"] = owned
+        return await real(inp_, run_id, types, owned)
+    monkeypatch.setattr(engine, "_negatives", spy)
+    await engine.run_review(_ainp({"anchors": ANCHORS}), run_id=RUN)
+    assert seen["owned"] == bn.owned_spans(_ainp({"anchors": ANCHORS}))
