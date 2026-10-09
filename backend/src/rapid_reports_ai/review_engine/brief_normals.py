@@ -158,7 +158,7 @@ def owned_spans(inp: ReviewInput) -> Optional[List[Tuple[int, int]]]:
         return None
     report = inp.artifacts.report or ""
     us = brief_anchor.units(report)
-    spans = [sp for a in anchors if isinstance(a, dict) and a.get("how") in ("term", "jev") and owned(a)
+    spans = [sp for a in anchors if isinstance(a, dict) and brief_anchor.anchored(a) and owned(a)
              and (sp := brief_anchor.relocate_one(a, report, us))]
     return spans + [sp for _, sp in _conflicts(inp) if sp]
 
@@ -229,7 +229,7 @@ def _from_anchors(inp: ReviewInput, run_id: str, anchors: List[dict]) -> List[Re
     out, taken = conflict_cards(inp, run_id)
     us = brief_anchor.units(report)
     for a in anchors:
-        if not isinstance(a, dict) or a.get("how") not in ("term", "jev") \
+        if not isinstance(a, dict) or not brief_anchor.anchored(a) \
                 or a.get("action") not in ("keep", "default", "implicated") or not owned(a):
             continue      # dictated: your own words; OMIT: removed, or a conflict card above; a kept sheet
             #               negative: the classifier's default-vs-implicated call (`owned`)

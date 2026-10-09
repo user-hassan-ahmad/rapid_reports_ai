@@ -75,3 +75,61 @@ def test_level_never_anchors_on_another_level():
     got, left = ba.match_terms(report, ba.brief_labels({"negatives": [neg("No retropulsion at T7", "keep")]}),
                                ba.units(report))
     assert "neg:0" not in got and [l.ref for l in left] == ["neg:0"]
+
+
+# A key term made by dropping a place phrase ("No calculus identified in the common bile duct" -> "calculus") may
+# hit the same words in another organ's sentence: its pass 1 hit is provisional until Jev confirms the unit says it.
+
+def _jev_says(yes):
+    """Fake rc._jev: P=0.95 when (unit contains key, label text contains value) for any pair in `yes`."""
+    calls = []
+
+    async def fake(state, qs):
+        calls.append((state, qs))
+        return {k: {"noul": 0.95 if any(s in state and t in q["instructions"] for s, t in yes) else 0.05}
+                for k, q in qs.items()}
+    fake.calls = calls
+    return fake
+
+
+CBD = "No calculus identified in the common bile duct"
+
+
+def test_place_stripped_terms_are_marked():
+    labs = ba.brief_labels({"negatives": [neg(CBD, "keep"), neg("No retropulsion at T7", "keep"),
+                                          neg("No skull fracture identified", "keep"),
+                                          neg("No chest wall invasion by the right upper lobe mass", "keep")]})
+    assert [(l.term, l.stripped) for l in labs] == [("calculus", True), ("retropulsion at T7", False),
+                                                    ("skull fracture", False), ("chest wall invasion", False)]
+
+
+async def test_place_stripped_hit_on_another_organ_is_not_anchored():
+    report = ("FINDINGS:\nThe common bile duct is dilated to 12 mm. Both kidneys are normal with no calculus."
+              "\n\nIMPRESSION:\nBiliary dilatation.\n")
+    fake = _jev_says([])
+    [a] = await ba.anchor(report, {"negatives": [neg(CBD, "keep")]}, jev=fake)
+    assert a.how == "none" and not a.span
+    assert [s for s, _ in fake.calls] == ["Both kidneys are normal with no calculus."]   # asked of that unit only
+
+
+async def test_place_stripped_hit_confirmed_by_jev_anchors_as_term_jev():
+    report = ("FINDINGS:\nThe common bile duct is dilated to 12 mm, with no calculus in the duct. The liver is "
+              "unremarkable.\n\nIMPRESSION:\nBiliary dilatation.\n")
+    [a] = await ba.anchor(report, {"negatives": [neg(CBD, "keep")]},
+                          jev=_jev_says([("no calculus", "common bile duct")]))
+    assert a.how == "term+jev" and ba.anchored(a) and report[a.span[0]:a.span[1]] == "calculus" and a.p == 0.95
+
+
+async def test_place_stripped_omit_label_never_anchors_on_another_organ():
+    report = "FINDINGS:\nA pancreatic head mass. The bowel is normal with no mass.\n\nIMPRESSION:\nMass.\n"
+    [a] = await ba.anchor(report, {"negatives": [neg("No mass identified in the head of the pancreas",
+                                                     "contradicted")]}, jev=_jev_says([]))
+    assert a.how == "none"
+
+
+async def test_a_jev_failure_leaves_a_place_stripped_hit_unanchored():
+    async def boom(state, qs):
+        raise RuntimeError("jev down")
+    report = "FINDINGS:\nThe duct is dilated, with no calculus in the common bile duct.\n\nIMPRESSION:\nX.\n"
+    [a] = await ba.anchor(report, {"negatives": [neg(CBD, "keep")]}, jev=boom)
+    assert a.how == "none"

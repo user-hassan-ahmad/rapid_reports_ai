@@ -841,7 +841,7 @@ def _safe_to_remove(report: str, clause: str, sentence_type: Optional[str], anch
         return None, "not_whole"
     if sentence_type != "normal":
         return None, "sentence_type"
-    live = [x for x in anchors if getattr(x, "span", None) and x.how in ("term", "jev")]
+    live = [x for x in anchors if getattr(x, "span", None) and brief_anchor.anchored(x)]
     why: Optional[str] = None
     for t in cands:
         if ";" in t[0]:

@@ -50,7 +50,7 @@ async def main(days: int) -> None:
                                                 "rules": rules, "stored_anchor_log": qc.get("anchor_log"),
                                                 "kept_dictated_negative": qc.get("kept_dictated_negative") or [],
                                                 "contradiction_flags": contra})
-        print(f"\n== {id8}  labels {log['labels']}  term {log['by_term']}  jev {log['by_jev']}  "
+        print(f"\n== {id8}  labels {log['labels']}  term {log['by_term']}  jev {log['by_jev']}  term+jev {log['by_term_jev']}  "
               f"unanchored {len(log['unanchored'])}  shadowed {len(log['shadowed'])}  "
               f"brief_errors {[e['ref'] for e in log['brief_errors']]}")
         for a in anchors:
