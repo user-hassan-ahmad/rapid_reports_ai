@@ -113,6 +113,21 @@ def test_a_tail_unit_keeps_its_negator():
         assert r[u.start:u.end] == u.text
 
 
+async def test_a_tail_is_cut_at_a_turn_to_a_finding():
+    r = ("FINDINGS:\nRight upper lobe mass without definite chest wall invasion, with ipsilateral hilar "
+         "lymphadenopathy and a small ipsilateral pleural effusion.\n")
+    us = ba.units(r)
+    assert [u.text for u in us] == ["without definite chest wall invasion"]
+    assert not any("pleural effusion" in u.text for u in us)
+    lab = _lab("pleural effusion")                              # an OMIT "No pleural effusion"
+    got, left = ba.match_terms(r, [lab], us)
+    assert "x:1" not in got
+
+    async def yes(state, qs):
+        return {k: {"noul": 0.99} for k in qs}
+    assert await ba.link(left, us, jev=yes) == {}
+
+
 def test_pass_one_longest_term_wins_and_the_shorter_omit_is_shadowed():
     got, left = ba.match_terms(REPORT, ba.brief_labels(DEC), ba.units(REPORT))
     keep = got["neg:1"]

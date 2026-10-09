@@ -139,6 +139,7 @@ _HEDGED = re.compile(r"\b(?:not\s+excluded|cannot\s+be\s+excluded|not\s+ruled\s+
 
 
 _TAIL_NEG = re.compile(r"\b(?:no|without)\s+$", re.I)    # the negator split_tails replaced with "No "
+_TURN_TO_FINDING = re.compile(r",\s*with\b|\s+with\s+an?\b|\s+and\s+an?\b|\s+but\b|,\s*while\b", re.I)
 
 
 def _is_normal(s: str) -> bool:
@@ -171,8 +172,16 @@ def units(report: str) -> List[Unit]:
                         # the unit alone, and a tail without its "no" reads as a positive finding
                         neg = _TAIL_NEG.search(s, cursor, k)
                         k0 = neg.start() if neg else k
-                        out.append(Unit(s[k0:k + len(words)], i + k0, i + k + len(words)))
                         cursor = k + len(words)
+                        # a tail can run on into a finding ("no chest wall invasion, with ... pleural effusion"):
+                        # keep only the part before the turn, and only while it is still a negative / normal
+                        k1 = k + len(words)
+                        turn = _TURN_TO_FINDING.search(s, k, k1)
+                        if turn:
+                            k1 = turn.start()
+                            if not _is_normal(s[k0:k1]):
+                                continue
+                        out.append(Unit(s[k0:k1], i + k0, i + k1))
             elif ";" in s:
                 pos = 0
                 for part in s.split(";"):
@@ -227,7 +236,10 @@ def match_terms(report: str, labels: List[Label], us: List[Unit]) -> Tuple[Dict[
     return got, left
 
 
-LINK_MIN = 0.85        # lowest of {0.8,0.85,0.9,0.95} with 0 wrong links in the Task 4 lab (recall 30/45); t21 sat at 0.82
+# Pass 2 acceptance, Task 4 wording lab (S1): 0 wrong links at 0.90 in both runs; recall 53/90 (run 1, two passes,
+# before tails kept their negator) and 28/45 (run 2). The only wrong link (t21) scored 0.83 / 0.82 and Jev drifts
+# up to 0.06 between runs, so 0.85 had no margin.
+LINK_MIN = 0.90
 LINK_TIMEOUT_S = 4.0
 LINK_WORDING = 'Read only this sentence. It says, in any wording: "{t}".'
 
