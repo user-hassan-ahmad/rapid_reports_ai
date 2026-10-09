@@ -297,7 +297,7 @@ def test_a_contradiction_on_a_kept_clause_is_protected_and_carded():
     anchors = [_a("neg:1", "keep", "contralateral pleural effusion", source="finding:Pleural effusion")]
     rules = ba.brief_rules(R2, anchors, {"No contralateral pleural effusion.": 0.7},
                            flagged=["No contralateral pleural effusion."], review_contra=[])
-    assert rules["protect"] == ["No contralateral pleural effusion."] and rules["remove"] == []
+    assert rules["protect"] == ["No contralateral pleural effusion."] and rules["would_remove"] == []
     (c,) = rules["conflicts"]
     assert c["reason"] == "brief_kept" and c["refs"] == ["neg:1"] and c["source"] == "finding:Pleural effusion"
 
@@ -306,17 +306,44 @@ def test_an_omit_clause_is_removed_only_with_two_signals():
     i = R2.index("No pleural effusion.") + 3
     omit = ba.Anchor("neg:0", "contradicted", "sheet", "Small right pleural effusion", "term",
                      [i, i + len("pleural effusion")], "pleural effusion", "No pleural effusion.")
-    sure = ba.brief_rules(R2, [omit], {"No pleural effusion.": 0.9}, flagged=[], review_contra=[])
-    assert sure["remove"] == ["No pleural effusion."] and sure["conflicts"] == []
-    weak = ba.brief_rules(R2, [omit], {"No pleural effusion.": 0.3}, flagged=[], review_contra=[])
-    assert weak["remove"] == [] and weak["conflicts"][0]["reason"] == "brief_omitted"
+    normal = {"No pleural effusion.": "normal"}
+    sure = ba.brief_rules(R2, [omit], {"No pleural effusion.": 0.9}, flagged=[], review_contra=[],
+                          sentence_type=normal)
+    # the brief vetoes, never removes: two signals are a shadow log plus a card
+    assert sure["would_remove"] == [{"clause": "No pleural effusion.", "score": 0.9, "refs": ["neg:0"],
+                                     "action": "contradicted"}]
+    assert [c["reason"] for c in sure["conflicts"]] == ["brief_omitted"]
+    assert "remove" not in sure
+    weak = ba.brief_rules(R2, [omit], {"No pleural effusion.": 0.3}, flagged=[], review_contra=[],
+                          sentence_type=normal)
+    assert weak["would_remove"] == [] and weak["conflicts"][0]["reason"] == "brief_omitted"
+
+
+def test_an_omit_card_below_the_card_threshold_is_only_logged():
+    i = R2.index("No pleural effusion.") + 3
+    omit = ba.Anchor("neg:0", "contradicted", "sheet", "", "term", [i, i + len("pleural effusion")],
+                     "pleural effusion", "No pleural effusion.")
+    r = ba.brief_rules(R2, [omit], {"No pleural effusion.": 0.29}, flagged=[], review_contra=[],
+                       sentence_type={"No pleural effusion.": "normal"})
+    assert r["conflicts"] == [] and r["would_remove"] == []
+    assert [c["clause"] for c in r["omit_low"]] == ["No pleural effusion."]
+    assert ba.anchor_log([omit], r)["omit_low"] == r["omit_low"]
+
+
+def test_two_signals_without_a_normal_sentence_type_are_not_a_would_remove():
+    i = R2.index("No pleural effusion.") + 3
+    omit = ba.Anchor("neg:0", "contradicted", "sheet", "", "term", [i, i + len("pleural effusion")],
+                     "pleural effusion", "No pleural effusion.")
+    for t in ({}, {"No pleural effusion.": None}, {"No pleural effusion.": "mixed"}):
+        r = ba.brief_rules(R2, [omit], {"No pleural effusion.": 0.9}, flagged=[], review_contra=[], sentence_type=t)
+        assert r["would_remove"] == [] and r["conflicts"][0]["reason"] == "brief_omitted"
 
 
 def test_dictated_beats_omit_no_removal_no_card_logged_as_brief_error():
     anchors = [_a("dict:0", "dictated", "ascites"),
                ba.Anchor("neg:3", "contradicted", "sheet", "", "none", shadowed_by="dict:0")]
     rules = ba.brief_rules(R2, anchors, {"There is no ascites.": 0.9}, flagged=[], review_contra=[])
-    assert rules == {"protect": [], "remove": [], "conflicts": []}
+    assert rules == {"protect": [], "would_remove": [], "conflicts": [], "omit_low": []}
     log = ba.anchor_log(anchors, rules)
     assert log["brief_errors"] == [{"ref": "neg:3", "shadowed_by": "dict:0"}]
 
@@ -325,7 +352,7 @@ def test_anchor_log_counts_and_lists_unanchored():
     anchors = [_a("neg:1", "keep", "contralateral pleural effusion"),
                ba.Anchor("neg:6", "keep", "sheet"),
                ba.Anchor("atom:P1:N2", "implicated", "atom", how="jev", span=[0, 1], span_text="F", unit="F")]
-    log = ba.anchor_log(anchors, {"protect": [], "remove": [], "conflicts": []})
+    log = ba.anchor_log(anchors, {"protect": [], "would_remove": [], "conflicts": []})
     assert (log["labels"], log["by_term"], log["by_jev"]) == (3, 1, 1)
     assert log["unanchored"] == [{"ref": "neg:6", "source": "sheet", "action": "keep"}]
 
@@ -337,11 +364,11 @@ def test_shadowed_keep_label_in_the_clause_blocks_removal():
                      "pleural effusion", "No pleural effusion.")
     shadowed = ba.Anchor("neg:9", "keep", "finding:Pleural effusion", how="none", shadowed_by="neg:0")
     rules = ba.brief_rules(R2, [omit, shadowed], {"No pleural effusion.": 0.9}, flagged=[], review_contra=[])
-    assert rules["remove"] == [] and len(rules["conflicts"]) == 1
+    assert rules["would_remove"] == [] and len(rules["conflicts"]) == 1
     # and a flagged clause held that way is protected and carded as kept
     r2 = ba.brief_rules(R2, [omit, shadowed], {"No pleural effusion.": 0.9},
                         flagged=["No pleural effusion."], review_contra=[])
-    assert r2["protect"] == ["No pleural effusion."] and r2["remove"] == []
+    assert r2["protect"] == ["No pleural effusion."] and r2["would_remove"] == []
     assert r2["conflicts"][0]["reason"] == "brief_kept" and r2["conflicts"][0]["refs"] == ["neg:9"]
 
 
@@ -415,16 +442,18 @@ def test_keep_at_the_real_clause_blocks_an_omit_at_the_wrong_match():
     omit = ba.Anchor("neg:0", "contradicted", "sheet", "", "term", first, "No effusion", "No effusion seen around a 3 cm mass.")
     k = _span("No effusion.")
     keep = ba.Anchor("neg:1", "keep", "sheet", "", "term", [k[0], k[1] - 1], "No effusion", "No effusion.")
-    r = ba.brief_rules(R3, [omit, keep], {"No effusion.": 0.9}, flagged=[], review_contra=[])
-    assert r["remove"] == []
+    r = ba.brief_rules(R3, [omit, keep], {"No effusion.": 0.9}, flagged=[], review_contra=[],
+                       sentence_type={"No effusion.": "normal"})
+    assert r["would_remove"] == []
 
 
 def test_keep_in_the_impression_copy_blocks_removal_of_the_findings_copy():
     f, imp = _span("No effusion.", 0), _span("No effusion.", 1)
     omit = ba.Anchor("neg:0", "contradicted", "sheet", "", "term", [f[0], f[1] - 1], "No effusion", "No effusion.")
     keep = ba.Anchor("neg:1", "keep", "sheet", "", "term", [imp[0], imp[1] - 1], "No effusion", "No effusion.")
-    r = ba.brief_rules(R3, [omit, keep], {"No effusion.": 0.9}, flagged=[], review_contra=[])
-    assert r["remove"] == []
+    r = ba.brief_rules(R3, [omit, keep], {"No effusion.": 0.9}, flagged=[], review_contra=[],
+                       sentence_type={"No effusion.": "normal"})
+    assert r["would_remove"] == []
 
 
 def test_a_foreign_keep_in_a_longer_sentence_is_not_a_holder():
@@ -432,8 +461,9 @@ def test_a_foreign_keep_in_a_longer_sentence_is_not_a_holder():
     omit = ba.Anchor("neg:0", "contradicted", "sheet", "", "term", [f[0], f[1] - 1], "No effusion", "No effusion.")
     keep = ba.Anchor("neg:1", "keep", "sheet", "", "term", _span("No effusion seen"), "No effusion",
                      "No effusion seen around a 3 cm mass.")
-    r = ba.brief_rules(R3, [omit, keep], {"No effusion.": 0.9}, flagged=[], review_contra=[])
-    assert r["remove"] == ["No effusion."]
+    r = ba.brief_rules(R3, [omit, keep], {"No effusion.": 0.9}, flagged=[], review_contra=[],
+                       sentence_type={"No effusion.": "normal"})
+    assert [w["clause"] for w in r["would_remove"]] == ["No effusion."]
 
 
 def test_a_clause_with_a_positive_turn_is_never_removed():
@@ -443,7 +473,7 @@ def test_a_clause_with_a_positive_turn_is_never_removed():
     got, _ = ba.match_terms(rep, [lab], us)
     clause = "No pleural effusion, but a 6 mm nodule in the right lobe."
     r = ba.brief_rules(rep, [got["neg:0"]], {clause: 0.95}, flagged=[], review_contra=[])
-    assert r["remove"] == [] and r["conflicts"][0]["reason"] == "brief_omitted"
+    assert r["would_remove"] == [] and r["conflicts"][0]["reason"] == "brief_omitted"
 
 
 def test_an_omit_unit_that_does_not_cover_the_clause_blocks_removal():
@@ -451,7 +481,7 @@ def test_an_omit_unit_that_does_not_cover_the_clause_blocks_removal():
     i = rep.index("No effusion")
     omit = ba.Anchor("neg:0", "contradicted", "sheet", "", "term", [i, i + 11], "No effusion", "No effusion")
     r = ba.brief_rules(rep, [omit], {"No effusion or mass.": 0.9}, flagged=[], review_contra=[])
-    assert r["remove"] == [] and r["conflicts"][0]["reason"] == "brief_omitted"
+    assert r["would_remove"] == [] and r["conflicts"][0]["reason"] == "brief_omitted"
 
 
 def test_keep_shadowed_by_dictated_protects_but_makes_no_card():
@@ -460,7 +490,7 @@ def test_keep_shadowed_by_dictated_protects_but_makes_no_card():
     sh = ba.Anchor("neg:2", "keep", "sheet", "", "none", shadowed_by="dict:0")
     r = ba.brief_rules(R2, [d, sh], {"There is no ascites.": 0.9},
                        flagged=["There is no ascites."], review_contra=[])
-    assert r == {"protect": ["There is no ascites."], "remove": [], "conflicts": []}
+    assert r == {"protect": ["There is no ascites."], "would_remove": [], "conflicts": [], "omit_low": []}
 
 
 def test_omit_with_a_keep_holder_is_a_split_card_with_both_refs():
@@ -469,7 +499,7 @@ def test_omit_with_a_keep_holder_is_a_split_card_with_both_refs():
     keep = ba.Anchor("neg:9", "keep", "sheet", "", "none", shadowed_by="neg:0")
     r = ba.brief_rules(R2, [omit, keep], {"No pleural effusion.": 0.9}, flagged=[], review_contra=[])
     (c,) = r["conflicts"]
-    assert r["remove"] == [] and c["reason"] == "brief_split" and set(c["refs"]) == {"neg:0", "neg:9"}
+    assert r["would_remove"] == [] and c["reason"] == "brief_split" and set(c["refs"]) == {"neg:0", "neg:9"}
 
 
 def test_brief_kept_score_is_none_when_the_clause_has_no_score():
@@ -486,27 +516,11 @@ def test_whole_sentence_unit_starts_at_the_negator_when_the_head_is_positive():
     assert rep[us[0].start:us[0].end] == us[0].text
 
 
-@pytest.mark.parametrize("c", ["No pleural effusion.", "No pleural effusion or pneumothorax.",
-                               "No ascites, free air or collection.", "No pleural effusion identified.",
-                               "No focal lesion in the liver.", "There is no ascites.",
-                               "No effusion and no atelectasis."])
-def test_simple_negative_clauses_are_removable(c):
-    assert ba._removable_negative(c)
-
-
-@pytest.mark.parametrize("c", ["No effusion with mild atelectasis.", "No effusion and mild atelectasis.",
-                               "No effusion, but a 6 mm nodule.", "No effusion; small nodule.",
-                               "No change in the 6 mm nodule.", "No effusion although trace fluid persists.",
-                               "No effusion except a small nodule.", "No effusion, apart from atelectasis.",
-                               "Mild atelectasis."])
-def test_other_clauses_are_never_removable(c):
-    assert not ba._removable_negative(c)
-
-
 def test_brief_rules_cards_a_negative_with_a_joined_finding():
     rep = "FINDINGS:\nNo effusion with mild atelectasis.\n"
     i = rep.index("No effusion")
     omit = ba.Anchor("neg:0", "contradicted", "sheet", "", "term", [i, i + 11], "No effusion",
                      "No effusion with mild atelectasis.")
-    r = ba.brief_rules(rep, [omit], {"No effusion with mild atelectasis.": 0.95}, flagged=[], review_contra=[])
-    assert r["remove"] == [] and r["conflicts"][0]["reason"] == "brief_omitted"
+    r = ba.brief_rules(rep, [omit], {"No effusion with mild atelectasis.": 0.95}, flagged=[], review_contra=[],
+                       sentence_type={"No effusion with mild atelectasis.": "mixed"})   # Jev's statement type
+    assert r["would_remove"] == [] and r["conflicts"][0]["reason"] == "brief_omitted"

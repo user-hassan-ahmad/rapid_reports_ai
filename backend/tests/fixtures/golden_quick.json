@@ -803,6 +803,26 @@
        },
        "instructions": "Read only this one dictated line, not the rest of the dictation: \"3 mm midline shift\". What does this line report?",
        "type": "choice"
+      },
+      "t0": {
+       "criteria": {
+        "abnormal": "It reports at least one abnormality or finding (a possible or likely one counts), and nothing in it is stated as normal or absent.",
+        "mixed": "It reports an abnormality or finding AND, in the same statement, says something is normal or absent.",
+        "normal": "It only says that structures are normal, intact, preserved or patent, or that findings are absent (no ..., free of ..., without ...).",
+        "not_a_finding": "It is not about the patient's anatomy: the scan technique, a comparison, a recommendation or follow-up, or a communication."
+       },
+       "instructions": "Read only this one report statement: \"No skull fracture.\". Classify what it says about the patient.",
+       "type": "choice"
+      },
+      "t1": {
+       "criteria": {
+        "abnormal": "It reports at least one abnormality or finding (a possible or likely one counts), and nothing in it is stated as normal or absent.",
+        "mixed": "It reports an abnormality or finding AND, in the same statement, says something is normal or absent.",
+        "normal": "It only says that structures are normal, intact, preserved or patent, or that findings are absent (no ..., free of ..., without ...).",
+        "not_a_finding": "It is not about the patient's anatomy: the scan technique, a comparison, a recommendation or follow-up, or a communication."
+       },
+       "instructions": "Read only this one report statement: \"No hydrocephalus, no herniation, and no intraventricular extension.\". Classify what it says about the patient.",
+       "type": "choice"
       }
      }
     ],

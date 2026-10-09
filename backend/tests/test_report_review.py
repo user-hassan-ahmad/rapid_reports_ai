@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import pytest
 
+from rapid_reports_ai import brief_anchor as ba
 from rapid_reports_ai import report_review as rr
 
 
@@ -396,16 +397,20 @@ QDEC = {"negatives": [
     {"text": "No contralateral pleural effusion identified", "action": "keep", "source": "finding:Pleural effusion"}]}
 
 
-def _contra_jev(scores):
-    """Fake rc._jev: contradiction question c<i> scores by clause text; restated r<i> high; dictated d<i> low."""
+def _contra_jev(scores, types=None, restated=0.9):
+    """Fake rc._jev: contradiction question c<i> scores by clause text; restated r<i> high (or `restated`); dictated
+    d<i> low; statement type t<j> by sentence text (`types`, default "normal")."""
     async def fake(state, qs):
         out = {}
         for k, q in qs.items():
             text = q.get("instructions", "")
             if k.startswith("c"):
                 out[k] = {"noul": next((v for t, v in scores.items() if t in text), 0.05)}
+            elif k.startswith("t"):
+                t = next((v for s, v in (types or {}).items() if s in text), "normal")
+                out[k] = {"choice": t, "probabilities": {t: 0.9}} if t else {"noul": 0.5}
             elif k.startswith("r"):
-                out[k] = {"noul": 0.9}
+                out[k] = {"noul": restated}
             elif k.startswith("i"):
                 out[k] = {"choice": "stated", "probabilities": {"stated": 0.9}}
             else:
@@ -421,11 +426,20 @@ async def test_a_kept_negative_is_never_removed_and_becomes_a_conflict(monkeypat
     assert "No contralateral pleural effusion." in report
     reasons = {c["clause"]: c["reason"] for c in tel["brief_conflicts"]}
     assert reasons["No contralateral pleural effusion."] == "brief_kept"
-    # the OMIT label anchored on "No pleural effusion." with a low contradiction score: one signal, so a card too
-    assert reasons["No pleural effusion."] == "brief_omitted" and "No pleural effusion." in report
+    # the OMIT label anchored on "No pleural effusion." with a contradiction score below OMIT_CARD_MIN: logged only
+    assert "No pleural effusion." not in reasons and "No pleural effusion." in report
+    assert [c["clause"] for c in tel["anchor_log"]["omit_low"]] == ["No pleural effusion."]
 
 
-async def test_an_omit_negative_with_jev_agreeing_is_removed_before_render(monkeypatch):
+async def test_a_one_signal_omit_above_the_card_threshold_is_a_card_and_stays(monkeypatch):
+    monkeypatch.setattr(rr.rc, "_jev", _contra_jev({"No pleural effusion": 0.4}))
+    report, _, tel = await rr.run_quality_check(QR, "Small right pleural effusion", "CT chest", [],
+                                                brief_decisions=QDEC)
+    assert "No pleural effusion." in report
+    assert {c["clause"]: c["reason"] for c in tel["brief_conflicts"]}["No pleural effusion."] == "brief_omitted"
+
+
+async def test_a_flagged_omit_negative_is_removed_by_the_l47_path(monkeypatch):
     monkeypatch.setattr(rr.rc, "_jev", _contra_jev({"No pleural effusion": 0.9}))
     monkeypatch.setenv("RR_REVIEW_ENGINE", "live")
     report, _, tel = await rr.run_quality_check(QR, "Small right pleural effusion", "CT chest", [],
@@ -444,3 +458,94 @@ async def test_without_brief_decisions_or_with_the_kill_switch_nothing_changes(m
     monkeypatch.setenv("RR_BRIEF_ANCHOR", "0")
     _, _, tel = await rr.run_quality_check(QR, "Small right pleural effusion", "CT chest", [], brief_decisions=QDEC)
     assert "anchors" not in tel
+
+
+async def test_the_brief_never_removes_by_default_it_shadow_logs(monkeypatch):
+    # contradiction 0.9 but the restated question is low: no L-47 flag, so only the brief's two signals remain
+    monkeypatch.setattr(rr.rc, "_jev", _contra_jev({"No pleural effusion": 0.9}, restated=0.1))
+    report, _, tel = await rr.run_quality_check(QR, "Small right pleural effusion", "CT chest", [],
+                                                brief_decisions=QDEC)
+    assert "No pleural effusion." in report
+    (w,) = tel["anchor_log"]["would_remove_by_brief"]
+    assert (w["clause"], w["score"], w["refs"], w["action"]) == ("No pleural effusion.", 0.9, ["neg:0"], "contradicted")
+    assert {c["clause"]: c["reason"] for c in tel["brief_conflicts"]}["No pleural effusion."] == "brief_omitted"
+    assert tel["anchor_log"]["removed_by_brief"] == 0
+
+
+async def test_rr_brief_remove_removes_the_would_removes(monkeypatch):
+    monkeypatch.setattr(rr.rc, "_jev", _contra_jev({"No pleural effusion": 0.9}, restated=0.1))
+    monkeypatch.setenv("RR_BRIEF_REMOVE", "1")
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "live")
+    report, _, tel = await rr.run_quality_check(QR, "Small right pleural effusion", "CT chest", [],
+                                                brief_decisions=QDEC)
+    assert "No pleural effusion." not in report and "No contralateral pleural effusion." in report
+    assert {"type": "removal", "clause": "No pleural effusion."} in tel["applied_edits"]
+    assert "No pleural effusion." not in {c["clause"] for c in tel["brief_conflicts"]}
+    assert tel["anchor_log"]["removed_by_brief"] == 1
+    anchors = {a["ref"]: a for a in tel["anchors"]}
+    assert report[anchors["neg:1"]["span"][0]:anchors["neg:1"]["span"][1]] == "contralateral pleural effusion"
+
+
+MIXED = "FINDINGS:\nNo pleural effusion with mild atelectasis. The liver is normal.\n\nIMPRESSION:\nAtelectasis.\n"
+
+
+@pytest.mark.parametrize("answer", ["mixed", "abnormal", None])
+async def test_an_l47_removal_needs_a_normal_sentence(monkeypatch, answer):
+    """The pre-existing L-47 risk: a flagged "No X with <finding>" must never delete the finding with it."""
+    monkeypatch.setattr(rr.rc, "_jev", _contra_jev({"No pleural effusion": 0.9},
+                                                   types={"mild atelectasis": answer}))
+    report, _, tel = await rr.run_quality_check(MIXED, "Pleural effusion. Mild atelectasis", "CT chest", [])
+    assert report == MIXED
+    assert tel["removal_blocked"] == [{"clause": "No pleural effusion with mild atelectasis.", "why": "sentence_type"}]
+    (card,) = tel["brief_conflicts"]
+    assert card["reason"] == "removal_blocked" and card["clause"] == "No pleural effusion with mild atelectasis."
+    assert "anchors" not in tel
+
+
+async def test_an_l47_removal_needs_a_normal_sentence_on_the_template_path_too(monkeypatch):
+    rep = ("CLINICAL HISTORY\nCough.\n\nTECHNIQUE\nCT.\n\nNo pleural effusion with mild atelectasis.\n\n"
+           "Impression\nAtelectasis.\n")
+    monkeypatch.setattr(rr.rc, "_jev", _contra_jev({"No pleural effusion": 0.9}, types={"mild atelectasis": "mixed"}))
+    out, _, tel = await rr.run_quality_check(rep, "Pleural effusion. Mild atelectasis", "CT chest", [],
+                                             sections=SECTIONS, protected=["Cough."])
+    assert "No pleural effusion with mild atelectasis." in out
+    assert tel["removal_blocked"][0]["why"] == "sentence_type"
+
+
+async def test_a_semicolon_sentence_is_never_removed(monkeypatch):
+    rep = "FINDINGS:\nNo pleural effusion; no pneumothorax.\n\nIMPRESSION:\nNormal.\n"
+    monkeypatch.setattr(rr.rc, "_jev", _contra_jev({"No pleural effusion": 0.9}))
+    out, _, tel = await rr.run_quality_check(rep, "Pleural effusion", "CT chest", [])
+    assert out == rep and tel["removal_blocked"][0]["why"] == "semicolon"
+
+
+def test_safe_to_remove_invariant():
+    rep = "FINDINGS:\nNo ascites. Mass with no ascites nearby.\n- No effusion\nNo effusion, collection, or air.\n"
+    assert rr._safe_to_remove(rep, "No ascites.", "normal", []) is None
+    assert rr._safe_to_remove(rep, "No effusion", "normal", []) is None                # a list item
+    assert rr._safe_to_remove(rep, "No collection", "normal", []) is None              # a negative-list item
+    assert rr._safe_to_remove(rep, "no ascites nearby", "normal", []) == "not_whole"
+    assert rr._safe_to_remove(rep, "No ascites.", "mixed", []) == "sentence_type"
+    assert rr._safe_to_remove(rep, "No ascites.", None, []) == "sentence_type"
+    i = rep.index("ascites")
+    keep = ba.Anchor("neg:0", "keep", "sheet", "", "term", [i, i + 7], "ascites", "No ascites.")
+    assert rr._safe_to_remove(rep, "No ascites.", "normal", [keep]) == "brief_anchor"
+    dic = ba.Anchor("dict:0", "dictated", "dictated", "", "term", [i, i + 7], "ascites", "No ascites.")
+    assert rr._safe_to_remove(rep, "No ascites.", "normal", [dic]) == "brief_anchor"
+    omit = ba.Anchor("neg:1", "contradicted", "sheet", "", "term", [i, i + 7], "ascites", "No ascites.")
+    assert rr._safe_to_remove(rep, "No ascites.", "normal", [omit]) is None
+    shadow = ba.Anchor("neg:2", "keep", "sheet", "", "none", shadowed_by="neg:1")
+    assert rr._safe_to_remove(rep, "No ascites.", "normal", [omit, shadow]) == "brief_anchor"
+
+
+async def test_check_asks_the_statement_type_of_each_negative_clause_sentence(monkeypatch):
+    seen = {}
+
+    async def fake(state, qs):
+        seen.update({k: q for k, q in qs.items() if k.startswith("t")})
+        return await _contra_jev({}, types={"mild atelectasis": "mixed"})(state, qs)
+    monkeypatch.setattr(rr.rc, "_jev", fake)
+    res = await rr.check(MIXED, "x", "CT", [])
+    assert res.sentence_type == {"No pleural effusion with mild atelectasis.": "mixed"}
+    assert [q["type"] for q in seen.values()] == ["choice"]
+    assert "sentence_type" not in res.model_dump() and "contra" not in res.model_dump()

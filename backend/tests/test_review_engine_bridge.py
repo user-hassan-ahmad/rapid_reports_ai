@@ -27,7 +27,8 @@ def qc_stubs(monkeypatch):
 
     async def fake_check(report, findings, scan_type, options, **kw):
         return rr.CheckResult(flags=[rr.Flag(kind="contradiction", text="No ascites.", score=0.95),
-                                     rr.Flag(kind="omission", text="Small left pleural effusion", score=0.1)])
+                                     rr.Flag(kind="omission", text="Small left pleural effusion", score=0.1)],
+                              sentence_type={"No ascites.": "normal"})
 
     async def fake_insert(report, findings, items, **kw):
         anchor = "A 14 mm left renal cyst."

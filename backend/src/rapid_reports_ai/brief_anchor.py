@@ -10,7 +10,8 @@ re-judging it.
     link(labels, us)                 pass 2, Jev: "does this sentence say X?" for the labels pass 1 left
     anchor(report, decisions)        both passes; never raises
     relocate(anchors, report)        anchors re-found on the report after the check's own edits
-    brief_rules(...)                 spec Q2 / Q3: protect brief-kept clauses, remove OMIT clauses on two signals
+    brief_rules(...)                 spec Q2 / Q3: protect brief-kept clauses; OMIT clauses on two signals are
+                                     shadow-logged and carded (the brief vetoes, never removes)
     anchor_log(anchors, rules)       counts, unanchored labels, brief errors (logged, never surfaced: spec Q4)
 
 An unanchored label is not an error: the generator dropped or merged it."""
@@ -348,22 +349,7 @@ def relocate(anchors: List[Anchor], report: str) -> List[Anchor]:
 
 
 CONTRA_MIN = 0.6     # the post-gen check's CONTRA_FLAG (L-46)
-_W = (r"(?!(?:with|and|but|plus|although|though|except|apart|from|while|whereas|however|or|in|at|within|on|by|"
-      r"is|are|was|were|identified|seen|present|demonstrated|noted|detected)\b)[A-Za-z][A-Za-z\-]*")
-_ITEM = rf"(?:(?:no|without)\s+)?{_W}(?:\s+{_W})*"
-_SEP = r"(?:\s*,\s*or\s+|\s*,\s*|\s+or\s+|\s+and\s+(?=(?:no|without)\b))"
-_SIMPLE_NEG = re.compile(
-    rf"^(?:No|There\s+is\s+no|There\s+are\s+no|Without|Nil)\s+{_ITEM}(?:{_SEP}{_ITEM})*"
-    rf"(?:\s+(?:(?:is|are|was|were)\s+)?(?:identified|seen|present|demonstrated|noted|detected))?"
-    rf"(?:\s+(?:in|at|within)\s+the\s+{_W}(?:\s+{_W})*)?\.?$", re.I)
-
-
-def _removable_negative(clause: str) -> bool:
-    """True only for a simple negative clause: a negator, items joined by commas / "or" (and "and" only before
-    "no" / "without"), an optional "identified / seen / present ..." and an optional "in the <place>". An allowlist,
-    not a blacklist of finding words, because a false removal is the worst outcome: "with", "but", "except", digits,
-    ";" or any other construction might carry a positive finding that deleting the clause would take with it."""
-    return bool(_SIMPLE_NEG.match((clause or "").strip()))
+OMIT_CARD_MIN = 0.3  # an OMIT / split card below this contradiction score is only logged (anchor_log.omit_low)
 
 
 def _clause_spans(report: str, clause: str) -> List[Tuple[int, int]]:
@@ -384,14 +370,18 @@ def _clause_spans(report: str, clause: str) -> List[Tuple[int, int]]:
 
 
 def brief_rules(report: str, anchors: List[Anchor], contra: Dict[str, float], flagged: List[str],
-                review_contra: List[str]) -> dict:
-    """Spec §3.2 -> {"protect": clauses never removed, "remove": OMIT clauses to remove, "conflicts": cards}.
-    `contra`: Jev's contradiction score per checked clause; `flagged`: negative clauses the check would remove;
-    `review_contra`: positive / normal clauses it flagged for review. A clause's holders are the anchors overlapping
-    ANY whole-sentence occurrence of it (FINDINGS and IMPRESSION both); a KEEP or dictated holder at any occurrence
+                review_contra: List[str], sentence_type: Optional[Dict[str, Optional[str]]] = None) -> dict:
+    """Spec §3.2 -> {"protect": clauses never removed, "would_remove": OMIT clauses the brief would remove,
+    "conflicts": cards, "omit_low": OMIT / split cards below OMIT_CARD_MIN, logged only}. The brief vetoes, it never
+    removes: "would_remove" is a shadow log (the check removes them only under RR_BRIEF_REMOVE=1, behind its own
+    last-step invariant). `contra`: Jev's contradiction score per checked clause; `flagged`: negative clauses the
+    check would remove; `review_contra`: positive / normal clauses it flagged for review; `sentence_type`: Jev's
+    statement type of the sentence holding each clause. A clause's holders are the anchors overlapping ANY
+    whole-sentence occurrence of it (FINDINGS and IMPRESSION both); a KEEP or dictated holder at any occurrence
     blocks removal."""
     live = [a for a in anchors if a.how in ("term", "jev") and a.span]
     by_ref = {a.ref: a for a in anchors}
+    types = sentence_type or {}
 
     def holders(clause: str) -> Tuple[List[Anchor], List[Anchor]]:
         """(direct holders, KEEP-type labels shadowed by a direct holder that is not itself dictated)."""
@@ -403,8 +393,9 @@ def brief_rules(report: str, anchors: List[Anchor], contra: Dict[str, float], fl
         return held, shadow
 
     protect: List[str] = []
-    remove: List[str] = []
+    would: List[dict] = []
     conflicts: List[dict] = []
+    low: List[dict] = []
     flag = list(dict.fromkeys(flagged + review_contra))
     for clause in list(dict.fromkeys(flag + list(contra))):
         held, shadow = holders(clause)
@@ -424,14 +415,18 @@ def brief_rules(report: str, anchors: List[Anchor], contra: Dict[str, float], fl
             continue  # dictated beats OMIT: no removal, no card (logged by anchor_log via shadowing)
         c = clause.strip().rstrip(".")
         whole = all(c in (a.unit or "") for a in omit)       # the OMIT unit covers the whole clause
-        if score >= CONTRA_MIN and not keep and whole and _removable_negative(clause):
-            remove.append(clause)                                     # Q3: two signals
+        refs = [a.ref for a in omit + keep]
+        card = {"clause": clause, "refs": refs, "reason": "brief_split" if keep else "brief_omitted",
+                "score": round(score, 3), "source": (keep or omit)[0].source, "action": omit[0].action,
+                "pointer": next((a.pointer for a in omit + keep if a.pointer), "")}
+        if score >= CONTRA_MIN and not keep and whole and types.get(clause) == "normal":
+            would.append({"clause": clause, "score": round(score, 3), "refs": refs, "action": omit[0].action})
+            conflicts.append(card)                                    # Q3: two signals, shadow-logged and carded
+        elif score >= OMIT_CARD_MIN:
+            conflicts.append(card)
         else:
-            refs = [a.ref for a in omit + keep]
-            conflicts.append({"clause": clause, "refs": refs, "reason": "brief_split" if keep else "brief_omitted",
-                              "score": round(score, 3), "source": (keep or omit)[0].source, "action": omit[0].action,
-                              "pointer": next((a.pointer for a in omit + keep if a.pointer), "")})
-    return {"protect": protect, "remove": remove, "conflicts": conflicts}
+            low.append(card)
+    return {"protect": protect, "would_remove": would, "conflicts": conflicts, "omit_low": low}
 
 
 def anchor_log(anchors: List[Anchor], rules: dict) -> dict:
@@ -447,5 +442,7 @@ def anchor_log(anchors: List[Anchor], rules: dict) -> dict:
             "shadowed": [{"ref": a.ref, "shadowed_by": a.shadowed_by} for a in anchors if a.shadowed_by],
             "brief_errors": [{"ref": a.ref, "shadowed_by": a.shadowed_by} for a in anchors
                              if a.shadowed_by in dictated and a.action in OMIT],
-            "protected": len(rules.get("protect") or []), "removed_by_brief": len(rules.get("remove") or []),
+            "protected": len(rules.get("protect") or []), "removed_by_brief": len(rules.get("removed") or []),
+            "would_remove_by_brief": list(rules.get("would_remove") or []),
+            "omit_low": list(rules.get("omit_low") or []),
             "conflicts": len(rules.get("conflicts") or [])}

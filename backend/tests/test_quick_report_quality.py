@@ -262,7 +262,8 @@ async def test_run_quality_check_repairs_on_report_flags_and_drops_bad_options(m
     async def fake_check(report, findings, scan_type, options):
         return qq.CheckResult(flags=[qq.Flag(kind="contradiction", text="No portal vein encasement", score=0.8),
                                      qq.Flag(kind="omission", text="CBD dilated to 12 mm", score=0.2)],
-                              bad_option_ids=["fn0"], n_clauses=9, n_items=3)
+                              bad_option_ids=["fn0"], n_clauses=9, n_items=3,
+                              sentence_type={"No portal vein encasement": "normal"})
     seen = {}
     async def fake_insert(report, findings, items):
         seen["items"] = items
@@ -394,7 +395,8 @@ async def test_run_quality_check_routes_each_flag(monkeypatch):
         return qq.CheckResult(flags=[qq.Flag(kind="contradiction", text="No portal vein encasement", score=0.8),
                                      qq.Flag(kind="contradiction", text="Pancreatic head mass causing biliary obstruction.", score=0.7),
                                      qq.Flag(kind="omission", text="CBD dilated to 12 mm", score=0.2),
-                                     qq.Flag(kind="partial", text="Intrahepatic duct dilatation 6 mm", score=0.8)])
+                                     qq.Flag(kind="partial", text="Intrahepatic duct dilatation 6 mm", score=0.8)],
+                              sentence_type={"No portal vein encasement": "normal"})
     calls = []
     async def fake_insert(report, findings, items):
         calls.append(items)
@@ -547,6 +549,9 @@ async def test_a_report_negative_contradicting_a_hedged_dictated_finding_is_remo
         out = {}
         for k, q in questions.items():
             t = q["instructions"]
+            if k.startswith("t"):      # statement type of the negative's sentence: a removal needs "normal"
+                out[k] = {"choice": "normal", "probabilities": {"normal": 0.9}}
+                continue
             out[k] = {"noul": 0.8 if t == qq.Q_CONTRA + "No pneumothorax." else
                               0.6 if t == qq.q_restated("pneumothorax")["instructions"] else
                               0.9 if t.startswith(qq.Q_CONVEYS) else 0.05}
