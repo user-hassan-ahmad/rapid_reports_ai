@@ -482,5 +482,5 @@ def test_brief_kept_score_is_none_when_the_clause_has_no_score():
 def test_whole_sentence_unit_starts_at_the_negator_when_the_head_is_positive():
     rep = "FINDINGS:\nNodule in the left lobe with no lymphadenopathy.\n"
     us = ba.units(rep)
-    assert [u.text for u in us] == ["no lymphadenopathy."]
+    assert [u.text for u in us] == ["no lymphadenopathy"]
     assert rep[us[0].start:us[0].end] == us[0].text
