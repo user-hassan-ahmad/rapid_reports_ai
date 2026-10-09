@@ -169,3 +169,79 @@ def test_relocate_follows_an_earlier_removal_and_marks_a_removed_clause():
     a = moved["neg:5"]
     assert edited[a.span[0]:a.span[1]] == a.span_text == "hepatic lesion"
     assert moved["dict:0"].how == "removed" and moved["dict:0"].span is None
+
+
+# ---- review fixes: anchors never land on positive findings ----
+
+def _lab(term, text=None, action="contradicted"):
+    return ba.Label("x:1", text or f"No {term}", term, action, "sheet")
+
+
+def test_relocate_never_lands_on_a_positive_sentence():
+    rep = "FINDINGS:\nSmall pleural effusion on the right is noted. Lung mass; no pleural effusion on the right.\n"
+    got, _ = ba.match_terms(rep, [_lab("pleural effusion on the right")], ba.units(rep))
+    a = got["x:1"]
+    assert a.how == "term" and rep[a.span[0]:a.span[1]] == "pleural effusion on the right"
+    assert a.span[0] > rep.index("Lung mass")
+    edited = rep.replace("; no pleural effusion on the right", "")
+    assert ba.relocate([a], edited)[0].how == "removed"
+
+
+def test_relocate_picks_the_nearest_of_identical_units():
+    rep = "FINDINGS:\nThe liver is unremarkable.\n\nThe spleen is enlarged. The liver is unremarkable.\n"
+    us = [u for u in ba.units(rep) if u.text == "The liver is unremarkable."]
+    assert len(us) == 2
+    a = ba.Anchor("x:1", "keep", "sheet", how="term", span=[us[1].start, us[1].start + 9], span_text="The liver",
+                  unit=us[1].text, offset=0)
+    assert ba.relocate([a], rep)[0].span[0] == us[1].start
+
+
+def test_tail_is_located_after_the_head():
+    rep = "FINDINGS:\nMild hydronephrosis; no hydronephrosis.\n"
+    us = ba.units(rep)
+    assert [u.text for u in us] == ["hydronephrosis"]
+    assert us[0].start > rep.index(";")
+
+
+def test_positive_semicolon_part_is_never_a_unit():
+    rep = "FINDINGS:\nThe kidney is not seen; left hydronephrosis.\n"
+    assert [u.text for u in ba.units(rep)] == ["The kidney is not seen"]
+    got, left = ba.match_terms(rep, [_lab("hydronephrosis")], ba.units(rep))
+    assert "x:1" in {l.ref for l in left} and "x:1" not in got
+
+
+def test_hedged_non_negatives_are_not_units():
+    for t in ("Malignancy is not excluded.", "Infection cannot be excluded.", "Fracture is not ruled out.",
+              "No interval change in the mass."):
+        assert ba.units(f"FINDINGS:\n{t}\n") == [], t
+
+
+async def test_a_failed_candidate_unit_leaves_the_label_unanchored():
+    rep = "FINDINGS:\nNo paratracheal lymphadenopathy. No subcarinal lymphadenopathy.\n"
+    lab = ba.Label("x:1", "No mediastinal lymphadenopathy", "mediastinal lymphadenopathy", "implicated", "atom")
+
+    async def flaky(state, qs):
+        if "subcarinal" in state:
+            raise RuntimeError("down")
+        return {k: {"noul": 0.95} for k in qs}
+    assert await ba.link([lab], ba.units(rep), flaky) == {}
+
+
+def test_idless_atoms_never_share_an_anchor():
+    d = {"normals": [{"linked": True, "atoms": [{"term": "Liver"}, {"term": "Spleen"}]},
+                     {"linked": True, "pid": "P1", "atoms": [{"term": "Kidney", "id": "N1"}]}]}
+    refs = [l.ref for l in ba.brief_labels(d)]
+    assert refs == ["atom:P1:N1"] and len(set(refs)) == len(refs)
+
+
+def test_impression_found_after_findings_when_sentences_repeat():
+    rep = "FINDINGS:\nNo pleural effusion.\n\nIMPRESSION:\nNo pleural effusion.\n"
+    us = ba.units(rep)
+    assert len(us) == 2 and us[1].start > rep.index("IMPRESSION")
+
+
+def test_enabled_switch(monkeypatch):
+    monkeypatch.delenv("RR_BRIEF_ANCHOR", raising=False)
+    assert ba.enabled() is True
+    monkeypatch.setenv("RR_BRIEF_ANCHOR", "0")
+    assert ba.enabled() is False

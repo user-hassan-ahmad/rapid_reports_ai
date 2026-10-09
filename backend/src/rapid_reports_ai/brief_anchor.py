@@ -98,7 +98,7 @@ def brief_labels(decisions: Optional[dict]) -> List[Label]:
         if not isinstance(u, dict) or not u.get("linked"):
             continue
         for a in u.get("atoms") or []:
-            if a.get("term"):
+            if a.get("term") and u.get("pid") and a.get("id"):     # a ref needs both, or labels collide
                 out.append(Label(f"atom:{u.get('pid')}:{a.get('id')}", a.get("text") or a["term"], a["term"],
                                  a.get("action") or "keep", "atom", _pointer(a.get("pointer"))))
     for i, t in enumerate(d.get("dictated_negatives") or []):
@@ -134,26 +134,47 @@ class Anchor:
     shadowed_by: Optional[str] = None # its only hit is held by this (longer or dictated) label
 
 
+_HEDGED = re.compile(r"\b(?:not\s+excluded|cannot\s+be\s+excluded|not\s+ruled\s+out|no\s+(?:interval\s+)?change\s+in|"
+                     r"no\s+interval\s+change)\b", re.I)
+
+
+def _is_normal(s: str) -> bool:
+    return bool(_NORMAL.search(s)) and not _HEDGED.search(s)
+
+
 def units(report: str) -> List[Unit]:
     """Normal / negative statements of FINDINGS + IMPRESSION: a whole normal sentence, or the negative / normal tails
-    of a finding sentence ("The nodes measure 14 mm; no contralateral lymphadenopathy" → the tail). Positive heads are
-    never units."""
+    of a finding sentence ("The nodes measure 14 mm; no contralateral lymphadenopathy" → the tail). Positive heads and
+    positive ';' parts are never units; hedged non-negatives ("not excluded") are not normal."""
     from .report_review import _sentence_positions, report_sections
     from .review_engine.jev_pass import split_tails   # lazy: review_engine imports report_review
     out: List[Unit] = []
+    base = 0
     for sec in report_sections(report):
-        a = report.find(sec) if sec else -1
+        a = report.find(sec, base) if sec else -1
         if a < 0:
             continue
+        base = a + len(sec)
         for s, i, j in _sentence_positions(report, a, a + len(sec)):
             sp = split_tails(s)
             if sp:
+                k0 = s.find(sp[0])
+                cursor = k0 + len(sp[0]) if k0 >= 0 else 0
                 for tail in sp[1]:
                     words = _LEAD.sub("", tail).rstrip(".")
-                    k = s.find(words)
-                    if words and k >= 0:
+                    k = s.find(words, cursor) if words else -1
+                    if k >= 0 and not _HEDGED.search(words):
                         out.append(Unit(words, i + k, i + k + len(words)))
-            elif _NORMAL.search(s):
+                        cursor = k + len(words)
+            elif ";" in s:
+                pos = 0
+                for part in s.split(";"):
+                    t = part.strip()
+                    if t and _is_normal(t):
+                        k = s.find(t, pos)
+                        out.append(Unit(t, i + k, i + k + len(t)))
+                    pos += len(part) + 1
+            elif _is_normal(s):
                 out.append(Unit(s, i, j))
     return out
 
@@ -228,21 +249,27 @@ async def link(labels: List[Label], us: List[Unit], jev=None) -> Dict[str, Ancho
 
     async def one(n: int):
         return n, await asyncio.wait_for(jev(us[n].text, asks[n]), LINK_TIMEOUT_S)
-    results = await asyncio.gather(*(one(n) for n in asks), return_exceptions=True)
+    units_asked = list(asks)
+    results = await asyncio.gather(*(one(n) for n in units_asked), return_exceptions=True)
     scores: Dict[int, List[Tuple[float, int]]] = {}
-    for r in results:
+    unsure: set = set()        # labels with an unanswered question: "no other unit is a match" can't be trusted
+    for n, r in zip(units_asked, results):
         if isinstance(r, BaseException):
             logger.warning("brief anchor: Jev link failed (%s: %s)", type(r).__name__, str(r)[:200])
+            unsure.update(int(qk[1:]) for qk in asks[n])
             continue
-        n, ans = r
+        ans = r[1]
         for qk in asks[n]:
             try:
                 p = float(ans[qk]["noul"])
             except (KeyError, TypeError, ValueError):
+                unsure.add(int(qk[1:]))
                 continue
             scores.setdefault(int(qk[1:]), []).append((p, n))
     out: Dict[str, Anchor] = {}
     for k, ps in scores.items():
+        if k in unsure:
+            continue
         ps.sort(reverse=True)
         if ps[0][0] >= LINK_MIN and (len(ps) == 1 or ps[1][0] < LINK_MIN):
             lab, u = labels[k], us[ps[0][1]]
@@ -268,16 +295,20 @@ async def anchor(report: str, decisions: Optional[dict], jev=None) -> List[Ancho
 
 
 def relocate(anchors: List[Anchor], report: str) -> List[Anchor]:
-    """The anchors re-found on `report` (the check's edits shift positions): the unit text, then the span inside it.
-    A unit no longer in the report is "removed"."""
+    """The anchors re-found on `report` (the check's edits shift positions): only among the report's current units with
+    the anchor's unit text (the nearest to the old position if several), then the span inside it. No such unit means
+    the clause is "removed"; an anchor never relocates onto text that is not a unit."""
+    us = units(report)
     out: List[Anchor] = []
     for a in anchors:
         if a.how not in ("term", "jev"):
             out.append(a)
             continue
-        i = report.find(a.unit)
-        k = i + a.offset
-        if i < 0 or report[k:k + len(a.span_text)] != a.span_text:
+        old = (a.span[0] - a.offset) if a.span else 0
+        same = [u for u in us if u.text == a.unit]
+        u = min(same, key=lambda x: abs(x.start - old)) if same else None
+        k = u.start + a.offset if u else -1
+        if u is None or report[k:k + len(a.span_text)] != a.span_text:
             out.append(Anchor(**{**asdict(a), "how": "removed", "span": None}))
         else:
             out.append(Anchor(**{**asdict(a), "span": [k, k + len(a.span_text)]}))
