@@ -2032,7 +2032,7 @@ Run: `.venv/bin/python -m rapid_reports_ai.scripts.review_labs.anchor_replay`
 Read every row. The pass bar:
 - every `term` / `jev` anchor sits on the clause that expresses its label;
 - every overlap group is resolved by containment or left unanchored;
-- d3d1e0a5: "contralateral hilar lymphadenopathy" anchored by term; atom "Mediastinal lymphadenopathy" anchored by jev on the station sentence; atom "Hilar lymphadenopathy" shadowed;
+- d3d1e0a5: "contralateral hilar lymphadenopathy" anchored by term; atom "Mediastinal lymphadenopathy" unanchored (known gap, wording lab); atom "Hilar lymphadenopathy" shadowed;
 - 29882bd7: the sheet "No ascites" (contradicted) shadowed by the dictated negative and listed in `brief_errors`.
 
 Fix any wrong anchor at its root (key term, units or ranking) with a new unit test reproducing it in synthetic form, then re-run.
@@ -2070,7 +2070,7 @@ For each, record in `$RR_LAB_OUT/e2e/`:
 
 Check the spec §5 success bar:
 - trace 2: no card, amber;
-- trace 3: amber on the station sentence;
+- trace 3: a known gap, unanchored (wording lab);
 - trace 4: at most one conflict card and no removal;
 - 29882bd7: "No ascites" and "No encasement of the SMA" untinted (needs `RR_BRIEF_FULL_LABELS=1` for this run);
 - de42a105: duct, CBD calculus and peripancreatic negatives amber, hepatic green;

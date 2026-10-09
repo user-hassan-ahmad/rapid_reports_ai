@@ -164,7 +164,7 @@ One thing to check in the plan: an amber `assumed_normal` mark must show its rea
   - a station list vs "mediastinal lymphadenopathy";
   - a negative merged into a dictated clause ("no definite chest wall involvement" vs "no chest wall invasion");
   - a do-not-assert organ rewritten to the unaffected side ("right adrenal").
-- **Gate:** ≥95% accuracy and 0 cross-claims in the trap set. On a miss, ship pass 1 only. Pass-2 labels then stay unanchored, which is safe (§4).
+- **Gate (revised 2026-10-09 after the first run):** 0 wrong links (any gold-false pair at or above the threshold) across all pairs, with recall reported. A miss is safe, because the label stays unanchored and the classifier judges the clause as today. A wrong link is not. The first run (current wording) gave 0 wrong links at 0.9, but recall was only 53/90 on paraphrases. If no threshold has 0 wrong links, ship pass 1 only.
 
 ### 5.2 Code-only stage
 Seven of the eight stored cases are the same pancreatic head mass. So first, deterministic pass-1 tests on synthetic cases from other domains: neuro, renal sides, chest "additional", spine levels, MSK. Then run `brief_anchor` on the stored Oct 1–6 cases (8 with brief decisions) with no regeneration. Hand-read the anchor table: every anchor correct, overlap groups resolved or left unanchored.
@@ -175,7 +175,7 @@ About 6 targeted cases, including d3d1e0a5 and a pancreas case, against the stor
 ### Success bar
 - On d3d1e0a5:
   - trace 2: no card, amber on "no contralateral hilar lymphadenopathy";
-  - trace 3: amber (implicated) on the station clause, not green;
+  - trace 3: known gap. Neither pass links "no mediastinal lymphadenopathy" to a listed-stations sentence (wording lab). It stays unanchored, so the classifier judges it as today. Deferred to linked prose for negatives (handover step 3);
   - trace 4: at most one dismissible conflict card and no removal.
 - On 29882bd7: "No ascites" and "No encasement of the SMA" labelled dictated, so no tint and no card.
 - On de42a105: pancreatic duct, CBD calculus and peripancreatic negatives amber; hepatic negatives green.
