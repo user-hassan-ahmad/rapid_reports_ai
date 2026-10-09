@@ -22,10 +22,12 @@ import logging
 import os
 import re
 import time
+from dataclasses import asdict
 from typing import List, Optional, Tuple
 
 from pydantic import BaseModel, Field, field_validator
 
+from . import brief_anchor
 from . import report_reconcile as rc
 from .enhancement_utils import _run_agent_with_model
 
@@ -463,6 +465,9 @@ class CheckResult(BaseModel):
     # Answers to extra_report_qs, asked inside the report-state call (template gate). Excluded from dumps so
     # quick's serialised CheckResult is unchanged.
     extra_answers: dict = Field(default_factory=dict, exclude=True)
+    # Jev's contradiction score per checked clause (brief_anchor's OMIT rule needs it for clauses that raised no flag).
+    # Excluded from dumps.
+    contra: dict = Field(default_factory=dict, exclude=True)
 
 
 async def check(report: str, findings: str, scan_type: str, options: List[dict],
@@ -538,9 +543,11 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict],
         kind, p = omission_class(omit.get(f"i{i}"))
         if chosen[i] and kind in _OMIT_KIND:
             flags.append(Flag(kind=_OMIT_KIND[kind], text=t, score=p))
+    contra_scores = {} if isinstance(contra, BaseException) else {
+        t: s for i, t in enumerate(cls) if (s := maybe(contra, f"c{i}")) is not None}
     return CheckResult(flags=flags, kept_dictated=kept, bad_option_ids=bad, n_clauses=len(cls), n_items=len(items),
                        n_selected=sum(chosen), selector=selector, error=error,
-                       extra_answers={k: score(omit, k) for k in (extra_report_qs or {})})
+                       extra_answers={k: score(omit, k) for k in (extra_report_qs or {})}, contra=contra_scores)
 
 
 # ── edits ────────────────────────────────────────────────────────────────────
@@ -814,14 +821,17 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
                             sections: Optional[List[ReportSection]] = None, protected: Optional[List[str]] = None,
                             suppressed: Optional[List[str]] = None,
                             extra_report_qs: Optional[dict] = None,
-                            history: Optional[str] = None) -> Tuple[str, List[dict], dict]:
+                            history: Optional[str] = None,
+                            brief_decisions: Optional[dict] = None) -> Tuple[str, List[dict], dict]:
     """Check, then edit only for a flagged negative (removed) or an absent line (inserted). Returns the report, the
     options with flagged ones dropped, and telemetry. Never raises. `sections` makes the check
     section-generic (templates); `protected` text is never checked for omission or edited; an insertion
     never introduces a `suppressed` term; `history` (templates) is the protected text hidden from the
     omission check, the rest stays visible there. All default to the quick behaviour. The template path works
     on the report with CRLF normalised to LF and returns it with LF line endings; protected text is an invariant: if a repair ever
-    changes it, the repairs are reverted."""
+    changes it, the repairs are reverted. `brief_decisions` (quick): the brief's labels are anchored on the report
+    (`brief_anchor`); a brief-kept clause is never removed (a conflict card instead) and an OMIT clause is removed on
+    two signals."""
     if not enabled():
         return report, options, {"enabled": False}
     t0 = time.time()
@@ -837,10 +847,16 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
     original = pre_repair = report
     removals: List[dict] = []
     insertions: List[dict] = []
+    anchors: list = []
+    rules = None
     try:
-        res = await check(report, findings, scan_type, options,
-                          **_given(sections=sections, protected=protected, extra_report_qs=extra_report_qs,
-                                   history=history))
+        check_call = check(report, findings, scan_type, options,
+                           **_given(sections=sections, protected=protected, extra_report_qs=extra_report_qs,
+                                    history=history))
+        if brief_decisions is not None and sections is None and brief_anchor.enabled():
+            res, anchors = await asyncio.gather(check_call, brief_anchor.anchor(report, brief_decisions))
+        else:
+            res = await check_call
         if extra_report_qs is not None:
             tel["extra_answers"] = res.extra_answers
         tel.update(flags=[f.model_dump() for f in res.flags], clauses=res.n_clauses, items=res.n_items,
@@ -856,18 +872,36 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
                          for f in res.flags if f.kind in ("partial", "differs")]
         tel["review"] += [{"kind": "contradiction", "text": f.text, "score": f.score}
                           for f in res.flags if f.kind == "contradiction" and not is_negative(f.text)]
+        if anchors:
+            rules = brief_anchor.brief_rules(
+                report, anchors, res.contra,
+                flagged=[f.text for f in res.flags if f.kind == "contradiction" and is_negative(f.text)],
+                review_contra=[r["text"] for r in tel["review"] if r["kind"] == "contradiction"])
         # A flagged negative is removed in code (L-47); an omitted finding is inserted by construction.
         # A contradiction inside protected text stays in tel["flags"] for the rail but is never edited: a
         # clause found only inside protected text is not removed; one also written elsewhere still is.
         editable = [f for f in res.flags if not (f.kind == "contradiction" and _only_protected(report, f.text, protected))]
         removed = 0
         for f in editable:
-            if f.kind == "contradiction" and is_negative(f.text):
+            if f.kind == "contradiction" and is_negative(f.text) and not (rules and f.text in rules["protect"]):
                 new = remove_negative_clause(report, f.text, **_given(sections=sections, protected=protected))
                 if new != report:
                     removed += 1
                     removals.append({"type": "removal", "clause": f.text})
                 report = new
+        if rules:
+            for clause in rules["remove"]:
+                if any(r["clause"] == clause for r in removals):
+                    continue
+                new = remove_negative_clause(report, clause)
+                if new != report:
+                    removed += 1
+                    removals.append({"type": "removal", "clause": clause})
+                    report = new
+                else:      # code cannot remove it cleanly: a card instead
+                    rules["conflicts"].append({"clause": clause, "refs": [], "reason": "brief_omitted",
+                                               "score": round(res.contra.get(clause, 0.0), 3), "source": "",
+                                               "pointer": ""})
         tel["clauses_removed"] = removed
         pre_repair = report
         omitted = [f.text for f in editable if f.kind == "omission"]
@@ -887,6 +921,11 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
         insertions = []
         removals = removals if report == pre_repair else []
         tel["error"] = "protected text changed; repair reverted"
+    if anchors:
+        moved = brief_anchor.relocate(anchors, report)
+        tel["anchors"] = [asdict(a) for a in moved]
+        tel["brief_conflicts"] = (rules or {}).get("conflicts") or []
+        tel["anchor_log"] = brief_anchor.anchor_log(moved, rules or {})
     # Gate D shadow log (review engine spec §9): the report before today's automatic edits, kept only while the
     # review engine runs (shadow or live) and only when an edit was applied. `applied_edits` (removals in order, then
     # insertions) lets the engine show each edit as a pre-applied item on the final text (spec §10.4).

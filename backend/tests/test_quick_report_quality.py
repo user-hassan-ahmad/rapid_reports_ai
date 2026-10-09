@@ -343,8 +343,9 @@ async def test_generator_runs_the_check_before_the_signature_and_reports_it(monk
         return SimpleNamespace(output=REPORT.split("\n\nDr ")[0] if kw.get("output_type") is str
                                else SimpleNamespace(description="d"))
     seen = {}
-    async def fake_quality(report, findings, scan_type, options):
+    async def fake_quality(report, findings, scan_type, options, brief_decisions="unset"):
         seen["report"] = report
+        seen["brief_decisions"] = brief_decisions
         return report.replace("The spleen", "The SPLEEN"), options, {"enabled": True, "edits_applied": 1}
     monkeypatch.setattr(qrg, "compile_brief", no_brief)
     monkeypatch.setattr(qrg, "_run_agent_with_model", fake_run)
@@ -355,6 +356,7 @@ async def test_generator_runs_the_check_before_the_signature_and_reports_it(monk
     assert "Dr Sig" not in seen["report"]
     assert "The SPLEEN" in out["report_content"] and out["report_content"].endswith("Dr Sig")
     assert out["quality_check"] == {"enabled": True, "edits_applied": 1}
+    assert seen["brief_decisions"] is None          # no brief compiled: the check runs without anchors
 
 
 def test_negative_clauses_are_removed_in_code_never_inverted():

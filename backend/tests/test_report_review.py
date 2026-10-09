@@ -384,3 +384,63 @@ async def test_run_quality_check_passes_the_history_on(monkeypatch):
                                              protected=[CMR_HISTORY, TECH], history=CMR_HISTORY)
     state = next(s for s in seen if s.startswith("REPORT"))
     assert TECH in state and "Perforation" not in state and out == CMR and tel["error"] is None
+
+
+# ── brief anchors (negatives one owner, Task 6) ─────────────────────────────
+
+QR = ("FINDINGS:\nA small right pleural effusion. No contralateral pleural effusion. No pleural effusion.\n\n"
+      "IMPRESSION:\nSmall right effusion.\n")
+QDEC = {"negatives": [
+    {"text": "No pleural effusion identified", "action": "contradicted", "source": "sheet",
+     "dictated_finding": "Small right pleural effusion"},
+    {"text": "No contralateral pleural effusion identified", "action": "keep", "source": "finding:Pleural effusion"}]}
+
+
+def _contra_jev(scores):
+    """Fake rc._jev: contradiction question c<i> scores by clause text; restated r<i> high; dictated d<i> low."""
+    async def fake(state, qs):
+        out = {}
+        for k, q in qs.items():
+            text = q.get("instructions", "")
+            if k.startswith("c"):
+                out[k] = {"noul": next((v for t, v in scores.items() if t in text), 0.05)}
+            elif k.startswith("r"):
+                out[k] = {"noul": 0.9}
+            elif k.startswith("i"):
+                out[k] = {"choice": "stated", "probabilities": {"stated": 0.9}}
+            else:
+                out[k] = {"noul": 0.05}
+        return out
+    return fake
+
+
+async def test_a_kept_negative_is_never_removed_and_becomes_a_conflict(monkeypatch):
+    monkeypatch.setattr(rr.rc, "_jev", _contra_jev({"No contralateral pleural effusion": 0.8}))
+    report, _, tel = await rr.run_quality_check(QR, "Small right pleural effusion", "CT chest", [],
+                                                brief_decisions=QDEC)
+    assert "No contralateral pleural effusion." in report
+    reasons = {c["clause"]: c["reason"] for c in tel["brief_conflicts"]}
+    assert reasons["No contralateral pleural effusion."] == "brief_kept"
+    # the OMIT label anchored on "No pleural effusion." with a low contradiction score: one signal, so a card too
+    assert reasons["No pleural effusion."] == "brief_omitted" and "No pleural effusion." in report
+
+
+async def test_an_omit_negative_with_jev_agreeing_is_removed_before_render(monkeypatch):
+    monkeypatch.setattr(rr.rc, "_jev", _contra_jev({"No pleural effusion": 0.9}))
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "live")
+    report, _, tel = await rr.run_quality_check(QR, "Small right pleural effusion", "CT chest", [],
+                                                brief_decisions=QDEC)
+    assert "No pleural effusion." not in report and "No contralateral pleural effusion." in report
+    assert {"type": "removal", "clause": "No pleural effusion."} in tel["applied_edits"]
+    anchors = {a["ref"]: a for a in tel["anchors"]}
+    assert report[anchors["neg:1"]["span"][0]:anchors["neg:1"]["span"][1]] == "contralateral pleural effusion"
+    assert tel["anchor_log"]["labels"] == 2
+
+
+async def test_without_brief_decisions_or_with_the_kill_switch_nothing_changes(monkeypatch):
+    monkeypatch.setattr(rr.rc, "_jev", _contra_jev({}))
+    _, _, tel = await rr.run_quality_check(QR, "Small right pleural effusion", "CT chest", [])
+    assert "anchors" not in tel
+    monkeypatch.setenv("RR_BRIEF_ANCHOR", "0")
+    _, _, tel = await rr.run_quality_check(QR, "Small right pleural effusion", "CT chest", [], brief_decisions=QDEC)
+    assert "anchors" not in tel

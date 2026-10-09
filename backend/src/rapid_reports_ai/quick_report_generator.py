@@ -151,7 +151,8 @@ async def generate_quick_report(
     report = result.output if hasattr(result, "output") else str(result)
     # Jev checks every clause and option against the dictation; one focal Qwen call repairs what
     # it flags before the report ships (spec 2026-09-30-post-generation-check-design).
-    report, options, quality = await run_quality_check(report, findings, scan_type, options)
+    report, options, quality = await run_quality_check(report, findings, scan_type, options,
+                                                       brief_decisions=brief.decisions if brief else None)
     if user_signature:
         report = report.rstrip() + "\n\n" + user_signature
     return {"report_content": report, "description": description, "scan_type": scan_type,
