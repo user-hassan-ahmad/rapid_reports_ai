@@ -484,3 +484,29 @@ def test_whole_sentence_unit_starts_at_the_negator_when_the_head_is_positive():
     us = ba.units(rep)
     assert [u.text for u in us] == ["no lymphadenopathy"]
     assert rep[us[0].start:us[0].end] == us[0].text
+
+
+@pytest.mark.parametrize("c", ["No pleural effusion.", "No pleural effusion or pneumothorax.",
+                               "No ascites, free air or collection.", "No pleural effusion identified.",
+                               "No focal lesion in the liver.", "There is no ascites.",
+                               "No effusion and no atelectasis."])
+def test_simple_negative_clauses_are_removable(c):
+    assert ba._removable_negative(c)
+
+
+@pytest.mark.parametrize("c", ["No effusion with mild atelectasis.", "No effusion and mild atelectasis.",
+                               "No effusion, but a 6 mm nodule.", "No effusion; small nodule.",
+                               "No change in the 6 mm nodule.", "No effusion although trace fluid persists.",
+                               "No effusion except a small nodule.", "No effusion, apart from atelectasis.",
+                               "Mild atelectasis."])
+def test_other_clauses_are_never_removable(c):
+    assert not ba._removable_negative(c)
+
+
+def test_brief_rules_cards_a_negative_with_a_joined_finding():
+    rep = "FINDINGS:\nNo effusion with mild atelectasis.\n"
+    i = rep.index("No effusion")
+    omit = ba.Anchor("neg:0", "contradicted", "sheet", "", "term", [i, i + 11], "No effusion",
+                     "No effusion with mild atelectasis.")
+    r = ba.brief_rules(rep, [omit], {"No effusion with mild atelectasis.": 0.95}, flagged=[], review_contra=[])
+    assert r["remove"] == [] and r["conflicts"][0]["reason"] == "brief_omitted"

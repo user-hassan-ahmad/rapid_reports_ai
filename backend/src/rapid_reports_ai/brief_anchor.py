@@ -348,7 +348,22 @@ def relocate(anchors: List[Anchor], report: str) -> List[Anchor]:
 
 
 CONTRA_MIN = 0.6     # the post-gen check's CONTRA_FLAG (L-46)
-_NEG_CLAUSE = re.compile(r"^(?:No|There is no|There are no|Without)\s+", re.I)
+_W = (r"(?!(?:with|and|but|plus|although|though|except|apart|from|while|whereas|however|or|in|at|within|on|by|"
+      r"is|are|was|were|identified|seen|present|demonstrated|noted|detected)\b)[A-Za-z][A-Za-z\-]*")
+_ITEM = rf"(?:(?:no|without)\s+)?{_W}(?:\s+{_W})*"
+_SEP = r"(?:\s*,\s*or\s+|\s*,\s*|\s+or\s+|\s+and\s+(?=(?:no|without)\b))"
+_SIMPLE_NEG = re.compile(
+    rf"^(?:No|There\s+is\s+no|There\s+are\s+no|Without|Nil)\s+{_ITEM}(?:{_SEP}{_ITEM})*"
+    rf"(?:\s+(?:(?:is|are|was|were)\s+)?(?:identified|seen|present|demonstrated|noted|detected))?"
+    rf"(?:\s+(?:in|at|within)\s+the\s+{_W}(?:\s+{_W})*)?\.?$", re.I)
+
+
+def _removable_negative(clause: str) -> bool:
+    """True only for a simple negative clause: a negator, items joined by commas / "or" (and "and" only before
+    "no" / "without"), an optional "identified / seen / present ..." and an optional "in the <place>". An allowlist,
+    not a blacklist of finding words, because a false removal is the worst outcome: "with", "but", "except", digits,
+    ";" or any other construction might carry a positive finding that deleting the clause would take with it."""
+    return bool(_SIMPLE_NEG.match((clause or "").strip()))
 
 
 def _clause_spans(report: str, clause: str) -> List[Tuple[int, int]]:
@@ -408,9 +423,8 @@ def brief_rules(report: str, anchors: List[Anchor], contra: Dict[str, float], fl
         if score is None or not omit or dictated:
             continue  # dictated beats OMIT: no removal, no card (logged by anchor_log via shadowing)
         c = clause.strip().rstrip(".")
-        whole = (not _TURN_TO_FINDING.search(c) and not re.search(r";", c)
-                 and all(c in (a.unit or "") for a in omit))       # the OMIT unit covers the whole clause
-        if score >= CONTRA_MIN and not keep and whole and _NEG_CLAUSE.match(clause.strip()):
+        whole = all(c in (a.unit or "") for a in omit)       # the OMIT unit covers the whole clause
+        if score >= CONTRA_MIN and not keep and whole and _removable_negative(clause):
             remove.append(clause)                                     # Q3: two signals
         else:
             refs = [a.ref for a in omit + keep]
