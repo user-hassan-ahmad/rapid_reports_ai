@@ -14,7 +14,7 @@ Items bypass the adjudicator (binding correction 10) and are never merged with l
 
     label                                   kind            status        cls
     default                                 assumed_normal  open          info    (editor-only, no rail row)
-    implicated                              check           open          minor   evidence.check_reason "uncertain"
+    implicated                              assumed_normal  open          info    evidence.form "negative" (amber), pointer
     contradicted, code-removable            removed         pre_applied   action  edit mode remove (correction 12)
     contradicted, not removable             check           open          action  check_reason "conflict"
                                                                                   (+ code's one-click removal when
@@ -22,6 +22,8 @@ Items bypass the adjudicator (binding correction 10) and are never merged with l
     default / implicated / dictated, number check           open          minor   check_reason "number"
       ... the number is a measurement       check           open          action  (no invented numbers)
     dictated                                (no item)
+
+default → evidence.form "normal" (green); unlabelled (model failure) → statement wording (spec 2026-10-09 §3.3).
 
 Candidates are negatives and plain normal statements in any wording (`jev_pass.normal_statement`, shared with the
 Accuracy lane's W1n exclusion). Every check item's label states its reason, naming the classifier's pointer (or the
@@ -116,6 +118,22 @@ def check_text(reason: str, pointer: str) -> Tuple[str, str]:
     return ((f"Check: may not hold given {q}" if q else "Check: a dictated finding may affect this"),
             (f"Your dictation reports {q}; this generated normal may not hold. Confirm or remove it."
              if q else "A dictated finding may bear on this generated normal. Confirm or remove it."))
+
+AMBER = "Bears on your finding"
+
+
+def ai_layer(cls: Optional[str], pointer: str = "", finding: str = "", clause: str = "") -> Tuple[str, str, str]:
+    """(label, reason, evidence.form) for a generated statement that stays in the report (spec 2026-10-09 §3.3).
+    Implicated, and a negative the brief chose for a dictated finding, are amber ("negative"): in the report, worth a
+    glance, no rail card. Default is green ("normal"). No label (the classifier failed) falls back to the wording."""
+    if cls == "implicated":
+        return AMBER, check_text("uncertain", pointer)[1], "negative"
+    if finding:
+        return AMBER, f"A pertinent negative for {finding}, added by the AI. Keep it or remove it.", "negative"
+    if cls in ("default", "keep"):
+        return "Assumed normal", "", "normal"
+    return "Assumed normal", "", statement_form(clause)
+
 
 _NEG = re.compile(r"\b(no|not|nil|without|normal(ly)?|unremarkable|patent|intact|clear|preserved|maintained|"
                   r"within normal limits|non-?dilated|undilated|no evidence)\b", re.I)
@@ -475,12 +493,11 @@ def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, di
             items[i] = item(c, "check", "open", "measurement" if measured else "number", anchor,
                             {**base, "check_reason": "number", "pointer": nums,
                              **({"dictated_pointer": given} if given else {})}, label, reason=why)
-        elif cls == "implicated":
-            label, why = check_text("uncertain", given)
-            items[i] = item(c, "check", "open", "uncertain", anchor,
-                            {**base, "check_reason": "uncertain", "pointer": given}, label, reason=why)
-        else:
-            items[i] = item(c, "assumed_normal", "open", "assumed_normal", anchor, base, "Assumed normal")
+        else:                                         # default / implicated: the AI layer, never a rail card
+            label, why, form = ai_layer(lab.get("cls"), given, clause=c["clause"])
+            items[i] = item(c, "assumed_normal", "open", "assumed_normal", anchor,
+                            {**base, "form": form, **({"pointer": given} if cls == "implicated" else {})},
+                            label, reason=why)
     for i, sp in secondary_span.items():
         it = items.get(partner[i])
         if it is not None:

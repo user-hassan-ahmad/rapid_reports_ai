@@ -106,8 +106,8 @@ async def test_routing_per_label(monkeypatch):
     assert (asc.kind, asc.status, asc.cls, asc.evidence["check_reason"], asc.evidence["pointer"]) == \
         ("check", "open", "action", "conflict", "Ascites present")
     imp = by["No lymphadenopathy or bowel obstruction"]
-    assert (imp.kind, imp.status, imp.evidence["check_reason"], imp.evidence["pointer"]) == \
-        ("check", "open", "uncertain", "pancreatic head mass")
+    assert (imp.kind, imp.status, imp.evidence["form"], imp.evidence["pointer"]) == \
+        ("assumed_normal", "open", "negative", "pancreatic head mass")
     assert (by["The liver is normal."].kind, by["The liver is normal."].cls) == ("assumed_normal", "info")
     sp = by["The spleen measures 14 cm and is otherwise normal."]           # positive text: not removable
     assert (sp.kind, sp.status, sp.evidence["check_reason"], sp.evidence["pointer"]) == ("check", "open", "number", "14 cm")
@@ -316,7 +316,8 @@ async def test_brief_owned_statements_skip_the_classifier(monkeypatch):
     assert (log["candidates"], log["owned_by_brief"], log["classified"]) == (9, 2, 7)
     by = {it.evidence["clause"]: it for it in items}
     assert by["No pneumoperitoneum."].kind == "removed"
-    assert by["The T1 vertebra is intact."].evidence["check_reason"] == "uncertain"   # classified 6 → candidate 8
+    t1 = by["The T1 vertebra is intact."]                                             # classified 6 → candidate 8
+    assert (t1.kind, t1.evidence["form"]) == ("assumed_normal", "negative")
     assert by["The liver is normal."].kind == "assumed_normal"                        # deduped later by the brief
     sp = by["The spleen measures 14 cm and is otherwise normal."]                      # the number check is code
     assert (sp.kind, sp.evidence["check_reason"]) == ("check", "number")
@@ -357,3 +358,22 @@ async def test_negatives_items_carry_their_form(monkeypatch):
     assert by["The spleen measures 14 cm and is otherwise normal."].evidence["form"] == "normal"
     for it in items:
         assert it.kind not in ("assumed_normal", "check") or it.evidence["form"] in ("negative", "normal")
+
+
+def test_ai_layer_maps_labels_to_one_amber_category():
+    assert neg.ai_layer("implicated", pointer="CBD 12 mm")[2] == "negative"
+    assert neg.ai_layer("default", finding="Lung mass")[2] == "negative"      # chosen for a dictated finding
+    assert neg.ai_layer("default", clause="No hepatic lesion.")[2] == "normal"
+    assert neg.ai_layer(None, clause="No hepatic lesion.")[2] == "negative"   # no label: the wording decides
+    assert neg.ai_layer("implicated", pointer="CBD 12 mm")[0] == "Bears on your finding"
+
+
+def test_an_implicated_statement_is_an_amber_assumed_normal_not_a_check_card():
+    report = "FINDINGS:\nPancreatic head mass. No pancreatic duct dilatation.\n\nIMPRESSION:\nMass.\n"
+    i = inp(report, "- Pancreatic head mass")
+    cands = [{"clause": "No pancreatic duct dilatation.", "before": "Pancreatic head mass.", "number": False}]
+    items, _, _ = neg.route(i, "r1", cands, {1: {"cls": "implicated", "pointer": "Pancreatic head mass",
+                                               "number": False}})
+    (it,) = items
+    assert it.kind == "assumed_normal" and it.evidence["form"] == "negative"
+    assert it.evidence["pointer"] == "Pancreatic head mass" and it.label == "Bears on your finding"
