@@ -271,9 +271,11 @@ def match_terms(report: str, labels: List[Label], us: List[Unit]) -> Tuple[Dict[
     return got, left
 
 
-# Link acceptance, Task 4 wording lab (S1, the unit alone): 0 wrong links at 0.90 in both runs, recall 28/45 (run 2);
-# Jev drifts up to 0.06 between runs. The context wording (C*) and its threshold are chosen by anchor_link_lab.
-LINK_MIN = 0.90
+# Link acceptance, anchor_link_lab 2026-10-10 (40 synthetic + 152 stored pairs, 2 runs, every proposal now asked):
+# C1 (context) at 0.80: 0 wrong links in both runs, recall 105 / 108 of 138, highest gold-false score 0.70, and every
+# context case (tails, "within the duct", "within it") linked. S1 at 0.85 recalled 109 / 138 with 0 wrong links but
+# its nearest wrong link scored 0.82 (t21) against Jev's run-to-run drift of up to 0.06: no margin (as in Task 4).
+LINK_MIN = 0.80
 LINK_TIMEOUT_S = 4.0
 LINK_WORDING_S1 = 'Read only this sentence. It says, in any wording: "{t}".'     # lab comparison only
 LINK_WORDING = ('Read the LAST sentence below; any earlier sentence only shows what it refers to. '

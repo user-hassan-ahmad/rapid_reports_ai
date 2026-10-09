@@ -28,5 +28,15 @@
  {"id": "t27", "label": "No vascular encasement", "sentence": "No contralateral hilar lymphadenopathy or vascular encasement.", "gold": true},
  {"id": "t28", "label": "No peripancreatic lymphadenopathy", "sentence": "No upper abdominal lymphadenopathy.", "gold": false, "trap": "broader"},
  {"id": "t29", "label": "No SMA encasement", "sentence": "The superior mesenteric artery is not involved.", "gold": true},
- {"id": "t30", "label": "No portal vein thrombosis", "sentence": "The portal and splenic veins are patent.", "gold": true}
+ {"id": "t30", "label": "No portal vein thrombosis", "sentence": "The portal and splenic veins are patent.", "gold": true},
+ {"id": "t31", "label": "No calculus identified in the common bile duct", "sentence": "Both kidneys are normal with no calculus.", "context": "Both kidneys are normal with no calculus.", "prev": "The common bile duct is dilated to 12 mm.", "gold": false, "trap": "place"},
+ {"id": "t32", "label": "No calculus identified in the common bile duct", "sentence": "no calculus within the duct", "context": "The common bile duct is dilated to 12 mm; no calculus within the duct.", "prev": "A mass is present in the pancreatic head.", "gold": true},
+ {"id": "t33", "label": "No mass identified in the head of the pancreas", "sentence": "The bowel is normal with no mass.", "context": "The bowel is normal with no mass.", "prev": "A 3 cm mass in the pancreatic head.", "gold": false, "trap": "place"},
+ {"id": "t34", "label": "No retroperitoneal lymphadenopathy", "sentence": "no lymphadenopathy", "context": "The retroperitoneum shows no lymphadenopathy.", "prev": "The kidneys are normal.", "gold": true},
+ {"id": "t35", "label": "No retropulsion at T7", "sentence": "No retropulsion at T8.", "context": "No retropulsion at T8.", "prev": "Pathological collapse of T7 with retropulsion.", "gold": false, "trap": "level"},
+ {"id": "t36", "label": "No hilar lymphadenopathy", "sentence": "no contralateral hilar lymphadenopathy.", "context": "The right hilar nodes measure up to 1.4 cm; no contralateral hilar lymphadenopathy.", "prev": "A small right pleural effusion.", "gold": false, "trap": "contralateral"},
+ {"id": "t37", "label": "No pleural effusion", "sentence": "No contralateral pleural effusion.", "context": "No contralateral pleural effusion.", "prev": "A small right pleural effusion accompanies the mass.", "gold": false, "trap": "contralateral"},
+ {"id": "t38", "label": "No SMA involvement", "sentence": "the superior mesenteric artery is clear.", "context": "The vein is not narrowed; the superior mesenteric artery is clear.", "prev": "The mass abuts the superior mesenteric vein over less than 180 degrees.", "gold": true},
+ {"id": "t39", "label": "No focal liver lesion", "sentence": "The spleen shows no focal lesion.", "context": "The spleen shows no focal lesion.", "prev": "The liver is normal in size.", "gold": false, "trap": "context bleed"},
+ {"id": "t40", "label": "No focal liver lesion", "sentence": "No focal lesion is seen within it.", "context": "No focal lesion is seen within it.", "prev": "The liver is normal in size.", "gold": true}
 ]
