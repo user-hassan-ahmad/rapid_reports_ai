@@ -193,7 +193,7 @@ export function isSuggestion(it: ReviewItem): boolean {
 function markClassOf(it: ReviewItem): MarkClass {
 	if (it.status === 'pre_applied') return 'rv-preapplied';
 	if (it.kind === 'assumed_normal') return 'rv-normal';
-	if (it.kind === 'check') return 'rv-check';
+	if (it.kind === 'check') return it.cls === 'action' ? 'rv-action' : 'rv-check'; // a conflict: a flagged issue
 	if (it.kind === 'ai_generated') return 'rv-synth';
 	if (it.kind === 'recommendation') return 'rv-rec';
 	return it.cls === 'action' ? 'rv-action' : it.cls === 'minor' ? 'rv-minor' : 'rv-info';

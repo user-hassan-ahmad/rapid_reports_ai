@@ -135,7 +135,7 @@ export const LEGEND: { key: LegendKey; icon: string; label: string; title: strin
 /** The AI-generated layer's categories, as the legend's breakdown shows them (swatch = the tint in the editor). */
 export const AI_BREAKDOWN: { form: AiForm; label: string; title: string }[] = [
 	{ form: 'normal', label: 'Normals', title: 'Normal findings you did not dictate, stated by the AI' },
-	{ form: 'negative', label: 'Bears on your finding', title: 'Negatives the AI added that bear on a dictated finding: in the report, worth a glance' },
+	{ form: 'negative', label: 'Bears on your finding', title: 'Negatives the AI added that bear on a dictated finding: in the report, worth a glance (always shown)' },
 	{ form: 'synthesis', label: 'Synthesis', title: 'Conclusions the AI drew from your findings' }
 ];
 

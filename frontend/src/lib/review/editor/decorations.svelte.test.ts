@@ -240,10 +240,59 @@ describe('review decorations', () => {
 		}
 		expect(tints.size).toBe(3); // green, amber, violet
 		view.dispatch({ effects: setEmphasis.of([]) });
-		for (const id of ['g1', 'c1', 's1']) {
+		for (const id of ['g1', 's1']) {
 			expect(cs(id).backgroundColor, id).toBe(NONE);
 			expect(cs(id).textDecorationLine, id).toBe('none');
 		}
+		// amber (negative) ignores the toggle: always shown
+		expect(cs('c1').backgroundColor).not.toBe(NONE);
+	});
+
+	it('with the AI-generated toggle off, an amber statement is still tinted and a green normal is not', () => {
+		const D = 'No hilar lymphadenopathy. The liver is normal.';
+		const at = (t: string) => span(t, D);
+		const items = [
+			item({
+				id: 'am',
+				kind: 'assumed_normal',
+				cls: 'info',
+				lane: 'accuracy',
+				anchor: at('No hilar lymphadenopathy.'),
+				evidence: { form: 'negative', pointer: 'right hilar nodes 14 mm' }
+			}),
+			item({ id: 'gr', kind: 'assumed_normal', cls: 'info', anchor: at('The liver is normal.'), evidence: { form: 'normal' } })
+		];
+		const { view } = mount({ emphasis: [] }, items, D);
+		noTransitions();
+		expect(view.dom.hasAttribute('data-rv-emph')).toBe(false);
+		expect(getComputedStyle(markEl(view, 'am')).backgroundColor).not.toBe(NONE);
+		expect(getComputedStyle(markEl(view, 'gr')).backgroundColor).toBe(NONE);
+		expect(markEl(view, 'am').getAttribute('aria-label')).toBe(
+			'Bears on your finding · “right hilar nodes 14 mm” (AI-generated)'
+		);
+	});
+
+	it('a conflict check (cls action) is an action mark: Apply (its Remove) and Dismiss, not the AI layer', async () => {
+		const D = 'Simple cyst in the left kidney. The left kidney is normal.';
+		const items = [
+			item({
+				id: 'k1',
+				kind: 'check',
+				cls: 'action',
+				lane: 'accuracy',
+				label: 'Conflicts with your dictation',
+				anchor: span('The left kidney is normal.', D),
+				evidence: { check_reason: 'conflict', source: 'brief', brief_reason: 'brief_kept' },
+				edit: { mode: 'remove', find: 'The left kidney is normal.' }
+			})
+		];
+		const { view } = mount({}, items, D);
+		const k = markEl(view, 'k1');
+		expect(k.classList.contains('rv-action')).toBe(true);
+		expect(k.classList.contains('rv-check')).toBe(false);
+		expect([...k.classList].some((c) => c.startsWith('rv-form-'))).toBe(false);
+		const c = await openOn(view, 'k1');
+		expect(actionsOf(c)).toEqual(['apply', 'dismiss', 'reveal']);
 	});
 
 	it('tints follow evidence.form when the backend sends it, else the text (No / Nil / Without / Absent → negative)', () => {

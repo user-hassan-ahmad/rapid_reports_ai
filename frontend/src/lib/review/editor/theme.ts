@@ -160,7 +160,7 @@ export const reviewTheme = EditorView.baseTheme({
 	// a very light tint by category (normals green, pertinent negatives amber, synthesis violet), no underline
 	'.rv-normal, .rv-check, .rv-synth': { cursor: 'text', textDecorationLine: 'none', borderRadius: '3px' },
 	'&[data-rv-emph~="ai"] .rv-form-normal': { backgroundColor: 'var(--rv-tint-normal)' },
-	'&[data-rv-emph~="ai"] .rv-form-negative': { backgroundColor: 'var(--rv-tint-negative)' },
+	'.rv-form-negative': { backgroundColor: 'var(--rv-tint-negative)' }, // amber ignores the AI-generated toggle
 	'&[data-rv-emph~="ai"] .rv-form-synthesis': { backgroundColor: 'var(--rv-tint-synthesis)' },
 	// recommendations: their own dotted underline (their control is the impression's checklist)
 	'.rv-rec': {
