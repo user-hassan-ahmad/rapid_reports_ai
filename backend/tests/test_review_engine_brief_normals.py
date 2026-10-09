@@ -2,6 +2,7 @@
 assumed_normal (info, amber: evidence.form "negative"); anchors on the atom's term in the FINAL report, unanchored when not found or ambiguous; dedupe against the
 negatives classifier (brief wins on default / implicated; a classifier conflict / number / removal outranks).
 Synthetic cases only, no live model calls."""
+from rapid_reports_ai import brief_anchor
 from rapid_reports_ai.review_engine import brief_normals as bn
 from rapid_reports_ai.review_engine import engine, negatives
 from rapid_reports_ai.review_engine.items import ReviewItem, Span, text_hash
@@ -230,10 +231,12 @@ AREPORT = ("FINDINGS:\nA small right pleural effusion. No contralateral pleural 
            "IMPRESSION:\nSmall right effusion.\n")
 
 
-def _anc(ref, action, source, text, how="term", pointer="", unit=None):
-    i = AREPORT.index(text)
+def _anc(ref, action, source, text, how="term", pointer="", unit=None, report=AREPORT):
+    i = report.index(text)
+    unit = unit or next(u.text for u in brief_anchor.units(report) if text in u.text)
+    u0 = report.index(unit)
     return {"ref": ref, "action": action, "source": source, "pointer": pointer, "how": how,
-            "span": [i, i + len(text)], "span_text": text, "unit": unit or text, "offset": 0}
+            "span": [i, i + len(text)], "span_text": text, "unit": unit, "offset": i - u0, "dupes": 1}
 
 
 ANCHORS = [
@@ -310,3 +313,58 @@ async def test_owned_spans_drive_the_engine_classifier(monkeypatch):
     monkeypatch.setattr(engine, "_negatives", spy)
     await engine.run_review(_ainp({"anchors": ANCHORS}), run_id=RUN)
     assert seen["owned"] == bn.owned_spans(_ainp({"anchors": ANCHORS}))
+
+
+DUP = ("FINDINGS:\nA right lung mass, with No pulmonary emboli. seen. No pulmonary emboli.\n\n"
+       "IMPRESSION:\nMass.\n")
+
+
+def test_anchor_relocation_takes_only_whole_units_never_a_copy_inside_a_longer_sentence():
+    real = DUP.rindex("No pulmonary emboli.")
+    a = {"ref": "neg:1", "action": "keep", "source": "sheet", "pointer": "", "how": "jev",
+         "span": [real + 9, real + 29], "span_text": "No pulmonary emboli.", "unit": "No pulmonary emboli.",
+         "offset": 0, "dupes": 1}                       # stored position stale: relocation needed
+    i = inp(DUP, "- Right lung mass", quality_check={"anchors": [a]})
+    assert DUP.find("No pulmonary emboli.") < real    # the first textual hit is inside the longer sentence
+    assert bn.owned_spans(i) == [(real, real + len("No pulmonary emboli."))]
+
+
+def test_a_changed_duplicate_count_leaves_the_anchor_unplaced():
+    rep = ("FINDINGS:\nA right lung mass measuring 3 cm. No pulmonary emboli. The liver is unremarkable. "
+           "No pulmonary emboli.\n\nIMPRESSION:\nMass.\n")
+    a = {"ref": "neg:1", "action": "keep", "source": "sheet", "pointer": "", "how": "jev",
+         "span": [44, 64], "span_text": "No pulmonary emboli.", "unit": "No pulmonary emboli.", "offset": 0,
+         "dupes": 1}                                    # one copy when anchored, two now: which is ours is unknowable
+    i = inp(rep, "- Right lung mass", quality_check={"anchors": [a]})
+    assert bn.owned_spans(i) == []
+    assert [it.anchor for it in bn.build_items(i, RUN)] == [None]   # unanchored, never guessed
+
+
+def test_owned_spans_include_conflict_card_clauses():
+    qc = {"anchors": ANCHORS, "brief_conflicts": [
+        {"clause": "A small right pleural effusion.", "refs": [], "reason": "removal_blocked", "score": 0.9,
+         "source": "", "pointer": "", "why": "carries"}]}
+    texts = {AREPORT[a:b] for a, b in bn.owned_spans(_ainp(qc))}
+    assert "A small right pleural effusion" in texts
+
+
+def test_a_conflict_card_whose_clause_is_gone_is_unanchored_with_no_edit():
+    qc = {"anchors": ANCHORS, "brief_conflicts": [
+        {"clause": "No ascites.", "refs": ["neg:9"], "reason": "brief_kept", "score": 0.7, "source": "sheet",
+         "pointer": ""}]}
+    (card,) = [c for c in bn.build_items(_ainp(qc), RUN) if c.kind == "check"]
+    assert card.anchor is None and card.edit is None and card.section is None
+
+
+async def test_a_removal_blocked_clause_is_not_reclassified_and_its_brief_card_survives(monkeypatch):
+    calls = []
+    _engine_stubs(monkeypatch, calls)
+    clause = "No pulmonary emboli."
+    qc = {"anchors": [a for a in ANCHORS if a["ref"] != "dict:0"], "brief_conflicts": [
+        {"clause": clause, "refs": [], "reason": "removal_blocked", "score": 0.9, "source": "", "pointer": "",
+         "why": "carries"}]}
+    res = await engine.run_review(_ainp(qc), run_id=RUN)
+    for c in calls:
+        assert clause not in c["user_prompt"].split("STATEMENTS TO CLASSIFY:\n", 1)[1]
+    cards = [i for i in res.items if bn.DETECTOR in i.detectors and i.kind == "check"]
+    assert [c.evidence["brief_reason"] for c in cards] == ["removal_blocked"]

@@ -326,25 +326,40 @@ async def anchor(report: str, decisions: Optional[dict], jev=None) -> List[Ancho
         return []
 
 
+def relocate_one(a, report: str, us: Optional[List[Unit]] = None) -> Optional[Tuple[int, int]]:
+    """One anchor (an `Anchor` or its persisted dict) re-found on `report`: only among the report's current units with
+    the anchor's unit text (the nearest to the old position if several), then the span inside it. None when no such
+    unit holds the span text, or the number of identical units changed (`dupes`): never onto text that is not a unit.
+    The one relocation rule (`relocate`, and the review engine's `brief_normals`)."""
+    get = a.get if isinstance(a, dict) else (lambda k, d=None: getattr(a, k, d))
+    span, offset, text = get("span"), int(get("offset") or 0), get("span_text") or ""
+    unit, dupes = get("unit") or "", int(get("dupes") or 0)
+    if not text or not unit:
+        return None
+    old = (span[0] - offset) if span else 0
+    same = [u for u in (units(report) if us is None else us) if u.text == unit]
+    # the number of identical units changed (one was edited out): which one is ours is unknowable
+    if not same or dupes not in (0, len(same)):
+        return None
+    u = min(same, key=lambda x: abs(x.start - old))
+    k = u.start + offset
+    return (k, k + len(text)) if report[k:k + len(text)] == text else None
+
+
 def relocate(anchors: List[Anchor], report: str) -> List[Anchor]:
-    """The anchors re-found on `report` (the check's edits shift positions): only among the report's current units with
-    the anchor's unit text (the nearest to the old position if several), then the span inside it. No such unit means
-    the clause is "removed"; an anchor never relocates onto text that is not a unit."""
+    """The anchors re-found on `report` (the check's edits shift positions) by `relocate_one`. No such unit means the
+    clause is "removed"."""
     us = units(report)
     out: List[Anchor] = []
     for a in anchors:
         if a.how not in ("term", "jev"):
             out.append(a)
             continue
-        old = (a.span[0] - a.offset) if a.span else 0
-        same = [u for u in us if u.text == a.unit]
-        # the number of identical units changed (one was edited out): which one is ours is unknowable
-        u = min(same, key=lambda x: abs(x.start - old)) if same and a.dupes in (0, len(same)) else None
-        k = u.start + a.offset if u else -1
-        if u is None or report[k:k + len(a.span_text)] != a.span_text:
+        sp = relocate_one(a, report, us)
+        if sp is None:
             out.append(Anchor(**{**asdict(a), "how": "removed", "span": None}))
         else:
-            out.append(Anchor(**{**asdict(a), "span": [k, k + len(a.span_text)]}))
+            out.append(Anchor(**{**asdict(a), "span": [sp[0], sp[1]]}))
     return out
 
 

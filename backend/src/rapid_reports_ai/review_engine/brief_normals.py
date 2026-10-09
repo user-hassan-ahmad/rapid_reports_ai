@@ -35,6 +35,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
+from .. import brief_anchor
 from .. import linked_normals as ln
 from . import negatives, verifier
 from .items import ReviewInput, ReviewItem, Span, item_key, text_hash
@@ -106,27 +107,48 @@ def anchors_of(inp: ReviewInput) -> Optional[List[dict]]:
     return a if isinstance(a, list) else None
 
 
-def _span_on(report: str, a: dict) -> Optional[Tuple[int, int]]:
-    """The anchor's span on this report: as stored when the text there still matches, else relocated through its
-    unit (unit start + offset). None when neither holds (never guessed)."""
-    sp, t = a.get("span"), a.get("span_text") or ""
-    if sp and t and report[sp[0]:sp[1]] == t:
-        return sp[0], sp[1]
-    i = report.find(a.get("unit") or "\0")
-    k = i + int(a.get("offset") or 0)
-    if i >= 0 and t and report[k:k + len(t)] == t:
-        return k, k + len(t)
-    return None
+def _clause_span(report: str, clause: str) -> Optional[Tuple[int, int]]:
+    """A carded clause (minus its final ".") on the report: its first whole-sentence occurrence
+    (`brief_anchor._clause_spans`), else its only occurrence anywhere; None when absent or ambiguous."""
+    c = (clause or "").strip().rstrip(".")
+    if not c:
+        return None
+    whole = brief_anchor._clause_spans(report, c)
+    if whole:
+        return whole[0]
+    return (report.find(c), report.find(c) + len(c)) if report.count(c) == 1 else None
+
+
+def _conflicts(inp: ReviewInput) -> List[Tuple[dict, Optional[Tuple[int, int]]]]:
+    """(brief conflict, its span) — one per clause."""
+    report = inp.artifacts.report or ""
+    out: List[Tuple[dict, Optional[Tuple[int, int]]]] = []
+    taken: List[Tuple[int, int]] = []
+    for c in (inp.artifacts.quality_check or {}).get("brief_conflicts") or []:
+        if not isinstance(c, dict):
+            continue
+        span = _clause_span(report, c.get("clause") or "")
+        if span and not _free(span, taken):
+            continue
+        out.append((c, span))
+        if span:
+            taken.append(span)
+    return out
 
 
 def owned_spans(inp: ReviewInput) -> Optional[List[Tuple[int, int]]]:
-    """Every anchored brief label's span on the final report: the classifier never re-reads these (spec §3.3).
+    """The spans the classifier never re-reads (spec §3.3): every anchored brief label on the final report (dictated,
+    and low-score OMIT anchors too: deliberately, the brief owns them), and every clause the post-gen check carded
+    (`brief_conflicts`, removal_blocked with refs [] included), so the brief card and its brief_reason stand.
     None without anchors (the engine then uses the legacy brief items' anchors)."""
     anchors = anchors_of(inp)
     if anchors is None:
         return None
     report = inp.artifacts.report or ""
-    return [sp for a in anchors if a.get("how") in ("term", "jev") and (sp := _span_on(report, a))]
+    us = brief_anchor.units(report)
+    spans = [sp for a in anchors if isinstance(a, dict) and a.get("how") in ("term", "jev")
+             and (sp := brief_anchor.relocate_one(a, report, us))]
+    return spans + [sp for _, sp in _conflicts(inp) if sp]
 
 
 def _conflict_text(c: dict) -> Tuple[str, str]:
@@ -174,14 +196,8 @@ def conflict_cards(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], Lis
     h = text_hash(report)
     out: List[ReviewItem] = []
     taken: List[Tuple[int, int]] = []
-    for c in (inp.artifacts.quality_check or {}).get("brief_conflicts") or []:
-        if not isinstance(c, dict):
-            continue
-        clause = (c.get("clause") or "").strip().rstrip(".")
-        i = report.find(clause) if clause else -1
-        span = (i, i + len(clause)) if i >= 0 else None
-        if span and not _free(span, taken):
-            continue                                  # one card per clause
+    for c, span in _conflicts(inp):
+        clause = report[span[0]:span[1]] if span else (c.get("clause") or "").strip().rstrip(".")
         anchor = Span(start=span[0], end=span[1], text=clause, text_hash=h) if span else None
         fix, verified = negatives._conflict_fix(inp, report, anchor, c.get("clause") or "", names)
         label, reason = _conflict_text(c)
@@ -199,11 +215,12 @@ def conflict_cards(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], Lis
 def _from_anchors(inp: ReviewInput, run_id: str, anchors: List[dict]) -> List[ReviewItem]:
     report = inp.artifacts.report or ""
     out, taken = conflict_cards(inp, run_id)
+    us = brief_anchor.units(report)
     for a in anchors:
         if not isinstance(a, dict) or a.get("how") not in ("term", "jev") \
                 or a.get("action") not in ("keep", "default", "implicated"):
             continue      # dictated: your own words; OMIT: removed, or a conflict card above
-        span = _span_on(report, a)
+        span = brief_anchor.relocate_one(a, report, us)
         if span and not _free(span, taken):
             continue      # one card per clause: the conflict card stands
         src = str(a.get("source") or "")

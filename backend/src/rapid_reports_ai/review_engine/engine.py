@@ -48,8 +48,10 @@ Negatives items (Task 14) bypass merge and the adjudicator and are appended as b
 Brief normals (`brief_normals`): the brief's linked-normal atoms (labelled before generation) become items of their
 own (default → assumed_normal green, implicated → assumed_normal amber, `evidence.form` "negative"), anchored on the
 atom's term in the final report or unanchored. With `quality_check.anchors` (brief_anchor) the items, the conflict
-cards and `owned` (`brief_normals.owned_spans`, dictated anchors included) come from the anchors instead. They own their span: the classifier's default / implicated item on the same span is dropped, a classifier
-conflict / number / removal outranks them; lane negatives overlapping them are deduped like the classifier's.
+cards and `owned` (`brief_normals.owned_spans`: every anchor, dictated included, and every carded clause) come from
+the anchors instead. They own their span: the classifier's default / implicated item on the same span is dropped, a
+classifier conflict / number / removal outranks them; lane negatives overlapping them are deduped like the
+classifier's.
 
 One card per claim (`claims`): a lane claim flagged in FINDINGS and repeated in IMPRESSION (same lane and kind, a
 conservative content match) is grouped before adjudication (`group_claims`), so one verdict covers both; the item's
