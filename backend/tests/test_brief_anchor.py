@@ -391,3 +391,96 @@ def test_match_terms_records_the_duplicate_count():
     lab = ba.Label("neg:0", "No effusion", "effusion", "keep", "sheet")
     got, _ = ba.match_terms(rep, [lab], ba.units(rep))
     assert got["neg:0"].dupes == 1
+
+
+# ---- removal guards ----
+R3 = "FINDINGS:\nNo effusion seen around a 3 cm mass. No effusion.\n\nIMPRESSION:\nNo effusion.\n"
+
+
+def _span(text, nth=0):
+    i = -1
+    for _ in range(nth + 1):
+        i = R3.index(text, i + 1)
+    return [i, i + len(text)]
+
+
+def test_clause_resolves_at_whole_sentence_occurrences_only():
+    spans = ba._clause_spans(R3, "No effusion.")
+    assert [R3[a:b] for a, b in spans] == ["No effusion", "No effusion"]
+    assert spans[0][0] > R3.index("3 cm mass")
+
+
+def test_keep_at_the_real_clause_blocks_an_omit_at_the_wrong_match():
+    first = _span("No effusion seen")
+    omit = ba.Anchor("neg:0", "contradicted", "sheet", "", "term", first, "No effusion", "No effusion seen around a 3 cm mass.")
+    k = _span("No effusion.")
+    keep = ba.Anchor("neg:1", "keep", "sheet", "", "term", [k[0], k[1] - 1], "No effusion", "No effusion.")
+    r = ba.brief_rules(R3, [omit, keep], {"No effusion.": 0.9}, flagged=[], review_contra=[])
+    assert r["remove"] == []
+
+
+def test_keep_in_the_impression_copy_blocks_removal_of_the_findings_copy():
+    f, imp = _span("No effusion.", 0), _span("No effusion.", 1)
+    omit = ba.Anchor("neg:0", "contradicted", "sheet", "", "term", [f[0], f[1] - 1], "No effusion", "No effusion.")
+    keep = ba.Anchor("neg:1", "keep", "sheet", "", "term", [imp[0], imp[1] - 1], "No effusion", "No effusion.")
+    r = ba.brief_rules(R3, [omit, keep], {"No effusion.": 0.9}, flagged=[], review_contra=[])
+    assert r["remove"] == []
+
+
+def test_a_foreign_keep_in_a_longer_sentence_is_not_a_holder():
+    f = _span("No effusion.", 0)
+    omit = ba.Anchor("neg:0", "contradicted", "sheet", "", "term", [f[0], f[1] - 1], "No effusion", "No effusion.")
+    keep = ba.Anchor("neg:1", "keep", "sheet", "", "term", _span("No effusion seen"), "No effusion",
+                     "No effusion seen around a 3 cm mass.")
+    r = ba.brief_rules(R3, [omit, keep], {"No effusion.": 0.9}, flagged=[], review_contra=[])
+    assert r["remove"] == ["No effusion."]
+
+
+def test_a_clause_with_a_positive_turn_is_never_removed():
+    rep = "FINDINGS:\nNo pleural effusion, but a 6 mm nodule in the right lobe.\n"
+    us = ba.units(rep)
+    lab = ba.Label("neg:0", "No pleural effusion", "pleural effusion", "contradicted", "sheet")
+    got, _ = ba.match_terms(rep, [lab], us)
+    clause = "No pleural effusion, but a 6 mm nodule in the right lobe."
+    r = ba.brief_rules(rep, [got["neg:0"]], {clause: 0.95}, flagged=[], review_contra=[])
+    assert r["remove"] == [] and r["conflicts"][0]["reason"] == "brief_omitted"
+
+
+def test_an_omit_unit_that_does_not_cover_the_clause_blocks_removal():
+    rep = "FINDINGS:\nNo effusion or mass.\n"
+    i = rep.index("No effusion")
+    omit = ba.Anchor("neg:0", "contradicted", "sheet", "", "term", [i, i + 11], "No effusion", "No effusion")
+    r = ba.brief_rules(rep, [omit], {"No effusion or mass.": 0.9}, flagged=[], review_contra=[])
+    assert r["remove"] == [] and r["conflicts"][0]["reason"] == "brief_omitted"
+
+
+def test_keep_shadowed_by_dictated_protects_but_makes_no_card():
+    i = R2.index("There is no ascites.")
+    d = ba.Anchor("dict:0", "dictated", "dictated", "", "term", [i, i + 19], "ascites", "There is no ascites.")
+    sh = ba.Anchor("neg:2", "keep", "sheet", "", "none", shadowed_by="dict:0")
+    r = ba.brief_rules(R2, [d, sh], {"There is no ascites.": 0.9},
+                       flagged=["There is no ascites."], review_contra=[])
+    assert r == {"protect": ["There is no ascites."], "remove": [], "conflicts": []}
+
+
+def test_omit_with_a_keep_holder_is_a_split_card_with_both_refs():
+    i = R2.index("No pleural effusion.")
+    omit = ba.Anchor("neg:0", "contradicted", "sheet", "", "term", [i, i + 19], "No pleural effusion", "No pleural effusion.")
+    keep = ba.Anchor("neg:9", "keep", "sheet", "", "none", shadowed_by="neg:0")
+    r = ba.brief_rules(R2, [omit, keep], {"No pleural effusion.": 0.9}, flagged=[], review_contra=[])
+    (c,) = r["conflicts"]
+    assert r["remove"] == [] and c["reason"] == "brief_split" and set(c["refs"]) == {"neg:0", "neg:9"}
+
+
+def test_brief_kept_score_is_none_when_the_clause_has_no_score():
+    k = R2.index("No contralateral pleural effusion.")
+    keep = ba.Anchor("neg:1", "keep", "sheet", "", "term", [k, k + 33], "x", "No contralateral pleural effusion.")
+    r = ba.brief_rules(R2, [keep], {}, flagged=["No contralateral pleural effusion."], review_contra=[])
+    assert r["conflicts"][0]["score"] is None
+
+
+def test_whole_sentence_unit_starts_at_the_negator_when_the_head_is_positive():
+    rep = "FINDINGS:\nNodule in the left lobe with no lymphadenopathy.\n"
+    us = ba.units(rep)
+    assert [u.text for u in us] == ["no lymphadenopathy."]
+    assert rep[us[0].start:us[0].end] == us[0].text

@@ -140,6 +140,7 @@ _HEDGED = re.compile(r"\b(?:not\s+excluded|cannot\s+be\s+excluded|not\s+ruled\s+
 
 
 _TAIL_NEG = re.compile(r"\b(?:no|nil|without)\s+$", re.I)    # the negator split_tails replaced with "No "
+_THERE = re.compile(r"^\s*(?:there\s+(?:is|are|was|were)\s*)?$", re.I)
 _TURN_TO_FINDING = re.compile(r",\s*with\b|\s+with\s+an?\b|\s+and\s+an?\b|\s+but\b|,\s*while\b", re.I)
 
 
@@ -190,16 +191,19 @@ def units(report: str) -> List[Unit]:
                 for m in re.finditer(r";|" + _TURN_TO_FINDING.pattern, s, re.I):
                     cuts += [m.start(), m.end()]
                 cuts.append(len(s))
-                if len(cuts) == 2:
-                    if _is_normal(s):
-                        out.append(Unit(s, i, j))
-                    continue
+                whole = len(cuts) == 2
                 for a0, b0 in zip(cuts[0::2], cuts[1::2]):
                     part = s[a0:b0]
-                    t = part.strip(" ,;")
-                    if t and _is_normal(t):
-                        k = a0 + part.find(t)
-                        out.append(Unit(t, i + k, i + k + len(t)))
+                    t = part if whole else part.strip(" ,;")
+                    if not t or not _is_normal(t):
+                        continue
+                    k = a0 + (0 if whole else part.find(t))
+                    # a positive head ("Nodule in the left lobe with no X") is not part of the statement
+                    m = re.search(r"\b(?:no|nil|without)\b", t, re.I)
+                    if m and m.start() > 0 and not _is_normal(t[:m.start()]) \
+                            and not _THERE.match(t[:m.start()]):
+                        k, t = k + m.start(), t[m.start():]
+                    out.append(Unit(t, i + k, i + k + len(t)))
     return out
 
 
@@ -347,48 +351,72 @@ CONTRA_MIN = 0.6     # the post-gen check's CONTRA_FLAG (L-46)
 _NEG_CLAUSE = re.compile(r"^(?:No|There is no|There are no|Without)\s+", re.I)
 
 
-def _clause_span(report: str, clause: str) -> Optional[Tuple[int, int]]:
+def _clause_spans(report: str, clause: str) -> List[Tuple[int, int]]:
+    """Every occurrence of the clause (minus its final ".") that is a whole sentence or list item."""
     c = clause.strip().rstrip(".")
+    out: List[Tuple[int, int]] = []
     i = report.find(c) if c else -1
-    return (i, i + len(c)) if i >= 0 else None
+    while i >= 0:
+        before = report[:i].rstrip(" \t")
+        rest = report[i + len(c):]
+        starts = before == "" or before[-1] in "\n.!?-*\u2022"
+        r = rest.lstrip(" \t")
+        ends = r == "" or r[0] == "\n" or (rest[:1] == "." and (rest[1:2] == "" or rest[1:2].isspace()))
+        if starts and ends:
+            out.append((i, i + len(c)))
+        i = report.find(c, i + 1)
+    return out
 
 
 def brief_rules(report: str, anchors: List[Anchor], contra: Dict[str, float], flagged: List[str],
                 review_contra: List[str]) -> dict:
     """Spec §3.2 -> {"protect": clauses never removed, "remove": OMIT clauses to remove, "conflicts": cards}.
     `contra`: Jev's contradiction score per checked clause; `flagged`: negative clauses the check would remove;
-    `review_contra`: positive / normal clauses it flagged for review."""
+    `review_contra`: positive / normal clauses it flagged for review. A clause's holders are the anchors overlapping
+    ANY whole-sentence occurrence of it (FINDINGS and IMPRESSION both); a KEEP or dictated holder at any occurrence
+    blocks removal."""
     live = [a for a in anchors if a.how in ("term", "jev") and a.span]
+    by_ref = {a.ref: a for a in anchors}
 
-    def holders(clause: str) -> List[Anchor]:
-        cs = _clause_span(report, clause)
-        held = [a for a in live if cs and a.span[0] < cs[1] and cs[0] < a.span[1]]
+    def holders(clause: str) -> Tuple[List[Anchor], List[Anchor]]:
+        """(direct holders, KEEP-type labels shadowed by a direct holder that is not itself dictated)."""
+        spans = _clause_spans(report, clause)
+        held = [a for a in live if any(a.span[0] < e and s < a.span[1] for s, e in spans)]
         refs = {a.ref for a in held}
-        # a KEEP-type label shadowed by a holder inside the clause is a KEEP holder too (a longer OMIT term can shadow it)
-        return held + [a for a in anchors if a.shadowed_by in refs and a.action in KEEP and a not in held]
+        shadow = [a for a in anchors if a.shadowed_by in refs and a.action in KEEP and a not in held
+                  and by_ref[a.shadowed_by].action != "dictated"]
+        return held, shadow
 
     protect: List[str] = []
     remove: List[str] = []
     conflicts: List[dict] = []
-    for clause in list(dict.fromkeys(flagged + review_contra)):
-        keep = [a for a in holders(clause) if a.action in KEEP and a.action != "dictated"]
-        if keep or any(a.action == "dictated" for a in holders(clause)):
-            protect.append(clause)
-        if keep:      # Q2: a brief-kept clause Jev doubts is a card, never a removal
-            conflicts.append({"clause": clause, "refs": [a.ref for a in keep], "reason": "brief_kept",
-                              "score": round(contra.get(clause, 0.0), 3), "source": keep[0].source,
-                              "pointer": next((a.pointer for a in keep if a.pointer), "")})
-    for clause, score in contra.items():
-        hs = holders(clause)
-        omit = [a for a in hs if a.action in OMIT]
-        if clause in protect or not omit or any(a.action == "dictated" for a in hs):
+    flag = list(dict.fromkeys(flagged + review_contra))
+    for clause in list(dict.fromkeys(flag + list(contra))):
+        held, shadow = holders(clause)
+        keep = [a for a in held + shadow if a.action in KEEP and a.action != "dictated"]
+        dictated = any(a.action == "dictated" for a in held + shadow)
+        omit = [a for a in held if a.action in OMIT]
+        score = contra.get(clause)
+        if clause in flag:
+            if keep or dictated:
+                protect.append(clause)
+            if keep:      # Q2: a brief-kept clause Jev doubts is a card, never a removal
+                conflicts.append({"clause": clause, "refs": [a.ref for a in keep], "reason": "brief_kept",
+                                  "score": None if score is None else round(score, 3), "source": keep[0].source,
+                                  "pointer": next((a.pointer for a in keep if a.pointer), "")})
+            continue
+        if score is None or not omit or dictated:
             continue  # dictated beats OMIT: no removal, no card (logged by anchor_log via shadowing)
-        if score >= CONTRA_MIN and not any(a.action in KEEP for a in hs) and _NEG_CLAUSE.match(clause.strip()):
+        c = clause.strip().rstrip(".")
+        whole = (not _TURN_TO_FINDING.search(c) and not re.search(r";", c)
+                 and all(c in (a.unit or "") for a in omit))       # the OMIT unit covers the whole clause
+        if score >= CONTRA_MIN and not keep and whole and _NEG_CLAUSE.match(clause.strip()):
             remove.append(clause)                                     # Q3: two signals
         else:
-            conflicts.append({"clause": clause, "refs": [a.ref for a in omit], "reason": "brief_omitted",
-                              "score": round(score, 3), "source": omit[0].source, "action": omit[0].action,
-                              "pointer": omit[0].pointer})
+            refs = [a.ref for a in omit + keep]
+            conflicts.append({"clause": clause, "refs": refs, "reason": "brief_split" if keep else "brief_omitted",
+                              "score": round(score, 3), "source": (keep or omit)[0].source, "action": omit[0].action,
+                              "pointer": next((a.pointer for a in omit + keep if a.pointer), "")})
     return {"protect": protect, "remove": remove, "conflicts": conflicts}
 
 
