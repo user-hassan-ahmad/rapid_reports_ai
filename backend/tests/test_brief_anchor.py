@@ -282,3 +282,49 @@ def test_enabled_switch(monkeypatch):
     assert ba.enabled() is True
     monkeypatch.setenv("RR_BRIEF_ANCHOR", "0")
     assert ba.enabled() is False
+
+
+R2 = ("FINDINGS:\nA small right pleural effusion. No contralateral pleural effusion. No pleural effusion. "
+      "There is no ascites.\n\nIMPRESSION:\nSmall right effusion.\n")
+
+
+def _a(ref, action, text, how="term", source="sheet", pointer=""):
+    i = R2.index(text)
+    return ba.Anchor(ref, action, source, pointer, how, [i, i + len(text)], text, text)
+
+
+def test_a_contradiction_on_a_kept_clause_is_protected_and_carded():
+    anchors = [_a("neg:1", "keep", "contralateral pleural effusion", source="finding:Pleural effusion")]
+    rules = ba.brief_rules(R2, anchors, {"No contralateral pleural effusion.": 0.7},
+                           flagged=["No contralateral pleural effusion."], review_contra=[])
+    assert rules["protect"] == ["No contralateral pleural effusion."] and rules["remove"] == []
+    (c,) = rules["conflicts"]
+    assert c["reason"] == "brief_kept" and c["refs"] == ["neg:1"] and c["source"] == "finding:Pleural effusion"
+
+
+def test_an_omit_clause_is_removed_only_with_two_signals():
+    i = R2.index("No pleural effusion.") + 3
+    omit = ba.Anchor("neg:0", "contradicted", "sheet", "Small right pleural effusion", "term",
+                     [i, i + len("pleural effusion")], "pleural effusion", "No pleural effusion.")
+    sure = ba.brief_rules(R2, [omit], {"No pleural effusion.": 0.9}, flagged=[], review_contra=[])
+    assert sure["remove"] == ["No pleural effusion."] and sure["conflicts"] == []
+    weak = ba.brief_rules(R2, [omit], {"No pleural effusion.": 0.3}, flagged=[], review_contra=[])
+    assert weak["remove"] == [] and weak["conflicts"][0]["reason"] == "brief_omitted"
+
+
+def test_dictated_beats_omit_no_removal_no_card_logged_as_brief_error():
+    anchors = [_a("dict:0", "dictated", "ascites"),
+               ba.Anchor("neg:3", "contradicted", "sheet", "", "none", shadowed_by="dict:0")]
+    rules = ba.brief_rules(R2, anchors, {"There is no ascites.": 0.9}, flagged=[], review_contra=[])
+    assert rules == {"protect": [], "remove": [], "conflicts": []}
+    log = ba.anchor_log(anchors, rules)
+    assert log["brief_errors"] == [{"ref": "neg:3", "shadowed_by": "dict:0"}]
+
+
+def test_anchor_log_counts_and_lists_unanchored():
+    anchors = [_a("neg:1", "keep", "contralateral pleural effusion"),
+               ba.Anchor("neg:6", "keep", "sheet"),
+               ba.Anchor("atom:P1:N2", "implicated", "atom", how="jev", span=[0, 1], span_text="F", unit="F")]
+    log = ba.anchor_log(anchors, {"protect": [], "remove": [], "conflicts": []})
+    assert (log["labels"], log["by_term"], log["by_jev"]) == (3, 1, 1)
+    assert log["unanchored"] == [{"ref": "neg:6", "source": "sheet", "action": "keep"}]

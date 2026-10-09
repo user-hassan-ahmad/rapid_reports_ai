@@ -332,3 +332,66 @@ def relocate(anchors: List[Anchor], report: str) -> List[Anchor]:
         else:
             out.append(Anchor(**{**asdict(a), "span": [k, k + len(a.span_text)]}))
     return out
+
+
+CONTRA_MIN = 0.6     # the post-gen check's CONTRA_FLAG (L-46)
+_NEG_CLAUSE = re.compile(r"^(?:No|There is no|There are no|Without)\s+", re.I)
+
+
+def _clause_span(report: str, clause: str) -> Optional[Tuple[int, int]]:
+    c = clause.strip().rstrip(".")
+    i = report.find(c) if c else -1
+    return (i, i + len(c)) if i >= 0 else None
+
+
+def brief_rules(report: str, anchors: List[Anchor], contra: Dict[str, float], flagged: List[str],
+                review_contra: List[str]) -> dict:
+    """Spec §3.2 -> {"protect": clauses never removed, "remove": OMIT clauses to remove, "conflicts": cards}.
+    `contra`: Jev's contradiction score per checked clause; `flagged`: negative clauses the check would remove;
+    `review_contra`: positive / normal clauses it flagged for review."""
+    live = [a for a in anchors if a.how in ("term", "jev") and a.span]
+
+    def holders(clause: str) -> List[Anchor]:
+        cs = _clause_span(report, clause)
+        return [a for a in live if cs and a.span[0] < cs[1] and cs[0] < a.span[1]]
+
+    protect: List[str] = []
+    remove: List[str] = []
+    conflicts: List[dict] = []
+    for clause in list(dict.fromkeys(flagged + review_contra)):
+        keep = [a for a in holders(clause) if a.action in KEEP and a.action != "dictated"]
+        if keep or any(a.action == "dictated" for a in holders(clause)):
+            protect.append(clause)
+        if keep:      # Q2: a brief-kept clause Jev doubts is a card, never a removal
+            conflicts.append({"clause": clause, "refs": [a.ref for a in keep], "reason": "brief_kept",
+                              "score": round(contra.get(clause, 0.0), 3), "source": keep[0].source,
+                              "pointer": next((a.pointer for a in keep if a.pointer), "")})
+    for clause, score in contra.items():
+        hs = holders(clause)
+        omit = [a for a in hs if a.action in OMIT]
+        if clause in protect or not omit or any(a.action == "dictated" for a in hs):
+            continue  # dictated beats OMIT: no removal, no card (logged by anchor_log via shadowing)
+        if score >= CONTRA_MIN and not any(a.action in KEEP for a in hs) and _NEG_CLAUSE.match(clause.strip()):
+            remove.append(clause)                                     # Q3: two signals
+        else:
+            conflicts.append({"clause": clause, "refs": [a.ref for a in omit], "reason": "brief_omitted",
+                              "score": round(score, 3), "source": omit[0].source, "action": omit[0].action,
+                              "pointer": omit[0].pointer})
+    return {"protect": protect, "remove": remove, "conflicts": conflicts}
+
+
+def anchor_log(anchors: List[Anchor], rules: dict) -> dict:
+    """quality_check.anchor_log: what anchored how, what did not (spec Q4: logged, never surfaced), brief errors
+    (an OMIT label whose words a dictated label holds, e.g. a dictated "No ascites" the brief called contradicted)."""
+    dictated = {a.ref for a in anchors if a.action == "dictated"}
+    return {"labels": len(anchors),
+            "by_term": sum(a.how == "term" for a in anchors),
+            "by_jev": sum(a.how == "jev" for a in anchors),
+            "removed": sum(a.how == "removed" for a in anchors),
+            "unanchored": [{"ref": a.ref, "source": a.source, "action": a.action}
+                           for a in anchors if a.how == "none" and not a.shadowed_by],
+            "shadowed": [{"ref": a.ref, "shadowed_by": a.shadowed_by} for a in anchors if a.shadowed_by],
+            "brief_errors": [{"ref": a.ref, "shadowed_by": a.shadowed_by} for a in anchors
+                             if a.shadowed_by in dictated and a.action in OMIT],
+            "protected": len(rules.get("protect") or []), "removed_by_brief": len(rules.get("remove") or []),
+            "conflicts": len(rules.get("conflicts") or [])}
