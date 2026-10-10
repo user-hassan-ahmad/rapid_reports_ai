@@ -43,6 +43,8 @@ from rapid_reports_ai.case_keyterms import merge_with_core  # noqa: E402
 from rapid_reports_ai.deepgram_spelling import UK_SPELLING  # noqa: E402
 from rapid_reports_ai.enhancement_utils import MODEL_CONFIG  # noqa: E402
 from rapid_reports_ai.fast_append import clean_verbatim  # noqa: E402
+from rapid_reports_ai.scripts.hybrid_stack_lab.conclusion_boundary_lab import ask_boundary  # noqa: E402
+from rapid_reports_ai.spoken_format import heading_only  # noqa: E402
 from rapid_reports_ai.lean_fidelity import CORRECTION_CUE, fidelity_violation, verbatim_append  # noqa: E402
 from rapid_reports_ai.lean_polish import LEAN_SYSTEM_PROMPT, LEAN_USER_TEMPLATE  # noqa: E402
 
@@ -128,7 +130,7 @@ For each NEW sentence return:
 - group: exactly one name from GROUPS.
 - attach_to: the id of an earlier sentence (placed or new) when this sentence cannot stand on its own because it continues that sentence's observation: it refers back to it ("it", "this", "the lesion") or only adds a further attribute of the same observation (size, behaviour on another sequence or phase, effect it causes). A fragment with no verb of its own that completes the sentence just before it attaches to that sentence. Otherwise null. An attached sentence takes its parent's group; give the parent's group.
 - new_group: normally empty. Only when the sentence is about a specific structure or space and no group in GROUPS is anatomically close, give a short uppercase name for a new group (the structure's usual report heading) and put the same name in group. Check NEW groups created earlier in PLACED before making another.
-- parts: only when one sentence joins independent clauses about structures that belong to different groups, each clause with its own subject and its own predicate (two statements run together in one breath). Give each part as an exact, unaltered, contiguous piece of the sentence, in order, each with its own group. Every part must read as a complete statement on its own. Never split structures that share one predicate (a list of structures followed by a single "are normal" / "are intact" / "are clear"): that sentence stays whole, in the group of its first structure, or General when it covers many groups. A single observation that involves several structures (a finding extending into, invading or compressing a neighbour) is one claim: never split it. Leave parts empty otherwise.
+- parts: only when one sentence joins independent clauses about structures that belong to different groups, each clause with its own subject and its own predicate (two statements run together in one breath). Give each part as an exact, unaltered, contiguous piece of the sentence, in order, each with its own group. The parts together must cover the whole sentence: keep joining words and punctuation on the neighbouring part. Every part must read as a complete statement on its own. Two statements run together because a full stop is missing count as two clauses. Never split structures that share one predicate (a list of structures followed by a single "are normal" / "are intact" / "are clear"): that sentence stays whole, in the group of its first structure, or General when it covers many groups. A single observation that involves several structures (a finding extending into, invading or compressing a neighbour) is one claim: never split it. Leave parts empty otherwise.
 
 Placement rules:
 - One home: the group of the structure the observation is about — where the abnormality is, not what it touches or affects.
@@ -251,18 +253,17 @@ def _norm_group(g: str, groups: list[str]) -> str | None:
 
 
 def valid_parts(sentence: str, parts: list[Part]) -> bool:
-    """Parts must be exact pieces of the sentence, in order, and what they leave out may only be
-    joiners (spaces, punctuation, 'and', 'with', 'there is')."""
-    pos, gaps = 0, []
+    """Parts are exact pieces of the sentence that together cover all of it, in order (only
+    whitespace between them): nothing the radiologist said can fall between two parts."""
+    pos = 0
     for p in parts:
-        i = sentence.find(p.text, pos)
-        if i < 0 or not p.text.strip():
+        if not p.text.strip():
             return False
-        gaps.append(sentence[pos:i])
+        i = sentence.find(p.text, pos)
+        if i < 0 or sentence[pos:i].strip():
+            return False
         pos = i + len(p.text)
-    gaps.append(sentence[pos:])
-    junk = re.compile(r"^(?:[\s,.;:]|\band\b|\bwith\b|\bthere(?:'s| is| are)\b)*$", re.I)
-    return len(parts) >= 2 and all(junk.match(g) for g in gaps)
+    return len(parts) >= 2 and not sentence[pos:].strip()
 
 
 async def group_new(scan_type: str, groups: list[str], units: list[dict], new_ids: list[int]) -> tuple[list[Placement], float, str | None]:
@@ -307,12 +308,6 @@ def apply_placements(units: list[dict], placements: list[Placement], new_ids: li
         att = p.attach_to if p.attach_to in by_id and p.attach_to != i and p.attach_to < i else None
         if p.attach_to is not None and att is None:
             problems.append(f"[{i}] bad attach_to {p.attach_to}")
-        # A link never reaches back across the conclusion: a sentence after a Conclusion sentence that
-        # points to a finding before it is restating that finding inside the conclusion.
-        if att is not None and by_id[att].get("group") != "Conclusion" and any(
-                by_id[k].get("group") == "Conclusion" for k in by_id if att < k < i and "group" in by_id[k]):
-            problems.append(f"[{i}] attach across conclusion -> Conclusion")
-            att, g = None, "Conclusion"
         parts = None
         if p.parts:
             pg = [(_norm_group(x.group, groups) or "General") for x in p.parts]
@@ -325,7 +320,36 @@ def apply_placements(units: list[dict], placements: list[Placement], new_ids: li
     return problems
 
 
-_CUE_ONLY = re.compile(r"^(?:impression|conclusion|summary|in summary|opinion)[.:,]?$", re.I)
+BOUNDARY_MIN_CONF = 0.6  # lab: wrong answers were all below 0.6 (0.24, 0.56) on conclusion_boundary.json
+
+
+async def conclusion_gate(units: list[dict], new_ids: list[int]) -> list[dict]:
+    """Once the conclusion has begun, Jev decides whether each new sentence after it is part of the
+    conclusion or a return to the images. Below BOUNDARY_MIN_CONF, or on failure, the grouper's
+    placement stands. Returns the decisions for the log."""
+    started, asks = False, []
+    for k, u in enumerate(units):
+        if u["id"] in new_ids and started and not heading_only(u["text"]):
+            asks.append((k, u))
+        if u.get("group") == "Conclusion":
+            started = True
+    if not asks:
+        return []
+
+    async def one(k, u):
+        try:
+            return u, *(await ask_boundary([x["text"] for x in units[:k]], u["text"]))
+        except Exception as e:
+            return u, f"error {type(e).__name__}", 0.0
+    log = []
+    for u, choice, conf in await asyncio.gather(*(one(k, u) for k, u in asks)):
+        before = u["group"]
+        if conf >= BOUNDARY_MIN_CONF and choice == "summary" and before != "Conclusion":
+            u.update(group="Conclusion", attach_to=None, parts=None)
+        elif conf >= BOUNDARY_MIN_CONF and choice == "images" and before == "Conclusion":
+            u.update(group="General", attach_to=None, parts=None)  # no anatomical label to hand: logged
+        log.append({"id": u["id"], "choice": choice, "conf": round(conf, 2), "from": before, "to": u["group"]})
+    return log
 
 
 def render(units: list[dict], groups: list[str]) -> str:
@@ -336,7 +360,7 @@ def render(units: list[dict], groups: list[str]) -> str:
         if u.get("attach_to") is not None:
             children.setdefault(u["attach_to"], []).append(u)
     for u in units:
-        if u.get("attach_to") is not None or _CUE_ONLY.match(u["text"]):  # a cue word is the heading itself
+        if u.get("attach_to") is not None or heading_only(u["text"]):  # a cue word is the heading itself
             continue
         if u.get("parts"):
             for p in u["parts"]:
@@ -378,8 +402,9 @@ async def run_case(c: httpx.AsyncClient, case: dict, keyterms: list[str]) -> dic
                 u["attach_to"] = None
         placements, dt, err = (await group_new(case["scan_type"], groups, units, new_ids)) if new_ids else ([], 0.0, None)
         problems = apply_placements(units, placements, new_ids, groups, new_groups) if new_ids else []
+        gate = await conclusion_gate(units, new_ids) if new_ids else []
         steps.append({"said": utt, "heard": heard, "route": route, "new_ids": new_ids, "dropped": dropped,
-                      "grouper_s": round(dt, 2), "error": err, "problems": problems})
+                      "grouper_s": round(dt, 2), "error": err, "problems": problems, "gate": gate})
     sticky_view = render(units, groups)
 
     # Fresh pass: everything regrouped at once, for comparison with the sticky (live) placement.
@@ -387,6 +412,7 @@ async def run_case(c: httpx.AsyncClient, case: dict, keyterms: list[str]) -> dic
     fresh_groups, fresh_new = list(base_groups), []
     placements, dt, err = await group_new(case["scan_type"], fresh_groups, fresh, [u["id"] for u in fresh])
     fresh_problems = apply_placements(fresh, placements, [u["id"] for u in fresh], fresh_groups, fresh_new)
+    fresh_gate = await conclusion_gate(fresh, [u["id"] for u in fresh])
     disagree = [{"id": a["id"], "text": a["text"], "sticky": a["group"], "fresh": b["group"]}
                 for a, b in zip(units, fresh) if a["group"] != b["group"]]
 
@@ -407,7 +433,7 @@ async def run_case(c: httpx.AsyncClient, case: dict, keyterms: list[str]) -> dic
         checks.append({**e, "got_group": grp, "attached": hit.get("attach_to"),
                        "result": "ok" if ok_group and ok_attach else ("wrong group" if not ok_group else "not attached")})
     return {"id": case["id"], "scan_type": case["scan_type"], "groups": groups, "text": text, "units": units,
-            "steps": steps, "view": sticky_view, "fresh_view": render(fresh, fresh_groups), "new_groups": new_groups, "fresh_new_groups": fresh_new, "fresh_error": err,
+            "steps": steps, "view": sticky_view, "fresh_view": render(fresh, fresh_groups), "new_groups": new_groups, "fresh_new_groups": fresh_new, "fresh_gate": fresh_gate, "fresh_error": err,
             "fresh_problems": fresh_problems, "fresh_disagree": disagree, "fidelity_ok": fidelity_ok,
             "checks": checks}
 
@@ -427,6 +453,8 @@ def report(results: list[dict]) -> str:
               f"- Polish routes: {sorted({s['route'] for r in results for s in r['steps']})}",
               f"- New groups created: {sum(len(r['new_groups']) for r in results)} live, "
               f"{sum(len(r['fresh_new_groups']) for r in results)} fresh",
+              f"- Conclusion gate (Jev): {sum(len(s['gate']) for r in results for s in r['steps'])} asked live, "
+              f"{sum(1 for r in results for s in r['steps'] for g in s['gate'] if g['from'] != g['to'])} changed",
               f"- Problems: {sum(len(s['problems']) for r in results for s in r['steps'])} live, "
               f"{sum(len(r['fresh_problems']) for r in results)} fresh", ""]
     for r in results:

@@ -1,0 +1,1018 @@
+{
+ "_note": "Sentences after the radiologist has begun a conclusion. gold: summary (part of the conclusion) or images (returns to describing the images). Lab items from the 2026-10-10 hybrid stack run (synthetic TTS cases); synthetic items hand-written.",
+ "items": [
+  {
+   "id": "c01_ct_ap_appendicitis#12",
+   "source": "lab",
+   "before": [
+    "Portal venous phase CT of the abdomen and pelvis.",
+    "No prior imaging for comparison.",
+    "The appendix is dilated with surrounding fat stranding.",
+    "It measures 11 mm in diameter.",
+    "There is an appendicolith at the base.",
+    "No free gas.",
+    "A small amount of free fluid in the pelvis.",
+    "The liver, spleen, pancreas and adrenal glands are unremarkable.",
+    "Kidneys are normal.",
+    "No hydronephrosis.",
+    "Going back to the liver, there is a 6 mm hyperdensity in segment 4, too small to characterise.",
+    "Lung bases are clear."
+   ],
+   "sentence": "Acute appendicitis with an appendicolith.",
+   "gold": "summary"
+  },
+  {
+   "id": "c01_ct_ap_appendicitis#13",
+   "source": "lab",
+   "before": [
+    "Portal venous phase CT of the abdomen and pelvis.",
+    "No prior imaging for comparison.",
+    "The appendix is dilated with surrounding fat stranding.",
+    "It measures 11 mm in diameter.",
+    "There is an appendicolith at the base.",
+    "No free gas.",
+    "A small amount of free fluid in the pelvis.",
+    "The liver, spleen, pancreas and adrenal glands are unremarkable.",
+    "Kidneys are normal.",
+    "No hydronephrosis.",
+    "Going back to the liver, there is a 6 mm hyperdensity in segment 4, too small to characterise.",
+    "Lung bases are clear.",
+    "Acute appendicitis with an appendicolith."
+   ],
+   "sentence": "No evidence of perforation.",
+   "gold": "summary"
+  },
+  {
+   "id": "c02_ct_chest_staging#7",
+   "source": "lab",
+   "before": [
+    "Contrast enhanced CT chest, abdomen, and pelvis.",
+    "There There is a 5.2 cm speculated mass in the right upper lobe which invades the mediastinal fat and abuts the superior vena cava.",
+    "Enlarged right lower paratracheal node measuring 18 mm short axis and a subcarinal node of 14 mm.",
+    "No pleural effusion.",
+    "The left lung is clear.",
+    "There's a 2.1 cm left adrenal nodule indeterminate on this study.",
+    "The liver and bones show no suspicious lesion."
+   ],
+   "sentence": "Overall, findings are in keeping with a T4N2 right upper lobe tumour.",
+   "gold": "summary"
+  },
+  {
+   "id": "c02_ct_chest_staging#8",
+   "source": "lab",
+   "before": [
+    "Contrast enhanced CT chest, abdomen, and pelvis.",
+    "There There is a 5.2 cm speculated mass in the right upper lobe which invades the mediastinal fat and abuts the superior vena cava.",
+    "Enlarged right lower paratracheal node measuring 18 mm short axis and a subcarinal node of 14 mm.",
+    "No pleural effusion.",
+    "The left lung is clear.",
+    "There's a 2.1 cm left adrenal nodule indeterminate on this study.",
+    "The liver and bones show no suspicious lesion.",
+    "Overall, findings are in keeping with a T4N2 right upper lobe tumour."
+   ],
+   "sentence": "The left adrenal nodule is indeterminate and could represent a metastasis.",
+   "gold": "summary"
+  },
+  {
+   "id": "c02_ct_chest_staging#9",
+   "source": "lab",
+   "before": [
+    "Contrast enhanced CT chest, abdomen, and pelvis.",
+    "There There is a 5.2 cm speculated mass in the right upper lobe which invades the mediastinal fat and abuts the superior vena cava.",
+    "Enlarged right lower paratracheal node measuring 18 mm short axis and a subcarinal node of 14 mm.",
+    "No pleural effusion.",
+    "The left lung is clear.",
+    "There's a 2.1 cm left adrenal nodule indeterminate on this study.",
+    "The liver and bones show no suspicious lesion.",
+    "Overall, findings are in keeping with a T4N2 right upper lobe tumour.",
+    "The left adrenal nodule is indeterminate and could represent a metastasis."
+   ],
+   "sentence": "Suggest PET CT.",
+   "gold": "summary"
+  },
+  {
+   "id": "c03_mr_brain_mass#9",
+   "source": "lab",
+   "before": [
+    "Multiplanar multisequence MRI of the brain pre and post gadolinium.",
+    "There is a 4 cm rim enhancing mass in the left frontal lobe, with central necrosis.",
+    "Extensive surrounding vasogenic oedema.",
+    "There's 6 mm of midline shift to the right with effacement of the left lateral ventricle.",
+    "No hydrocephalus.",
+    "No other enhancing lesion.",
+    "The diffusion shows no restriction within the lesion.",
+    "Conclusion."
+   ],
+   "sentence": "A left frontal rim enhancing necrotic mass with mass effect.",
+   "gold": "summary"
+  },
+  {
+   "id": "c03_mr_brain_mass#10",
+   "source": "lab",
+   "before": [
+    "Multiplanar multisequence MRI of the brain pre and post gadolinium.",
+    "There is a 4 cm rim enhancing mass in the left frontal lobe, with central necrosis.",
+    "Extensive surrounding vasogenic oedema.",
+    "There's 6 mm of midline shift to the right with effacement of the left lateral ventricle.",
+    "No hydrocephalus.",
+    "No other enhancing lesion.",
+    "The diffusion shows no restriction within the lesion.",
+    "Conclusion.",
+    "A left frontal rim enhancing necrotic mass with mass effect."
+   ],
+   "sentence": "The main differential is high grade glioma versus a solitary metastasis.",
+   "gold": "summary"
+  },
+  {
+   "id": "c03_mr_brain_mass#11",
+   "source": "lab",
+   "before": [
+    "Multiplanar multisequence MRI of the brain pre and post gadolinium.",
+    "There is a 4 cm rim enhancing mass in the left frontal lobe, with central necrosis.",
+    "Extensive surrounding vasogenic oedema.",
+    "There's 6 mm of midline shift to the right with effacement of the left lateral ventricle.",
+    "No hydrocephalus.",
+    "No other enhancing lesion.",
+    "The diffusion shows no restriction within the lesion.",
+    "Conclusion.",
+    "A left frontal rim enhancing necrotic mass with mass effect.",
+    "The main differential is high grade glioma versus a solitary metastasis."
+   ],
+   "sentence": "Recommend urgent neurosurgical referral and CT chest abdomen pelvis.",
+   "gold": "summary"
+  },
+  {
+   "id": "c04_ct_head_trauma#2",
+   "source": "lab",
+   "before": [
+    "Non contrast CT head.",
+    "There is an acute left convexity subdural haematoma measuring 9 mm in maximal thickness."
+   ],
+   "sentence": "So in summary, acute left subdural haematoma with mild mass effect for urgent neurosurgical discussion.",
+   "gold": "summary"
+  },
+  {
+   "id": "c04_ct_head_trauma#3",
+   "source": "lab",
+   "before": [
+    "Non contrast CT head.",
+    "There is an acute left convexity subdural haematoma measuring 9 mm in maximal thickness.",
+    "So in summary, acute left subdural haematoma with mild mass effect for urgent neurosurgical discussion."
+   ],
+   "sentence": "There is a nondisplaced fracture of the left perital bone.",
+   "gold": "images"
+  },
+  {
+   "id": "c04_ct_head_trauma#4",
+   "source": "lab",
+   "before": [
+    "Non contrast CT head.",
+    "There is an acute left convexity subdural haematoma measuring 9 mm in maximal thickness.",
+    "So in summary, acute left subdural haematoma with mild mass effect for urgent neurosurgical discussion.",
+    "There is a nondisplaced fracture of the left perital bone."
+   ],
+   "sentence": "Overlying left perital scalp haematoma.",
+   "gold": "images"
+  },
+  {
+   "id": "c04_ct_head_trauma#5",
+   "source": "lab",
+   "before": [
+    "Non contrast CT head.",
+    "There is an acute left convexity subdural haematoma measuring 9 mm in maximal thickness.",
+    "So in summary, acute left subdural haematoma with mild mass effect for urgent neurosurgical discussion.",
+    "There is a nondisplaced fracture of the left perital bone.",
+    "Overlying left perital scalp haematoma."
+   ],
+   "sentence": "Effacement of the left sulci, 3 mm midline shift.",
+   "gold": "images"
+  },
+  {
+   "id": "c04_ct_head_trauma#6",
+   "source": "lab",
+   "before": [
+    "Non contrast CT head.",
+    "There is an acute left convexity subdural haematoma measuring 9 mm in maximal thickness.",
+    "So in summary, acute left subdural haematoma with mild mass effect for urgent neurosurgical discussion.",
+    "There is a nondisplaced fracture of the left perital bone.",
+    "Overlying left perital scalp haematoma.",
+    "Effacement of the left sulci, 3 mm midline shift."
+   ],
+   "sentence": "The basal cisterns are patent.",
+   "gold": "images"
+  },
+  {
+   "id": "c04_ct_head_trauma#7",
+   "source": "lab",
+   "before": [
+    "Non contrast CT head.",
+    "There is an acute left convexity subdural haematoma measuring 9 mm in maximal thickness.",
+    "So in summary, acute left subdural haematoma with mild mass effect for urgent neurosurgical discussion.",
+    "There is a nondisplaced fracture of the left perital bone.",
+    "Overlying left perital scalp haematoma.",
+    "Effacement of the left sulci, 3 mm midline shift.",
+    "The basal cisterns are patent."
+   ],
+   "sentence": "Mastoid air cells and paranasal sinuses are clear.",
+   "gold": "images"
+  },
+  {
+   "id": "c05_mr_lumbar_spine#10",
+   "source": "lab",
+   "before": [
+    "Sagittal and axial T1 and T2 weighted MRI of the lumbar spine.",
+    "Normal lumbar lordosis.",
+    "Vertebral body heights are maintained.",
+    "The conus terminates at L1 with normal signal.",
+    "L 3/4 mild disc bulge without stenosis.",
+    "At L4/5 there is a left paracentral disc extrusion compressing the traversing left L5 nerve root.",
+    "It causes moderate left lateral recess stenosis.",
+    "L 5/S 1, normal.",
+    "Modic type 2 end blood changes at L4/5.",
+    "Conclusion."
+   ],
+   "sentence": "Left paracentral L4/5 extrusion compressing the left L5 nerve root, concordant with symptoms.",
+   "gold": "summary"
+  },
+  {
+   "id": "c06_ctpa_pe#8",
+   "source": "lab",
+   "before": [
+    "CT pulmonary angiogram.",
+    "Good opacification of the pulmonary arteries.",
+    "There are filling defects in the right and left main pulmonary arteries extending into the lobar branches bilaterally.",
+    "The right ventricle is dilated with an RV to LV ratio of 1.4, and there is reflux of contrast into the IVC.",
+    "Wedge shaped peripheral consolidation in the right lower lobe, likely a pulmonary infarct.",
+    "Small right pleural effusion.",
+    "Incidental 15 mm nodule in the left lobe of the thyroid.",
+    "No other abnormality."
+   ],
+   "sentence": "Impression, bilateral pulmonary emboli with CT evidence of right heart strain.",
+   "gold": "summary"
+  },
+  {
+   "id": "c06_ctpa_pe#9",
+   "source": "lab",
+   "before": [
+    "CT pulmonary angiogram.",
+    "Good opacification of the pulmonary arteries.",
+    "There are filling defects in the right and left main pulmonary arteries extending into the lobar branches bilaterally.",
+    "The right ventricle is dilated with an RV to LV ratio of 1.4, and there is reflux of contrast into the IVC.",
+    "Wedge shaped peripheral consolidation in the right lower lobe, likely a pulmonary infarct.",
+    "Small right pleural effusion.",
+    "Incidental 15 mm nodule in the left lobe of the thyroid.",
+    "No other abnormality.",
+    "Impression, bilateral pulmonary emboli with CT evidence of right heart strain."
+   ],
+   "sentence": "Right lower lobe input.",
+   "gold": "summary"
+  },
+  {
+   "id": "c06_ctpa_pe#10",
+   "source": "lab",
+   "before": [
+    "CT pulmonary angiogram.",
+    "Good opacification of the pulmonary arteries.",
+    "There are filling defects in the right and left main pulmonary arteries extending into the lobar branches bilaterally.",
+    "The right ventricle is dilated with an RV to LV ratio of 1.4, and there is reflux of contrast into the IVC.",
+    "Wedge shaped peripheral consolidation in the right lower lobe, likely a pulmonary infarct.",
+    "Small right pleural effusion.",
+    "Incidental 15 mm nodule in the left lobe of the thyroid.",
+    "No other abnormality.",
+    "Impression, bilateral pulmonary emboli with CT evidence of right heart strain.",
+    "Right lower lobe input."
+   ],
+   "sentence": "Thyroid nodule, suggest nonurgent ultrasound.",
+   "gold": "summary"
+  },
+  {
+   "id": "c07_mr_liver_cirrhosis#8",
+   "source": "lab",
+   "before": [
+    "MRI liver with dynamic post contrast imaging.",
+    "The liver is cirrhotic with a nodular contour and caudate hypertrophy.",
+    "In segment 8, there's a 24 mm lesion with non rim arterial phase hyperenhancement.",
+    "On the portal venous phase it shows washout and an enhancing capsule.",
+    "Splenomegaly at 15 cm.",
+    "Small volumicitis.",
+    "oesophageal and gastric varices.",
+    "The portal venous patent."
+   ],
+   "sentence": "Impression, 24 mm 51 rads 5 observation in segment 8, consistent with hepatocellular carcinoma on a background of cirrhosis with portal hypertension.",
+   "gold": "summary"
+  },
+  {
+   "id": "c07_mr_liver_cirrhosis#9",
+   "source": "lab",
+   "before": [
+    "MRI liver with dynamic post contrast imaging.",
+    "The liver is cirrhotic with a nodular contour and caudate hypertrophy.",
+    "In segment 8, there's a 24 mm lesion with non rim arterial phase hyperenhancement.",
+    "On the portal venous phase it shows washout and an enhancing capsule.",
+    "Splenomegaly at 15 cm.",
+    "Small volumicitis.",
+    "oesophageal and gastric varices.",
+    "The portal venous patent.",
+    "Impression, 24 mm 51 rads 5 observation in segment 8, consistent with hepatocellular carcinoma on a background of cirrhosis with portal hypertension."
+   ],
+   "sentence": "MDT discussion.",
+   "gold": "summary"
+  },
+  {
+   "id": "c08_ct_kub_stone#8",
+   "source": "lab",
+   "before": [
+    "Low dose non contrast CT cub.",
+    "The left kidney, it's moderately hydronephrotic with perinephric stranding.",
+    "There's a 6 mm calculus at the left vesicoureteric junction.",
+    "The left ureter is dilated down to the stone.",
+    "Right kidney is normal.",
+    "There's a 3 mm nonobstructing lower pole calculus.",
+    "The bladder is unremarkable.",
+    "Compared with the CT from 2023, the right lower pole stone is unchanged."
+   ],
+   "sentence": "Obstructing 6 mm left vuch calculus with moderate hydronephrosis.",
+   "gold": "summary"
+  },
+  {
+   "id": "c09_mr_knee#10",
+   "source": "lab",
+   "before": [
+    "MRI of the right knee.",
+    "Complete tear of the anterior cruciate ligament at the femoral attachment.",
+    "Bone bruising of the lateral femoral condyl and posterolateral tibial plateau.",
+    "Typical pivot shift pattern.",
+    "There's a vertical longitudinal tear of the posterior horn of the medial meniscus.",
+    "Lateral meniscus intact.",
+    "The posterior cruciate ligament and collateral ligaments are intact.",
+    "Moderate joint effusion.",
+    "Articular cartilage is preserved.",
+    "Conclusion."
+   ],
+   "sentence": "Complete ACL tear with pivot shift bone bruising and a medial meniscal posterior horn tear.",
+   "gold": "summary"
+  },
+  {
+   "id": "c10_ct_ap_diverticulitis_runon#9",
+   "source": "lab",
+   "before": [
+    "CT abdomen, pelvis, portal venous phase.",
+    "Liver, spleen, pancreas, and adrenals are unremarkable.",
+    "Kidneys are normal, and there's a 3 cm simple appearing left ovarian cyst.",
+    "Sigmoid diverticulosis with mouth wall thickening and pericholic inflammation of the midsigmoid.",
+    "Adjacent to it, there is a 3.5 cm rim enhancing pericolic collection.",
+    "No extra luminal gas.",
+    "The wrist of the bowel is normal.",
+    "No lymphadenopathy.",
+    "The lung bases are clear and no aggressive bone lesion."
+   ],
+   "sentence": "So complicated sigmoid diverticulitis with a 3.5 cm pericolic abscess.",
+   "gold": "summary"
+  },
+  {
+   "id": "c10_ct_ap_diverticulitis_runon#10",
+   "source": "lab",
+   "before": [
+    "CT abdomen, pelvis, portal venous phase.",
+    "Liver, spleen, pancreas, and adrenals are unremarkable.",
+    "Kidneys are normal, and there's a 3 cm simple appearing left ovarian cyst.",
+    "Sigmoid diverticulosis with mouth wall thickening and pericholic inflammation of the midsigmoid.",
+    "Adjacent to it, there is a 3.5 cm rim enhancing pericolic collection.",
+    "No extra luminal gas.",
+    "The wrist of the bowel is normal.",
+    "No lymphadenopathy.",
+    "The lung bases are clear and no aggressive bone lesion.",
+    "So complicated sigmoid diverticulitis with a 3.5 cm pericolic abscess."
+   ],
+   "sentence": "In g 1 b suggest surgical review and follow-up colonic evaluation after recovery.",
+   "gold": "summary"
+  },
+  {
+   "id": "c11_ct_ap_ovarian_conclusion_first#3",
+   "source": "lab",
+   "before": [
+    "Portal venous phase CT abdomen and pelvis So overall this looks like ovarian malignancy with peritoneal disease.",
+    "I'll go through it."
+   ],
+   "sentence": "There is a 9 cm complex solid and cystic mass arising from the right adnexa.",
+   "gold": "images"
+  },
+  {
+   "id": "c11_ct_ap_ovarian_conclusion_first#4",
+   "source": "lab",
+   "before": [
+    "Portal venous phase CT abdomen and pelvis So overall this looks like ovarian malignancy with peritoneal disease.",
+    "I'll go through it.",
+    "There is a 9 cm complex solid and cystic mass arising from the right adnexa."
+   ],
+   "sentence": "The left ovary is normal.",
+   "gold": "images"
+  },
+  {
+   "id": "c11_ct_ap_ovarian_conclusion_first#5",
+   "source": "lab",
+   "before": [
+    "Portal venous phase CT abdomen and pelvis So overall this looks like ovarian malignancy with peritoneal disease.",
+    "I'll go through it.",
+    "There is a 9 cm complex solid and cystic mass arising from the right adnexa.",
+    "The left ovary is normal."
+   ],
+   "sentence": "Extensive omental caking and moderate volume ascites.",
+   "gold": "images"
+  },
+  {
+   "id": "c11_ct_ap_ovarian_conclusion_first#6",
+   "source": "lab",
+   "before": [
+    "Portal venous phase CT abdomen and pelvis So overall this looks like ovarian malignancy with peritoneal disease.",
+    "I'll go through it.",
+    "There is a 9 cm complex solid and cystic mass arising from the right adnexa.",
+    "The left ovary is normal.",
+    "Extensive omental caking and moderate volume ascites."
+   ],
+   "sentence": "There are peritoneal deposits along the right paracolic gutter.",
+   "gold": "images"
+  },
+  {
+   "id": "c11_ct_ap_ovarian_conclusion_first#7",
+   "source": "lab",
+   "before": [
+    "Portal venous phase CT abdomen and pelvis So overall this looks like ovarian malignancy with peritoneal disease.",
+    "I'll go through it.",
+    "There is a 9 cm complex solid and cystic mass arising from the right adnexa.",
+    "The left ovary is normal.",
+    "Extensive omental caking and moderate volume ascites.",
+    "There are peritoneal deposits along the right paracolic gutter."
+   ],
+   "sentence": "The liver has no focal lesion, but there's a capsular deposit on the right lobe.",
+   "gold": "images"
+  },
+  {
+   "id": "c11_ct_ap_ovarian_conclusion_first#8",
+   "source": "lab",
+   "before": [
+    "Portal venous phase CT abdomen and pelvis So overall this looks like ovarian malignancy with peritoneal disease.",
+    "I'll go through it.",
+    "There is a 9 cm complex solid and cystic mass arising from the right adnexa.",
+    "The left ovary is normal.",
+    "Extensive omental caking and moderate volume ascites.",
+    "There are peritoneal deposits along the right paracolic gutter.",
+    "The liver has no focal lesion, but there's a capsular deposit on the right lobe."
+   ],
+   "sentence": "No hydronephrosis.",
+   "gold": "images"
+  },
+  {
+   "id": "c11_ct_ap_ovarian_conclusion_first#9",
+   "source": "lab",
+   "before": [
+    "Portal venous phase CT abdomen and pelvis So overall this looks like ovarian malignancy with peritoneal disease.",
+    "I'll go through it.",
+    "There is a 9 cm complex solid and cystic mass arising from the right adnexa.",
+    "The left ovary is normal.",
+    "Extensive omental caking and moderate volume ascites.",
+    "There are peritoneal deposits along the right paracolic gutter.",
+    "The liver has no focal lesion, but there's a capsular deposit on the right lobe.",
+    "No hydronephrosis."
+   ],
+   "sentence": "Enlarged right external iliac node, 15 mm.",
+   "gold": "images"
+  },
+  {
+   "id": "c11_ct_ap_ovarian_conclusion_first#10",
+   "source": "lab",
+   "before": [
+    "Portal venous phase CT abdomen and pelvis So overall this looks like ovarian malignancy with peritoneal disease.",
+    "I'll go through it.",
+    "There is a 9 cm complex solid and cystic mass arising from the right adnexa.",
+    "The left ovary is normal.",
+    "Extensive omental caking and moderate volume ascites.",
+    "There are peritoneal deposits along the right paracolic gutter.",
+    "The liver has no focal lesion, but there's a capsular deposit on the right lobe.",
+    "No hydronephrosis.",
+    "Enlarged right external iliac node, 15 mm."
+   ],
+   "sentence": "Recommend Ginny Oncology MDT.",
+   "gold": "summary"
+  },
+  {
+   "id": "c12_ct_chest_pingpong#12",
+   "source": "lab",
+   "before": [
+    "CT chest with contrast compared with a study from March.",
+    "The 8 mm nodule in the right upper lobe is unchanged.",
+    "Heart size is normal.",
+    "No pericardial effusion.",
+    "Oh, and back to the lungs.",
+    "There's a new 5 mm nodule in the left lower lobe.",
+    "Mild centrilobular emphysema, upper lobe predominant.",
+    "No mediastinal or isomer lymphadenopathy.",
+    "There's an old healed fracture of the left 7th rib.",
+    "And the lungs again.",
+    "The previously noted left lingular scarring is stable.",
+    "The thyroid is unremarkable."
+   ],
+   "sentence": "Stable right upper lobe nodule.",
+   "gold": "summary"
+  },
+  {
+   "id": "c12_ct_chest_pingpong#13",
+   "source": "lab",
+   "before": [
+    "CT chest with contrast compared with a study from March.",
+    "The 8 mm nodule in the right upper lobe is unchanged.",
+    "Heart size is normal.",
+    "No pericardial effusion.",
+    "Oh, and back to the lungs.",
+    "There's a new 5 mm nodule in the left lower lobe.",
+    "Mild centrilobular emphysema, upper lobe predominant.",
+    "No mediastinal or isomer lymphadenopathy.",
+    "There's an old healed fracture of the left 7th rib.",
+    "And the lungs again.",
+    "The previously noted left lingular scarring is stable.",
+    "The thyroid is unremarkable.",
+    "Stable right upper lobe nodule."
+   ],
+   "sentence": "New 5 mm left lower lobe nodule.",
+   "gold": "summary"
+  },
+  {
+   "id": "c12_ct_chest_pingpong#14",
+   "source": "lab",
+   "before": [
+    "CT chest with contrast compared with a study from March.",
+    "The 8 mm nodule in the right upper lobe is unchanged.",
+    "Heart size is normal.",
+    "No pericardial effusion.",
+    "Oh, and back to the lungs.",
+    "There's a new 5 mm nodule in the left lower lobe.",
+    "Mild centrilobular emphysema, upper lobe predominant.",
+    "No mediastinal or isomer lymphadenopathy.",
+    "There's an old healed fracture of the left 7th rib.",
+    "And the lungs again.",
+    "The previously noted left lingular scarring is stable.",
+    "The thyroid is unremarkable.",
+    "Stable right upper lobe nodule.",
+    "New 5 mm left lower lobe nodule."
+   ],
+   "sentence": "Follow-up CT in 12 months per guidelines.",
+   "gold": "summary"
+  },
+  {
+   "id": "c13_mr_cervical_spine_levels#10",
+   "source": "lab",
+   "before": [
+    "Sagittal and axial MRI of the cervical spine.",
+    "Straightening of the cervical lordosis.",
+    "The cord is normal in calibre and signal.",
+    "C3/4, small disc osteophyte complex.",
+    "No stenosis.",
+    "C5/6 broad based disc osteophyte complex with moderate right foraminal narrowing.",
+    "It contacts the exiting right C6 nerve root.",
+    "C 6/7, mild bilateral uncovertebral hypertrophy.",
+    "Incidental 1 cm nodule in the right lobe of the thyroid.",
+    "Conclusion."
+   ],
+   "sentence": "Multilevel cervical spondylosis, worst at C5/6 with moderate right foraminal narrowing contacting the right C6 nerve root.",
+   "gold": "summary"
+  },
+  {
+   "id": "c14_ct_neck_nodes#9",
+   "source": "lab",
+   "before": [
+    "Contrast enhanced CT neck.",
+    "There is an enhancing mass of the left palatine tonsil measuring 3 cm.",
+    "It extends into the left glossotonsillar sulcus.",
+    "Necrotic left level 2 lymph node measuring 28 mm.",
+    "Further enlarged left level 3 node, 14 mm.",
+    "No contralateral nodes.",
+    "The larynx and hypopharynx are normal.",
+    "The parotid and submandibular glands are unremarkable.",
+    "The visualised lung apices are clear."
+   ],
+   "sentence": "Impression, left tonsillar primary with necrotic left level 2 and 3 nodal metastases.",
+   "gold": "summary"
+  },
+  {
+   "id": "c15_mr_rectum_corrections#10",
+   "source": "lab",
+   "before": [
+    "High resolution MRI of the rectum.",
+    "There is a tumour in the mid rectum.",
+    "The lower edge is 8 cm from the anal verge.",
+    "It extends through the muscularis propria by 4 mm.",
+    "The mesorectal fascia is clear by 6 mm.",
+    "Extramural venous invasion is present.",
+    "3 mesorectal nodes with irregular borders.",
+    "No lateral pelvic sidewall nodes.",
+    "The bladder and seminal vesicles are clear of tumour.",
+    "Conclusion."
+   ],
+   "sentence": "Midrectal tumour, T3B, N1, EMVI positive, CRM clear.",
+   "gold": "summary"
+  },
+  {
+   "id": "c16_ct_trauma_runon#13",
+   "source": "lab",
+   "before": [
+    "Trauma CT head to pelvis with arterial and portal venous phases.",
+    "No intracranial haemorrhage.",
+    "No skull fracture.",
+    "Cervical spine is intact.",
+    "Right sided pneumothorax, moderate size, with fractures of the right 4th to 7th ribs.",
+    "Pulmonary confusion in the right lower lobe when there's a small right haemothorax.",
+    "The aorta is intact.",
+    "No mediastinal haematoma.",
+    "Grade 3 splenic laceration with perisplenic haematoma.",
+    "No active extravasation.",
+    "The liver, kidneys, and pancreas are intact.",
+    "Left superior pubic ramus fracture.",
+    "Summary."
+   ],
+   "sentence": "Right pneumothorax with rib fractures and confusion.",
+   "gold": "summary"
+  },
+  {
+   "id": "c16_ct_trauma_runon#14",
+   "source": "lab",
+   "before": [
+    "Trauma CT head to pelvis with arterial and portal venous phases.",
+    "No intracranial haemorrhage.",
+    "No skull fracture.",
+    "Cervical spine is intact.",
+    "Right sided pneumothorax, moderate size, with fractures of the right 4th to 7th ribs.",
+    "Pulmonary confusion in the right lower lobe when there's a small right haemothorax.",
+    "The aorta is intact.",
+    "No mediastinal haematoma.",
+    "Grade 3 splenic laceration with perisplenic haematoma.",
+    "No active extravasation.",
+    "The liver, kidneys, and pancreas are intact.",
+    "Left superior pubic ramus fracture.",
+    "Summary.",
+    "Right pneumothorax with rib fractures and confusion."
+   ],
+   "sentence": "Grade 3 splenic injury, left pubic ramus fracture.",
+   "gold": "summary"
+  },
+  {
+   "id": "c16_ct_trauma_runon#15",
+   "source": "lab",
+   "before": [
+    "Trauma CT head to pelvis with arterial and portal venous phases.",
+    "No intracranial haemorrhage.",
+    "No skull fracture.",
+    "Cervical spine is intact.",
+    "Right sided pneumothorax, moderate size, with fractures of the right 4th to 7th ribs.",
+    "Pulmonary confusion in the right lower lobe when there's a small right haemothorax.",
+    "The aorta is intact.",
+    "No mediastinal haematoma.",
+    "Grade 3 splenic laceration with perisplenic haematoma.",
+    "No active extravasation.",
+    "The liver, kidneys, and pancreas are intact.",
+    "Left superior pubic ramus fracture.",
+    "Summary.",
+    "Right pneumothorax with rib fractures and confusion.",
+    "Grade 3 splenic injury, left pubic ramus fracture."
+   ],
+   "sentence": "Discussed with trauma team leader at 14 20.",
+   "gold": "summary"
+  },
+  {
+   "id": "c17_mr_shoulder_fragments#14",
+   "source": "lab",
+   "before": [
+    "MRI left shoulder.",
+    "Fourthickness tear of the supraspinatus tendon.",
+    "Measuring measuring 18 mm anteroposterior.",
+    "With With 2 cm of retraction.",
+    "Infraspinatus is intact.",
+    "Subscapularis.",
+    "There's a partial thickness articular surface tear at the upper fibers.",
+    "Mild fatty atrophy of supraspinatus muscle.",
+    "Long head of biceps is in the groove.",
+    "Normal.",
+    "Type 2 acromion.",
+    "Mild acromioclavicular joint arthropathy.",
+    "Labromenact.",
+    "Conclusion."
+   ],
+   "sentence": "Full thickness supraspinatus tear with retraction and upper subscapularis partial tear.",
+   "gold": "summary"
+  },
+  {
+   "id": "c18_ct_aorta_measurements#9",
+   "source": "lab",
+   "before": [
+    "CT angiogram of the aorta compared with the scan from last year.",
+    "Infrarenal abdominal aortic aneurysm.",
+    "Maximum diameter 5.6 cm, previously 5.1.",
+    "The neck is 18 mm long.",
+    "There's mural thrombus but no periaortic stranding or rupture.",
+    "The aneurysm extends to the aortic bifurcation.",
+    "The common iliac arteries are not aneurysmal.",
+    "The renal arteries are single bilaterally and patent.",
+    "Incidental simple cyst in the left kidney."
+   ],
+   "sentence": "Impression, 5.6 cm infrarenal triple a with growth of 5 mm in a year, now above the threshold for repair.",
+   "gold": "summary"
+  },
+  {
+   "id": "c18_ct_aorta_measurements#10",
+   "source": "lab",
+   "before": [
+    "CT angiogram of the aorta compared with the scan from last year.",
+    "Infrarenal abdominal aortic aneurysm.",
+    "Maximum diameter 5.6 cm, previously 5.1.",
+    "The neck is 18 mm long.",
+    "There's mural thrombus but no periaortic stranding or rupture.",
+    "The aneurysm extends to the aortic bifurcation.",
+    "The common iliac arteries are not aneurysmal.",
+    "The renal arteries are single bilaterally and patent.",
+    "Incidental simple cyst in the left kidney.",
+    "Impression, 5.6 cm infrarenal triple a with growth of 5 mm in a year, now above the threshold for repair."
+   ],
+   "sentence": "Refer to vascular surgery.",
+   "gold": "summary"
+  },
+  {
+   "id": "c19_mr_pelvis_female_nosex#9",
+   "source": "lab",
+   "before": [
+    "MRI pelvis.",
+    "The uterus is bulky and contains multiple fibroids, the largest is intramural in the fundus measuring 6 cm.",
+    "The endometrium is 9 mm.",
+    "There's a 4 cm left ovarian endometrioma with a T2 shading.",
+    "Right ovary is normal.",
+    "Small amount of free fluid in the pouch of Douglas Bladder unremarkable.",
+    "No pelvic lymphadenopathy.",
+    "Conclusion."
+   ],
+   "sentence": "Fibroid uterus and a left ovarian endometrioma",
+   "gold": "summary"
+  },
+  {
+   "id": "c20_ct_cap_lymphoma_followup#3",
+   "source": "lab",
+   "before": [
+    "CT chest abdomen and pelvis with contrast compared with a baseline staging CT.",
+    "The bulky anterior mediastinal mass has reduced from 9 to 4 cm.",
+    "The right axillary nodes have resolved."
+   ],
+   "sentence": "Partial response so far.",
+   "gold": "summary"
+  },
+  {
+   "id": "c20_ct_cap_lymphoma_followup#4",
+   "source": "lab",
+   "before": [
+    "CT chest abdomen and pelvis with contrast compared with a baseline staging CT.",
+    "The bulky anterior mediastinal mass has reduced from 9 to 4 cm.",
+    "The right axillary nodes have resolved.",
+    "Partial response so far."
+   ],
+   "sentence": "Splenomegaly has resolved.",
+   "gold": "images"
+  },
+  {
+   "id": "c20_ct_cap_lymphoma_followup#5",
+   "source": "lab",
+   "before": [
+    "CT chest abdomen and pelvis with contrast compared with a baseline staging CT.",
+    "The bulky anterior mediastinal mass has reduced from 9 to 4 cm.",
+    "The right axillary nodes have resolved.",
+    "Partial response so far.",
+    "Splenomegaly has resolved."
+   ],
+   "sentence": "The spleen now measures 11 cm.",
+   "gold": "images"
+  },
+  {
+   "id": "c20_ct_cap_lymphoma_followup#6",
+   "source": "lab",
+   "before": [
+    "CT chest abdomen and pelvis with contrast compared with a baseline staging CT.",
+    "The bulky anterior mediastinal mass has reduced from 9 to 4 cm.",
+    "The right axillary nodes have resolved.",
+    "Partial response so far.",
+    "Splenomegaly has resolved.",
+    "The spleen now measures 11 cm."
+   ],
+   "sentence": "Paraaortic nodes, previously 3 cm, now 1.2 cm short axis.",
+   "gold": "images"
+  },
+  {
+   "id": "c20_ct_cap_lymphoma_followup#7",
+   "source": "lab",
+   "before": [
+    "CT chest abdomen and pelvis with contrast compared with a baseline staging CT.",
+    "The bulky anterior mediastinal mass has reduced from 9 to 4 cm.",
+    "The right axillary nodes have resolved.",
+    "Partial response so far.",
+    "Splenomegaly has resolved.",
+    "The spleen now measures 11 cm.",
+    "Paraaortic nodes, previously 3 cm, now 1.2 cm short axis."
+   ],
+   "sentence": "No new lesion.",
+   "gold": "images"
+  },
+  {
+   "id": "c20_ct_cap_lymphoma_followup#8",
+   "source": "lab",
+   "before": [
+    "CT chest abdomen and pelvis with contrast compared with a baseline staging CT.",
+    "The bulky anterior mediastinal mass has reduced from 9 to 4 cm.",
+    "The right axillary nodes have resolved.",
+    "Partial response so far.",
+    "Splenomegaly has resolved.",
+    "The spleen now measures 11 cm.",
+    "Paraaortic nodes, previously 3 cm, now 1.2 cm short axis.",
+    "No new lesion."
+   ],
+   "sentence": "There's a new small left pleural effusion.",
+   "gold": "images"
+  },
+  {
+   "id": "c20_ct_cap_lymphoma_followup#9",
+   "source": "lab",
+   "before": [
+    "CT chest abdomen and pelvis with contrast compared with a baseline staging CT.",
+    "The bulky anterior mediastinal mass has reduced from 9 to 4 cm.",
+    "The right axillary nodes have resolved.",
+    "Partial response so far.",
+    "Splenomegaly has resolved.",
+    "The spleen now measures 11 cm.",
+    "Paraaortic nodes, previously 3 cm, now 1.2 cm short axis.",
+    "No new lesion.",
+    "There's a new small left pleural effusion."
+   ],
+   "sentence": "Impression, partial response.",
+   "gold": "summary"
+  },
+  {
+   "id": "c20_ct_cap_lymphoma_followup#10",
+   "source": "lab",
+   "before": [
+    "CT chest abdomen and pelvis with contrast compared with a baseline staging CT.",
+    "The bulky anterior mediastinal mass has reduced from 9 to 4 cm.",
+    "The right axillary nodes have resolved.",
+    "Partial response so far.",
+    "Splenomegaly has resolved.",
+    "The spleen now measures 11 cm.",
+    "Paraaortic nodes, previously 3 cm, now 1.2 cm short axis.",
+    "No new lesion.",
+    "There's a new small left pleural effusion.",
+    "Impression, partial response."
+   ],
+   "sentence": "New small left pleural effusion, likely reactive.",
+   "gold": "summary"
+  },
+  {
+   "id": "syn01",
+   "source": "synthetic",
+   "before": [
+    "CT abdomen and pelvis.",
+    "The appendix is dilated with fat stranding.",
+    "There is a 6 mm hypodensity in segment 4 of the liver.",
+    "The kidneys are normal.",
+    "Impression: acute appendicitis."
+   ],
+   "sentence": "Oh, and the liver lesion in segment 4 measures 6 mm and is hyperdense on the delayed images.",
+   "gold": "images"
+  },
+  {
+   "id": "syn02",
+   "source": "synthetic",
+   "before": [
+    "MRI head.",
+    "There is a rim-enhancing left frontal mass.",
+    "No hydrocephalus.",
+    "Conclusion.",
+    "Left frontal necrotic mass, likely high grade glioma."
+   ],
+   "sentence": "Going back to the images, there is also a small extra-axial lesion over the right parietal convexity.",
+   "gold": "images"
+  },
+  {
+   "id": "syn03",
+   "source": "synthetic",
+   "before": [
+    "CT pulmonary angiogram.",
+    "Filling defects in both main pulmonary arteries.",
+    "Small right pleural effusion.",
+    "Impression, bilateral pulmonary emboli."
+   ],
+   "sentence": "Addendum, there's a 4 mm calculus in the lower pole of the left kidney on the upper abdominal images.",
+   "gold": "images"
+  },
+  {
+   "id": "syn04",
+   "source": "synthetic",
+   "before": [
+    "MRI knee.",
+    "Complete tear of the anterior cruciate ligament.",
+    "Medial meniscus intact.",
+    "Summary: complete ACL tear."
+   ],
+   "sentence": "There is also a small fluid collection in the popliteal fossa, likely a Baker's cyst.",
+   "gold": "images"
+  },
+  {
+   "id": "syn05",
+   "source": "synthetic",
+   "before": [
+    "CT chest.",
+    "Stable 8 mm right upper lobe nodule.",
+    "No lymphadenopathy.",
+    "Conclusion, stable nodule."
+   ],
+   "sentence": "I should mention the thyroid, which has a 12 mm nodule in the right lobe.",
+   "gold": "images"
+  },
+  {
+   "id": "syn06",
+   "source": "synthetic",
+   "before": [
+    "MRI rectum.",
+    "Mid rectal tumour extending 4 mm beyond the muscularis.",
+    "Mesorectal fascia clear.",
+    "Impression, T3b rectal tumour."
+   ],
+   "sentence": "On the sagittal images the tumour lies 2 cm above the anterior peritoneal reflection.",
+   "gold": "images"
+  },
+  {
+   "id": "syn07",
+   "source": "synthetic",
+   "before": [
+    "CT KUB.",
+    "6 mm calculus at the left vesicoureteric junction with hydronephrosis.",
+    "3 mm right lower pole calculus, unchanged from 2023.",
+    "Impression: obstructing left VUJ calculus."
+   ],
+   "sentence": "Right lower pole renal calculus, unchanged.",
+   "gold": "summary"
+  },
+  {
+   "id": "syn08",
+   "source": "synthetic",
+   "before": [
+    "MRI liver.",
+    "24 mm segment 8 lesion with arterial enhancement and washout.",
+    "Splenomegaly.",
+    "Oesophageal varices.",
+    "Conclusion: hepatocellular carcinoma."
+   ],
+   "sentence": "Splenomegaly and varices in keeping with portal hypertension.",
+   "gold": "summary"
+  },
+  {
+   "id": "syn09",
+   "source": "synthetic",
+   "before": [
+    "CT pulmonary angiogram.",
+    "Filling defects in both main pulmonary arteries.",
+    "Small right pleural effusion.",
+    "Impression, bilateral pulmonary emboli."
+   ],
+   "sentence": "Small right effusion.",
+   "gold": "summary"
+  },
+  {
+   "id": "syn10",
+   "source": "synthetic",
+   "before": [
+    "CT abdomen.",
+    "Sigmoid diverticulitis with a 3 cm pericolic collection.",
+    "No extraluminal gas.",
+    "Summary, complicated diverticulitis with abscess."
+   ],
+   "sentence": "No free gas.",
+   "gold": "summary"
+  },
+  {
+   "id": "syn11",
+   "source": "synthetic",
+   "before": [
+    "MRI pelvis.",
+    "Bulky fibroid uterus.",
+    "Normal right ovary.",
+    "4 cm left endometrioma.",
+    "Conclusion. Fibroid uterus and left endometrioma."
+   ],
+   "sentence": "Normal right ovary.",
+   "gold": "summary"
+  },
+  {
+   "id": "syn12",
+   "source": "synthetic",
+   "before": [
+    "CT head.",
+    "Acute left subdural haematoma, 9 mm.",
+    "The basal cisterns are patent.",
+    "Impression: acute left subdural haematoma."
+   ],
+   "sentence": "Basal cisterns remain patent, no herniation.",
+   "gold": "summary"
+  }
+ ]
+}
