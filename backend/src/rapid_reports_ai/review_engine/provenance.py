@@ -11,6 +11,9 @@
 - `recommendation` (lane additions, cls minor, detector `code.recommendation`): a recommendation sentence
   (`jev_pass.recommendation`, minus interpretive "suggests" / "suggestive") that no dictated line states, with a
   code-built whole-sentence removal (`Edit(mode="remove")`) checked with `verifier.apply_edit`; never pre-applied.
+  A sentence that also holds other parts ("No X identified; referral recommended.") is anchored and removed on its
+  recommendation part only (`_rec_target`), or gets no edit when that part cannot be isolated safely; its other
+  parts are judged for `ai_generated` like any clause (paired / W1n-supported / normal / owned give no item).
 
 Never marked: technique / comparison / history sections and signature lines (the alignment's clause splitter skips
 them); Jev `not_a_finding` statements; normal / negative statements (the negatives classifier's and the brief's: their
@@ -29,7 +32,7 @@ from .alignment import Alignment, ReportClause
 from .checks import hedge_tag
 from .claims import content_words
 from .items import Edit, ReviewInput, ReviewItem, Span, item_key, text_hash
-from .jev_pass import JevPass, noul, recommendation, split_tails
+from .jev_pass import JevPass, noul, recommendation, recommendation_parts, split_tails
 from .lanes import confident
 from .negatives import is_normal_or_negative
 from .verifier import apply_edit
@@ -114,6 +117,33 @@ def _head_span(report: str, c: ReportClause) -> Optional[Tuple[int, int, str]]:
     return (k, k + len(head), head) if k >= 0 else None
 
 
+def _rec_target(report: str, c: ReportClause, sentence: str, names: List[str]
+                ) -> Tuple[int, int, Optional[Edit]]:
+    """(start, end, remove edit or None) of a recommendation item. A whole recommendation sentence is removed whole.
+    A sentence that also holds other parts at ';' (`jev_pass.recommendation_parts`) is anchored on its recommendation
+    part(s) only; the removal is offered only when they end the sentence and what stays is the other part(s) closed
+    by a '.' ("No X identified; referral recommended." → "No X identified."). Else no edit (never guessed)."""
+    parts = recommendation_parts(sentence, is_recommendation)
+    if parts is None:
+        edit = Edit(mode="remove", find=sentence, section=c.section)
+        ok = report.count(sentence) == 1 and apply_edit(report, edit, names) is not None
+        return c.sentence_start, c.sentence_end, edit if ok else None
+    k = next(i for i, p in enumerate(parts) if p[2])
+    j = k
+    while j + 1 < len(parts) and parts[j + 1][2]:
+        j += 1                                              # the contiguous run of recommendation parts
+    start, end = c.sentence_start + parts[k][0], c.sentence_start + parts[j][1]
+    find = report[start:end]
+    if j != len(parts) - 1 or k == 0 or report.count(find) != 1:
+        return start, end, None
+    edit = Edit(mode="remove", find=find, section=c.section)
+    out = apply_edit(report, edit, names)
+    keep = sentence[:parts[k][0]].rstrip().rstrip(";").rstrip() + "."
+    if out is None or out[c.sentence_start:c.sentence_start + len(keep)] != keep:
+        return start, end, None
+    return start, end, edit
+
+
 def build_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPass],
                 owned: List[ReviewItem]) -> Tuple[List[ReviewItem], dict]:
     """(items, log). `owned` = the negatives classifier's and the brief normals' items (their anchors are theirs)."""
@@ -132,10 +162,34 @@ def build_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPa
             if c.sentence_start in rec_seen:
                 continue
             rec_seen.add(c.sentence_start)
+            sentence = report[c.sentence_start:c.sentence_end]
             if _rec_dictated(al, c):
                 skipped["rec_dictated"] += 1
             else:
-                recs.append((c, report[c.sentence_start:c.sentence_end]))
+                recs.append((c, sentence))
+            # its other parts ("Findings suspicious for X; MDT recommended.") are judged like any clause
+            for ps, pe, rec in recommendation_parts(sentence, is_recommendation) or []:
+                a, b = c.sentence_start + ps, c.sentence_start + pe
+                if rec or not (c.start <= a and b <= c.end):
+                    continue
+                part = report[a:b]
+                pi = _jev_index(jp, part)
+                pt = _jev_type(jp, pi)
+                if pt in ("normal", "not_a_finding") or hedge_tag(part) == "negated" or (
+                        pt is None and is_normal_or_negative(part)):
+                    skipped["normal"] += 1
+                    continue
+                if _paired(al, c):
+                    skipped["paired"] += 1
+                    continue
+                sup = _supported(jp, pi)
+                if sup is not None and sup >= SUPPORTED_DICTATED:
+                    skipped["supported"] += 1
+                    continue
+                if _overlaps((a, b), owned_spans):
+                    skipped["owned"] += 1
+                    continue
+                marked.append((c, a, b, {"clauses": [c.id], "jev_type": pt, "supported": sup, "form": "synthesis"}))
             continue
         if t == "not_a_finding":
             skipped["not_a_finding"] += 1
@@ -186,13 +240,13 @@ def build_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPa
              for c, s, e, ev in merged]
     unplaced = 0
     for c, sentence in recs:
-        edit = Edit(mode="remove", find=sentence, section=c.section)
-        ok = report.count(sentence) == 1 and apply_edit(report, edit, names) is not None
+        s, e, edit = _rec_target(report, c, sentence, names)
+        ok = edit is not None
         if not ok:
             unplaced += 1
-        items.append(item("additions", KIND_REC, "minor", DETECTOR_REC, c, c.sentence_start, c.sentence_end,
+        items.append(item("additions", KIND_REC, "minor", DETECTOR_REC, c, s, e,
                           "Recommendation not dictated", "Added by the report writer; remove it if not wanted.",
-                          {"sentence": sentence}, edit if ok else None,
+                          {"sentence": sentence}, edit,
                           {"code": ok, "failed": [] if ok else ["not_placeable"], "addressed": None, "contra": None,
                            "unconfirmed": True}))
     log = {"ai_generated": len(merged), "recommendation": len(recs), "capped": capped, "unplaced": unplaced,

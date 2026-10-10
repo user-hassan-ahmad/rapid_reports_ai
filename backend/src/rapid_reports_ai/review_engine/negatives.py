@@ -69,8 +69,8 @@ from .. import report_reconcile as rc
 from ..enhancement_utils import _run_agent_with_model
 from ..report_review import checked_clauses_in_context, remove_negative_clause, restate
 from . import checks, claims, verifier
-from .jev_pass import normal_statement, recommendation, split_tails, statement_form
-from .items import Edit, ReviewInput, ReviewItem, Span, item_key, text_hash
+from .jev_pass import normal_statement, recommendation, recommendation_parts, split_tails, statement_form
+from .items import Edit, ReviewInput, ReviewItem, Span, item_key, report_body, text_hash
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,8 @@ def is_normal_or_negative(clause: str) -> bool:
 
 def candidates(report: str, types: Optional[Dict[str, str]] = None) -> List[dict]:
     """Every normal/negative clause the check reads (FINDINGS + IMPRESSION), with the sentence before it.
-    Recommendation sentences are never candidates ("CT spine without contrast" is not a negative).
+    Recommendation sentences are never candidates ("CT spine without contrast" is not a negative); a sentence holding
+    a recommendation part and other parts at ';' (`jev_pass.recommendation_parts`) contributes its other parts.
 
     `types` (clause text → the Jev statement type, `jev_pass`): a normal clause is a candidate whole; an abnormal or
     mixed clause contributes only the negative / normal tails code can split off and locate (`split_tails`), else
@@ -168,19 +169,29 @@ def candidates(report: str, types: Optional[Dict[str, str]] = None) -> List[dict
     out: List[dict] = []
     for c, b in checked_clauses_in_context(report, None).items():
         if recommendation(c):
+            # a recommendation beside other parts ("No X identified; referral recommended."): the other parts are
+            # still statements, read on their own when code can locate them
+            for s, e, rec in recommendation_parts(c) or []:
+                part = c[s:e]
+                if not rec and _locate(report, part, []) is not None:
+                    out.extend(_clause_candidates(report, part, b, types))
             continue
-        t = (types or {}).get(c)
-        if t is None or restate(c) is not None:
-            if is_normal_or_negative(c):
-                out.append({"clause": c, "before": b})
-        elif t == "normal":
-            out.append({"clause": c, "before": b})
-        elif t in ("abnormal", "mixed"):
-            sp = split_tails(c)
-            for tail in (sp[1] if sp else []):
-                if not recommendation(tail) and _locate(report, tail, []) is not None:
-                    out.append({"clause": tail, "before": b})
+        out.extend(_clause_candidates(report, c, b, types))
     return out
+
+
+def _clause_candidates(report: str, c: str, b: str, types: Optional[Dict[str, str]]) -> List[dict]:
+    """One non-recommendation clause's candidates (see `candidates`)."""
+    t = (types or {}).get(c)
+    if t is None or restate(c) is not None:
+        return [{"clause": c, "before": b}] if is_normal_or_negative(c) else []
+    if t == "normal":
+        return [{"clause": c, "before": b}]
+    if t in ("abnormal", "mixed"):
+        sp = split_tails(c)
+        return [{"clause": tail, "before": b} for tail in (sp[1] if sp else [])
+                if not recommendation(tail) and _locate(report, tail, []) is not None]
+    return []
 
 
 def candidate_spans(report: str, types: Optional[Dict[str, str]] = None) -> List[Tuple[int, int]]:
@@ -506,16 +517,37 @@ def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, di
             {items[i].id: post[i] for i in sorted(items) if i in post})
 
 
+# Coordinated items of a statement ("No A, B or C", "The A, B and C are unremarkable"): split at ',' / 'or' / 'and',
+# never at "and is / are / has ..." (a second predicate of the same item, `jev_pass._TURN`'s structure).
+_COORD = re.compile(r"\s*,\s*(?:(?:and|or)\s+)?|\s+(?:and|or)\s+(?!(?:is|are|was|were|has|have)\b)", re.I)
+
+
+def covered(text: str, start: int, spans: List[Tuple[int, int]]) -> bool:
+    """Do `spans` (report positions) own the statement `text` (at report position `start`)? The coordination gate,
+    pure mechanics: split it into its coordinated items (`_COORD`); it is owned only when EVERY item overlaps a span.
+    "No uncal or tonsillar herniation" with only "tonsillar herniation" owned: not owned; "No significant
+    lymphadenopathy" owned on "lymphadenopathy": owned (one item)."""
+    bounds, pos = [], 0
+    for m in _COORD.finditer(text):
+        bounds.append((pos, m.start()))
+        pos = m.end()
+    bounds.append((pos, len(text)))
+    items = [(start + a, start + b) for a, b in bounds if text[a:b].strip()]
+    return bool(items) and all(any(s < e2 and s2 < e for s2, e2 in spans) for s, e in items)
+
+
 def owned_indices(report: str, cands: List[dict], owned: List[Tuple[int, int]]) -> List[int]:
-    """1-based indices of the candidates whose original-report span overlaps an `owned` span (the brief's
-    linked-normal labels, `brief_normals`): the brief already labelled them, so the model does not re-read them."""
+    """1-based indices of the candidates whose original-report span the `owned` spans (the brief's labels,
+    `brief_normals.owned_spans`) cover (`covered`): the brief already labelled them, so the model does not re-read
+    them. A candidate the brief owns only in part ("tonsillar herniation" of "No uncal or tonsillar herniation") is
+    read: its other statements have no other owner."""
     taken: List[Tuple[int, int]] = []
     out = []
     for i, c in enumerate(cands, 1):
         span = _locate(report, c["clause"], taken)
         if span:
             taken.append(span)
-            if any(a < span[1] and span[0] < b for a, b in owned):
+            if covered(report[span[0]:span[1]], span[0], owned):
                 out.append(i)
     return out
 
@@ -533,7 +565,8 @@ async def classify_negatives(inp: ReviewInput, run_id: str, types: Optional[Dict
     t0 = time.monotonic()
     report = inp.artifacts.report or ""
     dictation, history = inp.artifacts.dictated_findings or "", inp.clinical_history or ""
-    listed = candidates(report, types) if types else candidates(report)
+    body = report_body(inp)                           # never the signature block (a prefix: same positions)
+    listed = candidates(body, types) if types else candidates(body)
     cands = [{**c, "number": code_number_flag(c["clause"], dictation, history)} for c in listed]
     skip = set(owned_indices(report, cands, owned)) if owned else set()
     asked = [i for i in range(1, len(cands) + 1) if i not in skip]
@@ -561,4 +594,4 @@ async def classify_negatives(inp: ReviewInput, run_id: str, types: Optional[Dict
 
 
 __all__ = ["Labels", "candidates", "candidate_spans", "code_number_flag", "undictated_numbers", "parse_labels", "user_message",
-           "classify", "removal_edit", "route", "owned_indices", "classify_negatives"]
+           "classify", "removal_edit", "route", "covered", "owned_indices", "classify_negatives"]

@@ -428,3 +428,88 @@ async def test_a_findings_owned_impression_classified_pair_follows_the_classifie
     monkeypatch.setattr(neg, "_run_agent_with_model", model(["1 | dictated | No ascites | no"]))
     items, _ = await neg.classify_negatives(inp(report, "2 cm renal cyst. No ascites."), "r", owned=owned)
     assert items == []
+
+
+# ── live audit 1: a recommendation sentence with other parts (L3 shape) ─────
+
+MIXED_REC = """FINDINGS:
+The appendix is dilated to 11 mm with periappendiceal fat stranding.
+
+IMPRESSION:
+Acute appendicitis. No perforation or pelvic abscess identified; urgent surgical review recommended.
+"""
+
+
+def test_a_recommendation_part_does_not_hide_the_negative_beside_it():
+    got = [c["clause"] for c in neg.candidates(MIXED_REC)]
+    assert "No perforation or pelvic abscess identified" in got
+    assert not any("recommended" in c for c in got)
+    assert neg.candidate_spans(MIXED_REC)            # located by span on the original report
+
+
+def test_a_mixed_recommendation_sentence_typed_abnormal_still_gives_its_negative_part():
+    sentence = "No perforation or pelvic abscess identified; urgent surgical review recommended."
+    got = [c["clause"] for c in neg.candidates(MIXED_REC, {sentence: "mixed"})]
+    assert "No perforation or pelvic abscess identified" in got
+
+
+def test_a_pure_recommendation_sentence_is_still_never_a_candidate():
+    rep = MIXED_REC.replace("No perforation or pelvic abscess identified; urgent", "Urgent")
+    assert not any("recommended" in c["clause"] for c in neg.candidates(rep))
+
+
+# ── live audit 1: partial ownership never hides a sibling statement (L1 shape) ──
+
+SIBLING = """FINDINGS:
+Acute right frontal contusion. No uncal or tonsillar herniation. No hydrocephalus.
+
+IMPRESSION:
+Right frontal contusion.
+"""
+
+
+def _owned(report, *terms):
+    return [(report.index(t), report.index(t) + len(t)) for t in terms]
+
+
+def test_owned_spans_skip_a_candidate_only_when_they_own_every_coordinated_item():
+    cands = neg.candidates(SIBLING)
+    texts = [c["clause"] for c in cands]
+    k_sib, k_full = texts.index("No uncal or tonsillar herniation.") + 1, texts.index("No hydrocephalus.") + 1
+    skip = neg.owned_indices(SIBLING, cands, _owned(SIBLING, "tonsillar herniation", "hydrocephalus"))
+    assert k_sib not in skip and k_full in skip
+    both = neg.owned_indices(SIBLING, cands, _owned(SIBLING, "uncal", "tonsillar herniation"))
+    assert k_sib in both                                  # every item owned: the brief has it
+
+
+async def test_a_partly_owned_clause_keeps_its_classifier_item(monkeypatch):
+    calls = []
+    monkeypatch.setattr(neg, "_run_agent_with_model", model(["1 | default | - | no"], calls))
+    items, log = await neg.classify_negatives(inp(SIBLING, "Right frontal contusion."), "r",
+                                              owned=_owned(SIBLING, "tonsillar herniation", "hydrocephalus"))
+    assert [i.anchor.text for i in items] == ["No uncal or tonsillar herniation"]
+    assert "No hydrocephalus" not in calls[0]["user_prompt"].split("STATEMENTS TO CLASSIFY:\n", 1)[1]
+    assert log["owned_by_brief"] == 1
+
+
+# ── review fix 3: the coordination gate ─────────────────────────────────────
+
+def _cov(text, *owned_terms):
+    report = f"FINDINGS:\n{text}\n"
+    s = report.index(text)
+    return neg.covered(text, s, _owned(report, *owned_terms))
+
+
+def test_coordination_gate_two_items_one_owned_is_not_owned():
+    assert not _cov("No uncal or tonsillar herniation", "tonsillar herniation")
+
+
+def test_coordination_gate_one_item_owned_on_its_term_is_owned():
+    assert _cov("No significant lymphadenopathy", "lymphadenopathy")
+    assert _cov("The spleen measures 14 cm and is otherwise normal", "spleen")   # "and is ...": not a list item
+
+
+def test_coordination_gate_three_item_list_needs_every_item():
+    text = "The liver, spleen and kidneys are unremarkable"
+    assert not _cov(text, "liver", "kidneys")
+    assert _cov(text, "liver", "spleen", "kidneys")

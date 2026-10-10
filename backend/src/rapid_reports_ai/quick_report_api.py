@@ -352,6 +352,8 @@ async def _run_one_generator(
             "options": result.get("brief_options") or [],
             # What the post-generation check flagged and repaired (None on older paths).
             "quality_check": result.get("quality_check"),
+            # The user signature appended after the report ("" = none), so the review engine can strip exactly it.
+            "signature": result.get("signature"),
             # The compiled brief the generator read, so a prod report can be traced to it.
             "brief": ({"text": result.get("brief_text"), "decisions": result.get("brief_decisions")}
                       if result.get("brief_used") else None),

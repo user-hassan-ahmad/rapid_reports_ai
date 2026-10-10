@@ -2936,6 +2936,7 @@ async def quick_report_proto_generate_endpoint(
                 "run_id": run_id,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "error": None,
+                "signature": result.get("signature"),
             }
             report_row = create_quick_report_with_candidates(
                 db=db,

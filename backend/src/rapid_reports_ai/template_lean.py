@@ -476,5 +476,6 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         "brief_decisions": None, "case_decisions": None, "options_raw": [], "options": [],
         "gate_dropped": [], "options_pending": True, "options_job": vet_t, "quality_check": quality,
         "sections": [s.name for s in sections], "phase1_used": False, "history_inserted": False,
+        "signature": signature or "",
     })
     return rec

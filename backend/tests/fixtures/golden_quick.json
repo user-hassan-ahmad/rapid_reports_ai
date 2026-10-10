@@ -836,7 +836,7 @@
      }
     ],
     [
-     "REPORT:\nFINDINGS:\nAn 8 mm right subdural haematoma. No skull fracture. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.\n\nDr A",
+     "REPORT:\nFINDINGS:\nAn 8 mm right subdural haematoma. No skull fracture. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.",
      {
       "i0": {
        "criteria": {
@@ -900,7 +900,7 @@
   "calls": {
    "_jev": [
     [
-     "REPORT:\nFINDINGS:\nAn 8 mm right subdural haematoma. No skull fracture. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.\n\nDr A",
+     "REPORT:\nFINDINGS:\nAn 8 mm right subdural haematoma. No skull fracture. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.",
      {
       "d0": {
        "instructions": "The report itself states everything this statement says, in any wording, abbreviation or synonym (not merely implied or inferable): There is 3 mm of midline shift.",
@@ -925,7 +925,7 @@
       "temperature": 0
      },
      "system_prompt": "A radiology report left out some dictated lines. For each numbered line, write at most one sentence to add to the report, following these rules.\n1. Write only what the line reports as abnormal or present (a finding, device, post-operative change or artefact) that the report does not already state. Leave out every normal or negative part of the line, and anything the report already says.\n2. Never write a sentence that only says structures are normal, unremarkable or without abnormality, or that findings are absent. A caveat about the study (such as the limits of the technique) is not a finding. A line with nothing abnormal left gets an empty sentence.\n3. Use the report's own terms for that structure, in the report's voice and British English.\n4. The dictation is speech-recognised. Where a word makes no sense in context and one similar-sounding word is plainly meant, write that word instead of copying it. If no single word is plainly meant, or the meaning of the line is not clear, return an empty sentence for it; never guess a finding.\n5. Never state anything that differs from what the report already says about that structure (presence, severity, size, side, level or measurement). If the line disagrees with the report, return an empty sentence.\n6. Add nothing that was not dictated.\n7. In 'after', copy exactly, character for character, the report sentence about the same region or structure that the new sentence should follow.\nReturn JSON {\"items\": [{\"after\": ..., \"sentence\": ...}]}, one entry per numbered line, in order, with \"sentence\": \"\" when nothing should be added.",
-     "user_prompt": "DICTATED FINDINGS:\n8 mm right subdural haematoma. 3 mm midline shift.\n\nREPORT:\nFINDINGS:\nAn 8 mm right subdural haematoma. No skull fracture. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.\n\nDr A\n\nLINES LEFT OUT OF THE REPORT:\n1. 3 mm midline shift\n2. small left frontal contusion\n3. ventricles normal"
+     "user_prompt": "DICTATED FINDINGS:\n8 mm right subdural haematoma. 3 mm midline shift.\n\nREPORT:\nFINDINGS:\nAn 8 mm right subdural haematoma. No skull fracture. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.\n\nLINES LEFT OUT OF THE REPORT:\n1. 3 mm midline shift\n2. small left frontal contusion\n3. ventricles normal"
     }
    ]
   },
@@ -933,7 +933,7 @@
    "applied": 2,
    "dup_check": "jev",
    "error": null,
-   "report": "FINDINGS:\nSmall left frontal contusion. An 8 mm right subdural haematoma. There is 3 mm of midline shift. No skull fracture. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.\n\nDr A",
+   "report": "FINDINGS:\nSmall left frontal contusion. An 8 mm right subdural haematoma. There is 3 mm of midline shift. No skull fracture. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.",
    "skipped": 3
   }
  },
@@ -988,5 +988,5 @@
   "qq.q_select_noul()": "deb2aa7e1bce"
  },
  "removed_list": "FINDINGS:\nNo collection or free air.\n\nIMPRESSION:\nNormal.",
- "removed_sentence": "FINDINGS:\nAn 8 mm right subdural haematoma. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift.\n\nDr A"
+ "removed_sentence": "FINDINGS:\nAn 8 mm right subdural haematoma. No hydrocephalus, no herniation, and no intraventricular extension.\n\nIMPRESSION:\nAcute right subdural haematoma with 3 mm midline shift."
 }

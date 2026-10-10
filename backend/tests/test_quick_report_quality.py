@@ -26,7 +26,7 @@ Dr A Radiologist"""
 
 
 def test_sections_and_clauses():
-    fnd, imp = qq.report_sections(REPORT)
+    fnd, imp = qq.report_sections(qq.report_body(REPORT))      # the final report: its signature is stripped first
     assert fnd.startswith("A 3 cm hypodense mass") and fnd.endswith("The spleen is normal in size.")
     assert imp.startswith("Pancreatic head mass") and "Dr A" not in imp
     assert qq.clauses(fnd) == [
@@ -662,3 +662,13 @@ async def test_inserter_drops_a_normal_only_sentence(monkeypatch):
     _jev_scores(monkeypatch, 0.05)
     r = await qq.insert_findings("FINDINGS:\nThe appendix is unremarkable.", "x", ["midfoot fine, defect", "5 mm defect D1"])
     assert "midfoot" not in r.report and "5 mm defect" in r.report and r.applied == 1 and r.skipped == 1
+
+
+def test_post_generation_check_reads_every_paragraph_of_a_numbered_impression():
+    """No signature is appended yet when the check runs: no cut (live audit 1 review fix 1)."""
+    report = ("FINDINGS:\nThe appendix is dilated.\n\nIMPRESSION:\n1. Acute appendicitis.\n\n"
+              "2. No pelvic collection.\n\n3. Small volume free fluid.")
+    _, imp = qq.report_sections(report)
+    assert "3. Small volume free fluid." in imp
+    clauses = qq.checked_clauses(report, None)
+    assert any("No pelvic collection" in c for c in clauses) and any("Small volume free fluid" in c for c in clauses)

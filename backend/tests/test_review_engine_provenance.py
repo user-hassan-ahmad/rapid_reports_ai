@@ -177,3 +177,100 @@ def test_api_keeps_provenance_out_of_probe_and_reprepare():
     ai = ReviewItem(key="k", report_id="r", run_id=RUN, lane="accuracy", kind="ai_generated", cls="info")
     rec = ReviewItem(key="k2", report_id="r", run_id=RUN, lane="additions", kind="recommendation", cls="minor")
     assert api._provenance(ai) and api._provenance(rec)
+
+
+# ── live audit 1: a recommendation beside other parts of one sentence (L3 shape) ──
+
+MIXED_REPORT = ("FINDINGS:\nThe appendix is dilated to 11 mm with periappendiceal fat stranding.\n\n"
+                "IMPRESSION:\nAcute appendicitis. No perforation or pelvic abscess identified; urgent surgical review "
+                "recommended.\n")
+MIXED_DICT = "- Dilated appendix 11 mm with fat stranding"
+
+
+def test_mixed_recommendation_sentence_anchors_and_removes_only_the_recommendation():
+    items, _ = _run(MIXED_REPORT, MIXED_DICT)
+    recs = [i for i in items if i.kind == "recommendation"]
+    assert len(recs) == 1
+    r = recs[0]
+    assert r.anchor.text == "urgent surgical review recommended"
+    assert MIXED_REPORT[r.anchor.start:r.anchor.end] == r.anchor.text
+    assert r.edit is not None and r.edit.mode == "remove" and r.verified["code"] is True
+    out = verifier.apply_edit(MIXED_REPORT, r.edit, ["FINDINGS", "IMPRESSION"])
+    assert out is not None
+    assert "Acute appendicitis. No perforation or pelvic abscess identified.\n" in out
+    assert "recommended" not in out
+
+
+def test_mixed_recommendation_sentence_that_cannot_be_isolated_gets_no_remove_edit():
+    report = MIXED_REPORT.replace("No perforation or pelvic abscess identified; urgent surgical review recommended.",
+                                  "Urgent surgical review recommended; no perforation or pelvic abscess identified.")
+    items, _ = _run(report, MIXED_DICT)
+    r = next(i for i in items if i.kind == "recommendation")
+    assert r.anchor.text == "Urgent surgical review recommended"
+    assert r.edit is None and r.verified["code"] is False
+
+
+SIGNED = ("FINDINGS:\nThe appendix is dilated to 11 mm with periappendiceal fat stranding.\n\n"
+          "IMPRESSION:\n1. Acute appendicitis.\n\n2. Small volume pelvic free fluid.\n\n"
+          "Dr Jane Example\nFRCR, Radiology ST4")
+SIG_BLOCK = "Dr Jane Example\nFRCR, Radiology ST4"
+
+
+@pytest.mark.parametrize("signature", [SIG_BLOCK, None])      # persisted, and the older-report fallback
+async def test_signature_untagged_and_every_numbered_impression_item_kept(monkeypatch, signature):
+    """Live audit 1 (review fix 1): the engine strips exactly the appended signature, never a later impression
+    paragraph; a report from before the signature was persisted drops only an unpunctuated last paragraph."""
+    async def no_neg(inp_, run_id, types=None, owned=None):
+        return [], {"candidates": []}
+    monkeypatch.setattr(rc, "_jev", jev({"sup*": {"noul": 0.1}}))    # W1n: nothing stated, so every read clause is marked
+    monkeypatch.setattr(negatives, "classify_negatives", no_neg)
+    monkeypatch.setattr(adj, "adjudicate", lambda inp_, groups: _outcomes(groups))
+    i = inp(SIGNED, MIXED_DICT)
+    i.artifacts.signature = signature
+    res = await engine.run_review(i, RUN)
+    marked = " ".join(it.anchor.text for it in res.items if it.anchor)
+    assert "Jane Example" not in marked and "FRCR" not in marked
+    ai = _texts(res.items, "ai_generated")
+    assert "Acute appendicitis." in ai and "Small volume pelvic free fluid." in ai
+
+
+async def _outcomes(groups):
+    return [adj.Outcome(group=g) for g in groups]
+
+
+def test_report_body_strips_exactly_the_signature():
+    from rapid_reports_ai.report_review import report_body
+    assert report_body(SIGNED, SIG_BLOCK).endswith("2. Small volume pelvic free fluid.")
+    assert report_body(SIGNED, None).endswith("2. Small volume pelvic free fluid.")       # fallback
+    assert report_body(SIGNED, "") == SIGNED                                             # known: no signature
+    unsigned = SIGNED[:SIGNED.index("\n\nDr Jane")]
+    assert report_body(unsigned, None) == unsigned       # punctuated last paragraph: an impression item, kept
+    assert report_body(unsigned, "Dr Somebody Else") == unsigned
+    al = align(report_body(SIGNED, SIG_BLOCK), MIXED_DICT, "", inp(SIGNED, MIXED_DICT).artifacts.sections)
+    texts = [c.text for c in al.clauses]
+    assert "Small volume pelvic free fluid." in texts and not any("Jane" in t for t in texts)
+
+
+def test_the_candidate_record_carries_the_signature_into_the_artifacts():
+    from rapid_reports_ai.generation_artifacts import GenerationArtifacts
+    rec = {"content": SIGNED, "sections": ["FINDINGS", "IMPRESSION"], "signature": SIG_BLOCK}
+    assert GenerationArtifacts.from_candidate(rec, "x").signature == SIG_BLOCK
+    assert GenerationArtifacts.from_candidate({"content": SIGNED}, "x").signature is None   # older record
+
+
+def test_the_finding_part_of_a_mixed_recommendation_sentence_is_ai_generated():
+    """Review fix 2: shrinking the recommendation item must not leave the sentence's undictated finding untinted."""
+    report = ("FINDINGS:\nThe appendix is dilated to 11 mm with periappendiceal fat stranding.\n\n"
+              "IMPRESSION:\nFindings are suspicious for perforation; urgent surgical review recommended.\n")
+    items, _ = _run(report, MIXED_DICT)
+    assert _texts(items, "ai_generated") == ["Findings are suspicious for perforation"]
+    assert _texts(items, "recommendation") == ["urgent surgical review recommended"]
+
+
+def test_a_supported_finding_part_gets_no_ai_generated_item():
+    report = ("FINDINGS:\nThe appendix is dilated to 11 mm with periappendiceal fat stranding.\n\n"
+              "IMPRESSION:\nFindings are suspicious for perforation; urgent surgical review recommended.\n")
+    part = "Findings are suspicious for perforation"
+    jp = JevPass(clauses=[part], types={part: "abnormal"}, support={"sup0": {"noul": 0.9}})
+    items, _ = _run(report, MIXED_DICT, jp=jp)
+    assert _texts(items, "ai_generated") == []

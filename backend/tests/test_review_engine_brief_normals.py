@@ -407,3 +407,22 @@ def test_removal_blocked_card_text_follows_the_block_reason(why, text):
     assert reason.startswith("Contradicts your dictation") and text in reason
     assert reason.endswith("Remove it, or dismiss to keep it.")
     assert "pertinent" not in reason
+
+
+def test_dedupe_keeps_a_classifier_item_the_brief_only_partly_covers():
+    """L1 shape: a brief item on one statement of "No A or B" does not speak for A: both items stay."""
+    report = "FINDINGS:\nNo uncal or tonsillar herniation.\nIMPRESSION:\nNormal."
+    s = report.index("No uncal")
+    e = s + len("No uncal or tonsillar herniation")
+    t = report.index("tonsillar herniation")
+
+    def it(det, a, b, kind="assumed_normal"):
+        return ReviewItem(key=det, report_id="r", run_id=RUN, lane="accuracy", detectors=[det], kind=kind,
+                          cls="info", anchor=Span(start=a, end=b, text=report[a:b]))
+    cls_item, brief = it(negatives.DETECTOR, s, e), it(bn.DETECTOR, t, t + len("tonsillar herniation"))
+    neg, kept, log = bn.dedupe([cls_item], [brief])
+    assert neg == [cls_item] and kept == [brief] and log == []
+    u = report.index("uncal")
+    full = it(bn.DETECTOR, u, u + len("uncal"))
+    neg, kept, log = bn.dedupe([cls_item], [brief, full])  # together the brief items cover every content word
+    assert neg == [] and len(kept) == 2 and [d["dropped"] for d in log] == [cls_item.id]

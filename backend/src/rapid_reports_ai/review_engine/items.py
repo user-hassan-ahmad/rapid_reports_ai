@@ -141,3 +141,11 @@ def merge(cands: List[Candidate], links: Iterable[Tuple[int, int]] = ()) -> List
     for i, c in enumerate(cands):
         groups.setdefault(root(i), []).append(c)
     return list(groups.values())
+
+
+def report_body(inp: "ReviewInput") -> str:
+    """The final report without the user signature appended after it (`report_review.report_body`; the persisted
+    `artifacts.signature`, else the older-report fallback). A prefix of the report: positions are unchanged, so
+    every clause splitter reads this and anchors stay on the full report."""
+    from ..report_review import report_body as _body      # lazy: report_review is a heavy import
+    return _body(inp.artifacts.report or "", inp.artifacts.signature)

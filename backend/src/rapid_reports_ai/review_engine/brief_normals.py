@@ -27,7 +27,8 @@ term inside the FINDINGS normal statements:
 3. else the item is unanchored (anchor None). Never guessed.
 
 `dedupe`: brief labels win over the classifier's own default / implicated verdicts on the same span (the classifier
-item is dropped). A classifier finding the brief cannot know about (conflict, number, a code removal) outranks: it
+item is dropped) when the brief items overlap every coordinated item of its statement (`negatives.covered`, the
+coordination gate); a classifier item the brief covers only in part stays beside them (overlapping marks are fine). A classifier finding the brief cannot know about (conflict, number, a code removal) outranks: it
 stays, and the brief items on that clause are dropped. Pure code, no model calls.
 
 The engine builds these items BEFORE the classifier starts and passes their anchors as `owned`, so the classifier
@@ -41,7 +42,7 @@ from typing import Dict, List, Optional, Tuple
 from .. import brief_anchor
 from .. import linked_normals as ln
 from . import negatives, verifier
-from .items import ReviewInput, ReviewItem, Span, item_key, text_hash
+from .items import ReviewInput, ReviewItem, Span, item_key, report_body, text_hash
 from .jev_pass import statement_form
 
 DETECTOR = "brief.linked_normals"
@@ -157,7 +158,7 @@ def owned_spans(inp: ReviewInput) -> Optional[List[Tuple[int, int]]]:
     if anchors is None:
         return None
     report = inp.artifacts.report or ""
-    us = brief_anchor.units(report)
+    us = brief_anchor.units(report_body(inp))             # never the signature block (a prefix: same positions)
     spans = [sp for a in anchors if isinstance(a, dict) and brief_anchor.anchored(a) and owned(a)
              and (sp := brief_anchor.relocate_one(a, report, us))]
     return spans + [sp for _, sp in _conflicts(inp) if sp]
@@ -317,6 +318,8 @@ def dedupe(neg_items: List[ReviewItem], brief_items: List[ReviewItem]
         if not hit:
             continue
         if _same_verdict(n):
+            if not negatives.covered(n.anchor.text, n.anchor.start, [(b.anchor.start, b.anchor.end) for b in hit]):
+                continue                  # the brief speaks for part of the clause only: both items stay
             drop_neg.add(n.id)
             log.append({"source": "brief_normals", "kept": [b.id for b in hit], "dropped": n.id, "key": n.key,
                         "kind": n.kind, "anchor": n.anchor.model_dump() if n.anchor else None})
