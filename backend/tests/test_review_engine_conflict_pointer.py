@@ -61,12 +61,41 @@ def test_quote_not_shown_below_threshold_but_recorded(monkeypatch):
     assert log["quoted"] == 0 and log["weak"] == 1
 
 
-@pytest.mark.parametrize("ptr,agrees", [("small right pleural effusion", True), ("No pulmonary emboli", False)])
-def test_existing_pointer_kept_and_agreement_logged(monkeypatch, ptr, agrees):
-    it = _card(pointer=ptr)
+def test_existing_pointer_that_agrees_is_kept_with_no_quote(monkeypatch):
+    it = _card(pointer="small right pleural effusion")
     log = _run(monkeypatch, _ans("d0", 0.9), [it])
-    assert it.evidence["pointer"] == ptr and "dictated_quote" not in it.evidence and it.reason == "Conflicts."
-    assert it.evidence["conflict_pointer"]["agrees"] is agrees and log["quoted"] == 0
+    assert it.evidence["pointer"] == "small right pleural effusion" and "dictated_quote" not in it.evidence
+    assert it.evidence["conflict_pointer"]["agrees"] is True and log["quoted"] == 0
+
+
+def test_brief_card_with_a_disagreeing_pointer_shows_jevs_line(monkeypatch):
+    # live case: the brief's pointer named a weaker finding; Jev's confident line is the real reason
+    it = _card(pointer="No pulmonary emboli", source="brief", reason="Stated by the AI as normal, but a check ...")
+    log = _run(monkeypatch, _ans("d0", 0.97), [it])
+    ev = it.evidence
+    assert ev["dictated_quote"] == ev["pointer"] == "Small right pleural effusion"
+    assert ev["pointer_prior"] == "No pulmonary emboli"
+    assert ev["conflict_pointer"]["agrees"] is False and ev["conflict_pointer"]["overridden"] is True
+    assert it.reason == "Stated by the AI as normal, but a check ..." and log["quoted"] == 1
+
+
+def test_negatives_card_with_a_disagreeing_pointer_is_rebuilt_on_jevs_line(monkeypatch):
+    label, reason = negatives.check_text("conflict", "No pulmonary emboli")
+    it = _card(pointer="No pulmonary emboli", reason=reason)
+    it.label = label
+    _run(monkeypatch, _ans("d0", 0.95), [it])
+    assert "pulmonary emboli" not in it.reason and "pulmonary emboli" not in it.label
+    assert "Small right pleural effusion" in it.reason
+    assert "dictated_quote" not in it.evidence        # the rebuilt reason already quotes it: no second quote
+    assert it.evidence["pointer"] == "Small right pleural effusion"
+    assert it.evidence["pointer_prior"] == "No pulmonary emboli"
+
+
+def test_disagreeing_pointer_below_threshold_is_left_alone(monkeypatch):
+    it = _card(pointer="No pulmonary emboli", source="brief")
+    _run(monkeypatch, _ans("d0", 0.79), [it])
+    assert it.evidence["pointer"] == "No pulmonary emboli" and "dictated_quote" not in it.evidence
+    assert "pointer_prior" not in it.evidence
 
 
 def test_quotes_in_the_clause_are_replaced():

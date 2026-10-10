@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 
 from .. import report_reconcile as rc
 from ..report_review import JEV_TIMEOUT_S, dictated_items
-from .negatives import pointer_text
+from .negatives import check_text, pointer_text
 from .items import ReviewInput, ReviewItem
 
 logger = logging.getLogger(__name__)
@@ -88,7 +88,18 @@ async def annotate(inp: ReviewInput, items: List[ReviewItem], timeout: float = J
                     ev["pointer"] = lines[j]
                     log["quoted"] += 1
                 else:
-                    ev["conflict_pointer"]["agrees"] = _norm(lines[j]) == _norm(existing)
+                    agrees = _norm(lines[j]) == _norm(existing)
+                    ev["conflict_pointer"]["agrees"] = agrees
+                    if not agrees:                   # Jev's confident line is the better reason (live b4e8e644)
+                        ev["pointer_prior"] = ev.get("pointer")
+                        ev["pointer"] = lines[j]
+                        ev["conflict_pointer"]["overridden"] = True
+                        log["quoted"] += 1
+                        if ev.get("source") != "brief" and it.kind == "check" and ev.get("check_reason"):
+                            # negatives cards quote their pointer in label / reason: rebuild them on the new line
+                            it.label, it.reason = check_text(ev["check_reason"], lines[j])
+                        else:                        # brief / contradicted cards: generic text, quote shown apart
+                            ev["dictated_quote"] = lines[j]
             it.evidence = ev
     except Exception as e:  # noqa: BLE001
         log["error"] = f"{type(e).__name__}: {str(e)[:200]}"
