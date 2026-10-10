@@ -135,6 +135,38 @@ def ai_layer(cls: Optional[str], pointer: str = "", finding: str = "", clause: s
     return "Assumed normal", "", statement_form(clause)
 
 
+def amber_hygiene(neg_items: list, brief_items: list):
+    """(negatives items, brief items, log). Spec 2026-10-10 §4.5, live gate only: an amber ("bears on your
+    finding") item with no pointer has no finding to bear on → quiet (form normal); amber items whose anchors
+    overlap collapse to the first (negatives before brief). Inputs are not mutated."""
+    log = {"no_pointer": 0, "duplicate": 0}
+    kept_spans: list = []
+
+    def fix(items: list) -> list:
+        out = []
+        for it in items:
+            ev = it.evidence or {}
+            if it.kind != "assumed_normal" or ev.get("form") != "negative" or it.anchor is None:
+                out.append(it)
+                continue
+            if not pointer_text(ev.get("pointer")):
+                log["no_pointer"] += 1
+                out.append(it.model_copy(update={"label": "Assumed normal", "reason": "",
+                                                 "evidence": {**ev, "form": "normal", "amber": "no_pointer"}}))
+                continue
+            s, e = it.anchor.start, it.anchor.end
+            if any(s < b and a < e for a, b in kept_spans):
+                log["duplicate"] += 1
+                continue
+            kept_spans.append((s, e))
+            out.append(it)
+        return out
+
+    neg = fix(list(neg_items))
+    brief = fix(list(brief_items))
+    return neg, brief, log
+
+
 _NEG = re.compile(r"\b(no|not|nil|without|normal(ly)?|unremarkable|patent|intact|clear|preserved|maintained|"
                   r"within normal limits|non-?dilated|undilated|no evidence)\b", re.I)
 _NUM = re.compile(r"(?<![A-Za-z/\d.])\d+(?:\.\d+)?")  # skips T1, C7, L4/5; keeps 4cm
