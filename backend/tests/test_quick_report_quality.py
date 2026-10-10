@@ -141,10 +141,13 @@ OPTIONS = [{"id": "fn0", "kind": "finding_negative", "sentence": "No intrahepati
            {"id": "fn1", "kind": "finding_negative", "sentence": "No splenic vein thrombus."}]
 
 
-def _stub_jev(monkeypatch, contra: dict, reported: dict, dictated: Optional[dict] = None):
+def _stub_jev(monkeypatch, contra: dict, reported: dict, dictated: Optional[dict] = None,
+              report_contra: Optional[dict] = None):
     """contra: clause/option text -> score; reported: dictated item -> score; dictated: negative clause ->
-    'the dictation itself states it'. Default 0.05 / 0.95 / 0.05."""
+    'the dictation itself states it'; report_contra: option text -> 'it would contradict the report'.
+    Default 0.05 / 0.95 / 0.05 / 0.05."""
     dictated = dictated or {}
+    report_contra = report_contra or {}
     calls = []
     async def fake(state, questions):
         calls.append((state, questions))
@@ -153,6 +156,8 @@ def _stub_jev(monkeypatch, contra: dict, reported: dict, dictated: Optional[dict
             t = q["instructions"]
             if t.startswith(qq.Q_CONTRA):
                 out[k] = {"noul": contra.get(t[len(qq.Q_CONTRA):], 0.05)}
+            elif t.startswith(qq.Q_OPTION_REPORT):
+                out[k] = {"noul": report_contra.get(t[len(qq.Q_OPTION_REPORT):].strip('"'), 0.05)}
             elif t.startswith(qq.Q_DICTATED):
                 out[k] = {"noul": dictated.get(t.split('"')[1], 0.05)}
             elif q["type"] == "choice" and k.startswith("i"):
@@ -174,13 +179,32 @@ async def test_check_asks_two_parallel_calls_and_flags(monkeypatch):
     assert states == ["REPORT:", "SCAN TYPE: CT AP"]
     contra_qs = [q["instructions"] for s, qs in calls if s.startswith("SCAN") for q in qs.values()]
     assert qq.Q_CONTRA + "No hepatic deposit" in contra_qs and qq.Q_CONTRA + "No splenic vein thrombus." in contra_qs
-    omit_qs = [q for s, qs in calls if s.startswith("REPORT") for q in qs.values()]
+    omit_qs = [q for s, qs in calls if s.startswith("REPORT") for k, q in qs.items() if not k.startswith("ro")]
     assert omit_qs == [qq.q_omission(t) for t in ("3 cm hypodense mass at the head of the pancreas", "CBD dilated to 12 mm",
                                                   "Intrahepatic duct dilatation", "No ascites")]
     assert [(f.kind, f.text) for f in res.flags] == [("contradiction", "No portal vein encasement"),
                                                      ("omission", "CBD dilated to 12 mm")]
     assert res.bad_option_ids == ["fn0"]
     assert res.error is None
+
+
+@pytest.mark.asyncio
+async def test_an_option_the_report_contradicts_is_dropped(monkeypatch):
+    # live b4e8e644: "No perforation of the appendix." offered beside an impression of perforated appendicitis;
+    # the dictation-state check missed it (gas -> perforation is an inference). Lab option_contra R2: positives
+    # >= 0.92, negatives <= 0.46.
+    calls = _stub_jev(monkeypatch, {}, {}, report_contra={"No splenic vein thrombus.": 0.9})
+    res = await qq.check(REPORT, FINDINGS, "CT AP", OPTIONS)
+    asked = {q["instructions"] for s, qs in calls if s.startswith("REPORT") for k, q in qs.items() if k.startswith("ro")}
+    assert asked == {qq.Q_OPTION_REPORT + f'"{o["sentence"]}"' for o in OPTIONS}
+    assert res.bad_option_ids == ["fn1"] and res.report_contra_option_ids == ["fn1"]
+
+
+@pytest.mark.asyncio
+async def test_an_option_below_the_report_threshold_is_kept(monkeypatch):
+    _stub_jev(monkeypatch, {}, {}, report_contra={"No splenic vein thrombus.": 0.59})
+    res = await qq.check(REPORT, FINDINGS, "CT AP", OPTIONS)
+    assert res.bad_option_ids == [] and res.report_contra_option_ids == []
 
 
 @pytest.mark.asyncio

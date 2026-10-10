@@ -69,6 +69,13 @@ def q_dictated(clause: str, before: str) -> dict:
 
 
 CONTRA_FLAG = 0.6   # L-46: 31/31 genuine contradictions >= 0.5, 29/31 >= 0.7
+# An option checked against the generated REPORT (report state, same request as the omission questions): the
+# dictation-state check misses an option the report's own inference contradicts (live b4e8e644: "No perforation of
+# the appendix." beside "Perforated acute appendicitis"; gas -> perforation is an inference). Lab option_contra
+# (scratchpad, 2026-10-10, arm R2, 2 runs): 46/46 positives >= 0.92, 0/114 negative scores above 0.46.
+Q_OPTION_REPORT = ("If this statement were added to the report, it would contradict something the report already "
+                   "states. Statement: ")
+OPTION_REPORT_FLAG = 0.6
 RESTATED_FLAG = 0.5  # a report negative is removed only when the finding it denies is dictated (L-47)
 # "Is this new sentence already in the report?" (Jev wording v2, group A S2, L-49): the inserter's duplicate guard.
 # One wording, shared with the option uniqueness gate (report_reconcile); the thresholds differ per use.
@@ -488,6 +495,7 @@ class CheckResult(BaseModel):
     flags: List[Flag] = []
     kept_dictated: List[KeptNegative] = []
     bad_option_ids: List[str] = []
+    report_contra_option_ids: List[str] = []   # the subset dropped because the generated report contradicts them
     n_clauses: int = 0
     n_items: int = 0
     n_selected: int = 0
@@ -537,6 +545,8 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict],
     contra_qs.update({f"sel{i}": q_select_choice(t) for i, t in enumerate(items)})
     contra_qs.update({f"lt{i}": q_select_noul(t) for i, t in enumerate(items)})
     omit_qs = {f"i{i}": q_omission(t) for i, t in enumerate(items)}
+    omit_qs.update({f"ro{i}": {"type": "noul", "instructions": Q_OPTION_REPORT + f'"{t}"'}
+                    for i, (_, t) in enumerate(opts)})   # each option against the generated report, same request
     omit_qs.update(extra_report_qs or {})  # another caller's report-state questions, same request
 
     hidden = protected or []
@@ -575,6 +585,8 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict],
             else:
                 flags.append(Flag(kind="contradiction", text=t, score=c))
         bad = [oid for i, (oid, _) in enumerate(opts) if score(contra, f"o{i}") >= CONTRA_FLAG]
+    report_bad = [oid for i, (oid, _) in enumerate(opts) if (maybe(omit, f"ro{i}") or 0.0) >= OPTION_REPORT_FLAG]
+    bad += [oid for oid in report_bad if oid not in bad]
     sel_ans = {} if isinstance(contra, BaseException) else contra
     scores = [selection_score(sel_ans.get(f"sel{i}"), sel_ans.get(f"lt{i}")) for i in range(len(items))]
     chosen = [selected(t, sel_ans.get(f"sel{i}"), sel_ans.get(f"lt{i}")) for i, t in enumerate(items)]
@@ -589,7 +601,8 @@ async def check(report: str, findings: str, scan_type: str, options: List[dict],
     type_ans = {} if isinstance(contra, BaseException) else contra
     sentence_type = {c: _all_normal([clause_type_of(type_ans.get(f"t{sents[x]}")) for x in ss])
                      for c, ss in sent_of.items()}
-    return CheckResult(flags=flags, kept_dictated=kept, bad_option_ids=bad, n_clauses=len(cls), n_items=len(items),
+    return CheckResult(flags=flags, kept_dictated=kept, bad_option_ids=bad, report_contra_option_ids=report_bad,
+                       n_clauses=len(cls), n_items=len(items),
                        n_selected=sum(chosen), selector=selector, error=error,
                        extra_answers={k: score(omit, k) for k in (extra_report_qs or {})}, contra=contra_scores,
                        sentence_type=sentence_type)
@@ -991,6 +1004,7 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
         tel.update(flags=[f.model_dump() for f in res.flags], clauses=res.n_clauses, items=res.n_items,
                    items_selected=res.n_selected, selector=res.selector,
                    jev_ms=int((time.time() - t0) * 1000), error=res.error, options_dropped=res.bad_option_ids,
+                   options_dropped_report=res.report_contra_option_ids,
                    kept_dictated_negative=[k.model_dump() for k in res.kept_dictated])
         options = [o for o in options if o.get("id") not in set(res.bad_option_ids)]
         # A partial or different line, and a flagged positive statement, never edit the report: they are
