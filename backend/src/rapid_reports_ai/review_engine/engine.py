@@ -721,16 +721,17 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
                     it.engine_version = ENGINE_VERSION
                 if bridge:
                     g_prov, _ = live.dedupe(g_prov, bridge)
-                for c, t in zip(live_log["clauses"], today["clauses"]):
-                    c["old"] = t["old"]
+                for c, tc in zip(live_log["clauses"], today["clauses"]):
+                    c["old"] = tc["old"]
                 live_log["today"] = {k: today[k] for k in ("counts", "added_plain_today", "dictated_tinted_today")}
                 live_log["today_items"] = [{"kind": it.kind, "form": (it.evidence or {}).get("form"),
-                                            "anchor": it.anchor.model_dump() if it.anchor else None}
+                                            "start": it.anchor.start if it.anchor else None,
+                                            "end": it.anchor.end if it.anchor else None}
                                            for it in prov]
                 prov, neg_items, brief_items, gate_log = g_prov, g_neg, g_brief, live_log
         except Exception as e:  # noqa: BLE001 - never fails the run: today's items stand
             errors["dictated_gate"] = f"{type(e).__name__}: {str(e)[:200]}"
-            gate_log = None
+            gate_log = {"mode": "shadow", "error": errors["dictated_gate"]} if gm == "shadow" else None
     for it in surface_gate(inp, items + neg_items + brief_items + prov):
         plans.pop(it.id, None)
     report, pre_log = _would_preapply(inp, items, plans, neg_log, neg_items)

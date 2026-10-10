@@ -543,3 +543,9 @@ def test_other_items_pass_through():
     green = _amber("g", 0, 18, "x").model_copy(update={"evidence": {"form": "normal"}})
     n, brief, log = neg.amber_hygiene([green], [])
     assert n == [green] and log == {"no_pointer": 0, "duplicate": 0}
+
+
+def test_amber_hygiene_leaves_items_that_are_not_open():
+    done = _amber("d", 0, 18, "").model_copy(update={"status": "dismissed"})
+    n, brief, log = neg.amber_hygiene([done], [])
+    assert n == [done] and log == {"no_pointer": 0, "duplicate": 0}

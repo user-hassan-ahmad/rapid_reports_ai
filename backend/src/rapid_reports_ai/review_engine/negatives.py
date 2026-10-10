@@ -146,7 +146,8 @@ def amber_hygiene(neg_items: list, brief_items: list):
         out = []
         for it in items:
             ev = it.evidence or {}
-            if it.kind != "assumed_normal" or ev.get("form") != "negative" or it.anchor is None:
+            if (it.kind != "assumed_normal" or ev.get("form") != "negative" or it.anchor is None
+                    or it.status != "open"):
                 out.append(it)
                 continue
             if not pointer_text(ev.get("pointer")):

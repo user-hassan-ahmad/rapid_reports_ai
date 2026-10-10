@@ -612,3 +612,61 @@ async def test_live_falls_back_to_today_when_every_gate_answer_is_unreadable(mon
     assert "dictated_gate" in res.run["errors"]
     assert res.run.get("dictated_gate") is None
     assert not any((i.evidence or {}).get("source") == "dictated_gate" for i in res.items)
+
+
+def _gate_answers(monkeypatch, added_marker):
+    """Wrap the current rc._jev: clauses containing `added_marker` are added normal statements (quiet), the rest dictated."""
+    base = rc._jev
+
+    async def fake(state, qs):
+        out = await base(state, qs)
+        for k, q in qs.items():
+            if k[:1] in "gt" and k[1:].isdigit():
+                add = added_marker in q["instructions"]
+                if k.startswith("g"):
+                    p = 0.1 if add else 0.9
+                    out[k] = {"probabilities": {"all_stated": p, "some_details_added": 1 - p, "not_stated": 0.0}}
+                else:
+                    t = "normal" if add else "abnormal"
+                    out[k] = {"probabilities": {x: float(x == t) for x in ("abnormal", "normal", "mixed", "not_a_finding")}}
+        return out
+    monkeypatch.setattr(rc, "_jev", fake)
+
+
+def _removal_signature(res):
+    return (res.report, [{k: v for k, v in e.items() if k != "item_id"} for e in res.run["pre_apply"]],
+            sorted(i.key for i in res.items if i.status == "pre_applied" or i.kind == "removed"))
+
+
+async def test_removals_are_identical_between_off_and_live(monkeypatch):
+    _dup_stubs(monkeypatch)
+    _gate_answers(monkeypatch, "liver")
+    monkeypatch.setenv("RR_DICTATED_GATE", "off")
+    off = await engine.run_review(inp(DUP_REPORT, DUP_DICT), run_id="00000000-0000-0000-0000-0000000000d1")
+    monkeypatch.setenv("RR_DICTATED_GATE", "live")
+    live_res = await engine.run_review(inp(DUP_REPORT, DUP_DICT), run_id="00000000-0000-0000-0000-0000000000d1")
+    assert live_res.run["dictated_gate"]["mode"] == "live"
+    assert any(i.kind == "removed" for i in off.items)
+    assert _removal_signature(off) == _removal_signature(live_res)
+
+
+@pytest.mark.parametrize("failure", ["raises", "empty"])
+async def test_live_falls_back_when_classify_fails(monkeypatch, failure):
+    monkeypatch.setenv("RR_DICTATED_GATE", "live")
+    _gate_jev(monkeypatch, {"crescentic": 0.2})
+
+    def boom(*a, **k):
+        raise RuntimeError("classify down")
+    monkeypatch.setattr(dictated_gate, "classify", boom if failure == "raises" else (lambda *a, **k: []))
+    res = await engine.run_review(inp(GREPORT, GDICT), "00000000-0000-0000-0000-0000000000a1")
+    assert res.run["errors"].get("dictated_gate")
+    assert res.run.get("dictated_gate") is None
+    assert not any((i.evidence or {}).get("source") == "dictated_gate" for i in res.items)
+
+
+async def test_shadow_logs_the_error_when_the_gate_fails(monkeypatch):
+    monkeypatch.setenv("RR_DICTATED_GATE", "shadow")
+    _gate_jev(monkeypatch, {})
+    monkeypatch.setattr(dictated_gate, "classify", lambda *a, **k: [])
+    res = await engine.run_review(inp(GREPORT, GDICT), "00000000-0000-0000-0000-0000000000a1")
+    assert res.run["dictated_gate"]["mode"] == "shadow" and res.run["dictated_gate"]["error"]
