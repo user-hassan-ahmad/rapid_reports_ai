@@ -7,7 +7,8 @@
 
 export type AiMode = 'key' | 'all' | 'off';
 
-export const AI_MODES: readonly AiMode[] = ['key', 'all', 'off'];
+// Left to right as a scale: Off · Key · All.
+export const AI_MODES: readonly AiMode[] = ['off', 'key', 'all'];
 export const DEFAULT_AI_MODE: AiMode = 'key';
 export const AI_MODE_STORAGE_KEY = 'rv_ai_mode';
 

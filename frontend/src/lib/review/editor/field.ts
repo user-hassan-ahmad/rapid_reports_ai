@@ -30,7 +30,7 @@ import {
 import { EditorView } from '@codemirror/view';
 import { invertedEffects, isolateHistory } from '@codemirror/commands';
 import { locate, locateUndo } from '../anchors';
-import { findRecText, type CommandResult } from '../commands';
+import { appliedSpan, findRecText, type CommandResult } from '../commands';
 import { toChanges } from '../edits';
 import type { Cls, ItemEvidence, ItemLane, ItemStatus, ReviewItem } from '../types';
 import { isEnginePreApplied } from '../types';
@@ -129,7 +129,20 @@ export interface ReviewFieldState {
 	widgets: WidgetItem[];
 	/** Absent on a snapshot that does not touch them (the field keeps the previous list). */
 	suggestions?: SuggestionEntry[];
+	/** The text of applied suggestions (ticked), tinted `rv-inserted`. Absent like `suggestions`. Not marks: an
+	 * edit inside them never makes the item stale. */
+	inserted?: InsertedSpan[];
 }
+
+/** An applied suggestion's text in the report. */
+export interface InsertedSpan {
+	id: string;
+	from: number;
+	to: number;
+}
+
+/** A ticked suggestion's text lands: scroll to it and flash it (decorations.ts clears it after ~1.2 s). */
+export const flashInserted = StateEffect.define<{ from: number; to: number } | null>();
 
 const EMPTY: ReviewFieldState = { marks: [], widgets: [] };
 
@@ -229,6 +242,7 @@ export function fromItems(
 	const widgets: WidgetItem[] = [];
 	const stale: string[] = [];
 	const suggestions: SuggestionEntry[] = [];
+	const inserted: InsertedSpan[] = [];
 	for (const it of items) {
 		// suggestions: open ones with a placeable insert, and applied ones (ticked); never stale or answered
 		if (!isSuggestion(it) || it.cls === 'suppress' || (it.status !== 'open' && it.status !== 'applied')) continue;
@@ -242,6 +256,8 @@ export function fromItems(
 		} else {
 			const at = doc.indexOf(text);
 			suggestions.push({ id: it.id, kind: 'suggestion', text, checked: true, pos: at >= 0 ? at : null, section });
+			const span = appliedSpan(doc, it);
+			if (span) inserted.push({ id: it.id, ...span });
 		}
 	}
 	// recommendations: ticked while in the report (open, or kept); unticked once removed (applied, its remove edit)
@@ -338,7 +354,8 @@ export function fromItems(
 		(m) => !AI_LAYER_MARKS.has(m.mark) || !actionable.some((a) => a.from < m.to && m.from < a.to)
 	);
 	drawn.sort((a, b) => a.from - b.from);
-	return { items: { marks: drawn, widgets, suggestions }, stale };
+	inserted.sort((a, b) => a.from - b.from);
+	return { items: { marks: drawn, widgets, suggestions, inserted }, stale };
 }
 
 // ---- the field ----
@@ -357,7 +374,12 @@ export function mapItems(items: ReviewFieldState, changes: ChangeDesc, dropTouch
 	}
 	const widgets = items.widgets.map((w) => ({ ...w, pos: changes.mapPos(w.pos, -1) }));
 	const suggestions = items.suggestions?.map((g) => (g.pos == null ? g : { ...g, pos: changes.mapPos(g.pos, -1) }));
-	return suggestions ? { marks, widgets, suggestions } : { marks, widgets };
+	const inserted = items.inserted?.flatMap((s) => {
+		const from = changes.mapPos(s.from, 1);
+		const to = changes.mapPos(s.to, -1);
+		return to > from ? [{ ...s, from, to }] : [];
+	});
+	return { marks, widgets, ...(suggestions ? { suggestions } : {}), ...(inserted ? { inserted } : {}) };
 }
 
 function touchesInterior(changes: ChangeDesc, from: number, to: number): boolean {
@@ -376,13 +398,15 @@ function clampItems(v: ReviewFieldState, len: number): ReviewFieldState {
 	if (
 		v.marks.every((m) => m.to <= len) &&
 		v.widgets.every((w) => w.pos <= len) &&
-		(v.suggestions ?? []).every((g) => g.pos == null || g.pos <= len)
+		(v.suggestions ?? []).every((g) => g.pos == null || g.pos <= len) &&
+		(v.inserted ?? []).every((s) => s.to <= len)
 	)
 		return v;
 	return {
 		marks: v.marks.map((m) => ({ ...m, from: c(m.from), to: c(m.to) })),
 		widgets: v.widgets.map((w) => ({ ...w, pos: c(w.pos) })),
-		...(v.suggestions ? { suggestions: v.suggestions.map((g) => (g.pos == null ? g : { ...g, pos: c(g.pos) })) } : {})
+		...(v.suggestions ? { suggestions: v.suggestions.map((g) => (g.pos == null ? g : { ...g, pos: c(g.pos) })) } : {}),
+		...(v.inserted ? { inserted: v.inserted.map((s) => ({ ...s, from: c(s.from), to: c(s.to) })) } : {})
 	};
 }
 
@@ -430,7 +454,14 @@ export const reviewField = StateField.define<ReviewFieldState>({
 	update(items, tr) {
 		let next = tr.docChanged ? mapItems(items, tr.changes, true) : items;
 		for (const e of tr.effects)
-			if (e.is(setItems)) next = e.value.suggestions || !next.suggestions ? e.value : { ...e.value, suggestions: next.suggestions };
+			if (e.is(setItems)) {
+				const v = e.value;
+				next = {
+					...v,
+					...(!v.suggestions && next.suggestions ? { suggestions: next.suggestions } : {}),
+					...(!v.inserted && next.inserted ? { inserted: next.inserted } : {})
+				};
+			}
 		return next;
 	}
 });
@@ -552,7 +583,8 @@ export function syncItems(state: EditorState, items: readonly ReviewItem[], opts
 		setItems.of({
 			marks: next.marks,
 			widgets: [...next.widgets, ...excluded.filter((w) => keep.has(w.id))],
-			suggestions: next.suggestions
+			suggestions: next.suggestions,
+			inserted: next.inserted
 		})
 	];
 	if (stale.length) effects.push(staleEffect.of(stale));
@@ -606,8 +638,16 @@ export function commandTransaction(
 		skip: new Set(excluded.map((w) => w.id))
 	});
 	const effects: StateEffect<unknown>[] = [
-		setItems.of({ marks: placed.marks, widgets: [...placed.widgets, ...excluded], suggestions: placed.suggestions })
+		setItems.of({
+			marks: placed.marks,
+			widgets: [...placed.widgets, ...excluded],
+			suggestions: placed.suggestions,
+			inserted: placed.inserted
+		})
 	];
+	// a ticked suggestion's text lands: scroll to it and flash it
+	const landed = result.event?.command === 'apply' ? placed.inserted?.find((s) => s.id === result.event!.itemId) : undefined;
+	if (landed) effects.push(flashInserted.of({ from: landed.from, to: landed.to }), EditorView.scrollIntoView(landed.from, { y: 'center' }));
 	const lost = stale.filter((id) => !statuses[id]);
 	if (lost.length) effects.push(staleEffect.of(lost));
 	const command = result.event?.command ?? result.events?.[0]?.command ?? 'command';

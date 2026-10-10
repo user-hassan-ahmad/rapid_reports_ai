@@ -80,6 +80,7 @@ const LIGHT = {
 	'--rv-tint-normal': 'rgba(63, 154, 93, 0.13)',
 	'--rv-tint-negative': 'rgba(196, 128, 22, 0.15)',
 	'--rv-tint-synthesis': 'rgba(124, 92, 214, 0.13)',
+	'--rv-tint-inserted': 'rgba(56, 160, 224, 0.14)',
 	'--rv-accent': '#9333ea',
 	'--rv-accent-ring': 'rgba(168, 85, 247, 0.45)',
 	'--rv-grey-line': '#8a9099',
@@ -114,6 +115,7 @@ const DARK = {
 	'--rv-tint-normal': 'rgba(92, 194, 133, 0.14)',
 	'--rv-tint-negative': 'rgba(227, 169, 74, 0.15)',
 	'--rv-tint-synthesis': 'rgba(179, 161, 245, 0.16)',
+	'--rv-tint-inserted': 'rgba(110, 185, 245, 0.17)',
 	'--rv-accent': '#9333ea',
 	'--rv-accent-ring': 'rgba(168, 85, 247, 0.5)',
 	'--rv-grey-line': '#8f969f',
@@ -164,6 +166,20 @@ export const reviewTheme = EditorView.baseTheme({
 	'&[data-rv-emph~="normals"] .rv-form-normal': { backgroundColor: 'var(--rv-tint-normal)' },
 	'&[data-rv-emph~="ai"] .rv-form-negative': { backgroundColor: 'var(--rv-tint-negative)' },
 	'&[data-rv-emph~="ai"] .rv-form-synthesis': { backgroundColor: 'var(--rv-tint-synthesis)' },
+	// text added by ticking a suggestion: a soft sky tint in Key and All (gone in Off); the flash on tick shows in
+	// every mode, fading over 1.2 s, or a static highlight for the same time under prefers-reduced-motion
+	'&[data-rv-emph~="ai"] .rv-inserted': { backgroundColor: 'var(--rv-tint-inserted)', borderRadius: '3px' },
+	'@keyframes rv-inserted-fade': {
+		'0%': { backgroundColor: 'color-mix(in srgb, var(--rv-tint-inserted) 100%, var(--rv-blue-line) 45%)' },
+		'100%': { backgroundColor: 'transparent' }
+	},
+	'.rv-inserted-flash': { animation: 'rv-inserted-fade 1200ms ease-out forwards', borderRadius: '3px' },
+	'@media (prefers-reduced-motion: reduce)': {
+		'.rv-inserted-flash': {
+			animation: 'none',
+			backgroundColor: 'color-mix(in srgb, var(--rv-blue-line) 30%, transparent)'
+		}
+	},
 	// recommendations: their own dotted underline in Key and All (their control is the impression's checklist)
 	'.rv-rec': {
 		cursor: 'text',

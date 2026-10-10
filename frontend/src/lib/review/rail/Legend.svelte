@@ -1,10 +1,10 @@
 <script lang="ts">
 	// The review legend, directly under the "Report Editor" title (ReportResponseViewer; not part of the rail).
-	// "AI highlights [Key | All | Off] ‹ · Removed (contradicts dictation)". The AI highlights control is a three-way
+	// "AI highlights [Off | Key | All] ‹ · Removed (contradicts dictation)". The AI highlights control is a three-way
 	// segmented radiogroup (editor/aiMode.ts, remembered in localStorage): Key = amber negatives, violet synthesis and
 	// the recommendation underline; All = Key plus green normals; Off = no AI tints. `onFilter` gets the emphasis keys
 	// (editor/theme.ts `setEmphasis`). Its breakdown swatches expand inline and show only the categories the mode
-	// draws. The removed label shows only while the report has such a removal (`showRemoved`). It wraps onto new
+	// draws. The removed label and the suggestions swatch (`showInserted`) show only while the report has such a removal (`showRemoved`). It wraps onto new
 	// lines when narrow (never scrolls sideways). The density toggle is a dev-page capability only (`showDensity`):
 	// the app's density is fixed to Quiet.
 	import { AI_BREAKDOWN, LEGEND } from '../editor/decorations';
@@ -18,6 +18,7 @@
 		mode = $bindable<AiMode>(readAiMode()),
 		onFilter,
 		showRemoved = false,
+		showInserted = false,
 		expanded = $bindable(true)
 	}: {
 		density?: Density;
@@ -29,17 +30,21 @@
 		onFilter?: (keys: string[]) => void;
 		/** The report currently has a removal that contradicts the dictation: show its legend label. */
 		showRemoved?: boolean;
+		/** The report has an applied suggestion: its breakdown swatch shows (Key and All). */
+		showInserted?: boolean;
 		/** The AI breakdown is shown. */
 		expanded?: boolean;
 	} = $props();
 
 	const ENTRIES = $derived(LEGEND.filter((e) => e.key !== 'removed' || showRemoved));
 	const SHOWN: Record<AiMode, string[]> = {
-		key: ['negative', 'synthesis', 'recommendation'],
-		all: ['negative', 'synthesis', 'recommendation', 'normal'],
+		key: ['negative', 'synthesis', 'recommendation', 'inserted'],
+		all: ['negative', 'synthesis', 'recommendation', 'normal', 'inserted'],
 		off: []
 	};
-	const BREAKDOWN = $derived(AI_BREAKDOWN.filter((b) => SHOWN[mode].includes(b.form)));
+	const BREAKDOWN = $derived(
+		AI_BREAKDOWN.filter((b) => SHOWN[mode].includes(b.form) && (b.form !== 'inserted' || showInserted))
+	);
 
 	const CHOICES: { value: Density; label: string }[] = [
 		{ value: 'full', label: 'Full' },
@@ -50,7 +55,8 @@
 		negative: 'var(--lg-amber)',
 		synthesis: 'var(--lg-violet)',
 		recommendation: 'var(--lg-teal)',
-		normal: 'var(--lg-green)'
+		normal: 'var(--lg-green)',
+		inserted: 'var(--lg-sky)'
 	};
 	const MODE_LABEL: Record<AiMode, string> = { key: 'Key', all: 'All', off: 'Off' };
 
@@ -85,7 +91,7 @@
 				class="rv-seg"
 				role="radiogroup"
 				data-rv-filter={e.key}
-				aria-label="AI highlights: Key · All · Off"
+				aria-label="AI highlights: Off · Key · All"
 				title={e.title}
 			>
 				{#each AI_MODES as m (m)}
@@ -156,6 +162,7 @@
 		--lg-blue: #7ea6f0;
 		--lg-violet: #b3a1f5;
 		--lg-teal: #4fd1c5;
+		--lg-sky: #6ab8f0;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;

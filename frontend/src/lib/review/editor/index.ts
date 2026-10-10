@@ -59,6 +59,7 @@ export function reviewExtensions(opts: ReviewExtensionOptions): Extension[] {
 
 export {
 	DESCRIPTIONS,
+	INSERTED_FLASH_MS,
 	ICONS,
 	LABELS,
 	LEGEND,

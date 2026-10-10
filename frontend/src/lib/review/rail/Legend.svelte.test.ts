@@ -38,12 +38,12 @@ describe('Legend', () => {
 		expect(getComputedStyle(el).cursor).toBe('default');
 	});
 
-	it('is an accessible radiogroup Key · All · Off, Key by default', async () => {
+	it('is an accessible radiogroup Off · Key · All, Key by default', async () => {
 		render(Legend, {});
-		await expect.element(page.getByRole('radiogroup', { name: 'AI highlights: Key · All · Off' })).toBeInTheDocument();
-		expect(radios().map((r) => r.textContent?.trim())).toEqual(['Key', 'All', 'Off']);
+		await expect.element(page.getByRole('radiogroup', { name: 'AI highlights: Off · Key · All' })).toBeInTheDocument();
+		expect(radios().map((r) => r.textContent?.trim())).toEqual(['Off', 'Key', 'All']);
 		expect(checked()).toBe('key');
-		expect(radios().map((r) => r.tabIndex)).toEqual([0, -1, -1]);
+		expect(radios().map((r) => r.tabIndex)).toEqual([-1, 0, -1]);
 	});
 
 	it('the breakdown shows only what the mode draws: Key amber and violet, All adds green normals, Off none', async () => {
@@ -102,6 +102,37 @@ describe('Legend', () => {
 		);
 		expect(checked()).toBe('all');
 		expect(onFilter).toHaveBeenLastCalledWith(['ai', 'normals']);
+	});
+
+	it('showInserted adds "Added from suggestions" to the breakdown (Key and All, not Off)', async () => {
+		render(Legend, { showInserted: true });
+		const row = () => legend().querySelector<HTMLElement>('[data-rv-form="inserted"]');
+		await expect.element(page.getByText('Added from suggestions')).toBeInTheDocument();
+		expect(row()!.title).toBe('Text you added by ticking a suggestion');
+		await page.getByRole('radio', { name: 'All' }).click();
+		expect(row()).not.toBeNull();
+		await page.getByRole('radio', { name: 'Off' }).click();
+		expect(row()).toBeNull();
+	});
+
+	it('the suggestions swatch is absent while no suggestion is applied', async () => {
+		render(Legend, {});
+		await expect.element(page.getByRole('radio', { name: 'Key' })).toBeInTheDocument();
+		expect(legend().textContent).not.toContain('Added from suggestions');
+	});
+
+	it('arrow keys follow the Off · Key · All order and wrap', async () => {
+		render(Legend, {});
+		const press = (name: string, key: string) =>
+			page.getByRole('radio', { name }).element().dispatchEvent(
+				new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+			);
+		await press('Key', 'ArrowLeft');
+		expect(checked()).toBe('off');
+		await press('Off', 'ArrowLeft');
+		expect(checked()).toBe('all');
+		await press('All', 'ArrowRight');
+		expect(checked()).toBe('off');
 	});
 
 	it('remembers the mode (localStorage rv_ai_mode) and restores it on load', async () => {
