@@ -125,18 +125,19 @@ Amber precision itself (about half, by a strict reader; Hassan's boundary counts
 
 ## 7. Rollout
 
-`RR_DICTATED_GATE` = `off` | `shadow` | `live`. The default is `shadow` once merged.
+`RR_DICTATED_GATE` = `off` | `shadow` | `live`. The code default is `off`; Railway is set to `live` at deploy (Hassan,
+2026-10-10: see the new tiers in the editor, keep the comparison).
 
-1. **Shadow:** the gate runs and logs; items and display are unchanged. The shadow log gets key `dictated_gate`, with per clause:
-   - clause index, section;
-   - `p_all_stated`, `q_type`;
-   - verdict, tier;
-   - added runs;
-   - which old component tinted it.
+1. **Live with today's path as the comparison:** today's provenance path still runs on every report, but the gate's
+   items are what the editor shows. The run log (`dictated_gate`, persisted in the shadow log) holds per clause:
+   - clause index, section, `p_all_stated`, `q_type`, verdict, tier, added runs;
+   - `old`: what today's items tinted on that clause;
+   - plus totals for today (`today`) and today's items (`today_items`).
 
-   Persist the existing `run["provenance"]` log in the same dict; today it is never copied.
-2. **Live:** gate items and tiers replace §4.4's decisions; the old code stays as the failure fallback.
-3. **Cleanup:** delete the replaced code once live has run cleanly (§9).
+   Persist the existing `run["provenance"]` log in the same dict; today it is never copied. Any gate failure shows
+   today's items for that report.
+2. **Shadow** (log only, display unchanged) stays available as the fallback setting if a §9 criterion fails.
+3. **Cleanup:** once live has run cleanly (§9), delete the replaced code; the comparison goes with it.
 
 ## 8. Templated path
 

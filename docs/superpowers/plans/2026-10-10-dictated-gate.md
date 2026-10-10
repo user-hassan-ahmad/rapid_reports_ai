@@ -4,6 +4,10 @@
 
 **Goal:** One Jev question per report clause, asked against the raw dictation, decides "is it dictated?". A tier rule then highlights only review-worthy additions (violet on the added words, recommendations as today) and puts routine additions in the quiet tier, shown only with the AI toggle.
 
+**Rollout shape (Hassan, 2026-10-10):** live shows the NEW tiers in the editor while today's path still runs and is
+logged next to it (`today`, per-clause `old`), so the comparison survives without hiding the change. `shadow` stays
+available (log only, display unchanged) but the deploy goes straight to `live`.
+
 **Architecture:**
 - New module `review_engine/dictated_gate.py`:
   - the question (frozen lab wording Q3s), its state, and answer parsing;
@@ -13,14 +17,14 @@
 - The gate questions run as extra parallel requests inside `jev_pass.run`.
 - `engine.run_review`:
   - **shadow:** logs the gate next to today's items;
-  - **live:** replaces `provenance.build_items` + `provenance.confirm` with `dictated_gate.apply`, falling back to today's path on any gate failure.
+  - **live:** today's `provenance.build_items` + `provenance.confirm` still run; `dictated_gate.apply` then replaces their items (and the negatives / brief AI-layer items it drops) for display, and today's items go into the log as the comparison. Any gate failure leaves today's items shown.
 - Frontend: violet becomes always visible, and `ai_generated` items paint their `also_anchors`.
 
 **Tech Stack:** Python 3 (pydantic v2, asyncio, pytest with pytest-asyncio), Jev via `report_reconcile._jev`, SvelteKit + CodeMirror 6 (vitest).
 
 **Spec:** `docs/superpowers/specs/2026-10-10-dictated-gate-review-tiers-design.md`
 
-**One deviation from the spec (§7):** the code default for `RR_DICTATED_GATE` is `off`, so existing tests and the Jev request count are unchanged. Shadow is switched on by setting `RR_DICTATED_GATE=shadow` on Railway at deploy (Task 10), with Hassan's approval, as for every flag.
+**Flag default:** the code default for `RR_DICTATED_GATE` is `off`, so existing tests and the Jev request count are unchanged. It is set to `live` on Railway at deploy (Task 10), with Hassan's approval, as for every flag.
 
 **Standing rules for every task:**
 - Production report text never goes into the repo (tests use synthetic text).
@@ -875,8 +879,9 @@ async def test_live_replaces_provenance_items(monkeypatch, _stubs):
     syn = [i for i in res.items if i.kind == "ai_generated"]
     assert [i.anchor.text for i in syn] == ["crescentic"]
     assert all((i.evidence or {}).get("source") == "dictated_gate" for i in syn)
-    assert res.run["dictated_gate"]["mode"] == "live"
-    assert "amber_hygiene" in res.run["dictated_gate"]
+    log = res.run["dictated_gate"]
+    assert log["mode"] == "live" and "amber_hygiene" in log
+    assert "today" in log and "today_items" in log and all("old" in c for c in log["clauses"])
 
 
 @pytest.mark.asyncio
@@ -922,58 +927,42 @@ to:
             for k in ("contra_error", "omit_error", "support_error", "gate_error"):
 ```
 
-Replace the whole provenance block, from `prov: List[ReviewItem] = []` down to and including the `except` of the `provenance.confirm` try (the line `errors["synthesis"] = f"{type(e).__name__}: {str(e)[:200]}"` just before `for it in surface_gate(`), with:
+Keep the existing provenance block (`provenance.build_items` and `provenance.confirm`) exactly as it is: today's
+path always runs first and becomes the comparison. Directly AFTER that block (just before `for it in
+surface_gate(`), insert:
 
 ```python
-    prov: List[ReviewItem] = []
-    prov_log: Optional[dict] = None
-    gate_clauses = None
     gate_log: Optional[dict] = None
-    gate_live = False
     gm = dictated_gate.mode()
     if gm != "off" and jp is not None and jp.gate and not jp.gate_error:
         try:                             # the dictated gate (spec 2026-10-10): pure code over the Jev pass answers
             gate_clauses = dictated_gate.classify(inp, body, al, jp)
-        except Exception as e:  # noqa: BLE001 - never fails the run: today's path below
-            errors["dictated_gate"] = f"{type(e).__name__}: {str(e)[:200]}"
-    if gm == "live" and gate_clauses is not None:
-        try:
-            prov, g_neg, g_brief, gate_log = dictated_gate.apply(inp, run_id, al, gate_clauses, neg_items,
-                                                                 brief_items)
-            g_neg, g_brief, gate_log["amber_hygiene"] = negatives.amber_hygiene(g_neg, g_brief)
-            for it in prov:
-                it.engine_version = ENGINE_VERSION
-            if bridge:
-                prov, _ = live.dedupe(prov, bridge)
-            neg_items, brief_items = g_neg, g_brief
-            gate_live = True
-        except Exception as e:  # noqa: BLE001 - never fails the run: today's path below
-            errors["dictated_gate"] = f"{type(e).__name__}: {str(e)[:200]}"
-            prov, gate_log = [], None
-    if not gate_live:
-        try:                             # provenance: undictated clauses and recommendations (pure code)
-            prov, prov_log = provenance.build_items(inp, run_id, al, jp, neg_items + brief_items)
-            for it in prov:
-                it.engine_version = ENGINE_VERSION
-            if bridge:
-                prov, _ = live.dedupe(prov, bridge)
-        except Exception as e:  # noqa: BLE001 - never fails the run
-            errors["provenance"] = f"{type(e).__name__}: {str(e)[:200]}"
-        try:                             # one Jev request: undictated recommendations and suppressed synthesis
-            before = {id(it) for it in prov}
-            prov, syn_log = await provenance.confirm(inp, run_id, al, jp, items, prov, neg_items + brief_items)
-            for it in prov:
-                if id(it) not in before:
+            today = dictated_gate.shadow_log(gate_clauses, neg_items + brief_items + prov)   # what today tints
+            gate_log = today
+            if gm == "live":             # the gate's items are shown; today's stay in the log for comparison
+                g_prov, g_neg, g_brief, live_log = dictated_gate.apply(inp, run_id, al, gate_clauses, neg_items,
+                                                                       brief_items)
+                g_neg, g_brief, live_log["amber_hygiene"] = negatives.amber_hygiene(g_neg, g_brief)
+                for it in g_prov:
                     it.engine_version = ENGINE_VERSION
-            if bridge:
-                prov, _ = live.dedupe(prov, bridge)
-            prov_log = {**(prov_log or {}), **syn_log}
-            if syn_log.get("error"):
-                errors["synthesis"] = syn_log["error"]
-        except Exception as e:  # noqa: BLE001 - never fails the run; build_items' items stand
-            errors["synthesis"] = f"{type(e).__name__}: {str(e)[:200]}"
-        if gate_clauses is not None:
-            gate_log = dictated_gate.shadow_log(gate_clauses, neg_items + brief_items + prov)
+                if bridge:
+                    g_prov, _ = live.dedupe(g_prov, bridge)
+                live_log["today"] = {k: today[k] for k in ("counts", "added_plain_today", "dictated_tinted_today")}
+                live_log["today_items"] = [{"kind": it.kind, "form": (it.evidence or {}).get("form"),
+                                            "anchor": it.anchor.model_dump() if it.anchor else None}
+                                           for it in prov]
+                prov, neg_items, brief_items, gate_log = g_prov, g_neg, g_brief, live_log
+        except Exception as e:  # noqa: BLE001 - never fails the run: today's items stand
+            errors["dictated_gate"] = f"{type(e).__name__}: {str(e)[:200]}"
+            gate_log = None
+```
+
+Each clause entry in the live log keeps its own `old` field: `apply` must copy it from `today`. Add, inside the
+`if gm == "live":` branch before `prov, neg_items, ...`:
+
+```python
+                for c, t in zip(live_log["clauses"], today["clauses"]):
+                    c["old"] = t["old"]
 ```
 
 In the `run = {...}` dict, after `"provenance": prov_log,` add:
@@ -1182,7 +1171,7 @@ async def one(path: Path, fh) -> None:
 async def main(dirs, out):
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).resolve().parents[2] / ".env")
-    assert os.environ.get("RR_DICTATED_GATE") == "shadow", "run with RR_DICTATED_GATE=shadow"
+    assert os.environ.get("RR_DICTATED_GATE") in ("shadow", "live"), "run with RR_DICTATED_GATE=shadow or live"
     with open(out, "w") as fh:
         for d in dirs:
             for p in sorted(Path(d).glob("*.json")):
@@ -1252,8 +1241,8 @@ This task is run by the controller session, not an implementer subagent. Each ex
 - [ ] **Step 2:** After Hassan approves the merge, merge and confirm the Railway deploy:
   - `curl -s -o /dev/null -w "%{http_code}" -A 'Mozilla/5.0' <root>` returns 200;
   - `POST /api/dictation/check` returns 401.
-- [ ] **Step 3:** With Hassan's approval, set `RR_DICTATED_GATE=shadow` on Railway.
-- [ ] **Step 4:** Replay the 24 lab reports (scratchpad `live_audit/r2…r5`) with Task 8's script.
+- [ ] **Step 3:** With Hassan's approval, set `RR_DICTATED_GATE=live` on Railway (new tiers shown; today's path logged as `today`).
+- [ ] **Step 4:** Replay the 24 lab reports (scratchpad `live_audit/r2…r5`) with Task 8's script (`RR_DICTATED_GATE=live` locally works too: the log carries both).
   - Score against the scratchpad gold (`labs/gate_a/*/gold.jsonl`, sorter relabel) on spec §9:
     - review recall ≥ 90%; precision ≥ 0.9;
     - mean ≤ 4 review highlights per report; highlighted words ≤ 20% of text;
@@ -1261,6 +1250,6 @@ This task is run by the controller session, not an implementer subagent. Each ex
     - p50 review time up by ≤ 1 s.
   - Generate 5 fresh prod reports through the Chrome session and hand-read their `dictated_gate` shadow logs.
   - Confirm 0 changes to removals and contradiction cards against the same reports with the gate off.
-- [ ] **Step 5:** Report the numbers to Hassan. Only with his approval, set `RR_DICTATED_GATE=live`, then re-run 3 of the fresh cases and look at the rail.
+- [ ] **Step 5:** Report the numbers to Hassan with the editor view of the fresh cases. If a criterion fails, set the flag back to `shadow` (log only) with his approval while it is fixed.
 - [ ] **Step 6:** Update the handover memory and ledger status.
   - Cleanup is a later PR: deleting the replaced provenance code, and the stage-3 one-line failure notice. It needs ≥ 10 hand-read live reports first.
