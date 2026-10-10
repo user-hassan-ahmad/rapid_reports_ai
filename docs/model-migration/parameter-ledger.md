@@ -2062,12 +2062,26 @@ Spec `docs/superpowers/specs/2026-10-09-negatives-one-owner-design.md` (with its
   - no harm in 8/8;
   - with the flag on, 29882bd7 keeps "no superior mesenteric artery involvement" verbatim, where off rewrote it to "No encasement of the superior mesenteric artery";
   - with the flag on, d3d1e0a5 appends the sheet's "invasion" to the dictated sentence ("No definite chest wall involvement or invasion"): certainty kept, but the DICTATED brief line quotes the sheet text, not the dictation.
-- **BLOCKER found (open):** 29882bd7 "No ascites" / SMA are tinted "Assumed normal". The cause is in `negatives.classify_negatives` / `route`:
-  - owned candidates are routed unlabelled and become `default`;
-  - for a dictated anchor no brief item exists to dedupe them against, so the dictated negative is tinted green;
-  - in a claim group, an owned, unlabelled IMPRESSION copy counts as `default` and outranks the FINDINGS copy's `dictated`.
-  - 5 of 7 anchored dictated negatives were tinted: 29882bd7 ascites; d3d1e0a5 chest wall and pulmonary emboli; synth_renal right hydronephrosis and bladder.
-  - Suggested fix: route an owned, unlabelled candidate as `dictated`: no item, while the code number check still applies.
+- **Dictated-tint blocker: CLOSED in 157c533.**
+  - Found in the first run: owned candidates were routed unlabelled and became `default`. For a dictated anchor, no brief item existed to dedupe against, so the dictated negative was tinted green. In a claim group, an owned IMPRESSION copy also outranked the FINDINGS copy's `dictated`. 5 of 7 anchored dictated negatives were tinted.
+  - Fix: clauses the brief owns get no classifier item.
+  - Re-run (flag on, 29882bd7, d3d1e0a5, synth_renal; fresh generations), every anchored dictated negative has no item:
+    - "No ascites.";
+    - "no definite chest wall involvement" (neg:6 and dict:0);
+    - "No pulmonary emboli.";
+    - "No right hydronephrosis is identified.";
+    - "The bladder is unremarkable with no wall thickening.".
+  - The rest of the bar held on the re-run:
+    - contralateral hilar is amber;
+    - 0 brief conflict cards;
+    - 0 removals and 0 "uncertain";
+    - classified 4 / 4 / 6 (d3d1e0a5 4 vs baseline 16), with negatives wait 0.5–1.7 s.
+    - d3d1e0a5 had one rail card, a classifier contradiction: "The lung bases are clear" against the dictated 6 mm left lower lobe nodule. It is defensible.
+  - **Residual, not this bug:** in 29882bd7 the generator wrote "…with no superior mesenteric artery involvement and no encasement of the superior mesenteric vein or portal vein." The finding-linked portal-vein label (neg:7) anchored on a unit that spans the dictated SMA clause too, so the dictated words sit under an amber mark. The dictated SMA label itself was unanchored. This is the `units()` segmentation gap: "X and no Y" stays one unit.
+- **Observation: both first-run conflict cards were false alarms**, dismissible, with nothing removed:
+  - d3d1e0a5 "The upper kidneys are unremarkable." (`brief_kept`, Jev 0.84);
+  - 90b88b86 "No periappendiceal" (`removal_blocked`, Jev 0.77).
+  - The 90b88b86 card is a **wrong clause, not a display issue**. The post-check splitter `report_review.clauses()` distributes "No periappendiceal, psoas, or pelvic collection is identified." into "No periappendiceal" / "No psoas" / "No pelvic collection is identified", which drops the shared head noun. Jev therefore judged the bare fragment "No periappendiceal" against the dictated periappendiceal fat stranding. The splitter is pre-existing (L-47); a fix should carry the head noun to every list member.
 
 **Flags:**
 - `RR_BRIEF_ANCHOR`: default on.
