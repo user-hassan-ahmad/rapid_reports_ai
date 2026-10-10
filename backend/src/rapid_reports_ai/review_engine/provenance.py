@@ -18,7 +18,7 @@
 
 - Synthesis inside a dictation-paired clause (`synthesis_items`, live audit 2): for an accuracy `unsupported` item
   (Jev W1n) the adjudicator suppressed, code proposes the runs of words absent from the whole dictation and one
-  Jev question per run (lab D3n shape) decides; only runs Jev calls undictated get an `ai_generated` item. The
+  Jev choice per run (lab P4 Q3) decides; only runs Jev calls not_stated get an `ai_generated` item. The
   suppressed item stays suppressed. This is the one provenance step with a model call (one batched Jev request).
 
 Never marked: technique / comparison / history sections and signature lines (the alignment's clause splitter skips
@@ -283,21 +283,35 @@ def build_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPa
 _TOKEN = re.compile(r"[A-Za-z]+|\d+(?:\.\d+)?")
 # never painted, and never bridged when merging two runs: a dictated negation or hedge belongs to the dictation
 _GUARD = re.compile(r"^(?:no|not|without|nil|likely|possible|possibly|probable|probably|consistent|suggest\w*)$", re.I)
-SYNTH_DICTATED = 0.5         # lab P3 (D3n shape): P(the dictation states the item) below this → not dictated
-# The lab's P3 D3n wording (scratchpad labs/audit_jev, arm D3n), turned from "states there is no {item}" to
-# "states {item}" for an added positive phrase; same shape: the report clause, then the one item, dictation as state.
-_ST = ("The dictation itself states this item for the finding the statement refers to. Count any wording, synonym "
-       "or equivalent term for the same finding or structure. Use the report text it follows only to tell which "
-       "finding, side or structure it refers to.")
-_SF = ("The dictation does not state this item: it says nothing about it, or states it only for a different finding, "
-       "side, level or structure.")
+# Lab P4 (scratchpad labs/audit_jev/lab4.py, arm Q3, 2 runs): 0 dictated items flagged at any threshold <= 0.71
+# (the noul wording Q1 scored a dictated "No ICH" phrase 0.15), 16/17 added phrases caught in both runs.
+SYNTH_DICTATED = 0.5         # P(stated) + P(synonym_or_equivalent) below this → not dictated → marked
+SYNTH_CHOICES = ("stated", "synonym_or_equivalent", "not_stated")
 
 
 def q_synthesis(clause: str, item: str) -> dict:
-    return {"type": "noul", "instructions": (
-        f'The report says: "{clause}". Consider only this one item from it: "{item}". The dictated findings '
-        f'themselves state {item}, for the same side, level and structure, in any wording.'),
-        "criteria": {"true": _ST, "false": _SF}}
+    """Lab P4 arm Q3, verbatim."""
+    return {"type": "choice", "instructions": (
+        f'The report says: "{clause}". Consider only this one phrase from it: "{item}". '
+        "Is it in the dictated findings?"),
+        "criteria": {"stated": "The dictation states it in the same words.",
+                     "synonym_or_equivalent": "The dictation states it in other words: a synonym, an abbreviation or "
+                                              "its expansion, or an equivalent term for the same thing.",
+                     "not_stated": "The dictation does not state it; it was added by the report writer."}}
+
+
+def p_dictated(ans) -> Optional[float]:
+    """P(stated) + P(synonym_or_equivalent) of a Q3 choice answer; a bare choice counts 1 / 0; None when unreadable."""
+    if not isinstance(ans, dict):
+        return None
+    probs = ans.get("probabilities")
+    if isinstance(probs, dict) and any(k in probs for k in SYNTH_CHOICES):
+        try:
+            return float(probs.get("stated", 0) or 0) + float(probs.get("synonym_or_equivalent", 0) or 0)
+        except (TypeError, ValueError):
+            return None
+    ch = ans.get("choice")
+    return None if ch not in SYNTH_CHOICES else (0.0 if ch == "not_stated" else 1.0)
 
 
 def synthesis_state(inp: ReviewInput) -> str:
@@ -333,8 +347,8 @@ async def synthesis_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Opti
     - proposal: each anchor (and `also_anchors` copy) that lies on report clauses (never technique / comparison /
       history), has a confident pair, and is not Jev-typed normal / not_a_finding; its runs of content words absent
       from the whole dictation (`_proposed_runs`), minus spans provenance already marked or owned items anchor;
-    - decision: one batched Jev request per report, dictation as state, the lab's D3n shape per run (`q_synthesis`);
-      a run is marked only when P(dictated) < SYNTH_DICTATED. A failed request or unreadable answer marks nothing.
+    - decision: one batched Jev request per report, dictation as state, the lab P4 Q3 choice per run (`q_synthesis`);
+      a run is marked only when P(stated) + P(synonym_or_equivalent) < SYNTH_DICTATED. A failed request or unreadable answer marks nothing.
     The suppressed item stays as it is."""
     report = inp.artifacts.report or ""
     taken = [(it.anchor.start, it.anchor.end) for it in list(existing) + list(owned) if it.anchor is not None]
@@ -373,7 +387,7 @@ async def synthesis_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Opti
         return [], log
     out: List[ReviewItem] = []
     for k, (a, b, _, section, key) in enumerate(props):
-        p = noul(ans or {}, f"syn{k}")
+        p = p_dictated((ans or {}).get(f"syn{k}"))
         if p is None or p >= SYNTH_DICTATED:
             continue
         out.append(_ai_item(inp, run_id, section, a, b, {"form": "synthesis", "from": "unsupported_suppressed",

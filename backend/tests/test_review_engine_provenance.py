@@ -337,8 +337,9 @@ CYST_DICT = "- Left renal cyst 15 mm\n- Liver normal"
 CYST_REPORT = ("FINDINGS:\nLeft renal cyst 15 mm. The liver is normal.\n\n"
                "IMPRESSION:\nLeft renal cyst 15 mm, in keeping with a simple Bosniak I cyst.\n")
 CYST_CLAUSE = "Left renal cyst 15 mm, in keeping with a simple Bosniak I cyst."
-NOT_DICTATED = {"syn*": {"noul": 0.1}}
-DICTATED = {"syn*": {"noul": 0.9}}
+NOT_DICTATED = {"syn*": {"choice": "not_stated", "probabilities": {"stated": 0.05, "synonym_or_equivalent": 0.1, "not_stated": 0.85}}}
+DICTATED = {"syn*": {"choice": "stated", "probabilities": {"stated": 0.6, "synonym_or_equivalent": 0.3, "not_stated": 0.1}}}
+SYNONYM = {"syn*": {"choice": "synonym_or_equivalent", "probabilities": {"stated": 0.1, "synonym_or_equivalent": 0.7, "not_stated": 0.2}}}
 
 
 def _unsupported(report, clause, cls="suppress", detectors=("jev.supported",), also=()):
@@ -370,7 +371,9 @@ async def test_suppressed_unsupported_marks_only_the_undictated_words(monkeypatc
     state, qs = calls[0]
     assert "DICTATED FINDINGS:\n" + CYST_DICT in state
     q = next(iter(qs.values()))
-    assert f'The report says: "{CYST_CLAUSE}". Consider only this one item from it: "simple Bosniak".' in q["instructions"]
+    assert q["type"] == "choice" and set(q["criteria"]) == {"stated", "synonym_or_equivalent", "not_stated"}
+    assert q["instructions"] == (f'The report says: "{CYST_CLAUSE}". Consider only this one phrase from it: '
+                                 '"simple Bosniak". Is it in the dictated findings?')
 
 
 async def test_periovulatory_shape_is_marked(monkeypatch):
@@ -386,7 +389,7 @@ async def test_jev_says_dictated_synonym_gets_no_mark(monkeypatch):
               "IMPRESSION:\nLeft renal cyst 15 mm.\n")
     dictation = "- Left kidney cyst 15 mm\n- Liver normal"
     items, _ = await _synthesis(monkeypatch, report, dictation, [_unsupported(report, "Left renal cyst 15 mm.")],
-                                answers=DICTATED)
+                                answers=SYNONYM)
     assert items == []
 
 
@@ -463,7 +466,7 @@ async def test_no_double_mark_when_provenance_already_marked_the_span(monkeypatc
 async def test_run_review_tints_the_synthesis_of_a_suppressed_unsupported_item(monkeypatch):
     async def no_neg(inp_, run_id, types=None, owned=None):
         return [], {"candidates": []}
-    monkeypatch.setattr(rc, "_jev", jev({"sup*": {"noul": 0.1}, "syn*": {"noul": 0.1}}))
+    monkeypatch.setattr(rc, "_jev", jev({"sup*": {"noul": 0.1}, **NOT_DICTATED}))
     monkeypatch.setattr(negatives, "classify_negatives", no_neg)
 
     async def judge(inp_, groups):
@@ -490,3 +493,26 @@ async def test_run_review_keeps_provenance_when_synthesis_fails(monkeypatch):
     monkeypatch.setattr(provenance, "synthesis_items", boom)
     res = await engine.run_review(inp(REPORT, DICT), RUN)
     assert "recommendation" in [i.kind for i in res.items] and "synthesis" in res.run["errors"]
+
+
+async def test_negated_clause_trap_a_dictated_negative_noun_is_never_marked(monkeypatch):
+    """Lab P4: the noul wording scored "intracranial haemorrhage" 0.15 against a dictated "No ICH"; Q3 calls it a
+    synonym, so the noun of a dictated negative is never painted."""
+    dictation = "- Left subdural haematoma 8 mm\n- No ICH"
+    clause = "Left subdural haematoma 8 mm, with no intracranial haemorrhage elsewhere."
+    report = f"FINDINGS:\nLeft subdural haematoma 8 mm.\n\nIMPRESSION:\n{clause}\n"
+    calls = []
+    items, log = await _synthesis(monkeypatch, report, dictation, [_unsupported(report, clause)], answers=SYNONYM,
+                                  calls=calls)
+    assert log["proposed"] >= 1 and items == []
+    asked = [q["instructions"] for q in calls[0][1].values()]
+    assert any('"intracranial haemorrhage' in q for q in asked) and not any('"no ' in q for q in asked)
+
+
+def test_choice_answer_parsing():
+    p = provenance.p_dictated
+    assert p({"probabilities": {"stated": 0.2, "synonym_or_equivalent": 0.25, "not_stated": 0.55}}) == pytest.approx(0.45)
+    assert p({"probabilities": {"stated": "0.3", "synonym_or_equivalent": 0.3, "not_stated": 0.4}}) == pytest.approx(0.6)
+    assert p({"choice": "not_stated"}) == 0.0 and p({"choice": "synonym_or_equivalent"}) == 1.0
+    for bad in (None, {}, {"noul": 0.1}, {"choice": "maybe"}, {"probabilities": {"stated": "x"}}):
+        assert p(bad) is None
