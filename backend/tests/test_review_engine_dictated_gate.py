@@ -161,7 +161,7 @@ def test_units_hold_only_real_report_text():
     r = "FINDINGS:\nNo interval change in the liver lesion, but there is a new nodule.\n"
     i, al, texts = _unit_texts(r, "- Liver lesion")
     assert all(t in r for t in texts) and not any(t.startswith("No but") for t in texts)
-    assert texts[-1] == "No interval change in the liver lesion, but there is a new nodule."
+    assert texts == ["No interval change in the liver lesion, but there is a new nodule."]   # nested head dropped
 
 
 def test_classify_refuses_a_jev_pass_asked_about_other_clauses():

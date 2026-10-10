@@ -162,14 +162,18 @@ def units(al: Alignment) -> List[Tuple[int, int, ReportClause]]:
     """The gate's units: the distinct (start, end) spans of the alignment's clauses, sorted by start, each with the
     first clause holding that span (section, sentence offsets, recommendation placement). The unit text is the REAL
     report text report[start:end]: split-out list items and "No but ..." tails are synthetic clause texts that share
-    their sentence's span, so they collapse into one unit. Nested different spans stay (should not happen; logged)."""
+    their sentence's span, so they collapse into one unit. Only the OUTERMOST of nested spans is kept (the lab validated whole sentences; a nested head could be called
+    dictated while its sentence is added); a drop is logged."""
     seen: Dict[Tuple[int, int], ReportClause] = {}
     for c in sorted(al.clauses, key=lambda c: (c.start, c.end)):
         seen.setdefault((c.start, c.end), c)
-    out = [(s, e, c) for (s, e), c in sorted(seen.items())]
-    for k, (s, e, _) in enumerate(out):
-        if any(s2 <= s and e <= e2 for s2, e2, _ in out[:k] + out[k + 1:]):
-            logger.info("dictated gate: nested unit span (%d, %d)", s, e)
+    spans = sorted(seen.items())
+    out = []
+    for (s, e), c in spans:
+        if any(s2 <= s and e <= e2 and (s2, e2) != (s, e) for (s2, e2), _ in spans):
+            logger.info("dictated gate: nested unit span (%d, %d) dropped for its outer span", s, e)
+        else:
+            out.append((s, e, c))
     return out
 
 
