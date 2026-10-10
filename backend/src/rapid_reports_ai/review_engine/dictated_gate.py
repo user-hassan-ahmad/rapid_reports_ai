@@ -107,6 +107,7 @@ class GateClause:
     tier: str                     # dictated | quiet | rec | synth | unknown
     runs: List[Tuple[int, int]] = field(default_factory=list)   # report spans of words absent from the dictation
     aclause: Optional[ReportClause] = None                      # the alignment clause holding `start`
+    quiet_span: Optional[Tuple[int, int]] = None   # quiet by the bolted-on-negative rule: the negation only
 
 
 def dictated_words(dictation: str) -> set:
@@ -169,9 +170,13 @@ def classify(inp: ReviewInput, body: str, al: Alignment, jp) -> List[GateClause]
         p = p_all_stated(jp.gate.get(f"g{i}"))
         runs = _proposed_runs(body, c.start, c.end, words)
         rec = is_recommendation(c.text, q, c.section)
+        ns = _negator_start(body, c.start, max(c.end, c.sentence_end), runs)
+        tier = tier_of(p, q, rec, ns is not None)
+        # quiet because of a bolted-on negative (not a normal statement): the finding is dictated, so only the
+        # negation ("without cavitation") is quiet, never the whole clause
+        span = (ns, runs[-1][1]) if tier == "quiet" and q != "normal" and ns is not None else None
         out.append(GateClause(i=i, text=c.text, start=c.start, end=c.end, section=c.section, p=p, q_type=q,
-                              tier=tier_of(p, q, rec, _negated_only(body, c.start, max(c.end, c.sentence_end), runs)),
-                              runs=runs, aclause=c))
+                              tier=tier, runs=runs, aclause=c, quiet_span=span))
     return out
 
 
@@ -222,9 +227,10 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
     synth, rec_seen, unplaced, capped = 0, set(), sum(1 for g in gate if g.start is None), 0
     for g in placed:
         if g.tier == "quiet":
+            qs, qe = g.quiet_span or (g.start, g.end)
             if not any(_overlaps(it, g.start, g.end) for it in existing):
                 prov.append(_new_item(inp, run_id, "accuracy", "assumed_normal", "info", DETECTOR, g.section or "",
-                                      g.start, g.end, "Assumed normal", "",
+                                      qs, qe, "Assumed normal", "",
                                       {"form": "normal", "source": DETECTOR, "p": g.p, "q_type": g.q_type}))
         elif g.tier == "synth":
             if synth >= MAX_AI_ITEMS:

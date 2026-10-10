@@ -248,7 +248,7 @@ def test_live_quiet_clause_without_an_item_gets_a_quiet_one_and_dictated_drops_a
                                    neg=[green])
     assert neg == []                                     # gate says dictated: the radiologist's own text
     quiet = [it for it in prov if it.kind == "assumed_normal"]
-    assert [it.anchor.text for it in quiet] == ["Left ovary normal with no contralateral adnexal mass."]
+    assert [it.anchor.text for it in quiet] == ["no contralateral adnexal mass"]    # mixed type: the negation only
     assert quiet[0].evidence["form"] == "normal"
     assert log["dropped"] == [green.key]
 
@@ -288,3 +288,14 @@ def test_shadow_log_records_tiers_and_what_tinted_each_clause_today():
     assert log["counts"] == {"synth": 1, "dictated": 2, "quiet": 1, "rec": 1}
     assert log["added_plain_today"] == 3                 # synth, quiet and rec clauses with no item today
     assert log["dictated_tinted_today"] == 1
+
+
+def test_a_bolted_on_negative_is_quiet_and_its_quiet_item_covers_only_the_negation():
+    r = "FINDINGS:\nRLL consolidation without cavitation.\n"
+    c = ["RLL consolidation without cavitation."]
+    i = inp(r, "- RLL consolidation")
+    al = align(r, "- RLL consolidation", "", i.artifacts.sections)
+    g = dg.classify(i, r, al, _jp(c, [0.1], ["abnormal"]))
+    assert g[0].tier == "quiet"
+    prov, *_ = dg.apply(i, RUN, al, g, [], [])
+    assert [it.anchor.text for it in prov if it.kind == "assumed_normal"] == ["without cavitation"]
