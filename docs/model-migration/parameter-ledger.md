@@ -2004,3 +2004,80 @@ All 20 are quick reports. The plumbing and latency numbers hold. Item rates part
   - Numbers, segment, side and the dictated "No ascites" were left untouched, as intended.
   - 0 would-pre-apply edits.
 - **Next:** the Gate F shadow read after about a day of real traffic, current pipeline only.
+
+### L-59 · Negatives: one owner per judgement (brief anchors, removal guard, full labels), 2026-10-10
+
+Spec `docs/superpowers/specs/2026-10-09-negatives-one-owner-design.md` (with its "Revision 2026-10-10"). Branch `feat/negatives-one-owner`. Production text stays in the scratchpad.
+
+**The rule.** Each judgement about a generated negative has one owner. Nothing re-decides it downstream.
+- **The brief owns selection**, plus the labels it gives reliably:
+  - dictated (no tint);
+  - contradicted / expected (OMIT: conflict cards, never removals);
+  - finding-linked negatives (amber by origin);
+  - linked-normal atoms;
+  - every clause the post-gen check carded.
+- **The classifier owns** default vs implicated for sheet negatives the brief merely kept. They are not in `owned_spans` and get no brief item. A kept sheet negative still vetoes a removal and still gets a `brief_kept` card, because both are selection.
+- **Jev owns** contradiction and statement type. **Code** only proposes and applies.
+
+**`brief_anchor`: code proposes, Jev confirms.** Every brief label is tied to the clause the generator wrote.
+- Code proposes the anchor: a term match on statement units.
+- Jev confirms every anchor with the link question in sentence context (C1), at p ≥ 0.80.
+- A literal term hit is also accepted on the no-context question (S1) at p ≥ 0.90.
+- A non-literal pass counts only when the unit is the sentence's sole unit (8e4aa6e).
+- Link lab, 2 runs over 192 pairs: 0 wrong links. Recall was 105/138 with C1 alone and about 119–121/138 with the either-gate.
+- Replay on the stored cases: 93 anchors, 0 wrong.
+
+**Removal guard** (a653846, 6569ef6, 988a7d5):
+- Every removal, including today's L-47 path, needs Jev's statement type `normal` for the exact sentence deleted.
+- Guard lab: real pure negatives allowed 122/122; real sentences stating a finding allowed 0/12 (one implied-finding carry is the loose call); synthetic 7/7 and 0/9.
+- The brief is veto-only: it protects or annotates, and never removes. Would-be brief removals go to `anchor_log.would_remove_by_brief`; `RR_BRIEF_REMOVE` stays off until that log has been hand-read.
+- Deletion is positional: only the occurrence the guard approved is deleted.
+- Last-step invariant: no edit after the guard can bring back a removed clause or remove an unguarded one.
+- `brief_omitted` cards show only at Jev contradiction ≥ 0.3.
+- Synthetic brief-remove lab (9fd9e91; 24 cases × 2): brief 12 correct / 0 wrong / 0 missed; L-47 11 / 0 / 1. **Inconclusive:** no keep case reached contradiction ≥ 0.6, so the risky zone was never tested.
+
+**Brief labeller, four labels** (b204edc):
+- Contradicted recall: full scheme 30/32 vs today's labeller 29/32.
+- Dictated: 13/13 recognised (0 labelled contradicted) vs today's 0/13.
+- Implicated: 7/58, reasoning off. Not used for salience (that is the classifier's job, above).
+- `RR_BRIEF_FULL_LABELS` is on, narrowed to its dictated and contradicted strength (cfea700). Reasoning on in the brief was rejected: it would add seconds before render for a label nothing before render uses.
+
+**E2E, 8 cases** (6 production dictations + renal-sides and MSK synthetics; in process, `RR_REVIEW_ENGINE=live`, `RR_GROUPED_NORMALS=1`, one run per arm):
+- **How it was run.** The HTTP route, auth, DB persistence and `/analyse` were bypassed; the stored production sheet was reused. The run used `generate_quick_report` → `input_from_parts` → `run_review`.
+- **Removals:** 0 auto-removals in 16 generations, so 0 false. 0 `would_remove_by_brief`.
+- **Cards:** 0 "uncertain". 2 rail cards, both conflicts and both false on read:
+  - d3d1e0a5: "The upper kidneys are unremarkable.", a `brief_kept` card, Jev 0.84;
+  - 90b88b86: "No periappendiceal, psoas, or pelvic collection", `removal_blocked`, Jev 0.77, beside dictated fat stranding and free fluid.
+  - Both are dismissible, nothing was removed, and both appeared in both arms.
+- **d3d1e0a5 against the production run** (8ace68fa: 16 classified, negatives wait 7.6 s):
+  - 8 classified (21 candidates, 13 owned), wait 2.5 s;
+  - "No contralateral hilar lymphadenopathy" is amber and finding-linked, with no card;
+  - the mediastinal station sentence is partly classifier-decided (paratracheal and subcarinal tails implicated), with the atom anchor on "mediastinal lymphadenopathy". All three are amber, with no card;
+  - the contralateral adrenal sentence was kept and not removed.
+- **de42a105:** duct, CBD calculus and peripancreatic negatives are amber; hepatic is green.
+- **Negatives wait, the other cases:** 0–5.3 s. One off-arm outlier was 61 s (d3d1e0a5, a provider stall; not flag-related).
+- **Prose A/B** (`RR_BRIEF_FULL_LABELS` 1 vs 0):
+  - no label words leak;
+  - no dictated negative is lost;
+  - no harm in 8/8;
+  - with the flag on, 29882bd7 keeps "no superior mesenteric artery involvement" verbatim, where off rewrote it to "No encasement of the superior mesenteric artery";
+  - with the flag on, d3d1e0a5 appends the sheet's "invasion" to the dictated sentence ("No definite chest wall involvement or invasion"): certainty kept, but the DICTATED brief line quotes the sheet text, not the dictation.
+- **BLOCKER found (open):** 29882bd7 "No ascites" / SMA are tinted "Assumed normal". The cause is in `negatives.classify_negatives` / `route`:
+  - owned candidates are routed unlabelled and become `default`;
+  - for a dictated anchor no brief item exists to dedupe them against, so the dictated negative is tinted green;
+  - in a claim group, an owned, unlabelled IMPRESSION copy counts as `default` and outranks the FINDINGS copy's `dictated`.
+  - 5 of 7 anchored dictated negatives were tinted: 29882bd7 ascites; d3d1e0a5 chest wall and pulmonary emboli; synth_renal right hydronephrosis and bladder.
+  - Suggested fix: route an owned, unlabelled candidate as `dictated`: no item, while the code number check still applies.
+
+**Flags:**
+- `RR_BRIEF_ANCHOR`: default on.
+- `RR_BRIEF_FULL_LABELS`: default on (the A/B showed no harm).
+- `RR_BRIEF_REMOVE`: default off (shadow log only).
+
+**Known gaps:**
+- Trace 3: a station-list sentence and "no mediastinal lymphadenopathy" are not linked; the classifier judges it as today.
+- `units()` segmentation: the whole-sentence branch and dangling ";" after positional removal.
+- Near-verbatim misses under C1: d3d1e0a5's "No contralateral adrenal abnormality" and "contralateral pleural effusion" stayed unanchored.
+- Small production sample: 3 pancreas/lung cases from production plus 3 from Sept 29.
+- The DICTATED brief line quotes the sheet text.
+- The L-47 `_NEG_LIST` `.*?` exposure is pre-existing, and now behind the Jev type guard.
