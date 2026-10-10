@@ -527,3 +527,88 @@ async def test_run_failure_after_the_row_finishes_it_with_an_error(monkeypatch):
     monkeypatch.setattr(engine.asyncio, "to_thread", same_thread)
     assert await engine.run_and_store("00000000-0000-0000-0000-000000000001") is None
     assert finished and finished[0][0] == "00000000-0000-0000-0000-0000000000f9" and "engine" in finished[0][4]
+
+
+from rapid_reports_ai.review_engine import dictated_gate  # noqa: E402
+
+GREPORT = ("FINDINGS:\nThere is a 2 cm crescentic mass in the right kidney. The liver is normal.\n"
+           "IMPRESSION:\nRight renal mass. Urology referral is recommended.\n")
+GDICT = "- 2 cm right renal mass"
+
+
+def _gate_jev(monkeypatch, p_by_text):
+    """Gate answers by clause text (substring match); everything else from the default fake. g{i}: P(all_stated)
+    from `p_by_text` (default 0.9); t{i}: abnormal, normal when the text says so, not_a_finding for the recommendation."""
+    base = jev()
+
+    async def fake(state, qs):
+        out = await base(state, qs)
+        for k, q in qs.items():
+            if not (k[:1] in "gt" and k[1:].isdigit()):
+                continue
+            ins = q["instructions"]
+            if k.startswith("g"):
+                p = next((v for t, v in p_by_text.items() if t in ins), 0.9)
+                out[k] = {"probabilities": {"all_stated": p, "some_details_added": 1 - p, "not_stated": 0.0}}
+            else:
+                t = "not_a_finding" if "recommended" in ins else "normal" if "is normal" in ins else "abnormal"
+                out[k] = {"probabilities": {x: (1.0 if x == t else 0.0)
+                                            for x in ("abnormal", "normal", "mixed", "not_a_finding")}}
+        return out
+    monkeypatch.setattr(rc, "_jev", fake)
+
+
+async def test_shadow_logs_the_gate_and_leaves_items_as_today(monkeypatch):
+    monkeypatch.setenv("RR_DICTATED_GATE", "off")
+    _gate_jev(monkeypatch, {"crescentic": 0.2})
+    off = await engine.run_review(inp(GREPORT, GDICT), "00000000-0000-0000-0000-0000000000a1")
+    monkeypatch.setenv("RR_DICTATED_GATE", "shadow")
+    sh = await engine.run_review(inp(GREPORT, GDICT), "00000000-0000-0000-0000-0000000000a1")
+    assert sorted(i.key for i in sh.items) == sorted(i.key for i in off.items)
+    assert off.run.get("dictated_gate") is None
+    log = sh.run["dictated_gate"]
+    assert log["mode"] == "shadow" and any(c["tier"] == "synth" for c in log["clauses"])
+
+
+async def test_live_replaces_provenance_items(monkeypatch):
+    monkeypatch.setenv("RR_DICTATED_GATE", "live")
+    _gate_jev(monkeypatch, {"crescentic": 0.2, "Urology": 0.0})
+    res = await engine.run_review(inp(GREPORT, GDICT), "00000000-0000-0000-0000-0000000000a1")
+    syn = [i for i in res.items if i.kind == "ai_generated"]
+    assert [i.anchor.text for i in syn] == ["crescentic"]
+    assert all((i.evidence or {}).get("source") == "dictated_gate" for i in syn)
+    log = res.run["dictated_gate"]
+    assert log["mode"] == "live" and "amber_hygiene" in log
+    assert "today" in log and "today_items" in log and all("old" in c for c in log["clauses"])
+
+
+async def test_live_falls_back_to_today_when_the_gate_fails(monkeypatch):
+    monkeypatch.setenv("RR_DICTATED_GATE", "live")
+    base = jev()
+
+    async def flaky(state, qs):
+        if any(k.startswith("g") and k[1:].isdigit() for k in qs):
+            raise TimeoutError("slow")
+        return await base(state, qs)
+    monkeypatch.setattr(rc, "_jev", flaky)
+    res = await engine.run_review(inp(GREPORT, GDICT), "00000000-0000-0000-0000-0000000000a1")
+    assert "dictated_gate" in res.run["errors"] or "jev_gate_error" in res.run["errors"]
+    assert res.run.get("dictated_gate") is None
+    assert not any((i.evidence or {}).get("source") == "dictated_gate" for i in res.items)
+
+
+async def test_live_falls_back_to_today_when_every_gate_answer_is_unreadable(monkeypatch):
+    monkeypatch.setenv("RR_DICTATED_GATE", "live")
+    base = jev()
+
+    async def unreadable(state, qs):
+        out = await base(state, qs)
+        for k in qs:
+            if k[:1] in "gt" and k[1:].isdigit():
+                out[k] = {"noul": 0.1}
+        return out
+    monkeypatch.setattr(rc, "_jev", unreadable)
+    res = await engine.run_review(inp(GREPORT, GDICT), "00000000-0000-0000-0000-0000000000a1")
+    assert "dictated_gate" in res.run["errors"]
+    assert res.run.get("dictated_gate") is None
+    assert not any((i.evidence or {}).get("source") == "dictated_gate" for i in res.items)
