@@ -19,6 +19,7 @@
 		onFilter,
 		showRemoved = false,
 		showInserted = false,
+		showChat = false,
 		expanded = $bindable(true)
 	}: {
 		density?: Density;
@@ -32,18 +33,20 @@
 		showRemoved?: boolean;
 		/** The report has an applied suggestion: its breakdown swatch shows (Key and All). */
 		showInserted?: boolean;
+		/** Applied chat edits are in the report: their "Applied from chat" swatch. */
+		showChat?: boolean;
 		/** The AI breakdown is shown. */
 		expanded?: boolean;
 	} = $props();
 
 	const ENTRIES = $derived(LEGEND.filter((e) => e.key !== 'removed' || showRemoved));
 	const SHOWN: Record<AiMode, string[]> = {
-		key: ['negative', 'synthesis', 'recommendation', 'inserted'],
-		all: ['negative', 'synthesis', 'recommendation', 'normal', 'inserted'],
+		key: ['negative', 'synthesis', 'recommendation', 'inserted', 'chat'],
+		all: ['negative', 'synthesis', 'recommendation', 'normal', 'inserted', 'chat'],
 		off: []
 	};
 	const BREAKDOWN = $derived(
-		AI_BREAKDOWN.filter((b) => SHOWN[mode].includes(b.form) && (b.form !== 'inserted' || showInserted))
+		AI_BREAKDOWN.filter((b) => SHOWN[mode].includes(b.form) && (b.form !== 'inserted' || showInserted) && (b.form !== 'chat' || showChat))
 	);
 
 	const CHOICES: { value: Density; label: string }[] = [
@@ -56,7 +59,8 @@
 		synthesis: 'var(--lg-violet)',
 		recommendation: 'var(--lg-teal)',
 		normal: 'var(--lg-green)',
-		inserted: 'var(--lg-sky)'
+		inserted: 'var(--lg-rose)',
+		chat: 'var(--lg-rose)'
 	};
 	const MODE_LABEL: Record<AiMode, string> = { key: 'Key', all: 'All', off: 'Off' };
 
@@ -162,7 +166,7 @@
 		--lg-blue: #7ea6f0;
 		--lg-violet: #b3a1f5;
 		--lg-teal: #4fd1c5;
-		--lg-sky: #6ab8f0;
+		--lg-rose: #e46aa6;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
