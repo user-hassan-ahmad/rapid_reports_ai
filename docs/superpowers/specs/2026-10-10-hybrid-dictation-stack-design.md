@@ -164,5 +164,5 @@ Caveats: synthetic speech and synthetic cases; the dev schema's includes were wr
 ## 8. Out of scope
 
 - The visual body map (the schema regions are designed to be its zones).
-- Generation consuming the grouped sentences (template filling from routed sentences) — a follow-on once Phase 3 is live.
+- Generation consuming the grouped sentences (template filling from routed sentences) — a follow-on once the new layout is live (Phase 1).
 - Impression-first dictation / reverse generation.
