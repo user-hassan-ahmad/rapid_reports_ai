@@ -9,6 +9,9 @@
 	import { API_URL } from '$lib/config';
 	import { hasUnsavedWork as unsavedWork } from '$lib/utils/confirmGate';
 	import { sectionList } from '$lib/review/savedReport';
+	import { fetchSchema } from '$lib/hybrid-stack/api';
+	import { hybridStackOn } from '$lib/hybrid-stack/flag';
+	import type { StackSchema } from '$lib/hybrid-stack/types';
 
 	// ── Feedback capture ──────────────────────────────────────────────
 	let feedbackId: string | null = null;
@@ -176,7 +179,32 @@
 	let findingsAtReportGeneration = '';
 	$: findingsStale = hasResponseEver && !!response && scratchpadToFindings(scratchpadContent) !== findingsAtReportGeneration;
 
-	$: allChecklistSections = prePoppedSections;
+	// The hybrid dictation stack (rr_hybrid_stack) on the template path: regions are the template's own
+	// paragraphs when its grammar structure is fresh (else the scan type's schema). sections-from-template
+	// and the Jev pills keep running in shadow.
+	$: stackStatus = apiKeyStatus as { hybrid_stack?: boolean; hybrid_stack_shadow_rate?: number };
+	$: hybridStack = hybridStackOn(undefined, stackStatus?.hybrid_stack === true);
+	let stackSchema: StackSchema | null = null;
+	let stackPills: string[] = [];
+	let stackSchemaFor = ''; // the template + history the schema was requested for
+	$: stackKey = `${selectedTemplate?.id ?? ''}|${variableValuesGeneratedFrom['CLINICAL_HISTORY'] ?? ''}`;
+	$: if (hybridStack && selectedTemplate?.id && prePoppedSections.length > 0 && stackSchemaFor !== stackKey) {
+		void loadStackSchema(stackKey);
+	}
+	async function loadStackSchema(key: string) {
+		stackSchemaFor = key;
+		stackPills = [];
+		try {
+			stackSchema = await fetchSchema($token, {
+				scan_type: scanType,
+				clinical_history: variableValues['CLINICAL_HISTORY'] ?? '',
+				template_id: selectedTemplate?.id ?? null
+			});
+		} catch {
+			stackSchema = null; // fail open: today's pills show
+		}
+	}
+	$: allChecklistSections = hybridStack && stackSchema ? stackSchema.pills : prePoppedSections;
 
 	// Extract FINDINGS template_content and content_style for section extraction
 	$: findingsTemplateContent = (() => {
@@ -793,7 +821,7 @@
 			<!-- Coverage chip strip -->
 			<div class="flex flex-wrap gap-1.5 transition-opacity duration-300 {isReviewing ? 'opacity-50' : ''}">
 					{#each allChecklistSections as section}
-						{@const covered = coveredSections.has(section)}
+						{@const covered = hybridStack && stackSchema ? stackPills.includes(section) : coveredSections.has(section)}
 						<span class="px-2.5 py-1 rounded-full text-[11px] font-medium transition-all duration-300
 							{covered
 								? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
@@ -817,6 +845,12 @@
 					onCoveredSectionsChange={handleCoveredSectionsChange}
 					onPromptsChange={handlePromptsChange}
 					onScratchpadClear={handleScratchpadClear}
+					{hybridStack}
+					stackRegions={stackSchema?.regions ?? []}
+					stackGroups={stackSchema?.groups ?? []}
+					stackSchemaMeta={stackSchema ? { key: stackSchema.key, source: stackSchema.source, provisional: stackSchema.provisional } : null}
+					onStackPills={(p) => { stackPills = p; }}
+					stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
 				/>
 			</div>
 

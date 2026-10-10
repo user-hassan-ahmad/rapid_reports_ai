@@ -14,6 +14,9 @@ import type { CoverageTrace, LabConfig, PillThresholds } from '$lib/dictation-la
 import type { DecisionRecord, OutcomeEvent } from '$lib/dictation-lab/decisionFirst';
 import { pillState } from '$lib/dictation-lab/coverage';
 import { effectiveConfig } from '$lib/dictation-lab/package';
+import { fetchSchema } from '$lib/hybrid-stack/api';
+import { hybridStackOn } from '$lib/hybrid-stack/flag';
+import type { StackSchema } from '$lib/hybrid-stack/types';
 import { hasUnsavedWork as unsavedWork } from '$lib/utils/confirmGate';
 import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedReport';
 
@@ -132,6 +135,31 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	// The dictation package: the lab page's config, or the package where the server allows it
 	// (apiKeyStatus.dictation_v2) unless this browser opted out, or null (today's dictation).
 	$: dictationConfig = effectiveConfig(labConfig, undefined, (apiKeyStatus as { dictation_v2?: boolean })?.dictation_v2 === true);
+	// The hybrid dictation stack (rr_hybrid_stack): the grouped view and pills from its grouping, where the
+	// server allows it and the dictation package is on. /sections and the Jev pills keep running in shadow.
+	$: stackStatus = apiKeyStatus as { hybrid_stack?: boolean; hybrid_stack_shadow_rate?: number };
+	$: hybridStack = hybridStackOn(undefined, stackStatus?.hybrid_stack === true && dictationConfig !== null);
+	let stackSchema: StackSchema | null = null;
+	let stackPills: string[] = [];
+	let stackSchemaFor = ''; // the scan type + history the schema was requested for
+	// Also covers a restored draft (sections come from storage, no /sections call) and a flag that
+	// arrives after the workspace exists (the settings status is fetched asynchronously).
+	$: if (hybridStack && sectionsGeneratedFromScanType && stackSchemaFor !== `${sectionsGeneratedFromScanType}|${sectionsGeneratedFromHistory}`) {
+		void loadStackSchema(sectionsGeneratedFromScanType, sectionsGeneratedFromHistory);
+	}
+	async function loadStackSchema(scan: string, history: string) {
+		stackSchemaFor = `${scan.trim()}|${history.trim()}`;
+		stackPills = [];
+		if (!hybridStack || !scan.trim()) {
+			stackSchema = null;
+			return;
+		}
+		try {
+			stackSchema = await fetchSchema($token, { scan_type: scan.trim(), clinical_history: history.trim() });
+		} catch {
+			stackSchema = null; // fail open: today's pills show
+		}
+	}
 	/** Dictation Lab only: three-state pills from coverage scores. null = binary pills as in production. */
 	export let pillThresholds: PillThresholds | null = null;
 	export let onCoverageTrace: (trace: CoverageTrace) => void = () => {};
@@ -157,7 +185,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 
 	// Review guide shows the pre-generated checklist sections only.
 	// Coverage state comes entirely from covered_sections returned by Qwen — no text parsing.
-	$: allChecklistSections = prePoppedSections;
+	$: allChecklistSections = hybridStack && stackSchema ? stackSchema.pills : prePoppedSections;
 
 	/**
 	 * Fire the speculative-parallel quick-report analyser in the background.
@@ -225,6 +253,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
+			void loadStackSchema(scanType, clinicalHistory); // in parallel; /sections stays as the shadow list
 			const res = await fetch(`${API_URL}/api/canvas/sections`, {
 				method: 'POST',
 				headers,
@@ -259,6 +288,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
+			void loadStackSchema(scanType, clinicalHistory); // in parallel; /sections stays as the shadow list
 			const res = await fetch(`${API_URL}/api/canvas/sections`, {
 				method: 'POST',
 				headers,
@@ -954,11 +984,13 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		<!-- Coverage chip strip -->
 		<div class="flex flex-wrap gap-1.5 transition-opacity duration-300 {isReviewing ? 'opacity-50' : ''} {regenerating ? 'animate-pulse' : ''}">
 			{#each allChecklistSections as section}
-				{@const state = pillThresholds && coverageScores
-					? pillState(coverageScores[section], pillThresholds)
-					: coveredSections.has(section)
-						? 'covered'
-						: 'absent'}
+				{@const state = hybridStack && stackSchema
+					? (stackPills.includes(section) ? 'covered' : 'absent')
+					: pillThresholds && coverageScores
+						? pillState(coverageScores[section], pillThresholds)
+						: coveredSections.has(section)
+							? 'covered'
+							: 'absent'}
 				<span
 					class="px-2.5 py-1 rounded-full text-[11px] font-medium transition-all duration-300
 					{state === 'covered'
@@ -980,7 +1012,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			{activePrompts}
 			{scanType}
 			{clinicalHistory}
-			{polishMode}
+			polishMode={hybridStack ? 'clean' : polishMode}
 			onModeChange={(m) => { polishMode = m; }}
 			{apiKeyStatus}
 			onContentChange={(c) => { scratchpadContent = c; }}
@@ -994,6 +1026,12 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			{onCoverageTrace}
 			{onDecision}
 			{onOutcome}
+			{hybridStack}
+			stackRegions={stackSchema?.regions ?? []}
+			stackGroups={stackSchema?.groups ?? []}
+			stackSchemaMeta={stackSchema ? { key: stackSchema.key, source: stackSchema.source, provisional: stackSchema.provisional } : null}
+			onStackPills={(p) => { stackPills = p; }}
+			stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
 		/>
 	</div>
 
