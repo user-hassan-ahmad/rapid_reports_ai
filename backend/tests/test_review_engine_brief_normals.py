@@ -129,7 +129,7 @@ def test_dedupe_classifier_conflict_outranks_the_brief_on_that_clause():
 
 
 async def test_engine_one_item_per_brief_span(monkeypatch):
-    """The engine emits the brief's items and drops the classifier's duplicates on the same clause."""
+    """The engine emits the brief's items and the classifier makes none on the clauses the brief owns."""
     import tests.test_review_engine_engine as te
     from rapid_reports_ai import report_reconcile as rc
     from rapid_reports_ai.review_engine import adjudicator as adj
@@ -145,7 +145,7 @@ async def test_engine_one_item_per_brief_span(monkeypatch):
                and i.anchor.start < b.anchor.end and b.anchor.start < i.anchor.end
                and i.kind in ("assumed_normal", "check")]
         assert dup == [], (b.evidence["term"], [(d.detectors, d.kind) for d in dup])
-    assert any(d.get("source") == "brief_normals" for d in res.run["deduped"])
+    assert res.run["negatives"]["owned_by_brief"] >= 2      # owned: the classifier makes no item, nothing to dedupe
 
 
 def _engine_stubs(monkeypatch, calls):

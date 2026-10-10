@@ -525,10 +525,11 @@ async def classify_negatives(inp: ReviewInput, run_id: str, types: Optional[Dict
     """The Task 14 entry point: (items, log). Never raises. `log` holds the report after pre-applied removals,
     its hash, candidate/label counts, latency and any model error (fail-soft).
 
-    `owned`: original-report spans the brief's linked normals already label (`brief_normals.build_items` anchors).
-    Candidates on them are not sent to the model (latency: the call's reasoning grows with the statement list) and
-    are routed unlabelled: code's number check still applies, the rest become assumed-normal items the brief's own
-    items replace (`brief_normals.dedupe`)."""
+    `owned`: original-report spans the brief already owns (`brief_normals.owned_spans`: its own item, deliberately
+    none for dictated / OMIT, or a conflict card). Candidates on them are not sent to the model (latency: the call's
+    reasoning grows with the statement list) and are routed as `dictated`: no item, while code's number check still
+    applies (an undictated number keeps its number card). In a claim group an owned copy has dictated severity, so it
+    never raises the group's verdict (e2e 29882bd7: an owned dictated "No ascites" was tinted green)."""
     t0 = time.monotonic()
     report = inp.artifacts.report or ""
     dictation, history = inp.artifacts.dictated_findings or "", inp.clinical_history or ""
@@ -546,8 +547,9 @@ async def classify_negatives(inp: ReviewInput, run_id: str, types: Optional[Dict
         labels = {asked[k - 1]: v for k, v in got.items()}
     else:
         labels, err, kind = {}, None, None
+    routed = {**labels, **{i: {"cls": "dictated", "pointer": "", "owned": True} for i in skip}}
     try:
-        items, doc, post = route(inp, run_id, cands, labels)
+        items, doc, post = route(inp, run_id, cands, routed)
     except Exception as e:  # noqa: BLE001 - routing never fails the run: no items, report untouched
         logger.warning("review engine: negatives routing failed (%s: %s)", type(e).__name__, str(e)[:200])
         items, doc, post = [], report, {}

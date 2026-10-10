@@ -302,7 +302,7 @@ def _term_span(report, sentence, term):
 
 
 async def test_brief_owned_statements_skip_the_classifier(monkeypatch):
-    """A candidate whose span holds a brief linked-normal label is routed unlabelled (the brief's item owns it); only
+    """A candidate whose span holds a brief label is routed as dictated (no item; the brief owns it); only
     the rest are listed for the model, numbered contiguously, and its labels map back to the right statements."""
     owned = [_term_span(REPORT, "The liver is normal.", "liver"),
              _term_span(REPORT, "The spleen measures 14 cm", "spleen")]
@@ -318,7 +318,7 @@ async def test_brief_owned_statements_skip_the_classifier(monkeypatch):
     assert by["No pneumoperitoneum."].kind == "removed"
     t1 = by["The T1 vertebra is intact."]                                             # classified 6 → candidate 8
     assert (t1.kind, t1.evidence["form"]) == ("assumed_normal", "negative")
-    assert by["The liver is normal."].kind == "assumed_normal"                        # deduped later by the brief
+    assert "The liver is normal." not in by                                           # owned: the brief's item only
     sp = by["The spleen measures 14 cm and is otherwise normal."]                      # the number check is code
     assert (sp.kind, sp.evidence["check_reason"]) == ("check", "number")
     assert set(log["labels"]) == {"1", "8"}
@@ -329,7 +329,7 @@ async def test_all_candidates_owned_makes_no_model_call():
     owned = [_term_span(report, "The liver is normal.", "liver"), _term_span(report, "No ascites.", "ascites")]
     items, log = await neg.classify_negatives(inp(report, "Liver normal."), "r", owned=owned)  # boom not hit
     assert log["classified"] == 0 and log["owned_by_brief"] == 2 and log["error"] is None
-    assert items and all(it.kind == "assumed_normal" for it in items)
+    assert items == []                                                    # owned: no classifier item
 
 
 # ── evidence.form: the statement's grammatical form for the rail's AI layer ──────────────────────────────────────
@@ -391,3 +391,40 @@ def test_an_unlabelled_candidate_takes_its_form_from_the_wording_not_normal():
     assert by["No pancreatic duct dilatation."].evidence["form"] == "negative"
     assert by["The liver is unremarkable."].evidence["form"] == "normal"
     assert all(it.label == "Assumed normal" and "pointer" not in it.evidence for it in items)
+
+
+# ── owned clauses get no classifier item (e2e 29882bd7: a brief-anchored dictated "No ascites" was tinted green) ──
+
+async def test_an_owned_clause_gets_no_classifier_item(monkeypatch):
+    owned = [_term_span(REPORT, "No pleural effusion.", "pleural effusion")]
+    monkeypatch.setattr(neg, "_run_agent_with_model", model(["1 | default | - | no"] * 8))
+    items, log = await neg.classify_negatives(inp(), "r", owned=owned)
+    assert "No pleural effusion." not in {it.evidence["clause"] for it in items}
+    assert log["owned_by_brief"] == 1 and "2" not in log["labels"]         # the log holds the model's labels only
+
+
+async def test_an_owned_clause_with_an_undictated_number_keeps_its_number_card():
+    report = "FINDINGS:\nA 3 cm renal cyst. No focal lesion in the 4cm kidney.\n\nIMPRESSION:\nRenal cyst.\n"
+    owned = [_term_span(report, "No focal lesion in the 4cm kidney.", "kidney")]
+    items, log = await neg.classify_negatives(inp(report, "3 cm renal cyst."), "r", owned=owned)
+    (it,) = items
+    assert (it.kind, it.evidence["check_reason"]) == ("check", "number") and log["classified"] == 0
+
+
+async def test_a_findings_dictated_impression_owned_claim_pair_gets_no_item(monkeypatch):
+    report = "FINDINGS:\nA 2 cm renal cyst. No ascites.\n\nIMPRESSION:\nRenal cyst. No ascites.\n"
+    k = report.rindex("No ascites.")
+    owned = [(k, k + len("No ascites."))]
+    monkeypatch.setattr(neg, "_run_agent_with_model", model(["1 | dictated | No ascites | no"]))
+    items, _ = await neg.classify_negatives(inp(report, "2 cm renal cyst. No ascites."), "r", owned=owned)
+    assert items == []
+
+
+async def test_a_findings_owned_impression_classified_pair_follows_the_classified_copy(monkeypatch):
+    """The owned copy counts as dictated severity: it never raises the group's verdict."""
+    report = "FINDINGS:\nA 2 cm renal cyst. No ascites.\n\nIMPRESSION:\nRenal cyst. No ascites.\n"
+    k = report.index("No ascites.")
+    owned = [(k, k + len("No ascites."))]
+    monkeypatch.setattr(neg, "_run_agent_with_model", model(["1 | dictated | No ascites | no"]))
+    items, _ = await neg.classify_negatives(inp(report, "2 cm renal cyst. No ascites."), "r", owned=owned)
+    assert items == []
