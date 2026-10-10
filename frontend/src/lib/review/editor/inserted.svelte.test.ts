@@ -72,8 +72,19 @@ describe('inserted suggestion text', () => {
 		const view = mount(DOC, [chat]);
 		tickIt(view, chat);
 		expect(view.state.doc.toString()).toContain('No ascites or free fluid.');
-		expect(tinted(view)).toBe('No ascites or free fluid.');
-		expect(view.dom.querySelector('.rv-inserted-flash')?.textContent).toBe('No ascites or free fluid.');
+		expect(tinted(view)).toBe('or free fluid.');       // only the words the edit added
+		expect(view.dom.querySelector('.rv-inserted-flash')?.textContent).toBe('or free fluid.');
+		expect(reviewItems(view.state).inserted?.[0].source).toBe('chat');
+	});
+
+	it('a chat edit that appends a sentence tints only the appended sentence (live 29de06f3)', () => {
+		const doc = 'IMPRESSION:\nAcute perforated appendicitis. Urgent surgical referral recommended.';
+		const find = 'Acute perforated appendicitis. Urgent surgical referral recommended.';
+		const add = 'Incidental 9 mm left adrenal nodule, consistent with a lipid-rich adenoma. No routine follow-up imaging required.';
+		const chat = { ...chatItem('r', 'm2', 0, { section: 'IMPRESSION', find, replace: `${find} ${add}` }), status: 'open' as const };
+		const view = mount(doc, [chat]);
+		tickIt(view, chat);
+		expect(tinted(view)).toBe(add);
 	});
 
 	it('ticking tints exactly the inserted text; unticking removes text and tint', () => {

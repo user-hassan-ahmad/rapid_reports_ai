@@ -139,6 +139,25 @@ export interface InsertedSpan {
 	id: string;
 	from: number;
 	to: number;
+	/** Where it came from: a ticked suggestion or an applied chat edit (the legend names each). */
+	source?: 'suggestion' | 'chat';
+}
+
+/** The part of a replacement that is new: `replace` without the words it shares with `find` at either end (a chat
+ * edit that appends a sentence rewrites the whole span; only the appended words are yours). Offsets into `replace`. */
+export function changedPart(find: string, replace: string): { from: number; to: number } | null {
+	let a = 0;
+	while (a < find.length && a < replace.length && find[a] === replace[a]) a++;
+	let b = 0;
+	while (b < find.length - a && b < replace.length - a && find[find.length - 1 - b] === replace[replace.length - 1 - b]) b++;
+	// back off to word boundaries so a shared prefix never splits a word
+	while (a > 0 && /\S/.test(replace[a - 1]) && /\S/.test(replace[a] ?? '')) a--;
+	while (b > 0 && /\S/.test(replace[replace.length - b] ?? '') && /\S/.test(replace[replace.length - b - 1] ?? '')) b--;
+	let from = a;
+	let to = replace.length - b;
+	while (from < to && /\s/.test(replace[from])) from++;
+	while (to > from && /\s/.test(replace[to - 1])) to--;
+	return to > from ? { from, to } : null;
 }
 
 /** A ticked suggestion's text lands: scroll to it and flash it (decorations.ts clears it after ~1.2 s). */
@@ -247,7 +266,9 @@ export function fromItems(
 		// an applied chat edit's new text is shown like a ticked suggestion's: tinted where it landed
 		if (it.lane === 'chat' && it.status === 'applied' && it.edit?.replace?.trim()) {
 			const span = appliedSpan(doc, it);
-			if (span) inserted.push({ id: it.id, ...span });
+			const text = span ? doc.slice(span.from, span.to) : '';
+			const part = span ? changedPart(it.edit.find ?? '', text) : null;
+			if (span && part) inserted.push({ id: it.id, from: span.from + part.from, to: span.from + part.to, source: 'chat' });
 		}
 		// suggestions: open ones with a placeable insert, and applied ones (ticked); never stale or answered
 		if (!isSuggestion(it) || it.cls === 'suppress' || (it.status !== 'open' && it.status !== 'applied')) continue;
@@ -262,7 +283,7 @@ export function fromItems(
 			const at = doc.indexOf(text);
 			suggestions.push({ id: it.id, kind: 'suggestion', text, checked: true, pos: at >= 0 ? at : null, section });
 			const span = appliedSpan(doc, it);
-			if (span) inserted.push({ id: it.id, ...span });
+			if (span) inserted.push({ id: it.id, ...span, source: 'suggestion' });
 		}
 	}
 	// recommendations: ticked while in the report (open, or kept); unticked once removed (applied, its remove edit)

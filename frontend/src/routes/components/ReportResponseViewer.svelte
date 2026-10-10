@@ -752,6 +752,7 @@
 	/** The editor currently draws a removal that contradicts the dictation (the legend shows its label only then). */
 	let hasRemoved = false;
 	let hasInserted = false;
+	let hasChat = false;
 	function applyEmphasis(keys: string[]): void {
 		legendEmphasis = keys;
 		const view = reportEditorRef?.getView();
@@ -907,8 +908,11 @@
 				if (u.docChanged || u.transactions.some((t) => t.effects.length)) {
 					const removed = reviewCounts(reviewItems(u.state)).removed > 0;
 					if (removed !== hasRemoved) hasRemoved = removed;
-					const inserted = (reviewItems(u.state).inserted?.length ?? 0) > 0;
+					const spans = reviewItems(u.state).inserted ?? [];
+					const inserted = spans.some((s) => s.source !== 'chat');
 					if (inserted !== hasInserted) hasInserted = inserted;
+					const chat = spans.some((s) => s.source === 'chat');
+					if (chat !== hasChat) hasChat = chat;
 				}
 				if (!u.docChanged) return;
 				refreshHash();
@@ -1281,7 +1285,7 @@
 			<div class="flex flex-col gap-1.5 min-w-0 sm:flex-1">
 				<h2 class="text-base sm:text-lg font-semibold text-white">Report Editor</h2>
 				{#if (railOn || railSlotPending || (reviewPending && $reviewRailExpected !== false)) && response && !error}
-					<Legend onFilter={applyEmphasis} showRemoved={hasRemoved} showInserted={hasInserted} />
+					<Legend onFilter={applyEmphasis} showRemoved={hasRemoved} showInserted={hasInserted} showChat={hasChat} />
 				{/if}
 			</div>
 			

@@ -80,7 +80,7 @@ const LIGHT = {
 	'--rv-tint-normal': 'rgba(63, 154, 93, 0.13)',
 	'--rv-tint-negative': 'rgba(196, 128, 22, 0.15)',
 	'--rv-tint-synthesis': 'rgba(124, 92, 214, 0.13)',
-	'--rv-tint-inserted': 'rgba(56, 160, 224, 0.14)',
+	'--rv-tint-inserted': 'rgba(219, 72, 140, 0.13)', // rose: your additions, apart from teal recommendations
 	'--rv-accent': '#9333ea',
 	'--rv-accent-ring': 'rgba(168, 85, 247, 0.45)',
 	'--rv-grey-line': '#8a9099',
@@ -115,7 +115,7 @@ const DARK = {
 	'--rv-tint-normal': 'rgba(92, 194, 133, 0.14)',
 	'--rv-tint-negative': 'rgba(227, 169, 74, 0.15)',
 	'--rv-tint-synthesis': 'rgba(179, 161, 245, 0.16)',
-	'--rv-tint-inserted': 'rgba(110, 185, 245, 0.17)',
+	'--rv-tint-inserted': 'rgba(244, 114, 182, 0.17)',
 	'--rv-accent': '#9333ea',
 	'--rv-accent-ring': 'rgba(168, 85, 247, 0.5)',
 	'--rv-grey-line': '#8f969f',
@@ -170,7 +170,7 @@ export const reviewTheme = EditorView.baseTheme({
 	// every mode, fading over 1.2 s, or a static highlight for the same time under prefers-reduced-motion
 	'&[data-rv-emph~="ai"] .rv-inserted': { backgroundColor: 'var(--rv-tint-inserted)', borderRadius: '3px' },
 	'@keyframes rv-inserted-fade': {
-		'0%': { backgroundColor: 'color-mix(in srgb, var(--rv-tint-inserted) 100%, var(--rv-blue-line) 45%)' },
+		'0%': { backgroundColor: 'color-mix(in srgb, var(--rv-tint-inserted) 100%, #db488c 40%)' },
 		'100%': { backgroundColor: 'transparent' }
 	},
 	'.rv-inserted-flash': { animation: 'rv-inserted-fade 1200ms ease-out forwards', borderRadius: '3px' },
