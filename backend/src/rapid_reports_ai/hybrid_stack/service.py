@@ -39,6 +39,7 @@ class GroupResult(BaseModel):
     gate: list[dict] = Field(default_factory=list)
     problems: list[str] = Field(default_factory=list)
     timings_ms: dict[str, int] = Field(default_factory=dict)
+    model: str | None = None  # the grouper endpoint that answered (None: no call, or all failed)
     error: str | None = None
 
 
@@ -94,7 +95,7 @@ async def group_update(scan_type: str, text: str, regions: list[Region],
     timings: dict[str, int] = {}
     problems: list[str] = []
     gate_log: list[dict] = []
-    error = None
+    error, model = None, None
     if new_ids:
         t0 = time.perf_counter()
         placements, model, error = await place(scan_type, regions, units, new_ids)
@@ -105,7 +106,7 @@ async def group_update(scan_type: str, text: str, regions: list[Region],
             gate_log = await conclusion_gate(units, new_ids)
             timings["gate"] = int((time.perf_counter() - t1) * 1000)
     return GroupResult(units=units, new_ids=new_ids, pills=derived_pills(units, regions), gate=gate_log,
-                       problems=problems, timings_ms=timings, error=error)
+                       problems=problems, timings_ms=timings, model=model, error=error)
 
 
 async def close_update(units: list[StackUnit], regions: list[Region]) -> GroupResult:

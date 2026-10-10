@@ -180,3 +180,20 @@ async def test_no_keys_reports_unconfigured(monkeypatch):
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     placements, model, err = await G.place("CT", REGIONS, [StackUnit(id=0, text="A.")], [0])
     assert placements == [] and model is None and err == "no grouper endpoint configured"
+
+
+def test_placement_field_order_keeps_covers_before_attach_and_parts():
+    # Cerebras Qwen decodes fields in schema order; with attach_to/parts before covers every reply ran
+    # away to the length limit (6/6 on a lab case) and the grouper silently fell back to Groq.
+    assert list(G.Placement.model_fields) == ["id", "group", "structure", "covers", "attach_to", "parts"]
+
+
+async def test_place_reports_a_runaway_reply(monkeypatch):
+    monkeypatch.setenv("CEREBRAS_API_KEY", "c")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+
+    def handler(req):
+        return httpx.Response(200, json={"choices": [{"finish_reason": "length", "message": {"content": '{"placements": [{"id'}}]})
+    placements, model, err = await G.place("CT", REGIONS, [StackUnit(id=0, text="A.")], [0],
+                                           transport=httpx.MockTransport(handler))
+    assert placements == [] and "length" in err
