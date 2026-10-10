@@ -546,3 +546,26 @@ def test_provenance_items_are_returned_but_never_probed_or_reprepared(client, au
     r = client.post(f"/api/reports/{rid}/review/reprepare", headers=auth_headers,
                     json={"item_ids": [ai.id, rec.id], "text": REPORT, "text_hash": "h"}).json()
     assert r["success"] and seen == [] and {i["id"] for i in r["items"]} == {ai.id, rec.id}
+
+
+@pytest.mark.parametrize("kind", ["check", "contradicted"])
+def test_probe_adds_no_duplicate_card_after_apply_then_undo(client, auth_headers, seeded, monkeypatch, db_session, kind):
+    """Apply removes the sentence; Undo puts it back and re-opens the card; the undo probe flags the re-inserted
+    text as contradicted. The re-opened removal card already speaks for that clause: no second card."""
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    monkeypatch.setattr(rc, "_jev", jev({"x*": {"noul": 0.95}}))
+    rid, it = seeded
+    card = ReviewItem(key="ck1", report_id=rid, run_id=it.run_id, lane="accuracy", detectors=["synthetic"],
+                      kind=kind, cls="action", section="FINDINGS", label="Conflict",
+                      anchor=Span(start=10, end=30, text="The liver is normal."),
+                      edit=Edit(mode="remove", find="The liver is normal."), status="open")
+    store.save_items(db_session, [card])
+    url = f"/api/reports/{rid}/review/items/{card.id}/events"
+    client.post(url, headers=auth_headers, json={"command": "apply", "text_hash": "h1"})
+    client.post(url, headers=auth_headers, json={"command": "undo", "text_hash": "h2"})
+    start = REPORT.index("The liver is normal.")
+    r = client.post(f"/api/reports/{rid}/review/probe", headers=auth_headers,
+                    json={"text": REPORT, "text_hash": "h3",
+                          "changed_ranges": [[start, start + len("The liver is normal.")]]}).json()
+    assert r["success"]
+    assert not [i for i in r["new_items"] if "liver" in (i["anchor"] or {}).get("text", "")]
