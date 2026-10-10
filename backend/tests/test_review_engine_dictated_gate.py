@@ -31,9 +31,10 @@ def test_state_labels_history_as_context_only():
     assert "CLINICAL HISTORY" not in dg.state(inp("FINDINGS:\nX.", "- X"))
 
 
-def test_questions_are_batched_four_per_request():
+def test_questions_are_batched_four_clauses_per_request_with_a_type_question_each():
     batches = dg.questions(["a", "b", "c", "d", "e"])
-    assert [sorted(b) for b in batches] == [["g0", "g1", "g2", "g3"], ["g4"]]
+    assert [sorted(b) for b in batches] == [["g0", "g1", "g2", "g3", "t0", "t1", "t2", "t3"], ["g4", "t4"]]
+    assert batches[0]["t1"]["type"] == "choice" and batches[0]["t1"] != batches[0]["g1"]
     assert dg.questions([]) == []
 
 
@@ -64,7 +65,7 @@ async def test_off_asks_no_gate_questions(monkeypatch):
     monkeypatch.delenv("RR_DICTATED_GATE", raising=False)
     calls = []
     monkeypatch.setattr(rc, "_jev", jev(calls=calls))
-    jp = await jev_pass.run(inp(R, D), R)
+    jp = await jev_pass.run(inp(R, D), R, gate_texts=["The liver is normal."])
     assert not any(k.startswith("g") for _, qs in calls for k in qs)
     assert jp.gate == {} and jp.gate_error is None
 
@@ -74,13 +75,34 @@ async def test_shadow_asks_every_clause_in_batches_with_the_gate_state(monkeypat
     monkeypatch.setenv("RR_DICTATED_GATE", "shadow")
     calls = []
     monkeypatch.setattr(rc, "_jev", jev({"g*": {"choice": "all_stated"}}, calls=calls))
-    jp = await jev_pass.run(inp(R, D), R)
+    texts = ["There is a 2 cm mass in the right kidney.", "The liver is normal.", "The spleen is normal.",
+             "Right renal mass.", "Right renal mass."]            # a duplicate is asked twice
+    jp = await jev_pass.run(inp(R, D), R, gate_texts=texts)
     gate_calls = [(s, qs) for s, qs in calls if any(k.startswith("g") for k in qs)]
-    assert all(set(qs) <= {f"g{i}" for i in range(len(jp.clauses))} for _, qs in gate_calls)
-    assert sorted(k for _, qs in gate_calls for k in qs) == sorted(f"g{i}" for i in range(len(jp.clauses)))
-    assert all(len(qs) <= 4 for _, qs in gate_calls)
+    want = sorted([f"g{i}" for i in range(5)] + [f"t{i}" for i in range(5)])
+    assert sorted(k for _, qs in gate_calls for k in qs) == want
+    assert all(len(qs) <= 8 for _, qs in gate_calls)
     assert all(s.endswith("DICTATED FINDINGS:\n" + D) for s, _ in gate_calls)
-    assert set(jp.gate) == {f"g{i}" for i in range(len(jp.clauses))}
+    assert set(jp.gate) == set(want) and jp.gate_texts == texts
+
+
+@pytest.mark.asyncio
+async def test_gate_requests_in_flight_are_capped_at_eight(monkeypatch):
+    import asyncio
+    monkeypatch.setenv("RR_DICTATED_GATE", "shadow")
+    live = {"n": 0, "max": 0}
+
+    async def slow(state, qs):
+        if not any(k.startswith("g") for k in qs):
+            return {k: {"noul": 0.1} for k in qs}
+        live["n"] += 1
+        live["max"] = max(live["max"], live["n"])
+        await asyncio.sleep(0.01)
+        live["n"] -= 1
+        return {k: {"choice": "all_stated"} for k in qs}
+    monkeypatch.setattr(rc, "_jev", slow)
+    await jev_pass.run(inp(R, D), R, gate_texts=[f"Clause {i}." for i in range(60)])    # 15 requests
+    assert live["max"] == 8
 
 
 @pytest.mark.asyncio
@@ -93,7 +115,7 @@ async def test_a_failed_gate_request_sets_gate_error(monkeypatch):
             raise TimeoutError("slow")
         return await base(state, qs)
     monkeypatch.setattr(rc, "_jev", flaky)
-    jp = await jev_pass.run(inp(R, D), R)
+    jp = await jev_pass.run(inp(R, D), R, gate_texts=["The liver is normal."])
     assert jp.gate_error and "TimeoutError" in jp.gate_error
     assert jp.contra_error is None            # the other requests are unaffected
 
@@ -103,11 +125,11 @@ from rapid_reports_ai.review_engine.jev_pass import JevPass
 
 
 def _jp(clauses, p, types):
-    """A JevPass with gate answers p[i] and statement types types[i] for clauses[i]."""
-    jp = JevPass(clauses=clauses)
+    """A JevPass asked about `clauses` (the alignment's report clauses), gate answers p[i], statement types types[i]."""
+    jp = JevPass(gate_texts=list(clauses))
     jp.gate = {f"g{i}": {"probabilities": {"all_stated": v, "some_details_added": 1 - v, "not_stated": 0.0}}
                for i, v in enumerate(p) if v is not None}
-    jp.types = {c: t for c, t in zip(clauses, types) if t}
+    jp.gate.update({f"t{i}": {"choice": t} for i, t in enumerate(types) if t})
     return jp
 
 
@@ -115,6 +137,27 @@ def _classify(report, dictation, clauses, p, types):
     i = inp(report, dictation)
     al = align(report, dictation, "", i.artifacts.sections)
     return dg.classify(i, report, al, _jp(clauses, p, types))
+
+
+def test_negative_list_and_repeated_sentence_each_get_a_placed_clause():
+    r = ("FINDINGS:\nThere is no pleural effusion, pneumothorax or consolidation. The liver is normal.\n"
+         "IMPRESSION:\nThe liver is normal.\n")
+    i = inp(r, "- Liver normal")
+    al = align(r, "- Liver normal", "", i.artifacts.sections)
+    texts = [c.text for c in sorted(al.clauses, key=lambda c: c.start)]
+    assert texts == ["No pleural effusion", "No pneumothorax", "No consolidation", "The liver is normal.",
+                     "The liver is normal."]
+    g = dg.classify(i, r, al, _jp(texts, [0.1, 0.1, 0.1, 0.9, 0.1], ["normal"] * 5))
+    assert all(x.start is not None for x in g)
+    assert [x.section for x in g] == ["FINDINGS"] * 4 + ["IMPRESSION"]
+    assert [x.tier for x in g] == ["quiet", "quiet", "quiet", "dictated", "quiet"]
+
+
+def test_classify_refuses_a_jev_pass_asked_about_other_clauses():
+    i = inp(RPT, DIC)
+    al = align(RPT, DIC, "", i.artifacts.sections)
+    with pytest.raises(ValueError):
+        dg.classify(i, RPT, al, _jp(["something else"], [0.1], ["abnormal"]))
 
 
 RPT = ("FINDINGS:\nAn 11 mm crescentic subdural haematoma over the left convexity. The liver is normal. "
@@ -130,6 +173,7 @@ def test_tiers():
     g = _classify(RPT, DIC, CL, [0.3, 0.1, 0.4, 0.75, 0.0],
                   ["abnormal", "normal", "mixed", "abnormal", "not_a_finding"])
     assert [x.tier for x in g] == ["synth", "quiet", "quiet", "dictated", "rec"]
+    assert [x.q_type for x in g][:2] == ["abnormal", "normal"]
     assert all(x.start is not None and RPT[x.start:x.end] == x.text for x in g)
     assert [x.section for x in g][:1] == ["FINDINGS"] and g[4].section == "IMPRESSION"
 
@@ -146,14 +190,9 @@ def test_unreadable_answer_is_unknown_and_threshold_is_inclusive():
 
 def test_a_negated_recommendation_is_review_not_quiet():
     r = "IMPRESSION:\nFunctional cyst; no urgent surgical referral is indicated.\n"
-    c = ["no urgent surgical referral is indicated."]
+    c = ["Functional cyst; no urgent surgical referral is indicated."]
     g = _classify(r, "- Right ovarian simple cyst 28 mm", c, [0.1], ["not_a_finding"])
     assert g[0].tier == "rec"
-
-
-def test_a_clause_not_found_in_the_report_is_unplaced():
-    g = _classify(RPT, DIC, ["Not in this report."], [0.1], ["abnormal"])
-    assert g[0].start is None and g[0].tier == "synth"
 
 
 from rapid_reports_ai.review_engine.items import ReviewItem, Span, text_hash

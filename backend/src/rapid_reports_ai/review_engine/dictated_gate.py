@@ -51,13 +51,22 @@ def q_gate(clause: str) -> dict:
 def state(inp: ReviewInput) -> str:
     h = (f"CLINICAL HISTORY (context only; it is NOT part of the dictated findings): {inp.clinical_history}\n"
          if inp.clinical_history else "")
-    return f"SCAN TYPE: {inp.scan_type}\n{h}DICTATED FINDINGS:\n{inp.artifacts.dictated_findings}"
+    return f"SCAN TYPE: {inp.scan_type}\n{h}DICTATED FINDINGS:\n{inp.artifacts.dictated_findings or ''}"
 
 
-def questions(clauses: List[str]) -> List[Dict[str, dict]]:
-    """One {g{i}: question} dict per request, CHUNK clauses each, i indexing `clauses`."""
-    return [{f"g{i}": q_gate(clauses[i]) for i in range(k, min(k + CHUNK, len(clauses)))}
-            for k in range(0, len(clauses), CHUNK)]
+def questions(texts: List[str]) -> List[Dict[str, dict]]:
+    """One dict per request, CHUNK clauses each, i indexing `texts` (the alignment's report clauses): g{i} the gate
+    question and t{i} the production statement-type question (asked in the gate's state; the sorter lab saw 0 type
+    flips against a dictation-findings state)."""
+    from .jev_pass import q_type              # jev_pass imports this module
+    out = []
+    for k in range(0, len(texts), CHUNK):
+        qs: Dict[str, dict] = {}
+        for i in range(k, min(k + CHUNK, len(texts))):
+            qs[f"g{i}"] = q_gate(texts[i])
+            qs[f"t{i}"] = q_type(texts[i])
+        out.append(qs)
+    return out
 
 
 def p_all_stated(ans: Any) -> Optional[float]:
@@ -108,20 +117,6 @@ def dictated_words(dictation: str) -> set:
     return words
 
 
-def _locate(body: str, clauses: List[str]) -> List[Optional[Tuple[int, int]]]:
-    out, cur = [], 0
-    for t in clauses:
-        k = body.find(t, cur)
-        if k < 0:
-            k = body.find(t)
-        if k < 0:
-            out.append(None)
-            continue
-        out.append((k, k + len(t)))
-        cur = k + len(t)
-    return out
-
-
 def _negated_only(body: str, s: int, runs: List[Tuple[int, int]]) -> bool:
     """Every added run follows a negator earlier in the same clause: a negative bolted onto a dictated finding."""
     return bool(runs) and all(_NEGATOR.search(body[s:a]) for a, _ in runs)
@@ -143,21 +138,23 @@ def tier_of(p: Optional[float], q_type: Optional[str], is_rec: bool, negated_onl
 
 
 def classify(inp: ReviewInput, body: str, al: Alignment, jp) -> List[GateClause]:
-    """One GateClause per Jev-pass clause, in order. Pure code over the gate answers already in `jp`."""
+    """One GateClause per alignment report clause (sorted by start), in the order the gate was asked. Pure code over
+    the answers already in `jp`; ValueError when `jp` was asked about other clauses (the engine falls back)."""
+    from .jev_pass import clause_type_of
     from .provenance import _proposed_runs, is_recommendation     # provenance imports jev_pass, which imports us
+    clauses = sorted(al.clauses, key=lambda c: c.start)
+    if [c.text for c in clauses] != list(jp.gate_texts):
+        raise ValueError("gate was asked about different clauses than the alignment holds")
     words = dictated_words(inp.artifacts.dictated_findings)
     out: List[GateClause] = []
-    for i, (t, at) in enumerate(zip(jp.clauses, _locate(body, jp.clauses))):
-        q = jp.clause_type(i)
+    for i, c in enumerate(clauses):
+        q = clause_type_of(jp.gate.get(f"t{i}"))
         p = p_all_stated(jp.gate.get(f"g{i}"))
-        s, e = at if at else (None, None)
-        ac = next((c for c in al.clauses if s is not None and c.start <= s < c.end), None) if at else None
-        section = ac.section if ac else None
-        runs = _proposed_runs(body, s, e, words) if at else []
-        rec = is_recommendation(t, q, section)
-        out.append(GateClause(i=i, text=t, start=s, end=e, section=section, p=p, q_type=q,
-                              tier=tier_of(p, q, rec, _negated_only(body, s, runs) if at else False),
-                              runs=runs, aclause=ac))
+        runs = _proposed_runs(body, c.start, c.end, words)
+        rec = is_recommendation(c.text, q, c.section)
+        out.append(GateClause(i=i, text=c.text, start=c.start, end=c.end, section=c.section, p=p, q_type=q,
+                              tier=tier_of(p, q, rec, _negated_only(body, c.start, runs)),
+                              runs=runs, aclause=c))
     return out
 
 
