@@ -144,6 +144,15 @@ Placement rules:
 
 Return one entry per NEW sentence, in order."""
 
+GROUPER_SYSTEM_SCHEMA = GROUPER_SYSTEM.replace(
+    """- new_group: normally empty. Only when the sentence is about a specific structure or space and no group in GROUPS is anatomically close, give a short uppercase name for a new group (the structure's usual report heading) and put the same name in group. Check NEW groups created earlier in PLACED before making another.""",
+    """- structure: the specific structure the sentence is about, in a few words (for example the organ, vessel, level or space); empty for Technique, General and Conclusion.
+
+GROUPS are broad regions of a fixed schema; each lists what it includes. Match the structure to the region whose list covers it, or the anatomically closest region; use the "Other findings" region only when no region is close.""").replace(
+    "A statement about one named structure or space never goes to General: use its anatomical group, the closest one, or a new group.",
+    "A statement about one named structure or space never goes to General: use its region.")
+assert GROUPER_SYSTEM_SCHEMA != GROUPER_SYSTEM
+
 GROUPER_USER = """Scan type: {scan_type}
 
 GROUPS (in report order):
@@ -164,6 +173,7 @@ class Part(BaseModel):
 class Placement(BaseModel):
     id: int
     group: str
+    structure: str | None = None
     new_group: str | None = None
     attach_to: int | None = None
     parts: list[Part] = Field(default_factory=list)
@@ -245,6 +255,36 @@ async def section_groups(scan_type: str, history: str) -> list[str]:
     return EXTRA_FIRST + anat + EXTRA_LAST
 
 
+# --- visual schema groups ----------------------------------------------------------------------
+
+GROUP_MODE = os.environ.get("LAB_GROUPS", "schema")  # "schema" (fixed visual regions) | "sections" (the /sections call)
+SCHEMAS = json.loads((HERE / "schemas.json").read_text())
+
+
+def family_regions(family: str) -> list[tuple[str, str]]:
+    """(name, includes) for a family, levels expanded."""
+    out = []
+    for key in SCHEMAS["families"][family]["regions"]:
+        if key.startswith("@"):
+            out += [(lvl, SCHEMAS["level_includes"]) for lvl in SCHEMAS["levels"][key[1:]]]
+        else:
+            r = SCHEMAS["regions"][key]
+            out.append((r["name"], r["includes"]))
+    return out
+
+
+async def choose_family(scan_type: str, history: str) -> tuple[str, float]:
+    """Jev maps the free-text scan type to a schema family (distinct options: Jev's strength)."""
+    from rapid_reports_ai.jev_client import JEV_MODEL, jev_post
+    q = {"type": "choice", "instructions": "Which kind of examination is this?",
+         "criteria": {k: v["description"] for k, v in SCHEMAS["families"].items()}}
+    r = await jev_post({"model": JEV_MODEL, "state": f"Scan type: {scan_type}\nClinical history: {history}",
+                        "questions": {"family": q}}, os.environ["OPENROUTER_API_KEY"], 10.0)
+    r.raise_for_status()
+    a = r.json()["answers"]["family"]
+    return a["choice"], float(a.get("confidence") or 0.0)
+
+
 def _norm_group(g: str, groups: list[str]) -> str | None:
     for x in groups:
         if x.lower() == (g or "").strip().lower():
@@ -266,17 +306,20 @@ def valid_parts(sentence: str, parts: list[Part]) -> bool:
     return len(parts) >= 2 and not sentence[pos:].strip()
 
 
-async def group_new(scan_type: str, groups: list[str], units: list[dict], new_ids: list[int]) -> tuple[list[Placement], float, str | None]:
+async def group_new(scan_type: str, groups: list[str], units: list[dict], new_ids: list[int],
+                    includes: dict[str, str] | None = None) -> tuple[list[Placement], float, str | None]:
     placed = "\n".join(f"[{u['id']}] ({u['group']}) {u['text']}" for u in units if u["id"] not in new_ids) or "(none)"
     new = "\n".join(f"[{u['id']}] {u['text']}" for u in units if u["id"] in new_ids)
-    user = GROUPER_USER.format(scan_type=scan_type, groups="\n".join(groups), placed=placed, new=new)
+    listing = "\n".join(f"{g} — includes: {includes[g]}" if includes and g in includes else g for g in groups)
+    user = GROUPER_USER.format(scan_type=scan_type, groups=listing, placed=placed, new=new)
+    system = GROUPER_SYSTEM_SCHEMA if includes else GROUPER_SYSTEM
     t0, err = time.perf_counter(), None
     for url, key, model in GROUPER_ENDPOINTS:  # pydantic-ai tool output fails on this nested schema with Qwen
         try:
             async with httpx.AsyncClient(timeout=30) as c:
                 r = await c.post(url, headers={"Authorization": f"Bearer {os.environ[key]}"}, json={
                     "model": model, **GROUPER_SETTINGS,
-                    "messages": [{"role": "system", "content": GROUPER_SYSTEM}, {"role": "user", "content": user}],
+                    "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
                     "response_format": {"type": "json_schema", "json_schema": {
                         "name": "placements", "schema": GrouperOut.model_json_schema()}}})
                 r.raise_for_status()
@@ -298,6 +341,8 @@ def apply_placements(units: list[dict], placements: list[Placement], new_ids: li
             u.update(group="General", attach_to=None, parts=None)
             problems.append(f"[{i}] no placement")
             continue
+        if GROUP_MODE == "schema":
+            p.new_group = None  # the schema has an "Other findings" region instead
         if p.new_group and _norm_group(p.new_group, groups) is None:  # an escape for gaps in the list
             groups.insert(groups.index("General"), p.new_group.strip().upper())
             new_groups.append(f"[{i}] {p.new_group.strip().upper()}")
@@ -316,7 +361,7 @@ def apply_placements(units: list[dict], placements: list[Placement], new_ids: li
             else:
                 problems.append(f"[{i}] rejected parts {[x.text for x in p.parts]}")
         u.update(group=by_id[att]["group"] if att is not None else g, attach_to=att, parts=parts,
-                 model_group=g)
+                 model_group=g, structure=p.structure)
     return problems
 
 
@@ -366,7 +411,7 @@ def render(units: list[dict], groups: list[str]) -> str:
             for p in u["parts"]:
                 rows[p["group"]].append(f"- {p['text']}  ⟨part of [{u['id']}]⟩")
         else:
-            rows[u["group"]].append(f"- {u['text']}")
+            rows[u["group"]].append(f"- {u['text']}" + (f"  · {u['structure']}" if u.get("structure") else ""))
         for ch in children.get(u["id"], []):
             rows[u["group"] if not u.get("parts") else u["parts"][0]["group"]].append(f"    ↳ {ch['text']}")
     return "\n".join(f"{g.upper()}\n" + "\n".join(r) + "\n" for g, r in rows.items() if r)
@@ -376,7 +421,14 @@ def render(units: list[dict], groups: list[str]) -> str:
 
 
 async def run_case(c: httpx.AsyncClient, case: dict, keyterms: list[str]) -> dict:
-    groups = await section_groups(case["scan_type"], case["clinical_history"])
+    includes, family = None, None
+    if GROUP_MODE == "schema":
+        family = await choose_family(case["scan_type"], case["clinical_history"])
+        regions = family_regions(family[0])
+        groups = EXTRA_FIRST + [n for n, _ in regions] + EXTRA_LAST
+        includes = dict(regions)
+    else:
+        groups = await section_groups(case["scan_type"], case["clinical_history"])
     base_groups, new_groups = list(groups), []
     text, units, steps = "", [], []
     next_id = 0
@@ -400,7 +452,7 @@ async def run_case(c: httpx.AsyncClient, case: dict, keyterms: list[str]) -> dic
         for u in units:  # an attach to a dropped sentence is cut
             if u.get("attach_to") is not None and all(x["id"] != u["attach_to"] for x in units):
                 u["attach_to"] = None
-        placements, dt, err = (await group_new(case["scan_type"], groups, units, new_ids)) if new_ids else ([], 0.0, None)
+        placements, dt, err = (await group_new(case["scan_type"], groups, units, new_ids, includes)) if new_ids else ([], 0.0, None)
         problems = apply_placements(units, placements, new_ids, groups, new_groups) if new_ids else []
         gate = await conclusion_gate(units, new_ids) if new_ids else []
         steps.append({"said": utt, "heard": heard, "route": route, "new_ids": new_ids, "dropped": dropped,
@@ -410,7 +462,7 @@ async def run_case(c: httpx.AsyncClient, case: dict, keyterms: list[str]) -> dic
     # Fresh pass: everything regrouped at once, for comparison with the sticky (live) placement.
     fresh = [{"id": u["id"], "text": u["text"]} for u in units]
     fresh_groups, fresh_new = list(base_groups), []
-    placements, dt, err = await group_new(case["scan_type"], fresh_groups, fresh, [u["id"] for u in fresh])
+    placements, dt, err = await group_new(case["scan_type"], fresh_groups, fresh, [u["id"] for u in fresh], includes)
     fresh_problems = apply_placements(fresh, placements, [u["id"] for u in fresh], fresh_groups, fresh_new)
     fresh_gate = await conclusion_gate(fresh, [u["id"] for u in fresh])
     disagree = [{"id": a["id"], "text": a["text"], "sticky": a["group"], "fresh": b["group"]}
@@ -428,11 +480,13 @@ async def run_case(c: httpx.AsyncClient, case: dict, keyterms: list[str]) -> dic
         grp = hit["group"]
         if hit.get("parts"):
             grp = next((p["group"] for p in hit["parts"] if e["phrase"].lower() in p["text"].lower()), grp)
-        ok_group = any(s in grp.lower() for s in e["group"])
+        hay = (grp + " " + (includes or {}).get(grp, "")).lower()
+        ok_group = any(s in hay for s in e["group"])
         ok_attach = (hit.get("attach_to") is not None) if e.get("attach") else True
         checks.append({**e, "got_group": grp, "attached": hit.get("attach_to"),
                        "result": "ok" if ok_group and ok_attach else ("wrong group" if not ok_group else "not attached")})
-    return {"id": case["id"], "scan_type": case["scan_type"], "groups": groups, "text": text, "units": units,
+    return {"id": case["id"], "scan_type": case["scan_type"], "groups": groups, "family": family,
+            "family_expected": case.get("family"), "text": text, "units": units,
             "steps": steps, "view": sticky_view, "fresh_view": render(fresh, fresh_groups), "new_groups": new_groups, "fresh_new_groups": fresh_new, "fresh_gate": fresh_gate, "fresh_error": err,
             "fresh_problems": fresh_problems, "fresh_disagree": disagree, "fidelity_ok": fidelity_ok,
             "checks": checks}
@@ -445,6 +499,8 @@ def report(results: list[dict]) -> str:
     lat = sorted(s["grouper_s"] for r in results for s in r["steps"] if s["new_ids"])
     nunits = sum(len(r["units"]) for r in results)
     lines += [f"- Expectations met: **{ok}/{tot}**",
+              (f"- Family (Jev): {sum(1 for r in results if r['family'] and r['family'][0] == r['family_expected'])}"
+               f"/{len(results)} as expected" if results[0]["family"] else "- Groups: /sections call"),
               f"- Fidelity by construction held: {sum(r['fidelity_ok'] for r in results)}/{len(results)} cases",
               f"- Sticky vs fresh disagreements: {sum(len(r['fresh_disagree']) for r in results)}/{nunits} sentences",
               f"- Attached: {sum(1 for r in results for u in r['units'] if u.get('attach_to') is not None)}, "

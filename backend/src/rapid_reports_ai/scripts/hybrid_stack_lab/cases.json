@@ -68,7 +68,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "abdomen_pelvis"
     },
     {
       "id": "c02_ct_chest_staging",
@@ -125,7 +126,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "chest_abdomen_pelvis"
     },
     {
       "id": "c03_mr_brain_mass",
@@ -193,7 +195,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "head"
     },
     {
       "id": "c04_ct_head_trauma",
@@ -261,7 +264,8 @@
             "mastoid"
           ]
         }
-      ]
+      ],
+      "family": "head"
     },
     {
       "id": "c05_mr_lumbar_spine",
@@ -342,7 +346,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "lumbar_spine"
     },
     {
       "id": "c06_ctpa_pe",
@@ -411,7 +416,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "chest"
     },
     {
       "id": "c07_mr_liver_cirrhosis",
@@ -488,7 +494,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "abdomen_pelvis"
     },
     {
       "id": "c08_ct_kub_stone",
@@ -565,7 +572,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "abdomen_pelvis"
     },
     {
       "id": "c09_mr_knee",
@@ -636,7 +644,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "knee"
     },
     {
       "id": "c10_ct_ap_diverticulitis_runon",
@@ -697,7 +706,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "abdomen_pelvis"
     },
     {
       "id": "c11_ct_ap_ovarian_conclusion_first",
@@ -782,7 +792,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "abdomen_pelvis"
     },
     {
       "id": "c12_ct_chest_pingpong",
@@ -870,7 +881,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "chest"
     },
     {
       "id": "c13_mr_cervical_spine_levels",
@@ -938,7 +950,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "cervical_spine"
     },
     {
       "id": "c14_ct_neck_nodes",
@@ -1019,7 +1032,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "neck"
     },
     {
       "id": "c15_mr_rectum_corrections",
@@ -1106,7 +1120,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "pelvis_mr"
     },
     {
       "id": "c16_ct_trauma_runon",
@@ -1182,7 +1197,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "trauma"
     },
     {
       "id": "c17_mr_shoulder_fragments",
@@ -1276,7 +1292,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "shoulder"
     },
     {
       "id": "c18_ct_aorta_measurements",
@@ -1362,7 +1379,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "abdomen_pelvis"
     },
     {
       "id": "c19_mr_pelvis_female_nosex",
@@ -1441,7 +1459,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "pelvis_mr"
     },
     {
       "id": "c20_ct_cap_lymphoma_followup",
@@ -1503,7 +1522,8 @@
             "conclusion"
           ]
         }
-      ]
+      ],
+      "family": "chest_abdomen_pelvis"
     }
   ]
 }
