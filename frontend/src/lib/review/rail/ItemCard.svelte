@@ -48,6 +48,9 @@
 			<span class="rv-badge">{item.lane}</span>
 		</span>
 		{#if item.reason}<span class="rv-card-reason">{item.reason}</span>{/if}
+		{#if item.evidence?.dictated_quote}<span class="rv-card-source" data-rv-quote
+				>You dictated: “{item.evidence.dictated_quote}”</span
+			>{/if}
 		{#if item.source_line}<span class="rv-card-source">You dictated: “{item.source_line}”</span
 			>{/if}
 		{#if item.edit?.replace && open}

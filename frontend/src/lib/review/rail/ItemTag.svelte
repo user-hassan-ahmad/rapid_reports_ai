@@ -24,6 +24,9 @@
 		<span class="rv-icon" aria-hidden="true">{ICONS.info}</span>
 		<span>{label}</span>
 	</button>
+	{#if item.evidence?.dictated_quote}<span class="rv-note" data-rv-quote
+			>You dictated: “{item.evidence.dictated_quote}”</span
+		>{/if}
 	{#if updating}<span class="rv-note" role="status">updating…</span>{/if}
 	{#if item.status === 'stale'}<span class="rv-note">out of date</span>{/if}
 </div>
@@ -31,6 +34,7 @@
 <style>
 	.rv-tag {
 		display: inline-flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 4px;
 		margin: 2px 4px 2px 0;

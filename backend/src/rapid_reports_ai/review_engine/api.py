@@ -23,7 +23,7 @@ from ..auth import get_current_user
 from ..database import get_db
 from ..database.crud import get_report
 from ..database.models import User
-from . import adjudicator, brief_normals, engine, negatives, provenance, store, verifier
+from . import adjudicator, brief_normals, conflict_pointer, engine, negatives, provenance, store, verifier
 from .items import ReviewItem, text_hash
 from .limits import Detail, ItemIds, ReportText, TextHash
 
@@ -211,6 +211,10 @@ async def post_probe(report_id: str, body: ProbeBody, current_user: User = Depen
         it.cls = "action" if c.code_fix else "minor"
         new_items.append(it)
     if new_items:
+        try:
+            await conflict_pointer.annotate(inp, new_items, timeout=2.0)      # never fails the probe
+        except Exception:  # noqa: BLE001
+            pass
         store.save_items(db, new_items)
     return {"success": True, "text_hash": body.text_hash, "addressed": addressed, "reopened": reopened,
             "reprepare": reprepare, "new_items": [i.model_dump() for i in new_items],

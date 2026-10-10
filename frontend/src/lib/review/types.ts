@@ -39,6 +39,8 @@ export interface UndoInfo {
 export interface ItemEvidence {
 	check_reason?: 'uncertain' | 'conflict' | 'number' | string;
 	pointer?: string;
+	/** The dictated line a conflict card conflicts with (conflict_pointer, P >= 0.80, no pointer of its own). */
+	dictated_quote?: string;
 	negative?: boolean;
 	undo?: UndoInfo;
 	/** The anchor before live.rebase_items moved or dropped it (a pre-applied insert undone is found by it). */
