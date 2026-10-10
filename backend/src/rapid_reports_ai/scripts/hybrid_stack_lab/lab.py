@@ -295,6 +295,31 @@ async def choose_family(scan_type: str, history: str) -> tuple[str, float]:
     return a["choice"], float(a.get("confidence") or 0.0)
 
 
+# --- template groups: the radiologist's own structure --------------------------------------------
+
+
+def template_regions(sheet_path: str) -> list[tuple[str, str]]:
+    """Regions from a grammar sheet: its findings paragraphs in template order, each paragraph's
+    COVERS as the includes. Deterministic (the grammar parser); an "Other findings" catch-all is added."""
+    from rapid_reports_ai.template_sheet_grammar import parse_sheet
+    res = parse_sheet(Path(sheet_path).read_text(), mode="template")
+    if res.errors:
+        raise ValueError(f"grammar errors in {sheet_path}: {res.errors[:3]}")
+    st = res.structure
+    order = {sec.name: sec.order for sec in st.sections}
+    findings = {sec.name for sec in st.sections if sec.role == "findings"}
+    paras = [p for p in st.paragraphs if p.section in findings]
+    paras.sort(key=lambda p: order.get(p.section, 0))  # stable: keeps paragraph order within a section
+    out, seen = [], set()
+    for p in paras:
+        name = p.name if p.name.lower() not in seen else f"{p.name} ({p.section.title()})"
+        seen.add(name.lower())
+        out.append((name, ", ".join(p.covers) or p.name))
+    if "other findings" not in seen:
+        out.append((SCHEMAS["regions"]["other"]["name"], SCHEMAS["regions"]["other"]["includes"]))
+    return out
+
+
 # --- reconciler: a family for a scan type no family describes ----------------------------------
 
 RECONCILE_SYSTEM = """You build the region list for a radiology examination's visual schema. Regions are broad zones a radiologist reports one by one; each region lists what it includes."""
@@ -427,7 +452,7 @@ def apply_placements(units: list[dict], placements: list[Placement], new_ids: li
             u.update(group="General", attach_to=None, parts=None)
             problems.append(f"[{i}] no placement")
             continue
-        if GROUP_MODE == "schema":
+        if GROUP_MODE in ("schema", "template"):
             p.new_group = None  # the schema has an "Other findings" region instead
         if p.new_group and _norm_group(p.new_group, groups) is None:  # an escape for gaps in the list
             groups.insert(groups.index("General"), p.new_group.strip().upper())
@@ -510,7 +535,13 @@ def render(units: list[dict], groups: list[str]) -> str:
 
 async def run_case(c: httpx.AsyncClient, case: dict, keyterms: list[str]) -> dict:
     includes, family = None, None
-    if GROUP_MODE == "schema":
+    if GROUP_MODE == "template":
+        sheet = json.loads(os.environ["LAB_TEMPLATES"])[case["id"]]
+        regions = template_regions(sheet)
+        groups = EXTRA_FIRST + [n for n, _ in regions] + EXTRA_LAST
+        includes = dict(regions)
+        family = ("template:" + Path(sheet).stem, 1.0)
+    elif GROUP_MODE == "schema":
         family = await choose_family(case["scan_type"], case["clinical_history"])
         if family[0] == NONE_FAMILY or os.environ.get("LAB_FORCE_RECONCILE") == "1":
             regions, rec_log = await reconcile_family(case["scan_type"], case["clinical_history"])
