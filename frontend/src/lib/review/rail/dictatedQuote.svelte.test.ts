@@ -16,12 +16,12 @@ const quote = () => document.querySelector<HTMLElement>('[data-rv-quote]');
 describe('dictated quote', () => {
 	for (const [name, C] of [['ItemCard', ItemCard], ['ItemTag', ItemTag]] as const) {
 		it(`${name} shows the quote as visible text when present`, async () => {
-			render(C as never, { item: item({ dictated_quote: 'Small right effusion' }), onCommand: () => {} });
+			render(C as never, { item: item({ dictated_quote: 'Small right effusion' }), onCommand: () => {} } as never);
 			expect(quote()?.textContent).toContain('You dictated: “Small right effusion”');
 			expect(quote()!.getBoundingClientRect().height).toBeGreaterThan(0);
 		});
 		it(`${name} shows nothing without one`, async () => {
-			render(C as never, { item: item({}), onCommand: () => {} });
+			render(C as never, { item: item({}), onCommand: () => {} } as never);
 			expect(quote()).toBeNull();
 		});
 	}
