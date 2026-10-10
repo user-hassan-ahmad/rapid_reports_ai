@@ -74,3 +74,8 @@ def test_duplicate_previous_ids_first_wins():
     prev = [StackUnit(id=0, text="Liver normal.", group="First"), StackUnit(id=0, text="Spleen normal.", group="Second")]
     units, new = match_units("Liver normal. Spleen normal.", prev)
     assert units[0].group == "First" and units[1].group is None and new == [1]
+
+
+def test_unplaced_previous_sentence_is_retried():
+    units, new = match_units("Liver normal.", [StackUnit(id=0, text="Liver normal.")])
+    assert new == [0]

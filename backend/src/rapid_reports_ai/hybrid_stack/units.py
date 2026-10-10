@@ -74,6 +74,8 @@ def match_units(text: str, previous: list[StackUnit]) -> tuple[list[StackUnit], 
             old = pool[s].pop(0)
             old_to_new[old.id] = i
             units.append(old.model_copy(update={"id": i}, deep=True))
+            if old.group is None:  # left unplaced by an earlier failed call: place it again
+                new_ids.append(i)
         else:
             units.append(StackUnit(id=i, text=s, heading=heading_only(s) is not None))
             new_ids.append(i)
