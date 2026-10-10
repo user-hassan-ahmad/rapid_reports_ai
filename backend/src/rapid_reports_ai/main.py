@@ -4753,6 +4753,9 @@ async def chat_about_report(
 
         raw_edits = _chat_edits.edits_for_reply(raw_edits, current_text, edit_proposal)
         verified_edits = _chat_verified_edits(report, current_text, raw_edits)
+        if response_text in ("", _chat_edits.PROPOSAL_REPLY) and actions_applied:
+            # the model went straight to its edit tool with no prose: its own actions are the discussion
+            response_text = _chat_edits.reply_from_actions(actions_applied, verified_edits) or response_text
         response_text = _chat_edits.reply_text(response_text, verified_edits)
         # Spec §10.2/§12.6: the turn persists so History restores the thread; fails open (the reply still returns).
         user_message_id = message_id = None

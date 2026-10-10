@@ -231,3 +231,24 @@ def test_reply_text_never_promises_edits_that_are_not_there():
     assert ce.reply_text(ce.PROPOSAL_REPLY, []) == ce.NO_EDIT_REPLY
     assert ce.reply_text(ce.PROPOSAL_REPLY, [{"verified": False}]) == ce.NO_EDIT_REPLY
     assert ce.reply_text("Here is my answer.", []) == "Here is my answer."
+
+
+# ── a tool call with no prose still reads as a discussion (live 29de06f3) ─────────────────────────────────────────
+
+def test_a_new_line_the_find_does_not_have_becomes_a_space():
+    # live: the model appended an impression line with "\n" and the structure guard refused it
+    e = ce.parse_edits_json('[{"section": "IMPRESSION", "find": "Urgent surgical referral recommended.", '
+                            '"replace": "Urgent surgical referral recommended.\\nIncidental adrenal adenoma."}]')
+    assert e[0]["replace"] == "Urgent surgical referral recommended. Incidental adrenal adenoma."
+
+
+def test_reply_from_actions_lists_the_suggestions_with_their_reasons():
+    acts = [{"title": "Comment on the adrenal nodule", "details": "Lipid-rich adenoma at -5 HU; no follow-up."},
+            {"title": "Specify no drainable collection", "details": "The key surgical decision point."}]
+    ok = ce.reply_from_actions(acts, [{"verified": True}])
+    assert ok.startswith("Here's what I'd suggest:")
+    assert "1. **Comment on the adrenal nodule**: Lipid-rich adenoma at -5 HU; no follow-up." in ok
+    assert ok.endswith(ce.APPLY_BELOW)
+    none = ce.reply_from_actions(acts, [{"verified": False}])
+    assert "2. **Specify no drainable collection**" in none and none.endswith(ce.CANNOT_PLACE)
+    assert ce.reply_from_actions([], []) == ""
