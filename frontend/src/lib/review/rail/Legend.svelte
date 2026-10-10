@@ -1,6 +1,6 @@
 <script lang="ts">
 	// The review legend, directly under the "Report Editor" title (ReportResponseViewer; not part of the rail).
-	// "AI highlights [Key | All | Off] ‹ · Removed (contradicts dictation)". The AI highlights control is a three-way
+	// "AI highlights [Off | Key | All] ‹ · Removed (contradicts dictation)". The AI highlights control is a three-way
 	// segmented radiogroup (editor/aiMode.ts, remembered in localStorage): Key = amber negatives, violet synthesis and
 	// the recommendation underline; All = Key plus green normals; Off = no AI tints. `onFilter` gets the emphasis keys
 	// (editor/theme.ts `setEmphasis`). Its breakdown swatches expand inline and show only the categories the mode
@@ -85,7 +85,7 @@
 				class="rv-seg"
 				role="radiogroup"
 				data-rv-filter={e.key}
-				aria-label="AI highlights: Key · All · Off"
+				aria-label="AI highlights: Off · Key · All"
 				title={e.title}
 			>
 				{#each AI_MODES as m (m)}
