@@ -405,7 +405,7 @@ async def test_an_owned_clause_gets_no_classifier_item(monkeypatch):
 
 async def test_an_owned_clause_with_an_undictated_number_keeps_its_number_card():
     report = "FINDINGS:\nA 3 cm renal cyst. No focal lesion in the 4cm kidney.\n\nIMPRESSION:\nRenal cyst.\n"
-    owned = [_term_span(report, "No focal lesion in the 4cm kidney.", "kidney")]
+    owned = [_term_span(report, "No focal lesion in the 4cm kidney.", "focal lesion in the 4cm kidney")]
     items, log = await neg.classify_negatives(inp(report, "3 cm renal cyst."), "r", owned=owned)
     (it,) = items
     assert (it.kind, it.evidence["check_reason"]) == ("check", "number") and log["classified"] == 0
@@ -456,3 +456,37 @@ def test_a_mixed_recommendation_sentence_typed_abnormal_still_gives_its_negative
 def test_a_pure_recommendation_sentence_is_still_never_a_candidate():
     rep = MIXED_REC.replace("No perforation or pelvic abscess identified; urgent", "Urgent")
     assert not any("recommended" in c["clause"] for c in neg.candidates(rep))
+
+
+# ── live audit 1: partial ownership never hides a sibling statement (L1 shape) ──
+
+SIBLING = """FINDINGS:
+Acute right frontal contusion. No uncal or tonsillar herniation. No hydrocephalus.
+
+IMPRESSION:
+Right frontal contusion.
+"""
+
+
+def _owned(report, *terms):
+    return [(report.index(t), report.index(t) + len(t)) for t in terms]
+
+
+def test_owned_spans_skip_a_candidate_only_when_they_cover_all_its_content_words():
+    cands = neg.candidates(SIBLING)
+    texts = [c["clause"] for c in cands]
+    k_sib, k_full = texts.index("No uncal or tonsillar herniation.") + 1, texts.index("No hydrocephalus.") + 1
+    skip = neg.owned_indices(SIBLING, cands, _owned(SIBLING, "tonsillar herniation", "hydrocephalus"))
+    assert k_sib not in skip and k_full in skip
+    both = neg.owned_indices(SIBLING, cands, _owned(SIBLING, "uncal", "tonsillar herniation"))
+    assert k_sib in both                                  # every content word owned: the brief has it
+
+
+async def test_a_partly_owned_clause_keeps_its_classifier_item(monkeypatch):
+    calls = []
+    monkeypatch.setattr(neg, "_run_agent_with_model", model(["1 | default | - | no"], calls))
+    items, log = await neg.classify_negatives(inp(SIBLING, "Right frontal contusion."), "r",
+                                              owned=_owned(SIBLING, "tonsillar herniation", "hydrocephalus"))
+    assert [i.anchor.text for i in items] == ["No uncal or tonsillar herniation"]
+    assert "No hydrocephalus" not in calls[0]["user_prompt"].split("STATEMENTS TO CLASSIFY:\n", 1)[1]
+    assert log["owned_by_brief"] == 1

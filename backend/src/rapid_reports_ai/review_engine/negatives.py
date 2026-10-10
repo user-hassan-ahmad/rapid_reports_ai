@@ -517,16 +517,38 @@ def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, di
             {items[i].id: post[i] for i in sorted(items) if i in post})
 
 
+_LINKING = frozenset({"otherwise", "appear", "appears", "remain", "remains", "seem", "seems"})  # copula filler
+
+
+def covered(text: str, start: int, spans: List[Tuple[int, int]]) -> bool:
+    """Do `spans` (report positions) cover every content word of `text` (at report position `start`)? Mechanics:
+    the text left once the spans are cut out, minus stopwords (`claims.content_words`), the normal / negative
+    wording (`_NEG`) and copula filler ("is otherwise", "appears"), holds no word of 3+ letters. "No uncal or tonsillar herniation" with only "tonsillar
+    herniation" covered leaves "uncal": not covered."""
+    end = start + len(text)
+    chars = list(text)
+    hit = False
+    for a, b in spans:
+        if a < end and start < b:
+            hit = True
+            for k in range(max(a, start), min(b, end)):
+                chars[k - start] = " "
+    rest = _NEG.sub(" ", "".join(chars))
+    return hit and not any(len(w) >= 3 and w not in _LINKING for w in claims.content_words(rest))
+
+
 def owned_indices(report: str, cands: List[dict], owned: List[Tuple[int, int]]) -> List[int]:
-    """1-based indices of the candidates whose original-report span overlaps an `owned` span (the brief's
-    linked-normal labels, `brief_normals`): the brief already labelled them, so the model does not re-read them."""
+    """1-based indices of the candidates whose original-report span the `owned` spans (the brief's labels,
+    `brief_normals.owned_spans`) cover (`covered`): the brief already labelled them, so the model does not re-read
+    them. A candidate the brief owns only in part ("tonsillar herniation" of "No uncal or tonsillar herniation") is
+    read: its other statements have no other owner."""
     taken: List[Tuple[int, int]] = []
     out = []
     for i, c in enumerate(cands, 1):
         span = _locate(report, c["clause"], taken)
         if span:
             taken.append(span)
-            if any(a < span[1] and span[0] < b for a, b in owned):
+            if covered(report[span[0]:span[1]], span[0], owned):
                 out.append(i)
     return out
 
@@ -572,4 +594,4 @@ async def classify_negatives(inp: ReviewInput, run_id: str, types: Optional[Dict
 
 
 __all__ = ["Labels", "candidates", "candidate_spans", "code_number_flag", "undictated_numbers", "parse_labels", "user_message",
-           "classify", "removal_edit", "route", "owned_indices", "classify_negatives"]
+           "classify", "removal_edit", "route", "covered", "owned_indices", "classify_negatives"]
