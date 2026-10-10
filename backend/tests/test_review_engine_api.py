@@ -406,6 +406,21 @@ def test_probe_still_adds_contradictions_elsewhere(client, auth_headers, seeded,
     assert [i for i in r["new_items"] if "liver" in (i["anchor"] or {}).get("text", "")]
 
 
+def test_probe_annotates_new_contradicted_items_with_the_dictated_quote(client, auth_headers, seeded, monkeypatch,
+                                                                       db_session):
+    monkeypatch.setenv("RR_REVIEW_ENGINE", "shadow")
+    ptr = {"choice": "d0", "probabilities": {"d0": 0.92, "none": 0.03}}
+    monkeypatch.setattr(rc, "_jev", jev({"x*": {"noul": 0.95}, "p*": ptr}))
+    rid, _ = seeded
+    start = REPORT.index("The liver is normal.")
+    r = client.post(f"/api/reports/{rid}/review/probe", headers=auth_headers,
+                    json={"text": REPORT, "text_hash": "h2",
+                          "changed_ranges": [[start, start + len("The liver is normal.")]]}).json()
+    got = [i for i in r["new_items"] if "liver" in (i["anchor"] or {}).get("text", "")]
+    assert got and "You dictated: “14 mm left renal cyst with a thin septation”." in got[0]["reason"]
+    assert got[0]["evidence"]["conflict_pointer"]["p"] == 0.92
+
+
 @pytest.mark.parametrize("restored", [False, True])
 def test_probe_skips_contradiction_racing_a_restore(client, auth_headers, seeded, monkeypatch, db_session, restored):
     """Gate G re-check: the client posts Restore and the probe together, so the probe can read the removal still

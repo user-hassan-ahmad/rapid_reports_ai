@@ -78,7 +78,7 @@ from pydantic import BaseModel
 from ..report_reconcile import strip_p_values
 from ..report_review import is_negative
 from ..report_review import report_body as report_review_body
-from . import adjudicator, brief_normals, claims, dictated_gate, jev_pass, live, negatives, provenance, store, verifier
+from . import adjudicator, brief_normals, claims, conflict_pointer, dictated_gate, jev_pass, live, negatives, provenance, store, verifier
 from .alignment import Alignment, align
 from .checks import run_checks
 from .items import Candidate, Edit, ReviewInput, ReviewItem, Span, item_key, merge, report_body, text_hash
@@ -734,6 +734,9 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         except Exception as e:  # noqa: BLE001 - never fails the run: today's items stand
             errors["dictated_gate"] = f"{type(e).__name__}: {str(e)[:200]}"
             gate_log = {"mode": "shadow", "error": errors["dictated_gate"]} if gm == "shadow" else None
+    t = time.monotonic()
+    pointer_log = await conflict_pointer.annotate(inp, items + neg_items + brief_items + bridge)
+    timings["conflict_pointer_ms"] = int((time.monotonic() - t) * 1000)
     for it in surface_gate(inp, items + neg_items + brief_items + prov):
         plans.pop(it.id, None)
     report, pre_log = _would_preapply(inp, items, plans, neg_log, neg_items)
@@ -748,7 +751,7 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
                     "candidates": len(cands), "prefiltered": len(held),
                     "negatives_calls": 1 if neg_log and neg_log.get("candidates") else 0},
            "pre_apply": pre_log, "negatives": _neg_summary(neg_log), "deduped": deduped, "post_check": bridge_log, "provenance": prov_log,
-           "dictated_gate": gate_log,
+           "dictated_gate": gate_log, "conflict_pointer": pointer_log,
            "negatives_report": (neg_log or {}).get("report"),
            "negatives_post_removal_anchors": (neg_log or {}).get("post_removal_anchors") or {}}
     return ReviewResult(run=run, items=items, report=report)
@@ -941,7 +944,8 @@ async def _run_and_store(inp: ReviewInput, report_id: str, run_id: str) -> str:
               "negatives_report": res.run["negatives_report"],
               "negatives_post_removal_anchors": res.run["negatives_post_removal_anchors"],
               "provenance": res.run.get("provenance"),
-              "dictated_gate": res.run.get("dictated_gate")}
+              "dictated_gate": res.run.get("dictated_gate"),
+              "conflict_pointer": res.run.get("conflict_pointer")}
     await asyncio.to_thread(_with_session, store.save_items, shadow_items(res.items))
     await asyncio.to_thread(_with_session, store.finish_run, run_id, res.run["lanes"], res.run["timings_ms"],
                             res.run["cost"], errors, shadow)
