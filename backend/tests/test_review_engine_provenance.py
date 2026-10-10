@@ -317,77 +317,153 @@ def test_dictated_lexicon_free_recommendation_gives_no_item():
     assert [i for i in items if i.kind == "recommendation"] == []
 
 
+def test_reworded_dictated_communication_is_not_a_removable_recommendation():
+    report = "FINDINGS:\nA pancreatic mass.\nIMPRESSION:\nPancreatic mass.\nDiscussed with the referring team."
+    talk = "Discussed with the referring team."
+    dictation = "- Pancreatic mass\n- Result discussed by phone with Dr Jones, surgical registrar, 14:00 hours, read-back confirmed"
+    i = inp(report, dictation)
+    al = align(report, dictation, "", i.artifacts.sections)
+    c = next(c for c in al.clauses if c.text == talk)
+    assert not any(p.clause_id == c.id and provenance.confident(p) for p in al.pairs)    # no confident pair
+    jp = JevPass(clauses=["Pancreatic mass.", talk], types={"Pancreatic mass.": "abnormal", talk: "not_a_finding"})
+    items, _ = provenance.build_items(i, RUN, al, jp, [])
+    assert [it for it in items if it.kind == "recommendation"] == []
+
+
 # ── live audit 2, 1a: synthesis inside a dictation-paired clause, its unsupported item suppressed (L7 shape) ──
+# Code proposes the words absent from the whole dictation; a Jev question (lab P3 D3n shape) decides.
 
 CYST_DICT = "- Left renal cyst 15 mm\n- Liver normal"
 CYST_REPORT = ("FINDINGS:\nLeft renal cyst 15 mm. The liver is normal.\n\n"
                "IMPRESSION:\nLeft renal cyst 15 mm, in keeping with a simple Bosniak I cyst.\n")
 CYST_CLAUSE = "Left renal cyst 15 mm, in keeping with a simple Bosniak I cyst."
+NOT_DICTATED = {"syn*": {"noul": 0.1}}
+DICTATED = {"syn*": {"noul": 0.9}}
 
 
-def _unsupported(report, clause, cls="suppress", detectors=("jev.supported",)):
+def _unsupported(report, clause, cls="suppress", detectors=("jev.supported",), also=()):
     s = report.rindex(clause)
+    ev = {"also_anchors": [{"start": report.rindex(t), "end": report.rindex(t) + len(t), "text": t} for t in also]}
     return ReviewItem(key="u", report_id="r", run_id=RUN, lane="accuracy", kind="unsupported", cls=cls,
-                      section="IMPRESSION", detectors=list(detectors),
+                      section="IMPRESSION", detectors=list(detectors), evidence=ev,
                       anchor=Span(start=s, end=s + len(clause), text=clause, text_hash=text_hash(report)))
 
 
-def _synthesis(report, dictation, lane_items, existing=(), owned=()):
+async def _synthesis(monkeypatch, report, dictation, lane_items, answers=NOT_DICTATED, existing=(), jp=None,
+                     calls=None):
+    monkeypatch.setattr(rc, "_jev", answers if callable(answers) else jev(answers, calls))
     i = inp(report, dictation)
     al = align(report, dictation, "", i.artifacts.sections)
-    return provenance.synthesis_items(i, RUN, al, list(lane_items), list(existing), list(owned))
+    return await provenance.synthesis_items(i, RUN, al, jp, list(lane_items), list(existing), [])
 
 
-def test_suppressed_unsupported_marks_only_the_added_inference():
-    items, log = _synthesis(CYST_REPORT, CYST_DICT, [_unsupported(CYST_REPORT, CYST_CLAUSE)])
-    assert _texts(items, "ai_generated") == ["in keeping with a simple Bosniak I cyst"]
+async def test_suppressed_unsupported_marks_only_the_undictated_words(monkeypatch):
+    calls = []
+    items, log = await _synthesis(monkeypatch, CYST_REPORT, CYST_DICT, [_unsupported(CYST_REPORT, CYST_CLAUSE)],
+                                  calls=calls)
+    assert _texts(items, "ai_generated") == ["simple Bosniak"]
     it = items[0]
     assert (it.lane, it.cls, it.detectors, it.section) == ("accuracy", "info", ["provenance"], "IMPRESSION")
     assert CYST_REPORT[it.anchor.start:it.anchor.end] == it.anchor.text
     assert it.evidence["form"] == "synthesis" and it.evidence["from"] == "unsupported_suppressed"
-    assert log["synthesis"] == 1
+    assert log["synthesis"] == 1 and len(calls) == 1                     # one batched request per report
+    state, qs = calls[0]
+    assert "DICTATED FINDINGS:\n" + CYST_DICT in state
+    q = next(iter(qs.values()))
+    assert f'The report says: "{CYST_CLAUSE}". Consider only this one item from it: "simple Bosniak".' in q["instructions"]
 
 
-def test_suppressed_unsupported_pure_paraphrase_gets_no_mark():
+async def test_periovulatory_shape_is_marked(monkeypatch):
+    dictation = "- Right ovarian simple cyst 28 mm\n- Uterus normal"
+    clause = "Right ovarian simple cyst 28 mm, in keeping with a functional periovulatory finding."
+    report = f"FINDINGS:\nRight ovarian simple cyst 28 mm. Uterus normal.\n\nIMPRESSION:\n{clause}\n"
+    items, _ = await _synthesis(monkeypatch, report, dictation, [_unsupported(report, clause)])
+    assert _texts(items, "ai_generated") == ["functional periovulatory"]
+
+
+async def test_jev_says_dictated_synonym_gets_no_mark(monkeypatch):
     report = ("FINDINGS:\nLeft renal cyst 15 mm. The liver is normal.\n\n"
-              "IMPRESSION:\nThere is a 15 mm cyst in the left kidney.\n")
+              "IMPRESSION:\nLeft renal cyst 15 mm.\n")
     dictation = "- Left kidney cyst 15 mm\n- Liver normal"
-    i = inp(report, dictation)
-    al = align(report, dictation, "", i.artifacts.sections)
-    assert any(p.clause_id == c.id for c in al.clauses if "left kidney" in c.text for p in al.pairs)
-    items, _ = _synthesis(report, dictation, [_unsupported(report, "There is a 15 mm cyst in the left kidney.")])
+    items, _ = await _synthesis(monkeypatch, report, dictation, [_unsupported(report, "Left renal cyst 15 mm.")],
+                                answers=DICTATED)
     assert items == []
 
 
-def test_only_suppressed_jev_supported_items_give_a_mark():
-    for it in (_unsupported(CYST_REPORT, CYST_CLAUSE, cls="minor"),
-               _unsupported(CYST_REPORT, CYST_CLAUSE, detectors=("code.numbers",))):
-        assert _synthesis(CYST_REPORT, CYST_DICT, [it])[0] == []
-    gated = _unsupported(CYST_REPORT, CYST_CLAUSE)
-    gated.evidence = {"suppressed": "stale_on_creation"}                  # the surface gate's, not the adjudicator's
-    assert _synthesis(CYST_REPORT, CYST_DICT, [gated])[0] == []
+async def test_clause_merging_two_dictated_lines_gets_no_mark(monkeypatch):
+    dictation = "- Left renal cyst 15 mm\n- Gallstones\n- Liver normal"
+    clause = "Left renal cyst 15 mm and gallstones."
+    report = f"FINDINGS:\nLeft renal cyst 15 mm. Gallstones. The liver is normal.\n\nIMPRESSION:\n{clause}\n"
+    calls = []
+    items, _ = await _synthesis(monkeypatch, report, dictation, [_unsupported(report, clause)], calls=calls)
+    assert items == [] and calls == []                                    # nothing proposed, nothing asked
 
 
-def test_no_double_mark_when_provenance_already_marked_the_span():
-    s = CYST_REPORT.rindex(CYST_CLAUSE)
-    prior = ReviewItem(key="p", report_id="r", run_id=RUN, lane="accuracy", kind="ai_generated", cls="info",
-                       anchor=Span(start=s, end=s + len(CYST_CLAUSE), text=CYST_CLAUSE), detectors=["provenance"])
-    assert _synthesis(CYST_REPORT, CYST_DICT, [_unsupported(CYST_REPORT, CYST_CLAUSE)], existing=[prior])[0] == []
+async def test_technique_anchor_gets_no_mark(monkeypatch):
+    tech = "CT abdomen with intravenous contrast in the portal venous phase."
+    report = f"TECHNIQUE:\n{tech}\nFINDINGS:\nLeft renal cyst 15 mm.\n\nIMPRESSION:\nLeft renal cyst.\n"
+    items, _ = await _synthesis(monkeypatch, report, CYST_DICT, [_unsupported(report, tech)])
+    assert items == []
 
 
-def test_unpaired_suppressed_clause_is_marked_whole():
+async def test_unpaired_suppressed_clause_gets_no_mark(monkeypatch):
     report = ("FINDINGS:\nLeft renal cyst 15 mm. The liver is normal.\n\n"
               "IMPRESSION:\nLeft renal cyst. Benign hepatic steatosis pattern excluded clinically.\n")
     clause = "Benign hepatic steatosis pattern excluded clinically."
-    items, _ = _synthesis(report, CYST_DICT, [_unsupported(report, clause)])
-    assert _texts(items, "ai_generated") == [clause]
+    items, _ = await _synthesis(monkeypatch, report, CYST_DICT, [_unsupported(report, clause)])
+    assert items == []
+
+
+async def test_dictated_no_between_added_runs_is_never_painted(monkeypatch):
+    dictation = "- Left renal cyst 15 mm, no enhancement\n- Liver normal"
+    clause = "Left renal cyst 15 mm, benign septated, no enhancement, Bosniak category."
+    report = f"FINDINGS:\nLeft renal cyst 15 mm, no enhancement. The liver is normal.\n\nIMPRESSION:\n{clause}\n"
+    items, _ = await _synthesis(monkeypatch, report, dictation, [_unsupported(report, clause)])
+    marked = _texts(items, "ai_generated")
+    assert marked and not any(" no " in f" {m} " or "enhancement" in m for m in marked)
+
+
+async def test_also_anchors_are_proposed_too(monkeypatch):
+    finding = "Left renal cyst 15 mm."
+    items, _ = await _synthesis(monkeypatch, CYST_REPORT, CYST_DICT,
+                                [_unsupported(CYST_REPORT, finding, also=(CYST_CLAUSE,))])
+    assert _texts(items, "ai_generated") == ["simple Bosniak"]
+
+
+async def test_jev_failure_gives_no_mark(monkeypatch):
+    async def boom(state, qs):
+        raise RuntimeError("down")
+    items, log = await _synthesis(monkeypatch, CYST_REPORT, CYST_DICT, [_unsupported(CYST_REPORT, CYST_CLAUSE)],
+                                  answers=boom)
+    assert items == [] and log["error"]
+    items, _ = await _synthesis(monkeypatch, CYST_REPORT, CYST_DICT, [_unsupported(CYST_REPORT, CYST_CLAUSE)],
+                                answers={"syn*": {"bad": 1}})                     # unreadable answer
+    assert items == []
+
+
+async def test_only_suppressed_jev_supported_items_and_finding_types_are_proposed(monkeypatch):
+    for it in (_unsupported(CYST_REPORT, CYST_CLAUSE, cls="minor"),
+               _unsupported(CYST_REPORT, CYST_CLAUSE, detectors=("code.numbers",))):
+        assert (await _synthesis(monkeypatch, CYST_REPORT, CYST_DICT, [it]))[0] == []
+    jp = JevPass(clauses=[CYST_CLAUSE], types={CYST_CLAUSE: "normal"})
+    assert (await _synthesis(monkeypatch, CYST_REPORT, CYST_DICT, [_unsupported(CYST_REPORT, CYST_CLAUSE)],
+                             jp=jp))[0] == []
+
+
+async def test_no_double_mark_when_provenance_already_marked_the_span(monkeypatch):
+    s = CYST_REPORT.rindex(CYST_CLAUSE)
+    prior = ReviewItem(key="p", report_id="r", run_id=RUN, lane="accuracy", kind="ai_generated", cls="info",
+                       anchor=Span(start=s, end=s + len(CYST_CLAUSE), text=CYST_CLAUSE), detectors=["provenance"])
+    items, _ = await _synthesis(monkeypatch, CYST_REPORT, CYST_DICT, [_unsupported(CYST_REPORT, CYST_CLAUSE)],
+                                existing=[prior])
+    assert items == []
 
 
 @pytest.mark.asyncio
 async def test_run_review_tints_the_synthesis_of_a_suppressed_unsupported_item(monkeypatch):
     async def no_neg(inp_, run_id, types=None, owned=None):
         return [], {"candidates": []}
-    monkeypatch.setattr(rc, "_jev", jev({"sup*": {"noul": 0.1}}))       # W1n: the dictation does not state it
+    monkeypatch.setattr(rc, "_jev", jev({"sup*": {"noul": 0.1}, "syn*": {"noul": 0.1}}))
     monkeypatch.setattr(negatives, "classify_negatives", no_neg)
 
     async def judge(inp_, groups):
@@ -397,5 +473,20 @@ async def test_run_review_tints_the_synthesis_of_a_suppressed_unsupported_item(m
     res = await engine.run_review(inp(CYST_REPORT, CYST_DICT), RUN)
     sup = [i for i in res.items if i.kind == "unsupported"]
     assert sup and all(i.cls == "suppress" for i in sup)                 # the suppressed item stays suppressed
-    assert "in keeping with a simple Bosniak I cyst" in _texts(res.items, "ai_generated")
+    assert "simple Bosniak" in _texts(res.items, "ai_generated")
     assert res.run["provenance"]["synthesis"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_run_review_keeps_provenance_when_synthesis_fails(monkeypatch):
+    async def no_neg(inp_, run_id, types=None, owned=None):
+        return [], {"candidates": []}
+    monkeypatch.setattr(rc, "_jev", jev())
+    monkeypatch.setattr(negatives, "classify_negatives", no_neg)
+    monkeypatch.setattr(adj, "adjudicate", lambda inp_, groups: _outcomes(groups))
+
+    async def boom(*a, **k):
+        raise RuntimeError("x")
+    monkeypatch.setattr(provenance, "synthesis_items", boom)
+    res = await engine.run_review(inp(REPORT, DICT), RUN)
+    assert "recommendation" in [i.kind for i in res.items] and "synthesis" in res.run["errors"]
