@@ -27,3 +27,9 @@ def test_groups_and_pills():
 
 def test_scan_key_normalises():
     assert s.scan_key("  MRI   Left  Ankle ") == "mri left ankle"
+
+
+def test_no_family_region_collides_with_fixed_groups():
+    fixed = {n.lower() for n in s.FIXED}
+    for fam in s.library()["families"]:
+        assert not fixed & {r.name.lower() for r in s.family_regions(fam)}, fam

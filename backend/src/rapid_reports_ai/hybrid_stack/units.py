@@ -11,8 +11,23 @@ _SPLIT = re.compile(r"(?<=[.?!])\s+(?=\S)|\n+")
 
 
 def sentences(text: str) -> list[str]:
-    """Break at . ? ! followed by whitespace (decimals stay whole) and at line breaks."""
-    return [s.strip() for s in _SPLIT.split(text or "") if s.strip()]
+    """Break at . ? ! followed by whitespace (decimals stay whole) and at line breaks.
+    A short single-token fragment ending in "." ("e.g.", "Dr.", "1.") is joined onto the sentence
+    after it; a trailing one with nothing after it stays as is."""
+    out: list[str] = []
+    carry = ""
+    for s in (p.strip() for p in _SPLIT.split(text or "")):
+        if not s:
+            continue
+        s = f"{carry} {s}" if carry else s
+        carry = ""
+        if len(s) <= 6 and s.endswith(".") and not any(c.isspace() for c in s):
+            carry = s
+        else:
+            out.append(s)
+    if carry:
+        out.append(carry)
+    return out
 
 
 class PartOut(BaseModel):
@@ -35,9 +50,14 @@ class StackUnit(BaseModel):
 def match_units(text: str, previous: list[StackUnit]) -> tuple[list[StackUnit], list[int]]:
     """Units for `text`. A sentence whose exact text was in `previous` keeps its placement (sticky).
     Ids are positions in the new list; links are remapped; a link to a sentence that no longer
-    exists, or that would point forwards, is cut. Returns (units, ids of new sentences)."""
+    exists, or that would point forwards, is cut. `previous` comes from the client: if two previous
+    units share an id, the first wins and the later one is ignored. Returns (units, ids of new sentences)."""
     pool: dict[str, list[StackUnit]] = {}
+    seen: set[int] = set()
     for u in previous:
+        if u.id in seen:
+            continue
+        seen.add(u.id)
         pool.setdefault(u.text, []).append(u)
     old_to_new: dict[int, int] = {}
     units: list[StackUnit] = []
@@ -46,7 +66,7 @@ def match_units(text: str, previous: list[StackUnit]) -> tuple[list[StackUnit], 
         if pool.get(s):
             old = pool[s].pop(0)
             old_to_new[old.id] = i
-            units.append(old.model_copy(update={"id": i}))
+            units.append(old.model_copy(update={"id": i}, deep=True))
         else:
             units.append(StackUnit(id=i, text=s, heading=heading_only(s) is not None))
             new_ids.append(i)
