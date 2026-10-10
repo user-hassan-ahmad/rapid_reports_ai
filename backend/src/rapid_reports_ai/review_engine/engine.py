@@ -46,9 +46,12 @@ Would-be pre-apply (binding corrections 9, 10, 12; spec §9; recorded only). An 
 Negatives items (Task 14) bypass merge and the adjudicator and are appended as built.
 
 Brief normals (`brief_normals`): the brief's linked-normal atoms (labelled before generation) become items of their
-own (default → assumed_normal, implicated → check / uncertain), anchored on the atom's term in the final report or
-unanchored. They own their span: the classifier's default / implicated item on the same span is dropped, a classifier
-conflict / number / removal outranks them; lane negatives overlapping them are deduped like the classifier's.
+own (default → assumed_normal green, implicated → assumed_normal amber, `evidence.form` "negative"), anchored on the
+atom's term in the final report or unanchored. With `quality_check.anchors` (brief_anchor) the items, the conflict
+cards and `owned` (`brief_normals.owned_spans`: every anchor, dictated included, and every carded clause) come from
+the anchors instead. They own their span: the classifier's default / implicated item on the same span is dropped, a
+classifier conflict / number / removal outranks them; lane negatives overlapping them are deduped like the
+classifier's.
 
 One card per claim (`claims`): a lane claim flagged in FINDINGS and repeated in IMPRESSION (same lane and kind, a
 conservative content match) is grouped before adjudication (`group_claims`), so one verdict covers both; the item's
@@ -587,8 +590,14 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         except Exception as e:  # noqa: BLE001 - never fails the run: the classifier then reads every statement
             errors["brief_normals"] = f"{type(e).__name__}: {str(e)[:200]}"
         if "accuracy" in names:
-            owned = [(b.anchor.start, b.anchor.end) for b in brief_items
-                     if b.anchor is not None and b.anchor.end > b.anchor.start]
+            try:
+                owned = brief_normals.owned_spans(inp)       # every anchored brief label (spec 2026-10-09 §3.3)
+            except Exception as e:  # noqa: BLE001 - never fails the run: the legacy items' anchors below
+                errors["brief_owned"] = f"{type(e).__name__}: {str(e)[:200]}"
+                owned = None
+            if owned is None:                                # a report from before anchoring: the legacy atom items
+                owned = [(b.anchor.start, b.anchor.end) for b in brief_items
+                         if b.anchor is not None and b.anchor.end > b.anchor.start]
             neg_task = asyncio.create_task(_negatives(inp, run_id, types, owned))
         ctx = LaneContext(alignment=al, jev=jp, checks=checks)
 

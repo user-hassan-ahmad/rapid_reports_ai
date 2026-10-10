@@ -53,8 +53,8 @@ export const AI_LAYER_MARKS: ReadonlySet<MarkClass> = new Set(['rv-normal', 'rv-
 /** Why an amber (check) item needs a check (evidence.check_reason; absent = uncertain). */
 export type CheckReasonCode = 'uncertain' | 'conflict' | 'number';
 
-/** The AI-generated layer's categories, drawn as faint tints: normals green, pertinent negatives amber, synthesis
- * violet (backend evidence.form). */
+/** The AI-generated layer's categories, drawn as faint tints: normals green, negatives bearing on a finding
+ * amber (always shown), synthesis violet (backend evidence.form). */
 export type AiForm = 'normal' | 'negative' | 'synthesis';
 
 const FORMS: ReadonlySet<string> = new Set(['normal', 'negative', 'synthesis']);
@@ -193,7 +193,7 @@ export function isSuggestion(it: ReviewItem): boolean {
 function markClassOf(it: ReviewItem): MarkClass {
 	if (it.status === 'pre_applied') return 'rv-preapplied';
 	if (it.kind === 'assumed_normal') return 'rv-normal';
-	if (it.kind === 'check') return 'rv-check';
+	if (it.kind === 'check') return it.cls === 'action' ? 'rv-action' : 'rv-check'; // a conflict: a flagged issue
 	if (it.kind === 'ai_generated') return 'rv-synth';
 	if (it.kind === 'recommendation') return 'rv-rec';
 	return it.cls === 'action' ? 'rv-action' : it.cls === 'minor' ? 'rv-minor' : 'rv-info';

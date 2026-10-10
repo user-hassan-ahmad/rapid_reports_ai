@@ -63,7 +63,7 @@ def _stub(monkeypatch, jev: dict, qwen: qb.QwenDecisions, plan: qb.ImpressionPla
         missing = set(questions) - set(jev)
         assert not missing, missing
         return jev
-    async def fake_qwen(state, negs, normals, measurements):
+    async def fake_qwen(state, negs, normals, measurements, **kw):
         return qwen
     async def no_split(negs):
         return [[n] for n in negs]
@@ -283,7 +283,7 @@ INCOMPLETE = {
 
 def _sequenced_qwen(monkeypatch, answers):
     calls = []
-    async def fake_qwen(state, negs, normals, measurements):
+    async def fake_qwen(state, negs, normals, measurements, **kw):
         calls.append(negs)
         return qb.QwenDecisions(negatives=answers[len(calls) - 1], affected_normals=[2], applicable_measurements=[0])
     monkeypatch.setattr(qb, "_qwen", fake_qwen)
@@ -424,3 +424,200 @@ def test_jev_upgrade_to_implicated_keeps_pointer_free_of_diagnostics():
     assert out["a1"]["source"] == "separate+jev"
     assert out["a1"]["pointer"] == ""
     assert out["a2"]["cls"] == "implicated" and out["a2"]["pointer"] == "small left pleural effusion"
+
+
+# --- Task 9: four-label negatives scheme behind RR_BRIEF_FULL_LABELS (quick only, default on, narrowed gate) ---
+
+_OLD_QWEN_SYS = (
+    "You check a radiology skill sheet against the radiologist's dictated findings for one case. Silence in the "
+    "dictation never makes a finding present.\n"
+    "NEGATIVES: for each numbered negative return 'contradicted' if the dictation reports it as present or reports a "
+    "finding of the same kind in the same place; 'expected' if a dictated finding would normally and predictably "
+    "cause what it denies (not merely make it possible); otherwise 'keep'. For contradicted and expected, quote the "
+    "dictated finding responsible.\n"
+    "NORMAL LINES: list the numbers of normal-study statements that a dictated finding contradicts or acts on.\n"
+    "MEASUREMENTS: list the numbers of measurement conventions whose finding is present in the dictation.")
+
+
+def test_quick_sys_is_unchanged_and_full_sys_carries_the_four_labels():
+    assert report_reconcile.QWEN_SYS == _OLD_QWEN_SYS   # the template pathway sends it; byte-identical
+    for word in ("dictated:", "default:", "implicated:", "contradicted:", "expected:"):
+        assert word in report_reconcile.QWEN_SYS_FULL
+    assert "Process of exclusion" in report_reconcile.QWEN_SYS_FULL and "NORMAL LINES" in report_reconcile.QWEN_SYS_FULL
+
+
+def test_negative_decision_accepts_the_full_labels_only_in_the_full_class():
+    for a in ("keep", "default", "implicated", "dictated", "contradicted", "expected"):
+        assert report_reconcile.NegativeDecisionFull(index=0, action=a).action == a
+    with pytest.raises(Exception):
+        report_reconcile.NegativeDecision(index=0, action="dictated")
+
+
+def _neg_enum(model) -> list:
+    """The action enum of the negatives in a decisions model's JSON schema (what the model is sent)."""
+    defs = model.model_json_schema()["$defs"]
+    item = next(v for k, v in defs.items() if k.startswith("NegativeDecision"))
+    return sorted(item["properties"]["action"]["enum"])
+
+
+@pytest.mark.parametrize("linked", [None, ("\nLINKED", "LINKED BLOCK")])
+@pytest.mark.parametrize("full", [False, True])
+async def test_qwen_sends_todays_schema_unless_full(monkeypatch, linked, full):
+    seen = {}
+
+    async def fake_run(**kw):
+        seen.update(kw)
+        class R:
+            output = None
+        return R()
+    monkeypatch.setattr(report_reconcile, "_run_agent_with_model", fake_run)
+    await report_reconcile._qwen("STATE", ["No x"], [], [], linked=linked, full=full)
+    rc = report_reconcile
+    if full:
+        assert seen["output_type"] is (rc.QwenDecisionsFullLinked if linked else rc.QwenDecisionsFull)
+        assert seen["system_prompt"].startswith(rc.QWEN_SYS_FULL)
+        assert _neg_enum(seen["output_type"]) == sorted(
+            ["keep", "default", "implicated", "dictated", "contradicted", "expected"])
+    else:
+        assert seen["output_type"] is (rc.QwenDecisionsLinked if linked else rc.QwenDecisions)
+        assert seen["system_prompt"] == (rc.QWEN_SYS + linked[0] if linked else rc.QWEN_SYS)
+        assert _neg_enum(seen["output_type"]) == ["contradicted", "expected", "keep"]
+
+
+async def test_template_call_sends_the_three_label_schema(monkeypatch):
+    """template_brief calls rc._qwen(state, negs, normals, []) positionally, never with full."""
+    seen = {}
+
+    async def fake_run(**kw):
+        seen.update(kw)
+        class R:
+            output = None
+        return R()
+    monkeypatch.setattr(report_reconcile, "_run_agent_with_model", fake_run)
+    monkeypatch.setenv("RR_BRIEF_FULL_LABELS", "1")   # the quick flag never reaches the template call
+    await report_reconcile._qwen("STATE", ["No x"], ["Normal y."], [])
+    assert seen["output_type"] is report_reconcile.QwenDecisions
+    assert seen["system_prompt"] == _OLD_QWEN_SYS
+    assert _neg_enum(seen["output_type"]) == ["contradicted", "expected", "keep"]
+
+
+@pytest.mark.asyncio
+async def test_full_labels_compile_dictated_and_implicated_lines(monkeypatch):
+    monkeypatch.setenv("RR_BRIEF_FULL_LABELS", "1")
+    _stub(monkeypatch, JEV, QWEN)
+    seen = {}
+
+    async def fake_qwen(state, negs, normals, measurements, linked=None, full=False):
+        seen["full"] = full
+        acts = ["dictated", "implicated", "default"]
+        return report_reconcile.QwenDecisionsFull(negatives=[report_reconcile.NegativeDecisionFull(index=i, action=acts[i % 3],
+                                                               dictated_finding="8 mm right subdural" if i % 3 == 1 else "")
+                                           for i in range(len(negs))],
+                                affected_normals=[], applicable_measurements=[])
+    monkeypatch.setattr(qb, "_qwen", fake_qwen)
+    b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, no subdural collection on the left")
+    assert seen["full"] is True
+    assert '  - DICTATED: "No subdural collection"' in b.text
+    assert '"No ventricular compression" (mass effect) (implicated by: 8 mm right subdural)' in b.text
+    assert 'KEEP: "No skull fracture" (trauma)' in b.text
+    acts = [n["action"] for n in b.decisions["negatives"] if n["source"] == "sheet"]
+    assert acts == ["dictated", "implicated", "default"]
+
+
+@pytest.mark.asyncio
+async def test_flag_off_sends_the_old_request(monkeypatch):
+    monkeypatch.setenv("RR_BRIEF_FULL_LABELS", "0")    # default on since lab b204edc: off is explicit
+    _stub(monkeypatch, JEV, QWEN)   # fake_qwen has the old signature: passing full would raise TypeError
+    b = await qb.compile_brief(SHEET, "CT head non-contrast", "8 mm right subdural, 3 mm midline shift")
+    assert "DICTATED:" not in b.text and "implicated by" not in b.text
+
+
+SHEET_F = '''# Skill Sheet: CT head — head injury
+
+## Structural Pattern
+- **Normal-study path:** "The orbits are clear."
+
+## Companion Matrix
+- **Mandatory negatives:** (one line each, one finding each)
+  - "No skull fracture" (trauma)
+- **If present:** (negatives stated only when the dictation reports the finding)
+  - subdural haematoma → "No midline shift" (core)
+  - subdural haematoma → "No uncal herniation" (contextual)
+
+## Impression Exemplars
+- **Abnormal exemplar:** "Acute subdural."
+'''
+
+
+def _stub_f(monkeypatch, subdural_present: float, negs_out):
+    async def fake_jev(state, questions):
+        out = {k: {"score": 0.3} if k.startswith("f") else {"noul": 0.1} for k in questions}
+        out["f0"] = {"score": subdural_present * 3}
+        return out
+    async def fake_qwen(state, negs, normals, measurements, linked=None, full=False):
+        cls_q, cls_n = ((report_reconcile.QwenDecisionsFull, report_reconcile.NegativeDecisionFull) if full
+                        else (qb.QwenDecisions, qb.NegativeDecision))
+        return cls_q(negatives=[cls_n(index=i, action=a, dictated_finding=f) for i, (a, f) in enumerate(negs_out)],
+                     affected_normals=[], applicable_measurements=[])
+    async def no_split(negs):
+        return [[n] for n in negs]
+    async def boom(*a):
+        raise RuntimeError("not in this test")
+    monkeypatch.setattr(qb, "_jev", fake_jev)
+    monkeypatch.setattr(qb, "_qwen", fake_qwen)
+    monkeypatch.setattr(qb, "_split_bundled", no_split)
+    monkeypatch.setattr(qb, "_plan", boom)
+    monkeypatch.setattr(qb, "_fallback", boom, raising=False)
+
+
+@pytest.mark.parametrize("present", [0.95, 0.6])
+def test_dictated_label_routes_to_stated(present):
+    assert qb.route_finding("dictated", present, "contextual") == "stated"
+    assert qb.route_finding("implicated", 0.6, "core") == qb.route_finding("keep", 0.6, "core")
+
+
+@pytest.mark.asyncio
+async def test_dictated_finding_negative_is_stated_as_dictated_never_offered(monkeypatch):
+    monkeypatch.setenv("RR_BRIEF_FULL_LABELS", "1")
+    _stub_f(monkeypatch, 0.95, [("default", ""), ("implicated", "10 mm subdural"),
+                                ("dictated", "no uncal herniation")])
+    b = await qb.compile_brief(SHEET_F, "CT head", "10 mm right acute subdural. No uncal herniation.")
+    assert '  - DICTATED: "No uncal herniation" — state it as the dictation does' in b.text
+    assert 'KEEP: "No midline shift" (finding: subdural haematoma)' in b.text   # implicated routes like keep
+    assert not [o for o in b.decisions["options"] if o["kind"] == "finding_negative"]
+    routes = {c["text"]: c["outcome"] for c in b.decisions["finding_negatives"]}
+    assert routes["No uncal herniation"] == "stated"
+    rec = {n["text"]: n for n in b.decisions["negatives"]}
+    assert rec["No uncal herniation"]["action"] == "dictated"
+    assert rec["No midline shift"]["action"] == "implicated"
+    assert rec["No midline shift"]["dictated_finding"] == "10 mm subdural"
+
+
+@pytest.mark.asyncio
+async def test_flag_off_stated_finding_negative_records_no_dictated_finding(monkeypatch):
+    monkeypatch.setenv("RR_BRIEF_FULL_LABELS", "0")    # default on since lab b204edc: off is explicit
+    _stub_f(monkeypatch, 0.95, [("keep", ""), ("keep", "10 mm subdural"), ("keep", "")])
+    b = await qb.compile_brief(SHEET_F, "CT head", "10 mm right acute subdural.")
+    rec = {n["text"]: n for n in b.decisions["negatives"]}
+    assert rec["No midline shift"]["action"] == "keep" and rec["No midline shift"]["dictated_finding"] == ""
+
+
+def test_full_sys_keeps_the_classifier_definitions():
+    s = report_reconcile.QWEN_SYS_FULL
+    for phrase in ("or reports a finding of the same kind in the same place",
+                   "A dictated normal or negative statement about a region or organ covers each structure within it",
+                   "(a broader or narrower name for the same thing)",
+                   'a hedge such as "largely", "probably", "no evidence of" dropped',
+                   "When a negative combines several parts, classify by its most serious part."):
+        assert phrase in s, phrase
+    # the brief has no history: the history clause and the "could itself be what the clinical question asks
+    # about" clause stay out; the guard that the clinical question alone never implicates stays in
+    assert "Step 1" not in s and "history" not in s.lower() and "asks about" not in s
+    assert "The clinical question on its own" in s
+
+
+def test_full_labels_default_on_and_zero_turns_it_off(monkeypatch):
+    monkeypatch.delenv("RR_BRIEF_FULL_LABELS", raising=False)
+    assert qb.full_labels() is True
+    monkeypatch.setenv("RR_BRIEF_FULL_LABELS", "0")
+    assert qb.full_labels() is False

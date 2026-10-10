@@ -265,7 +265,7 @@ describe('legend', () => {
 			'Removed (contradicts dictation)'
 		]);
 		expect(legend.textContent).not.toContain('(AI)');
-		expect(items[2].title).toMatch(/normals.*pertinent negatives.*synthesis/i);
+		expect(items[2].title).toMatch(/normals.*bearing on your finding \(amber, always shown\).*synthesis/i);
 		expect(items[3].title).toContain('contradicts your dictation');
 		expect(legend.scrollWidth).toBeLessThanOrEqual(legend.clientWidth + 1);
 		const controls = document.querySelector<HTMLElement>('[data-testid="editor-controls"]')!;

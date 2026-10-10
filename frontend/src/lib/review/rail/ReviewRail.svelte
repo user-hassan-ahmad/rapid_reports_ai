@@ -96,11 +96,12 @@
 
 	/** Editor-only kinds: never a rail row, whatever their class. */
 	const EDITOR_ONLY = new Set(['check', 'assumed_normal', 'ai_generated', 'recommendation', 'option']);
-	/** A key flagged issue: an action item, or an engine pre-applied change (with its undo / restore). */
+	/** A key flagged issue: an action item (a check only when it is an action, i.e. a conflict or an undictated
+	 * measurement), or an engine pre-applied change (with its undo / restore). */
 	const isFlagged = (i: ReviewItem) =>
 		i.status === 'pre_applied' ||
 		isEnginePreApplied(i) ||
-		(i.cls === 'action' && !EDITOR_ONLY.has(i.kind) && !isSuggestion(i));
+		(i.cls === 'action' && (i.kind === 'check' || !EDITOR_ONLY.has(i.kind)) && !isSuggestion(i));
 
 	/** Open action cards lead their section; everything else keeps report order (the store's anchor order). */
 	const urgentFirst = (items: ReviewItem[]) => {

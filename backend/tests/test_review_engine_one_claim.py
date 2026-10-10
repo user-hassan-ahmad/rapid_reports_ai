@@ -142,7 +142,7 @@ def test_negatives_claim_in_findings_and_impression_is_one_item_with_the_worst_l
     it = lymph[0]
     assert it.anchor.text == "No lymphadenopathy"
     assert it.section == "FINDINGS"
-    assert it.kind == "check" and it.evidence["check_reason"] == "uncertain"
+    assert it.kind == "assumed_normal" and it.evidence["form"] == "negative"
     also = it.evidence["also_anchors"]
     assert len(also) == 1 and "peritoneal deposit or lymphadenopathy" in also[0]["text"]
     assert it.evidence["claim_labels"] == ["dictated", "implicated"]

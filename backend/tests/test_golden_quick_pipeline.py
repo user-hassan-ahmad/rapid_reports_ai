@@ -82,8 +82,8 @@ def _review_engine():
 
 def _recorder(log: dict, name: str, result):
     """An async stub that logs its arguments under `name` and returns `result(*args)`."""
-    async def fn(*args):
-        log.setdefault(name, []).append(list(args))
+    async def fn(*args, **kw):
+        log.setdefault(name, []).append(list(args) + ([kw] if kw else []))   # kw: e.g. the brief's full=True
         return result(*args)
     return fn
 

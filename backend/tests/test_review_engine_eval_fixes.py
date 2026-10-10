@@ -173,21 +173,22 @@ async def test_check_items_state_their_reason_and_pointer(monkeypatch):
     monkeypatch.setattr(negatives, "_run_agent_with_model", labels(lab))
     items, _ = await negatives.classify_negatives(inp(CHK_REPORT, CHK_DICT), RUN)
     checks = [i for i in items if i.kind == "check"]
-    assert len(checks) == 3
+    assert len(checks) == 1                      # implicated is an amber assumed_normal now, not a check card
     for it in checks:
         assert it.evidence["check_reason"] in negatives.CHECK_REASONS and it.reason
         assert it.label != "Check: a dictated finding points here"
     by = {i.evidence["clause"]: i for i in checks}
-    ih = next(v for k, v in by.items() if "intrahepatic" in k)
-    assert ih.evidence["pointer"] == "CBD 12 mm" and "CBD 12 mm" in ih.label and "CBD 12 mm" in ih.reason
+    ih = next(i for i in items if "intrahepatic" in i.evidence["clause"])
+    assert ih.kind == "assumed_normal" and ih.evidence["form"] == "negative" and ih.label == negatives.AMBER
+    assert ih.evidence["pointer"] == "CBD 12 mm" and "CBD 12 mm" in ih.reason
     pa = next(v for k, v in by.items() if "periampullary" in k)
     assert pa.cls == "action" and pa.evidence["check_reason"] == "conflict" and "periampullary mass" in pa.label
     # a conflict code can remove cleanly offers code's removal as a one-click (never pre-applied) edit
     assert pa.status == "open" and pa.edit is not None and pa.verified["unconfirmed"] is True
     fixed = verifier.apply_edit(CHK_REPORT, pa.edit, ["FINDINGS", "IMPRESSION"])
     assert "periampullary" not in fixed and "No hyperdense filling defect" in fixed
-    sp = next(v for k, v in by.items() if "spleen" in k)                    # no pointer: still a stated reason
-    assert sp.evidence["pointer"] == "" and sp.label == "Check: a dictated finding may affect this"
+    sp = next(i for i in items if "spleen" in i.evidence["clause"])         # no pointer: still a stated reason
+    assert sp.evidence["pointer"] == "" and sp.label == negatives.AMBER and sp.reason
 
 
 # ── 4. a brief option's own sentence grounds its insert ─────────────────────
