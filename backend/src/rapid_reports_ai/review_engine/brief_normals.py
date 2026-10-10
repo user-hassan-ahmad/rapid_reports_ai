@@ -27,8 +27,8 @@ term inside the FINDINGS normal statements:
 3. else the item is unanchored (anchor None). Never guessed.
 
 `dedupe`: brief labels win over the classifier's own default / implicated verdicts on the same span (the classifier
-item is dropped) when the brief items cover all its content words (`negatives.covered`); a classifier item the brief
-covers only in part stays beside them (overlapping marks are fine in the editor). A classifier finding the brief cannot know about (conflict, number, a code removal) outranks: it
+item is dropped) when the brief items overlap every coordinated item of its statement (`negatives.covered`, the
+coordination gate); a classifier item the brief covers only in part stays beside them (overlapping marks are fine). A classifier finding the brief cannot know about (conflict, number, a code removal) outranks: it
 stays, and the brief items on that clause are dropped. Pure code, no model calls.
 
 The engine builds these items BEFORE the classifier starts and passes their anchors as `owned`, so the classifier

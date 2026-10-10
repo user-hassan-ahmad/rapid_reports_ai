@@ -405,7 +405,7 @@ async def test_an_owned_clause_gets_no_classifier_item(monkeypatch):
 
 async def test_an_owned_clause_with_an_undictated_number_keeps_its_number_card():
     report = "FINDINGS:\nA 3 cm renal cyst. No focal lesion in the 4cm kidney.\n\nIMPRESSION:\nRenal cyst.\n"
-    owned = [_term_span(report, "No focal lesion in the 4cm kidney.", "focal lesion in the 4cm kidney")]
+    owned = [_term_span(report, "No focal lesion in the 4cm kidney.", "kidney")]
     items, log = await neg.classify_negatives(inp(report, "3 cm renal cyst."), "r", owned=owned)
     (it,) = items
     assert (it.kind, it.evidence["check_reason"]) == ("check", "number") and log["classified"] == 0
@@ -472,14 +472,14 @@ def _owned(report, *terms):
     return [(report.index(t), report.index(t) + len(t)) for t in terms]
 
 
-def test_owned_spans_skip_a_candidate_only_when_they_cover_all_its_content_words():
+def test_owned_spans_skip_a_candidate_only_when_they_own_every_coordinated_item():
     cands = neg.candidates(SIBLING)
     texts = [c["clause"] for c in cands]
     k_sib, k_full = texts.index("No uncal or tonsillar herniation.") + 1, texts.index("No hydrocephalus.") + 1
     skip = neg.owned_indices(SIBLING, cands, _owned(SIBLING, "tonsillar herniation", "hydrocephalus"))
     assert k_sib not in skip and k_full in skip
     both = neg.owned_indices(SIBLING, cands, _owned(SIBLING, "uncal", "tonsillar herniation"))
-    assert k_sib in both                                  # every content word owned: the brief has it
+    assert k_sib in both                                  # every item owned: the brief has it
 
 
 async def test_a_partly_owned_clause_keeps_its_classifier_item(monkeypatch):
@@ -490,3 +490,26 @@ async def test_a_partly_owned_clause_keeps_its_classifier_item(monkeypatch):
     assert [i.anchor.text for i in items] == ["No uncal or tonsillar herniation"]
     assert "No hydrocephalus" not in calls[0]["user_prompt"].split("STATEMENTS TO CLASSIFY:\n", 1)[1]
     assert log["owned_by_brief"] == 1
+
+
+# ── review fix 3: the coordination gate ─────────────────────────────────────
+
+def _cov(text, *owned_terms):
+    report = f"FINDINGS:\n{text}\n"
+    s = report.index(text)
+    return neg.covered(text, s, _owned(report, *owned_terms))
+
+
+def test_coordination_gate_two_items_one_owned_is_not_owned():
+    assert not _cov("No uncal or tonsillar herniation", "tonsillar herniation")
+
+
+def test_coordination_gate_one_item_owned_on_its_term_is_owned():
+    assert _cov("No significant lymphadenopathy", "lymphadenopathy")
+    assert _cov("The spleen measures 14 cm and is otherwise normal", "spleen")   # "and is ...": not a list item
+
+
+def test_coordination_gate_three_item_list_needs_every_item():
+    text = "The liver, spleen and kidneys are unremarkable"
+    assert not _cov(text, "liver", "kidneys")
+    assert _cov(text, "liver", "spleen", "kidneys")

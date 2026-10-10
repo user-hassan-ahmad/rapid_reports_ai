@@ -517,24 +517,23 @@ def route(inp: ReviewInput, run_id: str, cands: List[dict], labels: Dict[int, di
             {items[i].id: post[i] for i in sorted(items) if i in post})
 
 
-_LINKING = frozenset({"otherwise", "appear", "appears", "remain", "remains", "seem", "seems"})  # copula filler
+# Coordinated items of a statement ("No A, B or C", "The A, B and C are unremarkable"): split at ',' / 'or' / 'and',
+# never at "and is / are / has ..." (a second predicate of the same item, `jev_pass._TURN`'s structure).
+_COORD = re.compile(r"\s*,\s*(?:(?:and|or)\s+)?|\s+(?:and|or)\s+(?!(?:is|are|was|were|has|have)\b)", re.I)
 
 
 def covered(text: str, start: int, spans: List[Tuple[int, int]]) -> bool:
-    """Do `spans` (report positions) cover every content word of `text` (at report position `start`)? Mechanics:
-    the text left once the spans are cut out, minus stopwords (`claims.content_words`), the normal / negative
-    wording (`_NEG`) and copula filler ("is otherwise", "appears"), holds no word of 3+ letters. "No uncal or tonsillar herniation" with only "tonsillar
-    herniation" covered leaves "uncal": not covered."""
-    end = start + len(text)
-    chars = list(text)
-    hit = False
-    for a, b in spans:
-        if a < end and start < b:
-            hit = True
-            for k in range(max(a, start), min(b, end)):
-                chars[k - start] = " "
-    rest = _NEG.sub(" ", "".join(chars))
-    return hit and not any(len(w) >= 3 and w not in _LINKING for w in claims.content_words(rest))
+    """Do `spans` (report positions) own the statement `text` (at report position `start`)? The coordination gate,
+    pure mechanics: split it into its coordinated items (`_COORD`); it is owned only when EVERY item overlaps a span.
+    "No uncal or tonsillar herniation" with only "tonsillar herniation" owned: not owned; "No significant
+    lymphadenopathy" owned on "lymphadenopathy": owned (one item)."""
+    bounds, pos = [], 0
+    for m in _COORD.finditer(text):
+        bounds.append((pos, m.start()))
+        pos = m.end()
+    bounds.append((pos, len(text)))
+    items = [(start + a, start + b) for a, b in bounds if text[a:b].strip()]
+    return bool(items) and all(any(s < e2 and s2 < e for s2, e2 in spans) for s, e in items)
 
 
 def owned_indices(report: str, cands: List[dict], owned: List[Tuple[int, int]]) -> List[int]:
