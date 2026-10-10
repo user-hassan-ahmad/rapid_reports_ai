@@ -177,3 +177,34 @@ def test_api_keeps_provenance_out_of_probe_and_reprepare():
     ai = ReviewItem(key="k", report_id="r", run_id=RUN, lane="accuracy", kind="ai_generated", cls="info")
     rec = ReviewItem(key="k2", report_id="r", run_id=RUN, lane="additions", kind="recommendation", cls="minor")
     assert api._provenance(ai) and api._provenance(rec)
+
+
+# ── live audit 1: a recommendation beside other parts of one sentence (L3 shape) ──
+
+MIXED_REPORT = ("FINDINGS:\nThe appendix is dilated to 11 mm with periappendiceal fat stranding.\n\n"
+                "IMPRESSION:\nAcute appendicitis. No perforation or pelvic abscess identified; urgent surgical review "
+                "recommended.\n")
+MIXED_DICT = "- Dilated appendix 11 mm with fat stranding"
+
+
+def test_mixed_recommendation_sentence_anchors_and_removes_only_the_recommendation():
+    items, _ = _run(MIXED_REPORT, MIXED_DICT)
+    recs = [i for i in items if i.kind == "recommendation"]
+    assert len(recs) == 1
+    r = recs[0]
+    assert r.anchor.text == "urgent surgical review recommended"
+    assert MIXED_REPORT[r.anchor.start:r.anchor.end] == r.anchor.text
+    assert r.edit is not None and r.edit.mode == "remove" and r.verified["code"] is True
+    out = verifier.apply_edit(MIXED_REPORT, r.edit, ["FINDINGS", "IMPRESSION"])
+    assert out is not None
+    assert "Acute appendicitis. No perforation or pelvic abscess identified.\n" in out
+    assert "recommended" not in out
+
+
+def test_mixed_recommendation_sentence_that_cannot_be_isolated_gets_no_remove_edit():
+    report = MIXED_REPORT.replace("No perforation or pelvic abscess identified; urgent surgical review recommended.",
+                                  "Urgent surgical review recommended; no perforation or pelvic abscess identified.")
+    items, _ = _run(report, MIXED_DICT)
+    r = next(i for i in items if i.kind == "recommendation")
+    assert r.anchor.text == "Urgent surgical review recommended"
+    assert r.edit is None and r.verified["code"] is False
