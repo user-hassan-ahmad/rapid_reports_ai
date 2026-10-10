@@ -496,12 +496,14 @@ class Part(BaseModel):
 
 
 class Placement(BaseModel):
+    # Field order is the decoding order of the JSON-schema call: keep covers before attach_to and parts.
+    # (Found in execution: the order originally written here made Cerebras run away on every reply.)
     id: int
     group: str
     structure: str | None = None
+    covers: list[str] = Field(default_factory=list)
     attach_to: int | None = None
     parts: list[Part] = Field(default_factory=list)
-    covers: list[str] = Field(default_factory=list)
 
 
 class GrouperOut(BaseModel):
