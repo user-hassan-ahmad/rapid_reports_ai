@@ -417,7 +417,7 @@ def test_probe_annotates_new_contradicted_items_with_the_dictated_quote(client, 
                     json={"text": REPORT, "text_hash": "h2",
                           "changed_ranges": [[start, start + len("The liver is normal.")]]}).json()
     got = [i for i in r["new_items"] if "liver" in (i["anchor"] or {}).get("text", "")]
-    assert got and "You dictated: “14 mm left renal cyst with a thin septation”." in got[0]["reason"]
+    assert got and got[0]["evidence"]["dictated_quote"] == "14 mm left renal cyst with a thin septation"
     assert got[0]["evidence"]["conflict_pointer"]["p"] == 0.92
 
 

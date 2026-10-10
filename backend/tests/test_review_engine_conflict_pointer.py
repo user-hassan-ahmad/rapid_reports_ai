@@ -38,28 +38,40 @@ def _run(monkeypatch, answer, items, calls=None):
     return asyncio.run(cp.annotate(inp(REPORT, DICT), items))
 
 
-def test_quote_shown_at_threshold(monkeypatch):
+def test_quote_goes_to_evidence_not_reason_at_threshold(monkeypatch):
     it = _card()
     log = _run(monkeypatch, _ans("d0", 0.80, 0.05), [it])
-    assert "You dictated: “Small right pleural effusion”." in it.reason
-    assert it.evidence["pointer"] == "Small right pleural effusion"
-    assert it.evidence["dictated_quote"] == "Small right pleural effusion"
+    assert it.reason == "Conflicts."
+    assert it.evidence["pointer"] == it.evidence["dictated_quote"] == "Small right pleural effusion"
     assert it.evidence["conflict_pointer"] == {"line": "Small right pleural effusion", "p": 0.80, "p_none": 0.05}
     assert log == {"asked": 1, "quoted": 1, "weak": 0, "error": None}
 
 
+def test_placeholder_pointer_counts_as_empty(monkeypatch):
+    it = _card(pointer="->")
+    _run(monkeypatch, _ans("d0", 0.9), [it])
+    assert it.evidence["dictated_quote"] == "Small right pleural effusion"
+
+
 def test_quote_not_shown_below_threshold_but_recorded(monkeypatch):
-    it = _card(pointer="kept")
+    it = _card()
     log = _run(monkeypatch, _ans("d0", 0.79, 0.30), [it])
-    assert it.reason == "Conflicts." and "dictated_quote" not in it.evidence and it.evidence["pointer"] == "kept"
+    assert "dictated_quote" not in it.evidence and not it.evidence["pointer"] and it.reason == "Conflicts."
     assert it.evidence["conflict_pointer"]["p"] == 0.79 and it.evidence["conflict_pointer"]["p_none"] == 0.30
     assert log["quoted"] == 0 and log["weak"] == 1
 
 
-def test_existing_pointer_kept_and_quote_not_duplicated(monkeypatch):
-    it = _card(pointer="Pleural effusion", reason="Conflicts with “Small right pleural effusion”.")
-    _run(monkeypatch, _ans("d0", 0.9), [it])
-    assert it.evidence["pointer"] == "Pleural effusion" and it.reason.count("Small right pleural effusion") == 1
+@pytest.mark.parametrize("ptr,agrees", [("small right pleural effusion", True), ("No pulmonary emboli", False)])
+def test_existing_pointer_kept_and_agreement_logged(monkeypatch, ptr, agrees):
+    it = _card(pointer=ptr)
+    log = _run(monkeypatch, _ans("d0", 0.9), [it])
+    assert it.evidence["pointer"] == ptr and "dictated_quote" not in it.evidence and it.reason == "Conflicts."
+    assert it.evidence["conflict_pointer"]["agrees"] is agrees and log["quoted"] == 0
+
+
+def test_quotes_in_the_clause_are_replaced():
+    assert 'say "x"' not in cp.q_pointer('say "x"', ["a"])["instructions"]
+    assert "say ”x”" in cp.q_pointer('say "x"', ["a"])["instructions"]
 
 
 def test_none_top_answer_gives_no_quote(monkeypatch):
@@ -79,7 +91,7 @@ def test_contradicted_card_uses_the_clause_and_one_batched_call(monkeypatch):
     assert len(calls) == 1 and set(calls[0][1]) == {"p0", "p1"} and log["asked"] == 2 and log["quoted"] == 2
     q = calls[0][1]["p0"]
     assert CLAUSE in q["instructions"] and q["criteria"]["d1"] == "No pulmonary emboli" and "none" in q["criteria"]
-    assert "No pulmonary emboli" in a.reason and ignored[0].reason == "Conflicts."
+    assert a.evidence["dictated_quote"] == "No pulmonary emboli" and "dictated_quote" not in ignored[0].evidence
 
 
 def test_jev_exception_leaves_items_unchanged(monkeypatch):
@@ -110,6 +122,5 @@ async def test_engine_run_attaches_the_quote_to_a_brief_conflict_card(monkeypatc
     monkeypatch.setattr(negatives, "_run_agent_with_model", labels(_all_default))
     res = await engine.run_review(_ainp(qc), run_id="00000000-0000-0000-0000-0000000000f1")
     card = next(i for i in res.items if i.kind == "check" and (i.evidence or {}).get("check_reason") == "conflict")
-    assert "You dictated: “Small right pleural effusion”." in card.reason
-    assert card.evidence["pointer"] == "Small right pleural effusion"
+    assert card.evidence["dictated_quote"] == "Small right pleural effusion"
     assert res.run["conflict_pointer"]["quoted"] == 1 and "conflict_pointer_ms" in res.run["timings_ms"]

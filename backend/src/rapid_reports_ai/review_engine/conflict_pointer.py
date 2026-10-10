@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 
 from .. import report_reconcile as rc
 from ..report_review import JEV_TIMEOUT_S, dictated_items
+from .negatives import pointer_text
 from .items import ReviewInput, ReviewItem
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ WEAK_NONE = 0.25        # logged only, no behaviour yet
 
 def q_pointer(clause: str, lines: List[str]) -> dict:
     return {"type": "choice",
-            "instructions": f'The report says: "{clause}". Which dictated finding does this statement conflict with?',
+            "instructions": f'The report says: "{clause.replace(chr(34), "”")}". Which dictated finding does this statement conflict with?',
             "criteria": {f"d{j}": line for j, line in enumerate(lines)} | {
                 "none": "No dictated finding conflicts with it, or the conflict is unclear."}}
 
@@ -43,6 +44,10 @@ def is_conflict_card(it: ReviewItem) -> bool:
     return it.kind == "contradicted" and bool(_clause(it))
 
 
+def _norm(t: str) -> str:
+    return " ".join((t or "").lower().split())
+
+
 def _parse(ans: Optional[dict], n: int):
     """(top line index or None, p_top, p_none) from a choice answer."""
     probs = (ans or {}).get("probabilities") or {}
@@ -57,7 +62,7 @@ def _parse(ans: Optional[dict], n: int):
     return best, p_top, p_none
 
 
-async def annotate(inp: ReviewInput, items: List[ReviewItem]) -> dict:
+async def annotate(inp: ReviewInput, items: List[ReviewItem], timeout: float = JEV_TIMEOUT_S) -> dict:
     log = {"asked": 0, "quoted": 0, "weak": 0, "error": None}
     try:
         cards = [it for it in items if is_conflict_card(it)]
@@ -66,7 +71,7 @@ async def annotate(inp: ReviewInput, items: List[ReviewItem]) -> dict:
             return log
         qs = {f"p{k}": q_pointer(_clause(it), lines) for k, it in enumerate(cards)}
         log["asked"] = len(qs)
-        res = await asyncio.wait_for(rc._jev(state(inp), qs), JEV_TIMEOUT_S)
+        res = await asyncio.wait_for(rc._jev(state(inp), qs), timeout)
         staged = []
         for k, it in enumerate(cards):
             j, p_top, p_none = _parse((res or {}).get(f"p{k}"), len(lines))
@@ -77,13 +82,13 @@ async def annotate(inp: ReviewInput, items: List[ReviewItem]) -> dict:
             if p_none >= WEAK_NONE:
                 log["weak"] += 1
             if j is not None and p_top >= POINTER_MIN:
-                quote = lines[j]
-                ev["dictated_quote"] = quote
-                if not ev.get("pointer"):
-                    ev["pointer"] = quote
-                if quote not in (it.reason or ""):
-                    it.reason = f"{it.reason or ''} You dictated: “{quote}”."
-                log["quoted"] += 1
+                existing = pointer_text(ev.get("pointer"))
+                if not existing:
+                    ev["dictated_quote"] = lines[j]
+                    ev["pointer"] = lines[j]
+                    log["quoted"] += 1
+                else:
+                    ev["conflict_pointer"]["agrees"] = _norm(lines[j]) == _norm(existing)
             it.evidence = ev
     except Exception as e:  # noqa: BLE001
         log["error"] = f"{type(e).__name__}: {str(e)[:200]}"

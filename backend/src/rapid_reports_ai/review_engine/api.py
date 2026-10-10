@@ -212,7 +212,7 @@ async def post_probe(report_id: str, body: ProbeBody, current_user: User = Depen
         new_items.append(it)
     if new_items:
         try:
-            await conflict_pointer.annotate(inp, new_items)      # never fails the probe
+            await conflict_pointer.annotate(inp, new_items, timeout=2.0)      # never fails the probe
         except Exception:  # noqa: BLE001
             pass
         store.save_items(db, new_items)
