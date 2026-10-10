@@ -1968,6 +1968,8 @@ In the `/api/settings/status` handler (~line 3379, beside `from rapid_reports_ai
 ```python
         # the hybrid dictation stack: default on with the dictation package; RR_HYBRID_STACK=0 turns it off
         "hybrid_stack": stack_allowed(),
+        # share of sessions that also build the old Structured text once, at session end (shadow)
+        "hybrid_stack_shadow_rate": float(os.environ.get("RR_STACK_SHADOW_RATE", "0.25")),
 ```
 
 - [ ] **Step 5: Run the tests to see them pass**
@@ -2582,7 +2584,7 @@ git commit -m "feat(hybrid-stack): grouped view component"
 **Files:**
 - Modify: `frontend/src/lib/components/DictationScratchpad.svelte`
 
-The verbatim CodeMirror `editor` stays the only text and the only editing surface. With the stack on, the Verbatim/Structured toggle is replaced by an order toggle; "By anatomy" shows `HybridStackView` over the (hidden, still live) editor; "As dictated" shows the editor. The old Structured build keeps running in the background (shadow).
+The verbatim CodeMirror `editor` stays the only text and the only editing surface. With the stack on, the Verbatim/Structured toggle is replaced by an order toggle; "By anatomy" shows `HybridStackView` over the (hidden, still live) editor; "As dictated" shows the editor. The old Structured build runs in shadow only once per sampled session, at session end (`stackShadowRate`, default 25%): the grouper, the Structured build and the live polish share the Cerebras Qwen limits, and the polish must never queue behind a shadow call.
 
 - [ ] **Step 1: Add props and state** (after the existing props block, ~line 75)
 
@@ -2597,6 +2599,7 @@ The verbatim CodeMirror `editor` stays the only text and the only editing surfac
 	export let stackGroups: string[] = [];
 	export let stackSchemaMeta: { key: string; source: string; provisional: boolean } | null = null;
 	export let onStackPills: (pills: string[]) => void = () => {};
+	export let stackShadowRate = 0.25; // share of sessions that build the old Structured text once, at session end
 
 	const GROUP_DEBOUNCE_MS = 600;
 	const CLOSE_IDLE_MS = 1500;
@@ -2609,8 +2612,9 @@ The verbatim CodeMirror `editor` stays the only text and the only editing surfac
 	let stackManualMoves = 0;
 	let stackLatency: Record<string, number> = {};
 	let lastJevCovered: string[] = []; // shadow: today's coverage pills, for the log
-	// Shadow: keep building the old Structured text in the background while the stack is on.
-	$: if (hybridStack) structuredWanted = true;
+	// Shadow Structured build: once per sampled session, after recording stops — never per settle, so it
+	// never queues the live polish behind it on the shared Cerebras limits.
+	let stackShadowSampled = Math.random() < stackShadowRate;
 ```
 
 - [ ] **Step 2: Add the grouping functions** (next to `scheduleStructure`, ~line 1276)
@@ -2660,6 +2664,11 @@ The verbatim CodeMirror `editor` stays the only text and the only editing surfac
 				stackUnits = res.units;
 				onStackPills(res.pills);
 			} catch { /* fail open */ }
+			if (stackShadowSampled && !isRecording) {
+				structuredWanted = true;
+				try { await buildStructured(); } catch { /* shadow only */ }
+				structuredWanted = false;
+			}
 			void sendStackLog();
 		}, CLOSE_IDLE_MS);
 	}
@@ -2682,7 +2691,7 @@ The verbatim CodeMirror `editor` stays the only text and the only editing surfac
 1. In the `editor` update listener (~line 1579-1625), right after the existing `scheduleStructure();` call in the non-empty branch, add `scheduleGroup();`. In the empty branch (`if (!content.trim())`), add `stackUnits = []; onStackPills([]);`.
 2. Where the component reacts to recording stopping (the handler that calls `onRecordingChange(false)`), add `scheduleClose();`.
 3. In `_runReview` (~line 1331), where the coverage response is handled (`onCoveredSectionsChange(data.covered_sections)`), add `lastJevCovered = data.covered_sections ?? [];` on the line before it.
-4. In the scratchpad clear handler (the function that calls `onScratchpadClear()`), add before it: `void sendStackLog(); stackUnits = []; stackSessionId = crypto.randomUUID(); stackManualMoves = 0; stackLatency = {};`.
+4. In the scratchpad clear handler (the function that calls `onScratchpadClear()`), add before it: `void sendStackLog(); stackUnits = []; stackSessionId = crypto.randomUUID(); stackManualMoves = 0; stackLatency = {}; stackShadowSampled = Math.random() < stackShadowRate;`.
 5. In `onDestroy` (add the import from `svelte` if it is not there), add `void sendStackLog();`.
 6. When `stackRegions` change (a new schema), regroup from scratch: add
 ```ts
@@ -2732,7 +2741,8 @@ git commit -m "feat(hybrid-stack): grouped view in the scratchpad; Structured bu
 
 - [ ] **Step 1: Carry the server flag** — in `+page.svelte`, in the `apiKeyStatus = {…}` object, after `dictation_v2: data.dictation_v2 === true`, add:
 ```ts
-						hybrid_stack: data.hybrid_stack === true
+						hybrid_stack: data.hybrid_stack === true,
+						hybrid_stack_shadow_rate: typeof data.hybrid_stack_shadow_rate === 'number' ? data.hybrid_stack_shadow_rate : 0.25
 ```
 
 - [ ] **Step 2: IntelliDictateTab — fetch the schema beside `/sections`**
@@ -2773,12 +2783,13 @@ Pass to `<DictationScratchpad …>` (~977-1000):
 		stackGroups={stackSchema?.groups ?? []}
 		stackSchemaMeta={stackSchema ? { key: stackSchema.key, source: stackSchema.source, provisional: stackSchema.provisional } : null}
 		onStackPills={(p) => (stackPills = p)}
+		stackShadowRate={apiKeyStatus?.hybrid_stack_shadow_rate ?? 0.25}
 ```
 `checklistSections={prePoppedSections}` stays as it is: the Jev coverage call keeps running on the old list (shadow) and its result is logged by the scratchpad.
 
 - [ ] **Step 4: TemplateForm — the template path**
 
-In `TemplateForm.svelte` add the same imports, `hybridStack`, `stackSchema`, `stackPills` and `loadStackSchema`, but call `fetchSchema($token, { scan_type: <the form's scan type>, clinical_history: variableValues['CLINICAL_HISTORY'] ?? '', template_id: selectedTemplate?.id ?? null })` next to the existing `/api/canvas/sections-from-template` call (~line 280). For the scan type, use the same value the form passes to `DictationScratchpad` as `scanType` (~line 807-820). Apply the same pill-strip change to its binary strip (~line 796) and pass the same five props to `<DictationScratchpad>`. TemplateForm has no `dictationConfig`; compute `hybridStack = hybridStackOn(undefined, apiKeyStatus?.hybrid_stack === true)` if it receives `apiKeyStatus`, otherwise add `apiKeyStatus` as a prop passed from its parent the same way IntelliDictateTab receives it.
+In `TemplateForm.svelte` add the same imports, `hybridStack`, `stackSchema`, `stackPills` and `loadStackSchema`, but call `fetchSchema($token, { scan_type: <the form's scan type>, clinical_history: variableValues['CLINICAL_HISTORY'] ?? '', template_id: selectedTemplate?.id ?? null })` next to the existing `/api/canvas/sections-from-template` call (~line 280). For the scan type, use the same value the form passes to `DictationScratchpad` as `scanType` (~line 807-820). Apply the same pill-strip change to its binary strip (~line 796) and pass the same six props to `<DictationScratchpad>`. TemplateForm has no `dictationConfig`; compute `hybridStack = hybridStackOn(undefined, apiKeyStatus?.hybrid_stack === true)` if it receives `apiKeyStatus`, otherwise add `apiKeyStatus` as a prop passed from its parent the same way IntelliDictateTab receives it.
 
 - [ ] **Step 5: Type-check and test**
 
@@ -2939,9 +2950,11 @@ Expected: the Task 13 gates hold.
 
 - [ ] **Step 3: Branch, PR, merge** — push the branch and open a PR against `main` with the spec and plan linked; the description lists the switches (`RR_HYBRID_STACK=0` server kill switch; `localStorage rr_hybrid_stack=0` per user), the reviewer env (`RR_STACK_REVIEWERS`) and the migration. Merge only on Hassan's go-ahead.
 
-- [ ] **Step 4: Railway** — set `RR_STACK_REVIEWERS=hass.ahmad.95@gmail.com` (Hassan's account email). Leave `RR_HYBRID_STACK` unset (default on). Confirm the migration ran (`stack_schema_families`, `dictation_stack_logs` exist — Metabase SQL).
+- [ ] **Step 4: Cerebras limits** — check the account's Cerebras rate limits (requests and tokens per minute) for `qwen-3.8-27b` against the expected peak: per active dictation session about one grouper call per settle (~1 every 3–5 s while dictating) on top of today's polish calls, plus 25% of sessions × one Structured build at session end. If the headroom is thin, lower `RR_STACK_SHADOW_RATE` or move the grouper's first endpoint to Groq (swap the two `ENDPOINTS` entries) before launch.
 
-- [ ] **Step 5: Prod smoke** (Chrome session, per the prod smoke-testing method): `/api/settings/status` returns `"hybrid_stack": true`; dictate one quick case and one template case; the grouped view shows, pills tick, `dictation_stack_logs` gains a row with `pills_jev`, `sections` and `structured_text` filled (the shadow is running).
+- [ ] **Step 5: Railway** — set `RR_STACK_REVIEWERS=hass.ahmad.95@gmail.com` (Hassan's account email). Leave `RR_HYBRID_STACK` unset (default on). Confirm the migration ran (`stack_schema_families`, `dictation_stack_logs` exist — Metabase SQL).
+
+- [ ] **Step 6: Prod smoke** (Chrome session, per the prod smoke-testing method): `/api/settings/status` returns `"hybrid_stack": true`; dictate one quick case and one template case; the grouped view shows, pills tick, `dictation_stack_logs` gains a row with `pills_jev` and `sections` filled (and `structured_text` for a sampled session — set `RR_STACK_SHADOW_RATE=1` briefly to see one, then restore).
 
 ### Task 22: Live testing and retirement gates
 
@@ -2949,6 +2962,7 @@ Expected: the Task 13 gates hold.
   - pill agreement: per session, `pills_derived` vs `pills_jev` restricted to names present in both lists' vocabularies (quick path: compare at region level only where `sections` maps cleanly; template path: direct);
   - manual moves per session (`manual_moves`), and the share of sessions with any;
   - grouper and gate latency (`latency_ms`);
+  - **live polish latency** before vs after launch, from the existing `[canvas.polish_span]` log events (`latency_ms`) — a regression here is a launch problem: lower `RR_STACK_SHADOW_RATE`, move the grouper to Groq first, or use the kill switch;
   - provisional families created (`stack_schema_families` where `status = 'provisional'`).
 - [ ] **Step 2: Peer read** a sample of 10 sessions per week from `units` (Claude peer read; Hassan spot-checks boundary items).
-- [ ] **Step 3: Retirement (separate plan)** — when the gates hold (pill agreement on real dictation, manual moves rare, no latency or fidelity regressions), write a short plan to stop each shadow call and archive its code path: the Structured build (`CANVAS_PROCESS_SYSTEM_PROMPT` structured mode, `structuredView.ts`), `/sections` and `/sections-from-template` in dictation, and the per-update Jev coverage call.
+- [ ] **Step 3: Retirement (separate plan)** — when the gates hold (pill agreement on real dictation, manual moves rare, no polish or grouper latency regression, no fidelity regression), write a short plan to stop each shadow call and archive its code path: the Structured build (`CANVAS_PROCESS_SYSTEM_PROMPT` structured mode, `structuredView.ts`), `/sections` and `/sections-from-template` in dictation, and the per-update Jev coverage call.

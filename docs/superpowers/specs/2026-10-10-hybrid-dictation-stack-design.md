@@ -124,7 +124,7 @@ Nothing is deleted at launch. The old grouping and pill machinery keeps running 
 
 | Today | Active at launch | Old path after launch |
 |---|---|---|
-| Structured tab (`CANVAS_PROCESS_SYSTEM_PROMPT` structured mode, `structuredView.ts`) | the one grouped view | shadow: still built in the background for comparison; reachable via the kill switch |
+| Structured tab (`CANVAS_PROCESS_SYSTEM_PROMPT` structured mode, `structuredView.ts`) | the one grouped view | shadow: built once at session end for a sampled share of sessions (`RR_STACK_SHADOW_RATE`, default 25%) — never per update, so it cannot queue the live polish on the shared Cerebras limits; reachable via the kill switch |
 | `/sections` checklist (quick) | schema library + reconciler | shadow: still called; its list logged beside the schema |
 | `/sections-from-template` (grammar templates) | the sheet's paragraphs | shadow, as above |
 | Jev coverage call per update | pills from `covers` | shadow: still called; its pills logged beside the derived pills |
