@@ -216,7 +216,8 @@ def units(report: str) -> List[Unit]:
                 whole = len(cuts) == 2
                 for a0, b0 in zip(cuts[0::2], cuts[1::2]):
                     part = s[a0:b0]
-                    t = part if whole else part.strip(" ,;")
+                    # a cut part drops the sentence's stop like a tail does ("the adrenals are normal")
+                    t = part if whole else part.strip(" ,;").rstrip(".").rstrip(" ,;")
                     if not t or not _is_normal(t):
                         continue
                     k = a0 + (0 if whole else part.find(t))
@@ -342,8 +343,9 @@ async def link(labels: List[Label], us: List[Unit], cands: Dict[str, List[Cand]]
     question (C1) per sentence (the previous sentence and the unit's sentence: `link_state`), and for a candidate unit
     where the label's term literally occurs, the no-context question (S1) on the unit alone. A candidate passes on
     C1 >= LINK_MIN, or (term hit) S1 >= LINK_MIN_TERM_S1. A label anchors when exactly one sentence has a passing
-    candidate, on the one candidate there (its term span when it has one: "term+jev", else the whole unit: "jev");
-    two passing candidate units of that sentence with no single term span are ambiguous. Any unanswered question on
+    candidate, on the one candidate there (its term span when it has one: "term+jev", else the whole unit: "jev").
+    A candidate without a term hit passes only as its sentence's sole unit: C1's yes may come from another unit;
+    two passing candidate units of one sentence with no single term span are ambiguous. Any unanswered question on
     a candidate (failure, timeout, unreadable) leaves the label unanchored."""
     jev = jev or rc._jev
     by_lab = {lab.ref: (k, lab) for k, lab in enumerate(labels)}
@@ -375,20 +377,35 @@ async def link(labels: List[Label], us: List[Unit], cands: Dict[str, List[Cand]]
                 answers[(st, qk)] = float(r[qk]["noul"])
             except (KeyError, TypeError, ValueError):
                 answers[(st, qk)] = None
+    per_sentence: Dict[int, int] = {}
+    for u in us:
+        per_sentence[u.sstart] = per_sentence.get(u.sstart, 0) + 1
     out: Dict[str, Anchor] = {}
     for ref, cs in cands.items():
         if ref not in by_lab or not cs:
             continue
         k, lab = by_lab[ref]
-        ps = []
+        unanswered = False
+        win = []
         for n, sp in cs:
+            lit = (ref, n) in literal
             c1 = answers.get((link_state(us[n]), f"l{k}"))
-            s1 = answers.get((us[n].text, f"s{k}")) if (ref, n) in literal else 0.0
-            ps.append((None if c1 is None or s1 is None else
-                       (c1 if c1 >= LINK_MIN or s1 < LINK_MIN_TERM_S1 else s1), c1, s1, n, sp))
-        if any(p is None for p, *_ in ps):
+            s1 = answers.get((us[n].text, f"s{k}")) if lit else 0.0
+            if c1 is None or s1 is None:
+                unanswered = True
+                break
+            if lit:                                    # the term pins the unit: either question confirms it
+                passed = c1 >= LINK_MIN or s1 >= LINK_MIN_TERM_S1
+                p = c1 if c1 >= LINK_MIN else s1
+            else:
+                # C1 is asked once per sentence: its yes can come from another unit of that sentence, so a
+                # non-literal pass counts only for the sentence's sole unit
+                passed = c1 >= LINK_MIN and per_sentence[us[n].sstart] == 1
+                p = c1
+            if passed:
+                win.append((p, n, sp))
+        if unanswered:
             continue                                   # an unanswered candidate: "only this one" can't be trusted
-        win = [(p, n, sp) for p, c1, s1, n, sp in ps if c1 >= LINK_MIN or s1 >= LINK_MIN_TERM_S1]
         if len({us[n].sstart for _, n, _ in win}) != 1:
             continue                                   # none, or several sentences: ambiguous
         termed = [w for w in win if w[2]]

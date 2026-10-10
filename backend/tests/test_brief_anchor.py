@@ -424,13 +424,13 @@ def test_semicolon_part_turns_are_split_too():
     us = ba.units(rep)
     assert all("6 mm nodule" not in u.text for u in us)
     assert all(rep[u.start:u.end] == u.text for u in us)
-    assert any(u.text == "no effusion." for u in us)
+    assert any(u.text == "no effusion" for u in us)
 
 
 def test_nil_is_a_tail_negator():
     rep = "FINDINGS:\nThe nodes measure 14 mm; nil contralateral lymphadenopathy.\n"
     us = ba.units(rep)
-    assert [u.text for u in us] == ["nil contralateral lymphadenopathy."]
+    assert [u.text for u in us] == ["nil contralateral lymphadenopathy"]
 
 
 @pytest.mark.parametrize("s", ["Pneumothorax is not entirely excluded.", "Metastasis cannot be ruled out."])
@@ -611,3 +611,29 @@ async def test_an_unanswered_s1_question_leaves_a_term_hit_unanchored(monkeypatc
         return {k: {"noul": 0.95} for k, q in qs.items() if "Read only this sentence" not in q["instructions"]}
     [a] = await ba.anchor(rep, {"negatives": [{"text": "No ascites", "action": "keep"}]}, jev=half)
     assert a.how == "none"
+
+
+# ---- a non-literal pass counts only for a sentence's sole unit (C1 is asked once per sentence) ----
+
+async def test_a_non_literal_yes_never_lands_on_the_other_unit_of_its_sentence(monkeypatch):
+    monkeypatch.setattr(ba, "LINK_MIN", 0.80)
+    rep = "FINDINGS:\nThe liver is unremarkable; no hepatic duct dilatation.\n"
+    assert len(ba.units(rep)) == 2
+    [a] = await ba.anchor(rep, {"negatives": [{"text": "No hepatic lesion", "action": "contradicted"}]},
+                          jev=_two_q(0.05, 0.95))                 # the yes comes from "liver is unremarkable"
+    assert a.how == "none"
+
+
+async def test_a_non_literal_yes_anchors_on_a_sole_unit_sentence(monkeypatch):
+    monkeypatch.setattr(ba, "LINK_MIN", 0.80)
+    rep = "FINDINGS:\nThe liver is normal in size. No focal hepatic lesion is seen within it.\n"
+    [a] = await ba.anchor(rep, {"negatives": [{"text": "No focal liver lesion", "action": "keep"}]},
+                          jev=_jev_says([("within it", "focal liver lesion")]))
+    assert a.how == "jev" and a.span_text == "No focal hepatic lesion is seen within it."
+
+
+def test_cut_units_drop_the_sentence_stop_like_tails():
+    rep = "FINDINGS:\nThe kidney is normal; the adrenals are normal.\n"
+    us = ba.units(rep)
+    assert [u.text for u in us] == ["The kidney is normal", "the adrenals are normal"]
+    assert all(rep[u.start:u.end] == u.text for u in us)
