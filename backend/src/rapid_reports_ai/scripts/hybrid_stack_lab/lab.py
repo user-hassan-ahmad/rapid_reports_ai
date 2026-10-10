@@ -276,16 +276,99 @@ def family_regions(family: str) -> list[tuple[str, str]]:
     return out
 
 
+NONE_FAMILY = "none"
+
+
 async def choose_family(scan_type: str, history: str) -> tuple[str, float]:
-    """Jev maps the free-text scan type to a schema family (distinct options: Jev's strength)."""
+    """Jev maps the free-text scan type to a schema family (distinct options: Jev's strength), or
+    "none" when no family describes it. Confidence alone did not flag a missing family (cardiac MRI
+    went to "chest" at 1.0), hence the explicit option."""
     from rapid_reports_ai.jev_client import JEV_MODEL, jev_post
-    q = {"type": "choice", "instructions": "Which kind of examination is this?",
-         "criteria": {k: v["description"] for k, v in SCHEMAS["families"].items()}}
+    crit = {k: v["description"] for k, v in SCHEMAS["families"].items()}
+    crit[NONE_FAMILY] = ("None of the other options describes this examination: a different body part, joint, "
+                         "organ-specific or specialist examination that the options do not name.")
+    q = {"type": "choice", "instructions": "Which kind of examination is this?", "criteria": crit}
     r = await jev_post({"model": JEV_MODEL, "state": f"Scan type: {scan_type}\nClinical history: {history}",
                         "questions": {"family": q}}, os.environ["OPENROUTER_API_KEY"], 10.0)
     r.raise_for_status()
     a = r.json()["answers"]["family"]
     return a["choice"], float(a.get("confidence") or 0.0)
+
+
+# --- reconciler: a family for a scan type no family describes ----------------------------------
+
+RECONCILE_SYSTEM = """You build the region list for a radiology examination's visual schema. Regions are broad zones a radiologist reports one by one; each region lists what it includes."""
+
+RECONCILE_USER = """Scan type: {scan_type}
+Clinical history: {history}
+
+FAMILIES (key — what it is for — its regions):
+{families}
+
+REGION LIBRARY (key — name — includes):
+{library}
+
+If one family above already gives this examination a useful region list as it stands (its regions match what this examination reports, at the right level of detail), reply {{"family": "<family key>"}}.
+
+Otherwise build the ordered region list for this examination, in the order a radiologist reports it:
+- Reuse a library region (by its key) wherever it fits this examination as it is.
+- Add a new region only for a structure or compartment this examination reports separately and no library region covers. Give it a short name and an includes list in the same style.
+- Keep regions broad: one region per structure or compartment the radiologist would report on its own line, typically 6 to 12 regions. Include structures incidentally in the field of view as one region.
+- When anatomy differs between patients and the scan type does not say which applies, use one neutral region.
+- Do not add Technique, Conclusion, General, Other or Incidental regions: they always exist, and incidental findings outside the listed regions go to "Other findings".
+- Write names in Title Case.
+
+Reply as JSON: either {{"family": "<family key>"}} or {{"regions": [{{"key": "<library key>"}} or {{"name": "<new name>", "includes": "<what it includes>"}}]}}"""
+
+MAX_NEW_REGIONS = 8
+_RECONCILED: dict[str, list[tuple[str, str]]] = {}  # cache by normalised scan type (lab: per process)
+
+
+async def reconcile_family(scan_type: str, history: str) -> tuple[list[tuple[str, str]], dict]:
+    """(regions, log): reused library regions plus new ones, validated in code, cached by scan type."""
+    key = re.sub(r"\s+", " ", scan_type.strip().lower())
+    if key in _RECONCILED:
+        return _RECONCILED[key], {"cached": True}
+    lib = "\n".join(f"{k} — {v['name']} — {v['includes']}" for k, v in SCHEMAS["regions"].items() if k != "other")
+    fams = "\n".join(f"{k} — {v['description']} — {', '.join(n for n, _ in family_regions(k))}"
+                      for k, v in SCHEMAS["families"].items())
+    body = {"model": "qwen-3.8-27b", "temperature": 0.1, "max_tokens": 8000, "reasoning_effort": "medium",
+            "messages": [{"role": "system", "content": RECONCILE_SYSTEM},
+                         {"role": "user", "content": RECONCILE_USER.format(scan_type=scan_type, history=history, library=lib, families=fams)}],
+            "response_format": {"type": "json_object"}}
+    async with httpx.AsyncClient(timeout=120) as c:
+        for attempt in range(4):
+            r = await c.post("https://api.cerebras.ai/v1/chat/completions", json=body,
+                             headers={"Authorization": f"Bearer {os.environ['CEREBRAS_API_KEY']}"})
+            if r.status_code != 429:
+                break
+            await asyncio.sleep(2 + 3 * attempt)
+        r.raise_for_status()
+    out = json.loads(r.json()["choices"][0]["message"]["content"])
+    if out.get("family") in SCHEMAS["families"]:
+        _RECONCILED[key] = family_regions(out["family"])
+        return _RECONCILED[key], {"cached": False, "family": out["family"]}
+    items = out["regions"]
+    regions, seen, reused, new, dropped = [], set(), [], [], []
+    for it in items:
+        if it.get("key") in SCHEMAS["regions"] and it["key"] != "other":
+            name, inc = SCHEMAS["regions"][it["key"]]["name"], SCHEMAS["regions"][it["key"]]["includes"]
+            reused.append(it["key"])
+        elif it.get("name") and it.get("includes") and len(new) < MAX_NEW_REGIONS:
+            name, inc = it["name"].strip(), it["includes"].strip()
+            new.append(name)
+        else:
+            dropped.append(it)
+            continue
+        if name.lower() in seen or name.lower() in {"technique", "conclusion", "general", "other findings",
+                                                     "incidental findings", "other", "incidental"}:
+            dropped.append(it)
+            continue
+        seen.add(name.lower())
+        regions.append((name, inc))
+    regions.append((SCHEMAS["regions"]["other"]["name"], SCHEMAS["regions"]["other"]["includes"]))
+    _RECONCILED[key] = regions
+    return regions, {"cached": False, "reused": reused, "new": new, "dropped": dropped}
 
 
 def _norm_group(g: str, groups: list[str]) -> str | None:
@@ -429,7 +512,11 @@ async def run_case(c: httpx.AsyncClient, case: dict, keyterms: list[str]) -> dic
     includes, family = None, None
     if GROUP_MODE == "schema":
         family = await choose_family(case["scan_type"], case["clinical_history"])
-        regions = family_regions(family[0])
+        if family[0] == NONE_FAMILY or os.environ.get("LAB_FORCE_RECONCILE") == "1":
+            regions, rec_log = await reconcile_family(case["scan_type"], case["clinical_history"])
+            family = (family[0], family[1], rec_log)
+        else:
+            regions = family_regions(family[0])
         groups = EXTRA_FIRST + [n for n, _ in regions] + EXTRA_LAST
         includes = dict(regions)
     else:
