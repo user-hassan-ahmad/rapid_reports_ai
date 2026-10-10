@@ -154,3 +154,85 @@ def test_a_negated_recommendation_is_review_not_quiet():
 def test_a_clause_not_found_in_the_report_is_unplaced():
     g = _classify(RPT, DIC, ["Not in this report."], [0.1], ["abnormal"])
     assert g[0].start is None and g[0].tier == "synth"
+
+
+from rapid_reports_ai.review_engine.items import ReviewItem, Span, text_hash
+
+RUN = "00000000-0000-0000-0000-0000000000f1"
+
+
+def _item(kind, report, text, form=None, cls="info", pointer=None):
+    s = report.index(text)
+    ev = {} if form is None else {"form": form}
+    if pointer is not None:
+        ev["pointer"] = pointer
+    return ReviewItem(key=f"k-{kind}-{s}", report_id="00000000-0000-0000-0000-000000000001", run_id=RUN,
+                      lane="accuracy", detectors=["t"], kind=kind, cls=cls, section="FINDINGS",
+                      anchor=Span(start=s, end=s + len(text), text=text, text_hash=text_hash(report)),
+                      label="", reason="", evidence=ev, status="open", history=[])
+
+
+def _apply(p, types, neg=(), brief=()):
+    i = inp(RPT, DIC)
+    al = align(RPT, DIC, "", i.artifacts.sections)
+    g = dg.classify(i, RPT, al, _jp(CL, p, types))
+    return dg.apply(i, RUN, al, g, list(neg), list(brief))
+
+
+def test_live_builds_synthesis_on_the_added_words_and_a_recommendation():
+    prov, neg, brief, log = _apply([0.3, 0.9, 0.9, 0.9, 0.0], ["abnormal", "normal", "mixed", "abnormal", "not_a_finding"])
+    syn = [it for it in prov if it.kind == "ai_generated"]
+    rec = [it for it in prov if it.kind == "recommendation"]
+    assert [it.anchor.text for it in syn] == ["crescentic"]
+    assert syn[0].evidence["form"] == "synthesis" and syn[0].evidence["source"] == "dictated_gate"
+    assert [it.anchor.text for it in rec] == ["Repeat CT head in 6 hours is recommended."]
+    assert rec[0].edit is not None
+    assert log["synthesis"] == 1 and log["recommendation"] == 1
+
+
+def test_live_quiet_clause_without_an_item_gets_a_quiet_one_and_dictated_drops_ai_layer_items():
+    green = _item("assumed_normal", RPT, "The liver is normal.", form="normal")
+    prov, neg, brief, log = _apply([0.9, 0.9, 0.2, 0.9, 0.9], ["abnormal", "normal", "mixed", "abnormal", "not_a_finding"],
+                                   neg=[green])
+    assert neg == []                                     # gate says dictated: the radiologist's own text
+    quiet = [it for it in prov if it.kind == "assumed_normal"]
+    assert [it.anchor.text for it in quiet] == ["Left ovary normal with no contralateral adnexal mass."]
+    assert quiet[0].evidence["form"] == "normal"
+    assert log["dropped"] == [green.key]
+
+
+def test_live_keeps_check_cards_on_dictated_clauses():
+    card = _item("check", RPT, "The liver is normal.", cls="action")
+    _, neg, _, _ = _apply([0.9] * 5, ["abnormal", "normal", "mixed", "abnormal", "not_a_finding"], neg=[card])
+    assert neg == [card]
+
+
+def test_live_quiet_clause_already_covered_adds_nothing():
+    amber = _item("assumed_normal", RPT, "The liver is normal.", form="negative", pointer="x")
+    prov, neg, _, _ = _apply([0.9, 0.1, 0.9, 0.9, 0.9], ["abnormal", "normal", "mixed", "abnormal", "not_a_finding"],
+                             neg=[amber])
+    assert neg == [amber] and [it for it in prov if it.kind == "assumed_normal"] == []
+
+
+def test_apply_does_not_mutate_its_inputs():
+    green = _item("assumed_normal", RPT, "The liver is normal.", form="normal")
+    neg = [green]
+    i = inp(RPT, DIC)
+    al = align(RPT, DIC, "", i.artifacts.sections)
+    g = dg.classify(i, RPT, al, _jp(CL, [0.9] * 5, ["abnormal", "normal", "mixed", "abnormal", "not_a_finding"]))
+    dg.apply(i, RUN, al, g, neg, [])
+    assert neg == [green]
+
+
+def test_shadow_log_records_tiers_and_what_tinted_each_clause_today():
+    green = _item("assumed_normal", RPT, "The liver is normal.", form="normal")
+    i = inp(RPT, DIC)
+    al = align(RPT, DIC, "", i.artifacts.sections)
+    g = dg.classify(i, RPT, al, _jp(CL, [0.3, 0.9, 0.2, 0.9, 0.0], ["abnormal", "normal", "mixed", "abnormal", "not_a_finding"]))
+    log = dg.shadow_log(g, [green])
+    assert log["mode"] == "shadow"
+    assert [c["tier"] for c in log["clauses"]] == ["synth", "dictated", "quiet", "dictated", "rec"]
+    assert log["clauses"][1]["old"] == ["assumed_normal:normal"]
+    assert log["counts"] == {"synth": 1, "dictated": 2, "quiet": 1, "rec": 1}
+    assert log["added_plain_today"] == 3                 # synth, quiet and rec clauses with no item today
+    assert log["dictated_tinted_today"] == 1

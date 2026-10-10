@@ -159,3 +159,102 @@ def classify(inp: ReviewInput, body: str, al: Alignment, jp) -> List[GateClause]
                               tier=tier_of(p, q, rec, _negated_only(body, s, runs) if at else False),
                               runs=runs, aclause=ac))
     return out
+
+
+AI_LAYER = ("assumed_normal", "ai_generated")
+
+
+def _ai_layer(it) -> bool:
+    return it.kind in AI_LAYER and it.cls == "info" and it.anchor is not None
+
+
+def _overlaps(it, s: int, e: int) -> bool:
+    return it.anchor is not None and it.anchor.start < e and s < it.anchor.end
+
+
+def _clause_log(g: GateClause) -> dict:
+    return {"i": g.i, "section": g.section, "start": g.start, "end": g.end, "p": g.p, "q_type": g.q_type,
+            "tier": g.tier, "runs": [list(r) for r in g.runs]}
+
+
+def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], neg_items: list, brief_items: list):
+    """Live (spec §4.4): (provenance items, negatives items, brief items, log). Inputs are not mutated.
+    - dictated clause: AI-layer items (assumed_normal / ai_generated, cls info) that touch no added clause are dropped;
+      cards (check, removed, ...) stay;
+    - quiet clause with no AI-layer item on it: a quiet `assumed_normal` item (form normal);
+    - synth clause: one `ai_generated` item on the added-word runs (first run the anchor, the rest `also_anchors`;
+      no run → the whole clause);
+    - rec clause: one `recommendation` item per sentence, placed and given its removal by provenance's code."""
+    from .items import text_hash
+    from .provenance import (DETECTOR_REC, KIND_REC, MAX_AI_ITEMS, _ai_item, _new_item, _rec_target)
+    report = inp.artifacts.report or ""
+    names = list(inp.artifacts.sections or [])
+    h = text_hash(report)
+    placed = [g for g in gate if g.start is not None]
+    added = [(g.start, g.end) for g in placed if g.tier in ("quiet", "rec", "synth")]
+    dictated = [(g.start, g.end) for g in placed if g.tier == "dictated"]
+
+    def keep(it) -> bool:
+        if not _ai_layer(it):
+            return True
+        on_dictated = any(_overlaps(it, s, e) for s, e in dictated)
+        return not on_dictated or any(_overlaps(it, s, e) for s, e in added)
+
+    neg = [it for it in neg_items if keep(it)]
+    brief = [it for it in brief_items if keep(it)]
+    dropped = [it.key for it in list(neg_items) + list(brief_items) if not keep(it)]
+    existing = [it for it in neg + brief if _ai_layer(it)]
+    prov: list = []
+    synth, rec_seen, unplaced, capped = 0, set(), sum(1 for g in gate if g.start is None), 0
+    for g in placed:
+        if g.tier == "quiet":
+            if not any(_overlaps(it, g.start, g.end) for it in existing):
+                prov.append(_new_item(inp, run_id, "accuracy", "assumed_normal", "info", DETECTOR, g.section or "",
+                                      g.start, g.end, "Assumed normal", "",
+                                      {"form": "normal", "source": DETECTOR, "p": g.p, "q_type": g.q_type}))
+        elif g.tier == "synth":
+            if synth >= MAX_AI_ITEMS:
+                capped += 1
+                continue
+            runs = g.runs or [(g.start, g.end)]
+            also = [{"start": a, "end": b, "text": report[a:b], "text_hash": h} for a, b in runs[1:]]
+            prov.append(_ai_item(inp, run_id, g.section or "", runs[0][0], runs[0][1],
+                                 {"form": "synthesis", "source": DETECTOR, "p": g.p, "q_type": g.q_type,
+                                  **({"also_anchors": also} if also else {})}))
+            synth += 1
+        elif g.tier == "rec":
+            c = g.aclause
+            if c is None or c.sentence_start in rec_seen:
+                unplaced += c is None
+                continue
+            rec_seen.add(c.sentence_start)
+            sentence = report[c.sentence_start:c.sentence_end]
+            s, e, edit = _rec_target(report, c, sentence, names)
+            ok = edit is not None
+            prov.append(_new_item(inp, run_id, "additions", KIND_REC, "minor", DETECTOR_REC, c.section, s, e,
+                                  "Recommendation not dictated", "Added by the report writer; remove it if not wanted.",
+                                  {"sentence": sentence, "source": DETECTOR, "p": g.p}, edit,
+                                  {"code": ok, "failed": [] if ok else ["not_placeable"], "addressed": None,
+                                   "contra": None, "unconfirmed": True}))
+    log = {"mode": "live", "clauses": [_clause_log(g) for g in gate], "dropped": dropped,
+           "quiet": sum(1 for it in prov if it.kind == "assumed_normal"), "synthesis": synth,
+           "recommendation": len(rec_seen), "capped": capped, "unplaced": unplaced}
+    return prov, neg, brief, log
+
+
+def shadow_log(gate: List[GateClause], items: list) -> dict:
+    """Shadow (spec §7): the gate's verdict and tier per clause next to what today's items tint on it."""
+    clauses, counts, plain, tinted = [], {}, 0, 0
+    for g in gate:
+        d = _clause_log(g)
+        old = sorted({f"{it.kind}:{(it.evidence or {}).get('form', '')}" for it in items
+                      if g.start is not None and _ai_layer(it) and _overlaps(it, g.start, g.end)}
+                     | {it.kind for it in items if g.start is not None and it.kind == "recommendation"
+                        and _overlaps(it, g.start, g.end)})
+        d["old"] = old
+        clauses.append(d)
+        counts[g.tier] = counts.get(g.tier, 0) + 1
+        plain += g.tier in ("quiet", "rec", "synth") and not old
+        tinted += g.tier == "dictated" and bool(old)
+    return {"mode": "shadow", "clauses": clauses, "counts": counts, "added_plain_today": plain,
+            "dictated_tinted_today": tinted}
