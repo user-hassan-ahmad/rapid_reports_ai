@@ -11,40 +11,41 @@ const labels = () =>
 	);
 
 describe('Legend', () => {
-	it('labels: Dictated · Removed by you | AI-generated · Removed (contradicts dictation); no Recommendations pill', async () => {
+	it('labels: AI-generated only; the removed entry appears only while the report has a removal', async () => {
 		render(Legend, {});
 		await expect.element(page.getByText('AI-generated')).toBeInTheDocument();
-		expect(labels()).toEqual(['Dictated', 'Removed by you', 'AI-generated', 'Removed (contradicts dictation)']);
-		expect(legend().textContent).not.toContain('Recommendations');
-		const sep = legend().querySelector('.rv-legend-sep')!;
-		const removedByYou = legend().querySelector('[data-rv-label="excluded"]')!;
-		expect(removedByYou.compareDocumentPosition(sep) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-		expect(sep.compareDocumentPosition(toggles()[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(labels()).toEqual(['AI-generated']);
+		for (const gone of ['Dictated', 'Removed by you', 'Recommendations']) expect(legend().textContent).not.toContain(gone);
+		expect(legend().querySelector('.rv-legend-sep')).toBeNull();
 	});
 
-	it('only AI-generated is a toggle; Dictated and the removed entries are static labels', async () => {
-		render(Legend, {});
-		await expect.element(page.getByText('Dictated')).toBeInTheDocument();
+	it('showRemoved adds Removed (contradicts dictation) as a static label after the toggle', async () => {
+		render(Legend, { showRemoved: true });
+		await expect.element(page.getByText('Removed (contradicts dictation)')).toBeInTheDocument();
+		expect(labels()).toEqual(['AI-generated', 'Removed (contradicts dictation)']);
 		expect(toggles().map((b) => b.dataset.rvFilter)).toEqual(['ai']);
-		for (const key of ['dictated', 'excluded', 'removed']) {
-			const el = legend().querySelector<HTMLElement>(`[data-rv-label="${key}"]`)!;
-			expect(el.tagName, key).toBe('SPAN');
-			expect(el.closest('button'), key).toBeNull();
-			expect(el.hasAttribute('aria-pressed'), key).toBe(false);
-			expect(el.tabIndex, key).toBe(-1);
-			expect(getComputedStyle(el).cursor, key).toBe('default');
-		}
+		const el = legend().querySelector<HTMLElement>('[data-rv-label="removed"]')!;
+		expect(el.tagName).toBe('SPAN');
+		expect(el.closest('button')).toBeNull();
+		expect(el.hasAttribute('aria-pressed')).toBe(false);
+		expect(el.tabIndex).toBe(-1);
+		expect(getComputedStyle(el).cursor).toBe('default');
 	});
 
-	it('AI-generated is on by default and its breakdown is shown inline: Normals, Bears on your finding, Added by the AI', async () => {
+	it('AI-generated is on by default and its breakdown is shown inline: Pertinent negatives, AI synthesis, Normals', async () => {
 		render(Legend, {});
 		await expect.element(page.getByRole('button', { name: /^AI-generated$/ })).toHaveAttribute('aria-pressed', 'true');
 		const items = [...legend().querySelectorAll<HTMLElement>('[data-rv-breakdown] [data-rv-form]')];
-		expect(items.map((i) => i.textContent?.trim())).toEqual(['Normals', 'Bears on your finding', 'Added by the AI']);
-		expect(items.map((i) => i.dataset.rvForm)).toEqual(['normal', 'negative', 'synthesis']);
+		expect(items.map((i) => i.textContent?.trim())).toEqual(['Pertinent negatives', 'AI synthesis', 'Normals']);
+		expect(items.map((i) => i.dataset.rvForm)).toEqual(['negative', 'synthesis', 'normal']);
 		const sw = items.map((i) => getComputedStyle(i.querySelector('.rv-swatch')!).backgroundColor);
 		expect(new Set(sw).size).toBe(3); // green, amber, violet swatches
 		expect(legend().textContent).not.toContain('Needs checking');
+		expect(items.map((i) => i.title)).toEqual([
+			'Negatives the AI added because they bear on a dictated finding: worth a glance',
+			"Conclusions or details the AI added that aren't in your dictation: check them",
+			'Normal findings you did not dictate, stated by the AI'
+		]);
 	});
 
 	it('the breakdown collapses and expands', async () => {

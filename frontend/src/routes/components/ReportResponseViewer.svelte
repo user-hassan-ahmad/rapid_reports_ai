@@ -28,6 +28,8 @@
 		commandTransaction,
 		replaceDoc,
 		reviewCommand,
+		reviewCounts,
+		reviewItems,
 		syncItems,
 		widgetPosOf,
 		type ReviewHistoryEvent
@@ -746,6 +748,8 @@
 		(reviewPending || (!!reportId && reportId !== reviewReportId)) && $reviewRailExpected !== false && !railOn;
 	/** The legend's pressed filters (editor/theme.ts setEmphasis), kept across report switches. */
 	let legendEmphasis: LegendKey[] = [...DEFAULT_LEGEND];
+	/** The editor currently draws a removal that contradicts the dictation (the legend shows its label only then). */
+	let hasRemoved = false;
 	function applyEmphasis(keys: LegendKey[]): void {
 		legendEmphasis = keys;
 		const view = reportEditorRef?.getView();
@@ -898,6 +902,8 @@
 				getItem: (itemId) => get(store).items.find((i) => i.id === itemId)
 			}),
 			EditorView.updateListener.of((u) => {
+				const removed = reviewCounts(reviewItems(u.state)).removed > 0;
+				if (removed !== hasRemoved) hasRemoved = removed;
 				if (!u.docChanged) return;
 				refreshHash();
 				// a reload onto the same text (a save) is not an edit for the probe loop
@@ -1269,7 +1275,7 @@
 			<div class="flex flex-col gap-1.5 min-w-0 sm:flex-1">
 				<h2 class="text-base sm:text-lg font-semibold text-white">Report Editor</h2>
 				{#if (railOn || railSlotPending || (reviewPending && $reviewRailExpected !== false)) && response && !error}
-					<Legend active={legendEmphasis} onFilter={applyEmphasis} />
+					<Legend active={legendEmphasis} onFilter={applyEmphasis} showRemoved={hasRemoved} />
 				{/if}
 			</div>
 			

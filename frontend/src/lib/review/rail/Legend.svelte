@@ -1,6 +1,7 @@
 <script lang="ts">
 	// The review legend, directly under the "Report Editor" title (ReportResponseViewer); not part of the rail.
-	// "Dictated · Removed by you | AI-generated ▾ · Removed (contradicts dictation)". Only "AI-generated" is a toggle
+	// "AI-generated ▾ · Removed (contradicts dictation)". The removed label shows only while the report has such a
+	// removal (`showRemoved`). Only "AI-generated" is a toggle
 	// (editor/theme.ts `setEmphasis`: the AI-generated layer's tints, ON by default; off = plain text); its breakdown
 	// (Normals green, Bears on your finding amber, Added by the AI violet) expands inline. The other entries are static labels
 	// for what the editor draws. It wraps onto new lines when narrow (never scrolls sideways). The density toggle is a
@@ -14,6 +15,7 @@
 		showDensity = false,
 		active = $bindable<LegendKey[]>([...DEFAULT_LEGEND]),
 		onFilter,
+		showRemoved = false,
 		expanded = $bindable(true)
 	}: {
 		density?: Density;
@@ -22,12 +24,13 @@
 		/** The pressed filters, in legend order. */
 		active?: LegendKey[];
 		onFilter?: (keys: LegendKey[]) => void;
+		/** The report currently has a removal that contradicts the dictation: show its legend label. */
+		showRemoved?: boolean;
 		/** The AI-generated breakdown is shown. */
 		expanded?: boolean;
 	} = $props();
 
-	const OWN = LEGEND.filter((e) => !e.ai);
-	const AI = LEGEND.filter((e) => e.ai);
+	const ENTRIES = $derived(LEGEND.filter((e) => e.key !== 'removed' || showRemoved));
 
 	const CHOICES: { value: Density; label: string }[] = [
 		{ value: 'full', label: 'Full' },
@@ -99,9 +102,7 @@
 
 <div class="rv-legend-bar" data-testid="review-legend">
 	<div class="rv-legend" data-rv-legend role="group" aria-label="Legend">
-		{#each OWN as e (e.key)}{@render entry(e)}{/each}
-		<span class="rv-legend-sep" aria-hidden="true"></span>
-		{#each AI as e (e.key)}{@render entry(e)}{/each}
+		{#each ENTRIES as e (e.key)}{@render entry(e)}{/each}
 	</div>
 	{#if showDensity}
 		<div class="rv-density" role="group" aria-label="Density">
@@ -123,7 +124,6 @@
 		--lg-amber: #e3a94a;
 		--lg-red: #ff7a7a;
 		--lg-blue: #7ea6f0;
-		--lg-grey: #8f969f;
 		--lg-violet: #b3a1f5;
 		display: flex;
 		flex-wrap: wrap;
@@ -174,12 +174,6 @@
 	.rv-pill:focus-visible {
 		outline: 2px solid #a855f7;
 		outline-offset: 1px;
-	}
-	.rv-legend-sep {
-		width: 1px;
-		height: 12px;
-		margin: 0 3px;
-		background: rgba(255, 255, 255, 0.15);
 	}
 	.rv-swatches {
 		display: inline-flex;
@@ -279,10 +273,6 @@
 	.rv-legend-removed .rv-legend-icon {
 		color: var(--lg-red);
 		background: rgba(255, 122, 122, 0.12);
-	}
-	.rv-legend-excluded .rv-legend-icon {
-		color: var(--lg-grey);
-		background: rgba(143, 150, 159, 0.14);
 	}
 	.rv-density {
 		display: inline-flex;

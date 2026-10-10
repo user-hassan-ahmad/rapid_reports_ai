@@ -269,7 +269,7 @@ describe('review decorations', () => {
 		expect(getComputedStyle(markEl(view, 'am')).backgroundColor).not.toBe(NONE);
 		expect(getComputedStyle(markEl(view, 'gr')).backgroundColor).toBe(NONE);
 		expect(markEl(view, 'am').getAttribute('aria-label')).toBe(
-			'Bears on your finding · “right hilar nodes 14 mm” (AI-generated)'
+			'Pertinent negatives · “right hilar nodes 14 mm” (AI-generated)'
 		);
 	});
 
@@ -841,7 +841,7 @@ describe('amber AI-layer label', () => {
 			id: 'x', kind: 'assumed_normal', cls: 'info', lane: 'accuracy', mark: 'rv-normal',
 			form: 'negative', pointer: 'right hilar nodes 14 mm', from: 0, to: 5, text: 'No X.'
 		} as const;
-		expect(markLabel(m as never)).toBe('Bears on your finding · “right hilar nodes 14 mm” (AI-generated)');
+		expect(markLabel(m as never)).toBe('Pertinent negatives · “right hilar nodes 14 mm” (AI-generated)');
 	});
 	it('leaves a green normal unchanged', () => {
 		const m = { id: 'y', kind: 'assumed_normal', cls: 'info', lane: 'accuracy', mark: 'rv-normal',

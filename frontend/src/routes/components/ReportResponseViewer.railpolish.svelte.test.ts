@@ -258,15 +258,10 @@ describe('legend', () => {
 		await expect.element(page.getByTestId('review-rail')).toBeInTheDocument();
 		const legend = document.querySelector<HTMLElement>('[data-testid="review-legend"]')!;
 		const items = [...legend.querySelectorAll<HTMLElement>('[data-rv-label], button[data-rv-filter]')];
-		expect(items.map((b) => b.querySelector('.rv-legend-label')?.textContent)).toEqual([
-			'Dictated',
-			'Removed by you',
-			'AI-generated',
-			'Removed (contradicts dictation)'
-		]);
+		// no removal in this report: only the AI toggle
+		expect(items.map((b) => b.querySelector('.rv-legend-label')?.textContent)).toEqual(['AI-generated']);
 		expect(legend.textContent).not.toContain('(AI)');
-		expect(items[2].title).toMatch(/normals.*bearing on your finding \(amber, always shown\).*synthesis/i);
-		expect(items[3].title).toContain('contradicts your dictation');
+		expect(items[0].title).toMatch(/violet.*amber.*normals/i);
 		expect(legend.scrollWidth).toBeLessThanOrEqual(legend.clientWidth + 1);
 		const controls = document.querySelector<HTMLElement>('[data-testid="editor-controls"]')!;
 		const copy = controls.querySelector<HTMLElement>('[aria-label="Copy report"]')!;
@@ -297,6 +292,25 @@ describe('legend', () => {
 		await ai.click();
 		expect(editor().getAttribute('data-rv-emph')).toBe('ai');
 		expect(document.querySelector('[data-testid="review-legend"]')!.textContent).not.toContain('Recommendations');
+	});
+
+	it('shows Removed (contradicts dictation) only while the report has such a removal', async () => {
+		const at = REPORT.indexOf('No ascites.');
+		const removed: ReviewItem = {
+			...action(),
+			id: 'r1',
+			key: 'r1',
+			kind: 'removed',
+			label: 'Negative contradicted',
+			anchor: { start: at, end: at, text: '' },
+			evidence: { removed_text: 'No ascites.' },
+			edit: { mode: 'remove', find: 'No ascites.' },
+			status: 'pre_applied'
+		};
+		getReview.mockResolvedValue(review('live', true, [action(), removed]));
+		render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });
+		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
+		await expect.element(page.getByText('Removed (contradicts dictation)')).toBeInTheDocument();
 	});
 
 	it('is absent with the rail off', async () => {

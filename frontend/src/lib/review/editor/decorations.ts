@@ -97,13 +97,10 @@ export const ICONS = {
 
 export type Meaning = keyof typeof ICONS;
 
-/** The legend (under the editor title): the radiologist's own first, then the AI's. Only "AI-generated" is a toggle
- * (editor/theme.ts `setEmphasis`: the AI-generated layer's tints, on by default; off = plain text), with its breakdown
- * (AI_BREAKDOWN); the other entries are static labels for what the editor draws. The full meaning is the entry's
- * `title`. */
+/** The legend (under the editor title): the AI highlights control with its breakdown (AI_BREAKDOWN), then the one
+ * static label for what the editor draws (a removal that contradicts the dictation, shown only while the report has
+ * one). Plain text is the radiologist's own and needs no entry. The full meaning is the entry's `title`. */
 const LEGEND_SHORT = {
-	dictated: 'Dictated',
-	excluded: 'Removed by you',
 	ai: 'AI-generated',
 	removed: 'Removed (contradicts dictation)'
 } as const;
@@ -111,8 +108,6 @@ const LEGEND_SHORT = {
 export type LegendKey = keyof typeof LEGEND_SHORT;
 
 const LEGEND_TITLE: Record<LegendKey, string> = {
-	dictated: 'Plain text is your dictation',
-	excluded: 'Struck through in grey: text you removed',
 	ai: 'Text not from your dictation. Always shown: violet, details or conclusions the AI added (check them), and amber, negatives bearing on your finding. Green normals the AI assumed show with this toggle',
 	removed: 'Struck through in red: removed by AI because it contradicts your dictation'
 };
@@ -120,23 +115,23 @@ const LEGEND_TITLE: Record<LegendKey, string> = {
 /** The legend filters on by default: the AI-generated layer. */
 export const DEFAULT_LEGEND: readonly LegendKey[] = ['ai'];
 
-/** The legend, in order: the radiologist's own, then the AI's. `toggle`: a filter button (else a static label). */
+/** The legend, in order. `toggle`: a filter button (else a static label). */
 export const LEGEND: { key: LegendKey; icon: string; label: string; title: string; ai: boolean; toggle: boolean }[] = (
-	['dictated', 'excluded', 'ai', 'removed'] as const
+	['ai', 'removed'] as const
 ).map((key) => ({
 	key,
 	icon: ICONS[key],
 	label: LEGEND_SHORT[key],
 	title: LEGEND_TITLE[key],
-	ai: key !== 'dictated' && key !== 'excluded',
+	ai: true,
 	toggle: key === 'ai'
 }));
 
 /** The AI-generated layer's categories, as the legend's breakdown shows them (swatch = the tint in the editor). */
 export const AI_BREAKDOWN: { form: AiForm; label: string; title: string }[] = [
-	{ form: 'normal', label: 'Normals', title: 'Normal findings you did not dictate, stated by the AI (shown with the toggle)' },
-	{ form: 'negative', label: 'Bears on your finding', title: 'Negatives the AI added that bear on a dictated finding: in the report, worth a glance (always shown)' },
-	{ form: 'synthesis', label: 'Added by the AI', title: 'Details, conclusions or interpretation not in your dictation: check them (always shown)' }
+	{ form: 'negative', label: 'Pertinent negatives', title: 'Negatives the AI added because they bear on a dictated finding: worth a glance' },
+	{ form: 'synthesis', label: 'AI synthesis', title: "Conclusions or details the AI added that aren't in your dictation: check them" },
+	{ form: 'normal', label: 'Normals', title: 'Normal findings you did not dictate, stated by the AI' }
 ];
 
 const MARK_MEANING: Record<MarkClass, Meaning> = {
