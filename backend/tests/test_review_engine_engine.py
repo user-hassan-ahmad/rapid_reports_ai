@@ -593,7 +593,7 @@ async def test_live_falls_back_to_today_when_the_gate_fails(monkeypatch):
     monkeypatch.setattr(rc, "_jev", flaky)
     res = await engine.run_review(inp(GREPORT, GDICT), "00000000-0000-0000-0000-0000000000a1")
     assert "dictated_gate" in res.run["errors"] or "jev_gate_error" in res.run["errors"]
-    assert res.run.get("dictated_gate") is None
+    assert res.run["dictated_gate"]["mode"] == "live" and "TimeoutError" in res.run["dictated_gate"]["error"]
     assert not any((i.evidence or {}).get("source") == "dictated_gate" for i in res.items)
 
 

@@ -24,6 +24,8 @@ available (log only, display unchanged) but the deploy goes straight to `live`.
 
 **Spec:** `docs/superpowers/specs/2026-10-10-dictated-gate-review-tiers-design.md`
 
+> **Superseded during review (as built):** the gate asks about `dictated_gate.units(al)` (distinct outermost real report spans of the alignment clauses), not the Jev-pass clauses; `jev_pass.run(..., gate_texts=...)` asks `g{i}` and `t{i}` (q_type) per unit in the same batch, at most 8 requests in flight; `_locate` was removed; the negated-only rule rejects a `;`/`:`/contrast word up to the sentence end and anchors quiet items from the negator. Code snippets below that show the earlier design are historical.
+
 **Flag default:** the code default for `RR_DICTATED_GATE` is `off`, so existing tests and the Jev request count are unchanged. It is set to `live` on Railway at deploy (Task 10), with Hassan's approval, as for every flag.
 
 **Standing rules for every task:**

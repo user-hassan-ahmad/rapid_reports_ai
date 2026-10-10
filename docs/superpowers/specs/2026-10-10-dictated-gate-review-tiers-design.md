@@ -1,6 +1,6 @@
 # Dictated gate and review tiers
 
-**Date:** 2026-10-10 · **Status:** design agreed, plan not written · **Path:** quick report (templated follows the same engine, §8)
+**Date:** 2026-10-10 · **Status:** implemented (plan `docs/superpowers/plans/2026-10-10-dictated-gate.md`) · **Path:** quick report (templated follows the same engine, §8)
 **Follows:** negatives one owner (PR #16, L-59), live audits r1–r5, labs `gate_a`, `confirm`, `confirm2`, `sorter`, `amber`, `amber_fix` (scratchpad)
 
 ## 1. Problem
@@ -52,24 +52,24 @@ A second problem appeared once detection was fixed in the lab: **tinting all AI 
 
 New module `review_engine/dictated_gate.py`.
 
-- **Clauses:** the Jev pass clauses (`report_review.checked_clauses_in_context`: FINDINGS + IMPRESSION on quick reports). Using the same clause list keeps the gate and `q_type` aligned by index, and `q_type` comes free from the existing `omit` request (`typ{i}`).
+- **Clauses (units):** the distinct outermost real report spans of the alignment clauses (`dictated_gate.units`: FINDINGS + IMPRESSION and any section the alignment keeps; technique, history and comparison are skipped). Split list items share their sentence span and collapse to one unit; a sentence repeated in IMPRESSION is its own unit. `q_type` is asked in the same gate batch (`t{i}`, the production statement-type question) against the gate's state.
 - **State:** scan type; clinical history, labelled as context and *not* dictated findings; the dictated findings verbatim.
-- **Question** (frozen lab wording, `Q3s`), one key per clause, batched 4 clauses per request, at most 8 requests in flight:
+- **Question** (frozen lab wording, `Q3s`), keys `g{i}` and `t{i}` per unit, batched 4 clauses per request, at most 8 requests in flight:
   > The report says: "{clause}". Compare every detail in it with the dictated findings: each finding, structure, side, level, size, descriptor, negated item, diagnosis, cause and recommendation.
   >
   > - **all_stated:** Every detail in the statement is stated in the dictated findings, in the same or other words (synonym, abbreviation, expansion or reordering).
   > - **some_details_added:** The dictation states part of it, but the statement adds at least one detail the dictation does not state: a descriptor, an extra negated item, a diagnosis, a cause or an inference.
   > - **not_stated:** The dictation does not state it; it was added by the report writer.
 - **Verdict:** dictated iff P(all_stated) ≥ `GATE_MIN = 0.7`. Anything else counts as added.
-- **Placement:** a fourth request inside `jev_pass`'s `asyncio.gather`, under the same 6 s `wait_for`. Wall-clock cost is about zero (lab median 0.29 s per call; about 4 calls per report).
+- **Placement:** gate batches run alongside the other requests in `jev_pass`'s `asyncio.gather`, each under the 6 s `wait_for`, with at most 8 in flight; any failed batch fails the gate (today's items are shown).
 
 ### 4.2 Tier rule
 
 For each clause the gate calls added:
 
 1. `q_type == "normal"` → **quiet**.
-2. Else, if `q_type` is `abnormal` or `mixed` and every content word new to the dictation follows a negator (no / without / nor / not) in the clause → **quiet**. This is a bolted-on negative on a dictated finding. The type condition keeps negated recommendations ("no urgent referral is indicated", typed `not_a_finding`) out of this rule.
-3. Else, if `provenance.is_recommendation(clause, q_type, section)` → **review: recommendation item** (inline marker plus section checkbox, unchanged, §5).
+2. Else, if `provenance.is_recommendation(clause, q_type, section)` → **review: recommendation item** (inline marker plus section checkbox, unchanged, §5).
+3. Else, if `q_type` is `abnormal` or `mixed` and every content word new to the dictation follows a negator (no / without / nor / not) in the clause → **quiet**. This is a bolted-on negative on a dictated finding. The type condition keeps negated recommendations ("no urgent referral is indicated", typed `not_a_finding`) out of this rule.
 4. Else → **review: synthesis item** (`ai_generated`, form `synthesis`) on the added words (§4.3).
 
 Rules 2–4 are code over the gate's verdict and the validated `q_type`. They decide display, never provenance, so their failures misplace a tint rather than hide AI text. The exception is rule 2 sending a review item to quiet; in the lab it lost none (v1 vs v2 recall equal).
@@ -141,7 +141,7 @@ Amber precision itself (about half, by a strict reader; Hassan's boundary counts
 
 ## 8. Templated path
 
-The engine is pathway-agnostic. Templated reports use the same gate over `checked_clauses_in_context`'s templated sections. No templated-specific work is planned; parity follows the review rail switch-on for templates.
+The engine is pathway-agnostic. Templated reports use the same gate over the alignment units of the templated sections. No templated-specific work is planned; parity follows the review rail switch-on for templates.
 
 ## 9. Success criteria
 

@@ -2100,7 +2100,7 @@ Spec `docs/superpowers/specs/2026-10-09-negatives-one-owner-design.md` (with its
 
 Branch `feat/dictated-gate`. Production text stays in the scratchpad. L-60 is the first free ID after L-59; the PR #12–#15 backfill was not found in this file at the time of writing.
 
-- **Change:** a dictated gate. One Jev choice per Jev-pass clause, against the raw dictation, plus the tier rule (spec §4.2).
+- **Change:** a dictated gate. One Jev choice per alignment unit (distinct outermost report span), against the raw dictation, plus the tier rule (spec §4.2).
   - The question is the frozen Q3s wording in `review_engine/dictated_gate.py`, asked together with the production `q_type` in the same batch.
   - Units are the distinct outermost real report spans of the alignment clauses.
 - **Parameters:** `GATE_MIN = 0.7`; `CHUNK = 4`; at most 8 requests in flight; flag `RR_DICTATED_GATE` off / shadow / live.

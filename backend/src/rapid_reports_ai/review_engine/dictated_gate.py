@@ -1,7 +1,7 @@
 """Dictated gate (spec docs/superpowers/specs/2026-10-10-dictated-gate-review-tiers-design.md).
 
-One owner for "is this report clause dictated?": one Jev choice per Jev-pass clause (FINDINGS + IMPRESSION on quick
-reports), asked against the RAW dictation (scan type, history as context only, dictated findings). A clause is
+One owner for "is this report clause dictated?": one Jev choice per alignment unit (the distinct outermost real report spans:
+FINDINGS + IMPRESSION on quick reports), asked against the RAW dictation (scan type, history as context only, dictated findings). A clause is
 dictated only when P(all_stated) >= GATE_MIN; everything else counts as added (default added: a miss costs a tint,
 never hides AI text). A tier rule over the gate verdict and the Jev statement type then decides display:
 quiet (routine added normal / bolted-on negative, AI toggle), review recommendation, or review synthesis (violet on
@@ -138,11 +138,6 @@ def _negator_start(body: str, s: int, e: int, runs: List[Tuple[int, int]]) -> Op
     return first
 
 
-def _negated_only(body: str, s: int, e: int, runs: List[Tuple[int, int]]) -> bool:
-    """Every added run is governed by a negator in the same clause: a negative bolted onto a dictated finding."""
-    return _negator_start(body, s, e, runs) is not None
-
-
 def tier_of(p: Optional[float], q_type: Optional[str], is_rec: bool, negated_only: bool) -> str:
     """Spec §4.2. Display only: provenance is the gate's (p)."""
     if p is None:
@@ -178,7 +173,7 @@ def units(al: Alignment) -> List[Tuple[int, int, ReportClause]]:
 
 
 def classify(inp: ReviewInput, body: str, al: Alignment, jp) -> List[GateClause]:
-    """One GateClause per alignment report clause (sorted by start), in the order the gate was asked. Pure code over
+    """One GateClause per unit (sorted by start), in the order the gate was asked. Pure code over
     the answers already in `jp`; ValueError when `jp` was asked about other clauses (the engine falls back)."""
     from .jev_pass import clause_type_of
     from .provenance import _proposed_runs, is_recommendation     # provenance imports jev_pass, which imports us

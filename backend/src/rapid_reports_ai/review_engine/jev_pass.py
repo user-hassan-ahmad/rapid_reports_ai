@@ -268,7 +268,7 @@ class JevPass(BaseModel):
     contra_error: Optional[str] = None
     omit_error: Optional[str] = None
     support_error: Optional[str] = None
-    gate: Dict[str, Any] = {}              # g{i} (dictated gate, spec 2026-10-10), i indexes `clauses`
+    gate: Dict[str, Any] = {}              # g{i} / t{i} (dictated gate, spec 2026-10-10), i indexes `gate_texts`
     gate_error: Optional[str] = None
     gate_texts: List[str] = []             # the report clauses the gate was asked about (alignment clauses, by start)
 

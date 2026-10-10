@@ -704,6 +704,8 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         errors["synthesis"] = f"{type(e).__name__}: {str(e)[:200]}"
     gate_log: Optional[dict] = None
     gm = dictated_gate.mode()
+    if gm != "off" and jp is not None and jp.gate_error:
+        gate_log = {"mode": gm, "error": jp.gate_error}    # a replay sees the failed report, not a silent gap
     if gm != "off" and jp is not None and jp.gate and not jp.gate_error:
         try:                             # the dictated gate (spec 2026-10-10): pure code over the Jev pass answers
             gate_clauses = dictated_gate.classify(inp, body, al, jp)
