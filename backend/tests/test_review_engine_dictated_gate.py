@@ -195,6 +195,19 @@ def test_a_negated_recommendation_is_review_not_quiet():
     assert g[0].tier == "rec"
 
 
+@pytest.mark.parametrize("clause,dictation", [
+    ("No interval change in the liver lesion, but there is a new nodule.", "- Liver lesion"),
+    ("No change; new 5 mm nodule.", "- Liver lesion"),
+])
+def test_a_negator_followed_by_a_contrast_or_new_sentence_is_not_a_bolted_on_negative(clause, dictation):
+    r = f"FINDINGS:\n{clause}\n"
+    i = inp(r, dictation)
+    al = align(r, dictation, "", i.artifacts.sections)
+    texts = [c.text for c in sorted(al.clauses, key=lambda c: c.start)]
+    g = dg.classify(i, r, al, _jp(texts, [0.1] * len(texts), ["abnormal"] * len(texts)))
+    assert [x.tier for x in g if x.runs][0] == "synth"
+
+
 from rapid_reports_ai.review_engine.items import ReviewItem, Span, text_hash
 
 RUN = "00000000-0000-0000-0000-0000000000f1"

@@ -117,9 +117,26 @@ def dictated_words(dictation: str) -> set:
     return words
 
 
-def _negated_only(body: str, s: int, runs: List[Tuple[int, int]]) -> bool:
-    """Every added run follows a negator earlier in the same clause: a negative bolted onto a dictated finding."""
-    return bool(runs) and all(_NEGATOR.search(body[s:a]) for a, _ in runs)
+_CONTRAST = re.compile(r"[;:]|\b(?:but|however|although|whereas|while)\b", re.I)
+
+
+def _negator_start(body: str, s: int, e: int, runs: List[Tuple[int, int]]) -> Optional[int]:
+    """Start of the negator governing the first added run, when EVERY added run is a negative bolted onto a dictated
+    finding; else None. A run's negator is the last one before it in the clause, and it governs the run only when no
+    ';' ':' or contrast word ("but", "however", ...) sits between the negator and the END OF ITS SENTENCE (a clause split out of a comma list ends before the "but"; a synonym-folded added word such as
+    "new nodule" is no run, so the contrast has to be read past the run)."""
+    first = None
+    for a, _ in runs:
+        ns = [m for m in _NEGATOR.finditer(body, s, a)]
+        if not ns or _CONTRAST.search(body, ns[-1].end(), e):
+            return None
+        first = ns[-1].start() if first is None else first
+    return first
+
+
+def _negated_only(body: str, s: int, e: int, runs: List[Tuple[int, int]]) -> bool:
+    """Every added run is governed by a negator in the same clause: a negative bolted onto a dictated finding."""
+    return _negator_start(body, s, e, runs) is not None
 
 
 def tier_of(p: Optional[float], q_type: Optional[str], is_rec: bool, negated_only: bool) -> str:
@@ -153,7 +170,7 @@ def classify(inp: ReviewInput, body: str, al: Alignment, jp) -> List[GateClause]
         runs = _proposed_runs(body, c.start, c.end, words)
         rec = is_recommendation(c.text, q, c.section)
         out.append(GateClause(i=i, text=c.text, start=c.start, end=c.end, section=c.section, p=p, q_type=q,
-                              tier=tier_of(p, q, rec, _negated_only(body, c.start, runs)),
+                              tier=tier_of(p, q, rec, _negated_only(body, c.start, max(c.end, c.sentence_end), runs)),
                               runs=runs, aclause=c))
     return out
 
