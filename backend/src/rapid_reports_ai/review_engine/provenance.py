@@ -16,6 +16,10 @@
   recommendation part only (`_rec_target`), or gets no edit when that part cannot be isolated safely; its other
   parts are judged for `ai_generated` like any clause (paired / W1n-supported / normal / owned give no item).
 
+- Synthesis inside a dictation-paired clause (`synthesis_items`, live audit 2): when the adjudicator suppresses an
+  accuracy `unsupported` item (Jev W1n) as legitimate, the words its clause adds to its paired dictated line (a
+  mechanical word diff) get an `ai_generated` item; the suppressed item stays suppressed.
+
 Never marked: technique / comparison / history sections and signature lines (the alignment's clause splitter skips
 them); Jev `not_a_finding` statements; normal / negative statements (the negatives classifier's and the brief's: their
 `assumed_normal` / `check` items stay the record, and a mixed clause is judged on its split finding head); any clause
@@ -25,13 +29,14 @@ Pure code over the alignment and the existing Jev answers: no model call. These 
 reprepared (`PROVENANCE_KINDS`); the frontend decides how to show them."""
 from __future__ import annotations
 
+import difflib
 import re
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
 from .alignment import Alignment, ReportClause, _role
 from .checks import hedge_tag
-from .claims import content_words
+from .claims import _fold, content_words
 from .items import Edit, ReviewInput, ReviewItem, Span, item_key, text_hash
 from .jev_pass import JevPass, noul, recommendation, recommendation_parts, split_tails
 from .lanes import confident
@@ -149,12 +154,30 @@ def _rec_target(report: str, c: ReportClause, sentence: str, names: List[str]
     return start, end, edit
 
 
+def _new_item(inp: ReviewInput, run_id: str, lane: str, kind: str, cls: str, detector: str, section: str, s: int,
+              e: int, label: str, reason: str, evidence: dict, edit: Optional[Edit] = None,
+              verified: Optional[dict] = None) -> ReviewItem:
+    report = inp.artifacts.report or ""
+    h = text_hash(report)
+    text = report[s:e]
+    return ReviewItem(key=item_key(lane, kind, text), report_id=inp.report_id, run_id=run_id, lane=lane,
+                      detectors=[detector], kind=kind, cls=cls, section=section,
+                      anchor=Span(start=s, end=e, text=text, text_hash=h), label=label, reason=reason,
+                      edit=edit, verified=verified, evidence=evidence, status="open",
+                      history=[{"at": _now(), "event": "created", "actor": "engine", "text_hash": h,
+                                "detail": {"detectors": [detector]}}])
+
+
+def _ai_item(inp: ReviewInput, run_id: str, section: str, s: int, e: int, evidence: dict) -> ReviewItem:
+    return _new_item(inp, run_id, "accuracy", KIND_AI, "info", DETECTOR_AI, section, s, e, "AI-generated",
+                     "Not in your dictation.", evidence)
+
+
 def build_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPass],
                 owned: List[ReviewItem]) -> Tuple[List[ReviewItem], dict]:
     """(items, log). `owned` = the negatives classifier's and the brief normals' items (their anchors are theirs)."""
     report = inp.artifacts.report or ""
     names = list(inp.artifacts.sections or [])
-    h = text_hash(report)
     owned_spans = [(it.anchor.start, it.anchor.end) for it in owned if it.anchor is not None]
     marked: List[Tuple[ReportClause, int, int, dict]] = []      # (clause, start, end, evidence)
     recs: List[Tuple[ReportClause, str]] = []
@@ -233,16 +256,10 @@ def build_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPa
 
     def item(lane: str, kind: str, cls: str, detector: str, c: ReportClause, s: int, e: int, label: str,
              reason: str, evidence: dict, edit: Optional[Edit] = None, verified: Optional[dict] = None) -> ReviewItem:
-        text = report[s:e]
-        return ReviewItem(key=item_key(lane, kind, text), report_id=inp.report_id, run_id=run_id, lane=lane,
-                          detectors=[detector], kind=kind, cls=cls, section=c.section,
-                          anchor=Span(start=s, end=e, text=text, text_hash=h), label=label, reason=reason,
-                          edit=edit, verified=verified, evidence=evidence, status="open",
-                          history=[{"at": _now(), "event": "created", "actor": "engine", "text_hash": h,
-                                    "detail": {"detectors": [detector]}}])
+        return _new_item(inp, run_id, lane, kind, cls, detector, c.section, s, e, label, reason, evidence, edit,
+                         verified)
 
-    items = [item("accuracy", KIND_AI, "info", DETECTOR_AI, c, s, e, "AI-generated", "Not in your dictation.", ev)
-             for c, s, e, ev in merged]
+    items = [_ai_item(inp, run_id, c.section, s, e, ev) for c, s, e, ev in merged]
     unplaced = 0
     for c, sentence in recs:
         s, e, edit = _rec_target(report, c, sentence, names)
@@ -259,5 +276,74 @@ def build_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPa
     return items, log
 
 
+_TOKEN = re.compile(r"[A-Za-z]+|\d+(?:\.\d+)?")
+
+
+def _added_runs(report: str, s: int, e: int, line: str) -> List[Tuple[int, int]]:
+    """Report spans (inside [s, e)) of the words a clause adds to its paired dictated line: a word diff (difflib over
+    folded lower-case word tokens, punctuation ignored), keeping the unmatched runs that hold a content word the line
+    does not have (a reordered or restated word is not added). Runs split only by stopwords merge into one span."""
+    toks = [(m.start() + s, m.end() + s, _fold(m.group().lower())) for m in _TOKEN.finditer(report[s:e])]
+    line_toks = [_fold(w.lower()) for w in _TOKEN.findall(line)]
+    line_words = content_words(line)
+    sm = difflib.SequenceMatcher(None, [t[2] for t in toks], line_toks, autojunk=False)
+    runs = [(i1, i2) for op, i1, i2, _, _ in sm.get_opcodes() if op in ("delete", "replace")]
+    merged: List[Tuple[int, int]] = []
+    for i1, i2 in runs:
+        if merged and not content_words(" ".join(t[2] for t in toks[merged[-1][1]:i1])):
+            merged[-1] = (merged[-1][0], i2)
+        else:
+            merged.append((i1, i2))
+    out = []
+    for i1, i2 in merged:
+        if content_words(" ".join(t[2] for t in toks[i1:i2])) - line_words:
+            out.append((toks[i1][0], toks[i2 - 1][1]))
+    return out
+
+
+def synthesis_items(inp: ReviewInput, run_id: str, al: Alignment, lane_items: List[ReviewItem],
+                    existing: List[ReviewItem], owned: List[ReviewItem]) -> Tuple[List[ReviewItem], dict]:
+    """(items, log): the violet mark for legitimate synthesis the adjudicator hid. An accuracy `unsupported` item from
+    Jev W1n (`jev.supported`) that the adjudicator classed `suppress` is not an error but is not in the dictation, and a
+    dictation-paired clause gets no `build_items` mark. It gets an `ai_generated` item on the words its clause adds to
+    its best confident dictated line (`_added_runs`); the whole anchor when it has no confident pair or the added
+    words cannot be placed; none when it adds no content word (a paraphrase). Spans already marked by provenance or
+    owned (negatives / brief normals) are never marked again. The suppressed item stays as it is."""
+    report = inp.artifacts.report or ""
+    taken = [(it.anchor.start, it.anchor.end) for it in list(existing) + list(owned) if it.anchor is not None]
+    out: List[ReviewItem] = []
+    log = {"suppressed_unsupported": 0, "paraphrase": 0, "whole": 0}
+    for it in lane_items:
+        if (it.kind != "unsupported" or it.cls != "suppress" or "jev.supported" not in (it.detectors or [])
+                or it.anchor is None or "suppressed" in (it.evidence or {})):   # the surface gate's suppressions
+            continue
+        log["suppressed_unsupported"] += 1
+        anchors = [(it.anchor.start, it.anchor.end, it.anchor.text)] + [
+            (a.get("start"), a.get("end"), a.get("text")) for a in (it.evidence or {}).get("also_anchors") or []
+            if isinstance(a, dict)]                          # a linked FINDINGS / IMPRESSION group: every copy
+        for s, e, text in anchors:
+            if not (isinstance(s, int) and isinstance(e, int) and 0 <= s < e <= len(report)) or report[s:e] != text:
+                continue
+            clauses = [c for c in al.clauses if c.start < e and s < c.end]
+            pairs = [p for p in al.pairs if p.clause_id in {c.id for c in clauses} and confident(p)]
+            best = max(pairs, key=lambda p: p.score).line_id if pairs else None
+            line = next((l.text for l in al.lines if l.id == best), None)
+            spans = _added_runs(report, s, e, line) if line else [(s, e)]
+            if line is None:
+                log["whole"] += 1
+            elif not spans:
+                log["paraphrase"] += 1
+            section = clauses[0].section if clauses else it.section
+            for a, b in spans:
+                if _overlaps((a, b), taken):
+                    continue
+                taken.append((a, b))
+                out.append(_ai_item(inp, run_id, section, a, b,
+                                    {"form": "synthesis", "from": "unsupported_suppressed", "item_key": it.key,
+                                     "line": line}))
+    log["synthesis"] = len(out)
+    return out, log
+
+
 __all__ = ["KIND_AI", "KIND_REC", "PROVENANCE_KINDS", "DETECTOR_AI", "DETECTOR_REC", "is_recommendation",
-           "build_items"]
+           "build_items", "synthesis_items"]

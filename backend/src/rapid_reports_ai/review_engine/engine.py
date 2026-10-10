@@ -682,6 +682,10 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
     prov_log: Optional[dict] = None
     try:                                 # provenance: undictated clauses and recommendations (pure code)
         prov, prov_log = provenance.build_items(inp, run_id, al, jp, neg_items + brief_items)
+        # the adjudicator's suppressed `unsupported` items are synthesis: tint the words they add (after the lanes)
+        syn, syn_log = provenance.synthesis_items(inp, run_id, al, items, prov, neg_items + brief_items)
+        prov += syn
+        prov_log = {**prov_log, **syn_log}
         for it in prov:
             it.engine_version = ENGINE_VERSION
         if bridge:
